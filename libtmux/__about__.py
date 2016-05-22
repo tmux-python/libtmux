@@ -1,0 +1,8 @@
+__title__ = 'libtmux'
+__package_name__ = 'libtmux'
+__version__ = '0.1'
+__description__ = 'Python API for tmux servers, sessions, windows and panes'
+__email__ = 'tony@git-pull.com'
+__author__ = 'Tony Narlock'
+__license__ = 'BSD'
+__copyright__ = 'Copyright 2016 Tony Narlock'
