@@ -1,0 +1,40 @@
+language: python
+
+sudo: false
+python:
+  - 2.6
+  - 2.7
+  - 3.3
+  - 3.4
+  - 3.5
+env:
+  - TMUX_VERSION=master
+  - TMUX_VERSION=2.2
+  - TMUX_VERSION=2.1
+  - TMUX_VERSION=2.0
+  - TMUX_VERSION=1.8
+  - TMUX_VERSION=1.9a
+before_install:
+  - export PIP_USE_MIRRORS=true
+  - pip install --upgrade pytest  # https://github.com/travis-ci/travis-ci/issues/4873
+  - pip install --upgrade pip wheel virtualenv setuptools
+  - pip install coveralls
+install:
+  - pip install -e .
+before_script:
+  - git clone https://github.com/tmux/tmux.git tmux
+  - cd tmux
+  - git checkout $TMUX_VERSION
+  - sh autogen.sh
+  - ./configure --prefix=$HOME/tmux && make && make install
+  - export PATH=$PATH:$HOME/tmux/bin
+  - cd ..
+  - tmux -V
+script: coverage run --source=tmuxp setup.py test
+addons:
+  apt:
+    packages:
+      - libevent-dev
+      - libncurses-dev
+after_success:
+  - coveralls

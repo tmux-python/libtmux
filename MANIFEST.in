@@ -1,0 +1,3 @@
+include README.rst LICENSE CHANGES .tmuxp.yaml
+include requirements.pip package_metadata.py
+recursive-include doc *.rst
