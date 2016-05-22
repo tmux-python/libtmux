@@ -60,3 +60,11 @@ target/
 
 #Ipython Notebook
 .ipynb_checkpoints
+
+# editors
+.idea
+.ropeproject
+*.swp
+
+# docs
+doc/_build/
