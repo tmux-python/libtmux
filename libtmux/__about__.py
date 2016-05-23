@@ -1,6 +1,6 @@
 __title__ = 'libtmux'
 __package_name__ = 'libtmux'
-__version__ = '0.2'
+__version__ = '0.3'
 __description__ = 'Python API for tmux servers, sessions, windows and panes'
 __email__ = 'tony@git-pull.com'
 __author__ = 'Tony Narlock'
