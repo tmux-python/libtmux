@@ -13,7 +13,6 @@ Explore:
 .. toctree::
     :maxdepth: 2
 
-    about
     quickstart
     internals
     developing
