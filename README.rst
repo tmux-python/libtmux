@@ -21,10 +21,24 @@ install
 .. code-block:: sh
 
     $ [sudo] pip install libtmux
+
+open a tmux session
+-------------------
+
+.. code-block:: sh
+
     $ tmux new-session -n libtmux_wins -s a_libtmux_session
 
-import and get the server object
---------------------------------
+pilot your tmux session via python
+----------------------------------
+
+.. code-block:: sh
+
+   $ python
+
+   # or for nice autocomplete and syntax highlighting
+   $ pip install ptpython
+   $ ptpython
 
 .. code-block:: python
 
