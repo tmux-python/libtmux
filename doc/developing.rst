@@ -164,9 +164,9 @@ After you :ref:`install_dev_env`, when inside the libtmux checkout:
 
     $ libtmux load .
 
-this will load the ``.libtmux.yaml`` in the root of the project.
+this will load the ``.tmuxp.yaml`` in the root of the project.
 
-.. literalinclude:: ../.libtmux.yaml
+.. literalinclude:: ../.tmuxp.yaml
     :language: yaml
 
 .. _travis:
