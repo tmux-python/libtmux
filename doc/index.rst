@@ -3,12 +3,9 @@
 #######
 libtmux
 #######
-====================
-tmux session manager
-====================
 
 .. include:: ../README.rst
-    :start-line: 9
+    :start-line: 4
     :end-before: Project details
 
 Explore:

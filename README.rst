@@ -2,6 +2,80 @@ libtmux - library for managing tmux workspaces
 
 |pypi| |docs| |build-status| |coverage| |license|
 
+install
+-------
+
+.. code-block:: sh
+
+    $ [sudo] pip install libtmux
+    $ tmux new-session -n libtmux_wins -s a_libtmux_session
+
+import and get the server object
+--------------------------------
+
+.. code-block:: python
+
+    >>> import libtmux
+    >>> server = libtmux.Server()
+    >>> server
+    <libtmux.server.Server object at 0x7fbd622c1dd0>
+
+list sessions::
+
+    >>> server.list_sessions()
+    [Session($3 a_libtmux_session), Session($1 libtmux)]
+
+find session::
+
+    >>> server.getById('$3')
+    Session($3 a_libtmux_session)
+
+find session by dict lookup::
+
+    >>> server.findWhere({ "session_name": "a_libtmux_session" })
+    Session($3 a_libtmux_session)
+
+assign session to ``session``::
+
+    >>> session = server.findWhere({ "session_name": "a_libtmux_session" })
+
+play with session::
+
+    >>> session.new_window(attach=False, window_name="ha in the bg")
+    Window(@8 2:ha in the bg, Session($3 a_libtmux_session))
+    >>> session.kill_window("ha in")
+    >>> session.new_window(attach=False, window_name="ha in the bg")
+    Window(@11 3:ha in the bg, Session($3 a_libtmux_session))
+    >>> session.kill_window('@12')
+    >>> window = session.new_window(attach=False, window_name="check this out")
+    >>> window.kill_window()
+
+grab remaining tmux window::
+
+    >>> window = session.attached_window()
+    >>> window.split_window(attach=False)
+    Pane(%23 Window(@10 1:libtmux_wins, Session($3 a_libtmux_session)))
+
+rename window::
+
+    >>> window.rename_window('libtmuxower')
+    Window(@10 1:libtmuxower, Session($3 a_libtmux_session))
+
+create panes by splitting window::
+
+    >>> pane = window.split_window()
+    >>> pane = window.split_window(attach=False)
+    >>> pane.select_pane()
+    >>> window = session.new_window(attach=False, window_name="test")
+    >>> pane = window.split_window(attach=False)
+
+send key strokes to panes::
+
+    >>> pane.send_keys('echo hey send now')
+
+    >>> pane.send_keys('echo hey', enter=False)
+    >>> pane.enter()
+
 Project details
 ---------------
 
