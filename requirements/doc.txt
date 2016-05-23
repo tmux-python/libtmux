@@ -1,7 +1,4 @@
--r ./base.txt
 docutils==0.12
+releases==1.2.0
 sphinx
-reportlab
-sphinx-argparse
 sphinx-rtd-theme
-aafigure
