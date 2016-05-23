@@ -2,6 +2,19 @@ libtmux - library for managing tmux workspaces
 
 |pypi| |docs| |build-status| |coverage| |license|
 
+libtmux is the library the powers `tmuxp`_, a tool that helps tmux users
+manage their tmux workspaces.
+
+Take control of tmux via python.
+
+View the `documentation`_ homepage,  `API`_ information and `architectural 
+details`_.
+
+.. _tmuxp: https://github.com/tony/tmuxp
+.. _documentation: https://libtmux.readthedocs.io/
+.. _API: https://libtmux.readthedocs.io/api.html
+.. _architectural details: https://libtmux.readthedocs.io/internals.html
+
 install
 -------
 
@@ -75,6 +88,13 @@ send key strokes to panes::
 
     >>> pane.send_keys('echo hey', enter=False)
     >>> pane.enter()
+
+powerful traversal features::
+
+    >>> pane.window
+    Window(@10 1:libtmuxower, Session($3 a_libtmux_session))
+    >>> pane.window.session
+    Session($3 a_libtmux_session)
 
 Project details
 ---------------
