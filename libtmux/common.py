@@ -367,7 +367,7 @@ def has_required_tmux_version(version=None):
     :versionchanged: 0.1.7
         Versions will now remove trailing letters per `Issue 55`_.
 
-        .. _Issue 55: https://github.com/tony/libtmux/issues/55.
+        .. _Issue 55: https://github.com/tony/tmuxp/issues/55.
 
     """
 
