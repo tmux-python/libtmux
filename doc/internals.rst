@@ -53,9 +53,9 @@ and how python objects and tools can abstract the API's in a pleasant way.
 
 libtmux uses ``FORMATTERS`` in tmux to give identity attributes to
 :class:`Session`, :class:`Window` and :class:`Pane` objects. See
-`formatters.c`_.
+`format.c`_.
 
-.. _formatters.c: http://sourceforge.net/p/tmux/tmux-code/ci/master/tree/format.c
+.. _format.c: https://github.com/tmux/tmux/blob/master/format.c
 
 How is libtmux able to keep references to panes, windows and sessions?
 
