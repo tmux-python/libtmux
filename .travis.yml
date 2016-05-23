@@ -30,7 +30,7 @@ before_script:
   - export PATH=$PATH:$HOME/tmux/bin
   - cd ..
   - tmux -V
-script: coverage run --source=tmuxp setup.py test
+script: coverage run --source=libtmux setup.py test
 addons:
   apt:
     packages:
