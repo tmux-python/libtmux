@@ -404,6 +404,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         equivalent to::
 
             $ tmux new-session -d
+
         :type attach: bool
 
         :param kill_session: Kill current session if ``$ tmux has-session``
