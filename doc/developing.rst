@@ -78,32 +78,24 @@ If you found a problem or are trying to write a test, you can file an
 Test runner options
 ~~~~~~~~~~~~~~~~~~~
 
-Testing specific TestSuites and TestCase.
+.. code-block:: bash
+
+    $ py.test tests/test_common.py
+
+will test the ``tests/test_common.py`` tests.
 
 .. code-block:: bash
 
-    $ py.test tests/test_config.py
+    $ py.test tests/test_common.py::test_ignores_letter_versions
 
-will test the ``tests/test_config.py`` tests.
-
-.. code-block:: bash
-
-    $ py.test tests/test_config::ImportExportTest
-
-tests ``ImportExportTest`` :py:class:`unittest.TestCase` inside of
-``tests/test_config.py``.
-
-individual tests:
-
-.. code-block:: bash
-
-    $ py.test tests/test_config::ImportExportTest::test_export_Json
+tests ``test_ignore_letter_versions()`` ``tests/test_common.py``.
 
 Multiple can be separated by spaces:
 
 .. code-block:: bash
 
-    $ py.test tests/test_{window,pane}.py tests/test_config.py::ImportExportTest::test_export_json
+    $ py.test tests/test_{window,pane}.py \
+      tests/test_common.py::test_ignores_letter_versions
 
 .. _test_builder_visually:
 
