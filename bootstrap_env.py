@@ -4,7 +4,6 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals, with_statement)
 
 import os
-import platform
 import subprocess
 import sys
 
@@ -18,10 +17,6 @@ def fail(message):
 
 
 PY2 = sys.version_info[0] == 2
-if PY2:
-    from urllib import urlretrieve
-else:
-    from urllib.request import urlretrieve
 
 
 def has_module(module_name):
@@ -79,11 +74,13 @@ pip_bin = os.path.join(env_dir, 'bin', 'pip')
 python_bin = os.path.join(env_dir, 'bin', 'python')
 virtualenv_bin = which('virtualenv', throw=False)
 virtualenv_exists = os.path.exists(env_dir) and os.path.isfile(python_bin)
-sphinx_requirements_filepath = os.path.join(project_dir, 'requirements', 'doc.txt')
+sphinx_requirements_filepath = os.path.join(
+    project_dir, 'requirements', 'doc.txt'
+)
 
 
 try:
-    import virtualenv
+    import virtualenv  # noqa
 except ImportError:
     message = (
         'Virtualenv is required for this bootstrap to run.\n'
@@ -94,12 +91,12 @@ except ImportError:
 
 
 try:
-    import pip
+    import pip  # noqa
 except ImportError:
     message = (
         'pip is required for this bootstrap to run.\n'
         'Find instructions on how to install at: %s' %
-        'http://pip.readthedocs.org/en/latest/installing.html'
+        'http://pip.readthedocs.io/en/latest/installing.html'
     )
     fail(message)
 
