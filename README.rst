@@ -118,8 +118,8 @@ tmux support    1.8, 1.9a, 2.0, 2.1, 2.2
 python support  2.6, 2.7, >= 3.3
 Source          https://github.com/tony/libtmux
 Docs            http://libtmux.rtfd.org
-API             http://libtmux.readthedocs.org/en/latest/api.html
-Changelog       http://libtmux.readthedocs.org/en/latest/history.html
+API             http://libtmux.readthedocs.io/en/latest/api.html
+Changelog       http://libtmux.readthedocs.io/en/latest/history.html
 Issues          https://github.com/tony/libtmux/issues
 Travis          http://travis-ci.org/tony/libtmux
 Test Coverage   https://coveralls.io/r/tony/libtmux
@@ -148,9 +148,9 @@ tests           .. code-block:: bash
 ==============  ==========================================================
 
 .. _BSD: http://opensource.org/licenses/BSD-3-Clause
-.. _developing and testing: http://libtmux.readthedocs.org/en/latest/developing.html
-.. _installing bash completion: http://libtmux.readthedocs.org/en/latest/quickstart.html#bash-completion
-.. _Developing and Testing: http://libtmux.readthedocs.org/en/latest/developing.html
+.. _developing and testing: http://libtmux.readthedocs.io/en/latest/developing.html
+.. _installing bash completion: http://libtmux.readthedocs.io/en/latest/quickstart.html#bash-completion
+.. _Developing and Testing: http://libtmux.readthedocs.io/en/latest/developing.html
 .. _Issues tracker: https://github.com/tony/libtmux/issues
 
 .. |pypi| image:: https://img.shields.io/pypi/v/libtmux.svg
