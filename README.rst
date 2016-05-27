@@ -2,8 +2,8 @@ libtmux - library for managing tmux workspaces
 
 |pypi| |docs| |build-status| |coverage| |license|
 
-libtmux is the library the powers `tmuxp`_, a tool that helps tmux users
-manage their tmux workspaces.
+libtmux is the library that powers `tmuxp`_, a tool that helps tmux users
+manage their workspaces.
 
 Take control of tmux via python.
 
