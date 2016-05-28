@@ -91,7 +91,7 @@ find our current session with:
 
 However, this isn't guaranteed, libtmux works against current tmux information, the
 session's name could be changed, or another tmux session may be created,
-so :meth:`Server.get_by_id` and :meth:`Server.findWhere` exists as a lookup.
+so :meth:`Server.get_by_id` and :meth:`Server.find_where` exists as a lookup.
 
 Get session by ID
 -----------------
@@ -111,25 +111,21 @@ You may ``session = server.get_by_id('$<yourId>')`` to use the session object.
 Get session by name / other properties
 --------------------------------------
 
-I really like `Backbone`_'s approach to handling collections of structured
-data. So I made a :meth:`Server.findWhere` method modelled after
-`Backbone.Collection.prototype.findWhere`_.
-
 .. code-block:: python
 
-    >>> server.findWhere({ "session_name": "foo" })
+    >>> server.find_where({ "session_name": "foo" })
     Session($3 foo)
 
-With ``findWhere``, pass in a dict and return the first object found. In
+With ``find_where``, pass in a dict and return the first object found. In
 this case, a :class:`Server` holds a collection of child :class:`Session`.
-:class:`Session` and :class:`Window` both utilize ``findWhere`` to sift
+:class:`Session` and :class:`Window` both utilize ``find_where`` to sift
 through Windows and Panes, respectively.
 
 So you may now use:
 
 .. code-block:: python
 
-    >>> session = server.findWhere({ "session_name": "foo" })
+    >>> session = server.find_where({ "session_name": "foo" })
 
 to give us a ``session`` object to play with.
 
@@ -203,7 +199,7 @@ And kill:
 
     >>> window.kill_window()
 
-Use :meth:`Session.list_windows()` and :meth:`Session.findWhere()` to list and sort 
+Use :meth:`Session.list_windows()` and :meth:`Session.find_where()` to list and sort 
 through active :class:`Window`'s.
 
 Manipulating windows
@@ -302,8 +298,6 @@ sessions in the background. :)
     and our `test suite`_ (see :ref:`developing`.)
 
 .. _sliderepl: http://discorporate.us/projects/sliderepl/
-.. _backbone: http:/ /backbonejs.org
-.. _Backbone.Collection.prototype.findWhere: http://backbonejs.org/#Collection-findWhere
 .. _workspacebuilder.py: https://github.com/tony/libtmux/blob/master/libtmux/workspacebuilder.py
 .. _test suite: https://github.com/tony/libtmux/tree/master/tests
 .. _ptpython: https://github.com/jonathanslenders/ptpython
