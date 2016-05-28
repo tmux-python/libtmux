@@ -30,7 +30,7 @@ class Session(
     """
 
     child_id_attribute = 'window_id'
-    formatter_prefix = 'session'
+    formatter_prefix = 'session_'
 
     def __init__(self, server=None, **kwargs):
         EnvironmentMixin.__init__(self)

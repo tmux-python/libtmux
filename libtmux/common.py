@@ -224,11 +224,11 @@ class TmuxMappingObject(collections.MutableMapping):
     def __len__(self):
         return len(self._info.keys())
 
-    # def __getattr__(self, key):
-    #     try:
-    #         return self[key]
-    #     except KeyError:
-    #         return super(self, TmuxMappingObject).__getattr__(key)
+    def __getattr__(self, key):
+        try:
+            return self._info[self.formatter_prefix + key]
+        except:
+            raise AttributeError
 
 
 class TmuxRelationalObject(object):
@@ -316,12 +316,6 @@ class TmuxRelationalObject(object):
                 continue
 
         return None
-
-    def __getattr__(self, key):
-        try:
-            return self[self.formatter_prefix + key]
-        except:
-            raise AttributeError
 
 
 def which(exe=None):
