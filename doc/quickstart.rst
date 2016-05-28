@@ -10,61 +10,6 @@ sessions using python code.
 In this example, we will launch a tmux session and control the windows
 from inside a live tmux session.
 
-
-Setting up tab-completion
--------------------------
-
-To begin, it's preferable to install a python CLI with tab-completion.
-
-You can install a custom python shell like `bpython`_ or `iPython`_, which
-has some awesome CLI features, or setup vanilla :py:mod:`readline` support.
-
-``readline`` tab-completion
-"""""""""""""""""""""""""""
-
-.. seealso::
-    Source: `How do I add tab-completion to the python shell`_ on
-    `StackOverflow`_.
-
-Create ``~.pythonrc`` in ``$HOME`` folder:
-
-.. code-block:: python
-
-    # ~/.pythonrc
-    # enable syntax completion
-    try:
-        import readline
-    except ImportError:
-        print "Module readline not available."
-    else:
-        import rlcompleter
-        readline.parse_and_bind("tab: complete")
-
-Then in your ``.bashrc`` or ``.zshrc`` file, add:
-
-.. code-block:: bash
-
-    export PYTHONSTARTUP=~/.pythonrc
-
-.. _How do I add tab-completion to the python shell: http://stackoverflow.com/a/246779
-.. _StackOverflow: http://www.stackoverflow.com
-
-bpython or ipython cli
-""""""""""""""""""""""
-
-`bpython`_ can be installed with ``$ [sudo] pip install bpython`` and
-`ipython`_ can be installed with ``$ [sudo] pip install ipython``.
-
-bpython allows using ``<F2>`` to see the source of CLI methods in colors.
-
-.. todo::
-    If you know any extra benefits of ipython or bpython for CLI and could
-    list them here please edit this page.
-
-
-.. _bpython: https://bitbucket.org/bobf/bpython
-.. _ipython: http://ipython.org
-
 Control tmux via python
 -----------------------
 
@@ -84,26 +29,28 @@ Now, let's open a tmux session.
 
 .. code-block:: bash
 
-    $ tmux new-session -n libtmux_wins -s a_libtmux_session
+    $ tmux new-session -n bar -s foo
 
 Why not just ``$ tmux``? We will assume you want to see the tmux changes
 in the current tmux session. So we will use:
 
-Window name: ``libtmux_wins``
-Session name: ``a_libtmux_session``
-
-We are inside of a tmux session, let's launch our python interpretter
-(``$ python``, ``$ bpython`` or ``$ ipython``) and begin issuing commands
-to libtmux CLI style. For this I'll use ``python``.
+Window name: ``bar``
+Session name: ``foo``
 
 .. code-block:: bash
 
     $ python
 
+For commandline completion, you can also use `ptpython`_.
+
+.. code-block:: bash
+
+   $ [sudo] pip install ptpython
+   $ ptpython
+
 .. module:: libtmux
 
 First, we can grab a :class:`Server`.
-
 
 .. code-block:: python
 
@@ -125,11 +72,6 @@ Windows and Panes.
 Find your :class:`Session`
 --------------------------
 
-.. todo::
-    Update API to catch the ENV variables for the current ``TMUX`` socket,
-    and allow a quick option to grab the current tmux's environment's
-    :class:`Server`, :class:`Window` and :class:`Pane` via CLI.
-
 If you have multiple tmux sessions open, you can see that all of the
 methods in :class:`Server` are available.
 
@@ -138,7 +80,7 @@ We can list sessions with :meth:`Server.list_sessions`:
 .. code-block:: python
 
     >>> server.list_sessions()
-    [Session($3 a_libtmux_session), Session($1 libtmux)]
+    [Session($3 foo), Session($1 libtmux)]
 
 This returns a list of :class:`Session` objects you can grab. We can
 find our current session with:
@@ -162,7 +104,7 @@ tmux sessions use the ``$[0-9]`` convention as a way to identify sessions.
 
 
     >>> server.getById('$3')
-    Session($3 a_libtmux_session)
+    Session($3 foo)
 
 You may ``session = getById('$<yourId>')`` to use the session object.
 
@@ -175,8 +117,8 @@ data. So I made a :meth:`Server.findWhere` method modelled after
 
 .. code-block:: python
 
-    >>> server.findWhere({ "session_name": "a_libtmux_session" })
-    Session($3 a_libtmux_session)
+    >>> server.findWhere({ "session_name": "foo" })
+    Session($3 foo)
 
 With ``findWhere``, pass in a dict and return the first object found. In
 this case, a :class:`Server` holds a collection of child :class:`Session`.
@@ -187,19 +129,12 @@ So you may now use:
 
 .. code-block:: python
 
-    >>> session = server.findWhere({ "session_name": "a_libtmux_session" })
+    >>> session = server.findWhere({ "session_name": "foo" })
 
 to give us a ``session`` object to play with.
 
 Playing with our tmux session
 -----------------------------
-
-.. todo::
-
-  Consider migrating libtmux to use a ``.execute`` sqlalchemy style and have
-  commands such as ``new_window()`` return CLI output. Also libtmux could
-  use "engine" as a way to control if it's using a socket or shell commands
-  to handle tmux.
 
 We now have access to ``session`` from above with all of the methods
 available in :class:`Session`.
@@ -209,7 +144,7 @@ Let's make a :meth:`Session.new_window`, in the background:
 .. code-block:: python
 
     >>> session.new_window(attach=False, window_name="ha in the bg")
-    Window(@8 2:ha in the bg, Session($3 a_libtmux_session))
+    Window(@8 2:ha in the bg, Session($3 foo))
 
 So a few things:
 
@@ -220,8 +155,7 @@ So a few things:
 
 .. note::
 
-    In any of the cases, you can look up the detailed :ref:`api` to see all
-    the options you have.
+    Use the API reference :ref:`api` for more commands.
 
 Let's delete that window (:meth:`Session.kill_window`).
 
@@ -231,30 +165,30 @@ Method 1: Use passthrough to tmux's ``target`` system.
 
     >>> session.kill_window("ha in")
 
-The window in the bg dissappeared. This was the equivalent of ``$ tmux kill-window -t'ha in'``
+The window in the bg dissappeared. This was the equivalent of
+``$ tmux kill-window -t'ha in'``
 
-Internally, tmux uses ``target``. Its specific behavior depends on what the target is, view the tmux manpage for more information.
+Internally, tmux uses ``target``. Its specific behavior depends on what the
+target is, view the tmux manpage for more information::
 
-    This section contains a list of the commands supported by tmux.  Most commands accept the optional -t argument with one of target-client, target-session target-window, or target-pane.
+    This section contains a list of the commands supported by tmux.  Most commands
+    accept the optional -t argument with one of target-client, target-session,
+    target-window, or target-pane.
 
-In this case, you can also go back in time and recreate the window again. The CLI should have history, so navigate up with the arrow key.
+In this case, you can also go back in time and recreate the window again. The CLI
+should have history, so navigate up with the arrow key.
 
 .. code-block:: python
 
     >>> session.new_window(attach=False, window_name="ha in the bg")
-    Window(@11 3:ha in the bg, Session($3 a_libtmux_session))
+    Window(@11 3:ha in the bg, Session($3 foo))
 
 Try to kill the window by the matching id ``@[0-9999]``.
 
 .. code-block:: python
 
     >>> session.new_window(attach=False, window_name="ha in the bg")
-    Window(@12 3:ha in the bg, Session($3 a_libtmux_session))
-
-
-.. code-block:: python
-
-    >>> session.kill_window('@12')
+    Window(@12 3:ha in the bg, Session($3 foo))
 
 In addition, you could also ``.kill_window`` direction from the :class:`Window`
 object:
@@ -269,8 +203,8 @@ And kill:
 
     >>> window.kill_window()
 
-And of course, you can use :meth:`Session.list_windows()` and :meth:`Session.findWhere()`
-to list and sort through active :class:`Window`'s.
+Use :meth:`Session.list_windows()` and :meth:`Session.findWhere()` to list and sort 
+through active :class:`Window`'s.
 
 Manipulating windows
 --------------------
@@ -289,7 +223,7 @@ Let's create a pane, :meth:`Window.split_window`:
 .. code-block:: python
 
     >>> window.split_window(attach=False)
-    Pane(%23 Window(@10 1:libtmux_wins, Session($3 a_libtmux_session)))
+    Pane(%23 Window(@10 1:bar, Session($3 foo)))
 
 Powered up. Let's have a break down:
 
@@ -302,7 +236,7 @@ Also, since you are aware of this power, let's commemorate the experience:
 .. code-block:: python
 
     >>> window.rename_window('libtmuxower')
-    Window(@10 1:libtmuxower, Session($3 a_libtmux_session))
+    Window(@10 1:libtmuxower, Session($3 foo))
 
 You should have noticed :meth:`Window.rename_window` renamed the window.
 
@@ -325,8 +259,6 @@ can also use the ``.select_*`` available on the object, in this case the pane ha
 
     >>> pane = window.split_window(attach=False)
     >>> pane.select_pane()
-
-.. note:: There is much, much more. Take a look at the :ref:`API` and the `testsuite`_.
 
 .. todo:: create a ``kill_pane()`` method.
 .. todo:: have a ``.kill()`` and ``.select()`` proxy for Server, Session, Window and Pane objects.
@@ -367,10 +299,11 @@ sessions in the background. :)
 .. seealso::
 
     If you want to dig deeper, check out :ref:`API`, the code for
-    and our `testsuite`_ (see :ref:`developing`.)
+    and our `test suite`_ (see :ref:`developing`.)
 
 .. _sliderepl: http://discorporate.us/projects/sliderepl/
 .. _backbone: http:/ /backbonejs.org
 .. _Backbone.Collection.prototype.findWhere: http://backbonejs.org/#Collection-findWhere
 .. _workspacebuilder.py: https://github.com/tony/libtmux/blob/master/libtmux/workspacebuilder.py
-.. _testsuite: https://github.com/tony/libtmux/tree/master/libtmux/testsuite
+.. _test suite: https://github.com/tony/libtmux/tree/master/tests
+.. _ptpython: https://github.com/jonathanslenders/ptpython
