@@ -25,9 +25,11 @@ install
 open a tmux session
 -------------------
 
+session name ``foo``, window name ``bar``
+
 .. code-block:: sh
 
-    $ tmux new-session -n libtmux_wins -s a_libtmux_session
+    $ tmux new-session -s foo -n bar
 
 pilot your tmux session via python
 ----------------------------------
@@ -50,43 +52,47 @@ pilot your tmux session via python
 list sessions::
 
     >>> server.list_sessions()
-    [Session($3 a_libtmux_session), Session($1 libtmux)]
+    [Session($3 foo), Session($1 libtmux)]
 
 find session::
 
     >>> server.getById('$3')
-    Session($3 a_libtmux_session)
+    Session($3 foo)
 
 find session by dict lookup::
 
-    >>> server.findWhere({ "session_name": "a_libtmux_session" })
-    Session($3 a_libtmux_session)
+    >>> server.findWhere({ "session_name": "foo" })
+    Session($3 foo)
 
 assign session to ``session``::
 
-    >>> session = server.findWhere({ "session_name": "a_libtmux_session" })
+    >>> session = server.findWhere({ "session_name": "foo" })
 
 play with session::
 
     >>> session.new_window(attach=False, window_name="ha in the bg")
-    Window(@8 2:ha in the bg, Session($3 a_libtmux_session))
+    Window(@8 2:ha in the bg, Session($3 foo))
     >>> session.kill_window("ha in")
-    >>> session.new_window(attach=False, window_name="ha in the bg")
-    Window(@11 3:ha in the bg, Session($3 a_libtmux_session))
-    >>> session.kill_window('@12')
-    >>> window = session.new_window(attach=False, window_name="check this out")
-    >>> window.kill_window()
+
+create new window in the background (don't switch to it):
+
+    >>> w = session.new_window(attach=False, window_name="ha in the bg")
+    Window(@11 3:ha in the bg, Session($3 foo))
+
+kill window object directly:
+
+    >>> w.kill_window()
 
 grab remaining tmux window::
 
     >>> window = session.attached_window()
     >>> window.split_window(attach=False)
-    Pane(%23 Window(@10 1:libtmux_wins, Session($3 a_libtmux_session)))
+    Pane(%23 Window(@10 1:bar, Session($3 foo)))
 
 rename window::
 
     >>> window.rename_window('libtmuxower')
-    Window(@10 1:libtmuxower, Session($3 a_libtmux_session))
+    Window(@10 1:libtmuxower, Session($3 foo))
 
 create panes by splitting window::
 
@@ -103,12 +109,27 @@ send key strokes to panes::
     >>> pane.send_keys('echo hey', enter=False)
     >>> pane.enter()
 
+grab the output of pane::
+
+    >>> pane.clear()  # clear the pane
+    >>> pane.send_keys('cowsay hello')
+    >>> print('\n'.join(pane.cmd('capture-pane', '-p').stdout))
+    sh-3.2$ cowsay 'hello'
+     _______
+    < hello >
+     -------
+            \   ^__^
+             \  (oo)\_______
+                (__)\       )\/\
+                    ||----w |
+                    ||     ||
+
 powerful traversal features::
 
     >>> pane.window
-    Window(@10 1:libtmuxower, Session($3 a_libtmux_session))
+    Window(@10 1:libtmuxower, Session($3 foo))
     >>> pane.window.session
-    Session($3 a_libtmux_session)
+    Session($3 foo)
 
 Project details
 ---------------
