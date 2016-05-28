@@ -198,31 +198,37 @@ class TmuxMappingObject(collections.MutableMapping):
     :class:`Session` and :class:`Server`.
 
     Instance attributes for useful information :term:`tmux(1)` uses for
-    Session, Window, Pane, stored :attr:`self._attr`. For example, a
+    Session, Window, Pane, stored :attr:`self._info`. For example, a
     :class:`Window` will have a ``window_id`` and ``window_name``.
 
     """
 
     def __getitem__(self, key):
-        return self._attr[key]
+        return self._info[key]
 
     def __setitem__(self, key, value):
-        self._attr[key] = value
+        self._info[key] = value
         self.dirty = True
 
     def __delitem__(self, key):
-        del self._attr[key]
+        del self._info[key]
         self.dirty = True
 
     def keys(self):
         """Return list of keys."""
-        return self._attr.keys()
+        return self._info.keys()
 
     def __iter__(self):
-        return self._attr.__iter__()
+        return self._info.__iter__()
 
     def __len__(self):
-        return len(self._attr.keys())
+        return len(self._info.keys())
+
+    # def __getattr__(self, key):
+    #     try:
+    #         return self[key]
+    #     except KeyError:
+    #         return super(self, TmuxMappingObject).__getattr__(key)
 
 
 class TmuxRelationalObject(object):

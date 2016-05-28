@@ -41,7 +41,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         self.server._update_panes()
 
     @property
-    def _attr(self, *args):
+    def _info(self, *args):
 
         attrs = {
             'pane_id': self._pane_id

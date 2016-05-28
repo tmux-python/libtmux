@@ -46,7 +46,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         )
 
     @property
-    def _attr(self, *args):
+    def _info(self, *args):
 
         attrs = {
             'window_id': self._window_id
@@ -403,7 +403,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             if 'pane too small' in pane.stderr:
                 pass
 
-            raise exc.LibTmuxException(pane.stderr, self._attr, self.panes)
+            raise exc.LibTmuxException(pane.stderr, self._info, self.panes)
         else:
             pane = pane.stdout[0]
 

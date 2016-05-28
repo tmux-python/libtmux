@@ -58,7 +58,7 @@ def test_find_where_None(server, session):
     }) is None
 
 
-def test_find_where_multiple_attrs(server, session):
+def test_find_where_multiple_infos(server, session):
     """.find_where returns objects with multiple attributes."""
 
     for session in server.sessions:

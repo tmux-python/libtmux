@@ -40,8 +40,14 @@ class Session(
         self._session_id = kwargs['session_id']
         self.server._update_windows()
 
+        for f in formats.SESSION_FORMATS:
+            try:
+                setattr(self, f.replace('session_', ''), self.get(f, None))
+            except:
+                pass
+
     @property
-    def _attr(self, *args):
+    def _info(self, *args):
 
         attrs = {
             'session_id': str(self._session_id)
