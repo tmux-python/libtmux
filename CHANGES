@@ -8,6 +8,7 @@ Here you can find the recent changes to libtmux
 - :support:`-` ``attached_sessions``, ``attached_window`` and
   ``attached_pane`` are now properties.
 - :support:`-` ``_TMUX`` metadata object changed to ``_attr``.
+- :support:`-` ``.findWhere()`` is now ``find_where``.
 - :support:`-` README and usage fixes
 
 - :release:`0.3.0 <2016-05-23>`

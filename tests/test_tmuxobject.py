@@ -15,37 +15,37 @@ logger = logging.getLogger(__name__)
 """Test the :class:`TmuxRelationalObject` base class object."""
 
 
-def test_findWhere(server, session):
-    """Test that findWhere() retrieves single matching object."""
-    # server.findWhere
+def test_find_where(server, session):
+    """Test that find_where() retrieves single matching object."""
+    # server.find_where
     for session in server.sessions:
         session_id = session.get('session_id')
 
-        assert server.findWhere({'session_id': session_id}) == session
-        assert isinstance(server.findWhere({
+        assert server.find_where({'session_id': session_id}) == session
+        assert isinstance(server.find_where({
             'session_id': session_id
         }), Session)
 
-        # session.findWhere
+        # session.find_where
         for window in session.windows:
             window_id = window.get('window_id')
 
-            assert session.findWhere({'window_id': window_id}) == window
+            assert session.find_where({'window_id': window_id}) == window
             assert isinstance(
-                session.findWhere({'window_id': window_id}), Window
+                session.find_where({'window_id': window_id}), Window
             )
 
-            # window.findWhere
+            # window.find_where
             for pane in window.panes:
                 pane_id = pane.get('pane_id')
 
-                assert window.findWhere({'pane_id': pane_id}) == pane
+                assert window.find_where({'pane_id': pane_id}) == pane
                 assert isinstance(
-                    window.findWhere({'pane_id': pane_id}), Pane)
+                    window.find_where({'pane_id': pane_id}), Pane)
 
 
-def test_findWhere_None(server, session):
-    """.findWhere returns None if no results found."""
+def test_find_where_None(server, session):
+    """.find_where returns None if no results found."""
 
     while True:
         nonexistant_session = TEST_SESSION_PREFIX + next(namer)
@@ -53,18 +53,18 @@ def test_findWhere_None(server, session):
         if not server.has_session(nonexistant_session):
             break
 
-    assert server.findWhere({
+    assert server.find_where({
         'session_name': nonexistant_session
     }) is None
 
 
-def test_findWhere_multiple_attrs(server, session):
-    """.findWhere returns objects with multiple attributes."""
+def test_find_where_multiple_attrs(server, session):
+    """.find_where returns objects with multiple attributes."""
 
     for session in server.sessions:
         session_id = session.get('session_id')
         session_name = session.get('session_name')
-        find_where = server.findWhere({
+        find_where = server.find_where({
             'session_id': session_id,
             'session_name': session_name
         })
@@ -72,12 +72,12 @@ def test_findWhere_multiple_attrs(server, session):
         assert find_where == session
         assert isinstance(find_where, Session)
 
-        # session.findWhere
+        # session.find_where
         for window in session.windows:
             window_id = window.get('window_id')
             window_index = window.get('window_index')
 
-            find_where = session.findWhere({
+            find_where = session.find_where({
                 'window_id': window_id,
                 'window_index': window_index
             })
@@ -85,12 +85,12 @@ def test_findWhere_multiple_attrs(server, session):
             assert find_where == window
             assert isinstance(find_where, Window)
 
-            # window.findWhere
+            # window.find_where
             for pane in window.panes:
                 pane_id = pane.get('pane_id')
                 pane_tty = pane.get('pane_tty')
 
-                find_where = window.findWhere({
+                find_where = window.find_where({
                     'pane_id': pane_id,
                     'pane_tty': pane_tty
                 })

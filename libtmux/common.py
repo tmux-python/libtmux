@@ -247,12 +247,12 @@ class TmuxRelationalObject(object):
 
     """
 
-    def findWhere(self, attrs):
+    def find_where(self, attrs):
         """Return object on first match.
 
-        Based on `.findWhere()`_ from `underscore.js`_.
+        Based on `.find_where()`_ from `underscore.js`_.
 
-        .. _.findWhere(): http://underscorejs.org/#findWhere
+        .. _.find_where(): http://underscorejs.org/#find_where
         .. _underscore.js: http://underscorejs.org/
 
         """
