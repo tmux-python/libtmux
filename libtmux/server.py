@@ -264,7 +264,13 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         # clear up empty dict
         panes = [
-            dict((k, v) for k, v in window.items() if v) for window in panes
+            dict(
+                (k, v) for k, v in window.items()
+                if v or
+                k == 'pane_current_path'
+            )   # preserve pane_current_path, in case it entered a new process
+                # where we may not get a cwd from.
+            for window in panes
         ]
 
         if self._panes:
