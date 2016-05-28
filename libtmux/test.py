@@ -9,8 +9,6 @@ import logging
 import os
 import tempfile
 
-from . import exc
-
 logger = logging.getLogger(__name__)
 
 TEST_SESSION_PREFIX = 'libtmux_'
@@ -32,63 +30,9 @@ def get_test_session_name(server, prefix=TEST_SESSION_PREFIX):
 def get_test_window_name(session, prefix=TEST_SESSION_PREFIX):
     while True:
         window_name = prefix + next(namer)
-        if not session.findWhere(window_name=window_name):
+        if not session.find_where(window_name=window_name):
             break
     return window_name
-
-
-def fresh_test_session(server):
-    """Start a new / clean out old session.
-
-    :param server: new or current server object
-    :type server: :class:`libtmux.server.Server`
-    :rtype: :class:`libtmux.session.Session`
-    :returns: bare session with 1-window (and therefore 1 pane)
-
-    Simple example usage::
-
-    """
-    session_name = 'libtmux'
-
-    if not server.has_session(session_name):
-        server.cmd('new-session', '-d', '-s', session_name)
-
-    # find current sessions prefixed with libtmux
-    old_test_sessions = [
-        s.get('session_name') for s in server._sessions
-        if s.get('session_name').startswith(TEST_SESSION_PREFIX)
-    ]
-
-    TEST_SESSION_NAME = get_test_session_name(server=server)
-
-    try:
-        session = server.new_session(
-            session_name=TEST_SESSION_NAME,
-        )
-    except exc.LibTmuxException as e:
-        raise e
-
-    """
-    Make sure that libtmux can :ref:`test_builder_visually` and switches to
-    the newly created session for that testcase.
-    """
-    try:
-        server.switch_client(session.get('session_id'))
-        pass
-    except exc.LibTmuxException as e:
-        # server.attach_session(session.get('session_id'))
-        pass
-
-    for old_test_session in old_test_sessions:
-        logger.debug(
-            'Old test test session %s found. Killing it.' %
-            old_test_session
-        )
-        server.kill_session(old_test_session)
-    assert TEST_SESSION_NAME == session.get('session_name')
-    assert TEST_SESSION_NAME != 'libtmux'
-
-    return session
 
 
 @contextlib.contextmanager

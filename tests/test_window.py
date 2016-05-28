@@ -19,56 +19,53 @@ def test_select_window(session):
     # for now hoever, let's get the index from the first window.
     assert window_count == 1
 
-    window_base_index = int(
-        session.attached_window().get('window_index'))
+    window_base_index = int(session.attached_window.index)
 
     window = session.new_window(window_name='testing 3')
 
     # self.assertEqual(2,
-    # int(session.attached_window().get('window_index')))
-    assert int(window_base_index) + 1 == int(window.get('window_index'))
+    # int(session.attached_window.index))
+    assert int(window_base_index) + 1 == int(window.index)
 
     session.select_window(window_base_index)
-    assert window_base_index == \
-        int(session.attached_window().get('window_index'))
+    assert window_base_index == int(session.attached_window.index)
 
     session.select_window('testing 3')
-    assert int(window_base_index) + 1 == \
-        int(session.attached_window().get('window_index'))
+    assert int(window_base_index) + 1 == int(session.attached_window.index)
 
     assert len(session._windows) == 2
 
 
 def test_zfresh_window_data(session):
     pane_base_index = int(
-        session.attached_window().show_window_option(
+        session.attached_window.show_window_option(
             'pane-base-index', g=True
         )
     )
 
     assert len(session.windows) == 1
 
-    assert len(session.attached_window().panes) == 1
+    assert len(session.attached_window.panes) == 1
     current_windows = len(session._windows)
     assert session.get('session_id') != '@0'
     assert current_windows == 1
 
-    assert len(session.attached_window().panes) == 1
+    assert len(session.attached_window.panes) == 1
     assert isinstance(session.server, Server)
-    # len(session.attached_window().panes))
+    # len(session.attached_window.panes))
 
     assert len(session.windows), 1
-    assert len(session.attached_window().panes) == 1
+    assert len(session.attached_window.panes) == 1
     for w in session.windows:
         assert isinstance(w, Window)
-    window = session.attached_window()
+    window = session.attached_window
     assert isinstance(window, Window)
-    assert len(session.attached_window().panes) == 1
+    assert len(session.attached_window.panes) == 1
     window.split_window()
-    session.attached_window().select_pane(pane_base_index)
-    session.attached_pane().send_keys('cd /srv/www/flaskr')
-    session.attached_window().select_pane(pane_base_index + 1)
-    session.attached_pane().send_keys('source .venv/bin/activate')
+    session.attached_window.select_pane(pane_base_index)
+    session.attached_pane.send_keys('cd /srv/www/flaskr')
+    session.attached_window.select_pane(pane_base_index + 1)
+    session.attached_pane.send_keys('source .venv/bin/activate')
     session.new_window(window_name='second')
     current_windows += 1
     assert current_windows == len(session._windows)
@@ -96,10 +93,10 @@ def test_newest_pane_data(session):
 
 
 def test_attached_pane(session):
-    """Window.attached_window() returns active Pane."""
+    """Window.attached_window returns active Pane."""
 
-    window = session.attached_window()  # current window
-    assert isinstance(window.attached_pane(), Pane)
+    window = session.attached_window  # current window
+    assert isinstance(window.attached_pane, Pane)
 
 
 def test_split_window(session):
@@ -124,16 +121,16 @@ def test_window_rename(session, window_name_before, window_name_after):
     window = session.new_window(
         window_name=window_name_before, attach=True)
 
-    assert window == session.attached_window()
+    assert window == session.attached_window
     assert window.get('window_name') == window_name_before
 
     window.rename_window(window_name_after)
 
-    window = session.attached_window()
+    window = session.attached_window
 
     assert window.get('window_name') == window_name_after
 
-    window = session.attached_window()
+    window = session.attached_window
 
     assert window.get('window_name') == window_name_after
 
@@ -143,7 +140,7 @@ def test_kill_window(session):
     # create a second window to not kick out the client.
     # there is another way to do this via options too.
 
-    w = session.attached_window()
+    w = session.attached_window
 
     w.get('window_id')
 

@@ -26,11 +26,11 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         Renamed from ``.tmux`` to ``.cmd``.
 
     """
+    formatter_prefix = 'pane_'
 
     def __init__(self, window=None, **kwargs):
         if not window:
-            raise ValueError('Pane must have \
-                             ``Window`` object')
+            raise ValueError('Pane must have ``Window`` object')
 
         self.window = window
         self.session = self.window.session
@@ -41,7 +41,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         self.server._update_panes()
 
     @property
-    def _TMUX(self, *args):
+    def _info(self, *args):
 
         attrs = {
             'pane_id': self._pane_id

@@ -44,7 +44,9 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     #: ``-2`` or ``-8``
     colors = None
     #: unique child ID key
-    childIdAttribute = 'session_id'
+    child_id_attribute = 'session_id'
+    #: namespace used by tmux formatter variables
+    formatter_prefix = 'server_'
 
     def __init__(
         self,
@@ -262,7 +264,13 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         # clear up empty dict
         panes = [
-            dict((k, v) for k, v in window.items() if v) for window in panes
+            dict(
+                (k, v) for k, v in window.items()
+                if v or
+                k == 'pane_current_path'
+            )   # preserve pane_current_path, in case it entered a new process
+                # where we may not get a cwd from.
+            for window in panes
         ]
 
         if self._panes:
@@ -281,6 +289,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         self._list_panes()
         return self
 
+    @property
     def attached_sessions(self):
         """Return active :class:`Session` objects.
 
@@ -296,9 +305,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         for session in sessions:
             if 'session_attached' in session:
                 # for now session_active is a unicode
-                if session.get('session_attached') == '1':
-                    logger.debug('session %s attached', session.get(
-                        'session_name'))
+                if session.attached == '1':
+                    logger.debug('session %s attached', session.name)
                     attached_sessions.append(session)
                 else:
                     continue

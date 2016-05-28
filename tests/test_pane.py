@@ -12,10 +12,10 @@ logger = logging.getLogger(__name__)
 def test_resize_pane(session):
     """ Test Pane.resize_pane(). """
 
-    window = session.attached_window()
+    window = session.attached_window
     window.rename_window('test_resize_pane')
 
-    pane1 = window.attached_pane()
+    pane1 = window.attached_pane
     pane1_height = pane1['pane_height']
     window.split_window()
 
@@ -30,7 +30,7 @@ def test_resize_pane(session):
 def test_set_height(session):
     window = session.new_window(window_name='test_set_height')
     window.split_window()
-    pane1 = window.attached_pane()
+    pane1 = window.attached_pane
     pane1_height = pane1['pane_height']
 
     pane1.set_height(2)
@@ -43,7 +43,7 @@ def test_set_width(session):
     window.split_window()
 
     window.select_layout('main-vertical')
-    pane1 = window.attached_pane()
+    pane1 = window.attached_pane
     pane1_width = pane1['pane_width']
 
     pane1.set_width(10)

@@ -4,9 +4,24 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
-- libtmux forked from `tmuxp`_.
+- :release:`0.4.0 <2016-05-23>`
+- :support:`-` attributes for formatters are now accessible via
+  ``Session``, ``Window`` and ``Pane`` objects. ``session.name``
+  is equivalent to ``session.get('session_name')``, you can do the
+  same with other properties in ``_info``. ``window.name``,
+  ``pane.current_path``, ``session.id``, ``window.id``, ``pane.id``,
+  ``session.index``, ``window.index``, ``pane.index``, etc.
+- :support:`-` ``attached_sessions``, ``attached_window`` and
+  ``attached_pane`` are now properties.
+- :support:`-` ``_TMUX`` metadata object changed to ``_info``.
+- :support:`-` ``.findWhere()`` is now ``find_where``.
+- :support:`-` README and usage fixes
+
+- :release:`0.3.0 <2016-05-23>`
+- switch to pytest 
 
 - :release:`0.1.0 <2016-05-22>`
+- libtmux forked from `tmuxp`_.
 
 .. _tmuxp: https://github.com/tony/tmuxp
 

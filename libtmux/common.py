@@ -198,31 +198,38 @@ class TmuxMappingObject(collections.MutableMapping):
     :class:`Session` and :class:`Server`.
 
     Instance attributes for useful information :term:`tmux(1)` uses for
-    Session, Window, Pane, stored :attr:`self._TMUX`. For example, a
+    Session, Window, Pane, stored :attr:`self._info`. For example, a
     :class:`Window` will have a ``window_id`` and ``window_name``.
 
     """
 
     def __getitem__(self, key):
-        return self._TMUX[key]
+        return self._info[key]
 
     def __setitem__(self, key, value):
-        self._TMUX[key] = value
+        self._info[key] = value
         self.dirty = True
 
     def __delitem__(self, key):
-        del self._TMUX[key]
+        del self._info[key]
         self.dirty = True
 
     def keys(self):
         """Return list of keys."""
-        return self._TMUX.keys()
+        return self._info.keys()
 
     def __iter__(self):
-        return self._TMUX.__iter__()
+        return self._info.__iter__()
 
     def __len__(self):
-        return len(self._TMUX.keys())
+        return len(self._info.keys())
+
+    def __getattr__(self, key):
+        try:
+            return self._info[self.formatter_prefix + key]
+        except:
+            raise AttributeError('%s has no property %s' %
+                                 (self.__class__, key))
 
 
 class TmuxRelationalObject(object):
@@ -234,10 +241,10 @@ class TmuxRelationalObject(object):
     :class:`Window`)
 
     Children of :class:`TmuxRelationalObject` are going to have a
-    ``self.children``, ``self.childIdAttribute`` and ``self.list_children``.
+    ``self.children``, ``self.child_id_attribute`` and ``self.list_children``.
 
     ================ ================== ===================== ============================
-    Object           ``.children``      ``.childIdAttribute`` method
+    Object           ``.children``      ``.child_id_attribute`` method
     ================ ================== ===================== ============================
     :class:`Server`  ``self._sessions`` 'session_id'          :meth:`Server.list_sessions`
     :class:`Session` ``self._windows``  'window_id'           :meth:`Session.list_windows`
@@ -247,13 +254,11 @@ class TmuxRelationalObject(object):
 
     """
 
-    def findWhere(self, attrs):
+    def find_where(self, attrs):
         """Return object on first match.
 
-        Based on `.findWhere()`_ from `underscore.js`_.
-
-        .. _.findWhere(): http://underscorejs.org/#findWhere
-        .. _underscore.js: http://underscorejs.org/
+        :versionchanged: 0.4
+            Renamed from ``.findWhere`` to ``.find_where``.
 
         """
         try:
@@ -263,11 +268,6 @@ class TmuxRelationalObject(object):
 
     def where(self, attrs, first=False):
         """Return objects matching child objects properties.
-
-        Based on `.where()`_ from `underscore.js`_.
-
-        .. _.where(): http://underscorejs.org/#where
-        .. _underscore.js: http://underscorejs.org/
 
         :param attrs: tmux properties to match
         :type attrs: dict
@@ -290,8 +290,8 @@ class TmuxRelationalObject(object):
         else:
             return list(filter(by, self.children))
 
-    def getById(self, id):
-        """Return object based on ``childIdAttribute``.
+    def get_by_id(self, id):
+        """Return object based on ``child_id_attribute``.
 
         Based on `.get()`_ from `backbone.js`_.
 
@@ -304,7 +304,7 @@ class TmuxRelationalObject(object):
 
         """
         for child in self.children:
-            if child[self.childIdAttribute] == id:
+            if child[self.child_id_attribute] == id:
                 return child
             else:
                 continue

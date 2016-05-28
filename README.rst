@@ -1,19 +1,14 @@
-libtmux - library for managing tmux workspaces
+libtmux - scripting library for tmux
 
 |pypi| |docs| |build-status| |coverage| |license|
 
-libtmux is the library that powers `tmuxp`_, a tool that helps tmux users
-manage their workspaces.
+libtmux is the tool behind `tmuxp`_, a tmux workspace manager in python.
 
-Take control of tmux via python.
+it builds upon tmux' `target`_ and `formats`_ to create an object
+mappings to traverse, inspect and interact with live tmux sesssions.
 
-View the `documentation`_ homepage,  `API`_ information and `architectural 
+view the `documentation`_ homepage,  `API`_ information and `architectural
 details`_.
-
-.. _tmuxp: https://github.com/tony/tmuxp
-.. _documentation: https://libtmux.readthedocs.io/
-.. _API: https://libtmux.readthedocs.io/api.html
-.. _architectural details: https://libtmux.readthedocs.io/internals.html
 
 install
 -------
@@ -56,17 +51,17 @@ list sessions::
 
 find session::
 
-    >>> server.getById('$3')
+    >>> server.get_by_id('$3')
     Session($3 foo)
 
 find session by dict lookup::
 
-    >>> server.findWhere({ "session_name": "foo" })
+    >>> server.find_where({ "session_name": "foo" })
     Session($3 foo)
 
 assign session to ``session``::
 
-    >>> session = server.findWhere({ "session_name": "foo" })
+    >>> session = server.find_where({ "session_name": "foo" })
 
 play with session::
 
@@ -131,6 +126,15 @@ powerful traversal features::
     >>> pane.window.session
     Session($3 foo)
 
+.. _BSD: http://opensource.org/licenses/BSD-3-Clause
+.. _developing and testing: http://libtmux.readthedocs.io/developing.html
+.. _tmuxp: https://github.com/tony/tmuxp
+.. _documentation: https://libtmux.readthedocs.io/
+.. _API: https://libtmux.readthedocs.io/api.html
+.. _architectural details: https://libtmux.readthedocs.io/internals.html
+.. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMAT
+.. _target: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
+
 Project details
 ---------------
 
@@ -167,10 +171,6 @@ tests           .. code-block:: bash
 
                     $ make test
 ==============  ==========================================================
-
-.. _BSD: http://opensource.org/licenses/BSD-3-Clause
-.. _developing and testing: http://libtmux.readthedocs.io/developing.html
-.. _Issues tracker: https://github.com/tony/libtmux/issues
 
 .. |pypi| image:: https://img.shields.io/pypi/v/libtmux.svg
     :alt: Python Package
