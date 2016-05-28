@@ -26,7 +26,7 @@ def test_select_window(session):
     # get the current window_base_index, since different user tmux config
     # may start at 0 or 1, or whatever they want.
     window_base_index = int(
-        session.attached_window().get('window_index')
+        session.attached_window.get('window_index')
     )
 
     session.new_window(window_name='test_window')
@@ -39,7 +39,7 @@ def test_select_window(session):
     # tmux selects a window, moves to it, shows it as attached_window
     selected_window1 = session.select_window(window_base_index)
     assert isinstance(selected_window1, Window)
-    attached_window1 = session.attached_window()
+    attached_window1 = session.attached_window
 
     assert selected_window1 == attached_window1
     assert selected_window1.__dict__ == attached_window1.__dict__
@@ -48,7 +48,7 @@ def test_select_window(session):
     # attached_window
     selected_window2 = session.select_window(window_base_index + 1)
     assert isinstance(selected_window2, Window)
-    attached_window2 = session.attached_window()
+    attached_window2 = session.attached_window
 
     assert selected_window2 == attached_window2
     assert selected_window2.__dict__ == attached_window2.__dict__
@@ -64,7 +64,7 @@ def test_select_window_returns_Window(session):
     window_count = len(session._windows)
     assert len(session._windows) == window_count
     window_base_index = int(
-        session.attached_window().get('window_index'))
+        session.attached_window.get('window_index'))
 
     assert isinstance(
         session.select_window(window_base_index), Window
@@ -72,13 +72,13 @@ def test_select_window_returns_Window(session):
 
 
 def test_attached_window(session):
-    """Session.attached_window() returns Window."""
-    assert isinstance(session.attached_window(), Window)
+    """Session.attached_window returns Window."""
+    assert isinstance(session.attached_window, Window)
 
 
 def test_attached_pane(session):
-    """Session.attached_pane() returns Pane."""
-    assert isinstance(session.attached_pane(), Pane)
+    """Session.attached_pane returns Pane."""
+    assert isinstance(session.attached_pane, Pane)
 
 
 def test_session_rename(session):

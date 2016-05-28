@@ -326,7 +326,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        return self.attached_pane()
+        return self.attached_pane
 
     def last_pane(self):
         """Return last pane."""
@@ -371,7 +371,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
                     'window_index', 'window_id'] + formats.PANE_FORMATS
         tmux_formats = ['#{%s}\t' % f for f in pformats]
 
-        # '-t%s' % self.attached_pane().get('pane_id'),
+        # '-t%s' % self.attached_pane.get('pane_id'),
         # 2013-10-18 LOOK AT THIS, rm'd it..
         tmux_args = tuple()
 
@@ -414,6 +414,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         return Pane(window=self, **pane)
 
+    @property
     def attached_pane(self):
         """Return the attached :class:`Pane`.
 

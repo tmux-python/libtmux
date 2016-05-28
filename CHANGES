@@ -4,9 +4,16 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
-- libtmux forked from `tmuxp`_.
+- :release:`0.4.0 <2016-05-23>`
+- :support:`-` ``attached_sessions``, ``attached_window`` and
+  ``attached_pane`` are now properties.
+- :support:`-` README and usage fixes
+
+- :release:`0.3.0 <2016-05-23>`
+- switch to pytest 
 
 - :release:`0.1.0 <2016-05-22>`
+- libtmux forked from `tmuxp`_.
 
 .. _tmuxp: https://github.com/tony/tmuxp
 

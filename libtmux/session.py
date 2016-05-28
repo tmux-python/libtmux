@@ -270,6 +270,7 @@ class Session(
     #: Alias of :attr:`windows`.
     children = windows
 
+    @property
     def attached_window(self):
         """Return active :class:`Window` object.
 
@@ -313,12 +314,13 @@ class Session(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        return self.attached_window()
+        return self.attached_window
 
+    @property
     def attached_pane(self):
         """Return active :class:`Pane` object."""
 
-        return self.attached_window().attached_pane()
+        return self.attached_window.attached_pane
 
     def set_option(self, option, value):
         """Set option ``$ tmux set-option <option> <value>``.

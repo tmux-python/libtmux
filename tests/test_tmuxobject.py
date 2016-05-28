@@ -102,7 +102,7 @@ def test_findWhere_multiple_attrs(server, session):
 def test_where(server, session):
     """Test self.where() returns matching objects."""
 
-    window = session.attached_window()
+    window = session.attached_window
     window.split_window()  # create second pane
 
     for session in server.sessions:
@@ -152,7 +152,7 @@ def test_where(server, session):
 def test_getById(server, session):
     """Test self.getById() retrieves child object."""
 
-    window = session.attached_window()
+    window = session.attached_window
 
     window.split_window()  # create second pane
 

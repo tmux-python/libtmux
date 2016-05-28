@@ -281,6 +281,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         self._list_panes()
         return self
 
+    @property
     def attached_sessions(self):
         """Return active :class:`Session` objects.
 
