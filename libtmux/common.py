@@ -257,10 +257,8 @@ class TmuxRelationalObject(object):
     def find_where(self, attrs):
         """Return object on first match.
 
-        Based on `.find_where()`_ from `underscore.js`_.
-
-        .. _.find_where(): http://underscorejs.org/#find_where
-        .. _underscore.js: http://underscorejs.org/
+        :versionchanged: 0.4
+            Renamed from ``.findWhere`` to ``.find_where``.
 
         """
         try:
@@ -270,11 +268,6 @@ class TmuxRelationalObject(object):
 
     def where(self, attrs, first=False):
         """Return objects matching child objects properties.
-
-        Based on `.where()`_ from `underscore.js`_.
-
-        .. _.where(): http://underscorejs.org/#where
-        .. _underscore.js: http://underscorejs.org/
 
         :param attrs: tmux properties to match
         :type attrs: dict
