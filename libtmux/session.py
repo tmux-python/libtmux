@@ -41,7 +41,7 @@ class Session(
         self.server._update_windows()
 
     @property
-    def _TMUX(self, *args):
+    def _attr(self, *args):
 
         attrs = {
             'session_id': str(self._session_id)
