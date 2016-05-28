@@ -26,6 +26,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         Renamed from ``.tmux`` to ``.cmd``.
 
     """
+    formatter_prefix = 'pane'
 
     def __init__(self, window=None, **kwargs):
         if not window:

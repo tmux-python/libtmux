@@ -30,6 +30,7 @@ class Session(
     """
 
     childIdAttribute = 'window_id'
+    formatter_prefix = 'session'
 
     def __init__(self, server=None, **kwargs):
         EnvironmentMixin.__init__(self)
@@ -39,12 +40,6 @@ class Session(
             raise ValueError('Session requires a `session_id`')
         self._session_id = kwargs['session_id']
         self.server._update_windows()
-
-        for f in formats.SESSION_FORMATS:
-            try:
-                setattr(self, f.replace('session_', ''), self.get(f, None))
-            except:
-                pass
 
     @property
     def _info(self, *args):

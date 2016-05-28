@@ -22,6 +22,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     """:term:`tmux(1)` window."""
 
     childIdAttribute = 'pane_id'
+    formatter_prefix = 'window'
 
     def __init__(self, session=None, **kwargs):
 

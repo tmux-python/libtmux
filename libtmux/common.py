@@ -317,6 +317,12 @@ class TmuxRelationalObject(object):
 
         return None
 
+    def __getattr__(self, key):
+        try:
+            return self[self.formatter_prefix + key]
+        except:
+            raise AttributeError
+
 
 def which(exe=None):
     """Return path of bin. Python clone of /usr/bin/which.

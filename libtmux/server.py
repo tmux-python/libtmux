@@ -45,6 +45,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     colors = None
     #: unique child ID key
     childIdAttribute = 'session_id'
+    #: namespace used by tmux formatter variables
+    formatter_prefix = 'server_'
 
     def __init__(
         self,
