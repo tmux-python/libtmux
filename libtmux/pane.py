@@ -30,8 +30,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
     def __init__(self, window=None, **kwargs):
         if not window:
-            raise ValueError('Pane must have \
-                             ``Window`` object')
+            raise ValueError('Pane must have ``Window`` object')
 
         self.window = window
         self.session = self.window.session
