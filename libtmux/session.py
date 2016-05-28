@@ -73,7 +73,7 @@ class Session(
 
         """
         if '-t' not in kwargs:
-            kwargs['-t'] = self.get('session_id')
+            kwargs['-t'] = self.id
         return self.server.cmd(*args, **kwargs)
 
     def attach_session(self, target_session=None):
@@ -82,7 +82,7 @@ class Session(
         :param: target_session: str. name of the session. fnmatch(3) works.
 
         """
-        proc = self.cmd('attach-session', '-t%s' % self.get('session_id'))
+        proc = self.cmd('attach-session', '-t%s' % self.id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -90,7 +90,7 @@ class Session(
     def kill_session(self):
         """``$ tmux kill-session``."""
 
-        proc = self.cmd('kill-session', '-t%s' % self.get('session_id'))
+        proc = self.cmd('kill-session', '-t%s' % self.id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -100,7 +100,7 @@ class Session(
 
         :param: target_session: str. note this accepts fnmatch(3).
         """
-        proc = self.cmd('switch-client', '-t%s' % self.get('session_id'))
+        proc = self.cmd('switch-client', '-t%s' % self.id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -115,7 +115,7 @@ class Session(
         """
         proc = self.cmd(
             'rename-session',
-            '-t%s' % self.get('session_id'),
+            '-t%s' % self.id,
             new_name
         )
 
@@ -189,7 +189,7 @@ class Session(
 
         window_args += (
             # empty string for window_index will use the first one available
-            '-t%s:%s' % (self.get('session_id'), window_index),
+            '-t%s:%s' % (self.id, window_index),
         )
 
         if window_shell:
@@ -225,7 +225,7 @@ class Session(
 
         if target_window:
             if isinstance(target_window, int):
-                target = '-t%s:%d' % (self.get('session_name'), target_window)
+                target = '-t%s:%d' % (self.name, target_window)
             else:
                 target = '-t%s' % target_window
 
@@ -240,7 +240,7 @@ class Session(
         windows = self.server._update_windows()._windows
 
         windows = [
-            w for w in windows if w['session_id'] == self.get('session_id')
+            w for w in windows if w['session_id'] == self.id
         ]
 
         return windows
@@ -416,6 +416,6 @@ class Session(
     def __repr__(self):
         return "%s(%s %s)" % (
             self.__class__.__name__,
-            self.get('session_id'),
-            self.get('session_name')
+            self.id,
+            self.name
         )

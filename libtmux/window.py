@@ -40,9 +40,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     def __repr__(self):
         return "%s(%s %s:%s, %s)" % (
             self.__class__.__name__,
-            self.get('window_id'),
-            self.get('window_index'),
-            self.get('window_name'),
+            self.id,
+            self.index,
+            self.name,
             self.session
         )
 
@@ -86,7 +86,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         """
         if not any(arg.startswith('-t') for arg in args):
-            args = ('-t', self.get('window_id')) + args
+            args = ('-t', self.id) + args
 
         return self.server.cmd(cmd, *args, **kwargs)
 
@@ -117,7 +117,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         proc = self.cmd(
             'select-layout',
-            '-t%s:%s' % (self.get('session_id'), self.get('window_index')),
+            '-t%s:%s' % (self.get('session_id'), self.index),
             layout
         )
 
@@ -142,8 +142,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         process = self.cmd(
             'set-window-option',
-            '-t%s:%s' % (self.get('session_id'), self.get('window_index')),
-            # '-t%s' % self.get('window_id'),
+            '-t%s:%s' % (self.get('session_id'), self.index),
+            # '-t%s' % self.id,
             option, value
         )
 
@@ -153,7 +153,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             raise ValueError(
                 'tmux set-window-option -t%s:%s %s %s\n' % (
                     self.get('session_id'),
-                    self.get('window_index'),
+                    self.index,
                     option,
                     value
                 ) +
@@ -263,8 +263,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         proc = self.cmd(
             'kill-window',
-            # '-t:%s' % self.get('window_id')
-            '-t%s:%s' % (self.get('session_id'), self.get('window_index')),
+            # '-t:%s' % self.id
+            '-t%s:%s' % (self.get('session_id'), self.index),
         )
 
         if proc.stderr:
@@ -283,7 +283,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         proc = self.cmd(
             'move-window',
-            '-s%s:%s' % (self.get('session_id'), self.get('window_index')),
+            '-s%s:%s' % (self.get('session_id'), self.index),
             '-t%s:%s' % (self.get('session_id'), destination),
         )
 
@@ -302,7 +302,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         :rtype: :class:`Window`
 
         """
-        target = '%s:%s' % (self.get('session_id'), self.get('window_index')),
+        target = '%s:%s' % (self.get('session_id'), self.index),
         return self.session.select_window(target)
 
     def select_pane(self, target_pane):
@@ -318,7 +318,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if target_pane in ['-l', '-U', '-D', '-L', '-R']:
             proc = self.cmd(
                 'select-pane',
-                '-t%s' % self.get('window_id'),
+                '-t%s' % self.id,
                 target_pane
             )
         else:
@@ -426,7 +426,6 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             if 'pane_active' in pane:
                 # for now pane_active is a unicode
                 if pane.get('pane_active') == '1':
-                    # return Pane(window=self, **pane)
                     return Pane(window=self, **pane)
                 else:
                     continue
@@ -440,7 +439,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             p for p in panes if p['session_id'] == self.get('session_id')
         ]
         panes = [
-            p for p in panes if p['window_id'] == self.get('window_id')
+            p for p in panes if p['window_id'] == self.id
         ]
         return panes
 

@@ -299,9 +299,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         for session in sessions:
             if 'session_attached' in session:
                 # for now session_active is a unicode
-                if session.get('session_attached') == '1':
-                    logger.debug('session %s attached', session.get(
-                        'session_name'))
+                if session.attached == '1':
+                    logger.debug('session %s attached', session.name)
                     attached_sessions.append(session)
                 else:
                     continue
