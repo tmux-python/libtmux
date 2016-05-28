@@ -29,7 +29,7 @@ class Session(
 
     """
 
-    childIdAttribute = 'window_id'
+    child_id_attribute = 'window_id'
     formatter_prefix = 'session'
 
     def __init__(self, server=None, **kwargs):

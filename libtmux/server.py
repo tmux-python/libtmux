@@ -44,7 +44,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     #: ``-2`` or ``-8``
     colors = None
     #: unique child ID key
-    childIdAttribute = 'session_id'
+    child_id_attribute = 'session_id'
     #: namespace used by tmux formatter variables
     formatter_prefix = 'server_'
 

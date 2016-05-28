@@ -240,10 +240,10 @@ class TmuxRelationalObject(object):
     :class:`Window`)
 
     Children of :class:`TmuxRelationalObject` are going to have a
-    ``self.children``, ``self.childIdAttribute`` and ``self.list_children``.
+    ``self.children``, ``self.child_id_attribute`` and ``self.list_children``.
 
     ================ ================== ===================== ============================
-    Object           ``.children``      ``.childIdAttribute`` method
+    Object           ``.children``      ``.child_id_attribute`` method
     ================ ================== ===================== ============================
     :class:`Server`  ``self._sessions`` 'session_id'          :meth:`Server.list_sessions`
     :class:`Session` ``self._windows``  'window_id'           :meth:`Session.list_windows`
@@ -297,7 +297,7 @@ class TmuxRelationalObject(object):
             return list(filter(by, self.children))
 
     def get_by_id(self, id):
-        """Return object based on ``childIdAttribute``.
+        """Return object based on ``child_id_attribute``.
 
         Based on `.get()`_ from `backbone.js`_.
 
@@ -310,7 +310,7 @@ class TmuxRelationalObject(object):
 
         """
         for child in self.children:
-            if child[self.childIdAttribute] == id:
+            if child[self.child_id_attribute] == id:
                 return child
             else:
                 continue

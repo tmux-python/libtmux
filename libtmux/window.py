@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class Window(TmuxMappingObject, TmuxRelationalObject):
     """:term:`tmux(1)` window."""
 
-    childIdAttribute = 'pane_id'
+    child_id_attribute = 'pane_id'
     formatter_prefix = 'window'
 
     def __init__(self, session=None, **kwargs):
