@@ -91,7 +91,7 @@ find our current session with:
 
 However, this isn't guaranteed, libtmux works against current tmux information, the
 session's name could be changed, or another tmux session may be created,
-so :meth:`Server.getById` and :meth:`Server.findWhere` exists as a lookup.
+so :meth:`Server.get_by_id` and :meth:`Server.findWhere` exists as a lookup.
 
 Get session by ID
 -----------------
@@ -103,10 +103,10 @@ tmux sessions use the ``$[0-9]`` convention as a way to identify sessions.
 .. code-block::  python
 
 
-    >>> server.getById('$3')
+    >>> server.get_by_id('$3')
     Session($3 foo)
 
-You may ``session = getById('$<yourId>')`` to use the session object.
+You may ``session = server.get_by_id('$<yourId>')`` to use the session object.
 
 Get session by name / other properties
 --------------------------------------

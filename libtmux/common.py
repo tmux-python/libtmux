@@ -290,7 +290,7 @@ class TmuxRelationalObject(object):
         else:
             return list(filter(by, self.children))
 
-    def getById(self, id):
+    def get_by_id(self, id):
         """Return object based on ``childIdAttribute``.
 
         Based on `.get()`_ from `backbone.js`_.

@@ -56,7 +56,7 @@ list sessions::
 
 find session::
 
-    >>> server.getById('$3')
+    >>> server.get_by_id('$3')
     Session($3 foo)
 
 find session by dict lookup::

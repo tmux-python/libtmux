@@ -149,8 +149,8 @@ def test_where(server, session):
                 assert isinstance(where[0], Pane)
 
 
-def test_getById(server, session):
-    """Test self.getById() retrieves child object."""
+def test_get_by_id(server, session):
+    """Test self.get_by_id() retrieves child object."""
 
     window = session.attached_window
 
@@ -158,29 +158,29 @@ def test_getById(server, session):
 
     for session in server.sessions:
         session_id = session.get('session_id')
-        get_by_id = server.getById(session_id)
+        get_by_id = server.get_by_id(session_id)
 
         assert get_by_id == session
         assert isinstance(get_by_id, Session)
-        assert server.getById('$' + next(namer)) is None
+        assert server.get_by_id('$' + next(namer)) is None
 
-        # session.getById
+        # session.get_by_id
         for window in session.windows:
             window_id = window.get('window_id')
 
-            get_by_id = session.getById(window_id)
+            get_by_id = session.get_by_id(window_id)
 
             assert get_by_id == window
             assert isinstance(get_by_id, Window)
 
-            assert session.getById('@' + next(namer)) is None
+            assert session.get_by_id('@' + next(namer)) is None
 
-            # window.getById
+            # window.get_by_id
             for pane in window.panes:
                 pane_id = pane.get('pane_id')
 
-                get_by_id = window.getById(pane_id)
+                get_by_id = window.get_by_id(pane_id)
 
                 assert get_by_id == pane
                 assert isinstance(get_by_id, Pane)
-                assert window.getById('%' + next(namer)) is None
+                assert window.get_by_id('%' + next(namer)) is None
