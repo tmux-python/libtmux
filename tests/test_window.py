@@ -19,22 +19,19 @@ def test_select_window(session):
     # for now hoever, let's get the index from the first window.
     assert window_count == 1
 
-    window_base_index = int(
-        session.attached_window.get('window_index'))
+    window_base_index = int(session.attached_window.index)
 
     window = session.new_window(window_name='testing 3')
 
     # self.assertEqual(2,
-    # int(session.attached_window.get('window_index')))
-    assert int(window_base_index) + 1 == int(window.get('window_index'))
+    # int(session.attached_window.index))
+    assert int(window_base_index) + 1 == int(window.index)
 
     session.select_window(window_base_index)
-    assert window_base_index == \
-        int(session.attached_window.get('window_index'))
+    assert window_base_index == int(session.attached_window.index)
 
     session.select_window('testing 3')
-    assert int(window_base_index) + 1 == \
-        int(session.attached_window.get('window_index'))
+    assert int(window_base_index) + 1 == int(session.attached_window.index)
 
     assert len(session._windows) == 2
 
