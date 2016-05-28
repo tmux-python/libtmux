@@ -228,7 +228,8 @@ class TmuxMappingObject(collections.MutableMapping):
         try:
             return self._info[self.formatter_prefix + key]
         except:
-            raise AttributeError
+            raise AttributeError('%s has no property %s' %
+                                 (self.__class__, key))
 
 
 class TmuxRelationalObject(object):
