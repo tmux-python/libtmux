@@ -74,12 +74,12 @@ play with session::
     Window(@8 2:ha in the bg, Session($3 foo))
     >>> session.kill_window("ha in")
 
-create new window in the background (don't switch to it):
+create new window in the background (don't switch to it)::
 
     >>> w = session.new_window(attach=False, window_name="ha in the bg")
     Window(@11 3:ha in the bg, Session($3 foo))
 
-kill window object directly:
+kill window object directly::
 
     >>> w.kill_window()
 
