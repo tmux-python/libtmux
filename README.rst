@@ -44,52 +44,72 @@ pilot your tmux session via python
     >>> server
     <libtmux.server.Server object at 0x7fbd622c1dd0>
 
-list sessions::
+list sessions:
+
+.. code-block:: python
 
     >>> server.list_sessions()
     [Session($3 foo), Session($1 libtmux)]
 
-find session::
+find session:
+
+.. code-block:: python
 
     >>> server.get_by_id('$3')
     Session($3 foo)
 
-find session by dict lookup::
+find session by dict lookup:
+
+.. code-block:: python
 
     >>> server.find_where({ "session_name": "foo" })
     Session($3 foo)
 
-assign session to ``session``::
+assign session to ``session``:
+
+.. code-block:: python
 
     >>> session = server.find_where({ "session_name": "foo" })
 
-play with session::
+play with session:
+
+.. code-block:: python
 
     >>> session.new_window(attach=False, window_name="ha in the bg")
     Window(@8 2:ha in the bg, Session($3 foo))
     >>> session.kill_window("ha in")
 
-create new window in the background (don't switch to it)::
+create new window in the background (don't switch to it):
+
+.. code-block:: python
 
     >>> w = session.new_window(attach=False, window_name="ha in the bg")
     Window(@11 3:ha in the bg, Session($3 foo))
 
-kill window object directly::
+kill window object directly:
+
+.. code-block:: python
 
     >>> w.kill_window()
 
-grab remaining tmux window::
+grab remaining tmux window:
+
+.. code-block:: python
 
     >>> window = session.attached_window()
     >>> window.split_window(attach=False)
     Pane(%23 Window(@10 1:bar, Session($3 foo)))
 
-rename window::
+rename window:
+
+.. code-block:: python
 
     >>> window.rename_window('libtmuxower')
     Window(@10 1:libtmuxower, Session($3 foo))
 
-create panes by splitting window::
+create panes by splitting window:
+
+.. code-block:: python
 
     >>> pane = window.split_window()
     >>> pane = window.split_window(attach=False)
@@ -97,14 +117,18 @@ create panes by splitting window::
     >>> window = session.new_window(attach=False, window_name="test")
     >>> pane = window.split_window(attach=False)
 
-send key strokes to panes::
+send key strokes to panes:
+
+.. code-block:: python
 
     >>> pane.send_keys('echo hey send now')
 
     >>> pane.send_keys('echo hey', enter=False)
     >>> pane.enter()
 
-grab the output of pane::
+grab the output of pane:
+
+.. code-block:: python
 
     >>> pane.clear()  # clear the pane
     >>> pane.send_keys('cowsay hello')
@@ -119,7 +143,9 @@ grab the output of pane::
                     ||----w |
                     ||     ||
 
-powerful traversal features::
+powerful traversal features:
+
+.. code-block:: python
 
     >>> pane.window
     Window(@10 1:libtmuxower, Session($3 foo))
