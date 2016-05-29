@@ -44,37 +44,50 @@ pilot your tmux session via python
     >>> server
     <libtmux.server.Server object at 0x7fbd622c1dd0>
 
-list sessions::
+list sessions:
+
+.. code-block:: python
 
     >>> server.list_sessions()
     [Session($3 foo), Session($1 libtmux)]
 
-find session::
+find session:
+
+.. code-block:: python
 
     >>> server.get_by_id('$3')
     Session($3 foo)
 
-find session by dict lookup::
+find session by dict lookup:
+
+.. code-block:: python
 
     >>> server.find_where({ "session_name": "foo" })
     Session($3 foo)
 
-assign session to ``session``::
+assign session to ``session``:
+
+.. code-block:: python
 
     >>> session = server.find_where({ "session_name": "foo" })
 
-play with session::
+play with session:
+
+.. code-block:: python
 
     >>> session.new_window(attach=False, window_name="ha in the bg")
     Window(@8 2:ha in the bg, Session($3 foo))
     >>> session.kill_window("ha in")
 
-create new window in the background (don't switch to it)::
+create new window in the background (don't switch to it):
+
+.. code-block:: python
 
     >>> w = session.new_window(attach=False, window_name="ha in the bg")
     Window(@11 3:ha in the bg, Session($3 foo))
 
-kill window object directly::
+kill window object directly:
+
 
     >>> w.kill_window()
 
