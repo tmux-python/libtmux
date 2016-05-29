@@ -4,7 +4,7 @@
 libtmux.formats
 ~~~~~~~~~~~~~~~
 
-For reference: http://sourceforge.net/p/tmux/tmux-code/ci/master/tree/format.c
+For reference: https://github.com/tmux/tmux/blob/master/format.c
 
 """
 
