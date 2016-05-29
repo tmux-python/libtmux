@@ -133,6 +133,9 @@ grab the output of pane:
     >>> pane.clear()  # clear the pane
     >>> pane.send_keys('cowsay hello')
     >>> print('\n'.join(pane.cmd('capture-pane', '-p').stdout))
+    
+::
+
     sh-3.2$ cowsay 'hello'
      _______
     < hello >
