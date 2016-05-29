@@ -15,6 +15,12 @@ Explore:
 
     quickstart
     about
+    properties
+    traversing
+    servers
+    sessions
+    windows
+    panes
     api
     glossary
     developing
