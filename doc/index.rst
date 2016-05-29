@@ -14,9 +14,9 @@ Explore:
     :maxdepth: 2
 
     quickstart
-    internals
-    developing
+    about
     api
     glossary
+    developing
     history
     roadmap

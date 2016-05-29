@@ -1,8 +1,9 @@
 .. _Internals:
+.. _About:
 
-=========
-Internals
-=========
+=====
+About
+=====
 
 .. seealso:: :ref:`api`
 

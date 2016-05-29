@@ -158,7 +158,7 @@ powerful traversal features::
 .. _tmuxp: https://github.com/tony/tmuxp
 .. _documentation: https://libtmux.readthedocs.io/
 .. _API: https://libtmux.readthedocs.io/api.html
-.. _architectural details: https://libtmux.readthedocs.io/internals.html
+.. _architectural details: https://libtmux.readthedocs.io/about.html
 .. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMAT
 .. _target: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
 
