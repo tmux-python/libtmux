@@ -88,21 +88,28 @@ create new window in the background (don't switch to it):
 
 kill window object directly:
 
+.. code-block:: python
 
     >>> w.kill_window()
 
-grab remaining tmux window::
+grab remaining tmux window:
+
+.. code-block:: python
 
     >>> window = session.attached_window()
     >>> window.split_window(attach=False)
     Pane(%23 Window(@10 1:bar, Session($3 foo)))
 
-rename window::
+rename window:
+
+.. code-block:: python
 
     >>> window.rename_window('libtmuxower')
     Window(@10 1:libtmuxower, Session($3 foo))
 
-create panes by splitting window::
+create panes by splitting window:
+
+.. code-block:: python
 
     >>> pane = window.split_window()
     >>> pane = window.split_window(attach=False)
@@ -110,18 +117,25 @@ create panes by splitting window::
     >>> window = session.new_window(attach=False, window_name="test")
     >>> pane = window.split_window(attach=False)
 
-send key strokes to panes::
+send key strokes to panes:
+
+.. code-block:: python
 
     >>> pane.send_keys('echo hey send now')
 
     >>> pane.send_keys('echo hey', enter=False)
     >>> pane.enter()
 
-grab the output of pane::
+grab the output of pane:
+
+.. code-block:: python
 
     >>> pane.clear()  # clear the pane
     >>> pane.send_keys('cowsay hello')
     >>> print('\n'.join(pane.cmd('capture-pane', '-p').stdout))
+
+::
+
     sh-3.2$ cowsay 'hello'
      _______
     < hello >
