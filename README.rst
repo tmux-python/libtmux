@@ -176,7 +176,7 @@ Issues          https://github.com/tony/libtmux/issues
 Travis          http://travis-ci.org/tony/libtmux
 Test Coverage   https://coveralls.io/r/tony/libtmux
 pypi            https://pypi.python.org/pypi/libtmux
-Open Hub        https://www.openhub.net/p/libtmux
+Open Hub        https://www.openhub.net/p/libtmux-python
 License         `BSD`_.
 git repo        .. code-block:: bash
 
