@@ -207,9 +207,9 @@ tests           .. code-block:: bash
    :alt: Build Status
    :target: https://travis-ci.org/tony/libtmux
 
-.. |coverage| image:: https://img.shields.io/coveralls/tony/libtmux.svg
+.. |coverage| image:: https://codecov.io/gh/tony/libtmux/branch/master/graph/badge.svg
     :alt: Code Coverage
-    :target: https://coveralls.io/r/tony/libtmux?branch=master
+    :target: https://codecov.io/gh/tony/libtmux
     
 .. |license| image:: https://img.shields.io/github/license/tony/libtmux.svg
     :alt: License 
