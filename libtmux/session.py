@@ -26,10 +26,11 @@ class Session(
     """:term:`tmux(1)` session.
 
     Holds :class:`Window` objects.
-
     """
 
+    #: unique child ID key used by :class:`TmuxRelationalObject`
     child_id_attribute = 'window_id'
+    #: namespace used :class:`TmuxMappingObject`
     formatter_prefix = 'session_'
 
     def __init__(self, server=None, **kwargs):
@@ -268,7 +269,7 @@ class Session(
         """Property / alias to return :meth:`~.list_windows`."""
         return self.list_windows()
 
-    #: Alias of :attr:`windows`.
+    #: Alias of :attr:`windows`, used by :class:`TmuxRelationalObject`
     children = windows
 
     @property

@@ -43,9 +43,9 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     config_file = None
     #: ``-2`` or ``-8``
     colors = None
-    #: unique child ID key
+    #: unique child ID key used by :class:`TmuxRelationalObject`
     child_id_attribute = 'session_id'
-    #: namespace used by tmux formatter variables
+    #: namespace used :class:`TmuxMappingObject`
     formatter_prefix = 'server_'
 
     def __init__(
@@ -162,7 +162,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     def sessions(self):
         """Property / alias to return :meth:`~.list_sessions`."""
         return self.list_sessions()
-    #: Alias of :attr:`sessions`.
+    #: Alias of :attr:`sessions`, , used by :class:`TmuxRelationalObject`
     children = sessions
 
     def _list_windows(self):

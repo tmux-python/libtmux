@@ -24,8 +24,8 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
     :versionchanged: 0.8
         Renamed from ``.tmux`` to ``.cmd``.
-
     """
+    #: namespace used :class:`TmuxMappingObject`
     formatter_prefix = 'pane_'
 
     def __init__(self, window=None, **kwargs):
