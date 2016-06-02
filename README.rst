@@ -37,6 +37,8 @@ pilot your tmux session via python
    $ pip install ptpython
    $ ptpython
 
+connect to a live tmux session:
+
 .. code-block:: python
 
     >>> import libtmux
