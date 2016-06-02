@@ -162,4 +162,4 @@ watch:
 	if command -v entr > /dev/null; then ${WATCH_FILES} | entr -c $(MAKE) html; else $(MAKE) html; fi
 
 serve:
-	echo 'docs built to <http://0.0.0.0:8023/_build/html>'; python -m SimpleHTTPServer 8003
+	echo 'docs built to <http://0.0.0.0:8023/_build/html>'; python -m SimpleHTTPServer 8023
