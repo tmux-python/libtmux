@@ -244,14 +244,14 @@ class TmuxRelationalObject(object):
     Children of :class:`TmuxRelationalObject` are going to have a
     ``self.children``, ``self.child_id_attribute`` and ``self.list_children``.
 
-    ================ ================== ===================== ============================
+    ================ ================== ======================= ============================
     Object           ``.children``      ``.child_id_attribute`` method
-    ================ ================== ===================== ============================
-    :class:`Server`  ``self._sessions`` 'session_id'          :meth:`Server.list_sessions`
-    :class:`Session` ``self._windows``  'window_id'           :meth:`Session.list_windows`
-    :class:`Window`  ``self._panes``    'pane_id'             :meth:`Window.list_panes`
+    ================ ================== ======================= ============================
+    :class:`Server`  ``self._sessions`` 'session_id'            :meth:`Server.list_sessions`
+    :class:`Session` ``self._windows``  'window_id'             :meth:`Session.list_windows`
+    :class:`Window`  ``self._panes``    'pane_id'               :meth:`Window.list_panes`
     :class:`Pane`
-    ================ ================== ===================== ============================
+    ================ ================== ======================= ============================
 
     """
 
