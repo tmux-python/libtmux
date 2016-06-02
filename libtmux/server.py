@@ -130,7 +130,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         tmux_formats = ['#{%s}' % format for format in sformats]
         sessions = proc.stdout
 
-        # combine format keys with values returned from ``tmux list-windows``
+        # combine format keys with values returned from ``tmux list-sessions``
         sessions = [dict(zip(
             sformats, session.split('\t'))) for session in sessions]
 
