@@ -13,9 +13,83 @@ import os
 
 from . import exc, formats
 from .common import EnvironmentMixin, TmuxRelationalObject, tmux_cmd
-from .session import Session
+from .session import Session, Window
 
 logger = logging.getLogger(__name__)
+
+
+class BaseQuerySet(object):
+    """Object to help with iterating through results."""
+
+    tmux_class = None
+    id = None
+    format_prefix = None
+    format_fields = None
+
+    def __init__(self, server):
+        self.server = server
+
+        assert self.tmux_class
+        assert self.id
+        assert self.format_prefix
+        assert self.format_fields
+
+    def list_cmd(self, command, format_fields):
+        tmux_formats = ['#{%s}' % f for f in format_fields]
+
+        tmux_args = (
+            '-F%s' % '\t'.join(tmux_formats),   # output
+        )
+
+        proc = self.server.cmd(
+            command,
+            *tmux_args
+        )
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc
+
+    def list_raw(self, format_fields=format_fields):
+        proc = self.list_raw(format_fields)
+        sessions = proc.stdout
+
+        # combine format keys with values returned from ``tmux list-sessions``
+        sessions = [dict(zip(
+            format_fields, session.split('\t'))) for session in sessions]
+
+        # clear up empty dict
+        sessions = [
+            dict((k, v) for k, v in session.items() if v)
+            for session in sessions
+        ]
+
+        return sessions
+
+
+class SessionQuerySet(object):
+    """Object linked to server to filter and iterate through sessions."""
+    tmux_class = Session
+    id = 'session_id'
+    format_prefix = 'session_'
+    format_fields = formats.SESSION_FORMATS
+
+    def list_cmd(self, format_fields=format_fields):
+        return super(self, SessionQuerySet).list_cmd(
+            'list-sessions', format_fields
+        )
+
+
+class Window(object):
+    """Object linked to server to filter and iterate through sessions."""
+    tmux_class = Window
+    id = 'session_id'
+    format_prefix = 'session_'
+    format_fields = formats.SESSION_FORMATS
+
+    def __len__(self):
+        return int(self.session.get('session_windows'))
 
 
 class Server(TmuxRelationalObject, EnvironmentMixin):
@@ -130,7 +204,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         tmux_formats = ['#{%s}' % format for format in sformats]
         sessions = proc.stdout
 
-        # combine format keys with values returned from ``tmux list-windows``
+        # combine format keys with values returned from ``tmux list-sessions``
         sessions = [dict(zip(
             sformats, session.split('\t'))) for session in sessions]
 
@@ -162,6 +236,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     def sessions(self):
         """Property / alias to return :meth:`~.list_sessions`."""
         return self.list_sessions()
+
     #: Alias of :attr:`sessions`, , used by :class:`TmuxRelationalObject`
     children = sessions
 
