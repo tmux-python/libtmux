@@ -13,6 +13,7 @@ In tmux, a server is automatically started on your behalf
 when you first run tmux.
 
 .. autoclass:: libtmux.Server
+    :noindex:
     :members:
     :inherited-members:
     :private-members:
