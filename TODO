@@ -3,5 +3,6 @@ TODO
 ====
 
 - Remove duplicate between ``_list_panes``, ``_panes``, etc.
+- Retrieve active windows and window count from formatter command
 
 .. # vim: set filetype=rst:
