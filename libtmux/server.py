@@ -406,10 +406,11 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         :param session_name: session name::
 
             $ tmux new-session -s <session_name>
+
         :type session_name: string
 
         :param attach: create session in the foreground. ``attach=False`` is
-        equivalent to::
+            equivalent to::
 
             $ tmux new-session -d
 
