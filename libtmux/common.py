@@ -244,15 +244,23 @@ class TmuxRelationalObject(object):
     Children of :class:`TmuxRelationalObject` are going to have a
     ``self.children``, ``self.child_id_attribute`` and ``self.list_children``.
 
-    ================ ================== ======================= ============================
-    Object           ``.children``      ``.child_id_attribute`` method
-    ================ ================== ======================= ============================
-    :class:`Server`  ``self._sessions`` 'session_id'            :meth:`Server.list_sessions`
-    :class:`Session` ``self._windows``  'window_id'             :meth:`Session.list_windows`
-    :class:`Window`  ``self._panes``    'pane_id'               :meth:`Window.list_panes`
+    ================ ======================== ==================================
+    Object           .children                method
+    ================ ======================== ==================================
+    :class:`Server`  :attr:`Server._sessions` :meth:`Server.list_sessions`
+    :class:`Session` :attr:`Windows._windows` :meth:`Session.list_windows`
+    :class:`Window`  :attr:`Panes._panes`     :meth:`Window.list_panes`
     :class:`Pane`
-    ================ ================== ======================= ============================
+    ================ ======================== ==================================
 
+    ================ ================================== ==============
+    Object           child_id_attribute                 value
+    ================ ================================== ==============
+    :class:`Server`  :attr:`Server.child_id_attribute`` ``session_id``
+    :class:`Session` :attr:`Session.window_id`          ``window_id``
+    :class:`Window`  :attr:`Window.pane_id`             ``pane_id``
+    :class:`Pane`
+    ================ ================================== ==============
     """
 
     def find_where(self, attrs):

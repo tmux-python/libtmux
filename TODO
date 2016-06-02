@@ -2,4 +2,6 @@
 TODO
 ====
 
+- Remove duplicate between ``_list_panes``, ``_panes``, etc.
+
 .. # vim: set filetype=rst:
