@@ -4,4 +4,6 @@
 Windows
 =======
 
-In tmux,
+- exist inside :ref:`Sessions`
+- contain :ref:`Panes`
+- identified by ``@``, e.g. ``@313``
