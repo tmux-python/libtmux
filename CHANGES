@@ -4,6 +4,8 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :support:`6` major documentation overhaul
+
 - :release:`0.4.1 <2016-05-23>`
 - :support:`-` update ``which()`` to find tmux via ``os.environ['PATH']``.
   https://redd.it/4laeut
