@@ -202,6 +202,14 @@ class TmuxMappingObject(collections.MutableMapping):
     Session, Window, Pane, stored :attr:`self._info`. For example, a
     :class:`Window` will have a ``window_id`` and ``window_name``.
 
+    ================ ================================== ==============
+    Object           formatter_prefix                   value
+    ================ ================================== ==============
+    :class:`Server`  n/a                                n/a
+    :class:`Session` :attr:`Session.formatter_prefix`   session\_
+    :class:`Window`  :attr:`Window.formatter_prefix`    window\_
+    :class:`Pane`    :attr:`Pane.formatter_prefix`      pane\_
+    ================ ================================== ==============
     """
 
     def __getitem__(self, key):
@@ -242,17 +250,25 @@ class TmuxRelationalObject(object):
     :class:`Window`)
 
     Children of :class:`TmuxRelationalObject` are going to have a
-    ``self.children``, ``self.child_id_attribute`` and ``self.list_children``.
+    ``self.children``, ``self.child_id_attribute``.
 
-    ================ ================== ===================== ============================
-    Object           ``.children``      ``.child_id_attribute`` method
-    ================ ================== ===================== ============================
-    :class:`Server`  ``self._sessions`` 'session_id'          :meth:`Server.list_sessions`
-    :class:`Session` ``self._windows``  'window_id'           :meth:`Session.list_windows`
-    :class:`Window`  ``self._panes``    'pane_id'             :meth:`Window.list_panes`
-    :class:`Pane`
-    ================ ================== ===================== ============================
+    ================ ========================= =================================
+    Object           .children                 method
+    ================ ========================= =================================
+    :class:`Server`  :attr:`Server._sessions`  :meth:`Server.list_sessions`
+    :class:`Session` :attr:`Sessions._windows` :meth:`Session.list_windows`
+    :class:`Window`  :attr:`Windows._panes`    :meth:`Window.list_panes`
+    :class:`Pane`    n/a                       n/a
+    ================ ========================= =================================
 
+    ================ ================================== ==============
+    Object           child_id_attribute                 value
+    ================ ================================== ==============
+    :class:`Server`  :attr:`Server.child_id_attribute`  session_id
+    :class:`Session` :attr:`Session.child_id_attribute` window_id
+    :class:`Window`  :attr:`Window.child_id_attribute`  pane_id
+    :class:`Pane`    n/a                                n/a
+    ================ ================================== ==============
     """
 
     def find_where(self, attrs):

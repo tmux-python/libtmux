@@ -10,20 +10,30 @@ sessions using python code.
 In this example, we will launch a tmux session and control the windows
 from inside a live tmux session.
 
-Control tmux via python
------------------------
+.. _requirements:
 
-.. seealso:: :ref:`api`
+Requirements
+------------
 
-.. todo:: Do a version of this with `sliderepl`_
+- `tmux`_
+- `pip`_ - for this handbook's examples
 
-To begin, ensure  the ``tmux`` program is installed.
+.. _pip: https://pip.pypa.io/en/stable/installing/
+.. _tmux: https://tmux.github.io/
 
-Next, ensure ``libtmux`` (note the p!) is installed:
+.. _installation:
+
+Installation
+------------
+
+Next, ensure ``libtmux`` is installed:
 
 .. code-block:: bash
 
     $ [sudo] pip install libtmux
+
+Start a tmux session
+--------------------
 
 Now, let's open a tmux session.
 
@@ -31,11 +41,18 @@ Now, let's open a tmux session.
 
     $ tmux new-session -n bar -s foo
 
-Why not just ``$ tmux``? We will assume you want to see the tmux changes
-in the current tmux session. So we will use:
+This tutorial will be using the session and window name in the example.
 
-Window name: ``bar``
-Session name: ``foo``
+Window name ``-n``: ``bar``
+Session name ``-s``: ``foo``
+
+Control tmux via python
+-----------------------
+
+.. seealso:: :ref:`api`
+
+.. todo:: Do a version of this with `sliderepl`_
+
 
 .. code-block:: bash
 

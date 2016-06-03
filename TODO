@@ -2,4 +2,8 @@
 TODO
 ====
 
+- Remove duplicate between ``_list_panes``, ``_panes``, etc.
+- Retrieve active windows and window count from formatter command
+- tmux PR to get count of sessions in a server
+
 .. # vim: set filetype=rst:

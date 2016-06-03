@@ -9,7 +9,11 @@ About
 
 .. module:: libtmux
 
-libtmux is an *abstraction layer* against tmux' command line arguments.
+libtmux is an `abstraction layer`_ for tmux.
+
+It builds upon the concept of targets ``-t``, to direct commands against
+individual session, windows and panes and ``FORMATS``, template variables 
+exposed by tmux to describe their properties.
 
 :class:`common.TmuxRelationalObject` acts as a container to connect the
 relations of :class:`Server`, :class:`Session`, :class:`Window` and
@@ -25,8 +29,10 @@ Object                   Child                   Parent
 ======================== ======================= =========================
 
 Internally, tmux allows multiple servers to be ran on a system. Each one
-uses a socket. Most users worry since tmux will communicate to a default
-server automatically. If one doesn't exist, tmux does it for you.
+uses a socket. The server-client architecture is executed so cleanly,
+many users don't think about it. tmux automatically connects to a default
+socket name and location for you if none (``-L``, ``-S``) is specified.
+A server will be created automatically upon starting if none exists.
 
 A server can have multiple sessions. ``Ctrl-a s`` can be used to switch
 between sessions running on the server.
@@ -49,7 +55,7 @@ Object                   Prefix                  Example
 Similarities to Tmux and Pythonics
 ----------------------------------
 
-libtmux is was built in the spirit of understanding how tmux operates
+libtmux was built in the spirit of understanding how tmux operates
 and how python objects and tools can abstract the API's in a pleasant way.
 
 libtmux uses ``FORMATTERS`` in tmux to give identity attributes to
@@ -82,8 +88,8 @@ To assert pane, window and session data, libtmux will use
 :meth:`Server.list_sessions()`, :meth:`Session.list_windows()`,
 :meth:`Window.list_panes()` to update objects.
 
-Idiosyncrasies
---------------
+Naming conventions
+------------------
 
 Because this is a python abstraction and commands like ``new-window``
 have dashes (-) replaced with underscores (_).
@@ -95,4 +101,3 @@ Reference
 - tmux source code http://sourceforge.net/p/tmux/tmux-code/ci/master/tree/
 
 .. _abstraction layer: http://en.wikipedia.org/wiki/Abstraction_layer
-.. _ORM: http://en.wikipedia.org/wiki/Object-relational_mapping
