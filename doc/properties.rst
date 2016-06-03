@@ -6,6 +6,9 @@ Properties
 
 Get access to the data attributions behind tmux sessions, windows and panes.
 
+This is done through accessing the `formats`_ available in ``list-sessions``,
+``list-windows`` and ``list-panes``.
+
 open two terminals:
 
 terminal one: start tmux in a seperate terminal::
@@ -107,6 +110,11 @@ everything available::
     >>> window.keys()
     [u'window_panes', u'window_active', u'window_height', u'window_activity_flag', u'window_width', u'session_id', u'window_id', u'window_layout', u'window_silence_flag', u'window_index', u'window_bell_flag', u'session_name', u'window_flags', u'window_name']
 
+use ``get()`` for details not accessible via properties::
+
+    >>> pane.get('window_panes')
+    u'4'
+
 Panes
 -----
 
@@ -138,3 +146,10 @@ everything::
 
     >>> pane._info.keys()
     [u'alternate_saved_x', u'alternate_saved_y', u'cursor_y', u'cursor_x', u'pane_in_mode', u'insert_flag', u'keypad_flag', u'cursor_flag', u'pane_current_command', u'window_index', u'history_size', u'scroll_region_lower', u'keypad_cursor_flag', u'history_bytes', u'pane_active', u'pane_dead', u'pane_synchronized', u'window_id', u'pane_index', u'pane_width', u'mouse_any_flag', u'mouse_button_flag', u'window_name', u'pane_current_path', u'pane_tty', u'pane_title', u'session_id', u'alternate_on', u'mouse_standard_flag', u'wrap_flag', u'history_limit', u'pane_pid', u'pane_height', u'session_name', u'scroll_region_upper', u'pane_id']
+
+use ``get()`` for details keys::
+
+    >>> pane.get('pane_width')
+    u'70'
+
+.. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMAT

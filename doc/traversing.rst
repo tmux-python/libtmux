@@ -7,6 +7,9 @@ Traversing
 libtmux offers you a handy way to move around the hierachy of sessions,
 windows and panes in tmux.
 
+this is done by libtmux's object abstraction of `target`\_s (the ``-t``
+command) and the permanent internal ID's tmux gives to objects.
+
 open two terminals:
 
 terminal one: start tmux in a seperate terminal::
@@ -82,3 +85,5 @@ access the window/server of a pane::
 
     >>> p.server
     <libtmux.server.Server object at 0x104191a10>
+
+.. _target: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
