@@ -10,3 +10,11 @@ Panes
 
 .. _pseudoterminal: https://en.wikipedia.org/wiki/Pseudoterminal
 .. _pty(4): https://www.freebsd.org/cgi/man.cgi?query=pty&sektion=4
+
+.. autoclass:: libtmux.Pane
+    :noindex:
+    :members:
+    :inherited-members:
+    :private-members:
+    :show-inheritance:
+    :member-order: bysource
