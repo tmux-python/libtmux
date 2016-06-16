@@ -7,7 +7,7 @@ from __future__ import (absolute_import, division, print_function,
 import logging
 import pytest
 
-from libtmux import Pane, Server, Window
+from libtmux import Pane, Server, Window, exc
 
 
 logger = logging.getLogger(__name__)
@@ -169,6 +169,11 @@ def test_set_show_window_options(session):
     assert window.show_window_options()['main-pane-height'] == 40
 
 
+def test_empty_window_option_returns_None(session):
+    window = session.new_window(window_name='test_window')
+    assert window.show_window_option('default-shell') is None
+
+
 def test_show_window_option(session):
     """Set option then Window.show_window_option(key)."""
     window = session.new_window(window_name='test_window')
@@ -181,10 +186,17 @@ def test_show_window_option(session):
     assert window.show_window_option('main-pane-height') == 40
 
 
+def test_show_window_option_unknown(session):
+    """Window.show_window_option raises UnknownOption for bad option key."""
+    window = session.new_window(window_name='test_window')
+    with pytest.raises(exc.UnknownOption):
+        window.show_window_option('moooz')
+
+
 def test_set_window_option_bad(session):
     """Window.set_window_option raises ValueError for bad option key."""
 
     window = session.new_window(window_name='test_window')
 
-    with pytest.raises(ValueError):
+    with pytest.raises(exc.UnknownOption):
         window.set_window_option('afewewfew', 43)
