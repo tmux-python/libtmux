@@ -73,6 +73,8 @@ Exceptions
 
 .. autoexception:: libtmux.exc.TmuxSessionExists
 
+.. autoexception:: libtmux.exc.UnknownOption
+
 Test tools
 ----------
 

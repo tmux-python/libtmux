@@ -8,7 +8,7 @@ import logging
 
 import pytest
 
-from libtmux import Pane, Session, Window
+from libtmux import Pane, Session, Window, exc
 from libtmux.test import TEST_SESSION_PREFIX, namer
 
 logger = logging.getLogger(__name__)
@@ -130,9 +130,19 @@ def test_set_show_option(session):
     assert session.show_option('history-limit') == 40
 
 
+def test_empty_session_option_returns_None(session):
+    assert session.show_option('default-shell') is None
+
+
+def test_show_option_unknown(session):
+    """Session.show_option raises UnknownOption for bad option key."""
+    with pytest.raises(exc.UnknownOption):
+        session.show_option('moooz')
+
+
 def test_set_option_bad(session):
-    """Session.set_option raises ValueError for bad option key."""
-    with pytest.raises(ValueError):
+    """Session.set_option raises UnknownOption for bad option key."""
+    with pytest.raises(exc.UnknownOption):
         session.set_option('afewewfew', 43)
 
 

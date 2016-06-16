@@ -19,3 +19,10 @@ class TmuxSessionExists(LibTmuxException):
     """Session does not exist in the server."""
 
     pass
+
+
+class UnknownOption(LibTmuxException):
+
+    """Option unknown to tmux show-option(s) or show-window-option(s)."""
+
+    pass

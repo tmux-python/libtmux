@@ -43,14 +43,13 @@ class Session(
         self.server._update_windows()
 
     @property
-    def _info(self, *args):
+    def _info(self):
 
         attrs = {
             'session_id': str(self._session_id)
         }
 
-        # from https://github.com/serkanyersen/underscore.py
-        def by(val, *args):
+        def by(val):
             for key, value in attrs.items():
                 try:
                     if attrs[key] != val[key]:
@@ -324,7 +323,7 @@ class Session(
 
         return self.attached_window.attached_pane
 
-    def set_option(self, option, value):
+    def set_option(self, option, value, g=False):
         """Set option ``$ tmux set-option <option> <value>``.
 
         todo: needs tests
@@ -334,6 +333,8 @@ class Session(
         :param value: window value. True/False will turn in 'on' and 'off'. You
             can also enter 'on' or 'off' directly.
         :type value: bool
+        :param global: check for option globally across all servers (-g)
+        :type global: bool
 
         """
 
@@ -342,14 +343,22 @@ class Session(
         elif isinstance(value, bool) and not value:
             value = 'off'
 
+        tmux_args = tuple()
+
+        if g:
+            tmux_args += ('-g',)
+
+        tmux_args += (option, value,)
+
         proc = self.cmd(
-            'set-option', option, value
+            'set-option', *tmux_args
         )
 
-        if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == int(1):
-                proc.stderr = proc.stderr[0]
-            raise ValueError('tmux set-option stderr: %s' % proc.stderr)
+        if isinstance(proc.stderr, list) and len(proc.stderr):
+            error = proc.stderr[0]
+            if 'unknown option' in error:
+                raise exc.UnknownOption(error)
+            raise ValueError('tmux set-option stderr: %s' % error)
 
     def show_options(self, option=None, g=False):
         """Return a dict of options for the window.
@@ -359,7 +368,7 @@ class Session(
 
         :param option: optional. show a single option.
         :type option: string
-        :param g: Pass ``-g`` flag for global variable
+        :param g: Pass ``-g`` flag for global variable (server-wide)
         :type g: bool
         :rtype: :py:obj:`dict`
 
@@ -395,6 +404,8 @@ class Session(
 
         :param option: option to return.
         :type option: string
+        :param global: check for option globally across all servers (-g)
+        :type global: bool
         :rtype: string, int or bool
 
         """
@@ -404,15 +415,28 @@ class Session(
         if g:
             tmux_args += ('-g',)
 
-        window_option = self.cmd(
-            'show-options', option, *tmux_args
-        ).stdout
-        window_option = [tuple(item.split(' ')) for item in window_option][0]
+        tmux_args += (option,)
 
-        if window_option[1].isdigit():
-            window_option = (window_option[0], int(window_option[1]))
+        cmd = self.cmd(
+            'show-options', *tmux_args
+        )
 
-        return window_option[1]
+        if isinstance(cmd.stderr, list) and len(cmd.stderr):
+            error = cmd.stderr[0]
+            if 'unknown option' in error:
+                raise exc.UnknownOption(error)
+            else:
+                raise exc.LibTmuxException(error)
+
+        if not len(cmd.stdout):
+            return None
+
+        option = [item.split(' ') for item in cmd.stdout][0]
+
+        if option[1].isdigit():
+            option = (option[0], int(option[1]))
+
+        return option[1]
 
     def __repr__(self):
         return "%s(%s %s)" % (

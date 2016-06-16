@@ -142,16 +142,18 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         elif isinstance(value, bool) and not value:
             value = 'off'
 
-        process = self.cmd(
+        cmd = self.cmd(
             'set-window-option',
             '-t%s:%s' % (self.get('session_id'), self.index),
             # '-t%s' % self.id,
             option, value
         )
 
-        if process.stderr:
-            if isinstance(process.stderr, list) and len(process.stderr):
-                process.stderr = process.stderr[0]
+        if isinstance(cmd.stderr, list) and len(cmd.stderr):
+            error = cmd.stderr[0]
+            if 'unknown option' in error:
+                raise exc.UnknownOption(error)
+
             raise ValueError(
                 'tmux set-window-option -t%s:%s %s %s\n' % (
                     self.get('session_id'),
@@ -159,7 +161,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
                     option,
                     value
                 ) +
-                process.stderr
+                cmd.stderr
             )
 
     def show_window_options(self, option=None, g=False):
@@ -185,13 +187,13 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             return self.show_window_option(option, g=g)
         else:
             tmux_args += ('show-window-options',)
-            window_options = self.cmd(
+            cmd = self.cmd(
                 *tmux_args
             ).stdout
 
-        window_options = [tuple(item.split(' ')) for item in window_options]
+        cmd = [tuple(item.split(' ')) for item in cmd]
 
-        window_options = dict(window_options)
+        window_options = dict(cmd)
 
         for key, value in window_options.items():
             if value.isdigit():
@@ -219,20 +221,22 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         tmux_args += (option,)
 
-        window_option = self.cmd(
+        cmd = self.cmd(
             'show-window-options', *tmux_args
-        ).stdout
+        )
 
-        if window_option:
-            window_option = [tuple(item.split(' '))
-                             for item in window_option][0]
-        else:
+        if len(cmd.stderr) and 'unknown option' in cmd.stderr[0]:
+            raise exc.UnknownOption(cmd.stderr[0])
+
+        if not len(cmd.stdout):
             return None
 
-        if window_option[1].isdigit():
-            window_option = (window_option[0], int(window_option[1]))
+        option = [item.split(' ') for item in cmd.stdout][0]
 
-        return window_option[1]
+        if option[1].isdigit():
+            option = (option[0], int(option[1]))
+
+        return option[1]
 
     def rename_window(self, new_name):
         """Return :class:`Window` object ``$ tmux rename-window <new_name>``.
