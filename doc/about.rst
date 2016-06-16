@@ -13,7 +13,8 @@ libtmux is an `abstraction layer`_ for tmux.
 
 It builds upon the concept of targets ``-t``, to direct commands against
 individual session, windows and panes and ``FORMATS``, template variables 
-exposed by tmux to describe their properties.
+exposed by tmux to describe their properties. Think of ``-t`` analagously
+to `scope`_.
 
 :class:`common.TmuxRelationalObject` acts as a container to connect the
 relations of :class:`Server`, :class:`Session`, :class:`Window` and
@@ -101,3 +102,4 @@ Reference
 - tmux source code http://sourceforge.net/p/tmux/tmux-code/ci/master/tree/
 
 .. _abstraction layer: http://en.wikipedia.org/wiki/Abstraction_layer
+.. _scope: https://en.wikipedia.org/wiki/Variable_(computer_science)#Scope_and_extent
