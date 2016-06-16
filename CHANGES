@@ -4,6 +4,7 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.5 <2016-06-15>`
 - :feature:`8` new exception ``UnknownOption``
 - :feature:`8` return ``None`` for options that are valid tmux options,
   but unset at that scope.
