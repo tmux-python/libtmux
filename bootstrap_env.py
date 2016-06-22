@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals, with_statement)
+from __future__ import absolute_import, print_function, unicode_literals
 
 import os
 import subprocess
@@ -14,9 +13,6 @@ def warning(*objs):
 
 def fail(message):
     sys.exit("Error: {message}".format(message=message))
-
-
-PY2 = sys.version_info[0] == 2
 
 
 def has_module(module_name):
@@ -77,6 +73,8 @@ virtualenv_exists = os.path.exists(env_dir) and os.path.isfile(python_bin)
 sphinx_requirements_filepath = os.path.join(
     project_dir, 'requirements', 'doc.txt'
 )
+test_requirements_filepath = os.path.join(
+    project_dir, 'requirements', 'test.txt')
 
 
 try:
@@ -119,6 +117,11 @@ def main():
 
         subprocess.check_call(
             [pip_bin, 'install', '-e', project_dir]
+        )
+
+    if not has_module('pytest'):
+        subprocess.check_call(
+            [pip_bin, 'install', '-r', test_requirements_filepath]
         )
 
     if not os.path.isfile(os.path.join(env_dir, 'bin', 'sphinx-quickstart')):
