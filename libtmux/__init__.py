@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# flake8: NOQA
 """API for interfacing with tmux servers, sessions, windows and panes.
 
 libtmux
