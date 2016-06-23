@@ -11,7 +11,6 @@ import os
 import re
 import subprocess
 from distutils.version import StrictVersion
-from functools import wraps
 
 from . import exc
 from ._compat import console_to_str
@@ -329,21 +328,6 @@ class TmuxRelationalObject(object):
         return None
 
 
-def real_memoize(func):
-    '''
-    Memoize aka cache the return output of a function
-    given a specific set of arguments
-    '''
-    cache = {}
-
-    @wraps(func)
-    def _memoize(*args):
-        if args not in cache:
-            cache[args] = func(*args)
-        return cache[args]
-    return _memoize
-
-
 def which(exe=None):
     """Return path of bin. Python clone of /usr/bin/which.
 
@@ -362,23 +346,6 @@ def which(exe=None):
     if _is_executable_file_or_link(exe):
         # executable in cwd or fullpath
         return exe
-
-    ext_list = os.environ.get('PATHEXT', '.EXE').split(';')
-
-    @real_memoize
-    def _exe_has_ext():
-        '''
-        Do a case insensitive test if exe has a file extension match in
-        PATHEXT
-        '''
-        for ext in ext_list:
-            try:
-                pattern = r'.*\.' + ext.lstrip('.') + r'$'
-                re.match(pattern, exe, re.I).groups()
-                return True
-            except AttributeError:
-                continue
-        return False
 
     # Enhance POSIX path for the reliability at some environments, when
     # $PATH is changing. This also keeps order, where 'first came, first
