@@ -278,19 +278,22 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         self.server._update_windows()
 
-    def move_window(self, destination):
+    def move_window(self, destination="", session=None):
         """Move the current :class:`Window` object ``$ tmux move-window``.
 
         :param destination: the ``target window`` or index to move the window
-            to.
-        :type target_window: string
+            to, default: empty string
+        :type destination: string
+        :param session: the ``target session`` or index to move the
+            window to, default: current session.
+        :type session: string
 
         """
-
+        session = session or self.get('session_id')
         proc = self.cmd(
             'move-window',
             '-s%s:%s' % (self.get('session_id'), self.index),
-            '-t%s:%s' % (self.get('session_id'), destination),
+            '-t%s:%s' % (session, destination),
         )
 
         if proc.stderr:
