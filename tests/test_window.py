@@ -200,3 +200,19 @@ def test_set_window_option_bad(session):
 
     with pytest.raises(exc.UnknownOption):
         window.set_window_option('afewewfew', 43)
+
+
+def test_move_window(session):
+    """Window.move_window results in changed index"""
+
+    window = session.new_window(window_name='test_window')
+    new_index = str(int(window.index) + 1)
+    window.move_window(new_index)
+    assert window.index == new_index
+
+
+def test_move_window_to_other_session(server, session):
+    window = session.new_window(window_name='test_window')
+    new_session = server.new_session("test_move_window")
+    window.move_window(session=new_session.get('session_id'))
+    assert new_session.get_by_id(window.get("window_id")) == window

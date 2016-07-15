@@ -81,3 +81,10 @@ def test_set_show_environment_single(server, session):
 def test_show_environment_not_set(server):
     """Unset environment variable returns None."""
     assert server.show_environment('BAR') is None
+
+
+def test_new_session(server):
+    """Server.new_session creates and returns valid session"""
+    mysession = server.new_session("test_new_session")
+    assert mysession.get("session_name") == "test_new_session"
+    assert server.has_session("test_new_session")
