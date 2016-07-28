@@ -104,17 +104,20 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
         self.cmd('send-keys', '-R \; clear-history')
 
-    def split_window(self, attach=False):
+    def split_window(self, attach=False, vertical=True):
         """Split window at pane and return newly created :class:`Pane`.
 
         :param attach: Attach / select pane after creation.
         :type attach: bool
+        :param vertical: split vertically
+        :type vertical: bool
         :rtype: :class:`Pane`.
 
         """
         return self.window.split_window(
             target=self.get('pane_id'),
-            attach=attach
+            attach=attach,
+            vertical=vertical
         )
 
     def set_width(self, width):
