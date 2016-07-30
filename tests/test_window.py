@@ -100,12 +100,23 @@ def test_attached_pane(session):
 
 
 def test_split_window(session):
-    """Window.split_window() splits window, returns new Pane."""
+    """Window.split_window() splits window, returns new Pane, vertical. """
     window_name = 'test split window'
     window = session.new_window(window_name=window_name, attach=True)
     pane = window.split_window()
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
+    assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
+
+
+def test_split_window_horizontal(session):
+    """Window.split_window() splits window, returns new Pane, horizontal.  """
+    window_name = 'test split window'
+    window = session.new_window(window_name=window_name, attach=True)
+    pane = window.split_window(vertical=False)
+    assert len(window.panes) == 2
+    assert isinstance(pane, Pane)
+    assert float(window.panes[0].width) <= ((float(window.width) + 1) / 2)
 
 
 @pytest.mark.parametrize("window_name_before,window_name_after", [
