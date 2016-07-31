@@ -346,7 +346,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             self,
             target=None,
             start_directory=None,
-            attach=True
+            attach=True,
+            vertical=True
     ):
         """Split window and return the created :class:`Pane`.
 
@@ -372,6 +373,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         :type start_directory: string
         :param target: ``target_pane`` to split.
         :type target: bool
+        :param vertical: split vertically
+        :type vertical: bool
 
         :rtype: :class:`Pane`
 
@@ -389,6 +392,11 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             tmux_args += ('-t%s' % target,)
         else:
             tmux_args += ('-t%s' % self.panes[0].get('pane_id'),)
+
+        if vertical:
+            tmux_args += ('-v',)
+        else:
+            tmux_args += ('-h',)
 
         tmux_args += (
             '-P', '-F%s' % ''.join(tmux_formats)  # output
