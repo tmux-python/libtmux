@@ -4,6 +4,9 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.5.1 <2016-08-18>`
+- :bug:`12` - fix logger message when tmux doesn't exist in ``PATH``
+
 - :release:`0.5 <2016-06-15>`
 - :feature:`8` new exception ``UnknownOption``
 - :feature:`8` return ``None`` for options that are valid tmux options,
