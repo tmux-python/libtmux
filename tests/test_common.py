@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from libtmux.common import has_required_tmux_version
+from libtmux.common import has_required_tmux_version, which
 from libtmux.exc import LibTmuxException
 
 version_regex = re.compile(r'[0-9]\.[0-9]')
@@ -44,3 +44,9 @@ def test_error_version_less_1_7():
         excinfo.match(r'tmuxp only supports')
 
     has_required_tmux_version('1.9a')
+
+
+def test_which_no_tmuxp_found(monkeypatch):
+    monkeypatch.setenv("PATH", "/")
+    which('tmuxp')
+    which('tmuxp', '/')

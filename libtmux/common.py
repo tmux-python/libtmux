@@ -328,13 +328,18 @@ class TmuxRelationalObject(object):
         return None
 
 
-def which(exe=None):
+def which(exe=None,
+          default_paths=[
+              '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin']
+          ):
     """Return path of bin. Python clone of /usr/bin/which.
 
     from salt.util - https://www.github.com/saltstack/salt - license apache
 
     :param exe: Application to search PATHs for.
     :type exe: string
+    :param default_path: Application to search PATHs for.
+    :type default_path: list
     :rtype: string
 
     """
@@ -352,9 +357,7 @@ def which(exe=None):
     # win' for cases to find optional alternatives
     search_path = os.environ.get('PATH') and \
         os.environ['PATH'].split(os.pathsep) or list()
-    for default_path in [
-        '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin'
-    ]:
+    for default_path in default_paths:
         if default_path not in search_path:
             search_path.append(default_path)
     os.environ['PATH'] = os.pathsep.join(search_path)
@@ -362,7 +365,7 @@ def which(exe=None):
         full_path = os.path.join(path, exe)
         if _is_executable_file_or_link(full_path):
             return full_path
-    logger.trace(
+    logger.info(
         '\'{0}\' could not be found in the following search path: '
         '\'{1}\''.format(exe, search_path))
 
