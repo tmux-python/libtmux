@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """Helper methods for libtmux and downstream libtmux libraries."""
 
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals, with_statement)
+from __future__ import absolute_import, unicode_literals, with_statement
 
 import contextlib
 import logging

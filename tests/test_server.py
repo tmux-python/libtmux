@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """Test for tmuxp Server object."""
-
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals, with_statement)
+from __future__ import absolute_import, unicode_literals, with_statement
 
 import logging
 
