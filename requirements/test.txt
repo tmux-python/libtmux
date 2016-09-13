@@ -1,1 +1,1 @@
-pytest==2.9.2
+pytest==3.0.2  # updated from 2.9.2
