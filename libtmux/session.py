@@ -75,12 +75,8 @@ class Session(
             kwargs['-t'] = self.id
         return self.server.cmd(*args, **kwargs)
 
-    def attach_session(self, target_session=None):
-        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
-
-        :param: target_session: str. name of the session. fnmatch(3) works.
-
-        """
+    def attach_session(self):
+        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``."""
         proc = self.cmd('attach-session', '-t%s' % self.id)
 
         if proc.stderr:
@@ -112,6 +108,10 @@ class Session(
         :rtype: :class:`Session`
 
         """
+        if '.' in new_name:
+            raise exc.BadSessionName(
+                'tmux does not allowed in session names: %s' % new_name)
+
         proc = self.cmd(
             'rename-session',
             '-t%s' % self.id,
