@@ -22,7 +22,7 @@ class TmuxSessionExists(LibTmuxException):
 
 class BadSessionName(LibTmuxException):
 
-    """Session name is not allowed."""
+    """Disallowed session name for tmux (empty, contains periods or colons)."""
 
     pass
 
