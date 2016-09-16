@@ -184,3 +184,34 @@ def test_unset_environment(session):
     assert session.show_environment('BAM') == 'OK'
     session.unset_environment('BAM')
     assert session.show_environment('BAM') is None
+
+
+@pytest.mark.parametrize("session_name,raises", [
+    ('hey.period', True),
+    ('hey:its a colon', True),
+    ('hey moo', False),
+])
+def test_periods_raise_badsessionname(server, session, session_name, raises):
+    new_name = session_name + 'moo'  # used for rename / switch
+    if raises:
+        with pytest.raises(exc.BadSessionName):
+            session.rename_session(new_name)
+
+        with pytest.raises(exc.BadSessionName):
+            server.new_session(session_name)
+
+        with pytest.raises(exc.BadSessionName):
+            server.has_session(session_name)
+
+        with pytest.raises(exc.BadSessionName):
+            server.switch_client(new_name)
+
+        with pytest.raises(exc.BadSessionName):
+            server.attach_session(new_name)
+
+    else:
+        server.new_session(session_name)
+        server.has_session(session_name)
+        session.rename_session(new_name)
+        with pytest.raises(exc.LibTmuxException):
+            server.switch_client(new_name)

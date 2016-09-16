@@ -11,7 +11,8 @@ import logging
 import os
 
 from . import exc, formats
-from .common import EnvironmentMixin, TmuxRelationalObject, tmux_cmd
+from .common import EnvironmentMixin, TmuxRelationalObject, tmux_cmd, \
+    session_check_name
 from .session import Session
 
 logger = logging.getLogger(__name__)
@@ -318,9 +319,12 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """Return True if session exists. ``$ tmux has-session``.
 
         :param: target_session: str of session name.
+        :raises: :exc:`exc.BadSessionName`
         :rtype: bool
 
         """
+
+        session_check_name(target_session)
 
         proc = self.cmd('has-session', '-t%s' % target_session)
 
@@ -334,6 +338,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         elif 'no server running' in proc.stdout:  # tmux 2.0
             return False
         elif 'can\'t find session' in proc.stdout:  # tmux 2.1
+            return False
+        elif 'bad session name' in proc.stdout:  # tmux >= 1.9
             return False
         elif 'session not found' in proc.stdout:
             return False
@@ -349,10 +355,12 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         :param: target_session: str. note this accepts ``fnmatch(3)``. 'asdf'
             will kill 'asdfasd'.
-
+        :raises: :exc:`exc.BadSessionName`
         :rtype: :class:`Server`
 
         """
+        session_check_name(target_session)
+
         proc = self.cmd('kill-session', '-t%s' % target_session)
 
         if proc.stderr:
@@ -364,8 +372,9 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """``$ tmux switch-client``.
 
         :param: target_session: str. name of the session. fnmatch(3) works.
-
+        :raises: :exc:`exc.BadSessionName`
         """
+        session_check_name(target_session)
 
         proc = self.cmd('switch-client', '-t%s' % target_session)
 
@@ -376,8 +385,10 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """``$ tmux attach-session`` aka alias: ``$ tmux attach``.
 
         :param: target_session: str. name of the session. fnmatch(3) works.
-
+        :raises: :exc:`exc.BadSessionName`
         """
+        session_check_name(target_session)
+
         tmux_args = tuple()
         if target_session:
             tmux_args += ('-t%s' % target_session,)
@@ -418,9 +429,11 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         :param kill_session: Kill current session if ``$ tmux has-session``
                              Useful for testing workspaces.
         :type kill_session: bool
+        :raises: :exc:`exc.BadSessionName`
         :rtype: :class:`Session`
 
         """
+        session_check_name(session_name)
 
         if self.has_session(session_name):
             if kill_session:

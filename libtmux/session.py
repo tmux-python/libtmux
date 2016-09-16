@@ -11,7 +11,8 @@ import logging
 import os
 
 from . import exc, formats
-from .common import EnvironmentMixin, TmuxMappingObject, TmuxRelationalObject
+from .common import EnvironmentMixin, TmuxMappingObject, \
+    TmuxRelationalObject, session_check_name
 from .window import Window
 
 logger = logging.getLogger(__name__)
@@ -90,10 +91,11 @@ class Session(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def switch_client(self, target_session=None):
+    def switch_client(self):
         """``$ tmux switch-client``.
 
         :param: target_session: str. note this accepts fnmatch(3).
+        :raises: :exc:`exc.LibTmuxException`
         """
         proc = self.cmd('switch-client', '-t%s' % self.id)
 
@@ -103,14 +105,13 @@ class Session(
     def rename_session(self, new_name):
         """Rename session and return new :class:`Session` object.
 
-        :param rename_session: new session name
-        :type rename_session: string
+        :param new_name: new session name
+        :type new_name: string
+        :raises: :exc:`exc.BadSessionName`
         :rtype: :class:`Session`
 
         """
-        if '.' in new_name:
-            raise exc.BadSessionName(
-                'tmux does not allowed in session names: %s' % new_name)
+        session_check_name(new_name)
 
         proc = self.cmd(
             'rename-session',

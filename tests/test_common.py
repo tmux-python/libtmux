@@ -5,8 +5,8 @@ import re
 
 import pytest
 
-from libtmux.common import has_required_tmux_version, which
-from libtmux.exc import LibTmuxException
+from libtmux.common import has_required_tmux_version, which, session_check_name
+from libtmux.exc import LibTmuxException, BadSessionName
 
 version_regex = re.compile(r'[0-9]\.[0-9]')
 
@@ -50,3 +50,20 @@ def test_which_no_tmuxp_found(monkeypatch):
     monkeypatch.setenv("PATH", "/")
     which('tmuxp')
     which('tmuxp', '/')
+
+
+@pytest.mark.parametrize("session_name,raises,exc_msg_regex", [
+    ('', True, 'may not be empty'),
+    (None, True, 'may not be empty'),
+    ("my great session.", True, 'may not contain periods'),
+    ("name: great session", True, 'may not contain colons'),
+    ("new great session", False, None),
+    ("ajf8a3fa83fads,,,a", False, None),
+])
+def test_session_check_name(session_name, raises, exc_msg_regex):
+    if raises:
+        with pytest.raises(BadSessionName) as exc_info:
+            session_check_name(session_name)
+        assert exc_info.match(exc_msg_regex)
+    else:
+        session_check_name(session_name)
