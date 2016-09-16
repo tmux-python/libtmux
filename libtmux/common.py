@@ -420,3 +420,24 @@ def has_required_tmux_version(version=None):
             ' has %s installed. Upgrade your tmux to use libtmux.' % version
         )
     return version
+
+
+def session_check_name(session_name):
+    """Raises exception session name invalid, modeled after tmux function.
+
+    tmux(1) session names may not be empty, or include periods or colons.
+    These delimiters are reserved for noting session, window and pane.
+
+    :param session_name: name of session
+    :type session_name: string
+    :returns: void
+    :raises: :exc:`exc.BadSessionName`
+    """
+    if not session_name or len(session_name) == 0:
+        raise exc.BadSessionName("tmux session names may not be empty.")
+    elif '.' in session_name:
+        raise exc.BadSessionName(
+            "tmux session name \"%s\" may not contain periods.", session_name)
+    elif ':' in session_name:
+        raise exc.BadSessionName(
+            "tmux session name \"%s\" may not contain colons.", session_name)

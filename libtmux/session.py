@@ -11,7 +11,8 @@ import logging
 import os
 
 from . import exc, formats
-from .common import EnvironmentMixin, TmuxMappingObject, TmuxRelationalObject
+from .common import EnvironmentMixin, TmuxMappingObject, \
+    TmuxRelationalObject, session_check_name
 from .window import Window
 
 logger = logging.getLogger(__name__)
@@ -75,12 +76,8 @@ class Session(
             kwargs['-t'] = self.id
         return self.server.cmd(*args, **kwargs)
 
-    def attach_session(self, target_session=None):
-        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
-
-        :param: target_session: str. name of the session. fnmatch(3) works.
-
-        """
+    def attach_session(self):
+        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``."""
         proc = self.cmd('attach-session', '-t%s' % self.id)
 
         if proc.stderr:
@@ -94,10 +91,11 @@ class Session(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def switch_client(self, target_session=None):
+    def switch_client(self):
         """``$ tmux switch-client``.
 
         :param: target_session: str. note this accepts fnmatch(3).
+        :raises: :exc:`exc.LibTmuxException`
         """
         proc = self.cmd('switch-client', '-t%s' % self.id)
 
@@ -107,11 +105,14 @@ class Session(
     def rename_session(self, new_name):
         """Rename session and return new :class:`Session` object.
 
-        :param rename_session: new session name
-        :type rename_session: string
+        :param new_name: new session name
+        :type new_name: string
+        :raises: :exc:`exc.BadSessionName`
         :rtype: :class:`Session`
 
         """
+        session_check_name(new_name)
+
         proc = self.cmd(
             'rename-session',
             '-t%s' % self.id,

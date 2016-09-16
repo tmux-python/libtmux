@@ -20,6 +20,13 @@ class TmuxSessionExists(LibTmuxException):
     pass
 
 
+class BadSessionName(LibTmuxException):
+
+    """Session name is not allowed."""
+
+    pass
+
+
 class UnknownOption(LibTmuxException):
 
     """Option unknown to tmux show-option(s) or show-window-option(s)."""
