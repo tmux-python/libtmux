@@ -1,0 +1,9 @@
+div#changelog > div.section > ul > li > p:only-child {
+    margin-bottom: 0;
+}
+
+@media screen and (max-width: 768px) {
+    #fork-gh img {
+        display: none;
+    }
+}

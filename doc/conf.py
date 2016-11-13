@@ -56,6 +56,7 @@ else:
         html_theme = 'pyramid'
 
 html_theme_path = ['_themes']
+html_static_path = ['_static']
 
 htmlhelp_basename = '%sdoc' % about['__title__']
 
