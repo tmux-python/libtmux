@@ -164,6 +164,16 @@ powerful traversal features::
 .. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMAT
 .. _target: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
 
+Donations
+---------
+
+Your donations fund development of new features, testing and support.
+Your money will go directly to maintenance and development of the project.
+If you are an individual, feel free to give whatever feels right for the
+value you get out of the project.
+
+See donation options at https://git-pull.com/support.html.
+
 Project details
 ---------------
 
