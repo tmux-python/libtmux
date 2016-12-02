@@ -186,7 +186,7 @@ class tmux_cmd(object):
             if not self.stdout:
                 self.stdout = self.stderr[0]
 
-        logging.debug('self.stdout for %s: \n%s' %
+        logger.debug('self.stdout for %s: \n%s' %
                       (' '.join(cmd), self.stdout))
 
 
