@@ -156,11 +156,11 @@ powerful traversal features::
     Session($3 foo)
 
 .. _BSD: http://opensource.org/licenses/BSD-3-Clause
-.. _developing and testing: http://libtmux.readthedocs.io/developing.html
+.. _developing and testing: http://libtmux.git-pull.com/developing.html
 .. _tmuxp: https://github.com/tony/tmuxp
-.. _documentation: https://libtmux.readthedocs.io/
-.. _API: https://libtmux.readthedocs.io/api.html
-.. _architectural details: https://libtmux.readthedocs.io/about.html
+.. _documentation: https://libtmux.git-pull.com/
+.. _API: https://libtmux.git-pull.com/api.html
+.. _architectural details: https://libtmux.git-pull.com/about.html
 .. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMAT
 .. _target: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
 
@@ -182,8 +182,8 @@ tmux support    1.8, 1.9a, 2.0, 2.1, 2.2
 python support  2.6, 2.7, >= 3.3
 Source          https://github.com/tony/libtmux
 Docs            http://libtmux.rtfd.org
-API             http://libtmux.readthedocs.io/api.html
-Changelog       http://libtmux.readthedocs.io/history.html
+API             http://libtmux.git-pull.com/api.html
+Changelog       http://libtmux.git-pull.com/history.html
 Issues          https://github.com/tony/libtmux/issues
 Travis          http://travis-ci.org/tony/libtmux
 Test Coverage   https://coveralls.io/r/tony/libtmux
