@@ -30,8 +30,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
           - :class:`Pane`
 
-    When instantiated, provides the ``t`` global. stores information on live,
-    running tmux server.
+    When instantiated stores information on live, running tmux server.
 
     """
 
