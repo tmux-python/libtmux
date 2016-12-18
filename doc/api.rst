@@ -58,6 +58,9 @@ Internals
 .. autoclass:: libtmux.common.TmuxMappingObject
     :members:
 
+.. autoclass:: libtmux.common.EnvironmentMixin
+    :members:
+
 .. autoclass:: libtmux.common.tmux_cmd
 
 .. automethod:: libtmux.common.has_required_tmux_version
