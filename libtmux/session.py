@@ -145,7 +145,7 @@ class Session(
 
         :type window_name: string
         :param start_directory: specifies the working directory in which the
-            new created.
+            new window is created.
         :type start_directory: string
         :param attach: make new window the current window after creating it,
                        default True.

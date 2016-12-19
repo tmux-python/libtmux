@@ -368,7 +368,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
                        default True.
         :type attach: bool
         :param start_directory: specifies the working directory in which the
-            new created.
+            new window is created.
         :type start_directory: string
         :param target: ``target_pane`` to split.
         :type target: bool

@@ -401,6 +401,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
                     session_name=None,
                     kill_session=False,
                     attach=False,
+                    start_directory=None,
                     *args,
                     **kwargs):
         """Return :class:`Session` from  ``$ tmux new-session``.
@@ -428,6 +429,11 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         :param kill_session: Kill current session if ``$ tmux has-session``
                              Useful for testing workspaces.
         :type kill_session: bool
+
+        :param start_directory: specifies the working directory in which the
+            new session is created.
+        :type start_directory: string
+
         :raises: :exc:`exc.BadSessionName`
         :rtype: :class:`Session`
 
@@ -461,6 +467,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         if not attach:
             tmux_args += ('-d',)
 
+        if start_directory:
+            tmux_args += ('-c', start_directory)
         proc = self.cmd(
             'new-session',
             *tmux_args
