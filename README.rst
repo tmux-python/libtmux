@@ -161,7 +161,7 @@ powerful traversal features::
 .. _documentation: https://libtmux.git-pull.com/
 .. _API: https://libtmux.git-pull.com/api.html
 .. _architectural details: https://libtmux.git-pull.com/about.html
-.. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMAT
+.. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS
 .. _target: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
 
 Donations
