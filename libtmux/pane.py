@@ -103,7 +103,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
         self.cmd('send-keys', '-R \; clear-history')
 
-    def split_window(self, attach=False, vertical=True):
+    def split_window(self, attach=False, vertical=True, start_directory=None):
         """Split window at pane and return newly created :class:`Pane`.
 
         :param attach: Attach / select pane after creation.
@@ -111,10 +111,14 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         :param vertical: split vertically
         :type vertical: bool
         :rtype: :class:`Pane`.
+        :param start_directory: specifies the working directory in which the
+            new pane is created.
+        :type start_directory: string
 
         """
         return self.window.split_window(
             target=self.get('pane_id'),
+            start_directory=start_directory,
             attach=attach,
             vertical=vertical
         )
