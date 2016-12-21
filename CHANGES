@@ -4,6 +4,12 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.6.1 <2016-12-20>`
+- :support:`18` Fix logger, courtesy of @geekli
+- :support:`19` Add support for ``start_directory`` in new sessions and
+  panes, courtesy of @gandelman-a.
+- :support:`-` Fix tests and add official support for 2.3
+
 - :release:`0.6.0 <2016-09-16>`
 - :support:`-` Raise exception for invalid session names. tmux does not
   allow names that are empty, contain periods or colons.
