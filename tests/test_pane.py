@@ -31,9 +31,9 @@ def test_set_height(session):
     pane1 = window.attached_pane
     pane1_height = pane1['pane_height']
 
-    pane1.set_height(2)
+    pane1.set_height(4)
     assert pane1['pane_height'] != pane1_height
-    assert int(pane1['pane_height']) == 2
+    assert int(pane1['pane_height']) == 4
 
 
 def test_set_width(session):
