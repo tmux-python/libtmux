@@ -98,7 +98,7 @@ grab remaining tmux window:
 
 .. code-block:: python
 
-    >>> window = session.attached_window()
+    >>> window = session.attached_window
     >>> window.split_window(attach=False)
     Pane(%23 Window(@10 1:bar, Session($3 foo)))
 
