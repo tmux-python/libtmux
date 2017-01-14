@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 from distutils.version import StrictVersion
+from pkg_resources import parse_version
 
 from . import exc
 from ._compat import console_to_str
@@ -387,7 +388,7 @@ def is_version(version):
 
     installed_version = proc.stdout[0].split('tmux ')[1]
 
-    return installed_version == version
+    return parse_version(installed_version) == parse_version(version)
 
 
 def has_required_tmux_version(version=None):
