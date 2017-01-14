@@ -387,7 +387,7 @@ def is_version(version):
 
     installed_version = proc.stdout[0].split('tmux ')[1]
 
-    return StrictVersion(installed_version) == StrictVersion(version)
+    return installed_version == version
 
 
 def has_required_tmux_version(version=None):
