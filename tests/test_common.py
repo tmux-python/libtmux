@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from libtmux.common import has_required_tmux_version, which, session_check_name
+from libtmux.common import has_required_tmux_version, which, session_check_name, is_version
 from libtmux.exc import LibTmuxException, BadSessionName
 
 version_regex = re.compile(r'[0-9]\.[0-9]')
@@ -32,6 +32,10 @@ def test_ignores_letter_versions():
     result = has_required_tmux_version('1.8a')
     assert result == r'1.8'
 
+    # Should not throw
+    assert type(is_version('1.8'))  is bool
+    assert type(is_version('1.8a')) is bool
+    assert type(is_version('1.9a')) is bool
 
 def test_error_version_less_1_7():
     with pytest.raises(LibTmuxException) as excinfo:
