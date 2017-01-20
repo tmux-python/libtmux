@@ -4,6 +4,12 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.6.2 <2017-01-19>`
+- :support:`197` use `LooseVersion` instead of `StrictVersion` for version
+  checks. Thanks @minijackson.
+- :support:`-` Pin packages with pyup.io
+- :support:`21` Readme fix from @huwenchao.
+
 - :release:`0.6.1 <2016-12-20>`
 - :support:`18` Fix logger, courtesy of @geekli
 - :support:`19` Add support for ``start_directory`` in new sessions and
