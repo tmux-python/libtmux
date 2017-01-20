@@ -10,7 +10,7 @@ import logging
 import os
 import re
 import subprocess
-from distutils.version import StrictVersion
+from distutils.version import StrictVersion, LooseVersion
 
 from . import exc
 from ._compat import console_to_str
@@ -387,7 +387,7 @@ def is_version(version):
 
     installed_version = proc.stdout[0].split('tmux ')[1]
 
-    return StrictVersion(installed_version) == StrictVersion(version)
+    return LooseVersion(installed_version) == LooseVersion(version)
 
 
 def has_required_tmux_version(version=None):
