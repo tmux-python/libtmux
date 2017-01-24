@@ -5,7 +5,7 @@
 libtmux
 ~~~~~~~
 
-:copyright: Copyright 2016 Tony Narlock.
+:copyright: Copyright 2016-2017 Tony Narlock.
 :license: BSD, see LICENSE for details
 
 """
