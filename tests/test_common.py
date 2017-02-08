@@ -8,12 +8,17 @@ import pytest
 from libtmux.common import has_required_tmux_version, which, session_check_name, is_version
 from libtmux.exc import LibTmuxException, BadSessionName
 
-version_regex = re.compile(r'[0-9]\.[0-9]')
+version_regex = re.compile(r'([0-9]\.[0-9])|(master)')
 
 
 def test_no_arg_uses_tmux_version():
     """Test the :meth:`has_required_tmux_version`."""
     result = has_required_tmux_version()
+    assert version_regex.match(result) is not None
+
+
+def test_allows_master_version():
+    result = has_required_tmux_version('master')
     assert version_regex.match(result) is not None
 
 

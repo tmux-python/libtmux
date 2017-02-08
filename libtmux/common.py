@@ -412,6 +412,10 @@ def has_required_tmux_version(version=None):
 
         version = proc.stdout[0].split('tmux ')[1]
 
+    # Allow latest tmux HEAD
+    if version == 'master':
+        return version
+
     version = re.sub(r'[a-z]', '', version)
 
     if StrictVersion(version) <= StrictVersion("1.7"):
