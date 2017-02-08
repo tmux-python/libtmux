@@ -4,6 +4,9 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.6.3 <2017-02-08>`
+- :support:`25` support for working with tmux ``master``, thanks @sloria.
+
 - :release:`0.6.2 <2017-01-19>`
 - :support:`197` use `LooseVersion` instead of `StrictVersion` for version
   checks. Thanks @minijackson.
