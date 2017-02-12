@@ -4,8 +4,8 @@ libtmux - scripting library for tmux
 
 libtmux is the tool behind `tmuxp`_, a tmux workspace manager in python.
 
-it builds upon tmux' `target`_ and `formats`_ to create an object
-mappings to traverse, inspect and interact with live tmux sesssions.
+it builds upon tmux's `target`_ and `formats`_ to create an object
+mapping to traverse, inspect and interact with live tmux sessions.
 
 view the `documentation`_ homepage,  `API`_ information and `architectural
 details`_.
