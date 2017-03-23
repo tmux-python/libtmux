@@ -159,7 +159,7 @@ powerful traversal features::
 .. _developing and testing: http://libtmux.git-pull.com/en/latest/developing.html
 .. _tmuxp: https://github.com/tony/tmuxp
 .. _documentation: https://libtmux.git-pull.com/
-.. _API: https://libtmux.git-pull.com/api.html
+.. _API: https://libtmux.git-pull.com/en/latest/api.html
 .. _architectural details: https://libtmux.git-pull.com/en/latest/about.html
 .. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS
 .. _target: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
