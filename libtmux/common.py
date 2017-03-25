@@ -9,6 +9,7 @@ import collections
 import logging
 import os
 import re
+import sys
 import subprocess
 from distutils.version import StrictVersion, LooseVersion
 
@@ -380,6 +381,12 @@ def is_version(version):
     :rtype: bool
 
     """
+    if sys.platform.startswith("openbsd"):
+        if LooseVersion(version) > LooseVersion('2.1'):
+            return 'openbsd'
+        else:
+            return False
+
     proc = tmux_cmd('-V')
 
     if proc.stderr:
@@ -401,6 +408,9 @@ def has_required_tmux_version(version=None):
     """
 
     if not version:
+        if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
+            return '2.3'
+
         proc = tmux_cmd('-V')
 
         if proc.stderr:
