@@ -58,15 +58,14 @@ def test_error_version_less_1_7():
     has_required_tmux_version('1.9a')
 
 
-def test_which_no_bin_found(monkeypatch):
-    monkeypatch.setenv("PATH", "/")
+def test_which_no_bin_found():
     assert which('top')
     assert which('top', default_paths=[])
     assert not which('top', default_paths=[], append_env_path=False)
     assert not which('top', default_paths=['/'], append_env_path=False)
 
 
-def test_tmux_cmd_raises_on_not_found(monkeypatch):
+def test_tmux_cmd_raises_on_not_found():
     with pytest.raises(TmuxCommandNotFound):
         tmux_cmd('-V', tmux_search_paths=[], append_env_path=False)
 
