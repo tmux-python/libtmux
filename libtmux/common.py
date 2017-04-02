@@ -129,7 +129,7 @@ class tmux_cmd(object):
 
     :param tmux_search_paths: Default PATHs to search tmux for, defaults to
         ``default_paths`` used in :func:`which`.
-    :type tmux_search_path: list
+    :type tmux_search_paths: list
     :param append_env_path: Append environment PATHs to tmux search paths.
     :type append_env_path: bool
 
