@@ -150,7 +150,12 @@ class tmux_cmd(object):
     """
 
     def __init__(self, *args, **kwargs):
-        cmd = [which('tmux')]
+
+        tmux_bin = which('tmux')
+        if not tmux_bin:
+            raise(exc.TmuxCommandNotFound)
+
+        cmd = [tmux_bin]
         cmd += args  # add the command arguments to cmd
         cmd = [str(c) for c in cmd]
 
@@ -187,8 +192,10 @@ class tmux_cmd(object):
             if not self.stdout:
                 self.stdout = self.stderr[0]
 
-        logger.debug('self.stdout for %s: \n%s' %
-                      (' '.join(cmd), self.stdout))
+        logger.debug(
+            'self.stdout for %s: \n%s' %
+            (' '.join(cmd), self.stdout)
+        )
 
 
 class TmuxMappingObject(collections.MutableMapping):
@@ -329,10 +336,9 @@ class TmuxRelationalObject(object):
         return None
 
 
-def which(exe=None,
-          default_paths=[
-              '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin']
-          ):
+def which(exe=None, default_paths=[
+            '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin'
+        ], append_env_path=True):
     """Return path of bin. Python clone of /usr/bin/which.
 
     from salt.util - https://www.github.com/saltstack/salt - license apache
@@ -341,6 +347,8 @@ def which(exe=None,
     :type exe: string
     :param default_path: Application to search PATHs for.
     :type default_path: list
+    :param append_env_path: Append PATHs in environmental variables.
+    :type append_env_path: bool
     :rtype: string
 
     """
@@ -356,8 +364,12 @@ def which(exe=None,
     # Enhance POSIX path for the reliability at some environments, when
     # $PATH is changing. This also keeps order, where 'first came, first
     # win' for cases to find optional alternatives
-    search_path = os.environ.get('PATH') and \
-        os.environ['PATH'].split(os.pathsep) or list()
+    if append_env_path:
+        search_path = os.environ.get('PATH') and \
+            os.environ['PATH'].split(os.pathsep) or list()
+    else:
+        search_path = []
+
     for default_path in default_paths:
         if default_path not in search_path:
             search_path.append(default_path)

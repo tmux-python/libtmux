@@ -20,6 +20,13 @@ class TmuxSessionExists(LibTmuxException):
     pass
 
 
+class TmuxCommandNotFound(LibTmuxException):
+
+    """Application binary for tmux not found."""
+
+    pass
+
+
 class BadSessionName(LibTmuxException):
 
     """Disallowed session name for tmux (empty, contains periods or colons)."""
