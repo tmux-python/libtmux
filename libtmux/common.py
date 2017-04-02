@@ -127,6 +127,12 @@ class tmux_cmd(object):
 
     """:term:`tmux(1)` command via :py:mod:`subprocess`.
 
+    :param tmux_search_paths: Default PATHs to search tmux for, defaults to
+        ``default_paths`` used in :func:`which`.
+    :type tmux_search_path: list
+    :param append_env_path: Append environment PATHs to tmux search paths.
+    :type append_env_path: bool
+
     Usage::
 
         proc = tmux_cmd('new-session', '-s%' % 'my session')
@@ -150,8 +156,13 @@ class tmux_cmd(object):
     """
 
     def __init__(self, *args, **kwargs):
-
-        tmux_bin = which('tmux')
+        tmux_bin = which(
+            'tmux',
+            default_paths=kwargs.get('tmux_search_paths', [
+                '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin'
+            ]),
+            append_env_path=kwargs.get('append_env_path', True)
+        )
         if not tmux_bin:
             raise(exc.TmuxCommandNotFound)
 

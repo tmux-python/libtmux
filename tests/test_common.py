@@ -6,9 +6,9 @@ import re
 import pytest
 
 from libtmux.common import (
-    has_required_tmux_version, which, session_check_name, is_version
+    has_required_tmux_version, which, session_check_name, is_version, tmux_cmd
 )
-from libtmux.exc import LibTmuxException, BadSessionName
+from libtmux.exc import LibTmuxException, BadSessionName, TmuxCommandNotFound
 
 version_regex = re.compile(r'([0-9]\.[0-9])|(master)')
 
@@ -61,8 +61,16 @@ def test_error_version_less_1_7():
 def test_which_no_bin_found(monkeypatch):
     monkeypatch.setenv("PATH", "/")
     assert which('top')
-    assert which('top', default_paths=['/'])
+    assert which('top', default_paths=[])
+    assert not which('top', default_paths=[], append_env_path=False)
     assert not which('top', default_paths=['/'], append_env_path=False)
+
+
+def test_tmux_cmd_raises_on_not_found(monkeypatch):
+    with pytest.raises(TmuxCommandNotFound):
+        tmux_cmd('-V', tmux_search_paths=[], append_env_path=False)
+
+    tmux_cmd('-V')
 
 
 @pytest.mark.parametrize("session_name,raises,exc_msg_regex", [
