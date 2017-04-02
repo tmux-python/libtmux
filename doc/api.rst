@@ -74,6 +74,8 @@ Exceptions
 
 .. autoexception:: libtmux.exc.LibTmuxException
 
+.. autoexception:: libtmux.exc.TmuxCommandNotFound
+
 .. autoexception:: libtmux.exc.TmuxSessionExists
 
 .. autoexception:: libtmux.exc.BadSessionName

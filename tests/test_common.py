@@ -5,8 +5,10 @@ import re
 
 import pytest
 
-from libtmux.common import has_required_tmux_version, which, session_check_name, is_version
-from libtmux.exc import LibTmuxException, BadSessionName
+from libtmux.common import (
+    has_required_tmux_version, which, session_check_name, is_version, tmux_cmd
+)
+from libtmux.exc import LibTmuxException, BadSessionName, TmuxCommandNotFound
 
 version_regex = re.compile(r'([0-9]\.[0-9])|(master)')
 
@@ -38,9 +40,10 @@ def test_ignores_letter_versions():
     assert result == r'1.8'
 
     # Should not throw
-    assert type(is_version('1.8'))  is bool
+    assert type(is_version('1.8')) is bool
     assert type(is_version('1.8a')) is bool
     assert type(is_version('1.9a')) is bool
+
 
 def test_error_version_less_1_7():
     with pytest.raises(LibTmuxException) as excinfo:
@@ -55,10 +58,18 @@ def test_error_version_less_1_7():
     has_required_tmux_version('1.9a')
 
 
-def test_which_no_tmuxp_found(monkeypatch):
-    monkeypatch.setenv("PATH", "/")
-    which('tmuxp')
-    which('tmuxp', '/')
+def test_which_no_bin_found():
+    assert which('top')
+    assert which('top', default_paths=[])
+    assert not which('top', default_paths=[], append_env_path=False)
+    assert not which('top', default_paths=['/'], append_env_path=False)
+
+
+def test_tmux_cmd_raises_on_not_found():
+    with pytest.raises(TmuxCommandNotFound):
+        tmux_cmd('-V', tmux_search_paths=[], append_env_path=False)
+
+    tmux_cmd('-V')
 
 
 @pytest.mark.parametrize("session_name,raises,exc_msg_regex", [
