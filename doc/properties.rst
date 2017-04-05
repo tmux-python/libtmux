@@ -52,7 +52,7 @@ attach default tmux :class:`libtmux.Server` to ``t``:
 Session
 -------
 
-get our ``session`` object:
+get the ``session`` object:
 
 .. code-block:: python
 
@@ -144,7 +144,7 @@ use ``get()`` for details not accessible via properties:
 Panes
 -----
 
-get our pane:
+get the pane:
 
 .. code-block:: python
 
