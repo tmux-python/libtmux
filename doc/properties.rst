@@ -186,4 +186,4 @@ use ``get()`` for details keys:
     >>> pane.get('pane_width')
     u'70'
 
-.. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMAT
+.. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS
