@@ -16,7 +16,7 @@ Explore:
     quickstart
     about
     properties
-    traversing
+    traversal
     servers
     sessions
     windows

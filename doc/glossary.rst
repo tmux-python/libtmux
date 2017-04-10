@@ -8,7 +8,7 @@ Glossary
 .. glossary::
 
     libtmux
-        Python library for traversing, creating and managing tmux.
+        Python library for interfacing with tmux through its objects.
 
     tmuxp
         A tool to manage workspaces with tmux, built on libtmux.

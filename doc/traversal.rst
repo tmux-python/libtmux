@@ -1,10 +1,10 @@
-.. _Traversing:
+.. _Traversal:
 
-==========
-Traversing
-==========
+=========
+Traversal
+=========
 
-libtmux offers you a handy way to move around the hierachy of sessions,
+libtmux convenient access to move around the hierachy of sessions,
 windows and panes in tmux.
 
 this is done by libtmux's object abstraction of `target`\_s (the ``-t``
