@@ -195,7 +195,7 @@ git repo        .. code-block:: bash
                     $ git clone https://github.com/tony/libtmux.git
 install stable  .. code-block:: bash
 
-                    $ sudo pip install libtmux
+                    $ pip install libtmux
 install dev     .. code-block:: bash
 
                     $ git clone https://github.com/tony/libtmux.git libtmux
