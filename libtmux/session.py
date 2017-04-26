@@ -358,6 +358,9 @@ class Session(
             error = proc.stderr[0]
             if 'unknown option' in error:
                 raise exc.UnknownOption(error)
+            elif 'invalid option' in error:
+                raise exc.InvalidOption(error)
+
             raise ValueError('tmux set-option stderr: %s' % error)
 
     def show_options(self, option=None, g=False):

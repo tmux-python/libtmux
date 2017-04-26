@@ -150,17 +150,20 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
             error = cmd.stderr[0]
-            if 'unknown option' in error:
+            if any(
+                x in error
+                for x in ['unknown option', 'invalid option']
+            ):
                 raise exc.UnknownOption(error)
 
             raise ValueError(
-                'tmux set-window-option -t%s:%s %s %s\n' % (
+                'tmux set-window-option -t%s:%s %s %s\n%s' % (
                     self.get('session_id'),
                     self.index,
                     option,
-                    value
-                ) +
-                cmd.stderr
+                    value,
+                    error
+                )
             )
 
     def show_window_options(self, option=None, g=False):
@@ -224,8 +227,11 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             'show-window-options', *tmux_args
         )
 
-        if len(cmd.stderr) and 'unknown option' in cmd.stderr[0]:
-            raise exc.UnknownOption(cmd.stderr[0])
+        if len(cmd.stderr):
+            if 'unknown option' in cmd.stderr:
+                raise exc.UnknownOption(cmd.stderr[0])
+            elif 'invalid option' in cmd.stderr:
+                raise exc.InvalidOption(cmd.stderr[0])
 
         if not len(cmd.stdout):
             return None

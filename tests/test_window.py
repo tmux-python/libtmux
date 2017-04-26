@@ -180,7 +180,7 @@ def test_set_show_window_options(session):
 
 def test_empty_window_option_returns_None(session):
     window = session.new_window(window_name='test_window')
-    assert window.show_window_option('default-shell') is None
+    assert window.show_window_option('alternate-screen') is None
 
 
 def test_show_window_option(session):

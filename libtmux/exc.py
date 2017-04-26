@@ -34,8 +34,22 @@ class BadSessionName(LibTmuxException):
     pass
 
 
-class UnknownOption(LibTmuxException):
+class OptionError(LibTmuxException):
+
+    """Root error for any error involving invalid, ambiguous or bad options."""
+
+    pass
+
+
+class UnknownOption(OptionError):
 
     """Option unknown to tmux show-option(s) or show-window-option(s)."""
+
+    pass
+
+
+class InvalidOption(OptionError):
+
+    """Option invalid to tmux, introduced in tmux v2.4."""
 
     pass
