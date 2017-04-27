@@ -408,6 +408,9 @@ def get_version():
     If tmux is built from git master, the version returned will be the latest
     version appended with -master, e.g. ``2.4-master``.
 
+    If using OpenBSD's base system tmux, the version will have ``-openbsd``
+    appended to the latest version, e.g. ``2.4-openbsd``.
+
     :returns: tmux version
     :rtype: :class:`distutils.version.LooseVersion`
     """
@@ -415,7 +418,7 @@ def get_version():
     if proc.stderr:
         if proc.stderr[0] == 'tmux: unknown option -- V':
             if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
-                return LooseVersion(TMUX_MAX_VERSION)
+                return LooseVersion('%s-openbsd' % TMUX_MAX_VERSION)
             raise exc.LibTmuxException(
                 'libtmux supports tmux %s and greater. This system'
                 ' is running tmux 1.3 or earlier.' % TMUX_MIN_VERSION

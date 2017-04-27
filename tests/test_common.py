@@ -45,7 +45,14 @@ def test_get_version_openbsd(monkeypatch):
         return Hi()
     monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
     monkeypatch.setattr(sys, 'platform', 'openbsd 5.2')
-    assert get_version() == LooseVersion(TMUX_MAX_VERSION)
+    assert has_minimum_version()
+    assert has_gte_version(TMUX_MIN_VERSION)
+    assert has_gt_version(TMUX_MAX_VERSION), (
+        "Greater than the max-supported version"
+    )
+    assert '%s-openbsd' % TMUX_MAX_VERSION == get_version(), (
+        "Is the latest supported version with -openbsd appended"
+    )
 
 
 def test_get_version_too_low(monkeypatch):
