@@ -441,7 +441,29 @@ def has_gt_version(min_version):
     :returns: True if version above min_version
     :rtype: bool
     """
+    return get_version() > LooseVersion(min_version)
+
+
+def has_gte_version(min_version):
+    """Return True if tmux version greater or equal to minimum.
+
+    :param min_version: version, e.g. '1.8'
+    :type min_version: string
+    :returns: True if version above or equal to min_version
+    :rtype: bool
+    """
     return get_version() >= LooseVersion(min_version)
+
+
+def has_lte_version(max_version):
+    """Return True if tmux version less or equal to minimum.
+
+    :param max_version: version, e.g. '1.8'
+    :type max_version: string
+    :returns: True if version below or equal to max_version
+    :rtype: bool
+    """
+    return get_version() <= LooseVersion(max_version)
 
 
 def has_lt_version(max_version):
@@ -452,7 +474,7 @@ def has_lt_version(max_version):
     :returns: True if version below max_version
     :rtype: bool
     """
-    return get_version() <= LooseVersion(max_version)
+    return get_version() < LooseVersion(max_version)
 
 
 def has_minimum_tmux_version(raises=True):

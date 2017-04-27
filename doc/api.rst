@@ -69,7 +69,11 @@ Internals
 
 .. automethod:: libtmux.common.has_gt_version
 
+.. automethod:: libtmux.common.has_gte_version
+
 .. automethod:: libtmux.common.has_lt_version
+
+.. automethod:: libtmux.common.has_lte_version
 
 .. automethod:: libtmux.common.has_minimum_tmux_version
 

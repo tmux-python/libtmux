@@ -12,7 +12,8 @@ import libtmux
 
 from libtmux.common import (
     has_minimum_tmux_version, which, session_check_name, tmux_cmd,
-    has_version, has_gt_version, has_lt_version, get_version
+    has_version, has_gt_version, has_lt_version, get_version,
+    has_gte_version, has_lte_version
 )
 from libtmux.exc import LibTmuxException, BadSessionName, TmuxCommandNotFound
 
@@ -94,7 +95,18 @@ def test_has_version():
 def test_has_gt_version():
     assert has_gt_version('1.6')
     assert has_gt_version('1.6b')
+
     assert not has_gt_version('4.0')
+    assert not has_gt_version('4.0b')
+
+
+def test_has_gte_version():
+    assert has_gte_version('1.6')
+    assert has_gte_version('1.6b')
+    assert has_gte_version(str(get_version()))
+
+    assert not has_gte_version('4.0')
+    assert not has_gte_version('4.0b')
 
 
 def test_has_lt_version():
@@ -102,6 +114,16 @@ def test_has_lt_version():
     assert has_lt_version('4.0')
 
     assert not has_lt_version('1.7')
+    assert not has_lt_version(str(get_version()))
+
+
+def test_has_lte_version():
+    assert has_lte_version('4.0a')
+    assert has_lte_version('4.0')
+    assert has_lte_version(str(get_version()))
+
+    assert not has_lte_version('1.7')
+    assert not has_lte_version('1.7b')
 
 
 def test_which_no_bin_found():
