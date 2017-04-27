@@ -13,7 +13,7 @@ import libtmux
 from libtmux.common import (
     has_minimum_version, which, session_check_name, tmux_cmd,
     has_version, has_gt_version, has_lt_version, get_version,
-    has_gte_version, has_lte_version, TMUX_MAX_VERSION
+    has_gte_version, has_lte_version, TMUX_MAX_VERSION, TMUX_MIN_VERSION
 )
 from libtmux.exc import LibTmuxException, BadSessionName, TmuxCommandNotFound
 
@@ -29,6 +29,13 @@ def test_allows_master_version(monkeypatch):
     monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
 
     assert has_minimum_version()
+    assert has_gte_version(TMUX_MIN_VERSION)
+    assert has_gt_version(TMUX_MAX_VERSION), (
+        "Greater than the max-supported version"
+    )
+    assert '%s-master' % TMUX_MAX_VERSION == get_version(), (
+        "Is the latest supported version with -master appended"
+    )
 
 
 def test_get_version_openbsd(monkeypatch):

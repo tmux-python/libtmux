@@ -405,6 +405,9 @@ def which(exe=None, default_paths=[
 def get_version():
     """Return tmux version.
 
+    If tmux is built from git master, the version returned will be the latest
+    version appended with -master, e.g. ``2.4-master``.
+
     :returns: tmux version
     :rtype: :class:`distutils.version.LooseVersion`
     """
@@ -423,7 +426,7 @@ def get_version():
 
     # Allow latest tmux HEAD
     if version == 'master':
-        return LooseVersion(TMUX_MAX_VERSION)
+        return LooseVersion('%s-master' % TMUX_MAX_VERSION)
 
     version = re.sub(r'[a-z]', '', version)
 
