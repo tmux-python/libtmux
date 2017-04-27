@@ -75,7 +75,7 @@ Internals
 
 .. automethod:: libtmux.common.has_lte_version
 
-.. automethod:: libtmux.common.has_minimum_tmux_version
+.. automethod:: libtmux.common.has_minimum_version
 
 .. automethod:: libtmux.common.handle_option_error
 

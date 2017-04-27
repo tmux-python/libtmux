@@ -477,7 +477,7 @@ def has_lt_version(max_version):
     return get_version() < LooseVersion(max_version)
 
 
-def has_minimum_tmux_version(raises=True):
+def has_minimum_version(raises=True):
     """Return if tmux meets version requirement. Version >1.8 or above.
 
     :param raises: Will raise exception if version too low, default ``True``

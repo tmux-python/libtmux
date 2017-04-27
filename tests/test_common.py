@@ -11,7 +11,7 @@ from distutils.version import LooseVersion
 import libtmux
 
 from libtmux.common import (
-    has_minimum_tmux_version, which, session_check_name, tmux_cmd,
+    has_minimum_version, which, session_check_name, tmux_cmd,
     has_version, has_gt_version, has_lt_version, get_version,
     has_gte_version, has_lte_version
 )
@@ -25,7 +25,7 @@ def test_allows_master_version(monkeypatch):
         return LooseVersion('master')
     monkeypatch.setattr(libtmux.common, 'get_version', mock_get_version)
 
-    assert has_minimum_tmux_version()
+    assert has_minimum_version()
 
 
 def test_get_version_openbsd(monkeypatch):
@@ -62,10 +62,10 @@ def test_ignores_letter_versions():
     allow letters.
 
     """
-    result = has_minimum_tmux_version('1.9a')
+    result = has_minimum_version('1.9a')
     assert result
 
-    result = has_minimum_tmux_version('1.8a')
+    result = has_minimum_version('1.8a')
     assert result
 
     # Should not throw
@@ -79,11 +79,11 @@ def test_error_version_less_1_7(monkeypatch):
         return LooseVersion('1.7')
     monkeypatch.setattr(libtmux.common, 'get_version', mock_get_version)
     with pytest.raises(LibTmuxException) as excinfo:
-        has_minimum_tmux_version()
+        has_minimum_version()
         excinfo.match(r'libtmux only supports')
 
     with pytest.raises(LibTmuxException) as excinfo:
-        has_minimum_tmux_version()
+        has_minimum_version()
 
         excinfo.match(r'libtmux only supports')
 
