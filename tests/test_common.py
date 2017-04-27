@@ -13,7 +13,7 @@ import libtmux
 from libtmux.common import (
     has_minimum_version, which, session_check_name, tmux_cmd,
     has_version, has_gt_version, has_lt_version, get_version,
-    has_gte_version, has_lte_version
+    has_gte_version, has_lte_version, TMUX_MAX_VERSION
 )
 from libtmux.exc import LibTmuxException, BadSessionName, TmuxCommandNotFound
 
@@ -37,7 +37,7 @@ def test_get_version_openbsd(monkeypatch):
         return proc
     monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
     monkeypatch.setattr(sys, 'platform', 'openbsd 5.2')
-    assert get_version() == LooseVersion('2.3')
+    assert get_version() == LooseVersion(TMUX_MAX_VERSION)
 
 
 def test_get_version_too_low(monkeypatch):

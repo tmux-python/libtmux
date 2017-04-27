@@ -52,6 +52,11 @@ Pane Object
 Internals
 ---------
 
+
+.. autodata:: libtmux.common.TMUX_MIN_VERSION
+
+.. autodata:: libtmux.common.TMUX_MAX_VERSION
+
 .. autoclass:: libtmux.common.TmuxRelationalObject
     :members:
 

@@ -19,6 +19,13 @@ from ._compat import console_to_str
 logger = logging.getLogger(__name__)
 
 
+#: Minimum version of tmux required to run libtmux
+TMUX_MIN_VERSION = '1.8'
+
+#: Most recent version of tmux supported
+TMUX_MAX_VERSION = '2.4'
+
+
 class EnvironmentMixin(object):
 
     """Mixin class for managing session and server level environment
@@ -405,10 +412,11 @@ def get_version():
     if proc.stderr:
         if proc.stderr[0] == 'tmux: unknown option -- V':
             if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
-                return LooseVersion('2.3')
+                return LooseVersion(TMUX_MAX_VERSION)
             raise exc.LibTmuxException(
-                'libtmux supports tmux 1.8 and greater. This system'
-                ' is running tmux 1.3 or earlier.')
+                'libtmux supports tmux %s and greater. This system'
+                ' is running tmux 1.3 or earlier.' % TMUX_MIN_VERSION
+            )
         raise exc.VersionTooLow(proc.stderr)
 
     version = proc.stdout[0].split('tmux ')[1]
@@ -494,12 +502,12 @@ def has_minimum_version(raises=True):
 
     """
 
-    if get_version() <= LooseVersion("1.7"):
+    if get_version() < LooseVersion(TMUX_MIN_VERSION):
         if raises:
             raise exc.VersionTooLow(
-                'libtmux only supports tmux 1.8 and greater. This system'
+                'libtmux only supports tmux %s and greater. This system'
                 ' has %s installed. Upgrade your tmux to use libtmux.' %
-                get_version()
+                (TMUX_MIN_VERSION, get_version())
             )
         else:
             return False
