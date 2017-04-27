@@ -6,6 +6,7 @@ import logging
 import pytest
 
 from libtmux import Pane, Server, Window, exc
+from libtmux.common import has_gte_version
 
 
 logger = logging.getLogger(__name__)
@@ -198,17 +199,38 @@ def test_show_window_option(session):
 def test_show_window_option_unknown(session):
     """Window.show_window_option raises UnknownOption for bad option key."""
     window = session.new_window(window_name='test_window')
+
     with pytest.raises(exc.UnknownOption):
         window.show_window_option('moooz')
 
 
-def test_set_window_option_bad(session):
-    """Window.set_window_option raises ValueError for bad option key."""
+def test_show_window_option_ambiguous(session):
+    """show_window_option raises AmbiguousOption for ambiguous option."""
+    window = session.new_window(window_name='test_window')
+
+    with pytest.raises(exc.AmbiguousOption):
+        window.show_window_option('clock-mode')
+
+
+def test_set_window_option_ambiguous(session):
+    """set_window_option raises AmbiguousOption for ambiguous option."""
+    window = session.new_window(window_name='test_window')
+
+    with pytest.raises(exc.AmbiguousOption):
+        window.set_window_option('clock-mode', 12)
+
+
+def test_set_window_option_invalid(session):
+    """Window.set_window_option raises ValueError for invalid option key."""
 
     window = session.new_window(window_name='test_window')
 
-    with pytest.raises(exc.UnknownOption):
-        window.set_window_option('afewewfew', 43)
+    if has_gte_version('2.4'):
+        with pytest.raises(exc.InvalidOption):
+            window.set_window_option('afewewfew', 43)
+    else:
+        with pytest.raises(exc.UnknownOption):
+            window.set_window_option('afewewfew', 43)
 
 
 def test_move_window(session):

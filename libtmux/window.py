@@ -11,7 +11,9 @@ import logging
 import os
 
 from . import exc, formats
-from .common import TmuxMappingObject, TmuxRelationalObject
+from .common import (
+    TmuxMappingObject, TmuxRelationalObject, handle_option_error
+)
 from .pane import Pane
 
 logger = logging.getLogger(__name__)
@@ -149,22 +151,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
-            error = cmd.stderr[0]
-            if any(
-                x in error
-                for x in ['unknown option', 'invalid option']
-            ):
-                raise exc.UnknownOption(error)
-
-            raise ValueError(
-                'tmux set-window-option -t%s:%s %s %s\n%s' % (
-                    self.get('session_id'),
-                    self.index,
-                    option,
-                    value,
-                    error
-                )
-            )
+            handle_option_error(cmd.stderr[0])
 
     def show_window_options(self, option=None, g=False):
         """Return a dict of options for the window.
@@ -228,10 +215,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         )
 
         if len(cmd.stderr):
-            if 'unknown option' in cmd.stderr:
-                raise exc.UnknownOption(cmd.stderr[0])
-            elif 'invalid option' in cmd.stderr:
-                raise exc.InvalidOption(cmd.stderr[0])
+            handle_option_error(cmd.stderr[0])
 
         if not len(cmd.stdout):
             return None

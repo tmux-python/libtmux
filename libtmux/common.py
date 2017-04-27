@@ -9,8 +9,8 @@ import collections
 import logging
 import os
 import re
-import sys
 import subprocess
+import sys
 from distutils.version import LooseVersion
 
 from . import exc
