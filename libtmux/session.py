@@ -240,7 +240,7 @@ class Session(
 
     @property
     def _windows(self):
-        """Property / alias to return :meth:`~._list_windows`."""
+        """Property / alias to return :meth:`Session._list_windows`."""
 
         return self._list_windows()
 
@@ -258,7 +258,7 @@ class Session(
 
     @property
     def windows(self):
-        """Property / alias to return :meth:`~.list_windows`."""
+        """Property / alias to return :meth:`Session.list_windows`."""
         return self.list_windows()
 
     #: Alias of :attr:`windows`, used by :class:`TmuxRelationalObject`

@@ -274,8 +274,8 @@ class TmuxRelationalObject(object):
     Object           .children                 method
     ================ ========================= =================================
     :class:`Server`  :attr:`Server._sessions`  :meth:`Server.list_sessions`
-    :class:`Session` :attr:`Sessions._windows` :meth:`Session.list_windows`
-    :class:`Window`  :attr:`Windows._panes`    :meth:`Window.list_panes`
+    :class:`Session` :attr:`Session._windows`  :meth:`Session.list_windows`
+    :class:`Window`  :attr:`Window._panes`     :meth:`Window.list_panes`
     :class:`Pane`    n/a                       n/a
     ================ ========================= =================================
 
