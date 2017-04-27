@@ -399,6 +399,8 @@ class Session(
         :param global: check for option globally across all servers (-g)
         :type global: bool
         :rtype: string, int or bool
+        :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+            :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
 
         """
 

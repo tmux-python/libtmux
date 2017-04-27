@@ -130,10 +130,13 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     def set_window_option(self, option, value):
         """Wrapper for ``$ tmux set-window-option <option> <value>``.
 
+        :param option: option to set, e.g. 'aggressive-resize'
+        :type option: str
         :param value: window value. True/False will turn in 'on' and 'off',
             also accepts string of 'on' or 'off' directly.
         :type value: bool
-
+        :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+            :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
 
         self.server._update_windows()
@@ -200,6 +203,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         :param g: Pass ``-g`` flag, global.
         :type g: bool
         :rtype: string, int
+        :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+            :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
 
         """
 
