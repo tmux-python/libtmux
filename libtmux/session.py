@@ -12,7 +12,7 @@ import os
 
 from . import exc, formats
 from .common import EnvironmentMixin, TmuxMappingObject, \
-    TmuxRelationalObject, session_check_name
+    TmuxRelationalObject, session_check_name, handle_option_error
 from .window import Window
 
 logger = logging.getLogger(__name__)
@@ -132,17 +132,10 @@ class Session(
                    window_shell=None):
         """Return :class:`Window` from ``$ tmux new-window``.
 
-        .. note::
-
-            By default, this will make the window active. For the new window
-            to be created and not set to current, pass in ``attach=False``.
+        By default, this will make the window active. For the new window
+        to be created and not set to current, pass in ``attach=False``.
 
         :param window_name: window name.
-
-        .. code-block:: bash
-
-            $ tmux new-window -n <window_name> -c <start_directory>
-
         :type window_name: string
         :param start_directory: specifies the working directory in which the
             new window is created.
@@ -247,7 +240,7 @@ class Session(
 
     @property
     def _windows(self):
-        """Property / alias to return :meth:`~._list_windows`."""
+        """Property / alias to return :meth:`Session._list_windows`."""
 
         return self._list_windows()
 
@@ -265,7 +258,7 @@ class Session(
 
     @property
     def windows(self):
-        """Property / alias to return :meth:`~.list_windows`."""
+        """Property / alias to return :meth:`Session.list_windows`."""
         return self.list_windows()
 
     #: Alias of :attr:`windows`, used by :class:`TmuxRelationalObject`
@@ -335,6 +328,8 @@ class Session(
         :type value: bool
         :param global: check for option globally across all servers (-g)
         :type global: bool
+        :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+            :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
 
         """
 
@@ -355,10 +350,7 @@ class Session(
         )
 
         if isinstance(proc.stderr, list) and len(proc.stderr):
-            error = proc.stderr[0]
-            if 'unknown option' in error:
-                raise exc.UnknownOption(error)
-            raise ValueError('tmux set-option stderr: %s' % error)
+            handle_option_error(proc.stderr[0])
 
     def show_options(self, option=None, g=False):
         """Return a dict of options for the window.
@@ -407,6 +399,8 @@ class Session(
         :param global: check for option globally across all servers (-g)
         :type global: bool
         :rtype: string, int or bool
+        :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+            :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
 
         """
 
@@ -422,11 +416,7 @@ class Session(
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
-            error = cmd.stderr[0]
-            if 'unknown option' in error:
-                raise exc.UnknownOption(error)
-            else:
-                raise exc.LibTmuxException(error)
+            handle_option_error(cmd.stderr[0])
 
         if not len(cmd.stdout):
             return None

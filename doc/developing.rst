@@ -170,7 +170,7 @@ libtmux uses `travis-ci`_ for continuous integration / automatic unit
 testing.
 
 libtmux is tested against tmux 1.8 and the latest git source. Interpretters
-tested are 2.6, 2.7 and 3.3. The `travis build site`_ uses this
+tested are pypy, pypy3, 2.7 and >= 3.3. The `travis build site`_ uses this
 `.travis.yml`_ configuration:
 
 .. literalinclude:: ../.travis.yml

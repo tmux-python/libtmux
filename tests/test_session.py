@@ -7,6 +7,7 @@ import logging
 import pytest
 
 from libtmux import Pane, Session, Window, exc
+from libtmux.common import has_gte_version
 from libtmux.test import TEST_SESSION_PREFIX, namer
 
 logger = logging.getLogger(__name__)
@@ -133,15 +134,31 @@ def test_empty_session_option_returns_None(session):
 
 
 def test_show_option_unknown(session):
-    """Session.show_option raises UnknownOption for bad option key."""
+    """Session.show_option raises UnknownOption for invalid option."""
     with pytest.raises(exc.UnknownOption):
         session.show_option('moooz')
 
 
-def test_set_option_bad(session):
-    """Session.set_option raises UnknownOption for bad option key."""
-    with pytest.raises(exc.UnknownOption):
-        session.set_option('afewewfew', 43)
+def test_show_option_ambiguous(session):
+    """Session.show_option raises AmbiguousOption for ambiguous option."""
+    with pytest.raises(exc.AmbiguousOption):
+        session.show_option('bell-')
+
+
+def test_set_option_ambigous(session):
+    """Session.set_option raises AmbiguousOption for invalid option."""
+    with pytest.raises(exc.AmbiguousOption):
+        session.set_option('bell-', 43)
+
+
+def test_set_option_invalid(session):
+    """Session.set_option raises UnknownOption for invalid option."""
+    if has_gte_version('2.4'):
+        with pytest.raises(exc.InvalidOption):
+            session.set_option('afewewfew', 43)
+    else:
+        with pytest.raises(exc.UnknownOption):
+            session.set_option('afewewfew', 43)
 
 
 def test_show_environment(session):

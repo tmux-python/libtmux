@@ -9,14 +9,21 @@ import collections
 import logging
 import os
 import re
-import sys
 import subprocess
-from distutils.version import StrictVersion, LooseVersion
+import sys
+from distutils.version import LooseVersion
 
 from . import exc
 from ._compat import console_to_str
 
 logger = logging.getLogger(__name__)
+
+
+#: Minimum version of tmux required to run libtmux
+TMUX_MIN_VERSION = '1.8'
+
+#: Most recent version of tmux supported
+TMUX_MAX_VERSION = '2.4'
 
 
 class EnvironmentMixin(object):
@@ -274,8 +281,8 @@ class TmuxRelationalObject(object):
     Object           .children                 method
     ================ ========================= =================================
     :class:`Server`  :attr:`Server._sessions`  :meth:`Server.list_sessions`
-    :class:`Session` :attr:`Sessions._windows` :meth:`Session.list_windows`
-    :class:`Window`  :attr:`Windows._panes`    :meth:`Window.list_panes`
+    :class:`Session` :attr:`Session._windows`  :meth:`Session.list_windows`
+    :class:`Window`  :attr:`Window._panes`     :meth:`Window.list_panes`
     :class:`Pane`    n/a                       n/a
     ================ ========================= =================================
 
@@ -395,33 +402,105 @@ def which(exe=None, default_paths=[
     return None
 
 
-def is_version(version):
+def get_version():
+    """Return tmux version.
+
+    If tmux is built from git master, the version returned will be the latest
+    version appended with -master, e.g. ``2.4-master``.
+
+    If using OpenBSD's base system tmux, the version will have ``-openbsd``
+    appended to the latest version, e.g. ``2.4-openbsd``.
+
+    :returns: tmux version
+    :rtype: :class:`distutils.version.LooseVersion`
+    """
+    proc = tmux_cmd('-V')
+    if proc.stderr:
+        if proc.stderr[0] == 'tmux: unknown option -- V':
+            if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
+                return LooseVersion('%s-openbsd' % TMUX_MAX_VERSION)
+            raise exc.LibTmuxException(
+                'libtmux supports tmux %s and greater. This system'
+                ' is running tmux 1.3 or earlier.' % TMUX_MIN_VERSION
+            )
+        raise exc.VersionTooLow(proc.stderr)
+
+    version = proc.stdout[0].split('tmux ')[1]
+
+    # Allow latest tmux HEAD
+    if version == 'master':
+        return LooseVersion('%s-master' % TMUX_MAX_VERSION)
+
+    version = re.sub(r'[a-z]', '', version)
+
+    return LooseVersion(version)
+
+
+def has_version(version):
     """Return True if tmux version installed.
 
     :param version: version, '1.8'
-    :param type: string
+    :type version: string
+    :returns: True if version matches
     :rtype: bool
-
     """
-    if sys.platform.startswith("openbsd"):
-        if LooseVersion(version) > LooseVersion('2.1'):
-            return 'openbsd'
-        else:
-            return False
-
-    proc = tmux_cmd('-V')
-
-    if proc.stderr:
-        raise exc.LibTmuxException(proc.stderr)
-
-    installed_version = proc.stdout[0].split('tmux ')[1]
-
-    return LooseVersion(installed_version) == LooseVersion(version)
+    return get_version() == LooseVersion(version)
 
 
-def has_required_tmux_version(version=None):
+def has_gt_version(min_version):
+    """Return True if tmux version greater than minimum.
+
+    :param min_version: version, e.g. '1.8'
+    :type min_version: string
+    :returns: True if version above min_version
+    :rtype: bool
+    """
+    return get_version() > LooseVersion(min_version)
+
+
+def has_gte_version(min_version):
+    """Return True if tmux version greater or equal to minimum.
+
+    :param min_version: version, e.g. '1.8'
+    :type min_version: string
+    :returns: True if version above or equal to min_version
+    :rtype: bool
+    """
+    return get_version() >= LooseVersion(min_version)
+
+
+def has_lte_version(max_version):
+    """Return True if tmux version less or equal to minimum.
+
+    :param max_version: version, e.g. '1.8'
+    :type max_version: string
+    :returns: True if version below or equal to max_version
+    :rtype: bool
+    """
+    return get_version() <= LooseVersion(max_version)
+
+
+def has_lt_version(max_version):
+    """Return True if tmux version less than minimum.
+
+    :param max_version: version, e.g. '1.8'
+    :type max_version: string
+    :returns: True if version below max_version
+    :rtype: bool
+    """
+    return get_version() < LooseVersion(max_version)
+
+
+def has_minimum_version(raises=True):
     """Return if tmux meets version requirement. Version >1.8 or above.
 
+    :param raises: Will raise exception if version too low, default ``True``
+    :type raises: bool
+    :returns: True if tmux meets minimum required version
+    :rtype: bool
+
+    :versionchanged: 0.7.0
+        No longer returns version, returns True or False
     :versionchanged: 0.1.7
         Versions will now remove trailing letters per `Issue 55`_.
 
@@ -429,33 +508,16 @@ def has_required_tmux_version(version=None):
 
     """
 
-    if not version:
-        if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
-            return '2.3'
-
-        proc = tmux_cmd('-V')
-
-        if proc.stderr:
-            if proc.stderr[0] == 'tmux: unknown option -- V':
-                raise exc.LibTmuxException(
-                    'libtmux supports tmux 1.8 and greater. This system'
-                    ' is running tmux 1.3 or earlier.')
-            raise exc.LibTmuxException(proc.stderr)
-
-        version = proc.stdout[0].split('tmux ')[1]
-
-    # Allow latest tmux HEAD
-    if version == 'master':
-        return version
-
-    version = re.sub(r'[a-z]', '', version)
-
-    if StrictVersion(version) <= StrictVersion("1.7"):
-        raise exc.LibTmuxException(
-            'libtmux only supports tmux 1.8 and greater. This system'
-            ' has %s installed. Upgrade your tmux to use libtmux.' % version
-        )
-    return version
+    if get_version() < LooseVersion(TMUX_MIN_VERSION):
+        if raises:
+            raise exc.VersionTooLow(
+                'libtmux only supports tmux %s and greater. This system'
+                ' has %s installed. Upgrade your tmux to use libtmux.' %
+                (TMUX_MIN_VERSION, get_version())
+            )
+        else:
+            return False
+    return True
 
 
 def session_check_name(session_name):
@@ -477,3 +539,32 @@ def session_check_name(session_name):
     elif ':' in session_name:
         raise exc.BadSessionName(
             "tmux session name \"%s\" may not contain colons.", session_name)
+
+
+def handle_option_error(error):
+    """Raises exception if error in option command found.
+
+    Purpose: As of tmux 2.4, there are now 3 different types of option errors:
+
+    - unknown option
+    - invalid option
+    - ambiguous option
+
+    Before 2.4, unknown option was the user.
+
+    All errors raised will have the base error of :exc:`exc.OptionError`. So to
+    catch any option error, use ``except exc.OptionError``.
+
+    :param error: error response from subprocess call
+    :type error: str
+    :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+        :exc:`exc.InvalidOption`, :exc:`excAmbiguousOption`
+    """
+    if 'unknown option' in error:
+        raise exc.UnknownOption(error)
+    elif 'invalid option' in error:
+        raise exc.InvalidOption(error)
+    elif 'ambiguous option' in error:
+        raise exc.AmbiguousOption(error)
+    else:
+        raise exc.OptionError(error)  # Raise generic option error
