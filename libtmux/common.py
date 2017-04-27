@@ -423,7 +423,7 @@ def get_version():
 
     # Allow latest tmux HEAD
     if version == 'master':
-        return LooseVersion('master')
+        return LooseVersion(TMUX_MAX_VERSION)
 
     version = re.sub(r'[a-z]', '', version)
 
