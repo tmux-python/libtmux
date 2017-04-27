@@ -21,9 +21,12 @@ version_regex = re.compile(r'([0-9]\.[0-9])|(master)')
 
 
 def test_allows_master_version(monkeypatch):
-    def mock_get_version():
-        return LooseVersion('master')
-    monkeypatch.setattr(libtmux.common, 'get_version', mock_get_version)
+    def mock_tmux_cmd(param):
+        class Hi(object):
+            stdout = ['tmux master']
+            stderr = None
+        return Hi()
+    monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
 
     assert has_minimum_version()
 
@@ -31,10 +34,8 @@ def test_allows_master_version(monkeypatch):
 def test_get_version_openbsd(monkeypatch):
     def mock_tmux_cmd(param):
         class Hi(object):
-            pass
-        proc = Hi()
-        proc.stderr = ['tmux: unknown option -- V']
-        return proc
+            stderr = ['tmux: unknown option -- V']
+        return Hi()
     monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
     monkeypatch.setattr(sys, 'platform', 'openbsd 5.2')
     assert get_version() == LooseVersion(TMUX_MAX_VERSION)
@@ -43,10 +44,8 @@ def test_get_version_openbsd(monkeypatch):
 def test_get_version_too_low(monkeypatch):
     def mock_tmux_cmd(param):
         class Hi(object):
-            pass
-        proc = Hi()
-        proc.stderr = ['tmux: unknown option -- V']
-        return proc
+            stderr = ['tmux: unknown option -- V']
+        return Hi()
     monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
     with pytest.raises(LibTmuxException) as exc_info:
         get_version()
