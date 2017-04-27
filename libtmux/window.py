@@ -337,11 +337,11 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         return self.select_pane('-l')
 
     def split_window(
-            self,
-            target=None,
-            start_directory=None,
-            attach=True,
-            vertical=True
+        self,
+        target=None,
+        start_directory=None,
+        attach=True,
+        vertical=True
     ):
         """Split window and return the created :class:`Pane`.
 
