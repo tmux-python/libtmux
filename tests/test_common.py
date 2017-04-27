@@ -2,26 +2,54 @@
 """Tests for utility functions in tmux."""
 
 import re
+import sys
 
 import pytest
 
+from distutils.version import LooseVersion
+
+import libtmux
+
 from libtmux.common import (
-    has_required_tmux_version, which, session_check_name, is_version, tmux_cmd
+    has_minimum_tmux_version, which, session_check_name, tmux_cmd,
+    has_version, has_gt_version, has_lt_version, get_version
 )
 from libtmux.exc import LibTmuxException, BadSessionName, TmuxCommandNotFound
 
 version_regex = re.compile(r'([0-9]\.[0-9])|(master)')
 
 
-def test_no_arg_uses_tmux_version():
-    """Test the :meth:`has_required_tmux_version`."""
-    result = has_required_tmux_version()
-    assert version_regex.match(result) is not None
+def test_allows_master_version(monkeypatch):
+    def mock_get_version():
+        return LooseVersion('master')
+    monkeypatch.setattr(libtmux.common, 'get_version', mock_get_version)
+
+    assert has_minimum_tmux_version()
 
 
-def test_allows_master_version():
-    result = has_required_tmux_version('master')
-    assert version_regex.match(result) is not None
+def test_get_version_openbsd(monkeypatch):
+    def mock_tmux_cmd(param):
+        class Hi(object):
+            pass
+        proc = Hi()
+        proc.stderr = ['tmux: unknown option -- V']
+        return proc
+    monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
+    monkeypatch.setattr(sys, 'platform', 'openbsd 5.2')
+    assert get_version() == LooseVersion('2.3')
+
+
+def test_get_version_too_low(monkeypatch):
+    def mock_tmux_cmd(param):
+        class Hi(object):
+            pass
+        proc = Hi()
+        proc.stderr = ['tmux: unknown option -- V']
+        return proc
+    monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
+    with pytest.raises(LibTmuxException) as exc_info:
+        get_version()
+    exc_info.match('is running tmux 1.3 or earlier')
 
 
 def test_ignores_letter_versions():
@@ -33,29 +61,47 @@ def test_ignores_letter_versions():
     allow letters.
 
     """
-    result = has_required_tmux_version('1.9a')
-    assert version_regex.match(result) is not None
+    result = has_minimum_tmux_version('1.9a')
+    assert result
 
-    result = has_required_tmux_version('1.8a')
-    assert result == r'1.8'
+    result = has_minimum_tmux_version('1.8a')
+    assert result
 
     # Should not throw
-    assert type(is_version('1.8')) is bool
-    assert type(is_version('1.8a')) is bool
-    assert type(is_version('1.9a')) is bool
+    assert type(has_version('1.8')) is bool
+    assert type(has_version('1.8a')) is bool
+    assert type(has_version('1.9a')) is bool
 
 
-def test_error_version_less_1_7():
+def test_error_version_less_1_7(monkeypatch):
+    def mock_get_version():
+        return LooseVersion('1.7')
+    monkeypatch.setattr(libtmux.common, 'get_version', mock_get_version)
     with pytest.raises(LibTmuxException) as excinfo:
-        has_required_tmux_version('1.7')
-        excinfo.match(r'tmuxp only supports')
+        has_minimum_tmux_version()
+        excinfo.match(r'libtmux only supports')
 
     with pytest.raises(LibTmuxException) as excinfo:
-        has_required_tmux_version('1.6a')
+        has_minimum_tmux_version()
 
-        excinfo.match(r'tmuxp only supports')
+        excinfo.match(r'libtmux only supports')
 
-    has_required_tmux_version('1.9a')
+
+def test_has_version():
+    assert has_version(str(get_version()))
+
+
+def test_has_gt_version():
+    assert has_gt_version('1.6')
+    assert has_gt_version('1.6b')
+    assert not has_gt_version('4.0')
+
+
+def test_has_lt_version():
+    assert has_lt_version('4.0a')
+    assert has_lt_version('4.0')
+
+    assert not has_lt_version('1.7')
 
 
 def test_which_no_bin_found():
