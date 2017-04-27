@@ -174,6 +174,9 @@ def test_set_show_window_options(session):
     window.set_window_option('main-pane-height', 20)
     assert window.show_window_options('main-pane-height') == 20
 
+    window.set_window_option('pane-border-format', ' #P ')
+    assert window.show_window_options('pane-border-format') == [' #P ']
+
     window.set_window_option('main-pane-height', 40)
     assert window.show_window_options('main-pane-height') == 40
     assert window.show_window_options()['main-pane-height'] == 40
