@@ -63,11 +63,17 @@ Internals
 
 .. autoclass:: libtmux.common.tmux_cmd
 
-.. automethod:: libtmux.common.has_required_tmux_version
-
 .. automethod:: libtmux.common.which
 
-.. automethod:: libtmux.common.is_version
+.. automethod:: libtmux.common.has_version
+
+.. automethod:: libtmux.common.has_gt_version
+
+.. automethod:: libtmux.common.has_lt_version
+
+.. automethod:: libtmux.common.has_minimum_tmux_version
+
+.. automethod:: libtmux.common.handle_option_error
 
 Exceptions
 ----------
@@ -76,11 +82,19 @@ Exceptions
 
 .. autoexception:: libtmux.exc.TmuxCommandNotFound
 
+.. autoexception:: libtmux.exc.VersionTooLow
+
 .. autoexception:: libtmux.exc.TmuxSessionExists
 
 .. autoexception:: libtmux.exc.BadSessionName
 
+.. autoexception:: libtmux.exc.OptionError
+
 .. autoexception:: libtmux.exc.UnknownOption
+
+.. autoexception:: libtmux.exc.InvalidOption
+
+.. autoexception:: libtmux.exc.AmbiguousOption
 
 Test tools
 ----------
