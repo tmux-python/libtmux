@@ -5,6 +5,8 @@ Changelog
 Here you can find the recent changes to libtmux
 
 - :release:`0.7.0 <2017-04-27>`
+- :support:`-` Support for python 2.6 dropped. New minimum version is 2.7
+- :feature:`-` Add support for tmux 2.4, pypy and pypy3
 - :feature:`-` Overhaul error handling when setting and showing options
   
   - Added `handle_option_error` for handling option errors
@@ -20,9 +22,9 @@ Here you can find the recent changes to libtmux
   - ``has_required_tmux_version`` has been renamed to ``has_minimum_version``
   - added ``has_gt_version``, ``has_gte_version``, ``has_lt_version``, ``has_lte_version``,
 
-- Fixed up documentation in some session methods
-- Added pydoc exception info to option methods in window and sessions.
-- Added ``TMUX_MIN_VERSION`` and ``TMUX_MAX_VERSION``
+- :support:`-` Fixed up documentation in some session methods
+- :support:`-` Added pydoc exception info to option methods in window and sessions.
+- :support:`-` Added ``TMUX_MIN_VERSION`` and ``TMUX_MAX_VERSION``
 
 - :release:`0.6.5 <2017-04-02>`
 - :support:`-` Fix ``which`` command
