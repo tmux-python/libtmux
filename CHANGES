@@ -4,6 +4,26 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.7.0 <2017-04-27>`
+- :feature:`-` Overhaul error handling when setting and showing options
+  
+  - Added `handle_option_error` for handling option errors
+  - Added :exc:`libtmux.exc.OptionError` base exception
+  - Added :exc:`libtmux.exc.InvalidOption` and `libtmux.exc.AmbiguousOption`
+  - :exc:`libtmux.exc.UnknownOption` now extends :exc:`libtmux.exc.OptionError`
+
+- :feature:`-` Overhaul version checking
+
+  - ``has_version`` has been renamed to ``get_version``
+  - ``get_version`` will return tmux built from git master as the latest version supported by the libtmux version with ``-master`` at the end, e.g. ``2.4-master``
+  - ``get_version`` will return tmux on openbsd base system as the latest version supported by the libtmux version with ``-openbsd`` at the end, e.g. ``2.4-openbsd``
+  - ``has_required_tmux_version`` has been renamed to ``has_minimum_version``
+  - added ``has_gt_version``, ``has_gte_version``, ``has_lt_version``, ``has_lte_version``,
+
+- Fixed up documentation in some session methods
+- Added pydoc exception info to option methods in window and sessions.
+- Added ``TMUX_MIN_VERSION`` and ``TMUX_MAX_VERSION``
+
 - :release:`0.6.5 <2017-04-02>`
 - :support:`-` Fix ``which`` command
 - :support:`-` Add ``TmuxCommandNotFound`` exception
