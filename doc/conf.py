@@ -2,6 +2,7 @@
 
 import os
 import sys
+import alabaster
 
 # Get the project root dir, which is the parent dir of this
 cwd = os.getcwd()
@@ -10,7 +11,7 @@ project_root = os.path.dirname(cwd)
 sys.path.insert(0, project_root)
 
 from libtmux import test  # NOQA
-import libtmux
+import libtmux  # NOQA
 
 # package data
 about = {}
@@ -28,7 +29,7 @@ extensions = ['sphinx.ext.autodoc',
 releases_unstable_prehistory = True
 releases_document_name = "history"
 releases_issue_uri = "https://github.com/tony/libtmux/issues/%s"
-releases_release_uri = "https://github.com/tony/libtmux/tree/%s"
+releases_release_uri = "https://github.com/tony/libtmux/tree/v%s"
 
 templates_path = ['_templates']
 
@@ -45,8 +46,6 @@ release = '%s' % (about['__version__'])
 exclude_patterns = ['_build']
 
 pygments_style = 'sphinx'
-
-import alabaster
 
 html_theme_path = [alabaster.get_path()]
 html_favicon = 'favicon.ico'
