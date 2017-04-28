@@ -9,6 +9,7 @@ from __future__ import absolute_import, unicode_literals, with_statement
 
 import logging
 import os
+import shlex
 
 from . import exc, formats
 from .common import (
@@ -183,7 +184,10 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
                 *tmux_args
             ).stdout
 
-        cmd = [tuple(item.split(' ')) for item in cmd]
+        # The shlex.split function splits the args at spaces, while also
+        # retaining quoted sub-strings.
+        #   shlex.split('this is "a test"') => ['this', 'is', 'a test']
+        cmd = [tuple(shlex.split(item)) for item in cmd]
 
         window_options = dict(cmd)
 
@@ -225,7 +229,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if not len(cmd.stdout):
             return None
 
-        option = [item.split(' ') for item in cmd.stdout][0]
+        option = [shlex.split(item) for item in cmd.stdout][0]
 
         if option[1].isdigit():
             option = (option[0], int(option[1]))
