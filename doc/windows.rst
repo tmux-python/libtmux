@@ -8,7 +8,9 @@ Windows
 - contain :ref:`Panes`
 - identified by ``@``, e.g. ``@313``
 
-.. autoclass:: libtmux.Window
+.. module:: libtmux
+
+.. autoclass:: Window
     :noindex:
     :members:
     :inherited-members:
