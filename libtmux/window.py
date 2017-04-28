@@ -229,7 +229,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if not len(cmd.stdout):
             return None
 
-        option = [item.split(' ') for item in cmd.stdout][0]
+        option = [shlex.split(item) for item in cmd.stdout][0]
 
         if option[1].isdigit():
             option = (option[0], int(option[1]))
