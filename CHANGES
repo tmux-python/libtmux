@@ -4,6 +4,10 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.7.1 <2017-04-28>`
+- :support:`37` Improve support for formatted options like
+  ``pane-border-status``. Thanks @kaushalmodi.
+
 - :release:`0.7.0 <2017-04-27>`
 - :support:`-` Support for python 2.6 dropped. New minimum version is 2.7
 - :feature:`-` Add support for tmux 2.4, pypy and pypy3
