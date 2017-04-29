@@ -157,7 +157,7 @@ powerful traversal features::
 
 .. _BSD: http://opensource.org/licenses/BSD-3-Clause
 .. _developing and testing: http://libtmux.git-pull.com/en/latest/developing.html
-.. _tmuxp: https://github.com/tony/tmuxp
+.. _tmuxp: https://tmuxp.git-pull.com/
 .. _documentation: https://libtmux.git-pull.com/
 .. _API: https://libtmux.git-pull.com/en/latest/api.html
 .. _architectural details: https://libtmux.git-pull.com/en/latest/about.html
