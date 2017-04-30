@@ -115,7 +115,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         custom: custom dimensions (see :term:`tmux(1)` manpages).
 
         :param layout: string of the layout, 'even-horizontal', 'tiled', etc.
-        :type layout: string
+        :type layout: str
 
         """
 
@@ -164,7 +164,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         a single option, forwarding to :meth:`Window.show_window_option`.
 
         :param option: optional. show a single option.
-        :type option: string
+        :type option: str
         :param g: Pass ``-g`` flag for global variable
         :type g: bool
         :rtype: :py:obj:`dict`
@@ -203,10 +203,10 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         todo: test and return True/False for on/off string
 
         :param option: option to return.
-        :type option: string
+        :type option: str
         :param g: Pass ``-g`` flag, global.
         :type g: bool
-        :rtype: string, int
+        :rtype: str, int
         :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
             :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
 
@@ -240,7 +240,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         """Return :class:`Window` object ``$ tmux rename-window <new_name>``.
 
         :param new_name: name of the window
-        :type new_name: string
+        :type new_name: str
 
         """
 
@@ -281,10 +281,10 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         :param destination: the ``target window`` or index to move the window
             to, default: empty string
-        :type destination: string
+        :type destination: str
         :param session: the ``target session`` or index to move the
             window to, default: current session.
-        :type session: string
+        :type session: str
 
         """
         session = session or self.get('session_id')
@@ -317,7 +317,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         :param target_pane: ``target_pane``, or ``-U``,``-D``, ``-L``, ``-R``
             or ``-l``.
-        :type target_pane: string
+        :type target_pane: str
         :rtype: :class:`Pane`
 
         """
@@ -368,7 +368,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         :type attach: bool
         :param start_directory: specifies the working directory in which the
             new window is created.
-        :type start_directory: string
+        :type start_directory: str
         :param target: ``target_pane`` to split.
         :type target: bool
         :param vertical: split vertically

@@ -417,7 +417,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
             $ tmux new-session -s <session_name>
 
-        :type session_name: string
+        :type session_name: str
 
         :param attach: create session in the foreground. ``attach=False`` is
             equivalent to::
@@ -432,7 +432,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         :param start_directory: specifies the working directory in which the
             new session is created.
-        :type start_directory: string
+        :type start_directory: str
 
         :raises: :exc:`exc.BadSessionName`
         :rtype: :class:`Session`

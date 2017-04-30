@@ -113,7 +113,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         :rtype: :class:`Pane`.
         :param start_directory: specifies the working directory in which the
             new pane is created.
-        :type start_directory: string
+        :type start_directory: str
 
         """
         return self.window.split_window(
@@ -145,7 +145,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """``$ tmux resize-pane`` of pane and return ``self``.
 
         :param target_pane: ``target_pane``, or ``-U``,``-D``, ``-L``, ``-R``.
-        :type target_pane: string
+        :type target_pane: str
         :rtype: :class:`Pane`
 
         """

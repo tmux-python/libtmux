@@ -42,10 +42,9 @@ class EnvironmentMixin(object):
         """Set environment ``$ tmux set-environment <name> <value>``.
 
         :param name: the environment variable name. such as 'PATH'.
-        :type option: string
+        :type option: str
         :param value: environment value.
-        :type value: string
-
+        :type value: str
         """
 
         args = ['set-environment']
@@ -65,7 +64,7 @@ class EnvironmentMixin(object):
         """Unset environment variable ``$ tmux set-environment -u <name>``.
 
         :param name: the environment variable name. such as 'PATH'.
-        :type option: string
+        :type option: str
         """
 
         args = ['set-environment']
@@ -84,7 +83,7 @@ class EnvironmentMixin(object):
         """Remove environment variable ``$ tmux set-environment -r <name>``.
 
         :param name: the environment variable name. such as 'PATH'.
-        :type option: string
+        :type option: str
         """
 
         args = ['set-environment']
@@ -106,7 +105,7 @@ class EnvironmentMixin(object):
         specific variable if the name is specified.
 
         :param name: the environment variable name. such as 'PATH'.
-        :type option: string
+        :type option: str
         """
         tmux_args = ['show-environment']
         if self._add_option:
@@ -341,7 +340,7 @@ class TmuxRelationalObject(object):
         .. _.get(): http://backbonejs.org/#Collection-get
 
         :param id:
-        :type id: string
+        :type id: str
         :rtype: object
 
         """
@@ -362,12 +361,12 @@ def which(exe=None, default_paths=[
     from salt.util - https://www.github.com/saltstack/salt - license apache
 
     :param exe: Application to search PATHs for.
-    :type exe: string
+    :type exe: str
     :param default_path: Application to search PATHs for.
     :type default_path: list
     :param append_env_path: Append PATHs in environmental variables.
     :type append_env_path: bool
-    :rtype: string
+    :rtype: str
 
     """
     def _is_executable_file_or_link(exe):
@@ -440,7 +439,7 @@ def has_version(version):
     """Return True if tmux version installed.
 
     :param version: version, '1.8'
-    :type version: string
+    :type version: str
     :returns: True if version matches
     :rtype: bool
     """
@@ -451,7 +450,7 @@ def has_gt_version(min_version):
     """Return True if tmux version greater than minimum.
 
     :param min_version: version, e.g. '1.8'
-    :type min_version: string
+    :type min_version: str
     :returns: True if version above min_version
     :rtype: bool
     """
@@ -462,7 +461,7 @@ def has_gte_version(min_version):
     """Return True if tmux version greater or equal to minimum.
 
     :param min_version: version, e.g. '1.8'
-    :type min_version: string
+    :type min_version: str
     :returns: True if version above or equal to min_version
     :rtype: bool
     """
@@ -473,7 +472,7 @@ def has_lte_version(max_version):
     """Return True if tmux version less or equal to minimum.
 
     :param max_version: version, e.g. '1.8'
-    :type max_version: string
+    :type max_version: str
     :returns: True if version below or equal to max_version
     :rtype: bool
     """
@@ -484,7 +483,7 @@ def has_lt_version(max_version):
     """Return True if tmux version less than minimum.
 
     :param max_version: version, e.g. '1.8'
-    :type max_version: string
+    :type max_version: str
     :returns: True if version below max_version
     :rtype: bool
     """
@@ -527,7 +526,7 @@ def session_check_name(session_name):
     These delimiters are reserved for noting session, window and pane.
 
     :param session_name: name of session
-    :type session_name: string
+    :type session_name: str
     :returns: void
     :raises: :exc:`exc.BadSessionName`
     """

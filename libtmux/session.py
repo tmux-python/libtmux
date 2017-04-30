@@ -106,7 +106,7 @@ class Session(
         """Rename session and return new :class:`Session` object.
 
         :param new_name: new session name
-        :type new_name: string
+        :type new_name: str
         :raises: :exc:`exc.BadSessionName`
         :rtype: :class:`Session`
 
@@ -136,22 +136,22 @@ class Session(
         to be created and not set to current, pass in ``attach=False``.
 
         :param window_name: window name.
-        :type window_name: string
+        :type window_name: str
         :param start_directory: specifies the working directory in which the
             new window is created.
-        :type start_directory: string
+        :type start_directory: str
         :param attach: make new window the current window after creating it,
                        default True.
         :param window_index: create the new window at the given index position.
             Default is empty string which will create the window in the next
             available position.
-        :type window_index: string
+        :type window_index: str
         :param window_shell: execute a command on starting the window.  The
             window will close when the command exits.
             NOTE: When this command exits the window will close.  This feature
             is useful for long-running processes where the closing of the
             window upon completion is desired.
-        :type window_command: string
+        :type window_command: str
         :param type: bool
         :rtype: :class:`Window`
 
@@ -212,7 +212,7 @@ class Session(
         from any sessions to which it is linked.
 
         :param target_window: the ``target window``.
-        :type target_window: string
+        :type target_window: str
 
         """
 
@@ -322,7 +322,7 @@ class Session(
         todo: needs tests
 
         :param option: the window option. such as 'default-shell'.
-        :type option: string
+        :type option: str
         :param value: window value. True/False will turn in 'on' and 'off'. You
             can also enter 'on' or 'off' directly.
         :type value: bool
@@ -359,7 +359,7 @@ class Session(
         a single option, forwarding to :meth:`Session.show_option`.
 
         :param option: optional. show a single option.
-        :type option: string
+        :type option: str
         :param g: Pass ``-g`` flag for global variable (server-wide)
         :type g: bool
         :rtype: :py:obj:`dict`
@@ -395,10 +395,10 @@ class Session(
         :todo: test and return True/False for on/off string
 
         :param option: option to return.
-        :type option: string
+        :type option: str
         :param global: check for option globally across all servers (-g)
         :type global: bool
-        :rtype: string, int or bool
+        :rtype: str, int or bool
         :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
             :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
 
