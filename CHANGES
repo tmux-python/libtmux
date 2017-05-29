@@ -4,6 +4,9 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.7.3 <2017-05-29>`
+- :support:`-` Exact matches only supported on 2.1 and up
+
 - :release:`0.7.2 <2017-05-29>`
 - :support:`-` Support exact matching in ``Server.has_session``
 
