@@ -4,6 +4,9 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.7.2 <2017-05-29>`
+- :support:`-` Support exact matching in ``Server.has_session``
+
 - :release:`0.7.1 <2017-04-28>`
 - :support:`37` Improve support for formatted options like
   ``pane-border-status``. Thanks @kaushalmodi.
