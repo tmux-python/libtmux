@@ -17,6 +17,8 @@ def test_has_session(server, session):
     """Server.has_session returns True if has session_name exists."""
     TEST_SESSION_NAME = session.get('session_name')
     assert server.has_session(TEST_SESSION_NAME)
+    assert not server.has_session(TEST_SESSION_NAME[:-2])
+    assert server.has_session(TEST_SESSION_NAME[:-2], exact=False)
     assert not server.has_session('asdf2314324321')
 
 

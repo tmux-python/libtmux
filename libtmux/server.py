@@ -314,16 +314,23 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
             Session(server=self, **s) for s in attached_sessions
         ] or None
 
-    def has_session(self, target_session):
+    def has_session(self, target_session, exact=True):
         """Return True if session exists. ``$ tmux has-session``.
 
-        :param: target_session: str of session name.
+        :param target_session: session name
+        :type target_session: str
+        :param exact: match the session name exactly.
+            tmux uses fnmatch by default. Internally prepends ``=`` to the
+            session in ``$ tmux has-session``.
+        :type exact: bool
         :raises: :exc:`exc.BadSessionName`
         :rtype: bool
 
         """
-
         session_check_name(target_session)
+
+        if exact:
+            target_session = '={}'.format(target_session)
 
         proc = self.cmd('has-session', '-t%s' % target_session)
 
