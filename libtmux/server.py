@@ -12,7 +12,7 @@ import os
 
 from . import exc, formats
 from .common import EnvironmentMixin, TmuxRelationalObject, tmux_cmd, \
-    session_check_name
+    session_check_name, has_gte_version
 from .session import Session
 
 logger = logging.getLogger(__name__)
@@ -321,7 +321,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         :type target_session: str
         :param exact: match the session name exactly.
             tmux uses fnmatch by default. Internally prepends ``=`` to the
-            session in ``$ tmux has-session``.
+            session in ``$ tmux has-session``. tmux 2.1 and up only.
         :type exact: bool
         :raises: :exc:`exc.BadSessionName`
         :rtype: bool
@@ -329,7 +329,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """
         session_check_name(target_session)
 
-        if exact:
+        if exact and has_gte_version('2.1'):
             target_session = '={}'.format(target_session)
 
         proc = self.cmd('has-session', '-t%s' % target_session)
