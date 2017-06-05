@@ -28,9 +28,9 @@ class Session(
     Holds :class:`Window` objects.
     """
 
-    #: unique child ID key used by :class:`TmuxRelationalObject`
+    #: unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`
     child_id_attribute = 'window_id'
-    #: namespace used :class:`TmuxMappingObject`
+    #: namespace used :class:`~libtmux.common.TmuxMappingObject`
     formatter_prefix = 'session_'
 
     def __init__(self, server=None, **kwargs):
@@ -68,7 +68,7 @@ class Session(
 
         :rtype: :class:`server.cmd`
 
-        :versionchanged: 0.8
+        .. versionchanged:: 0.8
             Renamed from ``.tmux`` to ``.cmd``.
 
         """
@@ -261,7 +261,7 @@ class Session(
         """Property / alias to return :meth:`Session.list_windows`."""
         return self.list_windows()
 
-    #: Alias of :attr:`windows`, used by :class:`TmuxRelationalObject`
+    #: Alias :attr:`windows` for :class:`~libtmux.common.TmuxRelationalObject`
     children = windows
 
     @property

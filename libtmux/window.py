@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 class Window(TmuxMappingObject, TmuxRelationalObject):
     """:term:`tmux(1)` window."""
 
-    #: unique child ID key used by :class:`TmuxRelationalObject`
+    #: unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`
     child_id_attribute = 'pane_id'
-    #: namespace used :class:`TmuxMappingObject`
+    #: namespace used :class:`~libtmux.common.TmuxMappingObject`
     formatter_prefix = 'window_'
 
     def __init__(self, session=None, **kwargs):
@@ -85,7 +85,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         :rtype: :class:`Server.cmd`
 
-        :versionchanged: 0.8
+        .. versionchanged:: 0.8
             Renamed from ``.tmux`` to ``.cmd``.
 
         """
@@ -478,5 +478,5 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         """Property / alias to return :meth:`~.list_panes`."""
         return self.list_panes()
 
-    #: Alias of :attr:`panes`, used by :class:`TmuxRelationalObject`
+    #: Alias :attr:`panes` for :class:`~libtmux.common.TmuxRelationalObject`
     children = panes

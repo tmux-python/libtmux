@@ -156,7 +156,7 @@ class tmux_cmd(object):
 
         $ tmux new-session -s my session
 
-    :versionchanged: 0.8
+    .. versionchanged:: 0.8
         Renamed from ``tmux`` to ``tmux_cmd``.
 
     """
@@ -298,7 +298,7 @@ class TmuxRelationalObject(object):
     def find_where(self, attrs):
         """Return object on first match.
 
-        :versionchanged: 0.4
+        .. versionchanged:: 0.4
             Renamed from ``.findWhere`` to ``.find_where``.
 
         """
@@ -498,9 +498,10 @@ def has_minimum_version(raises=True):
     :returns: True if tmux meets minimum required version
     :rtype: bool
 
-    :versionchanged: 0.7.0
+    .. versionchanged:: 0.7.0
         No longer returns version, returns True or False
-    :versionchanged: 0.1.7
+
+    .. versionchanged:: 0.1.7
         Versions will now remove trailing letters per `Issue 55`_.
 
         .. _Issue 55: https://github.com/tony/tmuxp/issues/55.
@@ -557,7 +558,7 @@ def handle_option_error(error):
     :param error: error response from subprocess call
     :type error: str
     :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
-        :exc:`exc.InvalidOption`, :exc:`excAmbiguousOption`
+        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
     """
     if 'unknown option' in error:
         raise exc.UnknownOption(error)

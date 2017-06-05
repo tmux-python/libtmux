@@ -42,9 +42,9 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     config_file = None
     #: ``-2`` or ``-8``
     colors = None
-    #: unique child ID key used by :class:`TmuxRelationalObject`
+    #: unique child ID used by :class:`~libtmux.common.TmuxRelationalObject`
     child_id_attribute = 'session_id'
-    #: namespace used :class:`TmuxMappingObject`
+    #: namespace used :class:`~libtmux.common.TmuxMappingObject`
     formatter_prefix = 'server_'
 
     def __init__(
@@ -72,11 +72,11 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
             self.colors = colors
 
     def cmd(self, *args, **kwargs):
-        """Return :class:`util.tmux_cmd` send tmux commands with sockets, colors.
+        """Execute tmux command and return output.
 
-        :rtype: :class:`util.tmux_cmd`
+        :rtype: :class:`common.tmux_cmd`
 
-        :versionchanged: 0.8
+        .. versionchanged:: 0.8
             Renamed from ``.tmux`` to ``.cmd``.
 
         """
@@ -103,8 +103,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         Retrieved from ``$ tmux(1) list-sessions`` stdout.
 
-        The :py:obj:`list` is derived from ``stdout`` in :class:`util.tmux_cmd`
-        which wraps :py:class:`subprocess.Popen`.
+        The :py:obj:`list` is derived from ``stdout`` in
+        :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
 
         :rtype: :py:obj:`list` of :py:obj:`dict`
 
@@ -161,7 +161,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     def sessions(self):
         """Property / alias to return :meth:`~.list_sessions`."""
         return self.list_sessions()
-    #: Alias of :attr:`sessions`, , used by :class:`TmuxRelationalObject`
+    #: Alias :attr:`sessions` for :class:`~libtmux.common.TmuxRelationalObject`
     children = sessions
 
     def _list_windows(self):
@@ -169,8 +169,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         Retrieved from ``$ tmux(1) list-windows`` stdout.
 
-        The :py:obj:`list` is derived from ``stdout`` in :class:`util.tmux_cmd`
-        which wraps :py:class:`subprocess.Popen`.
+        The :py:obj:`list` is derived from ``stdout`` in
+        :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
 
         :rtype: list
 
@@ -227,8 +227,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         Retrieved from ``$ tmux(1) list-panes`` stdout.
 
-        The :py:obj:`list` is derived from ``stdout`` in :class:`util.tmux_cmd`
-        which wraps :py:class:`subprocess.Popen`.
+        The :py:obj:`list` is derived from ``stdout`` in
+        :class:`util.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
 
         :rtype: list
 
