@@ -53,7 +53,7 @@ Object                   Prefix                  Example
 :class:`Pane`            ``%``                   ``%5433``
 ======================== ======================= =========================
 
-Similarities to Tmux and Pythonics
+Similarities to tmux and Pythonics
 ----------------------------------
 
 libtmux was built in the spirit of understanding how tmux operates
