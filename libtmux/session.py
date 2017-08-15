@@ -72,8 +72,13 @@ class Session(
             Renamed from ``.tmux`` to ``.cmd``.
 
         """
-        if '-t' not in kwargs:
-            kwargs['-t'] = self.id
+        # if -t is not set in any arg yet
+        if not any('-t' in unicode(x) for x in args):
+            # insert -t immediately after 1st arg, as per tmux format
+            new_args = [args[0]]
+            new_args += ['-t', self.id]
+            new_args += args[1:]
+            args = new_args
         return self.server.cmd(*args, **kwargs)
 
     def attach_session(self):
