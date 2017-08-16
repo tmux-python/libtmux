@@ -334,23 +334,10 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         proc = self.cmd('has-session', '-t%s' % target_session)
 
-        if not proc.stdout:
+        if not proc.returncode:
             return True
-        if any(
-            x in proc.stdout for x in
-            ['failed to connect to server', 'error connecting to']
-        ):
-            return False
-        elif 'no server running' in proc.stdout:  # tmux 2.0
-            return False
-        elif 'can\'t find session' in proc.stdout:  # tmux 2.1
-            return False
-        elif 'bad session name' in proc.stdout:  # tmux >= 1.9
-            return False
-        elif 'session not found' in proc.stdout:
-            return False
-        else:
-            return True
+
+        return False
 
     def kill_server(self):
         """``$ tmux kill-server``."""

@@ -189,6 +189,7 @@ class tmux_cmd(object):
             self.process.stdout.close()
             stderr = self.process.stderr.read()
             self.process.stderr.close()
+            returncode = self.process.returncode
         except Exception as e:
             logger.error(
                 'Exception for %s: \n%s' % (
@@ -196,6 +197,8 @@ class tmux_cmd(object):
                     e
                 )
             )
+
+        self.returncode = returncode
 
         self.stdout = console_to_str(stdout)
         self.stdout = self.stdout.split('\n')
