@@ -236,6 +236,7 @@ def test_periods_raise_badsessionname(server, session, session_name, raises):
         with pytest.raises(exc.LibTmuxException):
             server.switch_client(new_name)
 
+
 def test_cmd_inserts_sesion_id(session):
     current_session_id = session.id
     last_arg = 'last-arg'
