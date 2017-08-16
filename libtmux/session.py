@@ -11,6 +11,7 @@ import logging
 import os
 
 from . import exc, formats
+from ._compat import text_type
 from .common import EnvironmentMixin, TmuxMappingObject, \
     TmuxRelationalObject, session_check_name, handle_option_error
 from .window import Window
@@ -73,7 +74,7 @@ class Session(
 
         """
         # if -t is not set in any arg yet
-        if not any('-t' in unicode(x) for x in args):
+        if not any('-t' in text_type(x) for x in args):
             # insert -t immediately after 1st arg, as per tmux format
             new_args = [args[0]]
             new_args += ['-t', self.id]
