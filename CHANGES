@@ -4,6 +4,9 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.7.4 <2017-08-19>`
+- :feature:`65` Add session id to commands, thanks `@askedrelic`_
+
 - :release:`0.7.3 <2017-05-29>`
 - :support:`-` Exact matches only supported on 2.1 and up
 
@@ -99,5 +102,6 @@ Here you can find the recent changes to libtmux
 - libtmux forked from `tmuxp`_.
 
 .. _tmuxp: https://github.com/tony/tmuxp
+.. _@askedrelic: https://github.com/askedrelic
 
 .. # vim: set filetype=rst:
