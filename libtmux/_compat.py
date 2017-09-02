@@ -42,7 +42,7 @@ if PY2:
         return cls
 
     def console_to_str(s):
-        return s.decode('utf_8')
+        return s.decode('utf_8', 'ignore')
 
 else:
     unichr = chr
@@ -79,9 +79,9 @@ else:
     def console_to_str(s):
         """ From pypa/pip project, pip.backwardwardcompat. License MIT. """
         try:
-            return s.decode(console_encoding)
+            return s.decode(console_encoding, 'ignore')
         except UnicodeDecodeError:
-            return s.decode('utf_8')
+            return s.decode('utf_8', 'ignore')
 
     def reraise(tp, value, tb=None):
         if value.__traceback__ is not tb:
