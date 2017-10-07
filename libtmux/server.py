@@ -476,6 +476,10 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         if start_directory:
             tmux_args += ('-c', start_directory)
+
+        if has_gte_version('2.6'):
+            tmux_args += ('-x', 800, '-y', 600)
+
         proc = self.cmd(
             'new-session',
             *tmux_args
