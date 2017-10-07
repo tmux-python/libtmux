@@ -4,6 +4,9 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.7.5 <2017-10-07>`
+- :support:`-` Hotfix to support tmux 2.6 session creation
+
 - :release:`0.7.4 <2017-08-19>`
 - :feature:`65` Add session id to commands, thanks `@askedrelic`_
 
