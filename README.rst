@@ -178,7 +178,7 @@ Project details
 ---------------
 
 ==============  ==========================================================
-tmux support    1.8, 1.9a, 2.0, 2.1, 2.2, 2.3, 2.4
+tmux support    1.8, 1.9a, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
 python support  2.7, >= 3.3, pypy, pypy3
 Source          https://github.com/tony/libtmux
 Docs            https://libtmux.git-pull.com
