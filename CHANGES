@@ -4,8 +4,11 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :feature:`-` Allow ``Window.select_layout`` with no args
+- :bug:`-` Fix test where ``bell-`` was no longer ambiguous as of tmux 2.6
+
 - :release:`0.7.5 <2017-10-07>`
-- :support:`-` Hotfix to support tmux 2.6 session creation
+- :support:`- backported` Hotfix to support tmux 2.6 session creation
 
 - :release:`0.7.4 <2017-08-19>`
 - :feature:`65` Add session id to commands, thanks `@askedrelic`_
