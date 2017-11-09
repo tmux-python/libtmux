@@ -145,13 +145,13 @@ def test_show_option_unknown(session):
 def test_show_option_ambiguous(session):
     """Session.show_option raises AmbiguousOption for ambiguous option."""
     with pytest.raises(exc.AmbiguousOption):
-        session.show_option('bell-')
+        session.show_option('default-')
 
 
 def test_set_option_ambigous(session):
     """Session.set_option raises AmbiguousOption for invalid option."""
     with pytest.raises(exc.AmbiguousOption):
-        session.set_option('bell-', 43)
+        session.set_option('default-', 43)
 
 
 def test_set_option_invalid(session):
