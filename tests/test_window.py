@@ -251,3 +251,10 @@ def test_move_window_to_other_session(server, session):
     new_session = server.new_session("test_move_window")
     window.move_window(session=new_session.get('session_id'))
     assert new_session.get_by_id(window.get("window_id")) == window
+
+
+def test_select_layout_accepts_no_arg(server, session):
+    """tmux allows select-layout with no arguments, so let's allow it here."""
+
+    window = session.new_window(window_name='test_window')
+    window.select_layout()

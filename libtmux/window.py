@@ -115,15 +115,21 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         custom: custom dimensions (see :term:`tmux(1)` manpages).
 
         :param layout: string of the layout, 'even-horizontal', 'tiled', etc.
+           Entering None (leaving this blank) is same as ``select-layout``
+           with no layout. In recent tmux versions, it picks the most recently
+           set layout.
         :type layout: str
 
         """
-
-        proc = self.cmd(
+        cmd = [
             'select-layout',
-            '-t%s:%s' % (self.get('session_id'), self.index),
-            layout
-        )
+            '-t%s:%s' % (self.get('session_id'), self.index)
+        ]
+
+        if layout:  # tmux allows select-layout without args
+            cmd.append(layout)
+
+        proc = self.cmd(*cmd)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
