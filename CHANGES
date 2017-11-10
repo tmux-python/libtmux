@@ -4,6 +4,7 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.7.6 <2017-11-09>`
 - :feature:`-` Allow ``Window.select_layout`` with no args
 - :bug:`-` Fix test where ``bell-`` was no longer ambiguous as of tmux 2.6
 
