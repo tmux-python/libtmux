@@ -477,7 +477,9 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         if start_directory:
             tmux_args += ('-c', start_directory)
 
-        if has_gte_version('2.6'):
+        # tmux 2.6 gives unattached sessions a tiny default area
+        # no need send in -x/-y if they're in a client already, though
+        if has_gte_version('2.6') and 'TMUX' not in os.environ:
             tmux_args += ('-x', 800, '-y', 600)
 
         proc = self.cmd(
