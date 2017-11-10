@@ -165,7 +165,12 @@ class tmux_cmd:
 
     .. code-block:: python
 
-        proc = tmux_cmd('new-session', '-s%' % 'my session')
+        c = tmux_cmd('new-session', '-s%' % 'my session')
+
+        # You can actually see the command in the .cmd attribute
+        print(c.cmd)
+
+        proc = c.execute()
 
         if proc.stderr:
             raise exc.LibTmuxException(
@@ -205,6 +210,8 @@ class tmux_cmd:
 
         self.cmd = cmd
 
+    def execute(self):
+        cmd = self.cmd
         try:
             self.process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -229,6 +236,7 @@ class tmux_cmd:
                 self.stdout = self.stderr[0]
 
         logger.debug("self.stdout for {}: \n{}".format(" ".join(cmd), self.stdout))
+        return self
 
 
 class TmuxMappingObject(MutableMapping):
@@ -462,7 +470,7 @@ def get_version() -> LooseVersion:
     :class:`distutils.version.LooseVersion`
         tmux version according to :func:`libtmux.common.which`'s tmux
     """
-    proc = tmux_cmd("-V")
+    proc = tmux_cmd("-V").execute()
     if proc.stderr:
         if proc.stderr[0] == "tmux: unknown option -- V":
             if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
