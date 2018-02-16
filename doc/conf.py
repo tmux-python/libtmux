@@ -59,6 +59,12 @@ html_theme_options = {
     'projects': alagitpull.projects,
     'project_name': about['__title__'],
 }
+alagitpull_internal_hosts = [
+    'libtmux.git-pull.com',
+    '0.0.0.0',
+]
+alagitpull_external_hosts_new_window = True
+
 html_sidebars = {
     '**': [
         'about.html',
