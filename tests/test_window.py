@@ -108,6 +108,18 @@ def test_split_window(session):
     assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
 
 
+def test_split_window_shell(session):
+    """Window.split_window() splits window, returns new Pane, vertical. Test shell command"""
+    window_name = 'test split window'
+    cmd = 'sleep 1m'
+    window = session.new_window(window_name=window_name, attach=True)
+    pane = window.split_window(shell=cmd)
+    assert len(window.panes) == 2
+    assert isinstance(pane, Pane)
+    assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
+    assert pane.get('pane_start_command') == cmd
+
+
 def test_split_window_horizontal(session):
     """Window.split_window() splits window, returns new Pane, horizontal.  """
     window_name = 'test split window'

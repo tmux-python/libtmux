@@ -351,7 +351,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         target=None,
         start_directory=None,
         attach=True,
-        vertical=True
+        vertical=True,
+        shell=None
     ):
         """Split window and return the created :class:`Pane`.
 
@@ -379,6 +380,12 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         :type target: bool
         :param vertical: split vertically
         :type vertical: bool
+        :param shell: execute a command on splitting the window.  The
+            pane will close when the command exits.
+            NOTE: When this command exits the pane will close.  This feature
+            is useful for long-running processes where the closing of the
+            window upon completion is desired.
+        :type shell: str
 
         :rtype: :class:`Pane`
 
@@ -413,6 +420,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         if not attach:
             tmux_args += ('-d',)
+
+        if shell:
+            tmux_args += (shell, )
 
         pane = self.cmd(
             'split-window',
