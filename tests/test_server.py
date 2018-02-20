@@ -86,3 +86,14 @@ def test_new_session(server):
     mysession = server.new_session("test_new_session")
     assert mysession.get("session_name") == "test_new_session"
     assert server.has_session("test_new_session")
+
+
+def test_new_session_shell(server):
+    """Server.new_session creates and returns valid session running with specified command"""
+    cmd = 'sleep 1m'
+    mysession = server.new_session("test_new_session", shell=cmd)
+    window = mysession.list_windows()[0]
+    pane = window.list_panes()[0]
+    assert mysession.get("session_name") == "test_new_session"
+    assert server.has_session("test_new_session")
+    assert pane.get('pane_start_command') == cmd
