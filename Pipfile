@@ -6,32 +6,10 @@ name = "pypi"
 [packages]
 "e1839a8" = {path = ".", editable = true}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 [dev-packages]
 
-pytest = "==3.2.3"
+pytest = "==3.4.1"
 docutils = "==0.14"
-alagitpull = "==0.0.13"
+alagitpull = "==0.0.19"
 releases = "==1.4.0"
-sphinx = "*"
+sphinx = "==1.7.1"
