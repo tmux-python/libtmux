@@ -108,6 +108,8 @@ Exceptions
 Test tools
 ----------
 
+.. automethod:: libtmux.test.retry
+
 .. automethod:: libtmux.test.get_test_session_name
 
 .. automethod:: libtmux.test.get_test_window_name

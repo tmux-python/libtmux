@@ -7,10 +7,12 @@ import contextlib
 import logging
 import os
 import tempfile
+import time
 
 logger = logging.getLogger(__name__)
 
 TEST_SESSION_PREFIX = 'libtmux_'
+RETRY_TIMEOUT_SECONDS = int(os.getenv('RETRY_TIMEOUT_SECONDS', 8))
 
 namer = tempfile._RandomNameSequence()
 current_dir = os.path.abspath(os.path.dirname(__file__))
@@ -18,7 +20,37 @@ example_dir = os.path.abspath(os.path.join(current_dir, '..', 'examples'))
 fixtures_dir = os.path.realpath(os.path.join(current_dir, 'fixtures'))
 
 
+def retry(seconds=RETRY_TIMEOUT_SECONDS):
+    """Retry a block of code until a time limit or ``break``.
+
+    .. code-block:: python
+
+        while retry():
+            p = w.attached_pane
+            p.server._update_panes()
+            if p.current_path == pane_path:
+                break
+
+
+    :param seconds: Seconds to retry, defaults to ``RETRY_TIMEOUT_SECONDS``,
+        which is configurable via environmental variables.
+    :type seconds: int
+    :rtype: void
+    """
+    return (lambda: time.time() < time.time() + seconds)()
+
+
 def get_test_session_name(server, prefix=TEST_SESSION_PREFIX):
+    """Faker to create a session name that doesn't exist.
+
+    :param server: libtmux server
+    :type server: :class:`libtmux.Server`
+    :param prefix: prefix for sessions (e.g. libtmux_). Defaults to
+        ``TEST_SESSION_PREFIX``.
+    :type prefix: string
+    :rtype: string
+    :returns: Random session name guaranteed to not collide with current ones
+    """
     while True:
         session_name = prefix + next(namer)
         if not server.has_session(session_name):
@@ -27,6 +59,16 @@ def get_test_session_name(server, prefix=TEST_SESSION_PREFIX):
 
 
 def get_test_window_name(session, prefix=TEST_SESSION_PREFIX):
+    """Faker to create a window name that doesn't exist.
+
+    :param session: libtmux session
+    :type session: :class:`libtmux.Session`
+    :param prefix: prefix for sessions (e.g. libtmux_). Defaults to
+        ``TEST_SESSION_PREFIX``. ATM we reuse the test session prefix here.
+    :type prefix: string
+    :rtype: string
+    :returns: Random window name guaranteed to not collide with current ones
+    """
     while True:
         window_name = prefix + next(namer)
         if not session.find_where(window_name=window_name):
