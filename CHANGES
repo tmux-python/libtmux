@@ -4,6 +4,10 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.7.8 <2018-03-04>`
+- :support:`-` Port ``retry`` function from tmuxp
+  (https://github.com/tony/tmuxp/issues/354)
+
 - :release:`0.7.7 <2017-11-10>`
 - :support:`-` Don't add -x/-y in tmux >= 2.6 if running tmuxp from inside
   client.
