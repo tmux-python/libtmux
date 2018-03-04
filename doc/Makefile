@@ -164,11 +164,11 @@ watch:
 	if command -v entr > /dev/null; then ${WATCH_FILES} | entr -c $(MAKE) html; else $(MAKE) html; fi
 
 serve:
-	@echo '================================================='
+	@echo '=============================================================='
 	@echo
 	@echo 'docs server running at http://0.0.0.0:${HTTP_PORT}/_build/html'
 	@echo
-	@echo '================================================='
+	@echo '=============================================================='
 	@if test ${PYVERSION} -eq 2; then $(MAKE) serve_py2; else make serve_py3; fi
 
 serve_py2:
