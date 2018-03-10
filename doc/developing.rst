@@ -26,7 +26,7 @@ To begin developing, check out the code from github:
 
 .. code-block:: bash
 
-    $ git clone git@github.com:tony/libtmux.git
+    $ git clone git@github.com:tmux-python/libtmux.git
     $ cd libtmux
 
 Now create a virtualenv, if you don't know how to, you can create a
@@ -177,6 +177,6 @@ tested are pypy, pypy3, 2.7 and >= 3.3. The `travis build site`_ uses this
     :language: yaml
 
 .. _travis-ci: http://www.travis-ci.org
-.. _travis build site: http://www.travis-ci.org/tony/libtmux
-.. _.travis.yml: https://github.com/tony/libtmux/blob/master/.travis.yml
-.. _issue on github: https://github.com/tony/libtmux/issues
+.. _travis build site: http://www.travis-ci.org/tmux-python/libtmux
+.. _.travis.yml: https://github.com/tmux-python/libtmux/blob/master/.travis.yml
+.. _issue on github: https://github.com/tmux-python/libtmux/issues

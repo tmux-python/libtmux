@@ -69,7 +69,7 @@ def test_get_version_too_low(monkeypatch):
 def test_ignores_letter_versions():
     """Ignore letters such as 1.8b.
 
-    See ticket https://github.com/tony/tmuxp/issues/55.
+    See ticket https://github.com/tmux-python/tmuxp/issues/55.
 
     In version 0.1.7 this is adjusted to use LooseVersion, in order to
     allow letters.

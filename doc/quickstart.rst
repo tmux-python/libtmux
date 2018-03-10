@@ -315,6 +315,6 @@ sessions in the background. :)
     and our `test suite`_ (see :ref:`developing`.)
 
 .. _sliderepl: http://discorporate.us/projects/sliderepl/
-.. _workspacebuilder.py: https://github.com/tony/libtmux/blob/master/libtmux/workspacebuilder.py
-.. _test suite: https://github.com/tony/libtmux/tree/master/tests
+.. _workspacebuilder.py: https://github.com/tmux-python/libtmux/blob/master/libtmux/workspacebuilder.py
+.. _test suite: https://github.com/tmux-python/libtmux/tree/master/tests
 .. _ptpython: https://github.com/jonathanslenders/ptpython

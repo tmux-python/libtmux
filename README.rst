@@ -180,25 +180,25 @@ Project details
 ==============  ==========================================================
 tmux support    1.8, 1.9a, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
 python support  2.7, >= 3.3, pypy, pypy3
-Source          https://github.com/tony/libtmux
+Source          https://github.com/tmux-python/libtmux
 Docs            https://libtmux.git-pull.com
 API             https://libtmux.git-pull.com/en/latest/api.html
 Changelog       https://libtmux.git-pull.com/en/latest/history.html
-Issues          https://github.com/tony/libtmux/issues
-Travis          http://travis-ci.org/tony/libtmux
-Test Coverage   https://codecov.io/gh/tony/libtmux
+Issues          https://github.com/tmux-python/libtmux/issues
+Travis          http://travis-ci.org/tmux-python/libtmux
+Test Coverage   https://codecov.io/gh/tmux-python/libtmux
 pypi            https://pypi.python.org/pypi/libtmux
 Open Hub        https://www.openhub.net/p/libtmux-python
 License         `BSD`_.
 git repo        .. code-block:: bash
 
-                    $ git clone https://github.com/tony/libtmux.git
+                    $ git clone https://github.com/tmux-python/libtmux.git
 install stable  .. code-block:: bash
 
                     $ pip install libtmux
 install dev     .. code-block:: bash
 
-                    $ git clone https://github.com/tony/libtmux.git libtmux
+                    $ git clone https://github.com/tmux-python/libtmux.git libtmux
                     $ cd ./libtmux
                     $ virtualenv .venv
                     $ source .venv/bin/activate
@@ -215,15 +215,15 @@ tests           .. code-block:: bash
     :alt: Python Package
     :target: http://badge.fury.io/py/libtmux
 
-.. |build-status| image:: https://img.shields.io/travis/tony/libtmux.svg
+.. |build-status| image:: https://img.shields.io/travis/tmux-python/libtmux.svg
    :alt: Build Status
-   :target: https://travis-ci.org/tony/libtmux
+   :target: https://travis-ci.org/tmux-python/libtmux
 
-.. |coverage| image:: https://codecov.io/gh/tony/libtmux/branch/master/graph/badge.svg
+.. |coverage| image:: https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg
     :alt: Code Coverage
-    :target: https://codecov.io/gh/tony/libtmux
+    :target: https://codecov.io/gh/tmux-python/libtmux
     
-.. |license| image:: https://img.shields.io/github/license/tony/libtmux.svg
+.. |license| image:: https://img.shields.io/github/license/tmux-python/libtmux.svg
     :alt: License 
 
 .. |docs| image:: https://readthedocs.org/projects/libtmux/badge/?version=latest

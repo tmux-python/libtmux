@@ -6,7 +6,7 @@ Here you can find the recent changes to libtmux
 
 - :release:`0.7.8 <2018-03-04>`
 - :support:`-` Port ``retry`` function from tmuxp
-  (https://github.com/tony/tmuxp/issues/354)
+  (https://github.com/tmux-python/tmuxp/issues/354)
 
 - :release:`0.7.7 <2017-11-10>`
 - :support:`-` Don't add -x/-y in tmux >= 2.6 if running tmuxp from inside
@@ -116,7 +116,7 @@ Here you can find the recent changes to libtmux
 - :release:`0.1.0 <2016-05-22>`
 - libtmux forked from `tmuxp`_.
 
-.. _tmuxp: https://github.com/tony/tmuxp
+.. _tmuxp: https://github.com/tmux-python/tmuxp
 .. _@askedrelic: https://github.com/askedrelic
 
 .. # vim: set filetype=rst:

@@ -504,7 +504,7 @@ def has_minimum_version(raises=True):
     .. versionchanged:: 0.1.7
         Versions will now remove trailing letters per `Issue 55`_.
 
-        .. _Issue 55: https://github.com/tony/tmuxp/issues/55.
+        .. _Issue 55: https://github.com/tmux-python/tmuxp/issues/55.
 
     """
 

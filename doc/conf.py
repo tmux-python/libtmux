@@ -28,8 +28,8 @@ extensions = ['sphinx.ext.autodoc',
 
 releases_unstable_prehistory = True
 releases_document_name = "history"
-releases_issue_uri = "https://github.com/tony/libtmux/issues/%s"
-releases_release_uri = "https://github.com/tony/libtmux/tree/v%s"
+releases_issue_uri = "https://github.com/tmux-python/libtmux/issues/%s"
+releases_release_uri = "https://github.com/tmux-python/libtmux/tree/v%s"
 
 templates_path = ['_templates']
 
@@ -52,7 +52,7 @@ html_favicon = 'favicon.ico'
 html_theme = 'alagitpull'
 html_theme_options = {
     'logo': 'img/libtmux.svg',
-    'github_user': 'tony',
+    'github_user': 'tmux-python',
     'github_repo': 'libtmux',
     'github_type': 'star',
     'github_banner': True,
