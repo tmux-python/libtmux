@@ -3,12 +3,9 @@ language: python
 sudo: false
 python:
   - 2.7
-  - 3.3
-  - 3.4
-  - 3.5
   - 3.6
-  - pypy3.5-5.8.0
-  - pypy-5.6.0
+  - pypy3.5-5.10.1
+  - pypy2.7-5.10.0
 env:
   - TMUX_VERSION=master
   - TMUX_VERSION=2.6
