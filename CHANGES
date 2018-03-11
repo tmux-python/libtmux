@@ -4,6 +4,10 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :support:`46` Change license from BSD to MIT
+- :support:`-` Move to new organization, tmux-python
+- :support:`-` Support package updates to pytest, sphinx, etc.
+
 - :release:`0.7.8 <2018-03-04>`
 - :support:`-` Port ``retry`` function from tmuxp
   (https://github.com/tmux-python/tmuxp/issues/354)
