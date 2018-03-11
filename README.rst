@@ -155,7 +155,7 @@ powerful traversal features::
     >>> pane.window.session
     Session($3 foo)
 
-.. _BSD: http://opensource.org/licenses/BSD-3-Clause
+.. _MIT: http://opensource.org/licenses/MIT
 .. _developing and testing: http://libtmux.git-pull.com/en/latest/developing.html
 .. _tmuxp: https://tmuxp.git-pull.com/
 .. _documentation: https://libtmux.git-pull.com/
@@ -189,7 +189,7 @@ Travis          http://travis-ci.org/tmux-python/libtmux
 Test Coverage   https://codecov.io/gh/tmux-python/libtmux
 pypi            https://pypi.python.org/pypi/libtmux
 Open Hub        https://www.openhub.net/p/libtmux-python
-License         `BSD`_.
+License         `MIT`_.
 git repo        .. code-block:: bash
 
                     $ git clone https://github.com/tmux-python/libtmux.git

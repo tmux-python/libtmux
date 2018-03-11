@@ -6,7 +6,7 @@ libtmux
 ~~~~~~~
 
 :copyright: Copyright 2016-2018 Tony Narlock.
-:license: BSD, see LICENSE for details
+:license: MIT, see LICENSE for details
 
 """
 

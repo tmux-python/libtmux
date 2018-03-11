@@ -57,7 +57,7 @@ setup(
     keywords=about['__title__'],
     classifiers=[
         'Development Status :: 5 - Production/Stable',
-        "License :: OSI Approved :: BSD License",
+        "License :: OSI Approved :: MIT License",
         "Operating System :: POSIX",
         "Operating System :: MacOS :: MacOS X",
         'Environment :: Web Environment',
