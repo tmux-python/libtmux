@@ -397,7 +397,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
                     attach=False,
                     start_directory=None,
                     window_name=None,
-                    shell=None,
+                    window_command=None,
                     *args,
                     **kwargs):
         """Return :class:`Session` from  ``$ tmux new-session``.
@@ -435,7 +435,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
             $ tmux new-session -n <window_name>
 
         :type session_name: str
-        :param shell: execute a command on starting the session.  The
+        :param window_command: execute a command on starting the session.  The
             window will close when the command exits.
             NOTE: When this command exits the window will close.  This feature
             is useful for long-running processes where the closing of the
@@ -486,8 +486,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         if has_gte_version('2.6') and 'TMUX' not in os.environ:
             tmux_args += ('-x', 800, '-y', 600)
 
-        if shell:
-            tmux_args += (shell, )
+        if window_command:
+            tmux_args += (window_command, )
 
         proc = self.cmd(
             'new-session',

@@ -89,9 +89,10 @@ def test_new_session(server):
 
 
 def test_new_session_shell(server):
-    """Server.new_session creates and returns valid session running with specified command"""
+    """Server.new_session creates and returns valid session running with
+    specified command"""
     cmd = 'sleep 1m'
-    mysession = server.new_session("test_new_session", shell=cmd)
+    mysession = server.new_session("test_new_session", window_command=cmd)
     window = mysession.list_windows()[0]
     pane = window.list_panes()[0]
     assert mysession.get("session_name") == "test_new_session"
