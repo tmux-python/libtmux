@@ -4,9 +4,16 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :release:`0.8.0 <2018-03-11>`
 - :support:`46` Change license from BSD to MIT
 - :support:`-` Move to new organization, tmux-python
 - :support:`-` Support package updates to pytest, sphinx, etc.
+- :support:`-` Travis/CI: Limit tests to Python 2.7 and 3.6 (removed 3.3 to 3.5)
+- :support:`-` Travis/CI: Update pypy veersions
+- :feature:`103` ``Server.new_session`` learned how to run commands in
+  window on session start, thanks @grimpy!
+- :support:`68` Make Server.has_session() use returncode, thanks
+  @jlargentaye! This should make ``has_session`` more robust.
 
 - :release:`0.7.8 <2018-03-04>`
 - :support:`-` Port ``retry`` function from tmuxp
