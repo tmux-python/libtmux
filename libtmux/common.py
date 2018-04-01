@@ -335,17 +335,23 @@ class TmuxRelationalObject(object):
             return list(filter(by, self.children))
 
     def get_by_id(self, id):
-        """Return object based on ``child_id_attribute``.
+        """
+        Return object based on ``child_id_attribute``.
 
+        Parameters
+        ----------
+        val : str
+
+        Returns
+        -------
+        object
+
+        Notes
+        -----
         Based on `.get()`_ from `backbone.js`_.
 
         .. _backbone.js: http://backbonejs.org/
         .. _.get(): http://backbonejs.org/#Collection-get
-
-        :param id:
-        :type id: str
-        :rtype: object
-
         """
         for child in self.children:
             if child[self.child_id_attribute] == id:
@@ -359,18 +365,26 @@ class TmuxRelationalObject(object):
 def which(exe=None, default_paths=[
             '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin'
         ], append_env_path=True):
-    """Return path of bin. Python clone of /usr/bin/which.
+    """
+    Return path of bin. Python clone of /usr/bin/which.
 
+    Parameters
+    ----------
+    exe : str
+        Application to search PATHs for.
+    default_path : list
+       Paths to check inside of
+    append_env_path : bool, optional
+        Append list of directories to check in from PATH environment variable.
+        Default True. Setting False only for testing / diagnosing.
+
+    Returns
+    -------
+    str
+
+    Notes
+    -----
     from salt.util - https://www.github.com/saltstack/salt - license apache
-
-    :param exe: Application to search PATHs for.
-    :type exe: str
-    :param default_path: Application to search PATHs for.
-    :type default_path: list
-    :param append_env_path: Append PATHs in environmental variables.
-    :type append_env_path: bool
-    :rtype: str
-
     """
     def _is_executable_file_or_link(exe):
         # check for os.X_OK doesn't suffice because directory may executable
@@ -439,23 +453,35 @@ def get_version():
 
 
 def has_version(version):
-    """Return True if tmux version installed.
+    """
+    Return affirmative if tmux version installed.
 
-    :param version: version, '1.8'
-    :type version: str
-    :returns: True if version matches
-    :rtype: bool
+    Parameters
+    ----------
+    version : str
+        version number, e.g. '1.8'
+
+    Returns
+    -------
+    bool :
+        True if version matches
     """
     return get_version() == LooseVersion(version)
 
 
 def has_gt_version(min_version):
-    """Return True if tmux version greater than minimum.
+    """
+    Return affirmative if tmux version greater than minimum.
 
-    :param min_version: version, e.g. '1.8'
-    :type min_version: str
-    :returns: True if version above min_version
-    :rtype: bool
+    Parameters
+    ----------
+    min_version : str
+        tmux version, e.g. '1.8'
+
+    Returns
+    -------
+    bool :
+        True if version above min_version
     """
     return get_version() > LooseVersion(min_version)
 
