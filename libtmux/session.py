@@ -24,9 +24,26 @@ class Session(
     TmuxRelationalObject,
     EnvironmentMixin
 ):
-    """:term:`tmux(1)` session.
+    """
+    A :term:`tmux(1)` :term:`session` [#]_.
 
     Holds :class:`Window` objects.
+
+    Parameters
+    ----------
+    server : :class:`Server`
+
+    References
+    ----------
+    .. [#] tmux session. openbsd manpage for TMUX(1).
+           "When tmux is started it creates a new session with a single window
+           and displays it on screen..."
+
+           "A session is a single collection of pseudo terminals under the
+           management of tmux.  Each session has one or more windows linked to
+           it."
+
+       https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
     """
 
     #: unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`

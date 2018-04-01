@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 class Server(TmuxRelationalObject, EnvironmentMixin):
 
-    """The :term:`tmux(1)` server.
+    """
+    The :term:`tmux(1)` :term:`server` [#]_.
 
     - :attr:`Server._sessions` [:class:`Session`, ...]
 
@@ -32,6 +33,25 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
     When instantiated stores information on live, running tmux server.
 
+    Parameters
+    ----------
+    socket_name : str, optional
+    socket_path : str, optional
+    config_file : str, optional
+    colors : str, optional
+
+    References
+    ----------
+    .. [#] CLIENTS AND SESSIONS. openbsd manpage for TMUX(1)
+           "The tmux server manages clients, sessions, windows and panes.
+           Clients are attached to sessions to interact with them, either when
+           they are created with the new-session command, or later with the
+           attach-session command. Each session has one or more windows linked
+           into it. Windows may be linked to multiple sessions and are made up
+           of one or more panes, each of which contains a pseudo terminal."
+
+       https://man.openbsd.org/tmux.1#CLIENTS_AND_SESSIONS.
+       Accessed April 1st, 2018.
     """
 
     #: ``[-L socket-name]``
