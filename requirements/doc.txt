@@ -2,3 +2,4 @@ docutils==0.14
 releases==1.4.1
 sphinx==1.7.2
 alagitpull==0.0.19
+sphinxcontrib-napoleon==0.6.1
