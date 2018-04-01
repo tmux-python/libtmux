@@ -22,6 +22,7 @@ with open("../libtmux/__about__.py") as fp:
 extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.intersphinx',
               'sphinx.ext.todo',
+              'sphinxcontrib.napoleon',
               'releases',
               'alagitpull',
               ]
