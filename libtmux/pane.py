@@ -85,8 +85,9 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         Specifying ``('-t', 'custom-target')`` or ``('-tcustom_target')`` in
         ``args`` will override using the object's ``pane_id`` as target.
 
-        :rtype: :class:`Server.cmd`
-
+        Returns
+        -------
+        :class:`Server.cmd`
         """
         if not any(arg.startswith('-t') for arg in args):
             args = ('-t', self.get('pane_id')) + args
@@ -94,18 +95,20 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         return self.server.cmd(cmd, *args, **kwargs)
 
     def send_keys(self, cmd, enter=True, suppress_history=True):
-        """``$ tmux send-keys`` to the pane.
+        """
+        ``$ tmux send-keys`` to the pane.
 
         A leading space character is added to cmd to avoid polluting the
         user's history.
 
-        :param cmd: Text or input into pane
-        :type cmd: str
-        :param enter: Send enter after sending the input.
-        :type enter: bool
-        :param suppress_history: Don't add these keys to the shell history
-        :type suppress_history: bool
-
+        Parameters
+        ----------
+        cmd : str
+            Text or input into pane
+        enter : bool, optional
+            Send enter after sending the input, default True.
+        suppress_history : bool, optional
+            Don't add these keys to the shell history, default True.
         """
         prefix = ' ' if suppress_history else ''
         self.cmd('send-keys', prefix + cmd)
@@ -123,17 +126,21 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         self.cmd('send-keys', '-R \; clear-history')
 
     def split_window(self, attach=False, vertical=True, start_directory=None):
-        """Split window at pane and return newly created :class:`Pane`.
+        """
+        Split window at pane and return newly created :class:`Pane`.
 
-        :param attach: Attach / select pane after creation.
-        :type attach: bool
-        :param vertical: split vertically
-        :type vertical: bool
-        :rtype: :class:`Pane`.
-        :param start_directory: specifies the working directory in which the
-            new pane is created.
-        :type start_directory: str
+        Parameters
+        ----------
+        attach : bool, optional
+            Attach / select pane after creation.
+        vertical : bool, optional
+            split vertically
+        start_directory : str, optional
+            specifies the working directory in which the new pane is created.
 
+        Returns
+        -------
+        :class:`Pane`
         """
         return self.window.split_window(
             target=self.get('pane_id'),
@@ -143,30 +150,50 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         )
 
     def set_width(self, width):
-        """Set width of pane.
+        """
+        Set width of pane.
 
-        :param width: pane width, in cells.
-        :type width: int
-
+        Parameters
+        ----------
+        width : int
+            pane width, in cells
         """
         self.resize_pane(width=width)
 
     def set_height(self, height):
-        """Set height of pane.
+        """
+        Set height of pane.
 
-        :param height: pane height, in cells.
-        :type height: int
-
+        Parameters
+        ----------
+        height : int
+            height of pain, in cells
         """
         self.resize_pane(height=height)
 
     def resize_pane(self, *args, **kwargs):
-        """``$ tmux resize-pane`` of pane and return ``self``.
+        """
+        ``$ tmux resize-pane`` of pane and return ``self``.
 
-        :param target_pane: ``target_pane``, or ``-U``,``-D``, ``-L``, ``-R``.
-        :type target_pane: str
-        :rtype: :class:`Pane`
+        Parameters
+        ----------
+        target_pane : str
+            ``target_pane``, or ``-U``,``-D``, ``-L``, ``-R``.
 
+        Optional Parameters
+        -------------------
+        height : int
+            ``resize-pane -y`` dimensions
+        width : int
+            ``resize-pane -x`` dimensions
+
+        Returns
+        -------
+        :class:`Pane`
+
+        Raises
+        ------
+        exc.LibTmuxException
         """
 
         if 'height' in kwargs:
@@ -183,22 +210,24 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         return self
 
     def enter(self):
-        """Send carriage return to pane.
+        """
+        Send carriage return to pane.
 
         ``$ tmux send-keys`` send Enter to the pane.
-
         """
         self.cmd('send-keys', 'Enter')
 
     def select_pane(self):
-        """Select pane. Return ``self``.
+        """
+        Select pane. Return ``self``.
 
         To select a window object asynchrously. If a ``pane`` object exists
         and is no longer longer the current window, ``w.select_pane()``
         will make ``p`` the current pane.
 
-        :rtype: :class:`pane`
-
+        Returns
+        -------
+        :class:`pane`
         """
         return self.window.select_pane(self.get('pane_id'))
 
