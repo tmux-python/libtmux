@@ -117,3 +117,5 @@ Test tools
 .. automethod:: libtmux.test.temp_session
 
 .. automethod:: libtmux.test.temp_window
+
+.. autoclass:: libtmux.test.EnvironmentVarGuard
