@@ -4,6 +4,9 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :support:`-` Add sphinxcontrib-napoleon package for documentation
+- :support:`-` Move docstrings over to numpy's style
+
 - :release:`0.8.0 <2018-03-11>`
 - :support:`46` Change license from BSD to MIT
 - :support:`-` Move to new organization, tmux-python
