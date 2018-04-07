@@ -28,9 +28,9 @@ TMUX_MAX_VERSION = '2.4'
 
 class EnvironmentMixin(object):
 
-    """Mixin class for managing session and server level environment
-    variables in tmux.
-
+    """
+    Mixin class for managing session and server level environment variables in
+    tmux.
     """
 
     _add_option = None
@@ -39,14 +39,16 @@ class EnvironmentMixin(object):
         self._add_option = add_option
 
     def set_environment(self, name, value):
-        """Set environment ``$ tmux set-environment <name> <value>``.
-
-        :param name: the environment variable name. such as 'PATH'.
-        :type option: str
-        :param value: environment value.
-        :type value: str
         """
+        Set environment ``$ tmux set-environment <name> <value>``.
 
+        Parameters
+        ----------
+        name : str
+            the environment variable name. such as 'PATH'.
+        option : str
+            environment value.
+        """
         args = ['set-environment']
         if self._add_option:
             args += [self._add_option]
@@ -61,12 +63,14 @@ class EnvironmentMixin(object):
             raise ValueError('tmux set-environment stderr: %s' % proc.stderr)
 
     def unset_environment(self, name):
-        """Unset environment variable ``$ tmux set-environment -u <name>``.
-
-        :param name: the environment variable name. such as 'PATH'.
-        :type option: str
         """
+        Unset environment variable ``$ tmux set-environment -u <name>``.
 
+        Parameters
+        ----------
+        name : str
+            the environment variable name. such as 'PATH'.
+        """
         args = ['set-environment']
         if self._add_option:
             args += [self._add_option]
@@ -82,10 +86,11 @@ class EnvironmentMixin(object):
     def remove_environment(self, name):
         """Remove environment variable ``$ tmux set-environment -r <name>``.
 
-        :param name: the environment variable name. such as 'PATH'.
-        :type option: str
+        Parameters
+        ----------
+        name : str
+            the environment variable name. such as 'PATH'.
         """
-
         args = ['set-environment']
         if self._add_option:
             args += [self._add_option]
@@ -99,13 +104,21 @@ class EnvironmentMixin(object):
             raise ValueError('tmux set-environment stderr: %s' % proc.stderr)
 
     def show_environment(self, name=None):
-        """Show environment ``$tmux show-environment -t [session] <name>``.
+        """Show environment ``$ tmux show-environment -t [session] <name>``.
 
         Return dict of environment variables for the session or the value of a
         specific variable if the name is specified.
 
-        :param name: the environment variable name. such as 'PATH'.
-        :type option: str
+        Parameters
+        ----------
+        name : str
+            the environment variable name. such as 'PATH'.
+
+        Returns
+        -------
+        str or dict
+            environmental variables in dict, if no name, or str if name
+            entered.
         """
         tmux_args = ['show-environment']
         if self._add_option:
@@ -131,15 +144,21 @@ class EnvironmentMixin(object):
 
 class tmux_cmd(object):
 
-    """:term:`tmux(1)` command via :py:mod:`subprocess`.
+    """
+    :term:`tmux(1)` command via :py:mod:`subprocess`.
 
-    :param tmux_search_paths: Default PATHs to search tmux for, defaults to
-        ``default_paths`` used in :func:`which`.
-    :type tmux_search_paths: list
-    :param append_env_path: Append environment PATHs to tmux search paths.
-    :type append_env_path: bool
+    Parameters
+    ----------
+    tmux_search_paths : list, optional
+        Default PATHs to search tmux for, defaults to ``default_paths`` used
+        in :func:`which`.
+    append_env_path : bool
+        Append environment PATHs to tmux search paths. True by default.
 
-    Usage::
+    Examples
+    --------
+
+    .. code-block:: python
 
         proc = tmux_cmd('new-session', '-s%' % 'my session')
 
@@ -156,9 +175,11 @@ class tmux_cmd(object):
 
         $ tmux new-session -s my session
 
+    Notes
+    -----
+
     .. versionchanged:: 0.8
         Renamed from ``tmux`` to ``tmux_cmd``.
-
     """
 
     def __init__(self, *args, **kwargs):
@@ -263,7 +284,7 @@ class TmuxMappingObject(collections.MutableMapping):
     def __getattr__(self, key):
         try:
             return self._info[self.formatter_prefix + key]
-        except:
+        except KeyError:
             raise AttributeError('%s has no property %s' %
                                  (self.__class__, key))
 
@@ -311,12 +332,17 @@ class TmuxRelationalObject(object):
             return None
 
     def where(self, attrs, first=False):
-        """Return objects matching child objects properties.
+        """
+        Return objects matching child objects properties.
 
-        :param attrs: tmux properties to match
-        :type attrs: dict
-        :rtype: list
+        Parameters
+        ----------
+        attrs : dict
+            tmux properties to match values of
 
+        Returns
+        -------
+        list
         """
 
         # from https://github.com/serkanyersen/underscore.py
@@ -362,9 +388,11 @@ class TmuxRelationalObject(object):
         return None
 
 
-def which(exe=None, default_paths=[
-            '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin'
-        ], append_env_path=True):
+def which(
+    exe=None, default_paths=[
+        '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin',
+    ], append_env_path=True
+):
     """
     Return path of bin. Python clone of /usr/bin/which.
 
@@ -372,7 +400,7 @@ def which(exe=None, default_paths=[
     ----------
     exe : str
         Application to search PATHs for.
-    default_path : list
+    default_paths : list
        Paths to check inside of
     append_env_path : bool, optional
         Append list of directories to check in from PATH environment variable.
@@ -381,6 +409,7 @@ def which(exe=None, default_paths=[
     Returns
     -------
     str
+        path of application, if found in paths.
 
     Notes
     -----
@@ -419,7 +448,8 @@ def which(exe=None, default_paths=[
 
 
 def get_version():
-    """Return tmux version.
+    """
+    Return tmux version.
 
     If tmux is built from git master, the version returned will be the latest
     version appended with -master, e.g. ``2.4-master``.
@@ -427,8 +457,10 @@ def get_version():
     If using OpenBSD's base system tmux, the version will have ``-openbsd``
     appended to the latest version, e.g. ``2.4-openbsd``.
 
-    :returns: tmux version
-    :rtype: :class:`distutils.version.LooseVersion`
+    Returns
+    -------
+    :class:`distutils.version.LooseVersion`
+        tmux version according to :func:`libtmux.common.which`'s tmux
     """
     proc = tmux_cmd('-V')
     if proc.stderr:
