@@ -56,7 +56,7 @@ def get_test_session_name(server, prefix=TEST_SESSION_PREFIX):
     server : :class:`libtmux.Server`
         libtmux server
     prefix : str
-        prefix for sessions (e.g. libtmux_). Defaults to
+        prefix for sessions (e.g. ``libtmux_``). Defaults to
         ``TEST_SESSION_PREFIX``.
 
     Returns
@@ -80,7 +80,7 @@ def get_test_window_name(session, prefix=TEST_SESSION_PREFIX):
     session : :class:`libtmux.Session`
         libtmux session
     prefix : str
-        prefix for windows (e.g. libtmux_). Defaults to
+        prefix for windows (e.g. ``libtmux_``). Defaults to
         ``TEST_SESSION_PREFIX``.
 
         ATM we reuse the test session prefix here.
