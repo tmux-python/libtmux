@@ -70,6 +70,8 @@ Internals
 
 .. automethod:: libtmux.common.which
 
+.. automethod:: libtmux.common.get_version
+
 .. automethod:: libtmux.common.has_version
 
 .. automethod:: libtmux.common.has_gt_version
