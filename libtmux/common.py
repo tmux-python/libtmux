@@ -495,7 +495,7 @@ def has_version(version):
 
     Returns
     -------
-    bool :
+    bool
         True if version matches
     """
     return get_version() == LooseVersion(version)
@@ -512,52 +512,84 @@ def has_gt_version(min_version):
 
     Returns
     -------
-    bool :
+    bool
         True if version above min_version
     """
     return get_version() > LooseVersion(min_version)
 
 
 def has_gte_version(min_version):
-    """Return True if tmux version greater or equal to minimum.
+    """
+    Return True if tmux version greater or equal to minimum.
 
-    :param min_version: version, e.g. '1.8'
-    :type min_version: str
-    :returns: True if version above or equal to min_version
-    :rtype: bool
+    Parameters
+    ----------
+    min_version : str
+        tmux version, e.g. '1.8'
+
+    Returns
+    -------
+    bool
+        True if version above or equal to min_version
     """
     return get_version() >= LooseVersion(min_version)
 
 
 def has_lte_version(max_version):
-    """Return True if tmux version less or equal to minimum.
+    """
+    Return True if tmux version less or equal to minimum.
 
-    :param max_version: version, e.g. '1.8'
-    :type max_version: str
-    :returns: True if version below or equal to max_version
-    :rtype: bool
+    Parameters
+    ----------
+    max_version : str
+        tmux version, e.g. '1.8'
+
+    Returns
+    -------
+    bool
+         True if version below or equal to max_version
     """
     return get_version() <= LooseVersion(max_version)
 
 
 def has_lt_version(max_version):
-    """Return True if tmux version less than minimum.
+    """
+    Return True if tmux version less than minimum.
 
-    :param max_version: version, e.g. '1.8'
-    :type max_version: str
-    :returns: True if version below max_version
-    :rtype: bool
+    Parameters
+    ----------
+    max_version : str
+        tmux version, e.g. '1.8'
+
+    Returns
+    -------
+    bool
+        True if version below max_version
     """
     return get_version() < LooseVersion(max_version)
 
 
 def has_minimum_version(raises=True):
-    """Return if tmux meets version requirement. Version >1.8 or above.
+    """
+    Return if tmux meets version requirement. Version >1.8 or above.
 
-    :param raises: Will raise exception if version too low, default ``True``
-    :type raises: bool
-    :returns: True if tmux meets minimum required version
-    :rtype: bool
+    Parameters
+    ----------
+    raises : bool
+        raise exception if below minimum version requirement
+
+    Returns
+    -------
+    bool
+        True if tmux meets minimum required version.
+
+    Raises
+    ------
+    libtmux.exc.VersionTooLow
+        tmux version below minimum required for libtmux
+
+    Notes
+    -----
 
     .. versionchanged:: 0.7.0
         No longer returns version, returns True or False
@@ -566,9 +598,7 @@ def has_minimum_version(raises=True):
         Versions will now remove trailing letters per `Issue 55`_.
 
         .. _Issue 55: https://github.com/tmux-python/tmuxp/issues/55.
-
     """
-
     if get_version() < LooseVersion(TMUX_MIN_VERSION):
         if raises:
             raise exc.VersionTooLow(
@@ -582,15 +612,21 @@ def has_minimum_version(raises=True):
 
 
 def session_check_name(session_name):
-    """Raises exception session name invalid, modeled after tmux function.
+    """
+    Raises exception session name invalid, modeled after tmux function.
 
     tmux(1) session names may not be empty, or include periods or colons.
     These delimiters are reserved for noting session, window and pane.
 
-    :param session_name: name of session
-    :type session_name: str
-    :returns: void
-    :raises: :exc:`exc.BadSessionName`
+    Parameters
+    ----------
+    session_name : str
+        Name of session.
+
+    Raises
+    ------
+    :exc:`exc.BadSessionName`
+        Invalid session name.
     """
     if not session_name or len(session_name) == 0:
         raise exc.BadSessionName("tmux session names may not be empty.")
@@ -616,10 +652,15 @@ def handle_option_error(error):
     All errors raised will have the base error of :exc:`exc.OptionError`. So to
     catch any option error, use ``except exc.OptionError``.
 
-    :param error: error response from subprocess call
-    :type error: str
-    :raises: :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
-        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
+    Parameters
+    ----------
+    error : str
+        Error response from subprocess call.
+
+    Raises
+    ------
+    :exc:`exc.OptionError`, :exc:`exc.UnknownOption`, :exc:`exc.InvalidOption`,
+    :exc:`exc.AmbiguousOption`
     """
     if 'unknown option' in error:
         raise exc.UnknownOption(error)
