@@ -335,17 +335,25 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         ] or None
 
     def has_session(self, target_session, exact=True):
-        """Return True if session exists. ``$ tmux has-session``.
+        """
+        Return True if session exists. ``$ tmux has-session``.
 
-        :param target_session: session name
-        :type target_session: str
-        :param exact: match the session name exactly.
-            tmux uses fnmatch by default. Internally prepends ``=`` to the
-            session in ``$ tmux has-session``. tmux 2.1 and up only.
-        :type exact: bool
-        :raises: :exc:`exc.BadSessionName`
-        :rtype: bool
+        Parameters
+        ----------
+        target_session : str
+            session name
+        exact : bool
+            match the session name exactly. tmux uses fnmatch by default.
+            Internally prepends ``=`` to the session in ``$ tmux has-session``.
+            tmux 2.1 and up only.
 
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+
+        Returns
+        -------
+        bool
         """
         session_check_name(target_session)
 
@@ -364,13 +372,22 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         self.cmd('kill-server')
 
     def kill_session(self, target_session=None):
-        """Kill the tmux session with ``$ tmux kill-session``, return ``self``.
+        """
+        Kill the tmux session with ``$ tmux kill-session``, return ``self``.
 
-        :param: target_session: str. note this accepts ``fnmatch(3)``. 'asdf'
-            will kill 'asdfasd'.
-        :raises: :exc:`exc.BadSessionName`
-        :rtype: :class:`Server`
+        Parameters
+        ----------
+        target_session : str, optional
+            target_session: str. note this accepts ``fnmatch(3)``. 'asdf' will
+            kill 'asdfasd'.
 
+        Returns
+        -------
+        :class:`Server`
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
         """
         session_check_name(target_session)
 
@@ -382,10 +399,17 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         return self
 
     def switch_client(self, target_session):
-        """``$ tmux switch-client``.
+        """
+        ``$ tmux switch-client``.
 
-        :param: target_session: str. name of the session. fnmatch(3) works.
-        :raises: :exc:`exc.BadSessionName`
+        Parameters
+        ----------
+        target_session : str
+            name of the session. fnmatch(3) works.
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
         """
         session_check_name(target_session)
 
@@ -397,8 +421,14 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     def attach_session(self, target_session=None):
         """``$ tmux attach-session`` aka alias: ``$ tmux attach``.
 
-        :param: target_session: str. name of the session. fnmatch(3) works.
-        :raises: :exc:`exc.BadSessionName`
+        Parameters
+        ----------
+        target_session : str
+            name of the session. fnmatch(3) works.
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
         """
         session_check_name(target_session)
 
@@ -420,7 +450,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
                     window_command=None,
                     *args,
                     **kwargs):
-        """Return :class:`Session` from  ``$ tmux new-session``.
+        """
+        Return :class:`Session` from  ``$ tmux new-session``.
 
         Uses ``-P`` flag to print session info, ``-F`` for return formatting
         returns new Session object.
@@ -429,42 +460,43 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         ``$ tmux new-session -Ad`` will move to the session name if it already
         exists. todo: make an option to handle this.
 
-        :param session_name: session name::
+        Parameters
+        ----------
+        session_name : str, optional
+            ::
 
-            $ tmux new-session -s <session_name>
+                $ tmux new-session -s <session_name>
+        attach : bool, optional
+            create session in the foreground. ``attach=False`` is equivalent
+            to::
 
-        :type session_name: str
+                $ tmux new-session -d
 
-        :param attach: create session in the foreground. ``attach=False`` is
-            equivalent to::
-
-            $ tmux new-session -d
-
-        :type attach: bool
-
-        :param kill_session: Kill current session if ``$ tmux has-session``
-                             Useful for testing workspaces.
-        :type kill_session: bool
-
-        :param start_directory: specifies the working directory in which the
+        Other Parameters
+        ----------------
+        kill_session : bool, optional
+            Kill current session if ``$ tmux has-session``.
+            Useful for testing workspaces.
+        start_directory : str, optional
+            specifies the working directory in which the
             new session is created.
-        :type start_directory: str
+        window_name : str, optional
+            ::
 
-        :param window_name: window name::
+                $ tmux new-session -n <window_name>
+        window_command : str
+            execute a command on starting the session.  The window will close
+            when the command exits. NOTE: When this command exits the window
+            will close.  This feature is useful for long-running processes
+            where the closing of the window upon completion is desired.
 
-            $ tmux new-session -n <window_name>
+        Returns
+        -------
+        :class:`Session`
 
-        :type session_name: str
-        :param window_command: execute a command on starting the session.  The
-            window will close when the command exits.
-            NOTE: When this command exits the window will close.  This feature
-            is useful for long-running processes where the closing of the
-            window upon completion is desired.
-        :type window_command: str
-
-        :raises: :exc:`exc.BadSessionName`
-        :rtype: :class:`Session`
-
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
         """
         session_check_name(session_name)
 
