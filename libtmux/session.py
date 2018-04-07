@@ -82,13 +82,18 @@ class Session(
             logger.error(e)
 
     def cmd(self, *args, **kwargs):
-        """Return :meth:`server.cmd`.
+        """
+        Return :meth:`server.cmd`.
 
-        :rtype: :class:`server.cmd`
+        Returns
+        -------
+        :class:`server.cmd`
 
+        Notes
+        -----
         .. versionchanged:: 0.8
-            Renamed from ``.tmux`` to ``.cmd``.
 
+            Renamed from ``.tmux`` to ``.cmd``.
         """
         # if -t is not set in any arg yet
         if not any('-t' in text_type(x) for x in args):

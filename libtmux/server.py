@@ -92,13 +92,18 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
             self.colors = colors
 
     def cmd(self, *args, **kwargs):
-        """Execute tmux command and return output.
+        """
+        Execute tmux command and return output.
 
-        :rtype: :class:`common.tmux_cmd`
+        Returns
+        -------
+        :class:`common.tmux_cmd`
 
+        Notes
+        -----
         .. versionchanged:: 0.8
-            Renamed from ``.tmux`` to ``.cmd``.
 
+            Renamed from ``.tmux`` to ``.cmd``.
         """
 
         args = list(args)
@@ -119,15 +124,17 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         return tmux_cmd(*args, **kwargs)
 
     def _list_sessions(self):
-        """Return list of sessions in :py:obj:`dict` form.
+        """
+        Return list of sessions in :py:obj:`dict` form.
 
         Retrieved from ``$ tmux(1) list-sessions`` stdout.
 
         The :py:obj:`list` is derived from ``stdout`` in
         :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
 
-        :rtype: :py:obj:`list` of :py:obj:`dict`
-
+        Returns
+        -------
+        list of dict
         """
 
         sformats = formats.SESSION_FORMATS
@@ -168,10 +175,12 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         return self._list_sessions()
 
     def list_sessions(self):
-        """Return list of :class:`Session` from the ``tmux(1)`` session.
+        """
+        Return list of :class:`Session` from the ``tmux(1)`` session.
 
-        :rtype: :py:obj:`list` of :class:`Session`
-
+        Returns
+        -------
+        list of :class:`Session`
         """
         return [
             Session(server=self, **s) for s in self._sessions
@@ -185,15 +194,17 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     children = sessions
 
     def _list_windows(self):
-        """Return list of windows in :py:obj:`dict` form.
+        """
+        Return list of windows in :py:obj:`dict` form.
 
         Retrieved from ``$ tmux(1) list-windows`` stdout.
 
         The :py:obj:`list` is derived from ``stdout`` in
         :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
 
-        :rtype: list
-
+        Returns
+        -------
+        list of dict
         """
 
         wformats = ['session_name', 'session_id'] + formats.WINDOW_FORMATS
@@ -234,24 +245,28 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         return self._windows
 
     def _update_windows(self):
-        """Update internal window data and return ``self`` for chainability.
+        """
+        Update internal window data and return ``self`` for chainability.
 
-        :rtype: :class:`Server`
-
+        Returns
+        -------
+        :class:`Server`
         """
         self._list_windows()
         return self
 
     def _list_panes(self):
-        """Return list of panes in :py:obj:`dict` form.
+        """
+        Return list of panes in :py:obj:`dict` form.
 
         Retrieved from ``$ tmux(1) list-panes`` stdout.
 
         The :py:obj:`list` is derived from ``stdout`` in
         :class:`util.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
 
-        :rtype: list
-
+        Returns
+        -------
+        list
         """
 
         pformats = [
@@ -300,22 +315,26 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         return self._panes
 
     def _update_panes(self):
-        """Update internal pane data and return ``self`` for chainability.
+        """
+        Update internal pane data and return ``self`` for chainability.
 
-        :rtype: :class:`Server`
-
+        Returns
+        -------
+        :class:`Server`
         """
         self._list_panes()
         return self
 
     @property
     def attached_sessions(self):
-        """Return active :class:`Session` objects.
+        """
+        Return active :class:`Session` objects.
 
         This will not work where multiple tmux sessions are attached.
 
-        :rtype: :py:obj:`list` of :class:`Session`
-
+        Returns
+        -------
+        list of :class:`Session`
         """
 
         sessions = self._sessions
