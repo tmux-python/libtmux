@@ -180,8 +180,8 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         target_pane : str
             ``target_pane``, or ``-U``,``-D``, ``-L``, ``-R``.
 
-        Optional Parameters
-        -------------------
+        Other Parameters
+        ----------------
         height : int
             ``resize-pane -y`` dimensions
         width : int
