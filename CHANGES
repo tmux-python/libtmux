@@ -4,6 +4,9 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- :bug:`117` Fix issue with renaming clients with tmux 2.7 on BSD/macOS 
+  machines.
+- :support:`-` Sort imports with isort
 - :support:`-` Add sphinxcontrib-napoleon package for documentation
 - :support:`-` Move docstrings over to numpy's style
 
