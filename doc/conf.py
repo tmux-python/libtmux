@@ -2,7 +2,11 @@
 
 import os
 import sys
+
 import alagitpull
+
+import libtmux  # NOQA
+from libtmux import test  # NOQA
 
 # Get the project root dir, which is the parent dir of this
 cwd = os.getcwd()
@@ -10,8 +14,6 @@ project_root = os.path.dirname(cwd)
 
 sys.path.insert(0, project_root)
 
-from libtmux import test  # NOQA
-import libtmux  # NOQA
 
 # package data
 about = {}

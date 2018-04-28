@@ -10,9 +10,16 @@ libtmux
 
 """
 
-from .__about__ import __title__, __package_name__, __version__, \
-    __description__, __email__, __author__, __license__, __copyright__
-
+from .__about__ import (
+    __author__,
+    __copyright__,
+    __description__,
+    __email__,
+    __license__,
+    __package_name__,
+    __title__,
+    __version__,
+)
 from .pane import Pane
 from .server import Server
 from .session import Session

@@ -12,8 +12,14 @@ import os
 
 from . import exc, formats
 from ._compat import text_type
-from .common import EnvironmentMixin, has_version, TmuxMappingObject, \
-    TmuxRelationalObject, session_check_name, handle_option_error
+from .common import (
+    EnvironmentMixin,
+    TmuxMappingObject,
+    TmuxRelationalObject,
+    handle_option_error,
+    has_version,
+    session_check_name,
+)
 from .window import Window
 
 logger = logging.getLogger(__name__)

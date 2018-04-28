@@ -3,11 +3,11 @@
 from __future__ import absolute_import, unicode_literals, with_statement
 
 import logging
+
 import pytest
 
 from libtmux import Pane, Server, Window, exc
 from libtmux.common import has_gte_version
-
 
 logger = logging.getLogger(__name__)
 

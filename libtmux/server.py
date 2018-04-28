@@ -11,8 +11,13 @@ import logging
 import os
 
 from . import exc, formats
-from .common import EnvironmentMixin, TmuxRelationalObject, tmux_cmd, \
-    session_check_name, has_gte_version
+from .common import (
+    EnvironmentMixin,
+    TmuxRelationalObject,
+    has_gte_version,
+    session_check_name,
+    tmux_cmd,
+)
 from .session import Session
 
 logger = logging.getLogger(__name__)

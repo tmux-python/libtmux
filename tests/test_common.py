@@ -3,19 +3,26 @@
 
 import re
 import sys
+from distutils.version import LooseVersion
 
 import pytest
 
-from distutils.version import LooseVersion
-
 import libtmux
-
 from libtmux.common import (
-    has_minimum_version, which, session_check_name, tmux_cmd,
-    has_version, has_gt_version, has_lt_version, get_version,
-    has_gte_version, has_lte_version, TMUX_MAX_VERSION, TMUX_MIN_VERSION
+    TMUX_MAX_VERSION,
+    TMUX_MIN_VERSION,
+    get_version,
+    has_gt_version,
+    has_gte_version,
+    has_lt_version,
+    has_lte_version,
+    has_minimum_version,
+    has_version,
+    session_check_name,
+    tmux_cmd,
+    which,
 )
-from libtmux.exc import LibTmuxException, BadSessionName, TmuxCommandNotFound
+from libtmux.exc import BadSessionName, LibTmuxException, TmuxCommandNotFound
 
 version_regex = re.compile(r'([0-9]\.[0-9])|(master)')
 

@@ -13,7 +13,9 @@ import shlex
 
 from . import exc, formats
 from .common import (
-    TmuxMappingObject, TmuxRelationalObject, handle_option_error
+    TmuxMappingObject,
+    TmuxRelationalObject,
+    handle_option_error,
 )
 from .pane import Pane
 
