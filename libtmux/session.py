@@ -12,7 +12,7 @@ import os
 
 from . import exc, formats
 from ._compat import text_type
-from .common import EnvironmentMixin, TmuxMappingObject, \
+from .common import EnvironmentMixin, has_version, TmuxMappingObject, \
     TmuxRelationalObject, session_check_name, handle_option_error
 from .window import Window
 
@@ -152,14 +152,20 @@ class Session(
         """
         session_check_name(new_name)
 
-        proc = self.cmd(
-            'rename-session',
-            '-t%s' % self.id,
-            new_name
-        )
+        proc = self.cmd('rename-session', new_name)
 
         if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+            if has_version('2.7') and 'no current client' in proc.stderr:
+                """tmux 2.7 raises "no current client" warning on BSD systems.
+
+                Should be fixed next release:
+
+                - https://www.mail-archive.com/tech@openbsd.org/msg45186.html
+                - https://marc.info/?l=openbsd-cvs&m=152183263526828&w=2
+                """
+                pass
+            else:
+                raise exc.LibTmuxException(proc.stderr)
 
         return self
 
