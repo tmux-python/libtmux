@@ -1,8 +1,5 @@
-WATCH_FILES= find . -type f -not -path '*/\.*' | grep -i '.*[.]py$$' 2> /dev/null
+PY_FILES= find . -type f -not -path '*/\.*' | grep -i '.*[.]py$$' 2> /dev/null
 
-
-test:
-	py.test $(test)
 
 entr_warn:
 	@echo "----------------------------------------------------------"
@@ -12,9 +9,14 @@ entr_warn:
 	@echo "See http://entrproject.org/"
 	@echo "----------------------------------------------------------"
 
+isort:
+	isort `${PY_FILES}`
+
+test:
+	py.test $(test)
 
 watch_test:
-	if command -v entr > /dev/null; then ${WATCH_FILES} | entr -c $(MAKE) test; else $(MAKE) test entr_warn; fi
+	if command -v entr > /dev/null; then ${PY_FILES} | entr -c $(MAKE) test; else $(MAKE) test entr_warn; fi
 
 build_docs:
 	cd doc && $(MAKE) html
@@ -26,4 +28,4 @@ flake8:
 	flake8 libtmux tests
 
 watch_flake8:
-	if command -v entr > /dev/null; then ${WATCH_FILES} | entr -c $(MAKE) flake8; else $(MAKE) flake8 entr_warn; fi
+	if command -v entr > /dev/null; then ${PY_FILES} | entr -c $(MAKE) flake8; else $(MAKE) flake8 entr_warn; fi
