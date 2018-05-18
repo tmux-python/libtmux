@@ -116,6 +116,30 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         if enter:
             self.enter()
 
+    def display_message(self, cmd, get_text=False):
+        """
+        ``$ tmux display-message`` to the pane.
+
+        Displays a message in target-client status line.
+
+        Parameters
+        ----------
+        cmd : str
+            Special parameters to request from pane.
+        get_text : bool, optional
+            Returns only text without displaying a message in
+            target-client status line.
+
+        Returns
+        -------
+        :class:`list`
+        :class:`None`
+        """
+        if get_text:
+            return self.cmd('display-message', '-p', cmd).stdout
+        else:
+            self.cmd('display-message', cmd)
+
     def clear(self):
         """Clear pane."""
         self.send_keys('reset')
