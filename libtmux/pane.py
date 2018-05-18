@@ -217,6 +217,18 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """
         self.cmd('send-keys', 'Enter')
 
+    def capture_pane(self):
+        """
+        Capture text from pane.
+
+        ``$ tmux capture-pane`` to pane.
+
+        Returns
+        -------
+        :class:`list`
+        """
+        return self.cmd('capture-pane', '-p').stdout
+
     def select_pane(self):
         """
         Select pane. Return ``self``.
