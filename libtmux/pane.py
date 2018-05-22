@@ -93,7 +93,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
         return self.server.cmd(cmd, *args, **kwargs)
 
-    def send_keys(self, cmd, enter=True, suppress_history=True):
+    def send_keys(self, cmd, enter=True, suppress_history=True, literal=False):
         """
         ``$ tmux send-keys`` to the pane.
 
@@ -108,9 +108,15 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
             Send enter after sending the input, default True.
         suppress_history : bool, optional
             Don't add these keys to the shell history, default True.
+        literal : bool, optional
+            Send keys literally, default True.
         """
         prefix = ' ' if suppress_history else ''
-        self.cmd('send-keys', prefix + cmd)
+
+        if literal:
+            self.cmd('send-keys', '-l', prefix + cmd)
+        else:
+            self.cmd('send-keys', prefix + cmd)
 
         if enter:
             self.enter()
