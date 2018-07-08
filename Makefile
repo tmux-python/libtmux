@@ -33,4 +33,5 @@ watch_flake8:
 sync_pipfile:
 	pipenv install --skip-lock --dev -r requirements/doc.txt && \
 	pipenv install --skip-lock --dev -r requirements/dev.txt && \
-	pipenv install --skip-lock --dev -r requirements/test.txt
+	pipenv install --skip-lock --dev -r requirements/test.txt && \
+	pipenv install --skip-lock --dev -e .
