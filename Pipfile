@@ -1,18 +1,21 @@
 [[source]]
-url = "https://pypi.python.org/simple"
+url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
-[packages]
-"e1839a8" = {path = ".", editable = true}
-
 [dev-packages]
-pytest = "==3.6.2"
 docutils = "==0.14"
-alagitpull = "==0.0.21"
 releases = {git = "https://github.com/tony/releases.git", ref = "future-releases-uri-config"}
+alagitpull = "==0.0.21"
+sphinxcontrib-napoleon = "==0.6.1"
 Sphinx = "==1.7.5"
 isort = "==4.3.4"
 "flake8" = "==3.5.0"
-vulture = "==0.27"
-sphinxcontrib-napoleon = "==0.6.1"
+vulture = "==0.28"
+pytest = "==3.6.3"
+libtmux = {path = ".", editable = true}
+
+[packages]
+
+[requires]
+python_version = "3.6"
