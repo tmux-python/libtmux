@@ -92,3 +92,9 @@ else:
 
 
 number_types = integer_types + (float,)
+
+def str_from_console(s):
+    try:
+        return text_type(s)
+    except UnicodeDecodeError:
+        return text_type(s, encoding='utf_8')

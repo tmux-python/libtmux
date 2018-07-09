@@ -164,7 +164,7 @@ def test_tmux_cmd_raises_on_not_found():
 
 
 def test_tmux_cmd_unicode():
-    tmux_cmd('has-session', 'юникод')
+    tmux_cmd('new-window', '-t', 3, '-n', 'юникод', '-F', u'Ελληνικά')
 
 
 @pytest.mark.parametrize(
