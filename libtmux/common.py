@@ -14,7 +14,7 @@ import sys
 from distutils.version import LooseVersion
 
 from . import exc
-from ._compat import console_to_str
+from ._compat import console_to_str, text_type
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ class tmux_cmd(object):
 
         cmd = [tmux_bin]
         cmd += args  # add the command arguments to cmd
-        cmd = [str(c) for c in cmd]
+        cmd = [text_type(c, encoding='utf_8') for c in cmd]
 
         self.cmd = cmd
 
