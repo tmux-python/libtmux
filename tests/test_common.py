@@ -163,6 +163,10 @@ def test_tmux_cmd_raises_on_not_found():
     tmux_cmd('-V')
 
 
+def test_tmux_cmd_unicode():
+    tmux_cmd('has-session', 'юникод')
+
+
 @pytest.mark.parametrize(
     "session_name,raises,exc_msg_regex",
     [
