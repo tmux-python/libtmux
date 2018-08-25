@@ -185,13 +185,14 @@ class tmux_cmd(object):
     def __init__(self, *args, **kwargs):
         tmux_bin = which(
             'tmux',
-            default_paths=kwargs.get('tmux_search_paths', [
-                '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin'
-            ]),
-            append_env_path=kwargs.get('append_env_path', True)
+            default_paths=kwargs.get(
+                'tmux_search_paths',
+                ['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin'],
+            ),
+            append_env_path=kwargs.get('append_env_path', True),
         )
         if not tmux_bin:
-            raise(exc.TmuxCommandNotFound)
+            raise (exc.TmuxCommandNotFound)
 
         cmd = [tmux_bin]
         cmd += args  # add the command arguments to cmd
@@ -201,9 +202,7 @@ class tmux_cmd(object):
 
         try:
             self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
             self.process.wait()
             stdout = self.process.stdout.read()
@@ -212,12 +211,7 @@ class tmux_cmd(object):
             self.process.stderr.close()
             returncode = self.process.returncode
         except Exception as e:
-            logger.error(
-                'Exception for %s: \n%s' % (
-                    subprocess.list2cmdline(cmd),
-                    e
-                )
-            )
+            logger.error('Exception for %s: \n%s' % (subprocess.list2cmdline(cmd), e))
 
         self.returncode = returncode
 
@@ -233,10 +227,7 @@ class tmux_cmd(object):
             if not self.stdout:
                 self.stdout = self.stderr[0]
 
-        logger.debug(
-            'self.stdout for %s: \n%s' %
-            (' '.join(cmd), self.stdout)
-        )
+        logger.debug('self.stdout for %s: \n%s' % (' '.join(cmd), self.stdout))
 
 
 class TmuxMappingObject(collections.MutableMapping):
@@ -285,8 +276,7 @@ class TmuxMappingObject(collections.MutableMapping):
         try:
             return self._info[self.formatter_prefix + key]
         except KeyError:
-            raise AttributeError('%s has no property %s' %
-                                 (self.__class__, key))
+            raise AttributeError('%s has no property %s' % (self.__class__, key))
 
 
 class TmuxRelationalObject(object):
@@ -389,9 +379,9 @@ class TmuxRelationalObject(object):
 
 
 def which(
-    exe=None, default_paths=[
-        '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin',
-    ], append_env_path=True
+    exe=None,
+    default_paths=['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/local/bin'],
+    append_env_path=True,
 ):
     """
     Return path of bin. Python clone of /usr/bin/which.
@@ -415,10 +405,10 @@ def which(
     -----
     from salt.util - https://www.github.com/saltstack/salt - license apache
     """
+
     def _is_executable_file_or_link(exe):
         # check for os.X_OK doesn't suffice because directory may executable
-        return (os.access(exe, os.X_OK) and
-                (os.path.isfile(exe) or os.path.islink(exe)))
+        return os.access(exe, os.X_OK) and (os.path.isfile(exe) or os.path.islink(exe))
 
     if _is_executable_file_or_link(exe):
         # executable in cwd or fullpath
@@ -428,8 +418,9 @@ def which(
     # $PATH is changing. This also keeps order, where 'first came, first
     # win' for cases to find optional alternatives
     if append_env_path:
-        search_path = os.environ.get('PATH') and \
-            os.environ['PATH'].split(os.pathsep) or list()
+        search_path = (
+            os.environ.get('PATH') and os.environ['PATH'].split(os.pathsep) or list()
+        )
     else:
         search_path = []
 
@@ -442,7 +433,8 @@ def which(
             return full_path
     logger.info(
         '\'{0}\' could not be found in the following search path: '
-        '\'{1}\''.format(exe, search_path))
+        '\'{1}\''.format(exe, search_path)
+    )
 
     return None
 
@@ -603,8 +595,8 @@ def has_minimum_version(raises=True):
         if raises:
             raise exc.VersionTooLow(
                 'libtmux only supports tmux %s and greater. This system'
-                ' has %s installed. Upgrade your tmux to use libtmux.' %
-                (TMUX_MIN_VERSION, get_version())
+                ' has %s installed. Upgrade your tmux to use libtmux.'
+                % (TMUX_MIN_VERSION, get_version())
             )
         else:
             return False
@@ -632,10 +624,12 @@ def session_check_name(session_name):
         raise exc.BadSessionName("tmux session names may not be empty.")
     elif '.' in session_name:
         raise exc.BadSessionName(
-            "tmux session name \"%s\" may not contain periods.", session_name)
+            "tmux session name \"%s\" may not contain periods.", session_name
+        )
     elif ':' in session_name:
         raise exc.BadSessionName(
-            "tmux session name \"%s\" may not contain colons.", session_name)
+            "tmux session name \"%s\" may not contain colons.", session_name
+        )
 
 
 def handle_option_error(error):

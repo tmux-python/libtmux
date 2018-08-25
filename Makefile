@@ -12,6 +12,9 @@ entr_warn:
 isort:
 	isort `${PY_FILES}`
 
+black:
+	black `${PY_FILES}` --skip-string-normalization
+
 test:
 	py.test $(test)
 

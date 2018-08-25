@@ -32,41 +32,43 @@ def test_allows_master_version(monkeypatch):
         class Hi(object):
             stdout = ['tmux master']
             stderr = None
+
         return Hi()
+
     monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
 
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
-    assert has_gt_version(TMUX_MAX_VERSION), (
-        "Greater than the max-supported version"
-    )
-    assert '%s-master' % TMUX_MAX_VERSION == get_version(), (
-        "Is the latest supported version with -master appended"
-    )
+    assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
+    assert (
+        '%s-master' % TMUX_MAX_VERSION == get_version()
+    ), "Is the latest supported version with -master appended"
 
 
 def test_get_version_openbsd(monkeypatch):
     def mock_tmux_cmd(param):
         class Hi(object):
             stderr = ['tmux: unknown option -- V']
+
         return Hi()
+
     monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
     monkeypatch.setattr(sys, 'platform', 'openbsd 5.2')
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
-    assert has_gt_version(TMUX_MAX_VERSION), (
-        "Greater than the max-supported version"
-    )
-    assert '%s-openbsd' % TMUX_MAX_VERSION == get_version(), (
-        "Is the latest supported version with -openbsd appended"
-    )
+    assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
+    assert (
+        '%s-openbsd' % TMUX_MAX_VERSION == get_version()
+    ), "Is the latest supported version with -openbsd appended"
 
 
 def test_get_version_too_low(monkeypatch):
     def mock_tmux_cmd(param):
         class Hi(object):
             stderr = ['tmux: unknown option -- V']
+
         return Hi()
+
     monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
     with pytest.raises(LibTmuxException) as exc_info:
         get_version()
@@ -97,6 +99,7 @@ def test_ignores_letter_versions():
 def test_error_version_less_1_7(monkeypatch):
     def mock_get_version():
         return LooseVersion('1.7')
+
     monkeypatch.setattr(libtmux.common, 'get_version', mock_get_version)
     with pytest.raises(LibTmuxException) as excinfo:
         has_minimum_version()
@@ -160,14 +163,17 @@ def test_tmux_cmd_raises_on_not_found():
     tmux_cmd('-V')
 
 
-@pytest.mark.parametrize("session_name,raises,exc_msg_regex", [
-    ('', True, 'may not be empty'),
-    (None, True, 'may not be empty'),
-    ("my great session.", True, 'may not contain periods'),
-    ("name: great session", True, 'may not contain colons'),
-    ("new great session", False, None),
-    ("ajf8a3fa83fads,,,a", False, None),
-])
+@pytest.mark.parametrize(
+    "session_name,raises,exc_msg_regex",
+    [
+        ('', True, 'may not be empty'),
+        (None, True, 'may not be empty'),
+        ("my great session.", True, 'may not contain periods'),
+        ("name: great session", True, 'may not contain colons'),
+        ("new great session", False, None),
+        ("ajf8a3fa83fads,,,a", False, None),
+    ],
+)
 def test_session_check_name(session_name, raises, exc_msg_regex):
     if raises:
         with pytest.raises(BadSessionName) as exc_info:
