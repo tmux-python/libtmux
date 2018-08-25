@@ -27,9 +27,7 @@ def test_select_window(session):
     """Session.select_window moves window."""
     # get the current window_base_index, since different user tmux config
     # may start at 0 or 1, or whatever they want.
-    window_base_index = int(
-        session.attached_window.get('window_index')
-    )
+    window_base_index = int(session.attached_window.get('window_index'))
 
     session.new_window(window_name='test_window')
     window_count = len(session._windows)
@@ -65,12 +63,9 @@ def test_select_window_returns_Window(session):
 
     window_count = len(session._windows)
     assert len(session._windows) == window_count
-    window_base_index = int(
-        session.attached_window.get('window_index'))
+    window_base_index = int(session.attached_window.get('window_index'))
 
-    assert isinstance(
-        session.select_window(window_base_index), Window
-    )
+    assert isinstance(session.select_window(window_base_index), Window)
 
 
 def test_attached_window(session):
@@ -96,8 +91,7 @@ def test_session_rename(session):
 def test_new_session(server):
     """Server.new_session creates new session."""
     new_session_name = TEST_SESSION_PREFIX + next(namer)
-    new_session = server.new_session(
-        session_name=new_session_name, detach=True)
+    new_session = server.new_session(session_name=new_session_name, detach=True)
 
     assert isinstance(new_session, Session)
     assert new_session.get('session_name') == new_session_name
@@ -206,11 +200,10 @@ def test_unset_environment(session):
     assert session.show_environment('BAM') is None
 
 
-@pytest.mark.parametrize("session_name,raises", [
-    ('hey.period', True),
-    ('hey:its a colon', True),
-    ('hey moo', False),
-])
+@pytest.mark.parametrize(
+    "session_name,raises",
+    [('hey.period', True), ('hey:its a colon', True), ('hey moo', False)],
+)
 def test_periods_raise_badsessionname(server, session, session_name, raises):
     new_name = session_name + 'moo'  # used for rename / switch
     if raises:

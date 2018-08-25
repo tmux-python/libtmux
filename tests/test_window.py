@@ -37,9 +37,7 @@ def test_select_window(session):
 
 def test_zfresh_window_data(session):
     pane_base_index = int(
-        session.attached_window.show_window_option(
-            'pane-base-index', g=True
-        )
+        session.attached_window.show_window_option('pane-base-index', g=True)
     )
 
     assert len(session.windows) == 1
@@ -130,18 +128,17 @@ def test_split_window_horizontal(session):
     assert float(window.panes[0].width) <= ((float(window.width) + 1) / 2)
 
 
-@pytest.mark.parametrize("window_name_before,window_name_after", [
-    ('test', 'ha ha ha fjewlkjflwef'),
-    ('test', 'hello \\ wazzup 0'),
-])
+@pytest.mark.parametrize(
+    "window_name_before,window_name_after",
+    [('test', 'ha ha ha fjewlkjflwef'), ('test', 'hello \\ wazzup 0')],
+)
 def test_window_rename(session, window_name_before, window_name_after):
     """Window.rename_window()."""
     window_name_before = 'test'
     window_name_after = 'ha ha ha fjewlkjflwef'
 
     session.set_option('automatic-rename', 'off')
-    window = session.new_window(
-        window_name=window_name_before, attach=True)
+    window = session.new_window(window_name=window_name_before, attach=True)
 
     assert window == session.attached_window
     assert window.get('window_name') == window_name_before

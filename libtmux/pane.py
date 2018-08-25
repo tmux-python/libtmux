@@ -43,6 +43,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
        https://man.openbsd.org/tmux.1#WINDOWS_AND_PANES.
        Accessed April 1st, 2018.
     """
+
     #: namespace used :class:`~libtmux.common.TmuxMappingObject`
     formatter_prefix = 'pane_'
 
@@ -61,9 +62,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
     @property
     def _info(self, *args):
 
-        attrs = {
-            'pane_id': self._pane_id
-        }
+        attrs = {'pane_id': self._pane_id}
 
         # from https://github.com/serkanyersen/underscore.py
         def by(val, *args):
@@ -170,7 +169,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
             target=self.get('pane_id'),
             start_directory=start_directory,
             attach=attach,
-            vertical=vertical
+            vertical=vertical,
         )
 
     def set_width(self, width):
@@ -268,8 +267,4 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         return self.window.select_pane(self.get('pane_id'))
 
     def __repr__(self):
-        return "%s(%s %s)" % (
-            self.__class__.__name__,
-            self.get('pane_id'),
-            self.window
-        )
+        return "%s(%s %s)" % (self.__class__.__name__, self.get('pane_id'), self.window)

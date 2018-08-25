@@ -25,11 +25,7 @@ from .window import Window
 logger = logging.getLogger(__name__)
 
 
-class Session(
-    TmuxMappingObject,
-    TmuxRelationalObject,
-    EnvironmentMixin
-):
+class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     """
     A :term:`tmux(1)` :term:`session` [#]_.
 
@@ -69,9 +65,7 @@ class Session(
     @property
     def _info(self):
 
-        attrs = {
-            'session_id': str(self._session_id)
-        }
+        attrs = {'session_id': str(self._session_id)}
 
         def by(val):
             for key, value in attrs.items():
@@ -175,12 +169,14 @@ class Session(
 
         return self
 
-    def new_window(self,
-                   window_name=None,
-                   start_directory=None,
-                   attach=True,
-                   window_index='',
-                   window_shell=None):
+    def new_window(
+        self,
+        window_name=None,
+        start_directory=None,
+        attach=True,
+        window_index='',
+        window_shell=None,
+    ):
         """
         Return :class:`Window` from ``$ tmux new-window``.
 
@@ -218,24 +214,21 @@ class Session(
         if not attach:
             window_args += ('-d',)
 
-        window_args += (
-            '-P',
-        )
+        window_args += ('-P',)
 
         if start_directory:
             # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
             start_directory = os.path.expanduser(start_directory)
             window_args += ('-c%s' % start_directory,)
 
-        window_args += (
-            '-F"%s"' % '\t'.join(tmux_formats),  # output
-        )
+        window_args += ('-F"%s"' % '\t'.join(tmux_formats),)  # output
         if window_name:
             window_args += ('-n%s' % window_name,)
 
         window_args += (
             # empty string for window_index will use the first one available
-            '-t%s:%s' % (self.id, window_index),
+            '-t%s:%s'
+            % (self.id, window_index),
         )
 
         if window_shell:
@@ -286,9 +279,7 @@ class Session(
     def _list_windows(self):
         windows = self.server._update_windows()._windows
 
-        windows = [
-            w for w in windows if w['session_id'] == self.id
-        ]
+        windows = [w for w in windows if w['session_id'] == self.id]
 
         return windows
 
@@ -305,9 +296,7 @@ class Session(
         -------
         :class:`Window`
         """
-        windows = [
-            w for w in self._windows if w['session_id'] == self._session_id
-        ]
+        windows = [w for w in self._windows if w['session_id'] == self._session_id]
 
         return [Window(session=self, **window) for window in windows]
 
@@ -341,7 +330,8 @@ class Session(
             return active_windows[0]
         else:
             raise exc.LibTmuxException(
-                'multiple active windows found. %s' % active_windows)
+                'multiple active windows found. %s' % active_windows
+            )
 
         if len(self._windows) == int(0):
             raise exc.LibTmuxException('No Windows')
@@ -418,11 +408,9 @@ class Session(
         if _global:
             tmux_args += ('-g',)
 
-        tmux_args += (option, value,)
+        tmux_args += (option, value)
 
-        proc = self.cmd(
-            'set-option', *tmux_args
-        )
+        proc = self.cmd('set-option', *tmux_args)
 
         if isinstance(proc.stderr, list) and len(proc.stderr):
             handle_option_error(proc.stderr[0])
@@ -460,9 +448,7 @@ class Session(
             return self.show_option(option, _global=_global)
         else:
             tmux_args += ('show-options',)
-            session_options = self.cmd(
-                *tmux_args
-            ).stdout
+            session_options = self.cmd(*tmux_args).stdout
 
         session_options = [tuple(item.split(' ')) for item in session_options]
 
@@ -508,9 +494,7 @@ class Session(
 
         tmux_args += (option,)
 
-        cmd = self.cmd(
-            'show-options', *tmux_args
-        )
+        cmd = self.cmd('show-options', *tmux_args)
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
@@ -526,8 +510,4 @@ class Session(
         return option[1]
 
     def __repr__(self):
-        return "%s(%s %s)" % (
-            self.__class__.__name__,
-            self.id,
-            self.name
-        )
+        return "%s(%s %s)" % (self.__class__.__name__, self.id, self.name)

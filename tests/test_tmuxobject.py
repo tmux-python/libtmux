@@ -20,26 +20,21 @@ def test_find_where(server, session):
         session_id = session.get('session_id')
 
         assert server.find_where({'session_id': session_id}) == session
-        assert isinstance(server.find_where({
-            'session_id': session_id
-        }), Session)
+        assert isinstance(server.find_where({'session_id': session_id}), Session)
 
         # session.find_where
         for window in session.windows:
             window_id = window.get('window_id')
 
             assert session.find_where({'window_id': window_id}) == window
-            assert isinstance(
-                session.find_where({'window_id': window_id}), Window
-            )
+            assert isinstance(session.find_where({'window_id': window_id}), Window)
 
             # window.find_where
             for pane in window.panes:
                 pane_id = pane.get('pane_id')
 
                 assert window.find_where({'pane_id': pane_id}) == pane
-                assert isinstance(
-                    window.find_where({'pane_id': pane_id}), Pane)
+                assert isinstance(window.find_where({'pane_id': pane_id}), Pane)
 
 
 def test_find_where_None(server, session):
@@ -51,9 +46,7 @@ def test_find_where_None(server, session):
         if not server.has_session(nonexistant_session):
             break
 
-    assert server.find_where({
-        'session_name': nonexistant_session
-    }) is None
+    assert server.find_where({'session_name': nonexistant_session}) is None
 
 
 def test_find_where_multiple_infos(server, session):
@@ -62,10 +55,9 @@ def test_find_where_multiple_infos(server, session):
     for session in server.sessions:
         session_id = session.get('session_id')
         session_name = session.get('session_name')
-        find_where = server.find_where({
-            'session_id': session_id,
-            'session_name': session_name
-        })
+        find_where = server.find_where(
+            {'session_id': session_id, 'session_name': session_name}
+        )
 
         assert find_where == session
         assert isinstance(find_where, Session)
@@ -75,10 +67,9 @@ def test_find_where_multiple_infos(server, session):
             window_id = window.get('window_id')
             window_index = window.get('window_index')
 
-            find_where = session.find_where({
-                'window_id': window_id,
-                'window_index': window_index
-            })
+            find_where = session.find_where(
+                {'window_id': window_id, 'window_index': window_index}
+            )
 
             assert find_where == window
             assert isinstance(find_where, Window)
@@ -88,10 +79,9 @@ def test_find_where_multiple_infos(server, session):
                 pane_id = pane.get('pane_id')
                 pane_tty = pane.get('pane_tty')
 
-                find_where = window.find_where({
-                    'pane_id': pane_id,
-                    'pane_tty': pane_tty
-                })
+                find_where = window.find_where(
+                    {'pane_id': pane_id, 'pane_tty': pane_tty}
+                )
 
                 assert find_where == pane
                 assert isinstance(find_where, Pane)
@@ -106,10 +96,7 @@ def test_where(server, session):
     for session in server.sessions:
         session_id = session.get('session_id')
         session_name = session.get('session_name')
-        where = server.where({
-            'session_id': session_id,
-            'session_name': session_name
-        })
+        where = server.where({'session_id': session_id, 'session_name': session_name})
 
         assert len(where) == 1
         assert isinstance(where, list)
@@ -121,10 +108,9 @@ def test_where(server, session):
             window_id = window.get('window_id')
             window_index = window.get('window_index')
 
-            where = session.where({
-                'window_id': window_id,
-                'window_index': window_index
-            })
+            where = session.where(
+                {'window_id': window_id, 'window_index': window_index}
+            )
 
             assert len(where) == 1
             assert isinstance(where, list)
@@ -136,10 +122,7 @@ def test_where(server, session):
                 pane_id = pane.get('pane_id')
                 pane_tty = pane.get('pane_tty')
 
-                where = window.where({
-                    'pane_id': pane_id,
-                    'pane_tty': pane_tty
-                })
+                where = window.where({'pane_id': pane_id, 'pane_tty': pane_tty})
 
                 assert len(where) == 1
                 assert isinstance(where, list)
