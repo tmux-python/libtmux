@@ -43,8 +43,8 @@ class PyTest(TestCommand):
 setup(
     name=about['__title__'],
     version=about['__version__'],
-    url='http://github.com/tmux-python/libtmux/',
-    download_url='https://pypi.python.org/pypi/libtmux',
+    url=about['__github__'],
+    download_url=about['__pypi__'],
     license=about['__license__'],
     author=about['__author__'],
     author_email=about['__email__'],
