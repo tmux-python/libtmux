@@ -45,6 +45,24 @@ def test_allows_master_version(monkeypatch):
     ), "Is the latest supported version with -master appended"
 
 
+def test_allows_next_version(monkeypatch):
+    def mock_tmux_cmd(param):
+        class Hi(object):
+            stdout = ['tmux next-2.9']
+            stderr = None
+
+        return Hi()
+
+    monkeypatch.setattr(libtmux.common, 'tmux_cmd', mock_tmux_cmd)
+
+    assert has_minimum_version()
+    assert has_gte_version(TMUX_MIN_VERSION)
+    assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
+    assert (
+        '2.9' == get_version()
+    )
+
+
 def test_get_version_openbsd(monkeypatch):
     def mock_tmux_cmd(param):
         class Hi(object):
