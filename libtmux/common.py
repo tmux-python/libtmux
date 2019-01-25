@@ -471,7 +471,7 @@ def get_version():
     if version == 'master':
         return LooseVersion('%s-master' % TMUX_MAX_VERSION)
 
-    version = re.sub(r'[a-z]', '', version)
+    version = re.sub(r'[a-z-]', '', version)
 
     return LooseVersion(version)
 
