@@ -4,8 +4,15 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
-- :bug:`117` Fix issue with renaming clients with tmux 2.7 on BSD/macOS 
+- :release:`0.8.1 <2019-01-26>`
+- :bug:`117` Fix issue with renaming clients with tmux 2.7 on BSD/macOS
   machines.
+- :support:`121` Support ``literal=True`` (``-l``) in ``Pane.send_keys``
+  from @ritiek
+- :bug:`131` Fix for unicode commands in Python 2, thanks @myw
+- :support:`172` Support for next-X.Y versions from @sloria
+- :support:`120` ``capture_pane`` support for ``Pane``
+- :support:`119` ``display_message`` support for ``Pane``
 - :support:`-` Sort imports with isort
 - :support:`-` Add sphinxcontrib-napoleon package for documentation
 - :support:`-` Move docstrings over to numpy's style
