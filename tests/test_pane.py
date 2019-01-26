@@ -25,6 +25,17 @@ def test_resize_pane(session):
     assert int(pane1['pane_height']) == 3
 
 
+def test_send_keys(session):
+    pane = session.attached_window.attached_pane
+    pane.send_keys('c-c', literal=True)
+
+    pane_contents = '\n'.join(pane.cmd('capture-pane', '-p').stdout)
+    assert 'c-c' in pane_contents
+
+    pane.send_keys('c-a', literal=False)
+    assert 'c-a' not in pane_contents, 'should not print to pane'
+
+
 def test_set_height(session):
     window = session.new_window(window_name='test_set_height')
     window.split_window()
