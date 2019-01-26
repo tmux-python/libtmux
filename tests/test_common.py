@@ -58,9 +58,7 @@ def test_allows_next_version(monkeypatch):
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
     assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
-    assert (
-        '2.9' == get_version()
-    )
+    assert '2.9' == get_version()
 
 
 def test_get_version_openbsd(monkeypatch):
@@ -181,8 +179,8 @@ def test_tmux_cmd_raises_on_not_found():
     tmux_cmd('-V')
 
 
-def test_tmux_cmd_unicode():
-    tmux_cmd('new-window', '-t', 3, '-n', 'юникод', '-F', u'Ελληνικά')
+def test_tmux_cmd_unicode(session):
+    session.cmd('new-window', '-t', 3, '-n', 'юникод', '-F', u'Ελληνικά')
 
 
 @pytest.mark.parametrize(
