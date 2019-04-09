@@ -1,5 +1,5 @@
 docutils==0.14
 git+https://github.com/tony/releases.git@future-releases-uri-config#egg=releases
-sphinx==2.0.0
+sphinx==2.0.1
 alagitpull==0.0.22
 sphinxcontrib-napoleon==0.7
