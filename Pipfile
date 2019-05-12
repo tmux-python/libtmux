@@ -5,14 +5,14 @@ name = "pypi"
 
 [dev-packages]
 docutils = "==0.14"
-releases = {git = "https://github.com/tony/releases.git", ref = "future-releases-uri-config"}
+releases = {git = "https://github.com/tony/releases.git",ref = "future-releases-uri-config"}
 alagitpull = "==0.0.22"
 sphinxcontrib-napoleon = "==0.7"
-Sphinx = "==1.8.3"
-isort = "==4.3.4"
-"flake8" = "==3.5.0"
-pytest = "==4.1.1"
-libtmux = {path = ".", editable = true}
+Sphinx = "==2.0.1"
+isort = "==4.3.18"
+flake8 = "==3.7.7"
+pytest = "==4.5.0"
+libtmux = {path = ".",editable = true}
 
 [packages]
 
