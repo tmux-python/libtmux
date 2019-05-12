@@ -27,7 +27,7 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
     'sphinx.ext.linkcode',
-    'sphinxcontrib.napoleon',
+    'sphinx.ext.napoleon',
     'alagitpull',
 ]
 

@@ -5,9 +5,8 @@ name = "pypi"
 
 [dev-packages]
 docutils = "==0.14"
-alagitpull = "==0.0.22"
-sphinxcontrib-napoleon = "==0.7"
-Sphinx = "==2.0.1"
+alagitpull = ">=0.0.22"
+Sphinx = ">=2.0.1"
 isort = "==4.3.18"
 flake8 = "==3.7.7"
 pytest = "==4.5.0"
