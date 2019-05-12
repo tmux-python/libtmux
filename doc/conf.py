@@ -29,6 +29,7 @@ extensions = [
     'sphinx.ext.linkcode',
     'sphinx.ext.napoleon',
     'alagitpull',
+    'sphinx_issues',
 ]
 
 releases_unstable_prehistory = True
@@ -36,6 +37,8 @@ releases_document_name = ["history"]
 releases_issue_uri = "https://github.com/tmux-python/libtmux/issues/%s"
 releases_release_uri = "https://github.com/tmux-python/libtmux/tree/v%s"
 releases_future_release_uri = "https://github.com/tmux-python/libtmux/tree/%s"
+
+issues_github_path = about['__github__']
 
 templates_path = ['_templates']
 

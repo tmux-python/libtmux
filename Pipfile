@@ -12,6 +12,7 @@ flake8 = "*"
 pytest = "*"
 libtmux = {path = ".",editable = true}
 black = "==19.3b0"
+sphinx-issues = "*"
 
 [packages]
 
