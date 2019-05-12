@@ -5,7 +5,6 @@ name = "pypi"
 
 [dev-packages]
 docutils = "==0.14"
-releases = {git = "https://github.com/tony/releases.git",ref = "future-releases-uri-config"}
 alagitpull = "==0.0.22"
 sphinxcontrib-napoleon = "==0.7"
 Sphinx = "==2.0.1"
