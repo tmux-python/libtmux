@@ -27,16 +27,17 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.todo',
     'sphinx.ext.linkcode',
-    'sphinxcontrib.napoleon',
-    'releases',
+    'sphinx.ext.napoleon',
     'alagitpull',
+    'sphinx_issues',
 ]
 
 releases_unstable_prehistory = True
-releases_document_name = "history"
+releases_document_name = ["history"]
 releases_issue_uri = "https://github.com/tmux-python/libtmux/issues/%s"
 releases_release_uri = "https://github.com/tmux-python/libtmux/tree/v%s"
-releases_future_release_uri = "https://github.com/tmux-python/libtmux/tree/%s"
+
+issues_github_path = about['__github__'].replace('https://github.com/', '')
 
 templates_path = ['_templates']
 
@@ -55,7 +56,7 @@ exclude_patterns = ['_build']
 pygments_style = 'sphinx'
 
 html_theme_path = [alagitpull.get_path()]
-html_favicon = 'favicon.ico'
+html_favicon = '_static/favicon.ico'
 html_theme = 'alagitpull'
 html_theme_options = {
     'logo': 'img/libtmux.svg',
