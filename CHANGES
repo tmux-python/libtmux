@@ -4,6 +4,11 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+master
+------
+- CHANGES updated to plain reStructuredText
+- Add ``project_urls`` to setup.py for pypi.
+
 0.8.1 <2019-01-26>
 ------------------
 - :issue:`117` Fix issue with renaming clients with tmux 2.7 on BSD/macOS
