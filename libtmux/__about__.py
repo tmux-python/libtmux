@@ -1,6 +1,6 @@
 __title__ = 'libtmux'
 __package_name__ = 'libtmux'
-__version__ = '0.8.1'
+__version__ = '0.8.2'
 __description__ = 'scripting library / orm for tmux'
 __email__ = 'tony@git-pull.com'
 __author__ = 'Tony Narlock'
