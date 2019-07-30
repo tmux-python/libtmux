@@ -1,4 +1,4 @@
-docutils==0.14
+docutils==0.15.2
 sphinx>=2.0.0
 sphinx_issues==1.2.0
 alagitpull>=0.0.22
