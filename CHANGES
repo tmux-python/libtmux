@@ -4,6 +4,8 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+- Add ``project_urls`` to setup.py
+
 0.8.2 <2019-06-02>
 ------------------
 - CHANGES updated to plain reStructuredText
