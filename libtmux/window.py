@@ -44,8 +44,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     formatter_prefix = 'window_'
 
     def __init__(self, session=None, **kwargs):
-
-        if not session:
+        if session is None:
             raise ValueError('Window requires a Session, session=Session')
 
         self.session = session
@@ -59,7 +58,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     def __repr__(self):
         return "%s(%s %s:%s, %s)" % (
             self.__class__.__name__,
-            self.id,
+            self._window_id,
             self.index,
             self.name,
             self.session,
@@ -107,7 +106,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             Renamed from ``.tmux`` to ``.cmd``.
         """
         if not any(arg.startswith('-t') for arg in args):
-            args = ('-t', self.id) + args
+            args = ('-t', self._window_id) + args
 
         return self.server.cmd(cmd, *args, **kwargs)
 
@@ -178,7 +177,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         cmd = self.cmd(
             'set-window-option',
             '-t%s:%s' % (self.get('session_id'), self.index),
-            # '-t%s' % self.id,
+            # '-t%s' % self._window_id,
             option,
             value,
         )
@@ -304,7 +303,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         proc = self.cmd(
             'kill-window',
-            # '-t:%s' % self.id
+            # '-t:%s' % self._window_id
             '-t%s:%s' % (self.get('session_id'), self.index),
         )
 
@@ -368,7 +367,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         """
 
         if target_pane in ['-l', '-U', '-D', '-L', '-R']:
-            proc = self.cmd('select-pane', '-t%s' % self.id, target_pane)
+            proc = self.cmd('select-pane', '-t%s' % self._window_id, target_pane)
         else:
             proc = self.cmd('select-pane', '-t%s' % target_pane)
 
@@ -474,7 +473,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             pane = dict(zip(pformats, pane.split('\t')))
 
             # clear up empty dict
-            pane = dict((k, v) for k, v in pane.items() if v)
+            pane = dict((k, v) for k, v in pane.items() if v is not None)
 
         return Pane(window=self, **pane)
 
@@ -501,7 +500,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         panes = self.server._update_panes()._panes
 
         panes = [p for p in panes if p['session_id'] == self.get('session_id')]
-        panes = [p for p in panes if p['window_id'] == self.id]
+        panes = [p for p in panes if p['window_id'] == self._window_id]
         return panes
 
     @property

@@ -99,14 +99,14 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if not any('-t' in text_type(x) for x in args):
             # insert -t immediately after 1st arg, as per tmux format
             new_args = [args[0]]
-            new_args += ['-t', self.id]
+            new_args += ['-t', self._session_id]
             new_args += args[1:]
             args = new_args
         return self.server.cmd(*args, **kwargs)
 
     def attach_session(self):
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``."""
-        proc = self.cmd('attach-session', '-t%s' % self.id)
+        proc = self.cmd('attach-session', '-t%s' % self._session_id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -114,7 +114,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     def kill_session(self):
         """``$ tmux kill-session``."""
 
-        proc = self.cmd('kill-session', '-t%s' % self.id)
+        proc = self.cmd('kill-session', '-t%s' % self._session_id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -128,7 +128,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         :exc:`exc.LibTmuxException`
         """
-        proc = self.cmd('switch-client', '-t%s' % self.id)
+        proc = self.cmd('switch-client', '-t%s' % self._session_id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -221,14 +221,14 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
             start_directory = os.path.expanduser(start_directory)
             window_args += ('-c%s' % start_directory,)
 
-        window_args += ('-F"%s"' % '\t'.join(tmux_formats),)  # output
+        window_args += ('-F"%s"' % self.server._split.join(tmux_formats),)  # output
         if window_name:
             window_args += ('-n%s' % window_name,)
 
         window_args += (
             # empty string for window_index will use the first one available
             '-t%s:%s'
-            % (self.id, window_index),
+            % (self._session_id, window_index),
         )
 
         if window_shell:
@@ -241,10 +241,10 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         window = proc.stdout[0]
 
-        window = dict(zip(wformats, window.split('\t')))
+        window = dict(zip(wformats, window.split(self.server._split)))
 
         # clear up empty dict
-        window = dict((k, v) for k, v in window.items() if v)
+        window = dict((k, v) for k, v in window.items() if v is not None)
         window = Window(session=self, **window)
 
         self.server._update_windows()
@@ -279,7 +279,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     def _list_windows(self):
         windows = self.server._update_windows()._windows
 
-        windows = [w for w in windows if w['session_id'] == self.id]
+        windows = [w for w in windows if w['session_id'] == self._session_id]
 
         return windows
 
@@ -510,4 +510,4 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         return option[1]
 
     def __repr__(self):
-        return "%s(%s %s)" % (self.__class__.__name__, self.id, self.name)
+        return "%s(%s %s)" % (self.__class__.__name__, self._session_id, self.name)

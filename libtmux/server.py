@@ -78,9 +78,11 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         socket_path=None,
         config_file=None,
         colors=None,
+        split='\t',
         **kwargs
     ):
         EnvironmentMixin.__init__(self, '-g')
+        self._split = split
         self._windows = []
         self._panes = []
 
@@ -145,7 +147,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         sformats = formats.SESSION_FORMATS
         tmux_formats = ['#{%s}' % f for f in sformats]
 
-        tmux_args = ('-F%s' % '\t'.join(tmux_formats),)  # output
+        tmux_args = ('-F%s' % self._split.join(tmux_formats),)  # output
 
         proc = self.cmd('list-sessions', *tmux_args)
 
@@ -157,11 +159,11 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         sessions = proc.stdout
 
         # combine format keys with values returned from ``tmux list-sessions``
-        sessions = [dict(zip(sformats, session.split('\t'))) for session in sessions]
+        sessions = [dict(zip(sformats, session.split(self._split))) for session in sessions]
 
         # clear up empty dict
         sessions = [
-            dict((k, v) for k, v in session.items() if v) for session in sessions
+            dict((k, v) for k, v in session.items() if v is not None) for session in sessions
         ]
 
         return sessions
@@ -210,7 +212,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         proc = self.cmd(
             'list-windows',  # ``tmux list-windows``
             '-a',
-            '-F%s' % '\t'.join(tmux_formats),  # output
+            '-F%s' % self._split.join(tmux_formats),  # output
         )
 
         if proc.stderr:
@@ -221,10 +223,10 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         wformats = ['session_name', 'session_id'] + formats.WINDOW_FORMATS
 
         # combine format keys with values returned from ``tmux list-windows``
-        windows = [dict(zip(wformats, window.split('\t'))) for window in windows]
+        windows = [dict(zip(wformats, window.split(self._split))) for window in windows]
 
         # clear up empty dict
-        windows = [dict((k, v) for k, v in window.items() if v) for window in windows]
+        windows = [dict((k, v) for k, v in window.items() if v is not None) for window in windows]
 
         # tmux < 1.8 doesn't have window_id, use window_name
         for w in windows:
@@ -270,7 +272,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
             'window_id',
             'window_name',
         ] + formats.PANE_FORMATS
-        tmux_formats = ['#{%s}\t' % f for f in pformats]
+        tmux_formats = [('#{%s}'+self._split) % f for f in pformats]
 
         proc = self.cmd('list-panes', '-a', '-F%s' % ''.join(tmux_formats))  # output
 
@@ -288,12 +290,12 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         ] + formats.PANE_FORMATS
 
         # combine format keys with values returned from ``tmux list-panes``
-        panes = [dict(zip(pformats, window.split('\t'))) for window in panes]
+        panes = [dict(zip(pformats, window.split(self._split))) for window in panes]
 
         # clear up empty dict
         panes = [
             dict(
-                (k, v) for k, v in window.items() if v or k == 'pane_current_path'
+                (k, v) for k, v in window.items() if v is not None or k == 'pane_current_path'
             )  # preserve pane_current_path, in case it entered a new process
             # where we may not get a cwd from.
             for window in panes
@@ -531,7 +533,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         tmux_args = (
             '-s%s' % session_name,
             '-P',
-            '-F%s' % '\t'.join(tmux_formats),  # output
+            '-F%s' % self._split.join(tmux_formats),  # output
         )
 
         if not attach:
@@ -562,11 +564,10 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
             os.environ['TMUX'] = env
 
         # combine format keys with values returned from ``tmux list-windows``
-        session = dict(zip(sformats, session.split('\t')))
+        session = dict(zip(sformats, session.split(self._split)))
 
         # clear up empty dict
-        session = dict((k, v) for k, v in session.items() if v)
-
+        session = dict((k, v) for k, v in session.items() if v is not None)
         session = Session(server=self, **session)
 
         return session
