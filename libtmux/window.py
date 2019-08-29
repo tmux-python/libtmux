@@ -429,7 +429,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             'window_index',
             'window_id',
         ] + formats.PANE_FORMATS
-        tmux_formats = ['#{%s}\t' % f for f in pformats]
+        tmux_formats = [('#{%s}\t') % f for f in pformats]
 
         # '-t%s' % self.attached_pane.get('pane_id'),
         # 2013-10-18 LOOK AT THIS, rm'd it..

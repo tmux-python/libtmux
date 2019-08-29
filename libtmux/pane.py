@@ -121,6 +121,17 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         if enter:
             self.enter()
 
+    def send_control_key(self, key):
+        """
+        ``$ tmux send-keys C-key`` to the pane.
+
+        Parameters
+        ----------
+        key : str
+            Control key to send to the pane. E.g. "c" to kill a process.
+        """
+        self.send_keys("C-"+key, enter=False, suppress_history=False)
+
     def display_message(self, cmd, get_text=False):
         """
         ``$ tmux display-message`` to the pane.

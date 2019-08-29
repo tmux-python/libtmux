@@ -221,7 +221,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
             start_directory = os.path.expanduser(start_directory)
             window_args += ('-c%s' % start_directory,)
 
-        window_args += ('-F"%s"' % self.server._split.join(tmux_formats),)  # output
+        window_args += ('-F"%s"' % '\t'.join(tmux_formats),)  # output
         if window_name:
             window_args += ('-n%s' % window_name,)
 
@@ -241,7 +241,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         window = proc.stdout[0]
 
-        window = dict(zip(wformats, window.split(self.server._split)))
+        window = dict(zip(wformats, window.split('\t')))
 
         # clear up empty dict
         window = dict((k, v) for k, v in window.items() if v is not None)
