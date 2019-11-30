@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# flake8: NOQA W605
 """Helper methods and mixins.
 
 libtmux.common

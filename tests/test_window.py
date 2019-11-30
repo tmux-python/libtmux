@@ -107,7 +107,7 @@ def test_split_window(session):
 
 
 def test_split_window_shell(session):
-    """Window.split_window() splits window, returns new Pane, vertical. Test shell command"""
+    """Window.split_window() splits window, returns new Pane, vertical."""
     window_name = 'test split window'
     cmd = 'sleep 1m'
     window = session.new_window(window_name=window_name, attach=True)

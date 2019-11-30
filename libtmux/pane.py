@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# flake8: NOQA W605
 """Pythonization of the :ref:`tmux(1)` pane.
 
 libtmux.pane
