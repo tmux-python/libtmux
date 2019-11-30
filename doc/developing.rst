@@ -1,6 +1,4 @@
-.. module:: libtmux
-
-.. _developing:
+ _developing:
 
 ======================
 Developing and Testing
@@ -147,21 +145,7 @@ Rebuild the documentation when an ``.rst`` file is edited:
 
 .. _libtmux developer config:
 
-libtmux developer config
-------------------------
-
-After you :ref:`install_dev_env`, when inside the libtmux checkout:
-
-.. code-block:: bash
-
-    $ libtmux load .
-
-this will load the ``.tmuxp.yaml`` in the root of the project.
-
-.. literalinclude:: ../.tmuxp.yaml
-    :language: yaml
-
-.. _travis:
+.. _gh_actions:
 
 GH Actions
 ~~~~~~~~~~
@@ -170,13 +154,12 @@ libtmux uses `github actions`_ for continuous integration / automatic unit
 testing.
 
 libtmux is tested against tmux 1.8 and the latest git source. Interpretters
-tested are pypy, pypy3, 2.7 and >= 3.3. The `travis build site`_ uses this
+tested are pypy, pypy3, 2.7 and >= 3.3. The actions use this
 `.github/workflows/libtmux-ci.yml`_ configuration:
 
 .. literalinclude:: ../.github/workflows/libtmux-ci.yml
     :language: yaml
 
 .. _github actions: https://github.com/features/actions
-.. _travis build site: http://www.travis-ci.org/tmux-python/libtmux
 .. _.github/workflows/libtmux-ci.yml: https://github.com/tmux-python/libtmux/blob/master/.github/workflows/libtmux-ci.yml
 .. _issue on github: https://github.com/tmux-python/libtmux/issues
