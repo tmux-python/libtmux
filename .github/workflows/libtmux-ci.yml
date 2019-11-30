@@ -1,0 +1,60 @@
+name: libtmux CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ '3.x' ]
+        tmux-version: [ '2.6', '2.7', '2.8', 'master' ]
+    steps:
+    - uses: actions/checkout@v1
+    - name: Cache tmux build ${{ matrix.tmux-version }}
+      id: tmux-build-cache
+      uses: actions/cache@v1
+      with:
+        path: ~/tmux-builds/tmux-${{ matrix.tmux-version }}
+        key: tmux-${{ matrix.tmux-version }}
+
+    - name: Build tmux ${{ matrix.tmux-version }}
+      if: steps.tmux-build-cache.outputs.cache-hit != 'true'
+      run: |
+        sudo apt install libevent-dev libncurses5-dev libtinfo-dev libutempter-dev bison
+        mkdir ~/tmux-builds
+        mkdir ~/tmux-src
+        git clone https://github.com/tmux/tmux.git ~/tmux-src/tmux-${{ matrix.tmux-version }}
+        cd ~/tmux-src/tmux-${{ matrix.tmux-version }}
+        git checkout ${{ matrix.tmux-version }}
+        sh autogen.sh
+        ./configure --prefix=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }} && make && make install
+        export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
+        cd ~
+        tmux -V
+    - name: Configure git
+      run: |
+        git config --global user.name 'travis-ci'
+        git config --global user.email 'travis@nowhere.edu'
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install python dependencies
+      run: |
+        python -m pip install --upgrade pip pipenv setuptools
+        pipenv install -d --system --skip-lock
+    - name: Lint with flake8
+      run: |
+        pipenv run flake8
+    - name: Test with pytest
+      continue-on-error: ${{ matrix.tmux-version == 'master' }}
+      run: |
+        export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
+        ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
+        tmux -V
+        pipenv run py.test --cov=./ --cov-report=xml
+    - uses: codecov/codecov-action@v1
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
