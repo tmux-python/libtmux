@@ -13,6 +13,7 @@ pytest = "*"
 libtmux = {path = ".",editable = true}
 black = "==19.3b0"
 sphinx-issues = "*"
+pytest-cov = "*"
 
 [packages]
 
