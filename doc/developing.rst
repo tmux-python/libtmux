@@ -163,20 +163,20 @@ this will load the ``.tmuxp.yaml`` in the root of the project.
 
 .. _travis:
 
-Travis CI
-~~~~~~~~~
+GH Actions
+~~~~~~~~~~
 
-libtmux uses `travis-ci`_ for continuous integration / automatic unit
+libtmux uses `github actions`_ for continuous integration / automatic unit
 testing.
 
 libtmux is tested against tmux 1.8 and the latest git source. Interpretters
 tested are pypy, pypy3, 2.7 and >= 3.3. The `travis build site`_ uses this
-`.travis.yml`_ configuration:
+`.github/workflows/libtmux-ci.yml`_ configuration:
 
-.. literalinclude:: ../.travis.yml
+.. literalinclude:: ../.github/workflows/libtmux-ci.yml
     :language: yaml
 
-.. _travis-ci: http://www.travis-ci.org
+.. _github actions: https://github.com/features/actions
 .. _travis build site: http://www.travis-ci.org/tmux-python/libtmux
-.. _.travis.yml: https://github.com/tmux-python/libtmux/blob/master/.travis.yml
+.. _.github/workflows/libtmux-ci.yml: https://github.com/tmux-python/libtmux/blob/master/.github/workflows/libtmux-ci.yml
 .. _issue on github: https://github.com/tmux-python/libtmux/issues
