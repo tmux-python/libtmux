@@ -214,9 +214,9 @@ tests           .. code-block:: bash
     :alt: Python Package
     :target: http://badge.fury.io/py/libtmux
 
-.. |build-status| image:: https://img.shields.io/travis/tmux-python/libtmux.svg
+.. |build-status| image:: https://github.com/tmux-python/libtmux/workflows/.github/workflows/libtmux-ci.yml/badge.svg
    :alt: Build Status
-   :target: https://travis-ci.org/tmux-python/libtmux
+   :target: https://github.com/tmux-python/libtmux/actions
 
 .. |coverage| image:: https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg
     :alt: Code Coverage
