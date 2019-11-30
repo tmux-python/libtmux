@@ -185,7 +185,6 @@ Docs            https://libtmux.git-pull.com
 API             https://libtmux.git-pull.com/en/latest/api.html
 Changelog       https://libtmux.git-pull.com/en/latest/history.html
 Issues          https://github.com/tmux-python/libtmux/issues
-Travis          http://travis-ci.org/tmux-python/libtmux
 Test Coverage   https://codecov.io/gh/tmux-python/libtmux
 pypi            https://pypi.python.org/pypi/libtmux
 Open Hub        https://www.openhub.net/p/libtmux-python
