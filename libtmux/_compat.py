@@ -35,6 +35,8 @@ if PY2:
     from string import lower as ascii_lowercase
     import urlparse
 
+    from collections import MutableMapping
+
     exec('def reraise(tp, value, tb=None):\n raise tp, value, tb')
 
     def implements_to_string(cls):
@@ -77,6 +79,8 @@ else:
     console_encoding = sys.__stdout__.encoding
 
     implements_to_string = _identity
+
+    from collections.abc import MutableMapping
 
     def console_to_str(s):
         """ From pypa/pip project, pip.backwardwardcompat. License MIT. """
