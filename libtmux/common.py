@@ -15,7 +15,7 @@ import sys
 from distutils.version import LooseVersion
 
 from . import exc
-from ._compat import console_to_str, str_from_console
+from ._compat import console_to_str, str_from_console, MutableMapping
 
 logger = logging.getLogger(__name__)
 
@@ -231,9 +231,9 @@ class tmux_cmd(object):
         logger.debug('self.stdout for %s: \n%s' % (' '.join(cmd), self.stdout))
 
 
-class TmuxMappingObject(collections.MutableMapping):
+class TmuxMappingObject(MutableMapping):
 
-    """Base: :py:class:`collections.MutableMapping`.
+    """Base: :py:class:`MutableMapping`.
 
     Convenience container. Base class for :class:`Pane`, :class:`Window`,
     :class:`Session` and :class:`Server`.
