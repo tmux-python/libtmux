@@ -233,7 +233,7 @@ class tmux_cmd(object):
 
 class TmuxMappingObject(MutableMapping):
 
-    """Base: :py:class:`MutableMapping`.
+    r"""Base: :py:class:`MutableMapping`.
 
     Convenience container. Base class for :class:`Pane`, :class:`Window`,
     :class:`Session` and :class:`Server`.
