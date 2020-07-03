@@ -647,6 +647,9 @@ def handle_option_error(error):
     All errors raised will have the base error of :exc:`exc.OptionError`. So to
     catch any option error, use ``except exc.OptionError``.
 
+    In tmux 3.0, show-option and show-window-otion return invalid option instead of
+    unknown option. See https://github.com/tmux/tmux/blob/3.0/cmd-show-options.c.
+
     Parameters
     ----------
     error : str
