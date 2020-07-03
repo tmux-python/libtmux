@@ -213,7 +213,10 @@ def test_show_window_option_unknown(session):
     """Window.show_window_option raises UnknownOption for bad option key."""
     window = session.new_window(window_name='test_window')
 
-    with pytest.raises(exc.UnknownOption):
+    cmd_exception = exc.UnknownOption
+    if has_gte_version('3.0'):
+        cmd_exception = exc.InvalidOption
+    with pytest.raises(cmd_exception):
         window.show_window_option('moooz')
 
 

@@ -132,7 +132,10 @@ def test_empty_session_option_returns_None(session):
 
 def test_show_option_unknown(session):
     """Session.show_option raises UnknownOption for invalid option."""
-    with pytest.raises(exc.UnknownOption):
+    cmd_exception = exc.UnknownOption
+    if has_gte_version('3.0'):
+        cmd_exception = exc.InvalidOption
+    with pytest.raises(cmd_exception):
         session.show_option('moooz')
 
 
