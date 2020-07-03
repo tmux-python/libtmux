@@ -636,19 +636,19 @@ def session_check_name(session_name):
 def handle_option_error(error):
     """Raises exception if error in option command found.
 
-    Purpose: As of tmux 2.4, there are now 3 different types of option errors:
+    In tmux 3.0, show-option and show-window-otion return invalid option instead of
+    unknown option. See https://github.com/tmux/tmux/blob/3.0/cmd-show-options.c.
+
+    In tmux >2.4, there are 3 different types of option errors:
 
     - unknown option
     - invalid option
     - ambiguous option
 
-    Before 2.4, unknown option was the user.
+    In tmux <2.4, unknown option was the only option.
 
     All errors raised will have the base error of :exc:`exc.OptionError`. So to
     catch any option error, use ``except exc.OptionError``.
-
-    In tmux 3.0, show-option and show-window-otion return invalid option instead of
-    unknown option. See https://github.com/tmux/tmux/blob/3.0/cmd-show-options.c.
 
     Parameters
     ----------
