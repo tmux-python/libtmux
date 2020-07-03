@@ -9,7 +9,7 @@ jobs:
     strategy:
       matrix:
         python-version: [ '3.x' ]
-        tmux-version: [ '2.6', '2.7', '2.8', 'master' ]
+        tmux-version: [ '2.6', '2.7', '2.8', '3.0', 'master' ]
     steps:
     - uses: actions/checkout@v1
     - name: Cache tmux build ${{ matrix.tmux-version }}
