@@ -5,6 +5,9 @@ Changelog
 Here you can find the recent changes to libtmux
 
 - Add ``project_urls`` to setup.py
+- :issue:`293` Move from Pipfile to poetry
+- Fix show_option test in tmux 3.0
+- Clean up handle_option_error comments
 
 0.8.2 <2019-06-02>
 ------------------
