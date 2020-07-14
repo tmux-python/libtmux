@@ -6,7 +6,7 @@ libtmux.common
 ~~~~~~~~~~~~~~
 
 """
-import collections
+import collections.abc
 import logging
 import os
 import re
@@ -231,9 +231,9 @@ class tmux_cmd(object):
         logger.debug('self.stdout for %s: \n%s' % (' '.join(cmd), self.stdout))
 
 
-class TmuxMappingObject(collections.MutableMapping):
+class TmuxMappingObject(collections.abc.MutableMapping):
 
-    """Base: :py:class:`collections.MutableMapping`.
+    """Base: :py:class:`collections.abc.MutableMapping`.
 
     Convenience container. Base class for :class:`Pane`, :class:`Window`,
     :class:`Session` and :class:`Server`.
