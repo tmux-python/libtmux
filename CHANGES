@@ -9,14 +9,14 @@ Here you can find the recent changes to libtmux
 - Fix show_option test in tmux 3.0
 - Clean up handle_option_error comments
 
-0.8.2 <2019-06-02>
-------------------
+libtmux 0.8.2 (2019-06-02)
+--------------------------
 - CHANGES updated to plain reStructuredText
 - Add ``project_urls`` to setup.py for pypi.
 - Looser Pipfile versions, add Pipfile.lock
 
-0.8.1 <2019-01-26>
-------------------
+libtmux 0.8.1 (2019-01-26)
+--------------------------
 - :issue:`117` Fix issue with renaming clients with tmux 2.7 on BSD/macOS
   machines.
 - :issue:`121` Support ``literal=True`` (``-l``) in ``Pane.send_keys``
@@ -29,8 +29,8 @@ Here you can find the recent changes to libtmux
 - Add sphinxcontrib-napoleon package for documentation
 - Move docstrings over to numpy's style
 
-0.8.0 <2018-03-11>
-------------------
+libtmux 0.8.0 (2018-03-11)
+--------------------------
 - :issue:`46` Change license from BSD to MIT
 - Move to new organization, tmux-python
 - Support package updates to pytest, sphinx, etc.
@@ -41,44 +41,44 @@ Here you can find the recent changes to libtmux
 - :issue:`68` Make Server.has_session() use returncode, thanks
   @jlargentaye! This should make ``has_session`` more robust.
 
-0.7.8 <2018-03-04>
-------------------
+libtmux 0.7.8 (2018-03-04)
+--------------------------
 - Port ``retry`` function from tmuxp
   (https://github.com/tmux-python/tmuxp/issues/354)
 
-0.7.7 <2017-11-10>
-------------------
+libtmux 0.7.7 (2017-11-10)
+--------------------------
 - Don't add -x/-y in tmux >= 2.6 if running tmuxp from inside
   client.
 
-0.7.6 <2017-11-09>
-------------------
+libtmux 0.7.6 (2017-11-09)
+--------------------------
 - Allow ``Window.select_layout`` with no args
 - Fix test where ``bell-`` was no longer ambiguous as of tmux 2.6
 
-0.7.5 <2017-10-07>
-------------------
+libtmux 0.7.5 (2017-10-07)
+--------------------------
 - Hotfix to support tmux 2.6 session creation
 
-0.7.4 <2017-08-19>
-------------------
+libtmux 0.7.4 (2017-08-19)
+--------------------------
 - :issue:`65` Add session id to commands, thanks `@askedrelic`_
 
-0.7.3 <2017-05-29>
-------------------
+libtmux 0.7.3 (2017-05-29)
+--------------------------
 - Exact matches only supported on 2.1 and up
 
-0.7.2 <2017-05-29>
-------------------
+libtmux 0.7.2 (2017-05-29)
+--------------------------
 - Support exact matching in ``Server.has_session``
 
-0.7.1 <2017-04-28>
-------------------
+libtmux 0.7.1 (2017-04-28)
+--------------------------
 - :issue:`37` Improve support for formatted options like
   ``pane-border-status``. Thanks @kaushalmodi.
 
-0.7.0 <2017-04-27>
-------------------
+libtmux 0.7.0 (2017-04-27)
+--------------------------
 - Support for python 2.6 dropped. New minimum version is 2.7
 - Add support for tmux 2.4, pypy and pypy3
 - Overhaul error handling when setting and showing options
@@ -100,60 +100,60 @@ Here you can find the recent changes to libtmux
 - Added pydoc exception info to option methods in window and sessions.
 - Added ``TMUX_MIN_VERSION`` and ``TMUX_MAX_VERSION``
 
-0.6.5 <2017-04-02>
-------------------
+libtmux 0.6.5 (2017-04-02)
+--------------------------
 - Fix ``which`` command
 - Add ``TmuxCommandNotFound`` exception
 - Add ``tmux_search_paths`` and ``append_env_path`` kwargs to
   ``tmux_cmd``.
 
-0.6.4 <2017-03-25>
-------------------
+libtmux 0.6.4 (2017-03-25)
+--------------------------
 - :issue:`32` support for OpenBSD's tmux
 
-0.6.3 <2017-02-08>
-------------------
+libtmux 0.6.3 (2017-02-08)
+--------------------------
 - :issue:`25` support for working with tmux ``master``, thanks @sloria.
 
-0.6.2 <2017-01-19>
-------------------
+libtmux 0.6.2 (2017-01-19)
+--------------------------
 - :issue:`197` use `LooseVersion` instead of `StrictVersion` for version
   checks. Thanks @minijackson.
 - Pin packages with pyup.io
 - :issue:`21` Readme fix from @huwenchao.
 
-0.6.1 <2016-12-20>
-------------------
+libtmux 0.6.1 (2016-12-20)
+--------------------------
 - :issue:`18` Fix logger, courtesy of @geekli
 - :issue:`19` Add support for ``start_directory`` in new sessions and
   panes, courtesy of @gandelman-a.
 - Fix tests and add official support for 2.3
 
-0.6.0 <2016-09-16>
-------------------
+libtmux 0.6.0 (2016-09-16)
+--------------------------
 - Raise exception for invalid session names. tmux does not
   allow names that are empty, contain periods or colons.
 - Remove unused ``target_sesssion`` param in
   ``Server.attach_session`` and ``Server.switch_client``.
 
-0.5.1 <2016-08-18>
-------------------
+libtmux 0.5.1 (2016-08-18)
+--------------------------
 - :issue:`12` - fix logger message when tmux doesn't exist in ``PATH``
 
-0.5 <2016-06-15>
-----------------
+libtmux 0.5 (2016-06-15)
+------------------------
 - :issue:`8` new exception ``UnknownOption``
 - :issue:`8` return ``None`` for options that are valid tmux options,
   but unset at that scope.
 - :issue:`6` major documentation overhaul
 
-0.4.1 <2016-05-23>
-------------------
+libtmux 0.4.1 (2016-05-23)
+--------------------------
 - update ``which()`` to find tmux via ``os.environ['PATH']``.
   https://redd.it/4laeut
 
-0.4.0 <2016-05-23>
-------------------
+libtmux 0.4.0 (2016-05-23)
+--------------------------
 - attributes for formatters are now accessible via
   ``Session``, ``Window`` and ``Pane`` objects. ``session.name``
   is equivalent to ``session.get('session_name')``, you can do the
@@ -166,12 +166,12 @@ Here you can find the recent changes to libtmux
 - ``.findWhere()`` is now ``find_where``.
 - README and usage fixes
 
-0.3.0 <2016-05-23>
-------------------
+libtmux 0.3.0 (2016-05-23)
+--------------------------
 - switch to pytest 
 
-0.1.0 <2016-05-22>
-------------------
+libtmux 0.1.0 (2016-05-22)
+--------------------------
 - libtmux forked from `tmuxp`_.
 
 .. _tmuxp: https://github.com/tmux-python/tmuxp
