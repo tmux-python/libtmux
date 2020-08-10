@@ -155,11 +155,11 @@ powerful traversal features::
     >>> pane.window.session
     Session($3 foo)
 
-.. _developing and testing: http://libtmux.git-pull.com/en/latest/developing.html
+.. _developing and testing: http://libtmux.git-pull.com/developing.html
 .. _tmuxp: https://tmuxp.git-pull.com/
 .. _documentation: https://libtmux.git-pull.com/
-.. _API: https://libtmux.git-pull.com/en/latest/api.html
-.. _architectural details: https://libtmux.git-pull.com/en/latest/about.html
+.. _API: https://libtmux.git-pull.com/api.html
+.. _architectural details: https://libtmux.git-pull.com/about.html
 .. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS
 .. _target: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
 
@@ -179,8 +179,8 @@ Project details
 - python support: 2.7, >= 3.3, pypy, pypy3
 - Source: https://github.com/tmux-python/libtmux
 - Docs: https://libtmux.git-pull.com
-- API: https://libtmux.git-pull.com/en/latest/api.html
-- Changelog: https://libtmux.git-pull.com/en/latest/history.html
+- API: https://libtmux.git-pull.com/api.html
+- Changelog: https://libtmux.git-pull.com/history.html
 - Issues: https://github.com/tmux-python/libtmux/issues
 - Test Coverage: https://codecov.io/gh/tmux-python/libtmux
 - pypi: https://pypi.python.org/pypi/libtmux
