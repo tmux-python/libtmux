@@ -25,6 +25,15 @@ classifiers = [
   "Topic :: System :: Shells"
 ]
 
+keywords = ["tmux", "session manager", "terminal", "ncurses"]
+homepage = "http://github.com/tmux-python/libvcs/"
+readme = "README.rst"
+
+[tool.poetry.urls]
+"Bug Tracker" = "https://github.com/tmux-python/libvcs/issues"
+Documentation = "https://libvcs.git-pull.com"
+Repository = "https://github.com/tmux-python/libvcs"
+
 [tool.poetry.dependencies]
 python = "~2.7 || ^3.5"
 
