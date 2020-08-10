@@ -155,7 +155,6 @@ powerful traversal features::
     >>> pane.window.session
     Session($3 foo)
 
-.. _MIT: http://opensource.org/licenses/MIT
 .. _developing and testing: http://libtmux.git-pull.com/en/latest/developing.html
 .. _tmuxp: https://tmuxp.git-pull.com/
 .. _documentation: https://libtmux.git-pull.com/
@@ -176,39 +175,19 @@ See donation options at https://git-pull.com/support.html.
 
 Project details
 ---------------
+- tmux support: 1.8, 1.9a, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
+- python support: 2.7, >= 3.3, pypy, pypy3
+- Source: https://github.com/tmux-python/libtmux
+- Docs: https://libtmux.git-pull.com
+- API: https://libtmux.git-pull.com/en/latest/api.html
+- Changelog: https://libtmux.git-pull.com/en/latest/history.html
+- Issues: https://github.com/tmux-python/libtmux/issues
+- Test Coverage: https://codecov.io/gh/tmux-python/libtmux
+- pypi: https://pypi.python.org/pypi/libtmux
+- Open Hub: https://www.openhub.net/p/libtmux-python
+- License: `MIT`_.
 
-==============  ==========================================================
-tmux support    1.8, 1.9a, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
-python support  2.7, >= 3.3, pypy, pypy3
-Source          https://github.com/tmux-python/libtmux
-Docs            https://libtmux.git-pull.com
-API             https://libtmux.git-pull.com/en/latest/api.html
-Changelog       https://libtmux.git-pull.com/en/latest/history.html
-Issues          https://github.com/tmux-python/libtmux/issues
-Test Coverage   https://codecov.io/gh/tmux-python/libtmux
-pypi            https://pypi.python.org/pypi/libtmux
-Open Hub        https://www.openhub.net/p/libtmux-python
-License         `MIT`_.
-git repo        .. code-block:: bash
-
-                    $ git clone https://github.com/tmux-python/libtmux.git
-install stable  .. code-block:: bash
-
-                    $ pip install libtmux
-install dev     .. code-block:: bash
-
-                    $ git clone https://github.com/tmux-python/libtmux.git libtmux
-                    $ cd ./libtmux
-                    $ virtualenv .venv
-                    $ source .venv/bin/activate
-                    $ pip install -e .
-
-                See the `developing and testing`_ page in the docs for
-                more.
-tests           .. code-block:: bash
-
-                    $ make test
-==============  ==========================================================
+.. _MIT: http://opensource.org/licenses/MIT
 
 .. |pypi| image:: https://img.shields.io/pypi/v/libtmux.svg
     :alt: Python Package
