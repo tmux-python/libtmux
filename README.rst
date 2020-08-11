@@ -193,6 +193,10 @@ Project details
     :alt: Python Package
     :target: http://badge.fury.io/py/libtmux
 
+.. |docs| image:: https://github.com/tmux-python/libtmux/workflows/Publish%20Docs/badge.svg
+   :alt: Docs
+   :target: https://github.com/tmux-python/libtmux/actions?query=workflow%3A"Publish+Docs"
+
 .. |build-status| image:: https://github.com/tmux-python/libtmux/workflows/.github/workflows/libtmux-ci.yml/badge.svg
    :alt: Build Status
    :target: https://github.com/tmux-python/libtmux/actions
@@ -203,8 +207,3 @@ Project details
     
 .. |license| image:: https://img.shields.io/github/license/tmux-python/libtmux.svg
     :alt: License 
-
-.. |docs| image:: https://readthedocs.org/projects/libtmux/badge/?version=latest
-    :alt: Documentation Status
-    :scale: 100%
-    :target: https://readthedocs.org/projects/libtmux/
