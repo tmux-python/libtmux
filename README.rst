@@ -197,9 +197,9 @@ Project details
    :alt: Docs
    :target: https://github.com/tmux-python/libtmux/actions?query=workflow%3A"Publish+Docs"
 
-.. |build-status| image:: https://github.com/tmux-python/libtmux/workflows/.github/workflows/libtmux-ci.yml/badge.svg
+.. |build-status| image:: https://github.com/tmux-python/libtmux/workflows/tests/badge.svg
    :alt: Build Status
-   :target: https://github.com/tmux-python/libtmux/actions
+   :target: https://github.com/tmux-python/tmux-python/actions?query=workflow%3A"tests"
 
 .. |coverage| image:: https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg
     :alt: Code Coverage
