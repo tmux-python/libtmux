@@ -53,7 +53,7 @@ coverage.xml
 *.mo
 *.pot
 
-# Django stuff:
+# Django stuff
 *.log
 
 # Sphinx documentation
@@ -62,13 +62,10 @@ docs/_build/
 # PyBuilder
 target/
 
-#Ipython Notebook
+# ipython Notebook
 .ipynb_checkpoints
 
 # editors
 .idea
 .ropeproject
 *.swp
-
-# docs
-doc/_build/
