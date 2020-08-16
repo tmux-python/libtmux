@@ -5,6 +5,7 @@ import sys
 from os.path import dirname, relpath
 
 import alagitpull
+from recommonmark.transform import AutoStructify
 
 import libtmux  # NOQA
 from libtmux import test  # NOQA
@@ -30,18 +31,30 @@ extensions = [
     'sphinx.ext.napoleon',
     'alagitpull',
     'sphinx_issues',
+    'recommonmark',
 ]
 
-releases_unstable_prehistory = True
-releases_document_name = ["history"]
-releases_issue_uri = "https://github.com/tmux-python/libtmux/issues/%s"
-releases_release_uri = "https://github.com/tmux-python/libtmux/tree/v%s"
+# app setup hook
+def setup(app):
+    app.add_config_value(
+        'recommonmark_config',
+        {
+            #'url_resolver': lambda url: github_doc_root + url,
+            'enable_auto_toc_tree': True,
+            'auto_toc_tree_section': 'Contents',
+            'auto_code_block': True,
+            'enable_eval_rst': True,
+        },
+        True,
+    )
+    app.add_transform(AutoStructify)
+
 
 issues_github_path = about['__github__'].replace('https://github.com/', '')
 
 templates_path = ['_templates']
 
-source_suffix = '.rst'
+source_suffix = {'.rst': 'restructuredtext', '.md': 'markdown'}
 
 master_doc = 'index'
 
@@ -66,6 +79,12 @@ html_theme_options = {
     'github_banner': True,
     'projects': alagitpull.projects,
     'project_name': about['__title__'],
+    'project_title': about['__title__'],
+    'project_description': about['__description__'],
+    'project_url': about['__docs__'],
+    'show_meta_manifest_tag': True,
+    'show_meta_og_tags': True,
+    'show_meta_app_icon_tags': True,
 }
 alagitpull_internal_hosts = ['libtmux.git-pull.com', '0.0.0.0']
 alagitpull_external_hosts_new_window = True
@@ -83,6 +102,7 @@ html_sidebars = {
 
 html_theme_path = ['_themes']
 html_static_path = ['_static']
+html_extra_path = ['manifest.json']
 
 htmlhelp_basename = '%sdoc' % about['__title__']
 

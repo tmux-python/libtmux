@@ -5,11 +5,10 @@ libtmux
 #######
 
 .. include:: ../README.rst
-    :start-line: 4
-    :end-before: Project details
+    :start-line: 2
 
-Explore:
-
+Table of Contents
+-----------------
 .. toctree::
     :maxdepth: 2
 

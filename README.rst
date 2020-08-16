@@ -155,12 +155,11 @@ powerful traversal features::
     >>> pane.window.session
     Session($3 foo)
 
-.. _MIT: http://opensource.org/licenses/MIT
-.. _developing and testing: http://libtmux.git-pull.com/en/latest/developing.html
+.. _developing and testing: http://libtmux.git-pull.com/developing.html
 .. _tmuxp: https://tmuxp.git-pull.com/
 .. _documentation: https://libtmux.git-pull.com/
-.. _API: https://libtmux.git-pull.com/en/latest/api.html
-.. _architectural details: https://libtmux.git-pull.com/en/latest/about.html
+.. _API: https://libtmux.git-pull.com/api.html
+.. _architectural details: https://libtmux.git-pull.com/about.html
 .. _formats: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS
 .. _target: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
 
@@ -176,47 +175,31 @@ See donation options at https://git-pull.com/support.html.
 
 Project details
 ---------------
+- tmux support: 1.8, 1.9a, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
+- python support: 2.7, >= 3.3, pypy, pypy3
+- Source: https://github.com/tmux-python/libtmux
+- Docs: https://libtmux.git-pull.com
+- API: https://libtmux.git-pull.com/api.html
+- Changelog: https://libtmux.git-pull.com/history.html
+- Issues: https://github.com/tmux-python/libtmux/issues
+- Test Coverage: https://codecov.io/gh/tmux-python/libtmux
+- pypi: https://pypi.python.org/pypi/libtmux
+- Open Hub: https://www.openhub.net/p/libtmux-python
+- License: `MIT`_.
 
-==============  ==========================================================
-tmux support    1.8, 1.9a, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6
-python support  2.7, >= 3.3, pypy, pypy3
-Source          https://github.com/tmux-python/libtmux
-Docs            https://libtmux.git-pull.com
-API             https://libtmux.git-pull.com/en/latest/api.html
-Changelog       https://libtmux.git-pull.com/en/latest/history.html
-Issues          https://github.com/tmux-python/libtmux/issues
-Test Coverage   https://codecov.io/gh/tmux-python/libtmux
-pypi            https://pypi.python.org/pypi/libtmux
-Open Hub        https://www.openhub.net/p/libtmux-python
-License         `MIT`_.
-git repo        .. code-block:: bash
-
-                    $ git clone https://github.com/tmux-python/libtmux.git
-install stable  .. code-block:: bash
-
-                    $ pip install libtmux
-install dev     .. code-block:: bash
-
-                    $ git clone https://github.com/tmux-python/libtmux.git libtmux
-                    $ cd ./libtmux
-                    $ virtualenv .venv
-                    $ source .venv/bin/activate
-                    $ pip install -e .
-
-                See the `developing and testing`_ page in the docs for
-                more.
-tests           .. code-block:: bash
-
-                    $ make test
-==============  ==========================================================
+.. _MIT: http://opensource.org/licenses/MIT
 
 .. |pypi| image:: https://img.shields.io/pypi/v/libtmux.svg
     :alt: Python Package
     :target: http://badge.fury.io/py/libtmux
 
-.. |build-status| image:: https://github.com/tmux-python/libtmux/workflows/.github/workflows/libtmux-ci.yml/badge.svg
+.. |docs| image:: https://github.com/tmux-python/libtmux/workflows/Publish%20Docs/badge.svg
+   :alt: Docs
+   :target: https://github.com/tmux-python/libtmux/actions?query=workflow%3A"Publish+Docs"
+
+.. |build-status| image:: https://github.com/tmux-python/libtmux/workflows/tests/badge.svg
    :alt: Build Status
-   :target: https://github.com/tmux-python/libtmux/actions
+   :target: https://github.com/tmux-python/tmux-python/actions?query=workflow%3A"tests"
 
 .. |coverage| image:: https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg
     :alt: Code Coverage
@@ -224,8 +207,3 @@ tests           .. code-block:: bash
     
 .. |license| image:: https://img.shields.io/github/license/tmux-python/libtmux.svg
     :alt: License 
-
-.. |docs| image:: https://readthedocs.org/projects/libtmux/badge/?version=latest
-    :alt: Documentation Status
-    :scale: 100%
-    :target: https://readthedocs.org/projects/libtmux/
