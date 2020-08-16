@@ -11,6 +11,8 @@ current
   setup.py for the moment to ensure compatibility package maintainers.
 - :issue:`295`: New development instructions
 - :issue:`295`: Move doc/ to docs/
+- :issue:`296`: CI: Test python 2.7, cache python packages, prevent running
+  internal PRs twice
 
 libtmux 0.8.3 (2020-08-16)
 --------------------------
