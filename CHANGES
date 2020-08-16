@@ -4,10 +4,16 @@ Changelog
 
 Here you can find the recent changes to libtmux
 
+libtmux 0.8.3 (2020-08-16)
+--------------------------
+- :issue:`278`: Fix Python deprecation warnings, thanks @d1618033
+
+  Also thanks Flowdalic for a similar PR at :issue:`294`
 - Add ``project_urls`` to setup.py
 - :issue:`293` Move from Pipfile to poetry
 - Fix show_option test in tmux 3.0
 - Clean up handle_option_error comments
+- Move CI to a GitHub action
 
 libtmux 0.8.2 (2019-06-02)
 --------------------------
