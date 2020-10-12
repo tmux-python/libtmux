@@ -15,7 +15,7 @@ def test_has_session(server, session):
 
 
 def test_socket_name(server):
-    """ ``-L`` socket_name.
+    """``-L`` socket_name.
 
     ``-L`` socket_name  file name of socket. which will be stored in
             env TMUX_TMPDIR or /tmp if unset.)
