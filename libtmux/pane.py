@@ -153,7 +153,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
     def reset(self):
         """Reset and clear pane history. """
 
-        self.cmd('send-keys', '-R \; clear-history')
+        self.cmd('send-keys', r'-R \; clear-history')
 
     def split_window(self, attach=False, vertical=True, start_directory=None):
         """
