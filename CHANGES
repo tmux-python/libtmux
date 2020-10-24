@@ -6,6 +6,7 @@ Here you can find the recent changes to libtmux
 
 current
 -------
+- :issue:`289`: Fix warning due to invalid escape sequences
 - :issue:`295`: Publish docs via our own action
 - :issue:`295`: Move more packaging over to poetry, though we'll keep
   setup.py for the moment to ensure compatibility package maintainers.
