@@ -15,7 +15,7 @@ import sys
 from distutils.version import LooseVersion
 
 from . import exc
-from ._compat import console_to_str, str_from_console, MutableMapping
+from ._compat import MutableMapping, console_to_str, str_from_console
 
 logger = logging.getLogger(__name__)
 
