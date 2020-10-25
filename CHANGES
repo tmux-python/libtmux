@@ -6,6 +6,10 @@ Here you can find the recent changes to libtmux
 
 current
 -------
+- *Insert changes/features/fixes for next release here*
+
+libtmux 0.8.4 (2020-10-25)
+--------------------------
 - :issue:`234`: ``Window.split_window``: Allow passing ``percent``
 - :issue:`289`: Fix warning due to invalid escape sequences
 - :issue:`295`: Publish docs via our own action
