@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class Pane(TmuxMappingObject, TmuxRelationalObject):
     """
-    A :term:`tmux(1)` :term:`pane` [#]_.
+    A :term:`tmux(1)` :term:`Pane` [#]_.
 
     ``Pane`` instances can send commands directly to a pane, or traverse
     between linked tmux objects.
@@ -155,7 +155,9 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
         self.cmd('send-keys', r'-R \; clear-history')
 
-    def split_window(self, attach=False, vertical=True, start_directory=None, percent=None):
+    def split_window(
+        self, attach=False, vertical=True, start_directory=None, percent=None
+    ):
         """
         Split window at pane and return newly created :class:`Pane`.
 

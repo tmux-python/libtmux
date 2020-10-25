@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class Window(TmuxMappingObject, TmuxRelationalObject):
     """
-    A :term:`tmux(1)` :term:`window` [#]_.
+    A :term:`tmux(1)` :term:`Window` [#]_.
 
     Holds :class:`Pane` objects.
 
