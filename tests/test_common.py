@@ -11,6 +11,7 @@ import libtmux
 from libtmux.common import (
     TMUX_MAX_VERSION,
     TMUX_MIN_VERSION,
+    get_libtmux_version,
     get_version,
     has_gt_version,
     has_gte_version,
@@ -201,3 +202,11 @@ def test_session_check_name(session_name, raises, exc_msg_regex):
         assert exc_info.match(exc_msg_regex)
     else:
         session_check_name(session_name)
+
+
+def test_get_libtmux_version():
+    from libtmux.__about__ import __version__
+
+    version = get_libtmux_version()
+    assert isinstance(version, LooseVersion)
+    assert LooseVersion(__version__) == version
