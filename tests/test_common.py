@@ -27,8 +27,9 @@ from libtmux.exc import BadSessionName, LibTmuxException, TmuxCommandNotFound
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
-def test_allows_master_version(monkeypatch):
-    def mock_tmux_cmd(param):
+@pytest.mark.parametrize("executor", ["mock_tmux_cmd", "mock_TmuxCommand"])
+def test_allows_master_version(monkeypatch, executor):
+    def mock_TmuxCommand(param):
         class Hi:
             stdout = ["tmux master"]
             stderr = None
@@ -38,7 +39,16 @@ def test_allows_master_version(monkeypatch):
 
         return Hi()
 
-    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
+    def mock_tmux_cmd(param):
+        class Hi(object):
+            stdout = ["tmux master"]
+            stderr = None
+
+        return Hi()
+
+    mock_cmd = locals()[executor]
+
+    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_cmd)
 
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
