@@ -86,6 +86,8 @@ Internals
 
 .. automethod:: libtmux.common.handle_option_error
 
+.. automethod:: libtmux.common.get_libtmux_version
+
 Exceptions
 ----------
 
