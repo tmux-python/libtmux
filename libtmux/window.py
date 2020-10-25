@@ -454,7 +454,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         else:
             tmux_args += ('-h',)
 
-        if percent:
+        if percent is not None:
             tmux_args += ('-p %d' % percent,)
 
         tmux_args += ('-P', '-F%s' % ''.join(tmux_formats))  # output
