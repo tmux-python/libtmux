@@ -668,3 +668,16 @@ def handle_option_error(error):
         raise exc.AmbiguousOption(error)
     else:
         raise exc.OptionError(error)  # Raise generic option error
+
+
+def get_libtmux_version():
+    """Return libtmux version is a PEP386 compliant format.
+
+    Returns
+    -------
+    distutils.version.LooseVersion
+        libtmux version
+    """
+    from libtmux.__about__ import __version__
+
+    return LooseVersion(__version__)

@@ -1,15 +1,5 @@
 # -*- coding: utf-8 -*-
 # flake8: NOQA
-"""API for interfacing with tmux servers, sessions, windows and panes.
-
-libtmux
-~~~~~~~
-
-:copyright: Copyright 2016-2018 Tony Narlock.
-:license: MIT, see LICENSE for details
-
-"""
-
 from .__about__ import (
     __author__,
     __copyright__,
