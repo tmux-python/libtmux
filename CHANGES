@@ -6,8 +6,9 @@ Here you can find the recent changes to libtmux
 
 current
 -------
-- :issue:`251`: Enchance subprocess interaction std[in|out|err]. Needed
-  for interact with big buffer
+- :issue:`297`: Enchance subprocess interaction std[in|out|err]. Needed
+  for interact with big buffer, fixes :issue:`251`, thank you
+  @gil-obradors!
 - :issue:`303` Add ``common.get_libtmux_version`` which gives the tmux
   version as a loose constraint. Fix linking to terms inside docs, and
   duplicate description of module which sphinx warned about in api.rst.
