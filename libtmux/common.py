@@ -205,11 +205,7 @@ class tmux_cmd(object):
             self.process = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
-            self.process.wait()
-            stdout = self.process.stdout.read()
-            self.process.stdout.close()
-            stderr = self.process.stderr.read()
-            self.process.stderr.close()
+            stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
         except Exception as e:
             logger.error('Exception for %s: \n%s' % (subprocess.list2cmdline(cmd), e))
