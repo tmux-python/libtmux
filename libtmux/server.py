@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class Server(TmuxRelationalObject, EnvironmentMixin):
 
     """
-    The :term:`tmux(1)` :term:`server` [#]_.
+    The :term:`tmux(1)` :term:`Server` [#]_.
 
     - :attr:`Server._sessions` [:class:`Session`, ...]
 

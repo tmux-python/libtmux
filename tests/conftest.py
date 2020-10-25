@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import os
 
 import pytest
 
@@ -11,8 +12,37 @@ from libtmux.test import TEST_SESSION_PREFIX, get_test_session_name, namer
 logger = logging.getLogger(__name__)
 
 
+@pytest.fixture(autouse=True)
+def clear_env(monkeypatch):
+    """Clear out any unnecessary environment variables that could interrupt tests.
+
+    tmux show-environment tests were being interrupted due to a lot of crazy env vars.
+    """
+    for k, v in os.environ.items():
+        if not any(
+            needle in k.lower()
+            for needle in [
+                'window',
+                'tmux',
+                'pane',
+                'session',
+                'pytest',
+                'path',
+                'pwd',
+                'shell',
+                'home',
+                'xdg',
+                'disable_auto_title',
+                'lang',
+                'term',
+            ]
+        ):
+            monkeypatch.delenv(k)
+
+
 @pytest.fixture(scope='function')
-def server(request):
+def server(request, monkeypatch):
+
     t = Server()
     t.socket_name = 'tmuxp_test%s' % next(namer)
 

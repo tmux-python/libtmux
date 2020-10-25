@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class Window(TmuxMappingObject, TmuxRelationalObject):
     """
-    A :term:`tmux(1)` :term:`window` [#]_.
+    A :term:`tmux(1)` :term:`Window` [#]_.
 
     Holds :class:`Pane` objects.
 
@@ -382,7 +382,13 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         return self.select_pane('-l')
 
     def split_window(
-        self, target=None, start_directory=None, attach=True, vertical=True, shell=None
+        self,
+        target=None,
+        start_directory=None,
+        attach=True,
+        vertical=True,
+        shell=None,
+        percent=None,
     ):
         """
         Split window and return the created :class:`Pane`.
@@ -407,6 +413,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             NOTE: When this command exits the pane will close.  This feature
             is useful for long-running processes where the closing of the
             window upon completion is desired.
+        percent: int, optional
+            percentage to occupy with respect to current window
 
         Returns
         -------
@@ -445,6 +453,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             tmux_args += ('-v',)
         else:
             tmux_args += ('-h',)
+
+        if percent is not None:
+            tmux_args += ('-p %d' % percent,)
 
         tmux_args += ('-P', '-F%s' % ''.join(tmux_formats))  # output
 

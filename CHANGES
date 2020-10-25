@@ -6,7 +6,21 @@ Here you can find the recent changes to libtmux
 
 current
 -------
-- :issue:`251`: Enchance subprocess interaction std[in|out|err]. Needed for interact with big buffer
+- :issue:`251`: Enchance subprocess interaction std[in|out|err]. Needed
+  for interact with big buffer
+- :issue:`303` Add ``common.get_libtmux_version`` which gives the tmux
+  version as a loose constraint. Fix linking to terms inside docs, and
+  duplicate description of module which sphinx warned about in api.rst.
+- :issue:`266` Fix issue on local tests where env variables would cause
+  show-environment to pause tests indefinitely.
+- *Insert changes/features/fixes for next release here*
+
+libtmux 0.8.4 (2020-10-25)
+--------------------------
+- :issue:`234`: ``Window.split_window``: Allow passing ``percent``, Thank
+  you @jinankjain!
+- :issue:`289`: Fix warning due to invalid escape sequences, Thank you
+  @tirkarthi!
 - :issue:`295`: Publish docs via our own action
 - :issue:`295`: Move more packaging over to poetry, though we'll keep
   setup.py for the moment to ensure compatibility package maintainers.

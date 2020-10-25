@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     """
-    A :term:`tmux(1)` :term:`session` [#]_.
+    A :term:`tmux(1)` :term:`Session` [#]_.
 
     Holds :class:`Window` objects.
 

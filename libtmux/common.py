@@ -15,7 +15,7 @@ import sys
 from distutils.version import LooseVersion
 
 from . import exc
-from ._compat import console_to_str, str_from_console, MutableMapping
+from ._compat import MutableMapping, console_to_str, str_from_console
 
 logger = logging.getLogger(__name__)
 
@@ -229,7 +229,7 @@ class tmux_cmd(object):
 
 class TmuxMappingObject(MutableMapping):
 
-    """Base: :py:class:`MutableMapping`.
+    r"""Base: :py:class:`MutableMapping`.
 
     Convenience container. Base class for :class:`Pane`, :class:`Window`,
     :class:`Session` and :class:`Server`.
@@ -664,3 +664,16 @@ def handle_option_error(error):
         raise exc.AmbiguousOption(error)
     else:
         raise exc.OptionError(error)  # Raise generic option error
+
+
+def get_libtmux_version():
+    """Return libtmux version is a PEP386 compliant format.
+
+    Returns
+    -------
+    distutils.version.LooseVersion
+        libtmux version
+    """
+    from libtmux.__about__ import __version__
+
+    return LooseVersion(__version__)
