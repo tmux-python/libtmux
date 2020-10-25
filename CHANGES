@@ -6,6 +6,10 @@ Here you can find the recent changes to libtmux
 
 current
 -------
+- *Insert changes/features/fixes for next release here*
+
+libtmux 0.8.5 (2020-10-25)
+--------------------------
 - :issue:`297`: Enchance subprocess interaction std[in|out|err]. Needed
   for interact with big buffer, fixes :issue:`251`, thank you
   @gil-obradors!
@@ -14,7 +18,7 @@ current
   duplicate description of module which sphinx warned about in api.rst.
 - :issue:`266` Fix issue on local tests where env variables would cause
   show-environment to pause tests indefinitely.
-- *Insert changes/features/fixes for next release here*
+
 
 libtmux 0.8.4 (2020-10-25)
 --------------------------
