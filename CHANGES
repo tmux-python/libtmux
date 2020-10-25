@@ -10,8 +10,10 @@ current
 
 libtmux 0.8.4 (2020-10-25)
 --------------------------
-- :issue:`234`: ``Window.split_window``: Allow passing ``percent``
-- :issue:`289`: Fix warning due to invalid escape sequences
+- :issue:`234`: ``Window.split_window``: Allow passing ``percent``, Thank
+  you @jinankjain!
+- :issue:`289`: Fix warning due to invalid escape sequences, Thank you
+  @tirkarthi!
 - :issue:`295`: Publish docs via our own action
 - :issue:`295`: Move more packaging over to poetry, though we'll keep
   setup.py for the moment to ensure compatibility package maintainers.
