@@ -39,10 +39,10 @@ def retry(seconds=RETRY_TIMEOUT_SECONDS):
     --------
 
     >>> while retry():
-    ...      p = w.attached_pane
-    ...      p.server._update_panes()
-    ...      if p.current_path == pane_path:
-    ...          break
+    ...     p = w.attached_pane
+    ...     p.server._update_panes()
+    ...     if p.current_path == pane_path:
+    ...         break
     """
     return (lambda: time.time() < time.time() + seconds)()
 
