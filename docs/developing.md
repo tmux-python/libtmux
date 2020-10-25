@@ -41,6 +41,54 @@ CI. See the configuration in `pyproject.toml` and `setup.cfg`:
 
 ## Releasing
 
+Since this software is used by tens of thousands of users daily, we don't want
+to release breaking changes. Additionally this is packaged on large Linux/BSD
+distros, so we must be mindful of architectural changes.
+
+Choose what the next version is. Assuming it's version 0.9.0, it could be:
+
+- 0.9.0post0: postrelease, if there was a packaging issue
+- 0.9.1: bugfix / security / tweak
+- 0.10.0: breaking changes, new features
+
+Let's assume we pick 0.9.1
+
+`CHANGES`: Assure any PRs merged since last release are mentioned. Give a
+thank you to the contributor. Set the header with the new version and the date.
+Leave the "current" header and _Insert changes/features/fixes for next release here_ at
+the top::
+
+    current
+    -------
+    - *Insert changes/features/fixes for next release here*
+
+    libtmux 0.9.1 (2020-10-12)
+    --------------------------
+    - :issue:`1`: Fix bug
+
+`libtmux/__init__.py` and `__about__.py` - Set version
+
+`git commit -m 'Tag v0.9.1'`
+
+`git tag v0.9.1`
+
+`pip install wheel twine`
+
+`python setup.py sdist bdist_wheel`
+
+`twine upload dist/*`
+
+### Twine
+
+`twine upload dist/*`
+
+You will be asked for PyPI login information.
+
+### Releasing with Poetry (hypothetical)
+
+This isn't used yet since package maintainers may want setup.py in the source.
+See https://github.com/tmux-python/tmuxp/issues/625.
+
 As of 0.10, [poetry] handles virtualenv creation, package requirements, versioning,
 building, and publishing. Therefore there is no setup.py or requirements files.
 
@@ -53,6 +101,7 @@ Update `__version__` in `__about__.py` and `pyproject.toml`::
     poetry build
     poetry deploy
 
+[twine]: https://twine.readthedocs.io/
 [poetry]: https://python-poetry.org/
 [entr(1)]: http://eradman.com/entrproject/
 [black]: https://github.com/psf/black
