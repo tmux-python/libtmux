@@ -119,6 +119,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         if self.config_file:
             args.insert(0, '-f{0}'.format(self.config_file))
         if self.colors:
+            # Resolve inconsistent type returned by Click
+            self.colors=int(self.colors)
             if self.colors == 256:
                 args.insert(0, '-2')
             elif self.colors == 88:
