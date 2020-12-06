@@ -10,6 +10,8 @@ For reference: https://github.com/tmux/tmux/blob/master/format.c
 
 from __future__ import absolute_import, unicode_literals, with_statement
 
+FORMAT_SEPERATOR = "|"
+
 SESSION_FORMATS = [
     'session_name',
     'session_windows',
