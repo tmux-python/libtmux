@@ -10,6 +10,11 @@ mapping to traverse, inspect and interact with live tmux sessions.
 view the `documentation`_ homepage,  `API`_ information and `architectural
 details`_.
 
+Python 2.x will be deprecated in libtmux 0.9. The backports branch is
+`v0.8.x`_.
+
+.. _v0.8.x: https://github.com/tmux-python/libtmux/tree/v0.8.x
+
 install
 -------
 
