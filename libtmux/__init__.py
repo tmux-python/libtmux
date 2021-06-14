@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # flake8: NOQA
 from .__about__ import (
     __author__,

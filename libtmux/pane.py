@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # flake8: NOQA W605
 """Pythonization of the :ref:`tmux(1)` pane.
 
@@ -6,8 +5,6 @@ libtmux.pane
 ~~~~~~~~~~~~
 
 """
-from __future__ import absolute_import, unicode_literals, with_statement
-
 import logging
 
 from . import exc

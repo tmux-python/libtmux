@@ -1,7 +1,4 @@
-# -*- coding: utf-8 -*-
 """Test for tmuxp Session object."""
-from __future__ import absolute_import, unicode_literals, with_statement
-
 import logging
 
 import pytest
