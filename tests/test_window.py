@@ -115,7 +115,10 @@ def test_split_window_shell(session):
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
     assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
-    assert pane.get('pane_start_command') == cmd
+    if has_gte_version('3.2'):
+        assert pane.get('pane_start_command').replace('"', '') == cmd
+    else:
+        assert pane.get('pane_start_command') == cmd
 
 
 def test_split_window_horizontal(session):

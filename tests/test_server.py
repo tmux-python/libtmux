@@ -5,6 +5,7 @@ from __future__ import absolute_import, unicode_literals, with_statement
 import logging
 
 from libtmux import Server
+from libtmux.common import has_gte_version
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,11 @@ def test_config(server):
 def test_256_colors(server):
     myserver = Server(colors=256)
     assert myserver.colors == 256
+    print(myserver.colors)
 
-    proc = myserver.cmd('list-servers')
+    proc = myserver.cmd('list-sessions')
+
+    print('list-sessions', proc)
 
     assert '-2' in proc.cmd
     assert '-8' not in proc.cmd
@@ -53,7 +57,7 @@ def test_88_colors(server):
     myserver = Server(colors=88)
     assert myserver.colors == 88
 
-    proc = myserver.cmd('list-servers')
+    proc = myserver.cmd('list-sessions')
 
     assert '-8' in proc.cmd
     assert '-2' not in proc.cmd
@@ -97,4 +101,8 @@ def test_new_session_shell(server):
     pane = window.list_panes()[0]
     assert mysession.get("session_name") == "test_new_session"
     assert server.has_session("test_new_session")
-    assert pane.get('pane_start_command') == cmd
+
+    if has_gte_version('3.2'):
+        assert pane.get('pane_start_command').replace('"', '') == cmd
+    else:
+        assert pane.get('pane_start_command') == cmd
