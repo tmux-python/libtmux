@@ -1,12 +1,9 @@
-# -*- coding: utf-8 -*-
 """Pythonization of the :term:`tmux(1)` window.
 
 libtmux.window
 ~~~~~~~~~~~~~~
 
 """
-from __future__ import absolute_import, unicode_literals, with_statement
-
 import logging
 import os
 import shlex

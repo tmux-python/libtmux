@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 """libtmux exceptions.
 
 libtmux.exc
 ~~~~~~~~~~~
 
 """
-from __future__ import absolute_import, unicode_literals, with_statement
 
 
 class LibTmuxException(Exception):
