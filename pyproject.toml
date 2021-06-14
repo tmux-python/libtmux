@@ -15,10 +15,10 @@ classifiers = [
   "Environment :: Web Environment",
   "Intended Audience :: Developers",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.5",
   "Programming Language :: Python :: 3.6",
   "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: Implementation :: PyPy",
   "Topic :: Utilities",
   "Topic :: System :: Shells"
@@ -34,7 +34,7 @@ Documentation = "https://libtmux.git-pull.com"
 Repository = "https://github.com/tmux-python/libtmux"
 
 [tool.poetry.dependencies]
-python = "^3.5"
+python = "^3.6"
 
 [tool.poetry.dev-dependencies]
 ### Docs ###

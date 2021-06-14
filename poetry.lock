@@ -323,18 +323,6 @@ pyparsing = ">=2.0.2"
 
 [[package]]
 category = "dev"
-description = "Object-oriented filesystem paths"
-marker = "python_version < \"3.6\""
-name = "pathlib2"
-optional = false
-python-versions = "*"
-version = "2.3.5"
-
-[package.dependencies]
-six = "*"
-
-[[package]]
-category = "dev"
 description = "Utility library for gitignore style pattern matching of file paths."
 marker = "python_version >= \"3.6.2\" and python_version < \"4.0.0\""
 name = "pathspec"
@@ -430,10 +418,6 @@ toml = "*"
 [package.dependencies.importlib-metadata]
 python = "<3.8"
 version = ">=0.12"
-
-[package.dependencies.pathlib2]
-python = "<3.6"
-version = ">=2.2.0"
 
 [package.extras]
 checkqa_mypy = ["mypy (0.780)"]
@@ -775,7 +759,7 @@ version = "0.5.1"
 [[package]]
 category = "dev"
 description = "Backport of pathlib-compatible object wrapper for zip files"
-marker = "python_version >= \"3.6\" and python_version < \"3.8\" or python_version < \"3.8\" or python_version >= \"3.6.2\" and python_version < \"3.8\" and (python_version >= \"3.6\" and python_version < \"3.8\" or python_version < \"3.8\")"
+marker = "python_version >= \"3.6.2\" and python_version < \"3.8\" or python_version < \"3.8\" or python_version >= \"3.6.2\" and python_version < \"3.8\" and (python_version >= \"3.6.2\" and python_version < \"3.8\" or python_version < \"3.8\")"
 name = "zipp"
 optional = false
 python-versions = ">=2.7"
@@ -794,9 +778,9 @@ lint = []
 test = []
 
 [metadata]
-content-hash = "a6d39a65d21a9cb6153995f612caadd2f29e22c9ffa5f556522dede5209f9bd1"
+content-hash = "7cd7b596cd76515db5ec4c1b07f5b91fa5fa72d61e594154f7e25afd1efca9fd"
 lock-version = "1.0"
-python-versions = "^3.5"
+python-versions = "^3.6"
 
 [metadata.files]
 alabaster = [
@@ -1011,10 +995,6 @@ mypy-extensions = [
 packaging = [
     {file = "packaging-20.9-py2.py3-none-any.whl", hash = "sha256:67714da7f7bc052e064859c05c595155bd1ee9f69f76557e21f051443c20947a"},
     {file = "packaging-20.9.tar.gz", hash = "sha256:5b327ac1320dc863dca72f4514ecc086f31186744b84a230374cc1fd776feae5"},
-]
-pathlib2 = [
-    {file = "pathlib2-2.3.5-py2.py3-none-any.whl", hash = "sha256:0ec8205a157c80d7acc301c0b18fbd5d44fe655968f5d947b6ecef5290fc35db"},
-    {file = "pathlib2-2.3.5.tar.gz", hash = "sha256:6cd9a47b597b37cc57de1c05e56fb1a1c9cc9fab04fe78c29acd090418529868"},
 ]
 pathspec = [
     {file = "pathspec-0.8.1-py2.py3-none-any.whl", hash = "sha256:aa0cb481c4041bf52ffa7b0d8fa6cd3e88a2ca4879c533c9153882ee2556790d"},
