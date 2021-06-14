@@ -3,7 +3,7 @@ skip-string-normalization = true
 
 [tool.poetry]
 name = "libtmux"
-version = "0.8.5"
+version = "0.9.0"
 description = "scripting library / orm for tmux"
 license = "MIT"
 authors = ["Tony Narlock <tony@git-pull.com>"]
