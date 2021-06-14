@@ -7,8 +7,9 @@ Here you can find the recent changes to libtmux
 current
 -------
 - *Insert changes/features/fixes for next release here*
-- :issue:`306`: Remove python 2.7 support
-- :issue:`312`: Add tmux 3.2a to CI
+- :issue:`306`: chore: Remove python 2.7 support
+- :issue:`314`: chore: Python 3.x syntax tweaks
+- :issue:`312`: ci: Add tmux 3.2a to CI
 
 libtmux 0.8.5 (2020-10-25)
 --------------------------
