@@ -7,6 +7,8 @@ Here you can find the recent changes to libtmux
 current
 -------
 - *Insert changes/features/fixes for next release here*
+- :issue:`271`: Fix `select_window()` by providing the session ID as
+  argument to `-t`. Thanks @Flowdalic
 
 libtmux 0.9.0 (2021-06-14)
 --------------------------
