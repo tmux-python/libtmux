@@ -8,6 +8,7 @@ current
 -------
 - *Insert changes/features/fixes for next release here*
 - :issue:`306`: Remove python 2.7 support
+- :issue:`312`: Add tmux 3.2a to CI
 
 libtmux 0.8.5 (2020-10-25)
 --------------------------
