@@ -54,7 +54,7 @@ coverage = "*"
 pytest-cov = "*"
 
 ### Format ###
-black = {version="==20.08b1", python="^3.6"}
+black = {version="==21.6b0", python="^3.6.2"}
 isort = "*"
 
 ### Lint ###
