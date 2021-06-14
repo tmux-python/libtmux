@@ -353,7 +353,10 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
             assure ``-l``, ``-n``, ``-p`` work.
         """
 
-        target = '-t%s' % target_window
+        # Note that we also provide the session ID here, since cmd()
+        # will not automatically add it as there is already a '-t'
+        # argument provided.
+        target = '-t%s:%s' % (self._session_id, target_window)
 
         proc = self.cmd('select-window', target)
 

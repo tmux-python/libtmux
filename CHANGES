@@ -17,6 +17,8 @@ Python 2.7 support dropped.
 - :issue:`312`: ci: Add tmux 3.2a to CI
 - chore: Update black to `21.6b0
   <https://github.com/psf/black/blob/21.6b0/CHANGES.md#216b0>`_
+- :issue:`271`: Fix select_window() by providing the session ID as
+  argument to -t.
 
 libtmux 0.8.5 (2020-10-25)
 --------------------------
