@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 
 def test_resize_pane(session):
-    """ Test Pane.resize_pane(). """
+    """Test Pane.resize_pane()."""
 
     window = session.attached_window
     window.rename_window('test_resize_pane')

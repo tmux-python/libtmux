@@ -94,7 +94,7 @@ def test_attached_pane(session):
 
 
 def test_split_window(session):
-    """Window.split_window() splits window, returns new Pane, vertical. """
+    """Window.split_window() splits window, returns new Pane, vertical."""
     window_name = 'test split window'
     window = session.new_window(window_name=window_name, attach=True)
     pane = window.split_window()
@@ -119,7 +119,7 @@ def test_split_window_shell(session):
 
 
 def test_split_window_horizontal(session):
-    """Window.split_window() splits window, returns new Pane, horizontal.  """
+    """Window.split_window() splits window, returns new Pane, horizontal."""
     window_name = 'test split window'
     window = session.new_window(window_name=window_name, attach=True)
     pane = window.split_window(vertical=False)

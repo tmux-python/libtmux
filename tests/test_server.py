@@ -25,14 +25,14 @@ def test_socket_name(server):
 
 
 def test_socket_path(server):
-    """ ``-S`` socket_path  (alternative path for server socket). """
+    """``-S`` socket_path  (alternative path for server socket)."""
     myserver = Server(socket_path='test')
 
     assert myserver.socket_path == 'test'
 
 
 def test_config(server):
-    """ ``-f`` file for tmux(1) configuration. """
+    """``-f`` file for tmux(1) configuration."""
     myserver = Server(config_file='test')
     assert myserver.config_file == 'test'
 

@@ -7,7 +7,7 @@ console_encoding = sys.__stdout__.encoding
 
 
 def console_to_str(s):
-    """ From pypa/pip project, pip.backwardwardcompat. License MIT. """
+    """From pypa/pip project, pip.backwardwardcompat. License MIT."""
     try:
         return s.decode(console_encoding, 'ignore')
     except UnicodeDecodeError:

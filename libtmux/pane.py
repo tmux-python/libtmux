@@ -148,7 +148,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         self.send_keys('reset')
 
     def reset(self):
-        """Reset and clear pane history. """
+        """Reset and clear pane history."""
 
         self.cmd('send-keys', r'-R \; clear-history')
 
