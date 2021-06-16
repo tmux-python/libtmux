@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     """
-    A :term:`tmux(1)` :term:`Session` [#]_.
+    A :term:`tmux(1)` :term:`Session` [session_manual]_.
 
     Holds :class:`Window` objects.
 
@@ -33,7 +33,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
     References
     ----------
-    .. [#] tmux session. openbsd manpage for TMUX(1).
+    .. [session_manual] tmux session. openbsd manpage for TMUX(1).
            "When tmux is started it creates a new session with a single window
            and displays it on screen..."
 

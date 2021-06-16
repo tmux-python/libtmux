@@ -1,19 +1,16 @@
-.. _Servers:
+(servers)=
 
-=======
-Servers
-=======
+# Servers
 
-- identified by *socket path* and *socket name* 
+- identified by *socket path* and *socket name*
 - may have >1 servers running of tmux at the same time.
-- hold :ref:`Sessions` (which hold :ref:`Windows`, which hold
-  :ref:`Panes`)
+- hold {ref}`Sessions` (which hold {ref}`Windows`, which hold
+  {ref}`Panes`)
 
 In tmux, a server is automatically started on your behalf
 when you first run tmux.
 
-.. module:: libtmux
-
+```{eval-rst}
 .. autoclass:: Server
     :noindex:
     :members:
@@ -21,3 +18,6 @@ when you first run tmux.
     :private-members:
     :show-inheritance:
     :member-order: bysource
+```
+
+

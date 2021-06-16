@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class Window(TmuxMappingObject, TmuxRelationalObject):
     """
-    A :term:`tmux(1)` :term:`Window` [#]_.
+    A :term:`tmux(1)` :term:`Window` [window_manual]_.
 
     Holds :class:`Pane` objects.
 
@@ -27,7 +27,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
     References
     ----------
-    .. [#] tmux window. openbsd manpage for TMUX(1).
+    .. [window_manual] tmux window. openbsd manpage for TMUX(1).
            "Each session has one or more windows linked to it. A window
            occupies the entire screen and may be split into rectangular
            panes..."
