@@ -1,13 +1,12 @@
-.. _Sessions:
+(sessions)=
 
-========
-Sessions
-========
+# Sessions
 
-- exist inside :ref:`Servers`
-- contain :ref:`Windows` (which hold :ref:`Panes`)
-- identified by ``$``, e.g. ``$313``
+- exist inside {ref}`Servers`
+- contain {ref}`Windows` (which hold {ref}`Panes`)
+- identified by `$`, e.g. `$313`
 
+```{eval-rst}
 .. autoclass:: libtmux.Session
     :noindex:
     :members:
@@ -15,3 +14,4 @@ Sessions
     :private-members:
     :show-inheritance:
     :member-order: bysource
+```

@@ -1,10 +1,8 @@
-.. _glossary:
+(glossary)=
 
-========
-Glossary
-========
+# Glossary
 
-
+```{eval-rst}
 .. glossary::
 
     libtmux
@@ -39,7 +37,7 @@ Glossary
 
     Session
         Inside a tmux :term:`server`.
-            
+
         The session has 1 or more :term:`Window`. The bottom bar in tmux
         show a list of windows. Normally they can be navigated with
         ``Ctrl-a [0-9]``, ``Ctrl-a n`` and ``Ctrl-a p``.
@@ -65,5 +63,6 @@ Glossary
     Target
         A target, cited in the manual as ``[-t target]`` can be a session,
         window or pane.
+```
 
-.. _kaptan on github: https://github.com/emre/kaptan
+[kaptan on github]: https://github.com/emre/kaptan

@@ -1,231 +1,230 @@
-=========
-Changelog
-=========
+# Changelog
 
 Here you can find the recent changes to libtmux
 
-current
--------
-- *Insert changes/features/fixes for next release here*
-- :issue:`271`: Fix `select_window()` by providing the session ID as
-  argument to `-t`. Thanks @Flowdalic
+## current
+
+- _Insert changes/features/fixes for next release here_
+- {issue}`271`: Fix {}`select_window()` by providing the session ID as
+  argument to {}`-t`. Thanks @Flowdalic
 - Drop python 3.5 support
 
-libtmux 0.9.0 (2021-06-14)
---------------------------
+## libtmux 0.9.0 (2021-06-14)
+
 Python 2.7 support dropped.
 
-- :issue:`306`: chore: Remove python 2.7 support
-- :issue:`314`: chore: Python 3.x syntax tweaks
-- :issue:`312`: ci: Add tmux 3.2a to CI
-- chore: Update black to `21.6b0
-  <https://github.com/psf/black/blob/21.6b0/CHANGES.md#216b0>`_
-- :issue:`271`: Fix select_window() by providing the session ID as
+- {issue}`306`: chore: Remove python 2.7 support
+- {issue}`314`: chore: Python 3.x syntax tweaks
+- {issue}`312`: ci: Add tmux 3.2a to CI
+- chore: Update black to [21.6b0](https://github.com/psf/black/blob/21.6b0/CHANGES.md#216b0)
+- {issue}`271`: Fix select_window() by providing the session ID as
   argument to -t.
 
-libtmux 0.8.5 (2020-10-25)
---------------------------
-- :issue:`297`: Enchance subprocess interaction std[in|out|err]. Needed
-  for interact with big buffer, fixes :issue:`251`, thank you
+## libtmux 0.8.5 (2020-10-25)
+
+- {issue}`297`: Enchance subprocess interaction std[in|out|err]. Needed
+  for interact with big buffer, fixes {issue}`251`, thank you
   @gil-obradors!
-- :issue:`303` Add ``common.get_libtmux_version`` which gives the tmux
+- {issue}`303` Add `common.get_libtmux_version` which gives the tmux
   version as a loose constraint. Fix linking to terms inside docs, and
   duplicate description of module which sphinx warned about in api.rst.
-- :issue:`266` Fix issue on local tests where env variables would cause
+- {issue}`266` Fix issue on local tests where env variables would cause
   show-environment to pause tests indefinitely.
 
+## libtmux 0.8.4 (2020-10-25)
 
-libtmux 0.8.4 (2020-10-25)
---------------------------
-- :issue:`234`: ``Window.split_window``: Allow passing ``percent``, Thank
+- {issue}`234`: `Window.split_window`: Allow passing `percent`, Thank
   you @jinankjain!
-- :issue:`289`: Fix warning due to invalid escape sequences, Thank you
+- {issue}`289`: Fix warning due to invalid escape sequences, Thank you
   @tirkarthi!
-- :issue:`295`: Publish docs via our own action
-- :issue:`295`: Move more packaging over to poetry, though we'll keep
+- {issue}`295`: Publish docs via our own action
+- {issue}`295`: Move more packaging over to poetry, though we'll keep
   setup.py for the moment to ensure compatibility package maintainers.
-- :issue:`295`: New development instructions
-- :issue:`295`: Move doc/ to docs/
-- :issue:`296`: CI: Test python 2.7, cache python packages, prevent running
+- {issue}`295`: New development instructions
+- {issue}`295`: Move doc/ to docs/
+- {issue}`296`: CI: Test python 2.7, cache python packages, prevent running
   internal PRs twice
 
-libtmux 0.8.3 (2020-08-16)
---------------------------
-- :issue:`278`: Fix Python deprecation warnings, thanks @d1618033
+## libtmux 0.8.3 (2020-08-16)
 
-  Also thanks Flowdalic for a similar PR at :issue:`294`
-- Add ``project_urls`` to setup.py
-- :issue:`293` Move from Pipfile to poetry
+- {issue}`278`: Fix Python deprecation warnings, thanks @d1618033
+
+  Also thanks Flowdalic for a similar PR at {issue}`294`
+
+- Add `project_urls` to setup.py
+- {issue}`293` Move from Pipfile to poetry
 - Fix show_option test in tmux 3.0
 - Clean up handle_option_error comments
 - Move CI to a GitHub action
 
-libtmux 0.8.2 (2019-06-02)
---------------------------
+## libtmux 0.8.2 (2019-06-02)
+
 - CHANGES updated to plain reStructuredText
-- Add ``project_urls`` to setup.py for pypi.
+- Add `project_urls` to setup.py for pypi.
 - Looser Pipfile versions, add Pipfile.lock
 
-libtmux 0.8.1 (2019-01-26)
---------------------------
-- :issue:`117` Fix issue with renaming clients with tmux 2.7 on BSD/macOS
+## libtmux 0.8.1 (2019-01-26)
+
+- {issue}`117` Fix issue with renaming clients with tmux 2.7 on BSD/macOS
   machines.
-- :issue:`121` Support ``literal=True`` (``-l``) in ``Pane.send_keys``
+- {issue}`121` Support `literal=True` (`-l`) in `Pane.send_keys`
   from @ritiek
-- :issue:`131` Fix for unicode commands in Python 2, thanks @myw
-- :issue:`172` Support for next-X.Y versions from @sloria
-- :issue:`120` ``capture_pane`` support for ``Pane``
-- :issue:`119` ``display_message`` support for ``Pane``
+- {issue}`131` Fix for unicode commands in Python 2, thanks @myw
+- {issue}`172` Support for next-X.Y versions from @sloria
+- {issue}`120` `capture_pane` support for `Pane`
+- {issue}`119` `display_message` support for `Pane`
 - Sort imports with isort
 - Add sphinxcontrib-napoleon package for documentation
 - Move docstrings over to numpy's style
 
-libtmux 0.8.0 (2018-03-11)
---------------------------
-- :issue:`46` Change license from BSD to MIT
+## libtmux 0.8.0 (2018-03-11)
+
+- {issue}`46` Change license from BSD to MIT
 - Move to new organization, tmux-python
 - Support package updates to pytest, sphinx, etc.
 - Travis/CI: Limit tests to Python 2.7 and 3.6 (removed 3.3 to 3.5)
 - Travis/CI: Update pypy veersions
-- :issue:`103` ``Server.new_session`` learned how to run commands in
+- {issue}`103` `Server.new_session` learned how to run commands in
   window on session start, thanks @grimpy!
-- :issue:`68` Make Server.has_session() use returncode, thanks
-  @jlargentaye! This should make ``has_session`` more robust.
+- {issue}`68` Make Server.has_session() use returncode, thanks
+  @jlargentaye! This should make `has_session` more robust.
 
-libtmux 0.7.8 (2018-03-04)
---------------------------
-- Port ``retry`` function from tmuxp
-  (https://github.com/tmux-python/tmuxp/issues/354)
+## libtmux 0.7.8 (2018-03-04)
 
-libtmux 0.7.7 (2017-11-10)
---------------------------
+- Port `retry` function from tmuxp
+  (<https://github.com/tmux-python/tmuxp/issues/354>)
+
+## libtmux 0.7.7 (2017-11-10)
+
 - Don't add -x/-y in tmux >= 2.6 if running tmuxp from inside
   client.
 
-libtmux 0.7.6 (2017-11-09)
---------------------------
-- Allow ``Window.select_layout`` with no args
-- Fix test where ``bell-`` was no longer ambiguous as of tmux 2.6
+## libtmux 0.7.6 (2017-11-09)
 
-libtmux 0.7.5 (2017-10-07)
---------------------------
+- Allow `Window.select_layout` with no args
+- Fix test where `bell-` was no longer ambiguous as of tmux 2.6
+
+## libtmux 0.7.5 (2017-10-07)
+
 - Hotfix to support tmux 2.6 session creation
 
-libtmux 0.7.4 (2017-08-19)
---------------------------
-- :issue:`65` Add session id to commands, thanks `@askedrelic`_
+## libtmux 0.7.4 (2017-08-19)
 
-libtmux 0.7.3 (2017-05-29)
---------------------------
+- {issue}`65` Add session id to commands, thanks [@askedrelic][@askedrelic]
+
+## libtmux 0.7.3 (2017-05-29)
+
 - Exact matches only supported on 2.1 and up
 
-libtmux 0.7.2 (2017-05-29)
---------------------------
-- Support exact matching in ``Server.has_session``
+## libtmux 0.7.2 (2017-05-29)
 
-libtmux 0.7.1 (2017-04-28)
---------------------------
-- :issue:`37` Improve support for formatted options like
-  ``pane-border-status``. Thanks @kaushalmodi.
+- Support exact matching in `Server.has_session`
 
-libtmux 0.7.0 (2017-04-27)
---------------------------
+## libtmux 0.7.1 (2017-04-28)
+
+- {issue}`37` Improve support for formatted options like
+  `pane-border-status`. Thanks @kaushalmodi.
+
+## libtmux 0.7.0 (2017-04-27)
+
 - Support for python 2.6 dropped. New minimum version is 2.7
 - Add support for tmux 2.4, pypy and pypy3
 - Overhaul error handling when setting and showing options
-  
-  - Added `handle_option_error` for handling option errors
-  - Added :exc:`libtmux.exc.OptionError` base exception
-  - Added :exc:`libtmux.exc.InvalidOption` and `libtmux.exc.AmbiguousOption`
-  - :exc:`libtmux.exc.UnknownOption` now extends :exc:`libtmux.exc.OptionError`
+
+  - Added {}`handle_option_error` for handling option errors
+  - Added {exc}`libtmux.exc.OptionError` base exception
+  - Added {exc}`libtmux.exc.InvalidOption` and {}`libtmux.exc.AmbiguousOption`
+  - {exc}`libtmux.exc.UnknownOption` now extends {exc}`libtmux.exc.OptionError`
 
 - Overhaul version checking
 
-  - ``has_version`` has been renamed to ``get_version``
-  - ``get_version`` will return tmux built from git master as the latest version supported by the libtmux version with ``-master`` at the end, e.g. ``2.4-master``
-  - ``get_version`` will return tmux on openbsd base system as the latest version supported by the libtmux version with ``-openbsd`` at the end, e.g. ``2.4-openbsd``
-  - ``has_required_tmux_version`` has been renamed to ``has_minimum_version``
-  - added ``has_gt_version``, ``has_gte_version``, ``has_lt_version``, ``has_lte_version``,
+  - `has_version` has been renamed to `get_version`
+  - `get_version` will return tmux built from git master as the latest version supported by the libtmux version with `-master` at the end, e.g. `2.4-master`
+  - `get_version` will return tmux on openbsd base system as the latest version supported by the libtmux version with `-openbsd` at the end, e.g. `2.4-openbsd`
+  - `has_required_tmux_version` has been renamed to `has_minimum_version`
+  - added `has_gt_version`, `has_gte_version`, `has_lt_version`, `has_lte_version`,
 
 - Fixed up documentation in some session methods
 - Added pydoc exception info to option methods in window and sessions.
-- Added ``TMUX_MIN_VERSION`` and ``TMUX_MAX_VERSION``
+- Added `TMUX_MIN_VERSION` and `TMUX_MAX_VERSION`
 
-libtmux 0.6.5 (2017-04-02)
---------------------------
-- Fix ``which`` command
-- Add ``TmuxCommandNotFound`` exception
-- Add ``tmux_search_paths`` and ``append_env_path`` kwargs to
-  ``tmux_cmd``.
+## libtmux 0.6.5 (2017-04-02)
 
-libtmux 0.6.4 (2017-03-25)
---------------------------
-- :issue:`32` support for OpenBSD's tmux
+- Fix `which` command
+- Add `TmuxCommandNotFound` exception
+- Add `tmux_search_paths` and `append_env_path` kwargs to
+  `tmux_cmd`.
 
-libtmux 0.6.3 (2017-02-08)
---------------------------
-- :issue:`25` support for working with tmux ``master``, thanks @sloria.
+## libtmux 0.6.4 (2017-03-25)
 
-libtmux 0.6.2 (2017-01-19)
---------------------------
-- :issue:`197` use `LooseVersion` instead of `StrictVersion` for version
+- {issue}`32` support for OpenBSD's tmux
+
+## libtmux 0.6.3 (2017-02-08)
+
+- {issue}`25` support for working with tmux `master`, thanks @sloria.
+
+## libtmux 0.6.2 (2017-01-19)
+
+- {issue}`197` use {}`LooseVersion` instead of {}`StrictVersion` for version
   checks. Thanks @minijackson.
 - Pin packages with pyup.io
-- :issue:`21` Readme fix from @huwenchao.
+- {issue}`21` Readme fix from @huwenchao.
 
-libtmux 0.6.1 (2016-12-20)
---------------------------
-- :issue:`18` Fix logger, courtesy of @geekli
-- :issue:`19` Add support for ``start_directory`` in new sessions and
+## libtmux 0.6.1 (2016-12-20)
+
+- {issue}`18` Fix logger, courtesy of @geekli
+- {issue}`19` Add support for `start_directory` in new sessions and
   panes, courtesy of @gandelman-a.
 - Fix tests and add official support for 2.3
 
-libtmux 0.6.0 (2016-09-16)
---------------------------
+## libtmux 0.6.0 (2016-09-16)
+
 - Raise exception for invalid session names. tmux does not
   allow names that are empty, contain periods or colons.
-- Remove unused ``target_sesssion`` param in
-  ``Server.attach_session`` and ``Server.switch_client``.
+- Remove unused `target_sesssion` param in
+  `Server.attach_session` and `Server.switch_client`.
 
-libtmux 0.5.1 (2016-08-18)
---------------------------
-- :issue:`12` - fix logger message when tmux doesn't exist in ``PATH``
+## libtmux 0.5.1 (2016-08-18)
 
-libtmux 0.5 (2016-06-15)
-------------------------
-- :issue:`8` new exception ``UnknownOption``
-- :issue:`8` return ``None`` for options that are valid tmux options,
+- {issue}`12` - fix logger message when tmux doesn't exist in `PATH`
+
+## libtmux 0.5 (2016-06-15)
+
+- {issue}`8` new exception `UnknownOption`
+- {issue}`8` return `None` for options that are valid tmux options,
   but unset at that scope.
-- :issue:`6` major documentation overhaul
+- {issue}`6` major documentation overhaul
 
-libtmux 0.4.1 (2016-05-23)
---------------------------
-- update ``which()`` to find tmux via ``os.environ['PATH']``.
-  https://redd.it/4laeut
+## libtmux 0.4.1 (2016-05-23)
 
-libtmux 0.4.0 (2016-05-23)
---------------------------
+- update `which()` to find tmux via `os.environ['PATH']`.
+  <https://redd.it/4laeut>
+
+## libtmux 0.4.0 (2016-05-23)
+
 - attributes for formatters are now accessible via
-  ``Session``, ``Window`` and ``Pane`` objects. ``session.name``
-  is equivalent to ``session.get('session_name')``, you can do the
-  same with other properties in ``_info``. ``window.name``,
-  ``pane.current_path``, ``session.id``, ``window.id``, ``pane.id``,
-  ``session.index``, ``window.index``, ``pane.index``, etc.
-- ``attached_sessions``, ``attached_window`` and
-  ``attached_pane`` are now properties.
-- ``_TMUX`` metadata object changed to ``_info``.
-- ``.findWhere()`` is now ``find_where``.
+  `Session`, `Window` and `Pane` objects. `session.name`
+  is equivalent to `session.get('session_name')`, you can do the
+  same with other properties in `_info`. `window.name`,
+  `pane.current_path`, `session.id`, `window.id`, `pane.id`,
+  `session.index`, `window.index`, `pane.index`, etc.
+- `attached_sessions`, `attached_window` and
+  `attached_pane` are now properties.
+- `_TMUX` metadata object changed to `_info`.
+- `.findWhere()` is now `find_where`.
 - README and usage fixes
 
-libtmux 0.3.0 (2016-05-23)
---------------------------
-- switch to pytest 
+## libtmux 0.3.0 (2016-05-23)
 
-libtmux 0.1.0 (2016-05-22)
---------------------------
-- libtmux forked from `tmuxp`_.
+- switch to pytest
 
-.. _tmuxp: https://github.com/tmux-python/tmuxp
-.. _@askedrelic: https://github.com/askedrelic
+## libtmux 0.1.0 (2016-05-22)
 
-.. # vim: set filetype=rst:
+- libtmux forked from [tmuxp][tmuxp].
+
+[tmuxp]: https://github.com/tmux-python/tmuxp
+[@askedrelic]: https://github.com/askedrelic
+
+<!---
+# vim: set filetype=markdown:
+-->

@@ -1,15 +1,16 @@
-.. _Windows:
+(windows)=
 
-=======
-Windows
-=======
+# Windows
 
-- exist inside :ref:`Sessions`
-- contain :ref:`Panes`
-- identified by ``@``, e.g. ``@313``
+- exist inside {ref}`Sessions`
+- contain {ref}`Panes`
+- identified by `@`, e.g. `@313`
 
-.. module:: libtmux
+```{module} libtmux
 
+```
+
+```{eval-rst}
 .. autoclass:: Window
     :noindex:
     :members:
@@ -17,3 +18,4 @@ Windows
     :private-members:
     :show-inheritance:
     :member-order: bysource
+```

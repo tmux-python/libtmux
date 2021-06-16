@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class Pane(TmuxMappingObject, TmuxRelationalObject):
     """
-    A :term:`tmux(1)` :term:`Pane` [#]_.
+    A :term:`tmux(1)` :term:`Pane` [pane_manual]_.
 
     ``Pane`` instances can send commands directly to a pane, or traverse
     between linked tmux objects.
@@ -33,7 +33,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
     References
     ----------
 
-    .. [#] tmux pane. openbsd manpage for TMUX(1).
+    .. [pane_manual] tmux pane. openbsd manpage for TMUX(1).
            "Each window displayed by tmux may be split into one or more
            panes; each pane takes up a certain area of the display and is
            a separate terminal."
