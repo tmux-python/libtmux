@@ -347,8 +347,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         -------
         :class:`Window`
         """
-        target = ('%s:%s' % (self.get('session_id'), self.index),)
-        return self.session.select_window(target)
+        return self.session.select_window(self.index)
 
     def select_pane(self, target_pane):
         """
