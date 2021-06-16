@@ -219,5 +219,3 @@ u'70'
 ```
 
 [formats]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS
-
-

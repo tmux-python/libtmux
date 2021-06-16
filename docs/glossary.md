@@ -3,7 +3,7 @@
 # Glossary
 
 ```{eval-rst}
-.. glossary:: 
+.. glossary::
 
     libtmux
         Python library for interfacing with tmux through its objects.
@@ -66,5 +66,3 @@
 ```
 
 [kaptan on github]: https://github.com/emre/kaptan
-
-

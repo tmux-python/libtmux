@@ -92,7 +92,7 @@ First, we can grab a {class}`Server`.
 :::{note}
 
 You can specify a `socket_name`, `socket_path` and `config_file`
-in your server object.  `libtmux.Server(socket_name='mysocket')` is
+in your server object. `libtmux.Server(socket_name='mysocket')` is
 equivalent to `$ tmux -L mysocket`.
 
 :::
@@ -338,7 +338,7 @@ As long as you have the object, or are iterating through a list of them, you can
 ```
 
 See the other window, notice that {meth}`Pane.send_keys` has " `echo hey`" written,
-*still in the prompt*. Note the leading space character so the command won't be added to the user's history. Use {}`pane.cmd('send-keys', text)` to send keys without this leading space.
+_still in the prompt_. Note the leading space character so the command won't be added to the user's history. Use {}`pane.cmd('send-keys', text)` to send keys without this leading space.
 
 `enter=False` can be used to send keys without pressing return. In this case,
 you may leave it to the user to press return himself, or complete a command
@@ -367,11 +367,6 @@ and our [test suite][test suite] (see {ref}`developing`.)
 :::
 
 [sliderepl]: http://discorporate.us/projects/sliderepl/
-
 [workspacebuilder.py]: https://github.com/tmux-python/libtmux/blob/master/libtmux/workspacebuilder.py
-
 [test suite]: https://github.com/tmux-python/libtmux/tree/master/tests
-
 [ptpython]: https://github.com/jonathanslenders/ptpython
-
-

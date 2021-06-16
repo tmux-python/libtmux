@@ -188,5 +188,3 @@
 ```{eval-rst}
 .. autoclass:: libtmux.test.EnvironmentVarGuard
 ```
-
-

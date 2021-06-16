@@ -7,7 +7,6 @@
 - identified by `%`, e.g. `%313`
 
 [pseudoterminal]: https://en.wikipedia.org/wiki/Pseudoterminal
-
 [pty(4)]: https://www.freebsd.org/cgi/man.cgi?query=pty&sektion=4
 
 ```{eval-rst}
@@ -19,5 +18,3 @@
     :show-inheritance:
     :member-order: bysource
 ```
-
-

@@ -19,5 +19,3 @@
     :show-inheritance:
     :member-order: bysource
 ```
-
-

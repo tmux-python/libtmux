@@ -5,7 +5,7 @@
 libtmux convenient access to move around the hierachy of sessions,
 windows and panes in tmux.
 
-this is done by libtmux's object abstraction of {}`target`_s (the `-t`
+this is done by libtmux's object abstraction of {}`target`\_s (the `-t`
 command) and the permanent internal ID's tmux gives to objects.
 
 open two terminals:
@@ -86,8 +86,8 @@ Window(@1 1:libtmux, Session($0 libtmux))
 
 grab the currently focused window from session:
 
-> >>> session.attached_window
-> Window(@2 2:docs, Session($0 libtmux))grab the currently focused {class}`Pane` from session:
+> > > > session.attached_window
+> > > > Window(@2 2:docs, Session($0 libtmux))grab the currently focused {class}`Pane` from session:
 
 ```
 >>> session.attached_pane
@@ -111,5 +111,3 @@ Window(@2 2:docs, Session($0 libtmux))
 ```
 
 [target]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
-
-

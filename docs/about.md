@@ -67,31 +67,31 @@ libtmux uses `FORMATTERS` in tmux to give identity attributes to
 How is libtmux able to keep references to panes, windows and sessions?
 
 > Tmux has unique ID's for sessions, windows and panes.
-> 
+>
 > panes use `%`, such as `%1234`
-> 
+>
 > windows use `@`, such as `@2345`
-> 
+>
 > sessions use `$`, for money, such as `$`
-> 
-How is libtmux able to handle windows with no names?
+>
+> How is libtmux able to handle windows with no names?
 
 > Tmux provides `window_id` as a unique identifier.
-> 
-What is a {pane,window}_index vs a {pane,window,session}_id?
+>
+> What is a {pane,window}\_index vs a {pane,window,session}\_id?
 
 > Pane index refers to the order of a pane on the screen.
-> 
+>
 > Window index refers to the # of the window in the session.
-> 
-To assert pane, window and session data, libtmux will use
-{meth}`Server.list_sessions()`, {meth}`Session.list_windows()`,
-{meth}`Window.list_panes()` to update objects.
+>
+> To assert pane, window and session data, libtmux will use
+> {meth}`Server.list_sessions()`, {meth}`Session.list_windows()`,
+> {meth}`Window.list_panes()` to update objects.
 
 ## Naming conventions
 
 Because this is a python abstraction and commands like `new-window`
-have dashes (-) replaced with underscores (_).
+have dashes (-) replaced with underscores (\_).
 
 ## Reference
 
@@ -99,7 +99,4 @@ have dashes (-) replaced with underscores (_).
 - tmux source code <http://sourceforge.net/p/tmux/tmux-code/ci/master/tree/>
 
 [abstraction layer]: http://en.wikipedia.org/wiki/Abstraction_layer
-
 [scope]: https://en.wikipedia.org/wiki/Variable_(computer_science)#Scope_and_extent
-
-
