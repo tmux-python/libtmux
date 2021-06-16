@@ -5,6 +5,9 @@ Here you can find the recent changes to libtmux
 ## current
 
 - _Insert changes/features/fixes for next release here_
+
+## libtmux 0.10.0 (2021-06-16)
+- #321: Convert to markdown
 - {issue}`271`: Fix {}`select_window()` by providing the session ID as
   argument to {}`-t`. Thanks @Flowdalic
 - Drop python 3.5 support

@@ -40,6 +40,7 @@ setup(
     author_email=about['__email__'],
     description=about['__description__'],
     long_description=readme,
+    long_description_content_type="text/markdown",
     packages=['libtmux'],
     include_package_data=True,
     tests_require=tests_reqs,
