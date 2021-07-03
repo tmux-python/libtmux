@@ -39,15 +39,18 @@ jobs:
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v1
+        if: env.PUBLISH == 'true'
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Get full Python version
         id: full-python-version
         shell: bash
+        if: env.PUBLISH == 'true'
         run: echo ::set-output name=version::$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")
 
       - name: Install poetry
+        if: env.PUBLISH == 'true'
         run: |
           curl -O -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py
           python get-poetry.py -y --version 1.0.10
@@ -55,16 +58,19 @@ jobs:
           rm get-poetry.py
 
       - name: Get poetry cache paths from config
+        if: env.PUBLISH == 'true'
         run: |
           echo "poetry_virtualenvs_path=$(poetry config --list | sed -n 's/.*virtualenvs.path = .* # //p' | sed -e 's/^\"//' -e 's/\"$//')" >> $GITHUB_ENV
           echo "poetry_virtualenvs_path=$(poetry config --list | sed -n 's/.*virtualenvs.path = .* # //p' | sed -e 's/^\"//' -e 's/\"$//')" >> $GITHUB_ENV
 
       - name: Configure poetry
         shell: bash
+        if: env.PUBLISH == 'true'
         run: poetry config virtualenvs.in-project true
 
       - name: Set up cache
         uses: actions/cache@v2
+        if: env.PUBLISH == 'true'
         id: cache
         with:
           path: |
@@ -74,23 +80,28 @@ jobs:
           key: venv-${{ runner.os }}-${{ steps.full-python-version.outputs.version }}-${{ hashFiles('**/poetry.lock') }}
 
       - name: Ensure cache is healthy
-        if: steps.cache.outputs.cache-hit == 'true'
+        if: steps.cache.outputs.cache-hit == 'true' && env.PUBLISH == 'true'
         shell: bash
         run: poetry run pip --version >/dev/null 2>&1 || rm -rf .venv
 
       - name: Upgrade pip
         shell: bash
+        if: env.PUBLISH == 'true'
         run: poetry run python -m pip install pip -U
 
       - name: Install dependencies [w/ docs]
+        if: env.PUBLISH == 'true'
         run: poetry install --extras "docs lint"
 
       - name: Build documentation
+        if: env.PUBLISH == 'true'
+        if: env.PUBLISH == 'true'
         run: |
           pushd docs; make SPHINXBUILD='poetry run sphinx-build' html; popd
 
       - name: Push documentation to S3
         uses: jakejarvis/s3-sync-action@master
+        if: env.PUBLISH == 'true'
         with:
           args: --acl public-read --follow-symlinks --delete
         env:
@@ -101,6 +112,7 @@ jobs:
           SOURCE_DIR: "docs/_build/html" # optional: defaults to entire repository
 
       - name: Generate list of changed files for CloudFront to invalidate
+        if: env.PUBLISH == 'true'
         run: |
           pushd docs/_build/html; FILES=$(find . -name \* -print | grep html | cut -c2- | sort | uniq | tr '\n' ' '); popd
           for file in $FILES; do
@@ -111,6 +123,7 @@ jobs:
 
       - name: Invalidate on CloudFront
         uses: chetan/invalidate-cloudfront-action@master
+        if: env.PUBLISH == 'true'
         env:
           DISTRIBUTION: ${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION }}
           AWS_REGION: "us-east-1"
