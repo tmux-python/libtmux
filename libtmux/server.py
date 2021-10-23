@@ -319,8 +319,6 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """
         Return active :class:`Session` objects.
 
-        This will not work where multiple tmux sessions are attached.
-
         Returns
         -------
         list of :class:`Session`
@@ -332,7 +330,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         for session in sessions:
             attached = session.get('session_attached')
             # for now session_active is a unicode
-            if attached == '1':
+            if attached != '0':
                 logger.debug('session %s attached', session.get('name'))
                 attached_sessions.append(session)
             else:
