@@ -330,13 +330,13 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         attached_sessions = list()
 
         for session in sessions:
-            if 'session_attached' in session:
-                # for now session_active is a unicode
-                if session.attached == '1':
-                    logger.debug('session %s attached', session.name)
-                    attached_sessions.append(session)
-                else:
-                    continue
+            attached = session.get('session_attached')
+            # for now session_active is a unicode
+            if attached == '1':
+                logger.debug('session %s attached', session.get('name'))
+                attached_sessions.append(session)
+            else:
+                continue
 
         return [Session(server=self, **s) for s in attached_sessions] or None
 
