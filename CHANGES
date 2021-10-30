@@ -9,6 +9,10 @@ Here you can find the recent changes to libtmux
   - CI: Use poetry 1.1.7 and `install-poetry.py` installer
   - Relock poetry.lock at 1.1 (w/ 1.1.7's fix)
 - #339 (CI): Lock python at 3.9 to avoid poetry issue with `dataclasses`
+- #341 #342: `Server.attached_sessions()` now supports multiple attached sessions.
+
+  Remove attached sessions limitation to not detect multiple attached clients,
+  thank you @Timoses
 
 ## libtmux 0.10.1 (2021-06-16)
 - Update `Window.select_window()` for #271
