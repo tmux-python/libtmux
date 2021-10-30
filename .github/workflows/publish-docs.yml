@@ -99,7 +99,6 @@ jobs:
 
       - name: Build documentation
         if: env.PUBLISH == 'true'
-        if: env.PUBLISH == 'true'
         run: |
           pushd docs; make SPHINXBUILD='poetry run sphinx-build' html; popd
 
