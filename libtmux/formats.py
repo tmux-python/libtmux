@@ -9,7 +9,9 @@ For reference: https://github.com/tmux/tmux/blob/master/format.c
 
 from __future__ import absolute_import, unicode_literals, with_statement
 
-FORMAT_SEPERATOR = "|"
+from os import environ
+
+FORMAT_SEPERATOR = environ.get("TMUX_SEPERATOR", "|")
 
 SESSION_FORMATS = [
     'session_name',
