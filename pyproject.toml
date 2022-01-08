@@ -27,6 +27,12 @@ classifiers = [
 keywords = ["tmux", "session manager", "terminal", "ncurses"]
 homepage = "http://github.com/tmux-python/libtmux/"
 readme = "README.md"
+packages = [
+    { include = "libtmux" }
+]
+include = [
+    { path = "tests", format = "sdist" }
+]
 
 [tool.poetry.urls]
 "Bug Tracker" = "https://github.com/tmux-python/libtmux/issues"
