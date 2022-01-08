@@ -32,6 +32,7 @@ readme = "README.md"
 "Bug Tracker" = "https://github.com/tmux-python/libtmux/issues"
 Documentation = "https://libtmux.git-pull.com"
 Repository = "https://github.com/tmux-python/libtmux"
+Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
 [tool.poetry.dependencies]
 python = "^3.7"
