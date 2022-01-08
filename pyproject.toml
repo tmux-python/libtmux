@@ -15,10 +15,10 @@ classifiers = [
   "Environment :: Web Environment",
   "Intended Audience :: Developers",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.6",
   "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: Implementation :: PyPy",
   "Topic :: Utilities",
   "Topic :: System :: Shells"
@@ -32,17 +32,18 @@ readme = "README.md"
 "Bug Tracker" = "https://github.com/tmux-python/libtmux/issues"
 Documentation = "https://libtmux.git-pull.com"
 Repository = "https://github.com/tmux-python/libtmux"
+Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
 [tool.poetry.dependencies]
-python = "^3.6"
+python = "^3.7"
 
 [tool.poetry.dev-dependencies]
 ### Docs ###
 sphinx = "*"
 alagitpull = "~0.1.0"
 sphinx-issues = "^1.2.0"
-sphinx-autodoc-typehints = "^1.12.0"
-myst_parser = "^0.15.0"
+sphinx-autodoc-typehints = "~1.14.1"
+myst_parser = "~0.16.1"
 
 ### Testing ###
 pytest = "*"
@@ -55,7 +56,7 @@ coverage = "*"
 pytest-cov = "*"
 
 ### Format ###
-black = {version="==21.9b0", python="^3.6.2"}
+black = "==21.12b0"
 isort = "*"
 
 ### Lint ###
