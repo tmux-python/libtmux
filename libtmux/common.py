@@ -6,12 +6,13 @@ libtmux.common
 
 """
 import collections
+import functools
 import logging
 import os
 import re
 import subprocess
 import sys
-from distutils.version import LooseVersion
+import typing
 
 from . import exc
 from ._compat import MutableMapping, console_to_str, str_from_console
@@ -435,6 +436,45 @@ def which(
     return None
 
 
+version_component_re = re.compile(r"(\d+|[a-z]+|\.)")
+
+
+@functools.total_ordering
+class _Version(typing.NamedTuple):
+    """based on https://github.com/asottile/flake8-typing-imports/blob/923a533/flake8_typing_imports.py#L32-L42
+
+    License MIT
+    """
+
+    major: int = 0
+    minor: int = 0
+    patch: int = 0
+
+    @classmethod
+    def parse(cls, s: str) -> "_Version":
+        return cls(*(int(p) for p in s.split(".")))
+
+    def __lt__(self, other):
+        if isinstance(other, str):
+            other = Version(other)
+        return tuple(self) < tuple(other)
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            other = Version(other)
+        return self == other
+
+
+def Version(version: typing.Union[str, tuple]) -> _Version:
+    if isinstance(version, str):
+        return _Version(version)
+    elif isinstance(version, (tuple, list)):
+        return _Version(*version)
+    else:
+        raise NotImplementedError(f"No way to parse {version}, type {type(version)}")
+    return _Version(version)
+
+
 def get_version():
     """
     Return tmux version.
@@ -447,14 +487,14 @@ def get_version():
 
     Returns
     -------
-    :class:`distutils.version.LooseVersion`
+    :class:`distutils.version.Version`
         tmux version according to :func:`libtmux.common.which`'s tmux
     """
     proc = tmux_cmd("-V")
     if proc.stderr:
         if proc.stderr[0] == "tmux: unknown option -- V":
             if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
-                return LooseVersion("%s-openbsd" % TMUX_MAX_VERSION)
+                return Version("%s-openbsd" % TMUX_MAX_VERSION)
             raise exc.LibTmuxException(
                 "libtmux supports tmux %s and greater. This system"
                 " is running tmux 1.3 or earlier." % TMUX_MIN_VERSION
@@ -465,11 +505,11 @@ def get_version():
 
     # Allow latest tmux HEAD
     if version == "master":
-        return LooseVersion("%s-master" % TMUX_MAX_VERSION)
+        return Version("%s-master" % TMUX_MAX_VERSION)
 
     version = re.sub(r"[a-z-]", "", version)
 
-    return LooseVersion(version)
+    return Version(version)
 
 
 def has_version(version):
@@ -486,7 +526,7 @@ def has_version(version):
     bool
         True if version matches
     """
-    return get_version() == LooseVersion(version)
+    return get_version() == Version(version)
 
 
 def has_gt_version(min_version):
@@ -503,7 +543,7 @@ def has_gt_version(min_version):
     bool
         True if version above min_version
     """
-    return get_version() > LooseVersion(min_version)
+    return get_version() > Version(min_version)
 
 
 def has_gte_version(min_version):
@@ -520,7 +560,7 @@ def has_gte_version(min_version):
     bool
         True if version above or equal to min_version
     """
-    return get_version() >= LooseVersion(min_version)
+    return get_version() >= Version(min_version)
 
 
 def has_lte_version(max_version):
@@ -537,7 +577,7 @@ def has_lte_version(max_version):
     bool
          True if version below or equal to max_version
     """
-    return get_version() <= LooseVersion(max_version)
+    return get_version() <= Version(max_version)
 
 
 def has_lt_version(max_version):
@@ -554,7 +594,7 @@ def has_lt_version(max_version):
     bool
         True if version below max_version
     """
-    return get_version() < LooseVersion(max_version)
+    return get_version() < Version(max_version)
 
 
 def has_minimum_version(raises=True):
@@ -587,7 +627,7 @@ def has_minimum_version(raises=True):
 
         .. _Issue 55: https://github.com/tmux-python/tmuxp/issues/55.
     """
-    if get_version() < LooseVersion(TMUX_MIN_VERSION):
+    if get_version() < Version(TMUX_MIN_VERSION):
         if raises:
             raise exc.VersionTooLow(
                 "libtmux only supports tmux %s and greater. This system"
@@ -670,9 +710,9 @@ def get_libtmux_version():
 
     Returns
     -------
-    distutils.version.LooseVersion
+    distutils.version.Version
         libtmux version
     """
     from libtmux.__about__ import __version__
 
-    return LooseVersion(__version__)
+    return Version(__version__)
