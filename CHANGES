@@ -6,6 +6,11 @@ Here you can find the recent changes to libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+#### Packaging
+
+First experimental release using `poetry build` (#347). If you are packaging and run
+across any difficulty please see [#346](https://github.com/tmux-python/libtmux/issues/346)
+
 #### Compatibility
 
 - Drop python 3.6 (#344)
@@ -31,9 +36,11 @@ Here you can find the recent changes to libtmux
   thank you @timoses
 
 ## libtmux 0.10.1 (2021-06-16)
+
 - Update `Window.select_window()` for #271
 
 ## libtmux 0.10.0 (2021-06-16)
+
 - #321: Convert to markdown
 - {issue}`271`: Fix {}`select_window()` by providing the session ID as
   argument to {}`-t`. Thanks @Flowdalic
