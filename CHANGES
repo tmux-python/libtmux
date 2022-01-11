@@ -6,6 +6,8 @@ Here you can find the recent changes to libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+## libtmux 0.10.3 (2022-01-10)
+
 #### Packaging
 
 First experimental release using `poetry build` (#347). If you are packaging and run
