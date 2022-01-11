@@ -58,6 +58,8 @@ myst_parser = "~0.16.1"
 pytest = "*"
 pytest-rerunfailures = "*"
 pytest-mock = "*"
+tox = {version = "^3.24.5", extras = ["test"]}
+tox-poetry-installer = {extras = ["poetry"], version = "^0.8.3"}
 
 ### Coverage ###
 codecov = "*"
@@ -76,7 +78,7 @@ twine = "*"
 
 [tool.poetry.extras]
 docs = ["sphinx", "myst_parser", "sphinx-issues", "alagitpull", "sphinx-autodoc-typehints"]
-test = ["pytest", "pytest-rerunfailures", "pytest-mock"]
+test = ["pytest", "pytest-rerunfailures", "pytest-mock", "tox", "tox-poetry-installer"]
 coverage = ["codecov", "coverage", "pytest-cov"]
 format = ["black", "isort"]
 lint = ["flake8"]
