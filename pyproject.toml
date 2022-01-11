@@ -31,7 +31,10 @@ packages = [
     { include = "libtmux" }
 ]
 include = [
-    { path = "tests", format = "sdist" }
+    { path = "CHANGES", format = "sdist" },
+    { path = ".tmuxp.yaml", format = "sdist" },
+    { path = "tests", format = "sdist" },
+    { path = "docs", format = "sdist" }
 ]
 
 [tool.poetry.urls]
