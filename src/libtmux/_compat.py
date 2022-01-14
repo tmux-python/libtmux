@@ -35,6 +35,7 @@ def str_from_console(s: t.Union[str, bytes]) -> str:
 
 try:
     import re
+    from typing import Iterator, List, Tuple
 
     from packaging.version import Version, _BaseVersion
 
@@ -43,6 +44,8 @@ try:
     ### https://github.com/pypa/packaging/blob/21.3/packaging/version.py#L106-L115
     ### License: BSD, Accessed: Jan 14th, 2022
     ###
+
+    LegacyCmpKey = Tuple[int, Tuple[str, ...]]
 
     _legacy_version_component_re = re.compile(r"(\d+ | [a-z]+ | \.| -)", re.VERBOSE)
     _legacy_version_replacement_map = {
@@ -53,8 +56,7 @@ try:
         "dev": "@",
     }
 
-    def _parse_version_parts(s):
-        # type: (str) -> Iterator[str]
+    def _parse_version_parts(s: str) -> Iterator[str]:
         for part in _legacy_version_component_re.split(s):
             part = _legacy_version_replacement_map.get(part, part)
 
@@ -70,9 +72,7 @@ try:
         # ensure that alpha/beta/candidate are before final
         yield "*final"
 
-    def _legacy_cmpkey(version):
-        # type: (str) -> LegacyCmpKey
-
+    def _legacy_cmpkey(version: str) -> LegacyCmpKey:
         # We hardcode an epoch of -1 here. A PEP 440 version can only have a epoch
         # greater than or equal to 0. This will effectively put the LegacyVersion,
         # which uses the defacto standard originally implemented by setuptools,
@@ -81,7 +81,7 @@ try:
 
         # This scheme is taken from pkg_resources.parse_version setuptools prior to
         # it's adoption of the packaging library.
-        parts = []  # type: List[str]
+        parts: List[str] = []
         for part in _parse_version_parts(version.lower()):
             if part.startswith("*"):
                 # remove "-" before a prerelease tag
@@ -98,32 +98,26 @@ try:
         return epoch, tuple(parts)
 
     class LegacyVersion(_BaseVersion):
-        def __init__(self, version):
-            # type: (str) -> None
+        def __init__(self, version: str) -> None:
             self._version = str(version)
             self._key = _legacy_cmpkey(self._version)
 
-        def __str__(self):
-            # type: () -> str
+        def __str__(self) -> str:
             return self._version
 
-        def __repr__(self):
-            # type: () -> str
+        def __repr__(self) -> str:
             return "<LegacyVersion({0})>".format(repr(str(self)))
 
         @property
-        def public(self):
-            # type: () -> str
+        def public(self) -> str:
             return self._version
 
         @property
-        def base_version(self):
-            # type: () -> str
+        def base_version(self) -> str:
             return self._version
 
         @property
-        def epoch(self):
-            # type: () -> int
+        def epoch(self) -> int:
             return -1
 
     LooseVersion = LegacyVersion
