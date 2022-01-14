@@ -439,7 +439,7 @@ testing = ["beautifulsoup4", "coverage[toml]", "pytest (>=6,<7)", "pytest-cov", 
 name = "packaging"
 version = "22.0"
 description = "Core utilities for Python packages"
-category = "dev"
+category = "main"
 optional = false
 python-versions = ">=3.7"
 
@@ -945,7 +945,7 @@ test = []
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "6a05ee2efdef9d79f3c1f8283f8c6ada1be53819a998d129fb15e69477019cca"
+content-hash = "20cb0283c8677c189b02f0dd7c1f7d29a5579f11116c68a6031e27d93ca6102c"
 
 [metadata.files]
 alabaster = [
