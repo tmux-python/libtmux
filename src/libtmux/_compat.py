@@ -31,3 +31,9 @@ def str_from_console(s: t.Union[str, bytes]) -> str:
         return str(s)
     except UnicodeDecodeError:
         return str(s, encoding="utf_8") if isinstance(s, bytes) else s
+
+
+try:
+    from packaging.version import LegacyVersion as LooseVersion, Version  # type: ignore
+except ImportError:
+    from distutils.version import LooseVersion, Version
