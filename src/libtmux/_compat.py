@@ -105,6 +105,19 @@ try:
         def __str__(self) -> str:
             return self._version
 
+        def __lt__(self, other):
+            if isinstance(other, str):
+                other = LegacyVersion(other)
+            return super().__lt__(other)
+
+        def __eq__(self, other) -> bool:
+            if isinstance(other, str):
+                other = LegacyVersion(other)
+            if not isinstance(other, LegacyVersion):
+                return NotImplemented
+
+            return self._key == other._key
+
         def __repr__(self) -> str:
             return "<LegacyVersion({0})>".format(repr(str(self)))
 
