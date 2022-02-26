@@ -8,9 +8,14 @@ Here you can find the recent changes to libtmux
 
 #### Compatibility
 
-- Internal: Use new separator to split `tmux(1)` formatting information (#289)
+- Internal: Use new separator to split `tmux(1)` formatting information (#289,
+  #343)
 
-  Credit: @JonathanRaiman
+  The separator is configurable via `LIBTMUX_TMUX_FORMAT_SEPARATOR`. If you ever
+  have compatiblity issues in the future let us know which default works best
+  across versions.
+
+  Credit: @JonathanRaiman and @jagguli
 
 ## libtmux 0.10.3 (2022-01-10)
 
