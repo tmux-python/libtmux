@@ -65,9 +65,9 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
     #: ``-2`` or ``-8``
     colors = None
     #: unique child ID used by :class:`~libtmux.common.TmuxRelationalObject`
-    child_id_attribute = 'session_id'
+    child_id_attribute = "session_id"
     #: namespace used :class:`~libtmux.common.TmuxMappingObject`
-    formatter_prefix = 'server_'
+    formatter_prefix = "server_"
 
     def __init__(
         self,
@@ -77,7 +77,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         colors=None,
         **kwargs
     ):
-        EnvironmentMixin.__init__(self, '-g')
+        EnvironmentMixin.__init__(self, "-g")
         self._windows = []
         self._panes = []
 
@@ -110,18 +110,18 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         args = list(args)
         if self.socket_name:
-            args.insert(0, '-L{}'.format(self.socket_name))
+            args.insert(0, "-L{}".format(self.socket_name))
         if self.socket_path:
-            args.insert(0, '-S{}'.format(self.socket_path))
+            args.insert(0, "-S{}".format(self.socket_path))
         if self.config_file:
-            args.insert(0, '-f{}'.format(self.config_file))
+            args.insert(0, "-f{}".format(self.config_file))
         if self.colors:
             if self.colors == 256:
-                args.insert(0, '-2')
+                args.insert(0, "-2")
             elif self.colors == 88:
-                args.insert(0, '-8')
+                args.insert(0, "-8")
             else:
-                raise ValueError('Server.colors must equal 88 or 256')
+                raise ValueError("Server.colors must equal 88 or 256")
 
         return tmux_cmd(*args, **kwargs)
 
@@ -140,17 +140,17 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """
 
         sformats = formats.SESSION_FORMATS
-        tmux_formats = ['#{%s}' % f for f in sformats]
+        tmux_formats = ["#{%s}" % f for f in sformats]
 
-        tmux_args = ('-F%s' % formats.FORMAT_SEPARATOR.join(tmux_formats),)  # output
+        tmux_args = ("-F%s" % formats.FORMAT_SEPARATOR.join(tmux_formats),)  # output
 
-        proc = self.cmd('list-sessions', *tmux_args)
+        proc = self.cmd("list-sessions", *tmux_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
         sformats = formats.SESSION_FORMATS
-        tmux_formats = ['#{%s}' % format for format in sformats]
+        tmux_formats = ["#{%s}" % format for format in sformats]
         sessions = proc.stdout
 
         # combine format keys with values returned from ``tmux list-sessions``
@@ -204,14 +204,14 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         list of dict
         """
 
-        wformats = ['session_name', 'session_id'] + formats.WINDOW_FORMATS
-        tmux_formats = ['#{%s}' % format for format in wformats]
+        wformats = ["session_name", "session_id"] + formats.WINDOW_FORMATS
+        tmux_formats = ["#{%s}" % format for format in wformats]
         print()
 
         proc = self.cmd(
-            'list-windows',  # ``tmux list-windows``
-            '-a',
-            '-F%s' % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
+            "list-windows",  # ``tmux list-windows``
+            "-a",
+            "-F%s" % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
         )
 
         if proc.stderr:
@@ -219,7 +219,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         windows = proc.stdout
 
-        wformats = ['session_name', 'session_id'] + formats.WINDOW_FORMATS
+        wformats = ["session_name", "session_id"] + formats.WINDOW_FORMATS
 
         # combine format keys with values returned from ``tmux list-windows``
         windows = [
@@ -232,8 +232,8 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         # tmux < 1.8 doesn't have window_id, use window_name
         for w in windows:
-            if 'window_id' not in w:
-                w['window_id'] = w['window_name']
+            if "window_id" not in w:
+                w["window_id"] = w["window_name"]
 
         if self._windows:
             self._windows[:] = []
@@ -268,15 +268,15 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """
 
         pformats = [
-            'session_name',
-            'session_id',
-            'window_index',
-            'window_id',
-            'window_name',
+            "session_name",
+            "session_id",
+            "window_index",
+            "window_id",
+            "window_name",
         ] + formats.PANE_FORMATS
-        tmux_formats = [('#{%%s}%s' % formats.FORMAT_SEPARATOR) % f for f in pformats]
+        tmux_formats = [("#{%%s}%s" % formats.FORMAT_SEPARATOR) % f for f in pformats]
 
-        proc = self.cmd('list-panes', '-a', '-F%s' % ''.join(tmux_formats))  # output
+        proc = self.cmd("list-panes", "-a", "-F%s" % "".join(tmux_formats))  # output
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -284,11 +284,11 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         panes = proc.stdout
 
         pformats = [
-            'session_name',
-            'session_id',
-            'window_index',
-            'window_id',
-            'window_name',
+            "session_name",
+            "session_id",
+            "window_index",
+            "window_id",
+            "window_name",
         ] + formats.PANE_FORMATS
 
         # combine format keys with values returned from ``tmux list-panes``
@@ -300,7 +300,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         # clear up empty dict
         panes = [
             dict(
-                (k, v) for k, v in window.items() if v or k == 'pane_current_path'
+                (k, v) for k, v in window.items() if v or k == "pane_current_path"
             )  # preserve pane_current_path, in case it entered a new process
             # where we may not get a cwd from.
             for window in panes
@@ -338,10 +338,10 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         attached_sessions = list()
 
         for session in sessions:
-            attached = session.get('session_attached')
+            attached = session.get("session_attached")
             # for now session_active is a unicode
-            if attached != '0':
-                logger.debug('session %s attached', session.get('name'))
+            if attached != "0":
+                logger.debug("session %s attached", session.get("name"))
                 attached_sessions.append(session)
             else:
                 continue
@@ -371,10 +371,10 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """
         session_check_name(target_session)
 
-        if exact and has_gte_version('2.1'):
-            target_session = '={}'.format(target_session)
+        if exact and has_gte_version("2.1"):
+            target_session = "={}".format(target_session)
 
-        proc = self.cmd('has-session', '-t%s' % target_session)
+        proc = self.cmd("has-session", "-t%s" % target_session)
 
         if not proc.returncode:
             return True
@@ -383,7 +383,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
     def kill_server(self):
         """``$ tmux kill-server``."""
-        self.cmd('kill-server')
+        self.cmd("kill-server")
 
     def kill_session(self, target_session=None):
         """
@@ -405,7 +405,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """
         session_check_name(target_session)
 
-        proc = self.cmd('kill-session', '-t%s' % target_session)
+        proc = self.cmd("kill-session", "-t%s" % target_session)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -427,7 +427,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """
         session_check_name(target_session)
 
-        proc = self.cmd('switch-client', '-t%s' % target_session)
+        proc = self.cmd("switch-client", "-t%s" % target_session)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -448,9 +448,9 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         tmux_args = tuple()
         if target_session:
-            tmux_args += ('-t%s' % target_session,)
+            tmux_args += ("-t%s" % target_session,)
 
-        proc = self.cmd('attach-session', *tmux_args)
+        proc = self.cmd("attach-session", *tmux_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -518,45 +518,45 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         if self.has_session(session_name):
             if kill_session:
-                self.cmd('kill-session', '-t%s' % session_name)
-                logger.info('session %s exists. killed it.' % session_name)
+                self.cmd("kill-session", "-t%s" % session_name)
+                logger.info("session %s exists. killed it." % session_name)
             else:
-                raise exc.TmuxSessionExists('Session named %s exists' % session_name)
+                raise exc.TmuxSessionExists("Session named %s exists" % session_name)
 
-        logger.debug('creating session %s' % session_name)
+        logger.debug("creating session %s" % session_name)
 
         sformats = formats.SESSION_FORMATS
-        tmux_formats = ['#{%s}' % f for f in sformats]
+        tmux_formats = ["#{%s}" % f for f in sformats]
 
-        env = os.environ.get('TMUX')
+        env = os.environ.get("TMUX")
 
         if env:
-            del os.environ['TMUX']
+            del os.environ["TMUX"]
 
         tmux_args = (
-            '-s%s' % session_name,
-            '-P',
-            '-F%s' % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
+            "-s%s" % session_name,
+            "-P",
+            "-F%s" % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
         )
 
         if not attach:
-            tmux_args += ('-d',)
+            tmux_args += ("-d",)
 
         if start_directory:
-            tmux_args += ('-c', start_directory)
+            tmux_args += ("-c", start_directory)
 
         if window_name:
-            tmux_args += ('-n', window_name)
+            tmux_args += ("-n", window_name)
 
         # tmux 2.6 gives unattached sessions a tiny default area
         # no need send in -x/-y if they're in a client already, though
-        if has_gte_version('2.6') and 'TMUX' not in os.environ:
-            tmux_args += ('-x', 800, '-y', 600)
+        if has_gte_version("2.6") and "TMUX" not in os.environ:
+            tmux_args += ("-x", 800, "-y", 600)
 
         if window_command:
             tmux_args += (window_command,)
 
-        proc = self.cmd('new-session', *tmux_args)
+        proc = self.cmd("new-session", *tmux_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -564,7 +564,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         session = proc.stdout[0]
 
         if env:
-            os.environ['TMUX'] = env
+            os.environ["TMUX"] = env
 
         # combine format keys with values returned from ``tmux list-windows``
         session = dict(zip(sformats, session.split(formats.FORMAT_SEPARATOR)))

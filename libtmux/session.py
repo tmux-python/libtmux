@@ -45,23 +45,23 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     """
 
     #: unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`
-    child_id_attribute = 'window_id'
+    child_id_attribute = "window_id"
     #: namespace used :class:`~libtmux.common.TmuxMappingObject`
-    formatter_prefix = 'session_'
+    formatter_prefix = "session_"
 
     def __init__(self, server=None, **kwargs):
         EnvironmentMixin.__init__(self)
         self.server = server
 
-        if 'session_id' not in kwargs:
-            raise ValueError('Session requires a `session_id`')
-        self._session_id = kwargs['session_id']
+        if "session_id" not in kwargs:
+            raise ValueError("Session requires a `session_id`")
+        self._session_id = kwargs["session_id"]
         self.server._update_windows()
 
     @property
     def _info(self):
 
-        attrs = {'session_id': str(self._session_id)}
+        attrs = {"session_id": str(self._session_id)}
 
         def by(val):
             for key, value in attrs.items():
@@ -92,17 +92,17 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
             Renamed from ``.tmux`` to ``.cmd``.
         """
         # if -t is not set in any arg yet
-        if not any('-t' in str(x) for x in args):
+        if not any("-t" in str(x) for x in args):
             # insert -t immediately after 1st arg, as per tmux format
             new_args = [args[0]]
-            new_args += ['-t', self.id]
+            new_args += ["-t", self.id]
             new_args += args[1:]
             args = new_args
         return self.server.cmd(*args, **kwargs)
 
     def attach_session(self):
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``."""
-        proc = self.cmd('attach-session', '-t%s' % self.id)
+        proc = self.cmd("attach-session", "-t%s" % self.id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -110,7 +110,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     def kill_session(self):
         """``$ tmux kill-session``."""
 
-        proc = self.cmd('kill-session', '-t%s' % self.id)
+        proc = self.cmd("kill-session", "-t%s" % self.id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -124,7 +124,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         :exc:`exc.LibTmuxException`
         """
-        proc = self.cmd('switch-client', '-t%s' % self.id)
+        proc = self.cmd("switch-client", "-t%s" % self.id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -148,10 +148,10 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         """
         session_check_name(new_name)
 
-        proc = self.cmd('rename-session', new_name)
+        proc = self.cmd("rename-session", new_name)
 
         if proc.stderr:
-            if has_version('2.7') and 'no current client' in proc.stderr:
+            if has_version("2.7") and "no current client" in proc.stderr:
                 """tmux 2.7 raises "no current client" warning on BSD systems.
 
                 Should be fixed next release:
@@ -170,7 +170,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         window_name=None,
         start_directory=None,
         attach=True,
-        window_index='',
+        window_index="",
         window_shell=None,
     ):
         """
@@ -202,37 +202,37 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         -------
         :class:`Window`
         """
-        wformats = ['session_name', 'session_id'] + formats.WINDOW_FORMATS
-        tmux_formats = ['#{%s}' % f for f in wformats]
+        wformats = ["session_name", "session_id"] + formats.WINDOW_FORMATS
+        tmux_formats = ["#{%s}" % f for f in wformats]
 
         window_args = tuple()
 
         if not attach:
-            window_args += ('-d',)
+            window_args += ("-d",)
 
-        window_args += ('-P',)
+        window_args += ("-P",)
 
         if start_directory:
             # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
             start_directory = os.path.expanduser(start_directory)
-            window_args += ('-c%s' % start_directory,)
+            window_args += ("-c%s" % start_directory,)
 
         window_args += (
             '-F"%s"' % formats.FORMAT_SEPARATOR.join(tmux_formats),
         )  # output
         if window_name:
-            window_args += ('-n%s' % window_name,)
+            window_args += ("-n%s" % window_name,)
 
         window_args += (
             # empty string for window_index will use the first one available
-            '-t%s:%s'
+            "-t%s:%s"
             % (self.id, window_index),
         )
 
         if window_shell:
             window_args += (window_shell,)
 
-        proc = self.cmd('new-window', *window_args)
+        proc = self.cmd("new-window", *window_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -263,11 +263,11 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         if target_window:
             if isinstance(target_window, int):
-                target = '-t%s:%d' % (self.name, target_window)
+                target = "-t%s:%d" % (self.name, target_window)
             else:
-                target = '-t%s' % target_window
+                target = "-t%s" % target_window
 
-        proc = self.cmd('kill-window', target)
+        proc = self.cmd("kill-window", target)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -277,7 +277,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     def _list_windows(self):
         windows = self.server._update_windows()._windows
 
-        windows = [w for w in windows if w['session_id'] == self.id]
+        windows = [w for w in windows if w["session_id"] == self.id]
 
         return windows
 
@@ -294,7 +294,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         -------
         :class:`Window`
         """
-        windows = [w for w in self._windows if w['session_id'] == self._session_id]
+        windows = [w for w in self._windows if w["session_id"] == self._session_id]
 
         return [Window(session=self, **window) for window in windows]
 
@@ -317,9 +317,9 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         """
         active_windows = []
         for window in self._windows:
-            if 'window_active' in window:
+            if "window_active" in window:
                 # for now window_active is a unicode
-                if window.get('window_active') == '1':
+                if window.get("window_active") == "1":
                     active_windows.append(Window(session=self, **window))
                 else:
                     continue
@@ -328,11 +328,11 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
             return active_windows[0]
         else:
             raise exc.LibTmuxException(
-                'multiple active windows found. %s' % active_windows
+                "multiple active windows found. %s" % active_windows
             )
 
         if len(self._windows) == int(0):
-            raise exc.LibTmuxException('No Windows')
+            raise exc.LibTmuxException("No Windows")
 
     def select_window(self, target_window):
         """
@@ -358,9 +358,9 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         # Note that we also provide the session ID here, since cmd()
         # will not automatically add it as there is already a '-t'
         # argument provided.
-        target = '-t%s:%s' % (self._session_id, target_window)
+        target = "-t%s:%s" % (self._session_id, target_window)
 
-        proc = self.cmd('select-window', target)
+        proc = self.cmd("select-window", target)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -400,18 +400,18 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         """
 
         if isinstance(value, bool) and value:
-            value = 'on'
+            value = "on"
         elif isinstance(value, bool) and not value:
-            value = 'off'
+            value = "off"
 
         tmux_args = tuple()
 
         if _global:
-            tmux_args += ('-g',)
+            tmux_args += ("-g",)
 
         tmux_args += (option, value)
 
-        proc = self.cmd('set-option', *tmux_args)
+        proc = self.cmd("set-option", *tmux_args)
 
         if isinstance(proc.stderr, list) and len(proc.stderr):
             handle_option_error(proc.stderr[0])
@@ -443,15 +443,15 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         tmux_args = tuple()
 
         if _global:
-            tmux_args += ('-g',)
+            tmux_args += ("-g",)
 
         if option:
             return self.show_option(option, _global=_global)
         else:
-            tmux_args += ('show-options',)
+            tmux_args += ("show-options",)
             session_options = self.cmd(*tmux_args).stdout
 
-        session_options = [tuple(item.split(' ')) for item in session_options]
+        session_options = [tuple(item.split(" ")) for item in session_options]
 
         session_options = dict(session_options)
 
@@ -491,11 +491,11 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         tmux_args = tuple()
 
         if _global:
-            tmux_args += ('-g',)
+            tmux_args += ("-g",)
 
         tmux_args += (option,)
 
-        cmd = self.cmd('show-options', *tmux_args)
+        cmd = self.cmd("show-options", *tmux_args)
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
@@ -503,7 +503,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if not len(cmd.stdout):
             return None
 
-        option = [item.split(' ') for item in cmd.stdout][0]
+        option = [item.split(" ") for item in cmd.stdout][0]
 
         if option[1].isdigit():
             option = (option[0], int(option[1]))

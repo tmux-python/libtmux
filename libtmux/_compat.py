@@ -9,9 +9,9 @@ console_encoding = sys.__stdout__.encoding
 def console_to_str(s):
     """From pypa/pip project, pip.backwardwardcompat. License MIT."""
     try:
-        return s.decode(console_encoding, 'ignore')
+        return s.decode(console_encoding, "ignore")
     except UnicodeDecodeError:
-        return s.decode('utf_8', 'ignore')
+        return s.decode("utf_8", "ignore")
 
 
 def reraise(tp, value, tb=None):
@@ -24,4 +24,4 @@ def str_from_console(s):
     try:
         return str(s)
     except UnicodeDecodeError:
-        return str(s, encoding='utf_8')
+        return str(s, encoding="utf_8")

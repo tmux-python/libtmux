@@ -43,24 +43,24 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
     """
 
     #: namespace used :class:`~libtmux.common.TmuxMappingObject`
-    formatter_prefix = 'pane_'
+    formatter_prefix = "pane_"
 
     def __init__(self, window=None, **kwargs):
         if not window:
-            raise ValueError('Pane must have ``Window`` object')
+            raise ValueError("Pane must have ``Window`` object")
 
         self.window = window
         self.session = self.window.session
         self.server = self.session.server
 
-        self._pane_id = kwargs['pane_id']
+        self._pane_id = kwargs["pane_id"]
 
         self.server._update_panes()
 
     @property
     def _info(self, *args):
 
-        attrs = {'pane_id': self._pane_id}
+        attrs = {"pane_id": self._pane_id}
 
         # from https://github.com/serkanyersen/underscore.py
         def by(val, *args):
@@ -86,8 +86,8 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         -------
         :class:`Server.cmd`
         """
-        if not any(arg.startswith('-t') for arg in args):
-            args = ('-t', self.get('pane_id')) + args
+        if not any(arg.startswith("-t") for arg in args):
+            args = ("-t", self.get("pane_id")) + args
 
         return self.server.cmd(cmd, *args, **kwargs)
 
@@ -109,12 +109,12 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         literal : bool, optional
             Send keys literally, default True.
         """
-        prefix = ' ' if suppress_history else ''
+        prefix = " " if suppress_history else ""
 
         if literal:
-            self.cmd('send-keys', '-l', prefix + cmd)
+            self.cmd("send-keys", "-l", prefix + cmd)
         else:
-            self.cmd('send-keys', prefix + cmd)
+            self.cmd("send-keys", prefix + cmd)
 
         if enter:
             self.enter()
@@ -139,18 +139,18 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         :class:`None`
         """
         if get_text:
-            return self.cmd('display-message', '-p', cmd).stdout
+            return self.cmd("display-message", "-p", cmd).stdout
         else:
-            self.cmd('display-message', cmd)
+            self.cmd("display-message", cmd)
 
     def clear(self):
         """Clear pane."""
-        self.send_keys('reset')
+        self.send_keys("reset")
 
     def reset(self):
         """Reset and clear pane history."""
 
-        self.cmd('send-keys', r'-R \; clear-history')
+        self.cmd("send-keys", r"-R \; clear-history")
 
     def split_window(
         self, attach=False, vertical=True, start_directory=None, percent=None
@@ -174,7 +174,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         :class:`Pane`
         """
         return self.window.split_window(
-            target=self.get('pane_id'),
+            target=self.get("pane_id"),
             start_directory=start_directory,
             attach=attach,
             vertical=vertical,
@@ -228,12 +228,12 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         exc.LibTmuxException
         """
 
-        if 'height' in kwargs:
-            proc = self.cmd('resize-pane', '-y%s' % int(kwargs['height']))
-        elif 'width' in kwargs:
-            proc = self.cmd('resize-pane', '-x%s' % int(kwargs['width']))
+        if "height" in kwargs:
+            proc = self.cmd("resize-pane", "-y%s" % int(kwargs["height"]))
+        elif "width" in kwargs:
+            proc = self.cmd("resize-pane", "-x%s" % int(kwargs["width"]))
         else:
-            proc = self.cmd('resize-pane', args[0])
+            proc = self.cmd("resize-pane", args[0])
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -247,7 +247,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
         ``$ tmux send-keys`` send Enter to the pane.
         """
-        self.cmd('send-keys', 'Enter')
+        self.cmd("send-keys", "Enter")
 
     def capture_pane(self):
         """
@@ -259,7 +259,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         -------
         :class:`list`
         """
-        return self.cmd('capture-pane', '-p').stdout
+        return self.cmd("capture-pane", "-p").stdout
 
     def select_pane(self):
         """
@@ -273,7 +273,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         -------
         :class:`pane`
         """
-        return self.window.select_pane(self.get('pane_id'))
+        return self.window.select_pane(self.get("pane_id"))
 
     def __repr__(self):
-        return "%s(%s %s)" % (self.__class__.__name__, self.get('pane_id'), self.window)
+        return "%s(%s %s)" % (self.__class__.__name__, self.get("pane_id"), self.window)
