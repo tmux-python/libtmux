@@ -7,13 +7,13 @@ import time
 
 logger = logging.getLogger(__name__)
 
-TEST_SESSION_PREFIX = 'libtmux_'
-RETRY_TIMEOUT_SECONDS = int(os.getenv('RETRY_TIMEOUT_SECONDS', 8))
+TEST_SESSION_PREFIX = "libtmux_"
+RETRY_TIMEOUT_SECONDS = int(os.getenv("RETRY_TIMEOUT_SECONDS", 8))
 
 namer = tempfile._RandomNameSequence()
 current_dir = os.path.abspath(os.path.dirname(__file__))
-example_dir = os.path.abspath(os.path.join(current_dir, '..', 'examples'))
-fixtures_dir = os.path.realpath(os.path.join(current_dir, 'fixtures'))
+example_dir = os.path.abspath(os.path.join(current_dir, "..", "examples"))
+fixtures_dir = os.path.realpath(os.path.join(current_dir, "fixtures"))
 
 
 def retry(seconds=RETRY_TIMEOUT_SECONDS):
@@ -127,8 +127,8 @@ def temp_session(server, *args, **kwargs):
     ...     session.new_window(window_name='my window')
     """
 
-    if 'session_name' in kwargs:
-        session_name = kwargs.pop('session_name')
+    if "session_name" in kwargs:
+        session_name = kwargs.pop("session_name")
     else:
         session_name = get_test_session_name(server)
 
@@ -176,15 +176,15 @@ def temp_window(session, *args, **kwargs):
     ...     my_pane = window.split_window()
     """
 
-    if 'window_name' not in kwargs:
+    if "window_name" not in kwargs:
         window_name = get_test_window_name(session)
     else:
-        window_name = kwargs.pop('window_name')
+        window_name = kwargs.pop("window_name")
 
     window = session.new_window(window_name, *args, **kwargs)
 
     # Get ``window_id`` before returning it, it may be killed within context.
-    window_id = window.get('window_id')
+    window_id = window.get("window_id")
 
     try:
         yield session

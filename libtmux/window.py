@@ -36,22 +36,22 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     """
 
     #: unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`
-    child_id_attribute = 'pane_id'
+    child_id_attribute = "pane_id"
     #: namespace used :class:`~libtmux.common.TmuxMappingObject`
-    formatter_prefix = 'window_'
+    formatter_prefix = "window_"
 
     def __init__(self, session=None, **kwargs):
 
         if not session:
-            raise ValueError('Window requires a Session, session=Session')
+            raise ValueError("Window requires a Session, session=Session")
 
         self.session = session
         self.server = self.session.server
 
-        if 'window_id' not in kwargs:
-            raise ValueError('Window requires a `window_id`')
+        if "window_id" not in kwargs:
+            raise ValueError("Window requires a `window_id`")
 
-        self._window_id = kwargs['window_id']
+        self._window_id = kwargs["window_id"]
 
     def __repr__(self):
         return "%s(%s %s:%s, %s)" % (
@@ -65,7 +65,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     @property
     def _info(self, *args):
 
-        attrs = {'window_id': self._window_id}
+        attrs = {"window_id": self._window_id}
 
         # from https://github.com/serkanyersen/underscore.py
         def by(val, *args):
@@ -81,7 +81,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         # If a window_shell option was configured which results in
         # a short-lived process, the window id is @0.  Use that instead of
         # self._window_id
-        if len(ret) == 0 and self.server._windows[0]['window_id'] == '@0':
+        if len(ret) == 0 and self.server._windows[0]["window_id"] == "@0":
             ret = self.server._windows
         return ret[0]
 
@@ -103,8 +103,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        if not any(arg.startswith('-t') for arg in args):
-            args = ('-t', self.id) + args
+        if not any(arg.startswith("-t") for arg in args):
+            args = ("-t", self.id) + args
 
         return self.server.cmd(cmd, *args, **kwargs)
 
@@ -137,7 +137,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             'custom'
                 custom dimensions (see :term:`tmux(1)` manpages).
         """
-        cmd = ['select-layout', '-t%s:%s' % (self.get('session_id'), self.index)]
+        cmd = ["select-layout", "-t%s:%s" % (self.get("session_id"), self.index)]
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
@@ -168,13 +168,13 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         self.server._update_windows()
 
         if isinstance(value, bool) and value:
-            value = 'on'
+            value = "on"
         elif isinstance(value, bool) and not value:
-            value = 'off'
+            value = "off"
 
         cmd = self.cmd(
-            'set-window-option',
-            '-t%s:%s' % (self.get('session_id'), self.index),
+            "set-window-option",
+            "-t%s:%s" % (self.get("session_id"), self.index),
             # '-t%s' % self.id,
             option,
             value,
@@ -205,12 +205,12 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         tmux_args = tuple()
 
         if g:
-            tmux_args += ('-g',)
+            tmux_args += ("-g",)
 
         if option:
             return self.show_window_option(option, g=g)
         else:
-            tmux_args += ('show-window-options',)
+            tmux_args += ("show-window-options",)
             cmd = self.cmd(*tmux_args).stdout
 
         # The shlex.split function splits the args at spaces, while also
@@ -251,11 +251,11 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         tmux_args = tuple()
 
         if g:
-            tmux_args += ('-g',)
+            tmux_args += ("-g",)
 
         tmux_args += (option,)
 
-        cmd = self.cmd('show-window-options', *tmux_args)
+        cmd = self.cmd("show-window-options", *tmux_args)
 
         if len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
@@ -283,12 +283,12 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         import shlex
 
         lex = shlex.shlex(new_name)
-        lex.escape = ' '
+        lex.escape = " "
         lex.whitespace_split = False
 
         try:
-            self.cmd('rename-window', new_name)
-            self['window_name'] = new_name
+            self.cmd("rename-window", new_name)
+            self["window_name"] = new_name
         except Exception as e:
             logger.error(e)
 
@@ -300,9 +300,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         """Kill the current :class:`Window` object. ``$ tmux kill-window``."""
 
         proc = self.cmd(
-            'kill-window',
+            "kill-window",
             # '-t:%s' % self.id
-            '-t%s:%s' % (self.get('session_id'), self.index),
+            "-t%s:%s" % (self.get("session_id"), self.index),
         )
 
         if proc.stderr:
@@ -323,11 +323,11 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             the ``target session`` or index to move the window to, default:
             current session.
         """
-        session = session or self.get('session_id')
+        session = session or self.get("session_id")
         proc = self.cmd(
-            'move-window',
-            '-s%s:%s' % (self.get('session_id'), self.index),
-            '-t%s:%s' % (session, destination),
+            "move-window",
+            "-s%s:%s" % (self.get("session_id"), self.index),
+            "-t%s:%s" % (session, destination),
         )
 
         if proc.stderr:
@@ -363,10 +363,10 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         :class:`Pane`
         """
 
-        if target_pane in ['-l', '-U', '-D', '-L', '-R']:
-            proc = self.cmd('select-pane', '-t%s' % self.id, target_pane)
+        if target_pane in ["-l", "-U", "-D", "-L", "-R"]:
+            proc = self.cmd("select-pane", "-t%s" % self.id, target_pane)
         else:
-            proc = self.cmd('select-pane', '-t%s' % target_pane)
+            proc = self.cmd("select-pane", "-t%s" % target_pane)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -375,7 +375,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
     def last_pane(self):
         """Return last pane."""
-        return self.select_pane('-l')
+        return self.select_pane("-l")
 
     def split_window(
         self,
@@ -429,49 +429,49 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         target window, pass in ``attach=False``.
         """
         pformats = [
-            'session_name',
-            'session_id',
-            'window_index',
-            'window_id',
+            "session_name",
+            "session_id",
+            "window_index",
+            "window_id",
         ] + formats.PANE_FORMATS
-        tmux_formats = [(f'#{{{f}}}{formats.FORMAT_SEPARATOR}') for f in pformats]
+        tmux_formats = [(f"#{{{f}}}{formats.FORMAT_SEPARATOR}") for f in pformats]
 
         # '-t%s' % self.attached_pane.get('pane_id'),
         # 2013-10-18 LOOK AT THIS, rm'd it..
         tmux_args = tuple()
 
         if target:
-            tmux_args += ('-t%s' % target,)
+            tmux_args += ("-t%s" % target,)
         else:
-            tmux_args += ('-t%s' % self.panes[0].get('pane_id'),)
+            tmux_args += ("-t%s" % self.panes[0].get("pane_id"),)
 
         if vertical:
-            tmux_args += ('-v',)
+            tmux_args += ("-v",)
         else:
-            tmux_args += ('-h',)
+            tmux_args += ("-h",)
 
         if percent is not None:
-            tmux_args += ('-p %d' % percent,)
+            tmux_args += ("-p %d" % percent,)
 
-        tmux_args += ('-P', '-F%s' % ''.join(tmux_formats))  # output
+        tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
 
         if start_directory:
             # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
             start_directory = os.path.expanduser(start_directory)
-            tmux_args += ('-c%s' % start_directory,)
+            tmux_args += ("-c%s" % start_directory,)
 
         if not attach:
-            tmux_args += ('-d',)
+            tmux_args += ("-d",)
 
         if shell:
             tmux_args += (shell,)
 
-        pane = self.cmd('split-window', *tmux_args)
+        pane = self.cmd("split-window", *tmux_args)
 
         # tmux < 1.7. This is added in 1.7.
         if pane.stderr:
             raise exc.LibTmuxException(pane.stderr)
-            if 'pane too small' in pane.stderr:
+            if "pane too small" in pane.stderr:
                 pass
 
             raise exc.LibTmuxException(pane.stderr, self._info, self.panes)
@@ -495,9 +495,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         :class:`Pane`
         """
         for pane in self._panes:
-            if 'pane_active' in pane:
+            if "pane_active" in pane:
                 # for now pane_active is a unicode
-                if pane.get('pane_active') == '1':
+                if pane.get("pane_active") == "1":
                     return Pane(window=self, **pane)
                 else:
                     continue
@@ -507,8 +507,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     def _list_panes(self):
         panes = self.server._update_panes()._panes
 
-        panes = [p for p in panes if p['session_id'] == self.get('session_id')]
-        panes = [p for p in panes if p['window_id'] == self.id]
+        panes = [p for p in panes if p["session_id"] == self.get("session_id")]
+        panes = [p for p in panes if p["window_id"] == self.id]
         return panes
 
     @property

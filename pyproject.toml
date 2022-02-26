@@ -1,6 +1,3 @@
-[tool.black]
-skip-string-normalization = true
-
 [tool.poetry]
 name = "libtmux"
 version = "0.11.0b0"
