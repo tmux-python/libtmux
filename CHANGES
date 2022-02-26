@@ -17,6 +17,10 @@ Here you can find the recent changes to libtmux
 
   Credit: @JonathanRaiman and @jagguli
 
+#### Development
+
+- Format with black w/ string normalization. This is a one-time diff (#354)
+
 ## libtmux 0.10.3 (2022-01-10)
 
 #### Packaging
