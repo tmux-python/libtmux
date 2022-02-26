@@ -6,6 +6,12 @@ Here you can find the recent changes to libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+#### Compatibility
+
+- Internal: Use new separator to split `tmux(1)` formatting information (#289)
+
+  Credit: @JonathanRaiman
+
 ## libtmux 0.10.3 (2022-01-10)
 
 #### Packaging
