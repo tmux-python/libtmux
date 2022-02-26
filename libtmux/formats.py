@@ -6,12 +6,9 @@ libtmux.formats
 For reference: https://github.com/tmux/tmux/blob/master/format.c
 
 """
+import os
 
-from __future__ import absolute_import, unicode_literals, with_statement
-
-from os import environ
-
-FORMAT_SEPERATOR = environ.get("TMUX_SEPERATOR", "|")
+FORMAT_SEPERATOR = os.environ.get("TMUX_SEPERATOR", "|")
 
 SESSION_FORMATS = [
     'session_name',
