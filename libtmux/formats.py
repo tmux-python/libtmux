@@ -8,7 +8,7 @@ For reference: https://github.com/tmux/tmux/blob/master/format.c
 """
 import os
 
-FORMAT_SEPERATOR = os.environ.get("TMUX_SEPERATOR", "|")
+FORMAT_SEPARATOR = os.environ.get("TMUX_SEPERATOR", "|")
 
 SESSION_FORMATS = [
     'session_name',

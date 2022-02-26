@@ -142,7 +142,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         sformats = formats.SESSION_FORMATS
         tmux_formats = ['#{%s}' % f for f in sformats]
 
-        tmux_args = ('-F%s' % formats.FORMAT_SEPERATOR.join(tmux_formats),)  # output
+        tmux_args = ('-F%s' % formats.FORMAT_SEPARATOR.join(tmux_formats),)  # output
 
         proc = self.cmd('list-sessions', *tmux_args)
 
@@ -155,7 +155,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         # combine format keys with values returned from ``tmux list-sessions``
         sessions = [
-            dict(zip(sformats, session.split(formats.FORMAT_SEPERATOR)))
+            dict(zip(sformats, session.split(formats.FORMAT_SEPARATOR)))
             for session in sessions
         ]
 
@@ -211,7 +211,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         proc = self.cmd(
             'list-windows',  # ``tmux list-windows``
             '-a',
-            '-F%s' % formats.FORMAT_SEPERATOR.join(tmux_formats),  # output
+            '-F%s' % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
         )
 
         if proc.stderr:
@@ -223,7 +223,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         # combine format keys with values returned from ``tmux list-windows``
         windows = [
-            dict(zip(wformats, window.split(formats.FORMAT_SEPERATOR)))
+            dict(zip(wformats, window.split(formats.FORMAT_SEPARATOR)))
             for window in windows
         ]
 
@@ -274,7 +274,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
             'window_id',
             'window_name',
         ] + formats.PANE_FORMATS
-        tmux_formats = [('#{%%s}%s' % formats.FORMAT_SEPERATOR) % f for f in pformats]
+        tmux_formats = [('#{%%s}%s' % formats.FORMAT_SEPARATOR) % f for f in pformats]
 
         proc = self.cmd('list-panes', '-a', '-F%s' % ''.join(tmux_formats))  # output
 
@@ -293,7 +293,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         # combine format keys with values returned from ``tmux list-panes``
         panes = [
-            dict(zip(pformats, window.split(formats.FORMAT_SEPERATOR)))
+            dict(zip(pformats, window.split(formats.FORMAT_SEPARATOR)))
             for window in panes
         ]
 
@@ -536,7 +536,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         tmux_args = (
             '-s%s' % session_name,
             '-P',
-            '-F%s' % formats.FORMAT_SEPERATOR.join(tmux_formats),  # output
+            '-F%s' % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
         )
 
         if not attach:
@@ -567,7 +567,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
             os.environ['TMUX'] = env
 
         # combine format keys with values returned from ``tmux list-windows``
-        session = dict(zip(sformats, session.split(formats.FORMAT_SEPERATOR)))
+        session = dict(zip(sformats, session.split(formats.FORMAT_SEPARATOR)))
 
         # clear up empty dict
         session = dict((k, v) for k, v in session.items() if v)
