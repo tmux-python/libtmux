@@ -26,14 +26,14 @@ jobs:
             root_docs:
               - CHANGES
               - README.*
-              - poetry.lock
-              - pyproject.toml
             docs:
               - 'docs/**/*.rst'
               - 'docs/**/*.md'
               - 'examples/**'
             python_files:
               - 'libtmux/**'
+              - poetry.lock
+              - pyproject.toml
 
       - name: Should publish
         if: steps.changes.outputs.docs == 'true' || steps.changes.outputs.root_docs == 'true' || steps.changes.outputs.python_files == 'true'
