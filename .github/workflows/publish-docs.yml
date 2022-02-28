@@ -26,6 +26,8 @@ jobs:
             root_docs:
               - CHANGES
               - README.*
+              - poetry.lock
+              - pyproject.toml
             docs:
               - 'docs/**/*.rst'
               - 'docs/**/*.md'
