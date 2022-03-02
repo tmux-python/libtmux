@@ -18,11 +18,20 @@ black:
 test:
 	poetry run py.test $(test)
 
+start:
+	$(MAKE) test && poetry run ptw .
+
 watch_test:
 	if command -v entr > /dev/null; then ${PY_FILES} | entr -c $(MAKE) test; else $(MAKE) test entr_warn; fi
 
 build_docs:
 	$(MAKE) -C docs html
+
+start_docs:
+	$(MAKE) -C docs design
+
+design_docs:
+	$(MAKE) -C docs design
 
 watch_docs:
 	if command -v entr > /dev/null; then ${DOC_FILES} | entr -c $(MAKE) build_docs; else $(MAKE) build_docs entr_warn; fi
