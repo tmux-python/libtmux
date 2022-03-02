@@ -25,7 +25,7 @@ Python 2.x will be deprecated in libtmux 0.9. The backports branch is
 # install
 
 ```sh
-$ [sudo] pip install libtmux
+$ pip install libtmux --user
 ```
 
 # open a tmux session
