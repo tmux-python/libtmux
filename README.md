@@ -6,7 +6,7 @@ libtmux - scripting library for tmux
 [![Code Coverage](https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg)](https://codecov.io/gh/tmux-python/libtmux)
 [![License](https://img.shields.io/github/license/tmux-python/libtmux.svg)](https://github.com/tmux-python/libtmux/blob/master/LICENSE)
 
-libtmux is the tool behind [tmuxp](https://tmuxp.git-pull.com/), a tmux
+libtmux is the tool behind [tmuxp], a tmux
 workspace manager in python.
 
 it builds upon tmux's
@@ -25,7 +25,7 @@ Python 2.x will be deprecated in libtmux 0.9. The backports branch is
 # install
 
 ```sh
-$ pip install libtmux --user
+$ pip install --user libtmux
 ```
 
 # open a tmux session
@@ -42,7 +42,7 @@ $ tmux new-session -s foo -n bar
 $ python
 
 # or for nice autocomplete and syntax highlighting
-$ pip install ptpython
+$ pip install --user ptpython
 $ ptpython
 ```
 
@@ -54,6 +54,12 @@ connect to a live tmux session:
 >>> server
 <libtmux.server.Server object at 0x7fbd622c1dd0>
 ```
+
+FYI: You can also use [tmuxp]'s [`tmuxp shell`] to drop straight into your
+current tmux server / session / window pane.
+
+[tmuxp]: https://tmuxp.git-pull.com/
+[`tmuxp shell`]: https://tmuxp.git-pull.com/cli.html#shell
 
 list sessions:
 
