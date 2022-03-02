@@ -4,7 +4,7 @@ libtmux - scripting library for tmux
 [![Docs](https://github.com/tmux-python/libtmux/workflows/Publish%20Docs/badge.svg)](https://github.com/tmux-python/libtmux/actions?query=workflow%3A%22Publish+Docs%22)
 [![Build Status](https://github.com/tmux-python/libtmux/workflows/tests/badge.svg)](https://github.com/tmux-python/tmux-python/actions?query=workflow%3A%22tests%22)
 [![Code Coverage](https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg)](https://codecov.io/gh/tmux-python/libtmux)
-![License](https://img.shields.io/github/license/tmux-python/libtmux.svg)
+[![License](https://img.shields.io/github/license/tmux-python/libtmux.svg)](https://github.com/tmux-python/libtmux/blob/master/LICENSE)
 
 libtmux is the tool behind [tmuxp](https://tmuxp.git-pull.com/), a tmux
 workspace manager in python.
