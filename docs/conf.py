@@ -1,3 +1,4 @@
+# flake8: NOQA E5
 import inspect
 import os
 import sys
