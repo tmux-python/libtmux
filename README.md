@@ -55,7 +55,7 @@ connect to a live tmux session:
 <libtmux.server.Server object at 0x7fbd622c1dd0>
 ```
 
-FYI: You can also use [tmuxp]'s [`tmuxp shell`] to drop straight into your
+Tip: You can also use [tmuxp]'s [`tmuxp shell`] to drop straight into your
 current tmux server / session / window pane.
 
 [tmuxp]: https://tmuxp.git-pull.com/

@@ -19,20 +19,6 @@ $ tmux
 
 Make sure you have {ref}`libtmux installed <installation>`:
 
-```{code-block} sh
-
-pip install libtmux
-
-```
-
-To upgrade:
-
-```{code-block} sh
-
-pip install -U libtmux
-
-```
-
 :::::
 
 terminal two, `python` or `ptpython` if you have it:

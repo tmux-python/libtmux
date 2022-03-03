@@ -27,7 +27,7 @@ Next, ensure `libtmux` is installed:
 
 ```{code-block} bash
 
-$ [sudo] pip install libtmux
+$ pip install --user libtmux
 
 ```
 
@@ -65,14 +65,16 @@ $ python
 
 ```
 
-For commandline completion, you can also use [ptpython][ptpython].
+For commandline completion, you can also use [ptpython].
 
 ```{code-block} bash
 
-$ [sudo] pip install ptpython
+$ pip install --user ptpython
 $ ptpython
 
 ```
+
+[ptpython]: https://github.com/prompt-toolkit/ptpython
 
 ```{module} libtmux
 
@@ -88,6 +90,16 @@ First, we can grab a {class}`Server`.
 <libtmux.server.Server object at 0x7fbd622c1dd0>
 
 ```
+
+:::{tip}
+
+You can also use [tmuxp]'s [`tmuxp shell`] to drop straight into your
+current tmux server / session / window pane.
+
+[tmuxp]: https://tmuxp.git-pull.com/
+[`tmuxp shell`]: https://tmuxp.git-pull.com/cli.html#shell
+
+:::
 
 :::{note}
 
