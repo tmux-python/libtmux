@@ -187,14 +187,14 @@ def linkcode_resolve(domain, info):  # NOQA: C901
     fn = relpath(fn, start=dirname(libtmux.__file__))
 
     if "dev" in about["__version__"]:
-        return "%s/blob/master/%s/%s%s" % (
+        return "{}/blob/master/{}/{}{}".format(
             about["__github__"],
             about["__package_name__"],
             fn,
             linespec,
         )
     else:
-        return "%s/blob/v%s/%s/%s%s" % (
+        return "{}/blob/v{}/{}/{}{}".format(
             about["__github__"],
             about["__version__"],
             about["__package_name__"],

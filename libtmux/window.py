@@ -54,7 +54,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         self._window_id = kwargs["window_id"]
 
     def __repr__(self):
-        return "%s(%s %s:%s, %s)" % (
+        return "{}({} {}:{}, {})".format(
             self.__class__.__name__,
             self.id,
             self.index,
@@ -137,7 +137,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             'custom'
                 custom dimensions (see :term:`tmux(1)` manpages).
         """
-        cmd = ["select-layout", "-t%s:%s" % (self.get("session_id"), self.index)]
+        cmd = ["select-layout", "-t{}:{}".format(self.get("session_id"), self.index)]
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
@@ -174,7 +174,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         cmd = self.cmd(
             "set-window-option",
-            "-t%s:%s" % (self.get("session_id"), self.index),
+            "-t{}:{}".format(self.get("session_id"), self.index),
             # '-t%s' % self.id,
             option,
             value,
@@ -302,7 +302,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         proc = self.cmd(
             "kill-window",
             # '-t:%s' % self.id
-            "-t%s:%s" % (self.get("session_id"), self.index),
+            "-t{}:{}".format(self.get("session_id"), self.index),
         )
 
         if proc.stderr:
@@ -326,8 +326,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         session = session or self.get("session_id")
         proc = self.cmd(
             "move-window",
-            "-s%s:%s" % (self.get("session_id"), self.index),
-            "-t%s:%s" % (session, destination),
+            "-s{}:{}".format(self.get("session_id"), self.index),
+            f"-t{session}:{destination}",
         )
 
         if proc.stderr:
@@ -481,7 +481,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             pane = dict(zip(pformats, pane.split(formats.FORMAT_SEPARATOR)))
 
             # clear up empty dict
-            pane = dict((k, v) for k, v in pane.items() if v)
+            pane = {k: v for k, v in pane.items() if v}
 
         return Pane(window=self, **pane)
 

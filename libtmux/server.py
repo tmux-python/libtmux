@@ -75,7 +75,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         socket_path=None,
         config_file=None,
         colors=None,
-        **kwargs
+        **kwargs,
     ):
         EnvironmentMixin.__init__(self, "-g")
         self._windows = []
@@ -110,11 +110,11 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         args = list(args)
         if self.socket_name:
-            args.insert(0, "-L{}".format(self.socket_name))
+            args.insert(0, f"-L{self.socket_name}")
         if self.socket_path:
-            args.insert(0, "-S{}".format(self.socket_path))
+            args.insert(0, f"-S{self.socket_path}")
         if self.config_file:
-            args.insert(0, "-f{}".format(self.config_file))
+            args.insert(0, f"-f{self.config_file}")
         if self.colors:
             if self.colors == 256:
                 args.insert(0, "-2")
@@ -160,9 +160,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         ]
 
         # clear up empty dict
-        sessions = [
-            dict((k, v) for k, v in session.items() if v) for session in sessions
-        ]
+        sessions = [{k: v for k, v in session.items() if v} for session in sessions]
 
         return sessions
 
@@ -228,7 +226,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         ]
 
         # clear up empty dict
-        windows = [dict((k, v) for k, v in window.items() if v) for window in windows]
+        windows = [{k: v for k, v in window.items() if v} for window in windows]
 
         # tmux < 1.8 doesn't have window_id, use window_name
         for w in windows:
@@ -299,9 +297,9 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         # clear up empty dict
         panes = [
-            dict(
-                (k, v) for k, v in window.items() if v or k == "pane_current_path"
-            )  # preserve pane_current_path, in case it entered a new process
+            {
+                k: v for k, v in window.items() if v or k == "pane_current_path"
+            }  # preserve pane_current_path, in case it entered a new process
             # where we may not get a cwd from.
             for window in panes
         ]
@@ -372,7 +370,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         session_check_name(target_session)
 
         if exact and has_gte_version("2.1"):
-            target_session = "={}".format(target_session)
+            target_session = f"={target_session}"
 
         proc = self.cmd("has-session", "-t%s" % target_session)
 
@@ -464,7 +462,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         window_name=None,
         window_command=None,
         *args,
-        **kwargs
+        **kwargs,
     ):
         """
         Return :class:`Session` from  ``$ tmux new-session``.
@@ -570,7 +568,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         session = dict(zip(sformats, session.split(formats.FORMAT_SEPARATOR)))
 
         # clear up empty dict
-        session = dict((k, v) for k, v in session.items() if v)
+        session = {k: v for k, v in session.items() if v}
 
         session = Session(server=self, **session)
 

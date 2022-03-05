@@ -29,7 +29,7 @@ version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 def test_allows_master_version(monkeypatch):
     def mock_tmux_cmd(param):
-        class Hi(object):
+        class Hi:
             stdout = ["tmux master"]
             stderr = None
 
@@ -47,7 +47,7 @@ def test_allows_master_version(monkeypatch):
 
 def test_allows_next_version(monkeypatch):
     def mock_tmux_cmd(param):
-        class Hi(object):
+        class Hi:
             stdout = ["tmux next-2.9"]
             stderr = None
 
@@ -63,7 +63,7 @@ def test_allows_next_version(monkeypatch):
 
 def test_get_version_openbsd(monkeypatch):
     def mock_tmux_cmd(param):
-        class Hi(object):
+        class Hi:
             stderr = ["tmux: unknown option -- V"]
 
         return Hi()
@@ -80,7 +80,7 @@ def test_get_version_openbsd(monkeypatch):
 
 def test_get_version_too_low(monkeypatch):
     def mock_tmux_cmd(param):
-        class Hi(object):
+        class Hi:
             stderr = ["tmux: unknown option -- V"]
 
         return Hi()

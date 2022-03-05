@@ -159,7 +159,6 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
                 - https://www.mail-archive.com/tech@openbsd.org/msg45186.html
                 - https://marc.info/?l=openbsd-cvs&m=152183263526828&w=2
                 """
-                pass
             else:
                 raise exc.LibTmuxException(proc.stderr)
 
@@ -242,7 +241,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         window = dict(zip(wformats, window.split(formats.FORMAT_SEPARATOR)))
 
         # clear up empty dict
-        window = dict((k, v) for k, v in window.items() if v)
+        window = {k: v for k, v in window.items() if v}
         window = Window(session=self, **window)
 
         self.server._update_windows()
@@ -358,7 +357,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         # Note that we also provide the session ID here, since cmd()
         # will not automatically add it as there is already a '-t'
         # argument provided.
-        target = "-t%s:%s" % (self._session_id, target_window)
+        target = f"-t{self._session_id}:{target_window}"
 
         proc = self.cmd("select-window", target)
 
@@ -511,4 +510,4 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         return option[1]
 
     def __repr__(self):
-        return "%s(%s %s)" % (self.__class__.__name__, self.id, self.name)
+        return f"{self.__class__.__name__}({self.id} {self.name})"
