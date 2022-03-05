@@ -276,4 +276,6 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         return self.window.select_pane(self.get("pane_id"))
 
     def __repr__(self):
-        return "%s(%s %s)" % (self.__class__.__name__, self.get("pane_id"), self.window)
+        return "{}({} {})".format(
+            self.__class__.__name__, self.get("pane_id"), self.window
+        )

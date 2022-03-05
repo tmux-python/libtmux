@@ -194,7 +194,7 @@ def temp_window(session, *args, **kwargs):
     return
 
 
-class EnvironmentVarGuard(object):
+class EnvironmentVarGuard:
 
     """Mock environmental variables safetly.
 

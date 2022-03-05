@@ -5,7 +5,6 @@ libtmux.common
 ~~~~~~~~~~~~~~
 
 """
-import collections
 import logging
 import os
 import re
@@ -26,7 +25,7 @@ TMUX_MIN_VERSION = "1.8"
 TMUX_MAX_VERSION = "2.4"
 
 
-class EnvironmentMixin(object):
+class EnvironmentMixin:
 
     """
     Mixin class for managing session and server level environment variables in
@@ -142,7 +141,7 @@ class EnvironmentMixin(object):
         return vars_dict
 
 
-class tmux_cmd(object):
+class tmux_cmd:
 
     """
     :term:`tmux(1)` command via :py:mod:`subprocess`.
@@ -207,7 +206,7 @@ class tmux_cmd(object):
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
         except Exception as e:
-            logger.error("Exception for %s: \n%s" % (subprocess.list2cmdline(cmd), e))
+            logger.error(f"Exception for {subprocess.list2cmdline(cmd)}: \n{e}")
 
         self.returncode = returncode
 
@@ -223,7 +222,7 @@ class tmux_cmd(object):
             if not self.stdout:
                 self.stdout = self.stderr[0]
 
-        logger.debug("self.stdout for %s: \n%s" % (" ".join(cmd), self.stdout))
+        logger.debug("self.stdout for {}: \n{}".format(" ".join(cmd), self.stdout))
 
 
 class TmuxMappingObject(MutableMapping):
@@ -272,10 +271,10 @@ class TmuxMappingObject(MutableMapping):
         try:
             return self._info[self.formatter_prefix + key]
         except KeyError:
-            raise AttributeError("%s has no property %s" % (self.__class__, key))
+            raise AttributeError(f"{self.__class__} has no property {key}")
 
 
-class TmuxRelationalObject(object):
+class TmuxRelationalObject:
 
     """Base Class for managing tmux object child entities.  .. # NOQA
 
@@ -428,8 +427,8 @@ def which(
         if _is_executable_file_or_link(full_path):
             return full_path
     logger.info(
-        "'{0}' could not be found in the following search path: "
-        "'{1}'".format(exe, search_path)
+        "'{}' could not be found in the following search path: "
+        "'{}'".format(exe, search_path)
     )
 
     return None
