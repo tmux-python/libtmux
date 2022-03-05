@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def test_select_window(session):
     window_count = len(session._windows)
     # to do, get option for   base-index from tmux
-    # for now hoever, let's get the index from the first window.
+    # for now however, let's get the index from the first window.
     assert window_count == 1
 
     window_base_index = int(session.attached_window.index)
