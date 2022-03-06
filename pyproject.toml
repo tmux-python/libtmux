@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "libtmux"
-version = "0.11.0b0"
+version = "0.11.0b1"
 description = "scripting library / orm for tmux"
 license = "MIT"
 authors = ["Tony Narlock <tony@git-pull.com>"]
