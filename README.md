@@ -24,7 +24,7 @@ Python 2.x will be deprecated in libtmux 0.9. The backports branch is
 
 # install
 
-```sh
+```console
 $ pip install --user libtmux
 ```
 
@@ -32,13 +32,13 @@ $ pip install --user libtmux
 
 session name `foo`, window name `bar`
 
-```sh
+```console
 $ tmux new-session -s foo -n bar
 ```
 
 # pilot your tmux session via python
 
-```sh
+```console
 $ python
 
 # or for nice autocomplete and syntax highlighting

@@ -25,7 +25,7 @@ from inside a live tmux session.
 
 Next, ensure `libtmux` is installed:
 
-```{code-block} bash
+```console
 
 $ pip install --user libtmux
 
@@ -35,7 +35,7 @@ $ pip install --user libtmux
 
 Now, let's open a tmux session.
 
-```{code-block} bash
+```console
 
 $ tmux new-session -n bar -s foo
 
@@ -59,7 +59,7 @@ Session name `-s`: `foo`
 
 ```
 
-```{code-block} bash
+```console
 
 $ python
 
@@ -67,7 +67,7 @@ $ python
 
 For commandline completion, you can also use [ptpython].
 
-```{code-block} bash
+```console
 
 $ pip install --user ptpython
 $ ptpython

@@ -17,7 +17,7 @@ $ tmux
 
 terminal two, `python` or `ptpython` if you have it:
 
-```{code-block} sh
+```console
 
 $ python
 
