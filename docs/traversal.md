@@ -16,22 +16,6 @@ terminal one: start tmux in a seperate terminal:
 $ tmux
 ```
 
-:::{NOTE}
-
-Make sure you have {ref}`libtmux installed <installation>`:
-
-```
-$ pip install libtmux
-```
-
-To upgrade:
-
-```
-$ pip install -U libtmux
-```
-
-:::
-
 terminal two, `python` or `ptpython` if you have it:
 
 ```

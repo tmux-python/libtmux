@@ -15,12 +15,6 @@ terminal one: start tmux in a seperate terminal:
 $ tmux
 ```
 
-:::::{NOTE}
-
-Make sure you have {ref}`libtmux installed <installation>`:
-
-:::::
-
 terminal two, `python` or `ptpython` if you have it:
 
 ```{code-block} sh
