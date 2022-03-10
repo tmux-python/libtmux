@@ -3,15 +3,17 @@ import inspect
 import os
 import sys
 from os.path import dirname, relpath
+from pathlib import Path
 
 import libtmux  # NOQA
 from libtmux import test  # NOQA
 
 # Get the project root dir, which is the parent dir of this
-cwd = os.getcwd()
-project_root = os.path.dirname(cwd)
+cwd = Path.cwd()
+project_root = cwd.parent
 
-sys.path.insert(0, project_root)
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(cwd / "_ext"))
 
 
 # package data
@@ -50,6 +52,13 @@ copyright = about["__copyright__"]
 
 version = "%s" % (".".join(about["__version__"].split("."))[:2])
 release = "%s" % (about["__version__"])
+
+
+def setup(app):
+    from docs._ext.code import CodeBlock
+
+    app.add_directive("code-block", CodeBlock)
+
 
 exclude_patterns = ["_build"]
 
