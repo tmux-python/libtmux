@@ -96,7 +96,9 @@ ogp_desscription_length = about["__description__"]
 ogp_site_name = about["__title__"]
 
 # sphinx-copybutton
-copybutton_prompt_text = r"$ |>>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+copybutton_prompt_text = (
+    r">>> |\.\.\. |> |\$ |\# | In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+)
 copybutton_prompt_is_regexp = True
 copybutton_remove_prompts = True
 
