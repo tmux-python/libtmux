@@ -15,12 +15,10 @@ project_root = cwd.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(cwd / "_ext"))
 
-
 # package data
 about = {}
 with open("../libtmux/__about__.py") as fp:
     exec(fp.read(), about)
-
 
 extensions = [
     "sphinx.ext.autodoc",
@@ -101,7 +99,6 @@ ogp_site_name = about["__title__"]
 copybutton_prompt_text = r"$ |>>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
 copybutton_remove_prompts = True
-
 
 htmlhelp_basename = "%sdoc" % about["__title__"]
 
