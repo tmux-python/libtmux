@@ -204,7 +204,6 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         wformats = ["session_name", "session_id"] + formats.WINDOW_FORMATS
         tmux_formats = ["#{%s}" % format for format in wformats]
-        print()
 
         proc = self.cmd(
             "list-windows",  # ``tmux list-windows``
