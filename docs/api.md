@@ -201,4 +201,4 @@
 to split `tmux(1)`'s formatting information.
 
 If you find any compatibility problems with the default, or better yet find a string copacetic
-many environments and tmux releases, note it at https://github.com/tmux-python/libtmux/discussions/355.
+many environments and tmux releases, note it at <https://github.com/tmux-python/libtmux/discussions/355>.
