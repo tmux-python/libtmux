@@ -2,9 +2,10 @@
 
 # API Reference
 
-:::{seealso}
+:::{warning}
 
-{ref}`quickstart`.
+All APIs are considered experimental and subject to break pre-1.0. They can and will break between
+versions.
 
 :::
 
