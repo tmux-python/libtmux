@@ -17,12 +17,8 @@ hide-toc: true
 
 quickstart
 about
-properties
-traversal
-servers
-sessions
-windows
-panes
+topics/index
+reference/index
 api
 
 ```
