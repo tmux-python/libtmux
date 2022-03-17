@@ -11,7 +11,7 @@ In tmux, a server is automatically started on your behalf
 when you first run tmux.
 
 ```{eval-rst}
-.. autoclass:: Server
+.. autoclass:: libtmux.Server
     :noindex:
     :members:
     :inherited-members:
