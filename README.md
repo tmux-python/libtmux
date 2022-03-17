@@ -1,4 +1,4 @@
-libtmux - scripting library for tmux
+# libtmux - scripting library for tmux
 
 [![Python Package](https://img.shields.io/pypi/v/libtmux.svg)](https://pypi.org/project/libtmux/)
 [![Docs](https://github.com/tmux-python/libtmux/workflows/Publish%20Docs/badge.svg)](https://libtmux.git-pull.com/)

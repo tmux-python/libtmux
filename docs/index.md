@@ -1,7 +1,5 @@
 (index)=
 
-# libtmux
-
 ```{include} ../README.md
 
 ```
