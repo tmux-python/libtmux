@@ -1,0 +1,6 @@
+"panes.md" "reference/panes.md"
+"properties.md" "reference/properties.md"
+"servers.md" "reference/servers.md"
+"windows.md" "reference/windows.md"
+"traversal.md" "topics/traversal.md"
+"sessions.md" "reference/sessions.md"
