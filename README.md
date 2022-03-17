@@ -1,7 +1,7 @@
 libtmux - scripting library for tmux
 
-[![Python Package](https://img.shields.io/pypi/v/libtmux.svg)](http://badge.fury.io/py/libtmux)
-[![Docs](https://github.com/tmux-python/libtmux/workflows/Publish%20Docs/badge.svg)](https://github.com/tmux-python/libtmux/actions?query=workflow%3A%22Publish+Docs%22)
+[![Python Package](https://img.shields.io/pypi/v/libtmux.svg)](https://pypi.org/project/libtmux/)
+[![Docs](https://github.com/tmux-python/libtmux/workflows/Publish%20Docs/badge.svg)](https://libtmux.git-pull.com/)
 [![Build Status](https://github.com/tmux-python/libtmux/workflows/tests/badge.svg)](https://github.com/tmux-python/tmux-python/actions?query=workflow%3A%22tests%22)
 [![Code Coverage](https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg)](https://codecov.io/gh/tmux-python/libtmux)
 [![License](https://img.shields.io/github/license/tmux-python/libtmux.svg)](https://github.com/tmux-python/libtmux/blob/master/LICENSE)
