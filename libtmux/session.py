@@ -318,12 +318,9 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         """
         active_windows = []
         for window in self._windows:
-            if "window_active" in window:
-                # for now window_active is a unicode
-                if window.get("window_active") == "1":
-                    active_windows.append(Window(session=self, **window))
-                else:
-                    continue
+            # for now window_active is a unicode
+            if "window_active" in window and window.get("window_active") == "1":
+                active_windows.append(Window(session=self, **window))
 
         if len(active_windows) == int(1):
             return active_windows[0]
