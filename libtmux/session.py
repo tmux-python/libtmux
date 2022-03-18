@@ -322,14 +322,14 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
             if "window_active" in window and window.get("window_active") == "1":
                 active_windows.append(Window(session=self, **window))
 
-        if len(active_windows) == int(1):
+        if len(active_windows) == 1:
             return active_windows[0]
         else:
             raise exc.LibTmuxException(
                 "multiple active windows found. %s" % active_windows
             )
 
-        if len(self._windows) == int(0):
+        if len(self._windows) == 0:
             raise exc.LibTmuxException("No Windows")
 
     def select_window(self, target_window: str) -> Window:

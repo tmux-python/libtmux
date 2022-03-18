@@ -62,7 +62,7 @@ class EnvironmentMixin:
         proc = self.cmd(*args)
 
         if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == int(1):
+            if isinstance(proc.stderr, list) and len(proc.stderr) == 1:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
@@ -83,7 +83,7 @@ class EnvironmentMixin:
         proc = self.cmd(*args)
 
         if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == int(1):
+            if isinstance(proc.stderr, list) and len(proc.stderr) == 1:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
@@ -103,7 +103,7 @@ class EnvironmentMixin:
         proc = self.cmd(*args)
 
         if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == int(1):
+            if isinstance(proc.stderr, list) and len(proc.stderr) == 1:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
