@@ -355,7 +355,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         """
         return self.session.select_window(self.index)
 
-    def select_pane(self, target_pane: str) -> Pane:
+    def select_pane(self, target_pane: str) -> t.Optional[Pane]:
         """
         Return selected :class:`Pane` through ``$ tmux select-pane``.
 
@@ -379,7 +379,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         return self.attached_pane
 
-    def last_pane(self) -> Pane:
+    def last_pane(self) -> t.Optional[Pane]:
         """Return last pane."""
         return self.select_pane("-l")
 
@@ -492,7 +492,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         return Pane(window=self, **pane)
 
     @property
-    def attached_pane(self) -> Pane:
+    def attached_pane(self) -> t.Optional[Pane]:
         """
         Return the attached :class:`Pane`.
 
@@ -505,10 +505,6 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
                 # for now pane_active is a unicode
                 if pane.get("pane_active") == "1":
                     return Pane(window=self, **pane)
-                else:
-                    continue
-
-        return []
 
     def _list_panes(self) -> t.List[PaneDict]:
         panes = self.server._update_panes()._panes
