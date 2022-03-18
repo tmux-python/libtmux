@@ -25,6 +25,10 @@ TMUX_MIN_VERSION = "1.8"
 #: Most recent version of tmux supported
 TMUX_MAX_VERSION = "2.4"
 
+SessionDict = t.Dict[str, t.Any]
+WindowDict = t.Dict[str, t.Any]
+PaneDict = t.Dict[str, t.Any]
+
 
 class EnvironmentMixin:
 
