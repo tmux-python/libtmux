@@ -163,10 +163,12 @@ Grab the output of pane:
 
 Traverse and navigate:
 
-    >>> pane.window
-    Window(@10 1:libtmuxower, Session($3 foo))
-    >>> pane.window.session
-    Session($3 foo)
+```python
+>>> pane.window
+Window(@10 1:libtmuxower, Session($3 foo))
+>>> pane.window.session
+Session($3 foo)
+```
 
 # Donations
 
