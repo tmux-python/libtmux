@@ -22,21 +22,21 @@ View the [documentation](https://libtmux.git-pull.com/),
 Python 2.x will be deprecated in libtmux 0.9. The backports branch is
 [v0.8.x](https://github.com/tmux-python/libtmux/tree/v0.8.x).
 
-# install
+# Install
 
 ```console
 $ pip install --user libtmux
 ```
 
-# open a tmux session
+# Open a tmux session
 
-session name `foo`, window name `bar`
+Session name `foo`, window name `bar`
 
 ```console
 $ tmux new-session -s foo -n bar
 ```
 
-# pilot your tmux session via python
+# Pilot your tmux session via python
 
 ```console
 $ python
@@ -46,7 +46,7 @@ $ pip install --user ptpython
 $ ptpython
 ```
 
-connect to a live tmux session:
+Connect to a live tmux session:
 
 ```python
 >>> import libtmux
@@ -61,34 +61,34 @@ current tmux server / session / window pane.
 [tmuxp]: https://tmuxp.git-pull.com/
 [`tmuxp shell`]: https://tmuxp.git-pull.com/cli.html#shell
 
-list sessions:
+List sessions:
 
 ```python
 >>> server.list_sessions()
 [Session($3 foo), Session($1 libtmux)]
 ```
 
-find session:
+Find session:
 
 ```python
 >>> server.get_by_id('$3')
 Session($3 foo)
 ```
 
-find session by dict lookup:
+Find session by dict lookup:
 
 ```python
 >>> server.find_where({ "session_name": "foo" })
 Session($3 foo)
 ```
 
-assign session to `session`:
+Assign session to `session`:
 
 ```python
 >>> session = server.find_where({ "session_name": "foo" })
 ```
 
-play with session:
+Control your session:
 
 ```python
 >>> session.new_window(attach=False, window_name="ha in the bg")
@@ -96,20 +96,20 @@ Window(@8 2:ha in the bg, Session($3 foo))
 >>> session.kill_window("ha in")
 ```
 
-create new window in the background (don't switch to it):
+Create new window in the background (don't switch to it):
 
 ```python
 >>> w = session.new_window(attach=False, window_name="ha in the bg")
 Window(@11 3:ha in the bg, Session($3 foo))
 ```
 
-kill window object directly:
+Close window:
 
 ```python
 >>> w.kill_window()
 ```
 
-grab remaining tmux window:
+Grab remaining tmux window:
 
 ```python
 >>> window = session.attached_window
@@ -117,14 +117,14 @@ grab remaining tmux window:
 Pane(%23 Window(@10 1:bar, Session($3 foo)))
 ```
 
-rename window:
+Rename window:
 
 ```python
 >>> window.rename_window('libtmuxower')
 Window(@10 1:libtmuxower, Session($3 foo))
 ```
 
-create panes by splitting window:
+Split window (create a new pane):
 
 ```python
 >>> pane = window.split_window()
@@ -134,7 +134,7 @@ create panes by splitting window:
 >>> pane = window.split_window(attach=False)
 ```
 
-send key strokes to panes:
+Type inside the pane (send key strokes):
 
 ```python
 >>> pane.send_keys('echo hey send now')
@@ -143,7 +143,7 @@ send key strokes to panes:
 >>> pane.enter()
 ```
 
-grab the output of pane:
+Grab the output of pane:
 
 ```python
 >>> pane.clear()  # clear the pane
@@ -161,7 +161,7 @@ grab the output of pane:
                     ||----w |
                     ||     ||
 
-powerful traversal features:
+Traverse and navigate:
 
     >>> pane.window
     Window(@10 1:libtmuxower, Session($3 foo))
