@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 from distutils.version import LooseVersion
+from typing import Optional
 
 from . import exc
 from ._compat import MutableMapping, console_to_str, str_from_console
@@ -374,10 +375,16 @@ class TmuxRelationalObject:
 
 
 def which(
-    exe=None,
-    default_paths=["/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/local/bin"],
-    append_env_path=True,
-):
+    exe: str,
+    default_paths: list[str] = [
+        "/bin",
+        "/sbin",
+        "/usr/bin",
+        "/usr/sbin",
+        "/usr/local/bin",
+    ],
+    append_env_path: bool = True,
+) -> Optional[str]:
     """
     Return path of bin. Python clone of /usr/bin/which.
 
@@ -401,7 +408,7 @@ def which(
     from salt.util - https://www.github.com/saltstack/salt - license apache
     """
 
-    def _is_executable_file_or_link(exe):
+    def _is_executable_file_or_link(exe: str) -> bool:
         # check for os.X_OK doesn't suffice because directory may executable
         return os.access(exe, os.X_OK) and (os.path.isfile(exe) or os.path.islink(exe))
 
@@ -434,7 +441,7 @@ def which(
     return None
 
 
-def get_version():
+def get_version() -> LooseVersion:
     """
     Return tmux version.
 
@@ -471,7 +478,7 @@ def get_version():
     return LooseVersion(version)
 
 
-def has_version(version):
+def has_version(version: str) -> bool:
     """
     Return affirmative if tmux version installed.
 
@@ -488,7 +495,7 @@ def has_version(version):
     return get_version() == LooseVersion(version)
 
 
-def has_gt_version(min_version):
+def has_gt_version(min_version: str) -> bool:
     """
     Return affirmative if tmux version greater than minimum.
 
@@ -505,7 +512,7 @@ def has_gt_version(min_version):
     return get_version() > LooseVersion(min_version)
 
 
-def has_gte_version(min_version):
+def has_gte_version(min_version: str) -> bool:
     """
     Return True if tmux version greater or equal to minimum.
 
@@ -522,7 +529,7 @@ def has_gte_version(min_version):
     return get_version() >= LooseVersion(min_version)
 
 
-def has_lte_version(max_version):
+def has_lte_version(max_version: str) -> bool:
     """
     Return True if tmux version less or equal to minimum.
 
@@ -539,7 +546,7 @@ def has_lte_version(max_version):
     return get_version() <= LooseVersion(max_version)
 
 
-def has_lt_version(max_version):
+def has_lt_version(max_version: str) -> bool:
     """
     Return True if tmux version less than minimum.
 
@@ -556,7 +563,7 @@ def has_lt_version(max_version):
     return get_version() < LooseVersion(max_version)
 
 
-def has_minimum_version(raises=True):
+def has_minimum_version(raises: bool = True) -> bool:
     """
     Return if tmux meets version requirement. Version >1.8 or above.
 
@@ -598,7 +605,7 @@ def has_minimum_version(raises=True):
     return True
 
 
-def session_check_name(session_name):
+def session_check_name(session_name: str):
     """
     Raises exception session name invalid, modeled after tmux function.
 
@@ -627,7 +634,7 @@ def session_check_name(session_name):
         )
 
 
-def handle_option_error(error):
+def handle_option_error(error: str):
     """Raises exception if error in option command found.
 
     In tmux 3.0, show-option and show-window-otion return invalid option instead of
@@ -664,7 +671,7 @@ def handle_option_error(error):
         raise exc.OptionError(error)  # Raise generic option error
 
 
-def get_libtmux_version():
+def get_libtmux_version() -> LooseVersion:
     """Return libtmux version is a PEP386 compliant format.
 
     Returns

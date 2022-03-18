@@ -1,11 +1,12 @@
 # flake8: NOQA
 import sys
 from collections.abc import MutableMapping
+from typing import Union
 
 console_encoding = sys.__stdout__.encoding
 
 
-def console_to_str(s):
+def console_to_str(s: bytes) -> str:
     """From pypa/pip project, pip.backwardwardcompat. License MIT."""
     try:
         return s.decode(console_encoding, "ignore")
@@ -13,13 +14,14 @@ def console_to_str(s):
         return s.decode("utf_8", "ignore")
 
 
+# TODO Consider removing, reraise does not seem to be called anywhere
 def reraise(tp, value, tb=None):
     if value.__traceback__ is not tb:
         raise (value.with_traceback(tb))
     raise value
 
 
-def str_from_console(s):
+def str_from_console(s: Union[str, bytes]) -> str:
     try:
         return str(s)
     except UnicodeDecodeError:
