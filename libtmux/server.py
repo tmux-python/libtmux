@@ -11,16 +11,15 @@ import typing as t
 from . import exc, formats
 from .common import (
     EnvironmentMixin,
+    PaneDict,
+    SessionDict,
     TmuxRelationalObject,
+    WindowDict,
     has_gte_version,
     session_check_name,
     tmux_cmd,
 )
 from .session import Session
-
-SessionDict = t.Dict[str, t.Any]
-WindowDict = t.Dict[str, t.Any]
-PaneDict = t.Dict[str, t.Any]
 
 logger = logging.getLogger(__name__)
 
