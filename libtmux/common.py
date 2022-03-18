@@ -349,7 +349,7 @@ class TmuxRelationalObject:
         target_children = list(filter(by, self.children))
         if first:
             return target_children[0]
-        return return target_children
+        return target_children
 
     def get_by_id(self, id):
         """
