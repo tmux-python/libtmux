@@ -48,11 +48,6 @@ html:
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 
-redirects:
-	$(SPHINXBUILD) -b rediraffewritediff $(ALLSPHINXOPTS) $(BUILDDIR)/html
-	@echo
-	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
-
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml
 	@echo
@@ -158,6 +153,11 @@ doctest:
 	$(SPHINXBUILD) -b doctest $(ALLSPHINXOPTS) $(BUILDDIR)/doctest
 	@echo "Testing of doctests in the sources finished, look at the " \
 	      "results in $(BUILDDIR)/doctest/output.txt."
+
+redirects:
+	$(SPHINXBUILD) -b rediraffewritediff $(ALLSPHINXOPTS)
+	@echo
+	@echo "Build finished. The redirects are in rediraffe_redirects."
 
 checkbuild:
 	rm -rf $(BUILDDIR)
