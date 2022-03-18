@@ -6,6 +6,7 @@ libtmux.server
 """
 import logging
 import os
+import typing as t
 
 from . import exc, formats
 from .common import (
@@ -16,6 +17,10 @@ from .common import (
     tmux_cmd,
 )
 from .session import Session
+
+SessionDict = t.Dict[str, t.Any]
+WindowDict = t.Dict[str, t.Any]
+PaneDict = t.Dict[str, t.Any]
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +130,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         return tmux_cmd(*args, **kwargs)
 
-    def _list_sessions(self):
+    def _list_sessions(self) -> t.List[SessionDict]:
         """
         Return list of sessions in :py:obj:`dict` form.
 
@@ -165,12 +170,12 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         return sessions
 
     @property
-    def _sessions(self):
+    def _sessions(self) -> t.List[SessionDict]:
         """Property / alias to return :meth:`~._list_sessions`."""
 
         return self._list_sessions()
 
-    def list_sessions(self):
+    def list_sessions(self) -> t.List[Session]:
         """
         Return list of :class:`Session` from the ``tmux(1)`` session.
 
@@ -181,14 +186,14 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         return [Session(server=self, **s) for s in self._sessions]
 
     @property
-    def sessions(self):
+    def sessions(self) -> t.List[Session]:
         """Property / alias to return :meth:`~.list_sessions`."""
         return self.list_sessions()
 
     #: Alias :attr:`sessions` for :class:`~libtmux.common.TmuxRelationalObject`
     children = sessions
 
-    def _list_windows(self):
+    def _list_windows(self) -> t.List[WindowDict]:
         """
         Return list of windows in :py:obj:`dict` form.
 
@@ -239,7 +244,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         return self._windows
 
-    def _update_windows(self):
+    def _update_windows(self) -> "Server":
         """
         Update internal window data and return ``self`` for chainability.
 
@@ -250,7 +255,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         self._list_windows()
         return self
 
-    def _list_panes(self):
+    def _list_panes(self) -> t.List[PaneDict]:
         """
         Return list of panes in :py:obj:`dict` form.
 
@@ -310,7 +315,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         return self._panes
 
-    def _update_panes(self):
+    def _update_panes(self) -> "Server":
         """
         Update internal pane data and return ``self`` for chainability.
 
@@ -322,7 +327,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         return self
 
     @property
-    def attached_sessions(self):
+    def attached_sessions(self) -> t.Optional[t.List[Session]]:
         """
         Return active :class:`Session` objects.
 
@@ -345,7 +350,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         return [Session(server=self, **s) for s in attached_sessions] or None
 
-    def has_session(self, target_session, exact=True):
+    def has_session(self, target_session: str, exact: bool = True) -> bool:
         """
         Return True if session exists. ``$ tmux has-session``.
 
@@ -382,7 +387,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         """``$ tmux kill-server``."""
         self.cmd("kill-server")
 
-    def kill_session(self, target_session=None):
+    def kill_session(self, target_session=None) -> "Server":
         """
         Kill the tmux session with ``$ tmux kill-session``, return ``self``.
 
@@ -462,7 +467,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         window_command=None,
         *args,
         **kwargs,
-    ):
+    ) -> Session:
         """
         Return :class:`Session` from  ``$ tmux new-session``.
 
