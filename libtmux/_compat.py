@@ -1,7 +1,6 @@
 # flake8: NOQA
 import sys
 import typing as t
-from collections.abc import MutableMapping
 
 console_encoding = sys.__stdout__.encoding
 

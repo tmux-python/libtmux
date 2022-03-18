@@ -58,21 +58,23 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         self.server._update_panes()
 
     @property
-    def _info(self, *args):
+    def _info(self):
 
         attrs = {"pane_id": self._pane_id}
 
         # from https://github.com/serkanyersen/underscore.py
-        def by(val, *args):
-            for key, value in attrs.items():
+        def by(val) -> bool:
+            for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
                         return False
                 except KeyError:
                     return False
-                return True
+            return True
 
-        return list(filter(by, self.server._panes))[0]
+        # TODO add type hint
+        target_panes = list(filter(by, self.server._panes))
+        return target_panes[0]
 
     def cmd(self, cmd, *args, **kwargs):
         """Return :meth:`Server.cmd` defaulting to ``target_pane`` as target.

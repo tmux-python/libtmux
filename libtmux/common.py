@@ -11,10 +11,11 @@ import re
 import subprocess
 import sys
 import typing as t
+from collections.abc import MutableMapping
 from distutils.version import LooseVersion
 
 from . import exc
-from ._compat import MutableMapping, console_to_str, str_from_console
+from ._compat import console_to_str, str_from_console
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ class EnvironmentMixin:
         proc = self.cmd(*args)
 
         if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == int(1):
+            if isinstance(proc.stderr, list) and len(proc.stderr) == 1:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
@@ -83,7 +84,7 @@ class EnvironmentMixin:
         proc = self.cmd(*args)
 
         if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == int(1):
+            if isinstance(proc.stderr, list) and len(proc.stderr) == 1:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
@@ -103,7 +104,7 @@ class EnvironmentMixin:
         proc = self.cmd(*args)
 
         if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == int(1):
+            if isinstance(proc.stderr, list) and len(proc.stderr) == 1:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
@@ -336,19 +337,20 @@ class TmuxRelationalObject:
         """
 
         # from https://github.com/serkanyersen/underscore.py
-        def by(val, *args):
-            for key, value in attrs.items():
+        def by(val) -> bool:
+            for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
                         return False
                 except KeyError:
                     return False
-                return True
+            return True
 
+        # TODO add type hint
+        target_children = list(filter(by, self.children))
         if first:
-            return list(filter(by, self.children))[0]
-        else:
-            return list(filter(by, self.children))
+            return target_children[0]
+        return target_children
 
     def get_by_id(self, id):
         """

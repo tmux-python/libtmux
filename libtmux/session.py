@@ -65,17 +65,19 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         attrs = {"session_id": str(self._session_id)}
 
-        def by(val):
-            for key, value in attrs.items():
+        def by(val) -> bool:
+            for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
                         return False
                 except KeyError:
                     return False
-                return True
+            return True
 
+        # TODO add type hint
+        target_sessions = list(filter(by, self.server._sessions))
         try:
-            return list(filter(by, self.server._sessions))[0]
+            return target_sessions[0]
         except IndexError as e:
             logger.error(e)
 
@@ -316,21 +318,18 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         """
         active_windows = []
         for window in self._windows:
-            if "window_active" in window:
-                # for now window_active is a unicode
-                if window.get("window_active") == "1":
-                    active_windows.append(Window(session=self, **window))
-                else:
-                    continue
+            # for now window_active is a unicode
+            if "window_active" in window and window.get("window_active") == "1":
+                active_windows.append(Window(session=self, **window))
 
-        if len(active_windows) == int(1):
+        if len(active_windows) == 1:
             return active_windows[0]
         else:
             raise exc.LibTmuxException(
                 "multiple active windows found. %s" % active_windows
             )
 
-        if len(self._windows) == int(0):
+        if len(self._windows) == 0:
             raise exc.LibTmuxException("No Windows")
 
     def select_window(self, target_window: str) -> Window:
