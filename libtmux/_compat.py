@@ -1,7 +1,7 @@
 # flake8: NOQA
 import sys
+import typing as t
 from collections.abc import MutableMapping
-from typing import Union
 
 console_encoding = sys.__stdout__.encoding
 
@@ -21,7 +21,7 @@ def reraise(tp, value, tb=None):
     raise value
 
 
-def str_from_console(s: Union[str, bytes]) -> str:
+def str_from_console(s: t.Union[str, bytes]) -> str:
     try:
         return str(s)
     except UnicodeDecodeError:

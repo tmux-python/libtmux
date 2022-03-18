@@ -10,8 +10,8 @@ import os
 import re
 import subprocess
 import sys
+import typing as t
 from distutils.version import LooseVersion
-from typing import Optional
 
 from . import exc
 from ._compat import MutableMapping, console_to_str, str_from_console
@@ -376,7 +376,7 @@ class TmuxRelationalObject:
 
 def which(
     exe: str,
-    default_paths: list[str] = [
+    default_paths: t.List[str] = [
         "/bin",
         "/sbin",
         "/usr/bin",
@@ -384,7 +384,7 @@ def which(
         "/usr/local/bin",
     ],
     append_env_path: bool = True,
-) -> Optional[str]:
+) -> t.Optional[str]:
     """
     Return path of bin. Python clone of /usr/bin/which.
 
