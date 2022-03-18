@@ -154,7 +154,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
     def split_window(
         self, attach=False, vertical=True, start_directory=None, percent=None
-    ):
+    ) -> "Pane":
         """
         Split window at pane and return newly created :class:`Pane`.
 
@@ -261,7 +261,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """
         return self.cmd("capture-pane", "-p").stdout
 
-    def select_pane(self):
+    def select_pane(self) -> "Pane":
         """
         Select pane. Return ``self``.
 
@@ -275,7 +275,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """
         return self.window.select_pane(self.get("pane_id"))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "{}({} {})".format(
             self.__class__.__name__, self.get("pane_id"), self.window
         )
