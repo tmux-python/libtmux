@@ -6,12 +6,14 @@ libtmux.session
 """
 import logging
 import os
+import typing as t
 
 from . import exc, formats
 from .common import (
     EnvironmentMixin,
     TmuxMappingObject,
     TmuxRelationalObject,
+    WindowDict,
     handle_option_error,
     has_version,
     session_check_name,
@@ -129,7 +131,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def rename_session(self, new_name):
+    def rename_session(self, new_name: str) -> "Session":
         """
         Rename session and return new :class:`Session` object.
 
@@ -171,7 +173,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         attach=True,
         window_index="",
         window_shell=None,
-    ):
+    ) -> Window:
         """
         Return :class:`Window` from ``$ tmux new-window``.
 
@@ -273,20 +275,18 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         self.server._update_windows()
 
-    def _list_windows(self):
+    def _list_windows(self) -> t.List[WindowDict]:
         windows = self.server._update_windows()._windows
 
-        windows = [w for w in windows if w["session_id"] == self.id]
-
-        return windows
+        return [w for w in windows if w["session_id"] == self.id]
 
     @property
-    def _windows(self):
+    def _windows(self) -> t.List[WindowDict]:
         """Property / alias to return :meth:`Session._list_windows`."""
 
         return self._list_windows()
 
-    def list_windows(self):
+    def list_windows(self) -> t.List[Window]:
         """Return a list of :class:`Window` from the ``tmux(1)`` session.
 
         Returns
@@ -298,7 +298,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         return [Window(session=self, **window) for window in windows]
 
     @property
-    def windows(self):
+    def windows(self) -> t.List[Window]:
         """Property / alias to return :meth:`Session.list_windows`."""
         return self.list_windows()
 
@@ -306,7 +306,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     children = windows
 
     @property
-    def attached_window(self):
+    def attached_window(self) -> Window:
         """
         Return active :class:`Window` object.
 
@@ -333,7 +333,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if len(self._windows) == int(0):
             raise exc.LibTmuxException("No Windows")
 
-    def select_window(self, target_window):
+    def select_window(self, target_window: str) -> Window:
         """
         Return :class:`Window` selected via ``$ tmux select-window``.
 
