@@ -74,22 +74,23 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         attrs = {"window_id": self._window_id}
 
         # from https://github.com/serkanyersen/underscore.py
-        def by(val, *args):
-            for key, value in attrs.items():
+        def by(val):
+            for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
                         return False
                 except KeyError:
                     return False
-                return True
+            return True
 
-        ret = list(filter(by, self.server._windows))
+        # TODO add type hint
+        target_windows = list(filter(by, self.server._windows))
         # If a window_shell option was configured which results in
         # a short-lived process, the window id is @0.  Use that instead of
         # self._window_id
-        if len(ret) == 0 and self.server._windows[0]["window_id"] == "@0":
-            ret = self.server._windows
-        return ret[0]
+        if len(target_windows) == 0 and self.server._windows[0]["window_id"] == "@0":
+            target_windows = self.server._windows
+        return target_windows[0]
 
     def cmd(self, cmd, *args, **kwargs):
         """Return :meth:`Server.cmd` defaulting ``target_window`` as target.
