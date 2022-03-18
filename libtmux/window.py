@@ -7,9 +7,15 @@ libtmux.window
 import logging
 import os
 import shlex
+import typing as t
 
 from . import exc, formats
-from .common import TmuxMappingObject, TmuxRelationalObject, handle_option_error
+from .common import (
+    PaneDict,
+    TmuxMappingObject,
+    TmuxRelationalObject,
+    handle_option_error,
+)
 from .pane import Pane
 
 logger = logging.getLogger(__name__)
@@ -270,7 +276,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         return option[1]
 
-    def rename_window(self, new_name):
+    def rename_window(self, new_name: str) -> "Window":
         """
         Return :class:`Window` object ``$ tmux rename-window <new_name>``.
 
@@ -335,7 +341,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         self.server._update_windows()
 
-    def select_window(self):
+    def select_window(self) -> "Window":
         """
         Select window. Return ``self``.
 
@@ -349,7 +355,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         """
         return self.session.select_window(self.index)
 
-    def select_pane(self, target_pane):
+    def select_pane(self, target_pane: str) -> Pane:
         """
         Return selected :class:`Pane` through ``$ tmux select-pane``.
 
@@ -373,7 +379,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         return self.attached_pane
 
-    def last_pane(self):
+    def last_pane(self) -> Pane:
         """Return last pane."""
         return self.select_pane("-l")
 
@@ -385,7 +391,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         vertical=True,
         shell=None,
         percent=None,
-    ):
+    ) -> Pane:
         """
         Split window and return the created :class:`Pane`.
 
@@ -486,7 +492,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         return Pane(window=self, **pane)
 
     @property
-    def attached_pane(self):
+    def attached_pane(self) -> Pane:
         """
         Return the attached :class:`Pane`.
 
@@ -504,7 +510,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         return []
 
-    def _list_panes(self):
+    def _list_panes(self) -> t.List[PaneDict]:
         panes = self.server._update_panes()._panes
 
         panes = [p for p in panes if p["session_id"] == self.get("session_id")]
@@ -512,12 +518,12 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         return panes
 
     @property
-    def _panes(self):
+    def _panes(self) -> t.List[PaneDict]:
         """Property / alias to return :meth:`~._list_panes`."""
 
         return self._list_panes()
 
-    def list_panes(self):
+    def list_panes(self) -> t.List[Pane]:
         """
         Return list of :class:`Pane` for the window.
 
@@ -529,7 +535,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         return [Pane(window=self, **pane) for pane in self._panes]
 
     @property
-    def panes(self):
+    def panes(self) -> t.List[Pane]:
         """Property / alias to return :meth:`~.list_panes`."""
         return self.list_panes()
 
