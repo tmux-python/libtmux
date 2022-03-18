@@ -40,9 +40,15 @@ $ tmux new-session -s foo -n bar
 
 ```console
 $ python
+```
 
-# or for nice autocomplete and syntax highlighting
+Use [ptpython], [ipython], etc. for a nice shell with autocompletions:
+
+```console
 $ pip install --user ptpython
+```
+
+```console
 $ ptpython
 ```
 
@@ -60,6 +66,8 @@ current tmux server / session / window pane.
 
 [tmuxp]: https://tmuxp.git-pull.com/
 [`tmuxp shell`]: https://tmuxp.git-pull.com/cli.html#shell
+[ptpython]: https://github.com/prompt-toolkit/ptpython
+[ipython]: https://ipython.org/
 
 List sessions:
 
