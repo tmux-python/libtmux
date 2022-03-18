@@ -66,16 +66,18 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         attrs = {"session_id": str(self._session_id)}
 
         def by(val):
-            for key, value in attrs.items():
+            for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
                         return False
                 except KeyError:
                     return False
-                return True
+            return True
 
+        # TODO add type hint
+        target_sessions = list(filter(by, self.server._sessions))
         try:
-            return list(filter(by, self.server._sessions))[0]
+            return target_sessions[0]
         except IndexError as e:
             logger.error(e)
 
