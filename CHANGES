@@ -17,6 +17,8 @@ Here you can find the recent changes to libtmux
 
   Credit: @JonathanRaiman and @jagguli
 
+- Basic type annotations (#359, #361) via @otherJL0
+
 #### Development
 
 - Format with black w/ string normalization. This is a one-time diff (#354)
