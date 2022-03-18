@@ -336,19 +336,20 @@ class TmuxRelationalObject:
         """
 
         # from https://github.com/serkanyersen/underscore.py
-        def by(val, *args):
-            for key, value in attrs.items():
+        def by(val) -> bool:
+            for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
                         return False
                 except KeyError:
                     return False
-                return True
+            return True
 
+        # TODO add type hint
+        target_children = list(filter(by, self.children))
         if first:
-            return list(filter(by, self.children))[0]
-        else:
-            return list(filter(by, self.children))
+            return target_children[0]
+        return return target_children
 
     def get_by_id(self, id):
         """
