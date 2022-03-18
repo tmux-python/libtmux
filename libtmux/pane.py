@@ -63,7 +63,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         attrs = {"pane_id": self._pane_id}
 
         # from https://github.com/serkanyersen/underscore.py
-        def by(val):
+        def by(val) -> bool:
             for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:

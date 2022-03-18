@@ -74,7 +74,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         attrs = {"window_id": self._window_id}
 
         # from https://github.com/serkanyersen/underscore.py
-        def by(val):
+        def by(val) -> bool:
             for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:

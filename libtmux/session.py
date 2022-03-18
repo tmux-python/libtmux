@@ -65,7 +65,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         attrs = {"session_id": str(self._session_id)}
 
-        def by(val):
+        def by(val) -> bool:
             for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
