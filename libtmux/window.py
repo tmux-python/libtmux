@@ -477,9 +477,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         # tmux < 1.7. This is added in 1.7.
         if pane.stderr:
-            raise exc.LibTmuxException(pane.stderr)
             if "pane too small" in pane.stderr:
-                pass
+                raise exc.LibTmuxException(pane.stderr)
 
             raise exc.LibTmuxException(pane.stderr, self._info, self.panes)
         else:
