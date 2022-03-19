@@ -4,7 +4,7 @@ libtmux is a scripting library for tmux. You can use it command and control tmux
 sessions, windows, and panes. It is the tool behind [tmuxp], a tmux workspace manager in python.
 
 [![Python Package](https://img.shields.io/pypi/v/libtmux.svg)](https://pypi.org/project/libtmux/)
-[![Docs](https://github.com/tmux-python/libtmux/workflows/Publish%20Docs/badge.svg)](https://libtmux.git-pull.com/)
+[![Docs](https://github.com/tmux-python/libtmux/workflows/docs/badge.svg)](https://libtmux.git-pull.com/)
 [![Build Status](https://github.com/tmux-python/libtmux/workflows/tests/badge.svg)](https://github.com/tmux-python/tmux-python/actions?query=workflow%3A%22tests%22)
 [![Code Coverage](https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg)](https://codecov.io/gh/tmux-python/libtmux)
 [![License](https://img.shields.io/github/license/tmux-python/libtmux.svg)](https://github.com/tmux-python/libtmux/blob/master/LICENSE)
