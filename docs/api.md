@@ -192,6 +192,8 @@ versions.
 
 ## Environmental variables
 
+(LIBTMUX_TMUX_FORMAT_SEPARATOR)=
+
 ### tmux format separator
 
 ```{versionadded} 0.11.0b0
