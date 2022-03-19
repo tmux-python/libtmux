@@ -14,8 +14,8 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Compatibility
 
-- Internal: Use new separator to split `tmux(1)` formatting information (#289,
-  #343)
+- Internal: Use new separator to split `tmux(1)` formatting information ({issue}`289`,
+  {issue}`343`)
 
   The separator is configurable via `LIBTMUX_TMUX_FORMAT_SEPARATOR`. If you ever
   have compatiblity issues in the future let us know which default works best
@@ -23,12 +23,12 @@ $ pip install --user --upgrade --pre libtmux
 
   Credit: @JonathanRaiman and @jagguli
 
-- Basic type annotations (#359, #361) via @otherJL0
+- Basic type annotations ({issue}`359`, {issue}`361`) via @otherJL0
 
 ### Development
 
-- Code cleanup (#362) from @otherJL0
-- Format with black w/ string normalization. This is a one-time diff (#354)
+- Code cleanup ({issue}`362`) from @otherJL0
+- Format with black w/ string normalization. This is a one-time diff ({issue}`354`)
 
 ### Documentation
 
@@ -39,40 +39,40 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Packaging
 
-First experimental release using `poetry build` (#347). If you are packaging and run
-across any difficulty please see [#346](https://github.com/tmux-python/libtmux/issues/346)
+First experimental release using `poetry build` ({issue}`347`). If you are packaging and run
+across any difficulty please see {issue}`346`.
 
 ### Compatibility
 
-- Drop python 3.6 (#344)
-- Add python 3.10, though still `packaging.version` issues remain (#344)
+- Drop python 3.6 ({issue}`344`)
+- Add python 3.10, though still `packaging.version` issues remain ({issue}`344`)
 
   A compat module and version constraints will need to be added for this
 
 ### Development
 
-- poetry: 1.1.7 -> 1.1.12 (#344)
-- Add `.pre-commit-config.yaml` (#344)
+- poetry: 1.1.7 -> 1.1.12 ({issue}`344`)
+- Add `.pre-commit-config.yaml` ({issue}`344`)
 
 ## libtmux 0.10.2 (2021-10-30)
 
-- #324: Update poetry to 1.1
+- {issue}`324`: Update poetry to 1.1
   - CI: Use poetry 1.1.7 and `install-poetry.py` installer
   - Relock poetry.lock at 1.1 (w/ 1.1.7's fix)
-- #339 (CI): Lock python at 3.9 to avoid poetry issue with `dataclasses`
-- ci: Fix publishing docs (similar to #339)
-- #341 #342: `Server.attached_sessions()` now supports multiple attached sessions.
+- {issue}`339` (CI): Lock python at 3.9 to avoid poetry issue with `dataclasses`
+- ci: Fix publishing docs (similar to {issue}`339`)
+- {issue}`341` {issue}`342`: `Server.attached_sessions()` now supports multiple attached sessions.
 
   Remove attached sessions limitation to not detect multiple attached clients,
   thank you @timoses
 
 ## libtmux 0.10.1 (2021-06-16)
 
-- Update `Window.select_window()` for #271
+- Update `Window.select_window()` for {issue}`271`
 
 ## libtmux 0.10.0 (2021-06-16)
 
-- #321: Convert to markdown
+- {issue}`321`: Convert to markdown
 - {issue}`271`: Fix {}`select_window()` by providing the session ID as
   argument to {}`-t`. Thanks @Flowdalic
 - Drop python 3.5 support
