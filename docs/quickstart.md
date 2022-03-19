@@ -31,6 +31,30 @@ $ pip install --user libtmux
 
 ```
 
+(developmental-releases)=
+
+### Developmental releases
+
+New versions of libtmux are published to PyPI as alpha, beta, or release candidates. In their
+versions you will see notfication like `a1`, `b1`, and `rc1`, respectively. `1.10.0b4` would mean
+the 4th beta release of `1.10.0` before general availability.
+
+- [pip]\:
+
+  ```console
+  $ pip install --user --upgrade --pre libtmux
+  ```
+
+via trunk (can break easily):
+
+- [pip]\:
+
+  ```console
+  $ pip install --user -e git+https://github.com/tmux-python/libtmux.git#egg=libtmux
+  ```
+
+[pip]: https://pip.pypa.io/en/stable/
+
 ## Start a tmux session
 
 Now, let's open a tmux session.
