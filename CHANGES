@@ -24,6 +24,11 @@ Here you can find the recent changes to libtmux
 - Code cleanup (#362) from @otherJL0
 - Format with black w/ string normalization. This is a one-time diff (#354)
 
+#### Documentation
+
+- Sidebar reorganized into sections
+- Added documentation on fetching developmental releases of libtmux
+
 ## libtmux 0.10.3 (2022-01-10)
 
 #### Packaging
