@@ -1,12 +1,18 @@
 # Changelog
 
-Here you can find the recent changes to libtmux
+To install the unreleased libtmux version, see [developmental releases](https://libtmux.git-pull.com/quickstart.html#developmental-releases).
 
-## current
+[pip](https://pip.pypa.io/en/stable/):
+
+```console
+$ pip install --user --upgrade --pre libtmux
+```
+
+## current - unrelated
 
 - _Insert changes/features/fixes for next release here_
 
-#### Compatibility
+### Compatibility
 
 - Internal: Use new separator to split `tmux(1)` formatting information (#289,
   #343)
@@ -19,31 +25,31 @@ Here you can find the recent changes to libtmux
 
 - Basic type annotations (#359, #361) via @otherJL0
 
-#### Development
+### Development
 
 - Code cleanup (#362) from @otherJL0
 - Format with black w/ string normalization. This is a one-time diff (#354)
 
-#### Documentation
+### Documentation
 
 - Sidebar reorganized into sections
 - Added documentation on fetching developmental releases of libtmux
 
 ## libtmux 0.10.3 (2022-01-10)
 
-#### Packaging
+### Packaging
 
 First experimental release using `poetry build` (#347). If you are packaging and run
 across any difficulty please see [#346](https://github.com/tmux-python/libtmux/issues/346)
 
-#### Compatibility
+### Compatibility
 
 - Drop python 3.6 (#344)
 - Add python 3.10, though still `packaging.version` issues remain (#344)
 
   A compat module and version constraints will need to be added for this
 
-#### Development
+### Development
 
 - poetry: 1.1.7 -> 1.1.12 (#344)
 - Add `.pre-commit-config.yaml` (#344)
