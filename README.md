@@ -19,9 +19,6 @@ View the [documentation](https://libtmux.git-pull.com/),
 [API](https://libtmux.git-pull.com/api.html) information and
 [architectural details](https://libtmux.git-pull.com/about.html).
 
-Python 2.x will be deprecated in libtmux 0.9. The backports branch is
-[v0.8.x](https://github.com/tmux-python/libtmux/tree/v0.8.x).
-
 # Install
 
 ```console
@@ -177,6 +174,17 @@ Window(@10 1:libtmuxower, Session($3 foo))
 >>> pane.window.session
 Session($3 foo)
 ```
+
+# Python support
+
+Maintenance-only / security and bug fixes:
+
+- Python 3.7 and 3.8: [`v0.11.x`](https://github.com/tmux-python/libtmux/tree/v0.11.x)
+
+Unsupported / no security releases or bug fixes:
+
+- Python 2.x: The backports branch is
+  [`v0.8.x`](https://github.com/tmux-python/libtmux/tree/v0.8.x).
 
 # Donations
 
