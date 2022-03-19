@@ -16,6 +16,11 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Compatibility
 
+- Final python 3.7 and 3.8 release
+
+  Bug fixes and security updates will go to
+  [`v0.11.x`](https://github.com/tmux-python/libtmux/tree/v0.11.x)
+
 - Internal: Use new separator to split `tmux(1)` formatting information ({issue}`289`,
   {issue}`343`)
 
