@@ -12,6 +12,12 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+### Development
+
+- Remove tox and tox-poetry-installer
+
+  This created issues with running poetry while inside the virtualenv.
+
 ## libtmux 0.11.0 (2022-03-10)
 
 ### Compatibility
