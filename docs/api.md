@@ -16,7 +16,7 @@ versions.
 ## Server Object
 
 ```{eval-rst}
-.. autoclass:: Server
+.. autoapiclass:: Server
     :members:
     :inherited-members:
     :private-members:
@@ -27,7 +27,7 @@ versions.
 ## Session Object
 
 ```{eval-rst}
-.. autoclass:: Session
+.. autoapiclass:: Session
     :members:
     :inherited-members:
     :private-members:
@@ -38,7 +38,7 @@ versions.
 ## Window Object
 
 ```{eval-rst}
-.. autoclass:: Window
+.. autoapiclass:: Window
     :members:
     :inherited-members:
     :private-members:
@@ -49,7 +49,7 @@ versions.
 ## Pane Object
 
 ```{eval-rst}
-.. autoclass:: Pane
+.. autoapiclass:: Pane
     :members:
     :inherited-members:
     :private-members:
@@ -68,22 +68,22 @@ versions.
 ```
 
 ```{eval-rst}
-.. autoclass:: libtmux.common.TmuxRelationalObject
+.. autoapiclass:: libtmux.common.TmuxRelationalObject
     :members:
 ```
 
 ```{eval-rst}
-.. autoclass:: libtmux.common.TmuxMappingObject
+.. autoapiclass:: libtmux.common.TmuxMappingObject
     :members:
 ```
 
 ```{eval-rst}
-.. autoclass:: libtmux.common.EnvironmentMixin
+.. autoapiclass:: libtmux.common.EnvironmentMixin
     :members:
 ```
 
 ```{eval-rst}
-.. autoclass:: libtmux.common.tmux_cmd
+.. autoapiclass:: libtmux.common.tmux_cmd
 ```
 
 ```{eval-rst}
@@ -187,7 +187,7 @@ versions.
 ```
 
 ```{eval-rst}
-.. autoclass:: libtmux.test.EnvironmentVarGuard
+.. autoapiclass:: libtmux.test.EnvironmentVarGuard
 ```
 
 ## Environmental variables

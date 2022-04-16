@@ -7,8 +7,7 @@
 - identified by `$`, e.g. `$313`
 
 ```{eval-rst}
-.. autoclass:: libtmux.Session
-    :noindex:
+.. autoapiclass:: libtmux.Session
     :members:
     :inherited-members:
     :private-members:
