@@ -18,6 +18,10 @@ $ pip install --user --upgrade --pre libtmux
 
   This created issues with running poetry while inside the virtualenv.
 
+### Documentation
+
+- Try out sphinx-autoapi for its table of contents generation ({issue}`367`)
+
 ## libtmux 0.11.0 (2022-03-10)
 
 ### Compatibility
