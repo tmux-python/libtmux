@@ -97,6 +97,11 @@ ogp_image = "_static/img/icons/icon-192x192.png"
 ogp_desscription_length = about["__description__"]
 ogp_site_name = about["__title__"]
 
+# sphinx.ext.autodoc
+autoclass_content = "both"
+autodoc_member_order = "bysource"
+autosummary_generate = True
+
 # sphinx-autoapi
 autoapi_type = "python"
 autoapi_dirs = [project_root / "libtmux"]
