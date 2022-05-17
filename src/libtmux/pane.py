@@ -5,12 +5,16 @@ libtmux.pane
 ~~~~~~~~~~~~
 
 """
+from __future__ import annotations
+
 import dataclasses
 import logging
 import typing as t
 from typing import overload
 
 from libtmux.common import tmux_cmd
+
+import libtmux
 
 from . import exc
 from .common import PaneDict, TmuxMappingObject, TmuxRelationalObject
@@ -26,6 +30,8 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = ["Pane"]
+
+# class Pane(TmuxMappingObject, TmuxRelationalObject):
 
 
 @dataclasses.dataclass
@@ -128,7 +134,24 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
         self._pane_id = self.pane_id
 
+        try:
+            info = self._info
+        except IndexError:
+            info = {}
+        for k, v in info.items():
+            if not hasattr(k, v):
+                setattr(self, k, v)
+
         self.server._update_panes()
+
+    def refresh(self):
+        try:
+            info = self._info
+        except IndexError:
+            info = {}
+        for k, v in info.items():
+            if not hasattr(k, v):
+                setattr(self, k, v)
 
     @property
     def _info(self) -> PaneDict:  # type: ignore  # mypy#1362
@@ -354,6 +377,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
             raise exc.LibTmuxException(proc.stderr)
 
         self.server._update_panes()
+        self.refresh()
         return self
 
     def enter(self) -> None:
