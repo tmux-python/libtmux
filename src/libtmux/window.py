@@ -500,7 +500,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         if target:
             tmux_args += ("-t%s" % target,)
         else:
-            tmux_args += ("-t%s" % self.panes[0].get("pane_id"),)
+            tmux_args += ("-t%s" % self.panes[0].pane_id,)
 
         if vertical:
             tmux_args += ("-v",)
