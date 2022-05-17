@@ -5,6 +5,7 @@ libtmux.pane
 ~~~~~~~~~~~~
 
 """
+import dataclasses
 import logging
 import typing as t
 from typing import overload
@@ -24,8 +25,11 @@ if t.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["Pane"]
 
-class Pane(TmuxMappingObject):
+
+@dataclasses.dataclass
+class Pane(TmuxMappingObject, TmuxRelationalObject):
     """
     A :term:`tmux(1)` :term:`Pane` [pane_manual]_.
 
@@ -68,26 +72,61 @@ class Pane(TmuxMappingObject):
        Accessed April 1st, 2018.
     """
 
+    window: "libtmux.window.Window"
+    session_name: str = dataclasses.field(init=True)
+    session_id: str = dataclasses.field(init=True)
+    window_index: str = dataclasses.field(init=True)
+    window_id: str = dataclasses.field(init=True)
+    history_size: str
+    history_limit: str
+    history_bytes: str
+    pane_index: str
+    pane_width: str
+    pane_height: str
+    pane_title: str
+    _pane_id: str = dataclasses.field(init=False)  # Legacy, relational
+    pane_id: str
+    pane_active: str
+    pane_dead: str
+    pane_in_mode: str
+    pane_synchronized: str
+    pane_tty: str
+    pane_pid: str
+    pane_current_path: str
+    pane_current_command: str
+    cursor_x: str
+    cursor_y: str
+    scroll_region_upper: str
+    scroll_region_lower: str
+    alternate_on: str
+    alternate_saved_x: str
+    alternate_saved_y: str
+    cursor_flag: str
+    insert_flag: str
+    keypad_cursor_flag: str
+    keypad_flag: str
+    wrap_flag: str
+    mouse_standard_flag: str
+    mouse_button_flag: str
+    mouse_any_flag: str
+    mouse_utf8_flag: str
+    session: "libtmux.session.Session" = dataclasses.field(init=False)
+    server: "libtmux.server.Server" = dataclasses.field(init=False)
+    window_name: str = dataclasses.field(init=True, default="")
+    pane_start_command: Optional[str] = dataclasses.field(init=True, default=None)
+
     formatter_prefix = "pane_"
     """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
-    window: "Window"
-    """:class:`libtmux.Window` pane is linked to"""
-    session: "Session"
-    """:class:`libtmux.Session` pane is linked to"""
-    server: "Server"
-    """:class:`libtmux.Server` pane is linked to"""
 
-    def __init__(
-        self,
-        window: "Window",
-        pane_id: t.Union[str, int],
-        **kwargs: t.Any,
-    ) -> None:
-        self.window = window
+    def __post_init__(self, **kwargs):
+        # if not window:
+        #     raise ValueError("Pane must have ``Window`` object")
+        #
+        # self.window = window
         self.session = self.window.session
         self.server = self.session.server
 
-        self._pane_id = pane_id
+        self._pane_id = self.pane_id
 
         self.server._update_panes()
 
