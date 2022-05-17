@@ -12,12 +12,11 @@ import logging
 import typing as t
 from typing import overload
 
+import libtmux
 from libtmux.common import tmux_cmd
 
-import libtmux
-
 from . import exc
-from .common import PaneDict, TmuxMappingObject, TmuxRelationalObject
+from .common import PaneDict, TmuxMappingObject
 
 if t.TYPE_CHECKING:
     from typing_extensions import Literal
@@ -31,11 +30,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["Pane"]
 
-# class Pane(TmuxMappingObject, TmuxRelationalObject):
-
 
 @dataclasses.dataclass
-class Pane(TmuxMappingObject, TmuxRelationalObject):
+class Pane(TmuxMappingObject):
     """
     A :term:`tmux(1)` :term:`Pane` [pane_manual]_.
 
@@ -119,12 +116,12 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
     session: "libtmux.session.Session" = dataclasses.field(init=False)
     server: "libtmux.server.Server" = dataclasses.field(init=False)
     window_name: str = dataclasses.field(init=True, default="")
-    pane_start_command: Optional[str] = dataclasses.field(init=True, default=None)
+    pane_start_command: t.Optional[str] = dataclasses.field(init=True, default=None)
 
     formatter_prefix = "pane_"
     """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
 
-    def __post_init__(self, **kwargs):
+    def __post_init__(self, **kwargs: t.Any) -> None:
         # if not window:
         #     raise ValueError("Pane must have ``Window`` object")
         #
@@ -144,7 +141,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
         self.server._update_panes()
 
-    def refresh(self):
+    def refresh(self) -> None:
         try:
             info = self._info
         except IndexError:
