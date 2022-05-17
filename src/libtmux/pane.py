@@ -75,7 +75,7 @@ class Pane(TmuxMappingObject):
        Accessed April 1st, 2018.
     """
 
-    window: "libtmux.window.Window"
+    window: libtmux.window.Window
     session_name: str = dataclasses.field(init=True)
     session_id: str = dataclasses.field(init=True)
     window_index: str = dataclasses.field(init=True)
@@ -113,8 +113,8 @@ class Pane(TmuxMappingObject):
     mouse_button_flag: str
     mouse_any_flag: str
     mouse_utf8_flag: str
-    session: "libtmux.session.Session" = dataclasses.field(init=False)
-    server: "libtmux.server.Server" = dataclasses.field(init=False)
+    session: libtmux.session.Session = dataclasses.field(init=False)
+    server: libtmux.server.Server = dataclasses.field(init=False)
     window_name: str = dataclasses.field(init=True, default="")
     pane_start_command: t.Optional[str] = dataclasses.field(init=True, default=None)
 
