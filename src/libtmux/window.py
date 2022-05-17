@@ -103,7 +103,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
 
     @property
     def _info(self) -> WindowDict:  # type: ignore  # mypy#1362
-        attrs = {"window_id": self._window_id}
+        # attrs = {"window_id": self._window_id}
+        attrs = {"window_id": object.__getattribute__(self, "_window_id")}
 
         # from https://github.com/serkanyersen/underscore.py
         def by(val: WindowDict) -> bool:

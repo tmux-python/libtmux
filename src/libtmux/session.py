@@ -86,7 +86,8 @@ class Session(
 
     @property
     def _info(self) -> t.Optional[SessionDict]:  # type: ignore  # mypy#1362
-        attrs = {"session_id": str(self._session_id)}
+        # attrs = {"session_id": str(self._session_id)}
+        attrs = {"session_id": object.__getattribute__(self, "_session_id")}
 
         def by(val: SessionDict) -> bool:
             for key in attrs.keys():

@@ -152,7 +152,8 @@ class Pane(TmuxMappingObject):
 
     @property
     def _info(self) -> PaneDict:  # type: ignore  # mypy#1362
-        attrs = {"pane_id": self._pane_id}
+        # attrs = {"pane_id": self._pane_id}
+        attrs = {"pane_id": object.__getattribute__(self, "_pane_id")}
 
         # from https://github.com/serkanyersen/underscore.py
         def by(val: PaneDict) -> bool:
