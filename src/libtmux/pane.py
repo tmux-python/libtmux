@@ -32,7 +32,10 @@ __all__ = ["Pane"]
 
 
 @dataclasses.dataclass
-class Pane(TmuxMappingObject):
+# <<<<<<< HEAD:src/libtmux/pane.py
+# class Pane(TmuxMappingObject):
+# =======
+class Pane:
     """
     A :term:`tmux(1)` :term:`Pane` [pane_manual]_.
 
@@ -118,7 +121,7 @@ class Pane(TmuxMappingObject):
     window_name: str = dataclasses.field(init=True, default="")
     pane_start_command: t.Optional[str] = dataclasses.field(init=True, default=None)
 
-    formatter_prefix = "pane_"
+    formatter_prefix: str = "pane_"
     """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
 
     def __post_init__(self, **kwargs: t.Any) -> None:
@@ -129,7 +132,7 @@ class Pane(TmuxMappingObject):
         self.session = self.window.session
         self.server = self.session.server
 
-        self._pane_id = self.pane_id
+        self._pane_id = kwargs.get("pane_id", self.pane_id)
 
         try:
             info = self._info
@@ -157,6 +160,8 @@ class Pane(TmuxMappingObject):
 
         # from https://github.com/serkanyersen/underscore.py
         def by(val: PaneDict) -> bool:
+            if dataclasses.is_dataclass(val):
+                val = dataclasses.asdict(val)
             for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
@@ -182,7 +187,7 @@ class Pane(TmuxMappingObject):
         :class:`Server.cmd`
         """
         if not any(arg.startswith("-t") for arg in args):
-            args = ("-t", self.get("pane_id")) + args
+            args = ("-t", self.pane_id) + args
 
         return self.server.cmd(cmd, *args, **kwargs)
 
@@ -311,7 +316,7 @@ class Pane(TmuxMappingObject):
         :class:`Pane`
         """
         return self.window.split_window(
-            target=self.get("pane_id"),
+            target=self.pane_id,
             start_directory=start_directory,
             attach=attach,
             vertical=vertical,
@@ -410,12 +415,11 @@ class Pane(TmuxMappingObject):
         -------
         :class:`pane`
         """
-        pane = self.window.select_pane(self._pane_id)
-        if pane is None:
-            raise exc.LibTmuxException(f"Pane not found: {self}")
-        return pane
+        # pane = self.window.select_pane(self._pane_id)
+        # if pane is None:
+        #     raise exc.LibTmuxException(f"Pane not found: {self}")
+        # return pane
+        return self.window.select_pane(self.pane_id)
 
     def __repr__(self) -> str:
-        return "{}({} {})".format(
-            self.__class__.__name__, self.get("pane_id"), self.window
-        )
+        return "{}({} {})".format(self.__class__.__name__, self.pane_id, self.window)

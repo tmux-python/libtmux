@@ -116,7 +116,7 @@ def test_new_session_shell(server: Server) -> None:
     assert mysession.get("session_name") == "test_new_session"
     assert server.has_session("test_new_session")
 
-    pane_start_command = pane.get("pane_start_command")
+    pane_start_command = pane.pane_start_command
     assert pane_start_command is not None
 
     if has_gte_version("3.2"):

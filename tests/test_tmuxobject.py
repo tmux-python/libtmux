@@ -34,7 +34,7 @@ def test_find_where(server: Server, session: Session) -> None:
             # window.find_where
             for pane in window.panes:
                 pane_id = pane.get("pane_id")
-                assert pane_id is not None
+                pane_id = pane.pane_id
 
                 assert window.find_where({"pane_id": pane_id}) == pane
                 assert isinstance(window.find_where({"pane_id": pane_id}), Pane)
@@ -84,9 +84,9 @@ def test_find_where_multiple_infos(server: Server, session: Session) -> None:
 
             # window.find_where
             for pane in window.panes:
-                pane_id = pane.get("pane_id")
+                pane_id = pane.pane_id
                 assert pane_id is not None
-                pane_tty = pane.get("pane_tty")
+                pane_tty = pane.pane_tty
                 assert pane_tty is not None
 
                 find_where = window.find_where(
@@ -137,10 +137,10 @@ def test_where(server: Server, session: Session) -> None:
 
             # window.where
             for pane in window.panes:
-                pane_id = pane.get("pane_id")
+                pane_id = pane.pane_id
                 assert pane_id is not None
 
-                pane_tty = pane.get("pane_tty")
+                pane_tty = pane.pane_tty
                 assert pane_tty is not None
 
                 window_panes = window.where({"pane_id": pane_id, "pane_tty": pane_tty})
@@ -181,7 +181,7 @@ def test_get_by_id(server: Server, session: Session) -> None:
 
             # window.get_by_id
             for pane in window.panes:
-                pane_id = pane.get("pane_id")
+                pane_id = pane.pane_id
                 assert pane_id is not None
 
                 get_pane_by_id = window.get_by_id(pane_id)

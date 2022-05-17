@@ -5,6 +5,7 @@ libtmux.common
 ~~~~~~~~~~~~~~
 
 """
+import dataclasses
 import logging
 import os
 import re
@@ -321,6 +322,15 @@ class TmuxMappingObject(t.Mapping[t.Any, t.Any]):
 
     def __getattr__(self, key: str) -> str:
         try:
+            # val = self._info[self.formatter_prefix + key]
+            val = object.__getattribute__(self, key)
+            assert val is not None
+            assert isinstance(val, str)
+            return val
+        except AttributeError:
+            pass
+
+        try:
             val = self._info[self.formatter_prefix + key]
             assert val is not None
             assert isinstance(val, str)
@@ -405,9 +415,12 @@ class TmuxRelationalObject(Generic[O, D]):
 
         # from https://github.com/serkanyersen/underscore.py
         def by(val: O) -> bool:
+            val2: t.Dict[str, str] = {}
+            if dataclasses.is_dataclass(val):
+                val2 = dataclasses.asdict(val)
             for key in attrs.keys():
                 try:
-                    if attrs[key] != val[key]:
+                    if attrs[key] != val[key] and attrs[key] != val2[key]:
                         return False
                 except KeyError:
                     return False
