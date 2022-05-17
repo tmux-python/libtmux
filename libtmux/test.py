@@ -5,10 +5,13 @@ import os
 import tempfile
 import time
 
+from .exc import WaitTimeout
+
 logger = logging.getLogger(__name__)
 
 TEST_SESSION_PREFIX = "libtmux_"
 RETRY_TIMEOUT_SECONDS = int(os.getenv("RETRY_TIMEOUT_SECONDS", 8))
+RETRY_INTERVAL_SECONDS = float(os.getenv("RETRY_INTERVAL_SECONDS", 0.05))
 
 namer = tempfile._RandomNameSequence()
 current_dir = os.path.abspath(os.path.dirname(__file__))
@@ -41,6 +44,52 @@ def retry(seconds=RETRY_TIMEOUT_SECONDS):
     ...         break
     """
     return (lambda: time.time() < time.time() + seconds)()
+
+
+def retry_until(
+    fun,
+    seconds=RETRY_TIMEOUT_SECONDS,
+    *,
+    interval=RETRY_INTERVAL_SECONDS,
+    raises=True,
+):
+    """
+    Retry a function until a condition meets or the specified time passes.
+
+    Parameters
+    ----------
+    fun : callable
+        A function that will be called repeatedly until it returns ``True``  or
+        the specified time passes.
+    seconds : int
+        Seconds to retry. Defaults to ``8``, which is configurable via
+        ``RETRY_TIMEOUT_SECONDS`` environment variables.
+    interval : float
+        Time in seconds to wait between calls. Defaults to ``0.05`` and is
+        configurable via ``RETRY_INTERVAL_SECONDS`` environment variable.
+    raises : bool
+        Wether or not to raise an exception on timeout. Defaults to ``True``.
+
+    Examples
+    --------
+
+    >>> def f():
+    ...     p = w.attached_pane
+    ...     p.server._update_panes()
+    ...     return p.current_path == pane_path
+    ...
+    ... retry(f)
+    """
+    ini = time.time()
+
+    while not fun():
+        end = time.time()
+        if end - ini >= seconds:
+            if raises:
+                raise WaitTimeout()
+            else:
+                break
+        time.sleep(interval)
 
 
 def get_test_session_name(server, prefix=TEST_SESSION_PREFIX):
