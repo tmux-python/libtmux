@@ -7,195 +7,165 @@ Get access to the data attributions behind tmux sessions, windows and panes.
 This is done through accessing the [formats][formats] available in `list-sessions`,
 `list-windows` and `list-panes`.
 
-open two terminals:
+Open two terminals:
 
-terminal one: start tmux in a seperate terminal:
+Terminal one: start tmux in a seperate terminal:
 
-```
+```console
 $ tmux
 ```
 
-terminal two, `python` or `ptpython` if you have it:
+Terminal two: `python` or `ptpython` if you have it:
 
 ```console
-
 $ python
-
 ```
 
-import tmux:
+Import libtmux:
 
-```{code-block} python
-
-import tmux
-
+```python
+import libtmux
 ```
 
-attach default tmux {class}`libtmux.Server` to `t`:
+Attach default tmux {class}`~libtmux.Server` to `t`:
 
-```{code-block} python
-
->>> t = libtmux.Server();
+```python
+>>> t = libtmux.Server()
 >>> t
 <libtmux.server.Server object at 0x10edd31d0>
-
 ```
 
 ## Session
 
-get the `session` object:
+Get the {class}`~libtmux.Session` object:
 
-```{code-block} python
-
+```python
 >>> session = t.sessions[0]
-
 >>> session
 Session($0 libtmux)
-
 ```
 
-quick access to basic attributes:
+Quick access to basic attributes:
 
-```{code-block} python
-
+```python
 >>> session.name
-u'libtmux'
+'libtmux'
 
 >>> session.id
-u'$0'
+'$0'
 
 >>> session.width
-u'213'
+'213'
 
 >>> session.height
-u'114'
-
+'114'
 ```
 
-to see all attributes for a session:
+To see all attributes for a session:
 
-```{code-block} python
-
+```python
 >>> session._info.keys()
-[u'session_height', u'session_windows', u'session_width', u'session_id', u'session_created', u'session_attached', u'session_grouped', u'session_name']
+['session_height', 'session_windows', 'session_width', 'session_id', 'session_created', 'session_attached', 'session_grouped', 'session_name']
 
 >>> session._info
-{u'session_height': u'114', u'session_windows': u'3', u'session_width': u'213', u'session_id': u'$0', u'session_created': u'1464905357', u'session_attached': u'1', u'session_grouped': u'0', u'session_name': u'libtmux'}
+{'session_height': '114', 'session_windows': '3', 'session_width': '213', 'session_id': '$0', 'session_created': '1464905357', 'session_attached': '1', 'session_grouped': '0', 'session_name': 'libtmux'}
 
 ```
 
-some may conflict with python API, to access them, you can use `.get()`, to get the count
+Some may conflict with python API, to access them, you can use `.get()`, to get the count
 of sessions in a window:
 
-```{code-block} python
-
+```python
 >>> session.get('session_windows')
-u'3'
-
+'3'
 ```
 
 ## Windows
 
-The same concepts apply for window:
+The same concepts apply for {class}`~libtmux.Window`:
 
-```{code-block} python
-
+```python
 >>> window = session.attached_window
 
 >>> window
 Window(@2 2:docs, Session($0 libtmux))
-
 ```
 
-basics:
+Basics:
 
-```{code-block} python
-
+```python
 >>> window.name
-u'docs'
+'docs'
 
 >>> window.id
-u'@2'
+'@2'
 
 >>> window.height
-u'114'
+'114'
 
 >>> window.width
-u'213'
-
+'213'
 ```
 
-everything available:
+Everything available:
 
-```{code-block} python
-
+```python
 >>> window._info
-{u'window_panes': u'4', u'window_active': u'1', u'window_height': u'114', u'window_activity_flag': u'0', u'window_width': u'213', u'session_id': u'$0', u'window_id': u'@2', u'window_layout': u'dad5,213x114,0,0[213x60,0,0,4,213x53,0,61{70x53,0,61,5,70x53,71,61,6,71x53,142,61,7}]', u'window_silence_flag': u'0', u'window_index': u'2', u'window_bell_flag': u'0', u'session_name': u'libtmux', u'window_flags': u'*', u'window_name': u'docs'}
+{'window_panes': '4', 'window_active': '1', 'window_height': '114', 'window_activity_flag': '0', 'window_width': '213', 'session_id': '$0', 'window_id': '@2', 'window_layout': 'dad5,213x114,0,0[213x60,0,0,4,213x53,0,61{70x53,0,61,5,70x53,71,61,6,71x53,142,61,7}]', 'window_silence_flag': '0', 'window_index': '2', 'window_bell_flag': '0', 'session_name': 'libtmux', 'window_flags': '*', 'window_name': 'docs'}
 
 >>> window.keys()
-[u'window_panes', u'window_active', u'window_height', u'window_activity_flag', u'window_width', u'session_id', u'window_id', u'window_layout', u'window_silence_flag', u'window_index', u'window_bell_flag', u'session_name', u'window_flags', u'window_name']
-
+['window_panes', 'window_active', 'window_height', 'window_activity_flag', 'window_width', 'session_id', 'window_id', 'window_layout', 'window_silence_flag', 'window_index', 'window_bell_flag', 'session_name', 'window_flags', 'window_name']
 ```
 
-use `get()` for details not accessible via properties:
+Use `get()` for details not accessible via properties:
 
-```{code-block} python
-
+```python
 >>> pane.get('window_panes')
-u'4'
-
+'4'
 ```
 
 ## Panes
 
-get the pane:
+Get the {class}`~libtmux.Pane`:
 
-```{code-block} python
-
+```python
 >>> pane = window.attached_pane
 
 >>> pane
 Pane(%5 Window(@2 2:docs, Session($0 libtmux)))
-
 ```
 
-basics:
+Basics:
 
-```{code-block} python
-
+```python
 >>> pane.current_command
-u'python'
+'python'
 
 >>> pane.height
-u'53'
+'53'
 
 >>> pane.width
-u'70'
+'70'
 
 >>> pane.index
-u'1'
-
+'1'
 ```
 
-everything:
+Everything:
 
-```{code-block} python
-
+```python
 >>> pane._info
-{u'alternate_saved_x': u'0', u'alternate_saved_y': u'0', u'cursor_y': u'47', u'cursor_x': u'0', u'pane_in_mode': u'0', u'insert_flag': u'0', u'keypad_flag': u'0', u'cursor_flag': u'1', u'pane_current_command': u'python', u'window_index': u'2', u'history_size': u'216', u'scroll_region_lower': u'52', u'keypad_cursor_flag': u'0', u'history_bytes': u'38778', u'pane_active': u'1', u'pane_dead': u'0', u'pane_synchronized': u'0', u'window_id': u'@2', u'pane_index': u'1', u'pane_width': u'70', u'mouse_any_flag': u'0', u'mouse_button_flag': u'0', u'window_name': u'docs', u'pane_current_path': u'/Users/me/work/python/libtmux/doc', u'pane_tty': u'/dev/ttys007', u'pane_title': u'Python REPL (ptpython)', u'session_id': u'$0', u'alternate_on': u'0', u'mouse_standard_flag': u'0', u'wrap_flag': u'1', u'history_limit': u'2000', u'pane_pid': u'37172', u'pane_height': u'53', u'session_name': u'libtmux', u'scroll_region_upper': u'0', u'pane_id': u'%5'}
+{'alternate_saved_x': '0', 'alternate_saved_y': '0', 'cursor_y': '47', 'cursor_x': '0', 'pane_in_mode': '0', 'insert_flag': '0', 'keypad_flag': '0', 'cursor_flag': '1', 'pane_current_command': 'python', 'window_index': '2', 'history_size': '216', 'scroll_region_lower': '52', 'keypad_cursor_flag': '0', 'history_bytes': '38778', 'pane_active': '1', 'pane_dead': '0', 'pane_synchronized': '0', 'window_id': '@2', 'pane_index': '1', 'pane_width': '70', 'mouse_any_flag': '0', 'mouse_button_flag': '0', 'window_name': 'docs', 'pane_current_path': '/Users/me/work/python/libtmux/doc', 'pane_tty': '/dev/ttys007', 'pane_title': 'Python REPL (ptpython)', 'session_id': '$0', 'alternate_on': '0', 'mouse_standard_flag': '0', 'wrap_flag': '1', 'history_limit': '2000', 'pane_pid': '37172', 'pane_height': '53', 'session_name': 'libtmux', 'scroll_region_upper': '0', 'pane_id': '%5'}
 
 >>> pane._info.keys()
-[u'alternate_saved_x', u'alternate_saved_y', u'cursor_y', u'cursor_x', u'pane_in_mode', u'insert_flag', u'keypad_flag', u'cursor_flag', u'pane_current_command', u'window_index', u'history_size', u'scroll_region_lower', u'keypad_cursor_flag', u'history_bytes', u'pane_active', u'pane_dead', u'pane_synchronized', u'window_id', u'pane_index', u'pane_width', u'mouse_any_flag', u'mouse_button_flag', u'window_name', u'pane_current_path', u'pane_tty', u'pane_title', u'session_id', u'alternate_on', u'mouse_standard_flag', u'wrap_flag', u'history_limit', u'pane_pid', u'pane_height', u'session_name', u'scroll_region_upper', u'pane_id']
-
+['alternate_saved_x', 'alternate_saved_y', 'cursor_y', 'cursor_x', 'pane_in_mode', 'insert_flag', 'keypad_flag', 'cursor_flag', 'pane_current_command', 'window_index', 'history_size', 'scroll_region_lower', 'keypad_cursor_flag', 'history_bytes', 'pane_active', 'pane_dead', 'pane_synchronized', 'window_id', 'pane_index', 'pane_width', 'mouse_any_flag', 'mouse_button_flag', 'window_name', 'pane_current_path', 'pane_tty', 'pane_title', 'session_id', 'alternate_on', 'mouse_standard_flag', 'wrap_flag', 'history_limit', 'pane_pid', 'pane_height', 'session_name', 'scroll_region_upper', 'pane_id']
 ```
 
-use `get()` for details keys:
+Use `get()` for details keys:
 
-```{code-block} python
-
+```python
 >>> pane.get('pane_width')
-u'70'
-
+'70'
 ```
 
 [formats]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS
