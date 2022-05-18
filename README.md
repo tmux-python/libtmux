@@ -207,4 +207,5 @@ See donation options at <https://git-pull.com/support.html>.
 - Test Coverage: <https://codecov.io/gh/tmux-python/libtmux>
 - pypi: <https://pypi.python.org/pypi/libtmux>
 - Open Hub: <https://www.openhub.net/p/libtmux-python>
+- Repology: <https://repology.org/project/python:libtmux/versions>
 - License: [MIT](http://opensource.org/licenses/MIT).
