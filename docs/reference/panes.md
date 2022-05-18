@@ -2,7 +2,7 @@
 
 # Panes
 
-- hold [pseudoterminal][pseudoterminal]'s ([pty(4)][pty(4)])
+- hold [pseudoterminal]s ([pty(4)][pty(4)])
 - exist inside {ref}`Windows`
 - identified by `%`, e.g. `%313`
 
