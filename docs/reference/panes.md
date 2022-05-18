@@ -2,9 +2,9 @@
 
 # Panes
 
-- contain [pseudoterminal]s ([pty(4)][pty(4)])
-- exist inside {ref}`Windows`
-- identified by `%`, e.g. `%313`
+- Contain [pseudoterminal]s ([pty(4)][pty(4)])
+- Exist inside {ref}`Windows`
+- Identified by `%`, e.g. `%313`
 
 [pseudoterminal]: https://en.wikipedia.org/wiki/Pseudoterminal
 [pty(4)]: https://www.freebsd.org/cgi/man.cgi?query=pty&sektion=4

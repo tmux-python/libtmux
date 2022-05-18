@@ -2,9 +2,9 @@
 
 # Sessions
 
-- exist inside {ref}`Servers`
-- contain {ref}`Windows` (which contain {ref}`Panes`)
-- identified by `$`, e.g. `$313`
+- Exist inside {ref}`Servers`
+- Contain {ref}`Windows` (which contain {ref}`Panes`)
+- Identified by `$`, e.g. `$313`
 
 ```{eval-rst}
 .. autoapiclass:: libtmux.Session

@@ -2,13 +2,12 @@
 
 # Servers
 
-- identified by _socket path_ and _socket name_
-- may have >1 servers running of tmux at the same time.
-- contain {ref}`Sessions` (which contain {ref}`Windows`, which contain
+- Identified by _socket path_ and _socket name_
+- May have >1 servers running of tmux at the same time.
+- Contain {ref}`Sessions` (which contain {ref}`Windows`, which contain
   {ref}`Panes`)
 
-In tmux, a server is automatically started on your behalf
-when you first run tmux.
+tmux initializes a server on automatically on first running (e.g. executing `tmux`)
 
 ```{eval-rst}
 .. autoapiclass:: libtmux.Server

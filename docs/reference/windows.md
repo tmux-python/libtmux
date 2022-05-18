@@ -2,9 +2,9 @@
 
 # Windows
 
-- exist inside {ref}`Sessions`
-- contain {ref}`Panes`
-- identified by `@`, e.g. `@313`
+- Exist inside {ref}`Sessions`
+- Contain {ref}`Panes`
+- Identified by `@`, e.g. `@313`
 
 ```{module} libtmux
 
