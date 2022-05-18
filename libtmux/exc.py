@@ -49,3 +49,8 @@ class InvalidOption(OptionError):
 class AmbiguousOption(OptionError):
 
     """Option that could potentially match more than one."""
+
+
+class WaitTimeout(LibTmuxException):
+
+    """Function timed out without meeting condition"""
