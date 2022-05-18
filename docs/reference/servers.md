@@ -4,7 +4,7 @@
 
 - identified by _socket path_ and _socket name_
 - may have >1 servers running of tmux at the same time.
-- hold {ref}`Sessions` (which hold {ref}`Windows`, which hold
+- contain {ref}`Sessions` (which contain {ref}`Windows`, which contain
   {ref}`Panes`)
 
 In tmux, a server is automatically started on your behalf

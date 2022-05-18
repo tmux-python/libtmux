@@ -3,7 +3,7 @@
 # Sessions
 
 - exist inside {ref}`Servers`
-- contain {ref}`Windows` (which hold {ref}`Panes`)
+- contain {ref}`Windows` (which contain {ref}`Panes`)
 - identified by `$`, e.g. `$313`
 
 ```{eval-rst}
