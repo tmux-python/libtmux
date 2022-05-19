@@ -62,7 +62,7 @@ Tip: You can also use [tmuxp]'s [`tmuxp shell`] to drop straight into your
 current tmux server / session / window pane.
 
 [tmuxp]: https://tmuxp.git-pull.com/
-[`tmuxp shell`]: https://tmuxp.git-pull.com/cli.html#shell
+[`tmuxp shell`]: https://tmuxp.git-pull.com/cli/shell.html
 [ptpython]: https://github.com/prompt-toolkit/ptpython
 [ipython]: https://ipython.org/
 
