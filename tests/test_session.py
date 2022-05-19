@@ -1,4 +1,4 @@
-"""Test for tmuxp Session object."""
+"""Test for libtmux Session object."""
 import logging
 
 import pytest

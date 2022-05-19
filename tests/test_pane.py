@@ -1,4 +1,4 @@
-"""Test for tmuxp Pane object."""
+"""Tests for libtmux Pane object."""
 import logging
 
 logger = logging.getLogger(__name__)

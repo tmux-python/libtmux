@@ -1,4 +1,4 @@
-"""Test for tmuxp Server object."""
+"""Test for libtmux Server object."""
 import logging
 
 from libtmux import Server

@@ -1,4 +1,4 @@
-"""Test for tmuxp Window object."""
+"""Test for libtmux Window object."""
 import logging
 
 import pytest

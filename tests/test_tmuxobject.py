@@ -1,4 +1,4 @@
-"""Test for tmuxp TmuxRelationalObject and TmuxMappingObject."""
+"""Tests for libtmux TmuxRelationalObject and TmuxMappingObject."""
 import logging
 
 from libtmux import Pane, Session, Window
