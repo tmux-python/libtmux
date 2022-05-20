@@ -12,6 +12,8 @@ classifiers = [
   "Environment :: Web Environment",
   "Intended Audience :: Developers",
   "Programming Language :: Python",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: Implementation :: PyPy",
@@ -39,7 +41,7 @@ Repository = "https://github.com/tmux-python/libtmux"
 Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.7"
 
 [tool.poetry.dev-dependencies]
 ### Docs ###
@@ -49,7 +51,7 @@ sphinx-autobuild = "^2021.3.14"
 sphinx-autodoc-typehints = "~1.17.0"
 sphinx-click = "*"
 sphinx-issues = "^3.0.0"
-sphinx-inline-tabs = "*"
+sphinx-inline-tabs = { version = "*", python = "^3.7" }
 sphinxext-opengraph = "*"
 sphinx-copybutton = "^0.5.0"
 sphinxext-rediraffe = "*"
