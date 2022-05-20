@@ -4,6 +4,7 @@ import logging
 import os
 import tempfile
 import time
+from typing import Optional
 
 from .exc import WaitTimeout
 
@@ -19,13 +20,13 @@ example_dir = os.path.abspath(os.path.join(current_dir, "..", "examples"))
 fixtures_dir = os.path.realpath(os.path.join(current_dir, "fixtures"))
 
 
-def retry(seconds=RETRY_TIMEOUT_SECONDS):
+def retry(seconds: Optional[float] = RETRY_TIMEOUT_SECONDS) -> bool:
     """
     Retry a block of code until a time limit or ``break``.
 
     Parameters
     ----------
-    seconds : int
+    seconds : float
         Seconds to retry, defaults to ``RETRY_TIMEOUT_SECONDS``, which is
         configurable via environmental variables.
 
