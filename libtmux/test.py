@@ -4,6 +4,7 @@ import logging
 import os
 import tempfile
 import time
+import warnings
 from typing import Optional
 
 from .exc import WaitTimeout
@@ -23,6 +24,10 @@ fixtures_dir = os.path.realpath(os.path.join(current_dir, "fixtures"))
 def retry(seconds: Optional[float] = RETRY_TIMEOUT_SECONDS) -> bool:
     """
     Retry a block of code until a time limit or ``break``.
+
+    .. deprecated:: 0.12.0
+          `retry` doesn't work, it will be removed in libtmux 0.13.0, it is replaced by
+          `retry_until`, more info: https://github.com/tmux-python/libtmux/issues/368.
 
     Parameters
     ----------
@@ -44,6 +49,10 @@ def retry(seconds: Optional[float] = RETRY_TIMEOUT_SECONDS) -> bool:
     ...     if p.current_path == pane_path:
     ...         break
     """
+    warnings.warn(
+        "retry() is being deprecated and will soon be replaced by retry_until()",
+        DeprecationWarning,
+    )
     return (lambda: time.time() < time.time() + seconds)()
 
 
