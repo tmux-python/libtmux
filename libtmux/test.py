@@ -79,6 +79,10 @@ def retry_until(
     ...     return p.current_path == pane_path
     ...
     ... retry(f)
+
+    In pytest:
+
+    >>> assert retry(f, raises=False)
     """
     ini = time.time()
 
@@ -88,8 +92,9 @@ def retry_until(
             if raises:
                 raise WaitTimeout()
             else:
-                break
+                return False
         time.sleep(interval)
+    return True
 
 
 def get_test_session_name(server, prefix=TEST_SESSION_PREFIX):
