@@ -171,6 +171,10 @@ versions.
 ```
 
 ```{eval-rst}
+.. automethod:: libtmux.test.retry_until
+```
+
+```{eval-rst}
 .. automethod:: libtmux.test.get_test_session_name
 ```
 

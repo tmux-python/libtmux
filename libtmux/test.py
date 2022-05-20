@@ -4,11 +4,16 @@ import logging
 import os
 import tempfile
 import time
+import warnings
+from typing import Callable, Optional
+
+from .exc import WaitTimeout
 
 logger = logging.getLogger(__name__)
 
 TEST_SESSION_PREFIX = "libtmux_"
 RETRY_TIMEOUT_SECONDS = int(os.getenv("RETRY_TIMEOUT_SECONDS", 8))
+RETRY_INTERVAL_SECONDS = float(os.getenv("RETRY_INTERVAL_SECONDS", 0.05))
 
 namer = tempfile._RandomNameSequence()
 current_dir = os.path.abspath(os.path.dirname(__file__))
@@ -16,13 +21,17 @@ example_dir = os.path.abspath(os.path.join(current_dir, "..", "examples"))
 fixtures_dir = os.path.realpath(os.path.join(current_dir, "fixtures"))
 
 
-def retry(seconds=RETRY_TIMEOUT_SECONDS):
+def retry(seconds: Optional[float] = RETRY_TIMEOUT_SECONDS) -> bool:
     """
     Retry a block of code until a time limit or ``break``.
 
+    .. deprecated:: 0.12.0
+          `retry` doesn't work, it will be removed in libtmux 0.13.0, it is replaced by
+          `retry_until`, more info: https://github.com/tmux-python/libtmux/issues/368.
+
     Parameters
     ----------
-    seconds : int
+    seconds : float
         Seconds to retry, defaults to ``RETRY_TIMEOUT_SECONDS``, which is
         configurable via environmental variables.
 
@@ -40,7 +49,62 @@ def retry(seconds=RETRY_TIMEOUT_SECONDS):
     ...     if p.current_path == pane_path:
     ...         break
     """
+    warnings.warn(
+        "retry() is being deprecated and will soon be replaced by retry_until()",
+        DeprecationWarning,
+    )
     return (lambda: time.time() < time.time() + seconds)()
+
+
+def retry_until(
+    fun: Callable,
+    seconds: float = RETRY_TIMEOUT_SECONDS,
+    *,
+    interval: Optional[float] = RETRY_INTERVAL_SECONDS,
+    raises: Optional[bool] = True,
+) -> bool:
+    """
+    Retry a function until a condition meets or the specified time passes.
+
+    Parameters
+    ----------
+    fun : callable
+        A function that will be called repeatedly until it returns ``True``  or
+        the specified time passes.
+    seconds : float
+        Seconds to retry. Defaults to ``8``, which is configurable via
+        ``RETRY_TIMEOUT_SECONDS`` environment variables.
+    interval : float
+        Time in seconds to wait between calls. Defaults to ``0.05`` and is
+        configurable via ``RETRY_INTERVAL_SECONDS`` environment variable.
+    raises : bool
+        Wether or not to raise an exception on timeout. Defaults to ``True``.
+
+    Examples
+    --------
+
+    >>> def f():
+    ...     p = w.attached_pane
+    ...     p.server._update_panes()
+    ...     return p.current_path == pane_path
+    ...
+    ... retry(f)
+
+    In pytest:
+
+    >>> assert retry(f, raises=False)
+    """
+    ini = time.time()
+
+    while not fun():
+        end = time.time()
+        if end - ini >= seconds:
+            if raises:
+                raise WaitTimeout()
+            else:
+                return False
+        time.sleep(interval)
+    return True
 
 
 def get_test_session_name(server, prefix=TEST_SESSION_PREFIX):

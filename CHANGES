@@ -8,7 +8,7 @@ To install the unreleased libtmux version, see [developmental releases](https://
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux current (unreleased)
+## libtmux 0.12.x (unreleased)
 
 - _Insert changes/features/fixes for next release here_
 
@@ -21,6 +21,11 @@ $ pip install --user --upgrade --pre libtmux
 ### Documentation
 
 - Try out sphinx-autoapi for its table of contents generation ({issue}`367`)
+
+### Testing
+
+- `retry()`: Add deprecation warning. This will be removed in 0.13.x ({issue}`368`, {issue}`372`)
+- New function `retry_until()`: Polls a callback function for a set period of time until it returns `True` or times out. By default it will raise {exc}`libtmux.exc.WaitTimeout`, with `raises=False` it will return `False`. Thank you @categulario! ({issue}`368`, {issue}`372`)
 
 ## libtmux 0.11.0 (2022-03-10)
 
