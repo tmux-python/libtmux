@@ -5,7 +5,7 @@ import os
 import tempfile
 import time
 import warnings
-from typing import Optional
+from typing import Callable, Optional
 
 from .exc import WaitTimeout
 
@@ -57,12 +57,12 @@ def retry(seconds: Optional[float] = RETRY_TIMEOUT_SECONDS) -> bool:
 
 
 def retry_until(
-    fun,
-    seconds=RETRY_TIMEOUT_SECONDS,
+    fun: Callable,
+    seconds: float = RETRY_TIMEOUT_SECONDS,
     *,
-    interval=RETRY_INTERVAL_SECONDS,
-    raises=True,
-):
+    interval: Optional[float] = RETRY_INTERVAL_SECONDS,
+    raises: Optional[bool] = True,
+) -> bool:
     """
     Retry a function until a condition meets or the specified time passes.
 
@@ -71,7 +71,7 @@ def retry_until(
     fun : callable
         A function that will be called repeatedly until it returns ``True``  or
         the specified time passes.
-    seconds : int
+    seconds : float
         Seconds to retry. Defaults to ``8``, which is configurable via
         ``RETRY_TIMEOUT_SECONDS`` environment variables.
     interval : float
