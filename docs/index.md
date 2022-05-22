@@ -28,6 +28,7 @@ api
 :hidden:
 
 developing
+internals/index
 history
 glossary
 GitHub <https://github.com/tmux-python/libtmux>

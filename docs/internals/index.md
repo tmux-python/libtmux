@@ -1,11 +1,10 @@
-(api)=
+(internals)=
 
-# API Reference
+# Internals
 
 :::{warning}
 
-All APIs are considered experimental and subject to break pre-1.0. They can and will break between
-versions.
+These APIs are internal and not covered by versioning policy.
 
 :::
 
@@ -13,51 +12,7 @@ versions.
 
 ```
 
-## Server Object
-
-```{eval-rst}
-.. autoapiclass:: Server
-    :members:
-    :inherited-members:
-    :private-members:
-    :show-inheritance:
-    :member-order: bysource
-```
-
-## Session Object
-
-```{eval-rst}
-.. autoapiclass:: Session
-    :members:
-    :inherited-members:
-    :private-members:
-    :show-inheritance:
-    :member-order: bysource
-```
-
-## Window Object
-
-```{eval-rst}
-.. autoapiclass:: Window
-    :members:
-    :inherited-members:
-    :private-members:
-    :show-inheritance:
-    :member-order: bysource
-```
-
-## Pane Object
-
-```{eval-rst}
-.. autoapiclass:: Pane
-    :members:
-    :inherited-members:
-    :private-members:
-    :show-inheritance:
-    :member-order: bysource
-```
-
-## Internals
+## Common
 
 ```{eval-rst}
 .. autodata:: libtmux.common.TMUX_MIN_VERSION
@@ -68,27 +23,29 @@ versions.
 ```
 
 ```{eval-rst}
-.. autoapiclass:: libtmux.common.TmuxRelationalObject
+.. autoclass:: libtmux.common.TmuxRelationalObject
     :members:
 ```
 
 ```{eval-rst}
-.. autoapiclass:: libtmux.common.TmuxMappingObject
+.. autoclass:: libtmux.common.TmuxMappingObject
     :members:
 ```
 
 ```{eval-rst}
-.. autoapiclass:: libtmux.common.EnvironmentMixin
+.. autoclass:: libtmux.common.EnvironmentMixin
     :members:
 ```
 
 ```{eval-rst}
-.. autoapiclass:: libtmux.common.tmux_cmd
+.. autoclass:: libtmux.common.tmux_cmd
 ```
 
 ```{eval-rst}
 .. automethod:: libtmux.common.which
 ```
+
+### Version
 
 ```{eval-rst}
 .. automethod:: libtmux.common.get_version
@@ -191,7 +148,7 @@ versions.
 ```
 
 ```{eval-rst}
-.. autoapiclass:: libtmux.test.EnvironmentVarGuard
+.. autoclass:: libtmux.test.EnvironmentVarGuard
 ```
 
 ## Environmental variables
