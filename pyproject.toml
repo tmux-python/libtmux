@@ -18,20 +18,20 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: Implementation :: PyPy",
   "Topic :: Utilities",
-  "Topic :: System :: Shells"
+  "Topic :: System :: Shells",
 ]
 
 keywords = ["tmux", "session manager", "terminal", "ncurses"]
 homepage = "http://github.com/tmux-python/libtmux/"
 readme = "README.md"
 packages = [
-    { include = "libtmux" }
+  { include = "libtmux" },
 ]
 include = [
-    { path = "CHANGES", format = "sdist" },
-    { path = ".tmuxp.yaml", format = "sdist" },
-    { path = "tests", format = "sdist" },
-    { path = "docs", format = "sdist" }
+  { path = "CHANGES", format = "sdist" },
+  { path = ".tmuxp.yaml", format = "sdist" },
+  { path = "tests", format = "sdist" },
+  { path = "docs", format = "sdist" },
 ]
 
 [tool.poetry.urls]
@@ -77,7 +77,19 @@ isort = "*"
 flake8 = "*"
 
 [tool.poetry.extras]
-docs = ["sphinx", "sphinx-issues", "sphinx-autoapi", "sphinx-autodoc-typehints", "sphinx-autobuild", "sphinx-copybutton", "sphinxext-opengraph", "sphinx-inline-tabs", "sphinxext-rediraffe", "myst_parser", "furo"]
+docs = [
+  "sphinx",
+  "sphinx-issues",
+  "sphinx-autoapi",
+  "sphinx-autodoc-typehints",
+  "sphinx-autobuild",
+  "sphinx-copybutton",
+  "sphinxext-opengraph",
+  "sphinx-inline-tabs",
+  "sphinxext-rediraffe",
+  "myst_parser",
+  "furo",
+]
 test = ["pytest", "pytest-rerunfailures", "pytest-mock", "pytest-watcher"]
 coverage = ["codecov", "coverage", "pytest-cov"]
 format = ["black", "isort"]
