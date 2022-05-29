@@ -65,6 +65,9 @@ target/
 # ipython Notebook
 .ipynb_checkpoints
 
+# mypy
+.mypy_cache/
+
 # editors
 .idea
 .ropeproject
