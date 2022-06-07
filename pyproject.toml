@@ -46,17 +46,17 @@ python = "^3.7"
 [tool.poetry.dev-dependencies]
 ### Docs ###
 sphinx = "*"
-furo = "^2022.2.23"
-sphinx-autobuild = "^2021.3.14"
-sphinx-autodoc-typehints = "~1.17.0"
+furo = "*"
+sphinx-autobuild = "*"
+sphinx-autodoc-typehints = "*"
 sphinx-click = "*"
-sphinx-issues = "^3.0.0"
+sphinx-issues = "*"
 sphinx-inline-tabs = { version = "*", python = "^3.7" }
 sphinxext-opengraph = "*"
-sphinx-copybutton = "^0.5.0"
+sphinx-copybutton = "*"
 sphinxext-rediraffe = "*"
-sphinx-autoapi = "^1.8.4"
-myst_parser = "~0.17.0"
+sphinx-autoapi = "*"
+myst_parser = "*"
 
 ### Testing ###
 pytest = "*"
