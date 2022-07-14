@@ -24,6 +24,7 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Documentation
 
+- Renewed logo
 - Try out sphinx-autoapi for its table of contents generation ({issue}`367`)
 - Break up API documentations for utilities, exception, and test helpers and
   remove duplicate docs from API page. Server, session, window, and pane docs
