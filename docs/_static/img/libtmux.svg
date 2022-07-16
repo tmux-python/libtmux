@@ -2,17 +2,22 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   width="132.29166mm"
-   height="132.29166mm"
-   viewBox="0 0 132.29166 132.29165"
+   width="512"
+   height="512"
+   viewBox="0 0 135.46667 135.46666"
    version="1.1"
    id="svg5"
-   inkscape:version="1.1 (c68e22c387, 2021-05-23)"
-   sodipodi:docname="libtmux v5.svg"
+   inkscape:version="1.2.1 (9c6d41e410, 2022-07-14)"
+   sodipodi:docname="libtmux.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <title
+     id="title595">libtmux</title>
   <sodipodi:namedview
      id="namedview7"
      pagecolor="#505050"
@@ -29,60 +34,32 @@
      showguides="false"
      inkscape:guide-bbox="true"
      inkscape:zoom="1.8973437"
-     inkscape:cx="396.60711"
-     inkscape:cy="97.241211"
-     inkscape:window-width="2560"
-     inkscape:window-height="1377"
+     inkscape:cx="373.94385"
+     inkscape:cy="266.16158"
+     inkscape:window-width="3840"
+     inkscape:window-height="1577"
      inkscape:window-x="-8"
      inkscape:window-y="-8"
      inkscape:window-maximized="1"
      inkscape:current-layer="layer2"
      inkscape:snap-global="false"
-     inkscape:snap-page="true" />
+     inkscape:snap-page="true"
+     inkscape:deskcolor="#505050" />
   <defs
      id="defs2">
     <style
        id="style12147">.cls-1{fill:#8db1d1;}.cls-2{fill:#3771a2;}.cls-3{fill:#ffcd23;}.cls-4{fill:#231f20;}.cls-5{fill:#fff;fill-rule:evenodd;opacity:0.23;}</style>
-    <clipPath
-       clipPathUnits="userSpaceOnUse"
-       id="clipPath886">
-      <path
-         d="M 0,500 H 500 V 0 H 0 Z"
-         id="path884" />
-    </clipPath>
-    <clipPath
-       clipPathUnits="userSpaceOnUse"
-       id="clipPath886-5">
-      <path
-         d="M 0,500 H 500 V 0 H 0 Z"
-         id="path884-0" />
-    </clipPath>
-    <clipPath
-       clipPathUnits="userSpaceOnUse"
-       id="clipPath25507">
-      <path
-         id="path25509"
-         style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:0.448759;stroke-linecap:round;stroke-linejoin:round;paint-order:stroke fill markers;stop-color:#000000"
-         d="m 839.00309,9.0927754 a 6.601046,6.601046 0 0 0 -6.60137,6.6008826 v 101.715832 3.81619 a 6.601046,6.601046 0 0 0 0.12059,1.22028 6.601046,6.601046 0 0 0 0.10482,0.39145 6.601046,6.601046 0 0 0 0.23842,0.78661 6.601046,6.601046 0 0 0 0.20175,0.43273 6.601046,6.601046 0 0 0 0.3548,0.66325 6.601046,6.601046 0 0 0 0.28663,0.41 6.601046,6.601046 0 0 0 0.4652,0.56677 6.601046,6.601046 0 0 0 0.35805,0.35806 6.601046,6.601046 0 0 0 0.56679,0.46519 6.601046,6.601046 0 0 0 0.40999,0.28664 6.601046,6.601046 0 0 0 0.66325,0.35481 6.601046,6.601046 0 0 0 0.43272,0.20176 6.601046,6.601046 0 0 0 0.78661,0.23839 6.601046,6.601046 0 0 0 0.39147,0.10482 6.601046,6.601046 0 0 0 1.22028,0.12013 h 26.56679 22.43937 56.52587 3.32456 c 3.64564,0 6.60086,-2.95523 6.60086,-6.60089 V 119.32872 86.440723 62.096026 43.386105 19.493154 c -2.1e-4,-8.246367 -6.27807,-10.3998264 -9.92405,-10.4003786 0,0 0,0 -0.002,0 v 0 H 921.39012 888.0091 Z" />
-    </clipPath>
-    <clipPath
-       clipPathUnits="userSpaceOnUse"
-       id="clipPath25513">
-      <path
-         id="path25515"
-         style="display:inline;fill:#ff00ff;fill-opacity:1;stroke:none;stroke-width:0.612643;stroke-linecap:round;stroke-linejoin:round;paint-order:stroke fill markers;stop-color:#000000"
-         d="m 803.40811,-27.036034 a 9.0117135,9.0117135 0 0 0 -9.01214,9.01149 v 138.861924 5.20985 a 9.0117135,9.0117135 0 0 0 0.16462,1.6659 9.0117135,9.0117135 0 0 0 0.1431,0.53441 9.0117135,9.0117135 0 0 0 0.32548,1.07389 9.0117135,9.0117135 0 0 0 0.27544,0.59076 9.0117135,9.0117135 0 0 0 0.48437,0.90545 9.0117135,9.0117135 0 0 0 0.3913,0.55974 9.0117135,9.0117135 0 0 0 0.63509,0.77375 9.0117135,9.0117135 0 0 0 0.48881,0.48882 9.0117135,9.0117135 0 0 0 0.77378,0.63508 9.0117135,9.0117135 0 0 0 0.55972,0.39131 9.0117135,9.0117135 0 0 0 0.90546,0.48439 9.0117135,9.0117135 0 0 0 0.59074,0.27544 9.0117135,9.0117135 0 0 0 1.07388,0.32545 9.0117135,9.0117135 0 0 0 0.53443,0.14311 9.0117135,9.0117135 0 0 0 1.66592,0.16399 h 36.26884 30.63412 77.16882 4.53867 c 4.97701,0 9.01146,-4.03446 9.01146,-9.01149 V 123.4575 78.55898 45.323726 19.78104 -12.837492 c -2.9e-4,-11.257897 -8.57079,-14.197788 -13.54825,-14.198542 0,0 0,0 -0.004,0 v 0 H 915.8812 870.3096 Z" />
-    </clipPath>
   </defs>
   <g
      inkscape:groupmode="layer"
      id="layer2"
-     inkscape:label="Libtmux"
+     inkscape:label="libtmux"
      style="display:inline"
      transform="translate(-210.28959,-409.98108)">
     <g
        id="Blue-Sqaure-group-object-Shape"
-       inkscape:label="Blue-Sqaure-group-object-Shape">
+       inkscape:label="Blue-Sqaure-group-object-Shape"
+       transform="matrix(1.024,0,0,1.0240011,-5.0469507,-9.8399997)">
       <title
          id="title966">Blue Sqaure Group object (Shape)</title>
       <path
@@ -108,7 +85,8 @@
     </g>
     <g
        id="Yellow-Sqaure-group-object-Shape"
-       inkscape:label="Yellow-Sqaure-group-object-Shape">
+       inkscape:label="Yellow-Sqaure-group-object-Shape"
+       transform="matrix(1.024,0,0,1.0240011,-5.0469507,-9.8399997)">
       <title
          id="title962">Yellow Sqaure Group object (Shape)</title>
       <path
@@ -134,9 +112,9 @@
     </g>
     <path
        id="Bottom-bar-object-Shape"
-       style="stroke-width:1.532"
+       style="stroke-width:1.56876"
        class="cls-4"
-       d="m 210.28959,530.98173 v 4.1366 c 9e-5,3.95136 3.20342,7.15446 7.15478,7.15427 h 27.96 l 79.36492,-0.99834 14.20849,-10.29204 v 0 z"
+       d="m 210.28959,533.88585 v 4.23589 c 9e-5,4.04619 3.2803,7.32617 7.32649,7.32598 h 28.63105 l 81.26967,-1.0223 14.5495,-10.53906 v 0 z"
        inkscape:label="Bottom-bar-object-Shape"
        sodipodi:nodetypes="cccccccc">
       <title
@@ -144,7 +122,8 @@
     </path>
     <g
        id="Light-Blue-Sqaure-group-object-Shape"
-       inkscape:label="Light-Blue-Sqaure-group-object-Shape">
+       inkscape:label="Light-Blue-Sqaure-group-object-Shape"
+       transform="matrix(1.024,0,0,1.0240011,-5.0469507,-9.8399997)">
       <title
          id="title964">Light Blue Sqaure Group object (Shape)</title>
       <path
@@ -178,7 +157,8 @@
     </g>
     <g
        id="Gear-object-Group"
-       inkscape:label="Gear-object-Group">
+       inkscape:label="Gear-object-Group"
+       transform="matrix(1.024,0,0,1.0240011,-5.0469507,-9.8399997)">
       <title
          id="title2298">Gear object (Group)</title>
       <path
@@ -199,4 +179,13 @@
       </path>
     </g>
   </g>
+  <metadata
+     id="metadata593">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>libtmux</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
 </svg>
