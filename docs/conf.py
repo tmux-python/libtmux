@@ -4,6 +4,7 @@ import os
 import sys
 from os.path import dirname, relpath
 from pathlib import Path
+from typing import Dict, List
 
 import libtmux  # NOQA
 from libtmux import test  # NOQA
@@ -16,7 +17,7 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(cwd / "_ext"))
 
 # package data
-about = {}
+about: Dict = {}
 with open("../libtmux/__about__.py") as fp:
     exec(fp.read(), about)
 
@@ -68,8 +69,8 @@ html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
 html_extra_path = ["manifest.json"]
 html_theme = "furo"
-html_theme_path = []
-html_theme_options = {
+html_theme_path: List = []
+html_theme_options: Dict = {
     "light_logo": "img/libtmux.svg",
     "dark_logo": "img/libtmux.svg",
     "footer_icons": [
