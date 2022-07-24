@@ -69,8 +69,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         )
 
     @property
-    def _info(self, *args):
-
+    def _info(self):
         attrs = {"window_id": self._window_id}
 
         # from https://github.com/serkanyersen/underscore.py
@@ -445,7 +444,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         # '-t%s' % self.attached_pane.get('pane_id'),
         # 2013-10-18 LOOK AT THIS, rm'd it..
-        tmux_args = tuple()
+        tmux_args: t.Tuple = tuple()
 
         if target:
             tmux_args += ("-t%s" % target,)
@@ -504,6 +503,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             # for now pane_active is a unicode
             if "pane_active" in pane and pane.get("pane_active") == "1":
                 return Pane(window=self, **pane)
+        return None
 
     def _list_panes(self) -> t.List[PaneDict]:
         panes = self.server._update_panes()._panes

@@ -2,11 +2,17 @@
 
 [poetry] is a required package to develop.
 
-`git clone https://github.com/tmux-python/libtmux.git`
+```console
+$ git clone https://github.com/tmux-python/libtmux.git
+```
 
-`cd libtmux`
+```console
+$ cd libtmux
+```
 
-`poetry install -E "docs test coverage lint format"`
+```console
+$ poetry install -E "docs test coverage lint format"
+```
 
 Makefile commands prefixed with `watch_` will watch files and rerun.
 
@@ -21,23 +27,122 @@ Rerun tests on file change: `make watch_test` (requires [entr(1)])
 
 Default preview server: http://localhost:8023
 
+[sphinx-autobuild] will automatically build the docs, watch for file changes and launch a server.
+
+From home directory: `make start_docs` From inside `docs/`: `make start`
+
+[sphinx-autobuild]: https://github.com/executablebooks/sphinx-autobuild
+
+### Manual documentation (the hard way)
+
 `cd docs/` and `make html` to build. `make serve` to start http server.
 
-Helpers:
-`make build_docs`, `make serve_docs`
+Helpers: `make build_docs`, `make serve_docs`
 
 Rebuild docs on file change: `make watch_docs` (requires [entr(1)])
 
-Rebuild docs and run server via one terminal: `make dev_docs` (requires above, and a
-`make(1)` with `-J` support, e.g. GNU Make)
+Rebuild docs and run server via one terminal: `make dev_docs` (requires above, and a `make(1)` with
+`-J` support, e.g. GNU Make)
 
-## Formatting / Linting
+## Formatting
 
-The project uses [black] and [isort] (one after the other) and runs [flake8] via
-CI. See the configuration in `pyproject.toml` and `setup.cfg`:
+The project uses [black] and [isort] (one after the other). Configurations are in `pyproject.toml`
+and `setup.cfg`:
 
-`make black isort`: Run `black` first, then `isort` to handle import nuances
-`make flake8`, to watch (requires `entr(1)`): `make watch_flake8`
+- `make black isort`: Run `black` first, then `isort` to handle import nuances
+
+## Linting
+
+[flake8] and [mypy] run via CI in our GitHub Actions. See the configuration in `pyproject.toml` and
+`setup.cfg`.
+
+### flake8
+
+[flake8] provides fast, reliable, barebones styling and linting.
+
+````{tab} Command
+
+poetry:
+
+```console
+$ poetry run flake8
+```
+
+If you setup manually:
+
+```console
+$ flake8
+```
+
+````
+
+````{tab} make
+
+```console
+$ make flake8
+```
+
+````
+
+````{tab} Watch
+
+```console
+$ make watch_flake8
+```
+
+requires [`entr(1)`].
+
+````
+
+````{tab} Configuration
+
+See `[flake8]` in setup.cfg.
+
+```{literalinclude} ../setup.cfg
+:language: ini
+:start-at: "[flake8]"
+:end-before: "[isort]"
+
+```
+
+````
+
+### mypy
+
+[mypy] is used for static type checking.
+
+````{tab} Command
+
+poetry:
+
+```console
+$ poetry run mypy .
+```
+
+If you setup manually:
+
+```console
+$ mypy .
+```
+
+````
+
+````{tab} make
+
+```console
+$ make mypy
+```
+
+````
+
+````{tab} Watch
+
+```console
+$ make watch_mypy
+```
+
+requires [`entr(1)`].
+````
 
 ## Releasing
 
@@ -68,23 +173,18 @@ the top::
 
 `libtmux/__init__.py` and `__about__.py` - Set version
 
-`git commit -m 'Tag v0.9.1'`
+```console
+$ git commit -m 'Tag v0.9.1'
+```
 
-`git tag v0.9.1`
+```console
+$ git tag v0.9.1
+```
 
-`pip install wheel twine`
+After `git push` and `git push --tags`, CI will automatically build and deploy
+to PyPI.
 
-`python setup.py sdist bdist_wheel`
-
-`twine upload dist/*`
-
-### Twine
-
-`twine upload dist/*`
-
-You will be asked for PyPI login information.
-
-### Releasing with Poetry (hypothetical)
+### Releasing with Poetry (manual)
 
 This isn't used yet since package maintainers may want setup.py in the source.
 See https://github.com/tmux-python/tmuxp/issues/625.
@@ -104,6 +204,8 @@ Update `__version__` in `__about__.py` and `pyproject.toml`::
 [twine]: https://twine.readthedocs.io/
 [poetry]: https://python-poetry.org/
 [entr(1)]: http://eradman.com/entrproject/
+[`entr(1)`]: http://eradman.com/entrproject/
 [black]: https://github.com/psf/black
 [isort]: https://pypi.org/project/isort/
 [flake8]: https://flake8.pycqa.org/
+[mypy]: http://mypy-lang.org/

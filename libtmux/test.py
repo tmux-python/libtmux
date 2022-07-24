@@ -2,7 +2,7 @@
 import contextlib
 import logging
 import os
-import tempfile
+import random
 import time
 import warnings
 from typing import Callable, Optional
@@ -15,13 +15,25 @@ TEST_SESSION_PREFIX = "libtmux_"
 RETRY_TIMEOUT_SECONDS = int(os.getenv("RETRY_TIMEOUT_SECONDS", 8))
 RETRY_INTERVAL_SECONDS = float(os.getenv("RETRY_INTERVAL_SECONDS", 0.05))
 
-namer = tempfile._RandomNameSequence()
+
+class RandomStrSequence:
+    def __init__(self, characters: str = "abcdefghijklmnopqrstuvwxyz0123456789_"):
+        self.characters: str = characters
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return "".join(random.sample(self.characters, k=8))
+
+
+namer = RandomStrSequence()
 current_dir = os.path.abspath(os.path.dirname(__file__))
 example_dir = os.path.abspath(os.path.join(current_dir, "..", "examples"))
 fixtures_dir = os.path.realpath(os.path.join(current_dir, "fixtures"))
 
 
-def retry(seconds: Optional[float] = RETRY_TIMEOUT_SECONDS) -> bool:
+def retry(seconds: float = RETRY_TIMEOUT_SECONDS) -> bool:
     """
     Retry a block of code until a time limit or ``break``.
 
@@ -60,7 +72,7 @@ def retry_until(
     fun: Callable,
     seconds: float = RETRY_TIMEOUT_SECONDS,
     *,
-    interval: Optional[float] = RETRY_INTERVAL_SECONDS,
+    interval: float = RETRY_INTERVAL_SECONDS,
     raises: Optional[bool] = True,
 ) -> bool:
     """

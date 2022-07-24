@@ -534,7 +534,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         if env:
             del os.environ["TMUX"]
 
-        tmux_args = (
+        tmux_args: t.Tuple = (
             "-s%s" % session_name,
             "-P",
             "-F%s" % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
