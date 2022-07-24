@@ -33,7 +33,7 @@ example_dir = os.path.abspath(os.path.join(current_dir, "..", "examples"))
 fixtures_dir = os.path.realpath(os.path.join(current_dir, "fixtures"))
 
 
-def retry(seconds: Optional[float] = RETRY_TIMEOUT_SECONDS) -> bool:
+def retry(seconds: float = RETRY_TIMEOUT_SECONDS) -> bool:
     """
     Retry a block of code until a time limit or ``break``.
 
