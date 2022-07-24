@@ -444,7 +444,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         # '-t%s' % self.attached_pane.get('pane_id'),
         # 2013-10-18 LOOK AT THIS, rm'd it..
-        tmux_args = tuple()
+        tmux_args: t.Tuple = tuple()
 
         if target:
             tmux_args += ("-t%s" % target,)
