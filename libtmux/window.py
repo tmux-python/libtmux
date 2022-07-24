@@ -503,6 +503,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             # for now pane_active is a unicode
             if "pane_active" in pane and pane.get("pane_active") == "1":
                 return Pane(window=self, **pane)
+        return None
 
     def _list_panes(self) -> t.List[PaneDict]:
         panes = self.server._update_panes()._panes
