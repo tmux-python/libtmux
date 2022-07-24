@@ -209,7 +209,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         wformats = ["session_name", "session_id"] + formats.WINDOW_FORMATS
         tmux_formats = ["#{%s}" % f for f in wformats]
 
-        window_args = tuple()
+        window_args: t.Tuple = tuple()
 
         if not attach:
             window_args += ("-d",)
