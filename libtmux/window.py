@@ -69,8 +69,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         )
 
     @property
-    def _info(self, *args):
-
+    def _info(self):
         attrs = {"window_id": self._window_id}
 
         # from https://github.com/serkanyersen/underscore.py
