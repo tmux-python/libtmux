@@ -72,7 +72,7 @@ def retry_until(
     fun: Callable,
     seconds: float = RETRY_TIMEOUT_SECONDS,
     *,
-    interval: Optional[float] = RETRY_INTERVAL_SECONDS,
+    interval: float = RETRY_INTERVAL_SECONDS,
     raises: Optional[bool] = True,
 ) -> bool:
     """
