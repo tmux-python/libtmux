@@ -13,11 +13,11 @@ from .common import (
     EnvironmentMixin,
     PaneDict,
     SessionDict,
+    TmuxCommand,
     TmuxRelationalObject,
     WindowDict,
     has_gte_version,
     session_check_name,
-    tmux_cmd,
 )
 from .session import Session
 
@@ -127,7 +127,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
             else:
                 raise ValueError("Server.colors must equal 88 or 256")
 
-        return tmux_cmd(*args, **kwargs)
+        return TmuxCommand(*args, **kwargs).execute()
 
     def _list_sessions(self) -> t.List[SessionDict]:
         """
@@ -136,7 +136,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         Retrieved from ``$ tmux(1) list-sessions`` stdout.
 
         The :py:obj:`list` is derived from ``stdout`` in
-        :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
+        :class:`common.TmuxCommand` which wraps :py:class:`subprocess.Popen`.
 
         Returns
         -------
@@ -199,7 +199,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         Retrieved from ``$ tmux(1) list-windows`` stdout.
 
         The :py:obj:`list` is derived from ``stdout`` in
-        :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
+        :class:`common.TmuxCommand` which wraps :py:class:`subprocess.Popen`.
 
         Returns
         -------
@@ -261,7 +261,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         Retrieved from ``$ tmux(1) list-panes`` stdout.
 
         The :py:obj:`list` is derived from ``stdout`` in
-        :class:`util.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
+        :class:`util.TmuxCommand` which wraps :py:class:`subprocess.Popen`.
 
         Returns
         -------

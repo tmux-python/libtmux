@@ -27,15 +27,28 @@ from libtmux.exc import BadSessionName, LibTmuxException, TmuxCommandNotFound
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
-def test_allows_master_version(monkeypatch):
-    def mock_tmux_cmd(param):
+@pytest.mark.parametrize("executor", ["mock_tmux_cmd", "mock_TmuxCommand"])
+def test_allows_master_version(monkeypatch, executor):
+    def mock_TmuxCommand(param):
         class Hi:
+            stdout = ["tmux master"]
+            stderr = None
+
+            def execute(self):
+                return self
+
+        return Hi()
+
+    def mock_tmux_cmd(param):
+        class Hi(object):
             stdout = ["tmux master"]
             stderr = None
 
         return Hi()
 
-    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
+    mock_cmd = locals()[executor]
+
+    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_cmd)
 
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
@@ -51,6 +64,9 @@ def test_allows_next_version(monkeypatch):
             stdout = ["tmux next-2.9"]
             stderr = None
 
+            def execute(self):
+                return self
+
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
@@ -65,6 +81,9 @@ def test_get_version_openbsd(monkeypatch):
     def mock_tmux_cmd(param):
         class Hi:
             stderr = ["tmux: unknown option -- V"]
+
+            def execute(self):
+                return self
 
         return Hi()
 
@@ -82,6 +101,9 @@ def test_get_version_too_low(monkeypatch):
     def mock_tmux_cmd(param):
         class Hi:
             stderr = ["tmux: unknown option -- V"]
+
+            def execute(self):
+                return self
 
         return Hi()
 
@@ -181,6 +203,12 @@ def test_tmux_cmd_raises_on_not_found():
 
 def test_tmux_cmd_unicode(session):
     session.cmd("new-window", "-t", 3, "-n", "юникод", "-F", "Ελληνικά")
+
+
+def test_tmux_cmd_makes_cmd_available():
+    """tmux_cmd objects should make .cmd attribute available."""
+    command = tmux_cmd("-V")
+    assert hasattr(command, "cmd")
 
 
 @pytest.mark.parametrize(
