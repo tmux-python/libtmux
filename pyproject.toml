@@ -98,6 +98,9 @@ coverage = ["codecov", "coverage", "pytest-cov"]
 format = ["black", "isort"]
 lint = ["flake8", "mypy"]
 
+[tool.mypy]
+strict = true
+
 [build-system]
 requires = ["poetry_core>=1.0.0", "setuptools>50"]
 build-backend = "poetry.core.masonry.api"
