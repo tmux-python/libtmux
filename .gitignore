@@ -73,3 +73,6 @@ target/
 .ropeproject
 *.swp
 .vim
+
+# Monkeytype
+monkeytype.sqlite3
