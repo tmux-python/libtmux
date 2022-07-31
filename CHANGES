@@ -15,6 +15,13 @@ $ pip install --user --upgrade --pre libtmux
 ## Compatibility
 
 - Brought back python 3.7 and 3.8 support ({issue}`375`)
+- Support for tmux 3.3a
+
+  - Add to CI
+  - Bump `TMUX_MAX_VERSION` from 2.4 -> 3.3
+
+    _2.4 to 3.3a already worked, this is just the constant
+    being updated._
 
 ### Development
 
