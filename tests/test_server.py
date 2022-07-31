@@ -1,8 +1,8 @@
 """Test for libtmux Server object."""
 import logging
 
-from libtmux import Server
 from libtmux.common import has_gte_version
+from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
 

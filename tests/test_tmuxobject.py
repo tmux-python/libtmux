@@ -1,8 +1,10 @@
 """Tests for libtmux TmuxRelationalObject and TmuxMappingObject."""
 import logging
 
-from libtmux import Pane, Session, Window
+from libtmux.pane import Pane
+from libtmux.session import Session
 from libtmux.test import TEST_SESSION_PREFIX, namer
+from libtmux.window import Window
 
 logger = logging.getLogger(__name__)
 
