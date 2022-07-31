@@ -6,9 +6,16 @@ libtmux.pane
 
 """
 import logging
+import typing as t
 
 from . import exc
 from .common import TmuxMappingObject, TmuxRelationalObject
+
+if t.TYPE_CHECKING:
+    from .server import Server
+    from .session import Session
+    from .window import Window
+
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +27,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
     ``Pane`` instances can send commands directly to a pane, or traverse
     between linked tmux objects.
 
-    Parameters
+    Attributes
     ----------
     window : :class:`Window`
 
@@ -42,13 +49,16 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
        Accessed April 1st, 2018.
     """
 
-    #: namespace used :class:`~libtmux.common.TmuxMappingObject`
     formatter_prefix = "pane_"
+    """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
+    window: "Window"
+    """:class:`libtmux.Window` pane is linked to"""
+    session: "Session"
+    """:class:`libtmux.Session` pane is linked to"""
+    server: "Server"
+    """:class:`libtmux.Server` pane is linked to"""
 
-    def __init__(self, window=None, **kwargs):
-        if not window:
-            raise ValueError("Pane must have ``Window`` object")
-
+    def __init__(self, window: "Window", **kwargs):
         self.window = window
         self.session = self.window.session
         self.server = self.session.server
@@ -275,7 +285,10 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         -------
         :class:`pane`
         """
-        return self.window.select_pane(self.get("pane_id"))
+        pane = self.window.select_pane(self._pane_id)
+        if pane is None:
+            raise exc.LibTmuxException(f"Pane not found: {self}")
+        return pane
 
     def __repr__(self) -> str:
         return "{}({} {})".format(

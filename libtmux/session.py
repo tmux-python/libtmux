@@ -22,6 +22,7 @@ from .window import Window
 
 if t.TYPE_CHECKING:
     from .pane import Pane
+    from .server import Server
 
 
 logger = logging.getLogger(__name__)
@@ -50,12 +51,14 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
        https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
     """
 
-    #: unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`
     child_id_attribute = "window_id"
-    #: namespace used :class:`~libtmux.common.TmuxMappingObject`
+    """Unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`"""
     formatter_prefix = "session_"
+    """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
+    server: "Server"
+    """:class:`libtmux.server.Server` session is linked to"""
 
-    def __init__(self, server=None, **kwargs):
+    def __init__(self, server: "Server", **kwargs):
         EnvironmentMixin.__init__(self)
         self.server = server
 
