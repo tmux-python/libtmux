@@ -29,6 +29,9 @@ $ pip install --user --upgrade --pre libtmux
 
   This created issues with running poetry while inside the virtualenv.
 
+- Typings
+  - Core level relations, e.g. `Pane.window`, `Pane.session`, `Pane.server`, `Window.server` {issue}`385`
+
 ### Documentation
 
 - Renewed logo
