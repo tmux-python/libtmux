@@ -3,8 +3,11 @@ import logging
 
 import pytest
 
-from libtmux import Pane, Server, Window, exc
+from libtmux import exc
 from libtmux.common import has_gte_version
+from libtmux.pane import Pane
+from libtmux.server import Server
+from libtmux.window import Window
 
 logger = logging.getLogger(__name__)
 

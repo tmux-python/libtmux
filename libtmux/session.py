@@ -18,8 +18,11 @@ from .common import (
     has_version,
     session_check_name,
 )
-from .pane import Pane
 from .window import Window
+
+if t.TYPE_CHECKING:
+    from .pane import Pane
+
 
 logger = logging.getLogger(__name__)
 
@@ -367,7 +370,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         return self.attached_window
 
     @property
-    def attached_pane(self) -> t.Optional[Pane]:
+    def attached_pane(self) -> t.Optional["Pane"]:
         """Return active :class:`Pane` object."""
 
         return self.attached_window.attached_pane
