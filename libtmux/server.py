@@ -60,18 +60,18 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
        Accessed April 1st, 2018.
     """
 
-    #: ``[-L socket-name]``
     socket_name = None
-    #: ``[-S socket-path]``
+    """Passthrough to ``[-L socket-name]``"""
     socket_path = None
-    #: ``[-f file]``
+    """Passthrough to ``[-S socket-path]``"""
     config_file = None
-    #: ``-2`` or ``-8``
+    """Passthrough to ``[-f file]``"""
     colors = None
-    #: unique child ID used by :class:`~libtmux.common.TmuxRelationalObject`
+    """``-2`` or ``-8``"""
     child_id_attribute = "session_id"
-    #: namespace used :class:`~libtmux.common.TmuxMappingObject`
+    """Unique child ID used by :class:`~libtmux.common.TmuxRelationalObject`"""
     formatter_prefix = "server_"
+    """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
 
     def __init__(
         self,
