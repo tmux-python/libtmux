@@ -34,6 +34,15 @@ $ pip install --user --upgrade --pre libtmux
 
 - `retry()`: Add deprecation warning. This will be removed in 0.13.x ({issue}`368`, {issue}`372`)
 - New function `retry_until()`: Polls a callback function for a set period of time until it returns `True` or times out. By default it will raise {exc}`libtmux.exc.WaitTimeout`, with `raises=False` it will return `False`. Thank you @categulario! ({issue}`368`, {issue}`372`)
+- {issue}`384` Chore: Use absolute modules rather than root-level to avoid cyclic imports.
+
+  ```python
+  # Bad / Old
+  from libtmux import Server
+
+  # Good / New
+  from libtmux.server import Server
+  ```
 
 ### Internals
 
