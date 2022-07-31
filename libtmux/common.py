@@ -13,9 +13,16 @@ import sys
 import typing as t
 from collections.abc import MutableMapping
 from distutils.version import LooseVersion
+from typing import Any, Dict, List, Optional, Union
 
 from . import exc
 from ._compat import console_to_str, str_from_console
+
+if t.TYPE_CHECKING:
+    from libtmux.pane import Pane
+    from libtmux.session import Session
+    from libtmux.window import Window
+
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +47,10 @@ class EnvironmentMixin:
 
     _add_option = None
 
-    def __init__(self, add_option=None):
+    def __init__(self, add_option: Optional[str] = None) -> None:
         self._add_option = add_option
 
-    def set_environment(self, name, value):
+    def set_environment(self, name: str, value: str) -> None:
         """
         Set environment ``$ tmux set-environment <name> <value>``.
 
@@ -67,7 +74,7 @@ class EnvironmentMixin:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
-    def unset_environment(self, name):
+    def unset_environment(self, name: str) -> None:
         """
         Unset environment variable ``$ tmux set-environment -u <name>``.
 
@@ -88,7 +95,7 @@ class EnvironmentMixin:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
-    def remove_environment(self, name):
+    def remove_environment(self, name: str) -> None:
         """Remove environment variable ``$ tmux set-environment -r <name>``.
 
         Parameters
@@ -108,7 +115,7 @@ class EnvironmentMixin:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
-    def show_environment(self):
+    def show_environment(self) -> Optional[Dict[str, Union[bool, str]]]:
         """Show environment ``$ tmux show-environment -t [session]``.
 
         Return dict of environment variables for the session.
@@ -139,7 +146,7 @@ class EnvironmentMixin:
 
         return vars_dict
 
-    def getenv(self, name):
+    def getenv(self, name: str) -> Optional[str]:
         """Show environment variable ``$ tmux show-environment -t [session] <name>``.
 
         Return the value of a specific variable if the name is specified.
@@ -214,7 +221,7 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         tmux_bin = which(
             "tmux",
             default_paths=kwargs.get(
@@ -279,10 +286,10 @@ class TmuxMappingObject(MutableMapping):
     ================ ================================== ==============
     """
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> str:
         return self._info[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: str) -> None:
         self._info[key] = value
         self.dirty = True
 
@@ -297,10 +304,10 @@ class TmuxMappingObject(MutableMapping):
     def __iter__(self):
         return self._info.__iter__()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._info.keys())
 
-    def __getattr__(self, key):
+    def __getattr__(self, key: str) -> str:
         try:
             return self._info[self.formatter_prefix + key]
         except KeyError:
@@ -337,7 +344,9 @@ class TmuxRelationalObject:
     ================ ================================== ==============
     """
 
-    def find_where(self, attrs):
+    def find_where(
+        self, attrs: Dict[str, str]
+    ) -> Optional[Union["Pane", "Window", "Session"]]:
         """Return object on first match.
 
         .. versionchanged:: 0.4
@@ -349,7 +358,9 @@ class TmuxRelationalObject:
         except IndexError:
             return None
 
-    def where(self, attrs, first=False):
+    def where(
+        self, attrs: Dict[str, str], first: bool = False
+    ) -> List[Union["Session", "Pane", "Window", t.Any]]:
         """
         Return objects matching child objects properties.
 
@@ -379,7 +390,7 @@ class TmuxRelationalObject:
             return target_children[0]
         return target_children
 
-    def get_by_id(self, id):
+    def get_by_id(self, id: str) -> Optional[Union["Pane", "Window", "Session"]]:
         """
         Return object based on ``child_id_attribute``.
 
@@ -638,7 +649,7 @@ def has_minimum_version(raises: bool = True) -> bool:
     return True
 
 
-def session_check_name(session_name: str):
+def session_check_name(session_name: str) -> None:
     """
     Raises exception session name invalid, modeled after tmux function.
 
