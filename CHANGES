@@ -8,9 +8,11 @@ To install the unreleased libtmux version, see [developmental releases](https://
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.12.x (unreleased)
+## libtmux 0.13.x (unreleased)
 
 - _Insert changes/features/fixes for next release here_
+
+## libtmux 0.12.0 (2022-07-13)
 
 ## Compatibility
 
@@ -29,8 +31,7 @@ $ pip install --user --upgrade --pre libtmux
 
   This created issues with running poetry while inside the virtualenv.
 
-- Typings
-  - Core level relations, e.g. `Pane.window`, `Pane.session`, `Pane.server`, `Window.server` {issue}`385`
+- Typings: Core relations, e.g. `Pane.window`, `Pane.session`, `Pane.server`, `Window.server` {issue}`385`
 
 ### Documentation
 
