@@ -177,10 +177,6 @@ Session($3 foo)
 
 # Python support
 
-Maintenance-only / security and bug fixes:
-
-- Python 3.7 and 3.8: [`v0.11.x`](https://github.com/tmux-python/libtmux/tree/v0.11.x)
-
 Unsupported / no security releases or bug fixes:
 
 - Python 2.x: The backports branch is
