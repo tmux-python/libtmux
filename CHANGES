@@ -61,6 +61,14 @@ $ pip install --user --upgrade --pre libtmux
     window.show_window_option('DISPLAY')
     ```
 
+## What's new
+
+- **Improved typings**
+
+  Now [`mypy --strict`] compliant ({issue}`383`)
+
+  [`mypy --strict`]: https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-strict
+
 ### Development
 
 - Fix incorrect function name `findWhere()` ({issue}`391`)
