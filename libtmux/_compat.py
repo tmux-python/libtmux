@@ -1,5 +1,6 @@
 # flake8: NOQA
 import sys
+import types
 import typing as t
 
 console_encoding = sys.__stdout__.encoding
@@ -14,7 +15,12 @@ def console_to_str(s: bytes) -> str:
 
 
 # TODO Consider removing, reraise does not seem to be called anywhere
-def reraise(tp, value, tb=None):
+def reraise(
+    tp: t.Type[BaseException],
+    value: BaseException,
+    tb: types.TracebackType,
+) -> t.NoReturn:
+
     if value.__traceback__ is not tb:
         raise (value.with_traceback(tb))
     raise value

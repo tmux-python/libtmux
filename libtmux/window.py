@@ -8,7 +8,6 @@ import logging
 import os
 import shlex
 import typing as t
-from typing import Dict, Optional, Union
 
 from libtmux.common import tmux_cmd
 from libtmux.pane import Pane
@@ -18,6 +17,8 @@ from .common import (
     PaneDict,
     TmuxMappingObject,
     TmuxRelationalObject,
+    WindowDict,
+    WindowOptionDict,
     handle_option_error,
 )
 
@@ -28,7 +29,7 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Window(TmuxMappingObject, TmuxRelationalObject):
+class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
     """
     A :term:`tmux(1)` :term:`Window` [window_manual]_.
 
@@ -57,16 +58,15 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     session: "Session"
     """:class:`libtmux.Session` window is linked to"""
 
-    def __init__(self, session: "Session", **kwargs) -> None:
+    def __init__(
+        self, session: "Session", window_id: t.Union[int, str], **kwargs: t.Any
+    ) -> None:
         self.session = session
         self.server = self.session.server
 
-        if "window_id" not in kwargs:
-            raise ValueError("Window requires a `window_id`")
+        self._window_id = window_id
 
-        self._window_id = kwargs["window_id"]
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "{}({} {}:{}, {})".format(
             self.__class__.__name__,
             self.id,
@@ -76,11 +76,11 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         )
 
     @property
-    def _info(self) -> Dict[str, str]:
+    def _info(self) -> WindowDict:  # type: ignore  # mypy#1362
         attrs = {"window_id": self._window_id}
 
         # from https://github.com/serkanyersen/underscore.py
-        def by(val) -> bool:
+        def by(val: WindowDict) -> bool:
             for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
@@ -89,8 +89,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
                     return False
             return True
 
-        # TODO add type hint
-        target_windows = list(filter(by, self.server._windows))
+        target_windows = [s for s in self.server._windows if by(s)]
         # If a window_shell option was configured which results in
         # a short-lived process, the window id is @0.  Use that instead of
         # self._window_id
@@ -98,7 +97,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             target_windows = self.server._windows
         return target_windows[0]
 
-    def cmd(self, cmd: str, *args, **kwargs) -> tmux_cmd:
+    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting ``target_window`` as target.
 
         Send command to tmux with :attr:`window_id` as ``target-window``.
@@ -121,7 +120,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         return self.server.cmd(cmd, *args, **kwargs)
 
-    def select_layout(self, layout: Optional[str] = None) -> None:
+    def select_layout(self, layout: t.Optional[str] = None) -> None:
         """Wrapper for ``$ tmux select-layout <layout>``.
 
         Parameters
@@ -160,7 +159,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def set_window_option(self, option: str, value: Union[int, str]) -> None:
+    def set_window_option(self, option: str, value: t.Union[int, str]) -> None:
         """
         Wrapper for ``$ tmux set-window-option <option> <value>``.
 
@@ -196,14 +195,16 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
 
-    def show_window_options(
-        self, g: Optional[bool] = False
-    ) -> Dict[str, Union[str, int]]:
+    def show_window_options(self, g: t.Optional[bool] = False) -> WindowOptionDict:
         """
         Return a dict of options for the window.
 
         For familiarity with tmux, the option ``option`` param forwards to
         pick a single option, forwarding to :meth:`Window.show_window_option`.
+
+        .. versionchanged:: 0.13.0
+
+           ``option`` removed, use show_window_option to return an individual option.
 
         Parameters
         ----------
@@ -214,31 +215,34 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         -------
         dict
         """
-
-        tmux_args = tuple()
+        tmux_args: t.Tuple[str, ...] = tuple()
 
         if g:
             tmux_args += ("-g",)
 
         tmux_args += ("show-window-options",)
-        cmd = self.cmd(*tmux_args).stdout
+        cmd = self.cmd(*tmux_args)
+
+        output = cmd.stdout
 
         # The shlex.split function splits the args at spaces, while also
         # retaining quoted sub-strings.
         #   shlex.split('this is "a test"') => ['this', 'is', 'a test']
-        cmd = [tuple(shlex.split(item)) for item in cmd]
 
-        window_options = dict(cmd)
+        window_options: WindowOptionDict = {}
+        for item in output:
+            key, val = shlex.split(item)
+            assert isinstance(key, str)
+            assert isinstance(val, str)
 
-        for key, value in window_options.items():
-            if value.isdigit():
-                window_options[key] = int(value)
+            if isinstance(val, str) and val.isdigit():
+                window_options[key] = int(val)
 
         return window_options
 
     def show_window_option(
         self, option: str, g: bool = False
-    ) -> Optional[Union[str, int]]:
+    ) -> t.Optional[t.Union[str, int]]:
         """
         Return a list of options for the window.
 
@@ -259,8 +263,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
-
-        tmux_args = tuple()
+        tmux_args: t.Tuple[t.Union[str, int], ...] = tuple()
 
         if g:
             tmux_args += ("-g",)
@@ -272,15 +275,18 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
 
-        if not len(cmd.stdout):
+        window_options_output = cmd.stdout
+
+        if not len(window_options_output):
             return None
 
-        option = [shlex.split(item) for item in cmd.stdout][0]
+        value_raw = [shlex.split(item) for item in window_options_output][0]
 
-        if option[1].isdigit():
-            option = (option[0], int(option[1]))
+        value: t.Union[str, int] = (
+            int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
+        )
 
-        return option[1]
+        return value
 
     def rename_window(self, new_name: str) -> "Window":
         """
@@ -322,7 +328,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         self.server._update_windows()
 
-    def move_window(self, destination: str = "", session: Optional[str] = None) -> None:
+    def move_window(
+        self, destination: str = "", session: t.Optional[str] = None
+    ) -> None:
         """
         Move the current :class:`Window` object ``$ tmux move-window``.
 
@@ -361,7 +369,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         """
         return self.session.select_window(self.index)
 
-    def select_pane(self, target_pane: str) -> t.Optional[Pane]:
+    def select_pane(self, target_pane: t.Union[str, int]) -> t.Optional[Pane]:
         """
         Return selected :class:`Pane` through ``$ tmux select-pane``.
 
@@ -391,12 +399,12 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
     def split_window(
         self,
-        target: None = None,
-        start_directory: None = None,
+        target: t.Optional[t.Union[int, str]] = None,
+        start_directory: t.Optional[str] = None,
         attach: bool = True,
         vertical: bool = True,
-        shell: Optional[str] = None,
-        percent: None = None,
+        shell: t.Optional[str] = None,
+        percent: t.Optional[int] = None,
     ) -> Pane:
         """
         Split window and return the created :class:`Pane`.
@@ -450,7 +458,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         # '-t%s' % self.attached_pane.get('pane_id'),
         # 2013-10-18 LOOK AT THIS, rm'd it..
-        tmux_args: t.Tuple = tuple()
+        tmux_args: t.Tuple[str, ...] = tuple()
 
         if target:
             tmux_args += ("-t%s" % target,)
@@ -478,23 +486,25 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if shell:
             tmux_args += (shell,)
 
-        pane = self.cmd("split-window", *tmux_args)
+        pane_cmd = self.cmd("split-window", *tmux_args)
 
         # tmux < 1.7. This is added in 1.7.
-        if pane.stderr:
-            if "pane too small" in pane.stderr:
-                raise exc.LibTmuxException(pane.stderr)
+        if pane_cmd.stderr:
+            if "pane too small" in pane_cmd.stderr:
+                raise exc.LibTmuxException(pane_cmd.stderr)
 
-            raise exc.LibTmuxException(pane.stderr, self._info, self.panes)
-        else:
-            pane = pane.stdout[0]
+            raise exc.LibTmuxException(pane_cmd.stderr, self._info, self.panes)
 
-            pane = dict(zip(pformats, pane.split(formats.FORMAT_SEPARATOR)))
+        pane_output = pane_cmd.stdout[0]
 
-            # clear up empty dict
-            pane = {k: v for k, v in pane.items() if v}
+        pane_formatters = dict(
+            zip(pformats, pane_output.split(formats.FORMAT_SEPARATOR))
+        )
 
-        return Pane(window=self, **pane)
+        # Prune empty values
+        pane_formatters_filtered = {k: v for k, v in pane_formatters.items() if v}
+
+        return Pane(window=self, **pane_formatters_filtered)
 
     @property
     def attached_pane(self) -> t.Optional[Pane]:
@@ -541,4 +551,4 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         return self.list_panes()
 
     #: Alias :attr:`panes` for :class:`~libtmux.common.TmuxRelationalObject`
-    children = panes
+    children = panes  # type:ignore  # mypy#1362

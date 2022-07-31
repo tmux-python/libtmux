@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def test_has_session(server: Server, session: Session) -> None:
-    assert server.has_session(session.get("session_name"))
+    session_name = session.get("session_name")
+    assert session_name is not None
+    assert server.has_session(session_name)
     assert not server.has_session("asdf2314324321")
 
 
@@ -97,7 +99,10 @@ def test_new_session_shell(server: Server) -> None:
     assert mysession.get("session_name") == "test_new_session"
     assert server.has_session("test_new_session")
 
+    pane_start_command = pane.get("pane_start_command")
+    assert pane_start_command is not None
+
     if has_gte_version("3.2"):
-        assert pane.get("pane_start_command").replace('"', "") == cmd
+        assert pane_start_command.replace('"', "") == cmd
     else:
-        assert pane.get("pane_start_command") == cmd
+        assert pane_start_command == cmd

@@ -4,6 +4,8 @@ import logging
 import os
 import random
 import time
+import types
+import typing as t
 import warnings
 from typing import Callable, Optional
 
@@ -12,6 +14,9 @@ from libtmux.server import Server
 from .exc import WaitTimeout
 
 logger = logging.getLogger(__name__)
+
+if t.TYPE_CHECKING:
+    from libtmux.session import Session
 
 TEST_SESSION_PREFIX = "libtmux_"
 RETRY_TIMEOUT_SECONDS = int(os.getenv("RETRY_TIMEOUT_SECONDS", 8))
@@ -24,7 +29,7 @@ class RandomStrSequence:
     ) -> None:
         self.characters: str = characters
 
-    def __iter__(self):
+    def __iter__(self) -> "RandomStrSequence":
         return self
 
     def __next__(self) -> str:
@@ -73,7 +78,7 @@ def retry(seconds: float = RETRY_TIMEOUT_SECONDS) -> bool:
 
 
 def retry_until(
-    fun: Callable,
+    fun: Callable[[], bool],
     seconds: float = RETRY_TIMEOUT_SECONDS,
     *,
     interval: float = RETRY_INTERVAL_SECONDS,
@@ -123,7 +128,7 @@ def retry_until(
     return True
 
 
-def get_test_session_name(server: Server, prefix: str = TEST_SESSION_PREFIX) -> str:
+def get_test_session_name(server: "Server", prefix: str = TEST_SESSION_PREFIX) -> str:
     """
     Faker to create a session name that doesn't exist.
 
@@ -147,7 +152,9 @@ def get_test_session_name(server: Server, prefix: str = TEST_SESSION_PREFIX) -> 
     return session_name
 
 
-def get_test_window_name(session, prefix=TEST_SESSION_PREFIX):
+def get_test_window_name(
+    session: "Session", prefix: t.Optional[str] = TEST_SESSION_PREFIX
+) -> str:
     """
     Faker to create a window name that doesn't exist.
 
@@ -166,15 +173,18 @@ def get_test_window_name(session, prefix=TEST_SESSION_PREFIX):
     str
         Random window name guaranteed to not collide with current ones.
     """
+    assert prefix is not None
     while True:
         window_name = prefix + next(namer)
-        if not session.find_where(window_name=window_name):
+        if not session.find_where({"window_name": window_name}):
             break
     return window_name
 
 
 @contextlib.contextmanager
-def temp_session(server, *args, **kwargs):
+def temp_session(
+    server: Server, *args: t.Any, **kwargs: t.Any
+) -> t.Generator["Session", t.Any, t.Any]:
     """
     Return a context manager with a temporary session.
 
@@ -223,7 +233,9 @@ def temp_session(server, *args, **kwargs):
 
 
 @contextlib.contextmanager
-def temp_window(session, *args, **kwargs):
+def temp_window(
+    session: "Session", *args: t.Any, **kwargs: t.Any
+) -> t.Generator["Session", t.Any, t.Any]:
     """
     Return a context manager with a temporary window.
 
@@ -265,11 +277,13 @@ def temp_window(session, *args, **kwargs):
 
     # Get ``window_id`` before returning it, it may be killed within context.
     window_id = window.get("window_id")
+    assert window_id is not None
+    assert isinstance(window_id, str)
 
     try:
         yield session
     finally:
-        if session.find_where(window_id=window_id):
+        if session.find_where({"window_id": window_id}):
             window.kill_window()
     return
 
@@ -295,27 +309,32 @@ class EnvironmentVarGuard:
        Created October 12th, 2015. Accessed April 7th, 2018.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._environ = os.environ
-        self._unset = set()
-        self._reset = dict()
+        self._unset: t.Set[str] = set()
+        self._reset: t.Dict[str, str] = dict()
 
-    def set(self, envvar, value):
+    def set(self, envvar: str, value: str) -> None:
         if envvar not in self._environ:
             self._unset.add(envvar)
         else:
             self._reset[envvar] = self._environ[envvar]
         self._environ[envvar] = value
 
-    def unset(self, envvar):
+    def unset(self, envvar: str) -> None:
         if envvar in self._environ:
             self._reset[envvar] = self._environ[envvar]
             del self._environ[envvar]
 
-    def __enter__(self):
+    def __enter__(self) -> "EnvironmentVarGuard":
         return self
 
-    def __exit__(self, *ignore_exc):
+    def __exit__(
+        self,
+        exc_type: t.Union[t.Type[BaseException], None],
+        exc_value: t.Optional[BaseException],
+        exc_tb: t.Optional[types.TracebackType],
+    ) -> None:
         for envvar, value in self._reset.items():
             self._environ[envvar] = value
         for unset in self._unset:

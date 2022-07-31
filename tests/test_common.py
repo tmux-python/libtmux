@@ -2,6 +2,7 @@
 
 import re
 import sys
+import typing as t
 from distutils.version import LooseVersion
 from typing import Optional
 
@@ -32,11 +33,11 @@ version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
 def test_allows_master_version(monkeypatch: MonkeyPatch) -> None:
-    def mock_tmux_cmd(param):
-        class Hi:
-            stdout = ["tmux master"]
-            stderr = None
+    class Hi:
+        stdout = ["tmux master"]
+        stderr = None
 
+    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
@@ -52,11 +53,11 @@ def test_allows_master_version(monkeypatch: MonkeyPatch) -> None:
 def test_allows_next_version(monkeypatch: MonkeyPatch) -> None:
     TMUX_NEXT_VERSION = str(float(TMUX_MAX_VERSION) + 0.1)
 
-    def mock_tmux_cmd(param):
-        class Hi:
-            stdout = [f"tmux next-{TMUX_NEXT_VERSION}"]
-            stderr = None
+    class Hi:
+        stdout = [f"tmux next-{TMUX_NEXT_VERSION}"]
+        stderr = None
 
+    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
@@ -68,10 +69,10 @@ def test_allows_next_version(monkeypatch: MonkeyPatch) -> None:
 
 
 def test_get_version_openbsd(monkeypatch: MonkeyPatch) -> None:
-    def mock_tmux_cmd(param):
-        class Hi:
-            stderr = ["tmux: unknown option -- V"]
+    class Hi:
+        stderr = ["tmux: unknown option -- V"]
 
+    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
@@ -85,10 +86,10 @@ def test_get_version_openbsd(monkeypatch: MonkeyPatch) -> None:
 
 
 def test_get_version_too_low(monkeypatch: MonkeyPatch) -> None:
-    def mock_tmux_cmd(param):
-        class Hi:
-            stderr = ["tmux: unknown option -- V"]
+    class Hi:
+        stderr = ["tmux: unknown option -- V"]
 
+    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
@@ -97,7 +98,7 @@ def test_get_version_too_low(monkeypatch: MonkeyPatch) -> None:
     exc_info.match("is running tmux 1.3 or earlier")
 
 
-def test_ignores_letter_versions() -> None:
+def test_ignores_letter_versions(monkeypatch: MonkeyPatch) -> None:
     """Ignore letters such as 1.8b.
 
     See ticket https://github.com/tmux-python/tmuxp/issues/55.
@@ -106,10 +107,12 @@ def test_ignores_letter_versions() -> None:
     allow letters.
 
     """
-    result = has_minimum_version("1.9a")
+    monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", "1.9a")
+    result = has_minimum_version()
     assert result
 
-    result = has_minimum_version("1.8a")
+    monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", "1.8a")
+    result = has_minimum_version()
     assert result
 
     # Should not throw
@@ -119,7 +122,7 @@ def test_ignores_letter_versions() -> None:
 
 
 def test_error_version_less_1_7(monkeypatch: MonkeyPatch) -> None:
-    def mock_get_version():
+    def mock_get_version() -> LooseVersion:
         return LooseVersion("1.7")
 
     monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)
@@ -206,7 +209,8 @@ def test_session_check_name(
     if raises:
         with pytest.raises(BadSessionName) as exc_info:
             session_check_name(session_name)
-        assert exc_info.match(exc_msg_regex)
+        if exc_msg_regex is not None:
+            assert exc_info.match(exc_msg_regex)
     else:
         session_check_name(session_name)
 

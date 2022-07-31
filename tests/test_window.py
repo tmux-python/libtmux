@@ -1,5 +1,6 @@
 """Test for libtmux Window object."""
 import logging
+import typing as t
 
 import pytest
 
@@ -27,7 +28,7 @@ def test_select_window(session: Session) -> None:
     # int(session.attached_window.index))
     assert int(window_base_index) + 1 == int(window.index)
 
-    session.select_window(window_base_index)
+    session.select_window(str(window_base_index))
     assert window_base_index == int(session.attached_window.index)
 
     session.select_window("testing 3")
@@ -37,9 +38,11 @@ def test_select_window(session: Session) -> None:
 
 
 def test_zfresh_window_data(session: Session) -> None:
-    pane_base_index = int(
-        session.attached_window.show_window_option("pane-base-index", g=True)
-    )
+    attached_window = session.attached_window
+    assert attached_window is not None
+    pane_base_idx = attached_window.show_window_option("pane-base-index", g=True)
+    assert pane_base_idx is not None
+    pane_base_index = int(pane_base_idx)
 
     assert len(session.windows) == 1
 
@@ -60,10 +63,19 @@ def test_zfresh_window_data(session: Session) -> None:
     assert isinstance(window, Window)
     assert len(session.attached_window.panes) == 1
     window.split_window()
-    session.attached_window.select_pane(pane_base_index)
-    session.attached_pane.send_keys("cd /srv/www/flaskr")
-    session.attached_window.select_pane(pane_base_index + 1)
-    session.attached_pane.send_keys("source .venv/bin/activate")
+
+    attached_window = session.attached_window
+    assert attached_window is not None
+    attached_window.select_pane(pane_base_index)
+
+    attached_pane = session.attached_pane
+    assert attached_pane is not None
+    attached_pane.send_keys("cd /srv/www/flaskr")
+
+    attached_window.select_pane(pane_base_index + 1)
+    attached_pane = session.attached_pane
+    assert attached_pane is not None
+    attached_pane.send_keys("source .venv/bin/activate")
     session.new_window(window_name="second")
     current_windows += 1
     assert current_windows == len(session._windows)
@@ -71,7 +83,7 @@ def test_zfresh_window_data(session: Session) -> None:
     current_windows += 1
     assert current_windows == len(session._windows)
 
-    session.select_window(1)
+    session.select_window("1")
     session.kill_window(target_window="hey")
     current_windows -= 1
     assert current_windows == len(session._windows)
@@ -117,7 +129,7 @@ def test_split_window_shell(session: Session) -> None:
     assert isinstance(pane, Pane)
     assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
     if has_gte_version("3.2"):
-        assert pane.get("pane_start_command").replace('"', "") == cmd
+        assert pane.get("pane_start_command", "").replace('"', "") == cmd
     else:
         assert pane.get("pane_start_command") == cmd
 
@@ -219,7 +231,7 @@ def test_show_window_option_unknown(session: Session) -> None:
     """Window.show_window_option raises UnknownOption for bad option key."""
     window = session.new_window(window_name="test_window")
 
-    cmd_exception = exc.UnknownOption
+    cmd_exception: t.Type[exc.OptionError] = exc.UnknownOption
     if has_gte_version("3.0"):
         cmd_exception = exc.InvalidOption
     with pytest.raises(cmd_exception):
@@ -268,7 +280,9 @@ def test_move_window_to_other_session(server: Server, session: Session) -> None:
     window = session.new_window(window_name="test_window")
     new_session = server.new_session("test_move_window")
     window.move_window(session=new_session.get("session_id"))
-    assert new_session.get_by_id(window.get("window_id")) == window
+    window_id = window.get("window_id")
+    assert window_id is not None
+    assert new_session.get_by_id(window_id) == window
 
 
 def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:

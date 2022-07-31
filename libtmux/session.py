@@ -7,7 +7,6 @@ libtmux.session
 import logging
 import os
 import typing as t
-from typing import Dict, Optional, Union
 
 from libtmux.common import tmux_cmd
 from libtmux.window import Window
@@ -15,6 +14,7 @@ from libtmux.window import Window
 from . import exc, formats
 from .common import (
     EnvironmentMixin,
+    SessionDict,
     TmuxMappingObject,
     TmuxRelationalObject,
     WindowDict,
@@ -31,7 +31,9 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
+class Session(
+    TmuxMappingObject, TmuxRelationalObject["Window", "WindowDict"], EnvironmentMixin
+):
     """
     A :term:`tmux(1)` :term:`Session` [session_manual]_.
 
@@ -61,21 +63,18 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     server: "Server"
     """:class:`libtmux.server.Server` session is linked to"""
 
-    def __init__(self, server: "Server", **kwargs) -> None:
+    def __init__(self, server: "Server", session_id: str, **kwargs: t.Any) -> None:
         EnvironmentMixin.__init__(self)
         self.server = server
 
-        if "session_id" not in kwargs:
-            raise ValueError("Session requires a `session_id`")
-        self._session_id = kwargs["session_id"]
+        self._session_id = session_id
         self.server._update_windows()
 
     @property
-    def _info(self) -> Dict[str, str]:
-
+    def _info(self) -> t.Optional[SessionDict]:  # type: ignore  # mypy#1362
         attrs = {"session_id": str(self._session_id)}
 
-        def by(val) -> bool:
+        def by(val: SessionDict) -> bool:
             for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
@@ -84,14 +83,14 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
                     return False
             return True
 
-        # TODO add type hint
-        target_sessions = list(filter(by, self.server._sessions))
+        target_sessions = [s for s in self.server._sessions if by(s)]
         try:
             return target_sessions[0]
         except IndexError as e:
             logger.error(e)
+        return None
 
-    def cmd(self, *args, **kwargs) -> tmux_cmd:
+    def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """
         Return :meth:`server.cmd`.
 
@@ -108,20 +107,24 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         # if -t is not set in any arg yet
         if not any("-t" in str(x) for x in args):
             # insert -t immediately after 1st arg, as per tmux format
-            new_args = [args[0]]
-            new_args += ["-t", self.id]
-            new_args += args[1:]
+            new_args: t.Tuple[str, ...] = tuple()
+            new_args += (args[0],)
+            new_args += (
+                "-t",
+                self.id,
+            )
+            new_args += tuple(args[1:])
             args = new_args
         return self.server.cmd(*args, **kwargs)
 
-    def attach_session(self):
+    def attach_session(self) -> None:
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``."""
         proc = self.cmd("attach-session", "-t%s" % self.id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def kill_session(self):
+    def kill_session(self) -> None:
         """``$ tmux kill-session``."""
 
         proc = self.cmd("kill-session", "-t%s" % self.id)
@@ -129,7 +132,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def switch_client(self):
+    def switch_client(self) -> None:
         """
         Switch client to this session.
 
@@ -180,7 +183,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
     def new_window(
         self,
-        window_name: Optional[str] = None,
+        window_name: t.Optional[str] = None,
         start_directory: None = None,
         attach: bool = True,
         window_index: str = "",
@@ -218,7 +221,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         wformats = ["session_name", "session_id"] + formats.WINDOW_FORMATS
         tmux_formats = ["#{%s}" % f for f in wformats]
 
-        window_args: t.Tuple = tuple()
+        window_args: t.Tuple[str, ...] = tuple()
 
         if not attach:
             window_args += ("-d",)
@@ -245,24 +248,26 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if window_shell:
             window_args += (window_shell,)
 
-        proc = self.cmd("new-window", *window_args)
+        cmd = self.cmd("new-window", *window_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        if cmd.stderr:
+            raise exc.LibTmuxException(cmd.stderr)
 
-        window = proc.stdout[0]
+        window_output = cmd.stdout[0]
 
-        window = dict(zip(wformats, window.split(formats.FORMAT_SEPARATOR)))
+        window_formatters = dict(
+            zip(wformats, window_output.split(formats.FORMAT_SEPARATOR))
+        )
 
         # clear up empty dict
-        window = {k: v for k, v in window.items() if v}
-        window = Window(session=self, **window)
+        window_formatters_filtered = {k: v for k, v in window_formatters.items() if v}
+        window = Window(session=self, **window_formatters_filtered)
 
         self.server._update_windows()
 
         return window
 
-    def kill_window(self, target_window: Optional[str] = None) -> None:
+    def kill_window(self, target_window: t.Optional[str] = None) -> None:
         """Close a tmux window, and all panes inside it, ``$ tmux kill-window``
 
         Kill the current window or the window at ``target-window``. removing it
@@ -315,7 +320,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         return self.list_windows()
 
     #: Alias :attr:`windows` for :class:`~libtmux.common.TmuxRelationalObject`
-    children = windows
+    children = windows  # type: ignore  # mypy#1362
 
     @property
     def attached_window(self) -> Window:
@@ -342,7 +347,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if len(self._windows) == 0:
             raise exc.LibTmuxException("No Windows")
 
-    def select_window(self, target_window: str) -> Window:
+    def select_window(self, target_window: t.Union[str, int]) -> Window:
         """
         Return :class:`Window` selected via ``$ tmux select-window``.
 
@@ -382,7 +387,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         return self.attached_window.attached_pane
 
     def set_option(
-        self, option: str, value: Union[str, int], _global: bool = False
+        self, option: str, value: t.Union[str, int], _global: bool = False
     ) -> None:
         """
         Set option ``$ tmux set-option <option> <value>``.
@@ -408,18 +413,23 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
             Needs tests
         """
-
         if isinstance(value, bool) and value:
             value = "on"
         elif isinstance(value, bool) and not value:
             value = "off"
 
-        tmux_args = tuple()
+        tmux_args: t.Tuple[t.Union[str, int], ...] = tuple()
 
         if _global:
             tmux_args += ("-g",)
 
-        tmux_args += (option, value)
+        assert isinstance(option, str)
+        assert isinstance(value, (str, int))
+
+        tmux_args += (
+            option,
+            value,
+        )
 
         proc = self.cmd("set-option", *tmux_args)
 
@@ -427,8 +437,8 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
             handle_option_error(proc.stderr[0])
 
     def show_options(
-        self, _global: Optional[bool] = False
-    ) -> Dict[str, Union[str, int]]:
+        self, _global: t.Optional[bool] = False
+    ) -> t.Dict[str, t.Union[str, int]]:
         """
         Return a dict of options for the window.
 
@@ -449,27 +459,28 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         Uses ``_global`` for keyword name instead of ``global`` to avoid
         colliding with reserved keyword.
         """
-        tmux_args = tuple()
+        tmux_args: t.Tuple[str, ...] = tuple()
 
         if _global:
             tmux_args += ("-g",)
 
         tmux_args += ("show-options",)
-        session_options = self.cmd(*tmux_args).stdout
+        session_output = self.cmd(*tmux_args).stdout
 
-        session_options = [tuple(item.split(" ")) for item in session_options]
+        session_options: t.Dict[str, t.Union[str, int]] = {}
+        for item in session_output:
+            key, val = item.split(" ", maxsplit=1)
+            assert isinstance(key, str)
+            assert isinstance(val, str)
 
-        session_options = dict(session_options)
-
-        for key, value in session_options.items():
-            if value.isdigit():
-                session_options[key] = int(value)
+            if isinstance(val, str) and val.isdigit():
+                session_options[key] = int(val)
 
         return session_options
 
     def show_option(
         self, option: str, _global: bool = False
-    ) -> Optional[Union[str, int]]:
+    ) -> t.Optional[t.Union[str, int, bool]]:
         """Return a list of options for the window.
 
         Parameters
@@ -496,7 +507,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         Test and return True/False for on/off string.
         """
 
-        tmux_args = tuple()
+        tmux_args: t.Tuple[str, ...] = tuple()
 
         if _global:
             tmux_args += ("-g",)
@@ -511,12 +522,16 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if not len(cmd.stdout):
             return None
 
-        option = [item.split(" ") for item in cmd.stdout][0]
+        value_raw: t.List[str] = [item.split(" ") for item in cmd.stdout][0]
 
-        if option[1].isdigit():
-            option = (option[0], int(option[1]))
+        assert isinstance(value_raw[0], str)
+        assert isinstance(value_raw[1], str)
 
-        return option[1]
+        value: t.Union[str, int] = (
+            int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
+        )
 
-    def __repr__(self):
+        return value
+
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.id} {self.name})"

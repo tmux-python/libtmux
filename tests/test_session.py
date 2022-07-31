@@ -1,5 +1,6 @@
 """Test for libtmux Session object."""
 import logging
+import typing as t
 
 import pytest
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 def test_has_session(server: Server, session: Session) -> None:
     """Server.has_session returns True if has session_name exists."""
     TEST_SESSION_NAME = session.get("session_name")
+    assert TEST_SESSION_NAME is not None
     assert server.has_session(TEST_SESSION_NAME)
     if has_gte_version("2.1"):
         assert not server.has_session(TEST_SESSION_NAME[:-2])
@@ -28,7 +30,9 @@ def test_select_window(session: Session) -> None:
     """Session.select_window moves window."""
     # get the current window_base_index, since different user tmux config
     # may start at 0 or 1, or whatever they want.
-    window_base_index = int(session.attached_window.get("window_index"))
+    window_idx = session.attached_window.get("window_index")
+    assert window_idx is not None
+    window_base_index = int(window_idx)
 
     session.new_window(window_name="test_window")
     window_count = len(session._windows)
@@ -64,9 +68,12 @@ def test_select_window_returns_Window(session: Session) -> None:
 
     window_count = len(session._windows)
     assert len(session._windows) == window_count
-    window_base_index = int(session.attached_window.get("window_index"))
 
-    assert isinstance(session.select_window(window_base_index), Window)
+    window_idx = session.attached_window.get("window_index")
+    assert window_idx is not None
+    window_base_index = int(window_idx)
+    window = session.select_window(window_base_index)
+    assert isinstance(window, Window)
 
 
 def test_attached_window(session: Session) -> None:
@@ -81,12 +88,19 @@ def test_attached_pane(session: Session) -> None:
 
 def test_session_rename(session: Session) -> None:
     """Session.rename_session renames session."""
-    TEST_SESSION_NAME = session.get("session_name")
+    session_name = session.get("session_name")
+    assert session_name is not None
+    TEST_SESSION_NAME = session_name
+
     test_name = "testingdis_sessname"
     session.rename_session(test_name)
-    assert session.get("session_name") == test_name
+    session_name = session.get("session_name")
+    assert session_name is not None
+    assert session_name == test_name
     session.rename_session(TEST_SESSION_NAME)
-    assert session.get("session_name") == TEST_SESSION_NAME
+    session_name = session.get("session_name")
+    assert session_name is not None
+    assert session_name == TEST_SESSION_NAME
 
 
 def test_new_session(server: Server) -> None:
@@ -133,7 +147,7 @@ def test_empty_session_option_returns_None(session: Session) -> None:
 
 def test_show_option_unknown(session: Session) -> None:
     """Session.show_option raises UnknownOption for invalid option."""
-    cmd_exception = exc.UnknownOption
+    cmd_exception: t.Type[exc.OptionError] = exc.UnknownOption
     if has_gte_version("3.0"):
         cmd_exception = exc.InvalidOption
     with pytest.raises(cmd_exception):
