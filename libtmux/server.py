@@ -8,6 +8,9 @@ import logging
 import os
 import typing as t
 
+from libtmux.common import tmux_cmd
+from libtmux.session import Session
+
 from . import exc, formats
 from .common import (
     EnvironmentMixin,
@@ -17,9 +20,7 @@ from .common import (
     WindowDict,
     has_gte_version,
     session_check_name,
-    tmux_cmd,
 )
-from .session import Session
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +76,12 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
     def __init__(
         self,
-        socket_name=None,
-        socket_path=None,
-        config_file=None,
-        colors=None,
+        socket_name: t.Optional[str] = None,
+        socket_path: t.Optional[str] = None,
+        config_file: t.Optional[str] = None,
+        colors: t.Optional[int] = None,
         **kwargs,
-    ):
+    ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self._windows = []
         self._panes = []
@@ -97,7 +98,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         if colors:
             self.colors = colors
 
-    def cmd(self, *args, **kwargs):
+    def cmd(self, *args, **kwargs) -> tmux_cmd:
         """
         Execute tmux command and return output.
 
@@ -382,7 +383,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         return False
 
-    def kill_server(self):
+    def kill_server(self) -> None:
         """``$ tmux kill-server``."""
         self.cmd("kill-server")
 
@@ -413,7 +414,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
         return self
 
-    def switch_client(self, target_session):
+    def switch_client(self, target_session: str):
         """
         ``$ tmux switch-client``.
 
@@ -433,7 +434,7 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def attach_session(self, target_session=None):
+    def attach_session(self, target_session: t.Optional[str] = None):
         """``$ tmux attach-session`` aka alias: ``$ tmux attach``.
 
         Parameters
@@ -458,12 +459,12 @@ class Server(TmuxRelationalObject, EnvironmentMixin):
 
     def new_session(
         self,
-        session_name=None,
-        kill_session=False,
-        attach=False,
-        start_directory=None,
-        window_name=None,
-        window_command=None,
+        session_name: t.Optional[str] = None,
+        kill_session: bool = False,
+        attach: bool = False,
+        start_directory: None = None,
+        window_name: None = None,
+        window_command: t.Optional[str] = None,
         *args,
         **kwargs,
     ) -> Session:

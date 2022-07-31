@@ -3,15 +3,19 @@ import os
 
 import pytest
 
+from _pytest.fixtures import SubRequest
+from _pytest.monkeypatch import MonkeyPatch
+
 from libtmux import exc
 from libtmux.server import Server
+from libtmux.session import Session
 from libtmux.test import TEST_SESSION_PREFIX, get_test_session_name, namer
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(autouse=True)
-def clear_env(monkeypatch):
+def clear_env(monkeypatch: MonkeyPatch) -> None:
     """Clear out any unnecessary environment variables that could interrupt tests.
 
     tmux show-environment tests were being interrupted due to a lot of crazy env vars.
@@ -39,7 +43,7 @@ def clear_env(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def server(request, monkeypatch):
+def server(request: SubRequest, monkeypatch: MonkeyPatch) -> Server:
 
     t = Server()
     t.socket_name = "tmuxp_test%s" % next(namer)
@@ -53,7 +57,7 @@ def server(request, monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def session(request, server):
+def session(request: SubRequest, server: Server) -> Session:
     session_name = "tmuxp"
 
     if not server.has_session(session_name):

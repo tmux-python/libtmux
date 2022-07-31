@@ -3,8 +3,11 @@
 import re
 import sys
 from distutils.version import LooseVersion
+from typing import Optional
 
 import pytest
+
+from _pytest.monkeypatch import MonkeyPatch
 
 import libtmux
 from libtmux.common import (
@@ -23,11 +26,12 @@ from libtmux.common import (
     which,
 )
 from libtmux.exc import BadSessionName, LibTmuxException, TmuxCommandNotFound
+from libtmux.session import Session
 
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
-def test_allows_master_version(monkeypatch):
+def test_allows_master_version(monkeypatch: MonkeyPatch) -> None:
     def mock_tmux_cmd(param):
         class Hi:
             stdout = ["tmux master"]
@@ -45,7 +49,7 @@ def test_allows_master_version(monkeypatch):
     ), "Is the latest supported version with -master appended"
 
 
-def test_allows_next_version(monkeypatch):
+def test_allows_next_version(monkeypatch: MonkeyPatch) -> None:
     TMUX_NEXT_VERSION = str(float(TMUX_MAX_VERSION) + 0.1)
 
     def mock_tmux_cmd(param):
@@ -63,7 +67,7 @@ def test_allows_next_version(monkeypatch):
     assert TMUX_NEXT_VERSION == get_version()
 
 
-def test_get_version_openbsd(monkeypatch):
+def test_get_version_openbsd(monkeypatch: MonkeyPatch) -> None:
     def mock_tmux_cmd(param):
         class Hi:
             stderr = ["tmux: unknown option -- V"]
@@ -80,7 +84,7 @@ def test_get_version_openbsd(monkeypatch):
     ), "Is the latest supported version with -openbsd appended"
 
 
-def test_get_version_too_low(monkeypatch):
+def test_get_version_too_low(monkeypatch: MonkeyPatch) -> None:
     def mock_tmux_cmd(param):
         class Hi:
             stderr = ["tmux: unknown option -- V"]
@@ -93,7 +97,7 @@ def test_get_version_too_low(monkeypatch):
     exc_info.match("is running tmux 1.3 or earlier")
 
 
-def test_ignores_letter_versions():
+def test_ignores_letter_versions() -> None:
     """Ignore letters such as 1.8b.
 
     See ticket https://github.com/tmux-python/tmuxp/issues/55.
@@ -114,7 +118,7 @@ def test_ignores_letter_versions():
     assert type(has_version("1.9a")) is bool
 
 
-def test_error_version_less_1_7(monkeypatch):
+def test_error_version_less_1_7(monkeypatch: MonkeyPatch) -> None:
     def mock_get_version():
         return LooseVersion("1.7")
 
@@ -129,11 +133,11 @@ def test_error_version_less_1_7(monkeypatch):
         excinfo.match(r"libtmux only supports")
 
 
-def test_has_version():
+def test_has_version() -> None:
     assert has_version(str(get_version()))
 
 
-def test_has_gt_version():
+def test_has_gt_version() -> None:
     assert has_gt_version("1.6")
     assert has_gt_version("1.6b")
 
@@ -141,7 +145,7 @@ def test_has_gt_version():
     assert not has_gt_version("4.0b")
 
 
-def test_has_gte_version():
+def test_has_gte_version() -> None:
     assert has_gte_version("1.6")
     assert has_gte_version("1.6b")
     assert has_gte_version(str(get_version()))
@@ -150,7 +154,7 @@ def test_has_gte_version():
     assert not has_gte_version("4.0b")
 
 
-def test_has_lt_version():
+def test_has_lt_version() -> None:
     assert has_lt_version("4.0a")
     assert has_lt_version("4.0")
 
@@ -158,7 +162,7 @@ def test_has_lt_version():
     assert not has_lt_version(str(get_version()))
 
 
-def test_has_lte_version():
+def test_has_lte_version() -> None:
     assert has_lte_version("4.0a")
     assert has_lte_version("4.0")
     assert has_lte_version(str(get_version()))
@@ -167,21 +171,21 @@ def test_has_lte_version():
     assert not has_lte_version("1.7b")
 
 
-def test_which_no_bin_found():
+def test_which_no_bin_found() -> None:
     assert which("top")
     assert which("top", default_paths=[])
     assert not which("top", default_paths=[], append_env_path=False)
     assert not which("top", default_paths=["/"], append_env_path=False)
 
 
-def test_tmux_cmd_raises_on_not_found():
+def test_tmux_cmd_raises_on_not_found() -> None:
     with pytest.raises(TmuxCommandNotFound):
         tmux_cmd("-V", tmux_search_paths=[], append_env_path=False)
 
     tmux_cmd("-V")
 
 
-def test_tmux_cmd_unicode(session):
+def test_tmux_cmd_unicode(session: Session) -> None:
     session.cmd("new-window", "-t", 3, "-n", "юникод", "-F", "Ελληνικά")
 
 
@@ -196,7 +200,9 @@ def test_tmux_cmd_unicode(session):
         ("ajf8a3fa83fads,,,a", False, None),
     ],
 )
-def test_session_check_name(session_name, raises, exc_msg_regex):
+def test_session_check_name(
+    session_name: Optional[str], raises: bool, exc_msg_regex: Optional[str]
+) -> None:
     if raises:
         with pytest.raises(BadSessionName) as exc_info:
             session_check_name(session_name)
@@ -205,7 +211,7 @@ def test_session_check_name(session_name, raises, exc_msg_regex):
         session_check_name(session_name)
 
 
-def test_get_libtmux_version():
+def test_get_libtmux_version() -> None:
     from libtmux.__about__ import __version__
 
     version = get_libtmux_version()

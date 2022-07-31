@@ -8,6 +8,10 @@ import logging
 import os
 import shlex
 import typing as t
+from typing import Dict, Optional, Union
+
+from libtmux.common import tmux_cmd
+from libtmux.pane import Pane
 
 from . import exc, formats
 from .common import (
@@ -16,7 +20,6 @@ from .common import (
     TmuxRelationalObject,
     handle_option_error,
 )
-from .pane import Pane
 
 if t.TYPE_CHECKING:
     from .server import Server
@@ -54,7 +57,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
     session: "Session"
     """:class:`libtmux.Session` window is linked to"""
 
-    def __init__(self, session: "Session", **kwargs):
+    def __init__(self, session: "Session", **kwargs) -> None:
         self.session = session
         self.server = self.session.server
 
@@ -73,7 +76,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         )
 
     @property
-    def _info(self):
+    def _info(self) -> Dict[str, str]:
         attrs = {"window_id": self._window_id}
 
         # from https://github.com/serkanyersen/underscore.py
@@ -95,7 +98,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
             target_windows = self.server._windows
         return target_windows[0]
 
-    def cmd(self, cmd, *args, **kwargs):
+    def cmd(self, cmd: str, *args, **kwargs) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting ``target_window`` as target.
 
         Send command to tmux with :attr:`window_id` as ``target-window``.
@@ -118,7 +121,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         return self.server.cmd(cmd, *args, **kwargs)
 
-    def select_layout(self, layout=None):
+    def select_layout(self, layout: Optional[str] = None) -> None:
         """Wrapper for ``$ tmux select-layout <layout>``.
 
         Parameters
@@ -157,7 +160,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def set_window_option(self, option, value):
+    def set_window_option(self, option: str, value: Union[int, str]) -> None:
         """
         Wrapper for ``$ tmux set-window-option <option> <value>``.
 
@@ -193,7 +196,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
 
-    def show_window_options(self, g=False):
+    def show_window_options(
+        self, g: Optional[bool] = False
+    ) -> Dict[str, Union[str, int]]:
         """
         Return a dict of options for the window.
 
@@ -231,7 +236,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         return window_options
 
-    def show_window_option(self, option, g=False):
+    def show_window_option(
+        self, option: str, g: bool = False
+    ) -> Optional[Union[str, int]]:
         """
         Return a list of options for the window.
 
@@ -301,7 +308,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         return self
 
-    def kill_window(self):
+    def kill_window(self) -> None:
         """Kill the current :class:`Window` object. ``$ tmux kill-window``."""
 
         proc = self.cmd(
@@ -315,7 +322,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         self.server._update_windows()
 
-    def move_window(self, destination="", session=None):
+    def move_window(self, destination: str = "", session: Optional[str] = None) -> None:
         """
         Move the current :class:`Window` object ``$ tmux move-window``.
 
@@ -384,12 +391,12 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
     def split_window(
         self,
-        target=None,
-        start_directory=None,
-        attach=True,
-        vertical=True,
-        shell=None,
-        percent=None,
+        target: None = None,
+        start_directory: None = None,
+        attach: bool = True,
+        vertical: bool = True,
+        shell: Optional[str] = None,
+        percent: None = None,
     ) -> Pane:
         """
         Split window and return the created :class:`Pane`.

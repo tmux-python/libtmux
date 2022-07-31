@@ -7,6 +7,9 @@ libtmux.pane
 """
 import logging
 import typing as t
+from typing import Dict
+
+from libtmux.common import tmux_cmd
 
 from . import exc
 from .common import TmuxMappingObject, TmuxRelationalObject
@@ -58,7 +61,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
     server: "Server"
     """:class:`libtmux.Server` pane is linked to"""
 
-    def __init__(self, window: "Window", **kwargs):
+    def __init__(self, window: "Window", **kwargs) -> None:
         self.window = window
         self.session = self.window.session
         self.server = self.session.server
@@ -68,7 +71,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         self.server._update_panes()
 
     @property
-    def _info(self):
+    def _info(self) -> Dict[str, str]:
 
         attrs = {"pane_id": self._pane_id}
 
@@ -86,7 +89,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         target_panes = list(filter(by, self.server._panes))
         return target_panes[0]
 
-    def cmd(self, cmd, *args, **kwargs):
+    def cmd(self, cmd: str, *args, **kwargs) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting to ``target_pane`` as target.
 
         Send command to tmux with :attr:`pane_id` as ``target-pane``.
@@ -103,7 +106,13 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
         return self.server.cmd(cmd, *args, **kwargs)
 
-    def send_keys(self, cmd, enter=True, suppress_history=True, literal=False):
+    def send_keys(
+        self,
+        cmd: str,
+        enter: bool = True,
+        suppress_history: bool = True,
+        literal: bool = False,
+    ) -> None:
         """
         ``$ tmux send-keys`` to the pane.
 
@@ -159,7 +168,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """Clear pane."""
         self.send_keys("reset")
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset and clear pane history."""
 
         self.cmd("send-keys", r"-R \; clear-history")
@@ -193,7 +202,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
             percent=percent,
         )
 
-    def set_width(self, width):
+    def set_width(self, width: int) -> None:
         """
         Set width of pane.
 
@@ -204,7 +213,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """
         self.resize_pane(width=width)
 
-    def set_height(self, height):
+    def set_height(self, height: int) -> None:
         """
         Set height of pane.
 
@@ -215,7 +224,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """
         self.resize_pane(height=height)
 
-    def resize_pane(self, *args, **kwargs):
+    def resize_pane(self, *args, **kwargs) -> "Pane":
         """
         ``$ tmux resize-pane`` of pane and return ``self``.
 
@@ -253,7 +262,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         self.server._update_panes()
         return self
 
-    def enter(self):
+    def enter(self) -> None:
         """
         Send carriage return to pane.
 

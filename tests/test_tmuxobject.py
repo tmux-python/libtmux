@@ -2,6 +2,7 @@
 import logging
 
 from libtmux.pane import Pane
+from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.test import TEST_SESSION_PREFIX, namer
 from libtmux.window import Window
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 """Test the :class:`TmuxRelationalObject` base class object."""
 
 
-def test_find_where(server, session):
+def test_find_where(server: Server, session: Session) -> None:
     """Test that find_where() retrieves single matching object."""
     # server.find_where
     for session in server.sessions:
@@ -36,7 +37,7 @@ def test_find_where(server, session):
                 assert isinstance(window.find_where({"pane_id": pane_id}), Pane)
 
 
-def test_find_where_None(server, session):
+def test_find_where_None(server: Server, session: Session) -> None:
     """.find_where returns None if no results found."""
 
     while True:
@@ -48,7 +49,7 @@ def test_find_where_None(server, session):
     assert server.find_where({"session_name": nonexistant_session}) is None
 
 
-def test_find_where_multiple_infos(server, session):
+def test_find_where_multiple_infos(server: Server, session: Session) -> None:
     """.find_where returns objects with multiple attributes."""
 
     for session in server.sessions:
@@ -86,7 +87,7 @@ def test_find_where_multiple_infos(server, session):
                 assert isinstance(find_where, Pane)
 
 
-def test_where(server, session):
+def test_where(server: Server, session: Session) -> None:
     """Test self.where() returns matching objects."""
 
     window = session.attached_window
@@ -129,7 +130,7 @@ def test_where(server, session):
                 assert isinstance(where[0], Pane)
 
 
-def test_get_by_id(server, session):
+def test_get_by_id(server: Server, session: Session) -> None:
     """Test self.get_by_id() retrieves child object."""
 
     window = session.attached_window

@@ -7,6 +7,10 @@ libtmux.session
 import logging
 import os
 import typing as t
+from typing import Dict, Optional, Union
+
+from libtmux.common import tmux_cmd
+from libtmux.window import Window
 
 from . import exc, formats
 from .common import (
@@ -18,7 +22,6 @@ from .common import (
     has_version,
     session_check_name,
 )
-from .window import Window
 
 if t.TYPE_CHECKING:
     from .pane import Pane
@@ -58,7 +61,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
     server: "Server"
     """:class:`libtmux.server.Server` session is linked to"""
 
-    def __init__(self, server: "Server", **kwargs):
+    def __init__(self, server: "Server", **kwargs) -> None:
         EnvironmentMixin.__init__(self)
         self.server = server
 
@@ -68,7 +71,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         self.server._update_windows()
 
     @property
-    def _info(self):
+    def _info(self) -> Dict[str, str]:
 
         attrs = {"session_id": str(self._session_id)}
 
@@ -88,7 +91,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         except IndexError as e:
             logger.error(e)
 
-    def cmd(self, *args, **kwargs):
+    def cmd(self, *args, **kwargs) -> tmux_cmd:
         """
         Return :meth:`server.cmd`.
 
@@ -177,11 +180,11 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
     def new_window(
         self,
-        window_name=None,
-        start_directory=None,
-        attach=True,
-        window_index="",
-        window_shell=None,
+        window_name: Optional[str] = None,
+        start_directory: None = None,
+        attach: bool = True,
+        window_index: str = "",
+        window_shell: None = None,
     ) -> Window:
         """
         Return :class:`Window` from ``$ tmux new-window``.
@@ -259,7 +262,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         return window
 
-    def kill_window(self, target_window=None):
+    def kill_window(self, target_window: Optional[str] = None) -> None:
         """Close a tmux window, and all panes inside it, ``$ tmux kill-window``
 
         Kill the current window or the window at ``target-window``. removing it
@@ -378,7 +381,9 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         return self.attached_window.attached_pane
 
-    def set_option(self, option, value, _global=False):
+    def set_option(
+        self, option: str, value: Union[str, int], _global: bool = False
+    ) -> None:
         """
         Set option ``$ tmux set-option <option> <value>``.
 
@@ -421,7 +426,9 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if isinstance(proc.stderr, list) and len(proc.stderr):
             handle_option_error(proc.stderr[0])
 
-    def show_options(self, _global=False):
+    def show_options(
+        self, _global: Optional[bool] = False
+    ) -> Dict[str, Union[str, int]]:
         """
         Return a dict of options for the window.
 
@@ -460,7 +467,9 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         return session_options
 
-    def show_option(self, option, _global=False):
+    def show_option(
+        self, option: str, _global: bool = False
+    ) -> Optional[Union[str, int]]:
         """Return a list of options for the window.
 
         Parameters

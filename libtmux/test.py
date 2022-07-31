@@ -7,6 +7,8 @@ import time
 import warnings
 from typing import Callable, Optional
 
+from libtmux.server import Server
+
 from .exc import WaitTimeout
 
 logger = logging.getLogger(__name__)
@@ -17,13 +19,15 @@ RETRY_INTERVAL_SECONDS = float(os.getenv("RETRY_INTERVAL_SECONDS", 0.05))
 
 
 class RandomStrSequence:
-    def __init__(self, characters: str = "abcdefghijklmnopqrstuvwxyz0123456789_"):
+    def __init__(
+        self, characters: str = "abcdefghijklmnopqrstuvwxyz0123456789_"
+    ) -> None:
         self.characters: str = characters
 
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def __next__(self) -> str:
         return "".join(random.sample(self.characters, k=8))
 
 
@@ -119,7 +123,7 @@ def retry_until(
     return True
 
 
-def get_test_session_name(server, prefix=TEST_SESSION_PREFIX):
+def get_test_session_name(server: Server, prefix: str = TEST_SESSION_PREFIX) -> str:
     """
     Faker to create a session name that doesn't exist.
 
