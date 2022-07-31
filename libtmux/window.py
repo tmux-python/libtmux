@@ -18,6 +18,10 @@ from .common import (
 )
 from .pane import Pane
 
+if t.TYPE_CHECKING:
+    from .server import Server
+    from .session import Session
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,16 +45,16 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
        https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
     """
 
-    #: unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`
     child_id_attribute = "pane_id"
-    #: namespace used :class:`~libtmux.common.TmuxMappingObject`
+    """Unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`"""
     formatter_prefix = "window_"
+    """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
+    server: "Server"
+    """:class:`libtmux.Server` window is linked to"""
+    session: "Session"
+    """:class:`libtmux.Session` window is linked to"""
 
-    def __init__(self, session=None, **kwargs):
-
-        if not session:
-            raise ValueError("Window requires a Session, session=Session")
-
+    def __init__(self, session: "Session", **kwargs):
         self.session = session
         self.server = self.session.server
 
