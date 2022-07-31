@@ -193,7 +193,7 @@ See donation options at <https://git-pull.com/support.html>.
 
 # Project details
 
-- tmux support: 1.8, 1.9a, 2.0 - 2.9, 3.0-3.3
+- tmux support: 1.8+
 - python support: >= 3.7, pypy, pypy3
 - Source: <https://github.com/tmux-python/libtmux>
 - Docs: <https://libtmux.git-pull.com>
