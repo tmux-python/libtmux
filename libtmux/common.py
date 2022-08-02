@@ -108,28 +108,24 @@ class EnvironmentMixin:
                 proc.stderr = proc.stderr[0]
             raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
 
-    def show_environment(self, name=None):
-        """Show environment ``$ tmux show-environment -t [session] <name>``.
+    def show_environment(self):
+        """Show environment ``$ tmux show-environment -t [session]``.
 
-        Return dict of environment variables for the session or the value of a
-        specific variable if the name is specified.
+        Return dict of environment variables for the session.
 
-        Parameters
-        ----------
-        name : str
-            the environment variable name. such as 'PATH'.
+        .. versionchanged:: 0.13
+
+           Removed per-item lookups. Use :meth:`libtmux.common.EnvironmentMixin.getenv`.
 
         Returns
         -------
-        str or dict
+        dict
             environmental variables in dict, if no name, or str if name
             entered.
         """
         tmux_args = ["show-environment"]
         if self._add_option:
             tmux_args += [self._add_option]
-        if name:
-            tmux_args += [name]
         vars = self.cmd(*tmux_args).stdout
         vars = [tuple(item.split("=", 1)) for item in vars]
         vars_dict = {}
@@ -141,10 +137,41 @@ class EnvironmentMixin:
             else:
                 raise ValueError("unexpected variable %s", t)
 
-        if name:
-            return vars_dict.get(name)
-
         return vars_dict
+
+    def getenv(self, name):
+        """Show environment variable ``$ tmux show-environment -t [session] <name>``.
+
+        Return the value of a specific variable if the name is specified.
+
+        .. versionadded:: 0.13
+
+        Parameters
+        ----------
+        name : str
+            the environment variable name. such as 'PATH'.
+
+        Returns
+        -------
+        str
+            Value of environment variable
+        """
+        tmux_args = ["show-environment"]
+        if self._add_option:
+            tmux_args += [self._add_option]
+        tmux_args += [name]
+        vars = self.cmd(*tmux_args).stdout
+        vars = [tuple(item.split("=", 1)) for item in vars]
+        vars_dict = {}
+        for t in vars:
+            if len(t) == 2:
+                vars_dict[t[0]] = t[1]
+            elif len(t) == 1:
+                vars_dict[t[0]] = True
+            else:
+                raise ValueError("unexpected variable %s", t)
+
+        return vars_dict.get(name)
 
 
 class tmux_cmd:

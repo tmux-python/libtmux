@@ -63,20 +63,20 @@ def test_show_environment(server):
     assert isinstance(_vars, dict)
 
 
-def test_set_show_environment_single(server, session):
+def test_getenv(server, session):
     """Set environment then Server.show_environment(key)."""
     server.set_environment("FOO", "BAR")
-    assert "BAR" == server.show_environment("FOO")
+    assert "BAR" == server.getenv("FOO")
 
     server.set_environment("FOO", "DAR")
-    assert "DAR" == server.show_environment("FOO")
+    assert "DAR" == server.getenv("FOO")
 
     assert "DAR" == server.show_environment()["FOO"]
 
 
 def test_show_environment_not_set(server):
     """Unset environment variable returns None."""
-    assert server.show_environment("BAR") is None
+    assert server.getenv("BAR") is None
 
 
 def test_new_session(server):
