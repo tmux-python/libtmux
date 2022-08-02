@@ -108,10 +108,10 @@ def test_set_show_options_single(session):
     """Set option then Session.show_options(key)."""
 
     session.set_option("history-limit", 20)
-    assert session.show_options("history-limit") == 20
+    assert session.show_option("history-limit") == 20
 
     session.set_option("history-limit", 40)
-    assert session.show_options("history-limit") == 40
+    assert session.show_option("history-limit") == 40
 
     assert session.show_options()["history-limit"] == 40
 

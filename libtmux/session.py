@@ -421,7 +421,7 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if isinstance(proc.stderr, list) and len(proc.stderr):
             handle_option_error(proc.stderr[0])
 
-    def show_options(self, option=None, _global=False):
+    def show_options(self, _global=False):
         """
         Return a dict of options for the window.
 
@@ -430,9 +430,6 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
 
         Parameters
         ----------
-        option : str, optional
-            name of option, e.g. 'visual-silence'. Defaults to None, which
-            returns all options.
         _global : bool, optional
             Pass ``-g`` flag for global variable (server-wide)
 
@@ -450,11 +447,8 @@ class Session(TmuxMappingObject, TmuxRelationalObject, EnvironmentMixin):
         if _global:
             tmux_args += ("-g",)
 
-        if option:
-            return self.show_option(option, _global=_global)
-        else:
-            tmux_args += ("show-options",)
-            session_options = self.cmd(*tmux_args).stdout
+        tmux_args += ("show-options",)
+        session_options = self.cmd(*tmux_args).stdout
 
         session_options = [tuple(item.split(" ")) for item in session_options]
 
