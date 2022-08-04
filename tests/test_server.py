@@ -40,11 +40,8 @@ def test_config(server):
 def test_256_colors(server):
     myserver = Server(colors=256)
     assert myserver.colors == 256
-    print(myserver.colors)
 
     proc = myserver.cmd("list-sessions")
-
-    print("list-sessions", proc)
 
     assert "-2" in proc.cmd
     assert "-8" not in proc.cmd
