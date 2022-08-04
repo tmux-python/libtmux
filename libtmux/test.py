@@ -265,7 +265,7 @@ def temp_window(session, *args, **kwargs):
     try:
         yield session
     finally:
-        if session.findWhere(window_id=window_id):
+        if session.find_where(window_id=window_id):
             window.kill_window()
     return
 
