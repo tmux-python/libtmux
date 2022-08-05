@@ -180,6 +180,7 @@ def temp_session(
 
     >>> with temp_session(server) as session:
     ...     session.new_window(window_name='my window')
+    Window(@... ...:..., Session($... ...))
     """
 
     if "session_name" in kwargs:
