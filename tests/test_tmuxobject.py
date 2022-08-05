@@ -161,10 +161,10 @@ def test_get_by_id(server: Server, session: Session) -> None:
     for session in server.sessions:
         session_id = session.get("session_id")
         assert session_id is not None
-        get_by_id = server.get_by_id(session_id)
+        get_session_by_id = server.get_by_id(session_id)
 
-        assert get_by_id == session
-        assert isinstance(get_by_id, Session)
+        assert get_session_by_id == session
+        assert isinstance(get_session_by_id, Session)
         assert server.get_by_id("$" + next(namer)) is None
 
         # session.get_by_id
@@ -172,10 +172,10 @@ def test_get_by_id(server: Server, session: Session) -> None:
             window_id = window.get("window_id")
             assert window_id is not None
 
-            get_by_id = session.get_by_id(window_id)
+            get_window_by_id = session.get_by_id(window_id)
 
-            assert get_by_id == window
-            assert isinstance(get_by_id, Window)
+            assert get_window_by_id == window
+            assert isinstance(get_window_by_id, Window)
 
             assert session.get_by_id("@" + next(namer)) is None
 
@@ -184,8 +184,8 @@ def test_get_by_id(server: Server, session: Session) -> None:
                 pane_id = pane.get("pane_id")
                 assert pane_id is not None
 
-                get_by_id = window.get_by_id(pane_id)
+                get_pane_by_id = window.get_by_id(pane_id)
 
-                assert get_by_id == pane
-                assert isinstance(get_by_id, Pane)
+                assert get_pane_by_id == pane
+                assert isinstance(get_pane_by_id, Pane)
                 assert window.get_by_id("%" + next(namer)) is None
