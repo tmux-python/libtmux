@@ -115,3 +115,5 @@ def add_doctest_fixtures(
     if which("tmux"):
         doctest_namespace["server"] = server
         doctest_namespace["session"] = session
+        doctest_namespace["window"] = session.attached_window
+        doctest_namespace["pane"] = session.attached_pane
