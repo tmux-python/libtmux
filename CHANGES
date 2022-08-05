@@ -12,7 +12,7 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
-# Breaking changes
+### Breaking changes
 
 - Deprecated individual item lookups ({issue}`390`)
 
