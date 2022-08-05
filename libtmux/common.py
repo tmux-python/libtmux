@@ -423,7 +423,7 @@ class TmuxRelationalObject(Generic[O, D]):
 
         Returns
         -------
-        list
+        list of objects, or one object if ``first=True``
         """
 
         # from https://github.com/serkanyersen/underscore.py
