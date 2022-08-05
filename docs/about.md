@@ -14,12 +14,12 @@
 
 ```
 
-libtmux is an [abstraction layer][abstraction layer] for tmux.
+libtmux is an [abstraction layer] for tmux.
 
 It builds upon the concept of targets `-t`, to direct commands against
 individual session, windows and panes and `FORMATS`, template variables
 exposed by tmux to describe their properties. Think of `-t` analagously
-to [scope][scope].
+to [scope].
 
 {class}`common.TmuxRelationalObject` acts as a container to connect the
 relations of {class}`Server`, {class}`Session`, {class}`Window` and
@@ -60,7 +60,7 @@ and how python objects and tools can abstract the API's in a pleasant way.
 
 libtmux uses `FORMATTERS` in tmux to give identity attributes to
 {class}`Session`, {class}`Window` and {class}`Pane` objects. See
-[format.c][format.c].
+[format.c].
 
 [format.c]: https://github.com/tmux/tmux/blob/master/format.c
 
