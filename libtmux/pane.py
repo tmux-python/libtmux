@@ -66,7 +66,6 @@ class Pane(TmuxMappingObject):
     def __init__(
         self,
         window: "Window",
-        # pane_id: t.Optional[t.Union[str, int]] = None,
         pane_id: t.Union[str, int],
         **kwargs: t.Any,
     ) -> None:
