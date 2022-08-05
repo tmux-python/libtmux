@@ -108,10 +108,10 @@ def test_set_show_options_single(session):
     """Set option then Session.show_options(key)."""
 
     session.set_option("history-limit", 20)
-    assert session.show_options("history-limit") == 20
+    assert session.show_option("history-limit") == 20
 
     session.set_option("history-limit", 40)
-    assert session.show_options("history-limit") == 40
+    assert session.show_option("history-limit") == 40
 
     assert session.show_options()["history-limit"] == 40
 
@@ -172,35 +172,35 @@ def test_set_show_environment_single(session):
     """Set environment then Session.show_environment(key)."""
 
     session.set_environment("FOO", "BAR")
-    assert session.show_environment("FOO") == "BAR"
+    assert session.getenv("FOO") == "BAR"
 
     session.set_environment("FOO", "DAR")
-    assert session.show_environment("FOO") == "DAR"
+    assert session.getenv("FOO") == "DAR"
 
     assert session.show_environment()["FOO"] == "DAR"
 
 
 def test_show_environment_not_set(session):
     """Not set environment variable returns None."""
-    assert session.show_environment("BAR") is None
+    assert session.getenv("BAR") is None
 
 
 def test_remove_environment(session):
     """Remove environment variable."""
-    assert session.show_environment("BAM") is None
+    assert session.getenv("BAM") is None
     session.set_environment("BAM", "OK")
-    assert session.show_environment("BAM") == "OK"
+    assert session.getenv("BAM") == "OK"
     session.remove_environment("BAM")
-    assert session.show_environment("BAM") is None
+    assert session.getenv("BAM") is None
 
 
 def test_unset_environment(session):
     """Unset environment variable."""
-    assert session.show_environment("BAM") is None
+    assert session.getenv("BAM") is None
     session.set_environment("BAM", "OK")
-    assert session.show_environment("BAM") == "OK"
+    assert session.getenv("BAM") == "OK"
     session.unset_environment("BAM")
-    assert session.show_environment("BAM") is None
+    assert session.getenv("BAM") is None
 
 
 @pytest.mark.parametrize(

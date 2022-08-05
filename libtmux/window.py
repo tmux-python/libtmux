@@ -193,7 +193,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
 
-    def show_window_options(self, option=None, g=False):
+    def show_window_options(self, g=False):
         """
         Return a dict of options for the window.
 
@@ -202,8 +202,6 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
 
         Parameters
         ----------
-        option : str, optional
-            show a single option.
         g : str, optional
             Pass ``-g`` flag for global variable, default False.
 
@@ -217,11 +215,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject):
         if g:
             tmux_args += ("-g",)
 
-        if option:
-            return self.show_window_option(option, g=g)
-        else:
-            tmux_args += ("show-window-options",)
-            cmd = self.cmd(*tmux_args).stdout
+        tmux_args += ("show-window-options",)
+        cmd = self.cmd(*tmux_args).stdout
 
         # The shlex.split function splits the args at spaces, while also
         # retaining quoted sub-strings.

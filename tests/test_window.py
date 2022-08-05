@@ -184,15 +184,15 @@ def test_set_show_window_options(session):
     window = session.new_window(window_name="test_window")
 
     window.set_window_option("main-pane-height", 20)
-    assert window.show_window_options("main-pane-height") == 20
+    assert window.show_window_option("main-pane-height") == 20
 
     window.set_window_option("main-pane-height", 40)
-    assert window.show_window_options("main-pane-height") == 40
+    assert window.show_window_option("main-pane-height") == 40
     assert window.show_window_options()["main-pane-height"] == 40
 
     if has_gte_version("2.3"):
         window.set_window_option("pane-border-format", " #P ")
-        assert window.show_window_options("pane-border-format") == " #P "
+        assert window.show_window_option("pane-border-format") == " #P "
 
 
 def test_empty_window_option_returns_None(session):

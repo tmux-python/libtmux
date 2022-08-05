@@ -12,6 +12,55 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+# Breaking changes
+
+- Deprecated individual item lookups ({issue}`390`)
+
+  - Removed key lookups from {meth}`libtmux.common.EnvironmentMixin.show_environment`
+
+    Only `EnvironmentMixin.show_environment()` (without an argument) exists, and
+    it still returns a `dict`.
+
+  - Add key lookups via {meth}`libtmux.common.EnvironmentMixin.getenv`
+
+    ```python
+    # Before
+    server.show_environment('DISPLAY')
+
+    # After
+    server.getenv('DISPLAY')
+
+    # Before
+    session.show_environment('DISPLAY')
+
+    # After
+    session.getenv('DISPLAY')
+    ```
+
+  - Removed key lookups from {meth}`Session.show_options`
+
+    ```python
+    session.show_options()  # still returns dict, without an argument
+
+    # Old
+    session.show_options('DISPLAY')
+
+    # Now
+    session.show_option('DISPLAY')
+    ```
+
+  - Removed key lookups from {meth}`Window.show_window_options`
+
+    ```python
+    window.show_window_options()  # still returns dict, without an argument
+
+    # Old
+    window.show_window_options('DISPLAY')
+
+    # Now
+    window.show_window_option('DISPLAY')
+    ```
+
 ### Development
 
 - Fix incorrect function name `findWhere()` ({issue}`391`)
