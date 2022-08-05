@@ -39,6 +39,32 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
     ----------
     session : :class:`Session`
 
+    Examples
+    --------
+    >>> window = session.new_window('My project')
+
+    >>> window
+    Window(@... ...:My project, Session($... ...))
+
+    Windows have panes:
+
+    >>> window.panes
+    [Pane(...)]
+
+    >>> window.attached_pane
+    Pane(...)
+
+    Relations moving up:
+
+    >>> window.session
+    Session(...)
+
+    >>> window == session.attached_window
+    True
+
+    >>> window in session.windows
+    True
+
     References
     ----------
     .. [window_manual] tmux window. openbsd manpage for TMUX(1).
@@ -303,10 +329,10 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         >>> window = session.attached_window
 
         >>> window.rename_window('My project')
-        Window(@1 1:My project, Session($1 ...))
+        Window(@1 ...:My project, Session($1 ...))
 
         >>> window.rename_window('New name')
-        Window(@1 1:New name, Session($1 ...))
+        Window(@1 ...:New name, Session($1 ...))
         """
 
         import shlex
