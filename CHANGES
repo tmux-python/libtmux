@@ -8,19 +8,21 @@ To install the unreleased libtmux version, see [developmental releases](https://
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.13.x (unreleased)
+## libtmux 0.14.x (unreleased)
 
 - _Insert changes/features/fixes for next release here_
 
-## What's new
+## libtmux 0.13.0 (2022-08-05)
+
+### What's new
 
 - **Improved typings**
 
   Now [`mypy --strict`] compliant ({issue}`383`)
 
-  [`mypy --strict`]: https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-strict
-
   Smaller touchups from {issue}`392`
+
+  [`mypy --strict`]: https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-strict
 
 ### Breaking changes
 
