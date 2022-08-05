@@ -388,9 +388,7 @@ class TmuxRelationalObject(Generic[O, D]):
     children: t.List[O]
     child_id_attribute: str
 
-    def find_where(
-        self, attrs: Dict[str, str]
-    ) -> Optional[Union["Pane", "Window", "Session"]]:
+    def find_where(self, attrs: D) -> Optional[Union["Pane", "Window", "Session"]]:
         """Return object on first match.
 
         .. versionchanged:: 0.4
@@ -403,18 +401,18 @@ class TmuxRelationalObject(Generic[O, D]):
             return None
 
     @overload
-    def where(self, attrs: Dict[str, str], first: "Literal[True]") -> O:
+    def where(self, attrs: D, first: "Literal[True]") -> O:
         ...
 
     @overload
-    def where(self, attrs: Dict[str, str], first: "Literal[False]") -> t.List[O]:
+    def where(self, attrs: D, first: "Literal[False]") -> t.List[O]:
         ...
 
     @overload
-    def where(self, attrs: Dict[str, str]) -> t.List[O]:
+    def where(self, attrs: D) -> t.List[O]:
         ...
 
-    def where(self, attrs: Dict[str, str], first: bool = False) -> t.Union[List[O], O]:
+    def where(self, attrs: D, first: bool = False) -> t.Union[List[O], O]:
         # ) -> List[Union["Session", "Pane", "Window", t.Any]]:
         """
         Return objects matching child objects properties.
@@ -445,7 +443,7 @@ class TmuxRelationalObject(Generic[O, D]):
             return target_children[0]
         return target_children
 
-    def get_by_id(self, id: str) -> Optional[Union["Pane", "Window", "Session"]]:
+    def get_by_id(self, id: str) -> Optional[O]:
         """
         Return object based on ``child_id_attribute``.
 
