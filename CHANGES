@@ -75,7 +75,7 @@ $ pip install --user --upgrade --pre libtmux
 
 ## libtmux 0.12.0 (2022-07-13)
 
-## Compatibility
+### Compatibility
 
 - Brought back python 3.7 and 3.8 support ({issue}`375`)
 - Support for tmux 3.3a
