@@ -20,6 +20,8 @@ $ pip install --user --upgrade --pre libtmux
 
   [`mypy --strict`]: https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-strict
 
+  Smaller touchups from {issue}`392`
+
 ### Breaking changes
 
 - Deprecated individual item lookups ({issue}`390`)
