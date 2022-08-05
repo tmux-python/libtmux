@@ -8,6 +8,7 @@ from _pytest.fixtures import SubRequest
 from _pytest.monkeypatch import MonkeyPatch
 
 from libtmux import exc
+from libtmux.common import which
 from libtmux.server import Server
 from libtmux.test import TEST_SESSION_PREFIX, get_test_session_name, namer
 
@@ -100,3 +101,17 @@ def session(request: SubRequest, server: Server) -> "Session":
     assert TEST_SESSION_NAME != "tmuxp"
 
     return session
+
+
+@pytest.fixture(autouse=True)
+def add_doctest_fixtures(
+    doctest_namespace: t.Dict[str, t.Any],
+    # usefixtures / autouse
+    clear_env: t.Any,
+    # Normal fixtures
+    server: "Server",
+    session: "Session",
+) -> None:
+    if which("tmux"):
+        doctest_namespace["server"] = server
+        doctest_namespace["session"] = session
