@@ -6,7 +6,6 @@ import random
 import time
 import types
 import typing as t
-import warnings
 from typing import Callable, Optional
 
 from libtmux.server import Server
@@ -40,41 +39,6 @@ namer = RandomStrSequence()
 current_dir = os.path.abspath(os.path.dirname(__file__))
 example_dir = os.path.abspath(os.path.join(current_dir, "..", "examples"))
 fixtures_dir = os.path.realpath(os.path.join(current_dir, "fixtures"))
-
-
-def retry(seconds: float = RETRY_TIMEOUT_SECONDS) -> bool:
-    """
-    Retry a block of code until a time limit or ``break``.
-
-    .. deprecated:: 0.12.0
-          `retry` doesn't work, it will be removed in libtmux 0.13.0, it is replaced by
-          `retry_until`, more info: https://github.com/tmux-python/libtmux/issues/368.
-
-    Parameters
-    ----------
-    seconds : float
-        Seconds to retry, defaults to ``RETRY_TIMEOUT_SECONDS``, which is
-        configurable via environmental variables.
-
-    Returns
-    -------
-    bool
-        True if time passed since retry() invoked less than seconds param.
-
-    Examples
-    --------
-
-    >>> while retry():
-    ...     p = w.attached_pane
-    ...     p.server._update_panes()
-    ...     if p.current_path == pane_path:
-    ...         break
-    """
-    warnings.warn(
-        "retry() is being deprecated and will soon be replaced by retry_until()",
-        DeprecationWarning,
-    )
-    return (lambda: time.time() < time.time() + seconds)()
 
 
 def retry_until(
