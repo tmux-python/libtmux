@@ -47,6 +47,23 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
     config_file : str, optional
     colors : str, optional
 
+    Examples
+    --------
+    >>> server
+    <libtmux.server.Server object at ...>
+
+    >>> server.sessions
+    [Session($1 ...)]
+
+    >>> server.sessions[0].windows
+    [Window(@1 ...:..., Session($1 ...)]
+
+    >>> server.sessions[0].attached_window
+    Window(@1 ...:..., Session($1 ...)
+
+    >>> server.sessions[0].attached_pane
+    Pane(%1 Window(@1 ...:..., Session($1 ...)))
+
     References
     ----------
     .. [server_manual] CLIENTS AND SESSIONS. openbsd manpage for TMUX(1)
