@@ -1,5 +1,6 @@
 """Test for libtmux Window object."""
 import logging
+import typing as t
 
 import pytest
 
@@ -7,12 +8,13 @@ from libtmux import exc
 from libtmux.common import has_gte_version
 from libtmux.pane import Pane
 from libtmux.server import Server
+from libtmux.session import Session
 from libtmux.window import Window
 
 logger = logging.getLogger(__name__)
 
 
-def test_select_window(session):
+def test_select_window(session: Session) -> None:
     window_count = len(session._windows)
     # to do, get option for   base-index from tmux
     # for now however, let's get the index from the first window.
@@ -26,7 +28,7 @@ def test_select_window(session):
     # int(session.attached_window.index))
     assert int(window_base_index) + 1 == int(window.index)
 
-    session.select_window(window_base_index)
+    session.select_window(str(window_base_index))
     assert window_base_index == int(session.attached_window.index)
 
     session.select_window("testing 3")
@@ -35,10 +37,12 @@ def test_select_window(session):
     assert len(session._windows) == 2
 
 
-def test_zfresh_window_data(session):
-    pane_base_index = int(
-        session.attached_window.show_window_option("pane-base-index", g=True)
-    )
+def test_zfresh_window_data(session: Session) -> None:
+    attached_window = session.attached_window
+    assert attached_window is not None
+    pane_base_idx = attached_window.show_window_option("pane-base-index", g=True)
+    assert pane_base_idx is not None
+    pane_base_index = int(pane_base_idx)
 
     assert len(session.windows) == 1
 
@@ -59,10 +63,19 @@ def test_zfresh_window_data(session):
     assert isinstance(window, Window)
     assert len(session.attached_window.panes) == 1
     window.split_window()
-    session.attached_window.select_pane(pane_base_index)
-    session.attached_pane.send_keys("cd /srv/www/flaskr")
-    session.attached_window.select_pane(pane_base_index + 1)
-    session.attached_pane.send_keys("source .venv/bin/activate")
+
+    attached_window = session.attached_window
+    assert attached_window is not None
+    attached_window.select_pane(pane_base_index)
+
+    attached_pane = session.attached_pane
+    assert attached_pane is not None
+    attached_pane.send_keys("cd /srv/www/flaskr")
+
+    attached_window.select_pane(pane_base_index + 1)
+    attached_pane = session.attached_pane
+    assert attached_pane is not None
+    attached_pane.send_keys("source .venv/bin/activate")
     session.new_window(window_name="second")
     current_windows += 1
     assert current_windows == len(session._windows)
@@ -70,13 +83,13 @@ def test_zfresh_window_data(session):
     current_windows += 1
     assert current_windows == len(session._windows)
 
-    session.select_window(1)
+    session.select_window("1")
     session.kill_window(target_window="hey")
     current_windows -= 1
     assert current_windows == len(session._windows)
 
 
-def test_newest_pane_data(session):
+def test_newest_pane_data(session: Session) -> None:
     window = session.new_window(window_name="test", attach=True)
     assert isinstance(window, Window)
     assert len(window.panes) == 1
@@ -89,14 +102,14 @@ def test_newest_pane_data(session):
     assert len(window.panes) == 3
 
 
-def test_attached_pane(session):
+def test_attached_pane(session: Session) -> None:
     """Window.attached_window returns active Pane."""
 
     window = session.attached_window  # current window
     assert isinstance(window.attached_pane, Pane)
 
 
-def test_split_window(session):
+def test_split_window(session: Session) -> None:
     """Window.split_window() splits window, returns new Pane, vertical."""
     window_name = "test split window"
     window = session.new_window(window_name=window_name, attach=True)
@@ -106,7 +119,7 @@ def test_split_window(session):
     assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
 
 
-def test_split_window_shell(session):
+def test_split_window_shell(session: Session) -> None:
     """Window.split_window() splits window, returns new Pane, vertical."""
     window_name = "test split window"
     cmd = "sleep 1m"
@@ -116,12 +129,12 @@ def test_split_window_shell(session):
     assert isinstance(pane, Pane)
     assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
     if has_gte_version("3.2"):
-        assert pane.get("pane_start_command").replace('"', "") == cmd
+        assert pane.get("pane_start_command", "").replace('"', "") == cmd
     else:
         assert pane.get("pane_start_command") == cmd
 
 
-def test_split_window_horizontal(session):
+def test_split_window_horizontal(session: Session) -> None:
     """Window.split_window() splits window, returns new Pane, horizontal."""
     window_name = "test split window"
     window = session.new_window(window_name=window_name, attach=True)
@@ -135,7 +148,9 @@ def test_split_window_horizontal(session):
     "window_name_before,window_name_after",
     [("test", "ha ha ha fjewlkjflwef"), ("test", "hello \\ wazzup 0")],
 )
-def test_window_rename(session, window_name_before, window_name_after):
+def test_window_rename(
+    session: Session, window_name_before: str, window_name_after: str
+) -> None:
     """Window.rename_window()."""
     window_name_before = "test"
     window_name_after = "ha ha ha fjewlkjflwef"
@@ -157,7 +172,7 @@ def test_window_rename(session, window_name_before, window_name_after):
     assert window.get("window_name") == window_name_after
 
 
-def test_kill_window(session):
+def test_kill_window(session: Session) -> None:
     session.new_window()
     # create a second window to not kick out the client.
     # there is another way to do this via options too.
@@ -171,7 +186,7 @@ def test_kill_window(session):
         w.get("window_id")
 
 
-def test_show_window_options(session):
+def test_show_window_options(session: Session) -> None:
     """Window.show_window_options() returns dict."""
     window = session.new_window(window_name="test_window")
 
@@ -179,7 +194,7 @@ def test_show_window_options(session):
     assert isinstance(options, dict)
 
 
-def test_set_show_window_options(session):
+def test_set_show_window_options(session: Session) -> None:
     """Set option then Window.show_window_options(key)."""
     window = session.new_window(window_name="test_window")
 
@@ -195,12 +210,12 @@ def test_set_show_window_options(session):
         assert window.show_window_option("pane-border-format") == " #P "
 
 
-def test_empty_window_option_returns_None(session):
+def test_empty_window_option_returns_None(session: Session) -> None:
     window = session.new_window(window_name="test_window")
     assert window.show_window_option("alternate-screen") is None
 
 
-def test_show_window_option(session):
+def test_show_window_option(session: Session) -> None:
     """Set option then Window.show_window_option(key)."""
     window = session.new_window(window_name="test_window")
 
@@ -212,18 +227,18 @@ def test_show_window_option(session):
     assert window.show_window_option("main-pane-height") == 40
 
 
-def test_show_window_option_unknown(session):
+def test_show_window_option_unknown(session: Session) -> None:
     """Window.show_window_option raises UnknownOption for bad option key."""
     window = session.new_window(window_name="test_window")
 
-    cmd_exception = exc.UnknownOption
+    cmd_exception: t.Type[exc.OptionError] = exc.UnknownOption
     if has_gte_version("3.0"):
         cmd_exception = exc.InvalidOption
     with pytest.raises(cmd_exception):
         window.show_window_option("moooz")
 
 
-def test_show_window_option_ambiguous(session):
+def test_show_window_option_ambiguous(session: Session) -> None:
     """show_window_option raises AmbiguousOption for ambiguous option."""
     window = session.new_window(window_name="test_window")
 
@@ -231,7 +246,7 @@ def test_show_window_option_ambiguous(session):
         window.show_window_option("clock-mode")
 
 
-def test_set_window_option_ambiguous(session):
+def test_set_window_option_ambiguous(session: Session) -> None:
     """set_window_option raises AmbiguousOption for ambiguous option."""
     window = session.new_window(window_name="test_window")
 
@@ -239,7 +254,7 @@ def test_set_window_option_ambiguous(session):
         window.set_window_option("clock-mode", 12)
 
 
-def test_set_window_option_invalid(session):
+def test_set_window_option_invalid(session: Session) -> None:
     """Window.set_window_option raises ValueError for invalid option key."""
 
     window = session.new_window(window_name="test_window")
@@ -252,7 +267,7 @@ def test_set_window_option_invalid(session):
             window.set_window_option("afewewfew", 43)
 
 
-def test_move_window(session):
+def test_move_window(session: Session) -> None:
     """Window.move_window results in changed index"""
 
     window = session.new_window(window_name="test_window")
@@ -261,14 +276,16 @@ def test_move_window(session):
     assert window.index == new_index
 
 
-def test_move_window_to_other_session(server, session):
+def test_move_window_to_other_session(server: Server, session: Session) -> None:
     window = session.new_window(window_name="test_window")
     new_session = server.new_session("test_move_window")
     window.move_window(session=new_session.get("session_id"))
-    assert new_session.get_by_id(window.get("window_id")) == window
+    window_id = window.get("window_id")
+    assert window_id is not None
+    assert new_session.get_by_id(window_id) == window
 
 
-def test_select_layout_accepts_no_arg(server, session):
+def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
     """tmux allows select-layout with no arguments, so let's allow it here."""
 
     window = session.new_window(window_name="test_window")

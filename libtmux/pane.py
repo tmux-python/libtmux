@@ -7,11 +7,16 @@ libtmux.pane
 """
 import logging
 import typing as t
+from typing import Dict, overload
+
+from libtmux.common import tmux_cmd
 
 from . import exc
-from .common import TmuxMappingObject, TmuxRelationalObject
+from .common import PaneDict, TmuxMappingObject, TmuxRelationalObject
 
 if t.TYPE_CHECKING:
+    from typing_extensions import Literal
+
     from .server import Server
     from .session import Session
     from .window import Window
@@ -20,7 +25,7 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Pane(TmuxMappingObject, TmuxRelationalObject):
+class Pane(TmuxMappingObject):
     """
     A :term:`tmux(1)` :term:`Pane` [pane_manual]_.
 
@@ -58,22 +63,27 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
     server: "Server"
     """:class:`libtmux.Server` pane is linked to"""
 
-    def __init__(self, window: "Window", **kwargs):
+    def __init__(
+        self,
+        window: "Window",
+        # pane_id: t.Optional[t.Union[str, int]] = None,
+        pane_id: t.Union[str, int],
+        **kwargs: t.Any,
+    ) -> None:
         self.window = window
         self.session = self.window.session
         self.server = self.session.server
 
-        self._pane_id = kwargs["pane_id"]
+        self._pane_id = pane_id
 
         self.server._update_panes()
 
     @property
-    def _info(self):
-
+    def _info(self) -> PaneDict:  # type: ignore  # mypy#1362
         attrs = {"pane_id": self._pane_id}
 
         # from https://github.com/serkanyersen/underscore.py
-        def by(val) -> bool:
+        def by(val: PaneDict) -> bool:
             for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
@@ -82,11 +92,11 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
                     return False
             return True
 
-        # TODO add type hint
-        target_panes = list(filter(by, self.server._panes))
+        target_panes = [s for s in self.server._panes if by(s)]
+
         return target_panes[0]
 
-    def cmd(self, cmd, *args, **kwargs):
+    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting to ``target_pane`` as target.
 
         Send command to tmux with :attr:`pane_id` as ``target-pane``.
@@ -103,7 +113,13 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
 
         return self.server.cmd(cmd, *args, **kwargs)
 
-    def send_keys(self, cmd, enter=True, suppress_history=True, literal=False):
+    def send_keys(
+        self,
+        cmd: str,
+        enter: t.Optional[bool] = True,
+        suppress_history: t.Optional[bool] = True,
+        literal: t.Optional[bool] = False,
+    ) -> None:
         """
         ``$ tmux send-keys`` to the pane.
 
@@ -131,7 +147,19 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         if enter:
             self.enter()
 
-    def display_message(self, cmd, get_text=False):
+    @overload
+    def display_message(
+        self, cmd: str, get_text: "Literal[True]"
+    ) -> t.Union[str, t.List[str]]:
+        ...
+
+    @overload
+    def display_message(self, cmd: str, get_text: "Literal[False]") -> None:
+        ...
+
+    def display_message(
+        self, cmd: str, get_text: bool = False
+    ) -> t.Optional[t.Union[str, t.List[str]]]:
         """
         ``$ tmux display-message`` to the pane.
 
@@ -152,20 +180,25 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """
         if get_text:
             return self.cmd("display-message", "-p", cmd).stdout
-        else:
-            self.cmd("display-message", cmd)
 
-    def clear(self):
+        self.cmd("display-message", cmd)
+        return None
+
+    def clear(self) -> None:
         """Clear pane."""
         self.send_keys("reset")
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset and clear pane history."""
 
         self.cmd("send-keys", r"-R \; clear-history")
 
     def split_window(
-        self, attach=False, vertical=True, start_directory=None, percent=None
+        self,
+        attach: bool = False,
+        vertical: bool = True,
+        start_directory: t.Optional[str] = None,
+        percent: t.Optional[int] = None,
     ) -> "Pane":
         """
         Split window at pane and return newly created :class:`Pane`.
@@ -193,7 +226,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
             percent=percent,
         )
 
-    def set_width(self, width):
+    def set_width(self, width: int) -> None:
         """
         Set width of pane.
 
@@ -204,7 +237,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """
         self.resize_pane(width=width)
 
-    def set_height(self, height):
+    def set_height(self, height: int) -> None:
         """
         Set height of pane.
 
@@ -215,7 +248,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """
         self.resize_pane(height=height)
 
-    def resize_pane(self, *args, **kwargs):
+    def resize_pane(self, *args: t.Any, **kwargs: t.Any) -> "Pane":
         """
         ``$ tmux resize-pane`` of pane and return ``self``.
 
@@ -239,7 +272,6 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         ------
         exc.LibTmuxException
         """
-
         if "height" in kwargs:
             proc = self.cmd("resize-pane", "-y%s" % int(kwargs["height"]))
         elif "width" in kwargs:
@@ -253,7 +285,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         self.server._update_panes()
         return self
 
-    def enter(self):
+    def enter(self) -> None:
         """
         Send carriage return to pane.
 
@@ -261,7 +293,7 @@ class Pane(TmuxMappingObject, TmuxRelationalObject):
         """
         self.cmd("send-keys", "Enter")
 
-    def capture_pane(self):
+    def capture_pane(self) -> t.Union[str, t.List[str]]:
         """
         Capture text from pane.
 

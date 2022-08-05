@@ -3,16 +3,19 @@ import logging
 
 from libtmux.common import has_gte_version
 from libtmux.server import Server
+from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
 
 
-def test_has_session(server, session):
-    assert server.has_session(session.get("session_name"))
+def test_has_session(server: Server, session: Session) -> None:
+    session_name = session.get("session_name")
+    assert session_name is not None
+    assert server.has_session(session_name)
     assert not server.has_session("asdf2314324321")
 
 
-def test_socket_name(server):
+def test_socket_name(server: Server) -> None:
     """``-L`` socket_name.
 
     ``-L`` socket_name  file name of socket. which will be stored in
@@ -24,20 +27,20 @@ def test_socket_name(server):
     assert myserver.socket_name == "test"
 
 
-def test_socket_path(server):
+def test_socket_path(server: Server) -> None:
     """``-S`` socket_path  (alternative path for server socket)."""
     myserver = Server(socket_path="test")
 
     assert myserver.socket_path == "test"
 
 
-def test_config(server):
+def test_config(server: Server) -> None:
     """``-f`` file for tmux(1) configuration."""
     myserver = Server(config_file="test")
     assert myserver.config_file == "test"
 
 
-def test_256_colors(server):
+def test_256_colors(server: Server) -> None:
     myserver = Server(colors=256)
     assert myserver.colors == 256
 
@@ -47,7 +50,7 @@ def test_256_colors(server):
     assert "-8" not in proc.cmd
 
 
-def test_88_colors(server):
+def test_88_colors(server: Server) -> None:
     myserver = Server(colors=88)
     assert myserver.colors == 88
 
@@ -57,13 +60,13 @@ def test_88_colors(server):
     assert "-2" not in proc.cmd
 
 
-def test_show_environment(server):
+def test_show_environment(server: Server) -> None:
     """Server.show_environment() returns dict."""
     _vars = server.show_environment()
     assert isinstance(_vars, dict)
 
 
-def test_getenv(server, session):
+def test_getenv(server: Server, session: Session) -> None:
     """Set environment then Server.show_environment(key)."""
     server.set_environment("FOO", "BAR")
     assert "BAR" == server.getenv("FOO")
@@ -74,19 +77,19 @@ def test_getenv(server, session):
     assert "DAR" == server.show_environment()["FOO"]
 
 
-def test_show_environment_not_set(server):
+def test_show_environment_not_set(server: Server) -> None:
     """Unset environment variable returns None."""
     assert server.getenv("BAR") is None
 
 
-def test_new_session(server):
+def test_new_session(server: Server) -> None:
     """Server.new_session creates and returns valid session"""
     mysession = server.new_session("test_new_session")
     assert mysession.get("session_name") == "test_new_session"
     assert server.has_session("test_new_session")
 
 
-def test_new_session_shell(server):
+def test_new_session_shell(server: Server) -> None:
     """Server.new_session creates and returns valid session running with
     specified command"""
     cmd = "sleep 1m"
@@ -96,7 +99,10 @@ def test_new_session_shell(server):
     assert mysession.get("session_name") == "test_new_session"
     assert server.has_session("test_new_session")
 
+    pane_start_command = pane.get("pane_start_command")
+    assert pane_start_command is not None
+
     if has_gte_version("3.2"):
-        assert pane.get("pane_start_command").replace('"', "") == cmd
+        assert pane_start_command.replace('"', "") == cmd
     else:
-        assert pane.get("pane_start_command") == cmd
+        assert pane_start_command == cmd

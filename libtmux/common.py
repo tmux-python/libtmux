@@ -13,9 +13,28 @@ import sys
 import typing as t
 from collections.abc import MutableMapping
 from distutils.version import LooseVersion
+from typing import (
+    Any,
+    Dict,
+    Generic,
+    KeysView,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+    overload,
+)
 
 from . import exc
 from ._compat import console_to_str, str_from_console
+
+if t.TYPE_CHECKING:
+    from typing_extensions import Literal
+
+    from libtmux.pane import Pane
+    from libtmux.session import Session
+    from libtmux.window import Window
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +47,7 @@ TMUX_MAX_VERSION = "3.3"
 
 SessionDict = t.Dict[str, t.Any]
 WindowDict = t.Dict[str, t.Any]
+WindowOptionDict = t.Dict[str, t.Any]
 PaneDict = t.Dict[str, t.Any]
 
 
@@ -40,10 +60,12 @@ class EnvironmentMixin:
 
     _add_option = None
 
-    def __init__(self, add_option=None):
+    cmd: t.Callable[[t.Any, t.Any], "tmux_cmd"]
+
+    def __init__(self, add_option: Optional[str] = None) -> None:
         self._add_option = add_option
 
-    def set_environment(self, name, value):
+    def set_environment(self, name: str, value: str) -> None:
         """
         Set environment ``$ tmux set-environment <name> <value>``.
 
@@ -60,14 +82,17 @@ class EnvironmentMixin:
 
         args += [name, value]
 
-        proc = self.cmd(*args)
+        cmd = self.cmd(*args)
 
-        if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == 1:
-                proc.stderr = proc.stderr[0]
-            raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
+        if cmd.stderr:
+            stderr = (
+                cmd.stderr[0]
+                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
+                else cmd.stderr
+            )
+            raise ValueError("tmux set-environment stderr: %s" % cmd.stderr)
 
-    def unset_environment(self, name):
+    def unset_environment(self, name: str) -> None:
         """
         Unset environment variable ``$ tmux set-environment -u <name>``.
 
@@ -81,14 +106,17 @@ class EnvironmentMixin:
             args += [self._add_option]
         args += ["-u", name]
 
-        proc = self.cmd(*args)
+        cmd = self.cmd(*args)
 
-        if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == 1:
-                proc.stderr = proc.stderr[0]
-            raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
+        if cmd.stderr:
+            stderr = (
+                cmd.stderr[0]
+                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
+                else cmd.stderr
+            )
+            raise ValueError("tmux set-environment stderr: %s" % cmd.stderr)
 
-    def remove_environment(self, name):
+    def remove_environment(self, name: str) -> None:
         """Remove environment variable ``$ tmux set-environment -r <name>``.
 
         Parameters
@@ -101,14 +129,17 @@ class EnvironmentMixin:
             args += [self._add_option]
         args += ["-r", name]
 
-        proc = self.cmd(*args)
+        cmd = self.cmd(*args)
 
-        if proc.stderr:
-            if isinstance(proc.stderr, list) and len(proc.stderr) == 1:
-                proc.stderr = proc.stderr[0]
-            raise ValueError("tmux set-environment stderr: %s" % proc.stderr)
+        if cmd.stderr:
+            stderr = (
+                cmd.stderr[0]
+                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
+                else cmd.stderr
+            )
+            raise ValueError("tmux set-environment stderr: %s" % cmd.stderr)
 
-    def show_environment(self):
+    def show_environment(self) -> Dict[str, Union[bool, str]]:
         """Show environment ``$ tmux show-environment -t [session]``.
 
         Return dict of environment variables for the session.
@@ -126,9 +157,10 @@ class EnvironmentMixin:
         tmux_args = ["show-environment"]
         if self._add_option:
             tmux_args += [self._add_option]
-        vars = self.cmd(*tmux_args).stdout
-        vars = [tuple(item.split("=", 1)) for item in vars]
-        vars_dict = {}
+        cmd = self.cmd(*tmux_args)
+        output = cmd.stdout
+        vars = [tuple(item.split("=", 1)) for item in output]
+        vars_dict: t.Dict[str, t.Union[str, bool]] = {}
         for t in vars:
             if len(t) == 2:
                 vars_dict[t[0]] = t[1]
@@ -139,7 +171,7 @@ class EnvironmentMixin:
 
         return vars_dict
 
-    def getenv(self, name):
+    def getenv(self, name: str) -> Optional[t.Union[str, bool]]:
         """Show environment variable ``$ tmux show-environment -t [session] <name>``.
 
         Return the value of a specific variable if the name is specified.
@@ -156,13 +188,16 @@ class EnvironmentMixin:
         str
             Value of environment variable
         """
-        tmux_args = ["show-environment"]
+        tmux_args: t.Tuple[t.Union[str, int], ...] = tuple()
+
+        tmux_args += ("show-environment",)
         if self._add_option:
-            tmux_args += [self._add_option]
-        tmux_args += [name]
-        vars = self.cmd(*tmux_args).stdout
-        vars = [tuple(item.split("=", 1)) for item in vars]
-        vars_dict = {}
+            tmux_args += (self._add_option,)
+        tmux_args += (name,)
+        cmd = self.cmd(*tmux_args)
+        output = cmd.stdout
+        vars = [tuple(item.split("=", 1)) for item in output]
+        vars_dict: t.Dict[str, t.Union[str, bool]] = {}
         for t in vars:
             if len(t) == 2:
                 vars_dict[t[0]] = t[1]
@@ -214,7 +249,7 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         tmux_bin = which(
             "tmux",
             default_paths=kwargs.get(
@@ -240,26 +275,28 @@ class tmux_cmd:
             returncode = self.process.returncode
         except Exception as e:
             logger.error(f"Exception for {subprocess.list2cmdline(cmd)}: \n{e}")
+            raise
 
         self.returncode = returncode
 
-        self.stdout = console_to_str(stdout)
-        self.stdout = self.stdout.split("\n")
-        self.stdout = list(filter(None, self.stdout))  # filter empty values
+        stdout_str = console_to_str(stdout)
+        stdout_split = stdout_str.split("\n")
+        stdout_filtered = list(filter(None, stdout_split))  # filter empty values
 
-        self.stderr = console_to_str(stderr)
-        self.stderr = self.stderr.split("\n")
-        self.stderr = list(filter(None, self.stderr))  # filter empty values
+        stderr_str = console_to_str(stderr)
+        stderr_split = stderr_str.split("\n")
+        self.stderr = list(filter(None, stderr_split))  # filter empty values
 
-        if "has-session" in cmd and len(self.stderr):
-            if not self.stdout:
-                self.stdout = self.stderr[0]
+        if "has-session" in cmd and len(self.stderr) and not stdout_filtered:
+            self.stdout = [self.stderr[0]]
+        else:
+            self.stdout = stdout_filtered
 
         logger.debug("self.stdout for {}: \n{}".format(" ".join(cmd), self.stdout))
 
 
-class TmuxMappingObject(MutableMapping):
-
+# class TmuxMappingObject(t.Mapping[str, t.Union[str,int,bool]]):
+class TmuxMappingObject(t.Mapping[t.Any, t.Any]):
     r"""Base: :py:class:`MutableMapping`.
 
     Convenience container. Base class for :class:`Pane`, :class:`Window`,
@@ -278,37 +315,48 @@ class TmuxMappingObject(MutableMapping):
     :class:`Pane`    :attr:`Pane.formatter_prefix`      pane\_
     ================ ================================== ==============
     """
+    _info: t.Dict[t.Any, t.Any]
+    formatter_prefix: str
 
-    def __getitem__(self, key):
-        return self._info[key]
+    def __getitem__(self, key: str) -> str:
+        item = self._info[key]
+        assert item is not None
+        assert isinstance(item, str)
+        return item
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: str) -> None:
         self._info[key] = value
         self.dirty = True
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         del self._info[key]
         self.dirty = True
 
-    def keys(self):
+    def keys(self) -> KeysView[str]:
         """Return list of keys."""
         return self._info.keys()
 
-    def __iter__(self):
+    def __iter__(self) -> t.Iterator[str]:
         return self._info.__iter__()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._info.keys())
 
-    def __getattr__(self, key):
+    def __getattr__(self, key: str) -> str:
         try:
-            return self._info[self.formatter_prefix + key]
+            val = self._info[self.formatter_prefix + key]
+            assert val is not None
+            assert isinstance(val, str)
+            return val
         except KeyError:
             raise AttributeError(f"{self.__class__} has no property {key}")
 
 
-class TmuxRelationalObject:
+O = TypeVar("O", "Pane", "Window", "Session")
+D = TypeVar("D", "PaneDict", "WindowDict", "SessionDict")
 
+
+class TmuxRelationalObject(Generic[O, D]):
     """Base Class for managing tmux object child entities.  .. # NOQA
 
     Manages collection of child objects  (a :class:`Server` has a collection of
@@ -337,7 +385,12 @@ class TmuxRelationalObject:
     ================ ================================== ==============
     """
 
-    def find_where(self, attrs):
+    children: t.List[O]
+    child_id_attribute: str
+
+    def find_where(
+        self, attrs: Dict[str, str]
+    ) -> Optional[Union["Pane", "Window", "Session"]]:
         """Return object on first match.
 
         .. versionchanged:: 0.4
@@ -349,7 +402,20 @@ class TmuxRelationalObject:
         except IndexError:
             return None
 
-    def where(self, attrs, first=False):
+    @overload
+    def where(self, attrs: Dict[str, str], first: "Literal[True]") -> O:
+        ...
+
+    @overload
+    def where(self, attrs: Dict[str, str], first: "Literal[False]") -> t.List[O]:
+        ...
+
+    @overload
+    def where(self, attrs: Dict[str, str]) -> t.List[O]:
+        ...
+
+    def where(self, attrs: Dict[str, str], first: bool = False) -> t.Union[List[O], O]:
+        # ) -> List[Union["Session", "Pane", "Window", t.Any]]:
         """
         Return objects matching child objects properties.
 
@@ -364,7 +430,7 @@ class TmuxRelationalObject:
         """
 
         # from https://github.com/serkanyersen/underscore.py
-        def by(val) -> bool:
+        def by(val: O) -> bool:
             for key in attrs.keys():
                 try:
                     if attrs[key] != val[key]:
@@ -373,13 +439,13 @@ class TmuxRelationalObject:
                     return False
             return True
 
-        # TODO add type hint
-        target_children = list(filter(by, self.children))
+        target_children: t.List[O] = [s for s in self.children if by(s)]
+
         if first:
             return target_children[0]
         return target_children
 
-    def get_by_id(self, id):
+    def get_by_id(self, id: str) -> Optional[Union["Pane", "Window", "Session"]]:
         """
         Return object based on ``child_id_attribute``.
 
@@ -638,7 +704,7 @@ def has_minimum_version(raises: bool = True) -> bool:
     return True
 
 
-def session_check_name(session_name: str):
+def session_check_name(session_name: t.Optional[str]) -> None:
     """
     Raises exception session name invalid, modeled after tmux function.
 
@@ -655,7 +721,7 @@ def session_check_name(session_name: str):
     :exc:`exc.BadSessionName`
         Invalid session name.
     """
-    if not session_name or len(session_name) == 0:
+    if session_name is None or len(session_name) == 0:
         raise exc.BadSessionName("tmux session names may not be empty.")
     elif "." in session_name:
         raise exc.BadSessionName(
@@ -667,7 +733,7 @@ def session_check_name(session_name: str):
         )
 
 
-def handle_option_error(error: str):
+def handle_option_error(error: str) -> t.Type[exc.OptionError]:
     """Raises exception if error in option command found.
 
     In tmux 3.0, show-option and show-window-otion return invalid option instead of

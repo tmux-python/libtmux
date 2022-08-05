@@ -1,7 +1,7 @@
 __title__ = "libtmux"
 __package_name__ = "libtmux"
 __version__ = "0.12.0"
-__description__ = "Scripting library / ORM / API wrapper for tmux"
+__description__ = "Typed scripting library / ORM / API wrapper for tmux"
 __email__ = "tony@git-pull.com"
 __author__ = "Tony Narlock"
 __github__ = "https://github.com/tmux-python/libtmux"

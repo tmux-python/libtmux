@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "libtmux"
 version = "0.12.0"
-description = "Scripting library / ORM / API wrapper for tmux"
+description = "Typed scripting library / ORM / API wrapper for tmux"
 license = "MIT"
 authors = ["Tony Narlock <tony@git-pull.com>"]
 classifiers = [
@@ -17,8 +17,10 @@ classifiers = [
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: Implementation :: PyPy",
+  "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: Utilities",
   "Topic :: System :: Shells",
+  "Typing :: Typed",
 ]
 
 keywords = ["tmux", "session manager", "terminal", "ncurses"]
@@ -97,6 +99,9 @@ test = ["pytest", "pytest-rerunfailures", "pytest-mock", "pytest-watcher"]
 coverage = ["codecov", "coverage", "pytest-cov"]
 format = ["black", "isort"]
 lint = ["flake8", "mypy"]
+
+[tool.mypy]
+strict = true
 
 [build-system]
 requires = ["poetry_core>=1.0.0", "setuptools>50"]

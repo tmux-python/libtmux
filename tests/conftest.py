@@ -1,17 +1,24 @@
 import logging
 import os
+import typing as t
 
 import pytest
+
+from _pytest.fixtures import SubRequest
+from _pytest.monkeypatch import MonkeyPatch
 
 from libtmux import exc
 from libtmux.server import Server
 from libtmux.test import TEST_SESSION_PREFIX, get_test_session_name, namer
 
+if t.TYPE_CHECKING:
+    from libtmux.session import Session
+
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture(autouse=True)
-def clear_env(monkeypatch):
+def clear_env(monkeypatch: MonkeyPatch) -> None:
     """Clear out any unnecessary environment variables that could interrupt tests.
 
     tmux show-environment tests were being interrupted due to a lot of crazy env vars.
@@ -39,12 +46,12 @@ def clear_env(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def server(request, monkeypatch):
+def server(request: SubRequest, monkeypatch: MonkeyPatch) -> Server:
 
     t = Server()
     t.socket_name = "tmuxp_test%s" % next(namer)
 
-    def fin():
+    def fin() -> None:
         t.kill_server()
 
     request.addfinalizer(fin)
@@ -53,18 +60,18 @@ def server(request, monkeypatch):
 
 
 @pytest.fixture(scope="function")
-def session(request, server):
+def session(request: SubRequest, server: Server) -> "Session":
     session_name = "tmuxp"
 
     if not server.has_session(session_name):
         server.cmd("new-session", "-d", "-s", session_name)
 
     # find current sessions prefixed with tmuxp
-    old_test_sessions = [
-        s.get("session_name")
-        for s in server._sessions
-        if s.get("session_name").startswith(TEST_SESSION_PREFIX)
-    ]
+    old_test_sessions = []
+    for s in server._sessions:
+        old_name = s.get("session_name")
+        if old_name is not None and old_name.startswith(TEST_SESSION_PREFIX):
+            old_test_sessions.append(old_name)
 
     TEST_SESSION_NAME = get_test_session_name(server=server)
 
@@ -77,8 +84,11 @@ def session(request, server):
     Make sure that tmuxp can :ref:`test_builder_visually` and switches to
     the newly created session for that testcase.
     """
+    session_id = session.get("session_id")
+    assert session_id is not None
+
     try:
-        server.switch_client(session.get("session_id"))
+        server.switch_client(target_session=session_id)
     except exc.LibTmuxException:
         # server.attach_session(session.get('session_id'))
         pass

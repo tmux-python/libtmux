@@ -4,7 +4,7 @@ import os
 import sys
 from os.path import dirname, relpath
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import libtmux  # NOQA
 from libtmux import test  # NOQA
@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(cwd / "_ext"))
 
 # package data
-about: Dict = {}
+about: Dict[str, str] = {}
 with open("../libtmux/__about__.py") as fp:
     exec(fp.read(), about)
 
@@ -69,8 +69,8 @@ html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
 html_extra_path = ["manifest.json"]
 html_theme = "furo"
-html_theme_path: List = []
-html_theme_options: Dict = {
+html_theme_path: List[str] = []
+html_theme_options: Dict[str, Union[str, List[Dict[str, str]]]] = {
     "light_logo": "img/libtmux.svg",
     "dark_logo": "img/libtmux.svg",
     "footer_icons": [
@@ -162,7 +162,9 @@ texinfo_documents = [
 intersphinx_mapping = {"http://docs.python.org/": None}
 
 
-def linkcode_resolve(domain, info):  # NOQA: C901
+def linkcode_resolve(
+    domain: str, info: Dict[str, str]
+) -> Union[None, str]:  # NOQA: C901
     """
     Determine the URL corresponding to Python object
 
@@ -195,7 +197,8 @@ def linkcode_resolve(domain, info):  # NOQA: C901
     except AttributeError:
         pass
     else:
-        obj = unwrap(obj)
+        if callable(obj):
+            obj = unwrap(obj)
 
     try:
         fn = inspect.getsourcefile(obj)

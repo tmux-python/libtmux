@@ -1,16 +1,19 @@
 """Tests for libtmux Pane object."""
 import logging
 
+from libtmux.session import Session
+
 logger = logging.getLogger(__name__)
 
 
-def test_resize_pane(session):
+def test_resize_pane(session: Session) -> None:
     """Test Pane.resize_pane()."""
 
     window = session.attached_window
     window.rename_window("test_resize_pane")
 
     pane1 = window.attached_pane
+    assert pane1 is not None
     pane1_height = pane1["pane_height"]
     window.split_window()
 
@@ -22,8 +25,9 @@ def test_resize_pane(session):
     assert int(pane1["pane_height"]) == 3
 
 
-def test_send_keys(session):
+def test_send_keys(session: Session) -> None:
     pane = session.attached_window.attached_pane
+    assert pane is not None
     pane.send_keys("c-c", literal=True)
 
     pane_contents = "\n".join(pane.cmd("capture-pane", "-p").stdout)
@@ -33,10 +37,11 @@ def test_send_keys(session):
     assert "c-a" not in pane_contents, "should not print to pane"
 
 
-def test_set_height(session):
+def test_set_height(session: Session) -> None:
     window = session.new_window(window_name="test_set_height")
     window.split_window()
     pane1 = window.attached_pane
+    assert pane1 is not None
     pane1_height = pane1["pane_height"]
 
     pane1.set_height(4)
@@ -44,12 +49,13 @@ def test_set_height(session):
     assert int(pane1["pane_height"]) == 4
 
 
-def test_set_width(session):
+def test_set_width(session: Session) -> None:
     window = session.new_window(window_name="test_set_width")
     window.split_window()
 
     window.select_layout("main-vertical")
     pane1 = window.attached_pane
+    assert pane1 is not None
     pane1_width = pane1["pane_width"]
 
     pane1.set_width(10)
