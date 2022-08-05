@@ -68,16 +68,17 @@ def retry_until(
     Examples
     --------
 
-    >>> def f():
-    ...     p = w.attached_pane
+    >>> def fn():
+    ...     p = session.attached_window.attached_pane
     ...     p.server._update_panes()
-    ...     return p.current_path == pane_path
-    ...
-    ... retry(f)
+    ...     return p.current_path is not None
+
+    >>> retry_until(fn)
+    True
 
     In pytest:
 
-    >>> assert retry(f, raises=False)
+    >>> assert retry_until(fn, raises=False)
     """
     ini = time.time()
 
