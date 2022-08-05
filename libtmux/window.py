@@ -296,6 +296,17 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         ----------
         new_name : str
             name of the window
+
+        Examples
+        --------
+
+        >>> window = session.attached_window
+
+        >>> window.rename_window('My project')
+        Window(@1 1:My project, Session($1 ...))
+
+        >>> window.rename_window('New name')
+        Window(@1 1:New name, Session($1 ...))
         """
 
         import shlex
