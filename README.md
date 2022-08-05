@@ -1,6 +1,6 @@
 # libtmux
 
-libtmux is a python scripting library for tmux. You can use it to command and control tmux servers,
+libtmux is a [typed](https://docs.python.org/3/library/typing.html) python scripting library for tmux. You can use it to command and control tmux servers,
 sessions, windows, and panes. It is the tool powering [tmuxp], a tmux workspace manager.
 
 [![Python Package](https://img.shields.io/pypi/v/libtmux.svg)](https://pypi.org/project/libtmux/)

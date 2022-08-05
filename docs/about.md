@@ -14,7 +14,7 @@
 
 ```
 
-libtmux is an [abstraction layer] for tmux.
+libtmux is a [typed](https://docs.python.org/3/library/typing.html) [abstraction layer] for tmux.
 
 It builds upon the concept of targets `-t`, to direct commands against
 individual session, windows and panes and `FORMATS`, template variables
