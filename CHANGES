@@ -12,6 +12,14 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+## What's new
+
+- **Improved typings**
+
+  Now [`mypy --strict`] compliant ({issue}`383`)
+
+  [`mypy --strict`]: https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-strict
+
 ### Breaking changes
 
 - Deprecated individual item lookups ({issue}`390`)
@@ -61,13 +69,7 @@ $ pip install --user --upgrade --pre libtmux
     window.show_window_option('DISPLAY')
     ```
 
-## What's new
-
-- **Improved typings**
-
-  Now [`mypy --strict`] compliant ({issue}`383`)
-
-  [`mypy --strict`]: https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-strict
+- Remove `libtmux.test.retry()`, deprecated since 0.12.x ({issue}`393`)
 
 ### Development
 
