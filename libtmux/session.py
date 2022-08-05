@@ -43,6 +43,20 @@ class Session(
     ----------
     server : :class:`Server`
 
+    Examples
+    --------
+    >>> session
+    Session($1 ...)
+
+    >>> session.windows
+    [Window(@1 ...:..., Session($1 ...)]
+
+    >>> session.attached_window
+    Window(@1 ...:..., Session($1 ...)
+
+    >>> session.attached_pane
+    Pane(%1 Window(@1 ...:..., Session($1 ...)))
+
     References
     ----------
     .. [session_manual] tmux session. openbsd manpage for TMUX(1).
