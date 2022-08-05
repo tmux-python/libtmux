@@ -61,6 +61,8 @@ $ pip install --user --upgrade --pre libtmux
     window.show_window_option('DISPLAY')
     ```
 
+- Remove `libtmux.test.retry()`, deprecated since 0.12.x ({issue}`393`)
+
 ## What's new
 
 - **Improved typings**
