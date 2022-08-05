@@ -413,7 +413,6 @@ class TmuxRelationalObject(Generic[O, D]):
         ...
 
     def where(self, attrs: D, first: bool = False) -> t.Union[List[O], O]:
-        # ) -> List[Union["Session", "Pane", "Window", t.Any]]:
         """
         Return objects matching child objects properties.
 
