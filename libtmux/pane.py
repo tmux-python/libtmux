@@ -36,6 +36,20 @@ class Pane(TmuxMappingObject):
     ----------
     window : :class:`Window`
 
+    Examples
+    --------
+    >>> pane
+    Pane(%1 Window(@1 ...:..., Session($1 ...)))
+
+    >>> pane in window.panes
+    True
+
+    >>> pane.window
+    Window(@1 ...:..., Session($1 ...))
+
+    >>> pane.session
+    Session($1 ...)
+
     Notes
     -----
 
@@ -119,8 +133,7 @@ class Pane(TmuxMappingObject):
         suppress_history: t.Optional[bool] = True,
         literal: t.Optional[bool] = False,
     ) -> None:
-        """
-        ``$ tmux send-keys`` to the pane.
+        r"""``$ tmux send-keys`` to the pane.
 
         A leading space character is added to cmd to avoid polluting the
         user's history.
@@ -135,6 +148,22 @@ class Pane(TmuxMappingObject):
             Don't add these keys to the shell history, default True.
         literal : bool, optional
             Send keys literally, default True.
+
+        Examples
+        --------
+        >>> pane = window.split_window(shell='sh')
+        >>> pane.capture_pane()
+        ['$']
+
+        >>> pane.send_keys('echo "Hello world"', suppress_history=False, enter=True)
+
+        >>> pane.capture_pane()
+        ['$ echo "Hello world"', 'Hello world', '$']
+
+        >>> print('\n'.join(pane.capture_pane()))  # doctest: +NORMALIZE_WHITESPACE
+        $ echo "Hello world"
+        Hello world
+        $
         """
         prefix = " " if suppress_history else ""
 

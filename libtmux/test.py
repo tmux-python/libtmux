@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
+    from libtmux.window import Window
 
 TEST_SESSION_PREFIX = "libtmux_"
 RETRY_TIMEOUT_SECONDS = int(os.getenv("RETRY_TIMEOUT_SECONDS", 8))
@@ -68,16 +69,17 @@ def retry_until(
     Examples
     --------
 
-    >>> def f():
-    ...     p = w.attached_pane
+    >>> def fn():
+    ...     p = session.attached_window.attached_pane
     ...     p.server._update_panes()
-    ...     return p.current_path == pane_path
-    ...
-    ... retry(f)
+    ...     return p.current_path is not None
+
+    >>> retry_until(fn)
+    True
 
     In pytest:
 
-    >>> assert retry(f, raises=False)
+    >>> assert retry_until(fn, raises=False)
     """
     ini = time.time()
 
@@ -179,6 +181,7 @@ def temp_session(
 
     >>> with temp_session(server) as session:
     ...     session.new_window(window_name='my window')
+    Window(@... ...:..., Session($... ...))
     """
 
     if "session_name" in kwargs:
@@ -199,7 +202,7 @@ def temp_session(
 @contextlib.contextmanager
 def temp_window(
     session: "Session", *args: t.Any, **kwargs: t.Any
-) -> t.Generator["Session", t.Any, t.Any]:
+) -> t.Generator["Window", t.Any, t.Any]:
     """
     Return a context manager with a temporary window.
 
@@ -229,7 +232,13 @@ def temp_window(
     --------
 
     >>> with temp_window(session) as window:
-    ...     my_pane = window.split_window()
+    ...     window
+    Window(@... ...:..., Session($... ...))
+
+
+    >>> with temp_window(session) as window:
+    ...     window.split_window()
+    Pane(%... Window(@... ...:..., Session($... ...)))
     """
 
     if "window_name" not in kwargs:
@@ -245,7 +254,7 @@ def temp_window(
     assert isinstance(window_id, str)
 
     try:
-        yield session
+        yield window
     finally:
         if session.find_where({"window_id": window_id}):
             window.kill_window()
