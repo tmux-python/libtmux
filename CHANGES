@@ -8,24 +8,26 @@ To install the unreleased libtmux version, see [developmental releases](https://
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.14.x (unreleased)
+## libtmux 0.15.x (unreleased)
 
 - _Insert changes/features/fixes for next release here_
 
+## libtmux 0.14.0 (2022-08-05)
+
 ### Breaking changes
 
-- `Pane.send_keys`: `suppress_history` default value changed from `True` to
+- {meth}`Pane.send_keys`: `suppress_history` default value changed from `True` to
   `False`, {issue}`395`
 
 ### Tests and docs
 
-- Initial [doctests] examples stubbed out {issue}`#394`
+- Initial [doctests] examples stubbed out {issue}`394`
 
   [doctests]: https://docs.python.org/3/library/doctest.html
 
-- Fix bug in `temp_window()` context manager, {issue}`#394`
+- Fix bug in `temp_window()` context manager, {issue}`394`
 - Pytest configuration `conftest.py` moved to `libtmux/conftest.py`, so doctest can
-  detect the fixtures {issue}`#394`
+  detect the fixtures {issue}`394`
 
 ## libtmux 0.13.0 (2022-08-05)
 
