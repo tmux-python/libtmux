@@ -12,6 +12,11 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+### Breaking changes
+
+- `Pane.send_keys`: `suppress_history` default value changed from `True` to
+  `False`
+
 ### Tests and docs
 
 - Initial [doctests] examples stubbed out {issue}`#394`
