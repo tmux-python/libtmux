@@ -12,6 +12,16 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+### Tests and docs
+
+- Initial [doctests] examples stubbed out {issue}`#394`
+
+  [doctests]: https://docs.python.org/3/library/doctest.html
+
+- Fix bug in `temp_window()` context manager, {issue}`#394`
+- Pytest configuration `conftest.py` moved to `libtmux/conftest.py`, so doctest can
+  detect the fixtures {issue}`#394`
+
 ## libtmux 0.13.0 (2022-08-05)
 
 ### What's new
