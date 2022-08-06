@@ -11,19 +11,8 @@ import re
 import subprocess
 import sys
 import typing as t
-from collections.abc import MutableMapping
 from distutils.version import LooseVersion
-from typing import (
-    Any,
-    Dict,
-    Generic,
-    KeysView,
-    List,
-    Optional,
-    TypeVar,
-    Union,
-    overload,
-)
+from typing import Dict, Generic, KeysView, List, Optional, TypeVar, Union, overload
 
 from . import exc
 from ._compat import console_to_str, str_from_console

@@ -7,7 +7,7 @@ libtmux.pane
 """
 import logging
 import typing as t
-from typing import Dict, overload
+from typing import overload
 
 from libtmux.common import tmux_cmd
 
