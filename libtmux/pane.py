@@ -130,7 +130,7 @@ class Pane(TmuxMappingObject):
         self,
         cmd: str,
         enter: t.Optional[bool] = True,
-        suppress_history: t.Optional[bool] = True,
+        suppress_history: t.Optional[bool] = False,
         literal: t.Optional[bool] = False,
     ) -> None:
         r"""``$ tmux send-keys`` to the pane.
@@ -145,7 +145,11 @@ class Pane(TmuxMappingObject):
         enter : bool, optional
             Send enter after sending the input, default True.
         suppress_history : bool, optional
-            Don't add these keys to the shell history, default True.
+            Prepend a space to command to suppress shell history, default False.
+
+            .. versionchanged:: 0.14
+
+               Default changed from True to False.
         literal : bool, optional
             Send keys literally, default True.
 
@@ -155,7 +159,7 @@ class Pane(TmuxMappingObject):
         >>> pane.capture_pane()
         ['$']
 
-        >>> pane.send_keys('echo "Hello world"', suppress_history=False, enter=True)
+        >>> pane.send_keys('echo "Hello world"', enter=True)
 
         >>> pane.capture_pane()
         ['$ echo "Hello world"', 'Hello world', '$']
