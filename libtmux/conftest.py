@@ -4,6 +4,7 @@ import typing as t
 
 import pytest
 
+from _pytest.doctest import DoctestItem
 from _pytest.fixtures import SubRequest
 from _pytest.monkeypatch import MonkeyPatch
 
@@ -105,15 +106,12 @@ def session(request: SubRequest, server: Server) -> "Session":
 
 @pytest.fixture(autouse=True)
 def add_doctest_fixtures(
+    request: SubRequest,
     doctest_namespace: t.Dict[str, t.Any],
-    # usefixtures / autouse
-    clear_env: t.Any,
-    # Normal fixtures
-    server: "Server",
-    session: "Session",
 ) -> None:
-    if which("tmux"):
-        doctest_namespace["server"] = server
+    if isinstance(request._pyfuncitem, DoctestItem) and which("tmux"):
+        doctest_namespace["server"] = request.getfixturevalue("server")
+        session: "Session" = request.getfixturevalue("session")
         doctest_namespace["session"] = session
         doctest_namespace["window"] = session.attached_window
         doctest_namespace["pane"] = session.attached_pane
