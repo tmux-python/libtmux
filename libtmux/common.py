@@ -552,7 +552,7 @@ def get_version() -> LooseVersion:
             )
         raise exc.VersionTooLow(proc.stderr)
 
-    version = proc.stdout[0].split("tmux ")[1]
+    version = re.search('[0-9]{1}.[0-9]', proc.stdout[0]).group(0)
 
     # Allow latest tmux HEAD
     if version == "master":
