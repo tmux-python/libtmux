@@ -35,9 +35,11 @@ jobs:
         run: echo "PUBLISH=$(echo true)" >> $GITHUB_ENV
 
       - name: Install poetry
+        if: env.PUBLISH == 'true'
         run: pipx install "poetry==1.1.14"
 
       - name: Set up Python ${{ matrix.python-version }}
+        if: env.PUBLISH == 'true'
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
@@ -48,6 +50,7 @@ jobs:
         run: poetry install --extras "docs lint"
 
       - name: Print python versions
+        if: env.PUBLISH == 'true'
         run: |
           python -V
           poetry run python -V
@@ -70,6 +73,7 @@ jobs:
           SOURCE_DIR: "docs/_build/html" # optional: defaults to entire repository
 
       - name: Purge cache on Cloudflare
+        if: env.PUBLISH == 'true'
         uses: jakejarvis/cloudflare-purge-action@v0.3.0
         env:
           CLOUDFLARE_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
