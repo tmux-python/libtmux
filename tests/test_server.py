@@ -91,10 +91,19 @@ def test_new_session(server: Server) -> None:
 
 def test_new_session_no_name(server: Server) -> None:
     """Server.new_session works with no name"""
-    mysession = server.new_session()
-    session_name = mysession.get("session_name")
-    assert session_name is not None
-    assert server.has_session(session_name)
+    first_session = server.new_session()
+    first_session_name = first_session.get("session_name")
+    assert first_session_name is not None
+    assert server.has_session(first_session_name)
+
+    expected_session_name = str(int(first_session_name) + 1)
+
+    # When a new session is created, it should enumerate
+    second_session = server.new_session()
+    second_session_name = second_session.get("session_name")
+    assert expected_session_name == second_session_name
+    assert second_session_name is not None
+    assert server.has_session(second_session_name)
 
 
 def test_new_session_shell(server: Server) -> None:
