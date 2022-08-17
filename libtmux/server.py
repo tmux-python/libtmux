@@ -535,15 +535,17 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
         ------
         :exc:`exc.BadSessionName`
         """
-        session_check_name(session_name)
-        assert session_name is not None
+        if session_name is not None:
+            session_check_name(session_name)
 
-        if self.has_session(session_name):
-            if kill_session:
-                self.cmd("kill-session", "-t%s" % session_name)
-                logger.info("session %s exists. killed it." % session_name)
-            else:
-                raise exc.TmuxSessionExists("Session named %s exists" % session_name)
+            if self.has_session(session_name):
+                if kill_session:
+                    self.cmd("kill-session", "-t%s" % session_name)
+                    logger.info("session %s exists. killed it." % session_name)
+                else:
+                    raise exc.TmuxSessionExists(
+                        "Session named %s exists" % session_name
+                    )
 
         logger.debug("creating session %s" % session_name)
 
