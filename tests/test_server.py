@@ -89,6 +89,14 @@ def test_new_session(server: Server) -> None:
     assert server.has_session("test_new_session")
 
 
+def test_new_session_no_name(server: Server) -> None:
+    """Server.new_session works with no name"""
+    mysession = server.new_session()
+    session_name = mysession.get("session_name")
+    assert session_name is not None
+    assert server.has_session(session_name)
+
+
 def test_new_session_shell(server: Server) -> None:
     """Server.new_session creates and returns valid session running with
     specified command"""
