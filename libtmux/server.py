@@ -558,10 +558,12 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
             del os.environ["TMUX"]
 
         tmux_args: t.Tuple[t.Union[str, int], ...] = (
-            "-s%s" % session_name,
             "-P",
             "-F%s" % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
         )
+
+        if session_name is not None:
+            tmux_args += (f"-s{session_name}",)
 
         if not attach:
             tmux_args += ("-d",)
