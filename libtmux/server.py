@@ -538,14 +538,17 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
         Examples
         --------
         Sessions can be created without a session name (0.14.2+):
+
         >>> server.new_session()
         Session($2 2)
 
         Creating them in succession will enumerate IDs (via tmux):
+
         >>> server.new_session()
         Session($3 3)
 
         With a `session_name`:
+
         >>> server.new_session(session_name='my session')
         Session($4 my session)
         """
