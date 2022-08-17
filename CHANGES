@@ -12,12 +12,21 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+## libtmux 0.14.2 (2022-08-17)
+
+### Fixes
+
+- {meth}`Server.new_session` _really_ works without `session_name`, {issue}`401` fixes
+  {issue}`399`. Improved tests and doctests added.
+
 ## libtmux 0.14.1 (2022-08-17)
 
 ### Fixes
 
 - {meth}`Server.new_session` works without `session_name`, {issue}`400` fixes
   {issue}`399`
+
+  _This still passed `None` to the session name, this was fixed in v0.14.2._
 
 ## libtmux 0.14.0 (2022-08-05)
 
