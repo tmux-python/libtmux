@@ -534,6 +534,20 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
         Raises
         ------
         :exc:`exc.BadSessionName`
+
+        Examples
+        --------
+        Sessions can be created without a session name (0.14.2+):
+        >>> server.new_session()
+        Session($2 2)
+
+        Creating them in succession will enumerate IDs (via tmux):
+        >>> server.new_session()
+        Session($3 3)
+
+        With a `session_name`:
+        >>> server.new_session(session_name='my session')
+        Session($4 my session)
         """
         if session_name is not None:
             session_check_name(session_name)
@@ -558,10 +572,12 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
             del os.environ["TMUX"]
 
         tmux_args: t.Tuple[t.Union[str, int], ...] = (
-            "-s%s" % session_name,
             "-P",
             "-F%s" % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
         )
+
+        if session_name is not None:
+            tmux_args += (f"-s{session_name}",)
 
         if not attach:
             tmux_args += ("-d",)
