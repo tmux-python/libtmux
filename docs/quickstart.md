@@ -325,7 +325,6 @@ can also use the `.select_*` available on the object, in this case the pane has
 
 ## Sending commands to tmux panes remotely
 
-You may send commands to panes, windows and sessions **without** them being visible.
 As long as you have the object, or are iterating through a list of them, you can use `.send_keys`.
 
 ```python
@@ -334,8 +333,8 @@ As long as you have the object, or are iterating through a list of them, you can
 >>> pane.send_keys('echo hey', enter=False)
 ```
 
-See the other window, notice that {meth}`Pane.send_keys` has " `echo hey`" written,
-_still in the prompt_. Note the leading space character so the command won't be added to the user's history. Use {}`pane.cmd('send-keys', text)` to send keys without this leading space.
+See the other window, notice that {meth}`Pane.send_keys` has "`echo hey`" written,
+_still in the prompt_.
 
 `enter=False` can be used to send keys without pressing return. In this case,
 you may leave it to the user to press return himself, or complete a command
@@ -344,6 +343,20 @@ using {meth}`Pane.enter()`:
 ```python
 >>> pane.enter()
 ```
+
+### Avoid cluttering shell history
+
+`suppress_history=True` can send commands to pane windows and sessions **without**
+them being visible in the history.
+
+```python
+>>> pane.send_keys('echo Howdy', enter=True, suppress_history=True)
+```
+
+In this case, {meth}`Pane.send_keys` has " `echo hey`" written,
+automatically sent, the leading space character prevents adding it to the user's
+shell history. Omitting `enter=false` means the default behavior (sending the
+command) is done, without needing to use `pane.enter()` after.
 
 ## Final notes
 
