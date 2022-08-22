@@ -63,3 +63,24 @@ def test_set_width(session: Session) -> None:
     assert int(pane1["pane_width"]) == 10
 
     pane1.reset()
+
+
+def test_capture_pane(session: Session) -> None:
+    session.new_window(
+        attach=True,
+        window_name="capture_pane",
+        window_shell='env -i PS1="$ " /usr/bin/env bash --norc --noprofile'
+    )
+    pane = session.attached_window.attached_pane
+    assert pane is not None
+    pane_contents = "\n".join(pane.capture_pane())
+    assert pane_contents == '$'
+    pane.send_keys(
+        r'printf "\n%s\n" "Hello World !"',
+        literal=True,
+        suppress_history=False
+    )
+    pane_contents = "\n".join(pane.capture_pane())
+    assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
+        '\n\nHello World !\n$'
+    )
