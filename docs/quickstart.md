@@ -353,7 +353,7 @@ them being visible in the history.
 >>> pane.send_keys('echo Howdy', enter=True, suppress_history=True)
 ```
 
-In this case, {meth}`Pane.send_keys` has " `echo hey`" written,
+In this case, {meth}`Pane.send_keys` has " `echo Howdy`" written,
 automatically sent, the leading space character prevents adding it to the user's
 shell history. Omitting `enter=false` means the default behavior (sending the
 command) is done, without needing to use `pane.enter()` after.
