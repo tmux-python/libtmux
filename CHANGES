@@ -12,6 +12,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+### Documentation
+
+- Move to sphinx-autoissues, #406
+
 ## libtmux 0.14.2 (2022-08-17)
 
 ### Fixes
