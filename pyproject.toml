@@ -52,12 +52,12 @@ furo = "*"
 sphinx-autobuild = "*"
 sphinx-autodoc-typehints = "*"
 sphinx-click = "*"
-sphinx-issues = "*"
 sphinx-inline-tabs = { version = "*", python = "^3.7" }
 sphinxext-opengraph = "*"
 sphinx-copybutton = "*"
 sphinxext-rediraffe = "*"
 sphinx-autoapi = "*"
+sphinx-autoissues = "*"
 myst_parser = "*"
 docutils = "~0.18.0"
 
@@ -84,10 +84,10 @@ mypy = "*"
 docs = [
   "docutils",
   "sphinx",
-  "sphinx-issues",
   "sphinx-autoapi",
   "sphinx-autodoc-typehints",
   "sphinx-autobuild",
+  "sphinx-autoissues",
   "sphinx-copybutton",
   "sphinxext-opengraph",
   "sphinx-inline-tabs",

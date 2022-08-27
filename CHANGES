@@ -12,19 +12,23 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+### Documentation
+
+- Move to sphinx-autoissues, #406
+
 ## libtmux 0.14.2 (2022-08-17)
 
 ### Fixes
 
-- {meth}`Server.new_session` _really_ works without `session_name`, {issue}`401` fixes
-  {issue}`399`. Improved tests and doctests added.
+- {meth}`Server.new_session` _really_ works without `session_name`, #401 fixes
+  #399. Improved tests and doctests added.
 
 ## libtmux 0.14.1 (2022-08-17)
 
 ### Fixes
 
-- {meth}`Server.new_session` works without `session_name`, {issue}`400` fixes
-  {issue}`399`
+- {meth}`Server.new_session` works without `session_name`, #400 fixes
+  #399
 
   _This still passed `None` to the session name, this was fixed in v0.14.2._
 
@@ -33,17 +37,17 @@ $ pip install --user --upgrade --pre libtmux
 ### Breaking changes
 
 - {meth}`Pane.send_keys`: `suppress_history` default value changed from `True` to
-  `False`, {issue}`395`
+  `False`, #395
 
 ### Tests and docs
 
-- Initial [doctests] examples stubbed out {issue}`394`
+- Initial [doctests] examples stubbed out #394
 
   [doctests]: https://docs.python.org/3/library/doctest.html
 
-- Fix bug in `temp_window()` context manager, {issue}`394`
+- Fix bug in `temp_window()` context manager, #394
 - Pytest configuration `conftest.py` moved to `libtmux/conftest.py`, so doctest can
-  detect the fixtures {issue}`394`
+  detect the fixtures #394
 
 ## libtmux 0.13.0 (2022-08-05)
 
@@ -51,15 +55,15 @@ $ pip install --user --upgrade --pre libtmux
 
 - **Improved typings**
 
-  Now [`mypy --strict`] compliant ({issue}`383`)
+  Now [`mypy --strict`] compliant (#383)
 
-  Smaller touchups from {issue}`392`
+  Smaller touchups from #392
 
   [`mypy --strict`]: https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-strict
 
 ### Breaking changes
 
-- Deprecated individual item lookups ({issue}`390`)
+- Deprecated individual item lookups (#390)
 
   - Removed key lookups from {meth}`libtmux.common.EnvironmentMixin.show_environment`
 
@@ -106,17 +110,17 @@ $ pip install --user --upgrade --pre libtmux
     window.show_window_option('DISPLAY')
     ```
 
-- Remove `libtmux.test.retry()`, deprecated since 0.12.x ({issue}`393`)
+- Remove `libtmux.test.retry()`, deprecated since 0.12.x (#393)
 
 ### Development
 
-- Fix incorrect function name `findWhere()` ({issue}`391`)
+- Fix incorrect function name `findWhere()` (#391)
 
 ## libtmux 0.12.0 (2022-07-13)
 
 ### Compatibility
 
-- Brought back python 3.7 and 3.8 support ({issue}`375`)
+- Brought back python 3.7 and 3.8 support (#375)
 - Support for tmux 3.3a
 
   - Add to CI
@@ -131,21 +135,21 @@ $ pip install --user --upgrade --pre libtmux
 
   This created issues with running poetry while inside the virtualenv.
 
-- Typings: Core relations, e.g. `Pane.window`, `Pane.session`, `Pane.server`, `Window.server` {issue}`385`
+- Typings: Core relations, e.g. `Pane.window`, `Pane.session`, `Pane.server`, `Window.server` #385
 
 ### Documentation
 
 - Renewed logo
-- Try out sphinx-autoapi for its table of contents generation ({issue}`367`)
+- Try out sphinx-autoapi for its table of contents generation (#367)
 - Break up API documentations for utilities, exception, and test helpers and
   remove duplicate docs from API page. Server, session, window, and pane docs
   are in the Reference section now.
 
 ### Testing
 
-- `retry()`: Add deprecation warning. This will be removed in 0.13.x ({issue}`368`, {issue}`372`)
-- New function `retry_until()`: Polls a callback function for a set period of time until it returns `True` or times out. By default it will raise {exc}`libtmux.exc.WaitTimeout`, with `raises=False` it will return `False`. Thank you @categulario! ({issue}`368`, {issue}`372`)
-- {issue}`384` Chore: Use absolute modules rather than root-level to avoid cyclic imports.
+- `retry()`: Add deprecation warning. This will be removed in 0.13.x (#368, #372)
+- New function `retry_until()`: Polls a callback function for a set period of time until it returns `True` or times out. By default it will raise {exc}`libtmux.exc.WaitTimeout`, with `raises=False` it will return `False`. Thank you @categulario! (#368, #372)
+- #384 Chore: Use absolute modules rather than root-level to avoid cyclic imports.
 
   ```python
   # Bad / Old
@@ -157,7 +161,7 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Internals
 
-- {issue}`382` [mypy] support added:
+- #382 [mypy] support added:
 
   - Basic mypy tests now pass
 
@@ -172,8 +176,8 @@ $ pip install --user --upgrade --pre libtmux
   ~~Bug fixes and security updates will go to
   [`v0.11.x`](https://github.com/tmux-python/libtmux/tree/v0.11.x)~~
 
-- Internal: Use new separator to split `tmux(1)` formatting information ({issue}`289`,
-  {issue}`343`)
+- Internal: Use new separator to split `tmux(1)` formatting information (#289,
+  #343)
 
   The separator is configurable via `LIBTMUX_TMUX_FORMAT_SEPARATOR`. If you ever
   have compatiblity issues in the future let us know which default works best
@@ -181,12 +185,12 @@ $ pip install --user --upgrade --pre libtmux
 
   Credit: @JonathanRaiman and @jagguli
 
-- Basic type annotations ({issue}`359`, {issue}`361`) via @otherJL0
+- Basic type annotations (#359, #361) via @otherJL0
 
 ### Development
 
-- Code cleanup ({issue}`362`) from @otherJL0
-- Format with black w/ string normalization. This is a one-time diff ({issue}`354`)
+- Code cleanup (#362) from @otherJL0
+- Format with black w/ string normalization. This is a one-time diff (#354)
 
 ### Documentation
 
@@ -197,41 +201,41 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Packaging
 
-First experimental release using `poetry build` ({issue}`347`). If you are packaging and run
-across any difficulty please see {issue}`346`.
+First experimental release using `poetry build` (#347). If you are packaging and run
+across any difficulty please see #346.
 
 ### Compatibility
 
-- Drop python 3.6 ({issue}`344`)
-- Add python 3.10, though still `packaging.version` issues remain ({issue}`344`)
+- Drop python 3.6 (#344)
+- Add python 3.10, though still `packaging.version` issues remain (#344)
 
   A compat module and version constraints will need to be added for this
 
 ### Development
 
-- poetry: 1.1.7 -> 1.1.12 ({issue}`344`)
-- Add `.pre-commit-config.yaml` ({issue}`344`)
+- poetry: 1.1.7 -> 1.1.12 (#344)
+- Add `.pre-commit-config.yaml` (#344)
 
 ## libtmux 0.10.2 (2021-10-30)
 
-- {issue}`324`: Update poetry to 1.1
+- #324: Update poetry to 1.1
   - CI: Use poetry 1.1.7 and `install-poetry.py` installer
   - Relock poetry.lock at 1.1 (w/ 1.1.7's fix)
-- {issue}`339` (CI): Lock python at 3.9 to avoid poetry issue with `dataclasses`
-- ci: Fix publishing docs (similar to {issue}`339`)
-- {issue}`341` {issue}`342`: `Server.attached_sessions()` now supports multiple attached sessions.
+- #339 (CI): Lock python at 3.9 to avoid poetry issue with `dataclasses`
+- ci: Fix publishing docs (similar to #339)
+- #341 #342: `Server.attached_sessions()` now supports multiple attached sessions.
 
   Remove attached sessions limitation to not detect multiple attached clients,
   thank you @timoses
 
 ## libtmux 0.10.1 (2021-06-16)
 
-- Update `Window.select_window()` for {issue}`271`
+- Update `Window.select_window()` for #271
 
 ## libtmux 0.10.0 (2021-06-16)
 
-- {issue}`321`: Convert to markdown
-- {issue}`271`: Fix {}`select_window()` by providing the session ID as
+- #321: Convert to markdown
+- #271: Fix {}`select_window()` by providing the session ID as
   argument to {}`-t`. Thanks @Flowdalic
 - Drop python 3.5 support
 
@@ -239,46 +243,46 @@ across any difficulty please see {issue}`346`.
 
 Python 2.7 support dropped.
 
-- {issue}`306`: chore: Remove python 2.7 support
-- {issue}`314`: chore: Python 3.x syntax tweaks
-- {issue}`312`: ci: Add tmux 3.2a to CI
+- #306: chore: Remove python 2.7 support
+- #314: chore: Python 3.x syntax tweaks
+- #312: ci: Add tmux 3.2a to CI
 - chore: Update black to [21.6b0](https://github.com/psf/black/blob/21.6b0/CHANGES.md#216b0)
-- {issue}`271`: Fix select_window() by providing the session ID as
+- #271: Fix select_window() by providing the session ID as
   argument to -t.
 
 ## libtmux 0.8.5 (2020-10-25)
 
-- {issue}`297`: Enchance subprocess interaction std[in|out|err]. Needed
-  for interact with big buffer, fixes {issue}`251`, thank you
+- #297: Enchance subprocess interaction std[in|out|err]. Needed
+  for interact with big buffer, fixes #251, thank you
   @gil-obradors!
-- {issue}`303` Add `common.get_libtmux_version` which gives the tmux
+- #303 Add `common.get_libtmux_version` which gives the tmux
   version as a loose constraint. Fix linking to terms inside docs, and
   duplicate description of module which sphinx warned about in api.rst.
-- {issue}`266` Fix issue on local tests where env variables would cause
+- #266 Fix issue on local tests where env variables would cause
   show-environment to pause tests indefinitely.
 
 ## libtmux 0.8.4 (2020-10-25)
 
-- {issue}`234`: `Window.split_window`: Allow passing `percent`, Thank
+- #234: `Window.split_window`: Allow passing `percent`, Thank
   you @jinankjain!
-- {issue}`289`: Fix warning due to invalid escape sequences, Thank you
+- #289: Fix warning due to invalid escape sequences, Thank you
   @tirkarthi!
-- {issue}`295`: Publish docs via our own action
-- {issue}`295`: Move more packaging over to poetry, though we'll keep
+- #295: Publish docs via our own action
+- #295: Move more packaging over to poetry, though we'll keep
   setup.py for the moment to ensure compatibility package maintainers.
-- {issue}`295`: New development instructions
-- {issue}`295`: Move doc/ to docs/
-- {issue}`296`: CI: Test python 2.7, cache python packages, prevent running
+- #295: New development instructions
+- #295: Move doc/ to docs/
+- #296: CI: Test python 2.7, cache python packages, prevent running
   internal PRs twice
 
 ## libtmux 0.8.3 (2020-08-16)
 
-- {issue}`278`: Fix Python deprecation warnings, thanks @d1618033
+- #278: Fix Python deprecation warnings, thanks @d1618033
 
-  Also thanks Flowdalic for a similar PR at {issue}`294`
+  Also thanks Flowdalic for a similar PR at #294
 
 - Add `project_urls` to setup.py
-- {issue}`293` Move from Pipfile to poetry
+- #293 Move from Pipfile to poetry
 - Fix show_option test in tmux 3.0
 - Clean up handle_option_error comments
 - Move CI to a GitHub action
@@ -291,28 +295,28 @@ Python 2.7 support dropped.
 
 ## libtmux 0.8.1 (2019-01-26)
 
-- {issue}`117` Fix issue with renaming clients with tmux 2.7 on BSD/macOS
+- #117 Fix issue with renaming clients with tmux 2.7 on BSD/macOS
   machines.
-- {issue}`121` Support `literal=True` (`-l`) in `Pane.send_keys`
+- #121 Support `literal=True` (`-l`) in `Pane.send_keys`
   from @ritiek
-- {issue}`131` Fix for unicode commands in Python 2, thanks @myw
-- {issue}`172` Support for next-X.Y versions from @sloria
-- {issue}`120` `capture_pane` support for `Pane`
-- {issue}`119` `display_message` support for `Pane`
+- #131 Fix for unicode commands in Python 2, thanks @myw
+- #172 Support for next-X.Y versions from @sloria
+- #120 `capture_pane` support for `Pane`
+- #119 `display_message` support for `Pane`
 - Sort imports with isort
 - Add sphinxcontrib-napoleon package for documentation
 - Move docstrings over to numpy's style
 
 ## libtmux 0.8.0 (2018-03-11)
 
-- {issue}`46` Change license from BSD to MIT
+- #46 Change license from BSD to MIT
 - Move to new organization, tmux-python
 - Support package updates to pytest, sphinx, etc.
 - Travis/CI: Limit tests to Python 2.7 and 3.6 (removed 3.3 to 3.5)
 - Travis/CI: Update pypy veersions
-- {issue}`103` `Server.new_session` learned how to run commands in
+- #103 `Server.new_session` learned how to run commands in
   window on session start, thanks @grimpy!
-- {issue}`68` Make Server.has_session() use returncode, thanks
+- #68 Make Server.has_session() use returncode, thanks
   @jlargentaye! This should make `has_session` more robust.
 
 ## libtmux 0.7.8 (2018-03-04)
@@ -336,7 +340,7 @@ Python 2.7 support dropped.
 
 ## libtmux 0.7.4 (2017-08-19)
 
-- {issue}`65` Add session id to commands, thanks [@askedrelic][@askedrelic]
+- #65 Add session id to commands, thanks [@askedrelic][@askedrelic]
 
 ## libtmux 0.7.3 (2017-05-29)
 
@@ -348,7 +352,7 @@ Python 2.7 support dropped.
 
 ## libtmux 0.7.1 (2017-04-28)
 
-- {issue}`37` Improve support for formatted options like
+- #37 Improve support for formatted options like
   `pane-border-status`. Thanks @kaushalmodi.
 
 ## libtmux 0.7.0 (2017-04-27)
@@ -383,23 +387,23 @@ Python 2.7 support dropped.
 
 ## libtmux 0.6.4 (2017-03-25)
 
-- {issue}`32` support for OpenBSD's tmux
+- #32 support for OpenBSD's tmux
 
 ## libtmux 0.6.3 (2017-02-08)
 
-- {issue}`25` support for working with tmux `master`, thanks @sloria.
+- #25 support for working with tmux `master`, thanks @sloria.
 
 ## libtmux 0.6.2 (2017-01-19)
 
-- {issue}`197` use {}`LooseVersion` instead of {}`StrictVersion` for version
+- #197 use {}`LooseVersion` instead of {}`StrictVersion` for version
   checks. Thanks @minijackson.
 - Pin packages with pyup.io
-- {issue}`21` Readme fix from @huwenchao.
+- #21 Readme fix from @huwenchao.
 
 ## libtmux 0.6.1 (2016-12-20)
 
-- {issue}`18` Fix logger, courtesy of @geekli
-- {issue}`19` Add support for `start_directory` in new sessions and
+- #18 Fix logger, courtesy of @geekli
+- #19 Add support for `start_directory` in new sessions and
   panes, courtesy of @gandelman-a.
 - Fix tests and add official support for 2.3
 
@@ -412,14 +416,14 @@ Python 2.7 support dropped.
 
 ## libtmux 0.5.1 (2016-08-18)
 
-- {issue}`12` - fix logger message when tmux doesn't exist in `PATH`
+- #12 - fix logger message when tmux doesn't exist in `PATH`
 
 ## libtmux 0.5 (2016-06-15)
 
-- {issue}`8` new exception `UnknownOption`
-- {issue}`8` return `None` for options that are valid tmux options,
+- #8 new exception `UnknownOption`
+- #8 return `None` for options that are valid tmux options,
   but unset at that scope.
-- {issue}`6` major documentation overhaul
+- #6 major documentation overhaul
 
 ## libtmux 0.4.1 (2016-05-23)
 

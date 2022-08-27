@@ -28,7 +28,7 @@ extensions = [
     "sphinx.ext.todo",
     "sphinx.ext.linkcode",
     "sphinx.ext.napoleon",
-    "sphinx_issues",
+    "sphinx_autoissues",
     "sphinx_click.ext",  # sphinx-click
     "sphinx_inline_tabs",
     "sphinx_copybutton",
@@ -43,8 +43,6 @@ myst_enable_extensions = [
     "replacements",
     "strikethrough",
 ]
-
-issues_github_path = about["__github__"].replace("https://github.com/", "")
 
 templates_path = ["_templates"]
 
@@ -95,6 +93,10 @@ html_sidebars = {
         "sidebar/scroll-end.html",
     ]
 }
+
+# sphinx-autoissues
+issuetracker = "github"
+issuetracker_project = about["__github__"].replace("https://github.com/", "")
 
 # sphinx.ext.autodoc
 autoclass_content = "both"
