@@ -2,6 +2,7 @@
 
 import re
 import sys
+import os
 import typing as t
 from distutils.version import LooseVersion
 from typing import Optional
@@ -23,8 +24,7 @@ from libtmux.common import (
     has_minimum_version,
     has_version,
     session_check_name,
-    tmux_cmd,
-    which,
+    tmux_cmd
 )
 from libtmux.exc import BadSessionName, LibTmuxException, TmuxCommandNotFound
 from libtmux.session import Session
@@ -174,16 +174,13 @@ def test_has_lte_version() -> None:
     assert not has_lte_version("1.7b")
 
 
-def test_which_no_bin_found() -> None:
-    assert which("top")
-    assert which("top", default_paths=[])
-    assert not which("top", default_paths=[], append_env_path=False)
-    assert not which("top", default_paths=["/"], append_env_path=False)
-
-
 def test_tmux_cmd_raises_on_not_found() -> None:
+    previous_path = os.environ["PATH"]
+    os.environ["PATH"] = ""
     with pytest.raises(TmuxCommandNotFound):
-        tmux_cmd("-V", tmux_search_paths=[], append_env_path=False)
+        tmux_cmd("-V")
+
+    os.environ["PATH"] = previous_path
 
     tmux_cmd("-V")
 
