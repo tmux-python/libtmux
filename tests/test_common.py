@@ -24,7 +24,6 @@ from libtmux.common import (
     has_version,
     session_check_name,
     tmux_cmd,
-    which,
 )
 from libtmux.exc import BadSessionName, LibTmuxException, TmuxCommandNotFound
 from libtmux.session import Session
@@ -174,18 +173,10 @@ def test_has_lte_version() -> None:
     assert not has_lte_version("1.7b")
 
 
-def test_which_no_bin_found() -> None:
-    assert which("top")
-    assert which("top", default_paths=[])
-    assert not which("top", default_paths=[], append_env_path=False)
-    assert not which("top", default_paths=["/"], append_env_path=False)
-
-
-def test_tmux_cmd_raises_on_not_found() -> None:
+def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PATH", "")
     with pytest.raises(TmuxCommandNotFound):
-        tmux_cmd("-V", tmux_search_paths=[], append_env_path=False)
-
-    tmux_cmd("-V")
+        tmux_cmd("-V")
 
 
 def test_tmux_cmd_unicode(session: Session) -> None:

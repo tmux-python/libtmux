@@ -8,6 +8,7 @@ libtmux.common
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import typing as t
@@ -203,14 +204,6 @@ class tmux_cmd:
     """
     :term:`tmux(1)` command via :py:mod:`subprocess`.
 
-    Parameters
-    ----------
-    tmux_search_paths : list, optional
-        Default PATHs to search tmux for, defaults to ``default_paths`` used
-        in :func:`which`.
-    append_env_path : bool
-        Append environment PATHs to tmux search paths. True by default.
-
     Examples
     --------
 
@@ -239,14 +232,7 @@ class tmux_cmd:
     """
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        tmux_bin = which(
-            "tmux",
-            default_paths=kwargs.get(
-                "tmux_search_paths",
-                ["/bin", "/sbin", "/usr/bin", "/usr/sbin", "/usr/local/bin"],
-            ),
-            append_env_path=kwargs.get("append_env_path", True),
-        )
+        tmux_bin = shutil.which("tmux")
         if not tmux_bin:
             raise (exc.TmuxCommandNotFound)
 
@@ -461,73 +447,6 @@ class TmuxRelationalObject(Generic[O, D]):
         return None
 
 
-def which(
-    exe: str,
-    default_paths: t.List[str] = [
-        "/bin",
-        "/sbin",
-        "/usr/bin",
-        "/usr/sbin",
-        "/usr/local/bin",
-    ],
-    append_env_path: bool = True,
-) -> t.Optional[str]:
-    """
-    Return path of bin. Python clone of /usr/bin/which.
-
-    Parameters
-    ----------
-    exe : str
-        Application to search PATHs for.
-    default_paths : list
-       Paths to check inside of
-    append_env_path : bool, optional
-        Append list of directories to check in from PATH environment variable.
-        Default True. Setting False only for testing / diagnosing.
-
-    Returns
-    -------
-    str
-        path of application, if found in paths.
-
-    Notes
-    -----
-    from salt.util - https://www.github.com/saltstack/salt - license apache
-    """
-
-    def _is_executable_file_or_link(exe: str) -> bool:
-        # check for os.X_OK doesn't suffice because directory may executable
-        return os.access(exe, os.X_OK) and (os.path.isfile(exe) or os.path.islink(exe))
-
-    if _is_executable_file_or_link(exe):
-        # executable in cwd or fullpath
-        return exe
-
-    # Enhance POSIX path for the reliability at some environments, when
-    # $PATH is changing. This also keeps order, where 'first came, first
-    # win' for cases to find optional alternatives
-    if append_env_path:
-        search_path = (
-            os.environ.get("PATH") and os.environ["PATH"].split(os.pathsep) or list()
-        )
-    else:
-        search_path = []
-
-    for default_path in default_paths:
-        if default_path not in search_path:
-            search_path.append(default_path)
-    for path in search_path:
-        full_path = os.path.join(path, exe)
-        if _is_executable_file_or_link(full_path):
-            return full_path
-    logger.info(
-        "'{}' could not be found in the following search path: "
-        "'{}'".format(exe, search_path)
-    )
-
-    return None
-
-
 def get_version() -> LooseVersion:
     """
     Return tmux version.
@@ -541,7 +460,7 @@ def get_version() -> LooseVersion:
     Returns
     -------
     :class:`distutils.version.LooseVersion`
-        tmux version according to :func:`libtmux.common.which`'s tmux
+        tmux version according to :func:`shtuil.which`'s tmux
     """
     proc = tmux_cmd("-V")
     if proc.stderr:

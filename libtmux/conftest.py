@@ -1,6 +1,7 @@
 import logging
 import os
 import typing as t
+import shutil
 
 import pytest
 
@@ -9,7 +10,6 @@ from _pytest.fixtures import SubRequest
 from _pytest.monkeypatch import MonkeyPatch
 
 from libtmux import exc
-from libtmux.common import which
 from libtmux.server import Server
 from libtmux.test import TEST_SESSION_PREFIX, get_test_session_name, namer
 
@@ -109,7 +109,7 @@ def add_doctest_fixtures(
     request: SubRequest,
     doctest_namespace: t.Dict[str, t.Any],
 ) -> None:
-    if isinstance(request._pyfuncitem, DoctestItem) and which("tmux"):
+    if isinstance(request._pyfuncitem, DoctestItem) and shutil.which("tmux"):
         doctest_namespace["server"] = request.getfixturevalue("server")
         session: "Session" = request.getfixturevalue("session")
         doctest_namespace["session"] = session
