@@ -270,16 +270,18 @@ class tmux_cmd:
 
         stdout_str = console_to_str(stdout)
         stdout_split = stdout_str.split("\n")
-        stdout_filtered = list(filter(None, stdout_split))  # filter empty values
+        # remove trailing newlines from stdout
+        while stdout_split and stdout_split[-1] == "":
+            stdout_split.pop()
 
         stderr_str = console_to_str(stderr)
         stderr_split = stderr_str.split("\n")
         self.stderr = list(filter(None, stderr_split))  # filter empty values
 
-        if "has-session" in cmd and len(self.stderr) and not stdout_filtered:
+        if "has-session" in cmd and len(self.stderr) and not stdout_split:
             self.stdout = [self.stderr[0]]
         else:
-            self.stdout = stdout_filtered
+            self.stdout = stdout_split
 
         logger.debug("self.stdout for {}: \n{}".format(" ".join(cmd), self.stdout))
 

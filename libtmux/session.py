@@ -201,7 +201,7 @@ class Session(
         start_directory: None = None,
         attach: bool = True,
         window_index: str = "",
-        window_shell: None = None,
+        window_shell: t.Optional[str] = None,
     ) -> Window:
         """
         Return :class:`Window` from ``$ tmux new-window``.
@@ -219,7 +219,7 @@ class Session(
         window_index : str
             create the new window at the given index position. Default is empty
             string which will create the window in the next available position.
-        window_shell : str
+        window_shell : str, optional
             execute a command on starting the window.  The window will close
             when the command exits.
 
