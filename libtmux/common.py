@@ -271,11 +271,8 @@ class tmux_cmd:
         stdout_str = console_to_str(stdout)
         stdout_split = stdout_str.split("\n")
         # remove trailing newlines from stdout
-        for v in reversed(stdout_split):
-            if v == '':
-                stdout_split.pop()
-            else:
-                break
+        while stdout_split and stdout_split[-1] == "":
+            stdout_split.pop()
 
         stderr_str = console_to_str(stderr)
         stderr_split = stderr_str.split("\n")
