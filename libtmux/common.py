@@ -460,7 +460,7 @@ def get_version() -> LooseVersion:
     Returns
     -------
     :class:`distutils.version.LooseVersion`
-        tmux version according to :func:`libtmux.common.which`'s tmux
+        tmux version according to :func:`shtuil.which`'s tmux
     """
     proc = tmux_cmd("-V")
     if proc.stderr:
