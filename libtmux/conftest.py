@@ -1,7 +1,7 @@
 import logging
 import os
-import typing as t
 import shutil
+import typing as t
 
 import pytest
 
