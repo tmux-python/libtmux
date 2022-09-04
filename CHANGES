@@ -20,6 +20,10 @@ $ pip install --user --upgrade --pre libtmux
   all empty lines were filtered out. This will lead to a more accurate behavior when using
   {meth}`Pane.capture_pane`. Credit: @rockandska, via #405.
 
+### Development
+
+- Add [flake8-bugbear](https://github.com/PyCQA/flake8-bugbear) (#408)
+
 ### Documentation
 
 - Move to sphinx-autoissues, #406
