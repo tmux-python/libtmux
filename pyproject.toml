@@ -78,6 +78,7 @@ isort = "*"
 
 ### Lint ###
 flake8 = "*"
+flake8-bugbear = "^22.8.23"
 mypy = "*"
 
 [tool.poetry.extras]
@@ -98,7 +99,7 @@ docs = [
 test = ["pytest", "pytest-rerunfailures", "pytest-mock", "pytest-watcher"]
 coverage = ["codecov", "coverage", "pytest-cov"]
 format = ["black", "isort"]
-lint = ["flake8", "mypy"]
+lint = ["flake8", "flake8-bugbear", "mypy"]
 
 [tool.mypy]
 strict = true
