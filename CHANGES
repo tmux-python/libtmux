@@ -23,6 +23,7 @@ $ pip install --user --upgrade --pre libtmux
 ### Development
 
 - Add [flake8-bugbear](https://github.com/PyCQA/flake8-bugbear) (#408)
+- Add [flake8-comprehensions](https://github.com/adamchainz/flake8-comprehensions) (#409)
 
 ### Documentation
 
