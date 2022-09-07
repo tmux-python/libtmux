@@ -1,6 +1,6 @@
 # Test helpers
 
 ```{eval-rst}
-.. autoapimodule:: libtmux.test
+.. automodule:: libtmux.test
    :members:
 ```

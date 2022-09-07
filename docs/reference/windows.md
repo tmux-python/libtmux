@@ -11,7 +11,7 @@
 ```
 
 ```{eval-rst}
-.. autoapiclass:: Window
+.. autoclass:: Window
     :members:
     :inherited-members:
     :private-members:

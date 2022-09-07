@@ -22,19 +22,19 @@ with open(project_root / "libtmux" / "__about__.py") as fp:
 
 extensions = [
     "sphinx.ext.autodoc",
-    "autoapi.extension",
     "sphinx.ext.intersphinx",
     "sphinx_autodoc_typehints",
     "sphinx.ext.todo",
     "sphinx.ext.linkcode",
     "sphinx.ext.napoleon",
-    "sphinx_autoissues",
     "sphinx_click.ext",  # sphinx-click
     "sphinx_inline_tabs",
     "sphinx_copybutton",
     "sphinxext.opengraph",
     "sphinxext.rediraffe",
     "myst_parser",
+    "linkify_issues",
+    "sphinx_toctree_autodoc_fix",
 ]
 
 myst_enable_extensions = [
@@ -94,20 +94,13 @@ html_sidebars = {
     ]
 }
 
-# sphinx-autoissues
-issuetracker = "github"
-issuetracker_project = about["__github__"].replace("https://github.com/", "")
+# linkify_issues
+issue_url_tpl = f'{about["__github__"]}/issues/{{issue_id}}'
 
 # sphinx.ext.autodoc
 autoclass_content = "both"
 autodoc_member_order = "bysource"
 autosummary_generate = True
-
-# sphinx-autoapi
-autoapi_type = "python"
-autoapi_dirs = [project_root / "libtmux"]
-autoapi_generate_api_docs = False  # when fales, use directives
-suppress_warnings = ["autoapi.python_import_resolution", "autoapi.not_readable"]
 
 # sphinx-copybutton
 copybutton_prompt_text = (
