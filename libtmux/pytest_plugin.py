@@ -51,7 +51,7 @@ def clear_env(monkeypatch: MonkeyPatch) -> None:
 def server(request: SubRequest, monkeypatch: MonkeyPatch) -> Server:
 
     t = Server()
-    t.socket_name = "tmuxp_test%s" % next(namer)
+    t.socket_name = "libtmux_test%s" % next(namer)
 
     def fin() -> None:
         t.kill_server()
