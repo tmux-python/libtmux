@@ -102,6 +102,9 @@ coverage = ["codecov", "coverage", "pytest-cov"]
 format = ["black", "isort"]
 lint = ["flake8", "flake8-bugbear", "flake8-comprehensions", "mypy"]
 
+[tool.poetry.plugins.pytest11]
+libtmux = "libtmux.pytest_plugin"
+
 [tool.mypy]
 strict = true
 
