@@ -1,5 +1,7 @@
+import getpass
 import logging
 import os
+import pathlib
 import shutil
 import typing as t
 
@@ -17,6 +19,47 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
+USING_ZSH = "zsh" in os.getenv("SHELL", "")
+
+
+@pytest.fixture(autouse=True, scope="session")
+def home_path(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
+    return tmp_path_factory.mktemp("home")
+
+
+@pytest.fixture(autouse=True, scope="session")
+def user_path(home_path: pathlib.Path) -> pathlib.Path:
+    p = home_path / getpass.getuser()
+    p.mkdir()
+    return p
+
+
+@pytest.mark.skipif(USING_ZSH, reason="Using ZSH")
+@pytest.fixture(autouse=USING_ZSH, scope="session")
+def zshrc(user_path: pathlib.Path) -> pathlib.Path:
+    """This quiets ZSH default message.
+
+    Needs a startup file .zshenv, .zprofile, .zshrc, .zlogin.
+    """
+    p = user_path / ".zshrc"
+    p.touch()
+    return p
+
+
+@pytest.fixture(scope="function")
+def config_file(user_path: pathlib.Path) -> pathlib.Path:
+    """Set default tmux configuration (base indexes for windows, panes)
+
+    We need this for tests to work across tmux versions in our CI matrix.
+    """
+    c = user_path / ".tmux.conf"
+    c.write_text(
+        """
+set -g base-index 1
+    """,
+        encoding="utf-8",
+    )
+    return c
 
 
 @pytest.fixture(autouse=True)
@@ -48,9 +91,10 @@ def clear_env(monkeypatch: MonkeyPatch) -> None:
 
 
 @pytest.fixture(scope="function")
-def server(request: SubRequest, monkeypatch: MonkeyPatch) -> Server:
-
-    t = Server()
+def server(
+    request: SubRequest, monkeypatch: MonkeyPatch, config_file: pathlib.Path
+) -> Server:
+    t = Server(config_file=str(config_file.absolute()))
     t.socket_name = "libtmux_test%s" % next(namer)
 
     def fin() -> None:
