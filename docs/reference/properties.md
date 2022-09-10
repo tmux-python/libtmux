@@ -43,7 +43,7 @@ Get the {class}`~libtmux.Session` object:
 ```python
 >>> session = server.sessions[0]
 >>> session
-Session($... libtmux_...)
+Session($1 libtmux_...)
 ```
 
 Quick access to basic attributes:
@@ -53,7 +53,7 @@ Quick access to basic attributes:
 'libtmux_...'
 
 >>> session.id
-'$...'
+'$1'
 ```
 
 To see all attributes for a session:
@@ -79,7 +79,7 @@ The same concepts apply for {class}`~libtmux.Window`:
 >>> window = session.attached_window
 
 >>> window
-Window(@... ...:..., Session($... ...))
+Window(@1 ...:..., Session($1 ...))
 ```
 
 Basics:
@@ -89,7 +89,7 @@ Basics:
 '...'
 
 >>> window.id
-'@...'
+'@1'
 
 >>> window.height
 '...'
@@ -120,7 +120,7 @@ Get the {class}`~libtmux.Pane`:
 >>> pane = window.attached_pane
 
 >>> pane
-Pane(%... Window(@... ...:..., Session($... libtmux_...)))
+Pane(%1 Window(@1 ...:..., Session($1 libtmux_...)))
 ```
 
 Basics:

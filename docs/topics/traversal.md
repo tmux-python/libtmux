@@ -42,14 +42,14 @@ Get first session {class}`~libtmux.Session` to `session`:
 ```python
 >>> session = server.sessions[0]
 >>> session
-Session($... ...)
+Session($1 ...)
 ```
 
 Get a list of sessions:
 
 ```python
 >>> server.sessions
-[Session($... ...), Session($... ...)]
+[Session($1 ...), Session($0 ...)]
 ```
 
 Iterate through sessions in a server:
@@ -57,29 +57,29 @@ Iterate through sessions in a server:
 ```python
 >>> for sess in server.sessions:
 ...     print(sess)
-Session($... ...)
-Session($... ...)
+Session($1 ...)
+Session($0 ...)
 ```
 
 Grab a {class}`~libtmux.Window` from a session:
 
 ```python
 >>> session.windows[0]
-Window(@... ...:..., Session($... ...))
+Window(@1 ...:..., Session($1 ...))
 ```
 
 Grab the currently focused window from session:
 
 ```python
 >>> session.attached_window
-Window(@... ...:..., Session($... ...))
+Window(@1 ...:..., Session($1 ...))
 ```
 
 Grab the currently focused {class}`Pane` from session:
 
 ```python
 >>> session.attached_pane
-Pane(%... Window(@... ...:..., Session($... ...)))
+Pane(%1 Window(@1 ...:..., Session($1 ...)))
 ```
 
 Assign the attached {class}`~libtmux.Pane` to `p`:
@@ -93,7 +93,7 @@ Access the window/server of a pane:
 ```python
 >>> p = session.attached_pane
 >>> p.window
-Window(@... ...:..., Session($... ...))
+Window(@1 ...:..., Session($1 ...))
 
 >>> p.server
 <libtmux.server.Server object at ...>
