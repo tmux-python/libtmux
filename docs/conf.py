@@ -160,7 +160,10 @@ texinfo_documents = [
     )
 ]
 
-intersphinx_mapping = {"http://docs.python.org/": None}
+intersphinx_mapping = {
+    "": ("https://docs.python.org/", None),
+    "pytest": ("https://docs.pytest.org/en/stable/", None),
+}
 
 
 def linkcode_resolve(
