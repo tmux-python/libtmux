@@ -11,13 +11,14 @@ from libtmux import test  # NOQA
 # Get the project root dir, which is the parent dir of this
 cwd = Path(__file__).parent
 project_root = cwd.parent
+project_src = project_root / "src"
 
-sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_src))
 sys.path.insert(0, str(cwd / "_ext"))
 
 # package data
 about: Dict[str, str] = {}
-with open(project_root / "libtmux" / "__about__.py") as fp:
+with open(project_src / "libtmux" / "__about__.py") as fp:
     exec(fp.read(), about)
 
 extensions = [
