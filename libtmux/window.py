@@ -44,7 +44,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
     >>> window = session.new_window('My project')
 
     >>> window
-    Window(@... ...:My project, Session($... ...))
+    Window(@2 2:My project, Session($... ...))
 
     Windows have panes:
 
@@ -329,10 +329,10 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         >>> window = session.attached_window
 
         >>> window.rename_window('My project')
-        Window(@1 ...:My project, Session($1 ...))
+        Window(@1 1:My project, Session($1 ...))
 
         >>> window.rename_window('New name')
-        Window(@1 ...:New name, Session($1 ...))
+        Window(@1 1:New name, Session($1 ...))
         """
 
         import shlex

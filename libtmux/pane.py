@@ -39,13 +39,13 @@ class Pane(TmuxMappingObject):
     Examples
     --------
     >>> pane
-    Pane(%1 Window(@1 ...:..., Session($1 ...)))
+    Pane(%1 Window(@1 1:..., Session($1 ...)))
 
     >>> pane in window.panes
     True
 
     >>> pane.window
-    Window(@1 ...:..., Session($1 ...))
+    Window(@1 1:..., Session($1 ...))
 
     >>> pane.session
     Session($1 ...)
