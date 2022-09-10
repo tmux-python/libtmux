@@ -23,6 +23,7 @@ $ pip install --user --upgrade --pre libtmux
 - Fixes #402: {func}`common.tmux_cmd` will only strip _trailing_ empty lines. Before this change,
   all empty lines were filtered out. This will lead to a more accurate behavior when using
   {meth}`Pane.capture_pane`. Credit: @rockandska, via #405.
+- Source files for `libtmux` modules moved to `src/`, via #414.
 
 ### Development
 
