@@ -28,6 +28,7 @@ api
 :hidden:
 
 developing
+pytest-plugin
 internals/index
 history
 glossary
