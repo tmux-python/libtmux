@@ -10,7 +10,7 @@
 [pty(4)]: https://www.freebsd.org/cgi/man.cgi?query=pty&sektion=4
 
 ```{eval-rst}
-.. autoclass:: libtmux.Pane
+.. autoclass:: libtmux.pane.Pane
     :members:
     :inherited-members:
     :private-members:

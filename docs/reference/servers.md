@@ -10,7 +10,7 @@
 tmux initializes a server on automatically on first running (e.g. executing `tmux`)
 
 ```{eval-rst}
-.. autoclass:: libtmux.Server
+.. autoclass:: libtmux.server.Server
     :members:
     :inherited-members:
     :private-members:
