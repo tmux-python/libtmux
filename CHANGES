@@ -12,6 +12,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+### New features
+
+- Added a [pytest plugin](https://libtmux.git-pull.com/pytest-plugin.html), #411.
+
 ### Breaking changes
 
 - Remove `common.which()` in favor of {func}`shutil.which`, Credit:
