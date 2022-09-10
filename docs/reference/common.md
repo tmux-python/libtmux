@@ -1,6 +1,6 @@
 # Utilities
 
 ```{eval-rst}
-.. autoapimodule:: libtmux.common
+.. automodule:: libtmux.common
    :members:
 ```

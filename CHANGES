@@ -29,10 +29,18 @@ $ pip install --user --upgrade --pre libtmux
 - Add [flake8-bugbear](https://github.com/PyCQA/flake8-bugbear) (#408)
 - Add [flake8-comprehensions](https://github.com/adamchainz/flake8-comprehensions) (#409)
 
+### Tests
+
+- Test doctests in documentation via
+  [pytest-doctest-docutils](https://gp-libs.git-pull.com/doctest/pytest.html) (#410)
+
 ### Documentation
 
 - Move to sphinx-autoissues, #406
 - Examples updated for correctness, #412 (cherry-picked from #410)
+- Render changelog in [linkify_issues](https://gp-libs.git-pull.com/linkify_issues/) (#410)
+- Fix Table of contents rendering with sphinx autodoc with
+  [sphinx_toctree_autodoc_fix](https://gp-libs.git-pull.com/sphinx_toctree_autodoc_fix/) (#410)
 
 ## libtmux 0.14.2 (2022-08-17)
 

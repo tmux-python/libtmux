@@ -49,6 +49,7 @@ python = "^3.7"
 ### Docs ###
 sphinx = "*"
 furo = "*"
+gp-libs = "*"
 sphinx-autobuild = "*"
 sphinx-autodoc-typehints = "*"
 sphinx-click = "*"
@@ -56,7 +57,6 @@ sphinx-inline-tabs = { version = "*", python = "^3.7" }
 sphinxext-opengraph = "*"
 sphinx-copybutton = "*"
 sphinxext-rediraffe = "*"
-sphinx-autoapi = "*"
 sphinx-autoissues = "*"
 myst_parser = "*"
 docutils = "~0.18.0"
@@ -96,6 +96,7 @@ docs = [
   "sphinxext-rediraffe",
   "myst_parser",
   "furo",
+  "gp-libs"
 ]
 test = ["pytest", "pytest-rerunfailures", "pytest-mock", "pytest-watcher"]
 coverage = ["codecov", "coverage", "pytest-cov"]

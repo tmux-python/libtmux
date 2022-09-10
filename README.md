@@ -157,19 +157,18 @@ Grab the output of pane:
 ```python
 >>> pane.clear()  # clear the pane
 >>> pane.send_keys("cowsay 'hello'", enter=True)
->>> import time; time.sleep(1)
->>> print('\n'.join(pane.cmd('capture-pane', '-p').stdout))
+>>> print('\n'.join(pane.cmd('capture-pane', '-p').stdout))  # doctest: +SKIP
+$ cowsay 'hello'
+ _______
+< hello >
+ -------
+        \   ^__^
+         \  (oo)\_______
+            (__)\       )\/\
+                ||----w |
+                ||     ||
+...
 ```
-
-    sh-3.2$ cowsay 'hello'
-     _______
-    < hello >
-     -------
-            \   ^__^
-             \  (oo)\_______
-                (__)\       )\/\
-                    ||----w |
-                    ||     ||
 
 Traverse and navigate:
 

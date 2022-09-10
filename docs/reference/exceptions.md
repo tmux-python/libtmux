@@ -1,6 +1,6 @@
 # Exceptions
 
 ```{eval-rst}
-.. autoapimodule:: libtmux.exc
+.. automodule:: libtmux.exc
    :members:
 ```

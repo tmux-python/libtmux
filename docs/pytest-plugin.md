@@ -87,12 +87,10 @@ object lookups in the test grid.
 ## API reference
 
 ```{eval-rst}
-.. autoapimodule:: libtmux.pytest_plugin
+.. automodule:: libtmux.pytest_plugin
     :members:
     :inherited-members:
     :private-members:
     :show-inheritance:
     :member-order: bysource
-    :exclude-members: Server, TEST_SESSION_PREFIX, get_test_session_name,
-        namer, logger
 ```
