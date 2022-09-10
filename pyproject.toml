@@ -27,7 +27,7 @@ keywords = ["tmux", "session manager", "terminal", "ncurses"]
 homepage = "http://github.com/tmux-python/libtmux/"
 readme = "README.md"
 packages = [
-  { include = "libtmux" },
+  { include = "*", from = "src" },
 ]
 include = [
   { path = "CHANGES", format = "sdist" },
