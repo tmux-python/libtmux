@@ -27,7 +27,7 @@ Import libtmux:
 >>> import libtmux
 ```
 
-Attach default tmux {class}`~libtmux.Server` to `t`:
+Attach default tmux {class}`~libtmux.server.Server` to `t`:
 
 ```python
 >>> import libtmux
@@ -73,7 +73,7 @@ of sessions in a window:
 
 ## Windows
 
-The same concepts apply for {class}`~libtmux.Window`:
+The same concepts apply for {class}`~libtmux.window.Window`:
 
 ```python
 >>> window = session.attached_window
@@ -114,7 +114,7 @@ Use `get()` for details not accessible via properties:
 
 ## Panes
 
-Get the {class}`~libtmux.Pane`:
+Get the {class}`~libtmux.pane.Pane`:
 
 ```python
 >>> pane = window.attached_pane

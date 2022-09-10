@@ -28,7 +28,7 @@ Import `libtmux`:
 import libtmux
 ```
 
-Attach default tmux {class}`~libtmux.Server` to `t`:
+Attach default tmux {class}`~libtmux.server.Server` to `t`:
 
 ```python
 >>> import libtmux
@@ -61,7 +61,7 @@ Session($1 ...)
 Session($0 ...)
 ```
 
-Grab a {class}`~libtmux.Window` from a session:
+Grab a {class}`~libtmux.window.Window` from a session:
 
 ```python
 >>> session.windows[0]
@@ -82,7 +82,7 @@ Grab the currently focused {class}`Pane` from session:
 Pane(%1 Window(@1 ...:..., Session($1 ...)))
 ```
 
-Assign the attached {class}`~libtmux.Pane` to `p`:
+Assign the attached {class}`~libtmux.pane.Pane` to `p`:
 
 ```python
 >>> p = session.attached_pane

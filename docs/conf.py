@@ -102,6 +102,9 @@ autoclass_content = "both"
 autodoc_member_order = "bysource"
 autosummary_generate = True
 
+# sphinx_autodoc_typehints
+always_document_param_types = True
+
 # sphinx-copybutton
 copybutton_prompt_text = (
     r">>> |\.\.\. |> |\$ |\# | In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "

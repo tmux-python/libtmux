@@ -100,7 +100,7 @@ def get_test_session_name(server: "Server", prefix: str = TEST_SESSION_PREFIX) -
 
     Parameters
     ----------
-    server : :class:`libtmux.Server`
+    server : :class:`libtmux.server.Server`
         libtmux server
     prefix : str
         prefix for sessions (e.g. ``libtmux_``). Defaults to
@@ -162,14 +162,14 @@ def temp_session(
 
     Parameters
     ----------
-    server : :class:`libtmux.Server`
+    server : :class:`libtmux.server.Server`
 
     Other Parameters
     ----------------
     args : list
-        Arguments passed into :meth:`Server.new_session`
+        Arguments passed into :meth:`libtmux.server.Server.new_session`
     kwargs : dict
-        Keyword arguments passed into :meth:`Server.new_session`
+        Keyword arguments passed into :meth:`libtmux.server.Server.new_session`
 
     Yields
     ------
@@ -225,7 +225,7 @@ def temp_window(
 
     Yields
     ------
-    :class:`libtmux.Window`
+    :class:`libtmux.window.Window`
         temporary window
 
     Examples

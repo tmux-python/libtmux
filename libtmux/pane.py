@@ -71,11 +71,11 @@ class Pane(TmuxMappingObject):
     formatter_prefix = "pane_"
     """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
     window: "Window"
-    """:class:`libtmux.Window` pane is linked to"""
+    """:class:`~libtmux.window.Window` pane is linked to"""
     session: "Session"
-    """:class:`libtmux.Session` pane is linked to"""
+    """:class:`~libtmux.session.Session` pane is linked to"""
     server: "Server"
-    """:class:`libtmux.Server` pane is linked to"""
+    """:class:`~libtmux.server.Server` pane is linked to"""
 
     def __init__(
         self,

@@ -108,7 +108,7 @@ def server(
     monkeypatch: pytest.MonkeyPatch,
     config_file: pathlib.Path,
 ) -> Server:
-    """Returns a new, temporary :class:`libtmux.Server`"""
+    """Returns a new, temporary :class:`libtmux.server.Server`"""
     t = Server()
     t.socket_name = "libtmux_test%s" % next(namer)
 

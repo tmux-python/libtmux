@@ -55,7 +55,7 @@ These are fixtures are automatically used when the plugin is enabled and `pytest
 If you would like {func}`session fixture <libtmux.pytest_plugin.session>` to automatically use a configuration, you have a few
 options:
 
-- Pass a `config_file` into {class}`~libtmux.Server`
+- Pass a `config_file` into {class}`~libtmux.server.Server`
 - Set the `HOME` directory to a local or temporary pytest path with a configurat configuration file
 
 You could also read the code and override {func}`server fixtures <libtmux.pytest_plugin.server>`'s in your own doctest. doctest.

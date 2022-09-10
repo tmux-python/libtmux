@@ -30,13 +30,15 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
     """
     The :term:`tmux(1)` :term:`Server` [server_manual]_.
 
-    - :attr:`Server._sessions` [:class:`Session`, ...]
+    - :attr:`Server._sessions` [:class:`Session <libtmux.session.Session>`, ...]
 
-      - :attr:`Session._windows` [:class:`Window`, ...]
+      - :attr:`Session._windows <libtmux.session.Session._windows>`
+        [:class:`~libtmux.window.Window`, ...]
 
-        - :attr:`Window._panes` [:class:`Pane`, ...]
+        - :attr:`Window._panes <libtmux.window.Window._panes>`
+          [:class:`~libtmux.pane.Pane`, ...]
 
-          - :class:`Pane`
+          - :class:`~libtmux.pane.Pane`
 
     When instantiated stores information on live, running tmux server.
 

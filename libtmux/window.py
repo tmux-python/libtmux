@@ -80,9 +80,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
     formatter_prefix = "window_"
     """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
     server: "Server"
-    """:class:`libtmux.Server` window is linked to"""
+    """:class:`libtmux.server.Server` window is linked to"""
     session: "Session"
-    """:class:`libtmux.Session` window is linked to"""
+    """:class:`libtmux.session.Session` window is linked to"""
 
     def __init__(
         self, session: "Session", window_id: t.Union[int, str], **kwargs: t.Any
