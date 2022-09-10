@@ -31,53 +31,55 @@ import libtmux
 Attach default tmux {class}`~libtmux.Server` to `t`:
 
 ```python
+>>> import libtmux
 >>> t = libtmux.Server();
 >>> t
-<libtmux.server.Server object at 0x10edd31d0>
+<libtmux.server.Server object at ...>
 ```
 
 Get first session {class}`~libtmux.Session` to `session`:
 
 ```python
->>> session = t.sessions[0]
+>>> session = server.sessions[0]
 >>> session
-Session($0 libtmux)
+Session($... ...)
 ```
 
 Get a list of sessions:
 
 ```python
->>> t.sessions
-[Session($0 libtmux), Session($1 tmuxp)]
+>>> server.sessions
+[Session($... ...), Session($... ...)]
 ```
 
 Iterate through sessions in a server:
 
 ```python
->>> for sess in t.sessions:
+>>> for sess in server.sessions:
 ...     print(sess)
-
-Session($0 libtmux)
-Session($1 tmuxp)
+Session($... ...)
+Session($... ...)
 ```
 
 Grab a {class}`~libtmux.Window` from a session:
 
 ```python
 >>> session.windows[0]
-Window(@1 1:libtmux, Session($0 libtmux))
+Window(@... ...:..., Session($... ...))
 ```
 
 Grab the currently focused window from session:
 
 ```python
 >>> session.attached_window
->>> Window(@2 2:docs, Session($0 libtmux))grab the currently focused {class}`Pane` from session:
+Window(@... ...:..., Session($... ...))
 ```
+
+Grab the currently focused {class}`Pane` from session:
 
 ```python
 >>> session.attached_pane
-Pane(%5 Window(@2 2:docs, Session($0 libtmux)))
+Pane(%... Window(@... ...:..., Session($... ...)))
 ```
 
 Assign the attached {class}`~libtmux.Pane` to `p`:
@@ -89,11 +91,12 @@ Assign the attached {class}`~libtmux.Pane` to `p`:
 Access the window/server of a pane:
 
 ```python
+>>> p = session.attached_pane
 >>> p.window
-Window(@2 2:docs, Session($0 libtmux))
+Window(@... ...:..., Session($... ...))
 
 >>> p.server
-<libtmux.server.Server object at 0x104191a10>
+<libtmux.server.Server object at ...>
 ```
 
 [target]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
