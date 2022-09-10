@@ -108,7 +108,7 @@ First, we can grab a {class}`Server`.
 >>> import libtmux
 >>> server = libtmux.Server()
 >>> server
-<libtmux.server.Server object at 0x7fbd622c1dd0>
+<libtmux.server.Server object at ...>
 ```
 
 :::{tip}
@@ -139,7 +139,7 @@ We can list sessions with {meth}`Server.list_sessions`:
 
 ```python
 >>> server.list_sessions()
-[Session($3 foo), Session($1 libtmux)]
+[Session($... ...), Session($... ...)]
 ```
 
 This returns a list of {class}`Session` objects you can grab. We can
@@ -147,6 +147,7 @@ find our current session with:
 
 ```python
 >>> server.list_sessions()[0]
+Session($... ...)
 ```
 
 However, this isn't guaranteed, libtmux works against current tmux information, the
@@ -157,11 +158,11 @@ so {meth}`Server.get_by_id` and {meth}`Server.find_where` exists as a lookup.
 
 tmux sessions use the `$[0-9]` convention as a way to identify sessions.
 
-`$3` is whatever the ID `list_sessions()` returned above.
+`$1` is whatever the ID `list_sessions()` returned above.
 
 ```python
->>> server.get_by_id('$3')
-Session($3 foo)
+>>> server.get_by_id('$1')
+Session($... ...)
 ```
 
 You may `session = server.get_by_id('$<yourId>')` to use the session object.
@@ -169,8 +170,12 @@ You may `session = server.get_by_id('$<yourId>')` to use the session object.
 ## Get session by name / other properties
 
 ```python
+# Just for setting up the example:
+>>> server.sessions[0].rename_session('foo')
+Session($... foo)
+
 >>> server.find_where({ "session_name": "foo" })
-Session($3 foo)
+Session($... foo)
 ```
 
 With `find_where`, pass in a dict and return the first object found. In
@@ -181,7 +186,13 @@ through Windows and Panes, respectively.
 So you may now use:
 
 ```python
+# Prepping the example:
+>>> server.sessions[0].rename_session('foo')
+Session($... foo)
+
 >>> session = server.find_where({ "session_name": "foo" })
+>>> session
+Session($... foo)
 ```
 
 to give us a `session` object to play with.
@@ -195,7 +206,7 @@ Let's make a {meth}`Session.new_window`, in the background:
 
 ```python
 >>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@8 2:ha in the bg, Session($3 foo))
+Window(@... ...:ha in the bg, Session($... ...))
 ```
 
 So a few things:
@@ -214,7 +225,7 @@ Let's delete that window ({meth}`Session.kill_window`).
 Method 1: Use passthrough to tmux's `target` system.
 
 ```python
->>> session.kill_window("ha in")
+>>> session.kill_window(window.id)
 ```
 
 The window in the bg dissappeared. This was the equivalent of
@@ -234,14 +245,17 @@ should have history, so navigate up with the arrow key.
 
 ```python
 >>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@11 3:ha in the bg, Session($3 foo))
+Window(@... ...:ha in the bg, Session($... ...))
 ```
 
 Try to kill the window by the matching id `@[0-9999]`.
 
 ```python
+# Setup
 >>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@12 3:ha in the bg, Session($3 foo))
+Window(@... ...:ha in the bg, Session($... ...))
+
+>>> session.kill_window('ha in the bg')
 ```
 
 In addition, you could also `.kill_window` direction from the {class}`Window`
@@ -249,6 +263,8 @@ object:
 
 ```python
 >>> window = session.new_window(attach=False, window_name="check this out")
+>>> window
+Window(@... ...:check this out, Session($... ...))
 ```
 
 And kill:
@@ -266,7 +282,7 @@ Now that we know how to create windows, let's use one. Let's use {meth}`Session.
 to grab our current window.
 
 ```python
->>> window = session.attached_window()
+>>> window = session.attached_window
 ```
 
 `window` now has access to all of the objects inside of {class}`Window`.
@@ -275,7 +291,7 @@ Let's create a pane, {meth}`Window.split_window`:
 
 ```python
 >>> window.split_window(attach=False)
-Pane(%23 Window(@10 1:bar, Session($3 foo)))
+Pane(%... Window(@... ...:..., Session($... ...)))
 ```
 
 Powered up. Let's have a break down:
@@ -288,7 +304,7 @@ Also, since you are aware of this power, let's commemorate the experience:
 
 ```python
 >>> window.rename_window('libtmuxower')
-Window(@10 1:libtmuxower, Session($3 foo))
+Window(@... ...:..., Session($... ...))
 ```
 
 You should have noticed {meth}`Window.rename_window` renamed the window.
@@ -313,6 +329,7 @@ can also use the `.select_*` available on the object, in this case the pane has
 
 ```python
 >>> pane.select_pane()
+Pane(%... Window(@... ...:..., Session($... ...)))
 ```
 
 ```{eval-rst}
