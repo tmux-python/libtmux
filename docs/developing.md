@@ -23,6 +23,14 @@ Makefile commands prefixed with `watch_` will watch files and rerun.
 Helpers: `make test`
 Rerun tests on file change: `make watch_test` (requires [entr(1)])
 
+### Pytest plugin
+
+:::{seealso}
+
+See {ref}`pytest_plugin`.
+
+:::
+
 ## Documentation
 
 Default preview server: http://localhost:8023

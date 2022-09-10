@@ -68,7 +68,11 @@ jobs:
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
           ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
           tmux -V
-          poetry run py.test --cov=./ --cov-report=xml
+          poetry run py.test --cov=./ --cov-append --cov-report=xml
+        env:
+          COV_CORE_SOURCE: .
+          COV_CORE_CONFIG: .coveragerc
+          COV_CORE_DATAFILE: .coverage.eager
       - uses: codecov/codecov-action@v2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

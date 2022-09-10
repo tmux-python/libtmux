@@ -70,23 +70,23 @@ List sessions:
 
 ```python
 >>> server.list_sessions()
-[Session($... libtmux_...), Session($... ...)]
+[Session($1 ...), Session($0 ...)]
 ```
 
 Find session:
 
 ```python
->>> server.get_by_id('$0')
-Session($... ...)
+>>> server.get_by_id('$1')
+Session($1 ...)
 ```
 
 Find session by dict lookup:
 
 ```python
 >>> server.sessions[0].rename_session('foo')
-Session($... foo)
+Session($1 foo)
 >>> server.find_where({ "session_name": "foo" })
-Session($... foo)
+Session($1 foo)
 ```
 
 Control your session:
@@ -103,7 +103,7 @@ Create new window in the background (don't switch to it):
 
 ```python
 >>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@... ...:ha in the bg, Session($... libtmux_...))
+Window(@2 2:ha in the bg, Session($1 ...))
 ```
 
 Close window:
@@ -118,14 +118,14 @@ Grab remaining tmux window:
 ```python
 >>> window = session.attached_window
 >>> window.split_window(attach=False)
-Pane(%... Window(@... ...:..., Session($... libtmux_...)))
+Pane(%2 Window(@1 1:... Session($1 ...)))
 ```
 
 Rename window:
 
 ```python
 >>> window.rename_window('libtmuxower')
-Window(@... ...:libtmuxower, Session($... ...))
+Window(@1 1:libtmuxower, Session($1 ...))
 ```
 
 Split window (create a new pane):
@@ -134,13 +134,13 @@ Split window (create a new pane):
 >>> pane = window.split_window()
 >>> pane = window.split_window(attach=False)
 >>> pane.select_pane()
-Pane(%... Window(@... ...:..., Session($... libtmux_...)))
+Pane(%3 Window(@1 1:..., Session($1 ...)))
 >>> window = session.new_window(attach=False, window_name="test")
 >>> window
-Window(@... ...:test, Session($...))
+Window(@2 2:test, Session($1 ...))
 >>> pane = window.split_window(attach=False)
 >>> pane
-Pane(%... Window(@... ...:..., Session($... libtmux_...)))
+Pane(%5 Window(@2 2:test, Session($1 ...)))
 ```
 
 Type inside the pane (send key strokes):
@@ -175,9 +175,9 @@ Traverse and navigate:
 
 ```python
 >>> pane.window
-Window(@... ...:..., Session($... ...))
+Window(@1 1:..., Session($1 ...))
 >>> pane.window.session
-Session($... ...)
+Session($1 ...)
 ```
 
 # Python support
