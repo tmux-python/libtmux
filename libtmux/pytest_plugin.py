@@ -2,14 +2,9 @@ import getpass
 import logging
 import os
 import pathlib
-import shutil
 import typing as t
 
 import pytest
-
-from _pytest.doctest import DoctestItem
-from _pytest.fixtures import SubRequest
-from _pytest.monkeypatch import MonkeyPatch
 
 from libtmux import exc
 from libtmux.server import Server
@@ -22,20 +17,33 @@ logger = logging.getLogger(__name__)
 USING_ZSH = "zsh" in os.getenv("SHELL", "")
 
 
-@pytest.fixture(autouse=True, scope="session")
+@pytest.fixture(scope="session")
 def home_path(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
+    """Temporary `/home/` path."""
     return tmp_path_factory.mktemp("home")
 
 
-@pytest.fixture(autouse=True, scope="session")
-def user_path(home_path: pathlib.Path) -> pathlib.Path:
-    p = home_path / getpass.getuser()
+@pytest.fixture(scope="session")
+def home_user_name() -> str:
+    """Default username to set for :func:`user_path` fixture."""
+    return getpass.getuser()
+
+
+@pytest.fixture(scope="session")
+def user_path(home_path: pathlib.Path, home_user_name: str) -> pathlib.Path:
+    """Default temporary user directory.
+
+    Used by: :func:`config_file`, :func:`zshrc`
+
+    Note: You will need to set the home directory, see :ref:`set_home`.
+    """
+    p = home_path / home_user_name
     p.mkdir()
     return p
 
 
 @pytest.mark.skipif(USING_ZSH, reason="Using ZSH")
-@pytest.fixture(autouse=USING_ZSH, scope="session")
+@pytest.fixture(scope="session")
 def zshrc(user_path: pathlib.Path) -> pathlib.Path:
     """This quiets ZSH default message.
 
@@ -46,11 +54,15 @@ def zshrc(user_path: pathlib.Path) -> pathlib.Path:
     return p
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture(scope="session")
 def config_file(user_path: pathlib.Path) -> pathlib.Path:
-    """Set default tmux configuration (base indexes for windows, panes)
+    """Default `.tmux.conf` configuration.
 
-    We need this for tests to work across tmux versions in our CI matrix.
+    - ``base-index -g 1``
+
+    These guarantee pane and windows targets can be reliably referenced and asserted.
+
+    Note: You will need to set the home directory, see :ref:`set_home`.
     """
     c = user_path / ".tmux.conf"
     c.write_text(
@@ -62,8 +74,8 @@ set -g base-index 1
     return c
 
 
-@pytest.fixture(autouse=True)
-def clear_env(monkeypatch: MonkeyPatch) -> None:
+@pytest.fixture
+def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear out any unnecessary environment variables that could interrupt tests.
 
     tmux show-environment tests were being interrupted due to a lot of crazy env vars.
@@ -92,9 +104,12 @@ def clear_env(monkeypatch: MonkeyPatch) -> None:
 
 @pytest.fixture(scope="function")
 def server(
-    request: SubRequest, monkeypatch: MonkeyPatch, config_file: pathlib.Path
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+    config_file: pathlib.Path,
 ) -> Server:
-    t = Server(config_file=str(config_file.absolute()))
+    """Returns a new, temporary :class:`libtmux.Server`"""
+    t = Server()
     t.socket_name = "libtmux_test%s" % next(namer)
 
     def fin() -> None:
@@ -106,7 +121,8 @@ def server(
 
 
 @pytest.fixture(scope="function")
-def session(request: SubRequest, server: Server) -> "Session":
+def session(request: pytest.FixtureRequest, server: Server) -> "Session":
+    """Returns a new, temporary :class:`libtmux.Session`"""
     session_name = "tmuxp"
 
     if not server.has_session(session_name):
@@ -146,16 +162,3 @@ def session(request: SubRequest, server: Server) -> "Session":
     assert TEST_SESSION_NAME != "tmuxp"
 
     return session
-
-
-@pytest.fixture(autouse=True)
-def add_doctest_fixtures(
-    request: SubRequest,
-    doctest_namespace: t.Dict[str, t.Any],
-) -> None:
-    if isinstance(request._pyfuncitem, DoctestItem) and shutil.which("tmux"):
-        doctest_namespace["server"] = request.getfixturevalue("server")
-        session: "Session" = request.getfixturevalue("session")
-        doctest_namespace["session"] = session
-        doctest_namespace["window"] = session.attached_window
-        doctest_namespace["pane"] = session.attached_pane
