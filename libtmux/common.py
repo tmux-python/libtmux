@@ -430,13 +430,6 @@ class TmuxRelationalObject(Generic[O, D]):
         Returns
         -------
         object
-
-        Notes
-        -----
-        Based on `.get()`_ from `backbone.js`_.
-
-        .. _backbone.js: http://backbonejs.org/
-        .. _.get(): http://backbonejs.org/#Collection-get
         """
         for child in self.children:
             if child[self.child_id_attribute] == id:
