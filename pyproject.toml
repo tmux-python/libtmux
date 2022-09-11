@@ -85,7 +85,6 @@ mypy = "*"
 docs = [
   "docutils",
   "sphinx",
-  "sphinx-autoapi",
   "sphinx-autodoc-typehints",
   "sphinx-autobuild",
   "sphinx-copybutton",
