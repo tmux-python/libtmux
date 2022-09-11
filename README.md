@@ -92,10 +92,10 @@ Session($1 foo)
 Control your session:
 
 ```python
-# Assign session to `session`:
->>> session = server.find_where({ "session_name": "foo" })
+>>> session.rename_session('foo')
+Session($1 foo)
 >>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@8 2:ha in the bg, Session($3 foo))
+Window(@2 2:ha in the bg, Session($1 foo))
 >>> session.kill_window("ha in")
 ```
 
