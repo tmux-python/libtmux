@@ -12,6 +12,16 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+## libtmux 0.15.1 (2022-09-11)
+
+### Packaging
+
+- pyproject.toml: Drop old issues package, remove anther package from grouping
+
+### Documentation
+
+- Cleanup quickstart page
+
 ## libtmux 0.15.0 (2022-09-10)
 
 ### New features

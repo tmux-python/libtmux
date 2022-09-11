@@ -199,7 +199,7 @@ sphinx-basic-ng = "*"
 
 [[package]]
 name = "gp-libs"
-version = "0.0.1a9"
+version = "0.0.1a10"
 description = "Internal utilities for projects following git-pull python package spec"
 category = "dev"
 optional = false
@@ -1053,8 +1053,8 @@ furo = [
     {file = "furo-2022.6.21.tar.gz", hash = "sha256:9aa983b7488a4601d13113884bfb7254502c8729942e073a0acb87a5512af223"},
 ]
 gp-libs = [
-    {file = "gp-libs-0.0.1a9.tar.gz", hash = "sha256:835608ba29220c4d77e7e3f5a9ae27368ac1eb4b43f0cd1e6cdec9c27e9a9e3a"},
-    {file = "gp_libs-0.0.1a9-py3-none-any.whl", hash = "sha256:2c055bd65f0880325a800775a2ee4c23dacc9eb8a56408fdb665a66da7d38ed3"},
+    {file = "gp-libs-0.0.1a10.tar.gz", hash = "sha256:54fbe07f42628b114f0b1472bb03ce75be2928090ec26d8d6f675f3bd9f58c2e"},
+    {file = "gp_libs-0.0.1a10-py3-none-any.whl", hash = "sha256:701b190ffd468ca4d776b196707344748dd550aea03db9aaa1ffdecdd0c32506"},
 ]
 idna = [
     {file = "idna-3.3-py3-none-any.whl", hash = "sha256:84d9dd047ffa80596e0f246e2eab0b391788b0503584e8945f2368256d2735ff"},
