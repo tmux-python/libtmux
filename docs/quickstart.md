@@ -15,8 +15,6 @@ from inside a live tmux session.
 - [tmux]
 - [pip] - for this handbook's examples
 
-[pip]: https://pip.pypa.io/en/stable/installing/
-
 [tmux]: https://tmux.github.io/
 
 (installation)=
@@ -76,27 +74,19 @@ Session name `-s`: `foo`
 
 :::
 
-```{eval-rst}
-.. todo:: Do a version of this with `sliderepl`_
-
-```
-
 ```console
-
 $ python
-
 ```
 
 For commandline completion, you can also use [ptpython].
 
 ```console
-
 $ pip install --user ptpython
-$ ptpython
-
 ```
 
-[ptpython]: https://github.com/prompt-toolkit/ptpython
+```console
+$ ptpython
+```
 
 ```{module} libtmux
 
@@ -170,7 +160,6 @@ You may `session = server.get_by_id('$<yourId>')` to use the session object.
 ## Get session by name / other properties
 
 ```python
-# Just for setting up the example:
 >>> server.sessions[0].rename_session('foo')
 Session($1 foo)
 
@@ -186,7 +175,6 @@ through Windows and Panes, respectively.
 So you may now use:
 
 ```python
-# Prepping the example:
 >>> server.sessions[0].rename_session('foo')
 Session($1 foo)
 
@@ -251,9 +239,8 @@ Window(@2 ...:ha in the bg, Session($1 ...))
 Try to kill the window by the matching id `@[0-9999]`.
 
 ```python
-# Setup
 >>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@1 ...:ha in the bg, Session($1 ...))
+Window(@2 ...:ha in the bg, Session($1 ...))
 
 >>> session.kill_window('ha in the bg')
 ```
@@ -387,11 +374,10 @@ sessions in the background. :)
 :::{seealso}
 
 If you want to dig deeper, check out {ref}`API`, the code for
-and our [test suite] (see {ref}`developing`.)
+and our [test suite] (see {ref}`development`.)
 
 :::
 
-[sliderepl]: http://discorporate.us/projects/sliderepl/
 [workspacebuilder.py]: https://github.com/tmux-python/libtmux/blob/master/libtmux/workspacebuilder.py
 [test suite]: https://github.com/tmux-python/libtmux/tree/master/tests
-[ptpython]: https://github.com/jonathanslenders/ptpython
+[ptpython]: https://github.com/prompt-toolkit/ptpython
