@@ -19,7 +19,6 @@ quickstart
 about
 topics/index
 reference/index
-api
 
 ```
 
