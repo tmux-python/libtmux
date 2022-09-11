@@ -12,6 +12,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+### Packaging
+
+- pyproject.toml: Note pytest framework in trove classifiers
+
 ## libtmux 0.15.1 (2022-09-11)
 
 ### Packaging
