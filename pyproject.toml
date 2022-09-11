@@ -57,7 +57,6 @@ sphinx-inline-tabs = { version = "*", python = "^3.7" }
 sphinxext-opengraph = "*"
 sphinx-copybutton = "*"
 sphinxext-rediraffe = "*"
-sphinx-autoissues = "*"
 myst_parser = "*"
 docutils = "~0.18.0"
 
@@ -89,7 +88,6 @@ docs = [
   "sphinx-autoapi",
   "sphinx-autodoc-typehints",
   "sphinx-autobuild",
-  "sphinx-autoissues",
   "sphinx-copybutton",
   "sphinxext-opengraph",
   "sphinx-inline-tabs",

@@ -39,7 +39,6 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Documentation
 
-- Move to sphinx-autoissues, #406
 - Examples updated for correctness, #412 (cherry-picked from #410)
 - Render changelog in [linkify_issues](https://gp-libs.git-pull.com/linkify_issues/) (#410)
 - Fix Table of contents rendering with sphinx autodoc with
