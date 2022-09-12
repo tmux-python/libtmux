@@ -12,6 +12,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+### Tests
+
+- pytest plugin: Initial tests (for testing the plugin itself, #423)
+
 ### Packaging
 
 - pyproject.toml: Note pytest framework in trove classifiers
