@@ -81,7 +81,7 @@ def retry_until(
     >>> def fn():
     ...     p = session.attached_window.attached_pane
     ...     p.server._update_panes()
-    ...     return p.current_path is not None
+    ...     return p.pane_current_path is not None
 
     >>> retry_until(fn)
     True
@@ -169,7 +169,7 @@ def get_test_window_name(
     assert prefix is not None
     while True:
         window_name = prefix + next(namer)
-        if not session.find_where({"window_name": window_name}):
+        if len(session.windows.filter(window_name=window_name)) == 0:
             break
     return window_name
 
@@ -273,14 +273,14 @@ def temp_window(
     window = session.new_window(window_name, *args, **kwargs)
 
     # Get ``window_id`` before returning it, it may be killed within context.
-    window_id = window.get("window_id")
+    window_id = window.window_id
     assert window_id is not None
     assert isinstance(window_id, str)
 
     try:
         yield window
     finally:
-        if session.find_where({"window_id": window_id}):
+        if len(session.windows.filter(window_id=window_id)) > 0:
             window.kill_window()
     return
 

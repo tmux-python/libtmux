@@ -17,26 +17,29 @@ logger = logging.getLogger(__name__)
 
 
 def test_select_window(session: Session) -> None:
-    window_count = len(session._windows)
+    window_count = len(session.windows)
     # to do, get option for   base-index from tmux
     # for now however, let's get the index from the first window.
     assert window_count == 1
 
-    window_base_index = int(session.attached_window.index)
+    assert session.attached_window.window_index is not None
+    window_base_index = int(session.attached_window.window_index)
 
     window = session.new_window(window_name="testing 3")
 
     # self.assertEqual(2,
     # int(session.attached_window.index))
-    assert int(window_base_index) + 1 == int(window.index)
+    assert window.window_index is not None
+    assert int(window_base_index) + 1 == int(window.window_index)
 
     session.select_window(str(window_base_index))
-    assert window_base_index == int(session.attached_window.index)
+    assert window_base_index == int(session.attached_window.window_index)
 
     session.select_window("testing 3")
-    assert int(window_base_index) + 1 == int(session.attached_window.index)
+    assert session.attached_window.window_index is not None
+    assert int(window_base_index) + 1 == int(session.attached_window.window_index)
 
-    assert len(session._windows) == 2
+    assert len(session.windows) == 2
 
 
 def test_zfresh_window_data(session: Session) -> None:
@@ -49,8 +52,8 @@ def test_zfresh_window_data(session: Session) -> None:
     assert len(session.windows) == 1
 
     assert len(session.attached_window.panes) == 1
-    current_windows = len(session._windows)
-    assert session.get("session_id") != "@0"
+    current_windows = len(session.windows)
+    assert session.session_id != "@0"
     assert current_windows == 1
 
     assert len(session.attached_window.panes) == 1
@@ -80,15 +83,15 @@ def test_zfresh_window_data(session: Session) -> None:
     attached_pane.send_keys("source .venv/bin/activate")
     session.new_window(window_name="second")
     current_windows += 1
-    assert current_windows == len(session._windows)
+    assert current_windows == len(session.windows)
     session.new_window(window_name="hey")
     current_windows += 1
-    assert current_windows == len(session._windows)
+    assert current_windows == len(session.windows)
 
     session.select_window("1")
     session.kill_window(target_window="hey")
     current_windows -= 1
-    assert current_windows == len(session._windows)
+    assert current_windows == len(session.windows)
 
 
 def test_newest_pane_data(session: Session) -> None:
@@ -118,7 +121,12 @@ def test_split_window(session: Session) -> None:
     pane = window.split_window()
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
-    assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
+
+    assert window.window_width is not None
+    first_pane = window.panes[0]
+    assert first_pane.pane_height is not None
+
+    assert float(first_pane.pane_height) <= ((float(window.window_width) + 1) / 2)
 
 
 def test_split_window_shell(session: Session) -> None:
@@ -129,11 +137,18 @@ def test_split_window_shell(session: Session) -> None:
     pane = window.split_window(shell=cmd)
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
-    assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
+
+    first_pane = window.panes[0]
+    assert first_pane.pane_height is not None
+    assert window.window_width is not None
+
+    assert float(first_pane.pane_height) <= ((float(window.window_width) + 1) / 2)
     if has_gte_version("3.2"):
-        assert pane.get("pane_start_command", "").replace('"', "") == cmd
+        pane_start_command = pane.pane_start_command or ""
+        assert pane_start_command.replace('"', "") == cmd
+
     else:
-        assert pane.get("pane_start_command") == cmd
+        assert pane.pane_start_command == cmd
 
 
 def test_split_window_horizontal(session: Session) -> None:
@@ -143,7 +158,13 @@ def test_split_window_horizontal(session: Session) -> None:
     pane = window.split_window(vertical=False)
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
-    assert float(window.panes[0].width) <= ((float(window.width) + 1) / 2)
+
+    first_pane = window.panes[0]
+
+    assert first_pane.pane_width is not None
+    assert window.window_width is not None
+
+    assert float(first_pane.pane_width) <= ((float(window.window_width) + 1) / 2)
 
 
 @pytest.mark.parametrize(
@@ -161,17 +182,17 @@ def test_window_rename(
     window = session.new_window(window_name=window_name_before, attach=True)
 
     assert window == session.attached_window
-    assert window.get("window_name") == window_name_before
+    assert window.window_name == window_name_before
 
     window.rename_window(window_name_after)
 
     window = session.attached_window
 
-    assert window.get("window_name") == window_name_after
+    assert window.window_name == window_name_after
 
     window = session.attached_window
 
-    assert window.get("window_name") == window_name_after
+    assert window.window_name == window_name_after
 
 
 def test_kill_window(session: Session) -> None:
@@ -181,11 +202,11 @@ def test_kill_window(session: Session) -> None:
 
     w = session.attached_window
 
-    w.get("window_id")
+    w.window_id
 
     w.kill_window()
-    with pytest.raises(IndexError):
-        w.get("window_id")
+    with pytest.raises(AssertionError):  # TODO: Replace this will an object not found
+        w.refresh()
 
 
 def test_show_window_options(session: Session) -> None:
@@ -273,18 +294,19 @@ def test_move_window(session: Session) -> None:
     """Window.move_window results in changed index"""
 
     window = session.new_window(window_name="test_window")
-    new_index = str(int(window.index) + 1)
+    assert window.window_index is not None
+    new_index = str(int(window.window_index) + 1)
     window.move_window(new_index)
-    assert window.index == new_index
+    assert window.window_index == new_index
 
 
 def test_move_window_to_other_session(server: Server, session: Session) -> None:
     window = session.new_window(window_name="test_window")
     new_session = server.new_session("test_move_window")
-    window.move_window(session=new_session.get("session_id"))
-    window_id = window.get("window_id")
+    window.move_window(session=new_session.session_id)
+    window_id = window.window_id
     assert window_id is not None
-    assert new_session.get_by_id(window_id) == window
+    assert new_session.windows.get(window_id=window_id) == window
 
 
 def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
@@ -302,14 +324,15 @@ def test_empty_window_name(session: Session) -> None:
     window = session.new_window(window_name="''", attach=True)
 
     assert window == session.attached_window
-    assert window.get("window_name") == "''"
+    assert window.window_name == "''"
+    assert session.session_name is not None
 
     cmd = session.cmd(
         "list-windows",
         "-F",
         "#{window_name}",
         "-f",
-        "#{==:#{session_name}," + session.name + "}",
+        "#{==:#{session_name}," + session.session_name + "}",
     )
     assert "''" in cmd.stdout
 

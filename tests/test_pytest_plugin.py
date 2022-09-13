@@ -41,12 +41,12 @@ import pathlib
 def test_repo_git_remote_checkout(
     session,
 ) -> None:
-    assert session.name is not None
+    assert session.session_name is not None
 
-    assert session._session_id == "$1"
+    assert session.session_id == "$1"
 
     new_window = session.new_window(attach=False, window_name="my window name")
-    assert new_window.name == "my window name"
+    assert new_window.window_name == "my window name"
         """
         )
     }

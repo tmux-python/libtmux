@@ -15,15 +15,17 @@ def test_resize_pane(session: Session) -> None:
 
     pane1 = window.attached_pane
     assert pane1 is not None
-    pane1_height = pane1["pane_height"]
+    pane1_height = pane1.pane_height
     window.split_window()
 
     pane1.resize_pane(height=4)
-    assert pane1["pane_height"] != pane1_height
-    assert int(pane1["pane_height"]) == 4
+    assert pane1.pane_height != pane1_height
+    assert pane1.pane_height is not None
+    assert int(pane1.pane_height) == 4
 
     pane1.resize_pane(height=3)
-    assert int(pane1["pane_height"]) == 3
+    assert pane1.pane_height is not None
+    assert int(pane1.pane_height) == 3
 
 
 def test_send_keys(session: Session) -> None:
@@ -43,11 +45,12 @@ def test_set_height(session: Session) -> None:
     window.split_window()
     pane1 = window.attached_pane
     assert pane1 is not None
-    pane1_height = pane1["pane_height"]
+    pane1_height = pane1.pane_height
 
     pane1.set_height(4)
-    assert pane1["pane_height"] != pane1_height
-    assert int(pane1["pane_height"]) == 4
+    assert pane1.pane_height != pane1_height
+    assert pane1.pane_height is not None
+    assert int(pane1.pane_height) == 4
 
 
 def test_set_width(session: Session) -> None:
@@ -57,11 +60,12 @@ def test_set_width(session: Session) -> None:
     window.select_layout("main-vertical")
     pane1 = window.attached_pane
     assert pane1 is not None
-    pane1_width = pane1["pane_width"]
+    pane1_width = pane1.pane_width
 
     pane1.set_width(10)
-    assert pane1["pane_width"] != pane1_width
-    assert int(pane1["pane_width"]) == 10
+    assert pane1.pane_width != pane1_width
+    assert pane1.pane_width is not None
+    assert int(pane1.pane_width) == 10
 
     pane1.reset()
 

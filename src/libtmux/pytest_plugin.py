@@ -178,8 +178,8 @@ def session(request: pytest.FixtureRequest, server: Server) -> "Session":
 
     # find current sessions prefixed with tmuxp
     old_test_sessions = []
-    for s in server._sessions:
-        old_name = s.get("session_name")
+    for s in server.sessions:
+        old_name = s.session_name
         if old_name is not None and old_name.startswith(TEST_SESSION_PREFIX):
             old_test_sessions.append(old_name)
 
@@ -194,7 +194,7 @@ def session(request: pytest.FixtureRequest, server: Server) -> "Session":
     Make sure that tmuxp can :ref:`test_builder_visually` and switches to
     the newly created session for that testcase.
     """
-    session_id = session.get("session_id")
+    session_id = session.session_id
     assert session_id is not None
 
     try:
@@ -206,7 +206,7 @@ def session(request: pytest.FixtureRequest, server: Server) -> "Session":
     for old_test_session in old_test_sessions:
         logger.debug(f"Old test test session {old_test_session} found. Killing it.")
         server.kill_session(old_test_session)
-    assert TEST_SESSION_NAME == session.get("session_name")
+    assert TEST_SESSION_NAME == session.session_name
     assert TEST_SESSION_NAME != "tmuxp"
 
     return session

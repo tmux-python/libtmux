@@ -49,25 +49,24 @@ Session($1 libtmux_...)
 Quick access to basic attributes:
 
 ```python
->>> session.name
+>>> session.session_name
 'libtmux_...'
 
->>> session.id
+>>> session.session_id
 '$1'
 ```
 
 To see all attributes for a session:
 
 ```python
->>> sorted(list(session._info.keys()))
+from libtmux.neo import Obj
+
+>>> sorted(list(Obj.__dataclass_fields__.keys()))
 ['session_attached', 'session_created', ...]
 ```
 
-Some may conflict with python API, to access them, you can use `.get()`, to get the count
-of sessions in a window:
-
 ```python
->>> session.get('session_windows')
+>>> session.session_windows
 '...'
 ```
 
@@ -85,30 +84,23 @@ Window(@1 ...:..., Session($1 ...))
 Basics:
 
 ```python
->>> window.name
+>>> window.window_name
 '...'
 
->>> window.id
+>>> window.window_id
 '@1'
 
->>> window.height
+>>> window.window_height
 '...'
 
->>> window.width
+>>> window.window_width
 '...'
 ```
 
-Everything available:
+Use attribute access for details not accessible via properties:
 
 ```python
->>> sorted(list(window.keys()))
-['session_id', 'session_name', 'window_active', ..., 'window_width']
-```
-
-Use `get()` for details not accessible via properties:
-
-```python
->>> window.get('window_panes')
+>>> window.window_panes
 '1'
 ```
 
@@ -126,33 +118,20 @@ Pane(%1 Window(@1 ...:..., Session($1 libtmux_...)))
 Basics:
 
 ```python
->>> pane.current_command
+>>> pane.pane_current_command
 '...'
 
->>> type(pane.current_command)
+>>> type(pane.pane_current_command)
 <class 'str'>
 
->>> pane.height
+>>> pane.pane_height
 '...'
 
->>> pane.width
+>>> pane.pane_width
 '...'
 
->>> pane.index
+>>> pane.pane_index
 '0'
 ```
-
-Everything:
-
-````python
->>> sorted(list(pane._info.keys()))
-['alternate_on', 'alternate_saved_x', ..., 'wrap_flag']
-
-Use `get()` for details keys:
-
-```python
->>> pane.get('pane_width')
-'...'
-````
 
 [formats]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS

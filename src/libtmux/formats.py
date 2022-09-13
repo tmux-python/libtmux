@@ -19,7 +19,7 @@ SESSION_FORMATS = [
     "session_created",
     "session_created_string",
     "session_attached",
-    "session_grouped",
+    # "session_grouped",  Apparently unused, mistake found while adding dataclasses
     "session_group",
 ]
 

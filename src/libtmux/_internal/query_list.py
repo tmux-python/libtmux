@@ -30,6 +30,14 @@ T = TypeVar("T", Any, Any)
 no_arg = object()
 
 
+class MultipleObjectsReturned(Exception):
+    """The requested object does not exist"""
+
+
+class ObjectDoesNotExist(Exception):
+    """The query returned multiple objects when only one was expected."""
+
+
 def keygetter(
     obj: "Mapping[str, Any]",
     path: str,
@@ -269,6 +277,8 @@ class QueryList(List[T]):
     'Elmhurst'
     >>> query.filter(foods__fruit__in="orange")[0]['city']
     'Tampa'
+    >>> query.get(foods__fruit__in="orange")['city']
+    'Tampa'
     """
 
     data: "Sequence[T]"
@@ -314,6 +324,8 @@ class QueryList(List[T]):
     def filter(
         self, matcher: Optional[Union[Callable[[T], bool], T]] = None, **kwargs: Any
     ) -> "QueryList[T]":
+        """Filter list of objects."""
+
         def filter_lookup(obj: Any) -> bool:
             for path, v in kwargs.items():
                 try:
@@ -356,11 +368,17 @@ class QueryList(List[T]):
         default: Optional[Any] = no_arg,
         **kwargs: Any,
     ) -> Optional[T]:
+        """Retrieve one object
+
+        Raises exception if multiple objects found.
+
+        Raises exception if no object found, unless ``default``
+        """
         objs = self.filter(matcher=matcher, **kwargs)
         if len(objs) > 1:
-            raise Exception("Multiple objects returned")
+            raise MultipleObjectsReturned()
         elif len(objs) == 0:
             if default == no_arg:
-                raise Exception("No objects found")
+                raise ObjectDoesNotExist()
             return default
         return objs[0]
