@@ -12,6 +12,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+## libtmux 0.15.x (unreleased)
+
+**Maintenance release, no features or fixes**
+
 ### Tests
 
 - pytest plugin: Initial tests (for testing the plugin itself, #423)
@@ -19,6 +23,14 @@ $ pip install --user --upgrade --pre libtmux
 ### Packaging
 
 - pyproject.toml: Note pytest framework in trove classifiers
+
+### Infrastructure
+
+- CI speedups (#428)
+
+  - Avoid fetching unused apt package
+  - Split out release to separate job so the PyPI Upload docker image isn't pulled on normal
+    runs
 
 ## libtmux 0.15.1 (2022-09-11)
 
