@@ -68,7 +68,6 @@ jobs:
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
           ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
           tmux -V
-          sudo apt install cowsay
           poetry run py.test --cov=./ --cov-append --cov-report=xml
         env:
           COV_CORE_SOURCE: .
