@@ -19,7 +19,7 @@ quickstart
 about
 topics/index
 reference/index
-
+pytest-plugin
 ```
 
 ```{toctree}
@@ -27,7 +27,6 @@ reference/index
 :hidden:
 
 developing
-pytest-plugin
 internals/index
 history
 glossary
