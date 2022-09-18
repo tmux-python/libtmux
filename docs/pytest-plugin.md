@@ -1,10 +1,11 @@
 (pytest_plugin)=
 
-# `pytest` plugin
+# tmux `pytest` plugin
 
-Testing tmux with libtmux
+libtmux provides pytest fixtures for tmux. The plugin automatically manages setup and teardown of an
+independent tmux server.
 
-```{seealso} Using libtmux?
+```{seealso} Using the pytest plugin?
 
 Do you want more flexbility? Correctness? Power? Defaults changed? [Connect with us] on the tracker, we want to know
 your case, we won't stabilize APIs until we're sure everything is by the book.
@@ -25,7 +26,7 @@ Install `libtmux` via the python package manager of your choosing, e.g.
 $ pip install libtmux
 ```
 
-The pytest plugin will automatically be detected via pytest, and the fixtures will be added.
+The pytest plugin will be automatically detected via pytest, and the fixtures will be added.
 
 ## Fixtures
 
