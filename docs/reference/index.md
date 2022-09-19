@@ -2,7 +2,7 @@
 
 (reference)=
 
-# Reference
+# API Reference
 
 ```{toctree}
 
