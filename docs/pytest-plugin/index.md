@@ -28,7 +28,15 @@ $ pip install libtmux
 
 The pytest plugin will be automatically detected via pytest, and the fixtures will be added.
 
-## Fixtures
+### Real world usage
+
+View libtmux's own [tests/](https://github.com/tmux-python/libtmux/tree/master/tests) as well as
+tmuxp's [tests/](https://github.com/tmux-python/tmuxp/tree/master/tests).
+
+libtmux's tests `autouse` the {ref}`recommended-fixtures` above to ensure stable, assertions and
+object lookups in the test grid.
+
+## pytest-tmux
 
 `pytest-tmux` works through providing {ref}`pytest fixtures <pytest:fixtures-api>` - so read up on
 those!
@@ -77,15 +85,7 @@ def set_home(
     monkeypatch.setenv("HOME", str(user_path))
 ```
 
-## See examples
-
-View libtmux's own [tests/](https://github.com/tmux-python/libtmux/tree/master/tests) as well as
-tmuxp's [tests/](https://github.com/tmux-python/tmuxp/tree/master/tests).
-
-libtmux's tests `autouse` the {ref}`recommended-fixtures` above to ensure stable, assertions and
-object lookups in the test grid.
-
-## API reference
+## Fixtures
 
 ```{eval-rst}
 .. automodule:: libtmux.pytest_plugin
@@ -94,4 +94,12 @@ object lookups in the test grid.
     :private-members:
     :show-inheritance:
     :member-order: bysource
+```
+
+## Test utilities
+
+```{toctree}
+:maxdepth: 1
+
+test
 ```
