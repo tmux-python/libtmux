@@ -27,6 +27,16 @@ class RandomStrSequence:
     def __init__(
         self, characters: str = "abcdefghijklmnopqrstuvwxyz0123456789_"
     ) -> None:
+        """Create a random letter / number generator. 8 chars in length.
+
+        >>> rng = RandomStrSequence()
+        >>> next(rng)
+        '...'
+        >>> len(next(rng))
+        8
+        >>> type(next(rng))
+        <class 'str'>
+        """
         self.characters: str = characters
 
     def __iter__(self) -> "RandomStrSequence":
@@ -68,7 +78,6 @@ def retry_until(
 
     Examples
     --------
-
     >>> def fn():
     ...     p = session.attached_window.attached_pane
     ...     p.server._update_panes()
@@ -110,6 +119,15 @@ def get_test_session_name(server: "Server", prefix: str = TEST_SESSION_PREFIX) -
     -------
     str
         Random session name guaranteed to not collide with current ones.
+
+    Examples
+    --------
+    >>> get_test_session_name(server=server)
+    'libtmux_...'
+
+    Never the same twice:
+    >>> get_test_session_name(server=server) != get_test_session_name(server=server)
+    True
     """
     while True:
         session_name = prefix + next(namer)
@@ -138,6 +156,15 @@ def get_test_window_name(
     -------
     str
         Random window name guaranteed to not collide with current ones.
+
+    Examples
+    --------
+    >>> get_test_window_name(session=session)
+    'libtmux_...'
+
+    Never the same twice:
+    >>> get_test_window_name(session=session) != get_test_window_name(session=session)
+    True
     """
     assert prefix is not None
     while True:
@@ -178,10 +205,9 @@ def temp_session(
 
     Examples
     --------
-
     >>> with temp_session(server) as session:
     ...     session.new_window(window_name='my window')
-    Window(@... ...:..., Session($... ...))
+    Window(@3 2:my window, Session($... ...))
     """
 
     if "session_name" in kwargs:
@@ -230,17 +256,15 @@ def temp_window(
 
     Examples
     --------
-
     >>> with temp_window(session) as window:
     ...     window
-    Window(@... ...:..., Session($... ...))
+    Window(@2 2:... Session($1 libtmux_...))
 
 
     >>> with temp_window(session) as window:
     ...     window.split_window()
-    Pane(%... Window(@... ...:..., Session($... ...)))
+    Pane(%4 Window(@3 2:libtmux_..., Session($1 libtmux_...)))
     """
-
     if "window_name" not in kwargs:
         window_name = get_test_window_name(session)
     else:
@@ -262,7 +286,6 @@ def temp_window(
 
 
 class EnvironmentVarGuard:
-
     """Mock environmental variables safetly.
 
     Helps rotect the environment variable properly.  Can be used as context
@@ -270,13 +293,11 @@ class EnvironmentVarGuard:
 
     Notes
     -----
-
     Vendorized to fix issue with Anaconda Python 2 not including test module,
     see #121 [1]_
 
     References
     ----------
-
     .. [1] Just installed, "ImportError: cannot import name test_support".
        GitHub issue for tmuxp. https://github.com/tmux-python/tmuxp/issues/121.
        Created October 12th, 2015. Accessed April 7th, 2018.
