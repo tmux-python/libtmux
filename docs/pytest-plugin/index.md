@@ -5,6 +5,11 @@
 libtmux provides pytest fixtures for tmux. The plugin automatically manages setup and teardown of an
 independent tmux server.
 
+```{toctree}
+
+test
+```
+
 ```{seealso} Using the pytest plugin?
 
 Do you want more flexbility? Correctness? Power? Defaults changed? [Connect with us] on the tracker, we want to know

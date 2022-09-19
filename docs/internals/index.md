@@ -8,11 +8,6 @@ These APIs are internal and not covered by versioning policy.
 
 :::
 
-```{toctree}
-
-test
-```
-
 ## Environmental variables
 
 (LIBTMUX_TMUX_FORMAT_SEPARATOR)=
