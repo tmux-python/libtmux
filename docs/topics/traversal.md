@@ -1,6 +1,6 @@
 (traversal)=
 
-# Traversal
+# Usage
 
 libtmux convenient access to move around the hierachy of sessions,
 windows and panes in tmux.
