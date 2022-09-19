@@ -19,7 +19,7 @@ quickstart
 about
 topics/index
 reference/index
-pytest-plugin
+pytest-plugin/index
 ```
 
 ```{toctree}
