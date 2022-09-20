@@ -108,7 +108,24 @@ def server(
     monkeypatch: pytest.MonkeyPatch,
     config_file: pathlib.Path,
 ) -> Server:
-    """Returns a new, temporary :class:`libtmux.Server`"""
+    """Returns a new, temporary :class:`libtmux.Server`
+
+    >>> from libtmux.server import Server
+
+    >>> def test_example(server: "Server"):
+    ...     session = server.new_session('my session')
+    ...     assert len(server.sessions) == 1
+    ...     assert [session.name.startswith('my') for session in server.sessions]
+
+    .. ::
+
+        >>> import inspect
+        >>> test_mod = pytester.makepyfile(whatever=inspect.getsource(test_example))
+        >>> result = pytester.inline_run(str(test_mod), '--disable-warnings')
+        ===...
+
+        >>> result.assertoutcome(passed=1)
+    """
     t = Server()
     t.socket_name = "libtmux_test%s" % next(namer)
 
@@ -122,7 +139,28 @@ def server(
 
 @pytest.fixture(scope="function")
 def session(request: pytest.FixtureRequest, server: Server) -> "Session":
-    """Returns a new, temporary :class:`libtmux.Session`"""
+    """Returns a new, temporary :class:`libtmux.Session`
+
+    >>> from libtmux.session import Session
+
+    >>> def test_example(session: "Session"):
+    ...     assert isinstance(session.name, str)
+    ...     assert session.name.startswith('libtmux_')
+    ...     window = session.new_window(window_name='new one')
+    ...     assert window.name == 'new one'
+
+    .. ::
+
+        The nifty little thing above hides our pytester assertions from docs.
+
+        >>> import inspect
+
+        >>> test_mod = pytester.makepyfile(whatever=inspect.getsource(test_example))
+        >>> result = pytester.inline_run(str(test_mod), '--disable-warnings')
+        ===...
+
+        >>> result.assertoutcome(passed=1)
+    """
     session_name = "tmuxp"
 
     if not server.has_session(session_name):
