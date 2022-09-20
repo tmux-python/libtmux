@@ -112,19 +112,28 @@ def server(
 
     >>> from libtmux.server import Server
 
-    >>> def test_example(server: "Server"):
+    >>> def test_example(server: Server):
+    ...     assert isinstance(server, Server)
     ...     session = server.new_session('my session')
     ...     assert len(server.sessions) == 1
     ...     assert [session.name.startswith('my') for session in server.sessions]
 
     .. ::
 
-        >>> import inspect
-        >>> test_mod = pytester.makepyfile(whatever=inspect.getsource(test_example))
-        >>> result = pytester.inline_run(str(test_mod), '--disable-warnings')
+        >>> locals().keys()
+        dict_keys(...)
+
+        >>> source = ''.join([
+        ...     example.source for example in request._pyfuncitem.dtest.examples
+        ...     ][:3])
+
+        >>> pytester.makepyfile(**{'whatever.py': source})
+        PosixPath(...)
+
+        >>> result = pytester.runpytest('whatever.py', '--disable-warnings')
         ===...
 
-        >>> result.assertoutcome(passed=1)
+        >>> result.assert_outcomes(passed=1)
     """
     t = Server()
     t.socket_name = "libtmux_test%s" % next(namer)
