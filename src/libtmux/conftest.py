@@ -26,6 +26,7 @@ def add_doctest_fixtures(
         doctest_namespace["window"] = session.attached_window
         doctest_namespace["pane"] = session.attached_pane
         doctest_namespace["pytester"] = pytester
+        doctest_namespace["request"] = request
 
 
 @pytest.fixture(autouse=True, scope="function")
