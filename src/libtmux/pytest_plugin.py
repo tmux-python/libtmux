@@ -112,7 +112,7 @@ def server(
 
     >>> from libtmux.server import Server
 
-    >>> def test_example(server: Server):
+    >>> def test_example(server: Server) -> None:
     ...     assert isinstance(server, Server)
     ...     session = server.new_session('my session')
     ...     assert len(server.sessions) == 1
@@ -152,7 +152,7 @@ def session(request: pytest.FixtureRequest, server: Server) -> "Session":
 
     >>> from libtmux.session import Session
 
-    >>> def test_example(session: "Session"):
+    >>> def test_example(session: "Session") -> None:
     ...     assert isinstance(session.name, str)
     ...     assert session.name.startswith('libtmux_')
     ...     window = session.new_window(window_name='new one')
