@@ -12,6 +12,12 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+## libtmux 0.15.3 (unreleased)
+
+### Tests / docs
+
+- Examples for pytest plugin (#439)
+
 ## libtmux 0.15.2 (2022-09-17)
 
 **Maintenance release, no features or fixes**

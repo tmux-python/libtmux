@@ -108,7 +108,31 @@ def server(
     monkeypatch: pytest.MonkeyPatch,
     config_file: pathlib.Path,
 ) -> Server:
-    """Returns a new, temporary :class:`libtmux.Server`"""
+    """Returns a new, temporary :class:`libtmux.Server`
+
+    >>> from libtmux.server import Server
+
+    >>> def test_example(server: Server) -> None:
+    ...     assert isinstance(server, Server)
+    ...     session = server.new_session('my session')
+    ...     assert len(server.sessions) == 1
+    ...     assert [session.name.startswith('my') for session in server.sessions]
+
+    .. ::
+        >>> locals().keys()
+        dict_keys(...)
+
+        >>> source = ''.join([e.source for e in request._pyfuncitem.dtest.examples][:3])
+        >>> pytester = request.getfixturevalue('pytester')
+
+        >>> pytester.makepyfile(**{'whatever.py': source})
+        PosixPath(...)
+
+        >>> result = pytester.runpytest('whatever.py', '--disable-warnings')
+        ===...
+
+        >>> result.assert_outcomes(passed=1)
+    """
     t = Server()
     t.socket_name = "libtmux_test%s" % next(namer)
 
@@ -122,7 +146,31 @@ def server(
 
 @pytest.fixture(scope="function")
 def session(request: pytest.FixtureRequest, server: Server) -> "Session":
-    """Returns a new, temporary :class:`libtmux.Session`"""
+    """Returns a new, temporary :class:`libtmux.Session`
+
+    >>> from libtmux.session import Session
+
+    >>> def test_example(session: "Session") -> None:
+    ...     assert isinstance(session.name, str)
+    ...     assert session.name.startswith('libtmux_')
+    ...     window = session.new_window(window_name='new one')
+    ...     assert window.name == 'new one'
+
+    .. ::
+        >>> locals().keys()
+        dict_keys(...)
+
+        >>> source = ''.join([e.source for e in request._pyfuncitem.dtest.examples][:3])
+        >>> pytester = request.getfixturevalue('pytester')
+
+        >>> pytester.makepyfile(**{'whatever.py': source})
+        PosixPath(...)
+
+        >>> result = pytester.runpytest('whatever.py', '--disable-warnings')
+        ===...
+
+        >>> result.assert_outcomes(passed=1)
+    """
     session_name = "tmuxp"
 
     if not server.has_session(session_name):
