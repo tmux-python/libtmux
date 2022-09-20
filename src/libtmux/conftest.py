@@ -11,8 +11,6 @@ from libtmux.pytest_plugin import USING_ZSH
 if t.TYPE_CHECKING:
     from libtmux.session import Session
 
-pytest_plugins = ["pytester"]
-
 
 @pytest.fixture(autouse=True)
 def add_doctest_fixtures(
