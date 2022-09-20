@@ -119,14 +119,10 @@ def server(
     ...     assert [session.name.startswith('my') for session in server.sessions]
 
     .. ::
-
         >>> locals().keys()
         dict_keys(...)
 
-        >>> source = ''.join([
-        ...     example.source for example in request._pyfuncitem.dtest.examples
-        ...     ][:3])
-
+        >>> source = ''.join([e.source for e in request._pyfuncitem.dtest.examples][:3])
         >>> pytester = request.getfixturevalue('pytester')
 
         >>> pytester.makepyfile(**{'whatever.py': source})
@@ -161,18 +157,19 @@ def session(request: pytest.FixtureRequest, server: Server) -> "Session":
     ...     assert window.name == 'new one'
 
     .. ::
+        >>> locals().keys()
+        dict_keys(...)
 
-        The nifty little thing above hides our pytester assertions from docs.
-
-        >>> import inspect
-
+        >>> source = ''.join([e.source for e in request._pyfuncitem.dtest.examples][:3])
         >>> pytester = request.getfixturevalue('pytester')
 
-        >>> test_mod = pytester.makepyfile(whatever=inspect.getsource(test_example))
-        >>> result = pytester.inline_run(str(test_mod), '--disable-warnings')
+        >>> pytester.makepyfile(**{'whatever.py': source})
+        PosixPath(...)
+
+        >>> result = pytester.runpytest('whatever.py', '--disable-warnings')
         ===...
 
-        >>> result.assertoutcome(passed=1)
+        >>> result.assert_outcomes(passed=1)
     """
     session_name = "tmuxp"
 
