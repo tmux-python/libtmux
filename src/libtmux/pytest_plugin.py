@@ -127,6 +127,8 @@ def server(
         ...     example.source for example in request._pyfuncitem.dtest.examples
         ...     ][:3])
 
+        >>> pytester = request.getfixturevalue('pytester')
+
         >>> pytester.makepyfile(**{'whatever.py': source})
         PosixPath(...)
 
@@ -163,6 +165,8 @@ def session(request: pytest.FixtureRequest, server: Server) -> "Session":
         The nifty little thing above hides our pytester assertions from docs.
 
         >>> import inspect
+
+        >>> pytester = request.getfixturevalue('pytester')
 
         >>> test_mod = pytester.makepyfile(whatever=inspect.getsource(test_example))
         >>> result = pytester.inline_run(str(test_mod), '--disable-warnings')
