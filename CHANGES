@@ -17,6 +17,13 @@ $ pip install --user --upgrade --pre libtmux
 ### Tests / docs
 
 - Examples for pytest plugin (#439)
+- Move conftest.py to root level (#440)
+
+  - https://docs.pytest.org/en/stable/deprecations.html#pytest-plugins-in-non-top-level-conftest-files
+  - Less conftest.py files
+  - We can now run py.test for `README.md` without needing to proxy through
+    `docs/index.md`
+
 
 ## libtmux 0.15.2 (2022-09-17)
 
