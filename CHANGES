@@ -19,6 +19,11 @@ $ pip install --user --upgrade --pre libtmux
 - Use stable `pytest` API imports where possible to fix issues in downstream
   packaging on Arch (#441, via #442)
 
+### Packaging
+
+- Add `.tmuxp-before-script.sh` (used by `.tmuxp.yaml`) and `conftest.py` to
+  source distributoins (#441, via #442)
+
 ## libtmux 0.15.3 (2022-09-20)
 
 ### Tests / docs
