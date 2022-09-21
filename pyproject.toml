@@ -35,6 +35,7 @@ include = [
   { path = ".tmuxp.yaml", format = "sdist" },
   { path = "tests", format = "sdist" },
   { path = "docs", format = "sdist" },
+  { path = "conftest.py", format = "sdist" },
 ]
 
 [tool.poetry.urls]
