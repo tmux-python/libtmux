@@ -8,8 +8,6 @@ from typing import Optional
 
 import pytest
 
-from _pytest.monkeypatch import MonkeyPatch
-
 import libtmux
 from libtmux.common import (
     TMUX_MAX_VERSION,
@@ -31,7 +29,7 @@ from libtmux.session import Session
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
-def test_allows_master_version(monkeypatch: MonkeyPatch) -> None:
+def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
     class Hi:
         stdout = ["tmux master"]
         stderr = None
@@ -49,7 +47,7 @@ def test_allows_master_version(monkeypatch: MonkeyPatch) -> None:
     ), "Is the latest supported version with -master appended"
 
 
-def test_allows_next_version(monkeypatch: MonkeyPatch) -> None:
+def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
     TMUX_NEXT_VERSION = str(float(TMUX_MAX_VERSION) + 0.1)
 
     class Hi:
@@ -67,7 +65,7 @@ def test_allows_next_version(monkeypatch: MonkeyPatch) -> None:
     assert TMUX_NEXT_VERSION == get_version()
 
 
-def test_get_version_openbsd(monkeypatch: MonkeyPatch) -> None:
+def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
     class Hi:
         stderr = ["tmux: unknown option -- V"]
 
@@ -84,7 +82,7 @@ def test_get_version_openbsd(monkeypatch: MonkeyPatch) -> None:
     ), "Is the latest supported version with -openbsd appended"
 
 
-def test_get_version_too_low(monkeypatch: MonkeyPatch) -> None:
+def test_get_version_too_low(monkeypatch: pytest.MonkeyPatch) -> None:
     class Hi:
         stderr = ["tmux: unknown option -- V"]
 
@@ -97,7 +95,7 @@ def test_get_version_too_low(monkeypatch: MonkeyPatch) -> None:
     exc_info.match("is running tmux 1.3 or earlier")
 
 
-def test_ignores_letter_versions(monkeypatch: MonkeyPatch) -> None:
+def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ignore letters such as 1.8b.
 
     See ticket https://github.com/tmux-python/tmuxp/issues/55.
@@ -120,7 +118,7 @@ def test_ignores_letter_versions(monkeypatch: MonkeyPatch) -> None:
     assert type(has_version("1.9a")) is bool
 
 
-def test_error_version_less_1_7(monkeypatch: MonkeyPatch) -> None:
+def test_error_version_less_1_7(monkeypatch: pytest.MonkeyPatch) -> None:
     def mock_get_version() -> LooseVersion:
         return LooseVersion("1.7")
 
