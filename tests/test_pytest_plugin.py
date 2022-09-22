@@ -2,11 +2,9 @@ import textwrap
 
 import pytest
 
-import _pytest.pytester
-
 
 def test_plugin(
-    pytester: _pytest.pytester.Pytester,
+    pytester: pytest.Pytester,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Initialize variables
