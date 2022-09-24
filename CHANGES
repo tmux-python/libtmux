@@ -12,7 +12,19 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+## libtmux 0.15.6 (unreleased)
+
+_Maintenance only, no bug fixes or features_
+
+### Packaging
+
+- Remove `MANIFEST.in`
+
+  This is handled by poetry's `include` in pyproject.toml.
+
 ## libtmux 0.15.5 (2022-09-23)
+
+_Maintenance only, no bug fixes or features_
 
 ### Packaging
 
