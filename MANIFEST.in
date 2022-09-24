@@ -1,3 +1,0 @@
-include README.md LICENSE CHANGES pyproject.toml .tmuxp.yaml
-include requirements/*.txt
-recursive-include docs *.md
