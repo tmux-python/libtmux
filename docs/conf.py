@@ -35,7 +35,6 @@ extensions = [
     "sphinxext.rediraffe",
     "myst_parser",
     "linkify_issues",
-    "sphinx_toctree_autodoc_fix",
 ]
 
 myst_enable_extensions = [
@@ -101,6 +100,7 @@ issue_url_tpl = f'{about["__github__"]}/issues/{{issue_id}}'
 # sphinx.ext.autodoc
 autoclass_content = "both"
 autodoc_member_order = "bysource"
+toc_object_entries_show_parents = "hide"
 
 # sphinx-copybutton
 copybutton_prompt_text = (
