@@ -12,6 +12,12 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+## libtmux 0.15.5 (unreleased)
+
+### Packaging
+
+- Remove `.tmuxp-before-script.sh` from `.tmuxp.yaml`
+
 ## libtmux 0.15.4 (2022-09-21)
 
 ### Bug fixes
