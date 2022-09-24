@@ -95,7 +95,7 @@ docs = [
   "sphinxext-rediraffe",
   "myst_parser",
   "furo",
-  "gp-libs"
+  "gp-libs",
 ]
 test = ["pytest", "pytest-rerunfailures", "pytest-mock", "pytest-watcher"]
 coverage = ["codecov", "coverage", "pytest-cov"]
@@ -107,6 +107,28 @@ libtmux = "libtmux.pytest_plugin"
 
 [tool.mypy]
 strict = true
+
+[tool.coverage.run]
+branch = true
+parallel = true
+omit = [
+  "*/_compat.py",
+  "docs/conf.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise NotImplementedError",
+  "return NotImplemented",
+  "def parse_args",
+  "if TYPE_CHECKING:",
+  "if t.TYPE_CHECKING:",
+  "@overload( |$)",
+]
 
 [build-system]
 requires = ["poetry_core>=1.0.0", "setuptools>50"]
