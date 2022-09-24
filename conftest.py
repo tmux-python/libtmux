@@ -1,3 +1,12 @@
+"""Conftest.py (root-level)
+
+We keep this in root pytest fixtures in pytest's doctest plugin to be available, as well
+as avoiding conftest.py from being included in the wheel, in addition to pytest_plugin
+for pytester only being available via the root directory.
+
+See "pytest_plugins in non-top-level conftest files" in
+https://docs.pytest.org/en/stable/deprecations.html
+"""
 import pathlib
 import shutil
 import typing as t
