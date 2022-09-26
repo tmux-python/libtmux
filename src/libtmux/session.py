@@ -253,6 +253,9 @@ class Session(
         if window_name:
             window_args += ("-n%s" % window_name,)
 
+        if window_name == '':
+            window_args += ('-n', '')
+
         window_args += (
             # empty string for window_index will use the first one available
             "-t%s:%s"
