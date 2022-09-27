@@ -250,11 +250,8 @@ class Session(
         window_args += (
             '-F"%s"' % formats.FORMAT_SEPARATOR.join(tmux_formats),
         )  # output
-        if window_name:
-            window_args += ("-n%s" % window_name,)
-
-        if window_name == '':
-            window_args += ('-n', '')
+        if window_name is not None and isinstance(window_name, str):
+            window_args += ("-n", window_name)
 
         window_args += (
             # empty string for window_index will use the first one available
