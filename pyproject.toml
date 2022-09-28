@@ -60,7 +60,7 @@ sphinxext-opengraph = "*"
 sphinx-copybutton = "*"
 sphinxext-rediraffe = "*"
 myst_parser = "*"
-docutils = "~0.18.0"
+docutils = "*"
 
 ### Testing ###
 pytest = "*"
