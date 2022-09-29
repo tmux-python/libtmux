@@ -82,6 +82,9 @@ html_theme_options: Dict[str, Union[str, List[Dict[str, str]]]] = {
             "class": "",
         },
     ],
+    "source_repository": f"{about['__github__']}/",
+    "source_branch": "master",
+    "source_directory": "docs/",
 }
 html_sidebars = {
     "**": [
