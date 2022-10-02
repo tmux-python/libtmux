@@ -12,6 +12,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
+### Bug fixes
+
+- `Session.new_window()`: Improve support for `window_name: ''` downstream in tmuxp (#444, credit: @trankchung)
+
 ## libtmux 0.15.7 (2022-09-23)
 
 - Move `.coveragerc` -> `pyproject.toml` (#443)
