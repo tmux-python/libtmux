@@ -12,7 +12,9 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Insert changes/features/fixes for next release here_
 
-### Bug fixes
+## libtmux 0.15.8 (2022-10-02)
+
+### Bug fix
 
 - `Session.new_window()`: Improve support for `window_name: ''` downstream in tmuxp (#444, credit: @trankchung)
 
