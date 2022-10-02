@@ -5,7 +5,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_gte_version
+from libtmux.common import has_gte_version, has_lt_version
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -290,3 +290,23 @@ def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
 
     window = session.new_window(window_name="test_window")
     window.select_layout()
+
+
+@pytest.mark.skipif(
+    has_lt_version("3.2"), reason="needs filter introduced in tmux >= 3.2"
+)
+def test_empty_window_name(session: Session) -> None:
+    session.set_option("automatic-rename", "off")
+    window = session.new_window(window_name="''", attach=True)
+
+    assert window == session.attached_window
+    assert window.get("window_name") == "''"
+
+    cmd = session.cmd(
+        "list-windows",
+        "-F",
+        "#{window_name}",
+        "-f",
+        "#{==:#{session_name}," + session.name + "}",
+    )
+    assert "''" in cmd.stdout
