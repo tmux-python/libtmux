@@ -29,6 +29,7 @@ pytest-plugin/index
 developing
 internals/index
 history
+migration
 glossary
 GitHub <https://github.com/tmux-python/libtmux>
 ```
