@@ -1,3 +1,5 @@
+(changes)=
+(changelog)=
 (history)=
 
 ```{currentmodule} libtmux
