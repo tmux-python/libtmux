@@ -10,7 +10,9 @@ $ pip install --user --upgrade --pre libtmux
 
 ## libtmux 0.16.x (unreleased)
 
-- _Insert changes/features/fixes for next release here_
+- _Notes on upcoming releases will be added here_
+
+<!-- Maintainers and contributors: Insert change notes for the next release above -->
 
 ## libtmux 0.15.8 (2022-10-02)
 
