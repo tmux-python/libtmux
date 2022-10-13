@@ -6,6 +6,8 @@ libtmux.server
 """
 import logging
 import os
+import shutil
+import subprocess
 import typing as t
 
 from libtmux.common import tmux_cmd
@@ -115,6 +117,42 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
         if colors:
             self.colors = colors
 
+    def is_alive(self) -> bool:
+        """If server alive or not.
+
+        >>> tmux = Server(socket_name="no_exist")
+        >>> assert not tmux.is_alive()
+        """
+        try:
+            res = self.cmd("list-sessions")
+            return res.returncode == 0
+        except Exception:
+            return False
+
+    def raise_if_dead(self) -> None:
+        """Raise if server not connected.
+
+        >>> tmux = Server(socket_name="no_exist")
+        >>> try:
+        ...     tmux.raise_if_dead()
+        ... except Exception as e:
+        ...     print(type(e))
+        <class 'subprocess.CalledProcessError'>
+        """
+        tmux_bin = shutil.which("tmux")
+        if tmux_bin is None:
+            raise exc.TmuxCommandNotFound()
+
+        cmd_args: t.List[str] = ["list-sessions"]
+        if self.socket_name:
+            cmd_args.insert(0, f"-L{self.socket_name}")
+        if self.socket_path:
+            cmd_args.insert(0, f"-S{self.socket_path}")
+        if self.config_file:
+            cmd_args.insert(0, f"-f{self.config_file}")
+
+        subprocess.check_call([tmux_bin] + cmd_args)
+
     def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """
         Execute tmux command and return output.
@@ -207,7 +245,10 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
     @property
     def sessions(self) -> t.List[Session]:
         """Property / alias to return :meth:`~.list_sessions`."""
-        return self.list_sessions()
+        try:
+            return self.list_sessions()
+        except Exception:
+            return []
 
     #: Alias :attr:`sessions` for :class:`~libtmux.common.TmuxRelationalObject`
     children = sessions  # type: ignore
@@ -348,7 +389,7 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
         return self
 
     @property
-    def attached_sessions(self) -> t.Optional[t.List[Session]]:
+    def attached_sessions(self) -> t.List[Session]:
         """
         Return active :class:`Session` objects.
 
@@ -357,19 +398,22 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
         list of :class:`Session`
         """
 
-        sessions = self._sessions
-        attached_sessions = list()
+        try:
+            sessions = self._sessions
+            attached_sessions = list()
 
-        for session in sessions:
-            attached = session.get("session_attached")
-            # for now session_active is a unicode
-            if attached != "0":
-                logger.debug(f"session {session.get('name')} attached")
-                attached_sessions.append(session)
-            else:
-                continue
+            for session in sessions:
+                attached = session.get("session_attached")
+                # for now session_active is a unicode
+                if attached != "0":
+                    logger.debug(f"session {session.get('name')} attached")
+                    attached_sessions.append(session)
+                else:
+                    continue
 
-        return [Session(server=self, **s) for s in attached_sessions] or None
+            return [Session(server=self, **s) for s in attached_sessions] or []
+        except Exception:
+            return []
 
     def has_session(self, target_session: str, exact: bool = True) -> bool:
         """
