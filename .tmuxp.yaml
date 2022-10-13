@@ -1,4 +1,4 @@
-session_name: libtmux
+session_name: "libtmux (py27)"
 start_directory: ./ # load session relative to config location (project root).
 before_script: ./.tmuxp-before-script.sh
 shell_command_before:
