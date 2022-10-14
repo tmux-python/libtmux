@@ -233,7 +233,7 @@ class tmux_cmd:
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         tmux_bin = shutil.which("tmux")
         if not tmux_bin:
-            raise (exc.TmuxCommandNotFound)
+            raise exc.TmuxCommandNotFound()
 
         cmd = [tmux_bin]
         cmd += args  # add the command arguments to cmd
