@@ -18,6 +18,18 @@ $ pip install --user --upgrade --pre libtmux
 
 - `tmux_cmd()`: Fix raise of TmuxCommandNotFound (#450)
 
+### CI
+
+- Use python 3.11 (#451)
+
+### Packaging
+
+- Add python 3.11 to trove classifiers (#451)
+
+### Development
+
+- Add python 3.11 to asdf and pyenv configurations (#451)
+
 ## libtmux 0.15.8 (2022-10-02)
 
 ### Bug fix
