@@ -1,11 +1,12 @@
 """Test for libtmux Session object."""
 import logging
+import shutil
 import typing as t
 
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_gte_version
+from libtmux.common import has_gte_version, has_lt_version
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -257,3 +258,57 @@ def test_cmd_inserts_sesion_id(session: Session) -> None:
     assert "-t" in cmd.cmd
     assert current_session_id in cmd.cmd
     assert cmd.cmd[-1] == last_arg
+
+
+@pytest.mark.skipif(
+    has_lt_version("3.0"),
+    reason="needs -e flag for new-window which was introduced in 3.0",
+)
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"ENV_VAR": "window"},
+        {"ENV_VAR_1": "window_1", "ENV_VAR_2": "window_2"},
+    ],
+)
+def test_new_window_with_environment(
+    session: Session,
+    environment: t.Dict[str, str],
+) -> None:
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    window = session.new_window(
+        attach=True,
+        window_name="window_with_environment",
+        window_shell=f"{env} PS1='$ ' sh",
+        environment=environment,
+    )
+    pane = window.attached_pane
+    assert pane is not None
+    for k, v in environment.items():
+        pane.send_keys(f"echo ${k}")
+        assert pane.capture_pane()[-2] == v
+
+
+@pytest.mark.skipif(
+    has_gte_version("3.0"),
+    reason="3.0 has the -e flag on new-window",
+)
+def test_new_window_with_environment_logs_warning_for_old_tmux(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    session.new_window(
+        attach=True,
+        window_name="window_with_environment",
+        window_shell=f"{env} PS1='$ ' sh",
+        environment={"ENV_VAR": "window"},
+    )
+
+    assert any(
+        "Cannot set up environment" in record.msg for record in caplog.records
+    ), "Warning missing"
