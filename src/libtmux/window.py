@@ -9,7 +9,7 @@ import os
 import shlex
 import typing as t
 
-from libtmux.common import tmux_cmd
+from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.pane import Pane
 
 from . import exc, formats
@@ -442,6 +442,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         vertical: bool = True,
         shell: t.Optional[str] = None,
         percent: t.Optional[int] = None,
+        environment: t.Optional[t.Dict[str, str]] = None,
     ) -> Pane:
         """
         Split window and return the created :class:`Pane`.
@@ -519,6 +520,15 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
 
         if not attach:
             tmux_args += ("-d",)
+
+        if environment:
+            if has_gte_version("3.0"):
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Cannot set up environment as tmux 3.0 or newer is required."
+                )
 
         if shell:
             tmux_args += (shell,)
