@@ -219,7 +219,7 @@ class tmux_cmd:
 
     Equivalent to:
 
-    .. code-block:: bash
+    .. code-block:: console
 
         $ tmux new-session -s my session
 
