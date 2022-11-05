@@ -14,10 +14,12 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
-### Tests
+## libtmux 0.15.10 (2022-11-05)
 
-_There will be more tests over the coming weeks and months to shore up
+_There will be more improvements over the coming weeks and months to shore up
 flakiness across shells and environments._
+
+### Tests
 
 - Compatibility improvement for `test_capture_pane` and `env` (#452), credit:
   @zappolowski!
