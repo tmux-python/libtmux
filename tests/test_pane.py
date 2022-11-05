@@ -73,7 +73,7 @@ def test_capture_pane(session: Session) -> None:
     session.new_window(
         attach=True,
         window_name="capture_pane",
-        window_shell=f"{env} PS1='$ ' bash --norc --noprofile",
+        window_shell=f"{env} PS1='$ ' sh",
     )
     pane = session.attached_window.attached_pane
     assert pane is not None
