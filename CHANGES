@@ -16,8 +16,12 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Tests
 
+_There will be more tests over the coming weeks and months to shore up
+flakiness across shells and environments._
+
 - Compatibility improvement for `test_capture_pane` and `env` (#452), credit:
   @zappolowski!
+- Remove more BASHisms from tests (#455)
 
 ## libtmux 0.15.9 (2022-10-30)
 
