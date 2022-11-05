@@ -1,5 +1,6 @@
 """Tests for libtmux Pane object."""
 import logging
+import shutil
 
 from libtmux.session import Session
 
@@ -66,10 +67,13 @@ def test_set_width(session: Session) -> None:
 
 
 def test_capture_pane(session: Session) -> None:
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
     session.new_window(
         attach=True,
         window_name="capture_pane",
-        window_shell='env -i PS1="$ " /usr/bin/env bash --norc --noprofile',
+        window_shell=f"{env} PS1='$ ' bash --norc --noprofile",
     )
     pane = session.attached_window.attached_pane
     assert pane is not None
