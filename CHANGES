@@ -14,6 +14,11 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### Features
+
+- `Window.split_window()` and `Session.new_window()` now support an optional
+  dictionary of environmental variables, via (#453), credit @zappolowski.
+
 ## libtmux 0.15.10 (2022-11-05)
 
 _There will be more improvements over the coming weeks and months to shore up
