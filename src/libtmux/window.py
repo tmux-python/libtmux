@@ -469,6 +469,8 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
             window upon completion is desired.
         percent: int, optional
             percentage to occupy with respect to current window
+        environment: dict, optional
+            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
 
         Returns
         -------

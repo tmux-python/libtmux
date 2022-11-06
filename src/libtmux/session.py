@@ -229,6 +229,9 @@ class Session(
                 When this command exits the window will close.  This feature is
                 useful for long-running processes where the closing of the
                 window upon completion is desired.
+        environment: dict, optional
+            Environmental variables for new window. tmux 3.0+ only. Passthrough to
+            ``-e``.
 
         Returns
         -------
