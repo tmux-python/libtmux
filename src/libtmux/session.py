@@ -19,6 +19,7 @@ from .common import (
     TmuxRelationalObject,
     WindowDict,
     handle_option_error,
+    has_gte_version,
     has_version,
     session_check_name,
 )
@@ -202,6 +203,7 @@ class Session(
         attach: bool = True,
         window_index: str = "",
         window_shell: t.Optional[str] = None,
+        environment: t.Optional[t.Dict[str, str]] = None,
     ) -> Window:
         """
         Return :class:`Window` from ``$ tmux new-window``.
@@ -227,6 +229,9 @@ class Session(
                 When this command exits the window will close.  This feature is
                 useful for long-running processes where the closing of the
                 window upon completion is desired.
+        environment: dict, optional
+            Environmental variables for new window. tmux 3.0+ only. Passthrough to
+            ``-e``.
 
         Returns
         -------
@@ -258,6 +263,15 @@ class Session(
             "-t%s:%s"
             % (self.id, window_index),
         )
+
+        if environment:
+            if has_gte_version("3.0"):
+                for k, v in environment.items():
+                    window_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Cannot set up environment as tmux 3.0 or newer is required."
+                )
 
         if window_shell:
             window_args += (window_shell,)

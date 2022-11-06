@@ -1,5 +1,7 @@
 """Test for libtmux Window object."""
 import logging
+import shutil
+import time
 import typing as t
 
 import pytest
@@ -310,3 +312,56 @@ def test_empty_window_name(session: Session) -> None:
         "#{==:#{session_name}," + session.name + "}",
     )
     assert "''" in cmd.stdout
+
+
+@pytest.mark.skipif(
+    has_lt_version("3.0"),
+    reason="needs -e flag for split-window which was introduced in 3.0",
+)
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"ENV_VAR": "pane"},
+        {"ENV_VAR_1": "pane_1", "ENV_VAR_2": "pane_2"},
+    ],
+)
+def test_split_window_with_environment(
+    session: Session,
+    environment: t.Dict[str, str],
+) -> None:
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in Path."
+
+    window = session.new_window(window_name="split_window_with_environment")
+    pane = window.split_window(
+        shell=f"{env} PS1='$ ' sh",
+        environment=environment,
+    )
+    assert pane is not None
+    # wait a bit for the prompt to be ready as the test gets flaky otherwise
+    time.sleep(0.05)
+    for k, v in environment.items():
+        pane.send_keys(f"echo ${k}")
+        assert pane.capture_pane()[-2] == v
+
+
+@pytest.mark.skipif(
+    has_gte_version("3.0"),
+    reason="3.0 has the -e flag on split-window",
+)
+def test_split_window_with_environment_logs_warning_for_old_tmux(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in Path."
+
+    window = session.new_window(window_name="split_window_with_environment")
+    window.split_window(
+        shell=f"{env} PS1='$ ' sh",
+        environment={"ENV_VAR": "pane"},
+    )
+
+    assert any(
+        "Cannot set up environment" in record.msg for record in caplog.records
+    ), "Warning missing"
