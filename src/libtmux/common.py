@@ -11,11 +11,10 @@ import shutil
 import subprocess
 import sys
 import typing as t
-from distutils.version import LooseVersion
 from typing import Dict, Generic, KeysView, List, Optional, TypeVar, Union, overload
 
 from . import exc
-from ._compat import console_to_str, str_from_console
+from ._compat import LooseVersion, console_to_str, str_from_console
 
 if t.TYPE_CHECKING:
     from typing_extensions import Literal
