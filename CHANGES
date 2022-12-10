@@ -14,6 +14,27 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### Breaking changes
+
+- Fix `distutils` warning, vendorize `LegacyVersion` (#351)
+
+  Removal of reliancy on `distutils.version.LooseVersion`, which does not
+  support `tmux(1)` versions like `3.1a`.
+
+  Fixes warning:
+  
+  > DeprecationWarning: distutils Version classes are deprecated. Use
+  > packaging.version instead.
+
+  The temporary workaround, before 0.16.0 (assuming _setup.cfg_):
+
+  ```ini
+  [tool:pytest]
+  filterwarnings =
+      ignore:.* Use packaging.version.*:DeprecationWarning::
+      ignore:The frontend.Option(Parser)? class.*:DeprecationWarning::
+  ```
+
 ### Features
 
 - `Window.split_window()` and `Session.new_window()` now support an optional
