@@ -8,11 +8,13 @@ To install the unreleased libtmux version, see [developmental releases](https://
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.16.x (unreleased)
+## libtmux 0.17.x (unreleased)
 
 - _Notes on upcoming releases will be added here_
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
+
+## libtmux 0.16.0 (2022-12-10)
 
 ### Breaking changes
 
