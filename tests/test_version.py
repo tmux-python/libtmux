@@ -1,9 +1,19 @@
 import operator
+import typing as t
 from contextlib import nullcontext as does_not_raise
 
 import pytest
 
 from libtmux._compat import LooseVersion
+
+if t.TYPE_CHECKING:
+    from _pytest.python_api import RaisesContext
+    from typing_extensions import TypeAlias
+
+    VersionCompareOp: TypeAlias = t.Callable[
+        [t.Any, t.Any],
+        bool,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -19,25 +29,42 @@ from libtmux._compat import LooseVersion
         "1.0.0-next.1",
     ],
 )
-def test_version(version):
+def test_version(version: str) -> None:
     assert LooseVersion(version)
 
 
+class VersionCompareFixture(t.NamedTuple):
+    a: object
+    op: "VersionCompareOp"
+    b: object
+    raises: t.Union[t.Type[Exception], bool]
+
+
 @pytest.mark.parametrize(
-    "version,op,versionb,raises",
+    VersionCompareFixture._fields,
     [
-        ["1", operator.eq, "1", False],
-        ["1", operator.eq, "1.0", False],
-        ["1", operator.eq, "1.0.0", False],
-        ["1", operator.gt, "1.0.0a", False],
-        ["1", operator.gt, "1.0.0b", False],
-        ["1", operator.lt, "1.0.0p1", False],
-        ["1", operator.lt, "1.0.0-openbsd", False],
-        ["1", operator.lt, "1", AssertionError],
-        ["1", operator.lt, "1", AssertionError],
+        VersionCompareFixture(a="1", op=operator.eq, b="1", raises=False),
+        VersionCompareFixture(a="1", op=operator.eq, b="1.0", raises=False),
+        VersionCompareFixture(a="1", op=operator.eq, b="1.0.0", raises=False),
+        VersionCompareFixture(a="1", op=operator.gt, b="1.0.0a", raises=False),
+        VersionCompareFixture(a="1", op=operator.gt, b="1.0.0b", raises=False),
+        VersionCompareFixture(a="1", op=operator.lt, b="1.0.0p1", raises=False),
+        VersionCompareFixture(a="1", op=operator.lt, b="1.0.0-openbsd", raises=False),
+        VersionCompareFixture(a="1", op=operator.lt, b="1", raises=AssertionError),
+        VersionCompareFixture(a="1", op=operator.lt, b="1", raises=AssertionError),
+        VersionCompareFixture(a="1.0.0c", op=operator.gt, b="1.0.0b", raises=False),
     ],
 )
-def test_version_compare(version, op, versionb, raises):
-    raises_ctx = pytest.raises(raises) if raises else does_not_raise()
+def test_version_compare(
+    a: str,
+    op: "VersionCompareOp",
+    b: str,
+    raises: t.Union[t.Type[Exception], bool],
+) -> None:
+    raises_ctx: "RaisesContext[Exception]" = (
+        pytest.raises(t.cast(t.Type[Exception], raises))
+        if raises
+        else t.cast("RaisesContext[Exception]", does_not_raise())
+    )
     with raises_ctx:
-        assert op(LooseVersion(version), LooseVersion(versionb))
+        assert op(LooseVersion(a), LooseVersion(b))
