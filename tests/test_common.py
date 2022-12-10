@@ -3,12 +3,12 @@
 import re
 import sys
 import typing as t
-from distutils.version import LooseVersion
 from typing import Optional
 
 import pytest
 
 import libtmux
+from libtmux._compat import LooseVersion
 from libtmux.common import (
     TMUX_MAX_VERSION,
     TMUX_MIN_VERSION,
