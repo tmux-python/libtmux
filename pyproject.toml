@@ -55,7 +55,6 @@ furo = "*"
 gp-libs = "~0.0.1a17"
 sphinx-autobuild = "*"
 sphinx-autodoc-typehints = "*"
-sphinx-click = "*"
 sphinx-inline-tabs = { version = "*", python = "^3.7" }
 sphinxext-opengraph = "*"
 sphinx-copybutton = "*"
