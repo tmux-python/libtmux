@@ -37,7 +37,7 @@ def str_from_console(s: t.Union[str, bytes]) -> str:
 import re
 from typing import Iterator, List, Tuple
 
-from packaging.version import Version
+from libtmux._vendor.version import Version
 
 ###
 ### Legacy support for LooseVersion / LegacyVersion, e.g. 2.4-openbsd
