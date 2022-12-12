@@ -18,6 +18,14 @@ $ pip install --user --upgrade --pre libtmux
 
 - Remove unused `sphinx-click` development dependency
 
+## libtmux 0.16.1 (2022-12-12)
+
+### Fixes
+
+- Remove reliance on `packaging.version.Version` (#461)
+
+  This is too critical of a package to pin a dependency as it may interfere with other packages the user relies on. In addition, libtmux doesn't need strict compatibility with `packaging`.
+
 ## libtmux 0.16.0 (2022-12-10)
 
 ### Breaking changes
