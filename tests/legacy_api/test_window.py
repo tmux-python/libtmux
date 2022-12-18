@@ -22,12 +22,15 @@ def test_select_window(session: Session) -> None:
     # for now however, let's get the index from the first window.
     assert window_count == 1
 
+    assert session.attached_window is not None
+    assert session.attached_window.index is not None
     window_base_index = int(session.attached_window.index)
 
     window = session.new_window(window_name="testing 3")
 
     # self.assertEqual(2,
     # int(session.attached_window.index))
+    assert window.index is not None
     assert int(window_base_index) + 1 == int(window.index)
 
     session.select_window(str(window_base_index))
@@ -118,6 +121,8 @@ def test_split_window(session: Session) -> None:
     pane = window.split_window()
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
+    assert window.width is not None
+    assert window.panes[0].height is not None
     assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
 
 
@@ -129,6 +134,8 @@ def test_split_window_shell(session: Session) -> None:
     pane = window.split_window(shell=cmd)
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
+    assert window.width is not None
+    assert window.panes[0].height is not None
     assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
     if has_gte_version("3.2"):
         assert pane.get("pane_start_command", "").replace('"', "") == cmd
@@ -143,6 +150,8 @@ def test_split_window_horizontal(session: Session) -> None:
     pane = window.split_window(vertical=False)
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
+    assert window.width is not None
+    assert window.panes[0].width is not None
     assert float(window.panes[0].width) <= ((float(window.width) + 1) / 2)
 
 
@@ -274,6 +283,7 @@ def test_move_window(session: Session) -> None:
     """Window.move_window results in changed index"""
 
     window = session.new_window(window_name="test_window")
+    assert window.index is not None
     new_index = str(int(window.index) + 1)
     window.move_window(new_index)
     assert window.index == new_index
@@ -304,6 +314,7 @@ def test_empty_window_name(session: Session) -> None:
 
     assert window == session.attached_window
     assert window.get("window_name") == "''"
+    assert session.name is not None
 
     cmd = session.cmd(
         "list-windows",
