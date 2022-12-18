@@ -267,7 +267,11 @@ class tmux_cmd:
         else:
             self.stdout = stdout_split
 
-        logger.debug("self.stdout for {}: \n{}".format(" ".join(cmd), self.stdout))
+        logger.debug(
+            "self.stdout for {cmd}: {stdout}".format(
+                cmd=" ".join(cmd), stdout=self.stdout
+            )
+        )
 
 
 # class TmuxMappingObject(t.Mapping[str, t.Union[str,int,bool]]):

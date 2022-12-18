@@ -364,7 +364,7 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
             attached = session.get("session_attached")
             # for now session_active is a unicode
             if attached != "0":
-                logger.debug("session %s attached", session.get("name"))
+                logger.debug(f"session {session.get('name')} attached")
                 attached_sessions.append(session)
             else:
                 continue
@@ -564,7 +564,7 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
                         "Session named %s exists" % session_name
                     )
 
-        logger.debug("creating session %s" % session_name)
+        logger.debug(f"creating session {session_name}")
 
         sformats = formats.SESSION_FORMATS
         tmux_formats = ["#{%s}" % f for f in sformats]

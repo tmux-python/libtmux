@@ -204,7 +204,7 @@ def session(request: pytest.FixtureRequest, server: Server) -> "Session":
         pass
 
     for old_test_session in old_test_sessions:
-        logger.debug("Old test test session %s found. Killing it." % old_test_session)
+        logger.debug(f"Old test test session {old_test_session} found. Killing it.")
         server.kill_session(old_test_session)
     assert TEST_SESSION_NAME == session.get("session_name")
     assert TEST_SESSION_NAME != "tmuxp"
