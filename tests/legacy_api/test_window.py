@@ -181,11 +181,12 @@ def test_kill_window(session: Session) -> None:
 
     w = session.attached_window
 
-    w.get("window_id")
+    assert isinstance(w.get("window_id"), str)
+    assert len(session.windows.filter(window_id=w.get("window_id"))) == 1
 
     w.kill_window()
-    with pytest.raises(IndexError):
-        w.get("window_id")
+
+    assert len(session.windows.filter(window_id=w.get("window_id"))) == 0
 
 
 def test_show_window_options(session: Session) -> None:
