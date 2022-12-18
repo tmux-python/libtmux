@@ -1,6 +1,8 @@
 """Test for libtmux Server object."""
 import logging
 
+import pytest
+
 from libtmux.common import has_gte_version
 from libtmux.server import Server
 from libtmux.session import Session
@@ -123,3 +125,34 @@ def test_new_session_shell(server: Server) -> None:
         assert pane_start_command.replace('"', "") == cmd
     else:
         assert pane_start_command == cmd
+
+
+def test_no_server_sessions() -> None:
+    server = Server(socket_name="test_attached_session_no_server")
+    assert server.sessions == []
+
+
+def test_no_server_attached_sessions() -> None:
+    server = Server(socket_name="test_no_server_attached_sessions")
+    assert server.attached_sessions == []
+
+
+def test_no_server_is_alive() -> None:
+    dead_server = Server(socket_name="test_no_server_is_alive")
+    assert not dead_server.is_alive()
+
+
+def test_with_server_is_alive(server: Server) -> None:
+    server.new_session()
+    assert server.is_alive()
+
+
+def test_no_server_raise_if_dead() -> None:
+    dead_server = Server(socket_name="test_attached_session_no_server")
+    with pytest.raises(Exception):
+        dead_server.raise_if_dead()
+
+
+def test_with_server_raise_if_dead(server: Server) -> None:
+    server.new_session()
+    server.raise_if_dead()
