@@ -113,6 +113,10 @@ libtmux = "libtmux.pytest_plugin"
 
 [tool.mypy]
 strict = true
+files = [
+  "src",
+  "tests"
+]
 
 [tool.coverage.run]
 branch = true
