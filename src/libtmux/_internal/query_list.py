@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 T = TypeVar("T", Any, Any)
 
+no_arg = object()
+
 
 def keygetter(
     obj: "Mapping[str, Any]",
@@ -347,3 +349,18 @@ class QueryList(List[T]):
             _filter = filter_lookup
 
         return self.__class__(k for k in self if _filter(k))
+
+    def get(
+        self,
+        matcher: Optional[Union[Callable[[T], bool], T]] = None,
+        default: Optional[Any] = no_arg,
+        **kwargs: Any,
+    ) -> Optional[T]:
+        objs = self.filter(matcher=matcher, **kwargs)
+        if len(objs) > 1:
+            raise Exception("Multiple objects returned")
+        elif len(objs) == 0:
+            if default == no_arg:
+                raise Exception("No objects found")
+            return default
+        return objs[0]
