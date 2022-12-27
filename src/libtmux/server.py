@@ -64,7 +64,7 @@ class Server(EnvironmentMixin):
     [Window(@1 1:..., Session($1 ...)]
 
     >>> server.sessions[0].attached_window
-    Window(@1 1:..., Session($1 ...)
+    Window(@1 1:..., Session($1 ...))
 
     >>> server.sessions[0].attached_pane
     Pane(%1 Window(@1 1:..., Session($1 ...)))
