@@ -23,7 +23,7 @@ $ pip install --user --upgrade --pre libtmux
   Before (0.17 and below):
 
   ```python
-  libtmux.server.Server object at ...>
+  <libtmux.server.Server object at ...>
   ```
 
   New `__repr__` (0.18+):
