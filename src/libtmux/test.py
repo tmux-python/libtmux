@@ -80,7 +80,6 @@ def retry_until(
     --------
     >>> def fn():
     ...     p = session.attached_window.attached_pane
-    ...     p.server._update_panes()
     ...     return p.pane_current_path is not None
 
     >>> retry_until(fn)
