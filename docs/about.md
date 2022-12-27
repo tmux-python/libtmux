@@ -85,8 +85,8 @@ How is libtmux able to keep references to panes, windows and sessions?
 > Window index refers to the # of the window in the session.
 >
 > To assert pane, window and session data, libtmux will use
-> {meth}`Server.list_sessions()`, {meth}`Session.list_windows()`,
-> {meth}`Window.list_panes()` to update objects.
+> {meth}`Server.sessions()`, {meth}`Session.windows()`,
+> {meth}`Window.panes()` to update objects.
 
 ## Naming conventions
 

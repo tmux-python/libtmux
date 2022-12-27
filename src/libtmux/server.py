@@ -9,16 +9,20 @@ import os
 import shutil
 import subprocess
 import typing as t
+import warnings
 
+from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
+from libtmux.neo import fetch_objs
+from libtmux.pane import Pane
 from libtmux.session import Session
+from libtmux.window import Window
 
 from . import exc, formats
 from .common import (
     EnvironmentMixin,
     PaneDict,
     SessionDict,
-    TmuxRelationalObject,
     WindowDict,
     has_gte_version,
     session_check_name,
@@ -27,14 +31,13 @@ from .common import (
 logger = logging.getLogger(__name__)
 
 
-class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
-
+class Server(EnvironmentMixin):
     """
     The :term:`tmux(1)` :term:`Server` [server_manual]_.
 
-    - :attr:`Server._sessions` [:class:`Session`, ...]
+    - :attr:`Server.sessions` [:class:`Session`, ...]
 
-      - :attr:`Session._windows` [:class:`Window`, ...]
+      - :attr:`Session.windows` [:class:`Window`, ...]
 
         - :attr:`Window._panes` [:class:`Pane`, ...]
 
@@ -153,9 +156,17 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
 
         subprocess.check_call([tmux_bin] + cmd_args)
 
+    #
+    # Command
+    #
     def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """
         Execute tmux command and return output.
+
+        Examples
+        --------
+        >>> server.cmd('display-message', 'hi')
+        <libtmux.common.tmux_cmd object at ...>
 
         Returns
         -------
@@ -185,233 +196,35 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
 
         return tmux_cmd(*cmd_args, **kwargs)
 
-    def _list_sessions(self) -> t.List[SessionDict]:
-        """
-        Return list of sessions in :py:obj:`dict` form.
-
-        Retrieved from ``$ tmux(1) list-sessions`` stdout.
-
-        The :py:obj:`list` is derived from ``stdout`` in
-        :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
-
-        Returns
-        -------
-        list of dict
-        """
-
-        sformats = formats.SESSION_FORMATS
-        tmux_formats = ["#{%s}" % f for f in sformats]
-
-        tmux_args = ("-F%s" % formats.FORMAT_SEPARATOR.join(tmux_formats),)  # output
-
-        list_sessions_cmd = self.cmd("list-sessions", *tmux_args)
-
-        if list_sessions_cmd.stderr:
-            raise exc.LibTmuxException(list_sessions_cmd.stderr)
-
-        sformats = formats.SESSION_FORMATS
-        tmux_formats = ["#{%s}" % format for format in sformats]
-        sessions_output = list_sessions_cmd.stdout
-
-        # combine format keys with values returned from ``tmux list-sessions``
-        sessions_formatters = [
-            dict(zip(sformats, session.split(formats.FORMAT_SEPARATOR)))
-            for session in sessions_output
-        ]
-
-        # clear up empty dict
-        sessions_formatters_filtered = [
-            {k: v for k, v in session.items() if v} for session in sessions_formatters
-        ]
-
-        return sessions_formatters_filtered
-
-    @property
-    def _sessions(self) -> t.List[SessionDict]:
-        """Property / alias to return :meth:`~._list_sessions`."""
-
-        return self._list_sessions()
-
-    def list_sessions(self) -> t.List[Session]:
-        """
-        Return list of :class:`Session` from the ``tmux(1)`` session.
-
-        Returns
-        -------
-        list of :class:`Session`
-        """
-        return [Session(server=self, **s) for s in self._sessions]
-
-    @property
-    def sessions(self) -> t.List[Session]:
-        """Property / alias to return :meth:`~.list_sessions`."""
-        try:
-            return self.list_sessions()
-        except Exception:
-            return []
-
-    #: Alias :attr:`sessions` for :class:`~libtmux.common.TmuxRelationalObject`
-    children = sessions  # type: ignore
-
-    def _list_windows(self) -> t.List[WindowDict]:
-        """
-        Return list of windows in :py:obj:`dict` form.
-
-        Retrieved from ``$ tmux(1) list-windows`` stdout.
-
-        The :py:obj:`list` is derived from ``stdout`` in
-        :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
-
-        Returns
-        -------
-        list of dict
-        """
-
-        wformats = ["session_name", "session_id"] + formats.WINDOW_FORMATS
-        tmux_formats = ["#{%s}" % format for format in wformats]
-
-        proc = self.cmd(
-            "list-windows",  # ``tmux list-windows``
-            "-a",
-            "-F%s" % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
-        )
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-        window_output = proc.stdout
-
-        wformats = ["session_name", "session_id"] + formats.WINDOW_FORMATS
-
-        # combine format keys with values returned from ``tmux list-windows``
-        window_formatters = [
-            dict(zip(wformats, window.split(formats.FORMAT_SEPARATOR)))
-            for window in window_output
-        ]
-
-        # clear up empty dict
-        window_formatters_filtered = [
-            {k: v for k, v in window.items() if v} for window in window_formatters
-        ]
-
-        # tmux < 1.8 doesn't have window_id, use window_name
-        for w in window_formatters_filtered:
-            if "window_id" not in w:
-                w["window_id"] = w["window_name"]
-
-        if self._windows:
-            self._windows[:] = []
-
-        self._windows.extend(window_formatters_filtered)
-
-        return self._windows
-
-    def _update_windows(self) -> "Server":
-        """
-        Update internal window data and return ``self`` for chainability.
-
-        Returns
-        -------
-        :class:`Server`
-        """
-        self._list_windows()
-        return self
-
-    def _list_panes(self) -> t.List[PaneDict]:
-        """
-        Return list of panes in :py:obj:`dict` form.
-
-        Retrieved from ``$ tmux(1) list-panes`` stdout.
-
-        The :py:obj:`list` is derived from ``stdout`` in
-        :class:`util.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
-
-        Returns
-        -------
-        list
-        """
-
-        pformats = [
-            "session_name",
-            "session_id",
-            "window_index",
-            "window_id",
-            "window_name",
-        ] + formats.PANE_FORMATS
-        tmux_formats = [("#{%%s}%s" % formats.FORMAT_SEPARATOR) % f for f in pformats]
-
-        proc = self.cmd("list-panes", "-a", "-F%s" % "".join(tmux_formats))  # output
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-        pane_output = proc.stdout
-
-        pformats = [
-            "session_name",
-            "session_id",
-            "window_index",
-            "window_id",
-            "window_name",
-        ] + formats.PANE_FORMATS
-
-        # combine format keys with values returned from ``tmux list-panes``
-        pane_formatters = [
-            dict(zip(pformats, formatter.split(formats.FORMAT_SEPARATOR)))
-            for formatter in pane_output
-        ]
-
-        # Filter empty values
-        pane_formatters_filtered = [
-            {
-                k: v for k, v in formatter.items() if v or k == "pane_current_path"
-            }  # preserve pane_current_path, in case it entered a new process
-            # where we may not get a cwd from.
-            for formatter in pane_formatters
-        ]
-
-        if self._panes:
-            self._panes[:] = []
-
-        self._panes.extend(pane_formatters_filtered)
-
-        return self._panes
-
-    def _update_panes(self) -> "Server":
-        """
-        Update internal pane data and return ``self`` for chainability.
-
-        Returns
-        -------
-        :class:`Server`
-        """
-        self._list_panes()
-        return self
-
     @property
     def attached_sessions(self) -> t.List[Session]:
         """
         Return active :class:`Session` objects.
 
+        Examples
+        --------
+        >>> server.attached_sessions
+        []
+
         Returns
         -------
         list of :class:`Session`
         """
-
         try:
-            sessions = self._sessions
+            sessions = self.sessions
             attached_sessions = list()
 
             for session in sessions:
-                attached = session.get("session_attached")
+                attached = session.session_attached
                 # for now session_active is a unicode
                 if attached != "0":
-                    logger.debug(f"session {session.get('name')} attached")
+                    logger.debug(f"session {session.name} attached")
                     attached_sessions.append(session)
                 else:
                     continue
 
-            return [Session(server=self, **s) for s in attached_sessions] or []
+            return attached_sessions
+            # return [Session(**s) for s in attached_sessions] or None
         except Exception:
             return []
 
@@ -610,9 +423,6 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
 
         logger.debug(f"creating session {session_name}")
 
-        sformats = formats.SESSION_FORMATS
-        tmux_formats = ["#{%s}" % f for f in sformats]
-
         env = os.environ.get("TMUX")
 
         if env:
@@ -620,7 +430,7 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
 
         tmux_args: t.Tuple[t.Union[str, int], ...] = (
             "-P",
-            "-F%s" % formats.FORMAT_SEPARATOR.join(tmux_formats),  # output
+            "-F#{session_id}",  # output
         )
 
         if session_name is not None:
@@ -653,14 +463,172 @@ class Server(TmuxRelationalObject["Session", "SessionDict"], EnvironmentMixin):
         if env:
             os.environ["TMUX"] = env
 
-        # Combine format keys with values returned from ``tmux list-windows``
-        session_params = dict(
-            zip(sformats, session_stdout.split(formats.FORMAT_SEPARATOR))
+        session_formatters = dict(
+            zip(["session_id"], session_stdout.split(formats.FORMAT_SEPARATOR))
         )
 
-        # Filter empty values
-        session_params = {k: v for k, v in session_params.items() if v}
+        return Session.from_session_id(
+            server=self, session_id=session_formatters["session_id"]
+        )
 
-        session = Session(server=self, **session_params)
+    #
+    # Relations
+    #
+    @property
+    def sessions(self) -> QueryList[Session]:  # type:ignore
+        """Sessions belonging server.
 
-        return session
+        Can be accessed via
+        :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
+        :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
+        """
+        sessions: t.List["Session"] = []
+
+        try:
+            for obj in fetch_objs(
+                list_cmd="list-sessions",
+                server=self,
+            ):
+                sessions.append(Session(server=self, **obj))
+        except Exception:
+            pass
+
+        return QueryList(sessions)
+
+    @property
+    def windows(self) -> QueryList[Window]:  # type:ignore
+        """Windows belonging server.
+
+        Can be accessed via
+        :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
+        :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
+        """
+        windows: t.List["Window"] = []
+        for obj in fetch_objs(
+            list_cmd="list-windows",
+            list_extra_args=("-a",),
+            server=self,
+        ):
+            windows.append(Window(server=self, **obj))
+
+        return QueryList(windows)
+
+    @property
+    def panes(self) -> QueryList[Pane]:  # type:ignore
+        """Panes belonging server.
+
+        Can be accessed via
+        :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
+        :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
+        """
+        panes: t.List["Pane"] = []
+        for obj in fetch_objs(
+            list_cmd="list-panes",
+            list_extra_args=["-s"],
+            server=self,
+        ):
+            panes.append(Pane(server=self, **obj))
+
+        return QueryList(panes)
+
+    def _list_panes(self) -> t.List[PaneDict]:
+        """
+        Return list of panes in :py:obj:`dict` form.
+
+        Retrieved from ``$ tmux(1) list-panes`` stdout.
+
+        The :py:obj:`list` is derived from ``stdout`` in
+        :class:`util.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
+        """
+        return [p.__dict__ for p in self.panes]
+
+    def _update_panes(self) -> "Server":
+        """
+        Update internal pane data and return ``self`` for chainability.
+
+        Returns
+        -------
+        :class:`Server`
+        """
+        self._list_panes()
+        return self
+
+    #
+    # Legacy: Redundant stuff we want to remove
+    #
+    def get_by_id(self, id: str) -> t.Optional[Session]:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Server.get_by_id() is deprecated")
+        return self.sessions.get(session_id=id, default=None)
+
+    def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Session]:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Server.find_where() is deprecated")
+        try:
+            return self.sessions.filter(**kwargs)
+        except IndexError:
+            return []
+
+    def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Session]:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Server.find_where() is deprecated")
+        return self.sessions.get(default=None, **kwargs)
+
+    def _list_windows(self) -> t.List[WindowDict]:
+        """Return list of windows in :py:obj:`dict` form.
+
+        Retrieved from ``$ tmux(1) list-windows`` stdout.
+
+        The :py:obj:`list` is derived from ``stdout`` in
+        :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
+
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Server._list_windows() is deprecated")
+        return [w.__dict__ for w in self.windows]
+
+    def _update_windows(self) -> "Server":
+        """Update internal window data and return ``self`` for chainability.
+
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Server._update_windows() is deprecated")
+        self._list_windows()
+        return self
+
+    @property
+    def _sessions(self) -> t.List[SessionDict]:
+        """Property / alias to return :meth:`~._list_sessions`.
+
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Server._sessions is deprecated")
+        return self._list_sessions()
+
+    def _list_sessions(self) -> t.List["SessionDict"]:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Server._list_sessions() is deprecated")
+        return [s.__dict__ for s in self.sessions]
+
+    def list_sessions(self) -> t.List[Session]:
+        """Return list of :class:`Session` from the ``tmux(1)`` session.
+
+        .. deprecated:: 0.16
+
+        Returns
+        -------
+        list of :class:`Session`
+        """
+        warnings.warn("Server.list_sessions is deprecated")
+        return self.sessions
+
+    #: Alias :attr:`sessions` for :class:`~libtmux.common.TmuxRelationalObject`
+    children = sessions

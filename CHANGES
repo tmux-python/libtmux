@@ -14,6 +14,37 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### Breaking changes
+
+- Finding objects / relations
+
+  - 0.16 and below: `session._windows()`, `session.list_windows()`, etc.
+
+    0.17 and after: {attr}`session.windows <libtmux.Session.windows>`
+
+  - 0.16 and below: `session.find_where({'window_name': my_window})`
+
+    0.17 and after: {meth}`session.windows.get(window_name=my_window, default=None) <libtmux.Session.windows>`
+
+    - If not found and not `default`, raises {exc}`~libtmux._internal.query_list.ObjectDoesNotExist`
+    - If multiple objects found, raises {exc}`~libtmux._internal.query_list.MultipleObjectsReturned`
+
+  - 0.16 and below: `session.where({'window_name': my_window})`
+
+    0.17 and after: {meth}`session.windows.filter(window_name=my_window) <libtmux.Session.windows>`
+
+- Accessing attributes
+
+  - 0.16 and below: `window['id']`
+
+    0.17 and after: `window.id`
+  - 0.16 and below: `window.get('id')`
+
+    0.17 and after: `window.id`
+  - 0.16 and below: `window.get('id', None)`
+
+    0.17 and after: `getattr(window, 'id', None)`
+
 ### New features
 
 #### Detect if server active (#448)

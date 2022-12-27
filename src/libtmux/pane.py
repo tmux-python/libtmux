@@ -5,14 +5,17 @@ libtmux.pane
 ~~~~~~~~~~~~
 
 """
+import dataclasses
 import logging
 import typing as t
+import warnings
 from typing import overload
 
 from libtmux.common import tmux_cmd
+from libtmux.neo import Obj, fetch_obj
 
-from . import exc
-from .common import PaneDict, TmuxMappingObject, TmuxRelationalObject
+from . import exc, formats
+from .common import PaneDict
 
 if t.TYPE_CHECKING:
     from typing_extensions import Literal
@@ -25,7 +28,8 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Pane(TmuxMappingObject):
+@dataclasses.dataclass()
+class Pane(Obj):
     """
     A :term:`tmux(1)` :term:`Pane` [pane_manual]_.
 
@@ -68,47 +72,41 @@ class Pane(TmuxMappingObject):
        Accessed April 1st, 2018.
     """
 
-    formatter_prefix = "pane_"
-    """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
-    window: "Window"
-    """:class:`libtmux.Window` pane is linked to"""
-    session: "Session"
-    """:class:`libtmux.Session` pane is linked to"""
     server: "Server"
-    """:class:`libtmux.Server` pane is linked to"""
 
-    def __init__(
-        self,
-        window: "Window",
-        pane_id: t.Union[str, int],
-        **kwargs: t.Any,
-    ) -> None:
-        self.window = window
-        self.session = self.window.session
-        self.server = self.session.server
+    def refresh(self) -> None:
+        assert isinstance(self.pane_id, str)
+        return super()._refresh(obj_key="pane_id", obj_id=self.pane_id)
 
-        self._pane_id = pane_id
+    @classmethod
+    def from_pane_id(cls, server: "Server", pane_id: str) -> "Pane":
+        pane = fetch_obj(
+            obj_key="pane_id",
+            obj_id=pane_id,
+            server=server,
+            list_cmd="list-panes",
+            list_extra_args=("-a",),
+        )
+        return cls(server=server, **pane)
 
-        self.server._update_panes()
+    #
+    # Relations
+    #
 
     @property
-    def _info(self) -> PaneDict:  # type: ignore  # mypy#1362
-        attrs = {"pane_id": self._pane_id}
+    def window(self) -> "Window":
+        assert isinstance(self.window_id, str)
+        from libtmux.window import Window
 
-        # from https://github.com/serkanyersen/underscore.py
-        def by(val: PaneDict) -> bool:
-            for key in attrs.keys():
-                try:
-                    if attrs[key] != val[key]:
-                        return False
-                except KeyError:
-                    return False
-            return True
+        return Window.from_window_id(server=self.server, window_id=self.window_id)
 
-        target_panes = [s for s in self.server._panes if by(s)]
+    @property
+    def session(self) -> "Session":
+        return self.window.session
 
-        return target_panes[0]
-
+    #
+    # Command (pane-scoped)
+    #
     def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting to ``target_pane`` as target.
 
@@ -116,15 +114,55 @@ class Pane(TmuxMappingObject):
 
         Specifying ``('-t', 'custom-target')`` or ``('-tcustom_target')`` in
         ``args`` will override using the object's ``pane_id`` as target.
-
-        Returns
-        -------
-        :class:`Server.cmd`
         """
         if not any(arg.startswith("-t") for arg in args):
-            args = ("-t", self.get("pane_id")) + args
+            args = ("-t", self.pane_id) + args
 
         return self.server.cmd(cmd, *args, **kwargs)
+
+    #
+    # Commands (tmux-like)
+    #
+    def resize_pane(self, *args: t.Any, **kwargs: t.Any) -> "Pane":
+        """
+        ``$ tmux resize-pane`` of pane and return ``self``.
+
+        Parameters
+        ----------
+        target_pane : str
+            ``target_pane``, or ``-U``,``-D``, ``-L``, ``-R``.
+
+        Other Parameters
+        ----------------
+        height : int
+            ``resize-pane -y`` dimensions
+        width : int
+            ``resize-pane -x`` dimensions
+
+        Raises
+        ------
+        exc.LibTmuxException
+        """
+        if "height" in kwargs:
+            proc = self.cmd("resize-pane", "-y%s" % int(kwargs["height"]))
+        elif "width" in kwargs:
+            proc = self.cmd("resize-pane", "-x%s" % int(kwargs["width"]))
+        else:
+            proc = self.cmd("resize-pane", args[0])
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+        return self
+
+    def capture_pane(self) -> t.Union[str, t.List[str]]:
+        """
+        Capture text from pane.
+
+        ``$ tmux capture-pane`` to pane.
+        """
+        return self.cmd("capture-pane", "-p").stdout
 
     def send_keys(
         self,
@@ -204,11 +242,6 @@ class Pane(TmuxMappingObject):
         get_text : bool, optional
             Returns only text without displaying a message in
             target-client status line.
-
-        Returns
-        -------
-        :class:`list`
-        :class:`None`
         """
         if get_text:
             return self.cmd("display-message", "-p", cmd).stdout
@@ -216,14 +249,25 @@ class Pane(TmuxMappingObject):
         self.cmd("display-message", cmd)
         return None
 
-    def clear(self) -> None:
-        """Clear pane."""
-        self.send_keys("reset")
+    #
+    # Commands ("climber"-helpers)
+    #
+    # These are commands that climb to the parent scope's methods with
+    # additional scoped window info.
+    #
+    def select_pane(self) -> "Pane":
+        """
+        Select pane. Return ``self``.
 
-    def reset(self) -> None:
-        """Reset and clear pane history."""
-
-        self.cmd("send-keys", r"-R \; clear-history")
+        To select a window object asynchrously. If a ``pane`` object exists
+        and is no longer longer the current window, ``w.select_pane()``
+        will make ``p`` the current pane.
+        """
+        assert isinstance(self.pane_id, str)
+        pane = self.window.select_pane(self.pane_id)
+        if pane is None:
+            raise exc.LibTmuxException(f"Pane not found: {self}")
+        return pane
 
     def split_window(
         self,
@@ -231,7 +275,7 @@ class Pane(TmuxMappingObject):
         vertical: bool = True,
         start_directory: t.Optional[str] = None,
         percent: t.Optional[int] = None,
-    ) -> "Pane":
+    ) -> "Pane":  # New Pane, not self
         """
         Split window at pane and return newly created :class:`Pane`.
 
@@ -245,20 +289,19 @@ class Pane(TmuxMappingObject):
             specifies the working directory in which the new pane is created.
         percent: int, optional
             percentage to occupy with respect to current pane
-
-        Returns
-        -------
-        :class:`Pane`
         """
         return self.window.split_window(
-            target=self.get("pane_id"),
+            target=self.pane_id,
             start_directory=start_directory,
             attach=attach,
             vertical=vertical,
             percent=percent,
         )
 
-    def set_width(self, width: int) -> None:
+    #
+    # Commands (helpers)
+    #
+    def set_width(self, width: int) -> "Pane":
         """
         Set width of pane.
 
@@ -268,8 +311,9 @@ class Pane(TmuxMappingObject):
             pane width, in cells
         """
         self.resize_pane(width=width)
+        return self
 
-    def set_height(self, height: int) -> None:
+    def set_height(self, height: int) -> "Pane":
         """
         Set height of pane.
 
@@ -279,82 +323,102 @@ class Pane(TmuxMappingObject):
             height of pain, in cells
         """
         self.resize_pane(height=height)
-
-    def resize_pane(self, *args: t.Any, **kwargs: t.Any) -> "Pane":
-        """
-        ``$ tmux resize-pane`` of pane and return ``self``.
-
-        Parameters
-        ----------
-        target_pane : str
-            ``target_pane``, or ``-U``,``-D``, ``-L``, ``-R``.
-
-        Other Parameters
-        ----------------
-        height : int
-            ``resize-pane -y`` dimensions
-        width : int
-            ``resize-pane -x`` dimensions
-
-        Returns
-        -------
-        :class:`Pane`
-
-        Raises
-        ------
-        exc.LibTmuxException
-        """
-        if "height" in kwargs:
-            proc = self.cmd("resize-pane", "-y%s" % int(kwargs["height"]))
-        elif "width" in kwargs:
-            proc = self.cmd("resize-pane", "-x%s" % int(kwargs["width"]))
-        else:
-            proc = self.cmd("resize-pane", args[0])
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-        self.server._update_panes()
         return self
 
-    def enter(self) -> None:
+    def enter(self) -> "Pane":
         """
         Send carriage return to pane.
 
         ``$ tmux send-keys`` send Enter to the pane.
         """
         self.cmd("send-keys", "Enter")
+        return self
 
-    def capture_pane(self) -> t.Union[str, t.List[str]]:
-        """
-        Capture text from pane.
+    def clear(self) -> "Pane":
+        """Clear pane."""
+        self.send_keys("reset")
+        return self
 
-        ``$ tmux capture-pane`` to pane.
+    def reset(self) -> "Pane":
+        """Reset and clear pane history."""
 
-        Returns
-        -------
-        :class:`list`
-        """
-        return self.cmd("capture-pane", "-p").stdout
+        self.cmd("send-keys", r"-R \; clear-history")
+        return self
 
-    def select_pane(self) -> "Pane":
-        """
-        Select pane. Return ``self``.
-
-        To select a window object asynchrously. If a ``pane`` object exists
-        and is no longer longer the current window, ``w.select_pane()``
-        will make ``p`` the current pane.
-
-        Returns
-        -------
-        :class:`pane`
-        """
-        pane = self.window.select_pane(self._pane_id)
-        if pane is None:
-            raise exc.LibTmuxException(f"Pane not found: {self}")
-        return pane
+    #
+    # Dunder
+    #
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, Pane)
+        return self.pane_id == other.pane_id
 
     def __repr__(self) -> str:
-        return "{}({} {})".format(
-            self.__class__.__name__, self.get("pane_id"), self.window
-        )
+        return "{}({} {})".format(self.__class__.__name__, self.pane_id, self.window)
+
+    #
+    # Aliases
+    #
+    @property
+    def id(self) -> t.Optional[str]:
+        """Alias of :attr:`Pane.pane_id`
+
+        >>> pane.id
+        '%1'
+
+        >>> pane.id == pane.pane_id
+        True
+        """
+        return self.pane_id
+
+    @property
+    def index(self) -> t.Optional[str]:
+        """Alias of :attr:`Pane.pane_index`
+
+        >>> pane.index
+        '0'
+
+        >>> pane.index == pane.pane_index
+        True
+        """
+        return self.pane_index
+
+    @property
+    def height(self) -> t.Optional[str]:
+        """Alias of :attr:`Pane.pane_height`
+
+        >>> pane.height.isdigit()
+        True
+
+        >>> pane.height == pane.pane_height
+        True
+        """
+        return self.pane_height
+
+    @property
+    def width(self) -> t.Optional[str]:
+        """Alias of :attr:`Pane.pane_width`
+
+        >>> pane.width.isdigit()
+        True
+
+        >>> pane.width == pane.pane_width
+        True
+        """
+        return self.pane_width
+
+    #
+    # Legacy
+    #
+    def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Pane.get() is deprecated")
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> t.Any:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn(f"Item lookups, e.g. pane['{key}'] is deprecated")
+        return getattr(self, key)

@@ -125,10 +125,10 @@ Windows and Panes.
 If you have multiple tmux sessions open, you can see that all of the
 methods in {class}`Server` are available.
 
-We can list sessions with {meth}`Server.list_sessions`:
+We can list sessions with {meth}`Server.sessions`:
 
 ```python
->>> server.list_sessions()
+>>> server.sessions
 [Session($1 ...), Session($0 ...)]
 ```
 
@@ -136,22 +136,22 @@ This returns a list of {class}`Session` objects you can grab. We can
 find our current session with:
 
 ```python
->>> server.list_sessions()[0]
+>>> server.sessions[0]
 Session($1 ...)
 ```
 
 However, this isn't guaranteed, libtmux works against current tmux information, the
 session's name could be changed, or another tmux session may be created,
-so {meth}`Server.get_by_id` and {meth}`Server.find_where` exists as a lookup.
+so {meth}`Server.sessions` and {meth}`Server.windows` exists as a lookup.
 
 ## Get session by ID
 
 tmux sessions use the `$[0-9]` convention as a way to identify sessions.
 
-`$1` is whatever the ID `list_sessions()` returned above.
+`$1` is whatever the ID `sessions()` returned above.
 
 ```python
->>> server.get_by_id('$1')
+>>> server.sessions.filter(session_id='$1')[0]
 Session($1 ...)
 ```
 
@@ -163,13 +163,16 @@ You may `session = server.get_by_id('$<yourId>')` to use the session object.
 >>> server.sessions[0].rename_session('foo')
 Session($1 foo)
 
->>> server.find_where({ "session_name": "foo" })
+>>> server.sessions.filter(session_name="foo")[0]
+Session($1 foo)
+
+>>> server.sessions.get(session_name="foo")
 Session($1 foo)
 ```
 
-With `find_where`, pass in a dict and return the first object found. In
+With `filter`, pass in attributes and return a list of matches. In
 this case, a {class}`Server` holds a collection of child {class}`Session`.
-{class}`Session` and {class}`Window` both utilize `find_where` to sift
+{class}`Session` and {class}`Window` both utilize `filter` to sift
 through Windows and Panes, respectively.
 
 So you may now use:
@@ -178,7 +181,7 @@ So you may now use:
 >>> server.sessions[0].rename_session('foo')
 Session($1 foo)
 
->>> session = server.find_where({ "session_name": "foo" })
+>>> session = server.sessions.get(session_name="foo")
 >>> session
 Session($1 foo)
 ```
@@ -213,7 +216,7 @@ Let's delete that window ({meth}`Session.kill_window`).
 Method 1: Use passthrough to tmux's `target` system.
 
 ```python
->>> session.kill_window(window.id)
+>>> session.kill_window(window.window_id)
 ```
 
 The window in the bg dissappeared. This was the equivalent of
@@ -260,7 +263,7 @@ And kill:
 >>> window.kill_window()
 ```
 
-Use {meth}`Session.list_windows()` and {meth}`Session.find_where()` to list and sort
+Use {meth}`Session.windows` and {meth}`Session.windows.filter()` to list and sort
 through active {class}`Window`'s.
 
 ## Manipulating windows
@@ -346,6 +349,7 @@ using {meth}`Pane.enter()`:
 
 ```python
 >>> pane.enter()
+Pane(%1 ...)
 ```
 
 ### Avoid cluttering shell history

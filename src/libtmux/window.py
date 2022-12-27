@@ -4,23 +4,21 @@ libtmux.window
 ~~~~~~~~~~~~~~
 
 """
+import dataclasses
 import logging
 import os
 import shlex
 import typing as t
+import warnings
 
+from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
-from . import exc, formats
-from .common import (
-    PaneDict,
-    TmuxMappingObject,
-    TmuxRelationalObject,
-    WindowDict,
-    WindowOptionDict,
-    handle_option_error,
-)
+from . import exc
+from .common import PaneDict, WindowOptionDict, handle_option_error
+from .formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
     from .server import Server
@@ -29,7 +27,8 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
+@dataclasses.dataclass()
+class Window(Obj):
     """
     A :term:`tmux(1)` :term:`Window` [window_manual]_.
 
@@ -59,6 +58,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
     >>> window.session
     Session(...)
 
+    >>> window.window_id == session.attached_window.window_id
+    True
+
     >>> window == session.attached_window
     True
 
@@ -75,78 +77,214 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
        https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
     """
 
-    child_id_attribute = "pane_id"
-    """Unique child ID key for :class:`~libtmux.common.TmuxRelationalObject`"""
-    formatter_prefix = "window_"
-    """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
     server: "Server"
-    """:class:`libtmux.Server` window is linked to"""
-    session: "Session"
-    """:class:`libtmux.Session` window is linked to"""
 
-    def __init__(
-        self, session: "Session", window_id: t.Union[int, str], **kwargs: t.Any
-    ) -> None:
-        self.session = session
-        self.server = self.session.server
-
-        self._window_id = window_id
-
-    def __repr__(self) -> str:
-        return "{}({} {}:{}, {})".format(
-            self.__class__.__name__,
-            self.id,
-            self.index,
-            self.name,
-            self.session,
+    def refresh(self) -> None:
+        assert isinstance(self.window_id, str)
+        return super()._refresh(
+            obj_key="window_id",
+            obj_id=self.window_id,
+            list_cmd="list-windows",
         )
 
+    @classmethod
+    def from_window_id(cls, server: "Server", window_id: str) -> "Window":
+        window = fetch_obj(
+            obj_key="window_id",
+            obj_id=window_id,
+            server=server,
+            list_cmd="list-windows",
+            list_extra_args=("-a",),
+        )
+        return cls(server=server, **window)
+
     @property
-    def _info(self) -> WindowDict:  # type: ignore  # mypy#1362
-        attrs = {"window_id": self._window_id}
+    def session(self) -> "Session":
+        assert isinstance(self.session_id, str)
+        from libtmux.session import Session
 
-        # from https://github.com/serkanyersen/underscore.py
-        def by(val: WindowDict) -> bool:
-            for key in attrs.keys():
-                try:
-                    if attrs[key] != val[key]:
-                        return False
-                except KeyError:
-                    return False
-            return True
+        return Session.from_session_id(server=self.server, session_id=self.session_id)
 
-        target_windows = [s for s in self.server._windows if by(s)]
-        # If a window_shell option was configured which results in
-        # a short-lived process, the window id is @0.  Use that instead of
-        # self._window_id
-        if len(target_windows) == 0 and self.server._windows[0]["window_id"] == "@0":
-            target_windows = self.server._windows
-        return target_windows[0]
+    @property
+    def panes(self) -> QueryList["Pane"]:  # type: ignore
+        """Panes belonging windows.
 
+        Can be accessed via
+        :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
+        :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
+        """
+        panes: t.List["Pane"] = []
+        for obj in fetch_objs(
+            list_cmd="list-panes",
+            list_extra_args=["-t", str(self.window_id)],
+            server=self.server,
+        ):
+            if obj.get("window_id") == self.window_id:
+                panes.append(Pane(server=self.server, **obj))
+
+        return QueryList(panes)
+
+    #
+    # Command (pane-scoped)
+    #
     def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """Return :meth:`Server.cmd` defaulting ``target_window`` as target.
+        """Return :meth:`Server.cmd` defaulting to ``target_window`` as target.
 
         Send command to tmux with :attr:`window_id` as ``target-window``.
 
         Specifying ``('-t', 'custom-target')`` or ``('-tcustom_target')`` in
         ``args`` will override using the object's ``window_id`` as target.
-
-        Returns
-        -------
-        :class:`Server.cmd`
-
-        Notes
-        -----
-        .. versionchanged:: 0.8
-
-            Renamed from ``.tmux`` to ``.cmd``.
         """
         if not any(arg.startswith("-t") for arg in args):
-            args = ("-t", self.id) + args
+            args = ("-t", self.window_id) + args
 
         return self.server.cmd(cmd, *args, **kwargs)
 
-    def select_layout(self, layout: t.Optional[str] = None) -> None:
+    #
+    # Commands (tmux-like)
+    #
+    def select_pane(self, target_pane: t.Union[str, int]) -> t.Optional["Pane"]:
+        """
+        Return selected :class:`Pane` through ``$ tmux select-pane``.
+
+        Parameters
+        ----------
+        target_pane : str
+            'target_pane', '-U' ,'-D', '-L', '-R', or '-l'.
+
+        Return
+        ------
+        :class:`Pane`
+        """
+
+        if target_pane in ["-l", "-U", "-D", "-L", "-R"]:
+            proc = self.cmd("select-pane", "-t%s" % self.window_id, target_pane)
+        else:
+            proc = self.cmd("select-pane", "-t%s" % target_pane)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self.attached_pane
+
+    def split_window(
+        self,
+        target: t.Optional[t.Union[int, str]] = None,
+        start_directory: t.Optional[str] = None,
+        attach: bool = True,
+        vertical: bool = True,
+        shell: t.Optional[str] = None,
+        percent: t.Optional[int] = None,
+        environment: t.Optional[t.Dict[str, str]] = None,
+    ) -> "Pane":
+        """
+        Split window and return the created :class:`Pane`.
+
+        Used for splitting window and holding in a python object.
+
+        Parameters
+        ----------
+        attach : bool, optional
+            make new window the current window after creating it, default
+            True.
+        start_directory : str, optional
+            specifies the working directory in which the new window is created.
+        target : str
+            ``target_pane`` to split.
+        vertical : str
+            split vertically
+        shell : str, optional
+            execute a command on splitting the window.  The pane will close
+            when the command exits.
+
+            NOTE: When this command exits the pane will close.  This feature
+            is useful for long-running processes where the closing of the
+            window upon completion is desired.
+        percent: int, optional
+            percentage to occupy with respect to current window
+        environment: dict, optional
+            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+
+        Notes
+        -----
+
+        :term:`tmux(1)` will move window to the new pane if the
+        ``split-window`` target is off screen. tmux handles the ``-d`` the
+        same way as ``new-window`` and ``attach`` in
+        :class:`Session.new_window`.
+
+        By default, this will make the window the pane is created in
+        active. To remain on the same window and split the pane in another
+        target window, pass in ``attach=False``.
+        """
+        tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
+
+        # '-t%s' % self.attached_pane.get('pane_id'),
+        # 2013-10-18 LOOK AT THIS, rm'd it..
+        tmux_args: t.Tuple[str, ...] = tuple()
+
+        if target is not None:
+            tmux_args += ("-t%s" % target,)
+        else:
+            if len(self.panes):
+                tmux_args += (
+                    "-t%s:%s.%s"
+                    % (self.session_id, self.window_id, self.panes[0].pane_index),
+                )
+            else:
+                tmux_args += ("-t%s:%s" % (self.session_id, self.window_id),)
+            # tmux_args += ("-t%s" % self.panes[0].pane_id,)
+
+        if vertical:
+            tmux_args += ("-v",)
+        else:
+            tmux_args += ("-h",)
+
+        if percent is not None:
+            tmux_args += ("-p %d" % percent,)
+
+        tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
+
+        if start_directory:
+            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
+            start_directory = os.path.expanduser(start_directory)
+            tmux_args += ("-c%s" % start_directory,)
+
+        if not attach:
+            tmux_args += ("-d",)
+
+        if environment:
+            if has_gte_version("3.0"):
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Cannot set up environment as tmux 3.0 or newer is required."
+                )
+
+        if shell:
+            tmux_args += (shell,)
+
+        pane_cmd = self.cmd("split-window", *tmux_args)
+
+        # tmux < 1.7. This is added in 1.7.
+        if pane_cmd.stderr:
+            if "pane too small" in pane_cmd.stderr:
+                raise exc.LibTmuxException(pane_cmd.stderr)
+
+            raise exc.LibTmuxException(pane_cmd.stderr, self.__dict__, self.panes)
+
+        pane_output = pane_cmd.stdout[0]
+
+        pane_formatters = dict(zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR)))
+
+        return Pane.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
+
+    def last_pane(self) -> t.Optional["Pane"]:
+        """Return last pane."""
+        return self.select_pane("-l")
+
+    def select_layout(self, layout: t.Optional[str] = None) -> "Window":
         """Wrapper for ``$ tmux select-layout <layout>``.
 
         Parameters
@@ -175,7 +313,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
             'custom'
                 custom dimensions (see :term:`tmux(1)` manpages).
         """
-        cmd = ["select-layout", "-t{}:{}".format(self.get("session_id"), self.index)]
+        cmd = ["select-layout", "-t{}:{}".format(self.session_id, self.window_index)]
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
@@ -185,7 +323,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def set_window_option(self, option: str, value: t.Union[int, str]) -> None:
+        return self
+
+    def set_window_option(self, option: str, value: t.Union[int, str]) -> "Window":
         """
         Wrapper for ``$ tmux set-window-option <option> <value>``.
 
@@ -203,7 +343,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
 
-        self.server._update_windows()
+        self.refresh()
 
         if isinstance(value, bool) and value:
             value = "on"
@@ -212,8 +352,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
 
         cmd = self.cmd(
             "set-window-option",
-            "-t{}:{}".format(self.get("session_id"), self.index),
-            # '-t%s' % self.id,
+            "-t{}:{}".format(self.session_id, self.window_index),
             option,
             value,
         )
@@ -221,7 +360,9 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
 
-    def show_window_options(self, g: t.Optional[bool] = False) -> WindowOptionDict:
+        return self
+
+    def show_window_options(self, g: t.Optional[bool] = False) -> "WindowOptionDict":
         """
         Return a dict of options for the window.
 
@@ -236,10 +377,6 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         ----------
         g : str, optional
             Pass ``-g`` flag for global variable, default False.
-
-        Returns
-        -------
-        dict
         """
         tmux_args: t.Tuple[str, ...] = tuple()
 
@@ -255,7 +392,7 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         # retaining quoted sub-strings.
         #   shlex.split('this is "a test"') => ['this', 'is', 'a test']
 
-        window_options: WindowOptionDict = {}
+        window_options: "WindowOptionDict" = {}
         for item in output:
             key, val = shlex.split(item)
             assert isinstance(key, str)
@@ -279,10 +416,6 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         option : str
         g : bool, optional
             Pass ``-g`` flag, global. Default False.
-
-        Returns
-        -------
-        str, int
 
         Raises
         ------
@@ -343,11 +476,11 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
 
         try:
             self.cmd("rename-window", new_name)
-            self["window_name"] = new_name
+            self.window_name = new_name
         except Exception as e:
             logger.error(e)
 
-        self.server._update_windows()
+        self.refresh()
 
         return self
 
@@ -356,18 +489,15 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
 
         proc = self.cmd(
             "kill-window",
-            # '-t:%s' % self.id
-            "-t{}:{}".format(self.get("session_id"), self.index),
+            "-t{}:{}".format(self.session_id, self.window_index),
         )
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        self.server._update_windows()
-
     def move_window(
         self, destination: str = "", session: t.Optional[str] = None
-    ) -> None:
+    ) -> "Window":
         """
         Move the current :class:`Window` object ``$ tmux move-window``.
 
@@ -380,18 +510,26 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
             the ``target session`` or index to move the window to, default:
             current session.
         """
-        session = session or self.get("session_id")
+        session = session or self.session_id
         proc = self.cmd(
             "move-window",
-            "-s{}:{}".format(self.get("session_id"), self.index),
+            "-s{}:{}".format(self.session_id, self.window_index),
             f"-t{session}:{destination}",
         )
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        self.server._update_windows()
+        if destination != "" and session is not None:
+            self.window_index = destination
+        else:
+            self.refresh()
 
+        return self
+
+    #
+    # Climbers
+    #
     def select_window(self) -> "Window":
         """
         Select window. Return ``self``.
@@ -399,205 +537,165 @@ class Window(TmuxMappingObject, TmuxRelationalObject["Pane", "PaneDict"]):
         To select a window object asynchrously. If a ``window`` object exists
         and is no longer longer the current window, ``w.select_window()``
         will make ``w`` the current window.
-
-        Returns
-        -------
-        :class:`Window`
         """
-        return self.session.select_window(self.index)
+        assert isinstance(self.window_index, str)
+        return self.session.select_window(self.window_index)
 
-    def select_pane(self, target_pane: t.Union[str, int]) -> t.Optional[Pane]:
-        """
-        Return selected :class:`Pane` through ``$ tmux select-pane``.
-
-        Parameters
-        ----------
-        target_pane : str
-            'target_pane', '-U' ,'-D', '-L', '-R', or '-l'.
-
-        Return
-        ------
-        :class:`Pane`
-        """
-
-        if target_pane in ["-l", "-U", "-D", "-L", "-R"]:
-            proc = self.cmd("select-pane", "-t%s" % self.id, target_pane)
-        else:
-            proc = self.cmd("select-pane", "-t%s" % target_pane)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-        return self.attached_pane
-
-    def last_pane(self) -> t.Optional[Pane]:
-        """Return last pane."""
-        return self.select_pane("-l")
-
-    def split_window(
-        self,
-        target: t.Optional[t.Union[int, str]] = None,
-        start_directory: t.Optional[str] = None,
-        attach: bool = True,
-        vertical: bool = True,
-        shell: t.Optional[str] = None,
-        percent: t.Optional[int] = None,
-        environment: t.Optional[t.Dict[str, str]] = None,
-    ) -> Pane:
-        """
-        Split window and return the created :class:`Pane`.
-
-        Used for splitting window and holding in a python object.
-
-        Parameters
-        ----------
-        attach : bool, optional
-            make new window the current window after creating it, default
-            True.
-        start_directory : str, optional
-            specifies the working directory in which the new window is created.
-        target : str
-            ``target_pane`` to split.
-        vertical : str
-            split vertically
-        shell : str, optional
-            execute a command on splitting the window.  The pane will close
-            when the command exits.
-
-            NOTE: When this command exits the pane will close.  This feature
-            is useful for long-running processes where the closing of the
-            window upon completion is desired.
-        percent: int, optional
-            percentage to occupy with respect to current window
-        environment: dict, optional
-            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
-
-        Returns
-        -------
-        :class:`Pane`
-
-        Notes
-        -----
-
-        :term:`tmux(1)` will move window to the new pane if the
-        ``split-window`` target is off screen. tmux handles the ``-d`` the
-        same way as ``new-window`` and ``attach`` in
-        :class:`Session.new_window`.
-
-        By default, this will make the window the pane is created in
-        active. To remain on the same window and split the pane in another
-        target window, pass in ``attach=False``.
-        """
-        pformats = [
-            "session_name",
-            "session_id",
-            "window_index",
-            "window_id",
-        ] + formats.PANE_FORMATS
-        tmux_formats = [(f"#{{{f}}}{formats.FORMAT_SEPARATOR}") for f in pformats]
-
-        # '-t%s' % self.attached_pane.get('pane_id'),
-        # 2013-10-18 LOOK AT THIS, rm'd it..
-        tmux_args: t.Tuple[str, ...] = tuple()
-
-        if target:
-            tmux_args += ("-t%s" % target,)
-        else:
-            tmux_args += ("-t%s" % self.panes[0].get("pane_id"),)
-
-        if vertical:
-            tmux_args += ("-v",)
-        else:
-            tmux_args += ("-h",)
-
-        if percent is not None:
-            tmux_args += ("-p %d" % percent,)
-
-        tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
-
-        if start_directory:
-            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
-            start_directory = os.path.expanduser(start_directory)
-            tmux_args += ("-c%s" % start_directory,)
-
-        if not attach:
-            tmux_args += ("-d",)
-
-        if environment:
-            if has_gte_version("3.0"):
-                for k, v in environment.items():
-                    tmux_args += (f"-e{k}={v}",)
-            else:
-                logger.warning(
-                    "Cannot set up environment as tmux 3.0 or newer is required."
-                )
-
-        if shell:
-            tmux_args += (shell,)
-
-        pane_cmd = self.cmd("split-window", *tmux_args)
-
-        # tmux < 1.7. This is added in 1.7.
-        if pane_cmd.stderr:
-            if "pane too small" in pane_cmd.stderr:
-                raise exc.LibTmuxException(pane_cmd.stderr)
-
-            raise exc.LibTmuxException(pane_cmd.stderr, self._info, self.panes)
-
-        pane_output = pane_cmd.stdout[0]
-
-        pane_formatters = dict(
-            zip(pformats, pane_output.split(formats.FORMAT_SEPARATOR))
-        )
-
-        # Prune empty values
-        pane_formatters_filtered = {k: v for k, v in pane_formatters.items() if v}
-
-        return Pane(window=self, **pane_formatters_filtered)
-
+    #
+    # Computed properties
+    #
     @property
-    def attached_pane(self) -> t.Optional[Pane]:
-        """
-        Return the attached :class:`Pane`.
-
-        Returns
-        -------
-        :class:`Pane`
-        """
-        for pane in self._panes:
-            # for now pane_active is a unicode
-            if "pane_active" in pane and pane.get("pane_active") == "1":
-                return Pane(window=self, **pane)
+    def attached_pane(self) -> t.Optional["Pane"]:
+        """Return the attached :class:`Pane`."""
+        for pane in self.panes:
+            if pane.pane_active == "1":
+                return pane
         return None
 
-    def _list_panes(self) -> t.List[PaneDict]:
-        panes = self.server._update_panes()._panes
+    #
+    # Dunder
+    #
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, Window)
+        return self.window_id == other.window_id
 
-        panes = [p for p in panes if p["session_id"] == self.get("session_id")]
-        panes = [p for p in panes if p["window_id"] == self.id]
-        return panes
+    def __repr__(self) -> str:
+        return "{}({} {}:{}, {})".format(
+            self.__class__.__name__,
+            self.window_id,
+            self.window_index,
+            self.window_name,
+            self.session,
+        )
+
+    #
+    # Aliases
+    #
+    @property
+    def id(self) -> t.Optional[str]:
+        """Alias of :attr:`Window.window_id`
+
+        >>> window.id
+        '@1'
+
+        >>> window.id == window.window_id
+        True
+        """
+        return self.window_id
+
+    @property
+    def name(self) -> t.Optional[str]:
+        """Alias of :attr:`Window.window_name`
+
+        >>> window.name
+        '...'
+
+        >>> window.name == window.window_name
+        True
+        """
+        return self.window_name
+
+    @property
+    def index(self) -> t.Optional[str]:
+        """Alias of :attr:`Window.window_index`
+
+        >>> window.index
+        '1'
+
+        >>> window.index == window.window_index
+        True
+        """
+        return self.window_index
+
+    @property
+    def height(self) -> t.Optional[str]:
+        """Alias of :attr:`Window.window_height`
+
+        >>> window.height.isdigit()
+        True
+
+        >>> window.height == window.window_height
+        True
+        """
+        return self.window_height
+
+    @property
+    def width(self) -> t.Optional[str]:
+        """Alias of :attr:`Window.window_width`
+
+        >>> window.width.isdigit()
+        True
+
+        >>> window.width == window.window_width
+        True
+        """
+        return self.window_width
+
+    #
+    # Legacy: Redundant stuff we want to remove
+    #
+    def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Window.get() is deprecated")
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> t.Any:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn(f"Item lookups, e.g. window['{key}'] is deprecated")
+        return getattr(self, key)
+
+    def get_by_id(self, id: str) -> t.Optional[Pane]:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Window.get_by_id() is deprecated")
+        return self.panes.get(pane_id=id, default=None)
+
+    def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Pane]:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Window.where() is deprecated")
+        try:
+            return self.panes.filter(**kwargs)
+        except IndexError:
+            return []
+
+    def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Pane]:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Window.find_where() is deprecated")
+        return self.panes.get(default=None, **kwargs)
+
+    def _list_panes(self) -> t.List[PaneDict]:
+        """
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Window._list_panes() is deprecated")
+        return [pane.__dict__ for pane in self.panes]
 
     @property
     def _panes(self) -> t.List[PaneDict]:
-        """Property / alias to return :meth:`~._list_panes`."""
+        """Property / alias to return :meth:`~._list_panes`.
 
+        .. deprecated:: 0.16
+        """
+        warnings.warn("_panes is deprecated")
         return self._list_panes()
 
-    def list_panes(self) -> t.List[Pane]:
+    def list_panes(self) -> t.List["Pane"]:
+        """Return list of :class:`Pane` for the window.
+
+        .. deprecated:: 0.16
         """
-        Return list of :class:`Pane` for the window.
+        warnings.warn("list_panes() is deprecated")
+        return self.panes
 
-        Returns
-        -------
-        list of :class:`Pane`
-        """
-
-        return [Pane(window=self, **pane) for pane in self._panes]
-
-    @property
-    def panes(self) -> t.List[Pane]:
-        """Property / alias to return :meth:`~.list_panes`."""
-        return self.list_panes()
-
-    #: Alias :attr:`panes` for :class:`~libtmux.common.TmuxRelationalObject`
-    children = panes  # type:ignore  # mypy#1362
+    #: Alias :attr:`panes`, but this wouldn't be needed as its not a
+    #: TmuxRelationalOjbect anymore
+    children = panes

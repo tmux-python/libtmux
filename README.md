@@ -69,14 +69,14 @@ current tmux server / session / window pane.
 List sessions:
 
 ```python
->>> server.list_sessions()
+>>> server.sessions
 [Session($1 ...), Session($0 ...)]
 ```
 
 Find session:
 
 ```python
->>> server.get_by_id('$1')
+>>> server.sessions.filter(session_id='$1')[0]
 Session($1 ...)
 ```
 
@@ -85,7 +85,7 @@ Find session by dict lookup:
 ```python
 >>> server.sessions[0].rename_session('foo')
 Session($1 foo)
->>> server.find_where({ "session_name": "foo" })
+>>> server.sessions.filter(session_name="foo")[0]
 Session($1 foo)
 ```
 
@@ -150,12 +150,14 @@ Type inside the pane (send key strokes):
 
 >>> pane.send_keys('echo hey', enter=False)
 >>> pane.enter()
+Pane(%1 ...)
 ```
 
 Grab the output of pane:
 
 ```python
 >>> pane.clear()  # clear the pane
+Pane(%1 ...)
 >>> pane.send_keys("cowsay 'hello'", enter=True)
 >>> print('\n'.join(pane.cmd('capture-pane', '-p').stdout))  # doctest: +SKIP
 $ cowsay 'hello'

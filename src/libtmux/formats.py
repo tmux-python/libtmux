@@ -19,7 +19,7 @@ SESSION_FORMATS = [
     "session_created",
     "session_created_string",
     "session_attached",
-    "session_grouped",
+    # "session_grouped",  Apparently unused, mistake found while adding dataclasses
     "session_group",
 ]
 
@@ -64,7 +64,7 @@ PANE_FORMATS = [
     "pane_index",
     "pane_width",
     "pane_height",
-    "pane_title",
+    # "pane_title",  # removed in 3.1+
     "pane_id",
     "pane_active",
     "pane_dead",
