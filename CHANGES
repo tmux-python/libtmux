@@ -15,6 +15,7 @@ $ pip install --user --upgrade --pre libtmux
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
 ### Breaking
+
 - Server: Add `__repr__` and set `socket_path` if none set.
 
   Before (0.17 and below):
@@ -71,9 +72,11 @@ $ pip install --user --upgrade --pre libtmux
   - 0.16 and below: `window['id']`
 
     0.17 and after: `window.id`
+
   - 0.16 and below: `window.get('id')`
 
     0.17 and after: `window.id`
+
   - 0.16 and below: `window.get('id', None)`
 
     0.17 and after: `getattr(window, 'id', None)`
@@ -107,7 +110,7 @@ $ pip install --user --upgrade --pre libtmux
   support `tmux(1)` versions like `3.1a`.
 
   Fixes warning:
-  
+
   > DeprecationWarning: distutils Version classes are deprecated. Use
   > packaging.version instead.
 
