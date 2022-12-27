@@ -531,6 +531,9 @@ class Server(EnvironmentMixin):
 
         return QueryList(panes)
 
+    #
+    # Legacy: Redundant stuff we want to remove
+    #
     def _list_panes(self) -> t.List[PaneDict]:
         """
         Return list of panes in :py:obj:`dict` form.
@@ -539,7 +542,10 @@ class Server(EnvironmentMixin):
 
         The :py:obj:`list` is derived from ``stdout`` in
         :class:`util.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
+
+        .. deprecated:: 0.16
         """
+        warnings.warn("Server._list_panes() is deprecated")
         return [p.__dict__ for p in self.panes]
 
     def _update_panes(self) -> "Server":
@@ -549,13 +555,13 @@ class Server(EnvironmentMixin):
         Returns
         -------
         :class:`Server`
+
+        .. deprecated:: 0.16
         """
+        warnings.warn("Server._update_panes() is deprecated")
         self._list_panes()
         return self
 
-    #
-    # Legacy: Redundant stuff we want to remove
-    #
     def get_by_id(self, id: str) -> t.Optional[Session]:
         """
         .. deprecated:: 0.16
