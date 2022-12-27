@@ -630,5 +630,11 @@ class Server(EnvironmentMixin):
         warnings.warn("Server.list_sessions is deprecated")
         return self.sessions
 
-    #: Alias :attr:`sessions` for :class:`~libtmux.common.TmuxRelationalObject`
-    children = sessions
+    @property
+    def children(self) -> QueryList["Session"]:  # type:ignore
+        """Was used by TmuxRelationalObject (but that's longer used in this class)
+
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Server.children is deprecated")
+        return self.sessions

@@ -696,6 +696,11 @@ class Window(Obj):
         warnings.warn("list_panes() is deprecated")
         return self.panes
 
-    #: Alias :attr:`panes`, but this wouldn't be needed as its not a
-    #: TmuxRelationalOjbect anymore
-    children = panes
+    @property
+    def children(self) -> QueryList["Pane"]:  # type:ignore
+        """Was used by TmuxRelationalObject (but that's longer used in this class)
+
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Server.children is deprecated")
+        return self.panes

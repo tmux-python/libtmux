@@ -687,5 +687,11 @@ class Session(Obj, EnvironmentMixin):
         warnings.warn("Session.list_windows() is deprecated")
         return self.windows
 
-    #: Was used by TmuxRelationalObject (but that's longer used in this class)
-    children = windows
+    @property
+    def children(self) -> QueryList["Window"]:  # type:ignore
+        """Was used by TmuxRelationalObject (but that's longer used in this class)
+
+        .. deprecated:: 0.16
+        """
+        warnings.warn("Session.children is deprecated")
+        return self.windows
