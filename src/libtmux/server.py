@@ -500,8 +500,8 @@ class Server(EnvironmentMixin):
         """Windows belonging server.
 
         Can be accessed via
-        :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
-        :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
+        :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
+        :meth:`.windows.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
         windows: t.List["Window"] = []
         for obj in fetch_objs(
@@ -518,8 +518,8 @@ class Server(EnvironmentMixin):
         """Panes belonging server.
 
         Can be accessed via
-        :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
-        :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
+        :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
+        :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
         panes: t.List["Pane"] = []
         for obj in fetch_objs(
