@@ -6,6 +6,7 @@ libtmux.server
 """
 import logging
 import os
+import pathlib
 import shutil
 import subprocess
 import typing as t
@@ -55,7 +56,7 @@ class Server(EnvironmentMixin):
     Examples
     --------
     >>> server
-    <libtmux.server.Server object at ...>
+    Server(socket_name=libtmux_test...)
 
     >>> server.sessions
     [Session($1 ...)]
@@ -99,7 +100,7 @@ class Server(EnvironmentMixin):
     def __init__(
         self,
         socket_name: t.Optional[str] = None,
-        socket_path: t.Optional[str] = None,
+        socket_path: t.Optional[t.Union[str, pathlib.Path]] = None,
         config_file: t.Optional[str] = None,
         colors: t.Optional[int] = None,
         **kwargs: t.Any,
@@ -108,11 +109,19 @@ class Server(EnvironmentMixin):
         self._windows: t.List[WindowDict] = []
         self._panes: t.List[PaneDict] = []
 
-        if socket_name:
+        if socket_path is not None:
+            self.socket_path = socket_path
+        elif socket_name is not None:
             self.socket_name = socket_name
 
-        if socket_path:
-            self.socket_path = socket_path
+        tmux_tmpdir = pathlib.Path(os.getenv("TMUX_TMPDIR", "/tmp"))
+        socket_name = self.socket_name or "default"
+        if (
+            tmux_tmpdir is not None
+            and self.socket_path is None
+            and self.socket_name is None
+        ):
+            self.socket_path = str(tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name)
 
         if config_file:
             self.config_file = config_file
@@ -530,6 +539,26 @@ class Server(EnvironmentMixin):
             panes.append(Pane(server=self, **obj))
 
         return QueryList(panes)
+
+    #
+    # Dunder
+    #
+    def __eq__(self, other: object) -> bool:
+        assert isinstance(other, Server)
+        return (
+            self.socket_name == other.socket_name
+            and self.socket_path == other.socket_path
+        )
+
+    def __repr__(self) -> str:
+        if self.socket_name is not None:
+            return (
+                f"{self.__class__.__name__}"
+                f"(socket_name={getattr(self, 'socket_name')})"
+            )
+        return (
+            f"{self.__class__.__name__}" f"(socket_path={getattr(self, 'socket_path')})"
+        )
 
     #
     # Legacy: Redundant stuff we want to remove
