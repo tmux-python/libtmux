@@ -73,10 +73,17 @@ List sessions:
 [Session($1 ...), Session($0 ...)]
 ```
 
-Find session:
+Filter sessions by attribute:
 
 ```python
->>> server.sessions.filter(session_id='$1')[0]
+>>> server.sessions.filter(history_limit='2000')
+[Session($1 ...), Session($0 ...)]
+```
+
+Direct lookup:
+
+```python
+>>> server.sessions.get(session_id="$1")
 Session($1 ...)
 ```
 
