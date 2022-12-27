@@ -14,9 +14,9 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
-## libtmux 0.17.2 (unreleased)
+## libtmux 0.17.2 (2022-12-27)
 
-- Server: Move _list_panes and _update_panes to deprecated
+- Server: Move `_list_panes` and `_update_panes` to deprecated
 
 ## libtmux 0.17.1 (2022-12-27)
 
