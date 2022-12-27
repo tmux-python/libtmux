@@ -14,7 +14,7 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
-### Breaking changes
+### Breaking changes (#426)
 
 - Finding objects / relations
 
