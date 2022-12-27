@@ -34,7 +34,7 @@ Attach default tmux {class}`~libtmux.Server` to `t`:
 >>> import libtmux
 >>> t = libtmux.Server();
 >>> t
-<libtmux.server.Server object at ...>
+Server(socket_path=/tmp/tmux-.../default)
 ```
 
 Get first session {class}`~libtmux.Session` to `session`:
@@ -96,7 +96,7 @@ Access the window/server of a pane:
 Window(@1 ...:..., Session($1 ...))
 
 >>> p.server
-<libtmux.server.Server object at ...>
+Server(socket_name=libtmux_test...)
 ```
 
 [target]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS

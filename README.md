@@ -55,7 +55,7 @@ Connect to a live tmux session:
 >>> import libtmux
 >>> s = libtmux.Server()
 >>> s
-<libtmux.server.Server object at ...>
+Server(socket_path=/tmp/tmux-.../default)
 ```
 
 Tip: You can also use [tmuxp]'s [`tmuxp shell`] to drop straight into your

@@ -98,7 +98,7 @@ First, we can grab a {class}`Server`.
 >>> import libtmux
 >>> server = libtmux.Server()
 >>> server
-<libtmux.server.Server object at ...>
+Server(socket_path=/tmp/tmux-.../default)
 ```
 
 :::{tip}
