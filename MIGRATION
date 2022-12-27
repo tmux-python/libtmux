@@ -19,7 +19,13 @@ well.
    [tracker]: https://github.com/tmux-python/libtmux/discussions
 ```
 
-## 0.17.x: Simplified attributes
+## Next release
+
+_Migration instructions for the upcoming release will be added here_
+
+<!-- Maintainers and contributors: insert migration notes for the next release here -->
+
+## 0.17.0: Simplified attributes (2022-12-26)
 
 ### Finding objects / relations
 
@@ -33,8 +39,6 @@ well.
 
   - If not found and not `default`, raises {exc}`~libtmux._internal.query_list.ObjectDoesNotExist`
   - If multiple objects found, raises {exc}`~libtmux._internal.query_list.MultipleObjectsReturned`
-
-
 
 - 0.16 and below: `session.where({'window_name': my_window})`
 
@@ -51,12 +55,6 @@ well.
 - 0.16 and below: `window.get('id', None)`
 
   0.17 and after: `getattr(window, 'id', None)`
-
-## Next release
-
-_Migration instructions for the upcoming release will be added here_
-
-<!-- Maintainers and contributors: insert migration notes for the next release here -->
 
 <!---
 # vim: set filetype=markdown:
