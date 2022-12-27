@@ -39,7 +39,7 @@ class Server(EnvironmentMixin):
 
       - :attr:`Session.windows` [:class:`Window`, ...]
 
-        - :attr:`Window._panes` [:class:`Pane`, ...]
+        - :attr:`Window.panes` [:class:`Pane`, ...]
 
           - :class:`Pane`
 
