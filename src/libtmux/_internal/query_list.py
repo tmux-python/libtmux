@@ -368,11 +368,11 @@ class QueryList(List[T]):
         default: Optional[Any] = no_arg,
         **kwargs: Any,
     ) -> Optional[T]:
-        """Retrieve one object
+        """Retrieve one object.
 
-        Raises exception if multiple objects found.
+        Raises :exc:`MultipleObjectsReturned` if multiple objects found.
 
-        Raises exception if no object found, unless ``default``
+        Raises :exc:`ObjectDoesNotExist` if no object found, unless ``default`` stated.
         """
         objs = self.filter(matcher=matcher, **kwargs)
         if len(objs) > 1:
