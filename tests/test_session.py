@@ -219,9 +219,18 @@ def test_unset_environment(session: Session) -> None:
     assert session.getenv("BAM") is None
 
 
+class PeriodRaisesBadSessionName(t.NamedTuple):
+    session_name: str
+    raises: bool
+
+
 @pytest.mark.parametrize(
-    "session_name,raises",
-    [("hey.period", True), ("hey:its a colon", True), ("hey moo", False)],
+    PeriodRaisesBadSessionName._fields,
+    [
+        PeriodRaisesBadSessionName("hey.period", True),
+        PeriodRaisesBadSessionName("hey:its a colon", True),
+        PeriodRaisesBadSessionName("hey moo", False),
+    ],
 )
 def test_periods_raise_badsessionname(
     server: Server, session: Session, session_name: str, raises: bool

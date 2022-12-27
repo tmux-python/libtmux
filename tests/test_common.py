@@ -3,7 +3,6 @@
 import re
 import sys
 import typing as t
-from typing import Optional
 
 import pytest
 
@@ -181,19 +180,25 @@ def test_tmux_cmd_unicode(session: Session) -> None:
     session.cmd("new-window", "-t", 3, "-n", "юникод", "-F", "Ελληνικά")
 
 
+class SessionCheckName(t.NamedTuple):
+    session_name: t.Optional[str]
+    raises: bool
+    exc_msg_regex: t.Optional[str]
+
+
 @pytest.mark.parametrize(
-    "session_name,raises,exc_msg_regex",
+    SessionCheckName._fields,
     [
-        ("", True, "may not be empty"),
-        (None, True, "may not be empty"),
-        ("my great session.", True, "may not contain periods"),
-        ("name: great session", True, "may not contain colons"),
-        ("new great session", False, None),
-        ("ajf8a3fa83fads,,,a", False, None),
+        SessionCheckName("", True, "may not be empty"),
+        SessionCheckName(None, True, "may not be empty"),
+        SessionCheckName("my great session.", True, "may not contain periods"),
+        SessionCheckName("name: great session", True, "may not contain colons"),
+        SessionCheckName("new great session", False, None),
+        SessionCheckName("ajf8a3fa83fads,,,a", False, None),
     ],
 )
 def test_session_check_name(
-    session_name: Optional[str], raises: bool, exc_msg_regex: Optional[str]
+    session_name: t.Optional[str], raises: bool, exc_msg_regex: t.Optional[str]
 ) -> None:
     if raises:
         with pytest.raises(BadSessionName) as exc_info:
