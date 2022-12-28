@@ -92,7 +92,6 @@ class Pane(Obj):
     #
     # Relations
     #
-
     @property
     def window(self) -> "Window":
         assert isinstance(self.window_id, str)
