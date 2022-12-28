@@ -17,6 +17,7 @@ $ pip install --user --upgrade --pre libtmux
 ### Fixes
 
 - Window.panes: Fix docstring
+- Remove unused code documentation
 
 ## libtmux 0.18.0 (2022-12-27)
 
