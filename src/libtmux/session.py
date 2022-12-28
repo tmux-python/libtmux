@@ -114,6 +114,12 @@ class Session(Obj, EnvironmentMixin):
 
     @property
     def panes(self) -> QueryList["Pane"]:  # type:ignore
+        """Panes belonging session.
+
+        Can be accessed via
+        :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
+        :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
+        """
         panes: t.List["Pane"] = []
         for obj in fetch_objs(
             list_cmd="list-panes",
