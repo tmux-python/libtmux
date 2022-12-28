@@ -34,42 +34,8 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Dataclasses define the schema in a typed annotation way.
-#
-# Users load through YAML, JSON, TOML, or any sort of data entry, these are parsed
-# into dataclasses. Bi-directionals.
-#
-# This means the "intermediary language" is actually a first class, typed, declarative
-# python syntax. It's so first class, it's used in tests, exposed as an experimental API
-# with full intention for users to bootstrap sessions fast.
-#
-# Pitfalls: Lock / pin your versions. APIs may change. It's a Public API - but
-# considered experimental in the sense we .
-#
-# The good news is, since it's typed, you will be able to refactor quickly. In fact,
-# it's easier to factor these than a config where there's no safety.
-#
-# Session.build_workspace(
-#     windows=[
-#         Window(
-#             panes=[
-#                 panes=[]
-#             ]
-#
-#         )
-#     ],
-#     settings=WorkspaceBuilderSettings(
-#         backend='libtmux.ext.workspace_builder.backends.default'
-#     )
-# )
-# WorkspaceBuilder:
-#     backend = 'libtmux.ext.workspace_builder.backends.default'
-#
-
-
 @dataclasses.dataclass()
 class Session(Obj, EnvironmentMixin):
-
     """
     A :term:`tmux(1)` :term:`Session` [session_manual]_.
 
