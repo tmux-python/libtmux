@@ -120,6 +120,7 @@ class Server(EnvironmentMixin):
             tmux_tmpdir is not None
             and self.socket_path is None
             and self.socket_name is None
+            and socket_name != "default"
         ):
             self.socket_path = str(tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name)
 
@@ -554,11 +555,14 @@ class Server(EnvironmentMixin):
         if self.socket_name is not None:
             return (
                 f"{self.__class__.__name__}"
-                f"(socket_name={getattr(self, 'socket_name')})"
+                f"(socket_name={getattr(self, 'socket_name', 'default')})"
             )
-        return (
-            f"{self.__class__.__name__}" f"(socket_path={getattr(self, 'socket_path')})"
-        )
+        elif self.socket_path is not None:
+            return (
+                f"{self.__class__.__name__}"
+                f"(socket_path={getattr(self, 'socket_path')})"
+            )
+        return f"{self.__class__.__name__}" f"(socket_path=/tmp/tmux-1000/default)"
 
     #
     # Legacy: Redundant stuff we want to remove
