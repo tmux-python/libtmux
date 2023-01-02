@@ -155,13 +155,42 @@ class Pane(Obj):
         self.refresh()
         return self
 
-    def capture_pane(self) -> t.Union[str, t.List[str]]:
+    def capture_pane(
+        self,
+        start: t.Union["Literal['-']", t.Optional[int]] = None,
+        end: t.Union["Literal['-']", t.Optional[int]] = None,
+    ) -> t.Union[str, t.List[str]]:
         """
         Capture text from pane.
 
         ``$ tmux capture-pane`` to pane.
+        ``$ tmux capture-pane -S -10`` to pane.
+        ``$ tmux capture-pane`-E 3` to pane.
+        ``$ tmux capture-pane`-S - -E -` to pane.
+
+        Parameters
+        ----------
+        start: [str,int]
+            Specify the starting line number.
+            Zero is the first line of the visible pane.
+            Positive numbers are lines in the visible pane.
+            Negative numbers are lines in the history.
+            ‘-’ is the start of the history.
+            Default: None
+        end: [str,int]
+            Specify the ending line number.
+            Zero is the first line of the visible pane.
+            Positive numbers are lines in the visible pane.
+            Negative numbers are lines in the history.
+            ‘-’ is the end of the visible pane
+            Default: None
         """
-        return self.cmd("capture-pane", "-p").stdout
+        cmd = ["capture-pane", "-p"]
+        if start is not None:
+            cmd.extend(["-S", str(start)])
+        if end is not None:
+            cmd.extend(["-E", str(end)])
+        return self.cmd(*cmd).stdout
 
     def send_keys(
         self,
