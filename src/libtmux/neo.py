@@ -3,6 +3,7 @@ import logging
 import typing as t
 
 from libtmux import exc
+from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.common import tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR
 
@@ -238,6 +239,12 @@ def fetch_obj(
     for _obj in obj_formatters_filtered:
         if _obj.get(obj_key) == obj_id:
             obj = _obj
+
+    if obj is None:
+        raise ObjectDoesNotExist(
+            f"Could not find {obj_key}={obj_id} for {list_cmd} "
+            f'{list_extra_args if list_extra_args is not None else ""}'
+        )
 
     assert obj is not None
 

@@ -7,6 +7,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.common import has_gte_version, has_lt_version
 from libtmux.pane import Pane
 from libtmux.server import Server
@@ -205,7 +206,7 @@ def test_kill_window(session: Session) -> None:
     w.window_id
 
     w.kill_window()
-    with pytest.raises(AssertionError):  # TODO: Replace this will an object not found
+    with pytest.raises(ObjectDoesNotExist):
         w.refresh()
 
 
