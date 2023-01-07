@@ -342,9 +342,6 @@ class Window(Obj):
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
-
-        self.refresh()
-
         if isinstance(value, bool) and value:
             value = "on"
         elif isinstance(value, bool) and not value:
