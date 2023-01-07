@@ -90,3 +90,52 @@ def test_capture_pane(session: Session) -> None:
     assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
         "\n\nHello World !\n$"
     )
+
+
+def test_capture_pane_start(session: Session) -> None:
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    session.new_window(
+        attach=True,
+        window_name="capture_pane_start",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = session.attached_window.attached_pane
+    assert pane is not None
+    pane_contents = "\n".join(pane.capture_pane())
+    assert pane_contents == "$"
+    pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
+    pane_contents = "\n".join(pane.capture_pane())
+    assert pane_contents == '$ printf "%s"\n$'
+    pane.send_keys("clear -x", literal=True, suppress_history=False)
+    pane_contents = "\n".join(pane.capture_pane())
+    assert pane_contents == "$"
+    pane_contents_start = pane.capture_pane(start=-2)
+    assert pane_contents_start[0] == '$ printf "%s"'
+    assert pane_contents_start[1] == "$ clear -x"
+    assert pane_contents_start[-1] == "$"
+    pane_contents_start = pane.capture_pane(start="-")
+    assert pane_contents == "$"
+
+
+def test_capture_pane_end(session: Session) -> None:
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    session.new_window(
+        attach=True,
+        window_name="capture_pane_end",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = session.attached_window.attached_pane
+    assert pane is not None
+    pane_contents = "\n".join(pane.capture_pane())
+    assert pane_contents == "$"
+    pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
+    pane_contents = "\n".join(pane.capture_pane())
+    assert pane_contents == '$ printf "%s"\n$'
+    pane_contents = "\n".join(pane.capture_pane(end=0))
+    assert pane_contents == '$ printf "%s"'
+    pane_contents = "\n".join(pane.capture_pane(end="-"))
+    assert pane_contents == '$ printf "%s"\n$'
