@@ -351,6 +351,8 @@ class Server(EnvironmentMixin):
         start_directory: t.Optional[str] = None,
         window_name: t.Optional[str] = None,
         window_command: t.Optional[str] = None,
+        window_width: t.Optional[int] = None,
+        window_height: t.Optional[int] = None,
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Session:
@@ -388,11 +390,17 @@ class Server(EnvironmentMixin):
             ::
 
                 $ tmux new-session -n <window_name>
-        window_command : str
+        window_command : str, optional
             execute a command on starting the session.  The window will close
             when the command exits. NOTE: When this command exits the window
             will close.  This feature is useful for long-running processes
             where the closing of the window upon completion is desired.
+        window_width : int, optional
+            Force the specified width instead of the tmux default for a
+            dettached session
+        window_height : int, optional
+            Force the specified height instead of the tmux default for a
+            dettached session
 
         Returns
         -------
@@ -455,10 +463,11 @@ class Server(EnvironmentMixin):
         if window_name:
             tmux_args += ("-n", window_name)
 
-        # tmux 2.6 gives unattached sessions a tiny default area
-        # no need send in -x/-y if they're in a client already, though
-        if has_gte_version("2.6") and "TMUX" not in os.environ:
-            tmux_args += ("-x", 800, "-y", 600)
+        if window_width is not None:
+            tmux_args += ("-x", window_width)
+
+        if window_height is not None:
+            tmux_args += ("-y", window_height)
 
         if window_command:
             tmux_args += (window_command,)
