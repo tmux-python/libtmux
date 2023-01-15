@@ -3,7 +3,7 @@ import logging
 
 import pytest
 
-from libtmux.common import has_gte_version
+from libtmux.common import has_gte_version, has_version
 from libtmux.server import Server
 from libtmux.session import Session
 
@@ -125,6 +125,23 @@ def test_new_session_shell(server: Server) -> None:
         assert pane_start_command.replace('"', "") == cmd
     else:
         assert pane_start_command == cmd
+
+
+@pytest.mark.skipif(has_version("3.2"), reason="Wrong width returned with 3.2")
+def test_new_session_width_height(server: Server) -> None:
+    """Server.new_session creates and returns valid session running with
+    specified width /height"""
+    cmd = "/usr/bin/env PS1='$ ' sh"
+    mysession = server.new_session(
+        "test_new_session_width_height",
+        window_command=cmd,
+        x=32,
+        y=32,
+    )
+    window = mysession.windows[0]
+    pane = window.panes[0]
+    assert pane.display_message("#{window_width}", get_text=True)[0] == "32"
+    assert pane.display_message("#{window_height}", get_text=True)[0] == "32"
 
 
 def test_no_server_sessions() -> None:
