@@ -29,6 +29,11 @@ from .common import (
     session_check_name,
 )
 
+if t.TYPE_CHECKING:
+    from typing_extensions import Literal, TypeAlias
+
+    DashLiteral: TypeAlias = Literal["-"]
+
 logger = logging.getLogger(__name__)
 
 
@@ -351,8 +356,8 @@ class Server(EnvironmentMixin):
         start_directory: t.Optional[str] = None,
         window_name: t.Optional[str] = None,
         window_command: t.Optional[str] = None,
-        x: t.Optional[int] = None,
-        y: t.Optional[int] = None,
+        x: t.Optional[t.Union[int, "DashLiteral"]] = None,
+        y: t.Optional[t.Union[int, "DashLiteral"]] = None,
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Session:
@@ -395,10 +400,10 @@ class Server(EnvironmentMixin):
             when the command exits. NOTE: When this command exits the window
             will close.  This feature is useful for long-running processes
             where the closing of the window upon completion is desired.
-        x : int, optional
+        x : [int, str], optional
             Force the specified width instead of the tmux default for a
             dettached session
-        y : int, optional
+        y : [int, str], optional
             Force the specified height instead of the tmux default for a
             dettached session
 
