@@ -351,8 +351,8 @@ class Server(EnvironmentMixin):
         start_directory: t.Optional[str] = None,
         window_name: t.Optional[str] = None,
         window_command: t.Optional[str] = None,
-        window_width: t.Optional[int] = None,
-        window_height: t.Optional[int] = None,
+        x: t.Optional[int] = None,
+        y: t.Optional[int] = None,
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Session:
@@ -395,10 +395,10 @@ class Server(EnvironmentMixin):
             when the command exits. NOTE: When this command exits the window
             will close.  This feature is useful for long-running processes
             where the closing of the window upon completion is desired.
-        window_width : int, optional
+        x : int, optional
             Force the specified width instead of the tmux default for a
             dettached session
-        window_height : int, optional
+        y : int, optional
             Force the specified height instead of the tmux default for a
             dettached session
 
@@ -463,11 +463,11 @@ class Server(EnvironmentMixin):
         if window_name:
             tmux_args += ("-n", window_name)
 
-        if window_width is not None:
-            tmux_args += ("-x", window_width)
+        if x is not None:
+            tmux_args += ("-x", x)
 
-        if window_height is not None:
-            tmux_args += ("-y", window_height)
+        if y is not None:
+            tmux_args += ("-y", y)
 
         if window_command:
             tmux_args += (window_command,)

@@ -127,10 +127,7 @@ def test_new_session_shell(server: Server) -> None:
         assert pane_start_command == cmd
 
 
-@pytest.mark.skipif(
-    has_version("3.2"),
-    reason="Wrong width returned with 3.2"
-)
+@pytest.mark.skipif(has_version("3.2"), reason="Wrong width returned with 3.2")
 def test_new_session_width_height(server: Server) -> None:
     """Server.new_session creates and returns valid session running with
     specified width /height"""
@@ -138,8 +135,8 @@ def test_new_session_width_height(server: Server) -> None:
     mysession = server.new_session(
         "test_new_session_width_height",
         window_command=cmd,
-        window_width=32,
-        window_height=32,
+        x=32,
+        y=32,
     )
     window = mysession.windows[0]
     pane = window.panes[0]

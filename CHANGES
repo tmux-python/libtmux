@@ -14,7 +14,9 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
-- Server.new_session: Accept `window_height` and `window_width`, thanks
+### What's new
+
+- Server.new_session: Accept `x` and `y`, thanks
   @rockandska (#469)
 
 ## libtmux 0.19.1 (2022-01-07)
