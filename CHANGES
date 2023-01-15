@@ -18,6 +18,8 @@ $ pip install --user --upgrade --pre libtmux
 
 - Server.new_session: Accept `x` and `y`, thanks
   @rockandska (#469)
+- New test fixture: `session_params`. The dict is used direclty in the `session`
+  pytest fixture (#470)
 
 ## libtmux 0.19.1 (2022-01-07)
 

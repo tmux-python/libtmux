@@ -144,7 +144,47 @@ def server(
 
 
 @pytest.fixture(scope="function")
-def session(request: pytest.FixtureRequest, server: Server) -> "Session":
+def session_params() -> t.Dict[str, t.Any]:
+    """Returns a new, temporary :class:`libtmux.Session`
+
+    >>> import pytest
+    >>> from libtmux.session import Session
+
+    >>> @pytest.fixture
+    ... def session_params(session_params):
+    ...     return {
+    ...         'x': 800,
+    ...         'y': 600,
+    ...     }
+
+    >>> def test_example(session: "Session") -> None:
+    ...     assert isinstance(session.name, str)
+    ...     assert session.name.startswith('libtmux_')
+    ...     window = session.new_window(window_name='new one')
+    ...     assert window.name == 'new one'
+
+    .. ::
+        >>> locals().keys()
+        dict_keys(...)
+
+        >>> source = ''.join([e.source for e in request._pyfuncitem.dtest.examples][:4])
+        >>> pytester = request.getfixturevalue('pytester')
+
+        >>> pytester.makepyfile(**{'whatever.py': source})
+        PosixPath(...)
+
+        >>> result = pytester.runpytest('whatever.py', '--disable-warnings')
+        ===...
+
+        >>> result.assert_outcomes(passed=1)
+    """
+    return {}
+
+
+@pytest.fixture(scope="function")
+def session(
+    request: pytest.FixtureRequest, session_params: t.Dict[str, t.Any], server: Server
+) -> "Session":
     """Returns a new, temporary :class:`libtmux.Session`
 
     >>> from libtmux.session import Session
@@ -185,7 +225,7 @@ def session(request: pytest.FixtureRequest, server: Server) -> "Session":
     TEST_SESSION_NAME = get_test_session_name(server=server)
 
     try:
-        session = server.new_session(session_name=TEST_SESSION_NAME)
+        session = server.new_session(session_name=TEST_SESSION_NAME, **session_params)
     except exc.LibTmuxException as e:
         raise e
 

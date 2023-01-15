@@ -69,6 +69,30 @@ options:
 
 You could also read the code and override {func}`server fixtures <libtmux.pytest_plugin.server>`'s in your own doctest. doctest.
 
+(custom_session_params)=
+
+### Custom session parameters
+
+You can override `session_params` to custom the `session` fixture. The
+dictionary will directly pass into :meth:`Server.new_sesion` keyword arguments.
+
+```python
+import pytest
+
+@pytest.fixture
+def session_params():
+    return {
+        'x': 800,
+        'y': 600
+    }
+
+
+def test_something(session):
+    assert session
+```
+
+The above will assure the libtmux session launches with `-x 800 -y 600`.
+
 (set_home)=
 
 ### Setting a temporary home directory
