@@ -42,7 +42,8 @@ class Obj:
     # See QUIRK_TMUX_3_1_X_0001
     # buffer_created: t.Union[str, None] = None
     buffer_name: t.Union[str, None] = None
-    buffer_sample: t.Union[str, None] = None
+    # buffer_sample may contains TMUX_FORMAT_SEPARATOR that breaks parsing
+    # buffer_sample: t.Union[str, None] = None
     buffer_size: t.Union[str, None] = None
     # See QUIRK_TMUX_3_1_X_0001
     # client_activity: t.Union[str, None] = None
