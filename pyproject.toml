@@ -86,9 +86,6 @@ flake8-bugbear = "*"
 flake8-comprehensions = "*"
 mypy = "*"
 
-### Quirks ###
-importlib-metadata = "<5"  # https://github.com/PyCQA/flake8/issues/1701
-
 [tool.poetry.extras]
 docs = [
   "docutils",
