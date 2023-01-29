@@ -14,6 +14,13 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### Breaking internal change
+
+- Default format separator (`LIBTMUX_TMUX_FORMAT_SEPARATOR`): `|` -> `␞` (#475,
+  in re: #471, #472)
+
+  Fixes `buffer_sample` with pipes causing `fetch_objs()`-powered listings to fail unexpectedly.
+
 ## libtmux 0.20.0 (2023-01-15)
 
 ### What's new
