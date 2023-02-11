@@ -56,7 +56,7 @@ gp-libs = "~0.0.1a17"
 sphinx-autobuild = "*"
 sphinx-autodoc-typehints = "*"
 sphinx-inline-tabs = { version = "*", python = "^3.7" }
-sphinxext-opengraph = "*"
+sphinxext-opengraph = "<0.8"  # https://github.com/wpilibsuite/sphinxext-opengraph/issues/100
 sphinx-copybutton = "*"
 sphinxext-rediraffe = "*"
 myst_parser = ">=0.18.1"
