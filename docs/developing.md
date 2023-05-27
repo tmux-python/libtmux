@@ -11,7 +11,7 @@ $ cd libtmux
 ```
 
 ```console
-$ poetry install -E "docs test coverage lint format"
+$ poetry install -E "docs test coverage lint ruff"
 ```
 
 Makefile commands prefixed with `watch_` will watch files and rerun.
@@ -61,25 +61,22 @@ and `setup.cfg`:
 
 ## Linting
 
-[flake8] and [mypy] run via CI in our GitHub Actions. See the configuration in `pyproject.toml` and
-`setup.cfg`.
+### ruff
 
-### flake8
-
-[flake8] provides fast, reliable, barebones styling and linting.
+The project uses [ruff] to handles formatting, sorting imports and linting.
 
 ````{tab} Command
 
 poetry:
 
 ```console
-$ poetry run flake8
+$ poetry run ruff
 ```
 
 If you setup manually:
 
 ```console
-$ flake8
+$ ruff .
 ```
 
 ````
@@ -87,7 +84,7 @@ $ flake8
 ````{tab} make
 
 ```console
-$ make flake8
+$ make ruff
 ```
 
 ````
@@ -95,25 +92,30 @@ $ make flake8
 ````{tab} Watch
 
 ```console
-$ make watch_flake8
+$ make watch_ruff
 ```
 
 requires [`entr(1)`].
 
 ````
 
-````{tab} Configuration
+````{tab} Fix files
 
-See `[flake8]` in setup.cfg.
+poetry:
 
-```{literalinclude} ../setup.cfg
-:language: ini
-:start-at: "[flake8]"
-:end-before: "[isort]"
+```console
+$ poetry run ruff . --fix
+```
 
+If you setup manually:
+
+```console
+$ ruff . --fix
 ```
 
 ````
+
+
 
 ### mypy
 
@@ -213,7 +215,5 @@ Update `__version__` in `__about__.py` and `pyproject.toml`::
 [poetry]: https://python-poetry.org/
 [entr(1)]: http://eradman.com/entrproject/
 [`entr(1)`]: http://eradman.com/entrproject/
-[black]: https://github.com/psf/black
-[isort]: https://pypi.org/project/isort/
-[flake8]: https://flake8.pycqa.org/
+[ruff]: https://ruff.rs
 [mypy]: http://mypy-lang.org/

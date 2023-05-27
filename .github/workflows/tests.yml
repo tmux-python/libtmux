@@ -50,9 +50,9 @@ jobs:
         run: |
           poetry install -E "test coverage lint"
 
-      - name: Lint with flake8
+      - name: Lint with ruff
         run: |
-          poetry run flake8
+          poetry run ruff .
 
       - name: Lint with mypy
         run: poetry run mypy .

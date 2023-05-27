@@ -48,7 +48,8 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 [tool.poetry.dependencies]
 python = "^3.7"
 
-[tool.poetry.dev-dependencies]
+
+[tool.poetry.group.dev.dependencies]
 ### Docs ###
 sphinx = "*"
 furo = "*"
@@ -74,20 +75,8 @@ coverage = "*"
 pytest-cov = "*"
 
 ### Format ###
-black = "*"
-isort = "*"
-
-### Lint ###
-flake8 = [
-  { version = "*", python = "^3.7" },
-  { version = ">=5", python = "^3.8" },
-]
-flake8-bugbear = "*"
-flake8-comprehensions = "*"
+ruff = "*"
 mypy = "*"
-
-### Quirks ###
-importlib-metadata = "<5"  # https://github.com/PyCQA/flake8/issues/1701
 
 [tool.poetry.extras]
 docs = [
@@ -105,8 +94,7 @@ docs = [
 ]
 test = ["pytest", "pytest-rerunfailures", "pytest-mock", "pytest-watcher"]
 coverage = ["codecov", "coverage", "pytest-cov"]
-format = ["black", "isort"]
-lint = ["flake8", "flake8-bugbear", "flake8-comprehensions", "mypy"]
+lint = ["ruff", "mypy"]
 
 [tool.poetry.plugins.pytest11]
 libtmux = "libtmux.pytest_plugin"
