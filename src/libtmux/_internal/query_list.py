@@ -285,8 +285,6 @@ class QueryList(List[T]):
     pk_key: Optional[str]
 
     def items(self) -> List[T]:
-        data: "Sequence[T]"
-
         if self.pk_key is None:
             raise Exception("items() require a pk_key exists")
         return [(getattr(item, self.pk_key), item) for item in self]
