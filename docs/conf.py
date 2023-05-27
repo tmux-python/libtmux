@@ -3,10 +3,13 @@ import inspect
 import sys
 from os.path import dirname, relpath
 from pathlib import Path
-from typing import Dict, List, Union
+import typing as t
 
 import libtmux  # NOQA
 from libtmux import test  # NOQA
+
+if t.TYPE_CHECKING:
+    from sphinx.application import Sphinx
 
 # Get the project root dir, which is the parent dir of this
 cwd = Path(__file__).parent
@@ -17,7 +20,7 @@ sys.path.insert(0, str(project_src))
 sys.path.insert(0, str(cwd / "_ext"))
 
 # package data
-about: Dict[str, str] = {}
+about: t.Dict[str, str] = {}
 with open(project_src / "libtmux" / "__about__.py") as fp:
     exec(fp.read(), about)
 
@@ -65,8 +68,8 @@ html_static_path = ["_static"]
 html_css_files = ["css/custom.css"]
 html_extra_path = ["manifest.json"]
 html_theme = "furo"
-html_theme_path: List[str] = []
-html_theme_options: Dict[str, Union[str, List[Dict[str, str]]]] = {
+html_theme_path: t.List[str] = []
+html_theme_options: t.Dict[str, t.Union[str, t.List[t.Dict[str, str]]]] = {
     "light_logo": "img/libtmux.svg",
     "dark_logo": "img/libtmux.svg",
     "footer_icons": [
@@ -163,8 +166,8 @@ intersphinx_mapping = {
 
 
 def linkcode_resolve(
-    domain: str, info: Dict[str, str]
-) -> Union[None, str]:  # NOQA: C901
+    domain: str, info: t.Dict[str, str]
+) -> t.Union[None, str]:  # NOQA: C901
     """
     Determine the URL corresponding to Python object
 
@@ -236,3 +239,14 @@ def linkcode_resolve(
             fn,
             linespec,
         )
+
+
+def remove_tabs_js(app: "Sphinx", exc: Exception) -> None:
+    # Fix for sphinx-inline-tabs#18
+    if app.builder.format == "html" and not exc:
+        tabs_js = Path(app.builder.outdir) / "_static" / "tabs.js"
+        tabs_js.unlink()
+
+
+def setup(app: "Sphinx") -> None:
+    app.connect("build-finished", remove_tabs_js)
