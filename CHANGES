@@ -14,6 +14,19 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+_Maintenance only, no bug fixes or features_
+
+### Internal improvements
+
+- Move formatting, import sorting, and linting to [ruff].
+
+  This rust-based checker has dramatically improved performance. Linting and
+  formatting can be done almost instantly.
+
+  This change replaces black, isort, flake8 and flake8 plugins.
+
+[ruff]: https://ruff.rs
+
 ## libtmux 0.21.1 (2023-04-07)
 
 ### Development
