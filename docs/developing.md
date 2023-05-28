@@ -11,7 +11,7 @@ $ cd libtmux
 ```
 
 ```console
-$ poetry install -E "docs test coverage lint ruff"
+$ poetry install -E "docs test coverage lint"
 ```
 
 Makefile commands prefixed with `watch_` will watch files and rerun.
