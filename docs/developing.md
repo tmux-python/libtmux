@@ -52,13 +52,6 @@ Rebuild docs on file change: `make watch_docs` (requires [entr(1)])
 Rebuild docs and run server via one terminal: `make dev_docs` (requires above, and a `make(1)` with
 `-J` support, e.g. GNU Make)
 
-## Formatting
-
-The project uses [black] and [isort] (one after the other). Configurations are in `pyproject.toml`
-and `setup.cfg`:
-
-- `make black isort`: Run `black` first, then `isort` to handle import nuances
-
 ## Linting
 
 ### black
