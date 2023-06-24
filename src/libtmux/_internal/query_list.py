@@ -305,7 +305,7 @@ class QueryList(List[T]):
             return False
 
         if len(self) == len(data):
-            for (a, b) in zip(self, data):
+            for a, b in zip(self, data):
                 if isinstance(a, Mapping):
                     a_keys = a.keys()
                     if a.keys == b.keys():
@@ -352,7 +352,7 @@ class QueryList(List[T]):
                 if isinstance(matcher, list):
                     return obj in matcher
                 else:
-                    return obj == matcher
+                    return bool(obj == matcher)
 
             _filter = val_match
         else:
