@@ -50,10 +50,9 @@ def test_repo_git_remote_checkout(
         """
         )
     }
-    first_test_key = list(files.keys())[0]
+    first_test_key = next(iter(files.keys()))
     first_test_filename = str(tests_path / first_test_key)
 
-    # Setup: Files
     tests_path.mkdir()
     for file_name, text in files.items():
         test_file = tests_path / file_name

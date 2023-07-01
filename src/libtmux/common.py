@@ -172,7 +172,7 @@ class EnvironmentMixin:
         str
             Value of environment variable
         """
-        tmux_args: t.Tuple[t.Union[str, int], ...] = tuple()
+        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
 
         tmux_args += ("show-environment",)
         if self._add_option:
@@ -425,9 +425,10 @@ def has_minimum_version(raises: bool = True) -> bool:
     if get_version() < LooseVersion(TMUX_MIN_VERSION):
         if raises:
             raise exc.VersionTooLow(
-                "libtmux only supports tmux %s and greater. This system"
-                " has %s installed. Upgrade your tmux to use libtmux."
-                % (TMUX_MIN_VERSION, get_version())
+                "libtmux only supports tmux {} and greater. This system"
+                " has {} installed. Upgrade your tmux to use libtmux.".format(
+                    TMUX_MIN_VERSION, get_version()
+                )
             )
         else:
             return False

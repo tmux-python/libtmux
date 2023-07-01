@@ -1,3 +1,4 @@
+import contextlib
 import getpass
 import logging
 import os
@@ -80,7 +81,7 @@ def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
     tmux show-environment tests were being interrupted due to a lot of crazy env vars.
     """
-    for k, v in os.environ.items():
+    for k in os.environ:
         if not any(
             needle in k.lower()
             for needle in [
@@ -226,8 +227,8 @@ def session(
 
     try:
         session = server.new_session(session_name=TEST_SESSION_NAME, **session_params)
-    except exc.LibTmuxException as e:
-        raise e
+    except exc.LibTmuxException:
+        raise
 
     """
     Make sure that tmuxp can :ref:`test_builder_visually` and switches to
@@ -236,16 +237,13 @@ def session(
     session_id = session.session_id
     assert session_id is not None
 
-    try:
+    with contextlib.suppress(exc.LibTmuxException):
         server.switch_client(target_session=session_id)
-    except exc.LibTmuxException:
-        # server.attach_session(session.get('session_id'))
-        pass
 
     for old_test_session in old_test_sessions:
         logger.debug(f"Old test test session {old_test_session} found. Killing it.")
         server.kill_session(old_test_session)
-    assert TEST_SESSION_NAME == session.session_name
+    assert session.session_name == TEST_SESSION_NAME
     assert TEST_SESSION_NAME != "tmuxp"
 
     return session

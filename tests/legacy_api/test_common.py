@@ -62,7 +62,7 @@ def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
     assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
-    assert TMUX_NEXT_VERSION == get_version()
+    assert get_version() == TMUX_NEXT_VERSION
 
 
 def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:

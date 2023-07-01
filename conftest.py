@@ -12,7 +12,6 @@ import shutil
 import typing as t
 
 import pytest
-
 from _pytest.doctest import DoctestItem
 
 from libtmux.pytest_plugin import USING_ZSH

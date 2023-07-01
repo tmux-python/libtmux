@@ -169,7 +169,7 @@ class Server(EnvironmentMixin):
         if self.config_file:
             cmd_args.insert(0, f"-f{self.config_file}")
 
-        subprocess.check_call([tmux_bin] + cmd_args)
+        subprocess.check_call([tmux_bin, *cmd_args])
 
     #
     # Command
@@ -227,7 +227,7 @@ class Server(EnvironmentMixin):
         """
         try:
             sessions = self.sessions
-            attached_sessions = list()
+            attached_sessions = []
 
             for session in sessions:
                 attached = session.session_attached
@@ -239,7 +239,6 @@ class Server(EnvironmentMixin):
                     continue
 
             return attached_sessions
-            # return [Session(**s) for s in attached_sessions] or None
         except Exception:
             return []
 
@@ -339,7 +338,7 @@ class Server(EnvironmentMixin):
         """
         session_check_name(target_session)
 
-        tmux_args: t.Tuple[str, ...] = tuple()
+        tmux_args: t.Tuple[str, ...] = ()
         if target_session:
             tmux_args += ("-t%s" % target_session,)
 
@@ -572,10 +571,7 @@ class Server(EnvironmentMixin):
                 f"(socket_name={getattr(self, 'socket_name', 'default')})"
             )
         elif self.socket_path is not None:
-            return (
-                f"{self.__class__.__name__}"
-                f"(socket_path={getattr(self, 'socket_path')})"
-            )
+            return f"{self.__class__.__name__}" f"(socket_path={self.socket_path})"
         return f"{self.__class__.__name__}" f"(socket_path=/tmp/tmux-1000/default)"
 
     #

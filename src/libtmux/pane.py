@@ -103,7 +103,6 @@ class Pane(Obj):
         return self.window.session
 
     #
-    # Command (pane-scoped)
     #
     def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting to ``target_pane`` as target.
@@ -114,12 +113,11 @@ class Pane(Obj):
         ``args`` will override using the object's ``pane_id`` as target.
         """
         if not any(arg.startswith("-t") for arg in args):
-            args = ("-t", self.pane_id) + args
+            args = ("-t", self.pane_id, *args)
 
         return self.server.cmd(cmd, *args, **kwargs)
 
     #
-    # Commands (tmux-like)
     #
     def resize_pane(self, *args: t.Any, **kwargs: t.Any) -> "Pane":
         """
@@ -174,14 +172,14 @@ class Pane(Obj):
             Zero is the first line of the visible pane.
             Positive numbers are lines in the visible pane.
             Negative numbers are lines in the history.
-            ‘-’ is the start of the history.
+            `-` is the start of the history.
             Default: None
         end: [str,int]
             Specify the ending line number.
             Zero is the first line of the visible pane.
             Positive numbers are lines in the visible pane.
             Negative numbers are lines in the history.
-            ‘-’ is the end of the visible pane
+            `-` is the end of the visible pane
             Default: None
         """
         cmd = ["capture-pane", "-p"]
@@ -277,7 +275,6 @@ class Pane(Obj):
         return None
 
     #
-    # Commands ("climber"-helpers)
     #
     # These are commands that climb to the parent scope's methods with
     # additional scoped window info.
@@ -326,7 +323,6 @@ class Pane(Obj):
         )
 
     #
-    # Commands (helpers)
     #
     def set_width(self, width: int) -> "Pane":
         """
@@ -380,7 +376,7 @@ class Pane(Obj):
         return self.pane_id == other.pane_id
 
     def __repr__(self) -> str:
-        return "{}({} {})".format(self.__class__.__name__, self.pane_id, self.window)
+        return f"{self.__class__.__name__}({self.pane_id} {self.window})"
 
     #
     # Aliases

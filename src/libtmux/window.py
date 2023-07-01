@@ -125,7 +125,6 @@ class Window(Obj):
         return QueryList(panes)
 
     #
-    # Command (pane-scoped)
     #
     def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting to ``target_window`` as target.
@@ -136,12 +135,11 @@ class Window(Obj):
         ``args`` will override using the object's ``window_id`` as target.
         """
         if not any(arg.startswith("-t") for arg in args):
-            args = ("-t", self.window_id) + args
+            args = ("-t", self.window_id, *args)
 
         return self.server.cmd(cmd, *args, **kwargs)
 
     #
-    # Commands (tmux-like)
     #
     def select_pane(self, target_pane: t.Union[str, int]) -> t.Optional["Pane"]:
         """
@@ -219,21 +217,18 @@ class Window(Obj):
         """
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 
-        # '-t%s' % self.attached_pane.get('pane_id'),
         # 2013-10-18 LOOK AT THIS, rm'd it..
-        tmux_args: t.Tuple[str, ...] = tuple()
+        tmux_args: t.Tuple[str, ...] = ()
 
         if target is not None:
             tmux_args += ("-t%s" % target,)
         else:
             if len(self.panes):
                 tmux_args += (
-                    "-t%s:%s.%s"
-                    % (self.session_id, self.window_id, self.panes[0].pane_index),
+                    f"-t{self.session_id}:{self.window_id}.{self.panes[0].pane_index}",
                 )
             else:
-                tmux_args += ("-t%s:%s" % (self.session_id, self.window_id),)
-            # tmux_args += ("-t%s" % self.panes[0].pane_id,)
+                tmux_args += (f"-t{self.session_id}:{self.window_id}",)
 
         if vertical:
             tmux_args += ("-v",)
@@ -313,7 +308,7 @@ class Window(Obj):
             'custom'
                 custom dimensions (see :term:`tmux(1)` manpages).
         """
-        cmd = ["select-layout", "-t{}:{}".format(self.session_id, self.window_index)]
+        cmd = ["select-layout", f"-t{self.session_id}:{self.window_index}"]
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
@@ -349,7 +344,7 @@ class Window(Obj):
 
         cmd = self.cmd(
             "set-window-option",
-            "-t{}:{}".format(self.session_id, self.window_index),
+            f"-t{self.session_id}:{self.window_index}",
             option,
             value,
         )
@@ -375,7 +370,7 @@ class Window(Obj):
         g : str, optional
             Pass ``-g`` flag for global variable, default False.
         """
-        tmux_args: t.Tuple[str, ...] = tuple()
+        tmux_args: t.Tuple[str, ...] = ()
 
         if g:
             tmux_args += ("-g",)
@@ -419,7 +414,7 @@ class Window(Obj):
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
-        tmux_args: t.Tuple[t.Union[str, int], ...] = tuple()
+        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
 
         if g:
             tmux_args += ("-g",)
@@ -436,7 +431,7 @@ class Window(Obj):
         if not len(window_options_output):
             return None
 
-        value_raw = [shlex.split(item) for item in window_options_output][0]
+        value_raw = next(shlex.split(item) for item in window_options_output)
 
         value: t.Union[str, int] = (
             int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
@@ -486,7 +481,7 @@ class Window(Obj):
 
         proc = self.cmd(
             "kill-window",
-            "-t{}:{}".format(self.session_id, self.window_index),
+            f"-t{self.session_id}:{self.window_index}",
         )
 
         if proc.stderr:
@@ -510,7 +505,7 @@ class Window(Obj):
         session = session or self.session_id
         proc = self.cmd(
             "move-window",
-            "-s{}:{}".format(self.session_id, self.window_index),
+            f"-s{self.session_id}:{self.window_index}",
             f"-t{session}:{destination}",
         )
 

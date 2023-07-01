@@ -41,14 +41,12 @@ CLIENT_FORMATS = [
 ]
 
 WINDOW_FORMATS = [
-    # format_window()
     "window_id",
     "window_name",
     "window_width",
     "window_height",
     "window_layout",
     "window_panes",
-    # format_winlink()
     "window_index",
     "window_flags",
     "window_active",

@@ -151,7 +151,7 @@ class Session(Obj, EnvironmentMixin):
         # if -t is not set in any arg yet
         if not any("-t" in str(x) for x in args):
             # insert -t immediately after 1st arg, as per tmux format
-            new_args: t.Tuple[str, ...] = tuple()
+            new_args: t.Tuple[str, ...] = ()
             new_args += (args[0],)
             assert isinstance(self.session_id, str)
             new_args += (
@@ -163,7 +163,6 @@ class Session(Obj, EnvironmentMixin):
         return self.server.cmd(*args, **kwargs)
 
     #
-    # Commands (tmux-like)
     #
     def set_option(
         self, option: str, value: t.Union[str, int], _global: bool = False
@@ -197,7 +196,7 @@ class Session(Obj, EnvironmentMixin):
         elif isinstance(value, bool) and not value:
             value = "off"
 
-        tmux_args: t.Tuple[t.Union[str, int], ...] = tuple()
+        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
 
         if _global:
             tmux_args += ("-g",)
@@ -240,7 +239,7 @@ class Session(Obj, EnvironmentMixin):
         Uses ``_global`` for keyword name instead of ``global`` to avoid
         colliding with reserved keyword.
         """
-        tmux_args: t.Tuple[str, ...] = tuple()
+        tmux_args: t.Tuple[str, ...] = ()
 
         if _global:
             tmux_args += ("-g",)
@@ -288,7 +287,7 @@ class Session(Obj, EnvironmentMixin):
         Test and return True/False for on/off string.
         """
 
-        tmux_args: t.Tuple[str, ...] = tuple()
+        tmux_args: t.Tuple[str, ...] = ()
 
         if _global:
             tmux_args += ("-g",)
@@ -303,7 +302,7 @@ class Session(Obj, EnvironmentMixin):
         if not len(cmd.stdout):
             return None
 
-        value_raw: t.List[str] = [item.split(" ") for item in cmd.stdout][0]
+        value_raw: t.List[str] = next(item.split(" ") for item in cmd.stdout)
 
         assert isinstance(value_raw[0], str)
         assert isinstance(value_raw[1], str)
@@ -362,7 +361,7 @@ class Session(Obj, EnvironmentMixin):
                 active_windows.append(window)
 
         if len(active_windows) == 1:
-            return list(active_windows)[0]
+            return next(iter(active_windows))
         elif len(active_windows) == 0:
             raise exc.LibTmuxException("no active windows found")
         else:
@@ -476,7 +475,7 @@ class Session(Obj, EnvironmentMixin):
         -------
         :class:`Window`
         """
-        window_args: t.Tuple[str, ...] = tuple()
+        window_args: t.Tuple[str, ...] = ()
 
         if not attach:
             window_args += ("-d",)
@@ -494,8 +493,7 @@ class Session(Obj, EnvironmentMixin):
 
         window_args += (
             # empty string for window_index will use the first one available
-            "-t%s:%s"
-            % (self.session_id, window_index),
+            f"-t{self.session_id}:{window_index}",
         )
 
         if environment:

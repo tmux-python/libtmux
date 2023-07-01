@@ -40,16 +40,13 @@ class Obj:
     alternate_saved_x: t.Union[str, None] = None
     alternate_saved_y: t.Union[str, None] = None
     # See QUIRK_TMUX_3_1_X_0001
-    # buffer_created: t.Union[str, None] = None
     buffer_name: t.Union[str, None] = None
     buffer_sample: t.Union[str, None] = None
     buffer_size: t.Union[str, None] = None
     # See QUIRK_TMUX_3_1_X_0001
-    # client_activity: t.Union[str, None] = None
     client_cell_height: t.Union[str, None] = None
     client_cell_width: t.Union[str, None] = None
     # See QUIRK_TMUX_3_1_X_0001
-    # client_created: t.Union[str, None] = None
     client_discarded: t.Union[str, None] = None
     client_flags: t.Union[str, None] = None
     client_height: t.Union[str, None] = None
@@ -182,11 +179,13 @@ class Obj:
 
 
 def fetch_objs(
-    server: "Server", list_cmd: "ListCmd", list_extra_args: "ListExtraArgs" = None
+    server: "Server",
+    list_cmd: "ListCmd",
+    list_extra_args: "t.Optional[ListExtraArgs]" = None,
 ) -> OutputsRaw:
     formats = list(Obj.__dataclass_fields__.keys())
 
-    cmd_args: t.List[t.Union[str, int]] = list()
+    cmd_args: t.List[t.Union[str, int]] = []
 
     if server.socket_name:
         cmd_args.insert(0, f"-L{server.socket_name}")
@@ -229,7 +228,7 @@ def fetch_obj(
     obj_key: str,
     obj_id: str,
     list_cmd: "ListCmd" = "list-panes",
-    list_extra_args: "ListExtraArgs" = None,
+    list_extra_args: "t.Optional[ListExtraArgs]" = None,
 ) -> OutputRaw:
     obj_formatters_filtered = fetch_objs(
         server=server, list_cmd=list_cmd, list_extra_args=list_extra_args
