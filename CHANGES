@@ -16,8 +16,11 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Bug fixes
 
-- pytest plugin: Fix `zshrc` fixture to only create file when in zsh shell
-  (#489)
+- pytest plugin: Fix `zshrc` fixture to only create file when in zsh shell (#489)
+
+### Development
+
+- pytest plugin: Update `home_path` fixture's basename from `home` to `libtmux-home` (#489)
 
 ## libtmux 0.22.1 (2023-05-28)
 
@@ -41,6 +44,7 @@ _Maintenance only, no bug fixes, or new features_
   formatting can be done almost instantly.
 
   This change replaces black, isort, flake8 and flake8 plugins.
+
 - poetry: 1.4.0 -> 1.5.0
 
   See also: https://github.com/python-poetry/poetry/releases/tag/1.5.0
