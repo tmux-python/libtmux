@@ -20,7 +20,7 @@ USING_ZSH = "zsh" in os.getenv("SHELL", "")
 @pytest.fixture(scope="session")
 def home_path(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
     """Temporary `/home/` path."""
-    return tmp_path_factory.mktemp("home")
+    return tmp_path_factory.mktemp("libtmux-home")
 
 
 @pytest.fixture(scope="session")
