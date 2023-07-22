@@ -14,8 +14,7 @@ from typing import overload
 from libtmux.common import tmux_cmd
 from libtmux.neo import Obj, fetch_obj
 
-from . import exc, formats
-from .common import PaneDict
+from . import exc
 
 if t.TYPE_CHECKING:
     from typing_extensions import Literal

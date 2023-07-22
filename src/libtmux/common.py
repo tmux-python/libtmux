@@ -11,17 +11,13 @@ import shutil
 import subprocess
 import sys
 import typing as t
-from typing import Dict, Generic, KeysView, List, Optional, TypeVar, Union, overload
+from typing import Dict, Optional, Union
 
 from . import exc
 from ._compat import LooseVersion, console_to_str, str_from_console
 
 if t.TYPE_CHECKING:
-    from typing_extensions import Literal
-
-    from libtmux.pane import Pane
-    from libtmux.session import Session
-    from libtmux.window import Window
+    pass
 
 
 logger = logging.getLogger(__name__)
@@ -73,7 +69,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            stderr = (
+            (
                 cmd.stderr[0]
                 if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
                 else cmd.stderr
@@ -97,7 +93,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            stderr = (
+            (
                 cmd.stderr[0]
                 if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
                 else cmd.stderr
@@ -120,7 +116,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*args)
 
         if cmd.stderr:
-            stderr = (
+            (
                 cmd.stderr[0]
                 if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
                 else cmd.stderr
@@ -149,13 +145,13 @@ class EnvironmentMixin:
         output = cmd.stdout
         vars = [tuple(item.split("=", 1)) for item in output]
         vars_dict: t.Dict[str, t.Union[str, bool]] = {}
-        for t in vars:
-            if len(t) == 2:
-                vars_dict[t[0]] = t[1]
-            elif len(t) == 1:
-                vars_dict[t[0]] = True
+        for _t in vars:
+            if len(_t) == 2:
+                vars_dict[_t[0]] = _t[1]
+            elif len(_t) == 1:
+                vars_dict[_t[0]] = True
             else:
-                raise ValueError("unexpected variable %s", t)
+                raise ValueError(f"unexpected variable {_t}")
 
         return vars_dict
 
@@ -186,13 +182,13 @@ class EnvironmentMixin:
         output = cmd.stdout
         vars = [tuple(item.split("=", 1)) for item in output]
         vars_dict: t.Dict[str, t.Union[str, bool]] = {}
-        for t in vars:
-            if len(t) == 2:
-                vars_dict[t[0]] = t[1]
-            elif len(t) == 1:
-                vars_dict[t[0]] = True
+        for _t in vars:
+            if len(_t) == 2:
+                vars_dict[_t[0]] = _t[1]
+            elif len(_t) == 1:
+                vars_dict[_t[0]] = True
             else:
-                raise ValueError("unexpected variable %s", t)
+                raise ValueError(f"unexpected variable {_t}")
 
         return vars_dict.get(name)
 

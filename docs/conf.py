@@ -1,8 +1,9 @@
-# flake8: NOQA E5
+# flake8: NOQA: E501
+import contextlib
 import inspect
 import sys
-from os.path import dirname, relpath
-from pathlib import Path
+from os.path import relpath
+import pathlib
 import typing as t
 
 import libtmux  # NOQA
@@ -12,7 +13,7 @@ if t.TYPE_CHECKING:
     from sphinx.application import Sphinx
 
 # Get the project root dir, which is the parent dir of this
-cwd = Path(__file__).parent
+cwd = pathlib.Path(__file__).parent
 project_root = cwd.parent
 project_src = project_root / "src"
 
@@ -21,7 +22,7 @@ sys.path.insert(0, str(cwd / "_ext"))
 
 # package data
 about: t.Dict[str, str] = {}
-with open(project_src / "libtmux" / "__about__.py") as fp:
+with (project_src / "libtmux" / "__about__.py").open() as fp:
     exec(fp.read(), about)
 
 extensions = [
@@ -125,13 +126,13 @@ ogp_image = "_static/img/icons/icon-192x192.png"
 ogp_desscription_length = about["__description__"]
 ogp_site_name = about["__title__"]
 
-htmlhelp_basename = "%sdoc" % about["__title__"]
+htmlhelp_basename = f"{about['__title__']}doc"
 
 latex_documents = [
     (
         "index",
-        "{}.tex".format(about["__package_name__"]),
-        "{} Documentation".format(about["__title__"]),
+        f"{about['__package_name__']}.tex",
+        f"{about['__title__']} Documentation",
         about["__author__"],
         "manual",
     )
@@ -141,7 +142,7 @@ man_pages = [
     (
         "index",
         about["__package_name__"],
-        "{} Documentation".format(about["__title__"]),
+        f"{about['__title__']} Documentation",
         about["__author__"],
         1,
     )
@@ -150,8 +151,8 @@ man_pages = [
 texinfo_documents = [
     (
         "index",
-        "{}".format(about["__package_name__"]),
-        "{} Documentation".format(about["__title__"]),
+        about["__package_name__"],
+        f"{about['__title__']} Documentation",
         about["__author__"],
         about["__package_name__"],
         about["__description__"],
@@ -220,7 +221,7 @@ def linkcode_resolve(
     else:
         linespec = ""
 
-    fn = relpath(fn, start=dirname(libtmux.__file__))
+    fn = relpath(fn, start=pathlib.Path(libtmux.__file__).parent)
 
     if "dev" in about["__version__"]:
         return "{}/blob/master/{}/{}/{}{}".format(
@@ -244,11 +245,9 @@ def linkcode_resolve(
 def remove_tabs_js(app: "Sphinx", exc: Exception) -> None:
     # Fix for sphinx-inline-tabs#18
     if app.builder.format == "html" and not exc:
-        tabs_js = Path(app.builder.outdir) / "_static" / "tabs.js"
-        try:
-            tabs_js.unlink()  # use missing_ok=True when python 3.7 deprecated
-        except FileNotFoundError:
-            pass
+        tabs_js = pathlib.Path(app.builder.outdir) / "_static" / "tabs.js"
+        with contextlib.suppress(FileNotFoundError):
+            tabs_js.unlink()  # When python 3.7 deprecated, use missing_ok=True
 
 
 def setup(app: "Sphinx") -> None:
