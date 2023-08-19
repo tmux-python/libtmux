@@ -112,9 +112,9 @@ def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result
 
     # Should not throw
-    assert type(has_version("1.8")) is bool
-    assert type(has_version("1.8a")) is bool
-    assert type(has_version("1.9a")) is bool
+    assert isinstance(has_version("1.8"), bool)
+    assert isinstance(has_version("1.8a"), bool)
+    assert isinstance(has_version("1.9a"), bool)
 
 
 def test_error_version_less_1_7(monkeypatch: pytest.MonkeyPatch) -> None:
