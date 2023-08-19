@@ -1,5 +1,6 @@
 """Test for libtmux Server object."""
 import logging
+import subprocess
 
 import pytest
 
@@ -149,7 +150,7 @@ def test_with_server_is_alive(server: Server) -> None:
 
 def test_no_server_raise_if_dead() -> None:
     dead_server = Server(socket_name="test_attached_session_no_server")
-    with pytest.raises(Exception):
+    with pytest.raises(subprocess.SubprocessError):
         dead_server.raise_if_dead()
 
 

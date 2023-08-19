@@ -143,9 +143,9 @@ class Server(EnvironmentMixin):
         """
         try:
             res = self.cmd("list-sessions")
-            return res.returncode == 0
         except Exception:
             return False
+        return res.returncode == 0
 
     def raise_if_dead(self) -> None:
         """Raise if server not connected.
@@ -207,7 +207,7 @@ class Server(EnvironmentMixin):
             elif self.colors == 88:
                 cmd_args.insert(0, "-8")
             else:
-                raise ValueError("Server.colors must equal 88 or 256")
+                raise exc.UnknownColorOption()
 
         return tmux_cmd(*cmd_args, **kwargs)
 
@@ -238,9 +238,9 @@ class Server(EnvironmentMixin):
                 else:
                     continue
 
-            return attached_sessions
         except Exception:
             return []
+        return attached_sessions
 
     def has_session(self, target_session: str, exact: bool = True) -> bool:
         """
@@ -512,7 +512,7 @@ class Server(EnvironmentMixin):
                 list_cmd="list-sessions",
                 server=self,
             ):
-                sessions.append(Session(server=self, **obj))
+                sessions.append(Session(server=self, **obj))  # noqa: PERF401
         except Exception:
             pass
 
@@ -526,13 +526,14 @@ class Server(EnvironmentMixin):
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.windows.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        windows: t.List["Window"] = []
-        for obj in fetch_objs(
-            list_cmd="list-windows",
-            list_extra_args=("-a",),
-            server=self,
-        ):
-            windows.append(Window(server=self, **obj))
+        windows: t.List["Window"] = [
+            Window(server=self, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-windows",
+                list_extra_args=("-a",),
+                server=self,
+            )
+        ]
 
         return QueryList(windows)
 
@@ -544,13 +545,14 @@ class Server(EnvironmentMixin):
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        panes: t.List["Pane"] = []
-        for obj in fetch_objs(
-            list_cmd="list-panes",
-            list_extra_args=["-s"],
-            server=self,
-        ):
-            panes.append(Pane(server=self, **obj))
+        panes: t.List["Pane"] = [
+            Pane(server=self, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-panes",
+                list_extra_args=["-s"],
+                server=self,
+            )
+        ]
 
         return QueryList(panes)
 
@@ -588,7 +590,7 @@ class Server(EnvironmentMixin):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Server._list_panes() is deprecated")
+        warnings.warn("Server._list_panes() is deprecated", stacklevel=2)
         return [p.__dict__ for p in self.panes]
 
     def _update_panes(self) -> "Server":
@@ -601,7 +603,7 @@ class Server(EnvironmentMixin):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Server._update_panes() is deprecated")
+        warnings.warn("Server._update_panes() is deprecated", stacklevel=2)
         self._list_panes()
         return self
 
@@ -609,14 +611,14 @@ class Server(EnvironmentMixin):
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Server.get_by_id() is deprecated")
+        warnings.warn("Server.get_by_id() is deprecated", stacklevel=2)
         return self.sessions.get(session_id=id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Session]:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Server.find_where() is deprecated")
+        warnings.warn("Server.find_where() is deprecated", stacklevel=2)
         try:
             return self.sessions.filter(**kwargs)
         except IndexError:
@@ -626,7 +628,7 @@ class Server(EnvironmentMixin):
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Server.find_where() is deprecated")
+        warnings.warn("Server.find_where() is deprecated", stacklevel=2)
         return self.sessions.get(default=None, **kwargs)
 
     def _list_windows(self) -> t.List[WindowDict]:
@@ -639,7 +641,7 @@ class Server(EnvironmentMixin):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Server._list_windows() is deprecated")
+        warnings.warn("Server._list_windows() is deprecated", stacklevel=2)
         return [w.__dict__ for w in self.windows]
 
     def _update_windows(self) -> "Server":
@@ -647,7 +649,7 @@ class Server(EnvironmentMixin):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Server._update_windows() is deprecated")
+        warnings.warn("Server._update_windows() is deprecated", stacklevel=2)
         self._list_windows()
         return self
 
@@ -657,14 +659,14 @@ class Server(EnvironmentMixin):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Server._sessions is deprecated")
+        warnings.warn("Server._sessions is deprecated", stacklevel=2)
         return self._list_sessions()
 
     def _list_sessions(self) -> t.List["SessionDict"]:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Server._list_sessions() is deprecated")
+        warnings.warn("Server._list_sessions() is deprecated", stacklevel=2)
         return [s.__dict__ for s in self.sessions]
 
     def list_sessions(self) -> t.List[Session]:
@@ -676,7 +678,7 @@ class Server(EnvironmentMixin):
         -------
         list of :class:`Session`
         """
-        warnings.warn("Server.list_sessions is deprecated")
+        warnings.warn("Server.list_sessions is deprecated", stacklevel=2)
         return self.sessions
 
     @property
@@ -685,5 +687,5 @@ class Server(EnvironmentMixin):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Server.children is deprecated")
+        warnings.warn("Server.children is deprecated", stacklevel=2)
         return self.sessions

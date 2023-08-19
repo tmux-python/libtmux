@@ -151,7 +151,7 @@ class EnvironmentMixin:
             elif len(_t) == 1:
                 vars_dict[_t[0]] = True
             else:
-                raise ValueError(f"unexpected variable {_t}")
+                raise exc.VariableUnpackingError(variable=_t)
 
         return vars_dict
 
@@ -188,7 +188,7 @@ class EnvironmentMixin:
             elif len(_t) == 1:
                 vars_dict[_t[0]] = True
             else:
-                raise ValueError(f"unexpected variable {_t}")
+                raise exc.VariableUnpackingError(variable=_t)
 
         return vars_dict.get(name)
 
@@ -242,8 +242,8 @@ class tmux_cmd:
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
-        except Exception as e:
-            logger.error(f"Exception for {subprocess.list2cmdline(cmd)}: \n{e}")
+        except Exception:
+            logger.exception(f"Exception for {subprocess.list2cmdline(cmd)}")
             raise
 
         self.returncode = returncode

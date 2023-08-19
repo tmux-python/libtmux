@@ -2,6 +2,7 @@
 import contextlib
 import logging
 import os
+import pathlib
 import random
 import time
 import types
@@ -47,9 +48,9 @@ class RandomStrSequence:
 
 
 namer = RandomStrSequence()
-current_dir = os.path.abspath(os.path.dirname(__file__))
-example_dir = os.path.abspath(os.path.join(current_dir, "..", "examples"))
-fixtures_dir = os.path.realpath(os.path.join(current_dir, "fixtures"))
+current_dir = pathlib.Path(__file__)
+example_dir = current_dir.parent / "examples"
+fixtures_dir = current_dir / "fixtures"
 
 
 def retry_until(

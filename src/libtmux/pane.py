@@ -290,7 +290,7 @@ class Pane(Obj):
         assert isinstance(self.pane_id, str)
         pane = self.window.select_pane(self.pane_id)
         if pane is None:
-            raise exc.LibTmuxException(f"Pane not found: {self}")
+            raise exc.PaneNotFound(pane_id=self.pane_id)
         return pane
 
     def split_window(
@@ -436,12 +436,12 @@ class Pane(Obj):
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Pane.get() is deprecated")
+        warnings.warn("Pane.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn(f"Item lookups, e.g. pane['{key}'] is deprecated")
+        warnings.warn(f"Item lookups, e.g. pane['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)

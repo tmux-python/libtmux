@@ -6,7 +6,7 @@ libtmux.session
 """
 import dataclasses
 import logging
-import os
+import pathlib
 import typing as t
 import warnings
 
@@ -101,14 +101,15 @@ class Session(Obj, EnvironmentMixin):
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.windows.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        windows: t.List["Window"] = []
-        for obj in fetch_objs(
-            list_cmd="list-windows",
-            list_extra_args=["-t", str(self.session_id)],
-            server=self.server,
-        ):
-            if obj.get("session_id") == self.session_id:
-                windows.append(Window(server=self.server, **obj))
+        windows: t.List["Window"] = [
+            Window(server=self.server, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-windows",
+                list_extra_args=["-t", str(self.session_id)],
+                server=self.server,
+            )
+            if obj.get("session_id") == self.session_id
+        ]
 
         return QueryList(windows)
 
@@ -120,14 +121,15 @@ class Session(Obj, EnvironmentMixin):
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        panes: t.List["Pane"] = []
-        for obj in fetch_objs(
-            list_cmd="list-panes",
-            list_extra_args=["-s", "-t", str(self.session_id)],
-            server=self.server,
-        ):
-            if obj.get("session_id") == self.session_id:
-                panes.append(Pane(server=self.server, **obj))
+        panes: t.List["Pane"] = [
+            Pane(server=self.server, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-panes",
+                list_extra_args=["-s", "-t", str(self.session_id)],
+                server=self.server,
+            )
+            if obj.get("session_id") == self.session_id
+        ]
 
         return QueryList(panes)
 
@@ -354,23 +356,19 @@ class Session(Obj, EnvironmentMixin):
         """
         Return active :class:`Window` object.
         """
-        active_windows = []
-        for window in self.windows:
-            # for now window_active is a unicode
-            if window.window_active == "1":
-                active_windows.append(window)
+        active_windows = [
+            window for window in self.windows if window.window_active == "1"
+        ]
 
         if len(active_windows) == 1:
             return next(iter(active_windows))
         elif len(active_windows) == 0:
-            raise exc.LibTmuxException("no active windows found")
+            raise exc.NoActiveWindow()
         else:
-            raise exc.LibTmuxException(
-                "multiple active windows found. %s" % active_windows
-            )
+            raise exc.MultipleActiveWindows(count=len(active_windows))
 
         if len(self._windows) == 0:
-            raise exc.LibTmuxException("No Windows")
+            raise exc.NoWindowsExist()
 
     def attach_session(self) -> "Session":
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``."""
@@ -484,8 +482,8 @@ class Session(Obj, EnvironmentMixin):
 
         if start_directory:
             # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
-            start_directory = os.path.expanduser(start_directory)
-            window_args += ("-c%s" % start_directory,)
+            start_directory = pathlib.Path(start_directory).expanduser()
+            window_args += (f"-c{start_directory}",)
 
         window_args += ("-F#{window_id}",)  # output
         if window_name is not None and isinstance(window_name, str):
@@ -599,28 +597,30 @@ class Session(Obj, EnvironmentMixin):
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Session.get() is deprecated")
+        warnings.warn("Session.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn(f"Item lookups, e.g. session['{key}'] is deprecated")
+        warnings.warn(
+            f"Item lookups, e.g. session['{key}'] is deprecated", stacklevel=2
+        )
         return getattr(self, key)
 
     def get_by_id(self, id: str) -> t.Optional[Window]:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Session.get_by_id() is deprecated")
+        warnings.warn("Session.get_by_id() is deprecated", stacklevel=2)
         return self.windows.get(window_id=id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Window]:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Session.where() is deprecated")
+        warnings.warn("Session.where() is deprecated", stacklevel=2)
         try:
             return self.windows.filter(**kwargs)
         except IndexError:
@@ -630,14 +630,14 @@ class Session(Obj, EnvironmentMixin):
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Session.find_where() is deprecated")
+        warnings.warn("Session.find_where() is deprecated", stacklevel=2)
         return self.windows.get(default=None, **kwargs)
 
     def _list_windows(self) -> t.List["WindowDict"]:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Session._list_windows() is deprecated")
+        warnings.warn("Session._list_windows() is deprecated", stacklevel=2)
         return [w.__dict__ for w in self.windows]
 
     @property
@@ -646,7 +646,7 @@ class Session(Obj, EnvironmentMixin):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Session._windows is deprecated")
+        warnings.warn("Session._windows is deprecated", stacklevel=2)
         return self._list_windows()
 
     def list_windows(self) -> t.List["Window"]:
@@ -654,7 +654,7 @@ class Session(Obj, EnvironmentMixin):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Session.list_windows() is deprecated")
+        warnings.warn("Session.list_windows() is deprecated", stacklevel=2)
         return self.windows
 
     @property
@@ -663,5 +663,5 @@ class Session(Obj, EnvironmentMixin):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Session.children is deprecated")
+        warnings.warn("Session.children is deprecated", stacklevel=2)
         return self.windows

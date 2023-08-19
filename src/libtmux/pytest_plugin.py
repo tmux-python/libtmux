@@ -225,10 +225,7 @@ def session(
 
     TEST_SESSION_NAME = get_test_session_name(server=server)
 
-    try:
-        session = server.new_session(session_name=TEST_SESSION_NAME, **session_params)
-    except exc.LibTmuxException:
-        raise
+    session = server.new_session(session_name=TEST_SESSION_NAME, **session_params)
 
     """
     Make sure that tmuxp can :ref:`test_builder_visually` and switches to
