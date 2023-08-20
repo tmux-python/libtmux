@@ -6,6 +6,11 @@ libtmux.exc
 """
 import typing as t
 
+from libtmux._internal.query_list import ObjectDoesNotExist
+
+if t.TYPE_CHECKING:
+    from libtmux.neo import ListExtraArgs
+
 
 class LibTmuxException(Exception):
 
@@ -20,6 +25,25 @@ class TmuxSessionExists(LibTmuxException):
 class TmuxCommandNotFound(LibTmuxException):
 
     """Application binary for tmux not found."""
+
+
+class TmuxObjectDoesNotExist(ObjectDoesNotExist):
+    """The query returned multiple objects when only one was expected."""
+
+    def __init__(
+        self,
+        obj_key: t.Optional[str] = None,
+        obj_id: t.Optional[str] = None,
+        list_cmd: t.Optional[str] = None,
+        list_extra_args: "t.Optional[ListExtraArgs]" = None,
+        *args: object,
+    ):
+        if all(arg is not None for arg in [obj_key, obj_id, list_cmd, list_extra_args]):
+            return super().__init__(
+                f"Could not find {obj_key}={obj_id} for {list_cmd} "
+                f'{list_extra_args if list_extra_args is not None else ""}'
+            )
+        return super().__init__("Could not find object")
 
 
 class VersionTooLow(LibTmuxException):
