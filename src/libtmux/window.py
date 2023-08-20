@@ -125,8 +125,10 @@ class Window(Obj):
 
         return QueryList(panes)
 
-    #
-    #
+    """
+    Commands (pane-scoped)
+    """
+
     def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting to ``target_window`` as target.
 
@@ -140,8 +142,10 @@ class Window(Obj):
 
         return self.server.cmd(cmd, *args, **kwargs)
 
-    #
-    #
+    """
+    Commands (tmux-like)
+    """
+
     def select_pane(self, target_pane: t.Union[str, int]) -> t.Optional["Pane"]:
         """
         Return selected :class:`Pane` through ``$ tmux select-pane``.
@@ -218,7 +222,6 @@ class Window(Obj):
         """
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 
-        # 2013-10-18 LOOK AT THIS, rm'd it..
         tmux_args: t.Tuple[str, ...] = ()
 
         if target is not None:

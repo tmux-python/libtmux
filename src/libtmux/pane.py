@@ -1,4 +1,4 @@
-# flake8: NOQA W605
+# flake8: NOQA: W605
 """Pythonization of the :ref:`tmux(1)` pane.
 
 libtmux.pane
@@ -102,8 +102,10 @@ class Pane(Obj):
     def session(self) -> "Session":
         return self.window.session
 
-    #
-    #
+    """
+    Commands (pane-scoped)
+    """
+
     def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting to ``target_pane`` as target.
 
@@ -117,8 +119,10 @@ class Pane(Obj):
 
         return self.server.cmd(cmd, *args, **kwargs)
 
-    #
-    #
+    """
+    Commands (tmux-like)
+    """
+
     def resize_pane(self, *args: t.Any, **kwargs: t.Any) -> "Pane":
         """
         ``$ tmux resize-pane`` of pane and return ``self``.
@@ -274,11 +278,13 @@ class Pane(Obj):
         self.cmd("display-message", cmd)
         return None
 
-    #
-    #
-    # These are commands that climb to the parent scope's methods with
-    # additional scoped window info.
-    #
+    """
+    Commands ("climber"-helpers)
+
+    These are commands that climb to the parent scope's methods with
+    additional scoped window info.
+    """
+
     def select_pane(self) -> "Pane":
         """
         Select pane. Return ``self``.
@@ -322,8 +328,10 @@ class Pane(Obj):
             percent=percent,
         )
 
-    #
-    #
+    """
+    Commands (helpers)
+    """
+
     def set_width(self, width: int) -> "Pane":
         """
         Set width of pane.

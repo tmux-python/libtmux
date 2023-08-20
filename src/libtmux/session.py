@@ -164,8 +164,10 @@ class Session(Obj, EnvironmentMixin):
             args = new_args
         return self.server.cmd(*args, **kwargs)
 
-    #
-    #
+    """
+    Commands (tmux-like)
+    """
+
     def set_option(
         self, option: str, value: t.Union[str, int], _global: bool = False
     ) -> "Session":
