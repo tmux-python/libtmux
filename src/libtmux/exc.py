@@ -73,6 +73,14 @@ class WaitTimeout(LibTmuxException):
     """Function timed out without meeting condition"""
 
 
+class VariableUnpackingError(LibTmuxException):
+
+    """Error unpacking variable"""
+
+    def __init__(self, variable: t.Optional[t.Any] = None, *args: object):
+        return super().__init__(f"Unexpected variable: {variable!s}")
+
+
 class PaneError(LibTmuxException):
     """Any type of pane related error"""
 
