@@ -1,5 +1,6 @@
 """Test for libtmux Server object."""
 import logging
+import subprocess
 
 import pytest
 
@@ -71,12 +72,12 @@ def test_show_environment(server: Server) -> None:
 def test_getenv(server: Server, session: Session) -> None:
     """Set environment then Server.show_environment(key)."""
     server.set_environment("FOO", "BAR")
-    assert "BAR" == server.getenv("FOO")
+    assert server.getenv("FOO") == "BAR"
 
     server.set_environment("FOO", "DAR")
-    assert "DAR" == server.getenv("FOO")
+    assert server.getenv("FOO") == "DAR"
 
-    assert "DAR" == server.show_environment()["FOO"]
+    assert server.show_environment()["FOO"] == "DAR"
 
 
 def test_show_environment_not_set(server: Server) -> None:
@@ -166,7 +167,7 @@ def test_with_server_is_alive(server: Server) -> None:
 
 def test_no_server_raise_if_dead() -> None:
     dead_server = Server(socket_name="test_attached_session_no_server")
-    with pytest.raises(Exception):
+    with pytest.raises(subprocess.CalledProcessError):
         dead_server.raise_if_dead()
 
 

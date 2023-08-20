@@ -6,7 +6,7 @@ libtmux.window
 """
 import dataclasses
 import logging
-import os
+import pathlib
 import shlex
 import typing as t
 import warnings
@@ -113,19 +113,19 @@ class Window(Obj):
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        panes: t.List["Pane"] = []
-        for obj in fetch_objs(
-            list_cmd="list-panes",
-            list_extra_args=["-t", str(self.window_id)],
-            server=self.server,
-        ):
-            if obj.get("window_id") == self.window_id:
-                panes.append(Pane(server=self.server, **obj))
+        panes: t.List["Pane"] = [
+            Pane(server=self.server, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-panes",
+                list_extra_args=["-t", str(self.window_id)],
+                server=self.server,
+            )
+            if obj.get("window_id") == self.window_id
+        ]
 
         return QueryList(panes)
 
     #
-    # Command (pane-scoped)
     #
     def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Return :meth:`Server.cmd` defaulting to ``target_window`` as target.
@@ -136,12 +136,11 @@ class Window(Obj):
         ``args`` will override using the object's ``window_id`` as target.
         """
         if not any(arg.startswith("-t") for arg in args):
-            args = ("-t", self.window_id) + args
+            args = ("-t", self.window_id, *args)
 
         return self.server.cmd(cmd, *args, **kwargs)
 
     #
-    # Commands (tmux-like)
     #
     def select_pane(self, target_pane: t.Union[str, int]) -> t.Optional["Pane"]:
         """
@@ -219,21 +218,18 @@ class Window(Obj):
         """
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 
-        # '-t%s' % self.attached_pane.get('pane_id'),
         # 2013-10-18 LOOK AT THIS, rm'd it..
-        tmux_args: t.Tuple[str, ...] = tuple()
+        tmux_args: t.Tuple[str, ...] = ()
 
         if target is not None:
             tmux_args += ("-t%s" % target,)
         else:
             if len(self.panes):
                 tmux_args += (
-                    "-t%s:%s.%s"
-                    % (self.session_id, self.window_id, self.panes[0].pane_index),
+                    f"-t{self.session_id}:{self.window_id}.{self.panes[0].pane_index}",
                 )
             else:
-                tmux_args += ("-t%s:%s" % (self.session_id, self.window_id),)
-            # tmux_args += ("-t%s" % self.panes[0].pane_id,)
+                tmux_args += (f"-t{self.session_id}:{self.window_id}",)
 
         if vertical:
             tmux_args += ("-v",)
@@ -245,10 +241,10 @@ class Window(Obj):
 
         tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
 
-        if start_directory:
+        if start_directory is not None:
             # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
-            start_directory = os.path.expanduser(start_directory)
-            tmux_args += ("-c%s" % start_directory,)
+            start_path = pathlib.Path(start_directory).expanduser()
+            tmux_args += (f"-c{start_path}",)
 
         if not attach:
             tmux_args += ("-d",)
@@ -313,7 +309,7 @@ class Window(Obj):
             'custom'
                 custom dimensions (see :term:`tmux(1)` manpages).
         """
-        cmd = ["select-layout", "-t{}:{}".format(self.session_id, self.window_index)]
+        cmd = ["select-layout", f"-t{self.session_id}:{self.window_index}"]
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
@@ -349,7 +345,7 @@ class Window(Obj):
 
         cmd = self.cmd(
             "set-window-option",
-            "-t{}:{}".format(self.session_id, self.window_index),
+            f"-t{self.session_id}:{self.window_index}",
             option,
             value,
         )
@@ -375,7 +371,7 @@ class Window(Obj):
         g : str, optional
             Pass ``-g`` flag for global variable, default False.
         """
-        tmux_args: t.Tuple[str, ...] = tuple()
+        tmux_args: t.Tuple[str, ...] = ()
 
         if g:
             tmux_args += ("-g",)
@@ -419,7 +415,7 @@ class Window(Obj):
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
-        tmux_args: t.Tuple[t.Union[str, int], ...] = tuple()
+        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
 
         if g:
             tmux_args += ("-g",)
@@ -436,7 +432,7 @@ class Window(Obj):
         if not len(window_options_output):
             return None
 
-        value_raw = [shlex.split(item) for item in window_options_output][0]
+        value_raw = next(shlex.split(item) for item in window_options_output)
 
         value: t.Union[str, int] = (
             int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
@@ -474,8 +470,8 @@ class Window(Obj):
         try:
             self.cmd("rename-window", new_name)
             self.window_name = new_name
-        except Exception as e:
-            logger.error(e)
+        except Exception:
+            logger.exception(f"Error renaming window to {new_name}")
 
         self.refresh()
 
@@ -486,7 +482,7 @@ class Window(Obj):
 
         proc = self.cmd(
             "kill-window",
-            "-t{}:{}".format(self.session_id, self.window_index),
+            f"-t{self.session_id}:{self.window_index}",
         )
 
         if proc.stderr:
@@ -510,7 +506,7 @@ class Window(Obj):
         session = session or self.session_id
         proc = self.cmd(
             "move-window",
-            "-s{}:{}".format(self.session_id, self.window_index),
+            f"-s{self.session_id}:{self.window_index}",
             f"-t{session}:{destination}",
         )
 
@@ -635,28 +631,28 @@ class Window(Obj):
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Window.get() is deprecated")
+        warnings.warn("Window.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn(f"Item lookups, e.g. window['{key}'] is deprecated")
+        warnings.warn(f"Item lookups, e.g. window['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)
 
     def get_by_id(self, id: str) -> t.Optional[Pane]:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Window.get_by_id() is deprecated")
+        warnings.warn("Window.get_by_id() is deprecated", stacklevel=2)
         return self.panes.get(pane_id=id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Pane]:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Window.where() is deprecated")
+        warnings.warn("Window.where() is deprecated", stacklevel=2)
         try:
             return self.panes.filter(**kwargs)
         except IndexError:
@@ -666,14 +662,14 @@ class Window(Obj):
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Window.find_where() is deprecated")
+        warnings.warn("Window.find_where() is deprecated", stacklevel=2)
         return self.panes.get(default=None, **kwargs)
 
     def _list_panes(self) -> t.List[PaneDict]:
         """
         .. deprecated:: 0.16
         """
-        warnings.warn("Window._list_panes() is deprecated")
+        warnings.warn("Window._list_panes() is deprecated", stacklevel=2)
         return [pane.__dict__ for pane in self.panes]
 
     @property
@@ -682,7 +678,7 @@ class Window(Obj):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("_panes is deprecated")
+        warnings.warn("_panes is deprecated", stacklevel=2)
         return self._list_panes()
 
     def list_panes(self) -> t.List["Pane"]:
@@ -690,7 +686,7 @@ class Window(Obj):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("list_panes() is deprecated")
+        warnings.warn("list_panes() is deprecated", stacklevel=2)
         return self.panes
 
     @property
@@ -699,5 +695,5 @@ class Window(Obj):
 
         .. deprecated:: 0.16
         """
-        warnings.warn("Server.children is deprecated")
+        warnings.warn("Server.children is deprecated", stacklevel=2)
         return self.panes

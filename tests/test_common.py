@@ -30,7 +30,7 @@ version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
     class Hi:
-        stdout = ["tmux master"]
+        stdout: t.ClassVar = ["tmux master"]
         stderr = None
 
     def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
@@ -50,7 +50,7 @@ def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
     TMUX_NEXT_VERSION = str(float(TMUX_MAX_VERSION) + 0.1)
 
     class Hi:
-        stdout = [f"tmux next-{TMUX_NEXT_VERSION}"]
+        stdout: t.ClassVar = [f"tmux next-{TMUX_NEXT_VERSION}"]
         stderr = None
 
     def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
@@ -61,12 +61,12 @@ def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
     assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
-    assert TMUX_NEXT_VERSION == get_version()
+    assert get_version() == TMUX_NEXT_VERSION
 
 
 def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
     class Hi:
-        stderr = ["tmux: unknown option -- V"]
+        stderr: t.ClassVar = ["tmux: unknown option -- V"]
 
     def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
         return Hi()
@@ -83,7 +83,7 @@ def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_get_version_too_low(monkeypatch: pytest.MonkeyPatch) -> None:
     class Hi:
-        stderr = ["tmux: unknown option -- V"]
+        stderr: t.ClassVar = ["tmux: unknown option -- V"]
 
     def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
         return Hi()
@@ -189,10 +189,10 @@ class SessionCheckName(t.NamedTuple):
 @pytest.mark.parametrize(
     SessionCheckName._fields,
     [
-        SessionCheckName("", True, "may not be empty"),
-        SessionCheckName(None, True, "may not be empty"),
-        SessionCheckName("my great session.", True, "may not contain periods"),
-        SessionCheckName("name: great session", True, "may not contain colons"),
+        SessionCheckName("", True, "empty"),
+        SessionCheckName(None, True, "empty"),
+        SessionCheckName("my great session.", True, "contains periods"),
+        SessionCheckName("name: great session", True, "contains colons"),
         SessionCheckName("new great session", False, None),
         SessionCheckName("ajf8a3fa83fads,,,a", False, None),
     ],

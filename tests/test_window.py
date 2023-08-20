@@ -203,7 +203,7 @@ def test_kill_window(session: Session) -> None:
 
     w = session.attached_window
 
-    w.window_id
+    assert w.window_id is not None
 
     w.kill_window()
     with pytest.raises(ObjectDoesNotExist):

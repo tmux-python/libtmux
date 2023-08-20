@@ -59,11 +59,12 @@ def keygetter(
             elif hasattr(dct, sub_field):
                 dct = getattr(dct, sub_field)
 
-        return dct
     except Exception as e:
         traceback.print_stack()
         print(f"Above error was {e}")
-    return None
+        return None
+
+    return dct
 
 
 def parse_lookup(obj: "Mapping[str, Any]", path: str, lookup: str) -> Optional[Any]:
@@ -123,7 +124,7 @@ def lookup_icontains(
     if isinstance(data, str):
         return rhs.lower() in data.lower()
     if isinstance(data, Mapping):
-        return rhs.lower() in [k.lower() for k in data.keys()]
+        return rhs.lower() in [k.lower() for k in data]
 
     return False
 
@@ -183,7 +184,6 @@ def lookup_in(
             return rhs in data
         # TODO: Add a deep Mappingionary matcher
         # if isinstance(rhs, Mapping) and isinstance(data, Mapping):
-        #     return rhs.items() not in data.items()
     except Exception:
         return False
     return False
@@ -205,7 +205,6 @@ def lookup_nin(
             return rhs not in data
         # TODO: Add a deep Mappingionary matcher
         # if isinstance(rhs, Mapping) and isinstance(data, Mapping):
-        #     return rhs.items() not in data.items()
     except Exception:
         return False
     return False
@@ -244,6 +243,16 @@ LOOKUP_NAME_MAP: 'Mapping[str, "LookupProtocol"]' = {
     "regex": lookup_regex,
     "iregex": lookup_iregex,
 }
+
+
+class PKRequiredException(Exception):
+    def __init__(self, *args: object):
+        return super().__init__("items() require a pk_key exists")
+
+
+class OpNotFound(ValueError):
+    def __init__(self, op: str, *args: object):
+        return super().__init__(f"{op} not in LOOKUP_NAME_MAP")
 
 
 class QueryList(List[T]):
@@ -286,17 +295,13 @@ class QueryList(List[T]):
 
     def items(self) -> List[T]:
         if self.pk_key is None:
-            raise Exception("items() require a pk_key exists")
+            raise PKRequiredException()
         return [(getattr(item, self.pk_key), item) for item in self]
 
     def __eq__(
         self,
         other: object,
         # other: Union[
-        #     "QueryList[T]",
-        #     List[Mapping[str, str]],
-        #     List[Mapping[str, int]],
-        #     List[Mapping[str, Union[str, Mapping[str, Union[List[str], str]]]]],
         # ],
     ) -> bool:
         data = other
@@ -330,7 +335,7 @@ class QueryList(List[T]):
                     lhs, op = path.rsplit("__", 1)
 
                     if op not in LOOKUP_NAME_MAP:
-                        raise ValueError(f"{op} not in LOOKUP_NAME_MAP")
+                        raise OpNotFound(op=op)
                 except ValueError:
                     lhs = path
                     op = "exact"

@@ -151,7 +151,7 @@ class EnvironmentMixin:
             elif len(_t) == 1:
                 vars_dict[_t[0]] = True
             else:
-                raise ValueError(f"unexpected variable {_t}")
+                raise exc.VariableUnpackingError(variable=_t)
 
         return vars_dict
 
@@ -172,7 +172,7 @@ class EnvironmentMixin:
         str
             Value of environment variable
         """
-        tmux_args: t.Tuple[t.Union[str, int], ...] = tuple()
+        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
 
         tmux_args += ("show-environment",)
         if self._add_option:
@@ -188,7 +188,7 @@ class EnvironmentMixin:
             elif len(_t) == 1:
                 vars_dict[_t[0]] = True
             else:
-                raise ValueError(f"unexpected variable {_t}")
+                raise exc.VariableUnpackingError(variable=_t)
 
         return vars_dict.get(name)
 
@@ -242,8 +242,8 @@ class tmux_cmd:
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
-        except Exception as e:
-            logger.error(f"Exception for {subprocess.list2cmdline(cmd)}: \n{e}")
+        except Exception:
+            logger.exception(f"Exception for {subprocess.list2cmdline(cmd)}")
             raise
 
         self.returncode = returncode
@@ -425,9 +425,10 @@ def has_minimum_version(raises: bool = True) -> bool:
     if get_version() < LooseVersion(TMUX_MIN_VERSION):
         if raises:
             raise exc.VersionTooLow(
-                "libtmux only supports tmux %s and greater. This system"
-                " has %s installed. Upgrade your tmux to use libtmux."
-                % (TMUX_MIN_VERSION, get_version())
+                "libtmux only supports tmux {} and greater. This system"
+                " has {} installed. Upgrade your tmux to use libtmux.".format(
+                    TMUX_MIN_VERSION, get_version()
+                )
             )
         else:
             return False
@@ -452,15 +453,11 @@ def session_check_name(session_name: t.Optional[str]) -> None:
         Invalid session name.
     """
     if session_name is None or len(session_name) == 0:
-        raise exc.BadSessionName("tmux session names may not be empty.")
+        raise exc.BadSessionName(reason="empty", session_name=session_name)
     elif "." in session_name:
-        raise exc.BadSessionName(
-            'tmux session name "%s" may not contain periods.', session_name
-        )
+        raise exc.BadSessionName(reason="contains periods", session_name=session_name)
     elif ":" in session_name:
-        raise exc.BadSessionName(
-            'tmux session name "%s" may not contain colons.', session_name
-        )
+        raise exc.BadSessionName(reason="contains colons", session_name=session_name)
 
 
 def handle_option_error(error: str) -> t.Type[exc.OptionError]:
