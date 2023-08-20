@@ -54,3 +54,32 @@ class AmbiguousOption(OptionError):
 class WaitTimeout(LibTmuxException):
 
     """Function timed out without meeting condition"""
+
+
+class WindowError(LibTmuxException):
+
+    """Any type of window related error"""
+
+
+class MultipleActiveWindows(WindowError):
+
+    """Multiple active windows"""
+
+    def __init__(self, count: int, *args: object):
+        return super().__init__(f"Multiple active windows: {count} found")
+
+
+class NoActiveWindow(WindowError):
+
+    """No active window found"""
+
+    def __init__(self, *args: object):
+        return super().__init__("No active windows found")
+
+
+class NoWindowsExist(WindowError):
+
+    """No windows exist for object"""
+
+    def __init__(self, *args: object):
+        return super().__init__("No windows exist for object")
