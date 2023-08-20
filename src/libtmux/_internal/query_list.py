@@ -59,11 +59,12 @@ def keygetter(
             elif hasattr(dct, sub_field):
                 dct = getattr(dct, sub_field)
 
-        return dct
     except Exception as e:
         traceback.print_stack()
         print(f"Above error was {e}")
-    return None
+        return None
+
+    return dct
 
 
 def parse_lookup(obj: "Mapping[str, Any]", path: str, lookup: str) -> Optional[Any]:
@@ -294,7 +295,7 @@ class QueryList(List[T]):
 
     def items(self) -> List[T]:
         if self.pk_key is None:
-            raise Exception("items() require a pk_key exists")
+            raise PKRequiredException()
         return [(getattr(item, self.pk_key), item) for item in self]
 
     def __eq__(
@@ -334,7 +335,7 @@ class QueryList(List[T]):
                     lhs, op = path.rsplit("__", 1)
 
                     if op not in LOOKUP_NAME_MAP:
-                        raise ValueError(f"{op} not in LOOKUP_NAME_MAP")
+                        raise OpNotFound(op=op)
                 except ValueError:
                     lhs = path
                     op = "exact"
