@@ -21,7 +21,6 @@ def reraise(
     value: BaseException,
     tb: types.TracebackType,
 ) -> t.NoReturn:
-
     if value.__traceback__ is not tb:
         raise (value.with_traceback(tb))
     raise value

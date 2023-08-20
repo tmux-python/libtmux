@@ -453,7 +453,6 @@ class Version(_BaseVersion):
 def _parse_letter_version(
     letter: str, number: Union[str, bytes, SupportsInt]
 ) -> Optional[Tuple[str, int]]:
-
     if letter:
         # We consider there to be an implicit 0 in a pre-release if there is
         # not a numeral associated with it.
@@ -509,7 +508,6 @@ def _cmpkey(
     dev: Optional[Tuple[str, int]],
     local: Optional[Tuple[SubLocalType]],
 ) -> CmpKey:
-
     # When we compare a release version, we want to compare it with all of the
     # trailing zeros removed. So we'll use a reverse the list, drop all the now
     # leading zeros until we come to something non zero, then take the rest
