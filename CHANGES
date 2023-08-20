@@ -16,6 +16,8 @@ $ pip install --user --upgrade --pre libtmux
 
 _Maintenance only, no bug fixes, or new features_
 
+## libtmux 0.22.2 (2023-08-20)
+
 ### Development
 
 - build system: Remove `setuptools` requirement (#495, in related to #493, #494)
