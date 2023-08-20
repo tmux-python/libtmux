@@ -244,6 +244,16 @@ LOOKUP_NAME_MAP: 'Mapping[str, "LookupProtocol"]' = {
 }
 
 
+class PKRequiredException(Exception):
+    def __init__(self, *args: object):
+        return super().__init__("items() require a pk_key exists")
+
+
+class OpNotFound(ValueError):
+    def __init__(self, op: str, *args: object):
+        return super().__init__(f"{op} not in LOOKUP_NAME_MAP")
+
+
 class QueryList(List[T]):
     """Filter list of object/dictionaries. For small, local datasets.
 
