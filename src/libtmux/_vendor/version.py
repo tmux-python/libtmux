@@ -62,6 +62,9 @@ class InvalidVersion(ValueError):
     libtmux._vendor.version.InvalidVersion: Invalid version: 'invalid'
     """
 
+    def __init__(self, version: str, *args: object):
+        return super().__init__(f"Invalid version: '{version}'")
+
 
 class _BaseVersion:
     _key: CmpKey
@@ -195,7 +198,7 @@ class Version(_BaseVersion):
         # Validate the version and parse it into pieces
         match = self._regex.search(version)
         if not match:
-            raise InvalidVersion(f"Invalid version: '{version}'")
+            raise InvalidVersion(version=version)
 
         # Store the parsed out pieces of the version
         self._version = _Version(
