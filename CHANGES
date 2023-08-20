@@ -26,6 +26,11 @@ _Maintenance only, no bug fixes, or new features_
   selecting additional rules, which include import sorting, ruff runs nearly
   instantaneously when checking the whole codebase.
 
+### Post-release: v0.23.0post0 (2023-08-20)
+
+- Fixes code comments cleaned up by `ruff`, but missed in QA. In the future,
+  even when using an automated tool, we will review more thoroughly.
+
 ## libtmux 0.22.2 (2023-08-20)
 
 ### Development
