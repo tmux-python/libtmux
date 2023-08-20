@@ -41,6 +41,14 @@ class UnknownOption(OptionError):
     """Option unknown to tmux show-option(s) or show-window-option(s)."""
 
 
+class UnknownColorOption(UnknownOption):
+
+    """Unknown color option."""
+
+    def __init__(self, *args: object):
+        return super().__init__("Server.colors must equal 88 or 256")
+
+
 class InvalidOption(OptionError):
 
     """Option invalid to tmux, introduced in tmux v2.4."""
