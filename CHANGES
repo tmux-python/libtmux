@@ -16,6 +16,14 @@ $ pip install --user --upgrade --pre libtmux
 
 _Maintenance only, no bug fixes, or new features_
 
+### Development
+
+- Code quality improved via [ruff] rules (#488)
+
+  This includes fixes made by hand, and with ruff's automated fixes. Despite
+  selecting additional rules, which include import sorting, ruff runs nearly
+  instantaneously when checking the whole codebase.
+
 ## libtmux 0.22.2 (2023-08-20)
 
 ### Development
