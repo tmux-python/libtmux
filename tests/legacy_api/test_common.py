@@ -184,10 +184,10 @@ def test_tmux_cmd_unicode(session: Session) -> None:
 @pytest.mark.parametrize(
     "session_name,raises,exc_msg_regex",
     [
-        ("", True, "may not be empty"),
-        (None, True, "may not be empty"),
-        ("my great session.", True, "may not contain periods"),
-        ("name: great session", True, "may not contain colons"),
+        ("", True, "empty"),
+        (None, True, "empty"),
+        ("my great session.", True, "contains periods"),
+        ("name: great session", True, "contains colons"),
         ("new great session", False, None),
         ("ajf8a3fa83fads,,,a", False, None),
     ],

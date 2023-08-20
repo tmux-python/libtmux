@@ -453,15 +453,11 @@ def session_check_name(session_name: t.Optional[str]) -> None:
         Invalid session name.
     """
     if session_name is None or len(session_name) == 0:
-        raise exc.BadSessionName("tmux session names may not be empty.")
+        raise exc.BadSessionName(reason="empty", session_name=session_name)
     elif "." in session_name:
-        raise exc.BadSessionName(
-            'tmux session name "%s" may not contain periods.', session_name
-        )
+        raise exc.BadSessionName(reason="contains periods", session_name=session_name)
     elif ":" in session_name:
-        raise exc.BadSessionName(
-            'tmux session name "%s" may not contain colons.', session_name
-        )
+        raise exc.BadSessionName(reason="contains colons", session_name=session_name)
 
 
 def handle_option_error(error: str) -> t.Type[exc.OptionError]:

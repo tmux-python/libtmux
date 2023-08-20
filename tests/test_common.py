@@ -189,10 +189,10 @@ class SessionCheckName(t.NamedTuple):
 @pytest.mark.parametrize(
     SessionCheckName._fields,
     [
-        SessionCheckName("", True, "may not be empty"),
-        SessionCheckName(None, True, "may not be empty"),
-        SessionCheckName("my great session.", True, "may not contain periods"),
-        SessionCheckName("name: great session", True, "may not contain colons"),
+        SessionCheckName("", True, "empty"),
+        SessionCheckName(None, True, "empty"),
+        SessionCheckName("my great session.", True, "contains periods"),
+        SessionCheckName("name: great session", True, "contains colons"),
         SessionCheckName("new great session", False, None),
         SessionCheckName("ajf8a3fa83fads,,,a", False, None),
     ],
