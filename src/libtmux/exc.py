@@ -4,6 +4,7 @@ libtmux.exc
 ~~~~~~~~~~~
 
 """
+import typing as t
 
 
 class LibTmuxException(Exception):
@@ -62,6 +63,19 @@ class AmbiguousOption(OptionError):
 class WaitTimeout(LibTmuxException):
 
     """Function timed out without meeting condition"""
+
+
+class PaneError(LibTmuxException):
+    """Any type of pane related error"""
+
+
+class PaneNotFound(PaneError):
+    """Pane not found"""
+
+    def __init__(self, pane_id: t.Optional[str] = None, *args: object):
+        if pane_id is not None:
+            return super().__init__(f"Pane not found: {pane_id}")
+        return super().__init__("Pane not found")
 
 
 class WindowError(LibTmuxException):
