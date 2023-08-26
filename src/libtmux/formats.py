@@ -1,4 +1,3 @@
-# ruff: noqa: ERA001
 """Format variables for tmux objects.
 
 libtmux.formats

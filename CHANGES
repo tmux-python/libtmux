@@ -14,6 +14,12 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### Development
+
+- ruff: Remove ERA / `eradicate` plugin
+
+  This rule had too many false positives to trust. Other ruff rules have been beneficial.
+
 ## libtmux 0.23.0 (2023-08-20)
 
 _Maintenance only, no bug fixes, or new features_
