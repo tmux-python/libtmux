@@ -184,6 +184,7 @@ def lookup_in(
             return rhs in data
         # TODO: Add a deep Mappingionary matcher
         # if isinstance(rhs, Mapping) and isinstance(data, Mapping):
+        #     return rhs.items() not in data.items()
     except Exception:
         return False
     return False
@@ -205,6 +206,7 @@ def lookup_nin(
             return rhs not in data
         # TODO: Add a deep Mappingionary matcher
         # if isinstance(rhs, Mapping) and isinstance(data, Mapping):
+        #     return rhs.items() not in data.items()
     except Exception:
         return False
     return False
@@ -302,6 +304,10 @@ class QueryList(List[T]):
         self,
         other: object,
         # other: Union[
+        #     "QueryList[T]",
+        #     List[Mapping[str, str]],
+        #     List[Mapping[str, int]],
+        #     List[Mapping[str, Union[str, Mapping[str, Union[List[str], str]]]]],
         # ],
     ) -> bool:
         data = other
