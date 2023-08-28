@@ -8,7 +8,7 @@ To install the unreleased libtmux version, see [developmental releases](https://
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.23.x (unreleased)
+## libtmux 0.24.x (unreleased)
 
 - _Notes on upcoming releases will be added here_
 
@@ -40,6 +40,10 @@ _Maintenance only, no bug fixes, or new features_
 ### Post-release: v0.23.0post1 (2023-08-26)
 
 - Fixes for more `ERA001` issues.
+
+### Post-release: v0.23.0post2 (2023-08-28)
+
+- Yet more `ERA001` fixes.
 
 ## libtmux 0.22.2 (2023-08-20)
 
