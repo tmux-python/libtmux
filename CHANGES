@@ -14,7 +14,19 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+## libtmux 0.23.1 (2023-09-02)
+
+_Maintenance only, no bug fixes, or new features_
+
 ### Development
+
+- Automated typo fixes from [typos-cli]:
+
+  ```console
+  typos --format brief --write-changes
+  ```
+
+  [typos-cli]: https://github.com/crate-ci/typos
 
 - ruff: Remove ERA / `eradicate` plugin
 
