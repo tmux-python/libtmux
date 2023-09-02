@@ -286,7 +286,7 @@ def temp_window(
 
 
 class EnvironmentVarGuard:
-    """Mock environmental variables safetly.
+    """Mock environmental variables safely.
 
     Helps rotect the environment variable properly.  Can be used as context
     manager.

@@ -74,7 +74,7 @@ You could also read the code and override {func}`server fixtures <libtmux.pytest
 ### Custom session parameters
 
 You can override `session_params` to custom the `session` fixture. The
-dictionary will directly pass into :meth:`Server.new_sesion` keyword arguments.
+dictionary will directly pass into :meth:`Server.new_session` keyword arguments.
 
 ```python
 import pytest

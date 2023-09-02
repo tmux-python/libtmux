@@ -166,9 +166,9 @@ def test_querylist(
     assert w.window_name == "test_2"
 
     with pytest.raises(ObjectDoesNotExist):
-        w = qs.get(window_name="non_existant")
+        w = qs.get(window_name="non_existent")
 
-    result = qs.get(window_name="non_existant", default="default_value")
+    result = qs.get(window_name="non_existent", default="default_value")
     assert result == "default_value"
 
     # Test for multiple objects

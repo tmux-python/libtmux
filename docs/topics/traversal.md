@@ -2,7 +2,7 @@
 
 # Usage
 
-libtmux convenient access to move around the hierachy of sessions,
+libtmux convenient access to move around the hierarchy of sessions,
 windows and panes in tmux.
 
 This is done by libtmux's object abstraction of {term}`target`s (the `-t`
@@ -10,7 +10,7 @@ argument) and the permanent internal ID's tmux gives to objects.
 
 Open two terminals:
 
-Terminal one: start tmux in a seperate terminal:
+Terminal one: start tmux in a separate terminal:
 
 ```console
 $ tmux

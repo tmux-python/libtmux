@@ -463,7 +463,7 @@ def session_check_name(session_name: t.Optional[str]) -> None:
 def handle_option_error(error: str) -> t.Type[exc.OptionError]:
     """Raises exception if error in option command found.
 
-    In tmux 3.0, show-option and show-window-otion return invalid option instead of
+    In tmux 3.0, show-option and show-window-option return invalid option instead of
     unknown option. See https://github.com/tmux/tmux/blob/3.0/cmd-show-options.c.
 
     In tmux >2.4, there are 3 different types of option errors:

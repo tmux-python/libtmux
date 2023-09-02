@@ -44,12 +44,12 @@ def test_find_where_None(server: Server, session: Session) -> None:
     """.find_where returns None if no results found."""
 
     while True:
-        nonexistant_session = TEST_SESSION_PREFIX + next(namer)
+        nonexistent_session = TEST_SESSION_PREFIX + next(namer)
 
-        if not server.has_session(nonexistant_session):
+        if not server.has_session(nonexistent_session):
             break
 
-    assert server.find_where({"session_name": nonexistant_session}) is None
+    assert server.find_where({"session_name": nonexistent_session}) is None
 
 
 def test_find_where_multiple_infos(server: Server, session: Session) -> None:

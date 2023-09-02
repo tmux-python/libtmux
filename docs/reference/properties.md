@@ -9,7 +9,7 @@ This is done through accessing the [formats][formats] available in `list-session
 
 Open two terminals:
 
-Terminal one: start tmux in a seperate terminal:
+Terminal one: start tmux in a separate terminal:
 
 ```console
 $ tmux

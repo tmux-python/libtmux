@@ -122,7 +122,7 @@ rediraffe_branch = "master~1"
 # sphinxext.opengraph
 ogp_site_url = about["__docs__"]
 ogp_image = "_static/img/icons/icon-192x192.png"
-ogp_desscription_length = about["__description__"]
+ogp_description_length = about["__description__"]
 ogp_site_name = about["__title__"]
 
 htmlhelp_basename = f"{about['__title__']}doc"

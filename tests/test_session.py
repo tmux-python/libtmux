@@ -161,7 +161,7 @@ def test_show_option_ambiguous(session: Session) -> None:
         session.show_option("default-")
 
 
-def test_set_option_ambigous(session: Session) -> None:
+def test_set_option_ambiguous(session: Session) -> None:
     """Session.set_option raises AmbiguousOption for invalid option."""
     with pytest.raises(exc.AmbiguousOption):
         session.set_option("default-", 43)
@@ -260,7 +260,7 @@ def test_periods_raise_badsessionname(
             server.switch_client(new_name)
 
 
-def test_cmd_inserts_sesion_id(session: Session) -> None:
+def test_cmd_inserts_session_id(session: Session) -> None:
     current_session_id = session.session_id
     last_arg = "last-arg"
     cmd = session.cmd("not-a-command", last_arg)

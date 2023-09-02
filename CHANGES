@@ -105,7 +105,7 @@ _Maintenance only, no bug fixes, or new features_
 
 - Server.new_session: Accept `x` and `y`, thanks
   @rockandska (#469)
-- New test fixture: `session_params`. The dict is used direclty in the `session`
+- New test fixture: `session_params`. The dict is used directly in the `session`
   pytest fixture (#470)
 
 ## libtmux 0.19.1 (2022-01-07)
@@ -565,7 +565,7 @@ _Maintenance only, no bug fixes, or new features_
   #343)
 
   The separator is configurable via `LIBTMUX_TMUX_FORMAT_SEPARATOR`. If you ever
-  have compatiblity issues in the future let us know which default works best
+  have compatibility issues in the future let us know which default works best
   across versions.
 
   Credit: @JonathanRaiman and @jagguli
@@ -796,7 +796,7 @@ Python 2.7 support dropped.
 
 - Raise exception for invalid session names. tmux does not
   allow names that are empty, contain periods or colons.
-- Remove unused `target_sesssion` param in
+- Remove unused `target_session` param in
   `Server.attach_session` and `Server.switch_client`.
 
 ## libtmux 0.5.1 (2016-08-18)
