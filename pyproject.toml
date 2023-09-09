@@ -13,7 +13,6 @@ classifiers = [
   "Framework :: Pytest",
   "Intended Audience :: Developers",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
@@ -46,7 +45,7 @@ Repository = "https://github.com/tmux-python/libtmux"
 Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.8"
 
 [tool.poetry.group.dev.dependencies]
 ### Docs ###
@@ -55,7 +54,7 @@ furo = "*"
 gp-libs = "~0.0.1"
 sphinx-autobuild = "*"
 sphinx-autodoc-typehints = "*"
-sphinx-inline-tabs = "<2023.4.21" # For Python 3.7 support
+sphinx-inline-tabs = "*"
 sphinxext-opengraph = "<0.8" # https://github.com/wpilibsuite/sphinxext-opengraph/issues/100
 sphinx-copybutton = "*"
 sphinxext-rediraffe = "*"
