@@ -52,7 +52,7 @@ python = "^3.7"
 ### Docs ###
 sphinx = "*"
 furo = "*"
-gp-libs = "*"
+gp-libs = "~0.0.1"
 sphinx-autobuild = "*"
 sphinx-autodoc-typehints = "*"
 sphinx-inline-tabs = "<2023.4.21" # For Python 3.7 support
