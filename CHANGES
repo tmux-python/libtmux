@@ -16,7 +16,7 @@ $ pip install --user --upgrade --pre libtmux
 
 ## libtmux 0.23.1 (2023-09-02)
 
-_Maintenance only, no bug fixes, or new features_
+_Maintenance only, no bug fixes or new features_
 
 ### Development
 
@@ -34,7 +34,7 @@ _Maintenance only, no bug fixes, or new features_
 
 ## libtmux 0.23.0 (2023-08-20)
 
-_Maintenance only, no bug fixes, or new features_
+_Maintenance only, no bug fixes or new features_
 
 ### Development
 
@@ -65,7 +65,7 @@ _Maintenance only, no bug fixes, or new features_
 
 ## libtmux 0.22.1 (2023-05-28)
 
-_Maintenance only, no bug fixes, or new features_
+_Maintenance only, no bug fixes or new features_
 
 ### Development
 
@@ -75,7 +75,7 @@ _Maintenance only, no bug fixes, or new features_
 
 ## libtmux 0.22.0 (2023-05-27)
 
-_Maintenance only, no bug fixes, or new features_
+_Maintenance only, no bug fixes or new features_
 
 ### Internal improvements
 
@@ -311,7 +311,7 @@ flakiness across shells and environments._
 
 ## libtmux 0.15.6 (2022-09-23)
 
-_Maintenance only, no bug fixes, or new features_
+_Maintenance only, no bug fixes or new features_
 
 ### Packaging
 
@@ -321,7 +321,7 @@ _Maintenance only, no bug fixes, or new features_
 
 ## libtmux 0.15.5 (2022-09-23)
 
-_Maintenance only, no bug fixes, or new features_
+_Maintenance only, no bug fixes or new features_
 
 ### Packaging
 
