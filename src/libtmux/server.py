@@ -30,9 +30,9 @@ from .common import (
 )
 
 if t.TYPE_CHECKING:
-    from typing_extensions import Literal, TypeAlias
+    from typing_extensions import TypeAlias
 
-    DashLiteral: TypeAlias = Literal["-"]
+    DashLiteral: TypeAlias = t.Literal["-"]
 
 logger = logging.getLogger(__name__)
 

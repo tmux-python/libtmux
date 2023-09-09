@@ -14,9 +14,7 @@ from libtmux.session import Session
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
-    from typing_extensions import Literal
-
-    ListCmd = Literal["list-sessions", "list-windows", "list-panes"]
+    ListCmd = t.Literal["list-sessions", "list-windows", "list-panes"]
     ListExtraArgs = t.Optional[t.Tuple[str]]
 
 

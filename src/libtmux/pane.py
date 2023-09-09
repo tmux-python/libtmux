@@ -17,8 +17,6 @@ from libtmux.neo import Obj, fetch_obj
 from . import exc
 
 if t.TYPE_CHECKING:
-    from typing_extensions import Literal
-
     from .server import Server
     from .session import Session
     from .window import Window
@@ -158,8 +156,8 @@ class Pane(Obj):
 
     def capture_pane(
         self,
-        start: t.Union["Literal['-']", t.Optional[int]] = None,
-        end: t.Union["Literal['-']", t.Optional[int]] = None,
+        start: t.Union["t.Literal['-']", t.Optional[int]] = None,
+        end: t.Union["t.Literal['-']", t.Optional[int]] = None,
     ) -> t.Union[str, t.List[str]]:
         """
         Capture text from pane.
@@ -248,12 +246,12 @@ class Pane(Obj):
 
     @overload
     def display_message(
-        self, cmd: str, get_text: "Literal[True]"
+        self, cmd: str, get_text: "t.Literal[True]"
     ) -> t.Union[str, t.List[str]]:
         ...
 
     @overload
-    def display_message(self, cmd: str, get_text: "Literal[False]") -> None:
+    def display_message(self, cmd: str, get_text: "t.Literal[False]") -> None:
         ...
 
     def display_message(

@@ -7,9 +7,7 @@ from libtmux.common import tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
-    from typing_extensions import Literal
-
-    ListCmd = Literal["list-sessions", "list-windows", "list-panes"]
+    ListCmd = t.Literal["list-sessions", "list-windows", "list-panes"]
     ListExtraArgs = t.Optional[t.Iterable[str]]
 
     from libtmux.server import Server
