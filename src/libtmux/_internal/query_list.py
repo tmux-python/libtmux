@@ -8,10 +8,18 @@ import re
 import traceback
 from collections.abc import Mapping, Sequence
 from re import Pattern
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    List,
+    Optional,
+    Protocol,
+    TypeVar,
+    Union,
+)
 
 if TYPE_CHECKING:
-    from typing_extensions import Protocol
 
     class LookupProtocol(Protocol):
         """Protocol for :class:`QueryList` filtering operators."""
