@@ -153,6 +153,19 @@ combine-as-imports = true
 [tool.ruff.per-file-ignores]
 "*/__init__.py" = ["F401"]
 
+[tool.pytest.ini_options]
+addopts = "--tb=short --no-header --showlocals --doctest-docutils-modules --reruns 2 -p no:doctest"
+doctest_optionflags = "ELLIPSIS NORMALIZE_WHITESPACE"
+testpaths = [
+  "src/libtmux",
+  "tests",
+  "docs",
+  "README.md",
+]
+filterwarnings = [
+  "ignore:The frontend.Option(Parser)? class.*:DeprecationWarning::",
+]
+
 [build-system]
 requires = ["poetry_core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
