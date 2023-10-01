@@ -14,6 +14,10 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### Packaging
+
+- Move pytest configuration to `pyproject.toml` (#499)
+
 ### Breaking changes
 
 - Python 3.7 Dropped (#497)
