@@ -124,40 +124,6 @@ ogp_site_url = about["__docs__"]
 ogp_image = "_static/img/icons/icon-192x192.png"
 ogp_site_name = about["__title__"]
 
-htmlhelp_basename = f"{about['__title__']}doc"
-
-latex_documents = [
-    (
-        "index",
-        f"{about['__package_name__']}.tex",
-        f"{about['__title__']} Documentation",
-        about["__author__"],
-        "manual",
-    )
-]
-
-man_pages = [
-    (
-        "index",
-        about["__package_name__"],
-        f"{about['__title__']} Documentation",
-        about["__author__"],
-        1,
-    )
-]
-
-texinfo_documents = [
-    (
-        "index",
-        about["__package_name__"],
-        f"{about['__title__']} Documentation",
-        about["__author__"],
-        about["__package_name__"],
-        about["__description__"],
-        "Miscellaneous",
-    )
-]
-
 intersphinx_mapping = {
     "": ("https://docs.python.org/", None),
     "pytest": ("https://docs.pytest.org/en/stable/", None),
