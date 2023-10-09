@@ -34,7 +34,7 @@ _Maintenance only, no bug fixes or new features_
 
 - Cut last python 3.7 release (EOL was June 27th, 2023)
 
-  For security updates, a 0.23.x branch can be maintained for a limited time, 
+  For security updates, a 0.23.x branch can be maintained for a limited time,
   if necessary.
 
 ## libtmux 0.23.1 (2023-09-02)
@@ -655,8 +655,8 @@ across any difficulty please see #346.
 ## libtmux 0.10.0 (2021-06-16)
 
 - #321: Convert to markdown
-- #271: Fix {}`select_window()` by providing the session ID as
-  argument to {}`-t`. Thanks @Flowdalic
+- #271: Fix `select_window()` by providing the session ID as
+  argument to `-t`. Thanks @Flowdalic
 - Drop python 3.5 support
 
 ## libtmux 0.9.0 (2021-06-14)
@@ -760,7 +760,7 @@ Python 2.7 support dropped.
 
 ## libtmux 0.7.4 (2017-08-19)
 
-- #65 Add session id to commands, thanks [@askedrelic][@askedrelic]
+- #65 Add session id to commands, thanks [@askedrelic]
 
 ## libtmux 0.7.3 (2017-05-29)
 
@@ -781,9 +781,9 @@ Python 2.7 support dropped.
 - Add support for tmux 2.4, pypy and pypy3
 - Overhaul error handling when setting and showing options
 
-  - Added {}`handle_option_error` for handling option errors
+  - Added `handle_option_error` for handling option errors
   - Added {exc}`libtmux.exc.OptionError` base exception
-  - Added {exc}`libtmux.exc.InvalidOption` and {}`libtmux.exc.AmbiguousOption`
+  - Added {exc}`libtmux.exc.InvalidOption` and `libtmux.exc.AmbiguousOption`
   - {exc}`libtmux.exc.UnknownOption` now extends {exc}`libtmux.exc.OptionError`
 
 - Overhaul version checking
@@ -815,7 +815,7 @@ Python 2.7 support dropped.
 
 ## libtmux 0.6.2 (2017-01-19)
 
-- #197 use {}`LooseVersion` instead of {}`StrictVersion` for version
+- #197 use `LooseVersion` instead of `StrictVersion` for version
   checks. Thanks @minijackson.
 - Pin packages with pyup.io
 - #21 Readme fix from @huwenchao.
@@ -870,7 +870,7 @@ Python 2.7 support dropped.
 
 ## libtmux 0.1.0 (2016-05-22)
 
-- libtmux forked from [tmuxp][tmuxp].
+- libtmux forked from [tmuxp].
 
 [tmuxp]: https://github.com/tmux-python/tmuxp
 [@askedrelic]: https://github.com/askedrelic
