@@ -523,7 +523,7 @@ class Session(Obj, EnvironmentMixin):
             server=self.server, window_id=window_formatters["window_id"]
         )
 
-    def kill_window(self, target_window: t.Optional[str] = None) -> None:
+    def kill_window(self, target_window: t.Optional[t.Union[str, int]] = None) -> None:
         """Close a tmux window, and all panes inside it, ``$ tmux kill-window``
 
         Kill the current window or the window at ``target-window``. removing it
@@ -531,17 +531,21 @@ class Session(Obj, EnvironmentMixin):
 
         Parameters
         ----------
-        target_window : str, optional
-            window to kill
+        target_window : str, int, optional
+            window to kill. Stands for a window id in the format "@{id}", 
+            if str, a window index if int, and an attached window if none.
         """
 
-        if target_window:
+        kill_cmd = ["kill-window"]
+
+        if target_window is not None:
             if isinstance(target_window, int):
-                target = "-t%s:%d" % (self.window_name, target_window)
+                target = "-t%s:%d" % (self.session_name, target_window)
             else:
                 target = "-t%s" % target_window
-
-        proc = self.cmd("kill-window", target)
+            kill_cmd.append(target)
+        
+        proc = self.cmd(*kill_cmd)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)

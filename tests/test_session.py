@@ -6,6 +6,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.common import has_gte_version, has_lt_version
 from libtmux.pane import Pane
 from libtmux.server import Server
@@ -321,3 +322,23 @@ def test_new_window_with_environment_logs_warning_for_old_tmux(
     assert any(
         "Cannot set up environment" in record.msg for record in caplog.records
     ), "Warning missing"
+
+
+@pytest.mark.parametrize(
+    "target_window_mapper",
+    [
+        lambda w: int(w.index),
+        lambda w: w.id,
+        lambda w: None,
+    ]
+)
+def test_kill_window_by_id(
+    session: Session, 
+    target_window_mapper: t.Callable[[Window], t.Optional[t.Union[int, str]]],
+) -> None:
+    # kill by window index
+    session.new_window()
+    w = session.attached_window
+    session.kill_window(target_window_mapper(w))
+    with pytest.raises(ObjectDoesNotExist):
+        w.refresh()
