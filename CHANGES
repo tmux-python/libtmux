@@ -17,6 +17,9 @@ $ pip install --user --upgrade --pre libtmux
 ### Packaging
 
 - Move pytest configuration to `pyproject.toml` (#499)
+- Poetry: 1.6.1 -> 1.7.0
+
+  See also: https://github.com/python-poetry/poetry/blob/1.7.0/CHANGELOG.md
 
 ### Breaking changes
 
