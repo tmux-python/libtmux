@@ -54,36 +54,6 @@ Rebuild docs and run server via one terminal: `make dev_docs` (requires above, a
 
 ## Linting
 
-### black
-
-[black] is used for formatting.
-
-````{tab} Command
-
-poetry:
-
-```console
-$ poetry run black .
-```
-
-If you setup manually:
-
-```console
-$ black .
-```
-
-````
-
-````{tab} make
-
-```console
-$ make black
-```
-
-````
-
-In the future, `ruff` (below) may replace black as formatter.
-
 ### ruff
 
 The project uses [ruff] to handles formatting, sorting imports and linting.
@@ -134,6 +104,34 @@ If you setup manually:
 
 ```console
 $ ruff . --fix
+```
+
+````
+
+#### ruff format
+
+[ruff format] is used for formatting.
+
+````{tab} Command
+
+poetry:
+
+```console
+$ poetry run ruff format .
+```
+
+If you setup manually:
+
+```console
+$ ruff format .
+```
+
+````
+
+````{tab} make
+
+```console
+$ make ruff_format
 ```
 
 ````
@@ -236,6 +234,6 @@ Update `__version__` in `__about__.py` and `pyproject.toml`::
 [poetry]: https://python-poetry.org/
 [entr(1)]: http://eradman.com/entrproject/
 [`entr(1)`]: http://eradman.com/entrproject/
-[black]: https://github.com/psf/black
+[ruff format]: https://docs.astral.sh/ruff/formatter/
 [ruff]: https://ruff.rs
 [mypy]: http://mypy-lang.org/
