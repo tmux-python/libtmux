@@ -28,6 +28,12 @@ $ pip install --user --upgrade --pre libtmux
 ### Development
 
 - Poetry 1.5.1 -> 1.6.1 (#497)
+- Move formatting from `black` to [`ruff format`] (#506)
+
+  This retains the same formatting style of `black` while eliminating a
+  dev dependency by using our existing rust-based `ruff` linter.
+
+  [`ruff format`]: https://docs.astral.sh/ruff/formatter/
 
 ## libtmux 0.23.2 (2023-09-09)
 
