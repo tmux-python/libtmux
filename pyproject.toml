@@ -73,7 +73,6 @@ coverage = "*"
 pytest-cov = "*"
 
 ### Format ###
-black = "*"
 ruff = "*"
 mypy = "*"
 
@@ -93,7 +92,7 @@ docs = [
 ]
 test = ["pytest", "pytest-rerunfailures", "pytest-mock", "pytest-watcher"]
 coverage = ["codecov", "coverage", "pytest-cov"]
-lint = ["black", "ruff", "mypy"]
+lint = ["ruff", "mypy"]
 
 [tool.poetry.plugins.pytest11]
 libtmux = "libtmux.pytest_plugin"
