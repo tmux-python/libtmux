@@ -38,8 +38,8 @@ serve_docs:
 dev_docs:
 	$(MAKE) -j watch_docs serve_docs
 
-black:
-	poetry run black `${PY_FILES}`
+ruff_format:
+	poetry run ruff format .
 
 ruff:
 	poetry run ruff .
