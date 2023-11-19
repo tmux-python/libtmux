@@ -14,6 +14,10 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### Breaking changes
+
+- Python 3.7 Dropped (#497)
+
 ### Packaging
 
 - Move pytest configuration to `pyproject.toml` (#499)
@@ -21,9 +25,18 @@ $ pip install --user --upgrade --pre libtmux
 
   See also: https://github.com/python-poetry/poetry/blob/1.7.0/CHANGELOG.md
 
-### Breaking changes
+- Packaging (poetry): Fix development dependencies
 
-- Python 3.7 Dropped (#497)
+  Per [Poetry's docs on managing dependencies] and `poetry check`, we had it wrong: Instead of using extras, we should create these:
+
+  ```toml
+  [tool.poetry.group.[group-name].dependencies]
+  dev-dependency = "1.0.0"
+  ```
+
+  Which we now do.
+
+  [Poetry's docs on managing dependencies]: https://python-poetry.org/docs/master/managing-dependencies/
 
 ### Development
 
@@ -34,6 +47,14 @@ $ pip install --user --upgrade --pre libtmux
   dev dependency by using our existing rust-based `ruff` linter.
 
   [`ruff format`]: https://docs.astral.sh/ruff/formatter/
+
+- CI: Update action packages to fix warnings
+
+  - [dorny/paths-filter]: 2.7.0 -> 2.11.1
+  - [codecov/codecov-action]: 2 -> 3
+
+  [dorny/paths-filter]: https://github.com/dorny/paths-filter
+  [codecov/codecov-action]: https://github.com/codecov/codecov-action
 
 ## libtmux 0.23.2 (2023-09-09)
 
