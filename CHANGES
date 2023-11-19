@@ -7,11 +7,17 @@ To install the unreleased libtmux version, see [developmental releases](https://
 ```console
 $ pip install --user --upgrade --pre libtmux
 ```
+
 ## libtmux 0.25.x (unreleased)
 
 - _Notes on upcoming releases will be added here_
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
+
+### Packaging
+
+- Remove `requirements/` folder, which was unused and deprecated by
+  pyproject.toml (#507)
 
 ## libtmux 0.24.0 (2023-11-19)
 
