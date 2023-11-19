@@ -24,7 +24,7 @@ _Maintenance only, no bug fixes or new features_
 ### Packaging
 
 - Move pytest configuration to `pyproject.toml` (#499)
-- Poetry: 1.6.1 -> 1.7.0
+- Poetry: 1.5.1 -> 1.6.1 (#497), 1.6.1 -> 1.7.0 (direct to trunk)
 
   See also: https://github.com/python-poetry/poetry/blob/1.7.0/CHANGELOG.md
 
@@ -43,7 +43,6 @@ _Maintenance only, no bug fixes or new features_
 
 ### Development
 
-- Poetry 1.5.1 -> 1.6.1 (#497)
 - Move formatting from `black` to [`ruff format`] (#506)
 
   This retains the same formatting style of `black` while eliminating a
