@@ -52,7 +52,7 @@ python = "^3.8"
 ### Docs ###
 sphinx = "*"
 furo = "*"
-gp-libs = "~0.0.2"
+gp-libs = "~0.0.4"
 sphinx-autobuild = "*"
 sphinx-autodoc-typehints = "*"
 sphinx-inline-tabs = "*"
