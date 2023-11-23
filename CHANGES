@@ -18,6 +18,7 @@ $ pip install --user --upgrade --pre libtmux
 
 - Remove `requirements/` folder, which was unused and deprecated by
   pyproject.toml (#507)
+- pyproject: Add `gp-libs` to `test` dependency group
 
 ## libtmux 0.24.0 (2023-11-19)
 
