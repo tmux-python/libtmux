@@ -591,6 +591,9 @@ class Server(EnvironmentMixin):
         :class:`util.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
 
         .. deprecated:: 0.16
+
+           Deprecated in favor of :attr:`.panes`.
+
         """
         warnings.warn("Server._list_panes() is deprecated", stacklevel=2)
         return [p.__dict__ for p in self.panes]
@@ -604,18 +607,33 @@ class Server(EnvironmentMixin):
         :class:`Server`
 
         .. deprecated:: 0.16
+
+           Deprecated in favor of :attr:`.panes` and returning ``self``.
+
         """
         warnings.warn("Server._update_panes() is deprecated", stacklevel=2)
         self._list_panes()
         return self
 
     def get_by_id(self, id: str) -> t.Optional[Session]:
-        """.. deprecated:: 0.16."""
+        """Return session by id. Deprecated in favor of :meth:`.sessions.get()`.
+
+        .. deprecated:: 0.16
+
+           Deprecated by :meth:`.sessions.get()`.
+
+        """
         warnings.warn("Server.get_by_id() is deprecated", stacklevel=2)
         return self.sessions.get(session_id=id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Session]:
-        """.. deprecated:: 0.16."""
+        """Filter through sessions, return list of :class:`Session`.
+
+        .. deprecated:: 0.16
+
+           Deprecated by :meth:`.session.filter()`.
+
+        """
         warnings.warn("Server.find_where() is deprecated", stacklevel=2)
         try:
             return self.sessions.filter(**kwargs)
@@ -623,7 +641,13 @@ class Server(EnvironmentMixin):
             return []
 
     def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Session]:
-        """.. deprecated:: 0.16."""
+        """Filter through sessions, return first :class:`Session`.
+
+        .. deprecated:: 0.16
+
+           Slated to be removed in favor of :meth:`.sessions.get()`.
+
+        """
         warnings.warn("Server.find_where() is deprecated", stacklevel=2)
         return self.sessions.get(default=None, **kwargs)
 
@@ -636,6 +660,9 @@ class Server(EnvironmentMixin):
         :class:`common.tmux_cmd` which wraps :py:class:`subprocess.Popen`.
 
         .. deprecated:: 0.16
+
+           Slated to be removed in favor of :attr:`.windows`.
+
         """
         warnings.warn("Server._list_windows() is deprecated", stacklevel=2)
         return [w.__dict__ for w in self.windows]
@@ -644,6 +671,9 @@ class Server(EnvironmentMixin):
         """Update internal window data and return ``self`` for chainability.
 
         .. deprecated:: 0.16
+
+           Deprecated in favor of :attr:`.windows` and returning ``self``.
+
         """
         warnings.warn("Server._update_windows() is deprecated", stacklevel=2)
         self._list_windows()
@@ -654,12 +684,20 @@ class Server(EnvironmentMixin):
         """Property / alias to return :meth:`~._list_sessions`.
 
         .. deprecated:: 0.16
+
+           Slated to be removed in favor of :attr:`.sessions`.
+
         """
         warnings.warn("Server._sessions is deprecated", stacklevel=2)
         return self._list_sessions()
 
     def _list_sessions(self) -> t.List["SessionDict"]:
-        """.. deprecated:: 0.16."""
+        """Return list of session object dictionaries.
+
+        .. deprecated:: 0.16
+
+           Slated to be removed in favor of :attr:`.sessions`.
+        """
         warnings.warn("Server._list_sessions() is deprecated", stacklevel=2)
         return [s.__dict__ for s in self.sessions]
 
@@ -667,6 +705,8 @@ class Server(EnvironmentMixin):
         """Return list of :class:`Session` from the ``tmux(1)`` session.
 
         .. deprecated:: 0.16
+
+           Slated to be removed in favor of :attr:`.sessions`.
 
         Returns
         -------
@@ -680,6 +720,9 @@ class Server(EnvironmentMixin):
         """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16
+
+           Slated to be removed in favor of :attr:`.sessions`.
+
         """
         warnings.warn("Server.children is deprecated", stacklevel=2)
         return self.sessions
