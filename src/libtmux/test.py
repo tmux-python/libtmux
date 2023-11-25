@@ -25,6 +25,8 @@ RETRY_INTERVAL_SECONDS = float(os.getenv("RETRY_INTERVAL_SECONDS", 0.05))
 
 
 class RandomStrSequence:
+    """Factory to generate random string."""
+
     def __init__(
         self, characters: str = "abcdefghijklmnopqrstuvwxyz0123456789_"
     ) -> None:
@@ -41,9 +43,11 @@ class RandomStrSequence:
         self.characters: str = characters
 
     def __iter__(self) -> "RandomStrSequence":
+        """Return self."""
         return self
 
     def __next__(self) -> str:
+        """Return next random string."""
         return "".join(random.sample(self.characters, k=8))
 
 
@@ -308,6 +312,7 @@ class EnvironmentVarGuard:
         self._reset: t.Dict[str, str] = {}
 
     def set(self, envvar: str, value: str) -> None:
+        """Set environment variable."""
         if envvar not in self._environ:
             self._unset.add(envvar)
         else:
@@ -315,11 +320,13 @@ class EnvironmentVarGuard:
         self._environ[envvar] = value
 
     def unset(self, envvar: str) -> None:
+        """Unset environment variable."""
         if envvar in self._environ:
             self._reset[envvar] = self._environ[envvar]
             del self._environ[envvar]
 
     def __enter__(self) -> "EnvironmentVarGuard":
+        """Return context for for context manager."""
         return self
 
     def __exit__(
@@ -328,6 +335,7 @@ class EnvironmentVarGuard:
         exc_value: t.Optional[BaseException],
         exc_tb: t.Optional[types.TracebackType],
     ) -> None:
+        """Cleanup to run after context manager finishes."""
         for envvar, value in self._reset.items():
             self._environ[envvar] = value
         for unset in self._unset:
