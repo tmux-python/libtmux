@@ -565,7 +565,7 @@ class Window(Obj):
     #
     @property
     def id(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_id`
+        """Alias of :attr:`Window.window_id`.
 
         >>> window.id
         '@1'
@@ -577,7 +577,7 @@ class Window(Obj):
 
     @property
     def name(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_name`
+        """Alias of :attr:`Window.window_name`.
 
         >>> window.name
         '...'
@@ -589,7 +589,7 @@ class Window(Obj):
 
     @property
     def index(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_index`
+        """Alias of :attr:`Window.window_index`.
 
         >>> window.index
         '1'
@@ -601,7 +601,7 @@ class Window(Obj):
 
     @property
     def height(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_height`
+        """Alias of :attr:`Window.window_height`.
 
         >>> window.height.isdigit()
         True
@@ -613,7 +613,7 @@ class Window(Obj):
 
     @property
     def width(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_width`
+        """Alias of :attr:`Window.window_width`.
 
         >>> window.width.isdigit()
         True
@@ -627,34 +627,22 @@ class Window(Obj):
     # Legacy: Redundant stuff we want to remove
     #
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
-        """
-        .. deprecated:: 0.16
-
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Window.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
-        """
-        .. deprecated:: 0.16
-
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn(f"Item lookups, e.g. window['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)
 
     def get_by_id(self, id: str) -> t.Optional[Pane]:
-        """
-        .. deprecated:: 0.16
-
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Window.get_by_id() is deprecated", stacklevel=2)
         return self.panes.get(pane_id=id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Pane]:
-        """
-        .. deprecated:: 0.16
-
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Window.where() is deprecated", stacklevel=2)
         try:
             return self.panes.filter(**kwargs)
@@ -662,18 +650,12 @@ class Window(Obj):
             return []
 
     def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Pane]:
-        """
-        .. deprecated:: 0.16
-
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Window.find_where() is deprecated", stacklevel=2)
         return self.panes.get(default=None, **kwargs)
 
     def _list_panes(self) -> t.List[PaneDict]:
-        """
-        .. deprecated:: 0.16
-
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Window._list_panes() is deprecated", stacklevel=2)
         return [pane.__dict__ for pane in self.panes]
 
@@ -696,7 +678,7 @@ class Window(Obj):
 
     @property
     def children(self) -> QueryList["Pane"]:  # type:ignore
-        """Was used by TmuxRelationalObject (but that's longer used in this class)
+        """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16
         """

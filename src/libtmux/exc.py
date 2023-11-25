@@ -83,22 +83,22 @@ class AmbiguousOption(OptionError):
 
 
 class WaitTimeout(LibTmuxException):
-    """Function timed out without meeting condition"""
+    """Function timed out without meeting condition."""
 
 
 class VariableUnpackingError(LibTmuxException):
-    """Error unpacking variable"""
+    """Error unpacking variable."""
 
     def __init__(self, variable: t.Optional[t.Any] = None, *args: object):
         return super().__init__(f"Unexpected variable: {variable!s}")
 
 
 class PaneError(LibTmuxException):
-    """Any type of pane related error"""
+    """Any type of pane related error."""
 
 
 class PaneNotFound(PaneError):
-    """Pane not found"""
+    """Pane not found."""
 
     def __init__(self, pane_id: t.Optional[str] = None, *args: object):
         if pane_id is not None:
@@ -107,25 +107,25 @@ class PaneNotFound(PaneError):
 
 
 class WindowError(LibTmuxException):
-    """Any type of window related error"""
+    """Any type of window related error."""
 
 
 class MultipleActiveWindows(WindowError):
-    """Multiple active windows"""
+    """Multiple active windows."""
 
     def __init__(self, count: int, *args: object):
         return super().__init__(f"Multiple active windows: {count} found")
 
 
 class NoActiveWindow(WindowError):
-    """No active window found"""
+    """No active window found."""
 
     def __init__(self, *args: object):
         return super().__init__("No active windows found")
 
 
 class NoWindowsExist(WindowError):
-    """No windows exist for object"""
+    """No windows exist for object."""
 
     def __init__(self, *args: object):
         return super().__init__("No windows exist for object")

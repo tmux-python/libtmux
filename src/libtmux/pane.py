@@ -387,7 +387,7 @@ class Pane(Obj):
     #
     @property
     def id(self) -> t.Optional[str]:
-        """Alias of :attr:`Pane.pane_id`
+        """Alias of :attr:`Pane.pane_id`.
 
         >>> pane.id
         '%1'
@@ -399,7 +399,7 @@ class Pane(Obj):
 
     @property
     def index(self) -> t.Optional[str]:
-        """Alias of :attr:`Pane.pane_index`
+        """Alias of :attr:`Pane.pane_index`.
 
         >>> pane.index
         '0'
@@ -411,7 +411,7 @@ class Pane(Obj):
 
     @property
     def height(self) -> t.Optional[str]:
-        """Alias of :attr:`Pane.pane_height`
+        """Alias of :attr:`Pane.pane_height`.
 
         >>> pane.height.isdigit()
         True
@@ -423,7 +423,7 @@ class Pane(Obj):
 
     @property
     def width(self) -> t.Optional[str]:
-        """Alias of :attr:`Pane.pane_width`
+        """Alias of :attr:`Pane.pane_width`.
 
         >>> pane.width.isdigit()
         True
@@ -437,15 +437,11 @@ class Pane(Obj):
     # Legacy
     #
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Pane.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn(f"Item lookups, e.g. pane['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)

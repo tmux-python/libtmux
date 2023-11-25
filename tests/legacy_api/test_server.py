@@ -86,14 +86,14 @@ def test_show_environment_not_set(server: Server) -> None:
 
 
 def test_new_session(server: Server) -> None:
-    """Server.new_session creates and returns valid session"""
+    """Server.new_session creates and returns valid session."""
     mysession = server.new_session("test_new_session")
     assert mysession.get("session_name") == "test_new_session"
     assert server.has_session("test_new_session")
 
 
 def test_new_session_no_name(server: Server) -> None:
-    """Server.new_session works with no name"""
+    """Server.new_session works with no name."""
     first_session = server.new_session()
     first_session_name = first_session.get("session_name")
     assert first_session_name is not None
@@ -111,7 +111,7 @@ def test_new_session_no_name(server: Server) -> None:
 
 def test_new_session_shell(server: Server) -> None:
     """Server.new_session creates and returns valid session running with
-    specified command
+    specified command.
     """
     cmd = "sleep 1m"
     mysession = server.new_session("test_new_session", window_command=cmd)

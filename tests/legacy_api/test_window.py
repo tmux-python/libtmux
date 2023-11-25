@@ -278,7 +278,7 @@ def test_set_window_option_invalid(session: Session) -> None:
 
 
 def test_move_window(session: Session) -> None:
-    """Window.move_window results in changed index"""
+    """Window.move_window results in changed index."""
     window = session.new_window(window_name="test_window")
     assert window.index is not None
     new_index = str(int(window.index) + 1)

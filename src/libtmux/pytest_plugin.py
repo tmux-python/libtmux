@@ -109,7 +109,7 @@ def server(
     monkeypatch: pytest.MonkeyPatch,
     config_file: pathlib.Path,
 ) -> Server:
-    """Returns a new, temporary :class:`libtmux.Server`
+    """Returns a new, temporary :class:`libtmux.Server`.
 
     >>> from libtmux.server import Server
 
@@ -146,7 +146,7 @@ def server(
 
 @pytest.fixture(scope="function")
 def session_params() -> t.Dict[str, t.Any]:
-    """Returns a new, temporary :class:`libtmux.Session`
+    """Returns a new, temporary :class:`libtmux.Session`.
 
     >>> import pytest
     >>> from libtmux.session import Session
@@ -186,7 +186,7 @@ def session_params() -> t.Dict[str, t.Any]:
 def session(
     request: pytest.FixtureRequest, session_params: t.Dict[str, t.Any], server: Server
 ) -> "Session":
-    """Returns a new, temporary :class:`libtmux.Session`
+    """Returns a new, temporary :class:`libtmux.Session`.
 
     >>> from libtmux.session import Session
 

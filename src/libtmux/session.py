@@ -353,9 +353,7 @@ class Session(Obj, EnvironmentMixin):
     #
     @property
     def attached_window(self) -> "Window":
-        """
-        Return active :class:`Window` object.
-        """
+        """Return active :class:`Window` object."""
         active_windows = [
             window for window in self.windows if window.window_active == "1"
         ]
@@ -521,7 +519,7 @@ class Session(Obj, EnvironmentMixin):
         )
 
     def kill_window(self, target_window: t.Optional[str] = None) -> None:
-        """Close a tmux window, and all panes inside it, ``$ tmux kill-window``
+        """Close a tmux window, and all panes inside it, ``$ tmux kill-window``.
 
         Kill the current window or the window at ``target-window``. removing it
         from any sessions to which it is linked.
@@ -566,7 +564,7 @@ class Session(Obj, EnvironmentMixin):
     #
     @property
     def id(self) -> t.Optional[str]:
-        """Alias of :attr:`Session.session_id`
+        """Alias of :attr:`Session.session_id`.
 
         >>> session.id
         '$1'
@@ -578,7 +576,7 @@ class Session(Obj, EnvironmentMixin):
 
     @property
     def name(self) -> t.Optional[str]:
-        """Alias of :attr:`Session.session_name`
+        """Alias of :attr:`Session.session_name`.
 
         >>> session.name
         'libtmux_...'
@@ -592,32 +590,24 @@ class Session(Obj, EnvironmentMixin):
     # Legacy: Redundant stuff we want to remove
     #
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Session.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn(
             f"Item lookups, e.g. session['{key}'] is deprecated", stacklevel=2
         )
         return getattr(self, key)
 
     def get_by_id(self, id: str) -> t.Optional[Window]:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Session.get_by_id() is deprecated", stacklevel=2)
         return self.windows.get(window_id=id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Window]:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Session.where() is deprecated", stacklevel=2)
         try:
             return self.windows.filter(**kwargs)
@@ -625,16 +615,12 @@ class Session(Obj, EnvironmentMixin):
             return []
 
     def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Window]:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Session.find_where() is deprecated", stacklevel=2)
         return self.windows.get(default=None, **kwargs)
 
     def _list_windows(self) -> t.List["WindowDict"]:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Session._list_windows() is deprecated", stacklevel=2)
         return [w.__dict__ for w in self.windows]
 
@@ -657,7 +643,7 @@ class Session(Obj, EnvironmentMixin):
 
     @property
     def children(self) -> QueryList["Window"]:  # type:ignore
-        """Was used by TmuxRelationalObject (but that's longer used in this class)
+        """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16
         """

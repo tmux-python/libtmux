@@ -608,16 +608,12 @@ class Server(EnvironmentMixin):
         return self
 
     def get_by_id(self, id: str) -> t.Optional[Session]:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Server.get_by_id() is deprecated", stacklevel=2)
         return self.sessions.get(session_id=id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Session]:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Server.find_where() is deprecated", stacklevel=2)
         try:
             return self.sessions.filter(**kwargs)
@@ -625,9 +621,7 @@ class Server(EnvironmentMixin):
             return []
 
     def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Session]:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Server.find_where() is deprecated", stacklevel=2)
         return self.sessions.get(default=None, **kwargs)
 
@@ -663,9 +657,7 @@ class Server(EnvironmentMixin):
         return self._list_sessions()
 
     def _list_sessions(self) -> t.List["SessionDict"]:
-        """
-        .. deprecated:: 0.16
-        """
+        """.. deprecated:: 0.16."""
         warnings.warn("Server._list_sessions() is deprecated", stacklevel=2)
         return [s.__dict__ for s in self.sessions]
 
@@ -683,7 +675,7 @@ class Server(EnvironmentMixin):
 
     @property
     def children(self) -> QueryList["Session"]:  # type:ignore
-        """Was used by TmuxRelationalObject (but that's longer used in this class)
+        """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16
         """
