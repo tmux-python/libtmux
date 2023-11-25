@@ -13,8 +13,11 @@ if t.TYPE_CHECKING:
 
 
 class SkipDefaultFieldsReprMixin:
-    r"""Skip default fields in :func:`~dataclasses.dataclass`
-    :func:`object representation <repr()>`.
+    r"""Skip default fields in :func:`~dataclasses.dataclass` object representation.
+
+    See Also
+    --------
+    :func:`object representation <repr()>`
 
     Notes
     -----
