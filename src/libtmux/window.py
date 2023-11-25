@@ -633,6 +633,7 @@ class Window(Obj):
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
         """
         .. deprecated:: 0.16
+
         """
         warnings.warn("Window.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
@@ -640,6 +641,7 @@ class Window(Obj):
     def __getitem__(self, key: str) -> t.Any:
         """
         .. deprecated:: 0.16
+
         """
         warnings.warn(f"Item lookups, e.g. window['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)
@@ -647,6 +649,7 @@ class Window(Obj):
     def get_by_id(self, id: str) -> t.Optional[Pane]:
         """
         .. deprecated:: 0.16
+
         """
         warnings.warn("Window.get_by_id() is deprecated", stacklevel=2)
         return self.panes.get(pane_id=id, default=None)
@@ -654,6 +657,7 @@ class Window(Obj):
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Pane]:
         """
         .. deprecated:: 0.16
+
         """
         warnings.warn("Window.where() is deprecated", stacklevel=2)
         try:
@@ -664,6 +668,7 @@ class Window(Obj):
     def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Pane]:
         """
         .. deprecated:: 0.16
+
         """
         warnings.warn("Window.find_where() is deprecated", stacklevel=2)
         return self.panes.get(default=None, **kwargs)
@@ -671,6 +676,7 @@ class Window(Obj):
     def _list_panes(self) -> t.List[PaneDict]:
         """
         .. deprecated:: 0.16
+
         """
         warnings.warn("Window._list_panes() is deprecated", stacklevel=2)
         return [pane.__dict__ for pane in self.panes]
