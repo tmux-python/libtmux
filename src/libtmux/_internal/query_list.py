@@ -19,7 +19,7 @@ if t.TYPE_CHECKING:
             data: t.Union[str, t.List[str], "Mapping[str, str]"],
             rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
         ) -> bool:
-            """Callback for :class:`QueryList` filtering operators."""
+            """Return callback for :class:`QueryList` filtering operators."""
             ...
 
 
