@@ -20,6 +20,14 @@ $ pip install --user --upgrade --pre libtmux
 
   Thank you @m1guelperez for `Window.__eq__`! (#505)
 
+### Development
+
+- ci: Add pydocstyle rule to ruff (#509)
+
+### Documentation
+
+- Add docstrings to functions, methods, classes, and packages (#509)
+
 ## libtmux 0.24.1 (2023-11-23)
 
 ### Packaging
