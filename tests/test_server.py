@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def test_has_session(server: Server, session: Session) -> None:
+    """Server.has_session() returns True if session exists."""
     session_name = session.session_name
     assert session_name is not None
     assert server.has_session(session_name)
@@ -44,6 +45,7 @@ def test_config(server: Server) -> None:
 
 
 def test_256_colors(server: Server) -> None:
+    """Assert Server respects ``colors=256``."""
     myserver = Server(colors=256)
     assert myserver.colors == 256
 
@@ -54,6 +56,7 @@ def test_256_colors(server: Server) -> None:
 
 
 def test_88_colors(server: Server) -> None:
+    """Assert Server respects ``colors=88``."""
     myserver = Server(colors=88)
     assert myserver.colors == 88
 
@@ -110,9 +113,7 @@ def test_new_session_no_name(server: Server) -> None:
 
 
 def test_new_session_shell(server: Server) -> None:
-    """Server.new_session creates and returns valid session running with
-    specified command.
-    """
+    """Verify ``Server.new_session`` creates valid session running w/ command."""
     cmd = "sleep 1m"
     mysession = server.new_session("test_new_session", window_command=cmd)
     window = mysession.windows[0]
@@ -131,9 +132,7 @@ def test_new_session_shell(server: Server) -> None:
 
 @pytest.mark.skipif(has_version("3.2"), reason="Wrong width returned with 3.2")
 def test_new_session_width_height(server: Server) -> None:
-    """Server.new_session creates and returns valid session running with
-    specified width /height.
-    """
+    """Verify ``Server.new_session`` creates valid session running w/ dimensions."""
     cmd = "/usr/bin/env PS1='$ ' sh"
     mysession = server.new_session(
         "test_new_session_width_height",
@@ -148,31 +147,37 @@ def test_new_session_width_height(server: Server) -> None:
 
 
 def test_no_server_sessions() -> None:
+    """Verify ``Server.sessions`` returns empty list without tmux server."""
     server = Server(socket_name="test_attached_session_no_server")
     assert server.sessions == []
 
 
 def test_no_server_attached_sessions() -> None:
+    """Verify ``Server.attached_sessions`` returns empty list without tmux server."""
     server = Server(socket_name="test_no_server_attached_sessions")
     assert server.attached_sessions == []
 
 
 def test_no_server_is_alive() -> None:
+    """Verify is_alive() returns False without tmux server."""
     dead_server = Server(socket_name="test_no_server_is_alive")
     assert not dead_server.is_alive()
 
 
 def test_with_server_is_alive(server: Server) -> None:
+    """Verify is_alive() returns True when tmux server is alive."""
     server.new_session()
     assert server.is_alive()
 
 
-def test_no_server_raise_if_dead() -> None:
+def test_raise_if_dead_no_server_raises() -> None:
+    """Verify new_session() raises if tmux server is dead."""
     dead_server = Server(socket_name="test_attached_session_no_server")
     with pytest.raises(subprocess.CalledProcessError):
         dead_server.raise_if_dead()
 
 
-def test_with_server_raise_if_dead(server: Server) -> None:
+def test_raise_if_dead_does_not_raise_if_alive(server: Server) -> None:
+    """Verify new_session() does not raise if tmux server is alive."""
     server.new_session()
     server.raise_if_dead()
