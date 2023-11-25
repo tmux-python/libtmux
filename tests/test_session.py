@@ -140,6 +140,7 @@ def test_set_show_option(session: Session) -> None:
 
 
 def test_empty_session_option_returns_None(session: Session) -> None:
+    """Verify Session.show_option returns None for unset option."""
     assert session.show_option("default-shell") is None
 
 
@@ -215,6 +216,8 @@ def test_unset_environment(session: Session) -> None:
 
 
 class PeriodRaisesBadSessionName(t.NamedTuple):
+    """Test fixture for bad session name names."""
+
     session_name: str
     raises: bool
 
@@ -227,9 +230,10 @@ class PeriodRaisesBadSessionName(t.NamedTuple):
         PeriodRaisesBadSessionName("hey moo", False),
     ],
 )
-def test_periods_raise_badsessionname(
+def test_periods_raise_bad_session_name(
     server: Server, session: Session, session_name: str, raises: bool
 ) -> None:
+    """Verify session names with periods raise BadSessionName."""
     new_name = session_name + "moo"  # used for rename / switch
     if raises:
         with pytest.raises(exc.BadSessionName):
@@ -256,6 +260,7 @@ def test_periods_raise_badsessionname(
 
 
 def test_cmd_inserts_session_id(session: Session) -> None:
+    """Verify Session.cmd() inserts session_id."""
     current_session_id = session.session_id
     last_arg = "last-arg"
     cmd = session.cmd("not-a-command", last_arg)
@@ -279,6 +284,7 @@ def test_new_window_with_environment(
     session: Session,
     environment: t.Dict[str, str],
 ) -> None:
+    """Verify new window with environment vars."""
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in PATH."
 
@@ -303,6 +309,7 @@ def test_new_window_with_environment_logs_warning_for_old_tmux(
     session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """Verify new window with environment vars create a warning if tmux is too old."""
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in PATH."
 
