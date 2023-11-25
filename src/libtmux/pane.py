@@ -70,11 +70,13 @@ class Pane(Obj):
     server: "Server"
 
     def refresh(self) -> None:
+        """Refresh pane attributes from tmux."""
         assert isinstance(self.pane_id, str)
         return super()._refresh(obj_key="pane_id", obj_id=self.pane_id)
 
     @classmethod
     def from_pane_id(cls, server: "Server", pane_id: str) -> "Pane":
+        """Create Pane from existing pane_id."""
         pane = fetch_obj(
             obj_key="pane_id",
             obj_id=pane_id,
@@ -89,6 +91,7 @@ class Pane(Obj):
     #
     @property
     def window(self) -> "Window":
+        """Parent window of pane."""
         assert isinstance(self.window_id, str)
         from libtmux.window import Window
 
@@ -96,6 +99,7 @@ class Pane(Obj):
 
     @property
     def session(self) -> "Session":
+        """Parent session of pane."""
         return self.window.session
 
     """
@@ -375,11 +379,13 @@ class Pane(Obj):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
+        """Equal operator for :class:`Pane` object."""
         if isinstance(other, Pane):
             return self.pane_id == other.pane_id
         return False
 
     def __repr__(self) -> str:
+        """Representation of :class:`Pane` object."""
         return f"{self.__class__.__name__}({self.pane_id} {self.window})"
 
     #
