@@ -552,8 +552,9 @@ class Window(Obj):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
-        assert isinstance(other, Window)
-        return self.window_id == other.window_id
+        if isinstance(other, Window):
+            return self.window_id == other.window_id
+        return False
 
     def __repr__(self) -> str:
         return "{}({} {}:{}, {})".format(
