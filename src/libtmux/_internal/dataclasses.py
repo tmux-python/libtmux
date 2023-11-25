@@ -18,14 +18,12 @@ class SkipDefaultFieldsReprMixin:
 
     Notes
     -----
-
     Credit: Pietro Oldrati, 2022-05-08, Unilicense
 
     https://stackoverflow.com/a/72161437/1396928
 
     Examples
     --------
-
     >>> @dataclasses.dataclass()
     ... class Item:
     ...     name: str

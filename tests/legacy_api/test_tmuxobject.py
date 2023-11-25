@@ -42,7 +42,6 @@ def test_find_where(server: Server, session: Session) -> None:
 
 def test_find_where_None(server: Server, session: Session) -> None:
     """.find_where returns None if no results found."""
-
     while True:
         nonexistent_session = TEST_SESSION_PREFIX + next(namer)
 
@@ -54,7 +53,6 @@ def test_find_where_None(server: Server, session: Session) -> None:
 
 def test_find_where_multiple_infos(server: Server, session: Session) -> None:
     """.find_where returns objects with multiple attributes."""
-
     for session in server.sessions:
         session_id = session.get("session_id")
         assert session_id is not None
@@ -99,7 +97,6 @@ def test_find_where_multiple_infos(server: Server, session: Session) -> None:
 
 def test_where(server: Server, session: Session) -> None:
     """Test self.where() returns matching objects."""
-
     window = session.attached_window
     window.split_window()  # create second pane
 
@@ -153,7 +150,6 @@ def test_where(server: Server, session: Session) -> None:
 
 def test_get_by_id(server: Server, session: Session) -> None:
     """Test self.get_by_id() retrieves child object."""
-
     window = session.attached_window
 
     window.split_window()  # create second pane

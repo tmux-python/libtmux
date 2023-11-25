@@ -159,7 +159,6 @@ class Window(Obj):
         ------
         :class:`Pane`
         """
-
         if target_pane in ["-l", "-U", "-D", "-L", "-R"]:
             proc = self.cmd("select-pane", "-t%s" % self.window_id, target_pane)
         else:
@@ -210,7 +209,6 @@ class Window(Obj):
 
         Notes
         -----
-
         :term:`tmux(1)` will move window to the new pane if the
         ``split-window`` target is off screen. tmux handles the ``-d`` the
         same way as ``new-window`` and ``attach`` in
@@ -454,7 +452,6 @@ class Window(Obj):
 
         Examples
         --------
-
         >>> window = session.attached_window
 
         >>> window.rename_window('My project')
@@ -463,7 +460,6 @@ class Window(Obj):
         >>> window.rename_window('New name')
         Window(@1 1:New name, Session($1 ...))
         """
-
         import shlex
 
         lex = shlex.shlex(new_name)
@@ -482,7 +478,6 @@ class Window(Obj):
 
     def kill_window(self) -> None:
         """Kill the current :class:`Window` object. ``$ tmux kill-window``."""
-
         proc = self.cmd(
             "kill-window",
             f"-t{self.session_id}:{self.window_index}",

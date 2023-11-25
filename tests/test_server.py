@@ -111,7 +111,8 @@ def test_new_session_no_name(server: Server) -> None:
 
 def test_new_session_shell(server: Server) -> None:
     """Server.new_session creates and returns valid session running with
-    specified command"""
+    specified command
+    """
     cmd = "sleep 1m"
     mysession = server.new_session("test_new_session", window_command=cmd)
     window = mysession.windows[0]
@@ -131,7 +132,8 @@ def test_new_session_shell(server: Server) -> None:
 @pytest.mark.skipif(has_version("3.2"), reason="Wrong width returned with 3.2")
 def test_new_session_width_height(server: Server) -> None:
     """Server.new_session creates and returns valid session running with
-    specified width /height"""
+    specified width /height
+    """
     cmd = "/usr/bin/env PS1='$ ' sh"
     mysession = server.new_session(
         "test_new_session_width_height",

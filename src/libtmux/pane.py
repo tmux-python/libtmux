@@ -53,13 +53,11 @@ class Pane(Obj):
 
     Notes
     -----
-
     .. versionchanged:: 0.8
         Renamed from ``.tmux`` to ``.cmd``.
 
     References
     ----------
-
     .. [pane_manual] tmux pane. openbsd manpage for TMUX(1).
            "Each window displayed by tmux may be split into one or more
            panes; each pane takes up a certain area of the display and is
@@ -370,7 +368,6 @@ class Pane(Obj):
 
     def reset(self) -> "Pane":
         """Reset and clear pane history."""
-
         self.cmd("send-keys", r"-R \; clear-history")
         return self
 

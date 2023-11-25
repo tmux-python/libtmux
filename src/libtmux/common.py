@@ -36,7 +36,6 @@ PaneDict = t.Dict[str, t.Any]
 
 
 class EnvironmentMixin:
-
     """
     Mixin class for managing session and server level environment variables in
     tmux.
@@ -194,13 +193,11 @@ class EnvironmentMixin:
 
 
 class tmux_cmd:
-
     """
     :term:`tmux(1)` command via :py:mod:`subprocess`.
 
     Examples
     --------
-
     .. code-block:: python
 
         proc = tmux_cmd('new-session', '-s%' % 'my session')
@@ -220,7 +217,6 @@ class tmux_cmd:
 
     Notes
     -----
-
     .. versionchanged:: 0.8
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
@@ -413,7 +409,6 @@ def has_minimum_version(raises: bool = True) -> bool:
 
     Notes
     -----
-
     .. versionchanged:: 0.7.0
         No longer returns version, returns True or False
 

@@ -110,7 +110,6 @@ def test_newest_pane_data(session: Session) -> None:
 
 def test_attached_pane(session: Session) -> None:
     """Window.attached_window returns active Pane."""
-
     window = session.attached_window  # current window
     assert isinstance(window.attached_pane, Pane)
 
@@ -280,7 +279,6 @@ def test_set_window_option_ambiguous(session: Session) -> None:
 
 def test_set_window_option_invalid(session: Session) -> None:
     """Window.set_window_option raises ValueError for invalid option key."""
-
     window = session.new_window(window_name="test_window")
 
     if has_gte_version("2.4"):
@@ -293,7 +291,6 @@ def test_set_window_option_invalid(session: Session) -> None:
 
 def test_move_window(session: Session) -> None:
     """Window.move_window results in changed index"""
-
     window = session.new_window(window_name="test_window")
     assert window.window_index is not None
     new_index = str(int(window.window_index) + 1)
@@ -311,8 +308,7 @@ def test_move_window_to_other_session(server: Server, session: Session) -> None:
 
 
 def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
-    """tmux allows select-layout with no arguments, so let's allow it here."""
-
+    """Tmux allows select-layout with no arguments, so let's allow it here."""
     window = session.new_window(window_name="test_window")
     window.select_layout()
 

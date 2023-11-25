@@ -194,7 +194,6 @@ class Version(_BaseVersion):
             If the ``version`` does not conform to PEP 440 in any way then this
             exception will be raised.
         """
-
         # Validate the version and parse it into pieces
         match = self._regex.search(version)
         if not match:

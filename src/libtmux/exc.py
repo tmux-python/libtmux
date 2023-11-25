@@ -13,17 +13,14 @@ if t.TYPE_CHECKING:
 
 
 class LibTmuxException(Exception):
-
     """Base Exception for libtmux Errors."""
 
 
 class TmuxSessionExists(LibTmuxException):
-
     """Session does not exist in the server."""
 
 
 class TmuxCommandNotFound(LibTmuxException):
-
     """Application binary for tmux not found."""
 
 
@@ -47,12 +44,10 @@ class TmuxObjectDoesNotExist(ObjectDoesNotExist):
 
 
 class VersionTooLow(LibTmuxException):
-
     """Raised if tmux below the minimum version to use libtmux."""
 
 
 class BadSessionName(LibTmuxException):
-
     """Disallowed session name for tmux (empty, contains periods or colons)."""
 
     def __init__(
@@ -65,17 +60,14 @@ class BadSessionName(LibTmuxException):
 
 
 class OptionError(LibTmuxException):
-
     """Root error for any error involving invalid, ambiguous or bad options."""
 
 
 class UnknownOption(OptionError):
-
     """Option unknown to tmux show-option(s) or show-window-option(s)."""
 
 
 class UnknownColorOption(UnknownOption):
-
     """Unknown color option."""
 
     def __init__(self, *args: object):
@@ -83,22 +75,18 @@ class UnknownColorOption(UnknownOption):
 
 
 class InvalidOption(OptionError):
-
     """Option invalid to tmux, introduced in tmux v2.4."""
 
 
 class AmbiguousOption(OptionError):
-
     """Option that could potentially match more than one."""
 
 
 class WaitTimeout(LibTmuxException):
-
     """Function timed out without meeting condition"""
 
 
 class VariableUnpackingError(LibTmuxException):
-
     """Error unpacking variable"""
 
     def __init__(self, variable: t.Optional[t.Any] = None, *args: object):
@@ -119,12 +107,10 @@ class PaneNotFound(PaneError):
 
 
 class WindowError(LibTmuxException):
-
     """Any type of window related error"""
 
 
 class MultipleActiveWindows(WindowError):
-
     """Multiple active windows"""
 
     def __init__(self, count: int, *args: object):
@@ -132,7 +118,6 @@ class MultipleActiveWindows(WindowError):
 
 
 class NoActiveWindow(WindowError):
-
     """No active window found"""
 
     def __init__(self, *args: object):
@@ -140,7 +125,6 @@ class NoActiveWindow(WindowError):
 
 
 class NoWindowsExist(WindowError):
-
     """No windows exist for object"""
 
     def __init__(self, *args: object):

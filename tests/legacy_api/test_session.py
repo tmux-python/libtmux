@@ -66,7 +66,6 @@ def test_select_window(session: Session) -> None:
 
 def test_select_window_returns_Window(session: Session) -> None:
     """Session.select_window returns Window object."""
-
     window_count = len(session._windows)
     assert len(session._windows) == window_count
 
@@ -115,14 +114,12 @@ def test_new_session(server: Server) -> None:
 
 def test_show_options(session: Session) -> None:
     """Session.show_options() returns dict."""
-
     options = session.show_options()
     assert isinstance(options, dict)
 
 
 def test_set_show_options_single(session: Session) -> None:
     """Set option then Session.show_options(key)."""
-
     session.set_option("history-limit", 20)
     assert session.show_option("history-limit") == 20
 
@@ -179,14 +176,12 @@ def test_set_option_invalid(session: Session) -> None:
 
 def test_show_environment(session: Session) -> None:
     """Session.show_environment() returns dict."""
-
     _vars = session.show_environment()
     assert isinstance(_vars, dict)
 
 
 def test_set_show_environment_single(session: Session) -> None:
     """Set environment then Session.show_environment(key)."""
-
     session.set_environment("FOO", "BAR")
     assert session.getenv("FOO") == "BAR"
 

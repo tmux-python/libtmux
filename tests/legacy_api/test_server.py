@@ -111,7 +111,8 @@ def test_new_session_no_name(server: Server) -> None:
 
 def test_new_session_shell(server: Server) -> None:
     """Server.new_session creates and returns valid session running with
-    specified command"""
+    specified command
+    """
     cmd = "sleep 1m"
     mysession = server.new_session("test_new_session", window_command=cmd)
     window = mysession.list_windows()[0]

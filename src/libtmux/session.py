@@ -290,7 +290,6 @@ class Session(Obj, EnvironmentMixin):
 
         Test and return True/False for on/off string.
         """
-
         tmux_args: t.Tuple[str, ...] = ()
 
         if _global:
@@ -337,7 +336,6 @@ class Session(Obj, EnvironmentMixin):
 
             assure ``-l``, ``-n``, ``-p`` work.
         """
-
         # Note that we also provide the session ID here, since cmd()
         # will not automatically add it as there is already a '-t'
         # argument provided.
@@ -383,7 +381,6 @@ class Session(Obj, EnvironmentMixin):
 
     def kill_session(self) -> None:
         """``$ tmux kill-session``."""
-
         proc = self.cmd("kill-session", "-t%s" % self.session_id)
 
         if proc.stderr:
@@ -534,7 +531,6 @@ class Session(Obj, EnvironmentMixin):
         target_window : str, optional
             window to kill
         """
-
         if target_window:
             if isinstance(target_window, int):
                 target = "-t%s:%d" % (self.window_name, target_window)
@@ -552,7 +548,6 @@ class Session(Obj, EnvironmentMixin):
     @property
     def attached_pane(self) -> t.Optional["Pane"]:
         """Return active :class:`Pane` object."""
-
         return self.attached_window.attached_pane
 
     #

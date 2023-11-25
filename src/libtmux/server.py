@@ -193,7 +193,6 @@ class Server(EnvironmentMixin):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-
         cmd_args: t.List[t.Union[str, int]] = list(args)
         if self.socket_name:
             cmd_args.insert(0, f"-L{self.socket_name}")

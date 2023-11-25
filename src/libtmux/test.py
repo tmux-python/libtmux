@@ -209,7 +209,6 @@ def temp_session(
     ...     session.new_window(window_name='my window')
     Window(@3 2:my window, Session($... ...))
     """
-
     if "session_name" in kwargs:
         session_name = kwargs.pop("session_name")
     else:
