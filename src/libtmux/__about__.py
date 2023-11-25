@@ -1,3 +1,4 @@
+"""Metadata package for libtmux."""
 __title__ = "libtmux"
 __package_name__ = "libtmux"
 __version__ = "0.24.1"
