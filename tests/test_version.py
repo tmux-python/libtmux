@@ -1,3 +1,4 @@
+"""Tests for version comparison."""
 import operator
 import typing as t
 from contextlib import nullcontext as does_not_raise
@@ -30,10 +31,13 @@ if t.TYPE_CHECKING:
     ],
 )
 def test_version(version: str) -> None:
+    """Assert LooseVersion constructor against various version strings."""
     assert LooseVersion(version)
 
 
 class VersionCompareFixture(t.NamedTuple):
+    """Test fixture for version comparison."""
+
     a: object
     op: "VersionCompareOp"
     b: object
@@ -61,6 +65,7 @@ def test_version_compare(
     b: str,
     raises: t.Union[t.Type[Exception], bool],
 ) -> None:
+    """Assert version comparisons."""
     raises_ctx: "RaisesContext[Exception]" = (
         pytest.raises(t.cast(t.Type[Exception], raises))
         if raises
