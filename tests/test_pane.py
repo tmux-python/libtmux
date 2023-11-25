@@ -28,6 +28,7 @@ def test_resize_pane(session: Session) -> None:
 
 
 def test_send_keys(session: Session) -> None:
+    """Verify Pane.send_keys()."""
     pane = session.attached_window.attached_pane
     assert pane is not None
     pane.send_keys("c-c", literal=True)
@@ -40,6 +41,7 @@ def test_send_keys(session: Session) -> None:
 
 
 def test_set_height(session: Session) -> None:
+    """Verify Pane.set_height()."""
     window = session.new_window(window_name="test_set_height")
     window.split_window()
     pane1 = window.attached_pane
@@ -53,6 +55,7 @@ def test_set_height(session: Session) -> None:
 
 
 def test_set_width(session: Session) -> None:
+    """Verify Pane.set_width()."""
     window = session.new_window(window_name="test_set_width")
     window.split_window()
 
@@ -70,6 +73,7 @@ def test_set_width(session: Session) -> None:
 
 
 def test_capture_pane(session: Session) -> None:
+    """Verify Pane.capture_pane()."""
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in PATH."
 
@@ -92,6 +96,7 @@ def test_capture_pane(session: Session) -> None:
 
 
 def test_capture_pane_start(session: Session) -> None:
+    """Assert Pane.capture_pane() with ``start`` param."""
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in PATH."
 
@@ -119,6 +124,7 @@ def test_capture_pane_start(session: Session) -> None:
 
 
 def test_capture_pane_end(session: Session) -> None:
+    """Assert Pane.capture_pane() with ``end`` param."""
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in PATH."
 
