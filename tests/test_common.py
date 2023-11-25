@@ -1,5 +1,4 @@
 """Tests for utility functions in libtmux."""
-
 import re
 import sys
 import typing as t
@@ -29,6 +28,8 @@ version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
 def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert get_version() works with builds from git trunk."""
+
     class Hi:
         stdout: t.ClassVar = ["tmux master"]
         stderr = None
@@ -47,6 +48,7 @@ def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert get_version() supports next version."""
     TMUX_NEXT_VERSION = str(float(TMUX_MAX_VERSION) + 0.1)
 
     class Hi:
@@ -65,6 +67,8 @@ def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert get_version() with OpenBSD versions."""
+
     class Hi:
         stderr: t.ClassVar = ["tmux: unknown option -- V"]
 
@@ -82,6 +86,8 @@ def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_version_too_low(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Assert get_version() raises if tmux version too low."""
+
     class Hi:
         stderr: t.ClassVar = ["tmux: unknown option -- V"]
 
@@ -95,7 +101,7 @@ def test_get_version_too_low(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ignore letters such as 1.8b.
+    """Tests version utilities ignores letters such as 1.8b.
 
     See ticket https://github.com/tmux-python/tmuxp/issues/55.
 
@@ -118,6 +124,8 @@ def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_error_version_less_1_7(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test raises if tmux version less than 1.7."""
+
     def mock_get_version() -> LooseVersion:
         return LooseVersion("1.7")
 
@@ -133,10 +141,12 @@ def test_error_version_less_1_7(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_has_version() -> None:
+    """Test has_version()."""
     assert has_version(str(get_version()))
 
 
 def test_has_gt_version() -> None:
+    """Test has_gt_version()."""
     assert has_gt_version("1.6")
     assert has_gt_version("1.6b")
 
@@ -145,6 +155,7 @@ def test_has_gt_version() -> None:
 
 
 def test_has_gte_version() -> None:
+    """Test has_gte_version()."""
     assert has_gte_version("1.6")
     assert has_gte_version("1.6b")
     assert has_gte_version(str(get_version()))
@@ -154,6 +165,7 @@ def test_has_gte_version() -> None:
 
 
 def test_has_lt_version() -> None:
+    """Test has_lt_version()."""
     assert has_lt_version("4.0a")
     assert has_lt_version("4.0")
 
@@ -162,6 +174,7 @@ def test_has_lt_version() -> None:
 
 
 def test_has_lte_version() -> None:
+    """Test has_lti_version()."""
     assert has_lte_version("4.0a")
     assert has_lte_version("4.0")
     assert has_lte_version(str(get_version()))
@@ -171,16 +184,20 @@ def test_has_lte_version() -> None:
 
 
 def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify raises if tmux command not found."""
     monkeypatch.setenv("PATH", "")
     with pytest.raises(TmuxCommandNotFound):
         tmux_cmd("-V")
 
 
 def test_tmux_cmd_unicode(session: Session) -> None:
+    """Verify tmux commands with unicode."""
     session.cmd("new-window", "-t", 3, "-n", "юникод", "-F", "Ελληνικά")
 
 
 class SessionCheckName(t.NamedTuple):
+    """Test fixture for test_session_check_name()."""
+
     session_name: t.Optional[str]
     raises: bool
     exc_msg_regex: t.Optional[str]
@@ -200,6 +217,7 @@ class SessionCheckName(t.NamedTuple):
 def test_session_check_name(
     session_name: t.Optional[str], raises: bool, exc_msg_regex: t.Optional[str]
 ) -> None:
+    """Verify session_check_name()."""
     if raises:
         with pytest.raises(BadSessionName) as exc_info:
             session_check_name(session_name)
@@ -210,6 +228,7 @@ def test_session_check_name(
 
 
 def test_get_libtmux_version() -> None:
+    """Verify get_libtmux_version()."""
     from libtmux.__about__ import __version__
 
     version = get_libtmux_version()

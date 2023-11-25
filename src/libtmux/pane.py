@@ -53,13 +53,11 @@ class Pane(Obj):
 
     Notes
     -----
-
     .. versionchanged:: 0.8
         Renamed from ``.tmux`` to ``.cmd``.
 
     References
     ----------
-
     .. [pane_manual] tmux pane. openbsd manpage for TMUX(1).
            "Each window displayed by tmux may be split into one or more
            panes; each pane takes up a certain area of the display and is
@@ -72,11 +70,13 @@ class Pane(Obj):
     server: "Server"
 
     def refresh(self) -> None:
+        """Refresh pane attributes from tmux."""
         assert isinstance(self.pane_id, str)
         return super()._refresh(obj_key="pane_id", obj_id=self.pane_id)
 
     @classmethod
     def from_pane_id(cls, server: "Server", pane_id: str) -> "Pane":
+        """Create Pane from existing pane_id."""
         pane = fetch_obj(
             obj_key="pane_id",
             obj_id=pane_id,
@@ -91,6 +91,7 @@ class Pane(Obj):
     #
     @property
     def window(self) -> "Window":
+        """Parent window of pane."""
         assert isinstance(self.window_id, str)
         from libtmux.window import Window
 
@@ -98,6 +99,7 @@ class Pane(Obj):
 
     @property
     def session(self) -> "Session":
+        """Parent session of pane."""
         return self.window.session
 
     """
@@ -370,7 +372,6 @@ class Pane(Obj):
 
     def reset(self) -> "Pane":
         """Reset and clear pane history."""
-
         self.cmd("send-keys", r"-R \; clear-history")
         return self
 
@@ -378,11 +379,13 @@ class Pane(Obj):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
+        """Equal operator for :class:`Pane` object."""
         if isinstance(other, Pane):
             return self.pane_id == other.pane_id
         return False
 
     def __repr__(self) -> str:
+        """Representation of :class:`Pane` object."""
         return f"{self.__class__.__name__}({self.pane_id} {self.window})"
 
     #
@@ -390,7 +393,7 @@ class Pane(Obj):
     #
     @property
     def id(self) -> t.Optional[str]:
-        """Alias of :attr:`Pane.pane_id`
+        """Alias of :attr:`Pane.pane_id`.
 
         >>> pane.id
         '%1'
@@ -402,7 +405,7 @@ class Pane(Obj):
 
     @property
     def index(self) -> t.Optional[str]:
-        """Alias of :attr:`Pane.pane_index`
+        """Alias of :attr:`Pane.pane_index`.
 
         >>> pane.index
         '0'
@@ -414,7 +417,7 @@ class Pane(Obj):
 
     @property
     def height(self) -> t.Optional[str]:
-        """Alias of :attr:`Pane.pane_height`
+        """Alias of :attr:`Pane.pane_height`.
 
         >>> pane.height.isdigit()
         True
@@ -426,7 +429,7 @@ class Pane(Obj):
 
     @property
     def width(self) -> t.Optional[str]:
-        """Alias of :attr:`Pane.pane_width`
+        """Alias of :attr:`Pane.pane_width`.
 
         >>> pane.width.isdigit()
         True
@@ -437,18 +440,28 @@ class Pane(Obj):
         return self.pane_width
 
     #
-    # Legacy
+    # Legacy: Redundant stuff we want to remove
     #
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
-        """
+        """Return key-based lookup. Deprecated by attributes.
+
         .. deprecated:: 0.16
+
+           Deprecated by attribute lookup.e.g. ``pane['window_name']`` is now
+           accessed via ``pane.window_name``.
+
         """
         warnings.warn("Pane.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
-        """
+        """Return item lookup by key. Deprecated in favor of attributes.
+
         .. deprecated:: 0.16
+
+           Deprecated in favor of attributes. e.g. ``pane['window_name']`` is now
+           accessed via ``pane.window_name``.
+
         """
         warnings.warn(f"Item lookups, e.g. pane['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)

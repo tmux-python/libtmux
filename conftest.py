@@ -1,4 +1,4 @@
-"""Conftest.py (root-level)
+"""Conftest.py (root-level).
 
 We keep this in root pytest fixtures in pytest's doctest plugin to be available, as well
 as avoiding conftest.py from being included in the wheel, in addition to pytest_plugin
@@ -27,6 +27,7 @@ def add_doctest_fixtures(
     request: pytest.FixtureRequest,
     doctest_namespace: t.Dict[str, t.Any],
 ) -> None:
+    """Configure doctest fixtures for pytest-doctest."""
     if isinstance(request._pyfuncitem, DoctestItem) and shutil.which("tmux"):
         request.getfixturevalue("set_home")
         doctest_namespace["server"] = request.getfixturevalue("server")
@@ -42,6 +43,7 @@ def set_home(
     monkeypatch: pytest.MonkeyPatch,
     user_path: pathlib.Path,
 ) -> None:
+    """Configure home directory for pytest tests."""
     monkeypatch.setenv("HOME", str(user_path))
 
 
@@ -51,5 +53,6 @@ def setup(
     request: pytest.FixtureRequest,
     config_file: pathlib.Path,
 ) -> None:
+    """Configure test fixtures for pytest."""
     if USING_ZSH:
         request.getfixturevalue("zshrc")

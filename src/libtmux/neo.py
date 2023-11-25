@@ -1,3 +1,4 @@
+"""Tools for hydrating tmux data into python dataclass objects."""
 import dataclasses
 import logging
 import typing as t
@@ -31,6 +32,8 @@ QUIRK_TMUX_3_1_X_0001:
 
 @dataclasses.dataclass()
 class Obj:
+    """Dataclass of generic tmux object."""
+
     server: "Server"
 
     active_window_index: t.Union[str, None] = None
@@ -180,6 +183,7 @@ def fetch_objs(
     list_cmd: "ListCmd",
     list_extra_args: "t.Optional[ListExtraArgs]" = None,
 ) -> OutputsRaw:
+    """Fetch a listing of raw data from a tmux command."""
     formats = list(Obj.__dataclass_fields__.keys())
 
     cmd_args: t.List[t.Union[str, int]] = []
@@ -227,6 +231,7 @@ def fetch_obj(
     list_cmd: "ListCmd" = "list-panes",
     list_extra_args: "t.Optional[ListExtraArgs]" = None,
 ) -> OutputRaw:
+    """Fetch raw data from tmux command."""
     obj_formatters_filtered = fetch_objs(
         server=server, list_cmd=list_cmd, list_extra_args=list_extra_args
     )

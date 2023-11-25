@@ -19,7 +19,7 @@ if t.TYPE_CHECKING:
             data: t.Union[str, t.List[str], "Mapping[str, str]"],
             rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
         ) -> bool:
-            """Callback for :class:`QueryList` filtering operators."""
+            """Return callback for :class:`QueryList` filtering operators."""
             ...
 
 
@@ -29,7 +29,7 @@ no_arg = object()
 
 
 class MultipleObjectsReturned(Exception):
-    """The requested object does not exist"""
+    """The requested object does not exist."""
 
 
 class ObjectDoesNotExist(Exception):
@@ -40,7 +40,7 @@ def keygetter(
     obj: "Mapping[str, t.Any]",
     path: str,
 ) -> t.Union[None, t.Any, str, t.List[str], "Mapping[str, str]"]:
-    """obj, "foods__breakfast", obj['foods']['breakfast']
+    """obj, "foods__breakfast", obj['foods']['breakfast'].
 
     >>> keygetter({ "foods": { "breakfast": "cereal" } }, "foods__breakfast")
     'cereal'

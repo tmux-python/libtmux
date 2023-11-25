@@ -1,3 +1,4 @@
+"""Tests for libtmux pytest plugin."""
 import textwrap
 
 import pytest
@@ -7,6 +8,7 @@ def test_plugin(
     pytester: pytest.Pytester,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Test libtmux pytest plugin."""
     # Initialize variables
     pytester.plugins = ["pytest_plugin"]
     pytester.makefile(

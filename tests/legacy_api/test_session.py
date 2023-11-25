@@ -66,7 +66,6 @@ def test_select_window(session: Session) -> None:
 
 def test_select_window_returns_Window(session: Session) -> None:
     """Session.select_window returns Window object."""
-
     window_count = len(session._windows)
     assert len(session._windows) == window_count
 
@@ -115,14 +114,12 @@ def test_new_session(server: Server) -> None:
 
 def test_show_options(session: Session) -> None:
     """Session.show_options() returns dict."""
-
     options = session.show_options()
     assert isinstance(options, dict)
 
 
 def test_set_show_options_single(session: Session) -> None:
     """Set option then Session.show_options(key)."""
-
     session.set_option("history-limit", 20)
     assert session.show_option("history-limit") == 20
 
@@ -143,6 +140,7 @@ def test_set_show_option(session: Session) -> None:
 
 
 def test_empty_session_option_returns_None(session: Session) -> None:
+    """Verify Session.show_option returns None for unset option."""
     assert session.show_option("default-shell") is None
 
 
@@ -179,14 +177,12 @@ def test_set_option_invalid(session: Session) -> None:
 
 def test_show_environment(session: Session) -> None:
     """Session.show_environment() returns dict."""
-
     _vars = session.show_environment()
     assert isinstance(_vars, dict)
 
 
 def test_set_show_environment_single(session: Session) -> None:
     """Set environment then Session.show_environment(key)."""
-
     session.set_environment("FOO", "BAR")
     assert session.getenv("FOO") == "BAR"
 
@@ -226,6 +222,7 @@ def test_unset_environment(session: Session) -> None:
 def test_periods_raise_badsessionname(
     server: Server, session: Session, session_name: str, raises: bool
 ) -> None:
+    """Verify session names with periods raise BadSessionName."""
     new_name = session_name + "moo"  # used for rename / switch
     if raises:
         with pytest.raises(exc.BadSessionName):
@@ -252,6 +249,7 @@ def test_periods_raise_badsessionname(
 
 
 def test_cmd_inserts_session_id(session: Session) -> None:
+    """Verify Session.cmd() inserts session_id."""
     current_session_id = session.id
     last_arg = "last-arg"
     cmd = session.cmd("not-a-command", last_arg)
@@ -275,6 +273,7 @@ def test_new_window_with_environment(
     session: Session,
     environment: t.Dict[str, str],
 ) -> None:
+    """Verify new window with environment vars."""
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in PATH."
 
@@ -299,6 +298,7 @@ def test_new_window_with_environment_logs_warning_for_old_tmux(
     session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """Verify new window with environment vars create a warning if tmux is too old."""
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in PATH."
 

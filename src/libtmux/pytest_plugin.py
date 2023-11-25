@@ -1,3 +1,4 @@
+"""libtmux pytest plugin."""
 import contextlib
 import getpass
 import logging
@@ -26,13 +27,13 @@ def home_path(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
 
 @pytest.fixture(scope="session")
 def home_user_name() -> str:
-    """Default username to set for :func:`user_path` fixture."""
+    """Return default username to set for :func:`user_path` fixture."""
     return getpass.getuser()
 
 
 @pytest.fixture(scope="session")
 def user_path(home_path: pathlib.Path, home_user_name: str) -> pathlib.Path:
-    """Default temporary user directory.
+    """Ensure and return temporary user directory.
 
     Used by: :func:`config_file`, :func:`zshrc`
 
@@ -46,7 +47,7 @@ def user_path(home_path: pathlib.Path, home_user_name: str) -> pathlib.Path:
 @pytest.mark.skipif(USING_ZSH, reason="Using ZSH")
 @pytest.fixture(scope="session")
 def zshrc(user_path: pathlib.Path) -> pathlib.Path:
-    """This quiets ZSH default message.
+    """Suppress ZSH default message.
 
     Needs a startup file .zshenv, .zprofile, .zshrc, .zlogin.
     """
@@ -57,7 +58,7 @@ def zshrc(user_path: pathlib.Path) -> pathlib.Path:
 
 @pytest.fixture(scope="session")
 def config_file(user_path: pathlib.Path) -> pathlib.Path:
-    """Default `.tmux.conf` configuration.
+    """Return fixture for ``.tmux.conf`` configuration.
 
     - ``base-index -g 1``
 
@@ -109,7 +110,7 @@ def server(
     monkeypatch: pytest.MonkeyPatch,
     config_file: pathlib.Path,
 ) -> Server:
-    """Returns a new, temporary :class:`libtmux.Server`
+    """Return new, temporary :class:`libtmux.Server`.
 
     >>> from libtmux.server import Server
 
@@ -146,7 +147,7 @@ def server(
 
 @pytest.fixture(scope="function")
 def session_params() -> t.Dict[str, t.Any]:
-    """Returns a new, temporary :class:`libtmux.Session`
+    """Return new, temporary :class:`libtmux.Session`.
 
     >>> import pytest
     >>> from libtmux.session import Session
@@ -186,7 +187,7 @@ def session_params() -> t.Dict[str, t.Any]:
 def session(
     request: pytest.FixtureRequest, session_params: t.Dict[str, t.Any], server: Server
 ) -> "Session":
-    """Returns a new, temporary :class:`libtmux.Session`
+    """Return new, temporary :class:`libtmux.Session`.
 
     >>> from libtmux.session import Session
 

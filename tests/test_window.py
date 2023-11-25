@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def test_select_window(session: Session) -> None:
+    """Test Window.select_window()."""
     window_count = len(session.windows)
     # to do, get option for   base-index from tmux
     # for now however, let's get the index from the first window.
@@ -43,7 +44,8 @@ def test_select_window(session: Session) -> None:
     assert len(session.windows) == 2
 
 
-def test_zfresh_window_data(session: Session) -> None:
+def test_fresh_window_data(session: Session) -> None:
+    """Verify window data is fresh."""
     attached_window = session.attached_window
     assert attached_window is not None
     pane_base_idx = attached_window.show_window_option("pane-base-index", g=True)
@@ -96,6 +98,7 @@ def test_zfresh_window_data(session: Session) -> None:
 
 
 def test_newest_pane_data(session: Session) -> None:
+    """Test window.panes has fresh data."""
     window = session.new_window(window_name="test", attach=True)
     assert isinstance(window, Window)
     assert len(window.panes) == 1
@@ -110,7 +113,6 @@ def test_newest_pane_data(session: Session) -> None:
 
 def test_attached_pane(session: Session) -> None:
     """Window.attached_window returns active Pane."""
-
     window = session.attached_window  # current window
     assert isinstance(window.attached_pane, Pane)
 
@@ -175,7 +177,7 @@ def test_split_window_horizontal(session: Session) -> None:
 def test_window_rename(
     session: Session, window_name_before: str, window_name_after: str
 ) -> None:
-    """Window.rename_window()."""
+    """Test Window.rename_window()."""
     window_name_before = "test"
     window_name_after = "ha ha ha fjewlkjflwef"
 
@@ -197,6 +199,7 @@ def test_window_rename(
 
 
 def test_kill_window(session: Session) -> None:
+    """Test window.kill_window() kills window."""
     session.new_window()
     # create a second window to not kick out the client.
     # there is another way to do this via options too.
@@ -235,6 +238,7 @@ def test_set_show_window_options(session: Session) -> None:
 
 
 def test_empty_window_option_returns_None(session: Session) -> None:
+    """Verify unset window option returns None."""
     window = session.new_window(window_name="test_window")
     assert window.show_window_option("alternate-screen") is None
 
@@ -280,7 +284,6 @@ def test_set_window_option_ambiguous(session: Session) -> None:
 
 def test_set_window_option_invalid(session: Session) -> None:
     """Window.set_window_option raises ValueError for invalid option key."""
-
     window = session.new_window(window_name="test_window")
 
     if has_gte_version("2.4"):
@@ -292,8 +295,7 @@ def test_set_window_option_invalid(session: Session) -> None:
 
 
 def test_move_window(session: Session) -> None:
-    """Window.move_window results in changed index"""
-
+    """Window.move_window results in changed index."""
     window = session.new_window(window_name="test_window")
     assert window.window_index is not None
     new_index = str(int(window.window_index) + 1)
@@ -302,6 +304,7 @@ def test_move_window(session: Session) -> None:
 
 
 def test_move_window_to_other_session(server: Server, session: Session) -> None:
+    """Window.move_window to other session."""
     window = session.new_window(window_name="test_window")
     new_session = server.new_session("test_move_window")
     window.move_window(session=new_session.session_id)
@@ -311,8 +314,7 @@ def test_move_window_to_other_session(server: Server, session: Session) -> None:
 
 
 def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
-    """tmux allows select-layout with no arguments, so let's allow it here."""
-
+    """Tmux allows select-layout with no arguments, so let's allow it here."""
     window = session.new_window(window_name="test_window")
     window.select_layout()
 
@@ -321,6 +323,7 @@ def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
     has_lt_version("3.2"), reason="needs filter introduced in tmux >= 3.2"
 )
 def test_empty_window_name(session: Session) -> None:
+    """New windows can be created with empty string for window name."""
     session.set_option("automatic-rename", "off")
     window = session.new_window(window_name="''", attach=True)
 
@@ -353,6 +356,7 @@ def test_split_window_with_environment(
     session: Session,
     environment: t.Dict[str, str],
 ) -> None:
+    """Verify splitting window with environment variables."""
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in Path."
 
@@ -377,6 +381,7 @@ def test_split_window_with_environment_logs_warning_for_old_tmux(
     session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """Verify splitting window with environment variables warns if tmux too old."""
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in Path."
 

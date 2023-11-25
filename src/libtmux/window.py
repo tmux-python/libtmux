@@ -80,6 +80,7 @@ class Window(Obj):
     server: "Server"
 
     def refresh(self) -> None:
+        """Refresh window attributes from tmux."""
         assert isinstance(self.window_id, str)
         return super()._refresh(
             obj_key="window_id",
@@ -89,6 +90,7 @@ class Window(Obj):
 
     @classmethod
     def from_window_id(cls, server: "Server", window_id: str) -> "Window":
+        """Create Window from existing window_id."""
         window = fetch_obj(
             obj_key="window_id",
             obj_id=window_id,
@@ -100,6 +102,7 @@ class Window(Obj):
 
     @property
     def session(self) -> "Session":
+        """Parent session of window."""
         assert isinstance(self.session_id, str)
         from libtmux.session import Session
 
@@ -159,7 +162,6 @@ class Window(Obj):
         ------
         :class:`Pane`
         """
-
         if target_pane in ["-l", "-U", "-D", "-L", "-R"]:
             proc = self.cmd("select-pane", "-t%s" % self.window_id, target_pane)
         else:
@@ -210,7 +212,6 @@ class Window(Obj):
 
         Notes
         -----
-
         :term:`tmux(1)` will move window to the new pane if the
         ``split-window`` target is off screen. tmux handles the ``-d`` the
         same way as ``new-window`` and ``attach`` in
@@ -284,7 +285,9 @@ class Window(Obj):
         return self.select_pane("-l")
 
     def select_layout(self, layout: t.Optional[str] = None) -> "Window":
-        """Wrapper for ``$ tmux select-layout <layout>``.
+        """Select layout for window.
+
+        Wrapper for ``$ tmux select-layout <layout>``.
 
         Parameters
         ----------
@@ -325,8 +328,9 @@ class Window(Obj):
         return self
 
     def set_window_option(self, option: str, value: t.Union[int, str]) -> "Window":
-        """
-        Wrapper for ``$ tmux set-window-option <option> <value>``.
+        """Set option for tmux window.
+
+        Wraps ``$ tmux set-window-option <option> <value>``.
 
         Parameters
         ----------
@@ -454,7 +458,6 @@ class Window(Obj):
 
         Examples
         --------
-
         >>> window = session.attached_window
 
         >>> window.rename_window('My project')
@@ -463,7 +466,6 @@ class Window(Obj):
         >>> window.rename_window('New name')
         Window(@1 1:New name, Session($1 ...))
         """
-
         import shlex
 
         lex = shlex.shlex(new_name)
@@ -482,7 +484,6 @@ class Window(Obj):
 
     def kill_window(self) -> None:
         """Kill the current :class:`Window` object. ``$ tmux kill-window``."""
-
         proc = self.cmd(
             "kill-window",
             f"-t{self.session_id}:{self.window_index}",
@@ -552,11 +553,13 @@ class Window(Obj):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
+        """Equal operator for :class:`Window` object."""
         if isinstance(other, Window):
             return self.window_id == other.window_id
         return False
 
     def __repr__(self) -> str:
+        """Representation of :class:`Window` object."""
         return "{}({} {}:{}, {})".format(
             self.__class__.__name__,
             self.window_id,
@@ -570,7 +573,7 @@ class Window(Obj):
     #
     @property
     def id(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_id`
+        """Alias of :attr:`Window.window_id`.
 
         >>> window.id
         '@1'
@@ -582,7 +585,7 @@ class Window(Obj):
 
     @property
     def name(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_name`
+        """Alias of :attr:`Window.window_name`.
 
         >>> window.name
         '...'
@@ -594,7 +597,7 @@ class Window(Obj):
 
     @property
     def index(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_index`
+        """Alias of :attr:`Window.window_index`.
 
         >>> window.index
         '1'
@@ -606,7 +609,7 @@ class Window(Obj):
 
     @property
     def height(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_height`
+        """Alias of :attr:`Window.window_height`.
 
         >>> window.height.isdigit()
         True
@@ -618,7 +621,7 @@ class Window(Obj):
 
     @property
     def width(self) -> t.Optional[str]:
-        """Alias of :attr:`Window.window_width`
+        """Alias of :attr:`Window.window_width`.
 
         >>> window.width.isdigit()
         True
@@ -632,32 +635,46 @@ class Window(Obj):
     # Legacy: Redundant stuff we want to remove
     #
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
-        """
+        """Return key-based lookup. Deprecated by attributes.
+
         .. deprecated:: 0.16
+
+           Deprecated by attribute lookup.e.g. ``window['window_name']`` is now
+           accessed via ``window.window_name``.
 
         """
         warnings.warn("Window.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
-        """
+        """Return item lookup by key. Deprecated in favor of attributes.
+
         .. deprecated:: 0.16
+
+           Deprecated in favor of attributes. e.g. ``window['window_name']`` is now
+           accessed via ``window.window_name``.
 
         """
         warnings.warn(f"Item lookups, e.g. window['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)
 
     def get_by_id(self, id: str) -> t.Optional[Pane]:
-        """
+        """Return pane by id. Deprecated in favor of :meth:`.panes.get()`.
+
         .. deprecated:: 0.16
+
+           Deprecated by :meth:`.panes.get()`.
 
         """
         warnings.warn("Window.get_by_id() is deprecated", stacklevel=2)
         return self.panes.get(pane_id=id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Pane]:
-        """
+        """Filter through panes, return list of :class:`Pane`.
+
         .. deprecated:: 0.16
+
+           Deprecated by :meth:`.panes.filter()`.
 
         """
         warnings.warn("Window.where() is deprecated", stacklevel=2)
@@ -667,16 +684,22 @@ class Window(Obj):
             return []
 
     def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Pane]:
-        """
+        """Filter through panes, return first :class:`Pane`.
+
         .. deprecated:: 0.16
+
+           Slated to be removed in favor of :meth:`.panes.get()`.
 
         """
         warnings.warn("Window.find_where() is deprecated", stacklevel=2)
         return self.panes.get(default=None, **kwargs)
 
     def _list_panes(self) -> t.List[PaneDict]:
-        """
+        """Return list of panes (deprecated in favor of :meth:`.panes`).
+
         .. deprecated:: 0.16
+
+           Slated to be removed in favor of :attr:`.panes`.
 
         """
         warnings.warn("Window._list_panes() is deprecated", stacklevel=2)
@@ -687,6 +710,9 @@ class Window(Obj):
         """Property / alias to return :meth:`~._list_panes`.
 
         .. deprecated:: 0.16
+
+           Slated to be removed in favor of :attr:`.panes`.
+
         """
         warnings.warn("_panes is deprecated", stacklevel=2)
         return self._list_panes()
@@ -695,15 +721,21 @@ class Window(Obj):
         """Return list of :class:`Pane` for the window.
 
         .. deprecated:: 0.16
+
+           Slated to be removed in favor of :attr:`.panes`.
+
         """
         warnings.warn("list_panes() is deprecated", stacklevel=2)
         return self.panes
 
     @property
     def children(self) -> QueryList["Pane"]:  # type:ignore
-        """Was used by TmuxRelationalObject (but that's longer used in this class)
+        """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16
+
+           Slated to be removed in favor of :attr:`.panes`.
+
         """
         warnings.warn("Server.children is deprecated", stacklevel=2)
         return self.panes
