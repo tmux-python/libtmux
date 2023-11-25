@@ -1,5 +1,5 @@
 # flake8: NOQA: W605
-"""Helper methods and mixins.
+"""Helper methods and mixins for libtmux.
 
 libtmux.common
 ~~~~~~~~~~~~~~
@@ -36,10 +36,7 @@ PaneDict = t.Dict[str, t.Any]
 
 
 class EnvironmentMixin:
-    """
-    Mixin class for managing session and server level environment variables in
-    tmux.
-    """
+    """Mixin for manager session and server level environment variables in tmux."""
 
     _add_option = None
 
@@ -431,8 +428,7 @@ def has_minimum_version(raises: bool = True) -> bool:
 
 
 def session_check_name(session_name: t.Optional[str]) -> None:
-    """
-    Raises exception session name invalid, modeled after tmux function.
+    """Raise exception session name invalid, modeled after tmux function.
 
     tmux(1) session names may not be empty, or include periods or colons.
     These delimiters are reserved for noting session, window and pane.
@@ -456,7 +452,7 @@ def session_check_name(session_name: t.Optional[str]) -> None:
 
 
 def handle_option_error(error: str) -> t.Type[exc.OptionError]:
-    """Raises exception if error in option command found.
+    """Raise exception if error in option command found.
 
     In tmux 3.0, show-option and show-window-option return invalid option instead of
     unknown option. See https://github.com/tmux/tmux/blob/3.0/cmd-show-options.c.
