@@ -378,8 +378,9 @@ class Pane(Obj):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
-        assert isinstance(other, Pane)
-        return self.pane_id == other.pane_id
+        if isinstance(other, Pane):
+            return self.pane_id == other.pane_id
+        return False
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.pane_id} {self.window})"

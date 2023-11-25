@@ -16,8 +16,9 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Improvement
 
-- `Window.__eq__` now returns `False` instead of raising `AssertionError`, thank
-  you @m1guelperez! (#505)
+- `Server.__eq__`, `Session.__eq__`, `Window.__eq__`, `Pane.__eq__` now returns `False` instead of raising `AssertionError` when type mismatches (#505, #510)
+
+  Thank you @m1guelperez for `Window.__eq__`! (#505)
 
 ## libtmux 0.24.1 (2023-11-23)
 
