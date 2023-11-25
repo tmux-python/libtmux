@@ -440,14 +440,28 @@ class Pane(Obj):
         return self.pane_width
 
     #
-    # Legacy
+    # Legacy: Redundant stuff we want to remove
     #
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
-        """.. deprecated:: 0.16."""
+        """Return key-based lookup. Deprecated by attributes.
+
+        .. deprecated:: 0.16
+
+           Deprecated by attribute lookup.e.g. ``pane['window_name']`` is now
+           accessed via ``pane.window_name``.
+
+        """
         warnings.warn("Pane.get() is deprecated", stacklevel=2)
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
-        """.. deprecated:: 0.16."""
+        """Return item lookup by key. Deprecated in favor of attributes.
+
+        .. deprecated:: 0.16
+
+           Deprecated in favor of attributes. e.g. ``pane['window_name']`` is now
+           accessed via ``pane.window_name``.
+
+        """
         warnings.warn(f"Item lookups, e.g. pane['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)
