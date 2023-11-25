@@ -1,3 +1,4 @@
+"""Tests for libtmux's testing utilities."""
 from time import time
 
 import pytest
@@ -7,6 +8,7 @@ from libtmux.test import retry_until
 
 
 def test_retry_three_times() -> None:
+    """Test retry_until()."""
     ini = time()
     value = 0
 
@@ -28,6 +30,7 @@ def test_retry_three_times() -> None:
 
 
 def test_function_times_out() -> None:
+    """Test time outs with retry_until()."""
     ini = time()
 
     def never_true() -> bool:
@@ -41,7 +44,8 @@ def test_function_times_out() -> None:
     assert abs((end - ini) - 1.0) < 0.01
 
 
-def test_function_times_out_no_rise() -> None:
+def test_function_times_out_no_raise() -> None:
+    """Tests retry_until() with exception raising disabled."""
     ini = time()
 
     def never_true() -> bool:
@@ -55,6 +59,7 @@ def test_function_times_out_no_rise() -> None:
 
 
 def test_function_times_out_no_raise_assert() -> None:
+    """Tests retry_until() with exception raising disabled, returning False."""
     ini = time()
 
     def never_true() -> bool:
@@ -68,6 +73,7 @@ def test_function_times_out_no_raise_assert() -> None:
 
 
 def test_retry_three_times_no_raise_assert() -> None:
+    """Tests retry_until() with exception raising disabled, with closure variable."""
     ini = time()
     value = 0
 
