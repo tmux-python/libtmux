@@ -80,6 +80,7 @@ class Window(Obj):
     server: "Server"
 
     def refresh(self) -> None:
+        """Refresh window attributes from tmux."""
         assert isinstance(self.window_id, str)
         return super()._refresh(
             obj_key="window_id",
@@ -89,6 +90,7 @@ class Window(Obj):
 
     @classmethod
     def from_window_id(cls, server: "Server", window_id: str) -> "Window":
+        """Create Window from existing window_id."""
         window = fetch_obj(
             obj_key="window_id",
             obj_id=window_id,
@@ -100,6 +102,7 @@ class Window(Obj):
 
     @property
     def session(self) -> "Session":
+        """Parent session of window."""
         assert isinstance(self.session_id, str)
         from libtmux.session import Session
 
@@ -282,7 +285,9 @@ class Window(Obj):
         return self.select_pane("-l")
 
     def select_layout(self, layout: t.Optional[str] = None) -> "Window":
-        """Wrapper for ``$ tmux select-layout <layout>``.
+        """Select layout for window.
+
+        Wrapper for ``$ tmux select-layout <layout>``.
 
         Parameters
         ----------
@@ -323,8 +328,9 @@ class Window(Obj):
         return self
 
     def set_window_option(self, option: str, value: t.Union[int, str]) -> "Window":
-        """
-        Wrapper for ``$ tmux set-window-option <option> <value>``.
+        """Set option for tmux window.
+
+        Wraps ``$ tmux set-window-option <option> <value>``.
 
         Parameters
         ----------
@@ -547,11 +553,13 @@ class Window(Obj):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
+        """Equal operator for :class:`Window` object."""
         if isinstance(other, Window):
             return self.window_id == other.window_id
         return False
 
     def __repr__(self) -> str:
+        """Representation of :class:`Window` object."""
         return "{}({} {}:{}, {})".format(
             self.__class__.__name__,
             self.window_id,
