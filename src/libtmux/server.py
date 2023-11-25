@@ -560,11 +560,12 @@ class Server(EnvironmentMixin):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
-        assert isinstance(other, Server)
-        return (
-            self.socket_name == other.socket_name
-            and self.socket_path == other.socket_path
-        )
+        if isinstance(other, Server):
+            return (
+                self.socket_name == other.socket_name
+                and self.socket_path == other.socket_path
+            )
+        return False
 
     def __repr__(self) -> str:
         if self.socket_name is not None:

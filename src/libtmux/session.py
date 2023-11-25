@@ -559,8 +559,9 @@ class Session(Obj, EnvironmentMixin):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
-        assert isinstance(other, Session)
-        return self.session_id == other.session_id
+        if isinstance(other, Session):
+            return self.session_id == other.session_id
+        return False
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.session_id} {self.session_name})"
