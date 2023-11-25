@@ -1,3 +1,4 @@
+"""Tests for libtmux object model, querying and traversal, etc."""
 import pathlib
 import typing as t
 
@@ -27,6 +28,7 @@ def test_pane(
     tmp_path: pathlib.Path,
     server: Server,
 ) -> None:
+    """Verify Pane dataclass object."""
     monkeypatch.chdir(tmp_path)
 
     try:
@@ -133,6 +135,7 @@ def test_pane(
 
 @pytest.fixture
 def session(session: Session) -> Session:
+    """Verify creating Session with Session.from_session_id()."""
     assert session.session_id is not None
     return Session.from_session_id(server=session.server, session_id=session.session_id)
 
@@ -142,6 +145,7 @@ def test_querylist(
     tmp_path: pathlib.Path,
     session: Session,
 ) -> None:
+    """Verify QueryList behavior with libtmux object."""
     monkeypatch.chdir(tmp_path)
 
     session.new_window(window_name="test_2")
