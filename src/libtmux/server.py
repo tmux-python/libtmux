@@ -559,6 +559,7 @@ class Server(EnvironmentMixin):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
+        """Equal operator for :class:`Server` object."""
         if isinstance(other, Server):
             return (
                 self.socket_name == other.socket_name
@@ -567,6 +568,7 @@ class Server(EnvironmentMixin):
         return False
 
     def __repr__(self) -> str:
+        """Representation of :class:`Server` object."""
         if self.socket_name is not None:
             return (
                 f"{self.__class__.__name__}"
