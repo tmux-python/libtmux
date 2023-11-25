@@ -75,6 +75,7 @@ class Session(Obj, EnvironmentMixin):
     server: "Server"
 
     def refresh(self) -> None:
+        """Refresh session attributes from tmux."""
         assert isinstance(self.session_id, str)
         return super()._refresh(
             obj_key="session_id", obj_id=self.session_id, list_cmd="list-sessions"
@@ -82,6 +83,7 @@ class Session(Obj, EnvironmentMixin):
 
     @classmethod
     def from_session_id(cls, server: "Server", session_id: str) -> "Session":
+        """Create Session from existing session_id."""
         session = fetch_obj(
             obj_key="session_id",
             obj_id=session_id,
@@ -552,11 +554,13 @@ class Session(Obj, EnvironmentMixin):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
+        """Equal operator for :class:`Session` object."""
         if isinstance(other, Session):
             return self.session_id == other.session_id
         return False
 
     def __repr__(self) -> str:
+        """Representation of :class:`Session` object."""
         return f"{self.__class__.__name__}({self.session_id} {self.session_name})"
 
     #
