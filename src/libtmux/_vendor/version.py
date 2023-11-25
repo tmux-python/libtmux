@@ -2,7 +2,8 @@
 # This file is dual licensed under the terms of the Apache License, Version
 # 2.0, and the BSD License. See the LICENSE file in the root of this repository
 # for complete details.
-"""
+"""Backport of the ``packaging.version`` module from Python 3.8.
+
 .. testsetup::
 
     from packaging.version import parse, Version
@@ -159,7 +160,7 @@ flags set.
 
 
 class Version(_BaseVersion):
-    """This class abstracts handling of a project's versions.
+    """Class abstracts handling of a project's versions.
 
     A :class:`Version` instance is comparison aware and can be compared and
     sorted using the standard Python interfaces.
@@ -222,7 +223,7 @@ class Version(_BaseVersion):
         )
 
     def __repr__(self) -> str:
-        """A representation of the Version that shows all internal state.
+        """Return representation of the Version that shows all internal state.
 
         >>> Version('1.0.0')
         <Version('1.0.0')>
@@ -230,7 +231,7 @@ class Version(_BaseVersion):
         return f"<Version('{self}')>"
 
     def __str__(self) -> str:
-        """A string representation of the version that can be rounded-tripped.
+        """Return string representation of the version that can be rounded-tripped.
 
         >>> str(Version("1.0a5"))
         '1.0a5'
@@ -491,7 +492,7 @@ _local_version_separators = re.compile(r"[\._-]")
 
 
 def _parse_local_version(local: str) -> Optional[LocalType]:
-    """Takes a string like abc.1.twelve and turns it into ("abc", 1, "twelve")."""
+    """Take a string like abc.1.twelve and turns it into ("abc", 1, "twelve")."""
     if local is not None:
         return tuple(
             part.lower() if not part.isdigit() else int(part)
