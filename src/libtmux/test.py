@@ -79,7 +79,7 @@ def retry_until(
         Time in seconds to wait between calls. Defaults to ``0.05`` and is
         configurable via ``RETRY_INTERVAL_SECONDS`` environment variable.
     raises : bool
-        Wether or not to raise an exception on timeout. Defaults to ``True``.
+        Whether or not to raise an exception on timeout. Defaults to ``True``.
 
     Examples
     --------

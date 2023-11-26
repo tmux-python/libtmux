@@ -400,10 +400,10 @@ class Server(EnvironmentMixin):
             where the closing of the window upon completion is desired.
         x : [int, str], optional
             Force the specified width instead of the tmux default for a
-            dettached session
+            detached session
         y : [int, str], optional
             Force the specified height instead of the tmux default for a
-            dettached session
+            detached session
 
         Returns
         -------
