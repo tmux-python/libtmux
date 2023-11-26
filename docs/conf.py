@@ -26,9 +26,10 @@ with (project_src / "libtmux" / "__about__.py").open() as fp:
     exec(fp.read(), about)
 
 extensions = [
-    "sphinx.ext.autodoc",
+    "autodoc2",
     "sphinx.ext.intersphinx",
-    "sphinx_autodoc_typehints",
+    "sphinx.ext.autodoc",
+    # "sphinx_autodoc_typehints",
     "sphinx.ext.todo",
     "sphinx.ext.linkcode",
     "sphinx.ext.napoleon",
@@ -108,6 +109,9 @@ issue_url_tpl = f'{about["__github__"]}/issues/{{issue_id}}'
 autoclass_content = "both"
 autodoc_member_order = "bysource"
 toc_object_entries_show_parents = "hide"
+
+# autodoc2
+autodoc2_hidden_objects = ["dunder", "private", "inherited"]
 
 # sphinx-copybutton
 copybutton_prompt_text = (
