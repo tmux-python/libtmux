@@ -602,14 +602,13 @@ class Server(EnvironmentMixin):
         """
         Update internal pane data and return ``self`` for chainability.
 
-        Returns
-        -------
-        :class:`Server`
-
         .. deprecated:: 0.16
 
            Deprecated in favor of :attr:`.panes` and returning ``self``.
 
+        Returns
+        -------
+        :class:`Server`
         """
         warnings.warn("Server._update_panes() is deprecated", stacklevel=2)
         self._list_panes()
