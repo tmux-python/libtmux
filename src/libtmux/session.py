@@ -656,7 +656,7 @@ class Session(Obj, EnvironmentMixin):
         return self.windows.get(default=None, **kwargs)
 
     def _list_windows(self) -> t.List["WindowDict"]:
-        """Return list of windows (deprecated in favor of :meth:`.windows`).
+        """Return list of windows (deprecated in favor of :attr:`.windows`).
 
         .. deprecated:: 0.16
 
