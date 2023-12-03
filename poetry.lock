@@ -294,13 +294,13 @@ sphinx-basic-ng = "*"
 
 [[package]]
 name = "gp-libs"
-version = "0.0.4"
+version = "0.0.5"
 description = "Internal utilities for projects following git-pull python package spec"
 optional = false
 python-versions = ">=3.8,<4.0"
 files = [
-    {file = "gp_libs-0.0.4-py3-none-any.whl", hash = "sha256:f1b23f2eaa3f24d6d07a7302317040bc5b64a402aec47af5cbd3b816efeb6164"},
-    {file = "gp_libs-0.0.4.tar.gz", hash = "sha256:2f643f1c7d450310689b63c2f07f774e499514e6340fea13167da3f1139c6cb2"},
+    {file = "gp_libs-0.0.5-py3-none-any.whl", hash = "sha256:aaadd9299c74f3187db025a164a473b52c3bae71e2f68b84e7ccd8c9863d49ba"},
+    {file = "gp_libs-0.0.5.tar.gz", hash = "sha256:6e5f43d2d362be9f8fb4bac0ccaaf27dd17f5642fee0f3f948e80375e2554a13"},
 ]
 
 [package.dependencies]
@@ -1250,4 +1250,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "0ab580722a3c4e3cb17f18e5910e886323ec0412e0958e6c8de762cdd3b28698"
+content-hash = "1bd8bf7d9202bea15325eb94e8a9038bb0fb711590fccfdcfe9afa3ae64068cf"
