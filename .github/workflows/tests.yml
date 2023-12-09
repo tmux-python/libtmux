@@ -13,7 +13,7 @@ jobs:
         python-version: ['3.8', '3.12']
         tmux-version: ['2.6', '2.7', '2.8', '3.0a', '3.1b', '3.2a', '3.3a', 'master']
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install poetry
         run: pipx install "poetry==1.7.1"
@@ -90,7 +90,7 @@ jobs:
         python-version: ['3.12']
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install poetry
         run: pipx install "poetry==1.7.1"
