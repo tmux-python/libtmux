@@ -197,10 +197,15 @@ class Version(_BaseVersion):
     def __init__(self, version: str) -> None:
         """Initialize a Version object.
 
-        :param version:
+        Parameters
+        ----------
+        version : str
             The string representation of a version which will be parsed and normalized
             before use.
-        :raises InvalidVersion:
+
+        Raises
+        ------
+        InvalidVersion
             If the ``version`` does not conform to PEP 440 in any way then this
             exception will be raised.
         """
