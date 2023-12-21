@@ -45,11 +45,20 @@ _Version = collections.namedtuple(
 def parse(version: str) -> "Version":
     """Parse the given version string.
 
+    Examples
+    --------
     >>> parse('1.0.dev1')
     <Version('1.0.dev1')>
 
-    :param version: The version string to parse.
-    :raises InvalidVersion: When the version string is not a valid version.
+    Parameters
+    ----------
+    version :
+        The version string to parse.
+
+    Raises
+    ------
+    InvalidVersion
+        When the version string is not a valid version.
     """
     return Version(version)
 
