@@ -20,6 +20,7 @@ about
 topics/traversal
 reference/index
 pytest-plugin/index
+apidocs/index
 ```
 
 ```{toctree}
