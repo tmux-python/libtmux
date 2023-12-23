@@ -111,6 +111,12 @@ autodoc_member_order = "bysource"
 toc_object_entries_show_parents = "hide"
 
 # autodoc2
+autodoc2_packages = [
+    {
+        "path": "../src/libtmux",
+    }
+]
+# autodoc2_render_plugin = "autodoc2.render.myst_.MystRenderer"
 autodoc2_hidden_objects = ["dunder", "private", "inherited"]
 
 # sphinx-copybutton
