@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "libtmux"
 version = "0.25.0"
-description = "Typed scripting library / ORM / API wrapper for tmux"
+description = "Typed library that provides an ORM wrapper for tmux, a terminal multiplexer."
 license = "MIT"
 authors = ["Tony Narlock <tony@git-pull.com>"]
 classifiers = [
