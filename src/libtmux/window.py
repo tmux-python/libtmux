@@ -434,7 +434,18 @@ class Window(Obj):
 
         return self
 
-    def set_window_option(self, option: str, value: int | str) -> Window:
+    def set_window_option(
+        self,
+        option: str,
+        value: int | str,
+        format: bool | None = None,
+        unset: bool | None = None,
+        unset_panes: bool | None = None,
+        prevent_overwrite: bool | None = None,
+        suppress_warnings: bool | None = None,
+        append: bool | None = None,
+        g: bool | None = None,
+    ) -> Window:
         """Set option for tmux window.
 
         Wraps ``$ tmux set-window-option <option> <value>``.
@@ -452,15 +463,45 @@ class Window(Obj):
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
+        flags: list[str] = []
         if isinstance(value, bool) and value:
             value = "on"
         elif isinstance(value, bool) and not value:
             value = "off"
 
+        if unset is not None and unset:
+            assert isinstance(unset, bool)
+            flags.append("-u")
+
+        if unset_panes is not None and unset_panes:
+            assert isinstance(unset_panes, bool)
+            flags.append("-U")
+
+        if format is not None and format:
+            assert isinstance(format, bool)
+            flags.append("-F")
+
+        if prevent_overwrite is not None and prevent_overwrite:
+            assert isinstance(prevent_overwrite, bool)
+            flags.append("-o")
+
+        if suppress_warnings is not None and suppress_warnings:
+            assert isinstance(suppress_warnings, bool)
+            flags.append("-q")
+
+        if append is not None and append:
+            assert isinstance(append, bool)
+            flags.append("-a")
+
+        if g is not None and g:
+            assert isinstance(g, bool)
+            flags.append("-g")
+
         cmd = self.cmd(
             "set-window-option",
             option,
             value,
+            *flags,
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
