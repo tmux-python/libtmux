@@ -7,16 +7,19 @@ libtmux.pane
 """
 import dataclasses
 import logging
+import shlex
 import typing as t
 import warnings
 from typing import overload
 
-from libtmux.common import tmux_cmd
+from libtmux.common import handle_option_error, tmux_cmd
+from libtmux.constants import OPTION_SCOPE_FLAG_MAP, OptionScope
 from libtmux.neo import Obj, fetch_obj
 
 from . import exc
 
 if t.TYPE_CHECKING:
+    from .common import PaneOptionDict
     from .server import Server
     from .session import Session
     from .window import Window
@@ -325,6 +328,174 @@ class Pane(Obj):
             vertical=vertical,
             percent=percent,
         )
+
+    def set_option(
+        self,
+        option: str,
+        value: t.Union[int, str],
+        _format: t.Optional[bool] = None,
+        unset: t.Optional[bool] = None,
+        unset_panes: t.Optional[bool] = None,
+        prevent_overwrite: t.Optional[bool] = None,
+        suppress_warnings: t.Optional[bool] = None,
+        append: t.Optional[bool] = None,
+        g: t.Optional[bool] = None,
+        scope: t.Optional[OptionScope] = None,
+    ) -> "Pane":
+        """Set option for tmux pane.
+
+        Wraps ``$ tmux set-option -p <option> <value>``.
+
+        Parameters
+        ----------
+        option : str
+            option to set, e.g. 'aggressive-resize'
+        value : str
+            window option value. True/False will turn in 'on' and 'off',
+            also accepts string of 'on' or 'off' directly.
+
+        Raises
+        ------
+        :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
+        """
+        flags: t.List[str] = []
+        if isinstance(value, bool) and value:
+            value = "on"
+        elif isinstance(value, bool) and not value:
+            value = "off"
+
+        if unset is not None and unset:
+            assert isinstance(unset, bool)
+            flags.append("-u")
+
+        if unset_panes is not None and unset_panes:
+            assert isinstance(unset_panes, bool)
+            flags.append("-U")
+
+        if _format is not None and _format:
+            assert isinstance(_format, bool)
+            flags.append("-F")
+
+        if prevent_overwrite is not None and prevent_overwrite:
+            assert isinstance(prevent_overwrite, bool)
+            flags.append("-o")
+
+        if suppress_warnings is not None and suppress_warnings:
+            assert isinstance(suppress_warnings, bool)
+            flags.append("-q")
+
+        if append is not None and append:
+            assert isinstance(append, bool)
+            flags.append("-a")
+
+        if g is not None and g:
+            assert isinstance(g, bool)
+            flags.append("-g")
+
+        if scope is not None:
+            assert scope in OPTION_SCOPE_FLAG_MAP
+            flags.append(
+                OPTION_SCOPE_FLAG_MAP[scope],
+            )
+
+        cmd = self.cmd(
+            "set-option",
+            f"-t{self.pane_id}",
+            option,
+            value,
+            *flags,
+        )
+
+        if isinstance(cmd.stderr, list) and len(cmd.stderr):
+            handle_option_error(cmd.stderr[0])
+
+        return self
+
+    def show_options(
+        self,
+        g: t.Optional[bool] = False,
+        scope: t.Optional[OptionScope] = OptionScope.Pane,
+    ) -> "PaneOptionDict":
+        """Return a dict of options for the pane.
+
+        For familiarity with tmux, the option ``option`` param forwards to
+        pick a single option, forwarding to :meth:`Pane.show_option`.
+
+        Parameters
+        ----------
+        g : str, optional
+            Pass ``-g`` flag for global variable, default False.
+        """
+        tmux_args: t.Tuple[str, ...] = ()
+
+        if g:
+            tmux_args += ("-g",)
+
+        if scope is not None:
+            assert scope in OPTION_SCOPE_FLAG_MAP
+            tmux_args += (OPTION_SCOPE_FLAG_MAP[scope],)
+
+        cmd = self.cmd("show-pane-options", *tmux_args)
+
+        output = cmd.stdout
+
+        pane_options: "PaneOptionDict" = {}
+        for item in output:
+            key, val = shlex.split(item)
+            assert isinstance(key, str)
+            assert isinstance(val, str)
+
+            if isinstance(val, str) and val.isdigit():
+                pane_options[key] = int(val)
+
+        return pane_options
+
+    def show_option(
+        self,
+        option: str,
+        g: bool = False,
+        scope: t.Optional[OptionScope] = OptionScope.Pane,
+    ) -> t.Optional[t.Union[str, int]]:
+        """Return a list of options for the pane.
+
+        todo: test and return True/False for on/off string
+
+        Parameters
+        ----------
+        option : str
+        g : bool, optional
+            Pass ``-g`` flag, global. Default False.
+
+        Raises
+        ------
+        :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
+        """
+        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
+
+        if g:
+            tmux_args += ("-g",)
+
+        tmux_args += (option,)
+
+        cmd = self.cmd("show-options", *tmux_args)
+
+        if len(cmd.stderr):
+            handle_option_error(cmd.stderr[0])
+
+        pane_options_output = cmd.stdout
+
+        if not len(pane_options_output):
+            return None
+
+        value_raw = next(shlex.split(item) for item in pane_options_output)
+
+        value: t.Union[str, int] = (
+            int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
+        )
+
+        return value
 
     """
     Commands (helpers)
