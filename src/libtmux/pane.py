@@ -18,11 +18,13 @@ from libtmux.common import tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
+    OptionScope,
     PaneDirection,
     ResizeAdjustmentDirection,
 )
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import Obj, fetch_obj
+from libtmux.options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import sys
@@ -43,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass()
-class Pane(Obj):
+class Pane(Obj, OptionsMixin):
     """:term:`tmux(1)` :term:`Pane` [pane_manual]_.
 
     ``Pane`` instances can send commands directly to a pane, or traverse
@@ -90,6 +92,7 @@ class Pane(Obj):
        Accessed April 1st, 2018.
     """
 
+    default_option_scope: OptionScope | None = OptionScope.Pane
     server: Server
 
     def __enter__(self) -> Self:
