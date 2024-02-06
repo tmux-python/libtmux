@@ -137,17 +137,17 @@ class EnvironmentMixin:
             tmux_args += [self._add_option]
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
-        vars = [tuple(item.split("=", 1)) for item in output]
-        vars_dict: t.Dict[str, t.Union[str, bool]] = {}
-        for _t in vars:
+        opts = [tuple(item.split("=", 1)) for item in output]
+        opts_dict: t.Dict[str, t.Union[str, bool]] = {}
+        for _t in opts:
             if len(_t) == 2:
-                vars_dict[_t[0]] = _t[1]
+                opts_dict[_t[0]] = _t[1]
             elif len(_t) == 1:
-                vars_dict[_t[0]] = True
+                opts_dict[_t[0]] = True
             else:
                 raise exc.VariableUnpackingError(variable=_t)
 
-        return vars_dict
+        return opts_dict
 
     def getenv(self, name: str) -> Optional[t.Union[str, bool]]:
         """Show environment variable ``$ tmux show-environment -t [session] <name>``.
@@ -174,17 +174,17 @@ class EnvironmentMixin:
         tmux_args += (name,)
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
-        vars = [tuple(item.split("=", 1)) for item in output]
-        vars_dict: t.Dict[str, t.Union[str, bool]] = {}
-        for _t in vars:
+        opts = [tuple(item.split("=", 1)) for item in output]
+        opts_dict: t.Dict[str, t.Union[str, bool]] = {}
+        for _t in opts:
             if len(_t) == 2:
-                vars_dict[_t[0]] = _t[1]
+                opts_dict[_t[0]] = _t[1]
             elif len(_t) == 1:
-                vars_dict[_t[0]] = True
+                opts_dict[_t[0]] = True
             else:
                 raise exc.VariableUnpackingError(variable=_t)
 
-        return vars_dict.get(name)
+        return opts_dict.get(name)
 
 
 class tmux_cmd:

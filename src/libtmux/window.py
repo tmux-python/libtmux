@@ -653,7 +653,7 @@ class Window(Obj):
         warnings.warn(f"Item lookups, e.g. window['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)
 
-    def get_by_id(self, id: str) -> t.Optional[Pane]:
+    def get_by_id(self, pane_id: str) -> t.Optional[Pane]:
         """Return pane by id. Deprecated in favor of :meth:`.panes.get()`.
 
         .. deprecated:: 0.16
@@ -662,7 +662,7 @@ class Window(Obj):
 
         """
         warnings.warn("Window.get_by_id() is deprecated", stacklevel=2)
-        return self.panes.get(pane_id=id, default=None)
+        return self.panes.get(pane_id=pane_id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Pane]:
         """Filter through panes, return list of :class:`Pane`.

@@ -606,7 +606,7 @@ class Server(EnvironmentMixin):
         self._list_panes()
         return self
 
-    def get_by_id(self, id: str) -> t.Optional[Session]:
+    def get_by_id(self, session_id: str) -> t.Optional[Session]:
         """Return session by id. Deprecated in favor of :meth:`.sessions.get()`.
 
         .. deprecated:: 0.16
@@ -615,7 +615,7 @@ class Server(EnvironmentMixin):
 
         """
         warnings.warn("Server.get_by_id() is deprecated", stacklevel=2)
-        return self.sessions.get(session_id=id, default=None)
+        return self.sessions.get(session_id=session_id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Session]:
         """Filter through sessions, return list of :class:`Session`.

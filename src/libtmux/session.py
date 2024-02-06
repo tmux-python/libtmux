@@ -618,7 +618,7 @@ class Session(Obj, EnvironmentMixin):
         )
         return getattr(self, key)
 
-    def get_by_id(self, id: str) -> t.Optional[Window]:
+    def get_by_id(self, session_id: str) -> t.Optional[Window]:
         """Return window by id. Deprecated in favor of :meth:`.windows.get()`.
 
         .. deprecated:: 0.16
@@ -627,7 +627,7 @@ class Session(Obj, EnvironmentMixin):
 
         """
         warnings.warn("Session.get_by_id() is deprecated", stacklevel=2)
-        return self.windows.get(window_id=id, default=None)
+        return self.windows.get(window_id=session_id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Window]:
         """Filter through windows, return list of :class:`Window`.
