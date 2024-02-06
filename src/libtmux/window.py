@@ -357,7 +357,7 @@ class Window(Obj):
     ) -> "Window":
         """Set option for tmux window.
 
-        Wraps ``$ tmux set-window-option <option> <value>``.
+        Wraps ``$ tmux set-option <option> <value>``.
 
         Parameters
         ----------
@@ -407,7 +407,8 @@ class Window(Obj):
             flags.append("-g")
 
         cmd = self.cmd(
-            "set-window-option",
+            "set-option",
+            "-w",
             f"-t{self.session_id}:{self.window_index}",
             option,
             value,
@@ -443,7 +444,10 @@ class Window(Obj):
         if g:
             tmux_args += ("-g",)
 
-        tmux_args += ("show-window-options",)
+        tmux_args += (
+            "show-options",
+            "-w-",
+        )
         cmd = self.cmd(*tmux_args)
 
         output = cmd.stdout
@@ -506,7 +510,7 @@ class Window(Obj):
 
         tmux_args += (option,)
 
-        cmd = self.cmd("show-window-options", *tmux_args)
+        cmd = self.cmd("show-options", "-w", *tmux_args)
 
         if len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
