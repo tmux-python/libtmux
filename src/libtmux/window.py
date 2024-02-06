@@ -29,8 +29,7 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass()
 class Window(Obj):
-    """
-    A :term:`tmux(1)` :term:`Window` [window_manual]_.
+    """:term:`tmux(1)` :term:`Window` [window_manual]_.
 
     Holds :class:`Pane` objects.
 
@@ -110,7 +109,7 @@ class Window(Obj):
 
     @property
     def panes(self) -> QueryList["Pane"]:  # type: ignore
-        """Panes belonging windows.
+        """Panes contained by window.
 
         Can be accessed via
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
@@ -133,7 +132,7 @@ class Window(Obj):
     """
 
     def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """Return :meth:`Server.cmd` defaulting to ``target_window`` as target.
+        """Execute tmux subcommand against target window. See :meth:`Server.cmd`.
 
         Send command to tmux with :attr:`window_id` as ``target-window``.
 
@@ -150,8 +149,9 @@ class Window(Obj):
     """
 
     def select_pane(self, target_pane: t.Union[str, int]) -> t.Optional["Pane"]:
-        """
-        Return selected :class:`Pane` through ``$ tmux select-pane``.
+        """Select pane and return selected :class:`Pane`.
+
+        ``$ tmux select-pane``.
 
         Parameters
         ----------
@@ -182,8 +182,7 @@ class Window(Obj):
         percent: t.Optional[int] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
     ) -> "Pane":
-        """
-        Split window and return the created :class:`Pane`.
+        """Split window and return the created :class:`Pane`.
 
         Used for splitting window and holding in a python object.
 
@@ -363,8 +362,7 @@ class Window(Obj):
         return self
 
     def show_window_options(self, g: t.Optional[bool] = False) -> "WindowOptionDict":
-        """
-        Return a dict of options for the window.
+        """Return dict of options for window.
 
         .. versionchanged:: 0.13.0
 
@@ -403,8 +401,7 @@ class Window(Obj):
     def show_window_option(
         self, option: str, g: bool = False
     ) -> t.Optional[t.Union[str, int]]:
-        """
-        Return option value for the target window.
+        """Return option value for the target window.
 
         todo: test and return True/False for on/off string
 
@@ -445,8 +442,7 @@ class Window(Obj):
         return value
 
     def rename_window(self, new_name: str) -> "Window":
-        """
-        Return :class:`Window` object ``$ tmux rename-window <new_name>``.
+        """Rename window.
 
         Parameters
         ----------
@@ -492,8 +488,7 @@ class Window(Obj):
     def move_window(
         self, destination: str = "", session: t.Optional[str] = None
     ) -> "Window":
-        """
-        Move the current :class:`Window` object ``$ tmux move-window``.
+        """Move current :class:`Window` object ``$ tmux move-window``.
 
         Parameters
         ----------
@@ -525,8 +520,7 @@ class Window(Obj):
     # Climbers
     #
     def select_window(self) -> "Window":
-        """
-        Select window. Return ``self``.
+        """Select window.
 
         To select a window object asynchrously. If a ``window`` object exists
         and is no longer longer the current window, ``w.select_window()``
@@ -540,7 +534,7 @@ class Window(Obj):
     #
     @property
     def attached_pane(self) -> t.Optional["Pane"]:
-        """Return the attached :class:`Pane`."""
+        """Return attached :class:`Pane`."""
         for pane in self.panes:
             if pane.pane_active == "1":
                 return pane
