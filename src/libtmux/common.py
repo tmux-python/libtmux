@@ -46,8 +46,7 @@ class EnvironmentMixin:
         self._add_option = add_option
 
     def set_environment(self, name: str, value: str) -> None:
-        """
-        Set environment ``$ tmux set-environment <name> <value>``.
+        """Set environment ``$ tmux set-environment <name> <value>``.
 
         Parameters
         ----------
@@ -73,8 +72,7 @@ class EnvironmentMixin:
             raise ValueError("tmux set-environment stderr: %s" % cmd.stderr)
 
     def unset_environment(self, name: str) -> None:
-        """
-        Unset environment variable ``$ tmux set-environment -u <name>``.
+        """Unset environment variable ``$ tmux set-environment -u <name>``.
 
         Parameters
         ----------
@@ -190,8 +188,7 @@ class EnvironmentMixin:
 
 
 class tmux_cmd:
-    """
-    :term:`tmux(1)` command via :py:mod:`subprocess`.
+    """:term:`tmux(1)` command via :py:mod:`subprocess`.
 
     Examples
     --------
@@ -264,8 +261,7 @@ class tmux_cmd:
 
 
 def get_version() -> LooseVersion:
-    """
-    Return tmux version.
+    """Return tmux version.
 
     If tmux is built from git master, the version returned will be the latest
     version appended with -master, e.g. ``2.4-master``.
@@ -301,8 +297,7 @@ def get_version() -> LooseVersion:
 
 
 def has_version(version: str) -> bool:
-    """
-    Return affirmative if tmux version installed.
+    """Return True if tmux version installed.
 
     Parameters
     ----------
@@ -318,8 +313,7 @@ def has_version(version: str) -> bool:
 
 
 def has_gt_version(min_version: str) -> bool:
-    """
-    Return affirmative if tmux version greater than minimum.
+    """Return True if tmux version greater than minimum.
 
     Parameters
     ----------
@@ -335,8 +329,7 @@ def has_gt_version(min_version: str) -> bool:
 
 
 def has_gte_version(min_version: str) -> bool:
-    """
-    Return True if tmux version greater or equal to minimum.
+    """Return True if tmux version greater or equal to minimum.
 
     Parameters
     ----------
@@ -352,8 +345,7 @@ def has_gte_version(min_version: str) -> bool:
 
 
 def has_lte_version(max_version: str) -> bool:
-    """
-    Return True if tmux version less or equal to minimum.
+    """Return True if tmux version less or equal to minimum.
 
     Parameters
     ----------
@@ -369,8 +361,7 @@ def has_lte_version(max_version: str) -> bool:
 
 
 def has_lt_version(max_version: str) -> bool:
-    """
-    Return True if tmux version less than minimum.
+    """Return True if tmux version less than minimum.
 
     Parameters
     ----------
@@ -386,8 +377,7 @@ def has_lt_version(max_version: str) -> bool:
 
 
 def has_minimum_version(raises: bool = True) -> bool:
-    """
-    Return if tmux meets version requirement. Version >1.8 or above.
+    """Return True if tmux meets version requirement. Version >1.8 or above.
 
     Parameters
     ----------
