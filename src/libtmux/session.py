@@ -264,7 +264,7 @@ class Session(Obj, EnvironmentMixin):
     def show_option(
         self, option: str, _global: bool = False
     ) -> t.Optional[t.Union[str, int, bool]]:
-        """Return a list of options for the window.
+        """Return option value for the target session.
 
         Parameters
         ----------

@@ -404,7 +404,7 @@ class Window(Obj):
         self, option: str, g: bool = False
     ) -> t.Optional[t.Union[str, int]]:
         """
-        Return a list of options for the window.
+        Return option value for the target window.
 
         todo: test and return True/False for on/off string
 
