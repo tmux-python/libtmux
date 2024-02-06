@@ -51,3 +51,28 @@ PANE_DIRECTION_FLAG_MAP: dict[PaneDirection, list[str]] = {
     PaneDirection.Right: ["-h"],
     PaneDirection.Left: ["-h", "-b"],
 }
+
+
+class _DefaultOptionScope:
+    # Sentinel value for default scope
+    ...
+
+
+DEFAULT_OPTION_SCOPE: _DefaultOptionScope = _DefaultOptionScope()
+
+
+class OptionScope(enum.Enum):
+    """Scope used with ``set-option`` and ``show-option(s)`` commands."""
+
+    Server = "SERVER"
+    Session = "SESSION"
+    Window = "WINDOW"
+    Pane = "PANE"
+
+
+OPTION_SCOPE_FLAG_MAP: dict[OptionScope, str] = {
+    OptionScope.Server: "-s",
+    OptionScope.Session: "",
+    OptionScope.Window: "-w",
+    OptionScope.Pane: "-p",
+}
