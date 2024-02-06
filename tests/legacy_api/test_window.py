@@ -211,7 +211,7 @@ def test_show_window_options(session: Session) -> None:
     assert isinstance(options, dict)
 
 
-def test_set_show_window_options(session: Session) -> None:
+def test_set_window_and_show_window_options(session: Session) -> None:
     """Set option then Window.show_window_options(key)."""
     window = session.new_window(window_name="test_window")
 
