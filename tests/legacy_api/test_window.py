@@ -52,7 +52,7 @@ def test_fresh_window_data(session: Session) -> None:
     """Verify window data is fresh."""
     attached_window = session.attached_window
     assert attached_window is not None
-    pane_base_idx = attached_window.show_option("pane-base-index", _global=True)
+    pane_base_idx = attached_window.show_option("pane-base-index", global_=True)
     assert pane_base_idx is not None
     pane_base_index = int(pane_base_idx)
 

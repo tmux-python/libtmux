@@ -13,6 +13,7 @@ import pytest
 from libtmux import exc
 from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.constants import (
+    OptionScope,
     PaneDirection,
     ResizeAdjustmentDirection,
     WindowDirection,
@@ -59,7 +60,7 @@ def test_fresh_window_data(session: Session) -> None:
     """Verify window data is fresh."""
     active_window = session.active_window
     assert active_window is not None
-    pane_base_idx = active_window.show_option("pane-base-index", _global=True)
+    pane_base_idx = active_window.show_option("pane-base-index", global_=True)
     assert pane_base_idx is not None
     pane_base_index = int(pane_base_idx)
 
@@ -266,6 +267,27 @@ def test_show_window_options(session: Session) -> None:
 
     options = window.show_window_options()
     assert isinstance(options, dict)
+
+    options_2 = window.show_options()
+    assert isinstance(options_2, dict)
+
+    pane_options = window.show_options(scope=OptionScope.Pane)
+    assert isinstance(pane_options, dict)
+
+    pane_options_global = window.show_options(scope=OptionScope.Pane, global_=True)
+    assert isinstance(pane_options_global, dict)
+
+    window_options = window.show_options(scope=OptionScope.Window)
+    assert isinstance(window_options, dict)
+
+    window_options_global = window.show_options(scope=OptionScope.Window, global_=True)
+    assert isinstance(window_options_global, dict)
+
+    server_options = window.show_options(scope=OptionScope.Server)
+    assert isinstance(server_options, dict)
+
+    server_options_global = window.show_options(scope=OptionScope.Server, global_=True)
+    assert isinstance(server_options_global, dict)
 
 
 def test_set_window_and_show_window_options(session: Session) -> None:
