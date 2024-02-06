@@ -36,8 +36,7 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass()
 class Session(Obj, EnvironmentMixin):
-    """
-    A :term:`tmux(1)` :term:`Session` [session_manual]_.
+    """:term:`tmux(1)` :term:`Session` [session_manual]_.
 
     Holds :class:`Window` objects.
 
@@ -97,7 +96,7 @@ class Session(Obj, EnvironmentMixin):
     #
     @property
     def windows(self) -> QueryList["Window"]:  # type:ignore
-        """Windows belonging session.
+        """Windows contained by session.
 
         Can be accessed via
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
@@ -117,7 +116,7 @@ class Session(Obj, EnvironmentMixin):
 
     @property
     def panes(self) -> QueryList["Pane"]:  # type:ignore
-        """Panes belonging session.
+        """Panes contained by session's windows.
 
         Can be accessed via
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
@@ -139,8 +138,7 @@ class Session(Obj, EnvironmentMixin):
     # Command
     #
     def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """
-        Return :meth:`server.cmd`.
+        """Execute tmux subcommand against target session. See :meth:`server.cmd`.
 
         Returns
         -------
@@ -173,8 +171,7 @@ class Session(Obj, EnvironmentMixin):
     def set_option(
         self, option: str, value: t.Union[str, int], _global: bool = False
     ) -> "Session":
-        """
-        Set option ``$ tmux set-option <option> <value>``.
+        """Set option ``$ tmux set-option <option> <value>``.
 
         Parameters
         ----------
@@ -225,8 +222,7 @@ class Session(Obj, EnvironmentMixin):
     def show_options(
         self, _global: t.Optional[bool] = False
     ) -> t.Dict[str, t.Union[str, int]]:
-        """
-        Return a dict of options for the window.
+        """Return dict of options for the session.
 
         Parameters
         ----------
@@ -316,8 +312,7 @@ class Session(Obj, EnvironmentMixin):
         return value
 
     def select_window(self, target_window: t.Union[str, int]) -> "Window":
-        """
-        Return :class:`Window` selected via ``$ tmux select-window``.
+        """Select window, return selected window.
 
         Parameters
         ----------
@@ -377,15 +372,14 @@ class Session(Obj, EnvironmentMixin):
         return self
 
     def kill_session(self) -> None:
-        """``$ tmux kill-session``."""
+        """Destroy session."""
         proc = self.cmd("kill-session", "-t%s" % self.session_id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
     def switch_client(self) -> "Session":
-        """
-        Switch client to this session.
+        """Switch client to session.
 
         Raises
         ------
@@ -399,8 +393,7 @@ class Session(Obj, EnvironmentMixin):
         return self
 
     def rename_session(self, new_name: str) -> "Session":
-        """
-        Rename session and return new :class:`Session` object.
+        """Rename session and return new :class:`Session` object.
 
         Parameters
         ----------
@@ -440,8 +433,7 @@ class Session(Obj, EnvironmentMixin):
         window_shell: t.Optional[str] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
     ) -> "Window":
-        """
-        Return :class:`Window` from ``$ tmux new-window``.
+        """Create new window, returns new :class:`Window`.
 
         By default, this will make the window active. For the new window
         to be created and not set to current, pass in ``attach=False``.
