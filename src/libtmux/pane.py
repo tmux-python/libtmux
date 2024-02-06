@@ -27,8 +27,7 @@ logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass()
 class Pane(Obj):
-    """
-    A :term:`tmux(1)` :term:`Pane` [pane_manual]_.
+    """:term:`tmux(1)` :term:`Pane` [pane_manual]_.
 
     ``Pane`` instances can send commands directly to a pane, or traverse
     between linked tmux objects.
@@ -107,7 +106,7 @@ class Pane(Obj):
     """
 
     def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """Return :meth:`Server.cmd` defaulting to ``target_pane`` as target.
+        """Execute tmux subcommand against target pane. See also: :meth:`Server.cmd`.
 
         Send command to tmux with :attr:`pane_id` as ``target-pane``.
 
@@ -124,8 +123,7 @@ class Pane(Obj):
     """
 
     def resize_pane(self, *args: t.Any, **kwargs: t.Any) -> "Pane":
-        """
-        ``$ tmux resize-pane`` of pane and return ``self``.
+        """Resize tmux pane.
 
         Parameters
         ----------
@@ -161,8 +159,7 @@ class Pane(Obj):
         start: t.Union["t.Literal['-']", t.Optional[int]] = None,
         end: t.Union["t.Literal['-']", t.Optional[int]] = None,
     ) -> t.Union[str, t.List[str]]:
-        """
-        Capture text from pane.
+        """Capture text from pane.
 
         ``$ tmux capture-pane`` to pane.
         ``$ tmux capture-pane -S -10`` to pane.
@@ -248,7 +245,9 @@ class Pane(Obj):
 
     @overload
     def display_message(
-        self, cmd: str, get_text: "t.Literal[True]"
+        self,
+        cmd: str,
+        get_text: "t.Literal[True]",
     ) -> t.Union[str, t.List[str]]:
         ...
 
@@ -257,10 +256,11 @@ class Pane(Obj):
         ...
 
     def display_message(
-        self, cmd: str, get_text: bool = False
+        self,
+        cmd: str,
+        get_text: bool = False,
     ) -> t.Optional[t.Union[str, t.List[str]]]:
-        """
-        ``$ tmux display-message`` to the pane.
+        """Display message to pane.
 
         Displays a message in target-client status line.
 
@@ -286,8 +286,7 @@ class Pane(Obj):
     """
 
     def select_pane(self) -> "Pane":
-        """
-        Select pane. Return ``self``.
+        """Select pane.
 
         To select a window object asynchrously. If a ``pane`` object exists
         and is no longer longer the current window, ``w.select_pane()``
@@ -306,8 +305,7 @@ class Pane(Obj):
         start_directory: t.Optional[str] = None,
         percent: t.Optional[int] = None,
     ) -> "Pane":  # New Pane, not self
-        """
-        Split window at pane and return newly created :class:`Pane`.
+        """Split window at pane and return newly created :class:`Pane`.
 
         Parameters
         ----------
@@ -333,8 +331,7 @@ class Pane(Obj):
     """
 
     def set_width(self, width: int) -> "Pane":
-        """
-        Set width of pane.
+        """Set pane width.
 
         Parameters
         ----------
@@ -345,8 +342,7 @@ class Pane(Obj):
         return self
 
     def set_height(self, height: int) -> "Pane":
-        """
-        Set height of pane.
+        """Set pane height.
 
         Parameters
         ----------
@@ -357,8 +353,7 @@ class Pane(Obj):
         return self
 
     def enter(self) -> "Pane":
-        """
-        Send carriage return to pane.
+        """Send carriage return to pane.
 
         ``$ tmux send-keys`` send Enter to the pane.
         """

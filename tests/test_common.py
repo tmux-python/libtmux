@@ -215,7 +215,9 @@ class SessionCheckName(t.NamedTuple):
     ],
 )
 def test_session_check_name(
-    session_name: t.Optional[str], raises: bool, exc_msg_regex: t.Optional[str]
+    session_name: t.Optional[str],
+    raises: bool,
+    exc_msg_regex: t.Optional[str],
 ) -> None:
     """Verify session_check_name()."""
     if raises:

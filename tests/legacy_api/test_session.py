@@ -220,7 +220,10 @@ def test_unset_environment(session: Session) -> None:
     [("hey.period", True), ("hey:its a colon", True), ("hey moo", False)],
 )
 def test_periods_raise_badsessionname(
-    server: Server, session: Session, session_name: str, raises: bool
+    server: Server,
+    session: Session,
+    session_name: str,
+    raises: bool,
 ) -> None:
     """Verify session names with periods raise BadSessionName."""
     new_name = session_name + "moo"  # used for rename / switch

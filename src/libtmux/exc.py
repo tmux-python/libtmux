@@ -38,7 +38,7 @@ class TmuxObjectDoesNotExist(ObjectDoesNotExist):
         if all(arg is not None for arg in [obj_key, obj_id, list_cmd, list_extra_args]):
             return super().__init__(
                 f"Could not find {obj_key}={obj_id} for {list_cmd} "
-                f'{list_extra_args if list_extra_args is not None else ""}'
+                f'{list_extra_args if list_extra_args is not None else ""}',
             )
         return super().__init__("Could not find object")
 
@@ -51,7 +51,10 @@ class BadSessionName(LibTmuxException):
     """Disallowed session name for tmux (empty, contains periods or colons)."""
 
     def __init__(
-        self, reason: str, session_name: t.Optional[str] = None, *args: object
+        self,
+        reason: str,
+        session_name: t.Optional[str] = None,
+        *args: object,
     ):
         msg = f"Bad session name: {reason}"
         if session_name is not None:

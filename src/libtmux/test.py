@@ -28,7 +28,8 @@ class RandomStrSequence:
     """Factory to generate random string."""
 
     def __init__(
-        self, characters: str = "abcdefghijklmnopqrstuvwxyz0123456789_"
+        self,
+        characters: str = "abcdefghijklmnopqrstuvwxyz0123456789_",
     ) -> None:
         """Create a random letter / number generator. 8 chars in length.
 
@@ -141,7 +142,8 @@ def get_test_session_name(server: "Server", prefix: str = TEST_SESSION_PREFIX) -
 
 
 def get_test_window_name(
-    session: "Session", prefix: t.Optional[str] = TEST_SESSION_PREFIX
+    session: "Session",
+    prefix: t.Optional[str] = TEST_SESSION_PREFIX,
 ) -> str:
     """
     Faker to create a window name that doesn't exist.
@@ -180,7 +182,9 @@ def get_test_window_name(
 
 @contextlib.contextmanager
 def temp_session(
-    server: Server, *args: t.Any, **kwargs: t.Any
+    server: Server,
+    *args: t.Any,
+    **kwargs: t.Any,
 ) -> t.Generator["Session", t.Any, t.Any]:
     """
     Return a context manager with a temporary session.
@@ -230,7 +234,9 @@ def temp_session(
 
 @contextlib.contextmanager
 def temp_window(
-    session: "Session", *args: t.Any, **kwargs: t.Any
+    session: "Session",
+    *args: t.Any,
+    **kwargs: t.Any,
 ) -> t.Generator["Window", t.Any, t.Any]:
     """
     Return a context manager with a temporary window.

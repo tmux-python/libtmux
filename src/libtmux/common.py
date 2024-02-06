@@ -46,8 +46,7 @@ class EnvironmentMixin:
         self._add_option = add_option
 
     def set_environment(self, name: str, value: str) -> None:
-        """
-        Set environment ``$ tmux set-environment <name> <value>``.
+        """Set environment ``$ tmux set-environment <name> <value>``.
 
         Parameters
         ----------
@@ -73,8 +72,7 @@ class EnvironmentMixin:
             raise ValueError("tmux set-environment stderr: %s" % cmd.stderr)
 
     def unset_environment(self, name: str) -> None:
-        """
-        Unset environment variable ``$ tmux set-environment -u <name>``.
+        """Unset environment variable ``$ tmux set-environment -u <name>``.
 
         Parameters
         ----------
@@ -139,17 +137,17 @@ class EnvironmentMixin:
             tmux_args += [self._add_option]
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
-        vars = [tuple(item.split("=", 1)) for item in output]
-        vars_dict: t.Dict[str, t.Union[str, bool]] = {}
-        for _t in vars:
+        opts = [tuple(item.split("=", 1)) for item in output]
+        opts_dict: t.Dict[str, t.Union[str, bool]] = {}
+        for _t in opts:
             if len(_t) == 2:
-                vars_dict[_t[0]] = _t[1]
+                opts_dict[_t[0]] = _t[1]
             elif len(_t) == 1:
-                vars_dict[_t[0]] = True
+                opts_dict[_t[0]] = True
             else:
                 raise exc.VariableUnpackingError(variable=_t)
 
-        return vars_dict
+        return opts_dict
 
     def getenv(self, name: str) -> Optional[t.Union[str, bool]]:
         """Show environment variable ``$ tmux show-environment -t [session] <name>``.
@@ -176,22 +174,21 @@ class EnvironmentMixin:
         tmux_args += (name,)
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
-        vars = [tuple(item.split("=", 1)) for item in output]
-        vars_dict: t.Dict[str, t.Union[str, bool]] = {}
-        for _t in vars:
+        opts = [tuple(item.split("=", 1)) for item in output]
+        opts_dict: t.Dict[str, t.Union[str, bool]] = {}
+        for _t in opts:
             if len(_t) == 2:
-                vars_dict[_t[0]] = _t[1]
+                opts_dict[_t[0]] = _t[1]
             elif len(_t) == 1:
-                vars_dict[_t[0]] = True
+                opts_dict[_t[0]] = True
             else:
                 raise exc.VariableUnpackingError(variable=_t)
 
-        return vars_dict.get(name)
+        return opts_dict.get(name)
 
 
 class tmux_cmd:
-    """
-    :term:`tmux(1)` command via :py:mod:`subprocess`.
+    """:term:`tmux(1)` command via :py:mod:`subprocess`.
 
     Examples
     --------
@@ -231,7 +228,9 @@ class tmux_cmd:
 
         try:
             self.process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
@@ -258,14 +257,14 @@ class tmux_cmd:
 
         logger.debug(
             "self.stdout for {cmd}: {stdout}".format(
-                cmd=" ".join(cmd), stdout=self.stdout
-            )
+                cmd=" ".join(cmd),
+                stdout=self.stdout,
+            ),
         )
 
 
 def get_version() -> LooseVersion:
-    """
-    Return tmux version.
+    """Return tmux version.
 
     If tmux is built from git master, the version returned will be the latest
     version appended with -master, e.g. ``2.4-master``.
@@ -285,7 +284,7 @@ def get_version() -> LooseVersion:
                 return LooseVersion("%s-openbsd" % TMUX_MAX_VERSION)
             raise exc.LibTmuxException(
                 "libtmux supports tmux %s and greater. This system"
-                " is running tmux 1.3 or earlier." % TMUX_MIN_VERSION
+                " is running tmux 1.3 or earlier." % TMUX_MIN_VERSION,
             )
         raise exc.VersionTooLow(proc.stderr)
 
@@ -301,8 +300,7 @@ def get_version() -> LooseVersion:
 
 
 def has_version(version: str) -> bool:
-    """
-    Return affirmative if tmux version installed.
+    """Return True if tmux version installed.
 
     Parameters
     ----------
@@ -318,8 +316,7 @@ def has_version(version: str) -> bool:
 
 
 def has_gt_version(min_version: str) -> bool:
-    """
-    Return affirmative if tmux version greater than minimum.
+    """Return True if tmux version greater than minimum.
 
     Parameters
     ----------
@@ -335,8 +332,7 @@ def has_gt_version(min_version: str) -> bool:
 
 
 def has_gte_version(min_version: str) -> bool:
-    """
-    Return True if tmux version greater or equal to minimum.
+    """Return True if tmux version greater or equal to minimum.
 
     Parameters
     ----------
@@ -352,8 +348,7 @@ def has_gte_version(min_version: str) -> bool:
 
 
 def has_lte_version(max_version: str) -> bool:
-    """
-    Return True if tmux version less or equal to minimum.
+    """Return True if tmux version less or equal to minimum.
 
     Parameters
     ----------
@@ -369,8 +364,7 @@ def has_lte_version(max_version: str) -> bool:
 
 
 def has_lt_version(max_version: str) -> bool:
-    """
-    Return True if tmux version less than minimum.
+    """Return True if tmux version less than minimum.
 
     Parameters
     ----------
@@ -386,8 +380,7 @@ def has_lt_version(max_version: str) -> bool:
 
 
 def has_minimum_version(raises: bool = True) -> bool:
-    """
-    Return if tmux meets version requirement. Version >1.8 or above.
+    """Return True if tmux meets version requirement. Version >1.8 or above.
 
     Parameters
     ----------
@@ -416,12 +409,14 @@ def has_minimum_version(raises: bool = True) -> bool:
     """
     if get_version() < LooseVersion(TMUX_MIN_VERSION):
         if raises:
-            raise exc.VersionTooLow(
+            msg = (
                 "libtmux only supports tmux {} and greater. This system"
                 " has {} installed. Upgrade your tmux to use libtmux.".format(
-                    TMUX_MIN_VERSION, get_version()
+                    TMUX_MIN_VERSION,
+                    get_version(),
                 )
             )
+            raise exc.VersionTooLow(msg)
         else:
             return False
     return True

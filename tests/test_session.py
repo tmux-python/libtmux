@@ -231,7 +231,10 @@ class PeriodRaisesBadSessionName(t.NamedTuple):
     ],
 )
 def test_periods_raise_bad_session_name(
-    server: Server, session: Session, session_name: str, raises: bool
+    server: Server,
+    session: Session,
+    session_name: str,
+    raises: bool,
 ) -> None:
     """Verify session names with periods raise BadSessionName."""
     new_name = session_name + "moo"  # used for rename / switch

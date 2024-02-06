@@ -1,4 +1,4 @@
-"""Pythonization of the :term:`tmux(1)` server.
+"""Wrapper for :term:`tmux(1)` server.
 
 libtmux.server
 ~~~~~~~~~~~~~~
@@ -38,8 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 class Server(EnvironmentMixin):
-    """
-    The :term:`tmux(1)` :term:`Server` [server_manual]_.
+    """:term:`tmux(1)` :term:`Server` [server_manual]_.
 
     - :attr:`Server.sessions` [:class:`Session`, ...]
 
@@ -136,7 +135,7 @@ class Server(EnvironmentMixin):
             self.colors = colors
 
     def is_alive(self) -> bool:
-        """If server alive or not.
+        """Return True if tmux server alive.
 
         >>> tmux = Server(socket_name="no_exist")
         >>> assert not tmux.is_alive()
@@ -175,8 +174,7 @@ class Server(EnvironmentMixin):
     # Command
     #
     def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """
-        Execute tmux command and return output.
+        """Execute tmux command, rsepective of socket name and file, return output.
 
         Examples
         --------
@@ -212,8 +210,7 @@ class Server(EnvironmentMixin):
 
     @property
     def attached_sessions(self) -> t.List[Session]:
-        """
-        Return active :class:`Session` objects.
+        """Return active :class:`Session`s.
 
         Examples
         --------
@@ -242,8 +239,7 @@ class Server(EnvironmentMixin):
         return attached_sessions
 
     def has_session(self, target_session: str, exact: bool = True) -> bool:
-        """
-        Return True if session exists. ``$ tmux has-session``.
+        """Return True if session exists.
 
         Parameters
         ----------
@@ -275,12 +271,11 @@ class Server(EnvironmentMixin):
         return False
 
     def kill_server(self) -> None:
-        """``$ tmux kill-server``."""
+        """Kill tmux server."""
         self.cmd("kill-server")
 
     def kill_session(self, target_session: t.Union[str, int]) -> "Server":
-        """
-        Kill the tmux session with ``$ tmux kill-session``, return ``self``.
+        """Kill tmux session.
 
         Parameters
         ----------
@@ -304,8 +299,7 @@ class Server(EnvironmentMixin):
         return self
 
     def switch_client(self, target_session: str) -> None:
-        """
-        ``$ tmux switch-client``.
+        """Switch tmux client.
 
         Parameters
         ----------
@@ -324,7 +318,7 @@ class Server(EnvironmentMixin):
             raise exc.LibTmuxException(proc.stderr)
 
     def attach_session(self, target_session: t.Optional[str] = None) -> None:
-        """``$ tmux attach-session`` aka alias: ``$ tmux attach``.
+        """Attach tmux session.
 
         Parameters
         ----------
@@ -359,8 +353,7 @@ class Server(EnvironmentMixin):
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Session:
-        """
-        Return :class:`Session` from  ``$ tmux new-session``.
+        """Create new session, returns new :class:`Session`.
 
         Uses ``-P`` flag to print session info, ``-F`` for return formatting
         returns new Session object.
@@ -439,7 +432,7 @@ class Server(EnvironmentMixin):
                     logger.info("session %s exists. killed it." % session_name)
                 else:
                     raise exc.TmuxSessionExists(
-                        "Session named %s exists" % session_name
+                        "Session named %s exists" % session_name,
                     )
 
         logger.debug(f"creating session {session_name}")
@@ -486,11 +479,12 @@ class Server(EnvironmentMixin):
             os.environ["TMUX"] = env
 
         session_formatters = dict(
-            zip(["session_id"], session_stdout.split(formats.FORMAT_SEPARATOR))
+            zip(["session_id"], session_stdout.split(formats.FORMAT_SEPARATOR)),
         )
 
         return Session.from_session_id(
-            server=self, session_id=session_formatters["session_id"]
+            server=self,
+            session_id=session_formatters["session_id"],
         )
 
     #
@@ -498,7 +492,7 @@ class Server(EnvironmentMixin):
     #
     @property
     def sessions(self) -> QueryList[Session]:  # type:ignore
-        """Sessions belonging server.
+        """Sessions contained in server.
 
         Can be accessed via
         :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
@@ -519,7 +513,7 @@ class Server(EnvironmentMixin):
 
     @property
     def windows(self) -> QueryList[Window]:  # type:ignore
-        """Windows belonging server.
+        """Windows contained in server's sessions.
 
         Can be accessed via
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
@@ -538,7 +532,7 @@ class Server(EnvironmentMixin):
 
     @property
     def panes(self) -> QueryList[Pane]:  # type:ignore
-        """Panes belonging server.
+        """Panes contained in tmux server (across all windows in all sessions).
 
         Can be accessed via
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
@@ -582,8 +576,7 @@ class Server(EnvironmentMixin):
     # Legacy: Redundant stuff we want to remove
     #
     def _list_panes(self) -> t.List[PaneDict]:
-        """
-        Return list of panes in :py:obj:`dict` form.
+        """Return list of panes in :py:obj:`dict` form.
 
         Retrieved from ``$ tmux(1) list-panes`` stdout.
 
@@ -599,8 +592,7 @@ class Server(EnvironmentMixin):
         return [p.__dict__ for p in self.panes]
 
     def _update_panes(self) -> "Server":
-        """
-        Update internal pane data and return ``self`` for chainability.
+        """Update internal pane data and return ``self`` for chainability.
 
         .. deprecated:: 0.16
 
@@ -614,7 +606,7 @@ class Server(EnvironmentMixin):
         self._list_panes()
         return self
 
-    def get_by_id(self, id: str) -> t.Optional[Session]:
+    def get_by_id(self, session_id: str) -> t.Optional[Session]:
         """Return session by id. Deprecated in favor of :meth:`.sessions.get()`.
 
         .. deprecated:: 0.16
@@ -623,7 +615,7 @@ class Server(EnvironmentMixin):
 
         """
         warnings.warn("Server.get_by_id() is deprecated", stacklevel=2)
-        return self.sessions.get(session_id=id, default=None)
+        return self.sessions.get(session_id=session_id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Session]:
         """Filter through sessions, return list of :class:`Session`.

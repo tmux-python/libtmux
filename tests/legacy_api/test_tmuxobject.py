@@ -60,7 +60,7 @@ def test_find_where_multiple_infos(server: Server, session: Session) -> None:
         assert session_name is not None
 
         find_where = server.find_where(
-            {"session_id": session_id, "session_name": session_name}
+            {"session_id": session_id, "session_name": session_name},
         )
 
         assert find_where == session
@@ -74,7 +74,7 @@ def test_find_where_multiple_infos(server: Server, session: Session) -> None:
             assert window_index is not None
 
             find_where_window = session.find_where(
-                {"window_id": window_id, "window_index": window_index}
+                {"window_id": window_id, "window_index": window_index},
             )
 
             assert find_where_window == window
@@ -88,7 +88,7 @@ def test_find_where_multiple_infos(server: Server, session: Session) -> None:
                 assert pane_tty is not None
 
                 find_where_pane = window.find_where(
-                    {"pane_id": pane_id, "pane_tty": pane_tty}
+                    {"pane_id": pane_id, "pane_tty": pane_tty},
                 )
 
                 assert find_where_pane == pane
@@ -107,7 +107,7 @@ def test_where(server: Server, session: Session) -> None:
         assert session_name is not None
 
         server_sessions = server.where(
-            {"session_id": session_id, "session_name": session_name}
+            {"session_id": session_id, "session_name": session_name},
         )
 
         assert len(server_sessions) == 1
@@ -124,7 +124,7 @@ def test_where(server: Server, session: Session) -> None:
             assert window_index is not None
 
             session_windows = session.where(
-                {"window_id": window_id, "window_index": window_index}
+                {"window_id": window_id, "window_index": window_index},
             )
 
             assert len(session_windows) == 1

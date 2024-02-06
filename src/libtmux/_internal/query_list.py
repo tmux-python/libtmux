@@ -66,7 +66,9 @@ def keygetter(
 
 
 def parse_lookup(
-    obj: "Mapping[str, t.Any]", path: str, lookup: str
+    obj: "Mapping[str, t.Any]",
+    path: str,
+    lookup: str,
 ) -> t.Optional[t.Any]:
     """Check if field lookup key, e.g. "my__path__contains" has comparator, return val.
 
