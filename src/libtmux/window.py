@@ -509,12 +509,8 @@ class Window(Obj):
 
         return self
 
-    def show_window_options(self, g: bool | None = False) -> WindowOptionDict:
-        """Return dict of options for window.
-
-        .. versionchanged:: 0.13.0
-
-           ``option`` removed, use show_window_option to return an individual option.
+    def show_options(self, g: bool | None = False) -> WindowOptionDict:
+        """Return a dict of options for the window.
 
         Parameters
         ----------
@@ -549,7 +545,7 @@ class Window(Obj):
 
         return window_options
 
-    def show_window_option(
+    def show_option(
         self,
         option: str,
         g: bool = False,
@@ -1023,6 +1019,40 @@ class Window(Obj):
             stacklevel=2,
         )
         return self.set_option(option=option, value=value)
+
+    def show_window_options(self, g: bool | None = False) -> WindowOptionDict:
+        """Show options for tmux window. Deprecated by :meth:`Window.show_options()`.
+
+        .. deprecated:: 0.26
+
+           Deprecated by :meth:`Window.show_options()`.
+
+        """
+        warnings.warn(
+            "Window.show_window_options() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.show_options(g=g)
+
+    def show_window_option(
+        self,
+        option: str,
+        g: bool = False,
+    ) -> str | int | None:
+        """Return option for target window. Deprecated by :meth:`Window.show_option()`.
+
+        .. deprecated:: 0.26
+
+           Deprecated by :meth:`Window.show_option()`.
+
+        """
+        warnings.warn(
+            "Window.show_window_option() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.show_option(option=option, g=g)
 
     def get(self, key: str, default: t.Any | None = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
