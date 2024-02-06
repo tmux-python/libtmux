@@ -9,6 +9,7 @@ import pytest
 from libtmux import exc
 from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.common import has_gte_version, has_lt_version
+from libtmux.constants import OptionScope
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -221,6 +222,27 @@ def test_show_window_options(session: Session) -> None:
 
     options = window.show_window_options()
     assert isinstance(options, dict)
+
+    options_2 = window.show_options()
+    assert isinstance(options_2, dict)
+
+    pane_options = window.show_options(scope=OptionScope.Pane)
+    assert isinstance(pane_options, dict)
+
+    pane_options_global = window.show_options(scope=OptionScope.Pane, g=True)
+    assert isinstance(pane_options_global, dict)
+
+    window_options = window.show_options(scope=OptionScope.Window)
+    assert isinstance(window_options, dict)
+
+    window_options_global = window.show_options(scope=OptionScope.Window, g=True)
+    assert isinstance(window_options_global, dict)
+
+    server_options = window.show_options(scope=OptionScope.Server)
+    assert isinstance(server_options, dict)
+
+    server_options_global = window.show_options(scope=OptionScope.Server, g=True)
+    assert isinstance(server_options_global, dict)
 
 
 def test_set_window_and_show_window_options(session: Session) -> None:
