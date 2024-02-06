@@ -347,7 +347,7 @@ class Window(Obj):
         self,
         option: str,
         value: t.Union[int, str],
-        format: t.Optional[bool] = None,
+        _format: t.Optional[bool] = None,
         unset: t.Optional[bool] = None,
         unset_panes: t.Optional[bool] = None,
         prevent_overwrite: t.Optional[bool] = None,
@@ -386,8 +386,8 @@ class Window(Obj):
             assert isinstance(unset_panes, bool)
             flags.append("-U")
 
-        if format is not None and format:
-            assert isinstance(format, bool)
+        if _format is not None and _format:
+            assert isinstance(_format, bool)
             flags.append("-F")
 
         if prevent_overwrite is not None and prevent_overwrite:
@@ -420,11 +420,18 @@ class Window(Obj):
         return self
 
     def show_window_options(self, g: t.Optional[bool] = False) -> "WindowOptionDict":
-        """Return dict of options for window.
+        """Show options for tmux window. Deprecated by :meth:`Window.show_options()`.
 
-        .. versionchanged:: 0.13.0
+        .. deprecated:: 0.26
 
-           ``option`` removed, use show_window_option to return an individual option.
+           Deprecated by :meth:`Window.show_options()`.
+
+        """
+        warnings.warn("Window.show_window_options() is deprecated", stacklevel=2)
+        return self.show_options(g=g)
+
+    def show_options(self, g: t.Optional[bool] = False) -> "WindowOptionDict":
+        """Return a dict of options for the window.
 
         Parameters
         ----------
@@ -463,6 +470,19 @@ class Window(Obj):
         self,
         option: str,
         g: bool = False,
+    ) -> t.Optional[t.Union[str, int]]:
+        """Return option for target window. Deprecated by :meth:`Window.show_option()`.
+
+        .. deprecated:: 0.26
+
+           Deprecated by :meth:`Window.show_option()`.
+
+        """
+        warnings.warn("Window.show_window_option() is deprecated", stacklevel=2)
+        return self.show_option(option=option, g=g)
+
+    def show_option(
+        self, option: str, g: bool = False
     ) -> t.Optional[t.Union[str, int]]:
         """Return option value for the target window.
 
