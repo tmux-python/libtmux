@@ -16,7 +16,9 @@ import warnings
 from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
+    OPTION_SCOPE_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
+    OptionScope,
     PaneDirection,
     ResizeAdjustmentDirection,
     WindowDirection,
@@ -449,6 +451,7 @@ class Window(Obj):
         suppress_warnings: bool | None = None,
         append: bool | None = None,
         g: bool | None = None,
+        scope: OptionScope | None = None,
     ) -> Window:
         """Set option for tmux window.
 
@@ -501,12 +504,18 @@ class Window(Obj):
             assert isinstance(g, bool)
             flags.append("-g")
 
+        if scope is not None:
+            assert scope in OPTION_SCOPE_FLAG_MAP
+            flags.append(
+                OPTION_SCOPE_FLAG_MAP[scope],
+            )
+
         cmd = self.cmd(
             "set-option",
             "-w",
+            *flags,
             option,
             value,
-            *flags,
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
@@ -514,7 +523,44 @@ class Window(Obj):
 
         return self
 
-    def show_options(self, g: bool | None = False) -> WindowOptionDict:
+    @t.overload
+    def show_options(
+        self,
+        g: bool | None,
+        scope: OptionScope | None,
+        include_hooks: bool | None,
+        include_parents: bool | None,
+        values_only: t.Literal[True],
+    ) -> list[str]: ...
+
+    @t.overload
+    def show_options(
+        self,
+        g: bool | None,
+        scope: OptionScope | None,
+        include_hooks: bool | None,
+        include_parents: bool | None,
+        values_only: None = None,
+    ) -> WindowOptionDict: ...
+
+    @t.overload
+    def show_options(
+        self,
+        g: bool | None = None,
+        scope: OptionScope | None = None,
+        include_hooks: bool | None = None,
+        include_parents: bool | None = None,
+        values_only: t.Literal[False] = False,
+    ) -> WindowOptionDict: ...
+
+    def show_options(
+        self,
+        g: bool | None = False,
+        scope: OptionScope | None = OptionScope.Window,
+        include_hooks: bool | None = None,
+        include_parents: bool | None = None,
+        values_only: bool | None = False,
+    ) -> WindowOptionDict | list[str]:
         """Return a dict of options for the window.
 
         Parameters
@@ -527,11 +573,20 @@ class Window(Obj):
         if g:
             tmux_args += ("-g",)
 
-        tmux_args += (
-            "show-options",
-            "-w",
-        )
-        cmd = self.cmd(*tmux_args)
+        if scope is not None:
+            assert scope in OPTION_SCOPE_FLAG_MAP
+            tmux_args += (OPTION_SCOPE_FLAG_MAP[scope],)
+
+        if include_parents is not None and include_parents:
+            tmux_args += ("-A",)
+
+        if include_hooks is not None and include_hooks:
+            tmux_args += ("-H",)
+
+        if values_only is not None and values_only:
+            tmux_args += ("-v",)
+
+        cmd = self.cmd("show-options", *tmux_args)
 
         output = cmd.stdout
 
@@ -557,6 +612,9 @@ class Window(Obj):
         self,
         option: str,
         g: bool = False,
+        scope: OptionScope | None = OptionScope.Window,
+        include_hooks: bool | None = None,
+        include_parents: bool | None = None,
     ) -> str | int | None:
         """Return option value for the target window.
 
@@ -578,9 +636,19 @@ class Window(Obj):
         if g:
             tmux_args += ("-g",)
 
+        if scope is not None:
+            assert scope in OPTION_SCOPE_FLAG_MAP
+            tmux_args += (OPTION_SCOPE_FLAG_MAP[scope],)
+
+        if include_parents is not None and include_parents:
+            tmux_args += ("-A",)
+
+        if include_hooks is not None and include_hooks:
+            tmux_args += ("-H",)
+
         tmux_args += (option,)
 
-        cmd = self.cmd("show-options", "-w", *tmux_args)
+        cmd = self.cmd("show-options", *tmux_args)
 
         if len(cmd.stderr):
             handle_option_error(cmd.stderr[0])
@@ -1046,7 +1114,10 @@ class Window(Obj):
             category=DeprecationWarning,
             stacklevel=2,
         )
-        return self.show_options(g=g)
+        return self.show_options(
+            g=g,
+            scope=OptionScope.Window,
+        )
 
     def show_window_option(
         self,
@@ -1065,7 +1136,11 @@ class Window(Obj):
             category=DeprecationWarning,
             stacklevel=2,
         )
-        return self.show_option(option=option, g=g)
+        return self.show_option(
+            option=option,
+            g=g,
+            scope=OptionScope.Window,
+        )
 
     def get(self, key: str, default: t.Any | None = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
