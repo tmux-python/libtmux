@@ -8,11 +8,18 @@ To install the unreleased libtmux version, see [developmental releases](https://
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.26.x (unreleased)
+## libtmux 0.27.x (unreleased)
 
 - _Notes on upcoming releases will be added here_
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
+
+## libtmux 0.26.0 (2024-02-06)
+
+### Breaking change
+
+- `get_by_id()` (already deprecated) keyword argument renamed from `id` to
+  `Server.get_by_id(session_id)`, `Session.get_by_id(window_id)`, and `Window.get_by_id(pane_id)` (#514)
 
 ### Documentation
 
@@ -24,18 +31,18 @@ $ pip install --user --upgrade --pre libtmux
 
   - Add flake8-commas (COM)
 
-	- https://docs.astral.sh/ruff/rules/#flake8-commas-com
-	- https://pypi.org/project/flake8-commas/
+    - https://docs.astral.sh/ruff/rules/#flake8-commas-com
+    - https://pypi.org/project/flake8-commas/
 
   - Add flake8-builtins (A)
 
-	- https://docs.astral.sh/ruff/rules/#flake8-builtins-a
-	- https://pypi.org/project/flake8-builtins/
+    - https://docs.astral.sh/ruff/rules/#flake8-builtins-a
+    - https://pypi.org/project/flake8-builtins/
 
   - Add flake8-errmsg (EM)
 
-	- https://docs.astral.sh/ruff/rules/#flake8-errmsg-em
-	- https://pypi.org/project/flake8-errmsg/
+    - https://docs.astral.sh/ruff/rules/#flake8-errmsg-em
+    - https://pypi.org/project/flake8-errmsg/
 
 ### CI
 
