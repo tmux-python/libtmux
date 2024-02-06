@@ -32,6 +32,7 @@ TMUX_MAX_VERSION = "3.3"
 SessionDict = t.Dict[str, t.Any]
 WindowDict = t.Dict[str, t.Any]
 WindowOptionDict = t.Dict[str, t.Any]
+PaneOptionDict = t.Dict[str, t.Any]
 PaneDict = t.Dict[str, t.Any]
 
 
