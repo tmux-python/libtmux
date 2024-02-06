@@ -366,9 +366,6 @@ class Window(Obj):
         """
         Return a dict of options for the window.
 
-        For familiarity with tmux, the option ``option`` param forwards to
-        pick a single option, forwarding to :meth:`Window.show_window_option`.
-
         .. versionchanged:: 0.13.0
 
            ``option`` removed, use show_window_option to return an individual option.

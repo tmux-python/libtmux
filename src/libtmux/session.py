@@ -228,9 +228,6 @@ class Session(Obj, EnvironmentMixin):
         """
         Return a dict of options for the window.
 
-        For familiarity with tmux, the option ``option`` param forwards to pick
-        a single option, forwarding to :meth:`Session.show_option`.
-
         Parameters
         ----------
         _global : bool, optional
