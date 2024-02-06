@@ -14,6 +14,31 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### New features
+
+- `Window.set_option()` (#516)
+
+  Learned params:
+
+  - `format` -> `-F`
+  - `unset` -> `-u`
+  - `global` -> `-g`
+  - `unset_panes` -> `-U`: Also unset other panse in windows
+  - `prevent_overwrite`: `-o`
+  - `suppress_warnings`: `-q`
+  - `append`: `-a`
+
+- `Window.show_option()` (#516)
+- `Window.show_options()` (#516)
+
+### Breaking changes
+
+#### Deprecations
+
+- Deprecated `Window.set_window_option()` in favor of `Window.set_option()` (#516)
+- Deprecated `Window.show_window_option()` in favor of `Window.show_option()` (#516)
+- Deprecated `Window.show_window_options()` in favor of `Window.show_options()` (#516)
+
 ## libtmux 0.27.0 (2024-02-07)
 
 ### Improvement
