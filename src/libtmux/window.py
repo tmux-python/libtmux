@@ -390,7 +390,10 @@ class Window(Obj):
 
         window_options: "WindowOptionDict" = {}
         for item in output:
-            key, val = shlex.split(item)
+            try:
+                key, val = shlex.split(item)
+            except ValueError:
+                logger.exception(f"Error extracting option: {item}")
             assert isinstance(key, str)
             assert isinstance(val, str)
 
