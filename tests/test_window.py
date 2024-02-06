@@ -175,7 +175,7 @@ def test_split_window_horizontal(session: Session) -> None:
     [("test", "ha ha ha fjewlkjflwef"), ("test", "hello \\ wazzup 0")],
 )
 def test_window_rename(
-    session: Session, window_name_before: str, window_name_after: str
+    session: Session, window_name_before: str, window_name_after: str,
 ) -> None:
     """Test Window.rename_window()."""
     window_name_before = "test"
@@ -320,7 +320,7 @@ def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
 
 
 @pytest.mark.skipif(
-    has_lt_version("3.2"), reason="needs filter introduced in tmux >= 3.2"
+    has_lt_version("3.2"), reason="needs filter introduced in tmux >= 3.2",
 )
 def test_empty_window_name(session: Session) -> None:
     """New windows can be created with empty string for window name."""

@@ -228,7 +228,7 @@ class tmux_cmd:
 
         try:
             self.process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
@@ -255,8 +255,8 @@ class tmux_cmd:
 
         logger.debug(
             "self.stdout for {cmd}: {stdout}".format(
-                cmd=" ".join(cmd), stdout=self.stdout
-            )
+                cmd=" ".join(cmd), stdout=self.stdout,
+            ),
         )
 
 
@@ -281,7 +281,7 @@ def get_version() -> LooseVersion:
                 return LooseVersion("%s-openbsd" % TMUX_MAX_VERSION)
             raise exc.LibTmuxException(
                 "libtmux supports tmux %s and greater. This system"
-                " is running tmux 1.3 or earlier." % TMUX_MIN_VERSION
+                " is running tmux 1.3 or earlier." % TMUX_MIN_VERSION,
             )
         raise exc.VersionTooLow(proc.stderr)
 
@@ -409,8 +409,8 @@ def has_minimum_version(raises: bool = True) -> bool:
             raise exc.VersionTooLow(
                 "libtmux only supports tmux {} and greater. This system"
                 " has {} installed. Upgrade your tmux to use libtmux.".format(
-                    TMUX_MIN_VERSION, get_version()
-                )
+                    TMUX_MIN_VERSION, get_version(),
+                ),
             )
         else:
             return False

@@ -17,7 +17,7 @@ def test_plugin(
             """
 [pytest]
 addopts=-vv
-        """.strip()
+        """.strip(),
         ),
     )
     pytester.makeconftest(
@@ -31,8 +31,8 @@ def setup(
     request: pytest.FixtureRequest,
 ) -> None:
     pass
-    """
-        )
+    """,
+        ),
     )
     tests_path = pytester.path / "tests"
     files = {
@@ -49,8 +49,8 @@ def test_repo_git_remote_checkout(
 
     new_window = session.new_window(attach=False, window_name="my window name")
     assert new_window.window_name == "my window name"
-        """
-        )
+        """,
+        ),
     }
     first_test_key = next(iter(files.keys()))
     first_test_filename = str(tests_path / first_test_key)

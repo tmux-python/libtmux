@@ -245,7 +245,7 @@ class Pane(Obj):
 
     @overload
     def display_message(
-        self, cmd: str, get_text: "t.Literal[True]"
+        self, cmd: str, get_text: "t.Literal[True]",
     ) -> t.Union[str, t.List[str]]:
         ...
 
@@ -254,7 +254,7 @@ class Pane(Obj):
         ...
 
     def display_message(
-        self, cmd: str, get_text: bool = False
+        self, cmd: str, get_text: bool = False,
     ) -> t.Optional[t.Union[str, t.List[str]]]:
         """Display message to pane.
 

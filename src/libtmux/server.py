@@ -432,7 +432,7 @@ class Server(EnvironmentMixin):
                     logger.info("session %s exists. killed it." % session_name)
                 else:
                     raise exc.TmuxSessionExists(
-                        "Session named %s exists" % session_name
+                        "Session named %s exists" % session_name,
                     )
 
         logger.debug(f"creating session {session_name}")
@@ -479,11 +479,11 @@ class Server(EnvironmentMixin):
             os.environ["TMUX"] = env
 
         session_formatters = dict(
-            zip(["session_id"], session_stdout.split(formats.FORMAT_SEPARATOR))
+            zip(["session_id"], session_stdout.split(formats.FORMAT_SEPARATOR)),
         )
 
         return Session.from_session_id(
-            server=self, session_id=session_formatters["session_id"]
+            server=self, session_id=session_formatters["session_id"],
         )
 
     #
