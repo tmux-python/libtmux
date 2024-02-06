@@ -133,6 +133,9 @@ select = [
   "RUF", # Ruff-specific rules
   "D", # pydocstyle
 ]
+ignore = [
+  "COM812", # missing trailing comma, ruff format conflict
+]
 
 [tool.ruff.lint.isort]
 known-first-party = [
