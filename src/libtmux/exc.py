@@ -51,7 +51,10 @@ class BadSessionName(LibTmuxException):
     """Disallowed session name for tmux (empty, contains periods or colons)."""
 
     def __init__(
-        self, reason: str, session_name: t.Optional[str] = None, *args: object,
+        self,
+        reason: str,
+        session_name: t.Optional[str] = None,
+        *args: object,
     ):
         msg = f"Bad session name: {reason}"
         if session_name is not None:

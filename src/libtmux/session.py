@@ -77,7 +77,9 @@ class Session(Obj, EnvironmentMixin):
         """Refresh session attributes from tmux."""
         assert isinstance(self.session_id, str)
         return super()._refresh(
-            obj_key="session_id", obj_id=self.session_id, list_cmd="list-sessions",
+            obj_key="session_id",
+            obj_id=self.session_id,
+            list_cmd="list-sessions",
         )
 
     @classmethod
@@ -169,7 +171,10 @@ class Session(Obj, EnvironmentMixin):
     """
 
     def set_option(
-        self, option: str, value: t.Union[str, int], _global: bool = False,
+        self,
+        option: str,
+        value: t.Union[str, int],
+        _global: bool = False,
     ) -> "Session":
         """Set option ``$ tmux set-option <option> <value>``.
 
@@ -220,7 +225,8 @@ class Session(Obj, EnvironmentMixin):
         return self
 
     def show_options(
-        self, _global: t.Optional[bool] = False,
+        self,
+        _global: t.Optional[bool] = False,
     ) -> t.Dict[str, t.Union[str, int]]:
         """Return dict of options for the session.
 
@@ -258,7 +264,9 @@ class Session(Obj, EnvironmentMixin):
         return session_options
 
     def show_option(
-        self, option: str, _global: bool = False,
+        self,
+        option: str,
+        _global: bool = False,
     ) -> t.Optional[t.Union[str, int, bool]]:
         """Return option value for the target session.
 
@@ -506,7 +514,8 @@ class Session(Obj, EnvironmentMixin):
         )
 
         return Window.from_window_id(
-            server=self.server, window_id=window_formatters["window_id"],
+            server=self.server,
+            window_id=window_formatters["window_id"],
         )
 
     def kill_window(self, target_window: t.Optional[str] = None) -> None:
@@ -604,7 +613,8 @@ class Session(Obj, EnvironmentMixin):
 
         """
         warnings.warn(
-            f"Item lookups, e.g. session['{key}'] is deprecated", stacklevel=2,
+            f"Item lookups, e.g. session['{key}'] is deprecated",
+            stacklevel=2,
         )
         return getattr(self, key)
 

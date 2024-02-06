@@ -87,7 +87,9 @@ def test_capture_pane(session: Session) -> None:
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
     pane.send_keys(
-        r'printf "\n%s\n" "Hello World !"', literal=True, suppress_history=False,
+        r'printf "\n%s\n" "Hello World !"',
+        literal=True,
+        suppress_history=False,
     )
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(

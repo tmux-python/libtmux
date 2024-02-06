@@ -228,7 +228,9 @@ class tmux_cmd:
 
         try:
             self.process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
@@ -255,7 +257,8 @@ class tmux_cmd:
 
         logger.debug(
             "self.stdout for {cmd}: {stdout}".format(
-                cmd=" ".join(cmd), stdout=self.stdout,
+                cmd=" ".join(cmd),
+                stdout=self.stdout,
             ),
         )
 
@@ -409,7 +412,8 @@ def has_minimum_version(raises: bool = True) -> bool:
             raise exc.VersionTooLow(
                 "libtmux only supports tmux {} and greater. This system"
                 " has {} installed. Upgrade your tmux to use libtmux.".format(
-                    TMUX_MIN_VERSION, get_version(),
+                    TMUX_MIN_VERSION,
+                    get_version(),
                 ),
             )
         else:

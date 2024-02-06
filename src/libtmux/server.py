@@ -483,7 +483,8 @@ class Server(EnvironmentMixin):
         )
 
         return Session.from_session_id(
-            server=self, session_id=session_formatters["session_id"],
+            server=self,
+            session_id=session_formatters["session_id"],
         )
 
     #

@@ -399,7 +399,9 @@ class Window(Obj):
         return window_options
 
     def show_window_option(
-        self, option: str, g: bool = False,
+        self,
+        option: str,
+        g: bool = False,
     ) -> t.Optional[t.Union[str, int]]:
         """Return option value for the target window.
 
@@ -486,7 +488,9 @@ class Window(Obj):
             raise exc.LibTmuxException(proc.stderr)
 
     def move_window(
-        self, destination: str = "", session: t.Optional[str] = None,
+        self,
+        destination: str = "",
+        session: t.Optional[str] = None,
     ) -> "Window":
         """Move current :class:`Window` object ``$ tmux move-window``.
 

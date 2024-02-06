@@ -170,7 +170,10 @@ class Obj:
     ) -> None:
         assert isinstance(obj_id, str)
         obj = fetch_obj(
-            obj_key=obj_key, obj_id=obj_id, list_cmd=list_cmd, server=self.server,
+            obj_key=obj_key,
+            obj_id=obj_id,
+            list_cmd=list_cmd,
+            server=self.server,
         )
         assert obj is not None
         if obj is not None:
@@ -233,7 +236,9 @@ def fetch_obj(
 ) -> OutputRaw:
     """Fetch raw data from tmux command."""
     obj_formatters_filtered = fetch_objs(
-        server=server, list_cmd=list_cmd, list_extra_args=list_extra_args,
+        server=server,
+        list_cmd=list_cmd,
+        list_extra_args=list_extra_args,
     )
 
     obj = None
