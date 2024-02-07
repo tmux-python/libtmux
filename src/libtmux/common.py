@@ -7,6 +7,7 @@ libtmux.common
 """
 import logging
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -149,6 +150,152 @@ class OptionMixin(CmdMixin):
             handle_option_error(cmd.stderr[0])
 
         return self
+
+    @t.overload
+    def show_options(
+        self,
+        g: t.Optional[bool],
+        scope: t.Optional[OptionScope],
+        include_hooks: t.Optional[bool],
+        include_parents: t.Optional[bool],
+        values_only: t.Literal[True],
+    ) -> t.List[str]:
+        ...
+
+    @t.overload
+    def show_options(
+        self,
+        g: t.Optional[bool],
+        scope: t.Optional[OptionScope],
+        include_hooks: t.Optional[bool],
+        include_parents: t.Optional[bool],
+        values_only: t.Literal[None] = None,
+    ) -> "WindowOptionDict":
+        ...
+
+    @t.overload
+    def show_options(
+        self,
+        g: t.Optional[bool] = None,
+        scope: t.Optional[OptionScope] = None,
+        include_hooks: t.Optional[bool] = None,
+        include_parents: t.Optional[bool] = None,
+        values_only: t.Literal[False] = False,
+    ) -> "WindowOptionDict":
+        ...
+
+    def show_options(
+        self,
+        g: t.Optional[bool] = False,
+        scope: t.Optional[OptionScope] = OptionScope.Window,
+        include_hooks: t.Optional[bool] = None,
+        include_parents: t.Optional[bool] = None,
+        values_only: t.Optional[bool] = False,
+    ) -> t.Union["WindowOptionDict", t.List[str]]:
+        """Return a dict of options for the window.
+
+        Parameters
+        ----------
+        g : str, optional
+            Pass ``-g`` flag for global variable, default False.
+        """
+        tmux_args: t.Tuple[str, ...] = ()
+
+        if g:
+            tmux_args += ("-g",)
+
+        if scope is not None:
+            assert scope in OPTION_SCOPE_FLAG_MAP
+            tmux_args += (OPTION_SCOPE_FLAG_MAP[scope],)
+
+        if include_parents is not None and include_parents:
+            tmux_args += ("-A",)
+
+        if include_hooks is not None and include_hooks:
+            tmux_args += ("-H",)
+
+        if values_only is not None and values_only:
+            tmux_args += ("-v",)
+
+        cmd = self.cmd("show-options", *tmux_args)
+
+        output = cmd.stdout
+
+        # The shlex.split function splits the args at spaces, while also
+        # retaining quoted sub-strings.
+        #   shlex.split('this is "a test"') => ['this', 'is', 'a test']
+
+        window_options: "WindowOptionDict" = {}
+        for item in output:
+            try:
+                key, val = shlex.split(item)
+            except ValueError:
+                logger.exception(f"Error extracting option: {item}")
+            assert isinstance(key, str)
+            assert isinstance(val, str)
+
+            if isinstance(val, str) and val.isdigit():
+                window_options[key] = int(val)
+
+        return window_options
+
+    def show_option(
+        self,
+        option: str,
+        g: bool = False,
+        scope: t.Optional[OptionScope] = OptionScope.Window,
+        include_hooks: t.Optional[bool] = None,
+        include_parents: t.Optional[bool] = None,
+    ) -> t.Optional[t.Union[str, int]]:
+        """Return option value for the target window.
+
+        todo: test and return True/False for on/off string
+
+        Parameters
+        ----------
+        option : str
+        g : bool, optional
+            Pass ``-g`` flag, global. Default False.
+
+        Raises
+        ------
+        :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
+        """
+        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
+
+        if g:
+            tmux_args += ("-g",)
+
+        if scope is not None:
+            assert scope in OPTION_SCOPE_FLAG_MAP
+            tmux_args += (OPTION_SCOPE_FLAG_MAP[scope],)
+
+        if include_parents is not None and include_parents:
+            tmux_args += ("-A",)
+
+        if include_hooks is not None and include_hooks:
+            tmux_args += ("-H",)
+
+        tmux_args += (option,)
+
+        cmd = self.cmd("show-options", *tmux_args)
+
+        if len(cmd.stderr):
+            handle_option_error(cmd.stderr[0])
+
+        window_options_output = cmd.stdout
+
+        if not len(window_options_output):
+            return None
+
+        value_raw = next(shlex.split(item) for item in window_options_output)
+
+        value: t.Union[str, int] = (
+            int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
+        )
+
+        return value
 
 
 class EnvironmentMixin:
