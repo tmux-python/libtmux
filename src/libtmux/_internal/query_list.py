@@ -300,7 +300,7 @@ class QueryList(t.Generic[T], t.List[T]):
     def __init__(self, items: t.Optional["Iterable[T]"] = None) -> None:
         super().__init__(items if items is not None else [])
 
-    def items(self) -> t.List[T]:
+    def items(self) -> t.List[t.Tuple[str, T]]:
         if self.pk_key is None:
             raise PKRequiredException()
         return [(getattr(item, self.pk_key), item) for item in self]
@@ -366,7 +366,7 @@ class QueryList(t.Generic[T], t.List[T]):
             _filter = matcher
         elif matcher is not None:
 
-            def val_match(obj: t.Union[str, t.List[t.Any]]) -> bool:
+            def val_match(obj: t.Union[str, t.List[t.Any], T]) -> bool:
                 if isinstance(matcher, list):
                     return obj in matcher
                 else:
