@@ -71,7 +71,7 @@ class Session(Obj, EnvironmentMixin, OptionMixin):
        https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
     """
 
-    default_scope: OptionScope = OptionScope.Session
+    default_scope: OptionScope | None = None
     server: "Server"
 
     def refresh(self) -> None:
