@@ -61,7 +61,7 @@ class CmdMixin:
 class OptionMixin(CmdMixin):
     """Mixin for manager session and server level environment variables in tmux."""
 
-    default_scope: OptionScope
+    default_scope: OptionScope | None
 
     def __init__(self, default_scope: OptionScope) -> None:
         self.default_scope = default_scope
