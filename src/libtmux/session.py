@@ -14,9 +14,11 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, WindowDirection
+from libtmux.common import tmux_cmd
+from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import Obj, fetch_obj, fetch_objs
+from libtmux.options import OptionsMixin
 from libtmux.pane import Pane
 from libtmux.window import Window
 
@@ -26,7 +28,6 @@ from .common import (
     WindowDict,
     session_check_name,
 )
-from .options import handle_option_error
 
 if t.TYPE_CHECKING:
     import sys
@@ -47,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass()
-class Session(Obj, EnvironmentMixin):
+class Session(Obj, EnvironmentMixin, OptionsMixin):
     """:term:`tmux(1)` :term:`Session` [session_manual]_.
 
     Holds :class:`Window` objects.
@@ -90,6 +91,7 @@ class Session(Obj, EnvironmentMixin):
        https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
     """
 
+    default_option_scope: OptionScope | None = None
     server: Server
 
     def __enter__(self) -> Self:
@@ -236,153 +238,6 @@ class Session(Obj, EnvironmentMixin):
     """
     Commands (tmux-like)
     """
-
-    def set_option(
-        self,
-        option: str,
-        value: str | int,
-        global_: bool = False,
-    ) -> Session:
-        """Set option ``$ tmux set-option <option> <value>``.
-
-        Parameters
-        ----------
-        option : str
-            the window option. such as 'default-shell'.
-        value : str, int, or bool
-            True/False will turn in 'on' and 'off'. You can also enter 'on' or
-            'off' directly.
-        _global : bool, optional
-            check for option globally across all servers (-g)
-
-        Raises
-        ------
-        :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
-        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
-
-        Notes
-        -----
-        .. todo::
-
-            Needs tests
-        """
-        if isinstance(value, bool) and value:
-            value = "on"
-        elif isinstance(value, bool) and not value:
-            value = "off"
-
-        tmux_args: tuple[str | int, ...] = ()
-
-        if global_:
-            tmux_args += ("-g",)
-
-        assert isinstance(option, str)
-        assert isinstance(value, (str, int))
-
-        tmux_args += (
-            option,
-            value,
-        )
-
-        proc = self.cmd("set-option", *tmux_args)
-
-        if isinstance(proc.stderr, list) and len(proc.stderr):
-            handle_option_error(proc.stderr[0])
-
-        return self
-
-    def show_options(
-        self,
-        global_: bool | None = False,
-    ) -> dict[str, str | int]:
-        """Return dict of options for the session.
-
-        Parameters
-        ----------
-        _global : bool, optional
-            Pass ``-g`` flag for global variable (server-wide)
-
-        Returns
-        -------
-        :py:obj:`dict`
-
-        Notes
-        -----
-        Uses ``_global`` for keyword name instead of ``global`` to avoid
-        colliding with reserved keyword.
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if global_:
-            tmux_args += ("-g",)
-
-        tmux_args += ("show-options",)
-        session_output = self.cmd(*tmux_args).stdout
-
-        session_options: dict[str, str | int] = {}
-        for item in session_output:
-            key, val = item.split(" ", maxsplit=1)
-            assert isinstance(key, str)
-            assert isinstance(val, str)
-
-            if isinstance(val, str) and val.isdigit():
-                session_options[key] = int(val)
-
-        return session_options
-
-    def show_option(
-        self,
-        option: str,
-        global_: bool = False,
-    ) -> str | int | bool | None:
-        """Return option value for the target session.
-
-        Parameters
-        ----------
-        option : str
-            option name
-        _global : bool, optional
-            use global option scope, same as ``-g``
-
-        Returns
-        -------
-        str, int, or bool
-
-        Raises
-        ------
-        :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
-        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
-
-        Notes
-        -----
-        Uses ``_global`` for keyword name instead of ``global`` to avoid
-        colliding with reserved keyword.
-
-        Test and return True/False for on/off string.
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if global_:
-            tmux_args += ("-g",)
-
-        tmux_args += (option,)
-
-        cmd = self.cmd("show-options", *tmux_args)
-
-        if isinstance(cmd.stderr, list) and len(cmd.stderr):
-            handle_option_error(cmd.stderr[0])
-
-        if not len(cmd.stdout):
-            return None
-
-        value_raw: list[str] = next(item.split(" ") for item in cmd.stdout)
-
-        assert isinstance(value_raw[0], str)
-        assert isinstance(value_raw[1], str)
-
-        value: str | int = int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
-
-        return value
 
     def select_window(self, target_window: str | int) -> Window:
         """Select window and return the selected window.
