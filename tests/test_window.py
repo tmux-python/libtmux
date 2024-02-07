@@ -184,7 +184,7 @@ def test_window_rename(
     window_name_before = "test"
     window_name_after = "ha ha ha fjewlkjflwef"
 
-    session.set_option("automatic-rename", "off")
+    session.set_option("automatic-rename", "off", scope=None)
     window = session.new_window(window_name=window_name_before, attach=True)
 
     assert window == session.attached_window
