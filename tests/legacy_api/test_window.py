@@ -293,7 +293,10 @@ def test_set_and_show_options(session: Session) -> None:
 
     window.set_option("main-pane-height", 40)
     assert window._show_option("main-pane-height") == 40
-    assert window._show_options()["main-pane-height"] == 40
+
+    # By default, show-options will session scope, even if target is a window
+    with pytest.raises(KeyError):
+        assert window._show_options()["main-pane-height"] == 40
 
     if has_gte_version("2.3"):
         window.set_option("pane-border-format", " #P ")
