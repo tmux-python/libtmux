@@ -551,6 +551,7 @@ class OptionsMixin(CmdMixin):
         _format: bool | None = None,
         prevent_overwrite: bool | None = None,
         ignore_errors: bool | None = None,
+        suppress_warnings: bool | None = None,
         append: bool | None = None,
         g: bool | None = None,
         global_: bool | None = None,
@@ -629,6 +630,10 @@ class OptionsMixin(CmdMixin):
 
         if ignore_errors is not None and ignore_errors:
             assert isinstance(ignore_errors, bool)
+            flags.append("-q")
+
+        if suppress_warnings is not None and suppress_warnings:
+            assert isinstance(suppress_warnings, bool)
             flags.append("-q")
 
         if append is not None and append:
