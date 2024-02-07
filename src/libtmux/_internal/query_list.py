@@ -7,7 +7,7 @@ This is an internal API not covered by versioning policy.
 import re
 import traceback
 import typing as t
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 if t.TYPE_CHECKING:
 
@@ -23,7 +23,7 @@ if t.TYPE_CHECKING:
             ...
 
 
-T = t.TypeVar("T", t.Any, t.Any)
+T = t.TypeVar("T")
 
 no_arg = object()
 
@@ -259,7 +259,7 @@ class OpNotFound(ValueError):
         return super().__init__(f"{op} not in LOOKUP_NAME_MAP")
 
 
-class QueryList(t.List[T]):
+class QueryList(t.Generic[T], t.List[T]):
     """Filter list of object/dictionaries. For small, local datasets.
 
     *Experimental, unstable*.
@@ -296,6 +296,9 @@ class QueryList(t.List[T]):
 
     data: "Sequence[T]"
     pk_key: t.Optional[str]
+
+    def __init__(self, items: t.Optional["Iterable[T]"] = None) -> None:
+        super().__init__(items if items is not None else [])
 
     def items(self) -> t.List[T]:
         if self.pk_key is None:
