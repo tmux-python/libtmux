@@ -40,13 +40,55 @@ def keygetter(
     obj: "Mapping[str, t.Any]",
     path: str,
 ) -> t.Union[None, t.Any, str, t.List[str], "Mapping[str, str]"]:
-    """obj, "foods__breakfast", obj['foods']['breakfast'].
+    """Fetch values in objects and keys, supported nested data.
 
-    >>> keygetter({ "foods": { "breakfast": "cereal" } }, "foods__breakfast")
-    'cereal'
-    >>> keygetter({ "foods": { "breakfast": "cereal" } }, "foods")
+    **With dictionaries**:
+
+    >>> keygetter({ "food": { "breakfast": "cereal" } }, "food")
     {'breakfast': 'cereal'}
 
+    >>> keygetter({ "food": { "breakfast": "cereal" } }, "food__breakfast")
+    'cereal'
+
+    **With objects**:
+
+    >>> from typing import List, Optional
+    >>> from dataclasses import dataclass, field
+
+    >>> @dataclass()
+    ... class Food:
+    ...     fruit: List[str] = field(default_factory=list)
+    ...     breakfast: Optional[str] = None
+
+
+    >>> @dataclass()
+    ... class Restaurant:
+    ...     place: str
+    ...     city: str
+    ...     state: str
+    ...     food: Food = field(default_factory=Food)
+
+
+    >>> restaurant = Restaurant(
+    ...     place="Largo",
+    ...     city="Tampa",
+    ...     state="Florida",
+    ...     food=Food(
+    ...         fruit=["banana", "orange"], breakfast="cereal"
+    ...     )
+    ... )
+
+    >>> restaurant
+    Restaurant(place='Largo',
+        city='Tampa',
+        state='Florida',
+        food=Food(fruit=['banana', 'orange'], breakfast='cereal'))
+
+    >>> keygetter(restaurant, "food")
+    Food(fruit=['banana', 'orange'], breakfast='cereal')
+
+    >>> keygetter(restaurant, "food__breakfast")
+    'cereal'
     """
     try:
         sub_fields = path.split("__")
@@ -74,9 +116,23 @@ def parse_lookup(
 
     If comparator not used or value not found, return None.
 
-    mykey__endswith("mykey") -> "mykey" else None
-
     >>> parse_lookup({ "food": "red apple" }, "food__istartswith", "__istartswith")
+    'red apple'
+
+    It can also look up objects:
+
+    >>> from dataclasses import dataclass
+
+    >>> @dataclass()
+    ... class Inventory:
+    ...     food: str
+
+    >>> item = Inventory(food="red apple")
+
+    >>> item
+    Inventory(food='red apple')
+
+    >>> parse_lookup(item, "food__istartswith", "__istartswith")
     'red apple'
     """
     try:
@@ -264,6 +320,8 @@ class QueryList(t.Generic[T], t.List[T]):
 
     *Experimental, unstable*.
 
+    **With dictionaries**:
+
     >>> query = QueryList(
     ...     [
     ...         {
@@ -280,6 +338,7 @@ class QueryList(t.Generic[T], t.List[T]):
     ...         },
     ...     ]
     ... )
+
     >>> query.filter(place="Chicago suburbs")[0]['city']
     'Elmhurst'
     >>> query.filter(place__icontains="chicago")[0]['city']
@@ -290,8 +349,119 @@ class QueryList(t.Generic[T], t.List[T]):
     'Elmhurst'
     >>> query.filter(foods__fruit__in="orange")[0]['city']
     'Tampa'
-    >>> query.get(foods__fruit__in="orange")['city']
+
+    >>> query.filter(foods__fruit__in="apple")
+    [{'place': 'Chicago suburbs',
+        'city': 'Elmhurst',
+        'state': 'Illinois',
+        'foods':
+            {'fruit': ['apple', 'cantelope'], 'breakfast': 'waffles'}}]
+
+    >>> query.filter(foods__fruit__in="non_existent")
+    []
+
+    **With objects**:
+
+    >>> from typing import Any, Dict
+    >>> from dataclasses import dataclass, field
+
+    >>> @dataclass()
+    ... class Restaurant:
+    ...     place: str
+    ...     city: str
+    ...     state: str
+    ...     foods: Dict[str, Any]
+
+    >>> restaurant = Restaurant(
+    ...     place="Largo",
+    ...     city="Tampa",
+    ...     state="Florida",
+    ...     foods={
+    ...         "fruit": ["banana", "orange"], "breakfast": "cereal"
+    ...     }
+    ... )
+
+    >>> restaurant
+    Restaurant(place='Largo',
+        city='Tampa',
+        state='Florida',
+        foods={'fruit': ['banana', 'orange'], 'breakfast': 'cereal'})
+
+    >>> query = QueryList([restaurant])
+
+    >>> query.filter(foods__fruit__in="banana")
+    [Restaurant(place='Largo',
+        city='Tampa',
+        state='Florida',
+        foods={'fruit': ['banana', 'orange'], 'breakfast': 'cereal'})]
+
+    >>> query.filter(foods__fruit__in="banana")[0].city
     'Tampa'
+
+    >>> query.get(foods__fruit__in="banana").city
+    'Tampa'
+
+    **With objects (nested)**:
+
+    >>> from typing import List, Optional
+    >>> from dataclasses import dataclass, field
+
+    >>> @dataclass()
+    ... class Food:
+    ...     fruit: List[str] = field(default_factory=list)
+    ...     breakfast: Optional[str] = None
+
+
+    >>> @dataclass()
+    ... class Restaurant:
+    ...     place: str
+    ...     city: str
+    ...     state: str
+    ...     food: Food = field(default_factory=Food)
+
+
+    >>> query = QueryList([
+    ...     Restaurant(
+    ...         place="Largo",
+    ...         city="Tampa",
+    ...         state="Florida",
+    ...         food=Food(
+    ...             fruit=["banana", "orange"], breakfast="cereal"
+    ...         )
+    ...     ),
+    ...     Restaurant(
+    ...         place="Chicago suburbs",
+    ...         city="Elmhurst",
+    ...         state="Illinois",
+    ...         food=Food(
+    ...             fruit=["apple", "cantelope"], breakfast="waffles"
+    ...         )
+    ...     )
+    ... ])
+
+    >>> query.filter(food__fruit__in="banana")
+    [Restaurant(place='Largo',
+        city='Tampa',
+        state='Florida',
+        food=Food(fruit=['banana', 'orange'], breakfast='cereal'))]
+
+    >>> query.filter(food__fruit__in="banana")[0].city
+    'Tampa'
+
+    >>> query.get(food__fruit__in="banana").city
+    'Tampa'
+
+    >>> query.filter(food__breakfast="waffles")
+    [Restaurant(place='Chicago suburbs',
+        city='Elmhurst',
+        state='Illinois',
+        food=Food(fruit=['apple', 'cantelope'], breakfast='waffles'))]
+
+    >>> query.filter(food__breakfast="waffles")[0].city
+    'Elmhurst'
+
+    >>> query.filter(food__breakfast="non_existent")
+    []
     """
 
     data: "Sequence[T]"
@@ -308,12 +478,6 @@ class QueryList(t.Generic[T], t.List[T]):
     def __eq__(
         self,
         other: object,
-        # other: t.Union[
-        #     "QueryList[T]",
-        #     t.List[Mapping[str, str]],
-        #     t.List[Mapping[str, int]],
-        #     t.List[Mapping[str, t.Union[str, Mapping[str, t.Union[List[str], str]]]]],
-        # ],
     ) -> bool:
         data = other
 
