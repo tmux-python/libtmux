@@ -13,6 +13,8 @@ import sys
 import typing as t
 from typing import Dict, Optional, Union
 
+from libtmux.constants import OPTION_SCOPE_FLAG_MAP, OptionScope
+
 from . import exc
 from ._compat import LooseVersion, console_to_str, str_from_console
 
@@ -34,6 +36,111 @@ WindowDict = t.Dict[str, t.Any]
 WindowOptionDict = t.Dict[str, t.Any]
 PaneOptionDict = t.Dict[str, t.Any]
 PaneDict = t.Dict[str, t.Any]
+
+
+class CmdProtocol(t.Protocol):
+    """Command protocol for tmux command."""
+
+    def __call__(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> "tmux_cmd":
+        """Wrap tmux_cmd."""
+        ...
+
+
+class CmdMixin:
+    """Command mixin for tmux command."""
+
+    cmd: CmdProtocol
+
+
+class OptionMixin(CmdMixin):
+    """Mixin for manager session and server level environment variables in tmux."""
+
+    default_scope: OptionScope
+
+    def __init__(self, default_scope: OptionScope) -> None:
+        self.default_scope = default_scope
+
+    def set_option(
+        self,
+        option: str,
+        value: t.Union[int, str],
+        _format: t.Optional[bool] = None,
+        unset: t.Optional[bool] = None,
+        unset_panes: t.Optional[bool] = None,
+        prevent_overwrite: t.Optional[bool] = None,
+        suppress_warnings: t.Optional[bool] = None,
+        append: t.Optional[bool] = None,
+        g: t.Optional[bool] = None,
+        scope: t.Optional[OptionScope] = None,
+    ) -> "t.Self":
+        """Set option for tmux window.
+
+        Wraps ``$ tmux set-option <option> <value>``.
+
+        Parameters
+        ----------
+        option : str
+            option to set, e.g. 'aggressive-resize'
+        value : str
+            window option value. True/False will turn in 'on' and 'off',
+            also accepts string of 'on' or 'off' directly.
+
+        Raises
+        ------
+        :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
+        """
+        flags: t.List[str] = []
+        if isinstance(value, bool) and value:
+            value = "on"
+        elif isinstance(value, bool) and not value:
+            value = "off"
+
+        if unset is not None and unset:
+            assert isinstance(unset, bool)
+            flags.append("-u")
+
+        if unset_panes is not None and unset_panes:
+            assert isinstance(unset_panes, bool)
+            flags.append("-U")
+
+        if _format is not None and _format:
+            assert isinstance(_format, bool)
+            flags.append("-F")
+
+        if prevent_overwrite is not None and prevent_overwrite:
+            assert isinstance(prevent_overwrite, bool)
+            flags.append("-o")
+
+        if suppress_warnings is not None and suppress_warnings:
+            assert isinstance(suppress_warnings, bool)
+            flags.append("-q")
+
+        if append is not None and append:
+            assert isinstance(append, bool)
+            flags.append("-a")
+
+        if g is not None and g:
+            assert isinstance(g, bool)
+            flags.append("-g")
+
+        if scope is not None:
+            assert scope in OPTION_SCOPE_FLAG_MAP
+            flags.append(
+                OPTION_SCOPE_FLAG_MAP[scope],
+            )
+
+        cmd = self.cmd(
+            "set-option",
+            *flags,
+            option,
+            value,
+        )
+
+        if isinstance(cmd.stderr, list) and len(cmd.stderr):
+            handle_option_error(cmd.stderr[0])
+
+        return self
 
 
 class EnvironmentMixin:
