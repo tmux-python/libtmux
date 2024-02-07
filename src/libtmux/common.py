@@ -77,7 +77,7 @@ class OptionMixin(CmdMixin):
         suppress_warnings: t.Optional[bool] = None,
         append: t.Optional[bool] = None,
         g: t.Optional[bool] = None,
-        scope: t.Optional[t.Union[OptionScope, _DefaultScope]] = None,
+        scope: t.Optional[t.Union[OptionScope, _DefaultScope]] = DEFAULT_SCOPE,
     ) -> "t.Self":
         """Set option for tmux window.
 
@@ -155,7 +155,7 @@ class OptionMixin(CmdMixin):
     def show_options(
         self,
         g: t.Optional[bool],
-        scope: t.Optional[OptionScope],
+        scope: t.Optional[t.Union[OptionScope, _DefaultScope]],
         include_hooks: t.Optional[bool],
         include_parents: t.Optional[bool],
         values_only: t.Literal[True],
@@ -166,7 +166,7 @@ class OptionMixin(CmdMixin):
     def show_options(
         self,
         g: t.Optional[bool],
-        scope: t.Optional[OptionScope],
+        scope: t.Optional[t.Union[OptionScope, _DefaultScope]],
         include_hooks: t.Optional[bool],
         include_parents: t.Optional[bool],
         values_only: t.Literal[None] = None,
@@ -177,7 +177,7 @@ class OptionMixin(CmdMixin):
     def show_options(
         self,
         g: t.Optional[bool] = None,
-        scope: t.Optional[OptionScope] = None,
+        scope: t.Optional[t.Union[OptionScope, _DefaultScope]] = DEFAULT_SCOPE,
         include_hooks: t.Optional[bool] = None,
         include_parents: t.Optional[bool] = None,
         values_only: t.Literal[False] = False,
@@ -187,7 +187,7 @@ class OptionMixin(CmdMixin):
     def show_options(
         self,
         g: t.Optional[bool] = False,
-        scope: t.Optional[OptionScope] = OptionScope.Window,
+        scope: t.Optional[t.Union[OptionScope, _DefaultScope]] = DEFAULT_SCOPE,
         include_hooks: t.Optional[bool] = None,
         include_parents: t.Optional[bool] = None,
         values_only: t.Optional[bool] = False,
@@ -199,12 +199,15 @@ class OptionMixin(CmdMixin):
         g : str, optional
             Pass ``-g`` flag for global variable, default False.
         """
+        if scope is DEFAULT_SCOPE:
+            scope = self.default_scope
+
         tmux_args: t.Tuple[str, ...] = ()
 
         if g:
             tmux_args += ("-g",)
 
-        if scope is not None:
+        if scope is not None and not isinstance(scope, _DefaultScope):
             assert scope in OPTION_SCOPE_FLAG_MAP
             tmux_args += (OPTION_SCOPE_FLAG_MAP[scope],)
 
@@ -243,7 +246,7 @@ class OptionMixin(CmdMixin):
         self,
         option: str,
         g: bool = False,
-        scope: t.Optional[OptionScope] = OptionScope.Window,
+        scope: t.Optional[t.Union[OptionScope, _DefaultScope]] = DEFAULT_SCOPE,
         include_hooks: t.Optional[bool] = None,
         include_parents: t.Optional[bool] = None,
     ) -> t.Optional[t.Union[str, int]]:
@@ -262,12 +265,15 @@ class OptionMixin(CmdMixin):
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
+        if scope is DEFAULT_SCOPE:
+            scope = self.default_scope
+
         tmux_args: t.Tuple[t.Union[str, int], ...] = ()
 
         if g:
             tmux_args += ("-g",)
 
-        if scope is not None:
+        if scope is not None and not isinstance(scope, _DefaultScope):
             assert scope in OPTION_SCOPE_FLAG_MAP
             tmux_args += (OPTION_SCOPE_FLAG_MAP[scope],)
 
