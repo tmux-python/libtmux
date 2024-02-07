@@ -97,7 +97,7 @@ class Session(Obj, EnvironmentMixin):
     # Relations
     #
     @property
-    def windows(self) -> QueryList["Window"]:  # type:ignore
+    def windows(self) -> QueryList["Window"]:
         """Windows contained by session.
 
         Can be accessed via
@@ -117,7 +117,7 @@ class Session(Obj, EnvironmentMixin):
         return QueryList(windows)
 
     @property
-    def panes(self) -> QueryList["Pane"]:  # type:ignore
+    def panes(self) -> QueryList["Pane"]:
         """Panes contained by session's windows.
 
         Can be accessed via
@@ -689,7 +689,7 @@ class Session(Obj, EnvironmentMixin):
         return self.windows
 
     @property
-    def children(self) -> QueryList["Window"]:  # type:ignore
+    def children(self) -> QueryList["Window"]:
         """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16
