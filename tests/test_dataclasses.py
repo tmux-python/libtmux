@@ -163,12 +163,12 @@ def test_querylist(
         assert isinstance(w, Window)
         assert w.window_name == "test_2"
 
-    w = qs.get(window_name="test_2")
-    assert isinstance(w, Window)
-    assert w.window_name == "test_2"
+    w_2 = qs.get(window_name="test_2")
+    assert isinstance(w_2, Window)
+    assert w_2.window_name == "test_2"
 
     with pytest.raises(ObjectDoesNotExist):
-        w = qs.get(window_name="non_existent")
+        qs.get(window_name="non_existent")
 
     result = qs.get(window_name="non_existent", default="default_value")
     assert result == "default_value"
