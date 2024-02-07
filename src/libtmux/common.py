@@ -13,7 +13,12 @@ import sys
 import typing as t
 from typing import Dict, Optional, Union
 
-from libtmux.constants import OPTION_SCOPE_FLAG_MAP, OptionScope
+from libtmux.constants import (
+    DEFAULT_SCOPE,
+    OPTION_SCOPE_FLAG_MAP,
+    OptionScope,
+    _DefaultScope,
+)
 
 from . import exc
 from ._compat import LooseVersion, console_to_str, str_from_console
@@ -71,7 +76,7 @@ class OptionMixin(CmdMixin):
         suppress_warnings: t.Optional[bool] = None,
         append: t.Optional[bool] = None,
         g: t.Optional[bool] = None,
-        scope: t.Optional[OptionScope] = None,
+        scope: t.Optional[t.Union[OptionScope, _DefaultScope]] = None,
     ) -> "t.Self":
         """Set option for tmux window.
 
@@ -90,6 +95,9 @@ class OptionMixin(CmdMixin):
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
+        if scope is DEFAULT_SCOPE:
+            scope = self.default_scope
+
         flags: t.List[str] = []
         if isinstance(value, bool) and value:
             value = "on"
@@ -124,7 +132,7 @@ class OptionMixin(CmdMixin):
             assert isinstance(g, bool)
             flags.append("-g")
 
-        if scope is not None:
+        if scope is not None and not isinstance(scope, _DefaultScope):
             assert scope in OPTION_SCOPE_FLAG_MAP
             flags.append(
                 OPTION_SCOPE_FLAG_MAP[scope],
