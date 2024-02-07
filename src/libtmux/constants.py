@@ -3,6 +3,14 @@ import enum
 import typing as t
 
 
+class _DefaultScope:
+    # Sentinel value for default scope
+    ...
+
+
+DEFAULT_SCOPE: _DefaultScope = _DefaultScope()
+
+
 class OptionScope(enum.Enum):
     """Scope used with ``set-option`` and ``show-option(s)`` commands."""
 
