@@ -108,7 +108,7 @@ class Window(Obj):
         return Session.from_session_id(server=self.server, session_id=self.session_id)
 
     @property
-    def panes(self) -> QueryList["Pane"]:  # type: ignore
+    def panes(self) -> QueryList["Pane"]:
         """Panes contained by window.
 
         Can be accessed via
@@ -724,7 +724,7 @@ class Window(Obj):
         return self.panes
 
     @property
-    def children(self) -> QueryList["Pane"]:  # type:ignore
+    def children(self) -> QueryList["Pane"]:
         """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16

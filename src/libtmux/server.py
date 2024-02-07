@@ -491,7 +491,7 @@ class Server(EnvironmentMixin):
     # Relations
     #
     @property
-    def sessions(self) -> QueryList[Session]:  # type:ignore
+    def sessions(self) -> QueryList[Session]:
         """Sessions contained in server.
 
         Can be accessed via
@@ -512,7 +512,7 @@ class Server(EnvironmentMixin):
         return QueryList(sessions)
 
     @property
-    def windows(self) -> QueryList[Window]:  # type:ignore
+    def windows(self) -> QueryList[Window]:
         """Windows contained in server's sessions.
 
         Can be accessed via
@@ -531,7 +531,7 @@ class Server(EnvironmentMixin):
         return QueryList(windows)
 
     @property
-    def panes(self) -> QueryList[Pane]:  # type:ignore
+    def panes(self) -> QueryList[Pane]:
         """Panes contained in tmux server (across all windows in all sessions).
 
         Can be accessed via
@@ -707,7 +707,7 @@ class Server(EnvironmentMixin):
         return self.sessions
 
     @property
-    def children(self) -> QueryList["Session"]:  # type:ignore
+    def children(self) -> QueryList["Session"]:
         """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16
