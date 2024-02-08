@@ -24,11 +24,11 @@ from . import exc
 from .common import (
     EnvironmentMixin,
     WindowDict,
-    handle_option_error,
     has_gte_version,
     has_version,
     session_check_name,
 )
+from .options import handle_option_error
 
 if t.TYPE_CHECKING:
     import sys
