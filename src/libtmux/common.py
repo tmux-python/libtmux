@@ -467,37 +467,6 @@ def session_check_name(session_name: str | None) -> None:
         raise exc.BadSessionName(reason="contains colons", session_name=session_name)
 
 
-def handle_option_error(error: str) -> type[exc.OptionError]:
-    """Raise exception if error in option command found.
-
-    There are 3 different types of option errors:
-
-    - unknown option
-    - invalid option
-    - ambiguous option
-
-    All errors raised will have the base error of :exc:`exc.OptionError`. So to
-    catch any option error, use ``except exc.OptionError``.
-
-    Parameters
-    ----------
-    error : str
-        Error response from subprocess call.
-
-    Raises
-    ------
-    :exc:`exc.OptionError`, :exc:`exc.UnknownOption`, :exc:`exc.InvalidOption`,
-    :exc:`exc.AmbiguousOption`
-    """
-    if "unknown option" in error:
-        raise exc.UnknownOption(error)
-    if "invalid option" in error:
-        raise exc.InvalidOption(error)
-    if "ambiguous option" in error:
-        raise exc.AmbiguousOption(error)
-    raise exc.OptionError(error)  # Raise generic option error
-
-
 def get_libtmux_version() -> LooseVersion:
     """Return libtmux version is a PEP386 compliant format.
 
