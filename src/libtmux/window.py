@@ -29,6 +29,13 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass()
+class WindowOptions:
+    aggressive_resize: t.Optional[bool]
+    automatic_rename: t.Optional[bool]
+    automatic_rename_format: t.Optional[str]
+
+
+@dataclasses.dataclass()
 class Window(Obj, OptionMixin):
     """:term:`tmux(1)` :term:`Window` [window_manual]_.
 
@@ -143,6 +150,8 @@ class Window(Obj, OptionMixin):
         """
         if not any("-t" in str(x) for x in args):
             args = ("-t", self.window_id, *args)
+
+        print(cmd, args, kwargs)
 
         return self.server.cmd(cmd, *args, **kwargs)
 
