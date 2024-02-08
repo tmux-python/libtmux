@@ -160,7 +160,7 @@ class WindowOptions(
     pane_base_index: int | None = field(default=None)
     pane_border_format: str | None = field(default=None)
     pane_border_indicators: t.Literal["off", "colour", "arrows", "both"] | None = field(
-        default=None
+        default=None,
     )
     pane_border_lines: (
         t.Literal["single", "double", "heavy", "simple", "number"] | None
@@ -184,7 +184,7 @@ class WindowOptions(
     window_status_separator: str | None = field(default=None)
     window_status_style: str | None = field(default=None)
     window_size: t.Literal["largest", "smallest", "manual", "latest"] | None = field(
-        default=None
+        default=None,
     )
     wrap_search: t.Literal["on", "off"] | None = field(default=None)
 
