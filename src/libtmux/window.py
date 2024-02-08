@@ -139,7 +139,7 @@ class Window(Obj):
         Specifying ``('-t', 'custom-target')`` or ``('-tcustom_target')`` in
         ``args`` will override using the object's ``window_id`` as target.
         """
-        if not any(arg.startswith("-t") for arg in args):
+        if not any("-t" in str(x) for x in args):
             args = ("-t", self.window_id, *args)
 
         return self.server.cmd(cmd, *args, **kwargs)
@@ -389,7 +389,10 @@ class Window(Obj):
 
         window_options: "WindowOptionDict" = {}
         for item in output:
-            key, val = shlex.split(item)
+            try:
+                key, val = shlex.split(item)
+            except ValueError:
+                logger.exception(f"Error extracting option: {item}")
             assert isinstance(key, str)
             assert isinstance(val, str)
 
