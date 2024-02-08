@@ -15,6 +15,7 @@ import warnings
 
 from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
+from libtmux.constants import OptionScope
 from libtmux.neo import fetch_objs
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -29,6 +30,7 @@ from .common import (
     has_gte_version,
     session_check_name,
 )
+from .options import OptionMixin
 
 if t.TYPE_CHECKING:
     from typing_extensions import TypeAlias
@@ -38,7 +40,7 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Server(EnvironmentMixin):
+class Server(EnvironmentMixin, OptionMixin):
     """:term:`tmux(1)` :term:`Server` [server_manual]_.
 
     - :attr:`Server.sessions` [:class:`Session`, ...]
@@ -101,6 +103,9 @@ class Server(EnvironmentMixin):
     """Unique child ID used by :class:`~libtmux.common.TmuxRelationalObject`"""
     formatter_prefix = "server_"
     """Namespace used for :class:`~libtmux.common.TmuxMappingObject`"""
+
+    default_option_scope: t.Optional[OptionScope] = OptionScope.Server
+    """For option management."""
 
     def __init__(
         self,
