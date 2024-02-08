@@ -35,6 +35,20 @@ WindowOptionDict = dict[str, t.Any]
 PaneDict = dict[str, t.Any]
 
 
+class CmdProtocol(t.Protocol):
+    """Command protocol for tmux command."""
+
+    def __call__(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+        """Wrap tmux_cmd."""
+        ...
+
+
+class CmdMixin:
+    """Command mixin for tmux command."""
+
+    cmd: CmdProtocol
+
+
 class EnvironmentMixin:
     """Mixin for manager session and server level environment variables in tmux."""
 
