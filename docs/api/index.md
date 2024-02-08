@@ -11,6 +11,7 @@ servers
 sessions
 windows
 panes
+options
 constants
 common
 exceptions
