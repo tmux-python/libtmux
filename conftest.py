@@ -47,12 +47,19 @@ def set_home(
     monkeypatch.setenv("HOME", str(user_path))
 
 
+@pytest.fixture(autouse=True, scope="function")
+def setup_fn(
+    clear_env: None,
+) -> None:
+    """Function-level test configuration fixtures for pytest."""
+    pass
+
+
 @pytest.fixture(autouse=True, scope="session")
-@pytest.mark.usefixtures("clear_env")
-def setup(
+def setup_session(
     request: pytest.FixtureRequest,
     config_file: pathlib.Path,
 ) -> None:
-    """Configure test fixtures for pytest."""
+    """Session-level test configuration for pytest."""
     if USING_ZSH:
         request.getfixturevalue("zshrc")
