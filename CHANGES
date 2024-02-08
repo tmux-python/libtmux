@@ -14,6 +14,11 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### Improvement
+
+- pane, window commands: Impove parsing of option values that return numbers
+  (#520)
+
 ### Tests
 
 - pytest: Fix `usefixture` warning (#519)
