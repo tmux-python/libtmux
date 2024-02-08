@@ -60,7 +60,7 @@ def test_fresh_window_data(session: Session) -> None:
     """Verify window data is fresh."""
     active_window = session.active_window
     assert active_window is not None
-    pane_base_idx = active_window.show_option("pane-base-index", global_=True)
+    pane_base_idx = active_window._show_option("pane-base-index", global_=True)
     assert pane_base_idx is not None
     pane_base_index = int(pane_base_idx)
 
@@ -268,25 +268,25 @@ def test_show_window_options(session: Session) -> None:
     options = window.show_window_options()
     assert isinstance(options, dict)
 
-    options_2 = window.show_options()
+    options_2 = window._show_options()
     assert isinstance(options_2, dict)
 
-    pane_options = window.show_options(scope=OptionScope.Pane)
+    pane_options = window._show_options(scope=OptionScope.Pane)
     assert isinstance(pane_options, dict)
 
-    pane_options_global = window.show_options(scope=OptionScope.Pane, global_=True)
+    pane_options_global = window._show_options(scope=OptionScope.Pane, global_=True)
     assert isinstance(pane_options_global, dict)
 
-    window_options = window.show_options(scope=OptionScope.Window)
+    window_options = window._show_options(scope=OptionScope.Window)
     assert isinstance(window_options, dict)
 
-    window_options_global = window.show_options(scope=OptionScope.Window, global_=True)
+    window_options_global = window._show_options(scope=OptionScope.Window, global_=True)
     assert isinstance(window_options_global, dict)
 
-    server_options = window.show_options(scope=OptionScope.Server)
+    server_options = window._show_options(scope=OptionScope.Server)
     assert isinstance(server_options, dict)
 
-    server_options_global = window.show_options(scope=OptionScope.Server, global_=True)
+    server_options_global = window._show_options(scope=OptionScope.Server, global_=True)
     assert isinstance(server_options_global, dict)
 
 
@@ -306,19 +306,19 @@ def test_set_window_and_show_window_options(session: Session) -> None:
 
 
 def test_set_and_show_window_options(session: Session) -> None:
-    """Window.set_option() then Window.show_options(key)."""
+    """Window.set_option() then Window._show_options(key)."""
     window = session.new_window(window_name="test_window")
 
     window.set_option("main-pane-height", 20)
-    assert window.show_option("main-pane-height") == 20
+    assert window._show_option("main-pane-height") == 20
 
     window.set_option("main-pane-height", 40)
-    assert window.show_option("main-pane-height") == 40
-    assert window.show_options()["main-pane-height"] == 40
+    assert window._show_option("main-pane-height") == 40
+    assert window._show_options()["main-pane-height"] == 40
 
     if has_gte_version("2.3"):
         window.set_option("pane-border-format", " #P ")
-        assert window.show_option("pane-border-format") == " #P "
+        assert window._show_option("pane-border-format") == " #P "
 
 
 def test_empty_window_option_returns_None(session: Session) -> None:
