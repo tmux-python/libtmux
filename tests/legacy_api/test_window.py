@@ -52,7 +52,7 @@ def test_fresh_window_data(session: Session) -> None:
     """Verify window data is fresh."""
     attached_window = session.attached_window
     assert attached_window is not None
-    pane_base_idx = attached_window.show_option("pane-base-index", _global=True)
+    pane_base_idx = attached_window._show_option("pane-base-index", _global=True)
     assert pane_base_idx is not None
     pane_base_index = int(pane_base_idx)
 
@@ -285,19 +285,19 @@ def test_set_window_and_show_window_options(session: Session) -> None:
 
 
 def test_set_and_show_options(session: Session) -> None:
-    """Window.set_option() then Window.show_options(key)."""
+    """Window.set_option() then Window._show_options(key)."""
     window = session.new_window(window_name="test_window")
 
     window.set_option("main-pane-height", 20)
-    assert window.show_option("main-pane-height") == 20
+    assert window._show_option("main-pane-height") == 20
 
     window.set_option("main-pane-height", 40)
-    assert window.show_option("main-pane-height") == 40
-    assert window.show_options()["main-pane-height"] == 40
+    assert window._show_option("main-pane-height") == 40
+    assert window._show_options()["main-pane-height"] == 40
 
     if has_gte_version("2.3"):
         window.set_option("pane-border-format", " #P ")
-        assert window.show_option("pane-border-format") == " #P "
+        assert window._show_option("pane-border-format") == " #P "
 
 
 def test_empty_window_option_returns_None(session: Session) -> None:
