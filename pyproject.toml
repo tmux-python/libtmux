@@ -69,6 +69,7 @@ pytest = "*"
 pytest-rerunfailures = "*"
 pytest-mock = "*"
 pytest-watcher = "*"
+pytest-xdist = "*"
 gp-libs = "~0.0.4"
 
 [tool.poetry.group.coverage.dependencies]
