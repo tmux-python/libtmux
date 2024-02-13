@@ -85,6 +85,7 @@ class Window(Obj):
             obj_key="window_id",
             obj_id=self.window_id,
             list_cmd="list-windows",
+            list_extra_args=("-a",),
         )
 
     @classmethod

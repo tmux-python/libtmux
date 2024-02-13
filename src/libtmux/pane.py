@@ -70,7 +70,11 @@ class Pane(Obj):
     def refresh(self) -> None:
         """Refresh pane attributes from tmux."""
         assert isinstance(self.pane_id, str)
-        return super()._refresh(obj_key="pane_id", obj_id=self.pane_id)
+        return super()._refresh(
+            obj_key="pane_id",
+            obj_id=self.pane_id,
+            list_extra_args=("-a",),
+        )
 
     @classmethod
     def from_pane_id(cls, server: "Server", pane_id: str) -> "Pane":
