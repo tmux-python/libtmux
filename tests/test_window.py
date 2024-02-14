@@ -412,7 +412,6 @@ def test_resize(
 
     window = session.attached_window
     window_height_adjustment = 10
-    window_width_adjustment = 10
 
     assert window.window_height is not None
     assert window.window_width is not None
@@ -425,14 +424,12 @@ def test_resize(
     window_height_before = int(window.window_height)
     window.resize(
         height=10,
-        adjustment=window_height_adjustment,
     )
     assert int(window.window_height) == 10
 
     # Manual: Width
     window.resize(
         width=10,
-        adjustment=window_width_adjustment,
     )
     assert int(window.window_width) == 10
 
