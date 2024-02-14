@@ -39,7 +39,7 @@ class Window(Obj):
 
     Examples
     --------
-    >>> window = session.new_window('My project')
+    >>> window = session.new_window('My project', attach=True)
 
     >>> window
     Window(@2 2:My project, Session($... ...))

@@ -436,7 +436,7 @@ class Session(Obj, EnvironmentMixin):
         self,
         window_name: t.Optional[str] = None,
         start_directory: None = None,
-        attach: bool = True,
+        attach: bool = False,
         window_index: str = "",
         window_shell: t.Optional[str] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
@@ -464,6 +464,10 @@ class Session(Obj, EnvironmentMixin):
                 When this command exits the window will close.  This feature is
                 useful for long-running processes where the closing of the
                 window upon completion is desired.
+
+        .. versionchanged:: 0.28.0
+
+           ``attach`` default changed from ``True`` to ``False``.
 
         Returns
         -------
