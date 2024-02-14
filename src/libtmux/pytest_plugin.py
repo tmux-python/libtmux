@@ -217,7 +217,9 @@ def session(
     session_name = "tmuxp"
 
     if not server.has_session(session_name):
-        server.cmd("new-session", "-d", "-s", session_name)
+        server.new_session(
+            session_name=session_name,
+        )
 
     # find current sessions prefixed with tmuxp
     old_test_sessions = []
@@ -228,7 +230,10 @@ def session(
 
     TEST_SESSION_NAME = get_test_session_name(server=server)
 
-    session = server.new_session(session_name=TEST_SESSION_NAME, **session_params)
+    session = server.new_session(
+        session_name=TEST_SESSION_NAME,
+        **session_params,
+    )
 
     """
     Make sure that tmuxp can :ref:`test_builder_visually` and switches to
