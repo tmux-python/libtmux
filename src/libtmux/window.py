@@ -158,8 +158,8 @@ class Window(Obj):
         target_pane : str
             'target_pane', '-U' ,'-D', '-L', '-R', or '-l'.
 
-        Return
-        ------
+        Returns
+        -------
         :class:`Pane`
         """
         if target_pane in ["-l", "-U", "-D", "-L", "-R"]:
