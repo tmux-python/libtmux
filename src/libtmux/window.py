@@ -13,6 +13,10 @@ import warnings
 
 from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.constants import (
+    RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
+    ResizeAdjustmentDirection,
+)
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
@@ -283,6 +287,87 @@ class Window(Obj):
         pane_formatters = dict(zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR)))
 
         return Pane.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
+
+    def resize(
+        self,
+        # Adjustments
+        adjustment_direction: t.Optional[ResizeAdjustmentDirection] = None,
+        adjustment: t.Optional[int] = None,
+        # Manual
+        height: t.Optional[int] = None,
+        width: t.Optional[int] = None,
+        # Expand / Shrink
+        expand: t.Optional[bool] = None,
+        shrink: t.Optional[bool] = None,
+    ) -> "Window":
+        """Resize tmux window.
+
+        Parameters
+        ----------
+        adjustment_direction : ResizeAdjustmentDirection, optional
+            direction to adjust, ``Up``, ``Down``, ``Left``, ``Right``.
+        adjustment : ResizeAdjustmentDirection, optional
+
+        height : int, optional
+            ``resize-window -y`` dimensions
+        width : int, optional
+            ``resize-window -x`` dimensions
+
+        expand : bool
+            expand window
+        shrink : bool
+            shrink window
+
+        Raises
+        ------
+        :exc:`exc.LibTmuxException`,
+        :exc:`exc.PaneAdjustmentDirectionRequiresAdjustment`
+
+        Returns
+        -------
+        :class:`Window`
+
+        Notes
+        -----
+        Three types of resizing are available:
+
+        1. Adjustments: ``adjustment_direction`` and ``adjustment``.
+        2. Manual resizing: ``height`` and / or ``width``.
+        3. Expand or shrink: ``expand`` or ``shrink``.
+        """
+        if not has_gte_version("2.9"):
+            warnings.warn("resize() requires tmux 2.9 or newer", stacklevel=2)
+            return self
+
+        tmux_args: t.Tuple[str, ...] = ()
+
+        ## Adjustments
+        if adjustment_direction:
+            if adjustment is None:
+                raise exc.WindowAdjustmentDirectionRequiresAdjustment()
+            tmux_args += (
+                f"{RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP[adjustment_direction]}",
+                str(adjustment),
+            )
+        elif height or width:
+            ## Manual resizing
+            if height:
+                tmux_args += (f"-y{int(height)}",)
+            if width:
+                tmux_args += (f"-x{int(width)}",)
+        elif expand or shrink:
+            if expand:
+                tmux_args += ("-A",)
+            elif shrink:
+                tmux_args += ("-a",)
+
+        proc = self.cmd("resize-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+        return self
 
     def last_pane(self) -> t.Optional["Pane"]:
         """Return last pane."""
