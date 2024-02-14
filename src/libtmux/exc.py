@@ -155,3 +155,10 @@ class PaneAdjustmentDirectionRequiresAdjustment(
     """ValueError for :meth:`libtmux.Pane.resize_pane`."""
 
     pass
+
+
+class RequiresDigitOrPercentage(LibTmuxException, ValueError):
+    """Requires digit (int or str digit) or a percentage."""
+
+    def __init__(self) -> None:
+        super().__init__("Requires digit (int or str digit) or a percentage.")
