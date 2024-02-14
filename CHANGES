@@ -16,7 +16,7 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Improvement
 
-- Pane, Window: Impove parsing of option values that return numbers
+- Pane, Window: Improve parsing of option values that return numbers
   (#520)
 
 ### Tests
