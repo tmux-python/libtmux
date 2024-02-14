@@ -177,7 +177,7 @@ class Window(Obj):
         self,
         target: t.Optional[t.Union[int, str]] = None,
         start_directory: t.Optional[str] = None,
-        attach: bool = True,
+        attach: bool = False,
         vertical: bool = True,
         shell: t.Optional[str] = None,
         percent: t.Optional[int] = None,
@@ -220,6 +220,10 @@ class Window(Obj):
         By default, this will make the window the pane is created in
         active. To remain on the same window and split the pane in another
         target window, pass in ``attach=False``.
+
+        .. versionchanged:: 0.28.0
+
+           ``attach`` default changed from ``True`` to ``False``.
         """
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 

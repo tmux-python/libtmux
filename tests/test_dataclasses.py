@@ -40,10 +40,8 @@ def test_pane(
 
     __window = __session.attached_window
     __window.split_window()
-    __window.split_window()
+    __pane = __window.split_window()
     __window.select_layout("main-vertical")
-
-    __pane = __window.attached_pane
 
     assert __pane is not None
     assert __pane.pane_id is not None
