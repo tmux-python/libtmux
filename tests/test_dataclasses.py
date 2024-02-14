@@ -9,6 +9,7 @@ from libtmux._internal.query_list import (
     ObjectDoesNotExist,
     QueryList,
 )
+from libtmux.constants import ResizeAdjustmentDirection
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -59,8 +60,10 @@ def test_pane(
 
     old_pane_size = pane.pane_height
 
-    pane.resize_pane("-D", 25)
-    pane.resize_pane("-R", 25)
+    pane.resize_pane(adjustment_direction=ResizeAdjustmentDirection.Down, adjustment=25)
+    pane.resize_pane(
+        adjustment_direction=ResizeAdjustmentDirection.Right, adjustment=25
+    )
 
     assert old_pane_size != pane.pane_height
     assert pane.pane_current_command is not None
