@@ -22,6 +22,7 @@ $ pip install --user --upgrade --pre libtmux
 ### Tests
 
 - pytest: Fix `usefixture` warning (#519)
+- ci: Add tmux 3.4 to test matrix (#909)
 
 ## libtmux 0.27.1 (2024-02-07)
 
