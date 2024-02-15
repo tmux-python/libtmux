@@ -442,7 +442,7 @@ class Pane(Obj):
 
         .. deprecated:: 0.16
 
-           Deprecated by attribute lookup.e.g. ``pane['window_name']`` is now
+           Deprecated by attribute lookup, e.g. ``pane['window_name']`` is now
            accessed via ``pane.window_name``.
 
         """
