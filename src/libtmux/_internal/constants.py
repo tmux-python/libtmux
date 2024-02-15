@@ -1,32 +1,25 @@
+"""Internal constants."""
+
 from __future__ import annotations
 
+import io
+import logging
 import typing as t
 from dataclasses import dataclass, field
 
 from libtmux._internal.dataclasses import SkipDefaultFieldsReprMixin
+from libtmux._internal.sparse_array import SparseArray, is_sparse_array_list
 
-TerminalFeatures = dict[str, list[str]]
+if t.TYPE_CHECKING:
+    from typing_extensions import TypeAlias
 
 
 T = t.TypeVar("T")
 
+TerminalFeatures = dict[str, list[str]]
+HookArray: TypeAlias = "dict[str, SparseArray[str]]"
 
-class TmuxArray(dict[int, T], t.Generic[T]):
-    """Support non-sequential indexes without raising IndexError."""
-
-    def add(self, index: int, value: T) -> None:
-        self[index] = value
-
-    def append(self, value: T) -> None:
-        index = max(self.keys()) + 1
-        self[index] = value
-
-    def iter_values(self) -> t.Iterator[T]:
-        for index in sorted(self.keys()):
-            yield self[index]
-
-    def as_list(self) -> list[T]:
-        return [self[index] for index in sorted(self.keys())]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(repr=False)
@@ -35,7 +28,7 @@ class ServerOptions(
 ):
     backspace: str | None = field(default=None)
     buffer_limit: int | None = field(default=None)
-    command_alias: TmuxArray[str] = field(default_factory=TmuxArray)
+    command_alias: SparseArray[str] = field(default_factory=SparseArray)
     default_terminal: str | None = field(default=None)
     copy_command: str | None = field(default=None)
     escape_time: int | None = field(default=None)
@@ -49,8 +42,8 @@ class ServerOptions(
     prompt_history_limit: int | None = field(default=None)
     set_clipboard: t.Literal["on", "external", "off"] | None = field(default=None)
     terminal_features: TerminalFeatures = field(default_factory=dict)
-    terminal_overrides: TmuxArray[str] = field(default_factory=TmuxArray)
-    user_keys: TmuxArray[str] = field(default_factory=TmuxArray)
+    terminal_overrides: SparseArray[str] = field(default_factory=SparseArray)
+    user_keys: SparseArray[str] = field(default_factory=SparseArray)
 
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
@@ -121,7 +114,7 @@ class SessionOptions(
     status_right_length: int | None = field(default=None)
     status_right_style: str | None = field(default=None)
     status_style: str | None = field(default=None)
-    update_environment: list[str] | None = field(default=None)
+    update_environment: SparseArray[str] = field(default_factory=SparseArray)
     visual_activity: t.Literal["on", "off", "both"] | None = field(default=None)
     visual_bell: t.Literal["on", "off", "both"] | None = field(default=None)
     visual_silence: t.Literal["on", "off", "both"] | None = field(default=None)
@@ -245,3 +238,224 @@ class Options(
             key_underscored = key.replace("-", "_")
             key_asterisk_removed = key_underscored.rstrip("*")
             setattr(self, key_asterisk_removed, value)
+
+
+@dataclass(repr=False)
+class Hooks(
+    SkipDefaultFieldsReprMixin,
+):
+    """tmux hooks data structure."""
+
+    # --- Tmux normal hooks ---
+    # Run when a window has activity. See monitor-activity.
+    alert_activity: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a window has received a bell. See monitor-bell.
+    alert_bell: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a window has been silent. See monitor-silence.
+    alert_silence: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a client becomes the latest active client of its session.
+    client_active: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a client is attached.
+    client_attached: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a client is detached.
+    client_detached: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when focus enters a client.
+    client_focus_in: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when focus exits a client.
+    client_focus_out: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a client is resized.
+    client_resized: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a client's attached session is changed.
+    client_session_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when the program running in a pane exits, but remain-on-exit is on so the pane
+    # has not closed.
+    pane_died: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when the program running in a pane exits.
+    pane_exited: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when the focus enters a pane, if the focus-events option is on.
+    pane_focus_in: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when the focus exits a pane, if the focus-events option is on.
+    pane_focus_out: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when the terminal clipboard is set using the xterm(1) escape sequence.
+    pane_set_clipboard: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a new session created.
+    session_created: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a session closed.
+    session_closed: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a session is renamed.
+    session_renamed: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a window is linked into a session.
+    window_linked: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a window is renamed.
+    window_renamed: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a window is resized. This may be after the client-resized hook is run.
+    window_resized: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a window is unlinked from a session.
+    window_unlinked: SparseArray[str] = field(default_factory=SparseArray)
+
+    # --- Tmux control mode hooks ---
+    # The client has detached.
+    client_detached_control: SparseArray[str] = field(default_factory=SparseArray)
+    # The client is now attached to the session with ID session-id, which is named name.
+    client_session_changed_control: SparseArray[str] = field(
+        default_factory=SparseArray,
+    )
+    # An error has happened in a configuration file.
+    config_error: SparseArray[str] = field(default_factory=SparseArray)
+    # The pane has been continued after being paused (if the pause-after flag is set,
+    # see refresh-client -A).
+    continue_control: SparseArray[str] = field(default_factory=SparseArray)
+    # The tmux client is exiting immediately, either because it is not attached to any
+    # session or an error occurred.
+    exit_control: SparseArray[str] = field(default_factory=SparseArray)
+    # New form of %output sent when the pause-after flag is set.
+    extended_output: SparseArray[str] = field(default_factory=SparseArray)
+    # The layout of a window with ID window-id changed.
+    layout_change: SparseArray[str] = field(default_factory=SparseArray)
+    # A message sent with the display-message command.
+    message_control: SparseArray[str] = field(default_factory=SparseArray)
+    # A window pane produced output.
+    output: SparseArray[str] = field(default_factory=SparseArray)
+    # The pane with ID pane-id has changed mode.
+    pane_mode_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # Paste buffer name has been changed.
+    paste_buffer_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # Paste buffer name has been deleted.
+    paste_buffer_deleted: SparseArray[str] = field(default_factory=SparseArray)
+    # The pane has been paused (if the pause-after flag is set).
+    pause_control: SparseArray[str] = field(default_factory=SparseArray)
+    # The client is now attached to the session with ID session-id, which is named name.
+    session_changed_control: SparseArray[str] = field(default_factory=SparseArray)
+    # The current session was renamed to name.
+    session_renamed_control: SparseArray[str] = field(default_factory=SparseArray)
+    # The session with ID session-id changed its active window to the window with ID
+    # window-id.
+    session_window_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # A session was created or destroyed.
+    sessions_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # The value of the format associated with subscription name has changed to value.
+    subscription_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # The window with ID window-id was created but is not linked to the current session.
+    unlinked_window_add: SparseArray[str] = field(default_factory=SparseArray)
+    # The window with ID window-id, which is not linked to the current session, was
+    # closed.
+    unlinked_window_close: SparseArray[str] = field(default_factory=SparseArray)
+    # The window with ID window-id, which is not linked to the current session, was
+    # renamed.
+    unlinked_window_renamed: SparseArray[str] = field(default_factory=SparseArray)
+    # The window with ID window-id was linked to the current session.
+    window_add: SparseArray[str] = field(default_factory=SparseArray)
+    # The window with ID window-id closed.
+    window_close: SparseArray[str] = field(default_factory=SparseArray)
+    # The layout of a window with ID window-id changed. The new layout is window-layout.
+    # The window's visible layout is window-visible-layout and the window flags are
+    # window-flags.
+    window_layout_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # The active pane in the window with ID window-id changed to the pane with ID
+    # pane-id.
+    window_pane_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # The window with ID window-id was renamed to name.
+    window_renamed_control: SparseArray[str] = field(default_factory=SparseArray)
+
+    # --- After hooks - Run after specific tmux commands complete ---
+    # Runs after 'bind-key' completes
+    after_bind_key: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'capture-pane' completes
+    after_capture_pane: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'copy-mode' completes
+    after_copy_mode: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'display-message' completes
+    after_display_message: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'display-panes' completes
+    after_display_panes: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'kill-pane' completes
+    after_kill_pane: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'list-buffers' completes
+    after_list_buffers: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'list-clients' completes
+    after_list_clients: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'list-keys' completes
+    after_list_keys: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'list-panes' completes
+    after_list_panes: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'list-sessions' completes
+    after_list_sessions: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'list-windows' completes
+    after_list_windows: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'load-buffer' completes
+    after_load_buffer: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'lock-server' completes
+    after_lock_server: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'new-session' completes
+    after_new_session: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'new-window' completes
+    after_new_window: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'paste-buffer' completes
+    after_paste_buffer: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'pipe-pane' completes
+    after_pipe_pane: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'queue' command is processed
+    after_queue: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'refresh-client' completes
+    after_refresh_client: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'rename-session' completes
+    after_rename_session: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'rename-window' completes
+    after_rename_window: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'resize-pane' completes
+    after_resize_pane: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'resize-window' completes
+    after_resize_window: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'save-buffer' completes
+    after_save_buffer: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'select-layout' completes
+    after_select_layout: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'select-pane' completes
+    after_select_pane: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'select-window' completes
+    after_select_window: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'send-keys' completes
+    after_send_keys: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'set-buffer' completes
+    after_set_buffer: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'set-environment' completes
+    after_set_environment: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'set-hook' completes
+    after_set_hook: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'set-option' completes
+    after_set_option: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'show-environment' completes
+    after_show_environment: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'show-messages' completes
+    after_show_messages: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'show-options' completes
+    after_show_options: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'split-window' completes
+    after_split_window: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs after 'unbind-key' completes
+    after_unbind_key: SparseArray[str] = field(default_factory=SparseArray)
+
+    @classmethod
+    def from_stdout(cls, value: list[str]) -> Hooks:
+        from libtmux.options import (
+            explode_arrays,
+            explode_complex,
+            parse_options_to_dict,
+        )
+
+        output_exploded = explode_complex(
+            explode_arrays(
+                parse_options_to_dict(
+                    io.StringIO("\n".join(value)),
+                ),
+                force_array=True,
+            ),
+        )
+
+        assert is_sparse_array_list(output_exploded)
+
+        output_renamed: HookArray = {
+            k.lstrip("%").replace("-", "_"): v for k, v in output_exploded.items()
+        }
+
+        return cls(**output_renamed)
