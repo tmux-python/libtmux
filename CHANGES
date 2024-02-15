@@ -16,50 +16,52 @@ $ pip install --user --upgrade --pre libtmux
 
 ## libtmux 0.28.0 (2024-02-14)
 
-### Breaking changes
+### Breaking change
 
-#### `Session.new_window()` + `Window.split_window()`: No longer attaches by default
+#### {meth}`Session.new_window()` + {meth}`Window.split_window()` no longer attaches by default (#523)
 
-- 0.28 +: Now _defaults_ to `attach=False`.
-- 0.27.1 and before: _defaults_ to `attach=True`.
+- 0.28.0 and greater: Defaults to `attach=False`.
+- 0.27.1 and below: Defaults to `attach=True`.
 
-Pass `attach=True` for the old behavior.
+For the old behavior in 0.28.0 and beyond, pass `attach=True` explicitly.
 
-#### `Pane.resize_pane()` renamed to `Pane.resize()`: (#523)
+#### `Pane.resize_pane()` renamed to {meth}`Pane.resize()` (#523)
 
-This convention will be more consistent with `Window.resize()`.
+This convention will be more consistent with {meth}`Window.resize()`.
 
-#### `Pane.resize_pane()`: Params changed (#523)
+#### {meth}`Pane.resize_pane()`'s params changed (#523)
 
 - No longer accepts `-U`, `-D`, `-L`, `-R` directly, instead accepts
-  `ResizeAdjustmentDirection`.
+  {class}`~libtmux.constants.ResizeAdjustmentDirection` (see below).
 
 ### New features
 
-#### `Pane.resize()`: Improved param coverage (#523)
+#### Improvements to resizing (#523)
 
-- Learned to accept adjustments via `adjustment_direction` w/
-  `ResizeAdjustmentDirection` + `adjustment`.
+- {meth}`Pane.resize()`:
 
-- Learned to accept manual `height` and / or `width` (columns/rows or percentage)
+  - Accept adjustments via `adjustment_direction` w/
+    {class}`~libtmux.constants.ResizeAdjustmentDirection` + `adjustment`.
 
-- Zoom (and unzoom)
+  - Learned to accept manual `height` and / or `width` (columns/rows or percentage)
 
-#### `Window.resize_window()`: New Method (#523)
+  - Zoom (and unzoom)
 
-If `Pane.resize_pane()` (now `Pane.resize()`) didn't work before, try resizing the window.
+- {meth}`Window.resize()`: Newly added
+
+Tip: If {meth}`Pane.resize()` was not taking affect <= 0.27.1, try to resize with
+{meth}`Window.resize()` first.
 
 ### Bug fixes
 
-#### `Window.refresh()` and `Pane.refresh()`: Refresh more underlying state (#523)
+- {meth}`Window.refresh()` and {meth}`Pane.refresh()`: Refresh more underlying state (#523)
+- {meth}`Obj._refresh`: Allow passing args (#523)
 
-#### `Obj._refresh`: Allow passing args (#523)
+  e.g. `-a` (all) to `list-panes` and `list-windows`
 
-e.g. `-a` (all) to `list-panes` and `list-windows`
+- `Server.panes`: Fix listing of panes (#523)
 
-#### `Server.panes`: Fix listing of panes (#523)
-
-Would list only panes in attached session, rather than all in a server.
+  Would list only panes in attached session, rather than all in a server.
 
 ### Improvement
 
