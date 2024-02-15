@@ -22,6 +22,7 @@ from libtmux.constants import (
     ResizeAdjustmentDirection,
     WindowDirection,
 )
+from libtmux.hooks import HookMixin
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
@@ -38,7 +39,11 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass()
-class Window(Obj, OptionMixin):
+class Window(
+    Obj,
+    OptionMixin,
+    HookMixin,
+):
     """:term:`tmux(1)` :term:`Window` [window_manual]_.
 
     Holds :class:`Pane` objects.
@@ -87,6 +92,7 @@ class Window(Obj, OptionMixin):
     """
 
     default_option_scope: OptionScope | None = OptionScope.Window
+    default_hook_scope: OptionScope | None = OptionScope.Window
     server: Server
 
     def refresh(self) -> None:
