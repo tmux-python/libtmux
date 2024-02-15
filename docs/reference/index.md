@@ -11,6 +11,7 @@ servers
 sessions
 windows
 panes
+constants
 common
 exceptions
 ```

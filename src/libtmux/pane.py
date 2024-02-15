@@ -1,4 +1,3 @@
-# flake8: NOQA: W605
 """Pythonization of the :ref:`tmux(1)` pane.
 
 libtmux.pane
@@ -11,7 +10,11 @@ import typing as t
 import warnings
 from typing import overload
 
-from libtmux.common import tmux_cmd
+from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.constants import (
+    RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
+    ResizeAdjustmentDirection,
+)
 from libtmux.neo import Obj, fetch_obj
 
 from . import exc
@@ -71,7 +74,11 @@ class Pane(Obj):
     def refresh(self) -> None:
         """Refresh pane attributes from tmux."""
         assert isinstance(self.pane_id, str)
-        return super()._refresh(obj_key="pane_id", obj_id=self.pane_id)
+        return super()._refresh(
+            obj_key="pane_id",
+            obj_id=self.pane_id,
+            list_extra_args=("-a",),
+        )
 
     @classmethod
     def from_pane_id(cls, server: "Server", pane_id: str) -> "Pane":
@@ -122,31 +129,99 @@ class Pane(Obj):
     Commands (tmux-like)
     """
 
-    def resize_pane(self, *args: t.Any, **kwargs: t.Any) -> "Pane":
+    def resize(
+        self,
+        # Adjustments
+        adjustment_direction: t.Optional[ResizeAdjustmentDirection] = None,
+        adjustment: t.Optional[int] = None,
+        # Manual
+        height: t.Optional[t.Union[str, int]] = None,
+        width: t.Optional[t.Union[str, int]] = None,
+        # Zoom
+        zoom: t.Optional[bool] = None,
+        # Mouse
+        mouse: t.Optional[bool] = None,
+        # Optional flags
+        trim_below: t.Optional[bool] = None,
+    ) -> "Pane":
         """Resize tmux pane.
 
         Parameters
         ----------
-        target_pane : str
-            ``target_pane``, or ``-U``,``-D``, ``-L``, ``-R``.
+        adjustment_direction : ResizeAdjustmentDirection, optional
+            direction to adjust, ``Up``, ``Down``, ``Left``, ``Right``.
+        adjustment : ResizeAdjustmentDirection, optional
 
-        Other Parameters
-        ----------------
-        height : int
+        height : int, optional
             ``resize-pane -y`` dimensions
-        width : int
+        width : int, optional
             ``resize-pane -x`` dimensions
+
+        zoom : bool
+            expand pane
+
+        mouse : bool
+            resize via mouse
+
+        trim_below : bool
+            trim below cursor
 
         Raises
         ------
-        exc.LibTmuxException
+        :exc:`exc.LibTmuxException`,
+        :exc:`exc.PaneAdjustmentDirectionRequiresAdjustment`,
+        :exc:`exc.RequiresDigitOrPercentage`
+
+        Returns
+        -------
+        :class:`Pane`
+
+        Notes
+        -----
+        Three types of resizing are available:
+
+        1. Adjustments: ``adjustment_direction`` and ``adjustment``.
+        2. Manual resizing: ``height`` and / or ``width``.
+        3. Zoom / Unzoom: ``zoom``.
         """
-        if "height" in kwargs:
-            proc = self.cmd("resize-pane", "-y%s" % int(kwargs["height"]))
-        elif "width" in kwargs:
-            proc = self.cmd("resize-pane", "-x%s" % int(kwargs["width"]))
-        else:
-            proc = self.cmd("resize-pane", args[0])
+        tmux_args: t.Tuple[str, ...] = ()
+
+        ## Adjustments
+        if adjustment_direction:
+            if adjustment is None:
+                raise exc.PaneAdjustmentDirectionRequiresAdjustment()
+            tmux_args += (
+                f"{RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP[adjustment_direction]}",
+                str(adjustment),
+            )
+        elif height or width:
+            ## Manual resizing
+            if height:
+                if isinstance(height, str):
+                    if height.endswith("%") and not has_gte_version("3.1"):
+                        raise exc.VersionTooLow
+                    if not height.isdigit() and not height.endswith("%"):
+                        raise exc.RequiresDigitOrPercentage
+                tmux_args += (f"-y{height}",)
+
+            if width:
+                if isinstance(width, str):
+                    if width.endswith("%") and not has_gte_version("3.1"):
+                        raise exc.VersionTooLow
+                    if not width.isdigit() and not width.endswith("%"):
+                        raise exc.RequiresDigitOrPercentage
+
+                tmux_args += (f"-x{width}",)
+        elif zoom:
+            ## Zoom / Unzoom
+            tmux_args += ("-Z",)
+        elif mouse:
+            tmux_args += ("-M",)
+
+        if trim_below:
+            tmux_args += ("-T",)
+
+        proc = self.cmd("resize-pane", *tmux_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -442,7 +517,7 @@ class Pane(Obj):
 
         .. deprecated:: 0.16
 
-           Deprecated by attribute lookup.e.g. ``pane['window_name']`` is now
+           Deprecated by attribute lookup, e.g. ``pane['window_name']`` is now
            accessed via ``pane.window_name``.
 
         """
@@ -460,3 +535,38 @@ class Pane(Obj):
         """
         warnings.warn(f"Item lookups, e.g. pane['{key}'] is deprecated", stacklevel=2)
         return getattr(self, key)
+
+    def resize_pane(
+        self,
+        # Adjustments
+        adjustment_direction: t.Optional[ResizeAdjustmentDirection] = None,
+        adjustment: t.Optional[int] = None,
+        # Manual
+        height: t.Optional[t.Union[str, int]] = None,
+        width: t.Optional[t.Union[str, int]] = None,
+        # Zoom
+        zoom: t.Optional[bool] = None,
+        # Mouse
+        mouse: t.Optional[bool] = None,
+        # Optional flags
+        trim_below: t.Optional[bool] = None,
+    ) -> "Pane":
+        """Resize pane, deprecated by :meth:`Pane.resize`.
+
+        .. deprecated:: 0.28
+
+           Deprecated by :meth:`Pane.resize`.
+        """
+        warnings.warn(
+            "Deprecated: Use Pane.resize() instead of Pane.resize_pane()",
+            stacklevel=2,
+        )
+        return self.resize(
+            adjustment_direction=adjustment_direction,
+            adjustment=adjustment,
+            height=height,
+            width=width,
+            zoom=zoom,
+            mouse=mouse,
+            trim_below=trim_below,
+        )

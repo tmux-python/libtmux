@@ -1,4 +1,3 @@
-# flake8: NOQA: W605
 """Helper methods and mixins for libtmux.
 
 libtmux.common

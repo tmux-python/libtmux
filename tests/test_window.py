@@ -9,6 +9,7 @@ import pytest
 from libtmux import exc
 from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.common import has_gte_version, has_lt_version
+from libtmux.constants import ResizeAdjustmentDirection
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -397,3 +398,83 @@ def test_split_window_with_environment_logs_warning_for_old_tmux(
     assert any(
         "Cannot set up environment" in record.msg for record in caplog.records
     ), "Warning missing"
+
+
+@pytest.mark.skipif(
+    has_lt_version("2.9"),
+    reason="resize-window only exists in tmux 2.9+",
+)
+def test_resize(
+    session: Session,
+) -> None:
+    """Verify resizing window."""
+    session.cmd("detach-client", "-s")
+
+    window = session.attached_window
+    window_height_adjustment = 10
+
+    assert window.window_height is not None
+    assert window.window_width is not None
+
+    #
+    # Manual resizing
+    #
+
+    # Manual: Height
+    window_height_before = int(window.window_height)
+    window.resize(
+        height=10,
+    )
+    assert int(window.window_height) == 10
+
+    # Manual: Width
+    window.resize(
+        width=10,
+    )
+    assert int(window.window_width) == 10
+
+    #
+    # Adjustments
+    #
+
+    # Adjustment: Down
+    window_height_before = int(window.window_height)
+    window.resize(
+        adjustment_direction=ResizeAdjustmentDirection.Down,
+        adjustment=window_height_adjustment * 2,
+    )
+    assert window_height_before + (window_height_adjustment * 2) == int(
+        window.window_height
+    )
+
+    # Adjustment: Up
+    window_height_before = int(window.window_height)
+    window.resize(
+        adjustment_direction=ResizeAdjustmentDirection.Up,
+        adjustment=window_height_adjustment,
+    )
+    assert window_height_before - window_height_adjustment == int(window.window_height)
+
+    #
+    # Shrink and expand
+    #
+    window.resize(height=50)
+
+    # Shrink
+    window_height_before = int(window.window_height)
+    window.resize(
+        shrink=True,
+    )
+    window_height_shrunk = int(window.window_height)
+    assert window_height_before > window_height_shrunk
+
+    assert window
+
+    # Expand
+    window.resize(height=2)
+    window_height_before = int(window.window_height)
+    window.resize(
+        expand=True,
+    )
+    window_height_expanded = int(window.window_height)
+    assert window_height_before < window_height_expanded

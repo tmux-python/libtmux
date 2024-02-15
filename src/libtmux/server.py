@@ -542,7 +542,7 @@ class Server(EnvironmentMixin):
             Pane(server=self, **obj)
             for obj in fetch_objs(
                 list_cmd="list-panes",
-                list_extra_args=["-s"],
+                list_extra_args=("-a",),
                 server=self,
             )
         ]

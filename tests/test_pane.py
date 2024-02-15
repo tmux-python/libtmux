@@ -2,29 +2,13 @@
 import logging
 import shutil
 
+import pytest
+
+from libtmux.common import has_gte_version, has_lt_version
+from libtmux.constants import ResizeAdjustmentDirection
 from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
-
-
-def test_resize_pane(session: Session) -> None:
-    """Test Pane.resize_pane()."""
-    window = session.attached_window
-    window.rename_window("test_resize_pane")
-
-    pane1 = window.attached_pane
-    assert pane1 is not None
-    pane1_height = pane1.pane_height
-    window.split_window()
-
-    pane1.resize_pane(height=4)
-    assert pane1.pane_height != pane1_height
-    assert pane1.pane_height is not None
-    assert int(pane1.pane_height) == 4
-
-    pane1.resize_pane(height=3)
-    assert pane1.pane_height is not None
-    assert int(pane1.pane_height) == 3
 
 
 def test_send_keys(session: Session) -> None:
@@ -146,3 +130,95 @@ def test_capture_pane_end(session: Session) -> None:
     assert pane_contents == '$ printf "%s"'
     pane_contents = "\n".join(pane.capture_pane(end="-"))
     assert pane_contents == '$ printf "%s"\n$'
+
+
+@pytest.mark.skipif(
+    has_lt_version("2.9"),
+    reason="resize-window only exists in tmux 2.9+",
+)
+def test_resize_pane(
+    session: Session,
+) -> None:
+    """Verify resizing window."""
+    session.cmd("detach-client", "-s")
+
+    window = session.attached_window
+    pane = window.split_window(attach=False)
+    window.split_window(vertical=True, attach=False)
+
+    assert pane is not None
+
+    window.resize(height=500, width=500)
+
+    pane_height_adjustment = 10
+
+    assert pane.pane_height is not None
+    assert pane.pane_width is not None
+
+    #
+    # Manual resizing
+    #
+
+    # Manual: Height
+    pane_height_before = int(pane.pane_height)
+    pane.resize_pane(
+        height="50",
+    )
+    assert int(pane.pane_height) == 50
+
+    # Manual: Width
+    window.select_layout("main-horizontal")
+    pane.resize_pane(
+        width="75",
+    )
+    assert int(pane.pane_width) == 75
+
+    if has_gte_version("3.1"):
+        # Manual: Height percentage
+        window.select_layout("main-vertical")
+        pane_height_before = int(pane.pane_height)
+        pane.resize_pane(
+            height="15%",
+        )
+        assert int(pane.pane_height) == 75
+
+        # Manual: Width percentage
+        window.select_layout("main-horizontal")
+        pane.resize_pane(
+            width="15%",
+        )
+        assert int(pane.pane_width) == 75
+
+    #
+    # Adjustments
+    #
+
+    # Adjustment: Down
+    pane_height_before = int(pane.pane_height)
+    pane.resize_pane(
+        adjustment_direction=ResizeAdjustmentDirection.Down,
+        adjustment=pane_height_adjustment * 2,
+    )
+    assert pane_height_before - (pane_height_adjustment * 2) == int(pane.pane_height)
+
+    # Adjustment: Up
+    pane_height_before = int(pane.pane_height)
+    pane.resize_pane(
+        adjustment_direction=ResizeAdjustmentDirection.Up,
+        adjustment=pane_height_adjustment,
+    )
+    assert pane_height_before + pane_height_adjustment == int(pane.pane_height)
+
+    #
+    # Zoom
+    #
+    pane.resize_pane(height=50)
+
+    # Zoom
+    pane.resize_pane(height=2)
+    pane_height_before = int(pane.pane_height)
+    pane.resize_pane(
+        zoom=True,
+    )
+    pane_height_expanded = int(pane.pane_height)
+    assert pane_height_before < pane_height_expanded

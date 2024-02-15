@@ -167,12 +167,14 @@ class Obj:
         obj_key: str,
         obj_id: str,
         list_cmd: "ListCmd" = "list-panes",
+        list_extra_args: "t.Optional[ListExtraArgs]" = None,
     ) -> None:
         assert isinstance(obj_id, str)
         obj = fetch_obj(
             obj_key=obj_key,
             obj_id=obj_id,
             list_cmd=list_cmd,
+            list_extra_args=list_extra_args,
             server=self.server,
         )
         assert obj is not None

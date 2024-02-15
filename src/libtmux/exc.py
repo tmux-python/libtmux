@@ -132,3 +132,33 @@ class NoWindowsExist(WindowError):
 
     def __init__(self, *args: object):
         return super().__init__("No windows exist for object")
+
+
+class AdjustmentDirectionRequiresAdjustment(LibTmuxException, ValueError):
+    """If *adjustment_direction* is set, *adjustment* must be set."""
+
+    def __init__(self) -> None:
+        super().__init__("adjustment_direction requires adjustment")
+
+
+class WindowAdjustmentDirectionRequiresAdjustment(
+    WindowError, AdjustmentDirectionRequiresAdjustment
+):
+    """ValueError for :meth:`libtmux.Window.resize_window`."""
+
+    pass
+
+
+class PaneAdjustmentDirectionRequiresAdjustment(
+    WindowError, AdjustmentDirectionRequiresAdjustment
+):
+    """ValueError for :meth:`libtmux.Pane.resize_pane`."""
+
+    pass
+
+
+class RequiresDigitOrPercentage(LibTmuxException, ValueError):
+    """Requires digit (int or str digit) or a percentage."""
+
+    def __init__(self) -> None:
+        super().__init__("Requires digit (int or str digit) or a percentage.")
