@@ -17,6 +17,7 @@ from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
+from libtmux.hooks import HooksMixin
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.options import OptionsMixin
 from libtmux.pane import Pane
@@ -48,7 +49,12 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass()
-class Session(Obj, EnvironmentMixin, OptionsMixin):
+class Session(
+    Obj,
+    EnvironmentMixin,
+    OptionsMixin,
+    HooksMixin,
+):
     """:term:`tmux(1)` :term:`Session` [session_manual]_.
 
     Holds :class:`Window` objects.
@@ -92,6 +98,7 @@ class Session(Obj, EnvironmentMixin, OptionsMixin):
     """
 
     default_option_scope: OptionScope | None = None
+    default_hook_scope: OptionScope | None = None
     server: Server
 
     def __enter__(self) -> Self:
