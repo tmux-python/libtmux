@@ -21,6 +21,7 @@ from libtmux.constants import (
     ResizeAdjustmentDirection,
 )
 from libtmux.formats import FORMAT_SEPARATOR
+from libtmux.hooks import HookMixin
 from libtmux.neo import Obj, fetch_obj
 from libtmux.options import OptionMixin
 
@@ -36,7 +37,11 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass()
-class Pane(Obj, OptionMixin):
+class Pane(
+    Obj,
+    OptionMixin,
+    HookMixin,
+):
     """:term:`tmux(1)` :term:`Pane` [pane_manual]_.
 
     ``Pane`` instances can send commands directly to a pane, or traverse
@@ -77,6 +82,7 @@ class Pane(Obj, OptionMixin):
     """
 
     default_option_scope: t.Optional[OptionScope] = OptionScope.Pane
+    default_hook_scope: t.Optional[OptionScope] = OptionScope.Pane
     server: "Server"
 
     def refresh(self) -> None:
