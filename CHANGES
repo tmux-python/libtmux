@@ -40,25 +40,28 @@ _Maintenance only, no bug fixes or new features_
 
 ### Breaking change
 
-#### {meth}`Session.new_window()` + {meth}`Window.split_window()` no longer attaches by default (#523)
+#### Detached / unselected by default (#523)
+
+To ensure consistency and principle of least surprise, keep these set to
+not use `-a` unless explicitly specified.
+
+Breaking: {meth}`Session.new_window()` + {meth}`Window.split_window()` no longer attaches by default.
 
 - 0.28.0 and greater: Defaults to `attach=False`.
 - 0.27.1 and below: Defaults to `attach=True`.
 
-For the old behavior in 0.28.0 and beyond, pass `attach=True` explicitly.
+To keep the old behavior in 0.28.0 and beyond, pass `attach=True` explicitly.
 
-#### `Pane.resize_pane()` renamed to {meth}`Pane.resize()` (#523)
+### Improved resizing (#523)
 
-This convention will be more consistent with {meth}`Window.resize()`.
+- Breaking: `Pane.resize_pane()` renamed to {meth}`Pane.resize()` (#523)
 
-#### {meth}`Pane.resize_pane()`'s params changed (#523)
+  This convention will be more consistent with {meth}`Window.resize()`.
 
-- No longer accepts `-U`, `-D`, `-L`, `-R` directly, instead accepts
-  {class}`~libtmux.constants.ResizeAdjustmentDirection` (see below).
+- Breaking: {meth}`Pane.resize()`'s params changed (#523)
 
-### New features
-
-#### Improvements to resizing (#523)
+  - No longer accepts `-U`, `-D`, `-L`, `-R` directly, instead accepts
+    {class}`~libtmux.constants.ResizeAdjustmentDirection`).
 
 - {meth}`Pane.resize()`:
 
