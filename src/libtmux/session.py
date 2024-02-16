@@ -500,7 +500,7 @@ class Session(Obj, EnvironmentMixin):
                     window_args += (f"-e{k}={v}",)
             else:
                 logger.warning(
-                    "Cannot set up environment as tmux 3.0 or newer is required.",
+                    "Environment flag ignored, requires tmux 3.0 or newer.",
                 )
 
         if window_shell:

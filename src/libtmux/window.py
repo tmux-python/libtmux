@@ -294,7 +294,7 @@ class Window(Obj):
                     tmux_args += (f"-e{k}={v}",)
             else:
                 logger.warning(
-                    "Cannot set up environment as tmux 3.0 or newer is required.",
+                    "Environment flag ignored, tmux 3.0 or newer required.",
                 )
 
         if shell:

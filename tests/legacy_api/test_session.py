@@ -313,5 +313,5 @@ def test_new_window_with_environment_logs_warning_for_old_tmux(
     )
 
     assert any(
-        "Cannot set up environment" in record.msg for record in caplog.records
+        "Environment flag ignored" in record.msg for record in caplog.records
     ), "Warning missing"
