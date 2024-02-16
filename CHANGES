@@ -14,6 +14,32 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+### New commands
+
+- {meth}`Pane.kill()`
+
+### Renamed commands
+
+- `Window.select_window()` renamed to {meth}`Window.select()`
+  - Deprecated `Window.select_window()`
+- `Pane.select_pane()` renamed to {meth}`Pane.select()`
+  - Deprecated `Pane.pane_select()`
+- `Session.attach_session()` renamed to {meth}`Session.attach()`
+  - Deprecated `Session.attach_session()`
+- `Server.kill_server()` renamed to {meth}`Server.kill()`
+  - Deprecated `Server.kill_server()`
+- `Session.kill_session()` renamed to {meth}`Session.kill()`
+  - Deprecated `Session.kill_session()`
+- `Window.kill_window()` renamed to {meth}`Window.kill()`
+  - Deprecated `Window.kill_window()`
+
+### Improved commands
+
+- {meth}`Server.new_session()`: Support environment variables
+- {meth}`Window.split_window()`: Support `size` via `-l`
+
+  Supports columns/rows (`size=10`) and percentage (`size='10%'`)
+
 ## libtmux 0.29.0 (2024-02-16)
 
 #### Bug fixes

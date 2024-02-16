@@ -270,8 +270,24 @@ class Server(EnvironmentMixin):
 
         return False
 
-    def kill_server(self) -> None:
-        """Kill tmux server."""
+    def kill(self) -> None:
+        """Kill tmux server.
+
+        >>> svr = Server(socket_name="testing")
+        >>> svr
+        Server(socket_name=testing)
+
+        >>> svr.new_session()
+        Session(...)
+
+        >>> svr.is_alive()
+        True
+
+        >>> svr.kill()
+
+        >>> svr.is_alive()
+        False
+        """
         self.cmd("kill-server")
 
     def kill_session(self, target_session: t.Union[str, int]) -> "Server":
@@ -350,6 +366,7 @@ class Server(EnvironmentMixin):
         window_command: t.Optional[str] = None,
         x: t.Optional[t.Union[int, "DashLiteral"]] = None,
         y: t.Optional[t.Union[int, "DashLiteral"]] = None,
+        environment: t.Optional[t.Dict[str, str]] = None,
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Session:
@@ -468,6 +485,15 @@ class Server(EnvironmentMixin):
         if window_command:
             tmux_args += (window_command,)
 
+        if environment:
+            if has_gte_version("3.2"):
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Environment flag ignored, tmux 3.2 or newer required.",
+                )
+
         proc = self.cmd("new-session", *tmux_args)
 
         if proc.stderr:
@@ -575,6 +601,23 @@ class Server(EnvironmentMixin):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    def kill_server(self) -> None:
+        """Kill tmux server.
+
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.kill()`.
+
+        """
+        warnings.warn(
+            "Server.kill_server() is deprecated in favor of Server.kill()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        self.cmd("kill-server")
+
     def _list_panes(self) -> t.List[PaneDict]:
         """Return list of panes in :py:obj:`dict` form.
 

@@ -260,7 +260,7 @@ Window(@2 2:check this out, Session($1 ...))
 And kill:
 
 ```python
->>> window.kill_window()
+>>> window.kill()
 ```
 
 Use {meth}`Session.windows` and {meth}`Session.windows.filter()` to list and sort
@@ -311,14 +311,14 @@ For one, arguments such as `attach=False` can be omittted.
 
 This gives you the {class}`Pane` along with moving the cursor to a new window. You
 can also use the `.select_*` available on the object, in this case the pane has
-{meth}`Pane.select_pane()`.
+{meth}`Pane.select()`.
 
 ```python
 >>> pane = window.split_window(attach=False)
 ```
 
 ```python
->>> pane.select_pane()
+>>> pane.select()
 Pane(%1 Window(@1 ...:..., Session($1 ...)))
 ```
 

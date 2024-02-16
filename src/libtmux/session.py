@@ -370,21 +370,103 @@ class Session(Obj, EnvironmentMixin):
         if len(self._windows) == 0:
             raise exc.NoWindowsExist()
 
-    def attach_session(self) -> "Session":
-        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``."""
-        proc = self.cmd("attach-session", "-t%s" % self.session_id)
+    def attach(
+        self,
+        _exit: t.Optional[bool] = None,
+        _flags: t.Optional[t.List[str]] = None,
+    ) -> "Session":
+        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
+
+        Examples
+        --------
+        >>> session = server.new_session()
+
+        >>> session not in server.attached_sessions
+        True
+        """
+        flags: t.Tuple[str, ...] = ()
+
+        if _exit is not None and _exit:
+            flags += ("-x",)
+
+        if _flags is not None and isinstance(_flags, list):
+            flags += tuple(f'{",".join(_flags)}')
+
+        proc = self.cmd(
+            "attach-session",
+            *flags,
+        )
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
 
         return self
 
-    def kill_session(self) -> None:
-        """Destroy session."""
-        proc = self.cmd("kill-session", "-t%s" % self.session_id)
+    def kill(
+        self,
+        all_except: t.Optional[bool] = None,
+        clear: t.Optional[bool] = None,
+    ) -> None:
+        """Kill :class:`Session`, closes linked windows and detach all clients.
+
+        ``$ tmux kill-session``.
+
+        Parameters
+        ----------
+        all_except : bool, optional
+            Kill all sessions in server except this one.
+        clear : bool, optional
+            Clear alerts (bell, activity, or silence) in all windows.
+
+        Examples
+        --------
+        Kill a session:
+        >>> session_1 = server.new_session()
+
+        >>> session_1 in server.sessions
+        True
+
+        >>> session_1.kill()
+
+        >>> session_1 not in server.sessions
+        True
+
+        Kill all sessions except the current one:
+        >>> one_session_to_rule_them_all = server.new_session()
+
+        >>> other_sessions = server.new_session(
+        ...     ), server.new_session()
+
+        >>> all([w in server.sessions for w in other_sessions])
+        True
+
+        >>> one_session_to_rule_them_all.kill(all_except=True)
+
+        >>> all([w not in server.sessions for w in other_sessions])
+        True
+
+        >>> one_session_to_rule_them_all in server.sessions
+        True
+        """
+        flags: t.Tuple[str, ...] = ()
+
+        if all_except:
+            flags += ("-a",)
+
+        if clear:  # Clear alerts (bell, activity, or silence) in all windows
+            flags += ("-C",)
+
+        proc = self.cmd(
+            "kill-session",
+            *flags,
+        )
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+        return None
 
     def switch_client(self) -> "Session":
         """Switch client to session.
@@ -500,7 +582,7 @@ class Session(Obj, EnvironmentMixin):
                     window_args += (f"-e{k}={v}",)
             else:
                 logger.warning(
-                    "Cannot set up environment as tmux 3.0 or newer is required.",
+                    "Environment flag ignored, requires tmux 3.0 or newer.",
                 )
 
         if window_shell:
@@ -595,6 +677,46 @@ class Session(Obj, EnvironmentMixin):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    def attach_session(self) -> "Session":
+        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
+
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.attach()`.
+        """
+        warnings.warn(
+            "Session.attach_session() is deprecated in favor of Session.attach()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        proc = self.cmd("attach-session", "-t%s" % self.session_id)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self
+
+    def kill_session(self) -> None:
+        """Destroy session.
+
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.kill()`.
+        """
+        warnings.warn(
+            "Session.kill_session() is deprecated in favor of Session.kill()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        proc = self.cmd("kill-session", "-t%s" % self.session_id)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
 

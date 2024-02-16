@@ -21,7 +21,7 @@ from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
 from . import exc
-from .common import PaneDict, WindowOptionDict, handle_option_error
+from .common import PaneDict, WindowOptionDict, handle_option_error, has_lt_version
 from .formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -184,7 +184,8 @@ class Window(Obj):
         attach: bool = False,
         vertical: bool = True,
         shell: t.Optional[str] = None,
-        percent: t.Optional[int] = None,
+        size: t.Optional[t.Union[str, int]] = None,
+        percent: t.Optional[int] = None,  # deprecated
         environment: t.Optional[t.Dict[str, str]] = None,
     ) -> "Pane":
         """Split window and return the created :class:`Pane`.
@@ -209,8 +210,11 @@ class Window(Obj):
             NOTE: When this command exits the pane will close.  This feature
             is useful for long-running processes where the closing of the
             window upon completion is desired.
+        size: int, optional
+            Cell/row or percentage to occupy with respect to current window.
         percent: int, optional
-            percentage to occupy with respect to current window
+            Deprecated in favor of size. Percentage to occupy with respect to current
+            window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
 
@@ -228,6 +232,10 @@ class Window(Obj):
         .. versionchanged:: 0.28.0
 
            ``attach`` default changed from ``True`` to ``False``.
+
+        .. deprecated:: 0.28.0
+
+           ``percent=25`` deprecated in favor of ``size="25%"``.
         """
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 
@@ -248,8 +256,28 @@ class Window(Obj):
         else:
             tmux_args += ("-h",)
 
+        if size is not None:
+            if has_lt_version("3.1"):
+                if isinstance(size, str) and size.endswith("%"):
+                    tmux_args += (f'-p{str(size).rstrip("%")}',)
+                else:
+                    warnings.warn(
+                        'Ignored size. Use percent in tmux < 3.1, e.g. "size=50%"',
+                        stacklevel=2,
+                    )
+            else:
+                tmux_args += (f"-l{size}",)
+
         if percent is not None:
-            tmux_args += ("-p %d" % percent,)
+            # Deprecated in 3.1 in favor of -l
+            warnings.warn(
+                f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
+                + ' ("-l" flag) in tmux 3.1+.',
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            tmux_args += (f"-p{percent}",)
+
         tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
 
         if start_directory is not None:
@@ -266,7 +294,7 @@ class Window(Obj):
                     tmux_args += (f"-e{k}={v}",)
             else:
                 logger.warning(
-                    "Cannot set up environment as tmux 3.0 or newer is required.",
+                    "Environment flag ignored, tmux 3.0 or newer required.",
                 )
 
         if shell:
@@ -569,15 +597,58 @@ class Window(Obj):
 
         return self
 
-    def kill_window(self) -> None:
-        """Kill the current :class:`Window` object. ``$ tmux kill-window``."""
+    def kill(
+        self,
+        all_except: t.Optional[bool] = None,
+    ) -> None:
+        """Kill :class:`Window`.
+
+        ``$ tmux kill-window``.
+
+        Examples
+        --------
+        Kill a window:
+        >>> window_1 = session.new_window()
+
+        >>> window_1 in session.windows
+        True
+
+        >>> window_1.kill()
+
+        >>> window_1 not in session.windows
+        True
+
+        Kill all windows except the current one:
+        >>> one_window_to_rule_them_all = session.new_window()
+
+        >>> other_windows = session.new_window(
+        ...     ), session.new_window()
+
+        >>> all([w in session.windows for w in other_windows])
+        True
+
+        >>> one_window_to_rule_them_all.kill(all_except=True)
+
+        >>> all([w not in session.windows for w in other_windows])
+        True
+
+        >>> one_window_to_rule_them_all in session.windows
+        True
+        """
+        flags: t.Tuple[str, ...] = ()
+
+        if all_except:
+            flags += ("-a",)
+
         proc = self.cmd(
             "kill-window",
-            f"-t{self.session_id}:{self.window_index}",
+            *flags,
         )
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+        return None
 
     def move_window(
         self,
@@ -615,15 +686,37 @@ class Window(Obj):
     #
     # Climbers
     #
-    def select_window(self) -> "Window":
+    def select(self) -> "Window":
         """Select window.
 
         To select a window object asynchrously. If a ``window`` object exists
-        and is no longer longer the current window, ``w.select_window()``
+        and is no longer the current window, ``w.select_window()``
         will make ``w`` the current window.
+
+        Examples
+        --------
+        >>> window = session.attached_window
+        >>> new_window = session.new_window()
+        >>> session.refresh()
+        >>> active_windows = [w for w in session.windows if w.window_active == '1']
+
+        >>> new_window.window_active == '1'
+        False
+
+        >>> new_window.select()
+        Window(...)
+
+        >>> new_window.window_active == '1'
+        True
         """
-        assert isinstance(self.window_index, str)
-        return self.session.select_window(self.window_index)
+        proc = self.cmd("select-window")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+
+        return self
 
     #
     # Computed properties
@@ -721,6 +814,45 @@ class Window(Obj):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    def select_window(self) -> "Window":
+        """Select window.
+
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.select()`.
+        """
+        warnings.warn(
+            "Window.select_window() is deprecated in favor of Window.select()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        assert isinstance(self.window_index, str)
+        return self.session.select_window(self.window_index)
+
+    def kill_window(self) -> None:
+        """Kill the current :class:`Window` object. ``$ tmux kill-window``.
+
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.kill()`.
+        """
+        warnings.warn(
+            "Window.kill_server() is deprecated in favor of Window.kill()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        proc = self.cmd(
+            "kill-window",
+            f"-t{self.session_id}:{self.window_index}",
+        )
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
 

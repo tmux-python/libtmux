@@ -353,6 +353,62 @@ class Pane(Obj):
         self.cmd("display-message", cmd)
         return None
 
+    def kill(
+        self,
+        all_except: t.Optional[bool] = None,
+    ) -> None:
+        """Kill :class:`Pane`.
+
+        ``$ tmux kill-pane``.
+
+        Examples
+        --------
+        Kill a pane:
+        >>> pane_1 = pane.split_window()
+
+        >>> pane_1 in window.panes
+        True
+
+        >>> pane_1.kill()
+
+        >>> pane_1 not in window.panes
+        True
+
+        Kill all panes except the current one:
+        >>> pane.window.resize(height=100, width=100)
+        Window(@1 1...)
+
+        >>> one_pane_to_rule_them_all = pane.split_window()
+
+        >>> other_panes = pane.split_window(
+        ...     ), pane.split_window()
+
+        >>> all([p in window.panes for p in other_panes])
+        True
+
+        >>> one_pane_to_rule_them_all.kill(all_except=True)
+
+        >>> all([p not in window.panes for p in other_panes])
+        True
+
+        >>> one_pane_to_rule_them_all in window.panes
+        True
+        """
+        flags: t.Tuple[str, ...] = ()
+
+        if all_except:
+            flags += ("-a",)
+
+        proc = self.cmd(
+            "kill-pane",
+            *flags,
+        )
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return None
+
     """
     Commands ("climber"-helpers)
 
@@ -360,13 +416,53 @@ class Pane(Obj):
     additional scoped window info.
     """
 
+    def select(self) -> "Pane":
+        """Select pane.
+
+        Examples
+        --------
+        >>> pane = window.attached_pane
+        >>> new_pane = window.split_window()
+        >>> pane.refresh()
+        >>> active_panes = [p for p in window.panes if p.pane_active == '1']
+
+        >>> pane in active_panes
+        True
+        >>> new_pane in active_panes
+        False
+
+        >>> new_pane.pane_active == '1'
+        False
+
+        >>> new_pane.select()
+        Pane(...)
+
+        >>> new_pane.pane_active == '1'
+        True
+        """
+        proc = self.cmd("select-pane")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+
+        return self
+
     def select_pane(self) -> "Pane":
         """Select pane.
 
-        To select a window object asynchrously. If a ``pane`` object exists
-        and is no longer longer the current window, ``w.select_pane()``
-        will make ``p`` the current pane.
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.select()`.
         """
+        warnings.warn(
+            "Pane.select_pane() is deprecated in favor of Pane.select()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         assert isinstance(self.pane_id, str)
         pane = self.window.select_pane(self.pane_id)
         if pane is None:
@@ -376,9 +472,12 @@ class Pane(Obj):
     def split_window(
         self,
         attach: bool = False,
-        vertical: bool = True,
         start_directory: t.Optional[str] = None,
-        percent: t.Optional[int] = None,
+        vertical: bool = True,
+        shell: t.Optional[str] = None,
+        size: t.Optional[t.Union[str, int]] = None,
+        percent: t.Optional[int] = None,  # deprecated
+        environment: t.Optional[t.Dict[str, str]] = None,
     ) -> "Pane":  # New Pane, not self
         """Split window at pane and return newly created :class:`Pane`.
 
@@ -392,13 +491,22 @@ class Pane(Obj):
             specifies the working directory in which the new pane is created.
         percent: int, optional
             percentage to occupy with respect to current pane
+
+        Notes
+        -----
+        .. deprecated:: 0.28.0
+
+           ``percent=25`` deprecated in favor of ``size="25%"``.
         """
         return self.window.split_window(
             target=self.pane_id,
-            start_directory=start_directory,
             attach=attach,
+            start_directory=start_directory,
             vertical=vertical,
+            shell=shell,
+            size=size,
             percent=percent,
+            environment=environment,
         )
 
     """

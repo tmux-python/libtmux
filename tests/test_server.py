@@ -146,6 +146,21 @@ def test_new_session_width_height(server: Server) -> None:
     assert pane.display_message("#{window_height}", get_text=True)[0] == "32"
 
 
+def test_new_session_environmental_variables(
+    server: Server,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Server.new_session creates and returns valid session."""
+    my_session = server.new_session("test_new_session", environment={"FOO": "HI"})
+
+    if has_gte_version("3.2"):
+        assert my_session.show_environment()["FOO"] == "HI"
+    else:
+        assert any(
+            "Environment flag ignored" in record.msg for record in caplog.records
+        ), "Warning missing"
+
+
 def test_no_server_sessions() -> None:
     """Verify ``Server.sessions`` returns empty list without tmux server."""
     server = Server(socket_name="test_attached_session_no_server")
