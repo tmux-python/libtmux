@@ -353,6 +353,62 @@ class Pane(Obj):
         self.cmd("display-message", cmd)
         return None
 
+    def kill(
+        self,
+        all_except: t.Optional[bool] = None,
+    ) -> None:
+        """Kill :class:`Pane`.
+
+        ``$ tmux kill-pane``.
+
+        Examples
+        --------
+        Kill a pane:
+        >>> pane_1 = pane.split_window()
+
+        >>> pane_1 in window.panes
+        True
+
+        >>> pane_1.kill()
+
+        >>> pane_1 not in window.panes
+        True
+
+        Kill all panes except the current one:
+        >>> pane.window.resize(height=100, width=100)
+        Window(@1 1...)
+
+        >>> one_pane_to_rule_them_all = pane.split_window()
+
+        >>> other_panes = pane.split_window(
+        ...     ), pane.split_window()
+
+        >>> all([p in window.panes for p in other_panes])
+        True
+
+        >>> one_pane_to_rule_them_all.kill(all_except=True)
+
+        >>> all([p not in window.panes for p in other_panes])
+        True
+
+        >>> one_pane_to_rule_them_all in window.panes
+        True
+        """
+        flags: t.Tuple[str, ...] = ()
+
+        if all_except:
+            flags += ("-a",)
+
+        proc = self.cmd(
+            "kill-pane",
+            *flags,
+        )
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return None
+
     """
     Commands ("climber"-helpers)
 
