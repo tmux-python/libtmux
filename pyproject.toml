@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "libtmux"
-version = "0.28.1"
+version = "0.29.0"
 description = "Typed library that provides an ORM wrapper for tmux, a terminal multiplexer."
 license = "MIT"
 authors = ["Tony Narlock <tony@git-pull.com>"]
