@@ -1,38 +1,40 @@
 # Changelog
 
-To install the unreleased libtmux version, see [developmental releases](https://libtmux.git-pull.com/quickstart.html#developmental-releases).
+For instructions on installing the development version of libtmux, refer to
+[development releases](https://libtmux.git-pull.com/quickstart.html#developmental-releases).
 
-[pip](https://pip.pypa.io/en/stable/):
+To install via [pip](https://pip.pypa.io/en/stable/), use:
 
 ```console
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.31.x (unreleased)
+## libtmux 0.31.x (Yet to be released)
 
-- _Notes on upcoming releases will be added here_
+- _Future release notes will be placed here_
 
-<!-- Maintainers and contributors: Insert change notes for the next release above -->
+<!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
 ## libtmux 0.30.2 (2024-02-16)
 
 ### Development
 
-- `TMUX_MAX_VERSION`: 3.3 -> 3.4
+- Updated `TMUX_MAX_VERSION` from 3.3 to 3.4
 
 ## libtmux 0.30.1 (2024-02-16)
 
-### Bug fixes
+### Fixes
 
-- pytest plugin, test module: Move to renamed methods from v0.30.0.
+- Adjusted pytest plugin and test module: Updated to use renamed methods from
+  version 0.30.0.
 
 ## libtmux 0.30.0 (2024-02-16)
 
-### New commands
+### Additions
 
-- {meth}`Pane.kill()`
+- Introduced {meth}`Pane.kill()` method
 
-### Renamed commands
+### Modifications
 
 - `Window.select_window()` renamed to {meth}`Window.select()`
   - Deprecated `Window.select_window()`
@@ -47,7 +49,7 @@ $ pip install --user --upgrade --pre libtmux
 - `Window.kill_window()` renamed to {meth}`Window.kill()`
   - Deprecated `Window.kill_window()`
 
-### Improved commands
+### Enhancements
 
 - {meth}`Server.new_session()`: Support environment variables
 - {meth}`Window.split_window()`: Support `size` via `-l`
@@ -56,7 +58,7 @@ $ pip install --user --upgrade --pre libtmux
 
 ## libtmux 0.29.0 (2024-02-16)
 
-#### Bug fixes
+#### Fixes
 
 - Use {exc}`DeprecationWarning` for APIs set to be deprecated (#526)
 
@@ -117,7 +119,7 @@ To keep the old behavior in 0.28.0 and beyond, pass `attach=True` explicitly.
 Tip: If {meth}`Pane.resize()` was not taking affect <= 0.27.1, try to resize with
 {meth}`Window.resize()` first.
 
-### Bug fixes
+### Fixes
 
 - {meth}`Window.refresh()` and {meth}`Pane.refresh()`: Refresh more underlying state (#523)
 - {meth}`Obj._refresh`: Allow passing args (#523)
@@ -589,7 +591,7 @@ _Maintenance only, no bug fixes or new features_
 
 ## libtmux 0.15.4 (2022-09-21)
 
-### Bug fixes
+### Fixes
 
 - Use stable `pytest` API imports where possible to fix issues in downstream
   packaging on Arch (#441, via #442)
@@ -830,7 +832,7 @@ _Maintenance only, no bug fixes or new features_
 
   ~~Final python 3.7 and 3.8 release~~
 
-  ~~Bug fixes and security updates will go to
+  ~~Fixes and security updates will go to
   [`v0.11.x`](https://github.com/tmux-python/libtmux/tree/v0.11.x)~~
 
 - Internal: Use new separator to split `tmux(1)` formatting information (#289,
