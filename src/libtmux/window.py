@@ -686,15 +686,37 @@ class Window(Obj):
     #
     # Climbers
     #
-    def select_window(self) -> "Window":
+    def select(self) -> "Window":
         """Select window.
 
         To select a window object asynchrously. If a ``window`` object exists
-        and is no longer longer the current window, ``w.select_window()``
+        and is no longer the current window, ``w.select_window()``
         will make ``w`` the current window.
+
+        Examples
+        --------
+        >>> window = session.attached_window
+        >>> new_window = session.new_window()
+        >>> session.refresh()
+        >>> active_windows = [w for w in session.windows if w.window_active == '1']
+
+        >>> new_window.window_active == '1'
+        False
+
+        >>> new_window.select()
+        Window(...)
+
+        >>> new_window.window_active == '1'
+        True
         """
-        assert isinstance(self.window_index, str)
-        return self.session.select_window(self.window_index)
+        proc = self.cmd("select-window")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+
+        return self
 
     #
     # Computed properties
@@ -792,6 +814,23 @@ class Window(Obj):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    def select_window(self) -> "Window":
+        """Select window.
+
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.select()`.
+        """
+        warnings.warn(
+            "Window.select_window() is deprecated in favor of Window.select()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        assert isinstance(self.window_index, str)
+        return self.session.select_window(self.window_index)
+
     def kill_window(self) -> None:
         """Kill the current :class:`Window` object. ``$ tmux kill-window``.
 
