@@ -117,7 +117,7 @@ Close window:
 
 ```python
 >>> w = session.attached_window
->>> w.kill_window()
+>>> w.kill()
 ```
 
 Grab remaining tmux window:

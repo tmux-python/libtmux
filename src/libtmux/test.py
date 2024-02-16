@@ -242,7 +242,7 @@ def temp_window(
     Return a context manager with a temporary window.
 
     The window will destroy itself upon closing with :meth:`window.
-    kill_window()`.
+    kill()`.
 
     If no ``window_name`` is entered, :func:`get_test_window_name` will make
     an unused window name.
@@ -290,7 +290,7 @@ def temp_window(
         yield window
     finally:
         if len(session.windows.filter(window_id=window_id)) > 0:
-            window.kill_window()
+            window.kill()
     return
 
 

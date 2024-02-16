@@ -597,15 +597,58 @@ class Window(Obj):
 
         return self
 
-    def kill_window(self) -> None:
-        """Kill the current :class:`Window` object. ``$ tmux kill-window``."""
+    def kill(
+        self,
+        all_except: t.Optional[bool] = None,
+    ) -> None:
+        """Kill :class:`Window`.
+
+        ``$ tmux kill-window``.
+
+        Examples
+        --------
+        Kill a window:
+        >>> window_1 = session.new_window()
+
+        >>> window_1 in session.windows
+        True
+
+        >>> window_1.kill()
+
+        >>> window_1 not in session.windows
+        True
+
+        Kill all windows except the current one:
+        >>> one_window_to_rule_them_all = session.new_window()
+
+        >>> other_windows = session.new_window(
+        ...     ), session.new_window()
+
+        >>> all([w in session.windows for w in other_windows])
+        True
+
+        >>> one_window_to_rule_them_all.kill(all_except=True)
+
+        >>> all([w not in session.windows for w in other_windows])
+        True
+
+        >>> one_window_to_rule_them_all in session.windows
+        True
+        """
+        flags: t.Tuple[str, ...] = ()
+
+        if all_except:
+            flags += ("-a",)
+
         proc = self.cmd(
             "kill-window",
-            f"-t{self.session_id}:{self.window_index}",
+            *flags,
         )
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+        return None
 
     def move_window(
         self,
@@ -749,6 +792,28 @@ class Window(Obj):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    def kill_window(self) -> None:
+        """Kill the current :class:`Window` object. ``$ tmux kill-window``.
+
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.kill()`.
+        """
+        warnings.warn(
+            "Window.kill_server() is deprecated in favor of Window.kill()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        proc = self.cmd(
+            "kill-window",
+            f"-t{self.session_id}:{self.window_index}",
+        )
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
 
