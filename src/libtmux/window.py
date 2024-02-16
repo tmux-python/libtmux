@@ -249,6 +249,7 @@ class Window(Obj):
             tmux_args += ("-h",)
 
         if percent is not None:
+            # Deprecated in 3.1 in favor of -l
             tmux_args += ("-p %d" % percent,)
         tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
 
