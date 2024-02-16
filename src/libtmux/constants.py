@@ -75,3 +75,10 @@ OPTION_SCOPE_FLAG_MAP: t.Dict[OptionScope, str] = {
     OptionScope.Window: "-w",
     OptionScope.Pane: "-p",
 }
+
+HOOK_SCOPE_FLAG_MAP: t.Dict[OptionScope, str] = {
+    OptionScope.Server: "",
+    OptionScope.Session: "",
+    OptionScope.Window: "-w",
+    OptionScope.Pane: "-p",
+}
