@@ -19,11 +19,11 @@ well.
    [tracker]: https://github.com/tmux-python/libtmux/discussions
 ```
 
-## Next release
+## Upcoming Release
 
-_Migration instructions for the upcoming release will be added here_
+_Detailed migration steps for the next version will be posted here._
 
-<!-- Maintainers and contributors: insert migration notes for the next release here -->
+<!-- To the maintainers and contributors: please add migration details for the upcoming release here -->
 
 ## 0.28.0: Resizing and detached by default (2024-02-15)
 
