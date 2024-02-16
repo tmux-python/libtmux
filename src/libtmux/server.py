@@ -350,6 +350,7 @@ class Server(EnvironmentMixin):
         window_command: t.Optional[str] = None,
         x: t.Optional[t.Union[int, "DashLiteral"]] = None,
         y: t.Optional[t.Union[int, "DashLiteral"]] = None,
+        environment: t.Optional[t.Dict[str, str]] = None,
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Session:
@@ -467,6 +468,15 @@ class Server(EnvironmentMixin):
 
         if window_command:
             tmux_args += (window_command,)
+
+        if environment:
+            if has_gte_version("3.2"):
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Environment flag ignored, tmux 3.2 or newer required.",
+                )
 
         proc = self.cmd("new-session", *tmux_args)
 
