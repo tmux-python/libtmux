@@ -432,9 +432,12 @@ class Pane(Obj):
     def split_window(
         self,
         attach: bool = False,
-        vertical: bool = True,
         start_directory: t.Optional[str] = None,
-        percent: t.Optional[int] = None,
+        vertical: bool = True,
+        shell: t.Optional[str] = None,
+        size: t.Optional[t.Union[str, int]] = None,
+        percent: t.Optional[int] = None,  # deprecated
+        environment: t.Optional[t.Dict[str, str]] = None,
     ) -> "Pane":  # New Pane, not self
         """Split window at pane and return newly created :class:`Pane`.
 
@@ -448,13 +451,22 @@ class Pane(Obj):
             specifies the working directory in which the new pane is created.
         percent: int, optional
             percentage to occupy with respect to current pane
+
+        Notes
+        -----
+        .. deprecated:: 0.28.0
+
+           ``percent=25`` deprecated in favor of ``size="25%"``.
         """
         return self.window.split_window(
             target=self.pane_id,
-            start_directory=start_directory,
             attach=attach,
+            start_directory=start_directory,
             vertical=vertical,
+            shell=shell,
+            size=size,
             percent=percent,
+            environment=environment,
         )
 
     """
