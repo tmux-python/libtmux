@@ -140,7 +140,7 @@ Split window (create a new pane):
 ```python
 >>> pane = window.split_window()
 >>> pane = window.split_window(attach=False)
->>> pane.select_pane()
+>>> pane.select()
 Pane(%3 Window(@1 1:..., Session($1 ...)))
 >>> window = session.new_window(attach=False, window_name="test")
 >>> window

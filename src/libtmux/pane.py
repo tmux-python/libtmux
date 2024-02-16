@@ -416,13 +416,53 @@ class Pane(Obj):
     additional scoped window info.
     """
 
+    def select(self) -> "Pane":
+        """Select pane.
+
+        Examples
+        --------
+        >>> pane = window.attached_pane
+        >>> new_pane = window.split_window()
+        >>> pane.refresh()
+        >>> active_panes = [p for p in window.panes if p.pane_active == '1']
+
+        >>> pane in active_panes
+        True
+        >>> new_pane in active_panes
+        False
+
+        >>> new_pane.pane_active == '1'
+        False
+
+        >>> new_pane.select()
+        Pane(...)
+
+        >>> new_pane.pane_active == '1'
+        True
+        """
+        proc = self.cmd("select-pane")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+
+        return self
+
     def select_pane(self) -> "Pane":
         """Select pane.
 
-        To select a window object asynchrously. If a ``pane`` object exists
-        and is no longer longer the current window, ``w.select_pane()``
-        will make ``p`` the current pane.
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.select()`.
         """
+        warnings.warn(
+            "Pane.select_pane() is deprecated in favor of Pane.select()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         assert isinstance(self.pane_id, str)
         pane = self.window.select_pane(self.pane_id)
         if pane is None:
