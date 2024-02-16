@@ -370,12 +370,37 @@ class Session(Obj, EnvironmentMixin):
         if len(self._windows) == 0:
             raise exc.NoWindowsExist()
 
-    def attach_session(self) -> "Session":
-        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``."""
-        proc = self.cmd("attach-session", "-t%s" % self.session_id)
+    def attach(
+        self,
+        _exit: t.Optional[bool] = None,
+        _flags: t.Optional[t.List[str]] = None,
+    ) -> "Session":
+        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
+
+        Examples
+        --------
+        >>> session = server.new_session()
+
+        >>> session not in server.attached_sessions
+        True
+        """
+        flags: t.Tuple[str, ...] = ()
+
+        if _exit is not None and _exit:
+            flags += ("-x",)
+
+        if _flags is not None and isinstance(_flags, list):
+            flags += tuple(f'{",".join(_flags)}')
+
+        proc = self.cmd(
+            "attach-session",
+            *flags,
+        )
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
 
         return self
 
@@ -652,6 +677,27 @@ class Session(Obj, EnvironmentMixin):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    def attach_session(self) -> "Session":
+        """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
+
+        Notes
+        -----
+        .. deprecated:: 0.30
+
+           Deprecated in favor of :meth:`.attach()`.
+        """
+        warnings.warn(
+            "Session.attach_session() is deprecated in favor of Session.attach()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        proc = self.cmd("attach-session", "-t%s" % self.session_id)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self
+
     def kill_session(self) -> None:
         """Destroy session.
 
