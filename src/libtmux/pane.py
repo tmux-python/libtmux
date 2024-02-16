@@ -364,6 +364,7 @@ class Pane(Obj):
         Examples
         --------
         Kill a pane:
+
         >>> pane_1 = pane.split_window()
 
         >>> pane_1 in window.panes
@@ -375,6 +376,7 @@ class Pane(Obj):
         True
 
         Kill all panes except the current one:
+
         >>> pane.window.resize(height=100, width=100)
         Window(@1 1...)
 

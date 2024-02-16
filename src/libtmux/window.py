@@ -608,6 +608,7 @@ class Window(Obj):
         Examples
         --------
         Kill a window:
+
         >>> window_1 = session.new_window()
 
         >>> window_1 in session.windows
@@ -619,6 +620,7 @@ class Window(Obj):
         True
 
         Kill all windows except the current one:
+
         >>> one_window_to_rule_them_all = session.new_window()
 
         >>> other_windows = session.new_window(

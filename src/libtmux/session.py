@@ -423,6 +423,7 @@ class Session(Obj, EnvironmentMixin):
         Examples
         --------
         Kill a session:
+
         >>> session_1 = server.new_session()
 
         >>> session_1 in server.sessions
@@ -434,6 +435,7 @@ class Session(Obj, EnvironmentMixin):
         True
 
         Kill all sessions except the current one:
+
         >>> one_session_to_rule_them_all = server.new_session()
 
         >>> other_sessions = server.new_session(
