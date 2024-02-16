@@ -12,6 +12,7 @@ sessions
 windows
 panes
 options
+hooks
 constants
 common
 exceptions
