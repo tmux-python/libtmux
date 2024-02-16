@@ -21,7 +21,7 @@ from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
 from . import exc
-from .common import PaneDict, WindowOptionDict, handle_option_error
+from .common import PaneDict, WindowOptionDict, handle_option_error, has_lt_version
 from .formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -184,7 +184,8 @@ class Window(Obj):
         attach: bool = False,
         vertical: bool = True,
         shell: t.Optional[str] = None,
-        percent: t.Optional[int] = None,
+        size: t.Optional[t.Union[str, int]] = None,
+        percent: t.Optional[int] = None,  # deprecated
         environment: t.Optional[t.Dict[str, str]] = None,
     ) -> "Pane":
         """Split window and return the created :class:`Pane`.
@@ -209,8 +210,11 @@ class Window(Obj):
             NOTE: When this command exits the pane will close.  This feature
             is useful for long-running processes where the closing of the
             window upon completion is desired.
+        size: int, optional
+            Cell/row or percentage to occupy with respect to current window.
         percent: int, optional
-            percentage to occupy with respect to current window
+            Deprecated in favor of size. Percentage to occupy with respect to current
+            window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
 
@@ -228,6 +232,10 @@ class Window(Obj):
         .. versionchanged:: 0.28.0
 
            ``attach`` default changed from ``True`` to ``False``.
+
+        .. deprecated:: 0.28.0
+
+           ``percent=25`` deprecated in favor of ``size="25%"``.
         """
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 
@@ -248,9 +256,28 @@ class Window(Obj):
         else:
             tmux_args += ("-h",)
 
+        if size is not None:
+            if has_lt_version("3.1"):
+                if isinstance(size, str) and size.endswith("%"):
+                    tmux_args += (f'-p{str(size).rstrip("%")}',)
+                else:
+                    warnings.warn(
+                        'Ignored size. Use percent in tmux < 3.1, e.g. "size=50%"',
+                        stacklevel=2,
+                    )
+            else:
+                tmux_args += (f"-l{size}",)
+
         if percent is not None:
             # Deprecated in 3.1 in favor of -l
-            tmux_args += ("-p %d" % percent,)
+            warnings.warn(
+                f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
+                + ' ("-l" flag) in tmux 3.1+.',
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            tmux_args += (f"-p{percent}",)
+
         tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
 
         if start_directory is not None:
