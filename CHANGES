@@ -14,6 +14,8 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- Maintainers and contributors: Insert change notes for the next release above -->
 
+## libtmux 0.30.1 (2024-02-16)
+
 ### Bug fixes
 
 - pytest plugin, test module: Move to renamed methods from v0.30.0.
