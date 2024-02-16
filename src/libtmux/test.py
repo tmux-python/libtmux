@@ -192,8 +192,7 @@ def temp_session(
     If no ``session_name`` is entered, :func:`get_test_session_name` will make
     an unused session name.
 
-    The session will destroy itself upon closing with :meth:`Session.
-    kill_session()`.
+    The session will destroy itself upon closing with :meth:`Session.session()`.
 
     Parameters
     ----------
@@ -228,7 +227,7 @@ def temp_session(
         yield session
     finally:
         if server.has_session(session_name):
-            session.kill_session()
+            session.kill()
     return
 
 

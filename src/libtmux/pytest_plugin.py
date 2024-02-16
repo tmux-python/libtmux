@@ -135,14 +135,14 @@ def server(
 
         >>> result.assert_outcomes(passed=1)
     """
-    t = Server(socket_name="libtmux_test%s" % next(namer))
+    server = Server(socket_name="libtmux_test%s" % next(namer))
 
     def fin() -> None:
-        t.kill_server()
+        server.kill()
 
     request.addfinalizer(fin)
 
-    return t
+    return server
 
 
 @pytest.fixture(scope="function")
