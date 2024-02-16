@@ -250,7 +250,6 @@ class Window(Obj):
 
         if percent is not None:
             tmux_args += ("-p %d" % percent,)
-
         tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
 
         if start_directory is not None:
@@ -731,7 +730,9 @@ class Window(Obj):
            accessed via ``window.window_name``.
 
         """
-        warnings.warn("Window.get() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Window.get() is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
@@ -743,7 +744,11 @@ class Window(Obj):
            accessed via ``window.window_name``.
 
         """
-        warnings.warn(f"Item lookups, e.g. window['{key}'] is deprecated", stacklevel=2)
+        warnings.warn(
+            f"Item lookups, e.g. window['{key}'] is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return getattr(self, key)
 
     def get_by_id(self, pane_id: str) -> t.Optional[Pane]:
@@ -754,7 +759,11 @@ class Window(Obj):
            Deprecated by :meth:`.panes.get()`.
 
         """
-        warnings.warn("Window.get_by_id() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Window.get_by_id() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return self.panes.get(pane_id=pane_id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Pane]:
@@ -765,7 +774,9 @@ class Window(Obj):
            Deprecated by :meth:`.panes.filter()`.
 
         """
-        warnings.warn("Window.where() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Window.where() is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         try:
             return self.panes.filter(**kwargs)
         except IndexError:
@@ -779,7 +790,11 @@ class Window(Obj):
            Slated to be removed in favor of :meth:`.panes.get()`.
 
         """
-        warnings.warn("Window.find_where() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Window.find_where() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return self.panes.get(default=None, **kwargs)
 
     def _list_panes(self) -> t.List[PaneDict]:
@@ -790,7 +805,11 @@ class Window(Obj):
            Slated to be removed in favor of :attr:`.panes`.
 
         """
-        warnings.warn("Window._list_panes() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Window._list_panes() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return [pane.__dict__ for pane in self.panes]
 
     @property
@@ -802,7 +821,7 @@ class Window(Obj):
            Slated to be removed in favor of :attr:`.panes`.
 
         """
-        warnings.warn("_panes is deprecated", stacklevel=2)
+        warnings.warn("_panes is deprecated", category=DeprecationWarning, stacklevel=2)
         return self._list_panes()
 
     def list_panes(self) -> t.List["Pane"]:
@@ -813,7 +832,9 @@ class Window(Obj):
            Slated to be removed in favor of :attr:`.panes`.
 
         """
-        warnings.warn("list_panes() is deprecated", stacklevel=2)
+        warnings.warn(
+            "list_panes() is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         return self.panes
 
     @property
@@ -825,5 +846,7 @@ class Window(Obj):
            Slated to be removed in favor of :attr:`.panes`.
 
         """
-        warnings.warn("Server.children is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server.children is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         return self.panes

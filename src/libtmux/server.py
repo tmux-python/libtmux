@@ -588,7 +588,11 @@ class Server(EnvironmentMixin):
            Deprecated in favor of :attr:`.panes`.
 
         """
-        warnings.warn("Server._list_panes() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server._list_panes() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return [p.__dict__ for p in self.panes]
 
     def _update_panes(self) -> "Server":
@@ -602,7 +606,11 @@ class Server(EnvironmentMixin):
         -------
         :class:`Server`
         """
-        warnings.warn("Server._update_panes() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server._update_panes() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         self._list_panes()
         return self
 
@@ -614,7 +622,11 @@ class Server(EnvironmentMixin):
            Deprecated by :meth:`.sessions.get()`.
 
         """
-        warnings.warn("Server.get_by_id() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server.get_by_id() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return self.sessions.get(session_id=session_id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Session]:
@@ -625,7 +637,11 @@ class Server(EnvironmentMixin):
            Deprecated by :meth:`.session.filter()`.
 
         """
-        warnings.warn("Server.find_where() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server.find_where() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         try:
             return self.sessions.filter(**kwargs)
         except IndexError:
@@ -639,7 +655,11 @@ class Server(EnvironmentMixin):
            Slated to be removed in favor of :meth:`.sessions.get()`.
 
         """
-        warnings.warn("Server.find_where() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server.find_where() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return self.sessions.get(default=None, **kwargs)
 
     def _list_windows(self) -> t.List[WindowDict]:
@@ -655,7 +675,11 @@ class Server(EnvironmentMixin):
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn("Server._list_windows() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server._list_windows() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return [w.__dict__ for w in self.windows]
 
     def _update_windows(self) -> "Server":
@@ -666,7 +690,11 @@ class Server(EnvironmentMixin):
            Deprecated in favor of :attr:`.windows` and returning ``self``.
 
         """
-        warnings.warn("Server._update_windows() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server._update_windows() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         self._list_windows()
         return self
 
@@ -679,7 +707,9 @@ class Server(EnvironmentMixin):
            Slated to be removed in favor of :attr:`.sessions`.
 
         """
-        warnings.warn("Server._sessions is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server._sessions is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         return self._list_sessions()
 
     def _list_sessions(self) -> t.List["SessionDict"]:
@@ -689,7 +719,11 @@ class Server(EnvironmentMixin):
 
            Slated to be removed in favor of :attr:`.sessions`.
         """
-        warnings.warn("Server._list_sessions() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server._list_sessions() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return [s.__dict__ for s in self.sessions]
 
     def list_sessions(self) -> t.List[Session]:
@@ -703,7 +737,11 @@ class Server(EnvironmentMixin):
         -------
         list of :class:`Session`
         """
-        warnings.warn("Server.list_sessions is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server.list_sessions is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return self.sessions
 
     @property
@@ -715,5 +753,7 @@ class Server(EnvironmentMixin):
            Slated to be removed in favor of :attr:`.sessions`.
 
         """
-        warnings.warn("Server.children is deprecated", stacklevel=2)
+        warnings.warn(
+            "Server.children is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         return self.sessions

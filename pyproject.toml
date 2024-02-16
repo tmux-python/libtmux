@@ -163,6 +163,8 @@ testpaths = [
 ]
 filterwarnings = [
   "ignore:The frontend.Option(Parser)? class.*:DeprecationWarning::",
+  "ignore::DeprecationWarning:libtmux.*:",
+  "ignore::DeprecationWarning:tests:",  # tests/
 ]
 
 [build-system]

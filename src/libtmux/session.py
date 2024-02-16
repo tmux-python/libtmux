@@ -604,7 +604,9 @@ class Session(Obj, EnvironmentMixin):
            accessed via ``session.session_name``.
 
         """
-        warnings.warn("Session.get() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Session.get() is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
@@ -618,6 +620,7 @@ class Session(Obj, EnvironmentMixin):
         """
         warnings.warn(
             f"Item lookups, e.g. session['{key}'] is deprecated",
+            category=DeprecationWarning,
             stacklevel=2,
         )
         return getattr(self, key)
@@ -630,7 +633,11 @@ class Session(Obj, EnvironmentMixin):
            Deprecated by :meth:`.windows.get()`.
 
         """
-        warnings.warn("Session.get_by_id() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Session.get_by_id() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return self.windows.get(window_id=session_id, default=None)
 
     def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Window]:
@@ -641,7 +648,9 @@ class Session(Obj, EnvironmentMixin):
            Deprecated by :meth:`.windows.filter()`.
 
         """
-        warnings.warn("Session.where() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Session.where() is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         try:
             return self.windows.filter(**kwargs)
         except IndexError:
@@ -655,7 +664,11 @@ class Session(Obj, EnvironmentMixin):
            Slated to be removed in favor of :meth:`.windows.get()`.
 
         """
-        warnings.warn("Session.find_where() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Session.find_where() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return self.windows.get(default=None, **kwargs)
 
     def _list_windows(self) -> t.List["WindowDict"]:
@@ -666,7 +679,11 @@ class Session(Obj, EnvironmentMixin):
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn("Session._list_windows() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Session._list_windows() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return [w.__dict__ for w in self.windows]
 
     @property
@@ -678,7 +695,9 @@ class Session(Obj, EnvironmentMixin):
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn("Session._windows is deprecated", stacklevel=2)
+        warnings.warn(
+            "Session._windows is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         return self._list_windows()
 
     def list_windows(self) -> t.List["Window"]:
@@ -689,7 +708,11 @@ class Session(Obj, EnvironmentMixin):
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn("Session.list_windows() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Session.list_windows() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return self.windows
 
     @property
@@ -701,5 +724,7 @@ class Session(Obj, EnvironmentMixin):
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn("Session.children is deprecated", stacklevel=2)
+        warnings.warn(
+            "Session.children is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         return self.windows

@@ -521,7 +521,9 @@ class Pane(Obj):
            accessed via ``pane.window_name``.
 
         """
-        warnings.warn("Pane.get() is deprecated", stacklevel=2)
+        warnings.warn(
+            "Pane.get() is deprecated", category=DeprecationWarning, stacklevel=2
+        )
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
@@ -533,7 +535,11 @@ class Pane(Obj):
            accessed via ``pane.window_name``.
 
         """
-        warnings.warn(f"Item lookups, e.g. pane['{key}'] is deprecated", stacklevel=2)
+        warnings.warn(
+            f"Item lookups, e.g. pane['{key}'] is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         return getattr(self, key)
 
     def resize_pane(
@@ -559,6 +565,7 @@ class Pane(Obj):
         """
         warnings.warn(
             "Deprecated: Use Pane.resize() instead of Pane.resize_pane()",
+            category=DeprecationWarning,
             stacklevel=2,
         )
         return self.resize(
