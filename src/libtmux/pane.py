@@ -506,6 +506,8 @@ class Pane(Obj):
             split vertically
         percent: int, optional
             percentage to occupy with respect to current pane
+        environment: dict, optional
+            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
 
         Notes
         -----
