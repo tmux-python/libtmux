@@ -164,7 +164,7 @@ Tip: If {meth}`Pane.resize()` was not taking affect <= 0.27.1, try to resize wit
 
 ## libtmux 0.26.0 (2024-02-06)
 
-### Breaking change
+### Breaking changes
 
 - `get_by_id()` (already deprecated) keyword argument renamed from `id` to
   `Server.get_by_id(session_id)`, `Session.get_by_id(window_id)`, and `Window.get_by_id(pane_id)` (#514)
