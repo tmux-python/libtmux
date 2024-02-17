@@ -500,10 +500,10 @@ class Pane(Obj):
         ----------
         attach : bool, optional
             Attach / select pane after creation.
-        vertical : bool, optional
-            split vertically
         start_directory : str, optional
             specifies the working directory in which the new pane is created.
+        vertical : bool, optional
+            split vertically
         percent: int, optional
             percentage to occupy with respect to current pane
 
