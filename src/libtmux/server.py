@@ -181,6 +181,31 @@ class Server(EnvironmentMixin):
         >>> server.cmd('display-message', 'hi')
         <libtmux.common.tmux_cmd object at ...>
 
+        New session:
+
+        >>> server.cmd('new-session', '-d', '-P', '-F#{session_id}').stdout[0]
+        '$2'
+
+        >>> session.cmd('new-window', '-P').stdout[0]
+        'libtmux...:2.0'
+
+        Time for some tech, direct to a rich, `Window` object:
+
+        >>> Window.from_window_id(window_id=session.cmd(
+        ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+        Window(@4 3:..., Session($1 libtmux_...))
+
+        Create a pane from a window:
+
+        >>> window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
+        '%5'
+
+        Magic, directly to a `Pane`:
+
+        >>> Pane.from_pane_id(pane_id=session.cmd(
+        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
         Returns
         -------
         :class:`common.tmux_cmd`
