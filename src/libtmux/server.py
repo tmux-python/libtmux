@@ -174,7 +174,7 @@ class Server(EnvironmentMixin):
     # Command
     #
     def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """Execute tmux command, rsepective of socket name and file, return output.
+        """Execute tmux command respective of socket name and file, return output.
 
         Examples
         --------
