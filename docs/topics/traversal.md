@@ -71,27 +71,27 @@ Window(@1 ...:..., Session($1 ...))
 Grab the currently focused window from session:
 
 ```python
->>> session.attached_window
+>>> session.active_window
 Window(@1 ...:..., Session($1 ...))
 ```
 
 Grab the currently focused {class}`Pane` from session:
 
 ```python
->>> session.attached_pane
+>>> session.active_pane
 Pane(%1 Window(@1 ...:..., Session($1 ...)))
 ```
 
 Assign the attached {class}`~libtmux.Pane` to `p`:
 
 ```python
->>> p = session.attached_pane
+>>> p = session.active_pane
 ```
 
 Access the window/server of a pane:
 
 ```python
->>> p = session.attached_pane
+>>> p = session.active_pane
 >>> p.window
 Window(@1 ...:..., Session($1 ...))
 

@@ -68,10 +68,10 @@ class Server(EnvironmentMixin):
     >>> server.sessions[0].windows
     [Window(@1 1:..., Session($1 ...)]
 
-    >>> server.sessions[0].attached_window
+    >>> server.sessions[0].active_window
     Window(@1 1:..., Session($1 ...))
 
-    >>> server.sessions[0].attached_pane
+    >>> server.sessions[0].active_pane
     Pane(%1 Window(@1 1:..., Session($1 ...)))
 
     References
@@ -173,13 +173,38 @@ class Server(EnvironmentMixin):
     #
     # Command
     #
-    def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """Execute tmux command, rsepective of socket name and file, return output.
+    def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
+        """Execute tmux command respective of socket name and file, return output.
 
         Examples
         --------
         >>> server.cmd('display-message', 'hi')
         <libtmux.common.tmux_cmd object at ...>
+
+        New session:
+
+        >>> server.cmd('new-session', '-d', '-P', '-F#{session_id}').stdout[0]
+        '$2'
+
+        >>> session.cmd('new-window', '-P').stdout[0]
+        'libtmux...:2.0'
+
+        Time for some tech, direct to a rich, `Window` object:
+
+        >>> Window.from_window_id(window_id=session.cmd(
+        ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+        Window(@4 3:..., Session($1 libtmux_...))
+
+        Create a pane from a window:
+
+        >>> window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
+        '%5'
+
+        Magic, directly to a `Pane`:
+
+        >>> Pane.from_pane_id(pane_id=session.cmd(
+        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
         Returns
         -------
@@ -191,7 +216,7 @@ class Server(EnvironmentMixin):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        cmd_args: t.List[t.Union[str, int]] = list(args)
+        cmd_args: t.List[t.Union[str, int]] = [cmd, *args]
         if self.socket_name:
             cmd_args.insert(0, f"-L{self.socket_name}")
         if self.socket_path:
@@ -206,7 +231,7 @@ class Server(EnvironmentMixin):
             else:
                 raise exc.UnknownColorOption()
 
-        return tmux_cmd(*cmd_args, **kwargs)
+        return tmux_cmd(*cmd_args)
 
     @property
     def attached_sessions(self) -> t.List[Session]:
@@ -221,22 +246,7 @@ class Server(EnvironmentMixin):
         -------
         list of :class:`Session`
         """
-        try:
-            sessions = self.sessions
-            attached_sessions = []
-
-            for session in sessions:
-                attached = session.session_attached
-                # for now session_active is a unicode
-                if attached != "0":
-                    logger.debug(f"session {session.name} attached")
-                    attached_sessions.append(session)
-                else:
-                    continue
-
-        except Exception:
-            return []
-        return attached_sessions
+        return self.sessions.filter(session_attached="1")
 
     def has_session(self, target_session: str, exact: bool = True) -> bool:
         """Return True if session exists.

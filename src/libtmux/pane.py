@@ -112,18 +112,31 @@ class Pane(Obj):
     Commands (pane-scoped)
     """
 
-    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """Execute tmux subcommand against target pane. See also: :meth:`Server.cmd`.
+    def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
+        """Execute tmux subcommand within pane context.
 
-        Send command to tmux with :attr:`pane_id` as ``target-pane``.
+        Automatically adds ``-t`` for object's pane ID to the command. Pass ``-t``
+        in args to override.
 
-        Specifying ``('-t', 'custom-target')`` or ``('-tcustom_target')`` in
-        ``args`` will override using the object's ``pane_id`` as target.
+        Examples
+        --------
+        >>> pane.cmd('split-window', '-P').stdout[0]
+        'libtmux...:...'
+
+        From raw output to an enriched `Pane` object:
+
+        >>> Pane.from_pane_id(pane_id=pane.cmd(
+        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=pane.server)
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
+        Returns
+        -------
+        :meth:`server.cmd`
         """
         if not any("-t" in str(x) for x in args):
             args = ("-t", self.pane_id, *args)
 
-        return self.server.cmd(cmd, *args, **kwargs)
+        return self.server.cmd(cmd, *args)
 
     """
     Commands (tmux-like)
@@ -423,7 +436,7 @@ class Pane(Obj):
 
         Examples
         --------
-        >>> pane = window.attached_pane
+        >>> pane = window.active_pane
         >>> new_pane = window.split_window()
         >>> pane.refresh()
         >>> active_panes = [p for p in window.panes if p.pane_active == '1']

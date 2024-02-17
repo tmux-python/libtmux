@@ -52,10 +52,10 @@ class Session(Obj, EnvironmentMixin):
     >>> session.windows
     [Window(@1 ...:..., Session($1 ...)]
 
-    >>> session.attached_window
+    >>> session.active_window
     Window(@1 ...:..., Session($1 ...)
 
-    >>> session.attached_pane
+    >>> session.active_pane
     Pane(%1 Window(@1 ...:..., Session($1 ...)))
 
     References
@@ -139,12 +139,26 @@ class Session(Obj, EnvironmentMixin):
     #
     # Command
     #
-    def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """Execute tmux subcommand against target session. See :meth:`server.cmd`.
+    def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
+        """Execute tmux subcommand within session context.
+
+        Automatically adds ``-t`` for object's session ID to the command. Pass ``-t``
+        in args to override.
+
+        Examples
+        --------
+        >>> session.cmd('new-window', '-P').stdout[0]
+        'libtmux...:....0'
+
+        From raw output to an enriched `Window` object:
+
+        >>> Window.from_window_id(window_id=session.cmd(
+        ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+        Window(@... ...:..., Session($1 libtmux_...))
 
         Returns
         -------
-        :class:`server.cmd`
+        :meth:`server.cmd`
 
         Notes
         -----
@@ -156,15 +170,14 @@ class Session(Obj, EnvironmentMixin):
         if not any("-t" in str(x) for x in args):
             # insert -t immediately after 1st arg, as per tmux format
             new_args: t.Tuple[str, ...] = ()
-            new_args += (args[0],)
             assert isinstance(self.session_id, str)
             new_args += (
                 "-t",
                 self.session_id,
             )
-            new_args += tuple(args[1:])
+            new_args += args
             args = new_args
-        return self.server.cmd(*args, **kwargs)
+        return self.server.cmd(cmd, *args)
 
     """
     Commands (tmux-like)
@@ -348,17 +361,20 @@ class Session(Obj, EnvironmentMixin):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        return self.attached_window
+        return self.active_window
 
     #
     # Computed properties
     #
     @property
-    def attached_window(self) -> "Window":
+    def active_pane(self) -> t.Optional["Pane"]:
+        """Return active :class:`Pane` object."""
+        return self.active_window.active_pane
+
+    @property
+    def active_window(self) -> "Window":
         """Return active :class:`Window` object."""
-        active_windows = [
-            window for window in self.windows if window.window_active == "1"
-        ]
+        active_windows = self.windows.filter(window_active="1")
 
         if len(active_windows) == 1:
             return next(iter(active_windows))
@@ -629,14 +645,6 @@ class Session(Obj, EnvironmentMixin):
             raise exc.LibTmuxException(proc.stderr)
 
     #
-    # Computed properties
-    #
-    @property
-    def attached_pane(self) -> t.Optional["Pane"]:
-        """Return active :class:`Pane` object."""
-        return self.attached_window.attached_pane
-
-    #
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
@@ -679,6 +687,41 @@ class Session(Obj, EnvironmentMixin):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    @property
+    def attached_pane(self) -> t.Optional["Pane"]:
+        """Return active :class:`Pane` object.
+
+        Notes
+        -----
+        .. deprecated:: 0.31
+
+           Deprecated in favor of :meth:`.active_pane`.
+        """
+        warnings.warn(
+            "Session.attached_pane() is deprecated in favor of Session.active_pane()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.active_window.active_pane
+
+    @property
+    def attached_window(self) -> "Window":
+        """Return active :class:`Window` object.
+
+        Notes
+        -----
+        .. deprecated:: 0.31
+
+           Deprecated in favor of :meth:`.active_window`.
+        """
+        warnings.warn(
+            "Session.attached_window() is deprecated in favor of "
+            + "Session.active_window()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.active_window
+
     def attach_session(self) -> "Session":
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
 

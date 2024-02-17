@@ -15,6 +15,34 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Cleanups (#527)
+
+- Streamline `{Server,Session,Window,Pane}.cmd()`, across all usages to:
+  - Use `cmd: str` as first positional
+  - Removed unused keyword arguments `**kwargs`
+
+### Renamings (#527)
+
+- `Session.attached_window` renamed to {meth}`Session.active_window`
+  - `Session.attached_window` deprecated 
+- `Session.attached_pane` renamed to {meth}`Session.active_pane`
+  - `Session.attached_pane` deprecated 
+- `Window.attached_pane` renamed to {meth}`Window.active_pane`
+  - `Window.attached_pane` deprecated 
+
+### Improvements (#527)
+
+- `Server.attached_windows` now users `QueryList`'s `.filter()`
+
+### Documentation (#527)
+
+- Document `.cmd` in README and quickstart
+- Add doctests and improve docstrings to `cmd()` methods across:
+  - {meth}`Server.cmd()`
+  - {meth}`Session.cmd()`
+  - {meth}`Window.cmd()`
+  - {meth}`Pane.cmd()`
+
 ## libtmux 0.30.2 (2024-02-16)
 
 ### Development
@@ -80,7 +108,7 @@ _Maintenance only, no bug fixes or new features_
 
 ## libtmux 0.28.0 (2024-02-14)
 
-### Breaking change
+### Breaking changes
 
 #### Detached / unselected by default (#523)
 
@@ -164,7 +192,7 @@ Tip: If {meth}`Pane.resize()` was not taking affect <= 0.27.1, try to resize wit
 
 ## libtmux 0.26.0 (2024-02-06)
 
-### Breaking change
+### Breaking changes
 
 - `get_by_id()` (already deprecated) keyword argument renamed from `id` to
   `Server.get_by_id(session_id)`, `Session.get_by_id(window_id)`, and `Window.get_by_id(pane_id)` (#514)

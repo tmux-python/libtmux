@@ -120,10 +120,44 @@ equivalent to `$ tmux -L mysocket`.
 `server` is now a living object bound to the tmux server's Sessions,
 Windows and Panes.
 
+## Raw, contextual commands
+
+New session:
+
+```python
+>>> server.cmd('new-session', '-d', '-P', '-F#{session_id}').stdout[0]
+'$2'
+```
+
+```python
+>>> session.cmd('new-window', '-P').stdout[0]
+'libtmux...:2.0'
+```
+
+Time for some tech, direct to a rich, `Window` object:
+
+```python
+>>> Window.from_window_id(window_id=session.cmd('new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+Window(@2 2:..., Session($1 libtmux_...))
+```
+
+Create a pane from a window:
+
+```python
+>>> window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
+'%2'
+```
+
+Magic, directly to a `Pane`:
+
+```python
+>>> Pane.from_pane_id(pane_id=session.cmd('split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+Pane(%... Window(@1 1:..., Session($1 libtmux_...)))
+```
+
 ## Find your {class}`Session`
 
-If you have multiple tmux sessions open, you can see that all of the
-methods in {class}`Server` are available.
+If you have multiple tmux sessions open, all methods in {class}`Server` are available.
 
 We can list sessions with {meth}`Server.sessions`:
 
@@ -268,11 +302,11 @@ through active {class}`Window`'s.
 
 ## Manipulating windows
 
-Now that we know how to create windows, let's use one. Let's use {meth}`Session.attached_window()`
+Now that we know how to create windows, let's use one. Let's use {meth}`Session.active_window()`
 to grab our current window.
 
 ```python
->>> window = session.attached_window
+>>> window = session.active_window
 ```
 
 `window` now has access to all of the objects inside of {class}`Window`.
@@ -286,7 +320,7 @@ Pane(%2 Window(@1 ...:..., Session($1 ...)))
 
 Powered up. Let's have a break down:
 
-1. `window = session.attached_window()` gave us the {class}`Window` of the current attached to window.
+1. `window = session.active_window()` gave us the {class}`Window` of the current attached to window.
 2. `attach=False` assures the cursor didn't switch to the newly created pane.
 3. Returned the created {class}`Pane`.
 

@@ -53,7 +53,7 @@ class Window(Obj):
     >>> window.panes
     [Pane(...)]
 
-    >>> window.attached_pane
+    >>> window.active_pane
     Pane(...)
 
     Relations moving up:
@@ -61,10 +61,10 @@ class Window(Obj):
     >>> window.session
     Session(...)
 
-    >>> window.window_id == session.attached_window.window_id
+    >>> window.window_id == session.active_window.window_id
     True
 
-    >>> window == session.attached_window
+    >>> window == session.active_window
     True
 
     >>> window in session.windows
@@ -136,18 +136,37 @@ class Window(Obj):
     Commands (pane-scoped)
     """
 
-    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
-        """Execute tmux subcommand against target window. See :meth:`Server.cmd`.
+    def cmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+    ) -> tmux_cmd:
+        """Execute tmux subcommand within window context.
 
-        Send command to tmux with :attr:`window_id` as ``target-window``.
+        Automatically adds ``-t`` for object's indow ID to the command. Pass ``-t``
+        in args to override.
 
-        Specifying ``('-t', 'custom-target')`` or ``('-tcustom_target')`` in
-        ``args`` will override using the object's ``window_id`` as target.
+        Examples
+        --------
+        Create a pane from a window:
+
+        >>> window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
+        '%...'
+
+        Magic, directly to a `Pane`:
+
+        >>> Pane.from_pane_id(pane_id=session.cmd(
+        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
+        Returns
+        -------
+        :meth:`server.cmd`
         """
         if not any("-t" in str(x) for x in args):
             args = ("-t", self.window_id, *args)
 
-        return self.server.cmd(cmd, *args, **kwargs)
+        return self.server.cmd(cmd, *args)
 
     """
     Commands (tmux-like)
@@ -175,7 +194,7 @@ class Window(Obj):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        return self.attached_pane
+        return self.active_pane
 
     def split_window(
         self,
@@ -573,7 +592,7 @@ class Window(Obj):
 
         Examples
         --------
-        >>> window = session.attached_window
+        >>> window = session.active_window
 
         >>> window.rename_window('My project')
         Window(@1 1:My project, Session($1 ...))
@@ -697,7 +716,7 @@ class Window(Obj):
 
         Examples
         --------
-        >>> window = session.attached_window
+        >>> window = session.active_window
         >>> new_window = session.new_window()
         >>> session.refresh()
         >>> active_windows = [w for w in session.windows if w.window_active == '1']
@@ -724,11 +743,11 @@ class Window(Obj):
     # Computed properties
     #
     @property
-    def attached_pane(self) -> t.Optional["Pane"]:
+    def active_pane(self) -> t.Optional["Pane"]:
         """Return attached :class:`Pane`."""
-        for pane in self.panes:
-            if pane.pane_active == "1":
-                return pane
+        panes = self.panes.filter(pane_active="1")
+        if len(panes) > 0:
+            return panes[0]
         return None
 
     #
@@ -816,6 +835,26 @@ class Window(Obj):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    @property
+    def attached_pane(self) -> t.Optional["Pane"]:
+        """Return attached :class:`Pane`.
+
+        Notes
+        -----
+        .. deprecated:: 0.31
+
+           Deprecated in favor of :meth:`.active_pane`.
+        """
+        warnings.warn(
+            "Window.attached_pane() is deprecated in favor of Window.active_pane()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        panes = self.panes.filter(pane_active="1")
+        if len(panes) > 0:
+            return panes[0]
+        return None
+
     def select_window(self) -> "Window":
         """Select window.
 

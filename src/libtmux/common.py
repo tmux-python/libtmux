@@ -187,20 +187,21 @@ class EnvironmentMixin:
 
 
 class tmux_cmd:
-    """:term:`tmux(1)` command via :py:mod:`subprocess`.
+    """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 
     Examples
     --------
-    .. code-block:: python
+    Create a new session, check for error:
 
-        proc = tmux_cmd('new-session', '-s%' % 'my session')
+    >>> proc = tmux_cmd(f'-L{server.socket_name}', 'new-session', '-d', '-P', '-F#S')
+    >>> if proc.stderr:
+    ...     raise exc.LibTmuxException(
+    ...         'Command: %s returned error: %s' % (proc.cmd, proc.stderr)
+    ...     )
+    ...
 
-        if proc.stderr:
-            raise exc.LibTmuxException(
-                'Command: %s returned error: %s' % (proc.cmd, proc.stderr)
-            )
-
-        print('tmux command returned %s' % proc.stdout)
+    >>> print(f'tmux command returned {" ".join(proc.stdout)}')
+    tmux command returned 2
 
     Equivalent to:
 
@@ -214,7 +215,7 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
+    def __init__(self, *args: t.Any) -> None:
         tmux_bin = shutil.which("tmux")
         if not tmux_bin:
             raise exc.TmuxCommandNotFound()

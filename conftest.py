@@ -14,7 +14,11 @@ import typing as t
 import pytest
 from _pytest.doctest import DoctestItem
 
+from libtmux.pane import Pane
 from libtmux.pytest_plugin import USING_ZSH
+from libtmux.server import Server
+from libtmux.session import Session
+from libtmux.window import Window
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -30,11 +34,15 @@ def add_doctest_fixtures(
     """Configure doctest fixtures for pytest-doctest."""
     if isinstance(request._pyfuncitem, DoctestItem) and shutil.which("tmux"):
         request.getfixturevalue("set_home")
+        doctest_namespace["Server"] = Server
+        doctest_namespace["Session"] = Session
+        doctest_namespace["Window"] = Window
+        doctest_namespace["Pane"] = Pane
         doctest_namespace["server"] = request.getfixturevalue("server")
         session: "Session" = request.getfixturevalue("session")
         doctest_namespace["session"] = session
-        doctest_namespace["window"] = session.attached_window
-        doctest_namespace["pane"] = session.attached_pane
+        doctest_namespace["window"] = session.active_window
+        doctest_namespace["pane"] = session.active_pane
         doctest_namespace["request"] = request
 
 

@@ -53,8 +53,8 @@ Connect to a live tmux session:
 
 ```python
 >>> import libtmux
->>> s = libtmux.Server()
->>> s
+>>> svr = libtmux.Server()
+>>> svr
 Server(socket_path=/tmp/tmux-.../default)
 ```
 
@@ -65,6 +65,49 @@ current tmux server / session / window pane.
 [`tmuxp shell`]: https://tmuxp.git-pull.com/cli/shell.html
 [ptpython]: https://github.com/prompt-toolkit/ptpython
 [ipython]: https://ipython.org/
+
+Run any tmux command, respective of context:
+
+Honors tmux socket name and path:
+
+```python
+>>> server = Server(socket_name='libtmux_doctest')
+>>> server.cmd('display-message', 'hello world')
+<libtmux...>
+```
+
+New session:
+
+```python
+>>> server.cmd('new-session', '-d', '-P', '-F#{session_id}').stdout[0]
+'$2'
+```
+
+```python
+>>> session.cmd('new-window', '-P').stdout[0]
+'libtmux...:2.0'
+```
+
+Time for some tech, direct to a rich, `Window` object:
+
+```python
+>>> Window.from_window_id(window_id=session.cmd('new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+Window(@2 2:..., Session($1 libtmux_...))
+```
+
+Create a pane from a window:
+
+```python
+>>> window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
+'%2'
+```
+
+Magic, directly to a `Pane`:
+
+```python
+>>> Pane.from_pane_id(pane_id=session.cmd('split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+Pane(%... Window(@1 1:..., Session($1 libtmux_...)))
+```
 
 List sessions:
 
@@ -87,43 +130,57 @@ Direct lookup:
 Session($1 ...)
 ```
 
-Find session by dict lookup:
+Filter sesions:
 
 ```python
 >>> server.sessions[0].rename_session('foo')
 Session($1 foo)
->>> server.sessions.filter(session_name="foo")[0]
+>>> server.sessions.filter(session_name="foo")
+[Session($1 foo)]
+>>> server.sessions.get(session_name="foo")
 Session($1 foo)
 ```
 
 Control your session:
 
 ```python
->>> session.rename_session('foo')
-Session($1 foo)
->>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@2 2:ha in the bg, Session($1 foo))
->>> session.kill_window("ha in")
+>>> session
+Session($1 ...)
+
+>>> session.rename_session('my-session')
+Session($1 my-session)
 ```
 
 Create new window in the background (don't switch to it):
 
 ```python
->>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@2 2:ha in the bg, Session($1 ...))
+>>> bg_window = session.new_window(attach=False, window_name="ha in the bg")
+>>> bg_window
+Window(@... 2:ha in the bg, Session($1 ...))
+
+# Session can search the window
+>>> session.windows.filter(window_name__startswith="ha")
+[Window(@... 2:ha in the bg, Session($1 ...))]
+
+# Directly
+>>> session.windows.get(window_name__startswith="ha")
+Window(@... 2:ha in the bg, Session($1 ...))
+
+# Clean up
+>>> bg_window.kill()
 ```
 
 Close window:
 
 ```python
->>> w = session.attached_window
+>>> w = session.active_window
 >>> w.kill()
 ```
 
 Grab remaining tmux window:
 
 ```python
->>> window = session.attached_window
+>>> window = session.active_window
 >>> window.split_window(attach=False)
 Pane(%2 Window(@1 1:... Session($1 ...)))
 ```
