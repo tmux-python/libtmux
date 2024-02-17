@@ -728,7 +728,7 @@ class Window(Obj):
     # Computed properties
     #
     @property
-    def attached_pane(self) -> t.Optional["Pane"]:
+    def active_pane(self) -> t.Optional["Pane"]:
         """Return attached :class:`Pane`."""
         panes = self.panes.filter(pane_active="1")
         if len(panes) > 0:
@@ -820,6 +820,26 @@ class Window(Obj):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    @property
+    def attached_pane(self) -> t.Optional["Pane"]:
+        """Return attached :class:`Pane`.
+
+        Notes
+        -----
+        .. deprecated:: 0.31
+
+           Deprecated in favor of :meth:`.active_pane`.
+        """
+        warnings.warn(
+            "Window.attached_pane() is deprecated in favor of Window.active_pane()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        panes = self.panes.filter(pane_active="1")
+        if len(panes) > 0:
+            return panes[0]
+        return None
+
     def select_window(self) -> "Window":
         """Select window.
 
