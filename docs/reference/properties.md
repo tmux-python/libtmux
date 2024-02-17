@@ -109,7 +109,7 @@ Use attribute access for details not accessible via properties:
 Get the {class}`~libtmux.Pane`:
 
 ```python
->>> pane = window.attached_pane
+>>> pane = window.active_pane
 
 >>> pane
 Pane(%1 Window(@1 ...:..., Session($1 libtmux_...)))

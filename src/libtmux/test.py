@@ -85,7 +85,7 @@ def retry_until(
     Examples
     --------
     >>> def fn():
-    ...     p = session.active_window.attached_pane
+    ...     p = session.active_window.active_pane
     ...     return p.pane_current_path is not None
 
     >>> retry_until(fn)

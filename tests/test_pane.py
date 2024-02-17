@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def test_send_keys(session: Session) -> None:
     """Verify Pane.send_keys()."""
-    pane = session.active_window.attached_pane
+    pane = session.active_window.active_pane
     assert pane is not None
     pane.send_keys("c-c", literal=True)
 
@@ -28,7 +28,7 @@ def test_set_height(session: Session) -> None:
     """Verify Pane.set_height()."""
     window = session.new_window(window_name="test_set_height")
     window.split_window()
-    pane1 = window.attached_pane
+    pane1 = window.active_pane
     assert pane1 is not None
     pane1_height = pane1.pane_height
 
@@ -44,7 +44,7 @@ def test_set_width(session: Session) -> None:
     window.split_window()
 
     window.select_layout("main-vertical")
-    pane1 = window.attached_pane
+    pane1 = window.active_pane
     assert pane1 is not None
     pane1_width = pane1.pane_width
 
@@ -66,7 +66,7 @@ def test_capture_pane(session: Session) -> None:
         window_name="capture_pane",
         window_shell=f"{env} PS1='$ ' sh",
     )
-    pane = session.active_window.attached_pane
+    pane = session.active_window.active_pane
     assert pane is not None
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
@@ -91,7 +91,7 @@ def test_capture_pane_start(session: Session) -> None:
         window_name="capture_pane_start",
         window_shell=f"{env} PS1='$ ' sh",
     )
-    pane = session.active_window.attached_pane
+    pane = session.active_window.active_pane
     assert pane is not None
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
@@ -119,7 +119,7 @@ def test_capture_pane_end(session: Session) -> None:
         window_name="capture_pane_end",
         window_shell=f"{env} PS1='$ ' sh",
     )
-    pane = session.active_window.attached_pane
+    pane = session.active_window.active_pane
     assert pane is not None
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"

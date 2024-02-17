@@ -71,7 +71,7 @@ class Server(EnvironmentMixin):
     >>> server.sessions[0].active_window
     Window(@1 1:..., Session($1 ...))
 
-    >>> server.sessions[0].attached_pane
+    >>> server.sessions[0].active_pane
     Pane(%1 Window(@1 1:..., Session($1 ...)))
 
     References

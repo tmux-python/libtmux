@@ -81,9 +81,9 @@ def test_active_window(session: Session) -> None:
     assert isinstance(session.active_window, Window)
 
 
-def test_attached_pane(session: Session) -> None:
-    """Session.attached_pane returns Pane."""
-    assert isinstance(session.attached_pane, Pane)
+def test_active_pane(session: Session) -> None:
+    """Session.active_pane returns Pane."""
+    assert isinstance(session.active_pane, Pane)
 
 
 def test_session_rename(session: Session) -> None:
@@ -297,7 +297,7 @@ def test_new_window_with_environment(
         window_shell=f"{env} PS1='$ ' sh",
         environment=environment,
     )
-    pane = window.attached_pane
+    pane = window.active_pane
     assert pane is not None
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")

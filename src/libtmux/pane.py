@@ -423,7 +423,7 @@ class Pane(Obj):
 
         Examples
         --------
-        >>> pane = window.attached_pane
+        >>> pane = window.active_pane
         >>> new_pane = window.split_window()
         >>> pane.refresh()
         >>> active_panes = [p for p in window.panes if p.pane_active == '1']

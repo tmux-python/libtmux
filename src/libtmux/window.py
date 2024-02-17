@@ -53,7 +53,7 @@ class Window(Obj):
     >>> window.panes
     [Pane(...)]
 
-    >>> window.attached_pane
+    >>> window.active_pane
     Pane(...)
 
     Relations moving up:
@@ -179,7 +179,7 @@ class Window(Obj):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        return self.attached_pane
+        return self.active_pane
 
     def split_window(
         self,

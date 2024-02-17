@@ -77,14 +77,14 @@ def test_fresh_window_data(session: Session) -> None:
     assert active_window is not None
     active_window.select_pane(pane_base_index)
 
-    attached_pane = session.attached_pane
-    assert attached_pane is not None
-    attached_pane.send_keys("cd /srv/www/flaskr")
+    active_pane = session.active_pane
+    assert active_pane is not None
+    active_pane.send_keys("cd /srv/www/flaskr")
 
     active_window.select_pane(pane_base_index + 1)
-    attached_pane = session.attached_pane
-    assert attached_pane is not None
-    attached_pane.send_keys("source .venv/bin/activate")
+    active_pane = session.active_pane
+    assert active_pane is not None
+    active_pane.send_keys("source .venv/bin/activate")
     session.new_window(window_name="second")
     current_windows += 1
     assert current_windows == len(session.windows)
@@ -112,10 +112,10 @@ def test_newest_pane_data(session: Session) -> None:
     assert len(window.panes) == 3
 
 
-def test_attached_pane(session: Session) -> None:
+def test_active_pane(session: Session) -> None:
     """Window.active_window returns active Pane."""
     window = session.active_window  # current window
-    assert isinstance(window.attached_pane, Pane)
+    assert isinstance(window.active_pane, Pane)
 
 
 def test_split_window(session: Session) -> None:

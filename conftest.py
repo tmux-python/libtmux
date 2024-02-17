@@ -42,7 +42,7 @@ def add_doctest_fixtures(
         session: "Session" = request.getfixturevalue("session")
         doctest_namespace["session"] = session
         doctest_namespace["window"] = session.active_window
-        doctest_namespace["pane"] = session.attached_pane
+        doctest_namespace["pane"] = session.active_pane
         doctest_namespace["request"] = request
 
 
