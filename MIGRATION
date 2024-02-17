@@ -25,6 +25,28 @@ _Detailed migration steps for the next version will be posted here._
 
 <!-- To the maintainers and contributors: please add migration details for the upcoming release here -->
 
+## 0.31.0: Renaming and command cleanup (2024-02-17)
+
+### Cleanups (#527)
+
+- Commands: Param change
+
+  {meth}`Server.cmd()`, {meth}`Session.cmd()`, {meth}`Window.cmd()`, {meth}`Pane.cmd()`
+
+  - Use `cmd: str` as first positional
+  - Removed unused keyword arguments `**kwargs`
+
+### Renamings (#527)
+
+- `Session.attached_window` renamed to {meth}`Session.active_window`
+  - `Session.attached_window` deprecated 
+- `Session.attached_pane` renamed to {meth}`Session.active_pane`
+  - `Session.attached_pane` deprecated 
+- `Window.attached_pane` renamed to {meth}`Window.active_pane`
+  - `Window.attached_pane` deprecated 
+
+
+
 ## 0.28.0: Resizing and detached by default (2024-02-15)
 
 #### Detach by default
