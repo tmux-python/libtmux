@@ -139,7 +139,7 @@ class Session(Obj, EnvironmentMixin):
     #
     # Command
     #
-    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
         """Execute tmux subcommand against target session. See :meth:`server.cmd`.
 
         Returns
@@ -163,7 +163,7 @@ class Session(Obj, EnvironmentMixin):
             )
             new_args += args
             args = new_args
-        return self.server.cmd(cmd, *args, **kwargs)
+        return self.server.cmd(cmd, *args)
 
     """
     Commands (tmux-like)
