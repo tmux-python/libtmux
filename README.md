@@ -130,30 +130,44 @@ Direct lookup:
 Session($1 ...)
 ```
 
-Find session by dict lookup:
+Filter sesions:
 
 ```python
 >>> server.sessions[0].rename_session('foo')
 Session($1 foo)
->>> server.sessions.filter(session_name="foo")[0]
+>>> server.sessions.filter(session_name="foo")
+[Session($1 foo)]
+>>> server.sessions.get(session_name="foo")
 Session($1 foo)
 ```
 
 Control your session:
 
 ```python
->>> session.rename_session('foo')
-Session($1 foo)
->>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@2 2:ha in the bg, Session($1 foo))
->>> session.kill_window("ha in")
+>>> session
+Session($1 ...)
+
+>>> session.rename_session('my-session')
+Session($1 my-session)
 ```
 
 Create new window in the background (don't switch to it):
 
 ```python
->>> session.new_window(attach=False, window_name="ha in the bg")
-Window(@2 2:ha in the bg, Session($1 ...))
+>>> bg_window = session.new_window(attach=False, window_name="ha in the bg")
+>>> bg_window
+Window(@... 2:ha in the bg, Session($1 ...))
+
+# Session can search the window
+>>> session.windows.filter(window_name__startswith="ha")
+[Window(@... 2:ha in the bg, Session($1 ...))]
+
+# Directly
+>>> session.windows.get(window_name__startswith="ha")
+Window(@... 2:ha in the bg, Session($1 ...))
+
+# Clean up
+>>> bg_window.kill()
 ```
 
 Close window:
