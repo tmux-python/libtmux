@@ -34,7 +34,7 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Improvements (#527)
 
-- `Server.attached_windows` now users `QueryList`'s `.filter()`
+- `Server.attached_windows` now uses `QueryList`'s `.filter()`
 
 ### Documentation (#527)
 
