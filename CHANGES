@@ -45,6 +45,10 @@ $ pip install --user --upgrade --pre libtmux
   - {meth}`Window.cmd()`
   - {meth}`Pane.cmd()`
 
+### Post-release: v0.31.0post0 (2024-02-17)
+
+- Documentation updates
+
 ## libtmux 0.30.2 (2024-02-16)
 
 ### Development
