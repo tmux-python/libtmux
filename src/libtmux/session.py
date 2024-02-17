@@ -139,7 +139,7 @@ class Session(Obj, EnvironmentMixin):
     #
     # Command
     #
-    def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Execute tmux subcommand against target session. See :meth:`server.cmd`.
 
         Returns
@@ -156,15 +156,14 @@ class Session(Obj, EnvironmentMixin):
         if not any("-t" in str(x) for x in args):
             # insert -t immediately after 1st arg, as per tmux format
             new_args: t.Tuple[str, ...] = ()
-            new_args += (args[0],)
             assert isinstance(self.session_id, str)
             new_args += (
                 "-t",
                 self.session_id,
             )
-            new_args += tuple(args[1:])
+            new_args += args
             args = new_args
-        return self.server.cmd(*args, **kwargs)
+        return self.server.cmd(cmd, *args, **kwargs)
 
     """
     Commands (tmux-like)
