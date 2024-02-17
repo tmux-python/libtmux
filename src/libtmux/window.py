@@ -141,12 +141,27 @@ class Window(Obj):
         cmd: str,
         *args: t.Any,
     ) -> tmux_cmd:
-        """Execute tmux subcommand against target window. See :meth:`Server.cmd`.
+        """Execute tmux subcommand within window context.
 
-        Send command to tmux with :attr:`window_id` as ``target-window``.
+        Automatically adds ``-t`` for object's indow ID to the command. Pass ``-t``
+        in args to override.
 
-        Specifying ``('-t', 'custom-target')`` or ``('-tcustom_target')`` in
-        ``args`` will override using the object's ``window_id`` as target.
+        Examples
+        --------
+        Create a pane from a window:
+
+        >>> window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
+        '%...'
+
+        Magic, directly to a `Pane`:
+
+        >>> Pane.from_pane_id(pane_id=session.cmd(
+        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
+        Returns
+        -------
+        :meth:`server.cmd`
         """
         if not any("-t" in str(x) for x in args):
             args = ("-t", self.window_id, *args)
