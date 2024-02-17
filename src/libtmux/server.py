@@ -173,7 +173,7 @@ class Server(EnvironmentMixin):
     #
     # Command
     #
-    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
         Examples
@@ -231,7 +231,7 @@ class Server(EnvironmentMixin):
             else:
                 raise exc.UnknownColorOption()
 
-        return tmux_cmd(*cmd_args, **kwargs)
+        return tmux_cmd(*cmd_args)
 
     @property
     def attached_sessions(self) -> t.List[Session]:
