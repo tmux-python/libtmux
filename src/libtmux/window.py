@@ -136,7 +136,11 @@ class Window(Obj):
     Commands (pane-scoped)
     """
 
-    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def cmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+    ) -> tmux_cmd:
         """Execute tmux subcommand against target window. See :meth:`Server.cmd`.
 
         Send command to tmux with :attr:`window_id` as ``target-window``.
@@ -147,7 +151,7 @@ class Window(Obj):
         if not any("-t" in str(x) for x in args):
             args = ("-t", self.window_id, *args)
 
-        return self.server.cmd(cmd, *args, **kwargs)
+        return self.server.cmd(cmd, *args)
 
     """
     Commands (tmux-like)
