@@ -189,7 +189,7 @@ class Server(EnvironmentMixin):
         >>> session.cmd('new-window', '-P').stdout[0]
         'libtmux...:2.0'
 
-        Time for some tech, direct to a rich, `Window` object:
+        Output of `tmux -L ... new-window -P -F#{window_id}` to a `Window` object:
 
         >>> Window.from_window_id(window_id=session.cmd(
         ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
@@ -200,10 +200,10 @@ class Server(EnvironmentMixin):
         >>> window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0]
         '%5'
 
-        Magic, directly to a `Pane`:
+        Output of `tmux -L ... split-window -P -F#{pane_id}` to a `Pane` object:
 
-        >>> Pane.from_pane_id(pane_id=session.cmd(
-        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+        >>> Pane.from_pane_id(pane_id=window.cmd(
+        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
         Returns

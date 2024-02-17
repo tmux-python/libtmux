@@ -134,7 +134,8 @@ New session:
 'libtmux...:2.0'
 ```
 
-Time for some tech, direct to a rich, `Window` object:
+From raw command output, to a rich {class}`Window` object (in practice and as shown
+later, you'd use {meth}`Session.new_window()`):
 
 ```python
 >>> Window.from_window_id(window_id=session.cmd('new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
@@ -148,10 +149,10 @@ Create a pane from a window:
 '%2'
 ```
 
-Magic, directly to a `Pane`:
+Raw output directly to a {class}`Pane` (in practice, you'd use {meth}`Window.split_window()`):
 
 ```python
->>> Pane.from_pane_id(pane_id=session.cmd('split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+>>> Pane.from_pane_id(pane_id=window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
 Pane(%... Window(@1 1:..., Session($1 libtmux_...)))
 ```
 
