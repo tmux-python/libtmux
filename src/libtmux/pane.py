@@ -112,7 +112,7 @@ class Pane(Obj):
     Commands (pane-scoped)
     """
 
-    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
         """Execute tmux subcommand against target pane. See also: :meth:`Server.cmd`.
 
         Send command to tmux with :attr:`pane_id` as ``target-pane``.
@@ -123,7 +123,7 @@ class Pane(Obj):
         if not any("-t" in str(x) for x in args):
             args = ("-t", self.pane_id, *args)
 
-        return self.server.cmd(cmd, *args, **kwargs)
+        return self.server.cmd(cmd, *args)
 
     """
     Commands (tmux-like)
