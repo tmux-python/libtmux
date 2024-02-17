@@ -353,9 +353,9 @@ class Session(Obj, EnvironmentMixin):
     # Computed properties
     #
     @property
-    def attached_pane(self) -> t.Optional["Pane"]:
+    def active_pane(self) -> t.Optional["Pane"]:
         """Return active :class:`Pane` object."""
-        return self.active_window.attached_pane
+        return self.active_window.active_pane
 
     @property
     def active_window(self) -> "Window":
@@ -673,6 +673,23 @@ class Session(Obj, EnvironmentMixin):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    @property
+    def attached_pane(self) -> t.Optional["Pane"]:
+        """Return active :class:`Pane` object.
+
+        Notes
+        -----
+        .. deprecated:: 0.31
+
+           Deprecated in favor of :meth:`.active_pane`.
+        """
+        warnings.warn(
+            "Session.attached_pane() is deprecated in favor of Session.active_pane()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.active_window.active_pane
+
     @property
     def attached_window(self) -> "Window":
         """Return active :class:`Window` object.
