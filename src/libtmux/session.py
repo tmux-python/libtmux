@@ -140,11 +140,25 @@ class Session(Obj, EnvironmentMixin):
     # Command
     #
     def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
-        """Execute tmux subcommand against target session. See :meth:`server.cmd`.
+        """Execute tmux subcommand within session context.
+
+        Automatically adds ``-t`` for object's session ID to the command. Pass ``-t``
+        in args to override.
+
+        Examples
+        --------
+        >>> session.cmd('new-window', '-P').stdout[0]
+        'libtmux...:....0'
+
+        From raw output to an enriched `Window` object:
+
+        >>> Window.from_window_id(window_id=session.cmd(
+        ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+        Window(@... ...:..., Session($1 libtmux_...))
 
         Returns
         -------
-        :class:`server.cmd`
+        :meth:`server.cmd`
 
         Notes
         -----
