@@ -353,7 +353,7 @@ class Session(Obj, EnvironmentMixin):
     # Computed properties
     #
     @property
-    def attached_window(self) -> "Window":
+    def active_window(self) -> "Window":
         """Return active :class:`Window` object."""
         active_windows = self.windows.filter(window_active="1")
 
@@ -676,6 +676,24 @@ class Session(Obj, EnvironmentMixin):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    @property
+    def attached_window(self) -> "Window":
+        """Return active :class:`Window` object.
+
+        Notes
+        -----
+        .. deprecated:: 0.31
+
+           Deprecated in favor of :meth:`.active_window`.
+        """
+        warnings.warn(
+            "Session.attached_window() is deprecated in favor of "
+            + "Session.active_window()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.active_window
+
     def attach_session(self) -> "Session":
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
 
