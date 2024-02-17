@@ -173,7 +173,7 @@ class Server(EnvironmentMixin):
     #
     # Command
     #
-    def cmd(self, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def cmd(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
         Examples
@@ -216,7 +216,7 @@ class Server(EnvironmentMixin):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        cmd_args: t.List[t.Union[str, int]] = list(args)
+        cmd_args: t.List[t.Union[str, int]] = [cmd, *args]
         if self.socket_name:
             cmd_args.insert(0, f"-L{self.socket_name}")
         if self.socket_path:
