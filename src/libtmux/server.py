@@ -246,22 +246,7 @@ class Server(EnvironmentMixin):
         -------
         list of :class:`Session`
         """
-        try:
-            sessions = self.sessions
-            attached_sessions = []
-
-            for session in sessions:
-                attached = session.session_attached
-                # for now session_active is a unicode
-                if attached != "0":
-                    logger.debug(f"session {session.name} attached")
-                    attached_sessions.append(session)
-                else:
-                    continue
-
-        except Exception:
-            return []
-        return attached_sessions
+        return self.sessions.filter(session_attached="1")
 
     def has_session(self, target_session: str, exact: bool = True) -> bool:
         """Return True if session exists.
