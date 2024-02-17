@@ -61,10 +61,10 @@ class Window(Obj):
     >>> window.session
     Session(...)
 
-    >>> window.window_id == session.attached_window.window_id
+    >>> window.window_id == session.active_window.window_id
     True
 
-    >>> window == session.attached_window
+    >>> window == session.active_window
     True
 
     >>> window in session.windows
@@ -577,7 +577,7 @@ class Window(Obj):
 
         Examples
         --------
-        >>> window = session.attached_window
+        >>> window = session.active_window
 
         >>> window.rename_window('My project')
         Window(@1 1:My project, Session($1 ...))
@@ -701,7 +701,7 @@ class Window(Obj):
 
         Examples
         --------
-        >>> window = session.attached_window
+        >>> window = session.active_window
         >>> new_window = session.new_window()
         >>> session.refresh()
         >>> active_windows = [w for w in session.windows if w.window_active == '1']

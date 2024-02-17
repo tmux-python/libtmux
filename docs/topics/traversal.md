@@ -71,7 +71,7 @@ Window(@1 ...:..., Session($1 ...))
 Grab the currently focused window from session:
 
 ```python
->>> session.attached_window
+>>> session.active_window
 Window(@1 ...:..., Session($1 ...))
 ```
 

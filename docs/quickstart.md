@@ -302,11 +302,11 @@ through active {class}`Window`'s.
 
 ## Manipulating windows
 
-Now that we know how to create windows, let's use one. Let's use {meth}`Session.attached_window()`
+Now that we know how to create windows, let's use one. Let's use {meth}`Session.active_window()`
 to grab our current window.
 
 ```python
->>> window = session.attached_window
+>>> window = session.active_window
 ```
 
 `window` now has access to all of the objects inside of {class}`Window`.
@@ -320,7 +320,7 @@ Pane(%2 Window(@1 ...:..., Session($1 ...)))
 
 Powered up. Let's have a break down:
 
-1. `window = session.attached_window()` gave us the {class}`Window` of the current attached to window.
+1. `window = session.active_window()` gave us the {class}`Window` of the current attached to window.
 2. `attach=False` assures the cursor didn't switch to the newly created pane.
 3. Returned the created {class}`Pane`.
 

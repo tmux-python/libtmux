@@ -25,63 +25,63 @@ def test_select_window(session: Session) -> None:
     # for now however, let's get the index from the first window.
     assert window_count == 1
 
-    assert session.attached_window.window_index is not None
-    window_base_index = int(session.attached_window.window_index)
+    assert session.active_window.window_index is not None
+    window_base_index = int(session.active_window.window_index)
 
     window = session.new_window(window_name="testing 3")
 
     # self.assertEqual(2,
-    # int(session.attached_window.index))
+    # int(session.active_window.index))
     assert window.window_index is not None
     assert int(window_base_index) + 1 == int(window.window_index)
 
     session.select_window(str(window_base_index))
-    assert window_base_index == int(session.attached_window.window_index)
+    assert window_base_index == int(session.active_window.window_index)
 
     session.select_window("testing 3")
-    assert session.attached_window.window_index is not None
-    assert int(window_base_index) + 1 == int(session.attached_window.window_index)
+    assert session.active_window.window_index is not None
+    assert int(window_base_index) + 1 == int(session.active_window.window_index)
 
     assert len(session.windows) == 2
 
 
 def test_fresh_window_data(session: Session) -> None:
     """Verify window data is fresh."""
-    attached_window = session.attached_window
-    assert attached_window is not None
-    pane_base_idx = attached_window.show_window_option("pane-base-index", g=True)
+    active_window = session.active_window
+    assert active_window is not None
+    pane_base_idx = active_window.show_window_option("pane-base-index", g=True)
     assert pane_base_idx is not None
     pane_base_index = int(pane_base_idx)
 
     assert len(session.windows) == 1
 
-    assert len(session.attached_window.panes) == 1
+    assert len(session.active_window.panes) == 1
     current_windows = len(session.windows)
     assert session.session_id != "@0"
     assert current_windows == 1
 
-    assert len(session.attached_window.panes) == 1
+    assert len(session.active_window.panes) == 1
     assert isinstance(session.server, Server)
-    # len(session.attached_window.panes))
+    # len(session.active_window.panes))
 
     assert len(session.windows), 1
-    assert len(session.attached_window.panes) == 1
+    assert len(session.active_window.panes) == 1
     for w in session.windows:
         assert isinstance(w, Window)
-    window = session.attached_window
+    window = session.active_window
     assert isinstance(window, Window)
-    assert len(session.attached_window.panes) == 1
+    assert len(session.active_window.panes) == 1
     window.split_window()
 
-    attached_window = session.attached_window
-    assert attached_window is not None
-    attached_window.select_pane(pane_base_index)
+    active_window = session.active_window
+    assert active_window is not None
+    active_window.select_pane(pane_base_index)
 
     attached_pane = session.attached_pane
     assert attached_pane is not None
     attached_pane.send_keys("cd /srv/www/flaskr")
 
-    attached_window.select_pane(pane_base_index + 1)
+    active_window.select_pane(pane_base_index + 1)
     attached_pane = session.attached_pane
     assert attached_pane is not None
     attached_pane.send_keys("source .venv/bin/activate")
@@ -113,8 +113,8 @@ def test_newest_pane_data(session: Session) -> None:
 
 
 def test_attached_pane(session: Session) -> None:
-    """Window.attached_window returns active Pane."""
-    window = session.attached_window  # current window
+    """Window.active_window returns active Pane."""
+    window = session.active_window  # current window
     assert isinstance(window.attached_pane, Pane)
 
 
@@ -235,16 +235,16 @@ def test_window_rename(
     session.set_option("automatic-rename", "off")
     window = session.new_window(window_name=window_name_before, attach=True)
 
-    assert window == session.attached_window
+    assert window == session.active_window
     assert window.window_name == window_name_before
 
     window.rename_window(window_name_after)
 
-    window = session.attached_window
+    window = session.active_window
 
     assert window.window_name == window_name_after
 
-    window = session.attached_window
+    window = session.active_window
 
     assert window.window_name == window_name_after
 
@@ -255,7 +255,7 @@ def test_kill_window(session: Session) -> None:
     # create a second window to not kick out the client.
     # there is another way to do this via options too.
 
-    w = session.attached_window
+    w = session.active_window
 
     assert w.window_id is not None
 
@@ -379,7 +379,7 @@ def test_empty_window_name(session: Session) -> None:
     session.set_option("automatic-rename", "off")
     window = session.new_window(window_name="''", attach=True)
 
-    assert window == session.attached_window
+    assert window == session.active_window
     assert window.window_name == "''"
     assert session.session_name is not None
 
@@ -458,7 +458,7 @@ def test_resize(
     """Verify resizing window."""
     session.cmd("detach-client", "-s")
 
-    window = session.attached_window
+    window = session.active_window
     window_height_adjustment = 10
 
     assert window.window_height is not None

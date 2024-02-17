@@ -31,7 +31,7 @@ def test_select_window(session: Session) -> None:
     """Session.select_window moves window."""
     # get the current window_base_index, since different user tmux config
     # may start at 0 or 1, or whatever they want.
-    window_idx = session.attached_window.window_index
+    window_idx = session.active_window.window_index
     assert window_idx is not None
     window_base_index = int(window_idx)
 
@@ -42,22 +42,22 @@ def test_select_window(session: Session) -> None:
 
     assert len(session.windows) == window_count
 
-    # tmux selects a window, moves to it, shows it as attached_window
+    # tmux selects a window, moves to it, shows it as active_window
     selected_window1 = session.select_window(window_base_index)
     assert isinstance(selected_window1, Window)
-    attached_window1 = session.attached_window
+    active_window1 = session.active_window
 
-    assert selected_window1 == attached_window1
-    assert selected_window1.__dict__ == attached_window1.__dict__
+    assert selected_window1 == active_window1
+    assert selected_window1.__dict__ == active_window1.__dict__
 
     # again: tmux selects a window, moves to it, shows it as
-    # attached_window
+    # active_window
     selected_window2 = session.select_window(window_base_index + 1)
     assert isinstance(selected_window2, Window)
-    attached_window2 = session.attached_window
+    active_window2 = session.active_window
 
-    assert selected_window2 == attached_window2
-    assert selected_window2.__dict__ == attached_window2.__dict__
+    assert selected_window2 == active_window2
+    assert selected_window2.__dict__ == active_window2.__dict__
 
     # assure these windows were really different
     assert selected_window1 != selected_window2
@@ -69,16 +69,16 @@ def test_select_window_returns_Window(session: Session) -> None:
     window_count = len(session.windows)
     assert len(session.windows) == window_count
 
-    window_idx = session.attached_window.window_index
+    window_idx = session.active_window.window_index
     assert window_idx is not None
     window_base_index = int(window_idx)
     window = session.select_window(window_base_index)
     assert isinstance(window, Window)
 
 
-def test_attached_window(session: Session) -> None:
-    """Session.attached_window returns Window."""
-    assert isinstance(session.attached_window, Window)
+def test_active_window(session: Session) -> None:
+    """Session.active_window returns Window."""
+    assert isinstance(session.active_window, Window)
 
 
 def test_attached_pane(session: Session) -> None:

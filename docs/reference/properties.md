@@ -75,7 +75,7 @@ from libtmux.neo import Obj
 The same concepts apply for {class}`~libtmux.Window`:
 
 ```python
->>> window = session.attached_window
+>>> window = session.active_window
 
 >>> window
 Window(@1 ...:..., Session($1 ...))

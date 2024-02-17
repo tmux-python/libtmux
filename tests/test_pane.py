@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def test_send_keys(session: Session) -> None:
     """Verify Pane.send_keys()."""
-    pane = session.attached_window.attached_pane
+    pane = session.active_window.attached_pane
     assert pane is not None
     pane.send_keys("c-c", literal=True)
 
@@ -66,7 +66,7 @@ def test_capture_pane(session: Session) -> None:
         window_name="capture_pane",
         window_shell=f"{env} PS1='$ ' sh",
     )
-    pane = session.attached_window.attached_pane
+    pane = session.active_window.attached_pane
     assert pane is not None
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
@@ -91,7 +91,7 @@ def test_capture_pane_start(session: Session) -> None:
         window_name="capture_pane_start",
         window_shell=f"{env} PS1='$ ' sh",
     )
-    pane = session.attached_window.attached_pane
+    pane = session.active_window.attached_pane
     assert pane is not None
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
@@ -119,7 +119,7 @@ def test_capture_pane_end(session: Session) -> None:
         window_name="capture_pane_end",
         window_shell=f"{env} PS1='$ ' sh",
     )
-    pane = session.attached_window.attached_pane
+    pane = session.active_window.attached_pane
     assert pane is not None
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == "$"
@@ -142,7 +142,7 @@ def test_resize_pane(
     """Verify resizing window."""
     session.cmd("detach-client", "-s")
 
-    window = session.attached_window
+    window = session.active_window
     pane = window.split_window(attach=False)
     window.split_window(vertical=True, attach=False)
 

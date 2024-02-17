@@ -39,7 +39,7 @@ def test_pane(
 
     assert __session is not None
 
-    __window = __session.attached_window
+    __window = __session.active_window
     __window.split_window()
     __pane = __window.split_window()
     __window.select_layout("main-vertical")

@@ -173,14 +173,14 @@ Window(@... 2:ha in the bg, Session($1 ...))
 Close window:
 
 ```python
->>> w = session.attached_window
+>>> w = session.active_window
 >>> w.kill()
 ```
 
 Grab remaining tmux window:
 
 ```python
->>> window = session.attached_window
+>>> window = session.active_window
 >>> window.split_window(attach=False)
 Pane(%2 Window(@1 1:... Session($1 ...)))
 ```

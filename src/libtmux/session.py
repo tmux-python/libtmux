@@ -52,7 +52,7 @@ class Session(Obj, EnvironmentMixin):
     >>> session.windows
     [Window(@1 ...:..., Session($1 ...)]
 
-    >>> session.attached_window
+    >>> session.active_window
     Window(@1 ...:..., Session($1 ...)
 
     >>> session.attached_pane
@@ -347,7 +347,7 @@ class Session(Obj, EnvironmentMixin):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        return self.attached_window
+        return self.active_window
 
     #
     # Computed properties
@@ -631,7 +631,7 @@ class Session(Obj, EnvironmentMixin):
     @property
     def attached_pane(self) -> t.Optional["Pane"]:
         """Return active :class:`Pane` object."""
-        return self.attached_window.attached_pane
+        return self.active_window.attached_pane
 
     #
     # Dunder
