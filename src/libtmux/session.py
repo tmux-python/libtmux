@@ -355,9 +355,7 @@ class Session(Obj, EnvironmentMixin):
     @property
     def attached_window(self) -> "Window":
         """Return active :class:`Window` object."""
-        active_windows = [
-            window for window in self.windows if window.window_active == "1"
-        ]
+        active_windows = self.windows.filter(window_active="1")
 
         if len(active_windows) == 1:
             return next(iter(active_windows))
