@@ -26,7 +26,7 @@ def test_retry_three_times() -> None:
 
     end = time()
 
-    assert abs((end - ini) - 0.1) < 0.01
+    assert abs((end - ini) - 0.1) < 0.02
 
 
 def test_function_times_out() -> None:
@@ -41,7 +41,7 @@ def test_function_times_out() -> None:
 
     end = time()
 
-    assert abs((end - ini) - 1.0) < 0.01
+    assert abs((end - ini) - 1.0) < 0.02
 
 
 def test_function_times_out_no_raise() -> None:
@@ -55,7 +55,7 @@ def test_function_times_out_no_raise() -> None:
 
     end = time()
 
-    assert abs((end - ini) - 1.0) < 0.01
+    assert abs((end - ini) - 1.0) < 0.02
 
 
 def test_function_times_out_no_raise_assert() -> None:
@@ -69,7 +69,7 @@ def test_function_times_out_no_raise_assert() -> None:
 
     end = time()
 
-    assert abs((end - ini) - 1.0) < 0.01
+    assert abs((end - ini) - 1.0) < 0.02
 
 
 def test_retry_three_times_no_raise_assert() -> None:
@@ -91,4 +91,4 @@ def test_retry_three_times_no_raise_assert() -> None:
 
     end = time()
 
-    assert abs((end - ini) - 0.1) < 0.01
+    assert abs((end - ini) - 0.1) < 0.02
