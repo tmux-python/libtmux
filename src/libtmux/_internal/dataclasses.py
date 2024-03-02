@@ -4,6 +4,7 @@ Note
 ----
 This is an internal API not covered by versioning policy.
 """
+
 import dataclasses
 import typing as t
 from operator import attrgetter

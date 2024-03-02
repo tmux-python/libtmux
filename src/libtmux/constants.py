@@ -1,4 +1,5 @@
 """Constant variables for libtmux."""
+
 import enum
 import typing as t
 

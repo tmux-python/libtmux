@@ -1,4 +1,5 @@
 """Test for libtmux Session object."""
+
 import logging
 import shutil
 import typing as t

@@ -1,4 +1,5 @@
 """Tests for libtmux TmuxRelationalObject and TmuxMappingObject."""
+
 import logging
 
 from libtmux.pane import Pane

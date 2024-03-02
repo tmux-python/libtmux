@@ -4,6 +4,7 @@ libtmux.common
 ~~~~~~~~~~~~~~
 
 """
+
 import logging
 import re
 import shutil

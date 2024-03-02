@@ -1,4 +1,5 @@
 """Tests for version comparison."""
+
 import operator
 import typing as t
 from contextlib import nullcontext as does_not_raise

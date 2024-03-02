@@ -1,4 +1,5 @@
 """Tests for libtmux's testing utilities."""
+
 from time import time
 
 import pytest

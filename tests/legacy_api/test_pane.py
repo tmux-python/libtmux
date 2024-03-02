@@ -1,4 +1,5 @@
 """Tests for libtmux Pane object."""
+
 import logging
 import shutil
 

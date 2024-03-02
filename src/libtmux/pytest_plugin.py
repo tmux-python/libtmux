@@ -1,4 +1,5 @@
 """libtmux pytest plugin."""
+
 import contextlib
 import getpass
 import logging

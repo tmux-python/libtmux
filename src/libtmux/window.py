@@ -4,6 +4,7 @@ libtmux.window
 ~~~~~~~~~~~~~~
 
 """
+
 import dataclasses
 import logging
 import pathlib

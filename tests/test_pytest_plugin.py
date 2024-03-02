@@ -1,4 +1,5 @@
 """Tests for libtmux pytest plugin."""
+
 import textwrap
 
 import pytest

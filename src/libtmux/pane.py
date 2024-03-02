@@ -4,6 +4,7 @@ libtmux.pane
 ~~~~~~~~~~~~
 
 """
+
 import dataclasses
 import logging
 import typing as t
@@ -336,12 +337,10 @@ class Pane(Obj):
         self,
         cmd: str,
         get_text: "t.Literal[True]",
-    ) -> t.Union[str, t.List[str]]:
-        ...
+    ) -> t.Union[str, t.List[str]]: ...
 
     @overload
-    def display_message(self, cmd: str, get_text: "t.Literal[False]") -> None:
-        ...
+    def display_message(self, cmd: str, get_text: "t.Literal[False]") -> None: ...
 
     def display_message(
         self,

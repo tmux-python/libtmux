@@ -1,4 +1,5 @@
 """libtmux, a typed, pythonic API wrapper for the tmux terminal multiplexer."""
+
 from .__about__ import (
     __author__,
     __copyright__,

@@ -7,6 +7,7 @@ for pytester only being available via the root directory.
 See "pytest_plugins in non-top-level conftest files" in
 https://docs.pytest.org/en/stable/deprecations.html
 """
+
 import pathlib
 import shutil
 import typing as t

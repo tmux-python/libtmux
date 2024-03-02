@@ -1,4 +1,5 @@
 """Tests for utility functions in libtmux."""
+
 import re
 import sys
 import typing as t

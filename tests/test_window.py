@@ -1,4 +1,5 @@
 """Test for libtmux Window object."""
+
 import logging
 import shutil
 import time

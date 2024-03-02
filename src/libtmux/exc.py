@@ -4,6 +4,7 @@ libtmux.exc
 ~~~~~~~~~~~
 
 """
+
 import typing as t
 
 from libtmux._internal.query_list import ObjectDoesNotExist

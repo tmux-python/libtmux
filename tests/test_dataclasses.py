@@ -1,4 +1,5 @@
 """Tests for libtmux object model, querying and traversal, etc."""
+
 import pathlib
 import typing as t
 
