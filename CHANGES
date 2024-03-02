@@ -15,6 +15,14 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Packaging
+
+- Add implicit imports to `__init__.py` (#531), thank you @ssbarnea.
+
+### Development
+
+- ruff 0.2.2 -> 0.3.0
+
 ## libtmux 0.31.0 (2024-02-17)
 
 ### Cleanups (#527)
