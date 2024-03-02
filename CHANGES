@@ -15,6 +15,12 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Development
+
+- poetry: 1.7.1 -> 1.8.1
+
+  See also: https://github.com/python-poetry/poetry/blob/1.8.1/CHANGELOG.md
+
 ## libtmux 0.32.0 (2024-03-01)
 
 _Maintenance only, no bug fixes or new features_
