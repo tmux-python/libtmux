@@ -50,10 +50,10 @@ jobs:
         run: |
           poetry install --with=test,coverage,lint
 
-      - name: Lint with ruff
-        run: poetry run ruff .
+      - name: Lint with ruff check
+        run: poetry run ruff check .
 
-      - name: Format with ruff
+      - name: Format with ruff format
         run: poetry run ruff format . --check
 
       - name: Lint with mypy
