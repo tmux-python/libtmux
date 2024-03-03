@@ -146,6 +146,22 @@ def handle_option_error(error: str) -> t.Type[exc.OptionError]:
     ------
     :exc:`exc.OptionError`, :exc:`exc.UnknownOption`, :exc:`exc.InvalidOption`,
     :exc:`exc.AmbiguousOption`
+
+    Examples
+    --------
+    >>> result = server.cmd(
+    ...     'set-option',
+    ...     'unknown-option-name',
+    ... )
+
+    >>> bool(isinstance(result.stderr, list) and len(result.stderr))
+    True
+
+    >>> import pytest
+    >>> from libtmux import exc
+
+    >>> with pytest.raises(exc.OptionError):
+    ...     handle_option_error(result.stderr[0])
     """
     if "unknown option" in error:
         raise exc.UnknownOption(error)
