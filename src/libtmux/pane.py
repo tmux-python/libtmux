@@ -7,15 +7,17 @@ libtmux.pane
 
 import dataclasses
 import logging
+import pathlib
 import typing as t
 import warnings
 from typing import overload
 
-from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     ResizeAdjustmentDirection,
 )
+from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import Obj, fetch_obj
 
 from . import exc
@@ -483,47 +485,132 @@ class Pane(Obj):
             raise exc.PaneNotFound(pane_id=self.pane_id)
         return pane
 
-    def split_window(
+    def split(
         self,
-        attach: bool = False,
         start_directory: t.Optional[str] = None,
+        attach: bool = False,
         vertical: bool = True,
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
         percent: t.Optional[int] = None,  # deprecated
         environment: t.Optional[t.Dict[str, str]] = None,
-    ) -> "Pane":  # New Pane, not self
-        """Split window at pane and return newly created :class:`Pane`.
+    ) -> "Pane":
+        """Split window and return the created :class:`Pane`.
+
+        Used for splitting window and holding in a python object.
 
         Parameters
         ----------
         attach : bool, optional
-            Attach / select pane after creation.
+            make new window the current window after creating it, default
+            True.
         start_directory : str, optional
-            specifies the working directory in which the new pane is created.
+            specifies the working directory in which the new window is created.
         vertical : bool, optional
             split vertically
+        shell : str, optional
+            execute a command on splitting the window.  The pane will close
+            when the command exits.
+
+            NOTE: When this command exits the pane will close.  This feature
+            is useful for long-running processes where the closing of the
+            window upon completion is desired.
+        size: int, optional
+            Cell/row or percentage to occupy with respect to current window.
         percent: int, optional
-            percentage to occupy with respect to current pane
+            Deprecated in favor of size. Percentage to occupy with respect to current
+            window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
 
         Notes
         -----
+        :term:`tmux(1)` will move window to the new pane if the
+        ``split-window`` target is off screen. tmux handles the ``-d`` the
+        same way as ``new-window`` and ``attach`` in
+        :class:`Session.new_window`.
+
+        By default, this will make the window the pane is created in
+        active. To remain on the same window and split the pane in another
+        target window, pass in ``attach=False``.
+
+        .. versionchanged:: 0.28.0
+
+           ``attach`` default changed from ``True`` to ``False``.
+
         .. deprecated:: 0.28.0
 
            ``percent=25`` deprecated in favor of ``size="25%"``.
         """
-        return self.window.split_window(
-            target=self.pane_id,
-            attach=attach,
-            start_directory=start_directory,
-            vertical=vertical,
-            shell=shell,
-            size=size,
-            percent=percent,
-            environment=environment,
-        )
+        tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
+
+        tmux_args: t.Tuple[str, ...] = ()
+
+        if vertical:
+            tmux_args += ("-v",)
+        else:
+            tmux_args += ("-h",)
+
+        if size is not None:
+            if has_lt_version("3.1"):
+                if isinstance(size, str) and size.endswith("%"):
+                    tmux_args += (f'-p{str(size).rstrip("%")}',)
+                else:
+                    warnings.warn(
+                        'Ignored size. Use percent in tmux < 3.1, e.g. "size=50%"',
+                        stacklevel=2,
+                    )
+            else:
+                tmux_args += (f"-l{size}",)
+
+        if percent is not None:
+            # Deprecated in 3.1 in favor of -l
+            warnings.warn(
+                f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
+                + ' ("-l" flag) in tmux 3.1+.',
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            tmux_args += (f"-p{percent}",)
+
+        tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
+
+        if start_directory is not None:
+            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
+            start_path = pathlib.Path(start_directory).expanduser()
+            tmux_args += (f"-c{start_path}",)
+
+        if not attach:
+            tmux_args += ("-d",)
+
+        if environment:
+            if has_gte_version("3.0"):
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Environment flag ignored, tmux 3.0 or newer required.",
+                )
+
+        if shell:
+            tmux_args += (shell,)
+
+        pane_cmd = self.cmd("split-window", *tmux_args)
+
+        # tmux < 1.7. This is added in 1.7.
+        if pane_cmd.stderr:
+            if "pane too small" in pane_cmd.stderr:
+                raise exc.LibTmuxException(pane_cmd.stderr)
+
+            raise exc.LibTmuxException(
+                pane_cmd.stderr, self.__dict__, self.window.panes
+            )
+
+        pane_output = pane_cmd.stdout[0]
+
+        pane_formatters = dict(zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR)))
+
+        return self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
 
     """
     Commands (helpers)
@@ -636,6 +723,52 @@ class Pane(Obj):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    def split_window(
+        self,
+        attach: bool = False,
+        start_directory: t.Optional[str] = None,
+        vertical: bool = True,
+        shell: t.Optional[str] = None,
+        size: t.Optional[t.Union[str, int]] = None,
+        percent: t.Optional[int] = None,  # deprecated
+        environment: t.Optional[t.Dict[str, str]] = None,
+    ) -> "Pane":  # New Pane, not self
+        """Split window at pane and return newly created :class:`Pane`.
+
+        Parameters
+        ----------
+        attach : bool, optional
+            Attach / select pane after creation.
+        start_directory : str, optional
+            specifies the working directory in which the new pane is created.
+        vertical : bool, optional
+            split vertically
+        percent: int, optional
+            percentage to occupy with respect to current pane
+        environment: dict, optional
+            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+
+        Notes
+        -----
+        .. deprecated:: 0.33
+
+           Deprecated in favor of :meth:`.split`.
+        """
+        warnings.warn(
+            "Pane.split_window() is deprecated in favor of Pane.split()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.split(
+            attach=attach,
+            start_directory=start_directory,
+            vertical=vertical,
+            shell=shell,
+            size=size,
+            percent=percent,
+            environment=environment,
+        )
+
     def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
 
