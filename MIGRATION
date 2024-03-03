@@ -25,6 +25,13 @@ _Detailed migration steps for the next version will be posted here._
 
 <!-- To the maintainers and contributors: please add migration details for the upcoming release here -->
 
+## 0.33.0: Deprecations for splitting (2024-03-03)
+
+### Deprecations (#532)
+
+- `Window.split_window()` to {meth}`Window.split()`
+- `Pane.split_window()` to {meth}`Pane.split()`
+
 ## 0.31.0: Renaming and command cleanup (2024-02-17)
 
 ### Cleanups (#527)

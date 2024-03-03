@@ -15,6 +15,39 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Breaking changes
+
+#### Improved new sessions (#532)
+
+- `Session.new_window()` to {meth}`Session.new_window()`
+
+  - Learned `direction`, via {class}`~libtmux.constants.WindowDirection`).
+
+#### Improved window splitting (#532)
+
+- `Window.split_window()` to {meth}`Window.split()`
+
+  - Deprecate `Window.split_window()`
+
+- `Pane.split_window()` to {meth}`Pane.split()`
+
+  - Deprecate `Pane.split_window()`
+  - Learned `direction`, via {class}`~libtmux.constants.PaneDirection`).
+
+    - Deprecate `vertical` and `horizontal` in favor of `direction`.
+
+  - Learned `zoom`
+
+#### Tweak: Pane position (#532)
+
+It's now possible to retrieve the position of a pane in a window via a
+`bool` helper::
+
+- {attr}`Pane.at_left`
+- {attr}`Pane.at_right`
+- {attr}`Pane.at_bottom`
+- {attr}`Pane.at_right`
+
 ### Development
 
 - poetry: 1.7.1 -> 1.8.1
