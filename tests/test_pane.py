@@ -223,3 +223,36 @@ def test_resize_pane(
     )
     pane_height_expanded = int(pane.pane_height)
     assert pane_height_before < pane_height_expanded
+
+
+def test_split_pane_size(session: Session) -> None:
+    """Pane.split()."""
+    window = session.new_window(window_name="split window size")
+    window.resize(height=100, width=100)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.1"):
+        short_pane = pane.split(size=10)
+        assert short_pane.pane_height == "10"
+
+        narrow_pane = pane.split(vertical=False, size=10)
+        assert narrow_pane.pane_width == "10"
+
+        new_pane = pane.split(size="10%")
+        assert new_pane.pane_height == "8"
+
+        new_pane = short_pane.split(vertical=False, size="10%")
+        assert new_pane.pane_width == "10"
+    else:
+        window_height_before = (
+            int(window.window_height) if isinstance(window.window_height, str) else 0
+        )
+        window_width_before = (
+            int(window.window_width) if isinstance(window.window_width, str) else 0
+        )
+        new_pane = pane.split(size="10%")
+        assert new_pane.pane_height == str(int(window_height_before * 0.1))
+
+        new_pane = new_pane.split(vertical=False, size="10%")
+        assert new_pane.pane_width == str(int(window_width_before * 0.1))
