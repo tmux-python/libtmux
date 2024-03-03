@@ -99,7 +99,7 @@ def test_find_where_multiple_infos(server: Server, session: Session) -> None:
 def test_where(server: Server, session: Session) -> None:
     """Test self.where() returns matching objects."""
     window = session.active_window
-    window.split_window()  # create second pane
+    window.split()  # create second pane
 
     for session in server.sessions:
         session_id = session.session_id
@@ -156,7 +156,7 @@ def test_filter(server: Server) -> None:
     sess = server.new_session("test")
     window = sess.active_window
 
-    window.split_window()  # create second pane
+    window.split()  # create second pane
 
     for session in server.sessions:
         session_id = session.session_id

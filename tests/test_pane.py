@@ -28,7 +28,7 @@ def test_send_keys(session: Session) -> None:
 def test_set_height(session: Session) -> None:
     """Verify Pane.set_height()."""
     window = session.new_window(window_name="test_set_height")
-    window.split_window()
+    window.split()
     pane1 = window.active_pane
     assert pane1 is not None
     pane1_height = pane1.pane_height
@@ -42,7 +42,7 @@ def test_set_height(session: Session) -> None:
 def test_set_width(session: Session) -> None:
     """Verify Pane.set_width()."""
     window = session.new_window(window_name="test_set_width")
-    window.split_window()
+    window.split()
 
     window.select_layout("main-vertical")
     pane1 = window.active_pane
@@ -144,8 +144,8 @@ def test_resize_pane(
     session.cmd("detach-client", "-s")
 
     window = session.active_window
-    pane = window.split_window(attach=False)
-    window.split_window(vertical=True, attach=False)
+    pane = window.split(attach=False)
+    window.split(vertical=True, attach=False)
 
     assert pane is not None
 

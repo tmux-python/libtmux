@@ -149,7 +149,7 @@ Create a pane from a window:
 '%2'
 ```
 
-Raw output directly to a {class}`Pane` (in practice, you'd use {meth}`Window.split_window()`):
+Raw output directly to a {class}`Pane` (in practice, you'd use {meth}`Window.split()`):
 
 ```python
 >>> Pane.from_pane_id(pane_id=window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
@@ -312,10 +312,10 @@ to grab our current window.
 
 `window` now has access to all of the objects inside of {class}`Window`.
 
-Let's create a pane, {meth}`Window.split_window`:
+Let's create a pane, {meth}`Window.split`:
 
 ```python
->>> window.split_window(attach=False)
+>>> window.split(attach=False)
 Pane(%2 Window(@1 ...:..., Session($1 ...)))
 ```
 
@@ -341,7 +341,7 @@ You have two ways you can move your cursor to new sessions, windows and panes.
 For one, arguments such as `attach=False` can be omittted.
 
 ```python
->>> pane = window.split_window()
+>>> pane = window.split()
 ```
 
 This gives you the {class}`Pane` along with moving the cursor to a new window. You
@@ -349,7 +349,7 @@ can also use the `.select_*` available on the object, in this case the pane has
 {meth}`Pane.select()`.
 
 ```python
->>> pane = window.split_window(attach=False)
+>>> pane = window.split(attach=False)
 ```
 
 ```python
@@ -371,7 +371,7 @@ As long as you have the object, or are iterating through a list of them, you can
 
 ```python
 >>> window = session.new_window(attach=False, window_name="test")
->>> pane = window.split_window(attach=False)
+>>> pane = window.split(attach=False)
 >>> pane.send_keys('echo hey', enter=False)
 ```
 

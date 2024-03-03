@@ -41,8 +41,8 @@ def test_pane(
     assert __session is not None
 
     __window = __session.active_window
-    __window.split_window()
-    __pane = __window.split_window()
+    __window.split()
+    __pane = __window.split()
     __window.select_layout("main-vertical")
 
     assert __pane is not None
@@ -125,12 +125,12 @@ def test_pane(
     #
 
     # Window-level
-    new_pane = window.split_window()
+    new_pane = window.split()
     assert new_pane.pane_id != pane.pane_id
     assert new_pane.window_id == window.window_id
 
     # Pane-level
-    new_pane_2 = new_pane.split_window()
+    new_pane_2 = new_pane.split()
     assert new_pane_2.pane_id != new_pane.pane_id
     assert new_pane_2.window_id == new_pane.window_id
 
