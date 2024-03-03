@@ -7,7 +7,6 @@ libtmux.window
 
 import dataclasses
 import logging
-import pathlib
 import shlex
 import typing as t
 import warnings
@@ -22,8 +21,7 @@ from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
 from . import exc
-from .common import PaneDict, WindowOptionDict, handle_option_error, has_lt_version
-from .formats import FORMAT_SEPARATOR
+from .common import PaneDict, WindowOptionDict, handle_option_error
 
 if t.TYPE_CHECKING:
     from .server import Server
@@ -207,9 +205,7 @@ class Window(Obj):
         size: t.Optional[t.Union[str, int]] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
     ) -> "Pane":
-        """Split window and return the created :class:`Pane`.
-
-        Used for splitting window and holding in a python object.
+        """Split window on active pane and return the created :class:`Pane`.
 
         Parameters
         ----------
@@ -218,8 +214,6 @@ class Window(Obj):
             True.
         start_directory : str, optional
             specifies the working directory in which the new window is created.
-        target : str
-            ``target_pane`` to split.
         vertical : str
             split vertically
         shell : str, optional
@@ -253,74 +247,15 @@ class Window(Obj):
 
            ``percent=25`` deprecated in favor of ``size="25%"``.
         """
-        tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
-
-        tmux_args: t.Tuple[str, ...] = ()
-
-        if target is not None:
-            tmux_args += ("-t%s" % target,)
-        else:
-            active_pane = self.active_pane or self.panes[0]
-            if len(self.panes):
-                tmux_args += (
-                    f"-t{self.session_id}:{self.window_id}.{active_pane.pane_index}",
-                )
-            else:
-                tmux_args += (f"-t{self.session_id}:{self.window_id}",)
-
-        if vertical:
-            tmux_args += ("-v",)
-        else:
-            tmux_args += ("-h",)
-
-        if size is not None:
-            if has_lt_version("3.1"):
-                if isinstance(size, str) and size.endswith("%"):
-                    tmux_args += (f'-p{str(size).rstrip("%")}',)
-                else:
-                    warnings.warn(
-                        'Ignored size. Use percent in tmux < 3.1, e.g. "size=50%"',
-                        stacklevel=2,
-                    )
-            else:
-                tmux_args += (f"-l{size}",)
-
-        tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
-
-        if start_directory is not None:
-            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
-            start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (f"-c{start_path}",)
-
-        if not attach:
-            tmux_args += ("-d",)
-
-        if environment:
-            if has_gte_version("3.0"):
-                for k, v in environment.items():
-                    tmux_args += (f"-e{k}={v}",)
-            else:
-                logger.warning(
-                    "Environment flag ignored, tmux 3.0 or newer required.",
-                )
-
-        if shell:
-            tmux_args += (shell,)
-
-        pane_cmd = self.cmd("split-window", *tmux_args)
-
-        # tmux < 1.7. This is added in 1.7.
-        if pane_cmd.stderr:
-            if "pane too small" in pane_cmd.stderr:
-                raise exc.LibTmuxException(pane_cmd.stderr)
-
-            raise exc.LibTmuxException(pane_cmd.stderr, self.__dict__, self.panes)
-
-        pane_output = pane_cmd.stdout[0]
-
-        pane_formatters = dict(zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR)))
-
-        return Pane.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
+        active_pane = self.active_pane or self.panes[0]
+        return active_pane.split(
+            start_directory=start_directory,
+            attach=attach,
+            vertical=vertical,
+            shell=shell,
+            size=size,
+            environment=environment,
+        )
 
     def resize(
         self,
