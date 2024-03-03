@@ -197,7 +197,7 @@ class Window(Obj):
 
         return self.active_pane
 
-    def split_window(
+    def split(
         self,
         target: t.Optional[t.Union[int, str]] = None,
         start_directory: t.Optional[str] = None,
@@ -205,7 +205,6 @@ class Window(Obj):
         vertical: bool = True,
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
-        percent: t.Optional[int] = None,  # deprecated
         environment: t.Optional[t.Dict[str, str]] = None,
     ) -> "Pane":
         """Split window and return the created :class:`Pane`.
@@ -232,9 +231,6 @@ class Window(Obj):
             window upon completion is desired.
         size: int, optional
             Cell/row or percentage to occupy with respect to current window.
-        percent: int, optional
-            Deprecated in favor of size. Percentage to occupy with respect to current
-            window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
 
@@ -264,9 +260,10 @@ class Window(Obj):
         if target is not None:
             tmux_args += ("-t%s" % target,)
         else:
+            active_pane = self.active_pane or self.panes[0]
             if len(self.panes):
                 tmux_args += (
-                    f"-t{self.session_id}:{self.window_id}.{self.panes[0].pane_index}",
+                    f"-t{self.session_id}:{self.window_id}.{active_pane.pane_index}",
                 )
             else:
                 tmux_args += (f"-t{self.session_id}:{self.window_id}",)
@@ -287,16 +284,6 @@ class Window(Obj):
                     )
             else:
                 tmux_args += (f"-l{size}",)
-
-        if percent is not None:
-            # Deprecated in 3.1 in favor of -l
-            warnings.warn(
-                f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
-                + ' ("-l" flag) in tmux 3.1+.',
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
-            tmux_args += (f"-p{percent}",)
 
         tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
 
@@ -833,6 +820,60 @@ class Window(Obj):
     #
     # Legacy: Redundant stuff we want to remove
     #
+    def split_window(
+        self,
+        target: t.Optional[t.Union[int, str]] = None,
+        start_directory: t.Optional[str] = None,
+        attach: bool = False,
+        vertical: bool = True,
+        shell: t.Optional[str] = None,
+        size: t.Optional[t.Union[str, int]] = None,
+        percent: t.Optional[int] = None,  # deprecated
+        environment: t.Optional[t.Dict[str, str]] = None,
+    ) -> "Pane":
+        """Split window and return the created :class:`Pane`.
+
+        Notes
+        -----
+        .. deprecated:: 0.33.0
+
+           Deprecated in favor of :meth:`.split()`.
+
+        .. versionchanged:: 0.28.0
+
+           ``attach`` default changed from ``True`` to ``False``.
+
+        .. deprecated:: 0.28.0
+
+           ``percent=25`` deprecated in favor of ``size="25%"``.
+        """
+        warnings.warn(
+            "Window.split_window() is deprecated in favor of Window.split()",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+
+        if percent is not None:
+            # Deprecated in 3.1 in favor of -l
+            warnings.warn(
+                f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
+                + ' ("-l" flag) in tmux 3.1+.',
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            if size is None:
+                size = f"{str(percent).rstrip('%')}%"
+
+        return self.split(
+            target=target,
+            start_directory=start_directory,
+            attach=attach,
+            vertical=vertical,
+            shell=shell,
+            size=size,
+            environment=environment,
+        )
+
     @property
     def attached_pane(self) -> t.Optional["Pane"]:
         """Return attached :class:`Pane`.
