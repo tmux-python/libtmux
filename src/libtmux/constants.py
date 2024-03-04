@@ -19,3 +19,16 @@ RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP: t.Dict[ResizeAdjustmentDirection, str] = {
     ResizeAdjustmentDirection.Left: "-L",
     ResizeAdjustmentDirection.Right: "-R",
 }
+
+
+class WindowDirection(enum.Enum):
+    """Used for *adjustment* in :meth:`Session.new_window()`."""
+
+    Before = "BEFORE"
+    After = "AFTER"
+
+
+WINDOW_DIRECTION_FLAG_MAP: t.Dict[WindowDirection, str] = {
+    WindowDirection.Before: "-b",
+    WindowDirection.After: "-a",
+}
