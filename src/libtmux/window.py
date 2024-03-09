@@ -16,6 +16,7 @@ from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     ResizeAdjustmentDirection,
+    WindowDirection,
 )
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
@@ -626,6 +627,65 @@ class Window(Obj):
             self.refresh()
 
         return self
+
+    def new_window(
+        self,
+        window_name: t.Optional[str] = None,
+        start_directory: None = None,
+        attach: bool = False,
+        window_index: str = "",
+        window_shell: t.Optional[str] = None,
+        environment: t.Optional[t.Dict[str, str]] = None,
+        direction: t.Optional[WindowDirection] = None,
+    ) -> "Window":
+        """Create new window respective of current window's position.
+
+        See Also
+        --------
+        :meth:`Session.new_window()`
+
+        Examples
+        --------
+        .. ::
+            >>> import pytest
+            >>> from libtmux.common import has_lt_version
+            >>> if has_lt_version('3.2'):
+            ...     pytest.skip('This doctest requires tmux 3.2 or newer')
+        >>> window_initial = session.new_window(window_name='Example')
+        >>> window_initial
+        Window(@... 2:Example, Session($1 libtmux_...))
+        >>> window_initial.window_index
+        '2'
+
+        >>> window_before = window_initial.new_window(
+        ... window_name='Window before', direction=WindowDirection.Before)
+        >>> window_initial.refresh()
+        >>> window_before
+        Window(@... 2:Window before, Session($1 libtmux_...))
+        >>> window_initial
+        Window(@... 3:Example, Session($1 libtmux_...))
+
+        >>> window_after = window_initial.new_window(
+        ... window_name='Window after', direction=WindowDirection.After)
+        >>> window_initial.refresh()
+        >>> window_after.refresh()
+        >>> window_after
+        Window(@... 4:Window after, Session($1 libtmux_...))
+        >>> window_initial
+        Window(@... 3:Example, Session($1 libtmux_...))
+        >>> window_before
+        Window(@... 2:Window before, Session($1 libtmux_...))
+        """
+        return self.session.new_window(
+            window_name=window_name,
+            start_directory=start_directory,
+            attach=attach,
+            window_index=window_index,
+            window_shell=window_shell,
+            environment=environment,
+            direction=direction,
+            target_window=self.window_id,
+        )
 
     #
     # Climbers
