@@ -762,12 +762,9 @@ class Window(Obj):
 
     def __repr__(self) -> str:
         """Representation of :class:`Window` object."""
-        return "{}({} {}:{}, {})".format(
-            self.__class__.__name__,
-            self.window_id,
-            self.window_index,
-            self.window_name,
-            self.session,
+        return (
+            f"{self.__class__.__name__}({self.window_id} "
+            + f"{self.window_index}:{self.window_name}, {self.session})"
         )
 
     #

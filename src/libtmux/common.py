@@ -411,11 +411,9 @@ def has_minimum_version(raises: bool = True) -> bool:
     if get_version() < LooseVersion(TMUX_MIN_VERSION):
         if raises:
             msg = (
-                "libtmux only supports tmux {} and greater. This system"
-                " has {} installed. Upgrade your tmux to use libtmux.".format(
-                    TMUX_MIN_VERSION,
-                    get_version(),
-                )
+                f"libtmux only supports tmux {TMUX_MIN_VERSION} and greater. This "
+                + f"system has {get_version()} installed. Upgrade your tmux to use "
+                + "libtmux."
             )
             raise exc.VersionTooLow(msg)
         else:
