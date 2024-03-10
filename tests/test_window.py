@@ -513,6 +513,37 @@ def test_resize(
 
 
 @pytest.mark.skipif(
+    has_lt_version("3.2"),
+    reason="Only 3.2+ has the -a and -b flag on new-window",
+)
+def test_new_window_with_direction(
+    session: Session,
+) -> None:
+    """Verify new window with direction."""
+    window = session.active_window
+    window.refresh()
+
+    window_initial = session.new_window(window_name="Example")
+    assert window_initial.window_index == "2"
+
+    window_before = window_initial.new_window(
+        window_name="Window before", direction=WindowDirection.Before
+    )
+    window_initial.refresh()
+    assert window_before.window_index == "2"
+    assert window_initial.window_index == "3"
+
+    window_after = window_initial.new_window(
+        window_name="Window after", direction=WindowDirection.After
+    )
+    window_initial.refresh()
+    window_after.refresh()
+    assert window_after.window_index == "4"
+    assert window_initial.window_index == "3"
+    assert window_before.window_index == "2"
+
+
+@pytest.mark.skipif(
     has_gte_version("3.2"),
     reason="Only 3.2+ has the -a and -b flag on new-window",
 )
