@@ -15,6 +15,7 @@ from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
+    PaneDirection,
     ResizeAdjustmentDirection,
     WindowDirection,
 )
@@ -201,7 +202,8 @@ class Window(Obj):
         target: t.Optional[t.Union[int, str]] = None,
         start_directory: t.Optional[str] = None,
         attach: bool = False,
-        vertical: bool = True,
+        direction: t.Optional[PaneDirection] = None,
+        full_window_split: t.Optional[bool] = None,
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
@@ -215,8 +217,10 @@ class Window(Obj):
             True.
         start_directory : str, optional
             specifies the working directory in which the new window is created.
-        vertical : str
-            split vertically
+        direction : PaneDirection, optional
+            split in direction. If none is specified, assume down.
+        full_window_split: bool, optional
+            split across full window width or height, rather than active pane.
         shell : str, optional
             execute a command on splitting the window.  The pane will close
             when the command exits.
@@ -228,31 +232,13 @@ class Window(Obj):
             Cell/row or percentage to occupy with respect to current window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
-
-        Notes
-        -----
-        :term:`tmux(1)` will move window to the new pane if the
-        ``split-window`` target is off screen. tmux handles the ``-d`` the
-        same way as ``new-window`` and ``attach`` in
-        :class:`Session.new_window`.
-
-        By default, this will make the window the pane is created in
-        active. To remain on the same window and split the pane in another
-        target window, pass in ``attach=False``.
-
-        .. versionchanged:: 0.28.0
-
-           ``attach`` default changed from ``True`` to ``False``.
-
-        .. deprecated:: 0.28.0
-
-           ``percent=25`` deprecated in favor of ``size="25%"``.
         """
         active_pane = self.active_pane or self.panes[0]
         return active_pane.split(
             start_directory=start_directory,
             attach=attach,
-            vertical=vertical,
+            direction=direction,
+            full_window_split=full_window_split,
             shell=shell,
             size=size,
             environment=environment,
@@ -863,7 +849,7 @@ class Window(Obj):
             target=target,
             start_directory=start_directory,
             attach=attach,
-            vertical=vertical,
+            direction=PaneDirection.Below if vertical else PaneDirection.Right,
             shell=shell,
             size=size,
             environment=environment,
