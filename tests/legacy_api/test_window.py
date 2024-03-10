@@ -159,6 +159,7 @@ def test_split_window_horizontal(session: Session) -> None:
 
 
 @pytest.mark.filterwarnings("ignore:.*deprecated in favor of Window.split()")
+@pytest.mark.filterwarnings("ignore:.*vertical is not required to pass with direction.")
 def test_split_percentage(
     session: Session,
 ) -> None:
@@ -176,6 +177,37 @@ def test_split_percentage(
     with pytest.warns(match="Deprecated in favor of size.*"):
         pane = window.split_window(percent=10)
         assert pane.pane_height == str(int(window_height_before * 0.1))
+
+
+def test_split_window_size(session: Session) -> None:
+    """Window.split_window() respects size."""
+    window = session.new_window(window_name="split_window window size")
+    window.resize(height=100, width=100)
+
+    if has_gte_version("3.1"):
+        pane = window.split_window(size=10)
+        assert pane.pane_height == "10"
+
+        pane = window.split_window(vertical=False, size=10)
+        assert pane.pane_width == "10"
+
+        pane = window.split_window(size="10%")
+        assert pane.pane_height == "8"
+
+        pane = window.split_window(vertical=False, size="10%")
+        assert pane.pane_width == "8"
+    else:
+        window_height_before = (
+            int(window.window_height) if isinstance(window.window_height, str) else 0
+        )
+        window_width_before = (
+            int(window.window_width) if isinstance(window.window_width, str) else 0
+        )
+        pane = window.split_window(size="10%")
+        assert pane.pane_height == str(int(window_height_before * 0.1))
+
+        pane = window.split_window(vertical=False, size="10%")
+        assert pane.pane_width == str(int(window_width_before * 0.1))
 
 
 @pytest.mark.parametrize(

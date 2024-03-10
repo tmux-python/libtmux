@@ -6,7 +6,7 @@ import shutil
 import pytest
 
 from libtmux.common import has_gte_version, has_lt_version
-from libtmux.constants import ResizeAdjustmentDirection
+from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,7 @@ def test_resize_pane(
 
     window = session.active_window
     pane = window.split(attach=False)
-    window.split(vertical=True, attach=False)
+    window.split(direction=PaneDirection.Above, attach=False)
 
     assert pane is not None
 
@@ -236,13 +236,13 @@ def test_split_pane_size(session: Session) -> None:
         short_pane = pane.split(size=10)
         assert short_pane.pane_height == "10"
 
-        narrow_pane = pane.split(vertical=False, size=10)
+        narrow_pane = pane.split(direction=PaneDirection.Right, size=10)
         assert narrow_pane.pane_width == "10"
 
         new_pane = pane.split(size="10%")
         assert new_pane.pane_height == "8"
 
-        new_pane = short_pane.split(vertical=False, size="10%")
+        new_pane = short_pane.split(direction=PaneDirection.Right, size="10%")
         assert new_pane.pane_width == "10"
     else:
         window_height_before = (
@@ -254,5 +254,5 @@ def test_split_pane_size(session: Session) -> None:
         new_pane = pane.split(size="10%")
         assert new_pane.pane_height == str(int(window_height_before * 0.1))
 
-        new_pane = new_pane.split(vertical=False, size="10%")
+        new_pane = new_pane.split(direction=PaneDirection.Right, size="10%")
         assert new_pane.pane_width == str(int(window_width_before * 0.1))

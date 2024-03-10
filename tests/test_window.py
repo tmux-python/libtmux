@@ -10,7 +10,11 @@ import pytest
 from libtmux import exc
 from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.common import has_gte_version, has_lt_version
-from libtmux.constants import ResizeAdjustmentDirection, WindowDirection
+from libtmux.constants import (
+    PaneDirection,
+    ResizeAdjustmentDirection,
+    WindowDirection,
+)
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -160,7 +164,7 @@ def test_split_horizontal(session: Session) -> None:
     """Window.split() splits window, returns new Pane, horizontal."""
     window_name = "test split window"
     window = session.new_window(window_name=window_name, attach=True)
-    pane = window.split(vertical=False)
+    pane = window.split(direction=PaneDirection.Right)
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
 
@@ -181,13 +185,13 @@ def test_split_size(session: Session) -> None:
         pane = window.split(size=10)
         assert pane.pane_height == "10"
 
-        pane = window.split(vertical=False, size=10)
+        pane = window.split(direction=PaneDirection.Right, size=10)
         assert pane.pane_width == "10"
 
         pane = window.split(size="10%")
         assert pane.pane_height == "8"
 
-        pane = window.split(vertical=False, size="10%")
+        pane = window.split(direction=PaneDirection.Right, size="10%")
         assert pane.pane_width == "8"
     else:
         window_height_before = (
@@ -199,7 +203,7 @@ def test_split_size(session: Session) -> None:
         pane = window.split(size="10%")
         assert pane.pane_height == str(int(window_height_before * 0.1))
 
-        pane = window.split(vertical=False, size="10%")
+        pane = window.split(direction=PaneDirection.Right, size="10%")
         assert pane.pane_width == str(int(window_width_before * 0.1))
 
 
