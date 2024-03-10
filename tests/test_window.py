@@ -10,7 +10,7 @@ import pytest
 from libtmux import exc
 from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.common import has_gte_version, has_lt_version
-from libtmux.constants import ResizeAdjustmentDirection
+from libtmux.constants import ResizeAdjustmentDirection, WindowDirection
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -510,3 +510,29 @@ def test_resize(
     )
     window_height_expanded = int(window.window_height)
     assert window_height_before < window_height_expanded
+
+
+@pytest.mark.skipif(
+    has_gte_version("3.2"),
+    reason="Only 3.2+ has the -a and -b flag on new-window",
+)
+def test_new_window_with_direction_logs_warning_for_old_tmux(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify new window with direction create a warning if tmux is too old."""
+    window = session.active_window
+    window.refresh()
+
+    window.new_window(
+        window_name="window_with_direction",
+        direction=WindowDirection.After,
+    )
+
+    assert any(
+        "Window target ignored" in record.msg for record in caplog.records
+    ), "Warning missing"
+
+    assert any(
+        "Direction flag ignored" in record.msg for record in caplog.records
+    ), "Warning missing"
