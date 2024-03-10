@@ -14,7 +14,9 @@ from typing import overload
 
 from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
+    PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
+    PaneDirection,
     ResizeAdjustmentDirection,
 )
 from libtmux.formats import FORMAT_SEPARATOR
@@ -489,15 +491,14 @@ class Pane(Obj):
         self,
         start_directory: t.Optional[str] = None,
         attach: bool = False,
-        vertical: bool = True,
+        direction: t.Optional[PaneDirection] = None,
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
-        percent: t.Optional[int] = None,  # deprecated
         environment: t.Optional[t.Dict[str, str]] = None,
+        percent: t.Optional[int] = None,  # deprecated
+        vertical: t.Optional[bool] = None,  # deprecated
     ) -> "Pane":
-        """Split window and return the created :class:`Pane`.
-
-        Used for splitting window and holding in a python object.
+        """Split window and return :class:`Pane`, by default beneath current pane.
 
         Parameters
         ----------
@@ -506,8 +507,8 @@ class Pane(Obj):
             True.
         start_directory : str, optional
             specifies the working directory in which the new window is created.
-        vertical : bool, optional
-            split vertically
+        direction : PaneDirection, optional
+            split in direction. If none is specified, assume down.
         shell : str, optional
             execute a command on splitting the window.  The pane will close
             when the command exits.
@@ -522,6 +523,8 @@ class Pane(Obj):
             window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+        vertical : bool, optional
+            split vertically, deprecated by ``direction``.
 
         Notes
         -----
@@ -533,6 +536,11 @@ class Pane(Obj):
         By default, this will make the window the pane is created in
         active. To remain on the same window and split the pane in another
         target window, pass in ``attach=False``.
+
+        .. deprecated:: 0.33.0
+
+           ``vertical=True`` deprecated in favor of
+           ``direction=PaneDirection.Below``.
 
         .. versionchanged:: 0.28.0
 
@@ -546,10 +554,26 @@ class Pane(Obj):
 
         tmux_args: t.Tuple[str, ...] = ()
 
-        if vertical:
-            tmux_args += ("-v",)
+        if direction:
+            tmux_args += tuple(PANE_DIRECTION_FLAG_MAP[direction])
+            if vertical is not None:
+                warnings.warn(
+                    "vertical is not required to pass with direction.",
+                    category=DeprecationWarning,
+                    stacklevel=2,
+                )
+        elif vertical is not None:
+            warnings.warn(
+                "vertical is deprecated in favor of direction.",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            if vertical:
+                tmux_args += ("-v",)
+            else:
+                tmux_args += ("-h",)
         else:
-            tmux_args += ("-h",)
+            tmux_args += tuple(PANE_DIRECTION_FLAG_MAP[PaneDirection.Below])
 
         if size is not None:
             if has_lt_version("3.1"):
