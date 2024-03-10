@@ -496,8 +496,6 @@ class Pane(Obj):
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
-        percent: t.Optional[int] = None,  # deprecated
-        vertical: t.Optional[bool] = None,  # deprecated
     ) -> "Pane":
         """Split window and return :class:`Pane`, by default beneath current pane.
 
@@ -521,37 +519,8 @@ class Pane(Obj):
             window upon completion is desired.
         size: int, optional
             Cell/row or percentage to occupy with respect to current window.
-        percent: int, optional
-            Deprecated in favor of size. Percentage to occupy with respect to current
-            window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
-        vertical : bool, optional
-            split vertically, deprecated by ``direction``.
-
-        Notes
-        -----
-        :term:`tmux(1)` will move window to the new pane if the
-        ``split-window`` target is off screen. tmux handles the ``-d`` the
-        same way as ``new-window`` and ``attach`` in
-        :class:`Session.new_window`.
-
-        By default, this will make the window the pane is created in
-        active. To remain on the same window and split the pane in another
-        target window, pass in ``attach=False``.
-
-        .. deprecated:: 0.33.0
-
-           ``vertical=True`` deprecated in favor of
-           ``direction=PaneDirection.Below``.
-
-        .. versionchanged:: 0.28.0
-
-           ``attach`` default changed from ``True`` to ``False``.
-
-        .. deprecated:: 0.28.0
-
-           ``percent=25`` deprecated in favor of ``size="25%"``.
         """
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 
@@ -559,22 +528,6 @@ class Pane(Obj):
 
         if direction:
             tmux_args += tuple(PANE_DIRECTION_FLAG_MAP[direction])
-            if vertical is not None:
-                warnings.warn(
-                    "vertical is not required to pass with direction.",
-                    category=DeprecationWarning,
-                    stacklevel=2,
-                )
-        elif vertical is not None:
-            warnings.warn(
-                "vertical is deprecated in favor of direction.",
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
-            if vertical:
-                tmux_args += ("-v",)
-            else:
-                tmux_args += ("-h",)
         else:
             tmux_args += tuple(PANE_DIRECTION_FLAG_MAP[PaneDirection.Below])
 
@@ -592,16 +545,6 @@ class Pane(Obj):
 
         if full_window_split:
             tmux_args += ("-f",)
-
-        if percent is not None:
-            # Deprecated in 3.1 in favor of -l
-            warnings.warn(
-                f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
-                + ' ("-l" flag) in tmux 3.1+.',
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
-            tmux_args += (f"-p{percent}",)
 
         tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
 
@@ -789,13 +732,14 @@ class Pane(Obj):
             category=DeprecationWarning,
             stacklevel=2,
         )
+        if size is None and percent is not None:
+            size = f'{str(percent).rstrip("%")}%'
         return self.split(
             attach=attach,
             start_directory=start_directory,
-            vertical=vertical,
+            direction=PaneDirection.Below if vertical else PaneDirection.Right,
             shell=shell,
             size=size,
-            percent=percent,
             environment=environment,
         )
 
