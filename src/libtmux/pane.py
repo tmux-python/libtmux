@@ -492,6 +492,7 @@ class Pane(Obj):
         start_directory: t.Optional[str] = None,
         attach: bool = False,
         direction: t.Optional[PaneDirection] = None,
+        full_window_split: t.Optional[bool] = None,
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
@@ -509,6 +510,8 @@ class Pane(Obj):
             specifies the working directory in which the new window is created.
         direction : PaneDirection, optional
             split in direction. If none is specified, assume down.
+        full_window_split: bool, optional
+            split across full window width or height, rather than active pane.
         shell : str, optional
             execute a command on splitting the window.  The pane will close
             when the command exits.
@@ -586,6 +589,9 @@ class Pane(Obj):
                     )
             else:
                 tmux_args += (f"-l{size}",)
+
+        if full_window_split:
+            tmux_args += ("-f",)
 
         if percent is not None:
             # Deprecated in 3.1 in favor of -l
