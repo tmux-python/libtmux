@@ -590,11 +590,6 @@ class Session(Obj, EnvironmentMixin):
         if window_name is not None and isinstance(window_name, str):
             window_args += ("-n", window_name)
 
-        window_args += (
-            # empty string for window_index will use the first one available
-            f"-t{self.session_id}:{window_index}",
-        )
-
         if environment:
             if has_gte_version("3.0"):
                 for k, v in environment.items():
