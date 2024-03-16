@@ -521,6 +521,59 @@ class Pane(Obj):
             Cell/row or percentage to occupy with respect to current window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+
+        Examples
+        --------
+        >>> (pane.at_left, pane.at_right,
+        ...  pane.at_top, pane.at_bottom)
+        (True, True,
+        True, True)
+
+        >>> new_pane = pane.split()
+
+        >>> (new_pane.at_left, new_pane.at_right,
+        ...  new_pane.at_top, new_pane.at_bottom)
+        (True, True,
+        False, True)
+
+        >>> right_pane = pane.split(direction=PaneDirection.Right)
+
+        >>> (right_pane.at_left, right_pane.at_right,
+        ...  right_pane.at_top, right_pane.at_bottom)
+        (False, True,
+        True, False)
+
+        >>> left_pane = pane.split(direction=PaneDirection.Left)
+
+        >>> (left_pane.at_left, left_pane.at_right,
+        ...  left_pane.at_top, left_pane.at_bottom)
+        (True, False,
+        True, False)
+
+        >>> top_pane = pane.split(direction=PaneDirection.Above)
+
+        >>> (top_pane.at_left, top_pane.at_right,
+        ...  top_pane.at_top, top_pane.at_bottom)
+        (False, False,
+        True, False)
+
+        >>> pane = session.new_window().active_pane
+
+        >>> top_pane = pane.split(direction=PaneDirection.Above, full_window_split=True)
+
+        >>> (top_pane.at_left, top_pane.at_right,
+        ...  top_pane.at_top, top_pane.at_bottom)
+        (True, True,
+        True, False)
+
+        >>> bottom_pane = pane.split(
+        ... direction=PaneDirection.Below,
+        ... full_window_split=True)
+
+        >>> (bottom_pane.at_left, bottom_pane.at_right,
+        ...  bottom_pane.at_top, bottom_pane.at_bottom)
+        (True, True,
+        False, True)
         """
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 
