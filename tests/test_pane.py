@@ -5,7 +5,7 @@ import shutil
 
 import pytest
 
-from libtmux.common import has_gte_version, has_lt_version
+from libtmux.common import has_gte_version, has_lt_version, has_lte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.session import Session
 
@@ -131,6 +131,36 @@ def test_capture_pane_end(session: Session) -> None:
     assert pane_contents == '$ printf "%s"'
     pane_contents = "\n".join(pane.capture_pane(end="-"))
     assert pane_contents == '$ printf "%s"\n$'
+
+
+@pytest.mark.skipif(
+    has_lte_version("3.1"),
+    reason="3.2 has the -Z flag on split-window",
+)
+def test_pane_split_window_zoom(
+    session: Session,
+) -> None:
+    """Verify splitting window with zoom."""
+    window_without_zoom = session.new_window(window_name="split_without_zoom")
+    initial_pane_without_zoom = window_without_zoom.active_pane
+    assert initial_pane_without_zoom is not None
+    window_with_zoom = session.new_window(window_name="split_with_zoom")
+    initial_pane_with_zoom = window_with_zoom.active_pane
+    assert initial_pane_with_zoom is not None
+    pane_without_zoom = initial_pane_without_zoom.split(
+        zoom=False,
+    )
+    pane_with_zoom = initial_pane_with_zoom.split(
+        zoom=True,
+    )
+
+    assert pane_without_zoom.width == pane_without_zoom.window_width
+    assert pane_without_zoom.height is not None
+    assert pane_without_zoom.window_height is not None
+    assert pane_without_zoom.height < pane_without_zoom.window_height
+
+    assert pane_with_zoom.width == pane_with_zoom.window_width
+    assert pane_with_zoom.height == pane_with_zoom.window_height
 
 
 @pytest.mark.skipif(
