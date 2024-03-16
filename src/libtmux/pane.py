@@ -312,7 +312,7 @@ class Pane(Obj):
 
         Examples
         --------
-        >>> pane = window.split_window(shell='sh')
+        >>> pane = window.split(shell='sh')
         >>> pane.capture_pane()
         ['$']
 
@@ -381,7 +381,7 @@ class Pane(Obj):
         --------
         Kill a pane:
 
-        >>> pane_1 = pane.split_window()
+        >>> pane_1 = pane.split()
 
         >>> pane_1 in window.panes
         True
@@ -396,10 +396,10 @@ class Pane(Obj):
         >>> pane.window.resize(height=100, width=100)
         Window(@1 1...)
 
-        >>> one_pane_to_rule_them_all = pane.split_window()
+        >>> one_pane_to_rule_them_all = pane.split()
 
-        >>> other_panes = pane.split_window(
-        ...     ), pane.split_window()
+        >>> other_panes = pane.split(
+        ...     ), pane.split()
 
         >>> all([p in window.panes for p in other_panes])
         True
@@ -440,7 +440,7 @@ class Pane(Obj):
         Examples
         --------
         >>> pane = window.active_pane
-        >>> new_pane = window.split_window()
+        >>> new_pane = window.split()
         >>> pane.refresh()
         >>> active_panes = [p for p in window.panes if p.pane_active == '1']
 
