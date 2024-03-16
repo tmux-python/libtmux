@@ -44,11 +44,16 @@ _Maintenance only, no bug fixes or new features_
 ### Renamings (#527)
 
 - `Session.attached_window` renamed to {meth}`Session.active_window`
-  - `Session.attached_window` deprecated 
+
+  - `Session.attached_window` deprecated
+
 - `Session.attached_pane` renamed to {meth}`Session.active_pane`
-  - `Session.attached_pane` deprecated 
+
+  - `Session.attached_pane` deprecated
+
 - `Window.attached_pane` renamed to {meth}`Window.active_pane`
-  - `Window.attached_pane` deprecated 
+
+  - `Window.attached_pane` deprecated
 
 ### Improvements (#527)
 
