@@ -114,7 +114,6 @@ class Obj:
     pane_top: t.Union[str, None] = None
     pane_tty: t.Union[str, None] = None
     pane_width: t.Union[str, None] = None
-
     pid: t.Union[str, None] = None
     scroll_position: t.Union[str, None] = None
     scroll_region_lower: t.Union[str, None] = None
