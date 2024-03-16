@@ -236,14 +236,27 @@ def test_split_pane_size(session: Session) -> None:
         short_pane = pane.split(size=10)
         assert short_pane.pane_height == "10"
 
+        assert short_pane.at_left
+        assert short_pane.at_right
+        assert not short_pane.at_top
+        assert short_pane.at_bottom
+
         narrow_pane = pane.split(direction=PaneDirection.Right, size=10)
         assert narrow_pane.pane_width == "10"
+
+        assert not narrow_pane.at_left
+        assert narrow_pane.at_right
+        assert narrow_pane.at_top
+        assert not narrow_pane.at_bottom
 
         new_pane = pane.split(size="10%")
         assert new_pane.pane_height == "8"
 
         new_pane = short_pane.split(direction=PaneDirection.Right, size="10%")
         assert new_pane.pane_width == "10"
+
+        assert not new_pane.at_left
+        assert new_pane.at_right
     else:
         window_height_before = (
             int(window.window_height) if isinstance(window.window_height, str) else 0
