@@ -693,6 +693,54 @@ class Pane(Obj):
         """
         return self.pane_width
 
+    @property
+    def at_top(self) -> bool:
+        """Typed, converted wrapper around :attr:`Pane.pane_at_top`.
+
+        >>> pane.pane_at_top
+        '1'
+
+        >>> pane.at_top
+        True
+        """
+        return self.pane_at_top == "1"
+
+    @property
+    def at_bottom(self) -> bool:
+        """Typed, converted wrapper around :attr:`Pane.pane_at_bottom`.
+
+        >>> pane.pane_at_bottom
+        '1'
+
+        >>> pane.at_bottom
+        True
+        """
+        return self.pane_at_bottom == "1"
+
+    @property
+    def at_left(self) -> bool:
+        """Typed, converted wrapper around :attr:`Pane.pane_at_left`.
+
+        >>> pane.pane_at_left
+        '1'
+
+        >>> pane.at_left
+        True
+        """
+        return self.pane_at_left == "1"
+
+    @property
+    def at_right(self) -> bool:
+        """Typed, converted wrapper around :attr:`Pane.pane_at_right`.
+
+        >>> pane.pane_at_right
+        '1'
+
+        >>> pane.at_right
+        True
+        """
+        return self.pane_at_right == "1"
+
     #
     # Legacy: Redundant stuff we want to remove
     #
