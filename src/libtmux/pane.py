@@ -493,6 +493,7 @@ class Pane(Obj):
         attach: bool = False,
         direction: t.Optional[PaneDirection] = None,
         full_window_split: t.Optional[bool] = None,
+        zoom: t.Optional[bool] = None,
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
@@ -510,6 +511,8 @@ class Pane(Obj):
             split in direction. If none is specified, assume down.
         full_window_split: bool, optional
             split across full window width or height, rather than active pane.
+        zoom: bool, optional
+            expand pane
         shell : str, optional
             execute a command on splitting the window.  The pane will close
             when the command exits.
@@ -598,6 +601,9 @@ class Pane(Obj):
 
         if full_window_split:
             tmux_args += ("-f",)
+
+        if zoom:
+            tmux_args += ("-Z",)
 
         tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
 

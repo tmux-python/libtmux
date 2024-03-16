@@ -204,6 +204,7 @@ class Window(Obj):
         attach: bool = False,
         direction: t.Optional[PaneDirection] = None,
         full_window_split: t.Optional[bool] = None,
+        zoom: t.Optional[bool] = None,
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
@@ -221,6 +222,8 @@ class Window(Obj):
             split in direction. If none is specified, assume down.
         full_window_split: bool, optional
             split across full window width or height, rather than active pane.
+        zoom: bool, optional
+            expand pane
         shell : str, optional
             execute a command on splitting the window.  The pane will close
             when the command exits.
@@ -239,6 +242,7 @@ class Window(Obj):
             attach=attach,
             direction=direction,
             full_window_split=full_window_split,
+            zoom=zoom,
             shell=shell,
             size=size,
             environment=environment,
