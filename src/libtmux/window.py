@@ -194,7 +194,7 @@ class Window(Obj):
         :class:`Pane`
         """
         if target_pane in ["-l", "-U", "-D", "-L", "-R"]:
-            proc = self.cmd("select-pane", target_pane, target=self.window_id)
+            proc = self.cmd("select-pane", target_pane)
         else:
             proc = self.cmd("select-pane", target=target_pane)
 
@@ -378,7 +378,7 @@ class Window(Obj):
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
 
-        proc = self.cmd(*cmd, target=f"{self.session_id}:{self.window_index}")
+        proc = self.cmd(*cmd)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -412,7 +412,6 @@ class Window(Obj):
             "set-window-option",
             option,
             value,
-            target=f"{self.session_id}:{self.window_index}",
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
@@ -920,10 +919,7 @@ class Window(Obj):
             category=DeprecationWarning,
             stacklevel=2,
         )
-        proc = self.cmd(
-            "kill-window",
-            target=f"{self.session_id}:{self.window_index}",
-        )
+        proc = self.cmd("kill-window")
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
