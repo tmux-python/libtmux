@@ -491,6 +491,7 @@ class Pane(Obj):
     def split(
         self,
         /,
+        target: t.Optional[t.Union[int, str]] = None,
         start_directory: t.Optional[str] = None,
         attach: bool = False,
         direction: t.Optional[PaneDirection] = None,
@@ -504,6 +505,8 @@ class Pane(Obj):
 
         Parameters
         ----------
+        target : optional
+            Optional, custom *target-pane*, used by :meth:`Window.split`.
         attach : bool, optional
             make new window the current window after creating it, default
             True.
@@ -616,6 +619,9 @@ class Pane(Obj):
 
         if not attach:
             tmux_args += ("-d",)
+
+        if target is not None:
+            tmux_args += (f"-t{target}",)
 
         if environment:
             if has_gte_version("3.0"):
@@ -807,6 +813,7 @@ class Pane(Obj):
     #
     def split_window(
         self,
+        target: t.Optional[t.Union[int, str]] = None,
         attach: bool = False,
         start_directory: t.Optional[str] = None,
         vertical: bool = True,
@@ -844,6 +851,7 @@ class Pane(Obj):
         if size is None and percent is not None:
             size = f'{str(percent).rstrip("%")}%'
         return self.split(
+            target=target,
             attach=attach,
             start_directory=start_directory,
             direction=PaneDirection.Below if vertical else PaneDirection.Right,

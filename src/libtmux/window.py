@@ -239,6 +239,7 @@ class Window(Obj):
         """
         active_pane = self.active_pane or self.panes[0]
         return active_pane.split(
+            target=target,
             start_directory=start_directory,
             attach=attach,
             direction=direction,
