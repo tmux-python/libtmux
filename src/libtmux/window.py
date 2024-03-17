@@ -251,6 +251,7 @@ class Window(Obj):
 
     def resize(
         self,
+        /,
         # Adjustments
         adjustment_direction: t.Optional[ResizeAdjustmentDirection] = None,
         adjustment: t.Optional[int] = None,
