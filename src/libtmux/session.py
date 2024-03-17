@@ -497,7 +497,7 @@ class Session(Obj, EnvironmentMixin):
         ------
         :exc:`exc.LibTmuxException`
         """
-        proc = self.cmd("switch-client", target=self.session_id)
+        proc = self.cmd("switch-client")
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -803,7 +803,7 @@ class Session(Obj, EnvironmentMixin):
             category=DeprecationWarning,
             stacklevel=2,
         )
-        proc = self.cmd("attach-session", target=self.session_id)
+        proc = self.cmd("attach-session")
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -824,7 +824,7 @@ class Session(Obj, EnvironmentMixin):
             category=DeprecationWarning,
             stacklevel=2,
         )
-        proc = self.cmd("kill-session", target=self.session_id)
+        proc = self.cmd("kill-session")
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
