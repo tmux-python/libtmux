@@ -15,6 +15,19 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Breaking changes
+
+#### Command target change (#919)
+
+Commands: All `cmd()` methods using custom or overridden targets must use the keyword argument
+`target`. This avoids entanglement with inner shell values that include `-t` for
+other purposes. These methods include:
+
+- {meth}`Server.cmd()`
+- {meth}`Session.cmd()`
+- {meth}`Window.cmd()`
+- {meth}`Pane.cmd()`
+
 ## libtmux 0.33.0 (2024-03-17)
 
 ### Breaking changes

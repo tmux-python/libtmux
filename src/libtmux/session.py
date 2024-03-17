@@ -141,11 +141,13 @@ class Session(Obj, EnvironmentMixin):
     #
     # Command
     #
-    def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
+    def cmd(
+        self, cmd: str, *args: t.Any, target: t.Optional[t.Union[str, int]] = None
+    ) -> tmux_cmd:
         """Execute tmux subcommand within session context.
 
-        Automatically adds ``-t`` for object's session ID to the command. Pass ``-t``
-        in args to override.
+        Automatically binds target by adding  ``-t`` for object's session ID to the
+        command. Pass ``target`` to keyword arguments to override.
 
         Examples
         --------
@@ -158,28 +160,28 @@ class Session(Obj, EnvironmentMixin):
         ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
         Window(@... ...:..., Session($1 libtmux_...))
 
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target override. By default, the target is the session ID.
+
         Returns
         -------
         :meth:`server.cmd`
 
         Notes
         -----
+        .. versionchanged:: 0.34
+
+           Passing target by ``-t`` is ignored. Use ``target`` keyword argument instead.
+
         .. versionchanged:: 0.8
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        # if -t is not set in any arg yet
-        if not any("-t" in str(x) for x in args):
-            # insert -t immediately after 1st arg, as per tmux format
-            new_args: t.Tuple[str, ...] = ()
-            assert isinstance(self.session_id, str)
-            new_args += (
-                "-t",
-                self.session_id,
-            )
-            new_args += args
-            args = new_args
-        return self.server.cmd(cmd, *args)
+        if target is None:
+            target = self.session_id
+        return self.server.cmd(cmd, *args, target=target)
 
     """
     Commands (tmux-like)
@@ -356,9 +358,9 @@ class Session(Obj, EnvironmentMixin):
         # Note that we also provide the session ID here, since cmd()
         # will not automatically add it as there is already a '-t'
         # argument provided.
-        target = f"-t{self.session_id}:{target_window}"
+        target = f"{self.session_id}:{target_window}"
 
-        proc = self.cmd("select-window", target)
+        proc = self.cmd("select-window", target=target)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -495,7 +497,7 @@ class Session(Obj, EnvironmentMixin):
         ------
         :exc:`exc.LibTmuxException`
         """
-        proc = self.cmd("switch-client", "-t%s" % self.session_id)
+        proc = self.cmd("switch-client", target=self.session_id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -653,9 +655,13 @@ class Session(Obj, EnvironmentMixin):
                     "Direction flag ignored, requires tmux 3.1 or newer.",
                 )
 
+        target: t.Optional[str] = None
+        if window_index is not None:
+            # empty string for window_index will use the first one available
+            target = f"{self.session_id}:{window_index}"
         if target_window:
             if has_gte_version("3.2"):
-                window_args += (f"-t{target_window}",)
+                target = target_window
             else:
                 logger.warning(
                     "Window target ignored, requires tmux 3.1 or newer.",
@@ -667,7 +673,7 @@ class Session(Obj, EnvironmentMixin):
         if window_shell:
             window_args += (window_shell,)
 
-        cmd = self.cmd("new-window", *window_args)
+        cmd = self.cmd("new-window", *window_args, target=target)
 
         if cmd.stderr:
             raise exc.LibTmuxException(cmd.stderr)
@@ -696,11 +702,11 @@ class Session(Obj, EnvironmentMixin):
         """
         if target_window:
             if isinstance(target_window, int):
-                target = "-t%s:%d" % (self.window_name, target_window)
+                target = "%s:%d" % (self.window_name, target_window)
             else:
-                target = "-t%s" % target_window
+                target = "%s" % target_window
 
-        proc = self.cmd("kill-window", target)
+        proc = self.cmd("kill-window", target=target)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -797,7 +803,7 @@ class Session(Obj, EnvironmentMixin):
             category=DeprecationWarning,
             stacklevel=2,
         )
-        proc = self.cmd("attach-session", "-t%s" % self.session_id)
+        proc = self.cmd("attach-session", target=self.session_id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -818,7 +824,7 @@ class Session(Obj, EnvironmentMixin):
             category=DeprecationWarning,
             stacklevel=2,
         )
-        proc = self.cmd("kill-session", "-t%s" % self.session_id)
+        proc = self.cmd("kill-session", target=self.session_id)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)

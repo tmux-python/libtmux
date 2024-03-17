@@ -174,7 +174,12 @@ class Server(EnvironmentMixin):
     #
     # Command
     #
-    def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
+    def cmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: t.Optional[t.Union[str, int]] = None,
+    ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
         Examples
@@ -207,6 +212,11 @@ class Server(EnvironmentMixin):
         ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target.
+
         Returns
         -------
         :class:`common.tmux_cmd`
@@ -217,22 +227,25 @@ class Server(EnvironmentMixin):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        cmd_args: t.List[t.Union[str, int]] = [cmd, *args]
+        svr_args: t.List[t.Union[str, int]] = [cmd]
+        cmd_args: t.List[t.Union[str, int]] = []
         if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
+            svr_args.insert(0, f"-L{self.socket_name}")
         if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
+            svr_args.insert(0, f"-S{self.socket_path}")
         if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
+            svr_args.insert(0, f"-f{self.config_file}")
         if self.colors:
             if self.colors == 256:
-                cmd_args.insert(0, "-2")
+                svr_args.insert(0, "-2")
             elif self.colors == 88:
-                cmd_args.insert(0, "-8")
+                svr_args.insert(0, "-8")
             else:
                 raise exc.UnknownColorOption()
 
-        return tmux_cmd(*cmd_args)
+        cmd_args = ["-t", str(target), *args] if target is not None else [*args]
+
+        return tmux_cmd(*svr_args, *cmd_args)
 
     @property
     def attached_sessions(self) -> t.List[Session]:
@@ -274,7 +287,7 @@ class Server(EnvironmentMixin):
         if exact and has_gte_version("2.1"):
             target_session = f"={target_session}"
 
-        proc = self.cmd("has-session", "-t%s" % target_session)
+        proc = self.cmd("has-session", target=target_session)
 
         if not proc.returncode:
             return True
@@ -318,7 +331,7 @@ class Server(EnvironmentMixin):
         ------
         :exc:`exc.BadSessionName`
         """
-        proc = self.cmd("kill-session", "-t%s" % target_session)
+        proc = self.cmd("kill-session", target=target_session)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -339,7 +352,7 @@ class Server(EnvironmentMixin):
         """
         session_check_name(target_session)
 
-        proc = self.cmd("switch-client", "-t%s" % target_session)
+        proc = self.cmd("switch-client", target=target_session)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -357,12 +370,7 @@ class Server(EnvironmentMixin):
         :exc:`exc.BadSessionName`
         """
         session_check_name(target_session)
-
-        tmux_args: t.Tuple[str, ...] = ()
-        if target_session:
-            tmux_args += ("-t%s" % target_session,)
-
-        proc = self.cmd("attach-session", *tmux_args)
+        proc = self.cmd("attach-session", target=target_session)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -456,7 +464,7 @@ class Server(EnvironmentMixin):
 
             if self.has_session(session_name):
                 if kill_session:
-                    self.cmd("kill-session", "-t%s" % session_name)
+                    self.cmd("kill-session", target=session_name)
                     logger.info("session %s exists. killed it." % session_name)
                 else:
                     raise exc.TmuxSessionExists(
