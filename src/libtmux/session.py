@@ -537,6 +537,7 @@ class Session(Obj, EnvironmentMixin):
     def new_window(
         self,
         window_name: t.Optional[str] = None,
+        *,
         start_directory: None = None,
         attach: bool = False,
         window_index: str = "",
@@ -634,6 +635,10 @@ class Session(Obj, EnvironmentMixin):
         window_args += ("-F#{window_id}",)  # output
         if window_name is not None and isinstance(window_name, str):
             window_args += ("-n", window_name)
+
+        if window_index is not None:
+            # empty string for window_index will use the first one available
+            window_args += (f"-t{self.session_id}:{window_index}",)
 
         if environment:
             if has_gte_version("3.0"):

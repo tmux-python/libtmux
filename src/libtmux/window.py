@@ -199,6 +199,7 @@ class Window(Obj):
 
     def split(
         self,
+        /,
         target: t.Optional[t.Union[int, str]] = None,
         start_directory: t.Optional[str] = None,
         attach: bool = False,
@@ -238,6 +239,7 @@ class Window(Obj):
         """
         active_pane = self.active_pane or self.panes[0]
         return active_pane.split(
+            target=target,
             start_directory=start_directory,
             attach=attach,
             direction=direction,
@@ -250,6 +252,7 @@ class Window(Obj):
 
     def resize(
         self,
+        /,
         # Adjustments
         adjustment_direction: t.Optional[ResizeAdjustmentDirection] = None,
         adjustment: t.Optional[int] = None,
@@ -621,6 +624,7 @@ class Window(Obj):
     def new_window(
         self,
         window_name: t.Optional[str] = None,
+        *,
         start_directory: None = None,
         attach: bool = False,
         window_index: str = "",

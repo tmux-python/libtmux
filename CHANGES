@@ -19,9 +19,15 @@ $ pip install --user --upgrade --pre libtmux
 
 #### Improved new sessions (#532)
 
-- `Session.new_window()` to {meth}`Session.new_window()`
+- `Session.new_window()`:
 
   - Learned `direction`, via {class}`~libtmux.constants.WindowDirection`).
+  - [PEP 3102] keyword-only arguments after window name (#534).
+
+- Added {meth}`Window.new_window()` shorthand to create window based on that
+  window's position.
+
+[PEP 3102]: https://www.python.org/dev/peps/pep-3102/
 
 #### Improved window splitting (#532)
 
