@@ -141,11 +141,12 @@ class Window(Obj):
         self,
         cmd: str,
         *args: t.Any,
+        target: t.Optional[t.Union[str, int]] = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within window context.
 
-        Automatically adds ``-t`` for object's indow ID to the command. Pass ``-t``
-        in args to override.
+        Automatically binds target by adding  ``-t`` for object's window ID to the
+        command. Pass ``target`` to keyword arguments to override.
 
         Examples
         --------
@@ -160,14 +161,19 @@ class Window(Obj):
         ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target override. By default, the target is the window ID.
+
         Returns
         -------
         :meth:`server.cmd`
         """
-        if not any("-t" in str(x) for x in args):
-            args = ("-t", self.window_id, *args)
+        if target is None:
+            target = self.window_id
 
-        return self.server.cmd(cmd, *args)
+        return self.server.cmd(cmd, *args, target=target)
 
     """
     Commands (tmux-like)
@@ -188,9 +194,9 @@ class Window(Obj):
         :class:`Pane`
         """
         if target_pane in ["-l", "-U", "-D", "-L", "-R"]:
-            proc = self.cmd("select-pane", "-t%s" % self.window_id, target_pane)
+            proc = self.cmd("select-pane", target_pane, target=self.window_id)
         else:
-            proc = self.cmd("select-pane", "-t%s" % target_pane)
+            proc = self.cmd("select-pane", target=target_pane)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -367,12 +373,12 @@ class Window(Obj):
             'custom'
                 custom dimensions (see :term:`tmux(1)` manpages).
         """
-        cmd = ["select-layout", f"-t{self.session_id}:{self.window_index}"]
+        cmd = ["select-layout"]
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
 
-        proc = self.cmd(*cmd)
+        proc = self.cmd(*cmd, target=f"{self.session_id}:{self.window_index}")
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -404,9 +410,9 @@ class Window(Obj):
 
         cmd = self.cmd(
             "set-window-option",
-            f"-t{self.session_id}:{self.window_index}",
             option,
             value,
+            target=f"{self.session_id}:{self.window_index}",
         )
 
         if isinstance(cmd.stderr, list) and len(cmd.stderr):
@@ -608,7 +614,7 @@ class Window(Obj):
         proc = self.cmd(
             "move-window",
             f"-s{self.session_id}:{self.window_index}",
-            f"-t{session}:{destination}",
+            target=f"{session}:{destination}",
         )
 
         if proc.stderr:
@@ -916,7 +922,7 @@ class Window(Obj):
         )
         proc = self.cmd(
             "kill-window",
-            f"-t{self.session_id}:{self.window_index}",
+            target=f"{self.session_id}:{self.window_index}",
         )
 
         if proc.stderr:

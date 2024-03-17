@@ -117,11 +117,16 @@ class Pane(Obj):
     Commands (pane-scoped)
     """
 
-    def cmd(self, cmd: str, *args: t.Any) -> tmux_cmd:
+    def cmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: t.Optional[t.Union[str, int]] = None,
+    ) -> tmux_cmd:
         """Execute tmux subcommand within pane context.
 
-        Automatically adds ``-t`` for object's pane ID to the command. Pass ``-t``
-        in args to override.
+        Automatically binds target by adding  ``-t`` for object's pane ID to the
+        command. Pass ``target`` to keyword arguments to override.
 
         Examples
         --------
@@ -134,14 +139,19 @@ class Pane(Obj):
         ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=pane.server)
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target override. By default, the target is the pane ID.
+
         Returns
         -------
         :meth:`server.cmd`
         """
-        if not any("-t" in str(x) for x in args):
-            args = ("-t", self.pane_id, *args)
+        if target is None:
+            target = self.pane_id
 
-        return self.server.cmd(cmd, *args)
+        return self.server.cmd(cmd, *args, target=target)
 
     """
     Commands (tmux-like)
@@ -620,9 +630,6 @@ class Pane(Obj):
         if not attach:
             tmux_args += ("-d",)
 
-        if target is not None:
-            tmux_args += (f"-t{target}",)
-
         if environment:
             if has_gte_version("3.0"):
                 for k, v in environment.items():
@@ -635,7 +642,7 @@ class Pane(Obj):
         if shell:
             tmux_args += (shell,)
 
-        pane_cmd = self.cmd("split-window", *tmux_args)
+        pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
         # tmux < 1.7. This is added in 1.7.
         if pane_cmd.stderr:
