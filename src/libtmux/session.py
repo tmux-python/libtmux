@@ -636,10 +636,6 @@ class Session(Obj, EnvironmentMixin):
         if window_name is not None and isinstance(window_name, str):
             window_args += ("-n", window_name)
 
-        if window_index is not None:
-            # empty string for window_index will use the first one available
-            window_args += (f"-t{self.session_id}:{window_index}",)
-
         if environment:
             if has_gte_version("3.0"):
                 for k, v in environment.items():
@@ -664,6 +660,9 @@ class Session(Obj, EnvironmentMixin):
                 logger.warning(
                     "Window target ignored, requires tmux 3.1 or newer.",
                 )
+        elif window_index is not None:
+            # empty string for window_index will use the first one available
+            window_args += (f"-t{self.session_id}:{window_index}",)
 
         if window_shell:
             window_args += (window_shell,)
