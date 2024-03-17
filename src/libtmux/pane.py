@@ -489,6 +489,7 @@ class Pane(Obj):
 
     def split(
         self,
+        /,
         start_directory: t.Optional[str] = None,
         attach: bool = False,
         direction: t.Optional[PaneDirection] = None,

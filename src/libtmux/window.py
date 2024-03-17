@@ -199,6 +199,7 @@ class Window(Obj):
 
     def split(
         self,
+        /,
         target: t.Optional[t.Union[int, str]] = None,
         start_directory: t.Optional[str] = None,
         attach: bool = False,
