@@ -9,11 +9,13 @@ To install via [pip](https://pip.pypa.io/en/stable/), use:
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.34.x (Yet to be released)
+## libtmux 0.35.x (Yet to be released)
 
 - _Future release notes will be placed here_
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
+
+## libtmux 0.34.0 (2024-03-17)
 
 ### Breaking changes
 
