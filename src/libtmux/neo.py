@@ -89,6 +89,10 @@ class Obj:
     next_session_id: t.Union[str, None] = None
     origin_flag: t.Union[str, None] = None
     pane_active: t.Union[str, None] = None  # Not detected by script
+    pane_at_bottom: t.Union[str, None] = None
+    pane_at_left: t.Union[str, None] = None
+    pane_at_right: t.Union[str, None] = None
+    pane_at_top: t.Union[str, None] = None
     pane_bg: t.Union[str, None] = None
     pane_bottom: t.Union[str, None] = None
     pane_current_command: t.Union[str, None] = None
@@ -110,7 +114,6 @@ class Obj:
     pane_top: t.Union[str, None] = None
     pane_tty: t.Union[str, None] = None
     pane_width: t.Union[str, None] = None
-
     pid: t.Union[str, None] = None
     scroll_position: t.Union[str, None] = None
     scroll_region_lower: t.Union[str, None] = None

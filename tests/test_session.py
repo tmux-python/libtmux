@@ -8,6 +8,7 @@ import pytest
 
 from libtmux import exc
 from libtmux.common import has_gte_version, has_lt_version
+from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -326,4 +327,54 @@ def test_new_window_with_environment_logs_warning_for_old_tmux(
 
     assert any(
         "Environment flag ignored" in record.msg for record in caplog.records
+    ), "Warning missing"
+
+
+@pytest.mark.skipif(
+    has_lt_version("3.2"),
+    reason="Only 3.2+ has the -a and -b flag on new-window",
+)
+def test_session_new_window_with_direction(
+    session: Session,
+) -> None:
+    """Verify new window with direction."""
+    window = session.active_window
+    window.refresh()
+
+    window_initial = session.new_window(window_name="Example")
+    assert window_initial.window_index == "2"
+
+    window_before = session.new_window(
+        window_name="Window before", direction=WindowDirection.Before
+    )
+    window_initial.refresh()
+    assert window_before.window_index == "1"
+    assert window_initial.window_index == "3"
+
+    window_after = session.new_window(
+        window_name="Window after", direction=WindowDirection.After
+    )
+    window_initial.refresh()
+    window_after.refresh()
+    assert window_after.window_index == "3"
+    assert window_initial.window_index == "4"
+    assert window_before.window_index == "1"
+
+
+@pytest.mark.skipif(
+    has_gte_version("3.1"),
+    reason="Only 3.1 has the -a and -b flag on new-window",
+)
+def test_session_new_window_with_direction_logs_warning_for_old_tmux(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify new window with direction create a warning if tmux is too old."""
+    session.new_window(
+        window_name="session_window_with_direction",
+        direction=WindowDirection.After,
+    )
+
+    assert any(
+        "Direction flag ignored" in record.msg for record in caplog.records
     ), "Warning missing"

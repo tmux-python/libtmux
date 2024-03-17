@@ -13,6 +13,7 @@ import warnings
 
 from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
+from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
@@ -541,6 +542,8 @@ class Session(Obj, EnvironmentMixin):
         window_index: str = "",
         window_shell: t.Optional[str] = None,
         environment: t.Optional[t.Dict[str, str]] = None,
+        direction: t.Optional[WindowDirection] = None,
+        target_window: t.Optional[str] = None,
     ) -> "Window":
         """Create new window, returns new :class:`Window`.
 
@@ -566,9 +569,51 @@ class Session(Obj, EnvironmentMixin):
                 useful for long-running processes where the closing of the
                 window upon completion is desired.
 
+        direction : WindowDirection, optional
+            Insert window before or after target window (tmux 3.2+).
+
+        target_window : str, optional
+            Used by :meth:`Window.new_window` to specify the target window.
+
         .. versionchanged:: 0.28.0
 
            ``attach`` default changed from ``True`` to ``False``.
+
+        See Also
+        --------
+        :meth:`Window.new_window()`
+
+        Examples
+        --------
+        .. ::
+            >>> import pytest
+            >>> from libtmux.common import has_lt_version
+            >>> if has_lt_version('3.2'):
+            ...     pytest.skip('direction doctests require tmux 3.2 or newer')
+        >>> window_initial = session.new_window(window_name='Example')
+        >>> window_initial
+        Window(@... 2:Example, Session($1 libtmux_...))
+        >>> window_initial.window_index
+        '2'
+
+        >>> window_before = session.new_window(
+        ... window_name='Window before', direction=WindowDirection.Before)
+        >>> window_initial.refresh()
+        >>> window_before
+        Window(@... 1:Window before, Session($1 libtmux_...))
+        >>> window_initial
+        Window(@... 3:Example, Session($1 libtmux_...))
+
+        >>> window_after = session.new_window(
+        ... window_name='Window after', direction=WindowDirection.After)
+        >>> window_initial.refresh()
+        >>> window_after.refresh()
+        >>> window_after
+        Window(@... 3:Window after, Session($1 libtmux_...))
+        >>> window_initial
+        Window(@... 4:Example, Session($1 libtmux_...))
+        >>> window_before
+        Window(@... 1:Window before, Session($1 libtmux_...))
 
         Returns
         -------
@@ -590,11 +635,6 @@ class Session(Obj, EnvironmentMixin):
         if window_name is not None and isinstance(window_name, str):
             window_args += ("-n", window_name)
 
-        window_args += (
-            # empty string for window_index will use the first one available
-            f"-t{self.session_id}:{window_index}",
-        )
-
         if environment:
             if has_gte_version("3.0"):
                 for k, v in environment.items():
@@ -602,6 +642,22 @@ class Session(Obj, EnvironmentMixin):
             else:
                 logger.warning(
                     "Environment flag ignored, requires tmux 3.0 or newer.",
+                )
+
+        if direction is not None:
+            if has_gte_version("3.2"):
+                window_args += (WINDOW_DIRECTION_FLAG_MAP[direction],)
+            else:
+                logger.warning(
+                    "Direction flag ignored, requires tmux 3.1 or newer.",
+                )
+
+        if target_window:
+            if has_gte_version("3.2"):
+                window_args += (f"-t{target_window}",)
+            else:
+                logger.warning(
+                    "Window target ignored, requires tmux 3.1 or newer.",
                 )
 
         if window_shell:

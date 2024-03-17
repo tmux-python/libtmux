@@ -5,8 +5,8 @@ import shutil
 
 import pytest
 
-from libtmux.common import has_gte_version, has_lt_version
-from libtmux.constants import ResizeAdjustmentDirection
+from libtmux.common import has_gte_version, has_lt_version, has_lte_version
+from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def test_send_keys(session: Session) -> None:
 def test_set_height(session: Session) -> None:
     """Verify Pane.set_height()."""
     window = session.new_window(window_name="test_set_height")
-    window.split_window()
+    window.split()
     pane1 = window.active_pane
     assert pane1 is not None
     pane1_height = pane1.pane_height
@@ -42,7 +42,7 @@ def test_set_height(session: Session) -> None:
 def test_set_width(session: Session) -> None:
     """Verify Pane.set_width()."""
     window = session.new_window(window_name="test_set_width")
-    window.split_window()
+    window.split()
 
     window.select_layout("main-vertical")
     pane1 = window.active_pane
@@ -134,6 +134,36 @@ def test_capture_pane_end(session: Session) -> None:
 
 
 @pytest.mark.skipif(
+    has_lte_version("3.1"),
+    reason="3.2 has the -Z flag on split-window",
+)
+def test_pane_split_window_zoom(
+    session: Session,
+) -> None:
+    """Verify splitting window with zoom."""
+    window_without_zoom = session.new_window(window_name="split_without_zoom")
+    initial_pane_without_zoom = window_without_zoom.active_pane
+    assert initial_pane_without_zoom is not None
+    window_with_zoom = session.new_window(window_name="split_with_zoom")
+    initial_pane_with_zoom = window_with_zoom.active_pane
+    assert initial_pane_with_zoom is not None
+    pane_without_zoom = initial_pane_without_zoom.split(
+        zoom=False,
+    )
+    pane_with_zoom = initial_pane_with_zoom.split(
+        zoom=True,
+    )
+
+    assert pane_without_zoom.width == pane_without_zoom.window_width
+    assert pane_without_zoom.height is not None
+    assert pane_without_zoom.window_height is not None
+    assert pane_without_zoom.height < pane_without_zoom.window_height
+
+    assert pane_with_zoom.width == pane_with_zoom.window_width
+    assert pane_with_zoom.height == pane_with_zoom.window_height
+
+
+@pytest.mark.skipif(
     has_lt_version("2.9"),
     reason="resize-window only exists in tmux 2.9+",
 )
@@ -144,8 +174,8 @@ def test_resize_pane(
     session.cmd("detach-client", "-s")
 
     window = session.active_window
-    pane = window.split_window(attach=False)
-    window.split_window(vertical=True, attach=False)
+    pane = window.split(attach=False)
+    window.split(direction=PaneDirection.Above, attach=False)
 
     assert pane is not None
 
@@ -223,3 +253,49 @@ def test_resize_pane(
     )
     pane_height_expanded = int(pane.pane_height)
     assert pane_height_before < pane_height_expanded
+
+
+def test_split_pane_size(session: Session) -> None:
+    """Pane.split()."""
+    window = session.new_window(window_name="split window size")
+    window.resize(height=100, width=100)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.1"):
+        short_pane = pane.split(size=10)
+        assert short_pane.pane_height == "10"
+
+        assert short_pane.at_left
+        assert short_pane.at_right
+        assert not short_pane.at_top
+        assert short_pane.at_bottom
+
+        narrow_pane = pane.split(direction=PaneDirection.Right, size=10)
+        assert narrow_pane.pane_width == "10"
+
+        assert not narrow_pane.at_left
+        assert narrow_pane.at_right
+        assert narrow_pane.at_top
+        assert not narrow_pane.at_bottom
+
+        new_pane = pane.split(size="10%")
+        assert new_pane.pane_height == "8"
+
+        new_pane = short_pane.split(direction=PaneDirection.Right, size="10%")
+        assert new_pane.pane_width == "10"
+
+        assert not new_pane.at_left
+        assert new_pane.at_right
+    else:
+        window_height_before = (
+            int(window.window_height) if isinstance(window.window_height, str) else 0
+        )
+        window_width_before = (
+            int(window.window_width) if isinstance(window.window_width, str) else 0
+        )
+        new_pane = pane.split(size="10%")
+        assert new_pane.pane_height == str(int(window_height_before * 0.1))
+
+        new_pane = new_pane.split(direction=PaneDirection.Right, size="10%")
+        assert new_pane.pane_width == str(int(window_width_before * 0.1))

@@ -271,7 +271,7 @@ def temp_window(
 
 
     >>> with temp_window(session) as window:
-    ...     window.split_window()
+    ...     window.split()
     Pane(%4 Window(@3 2:libtmux_..., Session($1 libtmux_...)))
     """
     if "window_name" not in kwargs:

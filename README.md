@@ -182,7 +182,7 @@ Grab remaining tmux window:
 
 ```python
 >>> window = session.active_window
->>> window.split_window(attach=False)
+>>> window.split(attach=False)
 Pane(%2 Window(@1 1:... Session($1 ...)))
 ```
 
@@ -196,14 +196,14 @@ Window(@1 1:libtmuxower, Session($1 ...))
 Split window (create a new pane):
 
 ```python
->>> pane = window.split_window()
->>> pane = window.split_window(attach=False)
+>>> pane = window.split()
+>>> pane = window.split(attach=False)
 >>> pane.select()
 Pane(%3 Window(@1 1:..., Session($1 ...)))
 >>> window = session.new_window(attach=False, window_name="test")
 >>> window
 Window(@2 2:test, Session($1 ...))
->>> pane = window.split_window(attach=False)
+>>> pane = window.split(attach=False)
 >>> pane
 Pane(%5 Window(@2 2:test, Session($1 ...)))
 ```

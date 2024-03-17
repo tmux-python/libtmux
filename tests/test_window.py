@@ -9,8 +9,12 @@ import pytest
 
 from libtmux import exc
 from libtmux._internal.query_list import ObjectDoesNotExist
-from libtmux.common import has_gte_version, has_lt_version, has_version
-from libtmux.constants import ResizeAdjustmentDirection
+from libtmux.common import has_gte_version, has_lt_version, has_lte_version
+from libtmux.constants import (
+    PaneDirection,
+    ResizeAdjustmentDirection,
+    WindowDirection,
+)
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -72,7 +76,7 @@ def test_fresh_window_data(session: Session) -> None:
     window = session.active_window
     assert isinstance(window, Window)
     assert len(session.active_window.panes) == 1
-    window.split_window()
+    window.split()
 
     active_window = session.active_window
     assert active_window is not None
@@ -104,12 +108,12 @@ def test_newest_pane_data(session: Session) -> None:
     window = session.new_window(window_name="test", attach=True)
     assert isinstance(window, Window)
     assert len(window.panes) == 1
-    window.split_window(attach=True)
+    window.split(attach=True)
 
     assert len(window.panes) == 2
-    # note: the below used to accept -h, removing because split_window now
+    # note: the below used to accept -h, removing because split now
     # has attach as its only argument now
-    window.split_window(attach=True)
+    window.split(attach=True)
     assert len(window.panes) == 3
 
 
@@ -119,11 +123,11 @@ def test_active_pane(session: Session) -> None:
     assert isinstance(window.active_pane, Pane)
 
 
-def test_split_window(session: Session) -> None:
-    """Window.split_window() splits window, returns new Pane, vertical."""
+def test_split(session: Session) -> None:
+    """Window.split() splits window, returns new Pane, vertical."""
     window_name = "test split window"
     window = session.new_window(window_name=window_name, attach=True)
-    pane = window.split_window()
+    pane = window.split()
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
 
@@ -134,12 +138,12 @@ def test_split_window(session: Session) -> None:
     assert float(first_pane.pane_height) <= ((float(window.window_width) + 1) / 2)
 
 
-def test_split_window_shell(session: Session) -> None:
-    """Window.split_window() splits window, returns new Pane, vertical."""
+def test_split_shell(session: Session) -> None:
+    """Window.split() splits window, returns new Pane, vertical."""
     window_name = "test split window"
     cmd = "sleep 1m"
     window = session.new_window(window_name=window_name, attach=True)
-    pane = window.split_window(shell=cmd)
+    pane = window.split(shell=cmd)
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
 
@@ -156,11 +160,11 @@ def test_split_window_shell(session: Session) -> None:
         assert pane.pane_start_command == cmd
 
 
-def test_split_window_horizontal(session: Session) -> None:
-    """Window.split_window() splits window, returns new Pane, horizontal."""
+def test_split_horizontal(session: Session) -> None:
+    """Window.split() splits window, returns new Pane, horizontal."""
     window_name = "test split window"
     window = session.new_window(window_name=window_name, attach=True)
-    pane = window.split_window(vertical=False)
+    pane = window.split(direction=PaneDirection.Right)
     assert len(window.panes) == 2
     assert isinstance(pane, Pane)
 
@@ -172,39 +176,22 @@ def test_split_window_horizontal(session: Session) -> None:
     assert float(first_pane.pane_width) <= ((float(window.window_width) + 1) / 2)
 
 
-def test_split_percentage(session: Session) -> None:
-    """Test deprecated percent param."""
-    window = session.new_window(window_name="split window size")
-    window.resize(height=100, width=100)
-    window_height_before = (
-        int(window.window_height) if isinstance(window.window_height, str) else 0
-    )
-    if has_version("3.4"):
-        pytest.skip(
-            "tmux 3.4 has a split-window bug."
-            + " See https://github.com/tmux/tmux/pull/3840."
-        )
-    with pytest.warns(match="Deprecated in favor of size.*"):
-        pane = window.split_window(percent=10)
-        assert pane.pane_height == str(int(window_height_before * 0.1))
-
-
-def test_split_window_size(session: Session) -> None:
-    """Window.split_window() respects size."""
+def test_split_size(session: Session) -> None:
+    """Window.split() respects size."""
     window = session.new_window(window_name="split window size")
     window.resize(height=100, width=100)
 
     if has_gte_version("3.1"):
-        pane = window.split_window(size=10)
+        pane = window.split(size=10)
         assert pane.pane_height == "10"
 
-        pane = window.split_window(vertical=False, size=10)
+        pane = window.split(direction=PaneDirection.Right, size=10)
         assert pane.pane_width == "10"
 
-        pane = window.split_window(size="10%")
+        pane = window.split(size="10%")
         assert pane.pane_height == "8"
 
-        pane = window.split_window(vertical=False, size="10%")
+        pane = window.split(direction=PaneDirection.Right, size="10%")
         assert pane.pane_width == "8"
     else:
         window_height_before = (
@@ -213,10 +200,10 @@ def test_split_window_size(session: Session) -> None:
         window_width_before = (
             int(window.window_width) if isinstance(window.window_width, str) else 0
         )
-        pane = window.split_window(size="10%")
+        pane = window.split(size="10%")
         assert pane.pane_height == str(int(window_height_before * 0.1))
 
-        pane = window.split_window(vertical=False, size="10%")
+        pane = window.split(direction=PaneDirection.Right, size="10%")
         assert pane.pane_width == str(int(window_width_before * 0.1))
 
 
@@ -405,7 +392,7 @@ def test_empty_window_name(session: Session) -> None:
         {"ENV_VAR_1": "pane_1", "ENV_VAR_2": "pane_2"},
     ],
 )
-def test_split_window_with_environment(
+def test_split_with_environment(
     session: Session,
     environment: t.Dict[str, str],
 ) -> None:
@@ -413,8 +400,8 @@ def test_split_window_with_environment(
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in Path."
 
-    window = session.new_window(window_name="split_window_with_environment")
-    pane = window.split_window(
+    window = session.new_window(window_name="split_with_environment")
+    pane = window.split(
         shell=f"{env} PS1='$ ' sh",
         environment=environment,
     )
@@ -427,10 +414,36 @@ def test_split_window_with_environment(
 
 
 @pytest.mark.skipif(
+    has_lte_version("3.1"),
+    reason="3.2 has the -Z flag on split-window",
+)
+def test_split_window_zoom(
+    session: Session,
+) -> None:
+    """Verify splitting window with zoom."""
+    window_without_zoom = session.new_window(window_name="split_without_zoom")
+    window_with_zoom = session.new_window(window_name="split_with_zoom")
+    pane_without_zoom = window_without_zoom.split(
+        zoom=False,
+    )
+    pane_with_zoom = window_with_zoom.split(
+        zoom=True,
+    )
+
+    assert pane_without_zoom.width == pane_without_zoom.window_width
+    assert pane_without_zoom.height is not None
+    assert pane_without_zoom.window_height is not None
+    assert pane_without_zoom.height < pane_without_zoom.window_height
+
+    assert pane_with_zoom.width == pane_with_zoom.window_width
+    assert pane_with_zoom.height == pane_with_zoom.window_height
+
+
+@pytest.mark.skipif(
     has_gte_version("3.0"),
     reason="3.0 has the -e flag on split-window",
 )
-def test_split_window_with_environment_logs_warning_for_old_tmux(
+def test_split_with_environment_logs_warning_for_old_tmux(
     session: Session,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -438,8 +451,8 @@ def test_split_window_with_environment_logs_warning_for_old_tmux(
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in Path."
 
-    window = session.new_window(window_name="split_window_with_environment")
-    window.split_window(
+    window = session.new_window(window_name="split_with_environment")
+    window.split(
         shell=f"{env} PS1='$ ' sh",
         environment={"ENV_VAR": "pane"},
     )
@@ -527,3 +540,60 @@ def test_resize(
     )
     window_height_expanded = int(window.window_height)
     assert window_height_before < window_height_expanded
+
+
+@pytest.mark.skipif(
+    has_lt_version("3.2"),
+    reason="Only 3.2+ has the -a and -b flag on new-window",
+)
+def test_new_window_with_direction(
+    session: Session,
+) -> None:
+    """Verify new window with direction."""
+    window = session.active_window
+    window.refresh()
+
+    window_initial = session.new_window(window_name="Example")
+    assert window_initial.window_index == "2"
+
+    window_before = window_initial.new_window(
+        window_name="Window before", direction=WindowDirection.Before
+    )
+    window_initial.refresh()
+    assert window_before.window_index == "2"
+    assert window_initial.window_index == "3"
+
+    window_after = window_initial.new_window(
+        window_name="Window after", direction=WindowDirection.After
+    )
+    window_initial.refresh()
+    window_after.refresh()
+    assert window_after.window_index == "4"
+    assert window_initial.window_index == "3"
+    assert window_before.window_index == "2"
+
+
+@pytest.mark.skipif(
+    has_gte_version("3.2"),
+    reason="Only 3.2+ has the -a and -b flag on new-window",
+)
+def test_new_window_with_direction_logs_warning_for_old_tmux(
+    session: Session,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify new window with direction create a warning if tmux is too old."""
+    window = session.active_window
+    window.refresh()
+
+    window.new_window(
+        window_name="window_with_direction",
+        direction=WindowDirection.After,
+    )
+
+    assert any(
+        "Window target ignored" in record.msg for record in caplog.records
+    ), "Warning missing"
+
+    assert any(
+        "Direction flag ignored" in record.msg for record in caplog.records
+    ), "Warning missing"
