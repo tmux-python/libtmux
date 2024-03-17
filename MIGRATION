@@ -25,6 +25,24 @@ _Detailed migration steps for the next version will be posted here._
 
 <!-- To the maintainers and contributors: please add migration details for the upcoming release here -->
 
+## 0.35.0: Commands require explicit targets (2024-03-17)
+
+### Commands require explicit targets (#535)
+
+- {meth}`Server.cmd()`, {meth}`Session.cmd()`, {meth}`Window.cmd()`, {meth}`Pane.cmd()` require passing `target` instead of `['-t', target]`, `['-tTargetName']`, etc. This change is to avoid issues mistakenly interpretting `-t` in other shell values as targets.
+
+  Before:
+
+  ```python
+  session.cmd('send-keys', 'echo hello', '-t', '0')
+  ```
+
+  With 0.35.0 and after:
+
+  ```python
+  session.cmd('send-keys', 'echo hello', target='0')
+  ```
+
 ## 0.33.0: Deprecations for splitting (2024-03-03)
 
 ### Deprecations (#532)

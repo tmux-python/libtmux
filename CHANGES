@@ -17,7 +17,7 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Breaking changes
 
-#### Command target change (#919)
+#### Command target change (#535)
 
 Commands: All `cmd()` methods using custom or overridden targets must use the keyword argument
 `target`. This avoids entanglement with inner shell values that include `-t` for
