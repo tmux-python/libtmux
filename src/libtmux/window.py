@@ -624,6 +624,7 @@ class Window(Obj):
     def new_window(
         self,
         window_name: t.Optional[str] = None,
+        *,
         start_directory: None = None,
         attach: bool = False,
         window_index: str = "",
