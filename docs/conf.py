@@ -108,6 +108,11 @@ issue_url_tpl = f'{about["__github__"]}/issues/{{issue_id}}'
 # sphinx.ext.autodoc
 autoclass_content = "both"
 autodoc_member_order = "bysource"
+# Automatically extract typehints when specified and place them in
+# descriptions of the relevant function/method.
+autodoc_typehints = "description"
+# Don't show class signature with the class' name.
+autodoc_class_signature = "separated"
 toc_object_entries_show_parents = "hide"
 
 # sphinx-copybutton
