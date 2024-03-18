@@ -260,7 +260,7 @@ class Server(EnvironmentMixin):
         -------
         list of :class:`Session`
         """
-        return self.sessions.filter(session_attached="1")
+        return [s for s in self.sessions if s.session_attached != "0"]
 
     def has_session(self, target_session: str, exact: bool = True) -> bool:
         """Return True if session exists.
