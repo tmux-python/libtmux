@@ -267,6 +267,10 @@ Tip: If {meth}`Pane.resize()` was not taking affect <= 0.27.1, try to resize wit
 
 - Include `MIGRATION` in source distribution tarball (#517, for #508)
 
+### New features
+
+- Hook support
+
 ## libtmux 0.27.0 (2024-02-07)
 
 ### Improvement
