@@ -76,6 +76,15 @@ jobs:
           COV_CORE_SOURCE: .
           COV_CORE_CONFIG: .coveragerc
           COV_CORE_DATAFILE: .coverage.eager
+
+      - name: Test with pytest-xdist
+        continue-on-error: ${{ matrix.tmux-version == 'master' }}
+        run: |
+          sudo apt install libevent-2.1-7
+          export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
+          ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
+          poetry run py.test -n auto
+
       - uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
