@@ -15,6 +15,8 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+## libtmux 0.35.1 (2024-03-23)
+
 ### Bug fix
 
 - {attr}`Server.attached_sessions` fix for when multiple clients attached, thank you @patrislav1 (#537)
