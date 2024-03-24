@@ -217,7 +217,7 @@ def test_unset_environment(session: Session) -> None:
 
 
 @pytest.mark.parametrize(
-    "session_name,raises",
+    ("session_name", "raises"),
     [("hey.period", True), ("hey:its a colon", True), ("hey moo", False)],
 )
 def test_periods_raise_badsessionname(

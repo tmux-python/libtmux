@@ -215,16 +215,16 @@ class Pane(Obj):
         """
         tmux_args: t.Tuple[str, ...] = ()
 
-        ## Adjustments
+        # Adjustments
         if adjustment_direction:
             if adjustment is None:
-                raise exc.PaneAdjustmentDirectionRequiresAdjustment()
+                raise exc.PaneAdjustmentDirectionRequiresAdjustment
             tmux_args += (
                 f"{RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP[adjustment_direction]}",
                 str(adjustment),
             )
         elif height or width:
-            ## Manual resizing
+            # Manual resizing
             if height:
                 if isinstance(height, str):
                     if height.endswith("%") and not has_gte_version("3.1"):
@@ -242,7 +242,7 @@ class Pane(Obj):
 
                 tmux_args += (f"-x{width}",)
         elif zoom:
-            ## Zoom / Unzoom
+            # Zoom / Unzoom
             tmux_args += ("-Z",)
         elif mouse:
             tmux_args += ("-M",)
@@ -435,8 +435,6 @@ class Pane(Obj):
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
-
-        return None
 
     """
     Commands ("climber"-helpers)
@@ -650,7 +648,9 @@ class Pane(Obj):
                 raise exc.LibTmuxException(pane_cmd.stderr)
 
             raise exc.LibTmuxException(
-                pane_cmd.stderr, self.__dict__, self.window.panes
+                pane_cmd.stderr,
+                self.__dict__,
+                self.window.panes,
             )
 
         pane_output = pane_cmd.stdout[0]
@@ -877,7 +877,9 @@ class Pane(Obj):
 
         """
         warnings.warn(
-            "Pane.get() is deprecated", category=DeprecationWarning, stacklevel=2
+            "Pane.get() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         return getattr(self, key, default)
 

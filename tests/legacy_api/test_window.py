@@ -172,7 +172,7 @@ def test_split_percentage(
     if has_version("3.4"):
         pytest.skip(
             "tmux 3.4 has a split-window bug."
-            + " See https://github.com/tmux/tmux/pull/3840."
+            + " See https://github.com/tmux/tmux/pull/3840.",
         )
     with pytest.warns(match="Deprecated in favor of size.*"):
         pane = window.split_window(percent=10)
@@ -211,7 +211,7 @@ def test_split_window_size(session: Session) -> None:
 
 
 @pytest.mark.parametrize(
-    "window_name_before,window_name_after",
+    ("window_name_before", "window_name_after"),
     [("test", "ha ha ha fjewlkjflwef"), ("test", "hello \\ wazzup 0")],
 )
 def test_window_rename(

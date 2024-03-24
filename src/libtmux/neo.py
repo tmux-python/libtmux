@@ -226,11 +226,7 @@ def fetch_objs(
     ]
 
     # Filter empty values
-    obj_formatters_filtered = [
-        {k: v for k, v in formatter.items() if v} for formatter in obj_formatters
-    ]
-
-    return obj_formatters_filtered
+    return [{k: v for k, v in formatter.items() if v} for formatter in obj_formatters]
 
 
 def fetch_obj(

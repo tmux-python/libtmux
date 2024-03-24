@@ -56,7 +56,6 @@ class VersionCompareFixture(t.NamedTuple):
         VersionCompareFixture(a="1", op=operator.lt, b="1.0.0p1", raises=False),
         VersionCompareFixture(a="1", op=operator.lt, b="1.0.0-openbsd", raises=False),
         VersionCompareFixture(a="1", op=operator.lt, b="1", raises=AssertionError),
-        VersionCompareFixture(a="1", op=operator.lt, b="1", raises=AssertionError),
         VersionCompareFixture(a="1.0.0c", op=operator.gt, b="1.0.0b", raises=False),
     ],
 )

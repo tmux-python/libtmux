@@ -159,7 +159,7 @@ class Server(EnvironmentMixin):
         """
         tmux_bin = shutil.which("tmux")
         if tmux_bin is None:
-            raise exc.TmuxCommandNotFound()
+            raise exc.TmuxCommandNotFound
 
         cmd_args: t.List[str] = ["list-sessions"]
         if self.socket_name:
@@ -241,7 +241,7 @@ class Server(EnvironmentMixin):
             elif self.colors == 88:
                 svr_args.insert(0, "-8")
             else:
-                raise exc.UnknownColorOption()
+                raise exc.UnknownColorOption
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
@@ -289,10 +289,7 @@ class Server(EnvironmentMixin):
 
         proc = self.cmd("has-session", target=target_session)
 
-        if not proc.returncode:
-            return True
-
-        return False
+        return bool(not proc.returncode)
 
     def kill(self) -> None:
         """Kill tmux server.
@@ -613,9 +610,9 @@ class Server(EnvironmentMixin):
                 f"{self.__class__.__name__}"
                 f"(socket_name={getattr(self, 'socket_name', 'default')})"
             )
-        elif self.socket_path is not None:
-            return f"{self.__class__.__name__}" f"(socket_path={self.socket_path})"
-        return f"{self.__class__.__name__}" f"(socket_path=/tmp/tmux-1000/default)"
+        if self.socket_path is not None:
+            return f"{self.__class__.__name__}(socket_path={self.socket_path})"
+        return f"{self.__class__.__name__}(socket_path=/tmp/tmux-1000/default)"
 
     #
     # Legacy: Redundant stuff we want to remove
@@ -770,7 +767,9 @@ class Server(EnvironmentMixin):
 
         """
         warnings.warn(
-            "Server._sessions is deprecated", category=DeprecationWarning, stacklevel=2
+            "Server._sessions is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         return self._list_sessions()
 
@@ -816,6 +815,8 @@ class Server(EnvironmentMixin):
 
         """
         warnings.warn(
-            "Server.children is deprecated", category=DeprecationWarning, stacklevel=2
+            "Server.children is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         return self.sessions

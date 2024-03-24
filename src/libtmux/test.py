@@ -102,9 +102,8 @@ def retry_until(
         end = time.time()
         if end - ini >= seconds:
             if raises:
-                raise WaitTimeout()
-            else:
-                return False
+                raise WaitTimeout
+            return False
         time.sleep(interval)
     return True
 

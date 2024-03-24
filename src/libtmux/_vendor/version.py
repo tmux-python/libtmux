@@ -16,7 +16,7 @@ from typing import Callable, Optional, SupportsInt, Tuple, Union
 
 from ._structures import Infinity, InfinityType, NegativeInfinity, NegativeInfinityType
 
-__all__ = ["VERSION_PATTERN", "parse", "Version", "InvalidVersion"]
+__all__ = ["VERSION_PATTERN", "InvalidVersion", "Version", "parse"]
 
 InfiniteTypes = Union[InfinityType, NegativeInfinityType]
 PrePostDevType = Union[InfiniteTypes, Tuple[str, int]]
@@ -78,7 +78,7 @@ class InvalidVersion(ValueError):
     libtmux._vendor.version.InvalidVersion: Invalid version: 'invalid'
     """
 
-    def __init__(self, version: str, *args: object):
+    def __init__(self, version: str, *args: object) -> None:
         return super().__init__(f"Invalid version: '{version}'")
 
 
@@ -362,8 +362,7 @@ class Version(_BaseVersion):
         """
         if self._version.local:
             return ".".join(str(x) for x in self._version.local)
-        else:
-            return None
+        return None
 
     @property
     def public(self) -> str:
@@ -494,9 +493,9 @@ def _parse_letter_version(
             letter = "a"
         elif letter == "beta":
             letter = "b"
-        elif letter in ["c", "pre", "preview"]:
+        elif letter in {"c", "pre", "preview"}:
             letter = "rc"
-        elif letter in ["rev", "r"]:
+        elif letter in {"rev", "r"}:
             letter = "post"
 
         return letter, int(number)

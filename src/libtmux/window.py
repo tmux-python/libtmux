@@ -193,7 +193,7 @@ class Window(Obj):
         -------
         :class:`Pane`
         """
-        if target_pane in ["-l", "-U", "-D", "-L", "-R"]:
+        if target_pane in {"-l", "-U", "-D", "-L", "-R"}:
             proc = self.cmd("select-pane", target_pane)
         else:
             proc = self.cmd("select-pane", target=target_pane)
@@ -310,16 +310,16 @@ class Window(Obj):
 
         tmux_args: t.Tuple[str, ...] = ()
 
-        ## Adjustments
+        # Adjustments
         if adjustment_direction:
             if adjustment is None:
-                raise exc.WindowAdjustmentDirectionRequiresAdjustment()
+                raise exc.WindowAdjustmentDirectionRequiresAdjustment
             tmux_args += (
                 f"{RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP[adjustment_direction]}",
                 str(adjustment),
             )
         elif height or width:
-            ## Manual resizing
+            # Manual resizing
             if height:
                 tmux_args += (f"-y{int(height)}",)
             if width:
@@ -590,8 +590,6 @@ class Window(Obj):
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
-
-        return None
 
     def move_window(
         self,
@@ -934,7 +932,9 @@ class Window(Obj):
 
         """
         warnings.warn(
-            "Window.get() is deprecated", category=DeprecationWarning, stacklevel=2
+            "Window.get() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         return getattr(self, key, default)
 
@@ -978,7 +978,9 @@ class Window(Obj):
 
         """
         warnings.warn(
-            "Window.where() is deprecated", category=DeprecationWarning, stacklevel=2
+            "Window.where() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         try:
             return self.panes.filter(**kwargs)
@@ -1036,7 +1038,9 @@ class Window(Obj):
 
         """
         warnings.warn(
-            "list_panes() is deprecated", category=DeprecationWarning, stacklevel=2
+            "list_panes() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         return self.panes
 
@@ -1050,6 +1054,8 @@ class Window(Obj):
 
         """
         warnings.warn(
-            "Server.children is deprecated", category=DeprecationWarning, stacklevel=2
+            "Server.children is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         return self.panes

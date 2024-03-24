@@ -21,9 +21,6 @@ from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.window import Window
 
-if t.TYPE_CHECKING:
-    from libtmux.session import Session
-
 pytest_plugins = ["pytester"]
 
 
@@ -47,7 +44,7 @@ def add_doctest_fixtures(
         doctest_namespace["request"] = request
 
 
-@pytest.fixture(autouse=True, scope="function")
+@pytest.fixture(autouse=True)
 def set_home(
     monkeypatch: pytest.MonkeyPatch,
     user_path: pathlib.Path,
@@ -56,12 +53,11 @@ def set_home(
     monkeypatch.setenv("HOME", str(user_path))
 
 
-@pytest.fixture(autouse=True, scope="function")
+@pytest.fixture(autouse=True)
 def setup_fn(
     clear_env: None,
 ) -> None:
     """Function-level test configuration fixtures for pytest."""
-    pass
 
 
 @pytest.fixture(autouse=True, scope="session")
