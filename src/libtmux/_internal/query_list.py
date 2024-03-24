@@ -5,10 +5,13 @@ Note
 This is an internal API not covered by versioning policy.
 """
 
+import logging
 import re
 import traceback
 import typing as t
 from collections.abc import Iterable, Mapping, Sequence
+
+logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
 
@@ -102,7 +105,7 @@ def keygetter(
 
     except Exception as e:
         traceback.print_stack()
-        print(f"Above error was {e}")
+        logger.debug(f"The above error was {e}")
         return None
 
     return dct
@@ -141,8 +144,9 @@ def parse_lookup(
             field_name = path.rsplit(lookup)[0]
             if field_name is not None:
                 return keygetter(obj, field_name)
-    except Exception:
+    except Exception as e:
         traceback.print_stack()
+        logger.debug(f"The above error was {e}")
     return None
 
 
@@ -307,12 +311,12 @@ LOOKUP_NAME_MAP: 'Mapping[str, "LookupProtocol"]' = {
 
 
 class PKRequiredException(Exception):
-    def __init__(self, *args: object):
+    def __init__(self, *args: object) -> None:
         return super().__init__("items() require a pk_key exists")
 
 
 class OpNotFound(ValueError):
-    def __init__(self, op: str, *args: object):
+    def __init__(self, op: str, *args: object) -> None:
         return super().__init__(f"{op} not in LOOKUP_NAME_MAP")
 
 
@@ -473,7 +477,7 @@ class QueryList(t.Generic[T], t.List[T]):
 
     def items(self) -> t.List[t.Tuple[str, T]]:
         if self.pk_key is None:
-            raise PKRequiredException()
+            raise PKRequiredException
         return [(getattr(item, self.pk_key), item) for item in self]
 
     def __eq__(
@@ -493,9 +497,8 @@ class QueryList(t.Generic[T], t.List[T]):
                         for key in a_keys:
                             if abs(a[key] - b[key]) > 1:
                                 return False
-                else:
-                    if a != b:
-                        return False
+                elif a != b:
+                    return False
 
             return True
         return False
@@ -534,8 +537,7 @@ class QueryList(t.Generic[T], t.List[T]):
             def val_match(obj: t.Union[str, t.List[t.Any], T]) -> bool:
                 if isinstance(matcher, list):
                     return obj in matcher
-                else:
-                    return bool(obj == matcher)
+                return bool(obj == matcher)
 
             _filter = val_match
         else:
@@ -557,9 +559,9 @@ class QueryList(t.Generic[T], t.List[T]):
         """
         objs = self.filter(matcher=matcher, **kwargs)
         if len(objs) > 1:
-            raise MultipleObjectsReturned()
-        elif len(objs) == 0:
+            raise MultipleObjectsReturned
+        if len(objs) == 0:
             if default == no_arg:
-                raise ObjectDoesNotExist()
+                raise ObjectDoesNotExist
             return default
         return objs[0]

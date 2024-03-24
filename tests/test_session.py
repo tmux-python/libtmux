@@ -345,14 +345,16 @@ def test_session_new_window_with_direction(
     assert window_initial.window_index == "2"
 
     window_before = session.new_window(
-        window_name="Window before", direction=WindowDirection.Before
+        window_name="Window before",
+        direction=WindowDirection.Before,
     )
     window_initial.refresh()
     assert window_before.window_index == "1"
     assert window_initial.window_index == "3"
 
     window_after = session.new_window(
-        window_name="Window after", direction=WindowDirection.After
+        window_name="Window after",
+        direction=WindowDirection.After,
     )
     window_initial.refresh()
     window_after.refresh()

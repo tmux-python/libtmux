@@ -16,10 +16,6 @@ from typing import Dict, Optional, Union
 from . import exc
 from ._compat import LooseVersion, console_to_str, str_from_console
 
-if t.TYPE_CHECKING:
-    pass
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -219,7 +215,7 @@ class tmux_cmd:
     def __init__(self, *args: t.Any) -> None:
         tmux_bin = shutil.which("tmux")
         if not tmux_bin:
-            raise exc.TmuxCommandNotFound()
+            raise exc.TmuxCommandNotFound
 
         cmd = [tmux_bin]
         cmd += args  # add the command arguments to cmd
@@ -416,8 +412,7 @@ def has_minimum_version(raises: bool = True) -> bool:
                 + "libtmux."
             )
             raise exc.VersionTooLow(msg)
-        else:
-            return False
+        return False
     return True
 
 
@@ -439,9 +434,9 @@ def session_check_name(session_name: t.Optional[str]) -> None:
     """
     if session_name is None or len(session_name) == 0:
         raise exc.BadSessionName(reason="empty", session_name=session_name)
-    elif "." in session_name:
+    if "." in session_name:
         raise exc.BadSessionName(reason="contains periods", session_name=session_name)
-    elif ":" in session_name:
+    if ":" in session_name:
         raise exc.BadSessionName(reason="contains colons", session_name=session_name)
 
 
@@ -474,12 +469,11 @@ def handle_option_error(error: str) -> t.Type[exc.OptionError]:
     """
     if "unknown option" in error:
         raise exc.UnknownOption(error)
-    elif "invalid option" in error:
+    if "invalid option" in error:
         raise exc.InvalidOption(error)
-    elif "ambiguous option" in error:
+    if "ambiguous option" in error:
         raise exc.AmbiguousOption(error)
-    else:
-        raise exc.OptionError(error)  # Raise generic option error
+    raise exc.OptionError(error)  # Raise generic option error
 
 
 def get_libtmux_version() -> LooseVersion:

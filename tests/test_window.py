@@ -208,7 +208,7 @@ def test_split_size(session: Session) -> None:
 
 
 @pytest.mark.parametrize(
-    "window_name_before,window_name_after",
+    ("window_name_before", "window_name_after"),
     [("test", "ha ha ha fjewlkjflwef"), ("test", "hello \\ wazzup 0")],
 )
 def test_window_rename(
@@ -506,7 +506,7 @@ def test_resize(
         adjustment=window_height_adjustment * 2,
     )
     assert window_height_before + (window_height_adjustment * 2) == int(
-        window.window_height
+        window.window_height,
     )
 
     # Adjustment: Up
@@ -557,14 +557,16 @@ def test_new_window_with_direction(
     assert window_initial.window_index == "2"
 
     window_before = window_initial.new_window(
-        window_name="Window before", direction=WindowDirection.Before
+        window_name="Window before",
+        direction=WindowDirection.Before,
     )
     window_initial.refresh()
     assert window_before.window_index == "2"
     assert window_initial.window_index == "3"
 
     window_after = window_initial.new_window(
-        window_name="Window after", direction=WindowDirection.After
+        window_name="Window after",
+        direction=WindowDirection.After,
     )
     window_initial.refresh()
     window_after.refresh()

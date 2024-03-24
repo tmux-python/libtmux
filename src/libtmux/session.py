@@ -142,7 +142,10 @@ class Session(Obj, EnvironmentMixin):
     # Command
     #
     def cmd(
-        self, cmd: str, *args: t.Any, target: t.Optional[t.Union[str, int]] = None
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: t.Optional[t.Union[str, int]] = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within session context.
 
@@ -382,13 +385,13 @@ class Session(Obj, EnvironmentMixin):
 
         if len(active_windows) == 1:
             return next(iter(active_windows))
-        elif len(active_windows) == 0:
-            raise exc.NoActiveWindow()
-        else:
-            raise exc.MultipleActiveWindows(count=len(active_windows))
+        if len(active_windows) == 0:
+            raise exc.NoActiveWindow
+        raise exc.MultipleActiveWindows(count=len(active_windows))
 
         if len(self._windows) == 0:
-            raise exc.NoWindowsExist()
+            raise exc.NoWindowsExist
+        return None
 
     def attach(
         self,
@@ -487,8 +490,6 @@ class Session(Obj, EnvironmentMixin):
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
-
-        return None
 
     def switch_client(self) -> "Session":
         """Switch client to session.
@@ -839,7 +840,9 @@ class Session(Obj, EnvironmentMixin):
 
         """
         warnings.warn(
-            "Session.get() is deprecated", category=DeprecationWarning, stacklevel=2
+            "Session.get() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         return getattr(self, key, default)
 
@@ -883,7 +886,9 @@ class Session(Obj, EnvironmentMixin):
 
         """
         warnings.warn(
-            "Session.where() is deprecated", category=DeprecationWarning, stacklevel=2
+            "Session.where() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         try:
             return self.windows.filter(**kwargs)
@@ -930,7 +935,9 @@ class Session(Obj, EnvironmentMixin):
 
         """
         warnings.warn(
-            "Session._windows is deprecated", category=DeprecationWarning, stacklevel=2
+            "Session._windows is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         return self._list_windows()
 
@@ -959,6 +966,8 @@ class Session(Obj, EnvironmentMixin):
 
         """
         warnings.warn(
-            "Session.children is deprecated", category=DeprecationWarning, stacklevel=2
+            "Session.children is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
         )
         return self.windows

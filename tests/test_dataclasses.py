@@ -63,7 +63,8 @@ def test_pane(
 
     pane.resize_pane(adjustment_direction=ResizeAdjustmentDirection.Down, adjustment=25)
     pane.resize_pane(
-        adjustment_direction=ResizeAdjustmentDirection.Right, adjustment=25
+        adjustment_direction=ResizeAdjustmentDirection.Right,
+        adjustment=25,
     )
 
     assert old_pane_size != pane.pane_height
@@ -135,7 +136,7 @@ def test_pane(
     assert new_pane_2.window_id == new_pane.window_id
 
 
-@pytest.fixture
+@pytest.fixture()
 def session(session: Session) -> Session:
     """Verify creating Session with Session.from_session_id()."""
     assert session.session_id is not None
