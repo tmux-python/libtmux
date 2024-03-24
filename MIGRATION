@@ -29,7 +29,7 @@ _Detailed migration steps for the next version will be posted here._
 
 ### Commands require explicit targets (#535)
 
-- {meth}`Server.cmd()`, {meth}`Session.cmd()`, {meth}`Window.cmd()`, {meth}`Pane.cmd()` require passing `target` instead of `['-t', target]`, `['-tTargetName']`, etc. This change is to avoid issues mistakenly interpretting `-t` in other shell values as targets.
+- {meth}`Server.cmd()`, {meth}`Session.cmd()`, {meth}`Window.cmd()`, {meth}`Pane.cmd()` require passing `target` instead of `['-t', target]`, `['-tTargetName']`, etc. This change is to avoid issues mistakenly interpreting `-t` in other shell values as targets.
 
   Before:
 
