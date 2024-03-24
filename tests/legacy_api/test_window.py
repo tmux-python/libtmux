@@ -9,6 +9,7 @@ import pytest
 
 from libtmux import exc
 from libtmux.common import has_gte_version, has_lt_version, has_version
+from libtmux.constants import OptionScope
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -48,7 +49,7 @@ def test_fresh_window_data(session: Session) -> None:
     """Verify window data is fresh."""
     attached_window = session.attached_window
     assert attached_window is not None
-    pane_base_idx = attached_window.show_window_option("pane-base-index", g=True)
+    pane_base_idx = attached_window._show_option("pane-base-index", _global=True)
     assert pane_base_idx is not None
     pane_base_index = int(pane_base_idx)
 
@@ -264,8 +265,8 @@ def test_show_window_options(session: Session) -> None:
     assert isinstance(options, dict)
 
 
-def test_set_show_window_options(session: Session) -> None:
-    """Set option then Window.show_window_options(key)."""
+def test_set_window_and_show_window_options(session: Session) -> None:
+    """Window.set_window_option() then Window.show_window_options(key)."""
     window = session.new_window(window_name="test_window")
 
     window.set_window_option("main-pane-height", 20)
@@ -278,6 +279,44 @@ def test_set_show_window_options(session: Session) -> None:
     if has_gte_version("2.3"):
         window.set_window_option("pane-border-format", " #P ")
         assert window.show_window_option("pane-border-format") == " #P "
+
+
+def test_set_and_show_options(session: Session) -> None:
+    """Window.set_option() then Window._show_options(key)."""
+    window = session.new_window(window_name="test_window")
+
+    window.set_option("main-pane-height", 20)
+    if has_gte_version("3.0"):
+        assert window._show_option("main-pane-height") == 20
+    else:
+        assert window._show_option("main-pane-height", scope=OptionScope.Window) == 20
+
+    window.set_option("main-pane-height", 40)
+
+    if has_gte_version("3.0"):
+        assert window._show_option("main-pane-height") == 40
+    else:
+        assert window._show_option("main-pane-height", scope=OptionScope.Window) == 40
+
+    # By default, show-options will session scope, even if target is a window
+    with pytest.raises(KeyError):
+        assert window._show_options(scope=OptionScope.Session)["main-pane-height"] == 40
+
+    if has_gte_version("3.0"):
+        assert window._show_option("main-pane-height") == 40
+    else:
+        assert window._show_option("main-pane-height", scope=OptionScope.Window) == 40
+
+    if has_gte_version("2.3"):
+        window.set_option("pane-border-format", " #P ")
+
+        if has_gte_version("3.0"):
+            assert window._show_option("pane-border-format") == " #P "
+        else:
+            assert (
+                window._show_option("pane-border-format", scope=OptionScope.Window)
+                == " #P "
+            )
 
 
 def test_empty_window_option_returns_None(session: Session) -> None:

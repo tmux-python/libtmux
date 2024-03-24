@@ -50,3 +50,35 @@ PANE_DIRECTION_FLAG_MAP: t.Dict[PaneDirection, t.List[str]] = {
     PaneDirection.Right: ["-h"],
     PaneDirection.Left: ["-h", "-b"],
 }
+
+
+class _DefaultOptionScope:
+    # Sentinel value for default scope
+    ...
+
+
+DEFAULT_OPTION_SCOPE: _DefaultOptionScope = _DefaultOptionScope()
+
+
+class OptionScope(enum.Enum):
+    """Scope used with ``set-option`` and ``show-option(s)`` commands."""
+
+    Server = "SERVER"
+    Session = "SESSION"
+    Window = "WINDOW"
+    Pane = "PANE"
+
+
+OPTION_SCOPE_FLAG_MAP: t.Dict[OptionScope, str] = {
+    OptionScope.Server: "-s",
+    OptionScope.Session: "",
+    OptionScope.Window: "-w",
+    OptionScope.Pane: "-p",
+}
+
+HOOK_SCOPE_FLAG_MAP: t.Dict[OptionScope, str] = {
+    OptionScope.Server: "",
+    OptionScope.Session: "",
+    OptionScope.Window: "-w",
+    OptionScope.Pane: "-p",
+}
