@@ -362,6 +362,33 @@ TEST_FIXTURES: list[OptionDataclassTestFixture] = [
             "xterm*": ["clipboard", "ccolour", "cstyle", "focus"],
         },
     ),
+    OptionDataclassTestFixture(
+        test_id="command-alias",
+        option_data=textwrap.dedent(
+            """
+            command-alias[0] split-pane=split-window
+            command-alias[1] splitp=split-window
+            command-alias[2] "server-info=show-messages -JT"
+            command-alias[3] "info=show-messages -JT"
+            command-alias[4] "choose-window=choose-tree -w"
+            command-alias[5] "choose-session=choose-tree -s"
+            """,
+        )
+        .strip()
+        .split("\n"),
+        dataclass_attribute="command_alias",
+        tmux_option="command-alias",
+        expected=TmuxArray(
+            {
+                "split-pane": "split-window",
+                "splitp": "split-window",
+                "server-info": "show-messages -JT",
+                "info": "show-messages -JT",
+                "choose-window": "choose-tree -w",
+                "choose-session": "choose-tree -s",
+            },
+        ),
+    ),
 ]
 
 
@@ -388,3 +415,42 @@ def test_option_dataclass_fixture(
     assert options
     assert hasattr(options, dataclass_attribute)
     assert getattr(options, dataclass_attribute, None) == expected
+
+
+@pytest.mark.parametrize(
+    list(OptionDataclassTestFixture._fields),
+    TEST_FIXTURES,
+    ids=[test.test_id for test in TEST_FIXTURES],
+)
+def test_show_option_pane_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    test_id: str,
+    option_data: list[str],
+    tmux_option: str,
+    expected: t.Any,
+    dataclass_attribute: str,
+    server: Server,
+) -> None:
+    """Test Pane.show_option(s)?."""
+    session = server.new_session(session_name="test")
+    window = session.new_window(window_name="test")
+    pane = window.split_window(attach=False)
+
+    monkeypatch.setattr(pane, "cmd", fake_cmd(stdout=option_data))
+
+    result = pane.show_option(tmux_option)
+
+    assert result == expected
+
+    if expected is None:
+        assert result is not None, (
+            f"Expected {expected} to be {type(expected)}, got None"
+        )
+
+    if isinstance(expected, dict):
+        assert isinstance(result, dict), f'Expected dict, got "{type(result)}"'
+
+        for k, v in expected.items():
+            assert k in result
+
+            assert result[k] == v
