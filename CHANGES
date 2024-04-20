@@ -15,6 +15,34 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Testing
+
+- Add `pytest-xdist` ([PyPI](https://pypi.org/project/pytest-xdist/), [GitHub](https://github.com/pytest-dev/pytest-xdist)) for parallel testing (#522).
+
+  pytest:
+
+  ```console
+  py.test -n auto
+  ```
+
+  pytest-watcher:
+
+  ```console
+  env PYTEST_ADDOPTS='-n auto' make start
+  ```
+
+  entr(1):
+
+  ```console
+  make watch_test test="-n auto"
+  ```
+
+- Improve flakey tests:
+
+  - `retry_until()` tests: Relax clock in `assert` (#522).
+  - `tests/test_pane.py::test_capture_pane_start`: Use `retry_until()` to poll,
+    improve correctness of test (#522).
+
 ### Documentation
 
 - Automatically linkify links that were previously only text.

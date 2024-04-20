@@ -70,6 +70,7 @@ pytest = "*"
 pytest-rerunfailures = "*"
 pytest-mock = "*"
 pytest-watcher = "*"
+pytest-xdist = "*"
 gp-libs = "~0.0.4"
 
 [tool.poetry.group.coverage.dependencies]
@@ -154,8 +155,18 @@ convention = "numpy"
 "*/__init__.py" = ["F401"]
 
 [tool.pytest.ini_options]
-addopts = "--tb=short --no-header --showlocals --doctest-docutils-modules --reruns 2 -p no:doctest"
-doctest_optionflags = "ELLIPSIS NORMALIZE_WHITESPACE"
+addopts = [
+  "--tb=short",
+  "--no-header",
+  "--showlocals",
+  "--doctest-docutils-modules",
+  "-p no:doctest",
+  "--reruns=2"
+]
+doctest_optionflags = [
+  "ELLIPSIS",
+  "NORMALIZE_WHITESPACE"
+]
 testpaths = [
   "src/libtmux",
   "tests",
