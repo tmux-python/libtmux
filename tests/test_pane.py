@@ -8,6 +8,7 @@ import pytest
 from libtmux.common import has_gte_version, has_lt_version, has_lte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.session import Session
+from libtmux.test import retry_until
 
 logger = logging.getLogger(__name__)
 
@@ -100,14 +101,31 @@ def test_capture_pane_start(session: Session) -> None:
     pane_contents = "\n".join(pane.capture_pane())
     assert pane_contents == '$ printf "%s"\n$'
     pane.send_keys("clear -x", literal=True, suppress_history=False)
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == "$"
-    pane_contents_start = pane.capture_pane(start=-2)
-    assert pane_contents_start[0] == '$ printf "%s"'
-    assert pane_contents_start[1] == "$ clear -x"
-    assert pane_contents_start[-1] == "$"
-    pane_contents_start = pane.capture_pane(start="-")
-    assert pane_contents == "$"
+
+    def wait_until_pane_cleared() -> bool:
+        pane_contents = "\n".join(pane.capture_pane())
+        return "clear -x" not in pane_contents
+
+    retry_until(wait_until_pane_cleared, 1, raises=True)
+
+    def pane_contents_shell_prompt() -> bool:
+        pane_contents = "\n".join(pane.capture_pane())
+        return pane_contents == "$"
+
+    retry_until(pane_contents_shell_prompt, 1, raises=True)
+
+    pane_contents_history_start = pane.capture_pane(start=-2)
+    assert pane_contents_history_start[0] == '$ printf "%s"'
+    assert pane_contents_history_start[1] == "$ clear -x"
+    assert pane_contents_history_start[-1] == "$"
+
+    pane.send_keys("")
+
+    def pane_contents_capture_visible_only_shows_prompt() -> bool:
+        pane_contents = "\n".join(pane.capture_pane(start=1))
+        return pane_contents == "$"
+
+    assert retry_until(pane_contents_capture_visible_only_shows_prompt, 1, raises=True)
 
 
 def test_capture_pane_end(session: Session) -> None:
