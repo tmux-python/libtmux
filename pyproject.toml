@@ -162,7 +162,10 @@ addopts = [
   "-p no:doctest",
   "--reruns=2"
 ]
-doctest_optionflags = "ELLIPSIS NORMALIZE_WHITESPACE"
+doctest_optionflags = [
+  "ELLIPSIS",
+  "NORMALIZE_WHITESPACE"
+]
 testpaths = [
   "src/libtmux",
   "tests",
