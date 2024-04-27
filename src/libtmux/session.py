@@ -705,7 +705,7 @@ class Session(Obj, EnvironmentMixin):
             if isinstance(target_window, int):
                 target = "%s:%d" % (self.window_name, target_window)
             else:
-                target = "%s" % target_window
+                target = f"{target_window}"
 
         proc = self.cmd("kill-window", target=target)
 

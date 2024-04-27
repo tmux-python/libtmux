@@ -618,7 +618,7 @@ class Pane(Obj):
         if zoom:
             tmux_args += ("-Z",)
 
-        tmux_args += ("-P", "-F%s" % "".join(tmux_formats))  # output
+        tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
 
         if start_directory is not None:
             # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.

@@ -136,7 +136,7 @@ def server(
 
         >>> result.assert_outcomes(passed=1)
     """
-    server = Server(socket_name="libtmux_test%s" % next(namer))
+    server = Server(socket_name=f"libtmux_test{next(namer)}")
 
     def fin() -> None:
         server.kill()
