@@ -65,7 +65,8 @@ class EnvironmentMixin:
                 if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
                 else cmd.stderr
             )
-            raise ValueError("tmux set-environment stderr: %s" % cmd.stderr)
+            msg = f"tmux set-environment stderr: {cmd.stderr}"
+            raise ValueError(msg)
 
     def unset_environment(self, name: str) -> None:
         """Unset environment variable ``$ tmux set-environment -u <name>``.
@@ -88,7 +89,8 @@ class EnvironmentMixin:
                 if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
                 else cmd.stderr
             )
-            raise ValueError("tmux set-environment stderr: %s" % cmd.stderr)
+            msg = f"tmux set-environment stderr: {cmd.stderr}"
+            raise ValueError(msg)
 
     def remove_environment(self, name: str) -> None:
         """Remove environment variable ``$ tmux set-environment -r <name>``.
@@ -111,7 +113,8 @@ class EnvironmentMixin:
                 if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
                 else cmd.stderr
             )
-            raise ValueError("tmux set-environment stderr: %s" % cmd.stderr)
+            msg = f"tmux set-environment stderr: {cmd.stderr}"
+            raise ValueError(msg)
 
     def show_environment(self) -> Dict[str, Union[bool, str]]:
         """Show environment ``$ tmux show-environment -t [session]``.
@@ -278,10 +281,13 @@ def get_version() -> LooseVersion:
     if proc.stderr:
         if proc.stderr[0] == "tmux: unknown option -- V":
             if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
-                return LooseVersion("%s-openbsd" % TMUX_MAX_VERSION)
+                return LooseVersion(f"{TMUX_MAX_VERSION}-openbsd")
+            msg = (
+                f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. This system"
+                " is running tmux 1.3 or earlier."
+            )
             raise exc.LibTmuxException(
-                "libtmux supports tmux %s and greater. This system"
-                " is running tmux 1.3 or earlier." % TMUX_MIN_VERSION,
+                msg,
             )
         raise exc.VersionTooLow(proc.stderr)
 
@@ -289,7 +295,7 @@ def get_version() -> LooseVersion:
 
     # Allow latest tmux HEAD
     if version == "master":
-        return LooseVersion("%s-master" % TMUX_MAX_VERSION)
+        return LooseVersion(f"{TMUX_MAX_VERSION}-master")
 
     version = re.sub(r"[a-z-]", "", version)
 

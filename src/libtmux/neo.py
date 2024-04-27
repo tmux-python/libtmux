@@ -211,7 +211,7 @@ def fetch_objs(
     if list_extra_args is not None and isinstance(list_extra_args, t.Iterable):
         tmux_cmds.extend(list(list_extra_args))
 
-    tmux_cmds.append("-F%s" % "".join(tmux_formats))
+    tmux_cmds.append("-F{}".format("".join(tmux_formats)))
 
     proc = tmux_cmd(*tmux_cmds)  # output
 

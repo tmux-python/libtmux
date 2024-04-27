@@ -44,7 +44,7 @@ def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
     assert has_gte_version(TMUX_MIN_VERSION)
     assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
     assert (
-        get_version() == "%s-master" % TMUX_MAX_VERSION
+        get_version() == f"{TMUX_MAX_VERSION}-master"
     ), "Is the latest supported version with -master appended"
 
 
@@ -82,7 +82,7 @@ def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
     assert has_gte_version(TMUX_MIN_VERSION)
     assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
     assert (
-        get_version() == "%s-openbsd" % TMUX_MAX_VERSION
+        get_version() == f"{TMUX_MAX_VERSION}-openbsd"
     ), "Is the latest supported version with -openbsd appended"
 
 

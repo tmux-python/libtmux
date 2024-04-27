@@ -15,6 +15,12 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Development
+
+- Code quality: Use f-strings in more places (#540)
+
+  via [ruff 0.4.2](https://github.com/astral-sh/ruff/blob/v0.4.2/CHANGELOG.md).
+
 ## libtmux 0.37.0 (04-21-2024)
 
 _Maintenance only, no bug fixes or new features_
