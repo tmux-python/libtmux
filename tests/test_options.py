@@ -336,7 +336,7 @@ class OptionDataclassTestFixture(t.NamedTuple):
     test_id: str
 
     # test data
-    option_data: list[str]  # option data (raw)
+    mocked_cmd_stdout: list[str]  # option data (raw)
     tmux_option: str  # e.g. terminal-features
 
     # results
@@ -347,7 +347,7 @@ class OptionDataclassTestFixture(t.NamedTuple):
 TEST_FIXTURES: list[OptionDataclassTestFixture] = [
     OptionDataclassTestFixture(
         test_id="terminal-features",
-        option_data=textwrap.dedent(
+        mocked_cmd_stdout=textwrap.dedent(
             """
             terminal-features[0] xterm*:clipboard:ccolour:cstyle:focus
             terminal-features[1] screen*:title
@@ -364,7 +364,7 @@ TEST_FIXTURES: list[OptionDataclassTestFixture] = [
     ),
     OptionDataclassTestFixture(
         test_id="command-alias",
-        option_data=textwrap.dedent(
+        mocked_cmd_stdout=textwrap.dedent(
             """
             command-alias[0] split-pane=split-window
             command-alias[1] splitp=split-window
@@ -397,17 +397,17 @@ TEST_FIXTURES: list[OptionDataclassTestFixture] = [
     TEST_FIXTURES,
     ids=[test.test_id for test in TEST_FIXTURES],
 )
-def test_option_dataclass_fixture(
+def test_mocked_cmd_stdoutclass_fixture(
     monkeypatch: pytest.MonkeyPatch,
     test_id: str,
-    option_data: list[str],
+    mocked_cmd_stdout: list[str],
     tmux_option: str,
     expected: t.Any,
     dataclass_attribute: str,
     server: Server,
 ) -> None:
     """Parametrized test grid for options."""
-    monkeypatch.setattr(server, "cmd", fake_cmd(stdout=option_data))
+    monkeypatch.setattr(server, "cmd", fake_cmd(stdout=mocked_cmd_stdout))
 
     options_ = server._show_options()
     assert any(tmux_option in k for k in options_)
@@ -425,7 +425,7 @@ def test_option_dataclass_fixture(
 def test_show_option_pane_fixture(
     monkeypatch: pytest.MonkeyPatch,
     test_id: str,
-    option_data: list[str],
+    mocked_cmd_stdout: list[str],
     tmux_option: str,
     expected: t.Any,
     dataclass_attribute: str,
@@ -436,7 +436,7 @@ def test_show_option_pane_fixture(
     window = session.new_window(window_name="test")
     pane = window.split_window(attach=False)
 
-    monkeypatch.setattr(pane, "cmd", fake_cmd(stdout=option_data))
+    monkeypatch.setattr(pane, "cmd", fake_cmd(stdout=mocked_cmd_stdout))
 
     result = pane.show_option(tmux_option)
 
