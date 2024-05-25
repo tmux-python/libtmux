@@ -121,7 +121,7 @@ class Window(Obj):
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        panes: t.List["Pane"] = [
+        panes: t.List[Pane] = [
             Pane(server=self.server, **obj)
             for obj in fetch_objs(
                 list_cmd="list-panes",
@@ -445,7 +445,7 @@ class Window(Obj):
         # retaining quoted sub-strings.
         #   shlex.split('this is "a test"') => ['this', 'is', 'a test']
 
-        window_options: "WindowOptionDict" = {}
+        window_options: WindowOptionDict = {}
         for item in output:
             try:
                 key, val = shlex.split(item)

@@ -66,7 +66,7 @@ def test_version_compare(
     raises: t.Union[t.Type[Exception], bool],
 ) -> None:
     """Assert version comparisons."""
-    raises_ctx: "RaisesContext[Exception]" = (
+    raises_ctx: RaisesContext[Exception] = (
         pytest.raises(t.cast(t.Type[Exception], raises))
         if raises
         else t.cast("RaisesContext[Exception]", does_not_raise())

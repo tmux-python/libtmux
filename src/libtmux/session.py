@@ -106,7 +106,7 @@ class Session(Obj, EnvironmentMixin):
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.windows.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        windows: t.List["Window"] = [
+        windows: t.List[Window] = [
             Window(server=self.server, **obj)
             for obj in fetch_objs(
                 list_cmd="list-windows",
@@ -126,7 +126,7 @@ class Session(Obj, EnvironmentMixin):
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        panes: t.List["Pane"] = [
+        panes: t.List[Pane] = [
             Pane(server=self.server, **obj)
             for obj in fetch_objs(
                 list_cmd="list-panes",
