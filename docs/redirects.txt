@@ -4,5 +4,5 @@
 "windows.md" "reference/windows.md"
 "traversal.md" "topics/traversal.md"
 "sessions.md" "reference/sessions.md"
-"api.md" "internals/index.md"
+"api.md" "reference/index.md"
 "pytest-plugin.md" "pytest-plugin/index.md"
