@@ -33,11 +33,11 @@ no_arg = object()
 
 
 class MultipleObjectsReturned(Exception):
-    """The requested object does not exist."""
+    """The query returned multiple objects when only one was expected."""
 
 
 class ObjectDoesNotExist(Exception):
-    """The query returned multiple objects when only one was expected."""
+    """The requested object does not exist."""
 
 
 def keygetter(
