@@ -56,7 +56,7 @@ Rebuild docs and run server via one terminal: `make dev_docs` (requires above, a
 
 ### ruff
 
-The project uses [ruff] to handles formatting, sorting imports and linting.
+The project uses [ruff] to handle formatting, sorting imports and linting.
 
 ````{tab} Command
 
