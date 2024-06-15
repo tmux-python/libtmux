@@ -2,7 +2,7 @@
 
 # Properties
 
-Get access to the data attributions behind tmux sessions, windows and panes.
+Get access to the data attributes behind tmux sessions, windows and panes.
 
 This is done through accessing the [formats][formats] available in `list-sessions`,
 `list-windows` and `list-panes`.
