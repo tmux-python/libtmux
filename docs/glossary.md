@@ -20,7 +20,7 @@ Server
     Tmux runs in the background of your system as a process.
 
     The server holds multiple {term}`Session`. By default, tmux
-    automatically starts the server the first time ``$ tmux`` is ran.
+    automatically starts the server the first time ``$ tmux`` is run.
 
     A server contains {term}`session`'s.
 
