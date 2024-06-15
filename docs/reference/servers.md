@@ -7,7 +7,7 @@
 - Contain {ref}`Sessions` (which contain {ref}`Windows`, which contain
   {ref}`Panes`)
 
-tmux initializes a server on automatically on first running (e.g. executing `tmux`)
+tmux initializes a server automatically on first running (e.g. executing `tmux`)
 
 ```{eval-rst}
 .. autoclass:: libtmux.Server
