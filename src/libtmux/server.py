@@ -67,7 +67,7 @@ class Server(EnvironmentMixin):
     [Session($1 ...)]
 
     >>> server.sessions[0].windows
-    [Window(@1 1:..., Session($1 ...)]
+    [Window(@1 1:..., Session($1 ...))]
 
     >>> server.sessions[0].active_window
     Window(@1 1:..., Session($1 ...))
