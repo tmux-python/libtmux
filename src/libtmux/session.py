@@ -340,12 +340,12 @@ class Session(Obj, EnvironmentMixin):
         return value
 
     def select_window(self, target_window: t.Union[str, int]) -> "Window":
-        """Select window, return selected window.
+        """Select window and return the selected window.
 
         Parameters
         ----------
         window : str
-            ``target_window`` also 'last-window' (``-l``), 'next-window'
+            ``target_window`` can also be 'last-window' (``-l``), 'next-window'
             (``-n``), or 'previous-window' (``-p``)
 
         Returns
@@ -375,12 +375,12 @@ class Session(Obj, EnvironmentMixin):
     #
     @property
     def active_pane(self) -> t.Optional["Pane"]:
-        """Return active :class:`Pane` object."""
+        """Return the active :class:`Pane` object."""
         return self.active_window.active_pane
 
     @property
     def active_window(self) -> "Window":
-        """Return active :class:`Window` object."""
+        """Return the active :class:`Window` object."""
         active_windows = self.windows.filter(window_active="1")
 
         if len(active_windows) == 1:
@@ -622,6 +622,7 @@ class Session(Obj, EnvironmentMixin):
         Returns
         -------
         :class:`Window`
+            The newly created window.
         """
         window_args: t.Tuple[str, ...] = ()
 
@@ -757,7 +758,7 @@ class Session(Obj, EnvironmentMixin):
     #
     @property
     def attached_pane(self) -> t.Optional["Pane"]:
-        """Return active :class:`Pane` object.
+        """Return the active :class:`Pane` object.
 
         Notes
         -----
@@ -774,7 +775,7 @@ class Session(Obj, EnvironmentMixin):
 
     @property
     def attached_window(self) -> "Window":
-        """Return active :class:`Window` object.
+        """Return the active :class:`Window` object.
 
         Notes
         -----
