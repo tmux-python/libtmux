@@ -7,7 +7,7 @@ independent tmux server.
 
 ```{seealso} Using the pytest plugin?
 
-Do you want more flexbility? Correctness? Power? Defaults changed? [Connect with us] on the tracker, we want to know
+Do you want more flexibility? Correctness? Power? Defaults changed? [Connect with us] on the tracker, we want to know
 your case, we won't stabilize APIs until we're sure everything is by the book.
 
 [connect with us]: https://github.com/tmux-python/libtmux/discussions
@@ -48,7 +48,7 @@ passed into your test.
 
 ## Recommended fixtures
 
-These are fixtures are automatically used when the plugin is enabled and `pytest` is ran.
+These are fixtures are automatically used when the plugin is enabled and `pytest` is run.
 
 - Creating temporary, test directories for:
   - `/home/` ({func}`home_path`)
@@ -65,7 +65,7 @@ If you would like {func}`session fixture <libtmux.pytest_plugin.session>` to aut
 options:
 
 - Pass a `config_file` into {class}`~libtmux.Server`
-- Set the `HOME` directory to a local or temporary pytest path with a configurat configuration file
+- Set the `HOME` directory to a local or temporary pytest path with a configuration file
 
 You could also read the code and override {func}`server fixtures <libtmux.pytest_plugin.server>`'s in your own doctest. doctest.
 
