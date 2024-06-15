@@ -55,7 +55,7 @@ class Session(Obj, EnvironmentMixin):
     [Window(@1 ...:..., Session($1 ...)]
 
     >>> session.active_window
-    Window(@1 ...:..., Session($1 ...)
+    Window(@1 ...:..., Session($1 ...))
 
     >>> session.active_pane
     Pane(%1 Window(@1 ...:..., Session($1 ...)))
