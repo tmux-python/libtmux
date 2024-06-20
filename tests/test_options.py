@@ -454,3 +454,56 @@ def test_show_option_pane_fixture(
             assert k in result
 
             assert result[k] == v
+
+
+def test_stable_baseline_options_and_hooks(server: Server) -> None:
+    """Ensure stable baseline across tmux versions."""
+    session = server.new_session(session_name="test", detach=True)
+
+    # List variables
+    assert server.show_option("command-alias") == {
+        "choose-session": "choose-tree -s",
+        "choose-window": "choose-tree -w",
+        "info": "show-messages -JT",
+        "server-info": "show-messages -JT",
+        "split-pane": "split-window",
+        "splitp": "split-window",
+    }
+    if has_gte_version("3.2"):
+        assert server.show_option("terminal-features") == {
+            "screen*": [
+                "title",
+            ],
+            "xterm*": [
+                "clipboard",
+                "ccolour",
+                "cstyle",
+                "focus",
+                "title",
+            ],
+        }
+    assert server.show_option("terminal-overrides") is None
+    assert server.show_option("user-keys") is None
+    assert server.show_option("status-format") is None
+    assert server.show_option("update-environment") is None
+
+    # List variables: Pane
+    pane = session.active_pane
+    assert pane is not None
+    assert pane.show_option("pane-colours") is None
+
+
+def test_high_level_api_expectations(server: Server) -> None:
+    """Ensure options and hooks behave as expected."""
+
+    # Raw input and output
+    # Should be able to functionally parse raw CLI output, even outside of libtmux into
+    # options.
+
+    # Parsing steps
+    # 1. Basic KV split: Should split options into key,values.
+    # 2. Structure: Should decompose array-like options and dictionaries
+    #    In the case of sparse arrays, which don't exist in Python, a SparseArray is
+    #    used that behaves like a list but allows for sparse indexes so the indices
+    #    aren't lost but the shape is still respected.
+    # 3. Python Typings: Should cast the fully structured objects into types
