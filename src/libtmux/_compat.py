@@ -4,7 +4,7 @@ import sys
 import types
 import typing as t
 
-console_encoding = sys.__stdout__.encoding
+console_encoding = sys.stdout.encoding
 
 
 def console_to_str(s: bytes) -> str:
