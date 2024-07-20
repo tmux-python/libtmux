@@ -27,7 +27,7 @@ from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
 from . import exc
-from .common import PaneDict, WindowOptionDict
+from .common import PaneDict
 from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
@@ -896,9 +896,12 @@ class Window(
             category=DeprecationWarning,
             stacklevel=2,
         )
-        return self._show_options(
-            g=g,
-            scope=OptionScope.Window,
+        return t.cast(
+            "WindowOptionDict",
+            self._show_options(
+                g=g,
+                scope=OptionScope.Window,
+            ),
         )
 
     def show_window_option(
