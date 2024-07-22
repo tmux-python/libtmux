@@ -133,7 +133,7 @@ ogp_image = "_static/img/icons/icon-192x192.png"
 ogp_site_name = about["__title__"]
 
 intersphinx_mapping = {
-    "": ("https://docs.python.org/", None),
+    "python": ("https://docs.python.org/", None),
     "pytest": ("https://docs.pytest.org/en/stable/", None),
 }
 
