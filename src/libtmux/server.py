@@ -96,7 +96,7 @@ class Server(EnvironmentMixin):
     config_file = None
     """Passthrough to ``[-f file]``"""
     colors = None
-    """``-2`` or ``-8``"""
+    """``256`` or ``88``"""
     child_id_attribute = "session_id"
     """Unique child ID used by :class:`~libtmux.common.TmuxRelationalObject`"""
     formatter_prefix = "server_"
