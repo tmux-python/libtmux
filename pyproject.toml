@@ -1,9 +1,12 @@
-[tool.poetry]
+[project]
 name = "libtmux"
 version = "0.37.0"
 description = "Typed library that provides an ORM wrapper for tmux, a terminal multiplexer."
-license = "MIT"
-authors = ["Tony Narlock <tony@git-pull.com>"]
+requires-python = ">=3.9,<4.0"
+authors = [
+  {name = "Tony Narlock", email = "tony@git-pull.com"}
+]
+license = { text = "MIT" }
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "License :: OSI Approved :: MIT License",
@@ -41,52 +44,79 @@ include = [
   { path = "conftest.py", format = "sdist" },
 ]
 
-[tool.poetry.urls]
+[project.urls]
 "Bug Tracker" = "https://github.com/tmux-python/libtmux/issues"
 Documentation = "https://libtmux.git-pull.com"
 Repository = "https://github.com/tmux-python/libtmux"
 Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
-[tool.poetry.dependencies]
-python = "^3.8"
+[tool.uv]
+dev-dependencies = [
+  # Docs
+  "sphinx",
+  "furo",
+  "gp-libs",
+  "sphinx-autobuild",
+  "sphinx-autodoc-typehints",
+  "sphinx-inline-tabs",
+  "sphinxext-opengraph<0.8",
+  "sphinx-copybutton",
+  "sphinxext-rediraffe",
+  "myst-parser>=0.18.1",
+  "linkify-it-py",
+  # Testing
+  "gp-libs",
+  "pytest",
+  "pytest-rerunfailures",
+  "pytest-mock",
+  "pytest-watcher",
+  "pytest-xdist",
+  # Coverage
+  "codecov",
+  "coverage",
+  "pytest-cov",
+  # Lint
+  "ruff",
+  "mypy",
+]
 
-[tool.poetry.group.docs.dependencies]
-### Docs ###
-sphinx = "*"
-furo = "*"
-gp-libs = "*"
-sphinx-autobuild = "*"
-sphinx-autodoc-typehints = "*"
-sphinx-inline-tabs = "*"
-sphinxext-opengraph = "<0.8" # https://github.com/wpilibsuite/sphinxext-opengraph/issues/100
-sphinx-copybutton = "*"
-sphinxext-rediraffe = "*"
-myst_parser = ">=0.18.1"
-docutils = "*"
-linkify-it-py = "*"
+[dependency-groups]
+docs = [
+  "sphinx",
+  "furo",
+  "gp-libs",
+  "sphinx-autobuild",
+  "sphinx-autodoc-typehints",
+  "sphinx-inline-tabs",
+  "sphinxext-opengraph",
+  "sphinx-copybutton",
+  "sphinxext-rediraffe",
+  "myst-parser",
+  "linkify-it-py",
+]
+testing = [
+  "gp-libs",
+  "pytest",
+  "pytest-rerunfailures",
+  "pytest-mock",
+  "pytest-watcher",
+]
+coverage =[
+  "codecov",
+  "coverage",
+  "pytest-cov",
+]
+lint = [
+  "ruff",
+  "mypy",
+]
 
-[tool.poetry.group.test.dependencies]
-### Testing ###
-pytest = "*"
-pytest-rerunfailures = "*"
-pytest-mock = "*"
-pytest-watcher = "*"
-pytest-xdist = "*"
-gp-libs = "~0.0.4"
-
-[tool.poetry.group.coverage.dependencies]
-### Coverage ###
-codecov = "*"
-coverage = "*"
-pytest-cov = "*"
-
-[tool.poetry.group.lint.dependencies]
-### Lint ###
-ruff = "*"
-mypy = "*"
-
-[tool.poetry.plugins.pytest11]
+[project.entry-points.pytest11]
 libtmux = "libtmux.pytest_plugin"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.mypy]
 strict = true
@@ -179,7 +209,3 @@ filterwarnings = [
   "ignore::DeprecationWarning:libtmux.*:",
   "ignore::DeprecationWarning:tests:",  # tests/
 ]
-
-[build-system]
-requires = ["poetry_core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"

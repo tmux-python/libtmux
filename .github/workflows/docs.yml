@@ -27,38 +27,37 @@ jobs:
               - 'examples/**'
             python_files:
               - 'src/libtmux/**'
-              - poetry.lock
+              - uv.lock
               - pyproject.toml
 
       - name: Should publish
         if: steps.changes.outputs.docs == 'true' || steps.changes.outputs.root_docs == 'true' || steps.changes.outputs.python_files == 'true'
         run: echo "PUBLISH=$(echo true)" >> $GITHUB_ENV
 
-      - name: Install poetry
+      - name: Install uv
         if: env.PUBLISH == 'true'
-        run: pipx install "poetry==1.8.4"
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
 
       - name: Set up Python ${{ matrix.python-version }}
         if: env.PUBLISH == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'poetry'
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies [w/ docs]
         if: env.PUBLISH == 'true'
-        run: poetry install --with=docs,lint
+        run: uv sync --all-extras --dev
 
       - name: Print python versions
         if: env.PUBLISH == 'true'
         run: |
           python -V
-          poetry run python -V
+          uv run python -V
 
       - name: Build documentation
         if: env.PUBLISH == 'true'
         run: |
-          pushd docs; make SPHINXBUILD='poetry run sphinx-build' html; popd
+          pushd docs; make SPHINXBUILD='uv run sphinx-build' html; popd
 
       - name: Push documentation to S3
         uses: jakejarvis/s3-sync-action@v0.5.1
