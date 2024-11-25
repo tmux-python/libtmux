@@ -704,7 +704,7 @@ class Session(Obj, EnvironmentMixin):
         """
         if target_window:
             if isinstance(target_window, int):
-                target = "%s:%d" % (self.window_name, target_window)
+                target = f"{self.window_name}:{target_window}"
             else:
                 target = f"{target_window}"
 
