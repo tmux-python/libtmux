@@ -136,7 +136,7 @@ def test_pane(
     assert new_pane_2.window_id == new_pane.window_id
 
 
-@pytest.fixture()
+@pytest.fixture
 def session(session: Session) -> Session:
     """Verify creating Session with Session.from_session_id()."""
     assert session.session_id is not None

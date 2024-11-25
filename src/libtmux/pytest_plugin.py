@@ -77,7 +77,7 @@ set -g base-index 1
     return c
 
 
-@pytest.fixture()
+@pytest.fixture
 def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear out any unnecessary environment variables that could interrupt tests.
 
@@ -105,7 +105,7 @@ def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.delenv(k)
 
 
-@pytest.fixture()
+@pytest.fixture
 def server(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
@@ -146,7 +146,7 @@ def server(
     return server
 
 
-@pytest.fixture()
+@pytest.fixture
 def session_params() -> t.Dict[str, t.Any]:
     """Return new, temporary :class:`libtmux.Session`.
 
@@ -184,7 +184,7 @@ def session_params() -> t.Dict[str, t.Any]:
     return {}
 
 
-@pytest.fixture()
+@pytest.fixture
 def session(
     request: pytest.FixtureRequest,
     session_params: t.Dict[str, t.Any],
