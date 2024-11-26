@@ -1,6 +1,6 @@
 [project]
 name = "libtmux"
-version = "0.37.0"
+version = "0.38.0"
 description = "Typed library that provides an ORM wrapper for tmux, a terminal multiplexer."
 requires-python = ">=3.9,<4.0"
 authors = [
