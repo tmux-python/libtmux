@@ -2,7 +2,7 @@
 name = "libtmux"
 version = "0.38.1"
 description = "Typed library that provides an ORM wrapper for tmux, a terminal multiplexer."
-requires-python = ">=3.8,<4.0"
+requires-python = ">=3.9,<4.0"
 authors = [
   {name = "Tony Narlock", email = "tony@git-pull.com"}
 ]
@@ -16,7 +16,6 @@ classifiers = [
   "Framework :: Pytest",
   "Intended Audience :: Developers",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
