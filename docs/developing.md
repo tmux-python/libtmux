@@ -1,6 +1,8 @@
 # Development
 
-[poetry] is a required package to develop.
+Install and [git] and [uv]
+
+Clone:
 
 ```console
 $ git clone https://github.com/tmux-python/libtmux.git
@@ -10,15 +12,20 @@ $ git clone https://github.com/tmux-python/libtmux.git
 $ cd libtmux
 ```
 
+Install packages:
+
 ```console
-$ poetry install -E "docs test coverage lint"
+$ uv sync --all-extras --dev
 ```
+
+[installation documentation]: https://docs.astral.sh/uv/getting-started/installation/
+[git]: https://git-scm.com/
 
 Makefile commands prefixed with `watch_` will watch files and rerun.
 
 ## Tests
 
-`poetry run py.test`
+`uv run py.test`
 
 Helpers: `make test`
 Rerun tests on file change: `make watch_test` (requires [entr(1)])
@@ -60,10 +67,10 @@ The project uses [ruff] to handle formatting, sorting imports and linting.
 
 ````{tab} Command
 
-poetry:
+uv:
 
 ```console
-$ poetry run ruff
+$ uv run ruff
 ```
 
 If you setup manually:
@@ -94,10 +101,10 @@ requires [`entr(1)`].
 
 ````{tab} Fix files
 
-poetry:
+uv:
 
 ```console
-$ poetry run ruff check . --fix
+$ uv run ruff check . --fix
 ```
 
 If you setup manually:
@@ -114,10 +121,10 @@ $ ruff check . --fix
 
 ````{tab} Command
 
-poetry:
+uv:
 
 ```console
-$ poetry run ruff format .
+$ uv run ruff format .
 ```
 
 If you setup manually:
@@ -142,10 +149,10 @@ $ make ruff_format
 
 ````{tab} Command
 
-poetry:
+uv:
 
 ```console
-$ poetry run mypy .
+$ uv run mypy .
 ```
 
 If you setup manually:
@@ -213,12 +220,12 @@ $ git tag v0.9.1
 After `git push` and `git push --tags`, CI will automatically build and deploy
 to PyPI.
 
-### Releasing with Poetry (manual)
+### Releasing via GitHub Actions (manual)
 
 This isn't used yet since package maintainers may want setup.py in the source.
 See https://github.com/tmux-python/tmuxp/issues/625.
 
-As of 0.10, [poetry] handles virtualenv creation, package requirements, versioning,
+As of 0.10, [uv] handles virtualenv creation, package requirements, versioning,
 building, and publishing. Therefore there is no setup.py or requirements files.
 
 Update `__version__` in `__about__.py` and `pyproject.toml`::
@@ -227,11 +234,9 @@ Update `__version__` in `__about__.py` and `pyproject.toml`::
     git tag v0.1.1
     git push
     git push --tags
-    poetry build
-    poetry deploy
 
 [twine]: https://twine.readthedocs.io/
-[poetry]: https://python-poetry.org/
+[uv]: https://github.com/astral-sh/uv
 [entr(1)]: http://eradman.com/entrproject/
 [`entr(1)`]: http://eradman.com/entrproject/
 [ruff format]: https://docs.astral.sh/ruff/formatter/
