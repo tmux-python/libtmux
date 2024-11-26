@@ -15,6 +15,14 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Breaking changes
+
+- Drop Python 3.8. end of life was October 7th, 2024 (#548)
+
+  tmuxp 1.48.0 was the last release for Python 3.8.
+
+  The minimum python for tmuxp as of 1.49.0 is Python 3.9
+
 ## libtmux 0.38.1 (2024-11-26)
 
 - Keep minimum Python version at 3.8 for now.
