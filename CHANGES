@@ -33,22 +33,34 @@ _Maintenance only, no bug fixes or new features_
 
 ## libtmux 0.38.0 (2024-11-26)
 
-### Documentation
+### Breaking changes
 
-- Fix docstrings in `query_list` for `MultipleObjectsReturned` and
-  `ObjectDoesNotExist`.
+#### Project and package management: poetry to uv (#547)
+
+[uv] is the new package and project manager for the project, replacing Poetry.
+
+[uv]: https://github.com/astral-sh/uv
+
+#### Build system: poetry to hatchling (#547)
+
+[Build system] moved from [poetry] to [hatchling].
+
+[Build system]: https://packaging.python.org/en/latest/tutorials/packaging-projects/#choosing-a-build-backend
+[poetry]: https://github.com/python-poetry/poetry
+[hatchling]: https://hatch.pypa.io/latest/
 
 ### Development
-
-- Project and package management: poetry to uv (#547)
-
-  [uv] is the new package and project manager for the project, replacing Poetry.
 
 - Code quality: Use f-strings in more places (#540)
 
   via [ruff 0.4.2](https://github.com/astral-sh/ruff/blob/v0.4.2/CHANGELOG.md).
 
 [uv]: https://github.com/astral-sh/uv
+
+### Documentation
+
+- Fix docstrings in `query_list` for `MultipleObjectsReturned` and
+  `ObjectDoesNotExist`.
 
 ## libtmux 0.37.0 (04-21-2024)
 
