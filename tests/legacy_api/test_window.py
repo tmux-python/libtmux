@@ -3,7 +3,6 @@
 import logging
 import shutil
 import time
-import typing as t
 
 import pytest
 
@@ -302,7 +301,7 @@ def test_show_window_option_unknown(session: Session) -> None:
     """Window.show_window_option raises UnknownOption for bad option key."""
     window = session.new_window(window_name="test_window")
 
-    cmd_exception: t.Type[exc.OptionError] = exc.UnknownOption
+    cmd_exception: type[exc.OptionError] = exc.UnknownOption
     if has_gte_version("3.0"):
         cmd_exception = exc.InvalidOption
     with pytest.raises(cmd_exception):
@@ -398,7 +397,7 @@ def test_empty_window_name(session: Session) -> None:
 )
 def test_split_window_with_environment(
     session: Session,
-    environment: t.Dict[str, str],
+    environment: dict[str, str],
 ) -> None:
     """Verify splitting window with environment variables."""
     env = shutil.which("env")

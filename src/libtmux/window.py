@@ -121,7 +121,7 @@ class Window(Obj):
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        panes: t.List[Pane] = [
+        panes: list[Pane] = [
             Pane(server=self.server, **obj)
             for obj in fetch_objs(
                 list_cmd="list-panes",
@@ -214,7 +214,7 @@ class Window(Obj):
         zoom: t.Optional[bool] = None,
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
-        environment: t.Optional[t.Dict[str, str]] = None,
+        environment: t.Optional[dict[str, str]] = None,
     ) -> "Pane":
         """Split window on active pane and return the created :class:`Pane`.
 
@@ -308,7 +308,7 @@ class Window(Obj):
             warnings.warn("resize() requires tmux 2.9 or newer", stacklevel=2)
             return self
 
-        tmux_args: t.Tuple[str, ...] = ()
+        tmux_args: tuple[str, ...] = ()
 
         # Adjustments
         if adjustment_direction:
@@ -431,7 +431,7 @@ class Window(Obj):
         g : str, optional
             Pass ``-g`` flag for global variable, default False.
         """
-        tmux_args: t.Tuple[str, ...] = ()
+        tmux_args: tuple[str, ...] = ()
 
         if g:
             tmux_args += ("-g",)
@@ -479,7 +479,7 @@ class Window(Obj):
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
-        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
+        tmux_args: tuple[t.Union[str, int], ...] = ()
 
         if g:
             tmux_args += ("-g",)
@@ -578,7 +578,7 @@ class Window(Obj):
         >>> one_window_to_rule_them_all in session.windows
         True
         """
-        flags: t.Tuple[str, ...] = ()
+        flags: tuple[str, ...] = ()
 
         if all_except:
             flags += ("-a",)
@@ -632,7 +632,7 @@ class Window(Obj):
         attach: bool = False,
         window_index: str = "",
         window_shell: t.Optional[str] = None,
-        environment: t.Optional[t.Dict[str, str]] = None,
+        environment: t.Optional[dict[str, str]] = None,
         direction: t.Optional[WindowDirection] = None,
     ) -> "Window":
         """Create new window respective of current window's position.
@@ -821,7 +821,7 @@ class Window(Obj):
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
         percent: t.Optional[int] = None,  # deprecated
-        environment: t.Optional[t.Dict[str, str]] = None,
+        environment: t.Optional[dict[str, str]] = None,
     ) -> "Pane":
         """Split window and return the created :class:`Pane`.
 
@@ -969,7 +969,7 @@ class Window(Obj):
         )
         return self.panes.get(pane_id=pane_id, default=None)
 
-    def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Pane]:
+    def where(self, kwargs: dict[str, t.Any]) -> list[Pane]:
         """Filter through panes, return list of :class:`Pane`.
 
         .. deprecated:: 0.16
@@ -987,7 +987,7 @@ class Window(Obj):
         except IndexError:
             return []
 
-    def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Pane]:
+    def find_where(self, kwargs: dict[str, t.Any]) -> t.Optional[Pane]:
         """Filter through panes, return first :class:`Pane`.
 
         .. deprecated:: 0.16
@@ -1002,7 +1002,7 @@ class Window(Obj):
         )
         return self.panes.get(default=None, **kwargs)
 
-    def _list_panes(self) -> t.List[PaneDict]:
+    def _list_panes(self) -> list[PaneDict]:
         """Return list of panes (deprecated in favor of :meth:`.panes`).
 
         .. deprecated:: 0.16
@@ -1018,7 +1018,7 @@ class Window(Obj):
         return [pane.__dict__ for pane in self.panes]
 
     @property
-    def _panes(self) -> t.List[PaneDict]:
+    def _panes(self) -> list[PaneDict]:
         """Property / alias to return :meth:`~._list_panes`.
 
         .. deprecated:: 0.16
@@ -1029,7 +1029,7 @@ class Window(Obj):
         warnings.warn("_panes is deprecated", category=DeprecationWarning, stacklevel=2)
         return self._list_panes()
 
-    def list_panes(self) -> t.List["Pane"]:
+    def list_panes(self) -> list["Pane"]:
         """Return list of :class:`Pane` for the window.
 
         .. deprecated:: 0.16

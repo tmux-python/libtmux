@@ -17,8 +17,8 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-OutputRaw = t.Dict[str, t.Any]
-OutputsRaw = t.List[OutputRaw]
+OutputRaw = dict[str, t.Any]
+OutputsRaw = list[OutputRaw]
 
 
 """
@@ -195,7 +195,7 @@ def fetch_objs(
     """Fetch a listing of raw data from a tmux command."""
     formats = list(Obj.__dataclass_fields__.keys())
 
-    cmd_args: t.List[t.Union[str, int]] = []
+    cmd_args: list[t.Union[str, int]] = []
 
     if server.socket_name:
         cmd_args.insert(0, f"-L{server.socket_name}")

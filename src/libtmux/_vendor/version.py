@@ -12,29 +12,29 @@
 import collections
 import itertools
 import re
-from typing import Callable, Optional, SupportsInt, Tuple, Union
+from typing import Callable, Optional, SupportsInt, Union
 
 from ._structures import Infinity, InfinityType, NegativeInfinity, NegativeInfinityType
 
 __all__ = ["VERSION_PATTERN", "InvalidVersion", "Version", "parse"]
 
 InfiniteTypes = Union[InfinityType, NegativeInfinityType]
-PrePostDevType = Union[InfiniteTypes, Tuple[str, int]]
+PrePostDevType = Union[InfiniteTypes, tuple[str, int]]
 SubLocalType = Union[InfiniteTypes, int, str]
 LocalType = Union[
     NegativeInfinityType,
-    Tuple[
+    tuple[
         Union[
             SubLocalType,
-            Tuple[SubLocalType, str],
-            Tuple[NegativeInfinityType, SubLocalType],
+            tuple[SubLocalType, str],
+            tuple[NegativeInfinityType, SubLocalType],
         ],
         ...,
     ],
 ]
-CmpKey = Tuple[
+CmpKey = tuple[
     int,
-    Tuple[int, ...],
+    tuple[int, ...],
     PrePostDevType,
     PrePostDevType,
     PrePostDevType,
@@ -293,11 +293,11 @@ class Version(_BaseVersion):
         >>> Version("1!2.0.0").epoch
         1
         """
-        _epoch: int = self._version.epoch
-        return _epoch
+        epoch: int = self._version.epoch
+        return epoch
 
     @property
-    def release(self) -> Tuple[int, ...]:
+    def release(self) -> tuple[int, ...]:
         """The components of the "release" segment of the version.
 
         >>> Version("1.2.3").release
@@ -310,11 +310,11 @@ class Version(_BaseVersion):
         Includes trailing zeroes but not the epoch or any pre-release / development /
         post-release suffixes.
         """
-        _release: Tuple[int, ...] = self._version.release
-        return _release
+        release: tuple[int, ...] = self._version.release
+        return release
 
     @property
-    def pre(self) -> Optional[Tuple[str, int]]:
+    def pre(self) -> Optional[tuple[str, int]]:
         """The pre-release segment of the version.
 
         >>> print(Version("1.2.3").pre)
@@ -326,8 +326,8 @@ class Version(_BaseVersion):
         >>> Version("1.2.3rc1").pre
         ('rc', 1)
         """
-        _pre: Optional[Tuple[str, int]] = self._version.pre
-        return _pre
+        pre: Optional[tuple[str, int]] = self._version.pre
+        return pre
 
     @property
     def post(self) -> Optional[int]:
@@ -476,7 +476,7 @@ class Version(_BaseVersion):
 def _parse_letter_version(
     letter: str,
     number: Union[str, bytes, SupportsInt],
-) -> Optional[Tuple[str, int]]:
+) -> Optional[tuple[str, int]]:
     if letter:
         # We consider there to be an implicit 0 in a pre-release if there is
         # not a numeral associated with it.
@@ -524,18 +524,18 @@ def _parse_local_version(local: str) -> Optional[LocalType]:
 
 def _cmpkey(
     epoch: int,
-    release: Tuple[int, ...],
-    pre: Optional[Tuple[str, int]],
-    post: Optional[Tuple[str, int]],
-    dev: Optional[Tuple[str, int]],
-    local: Optional[Tuple[SubLocalType]],
+    release: tuple[int, ...],
+    pre: Optional[tuple[str, int]],
+    post: Optional[tuple[str, int]],
+    dev: Optional[tuple[str, int]],
+    local: Optional[tuple[SubLocalType]],
 ) -> CmpKey:
     # When we compare a release version, we want to compare it with all of the
     # trailing zeros removed. So we'll use a reverse the list, drop all the now
     # leading zeros until we come to something non zero, then take the rest
     # re-reverse it back into the correct order and make it a tuple and use
     # that for our sorting key.
-    _release = tuple(
+    release_ = tuple(
         reversed(list(itertools.dropwhile(lambda x: x == 0, reversed(release)))),
     )
 
@@ -544,31 +544,31 @@ def _cmpkey(
     # if there is not a pre or a post segment. If we have one of those then
     # the normal sorting rules will handle this case correctly.
     if pre is None and post is None and dev is not None:
-        _pre: PrePostDevType = NegativeInfinity
+        pre_: PrePostDevType = NegativeInfinity
     # Versions without a pre-release (except as noted above) should sort after
     # those with one.
     elif pre is None:
-        _pre = Infinity
+        pre_ = Infinity
     else:
-        _pre = pre
+        pre_ = pre
 
     # Versions without a post segment should sort before those with one.
     if post is None:
-        _post: PrePostDevType = NegativeInfinity
+        post_: PrePostDevType = NegativeInfinity
 
     else:
-        _post = post
+        post_ = post
 
     # Versions without a development segment should sort after those with one.
     if dev is None:
-        _dev: PrePostDevType = Infinity
+        dev_: PrePostDevType = Infinity
 
     else:
-        _dev = dev
+        dev_ = dev
 
     if local is None:
         # Versions without a local segment should sort before those with one.
-        _local: LocalType = NegativeInfinity
+        local_: LocalType = NegativeInfinity
     else:
         # Versions with a local segment need that segment parsed to implement
         # the sorting rules in PEP440.
@@ -577,8 +577,8 @@ def _cmpkey(
         # - Numeric segments sort numerically
         # - Shorter versions sort before longer versions when the prefixes
         #   match exactly
-        _local = tuple(
+        local_ = tuple(
             (i, "") if isinstance(i, int) else (NegativeInfinity, i) for i in local
         )
 
-    return epoch, _release, _pre, _post, _dev, _local
+    return epoch, release_, pre_, post_, dev_, local_

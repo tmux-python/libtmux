@@ -69,8 +69,8 @@ def test_88_colors(server: Server) -> None:
 
 def test_show_environment(server: Server) -> None:
     """Server.show_environment() returns dict."""
-    _vars = server.show_environment()
-    assert isinstance(_vars, dict)
+    vars_ = server.show_environment()
+    assert isinstance(vars_, dict)
 
 
 def test_getenv(server: Server, session: Session) -> None:

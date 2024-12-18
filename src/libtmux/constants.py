@@ -1,7 +1,6 @@
 """Constant variables for libtmux."""
 
 import enum
-import typing as t
 
 
 class ResizeAdjustmentDirection(enum.Enum):
@@ -13,7 +12,7 @@ class ResizeAdjustmentDirection(enum.Enum):
     Right = "RIGHT"
 
 
-RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP: t.Dict[ResizeAdjustmentDirection, str] = {
+RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP: dict[ResizeAdjustmentDirection, str] = {
     ResizeAdjustmentDirection.Up: "-U",
     ResizeAdjustmentDirection.Down: "-D",
     ResizeAdjustmentDirection.Left: "-L",
@@ -28,7 +27,7 @@ class WindowDirection(enum.Enum):
     After = "AFTER"
 
 
-WINDOW_DIRECTION_FLAG_MAP: t.Dict[WindowDirection, str] = {
+WINDOW_DIRECTION_FLAG_MAP: dict[WindowDirection, str] = {
     WindowDirection.Before: "-b",
     WindowDirection.After: "-a",
 }
@@ -43,7 +42,7 @@ class PaneDirection(enum.Enum):
     Left = "LEFT"
 
 
-PANE_DIRECTION_FLAG_MAP: t.Dict[PaneDirection, t.List[str]] = {
+PANE_DIRECTION_FLAG_MAP: dict[PaneDirection, list[str]] = {
     # -v is assumed, but for explicitness it is passed
     PaneDirection.Above: ["-v", "-b"],
     PaneDirection.Below: ["-v"],

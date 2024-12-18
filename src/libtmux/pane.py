@@ -213,7 +213,7 @@ class Pane(Obj):
         2. Manual resizing: ``height`` and / or ``width``.
         3. Zoom / Unzoom: ``zoom``.
         """
-        tmux_args: t.Tuple[str, ...] = ()
+        tmux_args: tuple[str, ...] = ()
 
         # Adjustments
         if adjustment_direction:
@@ -262,7 +262,7 @@ class Pane(Obj):
         self,
         start: t.Union["t.Literal['-']", t.Optional[int]] = None,
         end: t.Union["t.Literal['-']", t.Optional[int]] = None,
-    ) -> t.Union[str, t.List[str]]:
+    ) -> t.Union[str, list[str]]:
         """Capture text from pane.
 
         ``$ tmux capture-pane`` to pane.
@@ -352,7 +352,7 @@ class Pane(Obj):
         self,
         cmd: str,
         get_text: "t.Literal[True]",
-    ) -> t.Union[str, t.List[str]]: ...
+    ) -> t.Union[str, list[str]]: ...
 
     @overload
     def display_message(self, cmd: str, get_text: "t.Literal[False]") -> None: ...
@@ -361,7 +361,7 @@ class Pane(Obj):
         self,
         cmd: str,
         get_text: bool = False,
-    ) -> t.Optional[t.Union[str, t.List[str]]]:
+    ) -> t.Optional[t.Union[str, list[str]]]:
         """Display message to pane.
 
         Displays a message in target-client status line.
@@ -423,7 +423,7 @@ class Pane(Obj):
         >>> one_pane_to_rule_them_all in window.panes
         True
         """
-        flags: t.Tuple[str, ...] = ()
+        flags: tuple[str, ...] = ()
 
         if all_except:
             flags += ("-a",)
@@ -507,7 +507,7 @@ class Pane(Obj):
         zoom: t.Optional[bool] = None,
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
-        environment: t.Optional[t.Dict[str, str]] = None,
+        environment: t.Optional[dict[str, str]] = None,
     ) -> "Pane":
         """Split window and return :class:`Pane`, by default beneath current pane.
 
@@ -593,7 +593,7 @@ class Pane(Obj):
         """
         tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
 
-        tmux_args: t.Tuple[str, ...] = ()
+        tmux_args: tuple[str, ...] = ()
 
         if direction:
             tmux_args += tuple(PANE_DIRECTION_FLAG_MAP[direction])
@@ -827,7 +827,7 @@ class Pane(Obj):
         shell: t.Optional[str] = None,
         size: t.Optional[t.Union[str, int]] = None,
         percent: t.Optional[int] = None,  # deprecated
-        environment: t.Optional[t.Dict[str, str]] = None,
+        environment: t.Optional[dict[str, str]] = None,
     ) -> "Pane":  # New Pane, not self
         """Split window at pane and return newly created :class:`Pane`.
 
