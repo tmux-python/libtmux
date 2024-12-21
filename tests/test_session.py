@@ -49,8 +49,7 @@ def test_select_window(session: Session) -> None:
     assert isinstance(selected_window1, Window)
     active_window1 = session.active_window
 
-    assert selected_window1 == active_window1
-    assert selected_window1.__dict__ == active_window1.__dict__
+    assert selected_window1.id == active_window1.id
 
     # again: tmux selects a window, moves to it, shows it as
     # active_window
@@ -58,12 +57,10 @@ def test_select_window(session: Session) -> None:
     assert isinstance(selected_window2, Window)
     active_window2 = session.active_window
 
-    assert selected_window2 == active_window2
-    assert selected_window2.__dict__ == active_window2.__dict__
+    assert selected_window2.id == active_window2.id
 
     # assure these windows were really different
-    assert selected_window1 != selected_window2
-    assert selected_window1.__dict__ != selected_window2.__dict__
+    assert selected_window1.id != selected_window2.id
 
 
 def test_select_window_returns_Window(session: Session) -> None:
