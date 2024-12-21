@@ -19,6 +19,10 @@ $ pip install --user --upgrade --pre libtmux
 
 _Maintenance only, no bug fixes or new features_
 
+### Breaking
+
+- `_global` renamed to `global_`
+
 ### Development
 
 - Aggressive automated lint fixes via `ruff` (#550)
