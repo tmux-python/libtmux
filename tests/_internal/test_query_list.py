@@ -13,7 +13,7 @@ from libtmux._internal.query_list import (
 @dataclasses.dataclass
 class Obj:
     test: int
-    fruit: t.List[str] = dataclasses.field(default_factory=list)
+    fruit: list[str] = dataclasses.field(default_factory=list)
 
 
 @pytest.mark.parametrize(
@@ -249,9 +249,9 @@ class Obj:
     ],
 )
 def test_filter(
-    items: t.List[t.Dict[str, t.Any]],
+    items: list[dict[str, t.Any]],
     filter_expr: t.Optional[t.Union[t.Callable[[t.Any], bool], t.Any]],
-    expected_result: t.Union[QueryList[t.Any], t.List[t.Dict[str, t.Any]]],
+    expected_result: t.Union[QueryList[t.Any], list[dict[str, t.Any]]],
 ) -> None:
     qs = QueryList(items)
     if filter_expr is not None:

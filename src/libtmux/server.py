@@ -111,8 +111,8 @@ class Server(EnvironmentMixin):
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
-        self._windows: t.List[WindowDict] = []
-        self._panes: t.List[PaneDict] = []
+        self._windows: list[WindowDict] = []
+        self._panes: list[PaneDict] = []
 
         if socket_path is not None:
             self.socket_path = socket_path
@@ -161,7 +161,7 @@ class Server(EnvironmentMixin):
         if tmux_bin is None:
             raise exc.TmuxCommandNotFound
 
-        cmd_args: t.List[str] = ["list-sessions"]
+        cmd_args: list[str] = ["list-sessions"]
         if self.socket_name:
             cmd_args.insert(0, f"-L{self.socket_name}")
         if self.socket_path:
@@ -227,8 +227,8 @@ class Server(EnvironmentMixin):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: t.List[t.Union[str, int]] = [cmd]
-        cmd_args: t.List[t.Union[str, int]] = []
+        svr_args: list[t.Union[str, int]] = [cmd]
+        cmd_args: list[t.Union[str, int]] = []
         if self.socket_name:
             svr_args.insert(0, f"-L{self.socket_name}")
         if self.socket_path:
@@ -248,7 +248,7 @@ class Server(EnvironmentMixin):
         return tmux_cmd(*svr_args, *cmd_args)
 
     @property
-    def attached_sessions(self) -> t.List[Session]:
+    def attached_sessions(self) -> list[Session]:
         """Return active :class:`Session`s.
 
         Examples
@@ -382,7 +382,7 @@ class Server(EnvironmentMixin):
         window_command: t.Optional[str] = None,
         x: t.Optional[t.Union[int, "DashLiteral"]] = None,
         y: t.Optional[t.Union[int, "DashLiteral"]] = None,
-        environment: t.Optional[t.Dict[str, str]] = None,
+        environment: t.Optional[dict[str, str]] = None,
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Session:
@@ -476,7 +476,7 @@ class Server(EnvironmentMixin):
         if env:
             del os.environ["TMUX"]
 
-        tmux_args: t.Tuple[t.Union[str, int], ...] = (
+        tmux_args: tuple[t.Union[str, int], ...] = (
             "-P",
             "-F#{session_id}",  # output
         )
@@ -541,7 +541,7 @@ class Server(EnvironmentMixin):
         :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        sessions: t.List[Session] = []
+        sessions: list[Session] = []
 
         try:
             for obj in fetch_objs(
@@ -562,7 +562,7 @@ class Server(EnvironmentMixin):
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.windows.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        windows: t.List[Window] = [
+        windows: list[Window] = [
             Window(server=self, **obj)
             for obj in fetch_objs(
                 list_cmd="list-windows",
@@ -581,7 +581,7 @@ class Server(EnvironmentMixin):
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        panes: t.List[Pane] = [
+        panes: list[Pane] = [
             Pane(server=self, **obj)
             for obj in fetch_objs(
                 list_cmd="list-panes",
@@ -635,7 +635,7 @@ class Server(EnvironmentMixin):
         )
         self.cmd("kill-server")
 
-    def _list_panes(self) -> t.List[PaneDict]:
+    def _list_panes(self) -> list[PaneDict]:
         """Return list of panes in :py:obj:`dict` form.
 
         Retrieved from ``$ tmux(1) list-panes`` stdout.
@@ -689,7 +689,7 @@ class Server(EnvironmentMixin):
         )
         return self.sessions.get(session_id=session_id, default=None)
 
-    def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Session]:
+    def where(self, kwargs: dict[str, t.Any]) -> list[Session]:
         """Filter through sessions, return list of :class:`Session`.
 
         .. deprecated:: 0.16
@@ -707,7 +707,7 @@ class Server(EnvironmentMixin):
         except IndexError:
             return []
 
-    def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Session]:
+    def find_where(self, kwargs: dict[str, t.Any]) -> t.Optional[Session]:
         """Filter through sessions, return first :class:`Session`.
 
         .. deprecated:: 0.16
@@ -722,7 +722,7 @@ class Server(EnvironmentMixin):
         )
         return self.sessions.get(default=None, **kwargs)
 
-    def _list_windows(self) -> t.List[WindowDict]:
+    def _list_windows(self) -> list[WindowDict]:
         """Return list of windows in :py:obj:`dict` form.
 
         Retrieved from ``$ tmux(1) list-windows`` stdout.
@@ -759,7 +759,7 @@ class Server(EnvironmentMixin):
         return self
 
     @property
-    def _sessions(self) -> t.List[SessionDict]:
+    def _sessions(self) -> list[SessionDict]:
         """Property / alias to return :meth:`~._list_sessions`.
 
         .. deprecated:: 0.16
@@ -774,7 +774,7 @@ class Server(EnvironmentMixin):
         )
         return self._list_sessions()
 
-    def _list_sessions(self) -> t.List["SessionDict"]:
+    def _list_sessions(self) -> list["SessionDict"]:
         """Return list of session object dictionaries.
 
         .. deprecated:: 0.16
@@ -788,7 +788,7 @@ class Server(EnvironmentMixin):
         )
         return [s.__dict__ for s in self.sessions]
 
-    def list_sessions(self) -> t.List[Session]:
+    def list_sessions(self) -> list[Session]:
         """Return list of :class:`Session` from the ``tmux(1)`` session.
 
         .. deprecated:: 0.16

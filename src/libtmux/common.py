@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import sys
 import typing as t
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 from . import exc
 from ._compat import LooseVersion, console_to_str, str_from_console
@@ -25,10 +25,10 @@ TMUX_MIN_VERSION = "1.8"
 #: Most recent version of tmux supported
 TMUX_MAX_VERSION = "3.4"
 
-SessionDict = t.Dict[str, t.Any]
-WindowDict = t.Dict[str, t.Any]
-WindowOptionDict = t.Dict[str, t.Any]
-PaneDict = t.Dict[str, t.Any]
+SessionDict = dict[str, t.Any]
+WindowDict = dict[str, t.Any]
+WindowOptionDict = dict[str, t.Any]
+PaneDict = dict[str, t.Any]
 
 
 class EnvironmentMixin:
@@ -116,7 +116,7 @@ class EnvironmentMixin:
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
-    def show_environment(self) -> Dict[str, Union[bool, str]]:
+    def show_environment(self) -> dict[str, Union[bool, str]]:
         """Show environment ``$ tmux show-environment -t [session]``.
 
         Return dict of environment variables for the session.
@@ -137,7 +137,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
         opts = [tuple(item.split("=", 1)) for item in output]
-        opts_dict: t.Dict[str, t.Union[str, bool]] = {}
+        opts_dict: dict[str, t.Union[str, bool]] = {}
         for _t in opts:
             if len(_t) == 2:
                 opts_dict[_t[0]] = _t[1]
@@ -165,7 +165,7 @@ class EnvironmentMixin:
         str
             Value of environment variable
         """
-        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
+        tmux_args: tuple[t.Union[str, int], ...] = ()
 
         tmux_args += ("show-environment",)
         if self._add_option:
@@ -174,7 +174,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
         opts = [tuple(item.split("=", 1)) for item in output]
-        opts_dict: t.Dict[str, t.Union[str, bool]] = {}
+        opts_dict: dict[str, t.Union[str, bool]] = {}
         for _t in opts:
             if len(_t) == 2:
                 opts_dict[_t[0]] = _t[1]
@@ -446,7 +446,7 @@ def session_check_name(session_name: t.Optional[str]) -> None:
         raise exc.BadSessionName(reason="contains colons", session_name=session_name)
 
 
-def handle_option_error(error: str) -> t.Type[exc.OptionError]:
+def handle_option_error(error: str) -> type[exc.OptionError]:
     """Raise exception if error in option command found.
 
     In tmux 3.0, show-option and show-window-option return invalid option instead of

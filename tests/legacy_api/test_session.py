@@ -2,7 +2,6 @@
 
 import logging
 import shutil
-import typing as t
 
 import pytest
 
@@ -147,7 +146,7 @@ def test_empty_session_option_returns_None(session: Session) -> None:
 
 def test_show_option_unknown(session: Session) -> None:
     """Session.show_option raises UnknownOption for invalid option."""
-    cmd_exception: t.Type[exc.OptionError] = exc.UnknownOption
+    cmd_exception: type[exc.OptionError] = exc.UnknownOption
     if has_gte_version("3.0"):
         cmd_exception = exc.InvalidOption
     with pytest.raises(cmd_exception):
@@ -178,8 +177,8 @@ def test_set_option_invalid(session: Session) -> None:
 
 def test_show_environment(session: Session) -> None:
     """Session.show_environment() returns dict."""
-    _vars = session.show_environment()
-    assert isinstance(_vars, dict)
+    vars_ = session.show_environment()
+    assert isinstance(vars_, dict)
 
 
 def test_set_show_environment_single(session: Session) -> None:
@@ -275,7 +274,7 @@ def test_cmd_inserts_session_id(session: Session) -> None:
 )
 def test_new_window_with_environment(
     session: Session,
-    environment: t.Dict[str, str],
+    environment: dict[str, str],
 ) -> None:
     """Verify new window with environment vars."""
     env = shutil.which("env")

@@ -20,8 +20,8 @@ if t.TYPE_CHECKING:
 
         def __call__(
             self,
-            data: t.Union[str, t.List[str], "Mapping[str, str]"],
-            rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+            data: t.Union[str, list[str], "Mapping[str, str]"],
+            rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
         ) -> bool:
             """Return callback for :class:`QueryList` filtering operators."""
             ...
@@ -43,7 +43,7 @@ class ObjectDoesNotExist(Exception):
 def keygetter(
     obj: "Mapping[str, t.Any]",
     path: str,
-) -> t.Union[None, t.Any, str, t.List[str], "Mapping[str, str]"]:
+) -> t.Union[None, t.Any, str, list[str], "Mapping[str, str]"]:
     """Fetch values in objects and keys, supported nested data.
 
     **With dictionaries**:
@@ -151,15 +151,15 @@ def parse_lookup(
 
 
 def lookup_exact(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     return rhs == data
 
 
 def lookup_iexact(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -168,8 +168,8 @@ def lookup_iexact(
 
 
 def lookup_contains(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, (str, Mapping, list)):
         return False
@@ -178,8 +178,8 @@ def lookup_contains(
 
 
 def lookup_icontains(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, (str, Mapping, list)):
         return False
@@ -193,8 +193,8 @@ def lookup_icontains(
 
 
 def lookup_startswith(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -203,8 +203,8 @@ def lookup_startswith(
 
 
 def lookup_istartswith(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -213,8 +213,8 @@ def lookup_istartswith(
 
 
 def lookup_endswith(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -223,8 +223,8 @@ def lookup_endswith(
 
 
 def lookup_iendswith(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if not isinstance(rhs, str) or not isinstance(data, str):
         return False
@@ -232,8 +232,8 @@ def lookup_iendswith(
 
 
 def lookup_in(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if isinstance(rhs, list):
         return data in rhs
@@ -254,8 +254,8 @@ def lookup_in(
 
 
 def lookup_nin(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if isinstance(rhs, list):
         return data not in rhs
@@ -276,8 +276,8 @@ def lookup_nin(
 
 
 def lookup_regex(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if isinstance(data, (str, bytes, re.Pattern)) and isinstance(rhs, (str, bytes)):
         return bool(re.search(rhs, data))
@@ -285,8 +285,8 @@ def lookup_regex(
 
 
 def lookup_iregex(
-    data: t.Union[str, t.List[str], "Mapping[str, str]"],
-    rhs: t.Union[str, t.List[str], "Mapping[str, str]", "re.Pattern[str]"],
+    data: t.Union[str, list[str], "Mapping[str, str]"],
+    rhs: t.Union[str, list[str], "Mapping[str, str]", "re.Pattern[str]"],
 ) -> bool:
     if isinstance(data, (str, bytes, re.Pattern)) and isinstance(rhs, (str, bytes)):
         return bool(re.search(rhs, data, re.IGNORECASE))
@@ -320,7 +320,7 @@ class OpNotFound(ValueError):
         return super().__init__(f"{op} not in LOOKUP_NAME_MAP")
 
 
-class QueryList(t.List[T], t.Generic[T]):
+class QueryList(list[T], t.Generic[T]):
     """Filter list of object/dictionaries. For small, local datasets.
 
     *Experimental, unstable*.
@@ -475,7 +475,7 @@ class QueryList(t.List[T], t.Generic[T]):
     def __init__(self, items: t.Optional["Iterable[T]"] = None) -> None:
         super().__init__(items if items is not None else [])
 
-    def items(self) -> t.List[t.Tuple[str, T]]:
+    def items(self) -> list[tuple[str, T]]:
         if self.pk_key is None:
             raise PKRequiredException
         return [(getattr(item, self.pk_key), item) for item in self]
@@ -531,19 +531,19 @@ class QueryList(t.List[T], t.Generic[T]):
             return True
 
         if callable(matcher):
-            _filter = matcher
+            filter_ = matcher
         elif matcher is not None:
 
-            def val_match(obj: t.Union[str, t.List[t.Any], T]) -> bool:
+            def val_match(obj: t.Union[str, list[t.Any], T]) -> bool:
                 if isinstance(matcher, list):
                     return obj in matcher
                 return bool(obj == matcher)
 
-            _filter = val_match
+            filter_ = val_match
         else:
-            _filter = filter_lookup
+            filter_ = filter_lookup
 
-        return self.__class__(k for k in self if _filter(k))
+        return self.__class__(k for k in self if filter_(k))
 
     def get(
         self,

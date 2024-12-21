@@ -106,7 +106,7 @@ class Session(Obj, EnvironmentMixin):
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.windows.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        windows: t.List[Window] = [
+        windows: list[Window] = [
             Window(server=self.server, **obj)
             for obj in fetch_objs(
                 list_cmd="list-windows",
@@ -126,7 +126,7 @@ class Session(Obj, EnvironmentMixin):
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.panes.filter() <libtmux._internal.query_list.QueryList.filter()>`
         """
-        panes: t.List[Pane] = [
+        panes: list[Pane] = [
             Pane(server=self.server, **obj)
             for obj in fetch_objs(
                 list_cmd="list-panes",
@@ -194,7 +194,7 @@ class Session(Obj, EnvironmentMixin):
         self,
         option: str,
         value: t.Union[str, int],
-        _global: bool = False,
+        global_: bool = False,
     ) -> "Session":
         """Set option ``$ tmux set-option <option> <value>``.
 
@@ -224,9 +224,9 @@ class Session(Obj, EnvironmentMixin):
         elif isinstance(value, bool) and not value:
             value = "off"
 
-        tmux_args: t.Tuple[t.Union[str, int], ...] = ()
+        tmux_args: tuple[t.Union[str, int], ...] = ()
 
-        if _global:
+        if global_:
             tmux_args += ("-g",)
 
         assert isinstance(option, str)
@@ -246,8 +246,8 @@ class Session(Obj, EnvironmentMixin):
 
     def show_options(
         self,
-        _global: t.Optional[bool] = False,
-    ) -> t.Dict[str, t.Union[str, int]]:
+        global_: t.Optional[bool] = False,
+    ) -> dict[str, t.Union[str, int]]:
         """Return dict of options for the session.
 
         Parameters
@@ -264,15 +264,15 @@ class Session(Obj, EnvironmentMixin):
         Uses ``_global`` for keyword name instead of ``global`` to avoid
         colliding with reserved keyword.
         """
-        tmux_args: t.Tuple[str, ...] = ()
+        tmux_args: tuple[str, ...] = ()
 
-        if _global:
+        if global_:
             tmux_args += ("-g",)
 
         tmux_args += ("show-options",)
         session_output = self.cmd(*tmux_args).stdout
 
-        session_options: t.Dict[str, t.Union[str, int]] = {}
+        session_options: dict[str, t.Union[str, int]] = {}
         for item in session_output:
             key, val = item.split(" ", maxsplit=1)
             assert isinstance(key, str)
@@ -286,7 +286,7 @@ class Session(Obj, EnvironmentMixin):
     def show_option(
         self,
         option: str,
-        _global: bool = False,
+        global_: bool = False,
     ) -> t.Optional[t.Union[str, int, bool]]:
         """Return option value for the target session.
 
@@ -313,9 +313,9 @@ class Session(Obj, EnvironmentMixin):
 
         Test and return True/False for on/off string.
         """
-        tmux_args: t.Tuple[str, ...] = ()
+        tmux_args: tuple[str, ...] = ()
 
-        if _global:
+        if global_:
             tmux_args += ("-g",)
 
         tmux_args += (option,)
@@ -328,7 +328,7 @@ class Session(Obj, EnvironmentMixin):
         if not len(cmd.stdout):
             return None
 
-        value_raw: t.List[str] = next(item.split(" ") for item in cmd.stdout)
+        value_raw: list[str] = next(item.split(" ") for item in cmd.stdout)
 
         assert isinstance(value_raw[0], str)
         assert isinstance(value_raw[1], str)
@@ -395,8 +395,8 @@ class Session(Obj, EnvironmentMixin):
 
     def attach(
         self,
-        _exit: t.Optional[bool] = None,
-        _flags: t.Optional[t.List[str]] = None,
+        exit_: t.Optional[bool] = None,
+        flags_: t.Optional[list[str]] = None,
     ) -> "Session":
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
 
@@ -407,13 +407,13 @@ class Session(Obj, EnvironmentMixin):
         >>> session not in server.attached_sessions
         True
         """
-        flags: t.Tuple[str, ...] = ()
+        flags: tuple[str, ...] = ()
 
-        if _exit is not None and _exit:
+        if exit_ is not None and exit_:
             flags += ("-x",)
 
-        if _flags is not None and isinstance(_flags, list):
-            flags += tuple(f'{",".join(_flags)}')
+        if flags_ is not None and isinstance(flags_, list):
+            flags += tuple(f'{",".join(flags_)}')
 
         proc = self.cmd(
             "attach-session",
@@ -475,7 +475,7 @@ class Session(Obj, EnvironmentMixin):
         >>> one_session_to_rule_them_all in server.sessions
         True
         """
-        flags: t.Tuple[str, ...] = ()
+        flags: tuple[str, ...] = ()
 
         if all_except:
             flags += ("-a",)
@@ -545,7 +545,7 @@ class Session(Obj, EnvironmentMixin):
         attach: bool = False,
         window_index: str = "",
         window_shell: t.Optional[str] = None,
-        environment: t.Optional[t.Dict[str, str]] = None,
+        environment: t.Optional[dict[str, str]] = None,
         direction: t.Optional[WindowDirection] = None,
         target_window: t.Optional[str] = None,
     ) -> "Window":
@@ -624,7 +624,7 @@ class Session(Obj, EnvironmentMixin):
         :class:`Window`
             The newly created window.
         """
-        window_args: t.Tuple[str, ...] = ()
+        window_args: tuple[str, ...] = ()
 
         if not attach:
             window_args += ("-d",)
@@ -878,7 +878,7 @@ class Session(Obj, EnvironmentMixin):
         )
         return self.windows.get(window_id=session_id, default=None)
 
-    def where(self, kwargs: t.Dict[str, t.Any]) -> t.List[Window]:
+    def where(self, kwargs: dict[str, t.Any]) -> list[Window]:
         """Filter through windows, return list of :class:`Window`.
 
         .. deprecated:: 0.16
@@ -896,7 +896,7 @@ class Session(Obj, EnvironmentMixin):
         except IndexError:
             return []
 
-    def find_where(self, kwargs: t.Dict[str, t.Any]) -> t.Optional[Window]:
+    def find_where(self, kwargs: dict[str, t.Any]) -> t.Optional[Window]:
         """Filter through windows, return first :class:`Window`.
 
         .. deprecated:: 0.16
@@ -911,7 +911,7 @@ class Session(Obj, EnvironmentMixin):
         )
         return self.windows.get(default=None, **kwargs)
 
-    def _list_windows(self) -> t.List["WindowDict"]:
+    def _list_windows(self) -> list["WindowDict"]:
         """Return list of windows (deprecated in favor of :attr:`.windows`).
 
         .. deprecated:: 0.16
@@ -927,7 +927,7 @@ class Session(Obj, EnvironmentMixin):
         return [w.__dict__ for w in self.windows]
 
     @property
-    def _windows(self) -> t.List["WindowDict"]:
+    def _windows(self) -> list["WindowDict"]:
         """Property / alias to return :meth:`Session._list_windows`.
 
         .. deprecated:: 0.16
@@ -942,7 +942,7 @@ class Session(Obj, EnvironmentMixin):
         )
         return self._list_windows()
 
-    def list_windows(self) -> t.List["Window"]:
+    def list_windows(self) -> list["Window"]:
         """Return a list of :class:`Window` from the ``tmux(1)`` session.
 
         .. deprecated:: 0.16

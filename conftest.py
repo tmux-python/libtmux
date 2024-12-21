@@ -27,7 +27,7 @@ pytest_plugins = ["pytester"]
 @pytest.fixture(autouse=True)
 def add_doctest_fixtures(
     request: pytest.FixtureRequest,
-    doctest_namespace: t.Dict[str, t.Any],
+    doctest_namespace: dict[str, t.Any],
 ) -> None:
     """Configure doctest fixtures for pytest-doctest."""
     if isinstance(request._pyfuncitem, DoctestItem) and shutil.which("tmux"):

@@ -18,11 +18,11 @@ from libtmux.window import Window
 
 if t.TYPE_CHECKING:
     ListCmd = t.Literal["list-sessions", "list-windows", "list-panes"]
-    ListExtraArgs = t.Optional[t.Tuple[str]]
+    ListExtraArgs = t.Optional[tuple[str]]
 
 
-OutputRaw = t.Dict[str, t.Any]
-OutputsRaw = t.List[OutputRaw]
+OutputRaw = dict[str, t.Any]
+OutputsRaw = list[OutputRaw]
 
 
 def test_pane(
@@ -34,23 +34,23 @@ def test_pane(
     monkeypatch.chdir(tmp_path)
 
     try:
-        __session = server.sessions[0]
+        session_ = server.sessions[0]
     except Exception:
-        __session = server.new_session()
+        session_ = server.new_session()
 
-    assert __session is not None
+    assert session_ is not None
 
-    __window = __session.active_window
-    __window.split()
-    __pane = __window.split()
-    __window.select_layout("main-vertical")
+    window_ = session_.active_window
+    window_.split()
+    pane_ = window_.split()
+    window_.select_layout("main-vertical")
 
-    assert __pane is not None
-    assert __pane.pane_id is not None
+    assert pane_ is not None
+    assert pane_.pane_id is not None
 
-    assert isinstance(__pane.pane_id, str)
+    assert isinstance(pane_.pane_id, str)
 
-    pane = Pane.from_pane_id(server=__pane.server, pane_id=__pane.pane_id)
+    pane = Pane.from_pane_id(server=pane_.server, pane_id=pane_.pane_id)
 
     assert isinstance(pane, Pane)
 

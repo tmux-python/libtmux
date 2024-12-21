@@ -147,7 +147,7 @@ def server(
 
 
 @pytest.fixture
-def session_params() -> t.Dict[str, t.Any]:
+def session_params() -> dict[str, t.Any]:
     """Return new, temporary :class:`libtmux.Session`.
 
     >>> import pytest
@@ -187,7 +187,7 @@ def session_params() -> t.Dict[str, t.Any]:
 @pytest.fixture
 def session(
     request: pytest.FixtureRequest,
-    session_params: t.Dict[str, t.Any],
+    session_params: dict[str, t.Any],
     server: Server,
 ) -> "Session":
     """Return new, temporary :class:`libtmux.Session`.

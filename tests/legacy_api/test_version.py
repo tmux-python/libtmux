@@ -42,7 +42,7 @@ class VersionCompareFixture(t.NamedTuple):
     a: object
     op: "VersionCompareOp"
     b: object
-    raises: t.Union[t.Type[Exception], bool]
+    raises: t.Union[type[Exception], bool]
 
 
 @pytest.mark.parametrize(
@@ -63,11 +63,11 @@ def test_version_compare(
     a: str,
     op: "VersionCompareOp",
     b: str,
-    raises: t.Union[t.Type[Exception], bool],
+    raises: t.Union[type[Exception], bool],
 ) -> None:
     """Assert version comparisons."""
     raises_ctx: RaisesContext[Exception] = (
-        pytest.raises(t.cast(t.Type[Exception], raises))
+        pytest.raises(t.cast("type[Exception]", raises))
         if raises
         else t.cast("RaisesContext[Exception]", does_not_raise())
     )
