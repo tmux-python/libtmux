@@ -15,6 +15,16 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Development
+
+- Aggressive automated lint fixes via `ruff` (#550)
+
+  via ruff v0.8.4, all automated lint fixes, including unsafe and previews were applied for Python 3.9:
+
+  ```sh
+  ruff check --select ALL . --fix --unsafe-fixes --preview --show-fixes; ruff format .
+  ```
+
 ## libtmux 0.39.0 (2024-11-26)
 
 _Maintenance only, no bug fixes or new features_
