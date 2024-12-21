@@ -24,6 +24,7 @@ $ pip install --user --upgrade --pre libtmux
   ```sh
   ruff check --select ALL . --fix --unsafe-fixes --preview --show-fixes; ruff format .
   ```
+- Tests: Stability fixes for legacy `test_select_pane` test (#552)
 
 ## libtmux 0.39.0 (2024-11-26)
 
