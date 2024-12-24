@@ -134,11 +134,13 @@ def test_new_session_shell(server: Server) -> None:
 
 
 def test_new_session_shell_env(server: Server) -> None:
-    """Verify ``Server.new_session`` creates valid session running w/ command."""
+    """Verify ``Server.new_session`` creates valid session running w/ command (#553)."""
     cmd = "sleep 1m"
     env = dict(os.environ)
     mysession = server.new_session(
-        "test_new_session_env", window_command=cmd, environment=env
+        "test_new_session_env",
+        window_command=cmd,
+        environment=env,
     )
     time.sleep(0.1)
     window = mysession.windows[0]

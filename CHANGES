@@ -15,6 +15,11 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Bug fix
+
+- `Server.new_session`: Fix handling of environmental variables passed to new
+  sessions. Thank you @ppentchev! (#553)
+
 ## libtmux 0.40.0 (2024-12-20)
 
 _Maintenance only, no bug fixes or new features_
