@@ -1,7 +1,9 @@
 """Test for libtmux Server object."""
 
 import logging
+import os
 import subprocess
+import time
 
 import pytest
 
@@ -121,6 +123,28 @@ def test_new_session_shell(server: Server) -> None:
     pane = window.panes[0]
     assert mysession.session_name == "test_new_session"
     assert server.has_session("test_new_session")
+
+    pane_start_command = pane.pane_start_command
+    assert pane_start_command is not None
+
+    if has_gte_version("3.2"):
+        assert pane_start_command.replace('"', "") == cmd
+    else:
+        assert pane_start_command == cmd
+
+
+def test_new_session_shell_env(server: Server) -> None:
+    """Verify ``Server.new_session`` creates valid session running w/ command."""
+    cmd = "sleep 1m"
+    env = dict(os.environ)
+    mysession = server.new_session(
+        "test_new_session_env", window_command=cmd, environment=env
+    )
+    time.sleep(0.1)
+    window = mysession.windows[0]
+    pane = window.panes[0]
+    assert mysession.session_name == "test_new_session_env"
+    assert server.has_session("test_new_session_env")
 
     pane_start_command = pane.pane_start_command
     assert pane_start_command is not None

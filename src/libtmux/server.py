@@ -499,9 +499,6 @@ class Server(EnvironmentMixin):
         if y is not None:
             tmux_args += ("-y", y)
 
-        if window_command:
-            tmux_args += (window_command,)
-
         if environment:
             if has_gte_version("3.2"):
                 for k, v in environment.items():
@@ -510,6 +507,9 @@ class Server(EnvironmentMixin):
                 logger.warning(
                     "Environment flag ignored, tmux 3.2 or newer required.",
                 )
+
+        if window_command:
+            tmux_args += (window_command,)
 
         proc = self.cmd("new-session", *tmux_args)
 
