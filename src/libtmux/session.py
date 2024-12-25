@@ -22,6 +22,7 @@ from libtmux.window import Window
 
 from . import exc
 from .common import (
+    AsyncTmuxCmd,
     EnvironmentMixin,
     WindowDict,
     handle_option_error,
@@ -233,6 +234,62 @@ class Session(Obj, EnvironmentMixin):
         if target is None:
             target = self.session_id
         return self.server.cmd(cmd, *args, target=target)
+
+    async def acmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: str | int | None = None,
+    ) -> AsyncTmuxCmd:
+        """Execute tmux subcommand within session context.
+
+        Automatically binds target by adding  ``-t`` for object's session ID to the
+        command. Pass ``target`` to keyword arguments to override.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> async def test_acmd():
+        ...     result = await session.acmd('new-window', '-P')
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_acmd())
+        libtmux...:....0
+
+        From raw output to an enriched `Window` object:
+
+        >>> async def test_from_window():
+        ...     window_id_result = await session.acmd(
+        ...         'new-window', '-P', '-F#{window_id}'
+        ...     )
+        ...     return Window.from_window_id(
+        ...         window_id=window_id_result.stdout[0],
+        ...         server=session.server
+        ...     )
+        >>> asyncio.run(test_from_window())
+        Window(@... ...:..., Session($1 libtmux_...))
+
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target override. By default, the target is the session ID.
+
+        Returns
+        -------
+        :meth:`server.cmd`
+
+        Notes
+        -----
+        .. versionchanged:: 0.34
+
+           Passing target by ``-t`` is ignored. Use ``target`` keyword argument instead.
+
+        .. versionchanged:: 0.8
+
+            Renamed from ``.tmux`` to ``.cmd``.
+        """
+        if target is None:
+            target = self.session_id
+        return await self.server.acmd(cmd, *args, target=target)
 
     """
     Commands (tmux-like)

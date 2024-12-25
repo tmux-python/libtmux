@@ -24,6 +24,7 @@ from libtmux.window import Window
 
 from . import exc, formats
 from .common import (
+    AsyncTmuxCmd,
     EnvironmentMixin,
     PaneDict,
     SessionDict,
@@ -251,8 +252,12 @@ class Server(EnvironmentMixin):
 
         Output of `tmux -L ... new-window -P -F#{window_id}` to a `Window` object:
 
-        >>> Window.from_window_id(window_id=session.cmd(
-        ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+        >>> Window.from_window_id(
+        ...     window_id=session.cmd(
+        ...         'new-window', '-P', '-F#{window_id}'
+        ...     ).stdout[0],
+        ...     server=session.server,
+        ... )
         Window(@4 3:..., Session($1 libtmux_...))
 
         Create a pane from a window:
@@ -263,7 +268,9 @@ class Server(EnvironmentMixin):
         Output of `tmux -L ... split-window -P -F#{pane_id}` to a `Pane` object:
 
         >>> Pane.from_pane_id(pane_id=window.cmd(
-        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
+        ...     'split-window', '-P', '-F#{pane_id}').stdout[0],
+        ...     server=window.server
+        ... )
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
         Parameters
@@ -300,6 +307,90 @@ class Server(EnvironmentMixin):
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
         return tmux_cmd(*svr_args, *cmd_args)
+
+    async def acmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: str | int | None = None,
+    ) -> AsyncTmuxCmd:
+        """Execute tmux command respective of socket name and file, return output.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> async def test_acmd():
+        ...     result = await server.acmd('display-message', 'hi')
+        ...     print(result.stdout)
+        >>> asyncio.run(test_acmd())
+        []
+
+        New session:
+
+        >>> async def test_new_session():
+        ...     result = await server.acmd(
+        ...         'new-session', '-d', '-P', '-F#{session_id}'
+        ...     )
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_new_session())
+        $...
+
+        Output of `tmux -L ... new-window -P -F#{window_id}` to a `Window` object:
+
+        >>> async def test_new_window():
+        ...     result = await session.acmd('new-window', '-P', '-F#{window_id}')
+        ...     window_id = result.stdout[0]
+        ...     window = Window.from_window_id(window_id=window_id, server=server)
+        ...     print(window)
+        >>> asyncio.run(test_new_window())
+        Window(@... ...:..., Session($... libtmux_...))
+
+        Create a pane from a window:
+
+        >>> async def test_split_window():
+        ...     result = await server.acmd('split-window', '-P', '-F#{pane_id}')
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_split_window())
+        %...
+
+        Output of `tmux -L ... split-window -P -F#{pane_id}` to a `Pane` object:
+
+        >>> async def test_pane():
+        ...     result = await window.acmd('split-window', '-P', '-F#{pane_id}')
+        ...     pane_id = result.stdout[0]
+        ...     pane = Pane.from_pane_id(pane_id=pane_id, server=server)
+        ...     print(pane)
+        >>> asyncio.run(test_pane())
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target.
+
+        Returns
+        -------
+        :class:`common.AsyncTmuxCmd`
+        """
+        svr_args: list[str | int] = [cmd]
+        cmd_args: list[str | int] = []
+        if self.socket_name:
+            svr_args.insert(0, f"-L{self.socket_name}")
+        if self.socket_path:
+            svr_args.insert(0, f"-S{self.socket_path}")
+        if self.config_file:
+            svr_args.insert(0, f"-f{self.config_file}")
+        if self.colors:
+            if self.colors == 256:
+                svr_args.insert(0, "-2")
+            elif self.colors == 88:
+                svr_args.insert(0, "-8")
+            else:
+                raise exc.UnknownColorOption
+
+        cmd_args = ["-t", str(target), *args] if target is not None else [*args]
+
+        return await AsyncTmuxCmd.run(*svr_args, *cmd_args)
 
     @property
     def attached_sessions(self) -> list[Session]:
