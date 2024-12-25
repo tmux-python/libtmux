@@ -7,6 +7,7 @@ libtmux.common
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import shutil
@@ -264,6 +265,144 @@ class tmux_cmd:
                 cmd=" ".join(cmd),
                 stdout=self.stdout,
             ),
+        )
+
+
+class AsyncTmuxCmd:
+    """
+    An asyncio-compatible class for running any tmux command via subprocess.
+
+    Attributes
+    ----------
+    cmd : list[str]
+        The full command (including the "tmux" binary path).
+    stdout : list[str]
+        Lines of stdout output from tmux.
+    stderr : list[str]
+        Lines of stderr output from tmux.
+    returncode : int
+        The process return code.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>>
+    >>> async def main():
+    ...     proc = await AsyncTmuxCmd.run('-V')
+    ...     if proc.stderr:
+    ...         raise exc.LibTmuxException(
+    ...             f"Error invoking tmux: {proc.stderr}"
+    ...         )
+    ...     print("tmux version:", proc.stdout)
+    ...
+    >>> asyncio.run(main())
+        tmux version: [...]
+
+    This is equivalent to calling:
+
+    .. code-block:: console
+
+        $ tmux -V
+    """
+
+    def __init__(
+        self,
+        cmd: list[str],
+        stdout: list[str],
+        stderr: list[str],
+        returncode: int,
+    ) -> None:
+        """
+        Store the results of a completed tmux subprocess run.
+
+        Parameters
+        ----------
+        cmd : list[str]
+            The command used to invoke tmux.
+        stdout : list[str]
+            Captured lines from tmux stdout.
+        stderr : list[str]
+            Captured lines from tmux stderr.
+        returncode : int
+            Subprocess exit code.
+        """
+        self.cmd: list[str] = cmd
+        self.stdout: list[str] = stdout
+        self.stderr: list[str] = stderr
+        self.returncode: int = returncode
+
+    @classmethod
+    async def run(cls, *args: t.Any) -> AsyncTmuxCmd:
+        """
+        Execute a tmux command asynchronously and capture its output.
+
+        Parameters
+        ----------
+        *args : str
+            Arguments to be passed after the "tmux" binary name.
+
+        Returns
+        -------
+        AsyncTmuxCmd
+            An instance containing the cmd, stdout, stderr, and returncode.
+
+        Raises
+        ------
+        exc.TmuxCommandNotFound
+            If no "tmux" executable is found in the user's PATH.
+        exc.LibTmuxException
+            If there's any unexpected exception creating or communicating
+            with the tmux subprocess.
+        """
+        tmux_bin: str | None = shutil.which("tmux")
+        if not tmux_bin:
+            msg = "tmux executable not found in PATH"
+            raise exc.TmuxCommandNotFound(
+                msg,
+            )
+
+        # Convert all arguments to strings, accounting for Python 3.7+ strings
+        cmd: list[str] = [tmux_bin] + [str_from_console(a) for a in args]
+
+        try:
+            process: asyncio.subprocess.Process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            raw_stdout, raw_stderr = await process.communicate()
+            returncode: int = (
+                process.returncode if process.returncode is not None else -1
+            )
+
+        except Exception as e:
+            logger.exception("Exception for %s", " ".join(cmd))
+            msg = f"Exception while running tmux command: {e}"
+            raise exc.LibTmuxException(
+                msg,
+            ) from e
+
+        stdout_str: str = console_to_str(raw_stdout)
+        stderr_str: str = console_to_str(raw_stderr)
+
+        # Split on newlines, filtering out any trailing empty lines
+        stdout_split: list[str] = [line for line in stdout_str.split("\n") if line]
+        stderr_split: list[str] = [line for line in stderr_str.split("\n") if line]
+
+        # Workaround for tmux "has-session" command behavior
+        if "has-session" in cmd and stderr_split and not stdout_split:
+            # If `has-session` fails, it might output an error on stderr
+            # with nothing on stdout. We replicate the original logic here:
+            stdout_split = [stderr_split[0]]
+
+        logger.debug("stdout for %s: %s", " ".join(cmd), stdout_split)
+        logger.debug("stderr for %s: %s", " ".join(cmd), stderr_split)
+
+        return cls(
+            cmd=cmd,
+            stdout=stdout_split,
+            stderr=stderr_split,
+            returncode=returncode,
         )
 
 
