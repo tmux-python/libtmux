@@ -1,6 +1,7 @@
 """Tests for libtmux object model, querying and traversal, etc."""
 
-import pathlib
+from __future__ import annotations
+
 import typing as t
 
 import pytest
@@ -12,11 +13,14 @@ from libtmux._internal.query_list import (
 )
 from libtmux.constants import ResizeAdjustmentDirection
 from libtmux.pane import Pane
-from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
+    import pathlib
+
+    from libtmux.server import Server
+
     ListCmd = t.Literal["list-sessions", "list-windows", "list-panes"]
     ListExtraArgs = t.Optional[tuple[str]]
 

@@ -2,6 +2,7 @@
 # This file is dual licensed under the terms of the Apache License, Version
 # 2.0, and the BSD License. See the LICENSE file in the root of this repository
 # for complete details.
+from __future__ import annotations
 
 
 class InfinityType:
@@ -26,7 +27,7 @@ class InfinityType:
     def __ge__(self, other: object) -> bool:
         return True
 
-    def __neg__(self: object) -> "NegativeInfinityType":
+    def __neg__(self: object) -> NegativeInfinityType:
         return NegativeInfinity
 
 

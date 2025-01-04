@@ -5,12 +5,13 @@ libtmux.pane
 
 """
 
+from __future__ import annotations
+
 import dataclasses
 import logging
 import pathlib
 import typing as t
 import warnings
-from typing import overload
 
 from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
@@ -74,7 +75,7 @@ class Pane(Obj):
        Accessed April 1st, 2018.
     """
 
-    server: "Server"
+    server: Server
 
     def refresh(self) -> None:
         """Refresh pane attributes from tmux."""
@@ -86,7 +87,7 @@ class Pane(Obj):
         )
 
     @classmethod
-    def from_pane_id(cls, server: "Server", pane_id: str) -> "Pane":
+    def from_pane_id(cls, server: Server, pane_id: str) -> Pane:
         """Create Pane from existing pane_id."""
         pane = fetch_obj(
             obj_key="pane_id",
@@ -101,7 +102,7 @@ class Pane(Obj):
     # Relations
     #
     @property
-    def window(self) -> "Window":
+    def window(self) -> Window:
         """Parent window of pane."""
         assert isinstance(self.window_id, str)
         from libtmux.window import Window
@@ -109,7 +110,7 @@ class Pane(Obj):
         return Window.from_window_id(server=self.server, window_id=self.window_id)
 
     @property
-    def session(self) -> "Session":
+    def session(self) -> Session:
         """Parent session of pane."""
         return self.window.session
 
@@ -121,7 +122,7 @@ class Pane(Obj):
         self,
         cmd: str,
         *args: t.Any,
-        target: t.Optional[t.Union[str, int]] = None,
+        target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within pane context.
 
@@ -161,18 +162,18 @@ class Pane(Obj):
         self,
         /,
         # Adjustments
-        adjustment_direction: t.Optional[ResizeAdjustmentDirection] = None,
-        adjustment: t.Optional[int] = None,
+        adjustment_direction: ResizeAdjustmentDirection | None = None,
+        adjustment: int | None = None,
         # Manual
-        height: t.Optional[t.Union[str, int]] = None,
-        width: t.Optional[t.Union[str, int]] = None,
+        height: str | int | None = None,
+        width: str | int | None = None,
         # Zoom
-        zoom: t.Optional[bool] = None,
+        zoom: bool | None = None,
         # Mouse
-        mouse: t.Optional[bool] = None,
+        mouse: bool | None = None,
         # Optional flags
-        trim_below: t.Optional[bool] = None,
-    ) -> "Pane":
+        trim_below: bool | None = None,
+    ) -> Pane:
         """Resize tmux pane.
 
         Parameters
@@ -260,9 +261,9 @@ class Pane(Obj):
 
     def capture_pane(
         self,
-        start: t.Union["t.Literal['-']", t.Optional[int]] = None,
-        end: t.Union["t.Literal['-']", t.Optional[int]] = None,
-    ) -> t.Union[str, list[str]]:
+        start: t.Literal["-"] | int | None = None,
+        end: t.Literal["-"] | int | None = None,
+    ) -> str | list[str]:
         """Capture text from pane.
 
         ``$ tmux capture-pane`` to pane.
@@ -297,9 +298,9 @@ class Pane(Obj):
     def send_keys(
         self,
         cmd: str,
-        enter: t.Optional[bool] = True,
-        suppress_history: t.Optional[bool] = False,
-        literal: t.Optional[bool] = False,
+        enter: bool | None = True,
+        suppress_history: bool | None = False,
+        literal: bool | None = False,
     ) -> None:
         r"""``$ tmux send-keys`` to the pane.
 
@@ -347,21 +348,21 @@ class Pane(Obj):
         if enter:
             self.enter()
 
-    @overload
+    @t.overload
     def display_message(
         self,
         cmd: str,
-        get_text: "t.Literal[True]",
-    ) -> t.Union[str, list[str]]: ...
+        get_text: t.Literal[True],
+    ) -> str | list[str]: ...
 
-    @overload
-    def display_message(self, cmd: str, get_text: "t.Literal[False]") -> None: ...
+    @t.overload
+    def display_message(self, cmd: str, get_text: t.Literal[False]) -> None: ...
 
     def display_message(
         self,
         cmd: str,
         get_text: bool = False,
-    ) -> t.Optional[t.Union[str, list[str]]]:
+    ) -> str | list[str] | None:
         """Display message to pane.
 
         Displays a message in target-client status line.
@@ -382,7 +383,7 @@ class Pane(Obj):
 
     def kill(
         self,
-        all_except: t.Optional[bool] = None,
+        all_except: bool | None = None,
     ) -> None:
         """Kill :class:`Pane`.
 
@@ -443,7 +444,7 @@ class Pane(Obj):
     additional scoped window info.
     """
 
-    def select(self) -> "Pane":
+    def select(self) -> Pane:
         """Select pane.
 
         Examples
@@ -476,7 +477,7 @@ class Pane(Obj):
 
         return self
 
-    def select_pane(self) -> "Pane":
+    def select_pane(self) -> Pane:
         """Select pane.
 
         Notes
@@ -499,16 +500,16 @@ class Pane(Obj):
     def split(
         self,
         /,
-        target: t.Optional[t.Union[int, str]] = None,
-        start_directory: t.Optional[str] = None,
+        target: int | str | None = None,
+        start_directory: str | None = None,
         attach: bool = False,
-        direction: t.Optional[PaneDirection] = None,
-        full_window_split: t.Optional[bool] = None,
-        zoom: t.Optional[bool] = None,
-        shell: t.Optional[str] = None,
-        size: t.Optional[t.Union[str, int]] = None,
-        environment: t.Optional[dict[str, str]] = None,
-    ) -> "Pane":
+        direction: PaneDirection | None = None,
+        full_window_split: bool | None = None,
+        zoom: bool | None = None,
+        shell: str | None = None,
+        size: str | int | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> Pane:
         """Split window and return :class:`Pane`, by default beneath current pane.
 
         Parameters
@@ -663,7 +664,7 @@ class Pane(Obj):
     Commands (helpers)
     """
 
-    def set_width(self, width: int) -> "Pane":
+    def set_width(self, width: int) -> Pane:
         """Set pane width.
 
         Parameters
@@ -674,7 +675,7 @@ class Pane(Obj):
         self.resize_pane(width=width)
         return self
 
-    def set_height(self, height: int) -> "Pane":
+    def set_height(self, height: int) -> Pane:
         """Set pane height.
 
         Parameters
@@ -685,7 +686,7 @@ class Pane(Obj):
         self.resize_pane(height=height)
         return self
 
-    def enter(self) -> "Pane":
+    def enter(self) -> Pane:
         """Send carriage return to pane.
 
         ``$ tmux send-keys`` send Enter to the pane.
@@ -693,12 +694,12 @@ class Pane(Obj):
         self.cmd("send-keys", "Enter")
         return self
 
-    def clear(self) -> "Pane":
+    def clear(self) -> Pane:
         """Clear pane."""
         self.send_keys("reset")
         return self
 
-    def reset(self) -> "Pane":
+    def reset(self) -> Pane:
         """Reset and clear pane history."""
         self.cmd("send-keys", r"-R \; clear-history")
         return self
@@ -720,7 +721,7 @@ class Pane(Obj):
     # Aliases
     #
     @property
-    def id(self) -> t.Optional[str]:
+    def id(self) -> str | None:
         """Alias of :attr:`Pane.pane_id`.
 
         >>> pane.id
@@ -732,7 +733,7 @@ class Pane(Obj):
         return self.pane_id
 
     @property
-    def index(self) -> t.Optional[str]:
+    def index(self) -> str | None:
         """Alias of :attr:`Pane.pane_index`.
 
         >>> pane.index
@@ -744,7 +745,7 @@ class Pane(Obj):
         return self.pane_index
 
     @property
-    def height(self) -> t.Optional[str]:
+    def height(self) -> str | None:
         """Alias of :attr:`Pane.pane_height`.
 
         >>> pane.height.isdigit()
@@ -756,7 +757,7 @@ class Pane(Obj):
         return self.pane_height
 
     @property
-    def width(self) -> t.Optional[str]:
+    def width(self) -> str | None:
         """Alias of :attr:`Pane.pane_width`.
 
         >>> pane.width.isdigit()
@@ -820,15 +821,15 @@ class Pane(Obj):
     #
     def split_window(
         self,
-        target: t.Optional[t.Union[int, str]] = None,
+        target: int | str | None = None,
         attach: bool = False,
-        start_directory: t.Optional[str] = None,
+        start_directory: str | None = None,
         vertical: bool = True,
-        shell: t.Optional[str] = None,
-        size: t.Optional[t.Union[str, int]] = None,
-        percent: t.Optional[int] = None,  # deprecated
-        environment: t.Optional[dict[str, str]] = None,
-    ) -> "Pane":  # New Pane, not self
+        shell: str | None = None,
+        size: str | int | None = None,
+        percent: int | None = None,  # deprecated
+        environment: dict[str, str] | None = None,
+    ) -> Pane:  # New Pane, not self
         """Split window at pane and return newly created :class:`Pane`.
 
         Parameters
@@ -867,7 +868,7 @@ class Pane(Obj):
             environment=environment,
         )
 
-    def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
+    def get(self, key: str, default: t.Any | None = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
 
         .. deprecated:: 0.16
@@ -902,18 +903,18 @@ class Pane(Obj):
     def resize_pane(
         self,
         # Adjustments
-        adjustment_direction: t.Optional[ResizeAdjustmentDirection] = None,
-        adjustment: t.Optional[int] = None,
+        adjustment_direction: ResizeAdjustmentDirection | None = None,
+        adjustment: int | None = None,
         # Manual
-        height: t.Optional[t.Union[str, int]] = None,
-        width: t.Optional[t.Union[str, int]] = None,
+        height: str | int | None = None,
+        width: str | int | None = None,
         # Zoom
-        zoom: t.Optional[bool] = None,
+        zoom: bool | None = None,
         # Mouse
-        mouse: t.Optional[bool] = None,
+        mouse: bool | None = None,
         # Optional flags
-        trim_below: t.Optional[bool] = None,
-    ) -> "Pane":
+        trim_below: bool | None = None,
+    ) -> Pane:
         """Resize pane, deprecated by :meth:`Pane.resize`.
 
         .. deprecated:: 0.28

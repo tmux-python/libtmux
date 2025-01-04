@@ -1,14 +1,19 @@
 """Tests for libtmux Pane object."""
 
+from __future__ import annotations
+
 import logging
 import shutil
+import typing as t
 
 import pytest
 
 from libtmux.common import has_gte_version, has_lt_version, has_lte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
-from libtmux.session import Session
 from libtmux.test import retry_until
+
+if t.TYPE_CHECKING:
+    from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
 

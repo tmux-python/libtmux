@@ -8,7 +8,8 @@ See "pytest_plugins in non-top-level conftest files" in
 https://docs.pytest.org/en/stable/deprecations.html
 """
 
-import pathlib
+from __future__ import annotations
+
 import shutil
 import typing as t
 
@@ -20,6 +21,9 @@ from libtmux.pytest_plugin import USING_ZSH
 from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.window import Window
+
+if t.TYPE_CHECKING:
+    import pathlib
 
 pytest_plugins = ["pytester"]
 

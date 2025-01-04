@@ -5,6 +5,8 @@ libtmux.server
 
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import pathlib
@@ -104,10 +106,10 @@ class Server(EnvironmentMixin):
 
     def __init__(
         self,
-        socket_name: t.Optional[str] = None,
-        socket_path: t.Optional[t.Union[str, pathlib.Path]] = None,
-        config_file: t.Optional[str] = None,
-        colors: t.Optional[int] = None,
+        socket_name: str | None = None,
+        socket_path: str | pathlib.Path | None = None,
+        config_file: str | None = None,
+        colors: int | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
@@ -178,7 +180,7 @@ class Server(EnvironmentMixin):
         self,
         cmd: str,
         *args: t.Any,
-        target: t.Optional[t.Union[str, int]] = None,
+        target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -227,8 +229,8 @@ class Server(EnvironmentMixin):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: list[t.Union[str, int]] = [cmd]
-        cmd_args: list[t.Union[str, int]] = []
+        svr_args: list[str | int] = [cmd]
+        cmd_args: list[str | int] = []
         if self.socket_name:
             svr_args.insert(0, f"-L{self.socket_name}")
         if self.socket_path:
@@ -311,7 +313,7 @@ class Server(EnvironmentMixin):
         """
         self.cmd("kill-server")
 
-    def kill_session(self, target_session: t.Union[str, int]) -> "Server":
+    def kill_session(self, target_session: str | int) -> Server:
         """Kill tmux session.
 
         Parameters
@@ -354,7 +356,7 @@ class Server(EnvironmentMixin):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def attach_session(self, target_session: t.Optional[str] = None) -> None:
+    def attach_session(self, target_session: str | None = None) -> None:
         """Attach tmux session.
 
         Parameters
@@ -374,15 +376,15 @@ class Server(EnvironmentMixin):
 
     def new_session(
         self,
-        session_name: t.Optional[str] = None,
+        session_name: str | None = None,
         kill_session: bool = False,
         attach: bool = False,
-        start_directory: t.Optional[str] = None,
-        window_name: t.Optional[str] = None,
-        window_command: t.Optional[str] = None,
-        x: t.Optional[t.Union[int, "DashLiteral"]] = None,
-        y: t.Optional[t.Union[int, "DashLiteral"]] = None,
-        environment: t.Optional[dict[str, str]] = None,
+        start_directory: str | None = None,
+        window_name: str | None = None,
+        window_command: str | None = None,
+        x: int | DashLiteral | None = None,
+        y: int | DashLiteral | None = None,
+        environment: dict[str, str] | None = None,
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Session:
@@ -476,7 +478,7 @@ class Server(EnvironmentMixin):
         if env:
             del os.environ["TMUX"]
 
-        tmux_args: tuple[t.Union[str, int], ...] = (
+        tmux_args: tuple[str | int, ...] = (
             "-P",
             "-F#{session_id}",  # output
         )
@@ -655,7 +657,7 @@ class Server(EnvironmentMixin):
         )
         return [p.__dict__ for p in self.panes]
 
-    def _update_panes(self) -> "Server":
+    def _update_panes(self) -> Server:
         """Update internal pane data and return ``self`` for chainability.
 
         .. deprecated:: 0.16
@@ -674,7 +676,7 @@ class Server(EnvironmentMixin):
         self._list_panes()
         return self
 
-    def get_by_id(self, session_id: str) -> t.Optional[Session]:
+    def get_by_id(self, session_id: str) -> Session | None:
         """Return session by id. Deprecated in favor of :meth:`.sessions.get()`.
 
         .. deprecated:: 0.16
@@ -707,7 +709,7 @@ class Server(EnvironmentMixin):
         except IndexError:
             return []
 
-    def find_where(self, kwargs: dict[str, t.Any]) -> t.Optional[Session]:
+    def find_where(self, kwargs: dict[str, t.Any]) -> Session | None:
         """Filter through sessions, return first :class:`Session`.
 
         .. deprecated:: 0.16
@@ -742,7 +744,7 @@ class Server(EnvironmentMixin):
         )
         return [w.__dict__ for w in self.windows]
 
-    def _update_windows(self) -> "Server":
+    def _update_windows(self) -> Server:
         """Update internal window data and return ``self`` for chainability.
 
         .. deprecated:: 0.16
@@ -774,7 +776,7 @@ class Server(EnvironmentMixin):
         )
         return self._list_sessions()
 
-    def _list_sessions(self) -> list["SessionDict"]:
+    def _list_sessions(self) -> list[SessionDict]:
         """Return list of session object dictionaries.
 
         .. deprecated:: 0.16
@@ -807,7 +809,7 @@ class Server(EnvironmentMixin):
         return self.sessions
 
     @property
-    def children(self) -> QueryList["Session"]:
+    def children(self) -> QueryList[Session]:
         """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16

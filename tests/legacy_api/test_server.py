@@ -1,13 +1,18 @@
 """Test for libtmux Server object."""
 
+from __future__ import annotations
+
 import logging
 import subprocess
+import typing as t
 
 import pytest
 
 from libtmux.common import has_gte_version
 from libtmux.server import Server
-from libtmux.session import Session
+
+if t.TYPE_CHECKING:
+    from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
 

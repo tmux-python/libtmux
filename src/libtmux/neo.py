@@ -1,5 +1,7 @@
 """Tools for hydrating tmux data into python dataclass objects."""
 
+from __future__ import annotations
+
 import dataclasses
 import logging
 import typing as t
@@ -36,143 +38,143 @@ QUIRK_TMUX_3_1_X_0001:
 class Obj:
     """Dataclass of generic tmux object."""
 
-    server: "Server"
+    server: Server
 
-    active_window_index: t.Union[str, None] = None
-    alternate_saved_x: t.Union[str, None] = None
-    alternate_saved_y: t.Union[str, None] = None
+    active_window_index: str | None = None
+    alternate_saved_x: str | None = None
+    alternate_saved_y: str | None = None
     # See QUIRK_TMUX_3_1_X_0001
-    buffer_name: t.Union[str, None] = None
-    buffer_sample: t.Union[str, None] = None
-    buffer_size: t.Union[str, None] = None
+    buffer_name: str | None = None
+    buffer_sample: str | None = None
+    buffer_size: str | None = None
     # See QUIRK_TMUX_3_1_X_0001
-    client_cell_height: t.Union[str, None] = None
-    client_cell_width: t.Union[str, None] = None
+    client_cell_height: str | None = None
+    client_cell_width: str | None = None
     # See QUIRK_TMUX_3_1_X_0001
-    client_discarded: t.Union[str, None] = None
-    client_flags: t.Union[str, None] = None
-    client_height: t.Union[str, None] = None
-    client_key_table: t.Union[str, None] = None
-    client_name: t.Union[str, None] = None
-    client_pid: t.Union[str, None] = None
-    client_termname: t.Union[str, None] = None
-    client_tty: t.Union[str, None] = None
-    client_uid: t.Union[str, None] = None
-    client_user: t.Union[str, None] = None
-    client_width: t.Union[str, None] = None
-    client_written: t.Union[str, None] = None
-    command_list_alias: t.Union[str, None] = None
-    command_list_name: t.Union[str, None] = None
-    command_list_usage: t.Union[str, None] = None
-    config_files: t.Union[str, None] = None
-    copy_cursor_line: t.Union[str, None] = None
-    copy_cursor_word: t.Union[str, None] = None
-    copy_cursor_x: t.Union[str, None] = None
-    copy_cursor_y: t.Union[str, None] = None
-    current_file: t.Union[str, None] = None
-    cursor_character: t.Union[str, None] = None
-    cursor_flag: t.Union[str, None] = None
-    cursor_x: t.Union[str, None] = None
-    cursor_y: t.Union[str, None] = None
-    history_bytes: t.Union[str, None] = None
-    history_limit: t.Union[str, None] = None
-    history_size: t.Union[str, None] = None
-    insert_flag: t.Union[str, None] = None
-    keypad_cursor_flag: t.Union[str, None] = None
-    keypad_flag: t.Union[str, None] = None
-    last_window_index: t.Union[str, None] = None
-    line: t.Union[str, None] = None
-    mouse_all_flag: t.Union[str, None] = None
-    mouse_any_flag: t.Union[str, None] = None
-    mouse_button_flag: t.Union[str, None] = None
-    mouse_sgr_flag: t.Union[str, None] = None
-    mouse_standard_flag: t.Union[str, None] = None
-    next_session_id: t.Union[str, None] = None
-    origin_flag: t.Union[str, None] = None
-    pane_active: t.Union[str, None] = None  # Not detected by script
-    pane_at_bottom: t.Union[str, None] = None
-    pane_at_left: t.Union[str, None] = None
-    pane_at_right: t.Union[str, None] = None
-    pane_at_top: t.Union[str, None] = None
-    pane_bg: t.Union[str, None] = None
-    pane_bottom: t.Union[str, None] = None
-    pane_current_command: t.Union[str, None] = None
-    pane_current_path: t.Union[str, None] = None
-    pane_dead_signal: t.Union[str, None] = None
-    pane_dead_status: t.Union[str, None] = None
-    pane_dead_time: t.Union[str, None] = None
-    pane_fg: t.Union[str, None] = None
-    pane_height: t.Union[str, None] = None
-    pane_id: t.Union[str, None] = None
-    pane_index: t.Union[str, None] = None
-    pane_left: t.Union[str, None] = None
-    pane_pid: t.Union[str, None] = None
-    pane_right: t.Union[str, None] = None
-    pane_search_string: t.Union[str, None] = None
-    pane_start_command: t.Union[str, None] = None
-    pane_start_path: t.Union[str, None] = None
-    pane_tabs: t.Union[str, None] = None
-    pane_top: t.Union[str, None] = None
-    pane_tty: t.Union[str, None] = None
-    pane_width: t.Union[str, None] = None
-    pid: t.Union[str, None] = None
-    scroll_position: t.Union[str, None] = None
-    scroll_region_lower: t.Union[str, None] = None
-    scroll_region_upper: t.Union[str, None] = None
-    search_match: t.Union[str, None] = None
-    selection_end_x: t.Union[str, None] = None
-    selection_end_y: t.Union[str, None] = None
-    selection_start_x: t.Union[str, None] = None
-    selection_start_y: t.Union[str, None] = None
-    session_activity: t.Union[str, None] = None
-    session_alerts: t.Union[str, None] = None
-    session_attached: t.Union[str, None] = None
-    session_attached_list: t.Union[str, None] = None
-    session_created: t.Union[str, None] = None
-    session_group: t.Union[str, None] = None
-    session_group_attached: t.Union[str, None] = None
-    session_group_list: t.Union[str, None] = None
-    session_group_size: t.Union[str, None] = None
-    session_id: t.Union[str, None] = None
-    session_last_attached: t.Union[str, None] = None
-    session_name: t.Union[str, None] = None
-    session_path: t.Union[str, None] = None
-    session_stack: t.Union[str, None] = None
-    session_windows: t.Union[str, None] = None
-    socket_path: t.Union[str, None] = None
-    start_time: t.Union[str, None] = None
-    uid: t.Union[str, None] = None
-    user: t.Union[str, None] = None
-    version: t.Union[str, None] = None
-    window_active: t.Union[str, None] = None  # Not detected by script
-    window_active_clients: t.Union[str, None] = None
-    window_active_sessions: t.Union[str, None] = None
-    window_activity: t.Union[str, None] = None
-    window_cell_height: t.Union[str, None] = None
-    window_cell_width: t.Union[str, None] = None
-    window_height: t.Union[str, None] = None
-    window_id: t.Union[str, None] = None
-    window_index: t.Union[str, None] = None
-    window_layout: t.Union[str, None] = None
-    window_linked: t.Union[str, None] = None
-    window_linked_sessions: t.Union[str, None] = None
-    window_linked_sessions_list: t.Union[str, None] = None
-    window_marked_flag: t.Union[str, None] = None
-    window_name: t.Union[str, None] = None
-    window_offset_x: t.Union[str, None] = None
-    window_offset_y: t.Union[str, None] = None
-    window_panes: t.Union[str, None] = None
-    window_raw_flags: t.Union[str, None] = None
-    window_stack_index: t.Union[str, None] = None
-    window_width: t.Union[str, None] = None
-    wrap_flag: t.Union[str, None] = None
+    client_discarded: str | None = None
+    client_flags: str | None = None
+    client_height: str | None = None
+    client_key_table: str | None = None
+    client_name: str | None = None
+    client_pid: str | None = None
+    client_termname: str | None = None
+    client_tty: str | None = None
+    client_uid: str | None = None
+    client_user: str | None = None
+    client_width: str | None = None
+    client_written: str | None = None
+    command_list_alias: str | None = None
+    command_list_name: str | None = None
+    command_list_usage: str | None = None
+    config_files: str | None = None
+    copy_cursor_line: str | None = None
+    copy_cursor_word: str | None = None
+    copy_cursor_x: str | None = None
+    copy_cursor_y: str | None = None
+    current_file: str | None = None
+    cursor_character: str | None = None
+    cursor_flag: str | None = None
+    cursor_x: str | None = None
+    cursor_y: str | None = None
+    history_bytes: str | None = None
+    history_limit: str | None = None
+    history_size: str | None = None
+    insert_flag: str | None = None
+    keypad_cursor_flag: str | None = None
+    keypad_flag: str | None = None
+    last_window_index: str | None = None
+    line: str | None = None
+    mouse_all_flag: str | None = None
+    mouse_any_flag: str | None = None
+    mouse_button_flag: str | None = None
+    mouse_sgr_flag: str | None = None
+    mouse_standard_flag: str | None = None
+    next_session_id: str | None = None
+    origin_flag: str | None = None
+    pane_active: str | None = None  # Not detected by script
+    pane_at_bottom: str | None = None
+    pane_at_left: str | None = None
+    pane_at_right: str | None = None
+    pane_at_top: str | None = None
+    pane_bg: str | None = None
+    pane_bottom: str | None = None
+    pane_current_command: str | None = None
+    pane_current_path: str | None = None
+    pane_dead_signal: str | None = None
+    pane_dead_status: str | None = None
+    pane_dead_time: str | None = None
+    pane_fg: str | None = None
+    pane_height: str | None = None
+    pane_id: str | None = None
+    pane_index: str | None = None
+    pane_left: str | None = None
+    pane_pid: str | None = None
+    pane_right: str | None = None
+    pane_search_string: str | None = None
+    pane_start_command: str | None = None
+    pane_start_path: str | None = None
+    pane_tabs: str | None = None
+    pane_top: str | None = None
+    pane_tty: str | None = None
+    pane_width: str | None = None
+    pid: str | None = None
+    scroll_position: str | None = None
+    scroll_region_lower: str | None = None
+    scroll_region_upper: str | None = None
+    search_match: str | None = None
+    selection_end_x: str | None = None
+    selection_end_y: str | None = None
+    selection_start_x: str | None = None
+    selection_start_y: str | None = None
+    session_activity: str | None = None
+    session_alerts: str | None = None
+    session_attached: str | None = None
+    session_attached_list: str | None = None
+    session_created: str | None = None
+    session_group: str | None = None
+    session_group_attached: str | None = None
+    session_group_list: str | None = None
+    session_group_size: str | None = None
+    session_id: str | None = None
+    session_last_attached: str | None = None
+    session_name: str | None = None
+    session_path: str | None = None
+    session_stack: str | None = None
+    session_windows: str | None = None
+    socket_path: str | None = None
+    start_time: str | None = None
+    uid: str | None = None
+    user: str | None = None
+    version: str | None = None
+    window_active: str | None = None  # Not detected by script
+    window_active_clients: str | None = None
+    window_active_sessions: str | None = None
+    window_activity: str | None = None
+    window_cell_height: str | None = None
+    window_cell_width: str | None = None
+    window_height: str | None = None
+    window_id: str | None = None
+    window_index: str | None = None
+    window_layout: str | None = None
+    window_linked: str | None = None
+    window_linked_sessions: str | None = None
+    window_linked_sessions_list: str | None = None
+    window_marked_flag: str | None = None
+    window_name: str | None = None
+    window_offset_x: str | None = None
+    window_offset_y: str | None = None
+    window_panes: str | None = None
+    window_raw_flags: str | None = None
+    window_stack_index: str | None = None
+    window_width: str | None = None
+    wrap_flag: str | None = None
 
     def _refresh(
         self,
         obj_key: str,
         obj_id: str,
-        list_cmd: "ListCmd" = "list-panes",
-        list_extra_args: "t.Optional[ListExtraArgs]" = None,
+        list_cmd: ListCmd = "list-panes",
+        list_extra_args: ListExtraArgs | None = None,
     ) -> None:
         assert isinstance(obj_id, str)
         obj = fetch_obj(
@@ -189,14 +191,14 @@ class Obj:
 
 
 def fetch_objs(
-    server: "Server",
-    list_cmd: "ListCmd",
-    list_extra_args: "t.Optional[ListExtraArgs]" = None,
+    server: Server,
+    list_cmd: ListCmd,
+    list_extra_args: ListExtraArgs | None = None,
 ) -> OutputsRaw:
     """Fetch a listing of raw data from a tmux command."""
     formats = list(Obj.__dataclass_fields__.keys())
 
-    cmd_args: list[t.Union[str, int]] = []
+    cmd_args: list[str | int] = []
 
     if server.socket_name:
         cmd_args.insert(0, f"-L{server.socket_name}")
@@ -231,11 +233,11 @@ def fetch_objs(
 
 
 def fetch_obj(
-    server: "Server",
+    server: Server,
     obj_key: str,
     obj_id: str,
-    list_cmd: "ListCmd" = "list-panes",
-    list_extra_args: "t.Optional[ListExtraArgs]" = None,
+    list_cmd: ListCmd = "list-panes",
+    list_extra_args: ListExtraArgs | None = None,
 ) -> OutputRaw:
     """Fetch raw data from tmux command."""
     obj_formatters_filtered = fetch_objs(

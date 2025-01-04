@@ -1,5 +1,7 @@
 """Tests for version comparison."""
 
+from __future__ import annotations
+
 import operator
 import typing as t
 from contextlib import nullcontext as does_not_raise
@@ -42,9 +44,9 @@ class VersionCompareFixture(t.NamedTuple):
     """Test fixture for version comparison."""
 
     a: object
-    op: "VersionCompareOp"
+    op: VersionCompareOp
     b: object
-    raises: t.Union[type[Exception], bool]
+    raises: type[Exception] | bool
 
 
 @pytest.mark.parametrize(
@@ -63,9 +65,9 @@ class VersionCompareFixture(t.NamedTuple):
 )
 def test_version_compare(
     a: str,
-    op: "VersionCompareOp",
+    op: VersionCompareOp,
     b: str,
-    raises: t.Union[type[Exception], bool],
+    raises: type[Exception] | bool,
 ) -> None:
     """Assert version comparisons."""
     raises_ctx: RaisesContext[Exception] = (

@@ -1,9 +1,13 @@
 """Tests for libtmux Pane object."""
 
+from __future__ import annotations
+
 import logging
 import shutil
+import typing as t
 
-from libtmux.session import Session
+if t.TYPE_CHECKING:
+    from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
 
