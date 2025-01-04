@@ -1,8 +1,11 @@
 """Test for libtmux Window object."""
 
+from __future__ import annotations
+
 import logging
 import shutil
 import time
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -10,8 +13,10 @@ from libtmux import exc
 from libtmux.common import has_gte_version, has_lt_version, has_version
 from libtmux.pane import Pane
 from libtmux.server import Server
-from libtmux.session import Session
 from libtmux.window import Window
+
+if TYPE_CHECKING:
+    from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
 

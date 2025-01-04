@@ -5,6 +5,8 @@ libtmux.window
 
 """
 
+from __future__ import annotations
+
 import dataclasses
 import logging
 import shlex
@@ -81,7 +83,7 @@ class Window(Obj):
        https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
     """
 
-    server: "Server"
+    server: Server
 
     def refresh(self) -> None:
         """Refresh window attributes from tmux."""
@@ -94,7 +96,7 @@ class Window(Obj):
         )
 
     @classmethod
-    def from_window_id(cls, server: "Server", window_id: str) -> "Window":
+    def from_window_id(cls, server: Server, window_id: str) -> Window:
         """Create Window from existing window_id."""
         window = fetch_obj(
             obj_key="window_id",
@@ -106,7 +108,7 @@ class Window(Obj):
         return cls(server=server, **window)
 
     @property
-    def session(self) -> "Session":
+    def session(self) -> Session:
         """Parent session of window."""
         assert isinstance(self.session_id, str)
         from libtmux.session import Session
@@ -114,7 +116,7 @@ class Window(Obj):
         return Session.from_session_id(server=self.server, session_id=self.session_id)
 
     @property
-    def panes(self) -> QueryList["Pane"]:
+    def panes(self) -> QueryList[Pane]:
         """Panes contained by window.
 
         Can be accessed via
@@ -141,7 +143,7 @@ class Window(Obj):
         self,
         cmd: str,
         *args: t.Any,
-        target: t.Optional[t.Union[str, int]] = None,
+        target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within window context.
 
@@ -179,7 +181,7 @@ class Window(Obj):
     Commands (tmux-like)
     """
 
-    def select_pane(self, target_pane: t.Union[str, int]) -> t.Optional["Pane"]:
+    def select_pane(self, target_pane: str | int) -> Pane | None:
         """Select pane and return selected :class:`Pane`.
 
         ``$ tmux select-pane``.
@@ -206,16 +208,16 @@ class Window(Obj):
     def split(
         self,
         /,
-        target: t.Optional[t.Union[int, str]] = None,
-        start_directory: t.Optional[str] = None,
+        target: int | str | None = None,
+        start_directory: str | None = None,
         attach: bool = False,
-        direction: t.Optional[PaneDirection] = None,
-        full_window_split: t.Optional[bool] = None,
-        zoom: t.Optional[bool] = None,
-        shell: t.Optional[str] = None,
-        size: t.Optional[t.Union[str, int]] = None,
-        environment: t.Optional[dict[str, str]] = None,
-    ) -> "Pane":
+        direction: PaneDirection | None = None,
+        full_window_split: bool | None = None,
+        zoom: bool | None = None,
+        shell: str | None = None,
+        size: str | int | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> Pane:
         """Split window on active pane and return the created :class:`Pane`.
 
         Parameters
@@ -260,15 +262,15 @@ class Window(Obj):
         self,
         /,
         # Adjustments
-        adjustment_direction: t.Optional[ResizeAdjustmentDirection] = None,
-        adjustment: t.Optional[int] = None,
+        adjustment_direction: ResizeAdjustmentDirection | None = None,
+        adjustment: int | None = None,
         # Manual
-        height: t.Optional[int] = None,
-        width: t.Optional[int] = None,
+        height: int | None = None,
+        width: int | None = None,
         # Expand / Shrink
-        expand: t.Optional[bool] = None,
-        shrink: t.Optional[bool] = None,
-    ) -> "Window":
+        expand: bool | None = None,
+        shrink: bool | None = None,
+    ) -> Window:
         """Resize tmux window.
 
         Parameters
@@ -338,11 +340,11 @@ class Window(Obj):
         self.refresh()
         return self
 
-    def last_pane(self) -> t.Optional["Pane"]:
+    def last_pane(self) -> Pane | None:
         """Return last pane."""
         return self.select_pane("-l")
 
-    def select_layout(self, layout: t.Optional[str] = None) -> "Window":
+    def select_layout(self, layout: str | None = None) -> Window:
         """Select layout for window.
 
         Wrapper for ``$ tmux select-layout <layout>``.
@@ -385,7 +387,7 @@ class Window(Obj):
 
         return self
 
-    def set_window_option(self, option: str, value: t.Union[int, str]) -> "Window":
+    def set_window_option(self, option: str, value: int | str) -> Window:
         """Set option for tmux window.
 
         Wraps ``$ tmux set-window-option <option> <value>``.
@@ -419,7 +421,7 @@ class Window(Obj):
 
         return self
 
-    def show_window_options(self, g: t.Optional[bool] = False) -> "WindowOptionDict":
+    def show_window_options(self, g: bool | None = False) -> WindowOptionDict:
         """Return dict of options for window.
 
         .. versionchanged:: 0.13.0
@@ -463,7 +465,7 @@ class Window(Obj):
         self,
         option: str,
         g: bool = False,
-    ) -> t.Optional[t.Union[str, int]]:
+    ) -> str | int | None:
         """Return option value for the target window.
 
         todo: test and return True/False for on/off string
@@ -479,7 +481,7 @@ class Window(Obj):
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
         """
-        tmux_args: tuple[t.Union[str, int], ...] = ()
+        tmux_args: tuple[str | int, ...] = ()
 
         if g:
             tmux_args += ("-g",)
@@ -498,13 +500,11 @@ class Window(Obj):
 
         value_raw = next(shlex.split(item) for item in window_options_output)
 
-        value: t.Union[str, int] = (
-            int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
-        )
+        value: str | int = int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
 
         return value
 
-    def rename_window(self, new_name: str) -> "Window":
+    def rename_window(self, new_name: str) -> Window:
         """Rename window.
 
         Parameters
@@ -540,7 +540,7 @@ class Window(Obj):
 
     def kill(
         self,
-        all_except: t.Optional[bool] = None,
+        all_except: bool | None = None,
     ) -> None:
         """Kill :class:`Window`.
 
@@ -594,8 +594,8 @@ class Window(Obj):
     def move_window(
         self,
         destination: str = "",
-        session: t.Optional[str] = None,
-    ) -> "Window":
+        session: str | None = None,
+    ) -> Window:
         """Move current :class:`Window` object ``$ tmux move-window``.
 
         Parameters
@@ -626,15 +626,15 @@ class Window(Obj):
 
     def new_window(
         self,
-        window_name: t.Optional[str] = None,
+        window_name: str | None = None,
         *,
         start_directory: None = None,
         attach: bool = False,
         window_index: str = "",
-        window_shell: t.Optional[str] = None,
-        environment: t.Optional[dict[str, str]] = None,
-        direction: t.Optional[WindowDirection] = None,
-    ) -> "Window":
+        window_shell: str | None = None,
+        environment: dict[str, str] | None = None,
+        direction: WindowDirection | None = None,
+    ) -> Window:
         """Create new window respective of current window's position.
 
         See Also
@@ -687,7 +687,7 @@ class Window(Obj):
     #
     # Climbers
     #
-    def select(self) -> "Window":
+    def select(self) -> Window:
         """Select window.
 
         To select a window object asynchrously. If a ``window`` object exists
@@ -723,7 +723,7 @@ class Window(Obj):
     # Computed properties
     #
     @property
-    def active_pane(self) -> t.Optional["Pane"]:
+    def active_pane(self) -> Pane | None:
         """Return attached :class:`Pane`."""
         panes = self.panes.filter(pane_active="1")
         if len(panes) > 0:
@@ -750,7 +750,7 @@ class Window(Obj):
     # Aliases
     #
     @property
-    def id(self) -> t.Optional[str]:
+    def id(self) -> str | None:
         """Alias of :attr:`Window.window_id`.
 
         >>> window.id
@@ -762,7 +762,7 @@ class Window(Obj):
         return self.window_id
 
     @property
-    def name(self) -> t.Optional[str]:
+    def name(self) -> str | None:
         """Alias of :attr:`Window.window_name`.
 
         >>> window.name
@@ -774,7 +774,7 @@ class Window(Obj):
         return self.window_name
 
     @property
-    def index(self) -> t.Optional[str]:
+    def index(self) -> str | None:
         """Alias of :attr:`Window.window_index`.
 
         >>> window.index
@@ -786,7 +786,7 @@ class Window(Obj):
         return self.window_index
 
     @property
-    def height(self) -> t.Optional[str]:
+    def height(self) -> str | None:
         """Alias of :attr:`Window.window_height`.
 
         >>> window.height.isdigit()
@@ -798,7 +798,7 @@ class Window(Obj):
         return self.window_height
 
     @property
-    def width(self) -> t.Optional[str]:
+    def width(self) -> str | None:
         """Alias of :attr:`Window.window_width`.
 
         >>> window.width.isdigit()
@@ -814,15 +814,15 @@ class Window(Obj):
     #
     def split_window(
         self,
-        target: t.Optional[t.Union[int, str]] = None,
-        start_directory: t.Optional[str] = None,
+        target: int | str | None = None,
+        start_directory: str | None = None,
         attach: bool = False,
         vertical: bool = True,
-        shell: t.Optional[str] = None,
-        size: t.Optional[t.Union[str, int]] = None,
-        percent: t.Optional[int] = None,  # deprecated
-        environment: t.Optional[dict[str, str]] = None,
-    ) -> "Pane":
+        shell: str | None = None,
+        size: str | int | None = None,
+        percent: int | None = None,  # deprecated
+        environment: dict[str, str] | None = None,
+    ) -> Pane:
         """Split window and return the created :class:`Pane`.
 
         Notes
@@ -867,7 +867,7 @@ class Window(Obj):
         )
 
     @property
-    def attached_pane(self) -> t.Optional["Pane"]:
+    def attached_pane(self) -> Pane | None:
         """Return attached :class:`Pane`.
 
         Notes
@@ -886,7 +886,7 @@ class Window(Obj):
             return panes[0]
         return None
 
-    def select_window(self) -> "Window":
+    def select_window(self) -> Window:
         """Select window.
 
         Notes
@@ -922,7 +922,7 @@ class Window(Obj):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
+    def get(self, key: str, default: t.Any | None = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
 
         .. deprecated:: 0.16
@@ -954,7 +954,7 @@ class Window(Obj):
         )
         return getattr(self, key)
 
-    def get_by_id(self, pane_id: str) -> t.Optional[Pane]:
+    def get_by_id(self, pane_id: str) -> Pane | None:
         """Return pane by id. Deprecated in favor of :meth:`.panes.get()`.
 
         .. deprecated:: 0.16
@@ -987,7 +987,7 @@ class Window(Obj):
         except IndexError:
             return []
 
-    def find_where(self, kwargs: dict[str, t.Any]) -> t.Optional[Pane]:
+    def find_where(self, kwargs: dict[str, t.Any]) -> Pane | None:
         """Filter through panes, return first :class:`Pane`.
 
         .. deprecated:: 0.16
@@ -1029,7 +1029,7 @@ class Window(Obj):
         warnings.warn("_panes is deprecated", category=DeprecationWarning, stacklevel=2)
         return self._list_panes()
 
-    def list_panes(self) -> list["Pane"]:
+    def list_panes(self) -> list[Pane]:
         """Return list of :class:`Pane` for the window.
 
         .. deprecated:: 0.16
@@ -1045,7 +1045,7 @@ class Window(Obj):
         return self.panes
 
     @property
-    def children(self) -> QueryList["Pane"]:
+    def children(self) -> QueryList[Pane]:
         """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16

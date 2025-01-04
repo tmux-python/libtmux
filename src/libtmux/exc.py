@@ -5,6 +5,8 @@ libtmux.exc
 
 """
 
+from __future__ import annotations
+
 import typing as t
 
 from libtmux._internal.query_list import ObjectDoesNotExist
@@ -30,10 +32,10 @@ class TmuxObjectDoesNotExist(ObjectDoesNotExist):
 
     def __init__(
         self,
-        obj_key: t.Optional[str] = None,
-        obj_id: t.Optional[str] = None,
-        list_cmd: t.Optional[str] = None,
-        list_extra_args: "t.Optional[ListExtraArgs]" = None,
+        obj_key: str | None = None,
+        obj_id: str | None = None,
+        list_cmd: str | None = None,
+        list_extra_args: ListExtraArgs | None = None,
         *args: object,
     ) -> None:
         if all(arg is not None for arg in [obj_key, obj_id, list_cmd, list_extra_args]):
@@ -54,7 +56,7 @@ class BadSessionName(LibTmuxException):
     def __init__(
         self,
         reason: str,
-        session_name: t.Optional[str] = None,
+        session_name: str | None = None,
         *args: object,
     ) -> None:
         msg = f"Bad session name: {reason}"
@@ -93,7 +95,7 @@ class WaitTimeout(LibTmuxException):
 class VariableUnpackingError(LibTmuxException):
     """Error unpacking variable."""
 
-    def __init__(self, variable: t.Optional[t.Any] = None, *args: object) -> None:
+    def __init__(self, variable: t.Any | None = None, *args: object) -> None:
         return super().__init__(f"Unexpected variable: {variable!s}")
 
 
@@ -104,7 +106,7 @@ class PaneError(LibTmuxException):
 class PaneNotFound(PaneError):
     """Pane not found."""
 
-    def __init__(self, pane_id: t.Optional[str] = None, *args: object) -> None:
+    def __init__(self, pane_id: str | None = None, *args: object) -> None:
         if pane_id is not None:
             return super().__init__(f"Pane not found: {pane_id}")
         return super().__init__("Pane not found")

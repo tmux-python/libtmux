@@ -1,10 +1,11 @@
 """libtmux pytest plugin."""
 
+from __future__ import annotations
+
 import contextlib
 import getpass
 import logging
 import os
-import pathlib
 import typing as t
 
 import pytest
@@ -14,6 +15,8 @@ from libtmux.server import Server
 from libtmux.test import TEST_SESSION_PREFIX, get_test_session_name, namer
 
 if t.TYPE_CHECKING:
+    import pathlib
+
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -189,7 +192,7 @@ def session(
     request: pytest.FixtureRequest,
     session_params: dict[str, t.Any],
     server: Server,
-) -> "Session":
+) -> Session:
     """Return new, temporary :class:`libtmux.Session`.
 
     >>> from libtmux.session import Session

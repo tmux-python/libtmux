@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import dataclasses
 import typing as t
-from collections.abc import Callable
 
 import pytest
 
@@ -9,6 +10,9 @@ from libtmux._internal.query_list import (
     ObjectDoesNotExist,
     QueryList,
 )
+
+if t.TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @dataclasses.dataclass
@@ -251,8 +255,8 @@ class Obj:
 )
 def test_filter(
     items: list[dict[str, t.Any]],
-    filter_expr: t.Optional[t.Union[Callable[[t.Any], bool], t.Any]],
-    expected_result: t.Union[QueryList[t.Any], list[dict[str, t.Any]]],
+    filter_expr: Callable[[t.Any], bool] | t.Any | None,
+    expected_result: QueryList[t.Any] | list[dict[str, t.Any]],
 ) -> None:
     qs = QueryList(items)
     if filter_expr is not None:

@@ -1,5 +1,7 @@
 """Tests for libtmux's testing utilities."""
 
+from __future__ import annotations
+
 from time import time
 
 import pytest

@@ -5,17 +5,20 @@ libtmux.common
 
 """
 
+from __future__ import annotations
+
 import logging
 import re
 import shutil
 import subprocess
 import sys
 import typing as t
-from collections.abc import Callable
-from typing import Optional, Union
 
 from . import exc
 from ._compat import LooseVersion, console_to_str, str_from_console
+
+if t.TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +40,9 @@ class EnvironmentMixin:
 
     _add_option = None
 
-    cmd: Callable[[t.Any, t.Any], "tmux_cmd"]
+    cmd: Callable[[t.Any, t.Any], tmux_cmd]
 
-    def __init__(self, add_option: Optional[str] = None) -> None:
+    def __init__(self, add_option: str | None = None) -> None:
         self._add_option = add_option
 
     def set_environment(self, name: str, value: str) -> None:
@@ -117,7 +120,7 @@ class EnvironmentMixin:
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
-    def show_environment(self) -> dict[str, Union[bool, str]]:
+    def show_environment(self) -> dict[str, bool | str]:
         """Show environment ``$ tmux show-environment -t [session]``.
 
         Return dict of environment variables for the session.
@@ -138,7 +141,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
         opts = [tuple(item.split("=", 1)) for item in output]
-        opts_dict: dict[str, t.Union[str, bool]] = {}
+        opts_dict: dict[str, str | bool] = {}
         for _t in opts:
             if len(_t) == 2:
                 opts_dict[_t[0]] = _t[1]
@@ -149,7 +152,7 @@ class EnvironmentMixin:
 
         return opts_dict
 
-    def getenv(self, name: str) -> Optional[t.Union[str, bool]]:
+    def getenv(self, name: str) -> str | bool | None:
         """Show environment variable ``$ tmux show-environment -t [session] <name>``.
 
         Return the value of a specific variable if the name is specified.
@@ -166,7 +169,7 @@ class EnvironmentMixin:
         str
             Value of environment variable
         """
-        tmux_args: tuple[t.Union[str, int], ...] = ()
+        tmux_args: tuple[str | int, ...] = ()
 
         tmux_args += ("show-environment",)
         if self._add_option:
@@ -175,7 +178,7 @@ class EnvironmentMixin:
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
         opts = [tuple(item.split("=", 1)) for item in output]
-        opts_dict: dict[str, t.Union[str, bool]] = {}
+        opts_dict: dict[str, str | bool] = {}
         for _t in opts:
             if len(_t) == 2:
                 opts_dict[_t[0]] = _t[1]
@@ -423,7 +426,7 @@ def has_minimum_version(raises: bool = True) -> bool:
     return True
 
 
-def session_check_name(session_name: t.Optional[str]) -> None:
+def session_check_name(session_name: str | None) -> None:
     """Raise exception session name invalid, modeled after tmux function.
 
     tmux(1) session names may not be empty, or include periods or colons.

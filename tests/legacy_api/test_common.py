@@ -1,5 +1,7 @@
 """Tests for utility functions in libtmux."""
 
+from __future__ import annotations
+
 import re
 import sys
 import typing as t
@@ -23,7 +25,9 @@ from libtmux.common import (
     tmux_cmd,
 )
 from libtmux.exc import BadSessionName, LibTmuxException, TmuxCommandNotFound
-from libtmux.session import Session
+
+if t.TYPE_CHECKING:
+    from libtmux.session import Session
 
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
@@ -199,9 +203,9 @@ def test_tmux_cmd_unicode(session: Session) -> None:
 class SessionCheckName(t.NamedTuple):
     """Test fixture for test_session_check_name()."""
 
-    session_name: t.Optional[str]
+    session_name: str | None
     raises: bool
-    exc_msg_regex: t.Optional[str]
+    exc_msg_regex: str | None
 
 
 @pytest.mark.parametrize(
@@ -216,9 +220,9 @@ class SessionCheckName(t.NamedTuple):
     ],
 )
 def test_session_check_name(
-    session_name: t.Optional[str],
+    session_name: str | None,
     raises: bool,
-    exc_msg_regex: t.Optional[str],
+    exc_msg_regex: str | None,
 ) -> None:
     """Verify session_check_name()."""
     if raises:

@@ -7,6 +7,8 @@ For reference: https://github.com/tmux/tmux/blob/master/format.c
 
 """
 
+from __future__ import annotations
+
 import os
 
 FORMAT_SEPARATOR = os.environ.get("LIBTMUX_TMUX_FORMAT_SEPARATOR", "␞")

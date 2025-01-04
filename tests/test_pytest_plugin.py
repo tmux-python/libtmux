@@ -1,8 +1,12 @@
 """Tests for libtmux pytest plugin."""
 
-import textwrap
+from __future__ import annotations
 
-import pytest
+import textwrap
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_plugin(

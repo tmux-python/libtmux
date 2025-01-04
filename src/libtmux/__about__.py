@@ -1,5 +1,7 @@
 """Metadata package for libtmux."""
 
+from __future__ import annotations
+
 __title__ = "libtmux"
 __package_name__ = "libtmux"
 __version__ = "0.40.1"

@@ -1,5 +1,7 @@
 """Test for libtmux Session object."""
 
+from __future__ import annotations
+
 import logging
 import shutil
 import typing as t
@@ -10,10 +12,12 @@ from libtmux import exc
 from libtmux.common import has_gte_version, has_lt_version
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
-from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.test import TEST_SESSION_PREFIX, namer
 from libtmux.window import Window
+
+if t.TYPE_CHECKING:
+    from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
 

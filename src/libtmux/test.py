@@ -1,23 +1,27 @@
 """Helper methods for libtmux and downstream libtmux libraries."""
 
+from __future__ import annotations
+
 import contextlib
 import logging
 import os
 import pathlib
 import random
 import time
-import types
 import typing as t
-from collections.abc import Generator
-from typing import Callable, Optional
+from typing import Callable
 
-from libtmux.server import Server
+from typing_extensions import Self
 
 from .exc import WaitTimeout
 
 logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
+    import types
+    from collections.abc import Generator
+
+    from libtmux.server import Server
     from libtmux.session import Session
     from libtmux.window import Window
 
@@ -45,7 +49,7 @@ class RandomStrSequence:
         """
         self.characters: str = characters
 
-    def __iter__(self) -> "RandomStrSequence":
+    def __iter__(self) -> RandomStrSequence:
         """Return self."""
         return self
 
@@ -65,7 +69,7 @@ def retry_until(
     seconds: float = RETRY_TIMEOUT_SECONDS,
     *,
     interval: float = RETRY_INTERVAL_SECONDS,
-    raises: Optional[bool] = True,
+    raises: bool | None = True,
 ) -> bool:
     """
     Retry a function until a condition meets or the specified time passes.
@@ -109,7 +113,7 @@ def retry_until(
     return True
 
 
-def get_test_session_name(server: "Server", prefix: str = TEST_SESSION_PREFIX) -> str:
+def get_test_session_name(server: Server, prefix: str = TEST_SESSION_PREFIX) -> str:
     """
     Faker to create a session name that doesn't exist.
 
@@ -143,8 +147,8 @@ def get_test_session_name(server: "Server", prefix: str = TEST_SESSION_PREFIX) -
 
 
 def get_test_window_name(
-    session: "Session",
-    prefix: t.Optional[str] = TEST_SESSION_PREFIX,
+    session: Session,
+    prefix: str | None = TEST_SESSION_PREFIX,
 ) -> str:
     """
     Faker to create a window name that doesn't exist.
@@ -186,7 +190,7 @@ def temp_session(
     server: Server,
     *args: t.Any,
     **kwargs: t.Any,
-) -> Generator["Session", t.Any, t.Any]:
+) -> Generator[Session, t.Any, t.Any]:
     """
     Return a context manager with a temporary session.
 
@@ -234,10 +238,10 @@ def temp_session(
 
 @contextlib.contextmanager
 def temp_window(
-    session: "Session",
+    session: Session,
     *args: t.Any,
     **kwargs: t.Any,
-) -> Generator["Window", t.Any, t.Any]:
+) -> Generator[Window, t.Any, t.Any]:
     """
     Return a context manager with a temporary window.
 
@@ -331,15 +335,15 @@ class EnvironmentVarGuard:
             self._reset[envvar] = self._environ[envvar]
             del self._environ[envvar]
 
-    def __enter__(self) -> "EnvironmentVarGuard":
+    def __enter__(self) -> Self:
         """Return context for for context manager."""
         return self
 
     def __exit__(
         self,
-        exc_type: t.Union[type[BaseException], None],
-        exc_value: t.Optional[BaseException],
-        exc_tb: t.Optional[types.TracebackType],
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: types.TracebackType | None,
     ) -> None:
         """Cleanup to run after context manager finishes."""
         for envvar, value in self._reset.items():

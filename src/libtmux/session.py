@@ -5,6 +5,8 @@ libtmux.session
 
 """
 
+from __future__ import annotations
+
 import dataclasses
 import logging
 import pathlib
@@ -12,7 +14,6 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import Obj, fetch_obj, fetch_objs
@@ -30,6 +31,8 @@ from .common import (
 )
 
 if t.TYPE_CHECKING:
+    from libtmux.common import tmux_cmd
+
     from .server import Server
 
 
@@ -73,7 +76,7 @@ class Session(Obj, EnvironmentMixin):
        https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
     """
 
-    server: "Server"
+    server: Server
 
     def refresh(self) -> None:
         """Refresh session attributes from tmux."""
@@ -85,7 +88,7 @@ class Session(Obj, EnvironmentMixin):
         )
 
     @classmethod
-    def from_session_id(cls, server: "Server", session_id: str) -> "Session":
+    def from_session_id(cls, server: Server, session_id: str) -> Session:
         """Create Session from existing session_id."""
         session = fetch_obj(
             obj_key="session_id",
@@ -99,7 +102,7 @@ class Session(Obj, EnvironmentMixin):
     # Relations
     #
     @property
-    def windows(self) -> QueryList["Window"]:
+    def windows(self) -> QueryList[Window]:
         """Windows contained by session.
 
         Can be accessed via
@@ -119,7 +122,7 @@ class Session(Obj, EnvironmentMixin):
         return QueryList(windows)
 
     @property
-    def panes(self) -> QueryList["Pane"]:
+    def panes(self) -> QueryList[Pane]:
         """Panes contained by session's windows.
 
         Can be accessed via
@@ -145,7 +148,7 @@ class Session(Obj, EnvironmentMixin):
         self,
         cmd: str,
         *args: t.Any,
-        target: t.Optional[t.Union[str, int]] = None,
+        target: str | int | None = None,
     ) -> tmux_cmd:
         """Execute tmux subcommand within session context.
 
@@ -193,9 +196,9 @@ class Session(Obj, EnvironmentMixin):
     def set_option(
         self,
         option: str,
-        value: t.Union[str, int],
+        value: str | int,
         global_: bool = False,
-    ) -> "Session":
+    ) -> Session:
         """Set option ``$ tmux set-option <option> <value>``.
 
         Parameters
@@ -224,7 +227,7 @@ class Session(Obj, EnvironmentMixin):
         elif isinstance(value, bool) and not value:
             value = "off"
 
-        tmux_args: tuple[t.Union[str, int], ...] = ()
+        tmux_args: tuple[str | int, ...] = ()
 
         if global_:
             tmux_args += ("-g",)
@@ -246,8 +249,8 @@ class Session(Obj, EnvironmentMixin):
 
     def show_options(
         self,
-        global_: t.Optional[bool] = False,
-    ) -> dict[str, t.Union[str, int]]:
+        global_: bool | None = False,
+    ) -> dict[str, str | int]:
         """Return dict of options for the session.
 
         Parameters
@@ -272,7 +275,7 @@ class Session(Obj, EnvironmentMixin):
         tmux_args += ("show-options",)
         session_output = self.cmd(*tmux_args).stdout
 
-        session_options: dict[str, t.Union[str, int]] = {}
+        session_options: dict[str, str | int] = {}
         for item in session_output:
             key, val = item.split(" ", maxsplit=1)
             assert isinstance(key, str)
@@ -287,7 +290,7 @@ class Session(Obj, EnvironmentMixin):
         self,
         option: str,
         global_: bool = False,
-    ) -> t.Optional[t.Union[str, int, bool]]:
+    ) -> str | int | bool | None:
         """Return option value for the target session.
 
         Parameters
@@ -333,13 +336,11 @@ class Session(Obj, EnvironmentMixin):
         assert isinstance(value_raw[0], str)
         assert isinstance(value_raw[1], str)
 
-        value: t.Union[str, int] = (
-            int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
-        )
+        value: str | int = int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
 
         return value
 
-    def select_window(self, target_window: t.Union[str, int]) -> "Window":
+    def select_window(self, target_window: str | int) -> Window:
         """Select window and return the selected window.
 
         Parameters
@@ -374,12 +375,12 @@ class Session(Obj, EnvironmentMixin):
     # Computed properties
     #
     @property
-    def active_pane(self) -> t.Optional["Pane"]:
+    def active_pane(self) -> Pane | None:
         """Return the active :class:`Pane` object."""
         return self.active_window.active_pane
 
     @property
-    def active_window(self) -> "Window":
+    def active_window(self) -> Window:
         """Return the active :class:`Window` object."""
         active_windows = self.windows.filter(window_active="1")
 
@@ -395,9 +396,9 @@ class Session(Obj, EnvironmentMixin):
 
     def attach(
         self,
-        exit_: t.Optional[bool] = None,
-        flags_: t.Optional[list[str]] = None,
-    ) -> "Session":
+        exit_: bool | None = None,
+        flags_: list[str] | None = None,
+    ) -> Session:
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
 
         Examples
@@ -429,8 +430,8 @@ class Session(Obj, EnvironmentMixin):
 
     def kill(
         self,
-        all_except: t.Optional[bool] = None,
-        clear: t.Optional[bool] = None,
+        all_except: bool | None = None,
+        clear: bool | None = None,
     ) -> None:
         """Kill :class:`Session`, closes linked windows and detach all clients.
 
@@ -491,7 +492,7 @@ class Session(Obj, EnvironmentMixin):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def switch_client(self) -> "Session":
+    def switch_client(self) -> Session:
         """Switch client to session.
 
         Raises
@@ -505,7 +506,7 @@ class Session(Obj, EnvironmentMixin):
 
         return self
 
-    def rename_session(self, new_name: str) -> "Session":
+    def rename_session(self, new_name: str) -> Session:
         """Rename session and return new :class:`Session` object.
 
         Parameters
@@ -539,16 +540,16 @@ class Session(Obj, EnvironmentMixin):
 
     def new_window(
         self,
-        window_name: t.Optional[str] = None,
+        window_name: str | None = None,
         *,
         start_directory: None = None,
         attach: bool = False,
         window_index: str = "",
-        window_shell: t.Optional[str] = None,
-        environment: t.Optional[dict[str, str]] = None,
-        direction: t.Optional[WindowDirection] = None,
-        target_window: t.Optional[str] = None,
-    ) -> "Window":
+        window_shell: str | None = None,
+        environment: dict[str, str] | None = None,
+        direction: WindowDirection | None = None,
+        target_window: str | None = None,
+    ) -> Window:
         """Create new window, returns new :class:`Window`.
 
         By default, this will make the window active. For the new window
@@ -657,7 +658,7 @@ class Session(Obj, EnvironmentMixin):
                     "Direction flag ignored, requires tmux 3.1 or newer.",
                 )
 
-        target: t.Optional[str] = None
+        target: str | None = None
         if window_index is not None:
             # empty string for window_index will use the first one available
             target = f"{self.session_id}:{window_index}"
@@ -691,7 +692,7 @@ class Session(Obj, EnvironmentMixin):
             window_id=window_formatters["window_id"],
         )
 
-    def kill_window(self, target_window: t.Optional[str] = None) -> None:
+    def kill_window(self, target_window: str | None = None) -> None:
         """Close a tmux window, and all panes inside it, ``$ tmux kill-window``.
 
         Kill the current window or the window at ``target-window``. removing it
@@ -730,7 +731,7 @@ class Session(Obj, EnvironmentMixin):
     # Aliases
     #
     @property
-    def id(self) -> t.Optional[str]:
+    def id(self) -> str | None:
         """Alias of :attr:`Session.session_id`.
 
         >>> session.id
@@ -742,7 +743,7 @@ class Session(Obj, EnvironmentMixin):
         return self.session_id
 
     @property
-    def name(self) -> t.Optional[str]:
+    def name(self) -> str | None:
         """Alias of :attr:`Session.session_name`.
 
         >>> session.name
@@ -757,7 +758,7 @@ class Session(Obj, EnvironmentMixin):
     # Legacy: Redundant stuff we want to remove
     #
     @property
-    def attached_pane(self) -> t.Optional["Pane"]:
+    def attached_pane(self) -> Pane | None:
         """Return the active :class:`Pane` object.
 
         Notes
@@ -774,7 +775,7 @@ class Session(Obj, EnvironmentMixin):
         return self.active_window.active_pane
 
     @property
-    def attached_window(self) -> "Window":
+    def attached_window(self) -> Window:
         """Return the active :class:`Window` object.
 
         Notes
@@ -791,7 +792,7 @@ class Session(Obj, EnvironmentMixin):
         )
         return self.active_window
 
-    def attach_session(self) -> "Session":
+    def attach_session(self) -> Session:
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
 
         Notes
@@ -831,7 +832,7 @@ class Session(Obj, EnvironmentMixin):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def get(self, key: str, default: t.Optional[t.Any] = None) -> t.Any:
+    def get(self, key: str, default: t.Any | None = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
 
         .. deprecated:: 0.16
@@ -863,7 +864,7 @@ class Session(Obj, EnvironmentMixin):
         )
         return getattr(self, key)
 
-    def get_by_id(self, session_id: str) -> t.Optional[Window]:
+    def get_by_id(self, session_id: str) -> Window | None:
         """Return window by id. Deprecated in favor of :meth:`.windows.get()`.
 
         .. deprecated:: 0.16
@@ -896,7 +897,7 @@ class Session(Obj, EnvironmentMixin):
         except IndexError:
             return []
 
-    def find_where(self, kwargs: dict[str, t.Any]) -> t.Optional[Window]:
+    def find_where(self, kwargs: dict[str, t.Any]) -> Window | None:
         """Filter through windows, return first :class:`Window`.
 
         .. deprecated:: 0.16
@@ -911,7 +912,7 @@ class Session(Obj, EnvironmentMixin):
         )
         return self.windows.get(default=None, **kwargs)
 
-    def _list_windows(self) -> list["WindowDict"]:
+    def _list_windows(self) -> list[WindowDict]:
         """Return list of windows (deprecated in favor of :attr:`.windows`).
 
         .. deprecated:: 0.16
@@ -927,7 +928,7 @@ class Session(Obj, EnvironmentMixin):
         return [w.__dict__ for w in self.windows]
 
     @property
-    def _windows(self) -> list["WindowDict"]:
+    def _windows(self) -> list[WindowDict]:
         """Property / alias to return :meth:`Session._list_windows`.
 
         .. deprecated:: 0.16
@@ -942,7 +943,7 @@ class Session(Obj, EnvironmentMixin):
         )
         return self._list_windows()
 
-    def list_windows(self) -> list["Window"]:
+    def list_windows(self) -> list[Window]:
         """Return a list of :class:`Window` from the ``tmux(1)`` session.
 
         .. deprecated:: 0.16
@@ -958,7 +959,7 @@ class Session(Obj, EnvironmentMixin):
         return self.windows
 
     @property
-    def children(self) -> QueryList["Window"]:
+    def children(self) -> QueryList[Window]:
         """Was used by TmuxRelationalObject (but that's longer used in this class).
 
         .. deprecated:: 0.16

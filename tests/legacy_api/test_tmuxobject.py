@@ -1,12 +1,17 @@
 """Tests for libtmux TmuxRelationalObject and TmuxMappingObject."""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from libtmux.pane import Pane
-from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.test import TEST_SESSION_PREFIX, namer
 from libtmux.window import Window
+
+if TYPE_CHECKING:
+    from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
 
