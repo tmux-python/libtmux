@@ -15,6 +15,7 @@ import collections
 import itertools
 import re
 import typing as t
+from collections.abc import Callable
 
 from ._structures import Infinity, InfinityType, NegativeInfinity, NegativeInfinityType
 
@@ -42,7 +43,7 @@ CmpKey = tuple[
     PrePostDevType,
     LocalType,
 ]
-VersionComparisonMethod = t.Callable[[CmpKey, CmpKey], bool]
+VersionComparisonMethod = Callable[[CmpKey, CmpKey], bool]
 
 _Version = collections.namedtuple(
     "_Version",

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
     import types
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
 
     from libtmux.server import Server
     from libtmux.session import Session
@@ -64,7 +64,7 @@ fixtures_dir = current_dir / "fixtures"
 
 
 def retry_until(
-    fun: t.Callable[[], bool],
+    fun: Callable[[], bool],
     seconds: float = RETRY_TIMEOUT_SECONDS,
     *,
     interval: float = RETRY_INTERVAL_SECONDS,
