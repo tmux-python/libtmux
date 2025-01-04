@@ -145,6 +145,7 @@ exclude_lines = [
   "if TYPE_CHECKING:",
   "if t.TYPE_CHECKING:",
   "@overload( |$)",
+  "from __future__ import annotations",
 ]
 
 [tool.ruff]
