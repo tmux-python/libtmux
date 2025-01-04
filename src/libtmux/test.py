@@ -9,7 +9,6 @@ import pathlib
 import random
 import time
 import typing as t
-from typing import Callable
 
 from typing_extensions import Self
 
@@ -65,7 +64,7 @@ fixtures_dir = current_dir / "fixtures"
 
 
 def retry_until(
-    fun: Callable[[], bool],
+    fun: t.Callable[[], bool],
     seconds: float = RETRY_TIMEOUT_SECONDS,
     *,
     interval: float = RETRY_INTERVAL_SECONDS,

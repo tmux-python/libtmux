@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+import typing as t
 
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.test import TEST_SESSION_PREFIX, namer
 from libtmux.window import Window
 
-if TYPE_CHECKING:
+if t.TYPE_CHECKING:
     from libtmux.server import Server
 
 logger = logging.getLogger(__name__)

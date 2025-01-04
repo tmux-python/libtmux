@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import shutil
 import time
-from typing import TYPE_CHECKING
+import typing as t
 
 import pytest
 
@@ -21,7 +21,7 @@ from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.window import Window
 
-if TYPE_CHECKING:
+if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)

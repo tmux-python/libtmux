@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import textwrap
-from typing import TYPE_CHECKING
+import typing as t
 
-if TYPE_CHECKING:
+if t.TYPE_CHECKING:
     import pytest
 
 

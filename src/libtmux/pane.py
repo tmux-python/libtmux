@@ -12,7 +12,6 @@ import logging
 import pathlib
 import typing as t
 import warnings
-from typing import overload
 
 from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
@@ -349,14 +348,14 @@ class Pane(Obj):
         if enter:
             self.enter()
 
-    @overload
+    @t.overload
     def display_message(
         self,
         cmd: str,
         get_text: t.Literal[True],
     ) -> str | list[str]: ...
 
-    @overload
+    @t.overload
     def display_message(self, cmd: str, get_text: t.Literal[False]) -> None: ...
 
     def display_message(

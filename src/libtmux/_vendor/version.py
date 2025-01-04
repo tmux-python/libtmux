@@ -14,19 +14,19 @@ from __future__ import annotations
 import collections
 import itertools
 import re
-from typing import Callable, SupportsInt, Union
+import typing as t
 
 from ._structures import Infinity, InfinityType, NegativeInfinity, NegativeInfinityType
 
 __all__ = ["VERSION_PATTERN", "InvalidVersion", "Version", "parse"]
 
-InfiniteTypes = Union[InfinityType, NegativeInfinityType]
-PrePostDevType = Union[InfiniteTypes, tuple[str, int]]
-SubLocalType = Union[InfiniteTypes, int, str]
-LocalType = Union[
+InfiniteTypes = t.Union[InfinityType, NegativeInfinityType]
+PrePostDevType = t.Union[InfiniteTypes, tuple[str, int]]
+SubLocalType = t.Union[InfiniteTypes, int, str]
+LocalType = t.Union[
     NegativeInfinityType,
     tuple[
-        Union[
+        t.Union[
             SubLocalType,
             tuple[SubLocalType, str],
             tuple[NegativeInfinityType, SubLocalType],
@@ -42,7 +42,7 @@ CmpKey = tuple[
     PrePostDevType,
     LocalType,
 ]
-VersionComparisonMethod = Callable[[CmpKey, CmpKey], bool]
+VersionComparisonMethod = t.Callable[[CmpKey, CmpKey], bool]
 
 _Version = collections.namedtuple(
     "_Version",
@@ -477,7 +477,7 @@ class Version(_BaseVersion):
 
 def _parse_letter_version(
     letter: str,
-    number: str | bytes | SupportsInt,
+    number: str | bytes | t.SupportsInt,
 ) -> tuple[str, int] | None:
     if letter:
         # We consider there to be an implicit 0 in a pre-release if there is

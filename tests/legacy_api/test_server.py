@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import TYPE_CHECKING
+import typing as t
 
 import pytest
 
 from libtmux.common import has_gte_version
 from libtmux.server import Server
 
-if TYPE_CHECKING:
+if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
