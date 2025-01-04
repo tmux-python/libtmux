@@ -8,6 +8,7 @@ import random
 import time
 import types
 import typing as t
+from collections.abc import Generator
 from typing import Callable, Optional
 
 from libtmux.server import Server
@@ -185,7 +186,7 @@ def temp_session(
     server: Server,
     *args: t.Any,
     **kwargs: t.Any,
-) -> t.Generator["Session", t.Any, t.Any]:
+) -> Generator["Session", t.Any, t.Any]:
     """
     Return a context manager with a temporary session.
 
@@ -236,7 +237,7 @@ def temp_window(
     session: "Session",
     *args: t.Any,
     **kwargs: t.Any,
-) -> t.Generator["Window", t.Any, t.Any]:
+) -> Generator["Window", t.Any, t.Any]:
     """
     Return a context manager with a temporary window.
 

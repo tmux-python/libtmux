@@ -1,5 +1,6 @@
 import dataclasses
 import typing as t
+from collections.abc import Callable
 
 import pytest
 
@@ -250,7 +251,7 @@ class Obj:
 )
 def test_filter(
     items: list[dict[str, t.Any]],
-    filter_expr: t.Optional[t.Union[t.Callable[[t.Any], bool], t.Any]],
+    filter_expr: t.Optional[t.Union[Callable[[t.Any], bool], t.Any]],
     expected_result: t.Union[QueryList[t.Any], list[dict[str, t.Any]]],
 ) -> None:
     qs = QueryList(items)

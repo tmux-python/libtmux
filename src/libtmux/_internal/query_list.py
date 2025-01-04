@@ -9,7 +9,7 @@ import logging
 import re
 import traceback
 import typing as t
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -505,7 +505,7 @@ class QueryList(list[T], t.Generic[T]):
 
     def filter(
         self,
-        matcher: t.Optional[t.Union[t.Callable[[T], bool], T]] = None,
+        matcher: t.Optional[t.Union[Callable[[T], bool], T]] = None,
         **kwargs: t.Any,
     ) -> "QueryList[T]":
         """Filter list of objects."""
@@ -547,7 +547,7 @@ class QueryList(list[T], t.Generic[T]):
 
     def get(
         self,
-        matcher: t.Optional[t.Union[t.Callable[[T], bool], T]] = None,
+        matcher: t.Optional[t.Union[Callable[[T], bool], T]] = None,
         default: t.Optional[t.Any] = no_arg,
         **kwargs: t.Any,
     ) -> t.Optional[T]:

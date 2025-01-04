@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import typing as t
+from collections.abc import Callable
 from typing import Optional, Union
 
 from . import exc
@@ -36,7 +37,7 @@ class EnvironmentMixin:
 
     _add_option = None
 
-    cmd: t.Callable[[t.Any, t.Any], "tmux_cmd"]
+    cmd: Callable[[t.Any, t.Any], "tmux_cmd"]
 
     def __init__(self, add_option: Optional[str] = None) -> None:
         self._add_option = add_option

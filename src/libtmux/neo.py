@@ -3,6 +3,7 @@
 import dataclasses
 import logging
 import typing as t
+from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux.common import tmux_cmd
@@ -10,7 +11,7 @@ from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
     ListCmd = t.Literal["list-sessions", "list-windows", "list-panes"]
-    ListExtraArgs = t.Optional[t.Iterable[str]]
+    ListExtraArgs = t.Optional[Iterable[str]]
 
     from libtmux.server import Server
 
@@ -208,7 +209,7 @@ def fetch_objs(
         list_cmd,
     ]
 
-    if list_extra_args is not None and isinstance(list_extra_args, t.Iterable):
+    if list_extra_args is not None and isinstance(list_extra_args, Iterable):
         tmux_cmds.extend(list(list_extra_args))
 
     tmux_cmds.append("-F{}".format("".join(tmux_formats)))
