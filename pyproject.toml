@@ -189,6 +189,12 @@ required-imports = [
   "from __future__ import annotations",
 ]
 
+[tool.ruff.lint.flake8-builtins]
+builtins-allowed-modules = [
+  "dataclasses",
+  "types",
+]
+
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
