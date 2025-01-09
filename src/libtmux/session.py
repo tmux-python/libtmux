@@ -414,7 +414,7 @@ class Session(Obj, EnvironmentMixin):
             flags += ("-x",)
 
         if flags_ is not None and isinstance(flags_, list):
-            flags += tuple(f'{",".join(flags_)}')
+            flags += tuple(f"{','.join(flags_)}")
 
         proc = self.cmd(
             "attach-session",

@@ -41,7 +41,7 @@ class TmuxObjectDoesNotExist(ObjectDoesNotExist):
         if all(arg is not None for arg in [obj_key, obj_id, list_cmd, list_extra_args]):
             return super().__init__(
                 f"Could not find {obj_key}={obj_id} for {list_cmd} "
-                f'{list_extra_args if list_extra_args is not None else ""}',
+                f"{list_extra_args if list_extra_args is not None else ''}",
             )
         return super().__init__("Could not find object")
 

@@ -604,7 +604,7 @@ class Pane(Obj):
         if size is not None:
             if has_lt_version("3.1"):
                 if isinstance(size, str) and size.endswith("%"):
-                    tmux_args += (f'-p{str(size).rstrip("%")}',)
+                    tmux_args += (f"-p{str(size).rstrip('%')}",)
                 else:
                     warnings.warn(
                         'Ignored size. Use percent in tmux < 3.1, e.g. "size=50%"',
@@ -857,7 +857,7 @@ class Pane(Obj):
             stacklevel=2,
         )
         if size is None and percent is not None:
-            size = f'{str(percent).rstrip("%")}%'
+            size = f"{str(percent).rstrip('%')}%"
         return self.split(
             target=target,
             attach=attach,

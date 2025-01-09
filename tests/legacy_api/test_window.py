@@ -439,6 +439,6 @@ def test_split_window_with_environment_logs_warning_for_old_tmux(
         environment={"ENV_VAR": "pane"},
     )
 
-    assert any(
-        "Environment flag ignored" in record.msg for record in caplog.records
-    ), "Warning missing"
+    assert any("Environment flag ignored" in record.msg for record in caplog.records), (
+        "Warning missing"
+    )
