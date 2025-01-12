@@ -69,7 +69,7 @@ jobs:
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
           ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
           tmux -V
-          uv run py.test --cov=./ --cov-append --cov-report=xml -n auto
+          uv run py.test --cov=./ --cov-append --cov-report=xml -n auto --verbose
         env:
           COV_CORE_SOURCE: .
           COV_CORE_CONFIG: .coveragerc
