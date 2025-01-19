@@ -92,7 +92,7 @@ html_theme_options: dict[str, str | list[dict[str, str]]] = {
     "source_repository": f"{about['__github__']}/",
     "source_branch": "master",
     "source_directory": "docs/",
-    "announcement": "<em>Friendly reminder:</em> 📌 Pin the package, libtmux is pre-1.0 and APIs will be <a href='/migration.html'>changing</a> throughout 2022-2024.",
+    "announcement": "<em>Friendly reminder:</em> 📌 Pin the package, libtmux is pre-1.0 and APIs will be <a href='/migration.html'>changing</a> throughout 2025.",
 }
 html_sidebars = {
     "**": [
