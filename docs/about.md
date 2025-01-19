@@ -95,7 +95,7 @@ have dashes (-) replaced with underscores (\_).
 
 ## Reference
 
-- tmux docs <http://www.openbsd.org/cgi-bin/man.cgi?query=tmux&sektion=1>
+- tmux docs <https://man.openbsd.org/tmux.1>
 - tmux source code <http://sourceforge.net/p/tmux/tmux-code/ci/master/tree/>
 
 [abstraction layer]: http://en.wikipedia.org/wiki/Abstraction_layer
