@@ -44,27 +44,26 @@ def retry_until(
     interval: float = RETRY_INTERVAL_SECONDS,
     raises: bool | None = True,
 ) -> bool:
-    """
-    Retry a function until a condition meets or the specified time passes.
+    r"""Retry a function until it returns True or time expires.
 
     Parameters
     ----------
     fun : callable
-        A function that will be called repeatedly until it returns ``True``  or
-        the specified time passes. Called with ``args`` unpacked, so it accepts
-        no arguments unless ``args`` is given.
-    seconds : float
-        Seconds to retry. Defaults to ``8``, which is configurable via
-        ``RETRY_TIMEOUT_SECONDS`` environment variables.
-    args : tuple
+        A function that will be called repeatedly until it returns True or the
+        specified time passes. Called with ``args`` unpacked, so it accepts no
+        arguments unless ``args`` is given.
+    seconds : float, optional
+        Time limit for retries. Defaults to 8 seconds or the environment
+        variable `RETRY_TIMEOUT_SECONDS`.
+    args : tuple, optional
         Positional arguments passed to ``fun`` on every call. Pass the subject
         being waited on here instead of closing over it, which keeps predicates
         written inside a loop free of a loop-variable binding.
-    interval : float
-        Time in seconds to wait between calls. Defaults to ``0.05`` and is
-        configurable via ``RETRY_INTERVAL_SECONDS`` environment variable.
-    raises : bool
-        Whether or not to raise an exception on timeout. Defaults to ``True``.
+    interval : float, optional
+        Time in seconds to wait between calls. Defaults to 0.05 or
+        `RETRY_INTERVAL_SECONDS`.
+    raises : bool, optional
+        Whether to raise :exc:`WaitTimeout` on timeout. Defaults to True.
 
     Notes
     -----
@@ -103,11 +102,11 @@ def retry_until(
     ...         args=(pane,),
     ...     )
     """
-    ini = time.monotonic()
+    start_time = time.monotonic()
 
     while not fun(*args):
-        end = time.monotonic()
-        if end - ini >= seconds:
+        now = time.monotonic()
+        if now - start_time >= seconds:
             if raises:
                 raise WaitTimeout
             return False
