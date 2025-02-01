@@ -1,4 +1,16 @@
-"""libtmux pytest plugin."""
+"""Provide a pytest plugin that supplies libtmux testing fixtures.
+
+This plugin integrates with pytest to offer session, window, and environment
+fixtures tailored for tmux-based tests. It ensures stable test environments by
+creating and tearing down temporary sessions and windows for each test as
+needed.
+
+Notes
+-----
+The existing doctests embedded within each fixture are preserved to maintain
+clarity and verify core behaviors.
+
+"""
 
 from __future__ import annotations
 
@@ -68,7 +80,8 @@ def config_file(user_path: pathlib.Path) -> pathlib.Path:
 
     - ``base-index -g 1``
 
-    These guarantee pane and windows targets can be reliably referenced and asserted.
+    These guarantee pane and windows targets can be reliably referenced
+    and asserted.
 
     Note: You will need to set the home directory, see :ref:`set_home`.
     """
@@ -86,7 +99,8 @@ set -g base-index 1
 def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear out any unnecessary environment variables that could interrupt tests.
 
-    tmux show-environment tests were being interrupted due to a lot of crazy env vars.
+    tmux show-environment tests were being interrupted due to a lot of
+    crazy env vars.
     """
     for k in os.environ:
         if not any(
