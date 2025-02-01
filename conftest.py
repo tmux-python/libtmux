@@ -1,11 +1,14 @@
-"""Conftest.py (root-level).
+"""Configure root-level pytest fixtures for libtmux.
 
-We keep this in root pytest fixtures in pytest's doctest plugin to be available, as well
-as avoiding conftest.py from being included in the wheel, in addition to pytest_plugin
-for pytester only being available via the root directory.
+We keep this file at the root to make these fixtures available to all
+tests, while also preventing unwanted inclusion in the distributed
+wheel. Additionally, `pytest_plugins` references ensure that the
+`pytester` plugin is accessible for test generation and execution.
 
-See "pytest_plugins in non-top-level conftest files" in
-https://docs.pytest.org/en/stable/deprecations.html
+See Also
+--------
+pytest_plugins in non-top-level conftest files
+    https://docs.pytest.org/en/stable/deprecations.html
 """
 
 from __future__ import annotations
@@ -33,7 +36,13 @@ def add_doctest_fixtures(
     request: pytest.FixtureRequest,
     doctest_namespace: dict[str, t.Any],
 ) -> None:
-    """Configure doctest fixtures for pytest-doctest."""
+    """Configure doctest fixtures for pytest-doctest.
+
+    Automatically sets up tmux-related classes and default fixtures,
+    making them available in doctest namespaces if `tmux` is found
+    on the system. This ensures that doctest blocks referencing tmux
+    structures can execute smoothly in the test environment.
+    """
     if isinstance(request._pyfuncitem, DoctestItem) and shutil.which("tmux"):
         request.getfixturevalue("set_home")
         doctest_namespace["Server"] = Server
@@ -54,7 +63,7 @@ def set_home(
     monkeypatch: pytest.MonkeyPatch,
     user_path: pathlib.Path,
 ) -> None:
-    """Configure home directory for pytest tests."""
+    """Set the HOME environment variable to the temporary user directory."""
     monkeypatch.setenv("HOME", str(user_path))
 
 
@@ -62,7 +71,7 @@ def set_home(
 def setup_fn(
     clear_env: None,
 ) -> None:
-    """Function-level test configuration fixtures for pytest."""
+    """Apply function-level test fixture configuration (e.g., environment cleanup)."""
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -70,6 +79,10 @@ def setup_session(
     request: pytest.FixtureRequest,
     config_file: pathlib.Path,
 ) -> None:
-    """Session-level test configuration for pytest."""
+    """Apply session-level test fixture configuration for libtmux testing.
+
+    If zsh is in use, applies a suppressing `.zshrc` fix to avoid
+    default interactive messages that might disrupt tmux sessions.
+    """
     if USING_ZSH:
         request.getfixturevalue("zshrc")
