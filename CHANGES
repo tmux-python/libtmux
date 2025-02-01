@@ -20,6 +20,11 @@ $ pip install --user --upgrade --pre libtmux
 - {meth}`Server.__repr__()`: Use {meth}`os.geteuid()` for default `socket_path`. Thank you @lazysegtree!
   (#557, resolves #556)
 
+### Documentation
+
+- `Server`: Fix `colors` docstring to note it accepts `88` or `256`, Thank you
+  @TravisDart! (via #544)
+
 ### Development
 
 #### chore: Implement PEP 563 deferred annotation resolution (#555)
