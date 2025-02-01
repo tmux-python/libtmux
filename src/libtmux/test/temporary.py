@@ -29,28 +29,25 @@ def temp_session(
     **kwargs: t.Any,
 ) -> Generator[Session, t.Any, t.Any]:
     """
-    Return a context manager with a temporary session.
+    Provide a context manager for a temporary session, killed on exit.
 
-    If no ``session_name`` is entered, :func:`get_test_session_name` will make
-    an unused session name.
-
-    The session will destroy itself upon closing with :meth:`Session.session()`.
+    If no ``session_name`` is specified, :func:`get_test_session_name` will
+    generate an unused one. The session is destroyed upon exiting the context
+    manager.
 
     Parameters
     ----------
-    server : :class:`libtmux.Server`
-
-    Other Parameters
-    ----------------
+    server : Server
+        The tmux server instance.
     args : list
-        Arguments passed into :meth:`Server.new_session`
+        Additional positional arguments for :meth:`Server.new_session`.
     kwargs : dict
-        Keyword arguments passed into :meth:`Server.new_session`
+        Keyword arguments for :meth:`Server.new_session`.
 
     Yields
     ------
-    :class:`libtmux.Session`
-        Temporary session
+    Session
+        The newly created temporary session.
 
     Examples
     --------
@@ -80,36 +77,31 @@ def temp_window(
     **kwargs: t.Any,
 ) -> Generator[Window, t.Any, t.Any]:
     """
-    Return a context manager with a temporary window.
+    Provide a context manager for a temporary window, killed on exit.
 
-    The window will destroy itself upon closing with :meth:`window.
-    kill()`.
-
-    If no ``window_name`` is entered, :func:`get_test_window_name` will make
-    an unused window name.
+    If no ``window_name`` is specified, :func:`get_test_window_name` will
+    generate an unused one. The window is destroyed upon exiting the context
+    manager.
 
     Parameters
     ----------
-    session : :class:`libtmux.Session`
-
-    Other Parameters
-    ----------------
+    session : Session
+        The tmux session instance.
     args : list
-        Arguments passed into :meth:`Session.new_window`
+        Additional positional arguments for :meth:`Session.new_window`.
     kwargs : dict
-        Keyword arguments passed into :meth:`Session.new_window`
+        Keyword arguments for :meth:`Session.new_window`.
 
     Yields
     ------
-    :class:`libtmux.Window`
-        temporary window
+    Window
+        The newly created temporary window.
 
     Examples
     --------
     >>> with temp_window(session) as window:
     ...     window
     Window(@2 2:... Session($1 libtmux_...))
-
 
     >>> with temp_window(session) as window:
     ...     window.split()
@@ -121,8 +113,6 @@ def temp_window(
         window_name = kwargs.pop("window_name")
 
     window = session.new_window(window_name, *args, **kwargs)
-
-    # Get ``window_id`` before returning it, it may be killed within context.
     window_id = window.window_id
     assert window_id is not None
     assert isinstance(window_id, str)

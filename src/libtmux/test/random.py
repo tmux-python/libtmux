@@ -26,30 +26,31 @@ logger = logging.getLogger(__name__)
 
 
 class RandomStrSequence:
-    """Factory to generate random string."""
+    """Generate random string values (8 chars each) from a given character set.
+
+    Examples
+    --------
+    >>> rng = RandomStrSequence()  # pragma: no cover
+    >>> next(rng)  # pragma: no cover
+    '...'
+    >>> len(next(rng))  # pragma: no cover
+    8
+    >>> type(next(rng))  # pragma: no cover
+    <class 'str'>
+    """
 
     def __init__(
         self,
         characters: str = "abcdefghijklmnopqrstuvwxyz0123456789_",
     ) -> None:
-        """Create a random letter / number generator. 8 chars in length.
-
-        >>> rng = RandomStrSequence()  # pragma: no cover
-        >>> next(rng)  # pragma: no cover
-        '...'
-        >>> len(next(rng))  # pragma: no cover
-        8
-        >>> type(next(rng))  # pragma: no cover
-        <class 'str'>
-        """
         self.characters: str = characters
 
     def __iter__(self) -> RandomStrSequence:
-        """Return self."""
+        """Return self as iterator."""
         return self
 
     def __next__(self) -> str:
-        """Return next random string."""
+        """Return next random 8-character string."""
         return "".join(random.sample(self.characters, k=8))
 
 
@@ -57,21 +58,19 @@ namer = RandomStrSequence()
 
 
 def get_test_session_name(server: Server, prefix: str = TEST_SESSION_PREFIX) -> str:
-    """
-    Faker to create a session name that doesn't exist.
+    """Generate a unique session name that does not exist on the server.
 
     Parameters
     ----------
-    server : :class:`libtmux.Server`
-        libtmux server
+    server : Server
+        The tmux server instance.
     prefix : str
-        prefix for sessions (e.g. ``libtmux_``). Defaults to
-        ``TEST_SESSION_PREFIX``.
+        Prefix for the generated session name. Defaults to 'libtmux_'.
 
     Returns
     -------
     str
-        Random session name guaranteed to not collide with current ones.
+        Random session name guaranteed not to collide with existing sessions.
 
     Examples
     --------
@@ -96,22 +95,19 @@ def get_test_window_name(
     prefix: str | None = TEST_SESSION_PREFIX,
 ) -> str:
     """
-    Faker to create a window name that doesn't exist.
+    Generate a unique window name that does not exist in the given session.
 
     Parameters
     ----------
-    session : :class:`libtmux.Session`
-        libtmux session
-    prefix : str
-        prefix for windows (e.g. ``libtmux_``). Defaults to
-        ``TEST_SESSION_PREFIX``.
-
-        ATM we reuse the test session prefix here.
+    session : Session
+        The tmux session instance.
+    prefix : str, optional
+        Prefix for the generated window name. Defaults to 'libtmux_'.
 
     Returns
     -------
     str
-        Random window name guaranteed to not collide with current ones.
+        Random window name guaranteed not to collide with existing windows.
 
     Examples
     --------
