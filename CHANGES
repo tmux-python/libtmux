@@ -15,6 +15,11 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Fixes
+
+- {meth}`Server.__repr__()`: Use {meth}`os.geteuid()` for default `socket_path`. Thank you @lazysegtree!
+  (#557, resolves #556)
+
 ### Development
 
 #### chore: Implement PEP 563 deferred annotation resolution (#555)
