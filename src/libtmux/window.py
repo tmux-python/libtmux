@@ -1054,7 +1054,7 @@ class Window(Obj):
 
         """
         warnings.warn(
-            "Server.children is deprecated",
+            "Window.children is deprecated",
             category=DeprecationWarning,
             stacklevel=2,
         )
