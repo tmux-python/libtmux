@@ -1,8 +1,12 @@
 """Pythonization of the :term:`tmux(1)` window.
 
+This module provides the :class:`Window` class, representing a tmux window
+capable of containing multiple panes. The class includes methods for splitting,
+resizing, renaming, killing, and moving windows, as well as a variety of
+property accessors for tmux window attributes.
+
 libtmux.window
 ~~~~~~~~~~~~~~
-
 """
 
 from __future__ import annotations
@@ -63,6 +67,7 @@ class Window(
     Parameters
     ----------
     session : :class:`Session`
+        Parent session of this window (conceptual parameter).
 
     Examples
     --------
@@ -280,7 +285,7 @@ class Window(
 
     @property
     def session(self) -> Session:
-        """Parent session of window."""
+        """Return the parent :class:`Session` of this window."""
         assert isinstance(self.session_id, str)
         from libtmux.session import Session
 
@@ -364,7 +369,7 @@ class Window(
 
     @property
     def panes(self) -> QueryList[Pane]:
-        """Panes contained by window.
+        """Return a :class:`QueryList` of :class:`Pane` objects contained by window.
 
         Can be accessed via
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
@@ -448,10 +453,19 @@ class Window(
         *args: t.Any,
         target: str | int | None = None,
     ) -> tmux_cmd:
-        """Execute tmux subcommand within window context.
+        """Execute a tmux subcommand within the context of this window.
 
-        Automatically binds target by adding  ``-t`` for object's window ID to the
-        command. Pass ``target`` to keyword arguments to override.
+        Automatically binds ``-t <window_id>`` to the command unless
+        overridden by the `target` parameter.
+
+        Parameters
+        ----------
+        cmd
+            The tmux subcommand to execute.
+        *args
+            Additional arguments for the tmux command.
+        target, optional
+            Custom target override. By default, the target is this window's ID.
 
         Examples
         --------
@@ -462,41 +476,43 @@ class Window(
 
         Magic, directly to a `Pane`:
 
-        >>> Pane.from_pane_id(pane_id=session.cmd(
-        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=session.server)
+        >>> Pane.from_pane_id(
+        ...     pane_id=session.cmd('split-window', '-P', '-F#{pane_id}').stdout[0],
+        ...     server=session.server
+        ... )
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
-
-        Parameters
-        ----------
-        target : str, optional
-            Optional custom target override. By default, the target is the window ID.
 
         Returns
         -------
-        :meth:`server.cmd`
+        tmux_cmd
+            The result of the tmux command execution.
         """
         if target is None:
             target = self.window_id
 
         return self.server.cmd(cmd, *args, target=target)
 
-    """
-    Commands (tmux-like)
-    """
+    # Commands (tmux-like)
 
     def select_pane(self, target_pane: str | int) -> Pane | None:
-        """Select pane and return selected :class:`Pane`.
+        """Select a pane within this window and return the now-active :class:`Pane`.
 
-        ``$ tmux select-pane``.
+        Wrapper for ``tmux select-pane``.
 
         Parameters
         ----------
-        target_pane : str
-            'target_pane', '-U' ,'-D', '-L', '-R', or '-l'.
+        target_pane
+            Pane specifier (e.g., '-l', '-U', '-D', '-L', '-R', or an ID).
 
         Returns
         -------
-        :class:`Pane`
+        Pane or None
+            The active :class:`Pane` after selection.
+
+        Raises
+        ------
+        exc.LibTmuxException
+            If tmux reports an error (see stderr output).
         """
         if target_pane in {"-l", "-U", "-D", "-L", "-R"}:
             proc = self.cmd("select-pane", target_pane)
@@ -527,7 +543,7 @@ class Window(
         message: str | None = None,
         keep: bool | None = None,
     ) -> Pane:
-        """Split window on active pane and return the created :class:`Pane`.
+        """Split the active pane in this window and return newly created :class:`Pane`.
 
         Parameters
         ----------
@@ -701,50 +717,50 @@ class Window(
     def resize(
         self,
         /,
-        # Adjustments
         adjustment_direction: ResizeAdjustmentDirection | None = None,
         adjustment: int | None = None,
-        # Manual
         height: int | None = None,
         width: int | None = None,
-        # Expand / Shrink
         expand: bool | None = None,
         shrink: bool | None = None,
     ) -> Window:
-        """Resize tmux window.
+        """Resize this tmux window.
+
+        This method supports three types of resizing:
+          1. Adjustments (direction + amount)
+          2. Manual resizing (explicit height or width)
+          3. Expand or shrink (full window)
 
         Parameters
         ----------
-        adjustment_direction : ResizeAdjustmentDirection, optional
-            direction to adjust, ``Up``, ``Down``, ``Left``, ``Right``.
-        adjustment : ResizeAdjustmentDirection, optional
-
-        height : int, optional
-            ``resize-window -y`` dimensions
-        width : int, optional
-            ``resize-window -x`` dimensions
-
-        expand : bool
-            expand window
-        shrink : bool
-            shrink window
-
-        Raises
-        ------
-        :exc:`exc.LibTmuxException`,
-        :exc:`exc.PaneAdjustmentDirectionRequiresAdjustment`
+        adjustment_direction, optional
+            Direction to adjust (Up, Down, Left, Right).
+        adjustment, optional
+            Number of cells/rows to adjust in the given direction.
+        height, optional
+            Set the window height (in cells).
+        width, optional
+            Set the window width (in cells).
+        expand, optional
+            Expand the window to the maximum size.
+        shrink, optional
+            Shrink the window to the minimum size.
 
         Returns
         -------
-        :class:`Window`
+        Window
+            This :class:`Window` instance (for chaining).
+
+        Raises
+        ------
+        exc.LibTmuxException
+            If tmux reports an error (see stderr).
+        exc.WindowAdjustmentDirectionRequiresAdjustment
+            If `adjustment_direction` is given but `adjustment` is None.
 
         Notes
         -----
-        Three types of resizing are available:
-
-        1. Adjustments: ``adjustment_direction`` and ``adjustment``.
-        2. Manual resizing: ``height`` and / or ``width``.
-        3. Expand or shrink: ``expand`` or ``shrink``.
+        This method requires tmux 2.9 or newer.
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -839,7 +855,7 @@ class Window(
     ) -> Window:
         """Select layout for window.
 
-        Wrapper for ``$ tmux select-layout <layout>``.
+        Wrapper for ``tmux select-layout <layout>``.
 
         Parameters
         ----------
@@ -1342,17 +1358,23 @@ class Window(
         return None
 
     def rename_window(self, new_name: str) -> Window:
-        """Rename window.
+        """Rename this window.
+
+        Wrapper for ``tmux rename-window <new_name>``.
 
         Parameters
         ----------
-        new_name : str
-            name of the window
+        new_name
+            The new name of the window.
+
+        Returns
+        -------
+        Window
+            This :class:`Window` instance (for chaining).
 
         Examples
         --------
         >>> window = session.active_window
-
         >>> window.rename_window('My project')
         Window(@1 1:My project, Session($1 ...))
 
@@ -1380,55 +1402,51 @@ class Window(
 
         return self
 
-    def kill(
-        self,
-        all_except: bool | None = None,
-    ) -> None:
-        """Kill :class:`Window`.
+    def kill(self, all_except: bool | None = None) -> None:
+        """Kill this window.
 
-        ``$ tmux kill-window``.
+        Wrapper for ``tmux kill-window``.
+
+        Parameters
+        ----------
+        all_except, optional
+            If True, kill all windows except the current one.
 
         Examples
         --------
         Kill a window:
 
         >>> window_1 = session.new_window()
-
         >>> window_1 in session.windows
         True
-
         >>> window_1.kill()
-
         >>> window_1 not in session.windows
         True
 
         Kill all windows except the current one:
 
         >>> one_window_to_rule_them_all = session.new_window()
-
-        >>> other_windows = session.new_window(
-        ...     ), session.new_window()
-
+        >>> other_windows = session.new_window(), session.new_window()
         >>> all([w in session.windows for w in other_windows])
         True
 
         >>> one_window_to_rule_them_all.kill(all_except=True)
-
         >>> all([w not in session.windows for w in other_windows])
         True
 
         >>> one_window_to_rule_them_all in session.windows
         True
+
+        Raises
+        ------
+        exc.LibTmuxException
+            If tmux reports an error (see stderr).
         """
         flags: tuple[str, ...] = ()
-
         if all_except:
             flags += ("-a",)
 
-        proc = self.cmd(
-            "kill-window",
-            *flags,
-        )
+        proc = self.cmd("kill-window", *flags)
 
         raise_if_stderr(proc, "kill-window")
 
@@ -1453,7 +1471,9 @@ class Window(
         kill_target: bool | None = None,
         renumber: bool | None = None,
     ) -> Window:
-        """Move current :class:`Window` object ``$ tmux move-window``.
+        """Move the current window to a new location.
+
+        Wrapper for ``tmux move-window``.
 
         Parameters
         ----------
@@ -1538,11 +1558,11 @@ class Window(
         environment: dict[str, str] | None = None,
         direction: WindowDirection | None = None,
     ) -> Window:
-        """Create new window respective of current window's position.
+        """Create new window before or after this window, returning :class:`Window`.
 
         See Also
         --------
-        :meth:`Session.new_window()`
+        Session.new_window : More detailed parameter definitions.
 
         Examples
         --------
@@ -1553,7 +1573,9 @@ class Window(
         '2'
 
         >>> window_before = window_initial.new_window(
-        ... window_name='Window before', direction=WindowDirection.Before)
+        ...     window_name='Window before',
+        ...     direction=WindowDirection.Before
+        ... )
         >>> window_initial.refresh()
         >>> window_before
         Window(@... 2:Window before, Session($1 libtmux_...))
@@ -1561,7 +1583,9 @@ class Window(
         Window(@... 3:Example, Session($1 libtmux_...))
 
         >>> window_after = window_initial.new_window(
-        ... window_name='Window after', direction=WindowDirection.After)
+        ...     window_name='Window after',
+        ...     direction=WindowDirection.After
+        ... )
         >>> window_initial.refresh()
         >>> window_after.refresh()
         >>> window_after
@@ -1582,23 +1606,26 @@ class Window(
             target_window=self.window_id,
         )
 
-    #
-    # Climbers
-    #
     def select(self) -> Window:
-        """Select window.
+        """Select this window (make it the active window in its session).
 
-        To select a window object asynchrously. If a ``window`` object exists
-        and is no longer the current window, ``w.select_window()``
-        will make ``w`` the current window.
+        Wrapper for ``tmux select-window``.
+
+        Returns
+        -------
+        Window
+            This :class:`Window` instance (for chaining).
+
+        Raises
+        ------
+        exc.LibTmuxException
+            If tmux reports an error (see stderr).
 
         Examples
         --------
         >>> window = session.active_window
         >>> new_window = session.new_window()
         >>> session.refresh()
-        >>> active_windows = [w for w in session.windows if w.window_active == '1']
-
         >>> new_window.window_active == '1'
         False
 
@@ -1613,43 +1640,37 @@ class Window(
         raise_if_stderr(proc, "select-window")
 
         self.refresh()
-
         return self
 
-    #
-    # Computed properties
-    #
     @property
     def active_pane(self) -> Pane | None:
-        """Return attached :class:`Pane`."""
+        """Return the currently active :class:`Pane` in this window."""
         panes = self.panes.filter(pane_active="1")
         if len(panes) > 0:
             return panes[0]
         return None
 
-    #
-    # Dunder
-    #
     def __eq__(self, other: object) -> bool:
-        """Equal operator for :class:`Window` object."""
+        """Compare windows by ``window_id``."""
         if isinstance(other, Window):
             return self.window_id == other.window_id
         return False
 
     def __repr__(self) -> str:
-        """Representation of :class:`Window` object."""
+        """Return a string representation of this :class:`Window`."""
         return (
             f"{self.__class__.__name__}({self.window_id} "
             f"{self.window_index}:{self.window_name}, {self.session})"
         )
 
-    #
     # Aliases
-    #
+
     @property
     def id(self) -> str | None:
         """Alias of :attr:`Window.window_id`.
 
+        Examples
+        --------
         >>> window.id
         '@1'
 
@@ -1662,6 +1683,8 @@ class Window(
     def name(self) -> str | None:
         """Alias of :attr:`Window.window_name`.
 
+        Examples
+        --------
         >>> window.name
         '...'
 
@@ -1674,6 +1697,8 @@ class Window(
     def index(self) -> str | None:
         """Alias of :attr:`Window.window_index`.
 
+        Examples
+        --------
         >>> window.index
         '1'
 
@@ -1686,6 +1711,8 @@ class Window(
     def height(self) -> str | None:
         """Alias of :attr:`Window.window_height`.
 
+        Examples
+        --------
         >>> window.height.isdigit()
         True
 
@@ -1698,6 +1725,8 @@ class Window(
     def width(self) -> str | None:
         """Alias of :attr:`Window.window_width`.
 
+        Examples
+        --------
         >>> window.width.isdigit()
         True
 
@@ -1706,9 +1735,8 @@ class Window(
         """
         return self.window_width
 
-    #
-    # Legacy: Redundant stuff we want to remove
-    #
+    # Deprecated / Legacy Methods
+
     def split_window(
         self,
         target: int | str | None = None,
@@ -1717,24 +1745,20 @@ class Window(
         vertical: bool = True,
         shell: str | None = None,
         size: str | int | None = None,
-        percent: int | None = None,  # deprecated
+        percent: int | None = None,
         environment: dict[str, str] | None = None,
     ) -> Pane:
-        """Split window and return the created :class:`Pane`.
+        """Split window (deprecated).
 
-        Notes
-        -----
         .. deprecated:: 0.33.0
-
-           Deprecated in favor of :meth:`.split()`.
+           Use :meth:`.split()` instead.
 
         .. versionchanged:: 0.28.0
-
            ``attach`` default changed from ``True`` to ``False``.
 
         .. deprecated:: 0.28.0
+           ``percent=25`` replaced by size="25%".
 
-           ``percent=25`` deprecated in favor of ``size="25%"``.
         """
         raise exc.DeprecatedError(
             deprecated="Window.split_window()",
@@ -1744,13 +1768,10 @@ class Window(
 
     @property
     def attached_pane(self) -> Pane | None:
-        """Return attached :class:`Pane`.
+        """Return the attached pane (deprecated).
 
-        Notes
-        -----
         .. deprecated:: 0.31
-
-           Deprecated in favor of :meth:`.active_pane`.
+           Use :meth:`.active_pane`.
         """
         raise exc.DeprecatedError(
             deprecated="Window.attached_pane",
@@ -1759,13 +1780,10 @@ class Window(
         )
 
     def select_window(self) -> Window:
-        """Select window.
+        """Select this window (deprecated).
 
-        Notes
-        -----
         .. deprecated:: 0.30
-
-           Deprecated in favor of :meth:`.select()`.
+           Use :meth:`.select()`.
         """
         raise exc.DeprecatedError(
             deprecated="Window.select_window()",
@@ -1774,13 +1792,10 @@ class Window(
         )
 
     def kill_window(self) -> None:
-        """Kill the current :class:`Window` object. ``$ tmux kill-window``.
+        """Kill this window (deprecated).
 
-        Notes
-        -----
         .. deprecated:: 0.30
-
-           Deprecated in favor of :meth:`.kill()`.
+           Use :meth:`.kill()`.
         """
         raise exc.DeprecatedError(
             deprecated="Window.kill_window()",
@@ -1850,7 +1865,7 @@ class Window(
         )
 
     def get(self, key: str, default: t.Any | None = None) -> t.Any:
-        """Return key-based lookup. Deprecated by attributes.
+        """Return a value by key lookup (deprecated).
 
         .. deprecated:: 0.17
 
@@ -1865,7 +1880,7 @@ class Window(
         )
 
     def __getitem__(self, key: str) -> t.Any:
-        """Return item lookup by key. Deprecated in favor of attributes.
+        """Return a value by item lookup (deprecated).
 
         .. deprecated:: 0.17
 
@@ -1880,12 +1895,10 @@ class Window(
         )
 
     def get_by_id(self, pane_id: str) -> Pane | None:
-        """Return pane by id. Deprecated in favor of :meth:`.panes.get()`.
+        """Return a :class:`Pane` by ID (deprecated).
 
         .. deprecated:: 0.16
-
-           Deprecated by :meth:`.panes.get()`.
-
+           Use :meth:`.panes.get()`.
         """
         raise exc.DeprecatedError(
             deprecated="Window.get_by_id()",
@@ -1894,7 +1907,7 @@ class Window(
         )
 
     def where(self, kwargs: dict[str, t.Any]) -> list[Pane]:
-        """Filter through panes, return list of :class:`Pane`.
+        """Filter through panes by criteria (deprecated).
 
         .. deprecated:: 0.17
 
@@ -1908,7 +1921,7 @@ class Window(
         )
 
     def find_where(self, kwargs: dict[str, t.Any]) -> Pane | None:
-        """Filter through panes, return first :class:`Pane`.
+        """Return the first matching :class:`Pane` (deprecated).
 
         .. deprecated:: 0.17
 
@@ -1922,7 +1935,7 @@ class Window(
         )
 
     def _list_panes(self) -> list[PaneDict]:
-        """Return list of panes (deprecated in favor of :meth:`.panes`).
+        """Return a list of pane dictionaries (deprecated).
 
         .. deprecated:: 0.17
 
@@ -1937,7 +1950,7 @@ class Window(
 
     @property
     def _panes(self) -> list[PaneDict]:
-        """Property / alias to return :meth:`~._list_panes`.
+        """Alias to :meth:`._list_panes` (deprecated).
 
         .. deprecated:: 0.17
 
@@ -1951,7 +1964,7 @@ class Window(
         )
 
     def list_panes(self) -> list[Pane]:
-        """Return list of :class:`Pane` for the window.
+        """Return a list of :class:`Pane` objects (deprecated).
 
         .. deprecated:: 0.17
 
@@ -1966,7 +1979,7 @@ class Window(
 
     @property
     def children(self) -> QueryList[Pane]:
-        """Was used by TmuxRelationalObject (but that's longer used in this class).
+        """Return child panes (deprecated).
 
         .. deprecated:: 0.17
 
