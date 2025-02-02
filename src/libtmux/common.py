@@ -15,7 +15,7 @@ import sys
 import typing as t
 
 from . import exc
-from ._compat import LooseVersion, str_from_console
+from ._compat import LooseVersion
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -226,7 +226,7 @@ class tmux_cmd:
 
         cmd = [tmux_bin]
         cmd += args  # add the command arguments to cmd
-        cmd = [str_from_console(c) for c in cmd]
+        cmd = [str(c) for c in cmd]
 
         self.cmd = cmd
 
