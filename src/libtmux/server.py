@@ -615,7 +615,9 @@ class Server(EnvironmentMixin):
             )
         if self.socket_path is not None:
             return f"{self.__class__.__name__}(socket_path={self.socket_path})"
-        return f"{self.__class__.__name__}(socket_path=/tmp/tmux-{os.geteuid()}/default)"
+        return (
+            f"{self.__class__.__name__}(socket_path=/tmp/tmux-{os.geteuid()}/default)"
+        )
 
     #
     # Legacy: Redundant stuff we want to remove
