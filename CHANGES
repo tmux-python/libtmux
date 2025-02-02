@@ -15,6 +15,18 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Bug fixes
+
+- `tmux_cmd`: Migrate to to `text=True`
+
+  This deprecates usage of `console_to_str()` and `str_from_console()`.
+
+  Resolves #558 via #560.
+
+- compat: Remove `console_to_str()` and `str_from_console()`
+
+  These are both deprecated artifacts of libtmux' Python 2.x compatiblity layer.
+
 ## libtmux 0.41.0 (2025-02-02)
 
 ### Fixes
