@@ -7,14 +7,6 @@ import typing as t
 console_encoding = sys.stdout.encoding
 
 
-def console_to_str(s: bytes) -> str:
-    """From pypa/pip project, pip.backwardwardcompat. License MIT."""
-    try:
-        return s.decode(console_encoding, "ignore")
-    except UnicodeDecodeError:
-        return s.decode("utf_8", "ignore")
-
-
 # TODO Consider removing, reraise does not seem to be called anywhere
 def reraise(
     tp: t.Type[BaseException],
