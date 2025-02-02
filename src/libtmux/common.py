@@ -15,7 +15,7 @@ import sys
 import typing as t
 
 from . import exc
-from ._compat import LooseVersion, console_to_str, str_from_console
+from ._compat import LooseVersion, str_from_console
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -235,6 +235,7 @@ class tmux_cmd:
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                text=True,
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
@@ -244,14 +245,12 @@ class tmux_cmd:
 
         self.returncode = returncode
 
-        stdout_str = console_to_str(stdout)
-        stdout_split = stdout_str.split("\n")
+        stdout_split = stdout.split("\n")
         # remove trailing newlines from stdout
         while stdout_split and stdout_split[-1] == "":
             stdout_split.pop()
 
-        stderr_str = console_to_str(stderr)
-        stderr_split = stderr_str.split("\n")
+        stderr_split = stderr.split("\n")
         self.stderr = list(filter(None, stderr_split))  # filter empty values
 
         if "has-session" in cmd and len(self.stderr) and not stdout_split:
