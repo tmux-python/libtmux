@@ -18,13 +18,6 @@ def reraise(
     raise value
 
 
-def str_from_console(s: t.Union[str, bytes]) -> str:
-    try:
-        return str(s)
-    except UnicodeDecodeError:
-        return str(s, encoding="utf_8") if isinstance(s, bytes) else s
-
-
 import re
 from typing import Iterator, List, Tuple
 
