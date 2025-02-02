@@ -236,6 +236,7 @@ class tmux_cmd:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                errors="backslashreplace",
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
