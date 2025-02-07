@@ -35,9 +35,13 @@ from .common import (
 )
 
 if t.TYPE_CHECKING:
+    import sys
     import types
 
-    from typing_extensions import TypeAlias
+    if sys.version_info >= (3, 10):
+        from typing import TypeAlias
+    else:
+        from typing_extensions import TypeAlias
 
     DashLiteral: TypeAlias = t.Literal["-"]
 

@@ -11,10 +11,15 @@ import pytest
 from libtmux._compat import LooseVersion
 
 if t.TYPE_CHECKING:
+    import sys
     from collections.abc import Callable
 
     from _pytest.python_api import RaisesContext
-    from typing_extensions import TypeAlias
+
+    if sys.version_info >= (3, 10):
+        from typing import TypeAlias
+    else:
+        from typing_extensions import TypeAlias
 
     VersionCompareOp: TypeAlias = Callable[
         [t.Any, t.Any],
