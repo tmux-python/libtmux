@@ -33,6 +33,11 @@ Add `TestServer` pytest fixture for creating temporary tmux servers (#565):
 - Includes comprehensive test coverage and documentation
 - Available in doctest namespace
 
+### Documentation
+
+- Fix links to the "Topics" section
+- More docs for "Traversal" Topic (#567)
+
 ## libtmux 0.42.1 (2024-02-15)
 
 ### Bug fixes
