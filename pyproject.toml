@@ -64,6 +64,7 @@ dev-dependencies = [
   "myst-parser",
   "linkify-it-py",
   # Testing
+  "typing-extensions; python_version < '3.11'",
   "gp-libs",
   "pytest",
   "pytest-rerunfailures",
@@ -94,6 +95,7 @@ docs = [
   "linkify-it-py",
 ]
 testing = [
+  "typing-extensions; python_version < '3.11'",
   "gp-libs",
   "pytest",
   "pytest-rerunfailures",
@@ -106,6 +108,7 @@ coverage =[
   "pytest-cov",
 ]
 lint = [
+  "typing-extensions; python_version < '3.11'",
   "ruff",
   "mypy",
 ]

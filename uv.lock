@@ -412,6 +412,7 @@ dev = [
     { name = "sphinx-inline-tabs" },
     { name = "sphinxext-opengraph" },
     { name = "sphinxext-rediraffe" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 docs = [
     { name = "furo" },
@@ -432,6 +433,7 @@ docs = [
 lint = [
     { name = "mypy" },
     { name = "ruff" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 testing = [
     { name = "gp-libs" },
@@ -439,6 +441,7 @@ testing = [
     { name = "pytest-mock" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-watcher" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 
 [package.metadata]
@@ -471,6 +474,7 @@ dev = [
     { name = "sphinx-inline-tabs" },
     { name = "sphinxext-opengraph" },
     { name = "sphinxext-rediraffe" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 docs = [
     { name = "furo" },
@@ -488,6 +492,7 @@ docs = [
 lint = [
     { name = "mypy" },
     { name = "ruff" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 testing = [
     { name = "gp-libs" },
@@ -495,6 +500,7 @@ testing = [
     { name = "pytest-mock" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-watcher" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 
 [[package]]
