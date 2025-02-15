@@ -20,6 +20,11 @@ $ pip install --user --upgrade --pre libtmux
 - tests: Import `Self` in a `TYPE_CHECKING` guard to prevent dependency issues.
   Via #562, Thank you @ppentchev!
 
+### Development
+
+- dev dependencies: Include `typing-extensions` for Python version < 3.11 via
+  the `testing` and `lint` groups, via #564.
+
 ## libtmux 0.42.0 (2025-02-02)
 
 ### Bug fixes
