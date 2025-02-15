@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import json
 import typing as t
+from abc import ABC, abstractmethod
 
 from typing_extensions import Self
 
@@ -14,6 +16,147 @@ if t.TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from libtmux.pane import Pane
+
+
+class SnapshotOutputAdapter(ABC):
+    """Base class for snapshot output adapters.
+
+    This class defines the interface for converting a PaneSnapshot
+    into different output formats.
+    """
+
+    @abstractmethod
+    def format(self, snapshot: PaneSnapshot) -> str:
+        """Format the snapshot for output.
+
+        Parameters
+        ----------
+        snapshot : PaneSnapshot
+            The snapshot to format
+
+        Returns
+        -------
+        str
+            The formatted output
+        """
+
+
+class TerminalOutputAdapter(SnapshotOutputAdapter):
+    """Format snapshot for terminal output with ANSI colors."""
+
+    def format(self, snapshot: PaneSnapshot) -> str:
+        """Format snapshot with ANSI colors for terminal display.
+
+        Parameters
+        ----------
+        snapshot : PaneSnapshot
+            The snapshot to format
+
+        Returns
+        -------
+        str
+            ANSI-colored terminal output
+        """
+        header = (
+            f"\033[1;34m=== Pane Snapshot ===\033[0m\n"
+            f"\033[1;36mPane:\033[0m {snapshot.pane_id}\n"
+            f"\033[1;36mWindow:\033[0m {snapshot.window_id}\n"
+            f"\033[1;36mSession:\033[0m {snapshot.session_id}\n"
+            f"\033[1;36mServer:\033[0m {snapshot.server_name}\n"
+            f"\033[1;36mTimestamp:\033[0m {snapshot.timestamp.isoformat()}\n"
+            f"\033[1;33m=== Content ===\033[0m\n"
+        )
+        return header + snapshot.content_str
+
+
+class CLIOutputAdapter(SnapshotOutputAdapter):
+    """Format snapshot for plain text CLI output."""
+
+    def format(self, snapshot: PaneSnapshot) -> str:
+        """Format snapshot as plain text.
+
+        Parameters
+        ----------
+        snapshot : PaneSnapshot
+            The snapshot to format
+
+        Returns
+        -------
+        str
+            Plain text output suitable for CLI
+        """
+        header = (
+            f"=== Pane Snapshot ===\n"
+            f"Pane: {snapshot.pane_id}\n"
+            f"Window: {snapshot.window_id}\n"
+            f"Session: {snapshot.session_id}\n"
+            f"Server: {snapshot.server_name}\n"
+            f"Timestamp: {snapshot.timestamp.isoformat()}\n"
+            f"=== Content ===\n"
+        )
+        return header + snapshot.content_str
+
+
+class PytestDiffAdapter(SnapshotOutputAdapter):
+    """Format snapshot for pytest assertion diffs."""
+
+    def format(self, snapshot: PaneSnapshot) -> str:
+        """Format snapshot for optimal pytest diff output.
+
+        Parameters
+        ----------
+        snapshot : PaneSnapshot
+            The snapshot to format
+
+        Returns
+        -------
+        str
+            Pytest-friendly diff output
+        """
+        lines = [
+            "PaneSnapshot(",
+            f"    pane_id={snapshot.pane_id!r},",
+            f"    window_id={snapshot.window_id!r},",
+            f"    session_id={snapshot.session_id!r},",
+            f"    server_name={snapshot.server_name!r},",
+            f"    timestamp={snapshot.timestamp.isoformat()!r},",
+            "    content=[",
+            *(f"        {line!r}," for line in snapshot.content),
+            "    ],",
+            "    metadata={",
+            *(f"        {k!r}: {v!r}," for k, v in sorted(snapshot.metadata.items())),
+            "    },",
+            ")",
+        ]
+        return "\n".join(lines)
+
+
+class SyrupySnapshotAdapter(SnapshotOutputAdapter):
+    """Format snapshot for syrupy snapshot testing."""
+
+    def format(self, snapshot: PaneSnapshot) -> str:
+        """Format snapshot for syrupy compatibility.
+
+        Parameters
+        ----------
+        snapshot : PaneSnapshot
+            The snapshot to format
+
+        Returns
+        -------
+        str
+            JSON-serialized snapshot data
+        """
+        data = {
+            "pane_id": snapshot.pane_id,
+            "window_id": snapshot.window_id,
+            "session_id": snapshot.session_id,
+            "server_name": snapshot.server_name,
+            "timestamp": snapshot.timestamp.isoformat(),
+            "content": snapshot.content,
+            "metadata": snapshot.metadata,
+        }
+        return json.dumps(data, indent=2, sort_keys=True)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -91,6 +234,25 @@ class PaneSnapshot:
             server_name=str(pane.server.socket_name),
             metadata=metadata,
         )
+
+    def format(self, adapter: SnapshotOutputAdapter | None = None) -> str:
+        """Format the snapshot using the specified adapter.
+
+        If no adapter is provided, uses the default string representation.
+
+        Parameters
+        ----------
+        adapter : SnapshotOutputAdapter | None
+            The adapter to use for formatting
+
+        Returns
+        -------
+        str
+            The formatted output
+        """
+        if adapter is None:
+            return str(self)
+        return adapter.format(self)
 
     def __str__(self) -> str:
         """Return a string representation of the snapshot.
