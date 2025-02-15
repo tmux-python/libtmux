@@ -19,6 +19,31 @@ $ pip install --user --upgrade --pre libtmux
 
 ### Features
 
+#### Context Managers for tmux Objects
+
+Added context manager support for all main tmux objects:
+
+- `Server`: Automatically kills the server when exiting the context
+- `Session`: Automatically kills the session when exiting the context
+- `Window`: Automatically kills the window when exiting the context
+- `Pane`: Automatically kills the pane when exiting the context
+
+Example usage:
+
+```python
+with Server() as server:
+    with server.new_session() as session:
+        with session.new_window() as window:
+            with window.split() as pane:
+                pane.send_keys('echo "Hello"')
+                # Do work with the pane
+                # Everything is cleaned up automatically when exiting contexts
+```
+
+This makes it easier to write clean, safe code that properly cleans up tmux resources.
+
+#### Server Initialization Callbacks
+
 Server now accepts 2 new optional params, `socket_name_factory` and `on_init` callbacks (#565):
 
 - `socket_name_factory`: Callable that generates unique socket names for new servers
