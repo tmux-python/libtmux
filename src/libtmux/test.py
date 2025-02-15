@@ -10,8 +10,6 @@ import random
 import time
 import typing as t
 
-from typing_extensions import Self
-
 from .exc import WaitTimeout
 
 logger = logging.getLogger(__name__)
@@ -19,6 +17,8 @@ logger = logging.getLogger(__name__)
 if t.TYPE_CHECKING:
     import types
     from collections.abc import Callable, Generator
+
+    from typing_extensions import Self
 
     from libtmux.server import Server
     from libtmux.session import Session
