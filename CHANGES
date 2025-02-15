@@ -11,9 +11,27 @@ $ pip install --user --upgrade --pre libtmux
 
 ## libtmux 0.43.x (Yet to be released)
 
+<!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
+
 - _Future release notes will be placed here_
 
-<!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
+### Features
+
+Server now accepts 2 new optional params, `socket_name_factory` and `on_init` callbacks (#565):
+
+- `socket_name_factory`: Callable that generates unique socket names for new servers
+- `on_init`: Callback that runs after server initialization
+- Useful for creating multiple servers with unique names and tracking server instances
+- Socket name factory is tried after socket_name, maintaining backward compatibility
+
+#### New test fixture: `TestServer`
+
+Add `TestServer` pytest fixture for creating temporary tmux servers (#565):
+
+- Creates servers with unique socket names that clean up after themselves
+- Useful for testing interactions between multiple tmux servers
+- Includes comprehensive test coverage and documentation
+- Available in doctest namespace
 
 ## libtmux 0.42.1 (2024-02-15)
 
@@ -88,6 +106,7 @@ _Maintenance only, no bug fixes or new features_
   ```sh
   ruff check --select ALL . --fix --unsafe-fixes --preview --show-fixes; ruff format .
   ```
+
 - Tests: Stability fixes for legacy `test_select_pane` test (#552)
 
 ## libtmux 0.39.0 (2024-11-26)
