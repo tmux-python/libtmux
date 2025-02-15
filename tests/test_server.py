@@ -296,3 +296,15 @@ def test_socket_name_precedence(server: Server) -> None:
             myserver.kill()
         if myserver2.is_alive():
             myserver2.kill()
+
+
+def test_server_context_manager(TestServer: type[Server]) -> None:
+    """Test Server context manager functionality."""
+    with TestServer() as server:
+        session = server.new_session()
+        assert server.is_alive()
+        assert len(server.sessions) == 1
+        assert session in server.sessions
+
+    # Server should be killed after exiting context
+    assert not server.is_alive()

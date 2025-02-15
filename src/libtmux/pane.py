@@ -13,6 +13,8 @@ import pathlib
 import typing as t
 import warnings
 
+from typing_extensions import Self
+
 from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
@@ -26,6 +28,8 @@ from libtmux.neo import Obj, fetch_obj
 from . import exc
 
 if t.TYPE_CHECKING:
+    import types
+
     from .server import Server
     from .session import Session
     from .window import Window
@@ -59,6 +63,13 @@ class Pane(Obj):
     >>> pane.session
     Session($1 ...)
 
+    The pane can be used as a context manager to ensure proper cleanup:
+
+    >>> with window.split() as pane:
+    ...     pane.send_keys('echo "Hello"')
+    ...     # Do work with the pane
+    ...     # Pane will be killed automatically when exiting the context
+
     Notes
     -----
     .. versionchanged:: 0.8
@@ -76,6 +87,39 @@ class Pane(Obj):
     """
 
     server: Server
+
+    def __enter__(self) -> Self:
+        """Enter the context, returning self.
+
+        Returns
+        -------
+        :class:`Pane`
+            The pane instance
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        """Exit the context, killing the pane if it exists.
+
+        Parameters
+        ----------
+        exc_type : type[BaseException] | None
+            The type of the exception that was raised
+        exc_value : BaseException | None
+            The instance of the exception that was raised
+        exc_tb : types.TracebackType | None
+            The traceback of the exception that was raised
+        """
+        if (
+            self.pane_id is not None
+            and len(self.window.panes.filter(pane_id=self.pane_id)) > 0
+        ):
+            self.kill()
 
     def refresh(self) -> None:
         """Refresh pane attributes from tmux."""

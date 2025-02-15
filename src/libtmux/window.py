@@ -13,6 +13,8 @@ import shlex
 import typing as t
 import warnings
 
+from typing_extensions import Self
+
 from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
@@ -28,6 +30,8 @@ from . import exc
 from .common import PaneDict, WindowOptionDict, handle_option_error
 
 if t.TYPE_CHECKING:
+    import types
+
     from .server import Server
     from .session import Session
 
@@ -73,6 +77,13 @@ class Window(Obj):
     >>> window in session.windows
     True
 
+    The window can be used as a context manager to ensure proper cleanup:
+
+    >>> with session.new_window() as window:
+    ...     pane = window.split()
+    ...     # Do work with the pane
+    ...     # Window will be killed automatically when exiting the context
+
     References
     ----------
     .. [window_manual] tmux window. openbsd manpage for TMUX(1).
@@ -84,6 +95,39 @@ class Window(Obj):
     """
 
     server: Server
+
+    def __enter__(self) -> Self:
+        """Enter the context, returning self.
+
+        Returns
+        -------
+        :class:`Window`
+            The window instance
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        """Exit the context, killing the window if it exists.
+
+        Parameters
+        ----------
+        exc_type : type[BaseException] | None
+            The type of the exception that was raised
+        exc_value : BaseException | None
+            The instance of the exception that was raised
+        exc_tb : types.TracebackType | None
+            The traceback of the exception that was raised
+        """
+        if (
+            self.window_id is not None
+            and len(self.session.windows.filter(window_id=self.window_id)) > 0
+        ):
+            self.kill()
 
     def refresh(self) -> None:
         """Refresh window attributes from tmux."""

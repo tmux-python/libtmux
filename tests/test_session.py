@@ -381,3 +381,15 @@ def test_session_new_window_with_direction_logs_warning_for_old_tmux(
     assert any("Direction flag ignored" in record.msg for record in caplog.records), (
         "Warning missing"
     )
+
+
+def test_session_context_manager(server: Server) -> None:
+    """Test Session context manager functionality."""
+    with server.new_session() as session:
+        window = session.new_window()
+        assert session in server.sessions
+        assert window in session.windows
+        assert len(session.windows) == 2  # Initial window + new window
+
+    # Session should be killed after exiting context
+    assert session not in server.sessions
