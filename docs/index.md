@@ -17,7 +17,7 @@ hide-toc: true
 
 quickstart
 about
-topics/traversal
+topics/index
 api/index
 pytest-plugin/index
 ```
