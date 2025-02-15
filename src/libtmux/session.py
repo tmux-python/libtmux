@@ -13,6 +13,8 @@ import pathlib
 import typing as t
 import warnings
 
+from typing_extensions import Self
+
 from libtmux._internal.query_list import QueryList
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
@@ -31,6 +33,8 @@ from .common import (
 )
 
 if t.TYPE_CHECKING:
+    import types
+
     from libtmux.common import tmux_cmd
 
     from .server import Server
@@ -63,6 +67,13 @@ class Session(Obj, EnvironmentMixin):
     >>> session.active_pane
     Pane(%1 Window(@1 ...:..., Session($1 ...)))
 
+    The session can be used as a context manager to ensure proper cleanup:
+
+    >>> with server.new_session() as session:
+    ...     window = session.new_window()
+    ...     # Do work with the window
+    ...     # Session will be killed automatically when exiting the context
+
     References
     ----------
     .. [session_manual] tmux session. openbsd manpage for TMUX(1).
@@ -77,6 +88,36 @@ class Session(Obj, EnvironmentMixin):
     """
 
     server: Server
+
+    def __enter__(self) -> Self:
+        """Enter the context, returning self.
+
+        Returns
+        -------
+        :class:`Session`
+            The session instance
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        """Exit the context, killing the session if it exists.
+
+        Parameters
+        ----------
+        exc_type : type[BaseException] | None
+            The type of the exception that was raised
+        exc_value : BaseException | None
+            The instance of the exception that was raised
+        exc_tb : types.TracebackType | None
+            The traceback of the exception that was raised
+        """
+        if self.session_name is not None and self.server.has_session(self.session_name):
+            self.kill()
 
     def refresh(self) -> None:
         """Refresh session attributes from tmux."""

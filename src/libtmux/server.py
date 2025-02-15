@@ -15,6 +15,8 @@ import subprocess
 import typing as t
 import warnings
 
+from typing_extensions import Self
+
 from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
 from libtmux.neo import fetch_objs
@@ -33,6 +35,8 @@ from .common import (
 )
 
 if t.TYPE_CHECKING:
+    import types
+
     from typing_extensions import TypeAlias
 
     DashLiteral: TypeAlias = t.Literal["-"]
@@ -78,6 +82,13 @@ class Server(EnvironmentMixin):
 
     >>> server.sessions[0].active_pane
     Pane(%1 Window(@1 1:..., Session($1 ...)))
+
+    The server can be used as a context manager to ensure proper cleanup:
+
+    >>> with Server() as server:
+    ...     session = server.new_session()
+    ...     # Do work with the session
+    ...     # Server will be killed automatically when exiting the context
 
     References
     ----------
@@ -145,6 +156,36 @@ class Server(EnvironmentMixin):
 
         if on_init is not None:
             on_init(self)
+
+    def __enter__(self) -> Self:
+        """Enter the context, returning self.
+
+        Returns
+        -------
+        :class:`Server`
+            The server instance
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        exc_tb: types.TracebackType | None,
+    ) -> None:
+        """Exit the context, killing the server if it exists.
+
+        Parameters
+        ----------
+        exc_type : type[BaseException] | None
+            The type of the exception that was raised
+        exc_value : BaseException | None
+            The instance of the exception that was raised
+        exc_tb : types.TracebackType | None
+            The traceback of the exception that was raised
+        """
+        if self.is_alive():
+            self.kill()
 
     def is_alive(self) -> bool:
         """Return True if tmux server alive.
