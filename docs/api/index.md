@@ -11,6 +11,7 @@ servers
 sessions
 windows
 panes
+snapshot
 constants
 common
 exceptions
