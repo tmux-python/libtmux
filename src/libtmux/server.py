@@ -7,6 +7,21 @@ to the tmux server process.
 
 libtmux.server
 ~~~~~~~~~~~~~~
+
+Examples
+--------
+>>> server.is_alive()  # Check if tmux server is running
+True
+>>> # Clean up any existing test session first
+>>> if server.has_session("test_session"):
+...     server.kill_session("test_session")
+>>> new_session = server.new_session(session_name="test_session")
+>>> new_session.name
+'test_session'
+>>> server.has_session("test_session")
+True
+>>> server.kill_session("test_session")  # Clean up
+Server(socket_name=libtmux_test...)
 """
 
 from __future__ import annotations
@@ -361,25 +376,33 @@ class Server(EnvironmentMixin):
         return self.sessions.filter(session_attached__noeq="1")
 
     def has_session(self, target_session: str, exact: bool = True) -> bool:
-        """Check if a session with the given name (or pattern) exists.
+        """Return True if session exists.
 
         Parameters
         ----------
-        target_session
-            The session name or pattern to check.
-        exact
-            Whether to require an exact match (tmux 2.1+). If True, prepends
-            ``=`` to the session name for an exact match.
+        target_session : str
+            Target session name to check
+        exact : bool, optional
+            If True, match the name exactly. Otherwise, match as a pattern.
 
-        Raises
-        ------
-        exc.BadSessionName
-            If the `target_session` is invalid.
-
-        Returns
-        -------
-        bool
-            True if the session exists, False otherwise.
+        Examples
+        --------
+        >>> # Clean up any existing test session
+        >>> if server.has_session("test_session"):
+        ...     server.kill_session("test_session")
+        >>> server.new_session(session_name="test_session")
+        Session($... test_session)
+        >>> server.has_session("test_session")
+        True
+        >>> server.has_session("nonexistent")
+        False
+        >>> server.has_session("test_session", exact=True)  # Exact match
+        True
+        >>> # Pattern matching (using tmux's pattern matching)
+        >>> server.has_session("test_sess*", exact=False)  # Pattern match
+        True
+        >>> server.kill_session("test_session")  # Clean up
+        Server(socket_name=libtmux_test...)
         """
         session_check_name(target_session)
 
@@ -396,38 +419,38 @@ class Server(EnvironmentMixin):
 
         Examples
         --------
-        >>> svr = Server(socket_name="testing")
-        >>> svr.new_session()
+        >>> # Create a new server for testing kill()
+        >>> test_server = Server(socket_name="testing")
+        >>> test_server.new_session()
         Session(...)
-
-        >>> svr.is_alive()
+        >>> test_server.is_alive()
         True
-
-        >>> svr.kill()
-
-        >>> svr.is_alive()
+        >>> test_server.kill()
+        >>> test_server.is_alive()
         False
         """
         self.cmd("kill-server")
 
     def kill_session(self, target_session: str | int) -> Server:
-        """Kill a specific session on this server.
+        """Kill a session by name.
 
         Parameters
         ----------
-        target_session
-            The session name or ID to kill. Note that tmux uses fnmatch(3),
-            so 'asdf' might also match 'asdfasd'.
+        target_session : str or int
+            Name of the session or session ID to kill
 
-        Returns
-        -------
-        Server
-            This server object (for chaining).
-
-        Raises
-        ------
-        exc.LibTmuxException
-            If tmux reports an error (stderr output).
+        Examples
+        --------
+        >>> # Clean up any existing session first
+        >>> if server.has_session("temp"):
+        ...     server.kill_session("temp")
+        >>> session = server.new_session(session_name="temp")
+        >>> server.has_session("temp")
+        True
+        >>> server.kill_session("temp")
+        Server(socket_name=libtmux_test...)
+        >>> server.has_session("temp")
+        False
         """
         proc = self.cmd("kill-session", target=target_session)
         if proc.stderr:
@@ -441,6 +464,22 @@ class Server(EnvironmentMixin):
         ----------
         target_session
             The name or pattern of the target session.
+
+        Examples
+        --------
+        >>> # Create two test sessions
+        >>> for name in ["session1", "session2"]:
+        ...     if server.has_session(name):
+        ...         server.kill_session(name)
+        >>> session1 = server.new_session(session_name="session1")
+        >>> session2 = server.new_session(session_name="session2")
+        >>> # Note: switch_client() requires an interactive terminal
+        >>> # so we can't demonstrate it in doctests
+        >>> # Clean up
+        >>> server.kill_session("session1")
+        Server(socket_name=libtmux_test...)
+        >>> server.kill_session("session2")
+        Server(socket_name=libtmux_test...)
 
         Raises
         ------
@@ -462,6 +501,18 @@ class Server(EnvironmentMixin):
         target_session : str, optional
             The name or pattern of the target session. If None, attaches to
             the most recently used session.
+
+        Examples
+        --------
+        >>> # Create a test session
+        >>> if server.has_session("test_attach"):
+        ...     server.kill_session("test_attach")
+        >>> session = server.new_session(session_name="test_attach")
+        >>> # Note: attach_session() requires an interactive terminal
+        >>> # so we can't demonstrate it in doctests
+        >>> # Clean up
+        >>> server.kill_session("test_attach")
+        Server(socket_name=libtmux_test...)
 
         Raises
         ------
@@ -489,58 +540,62 @@ class Server(EnvironmentMixin):
         *args: t.Any,
         **kwargs: t.Any,
     ) -> Session:
-        """Create a new tmux session and return the associated :class:`Session`.
-
-        Uses ``-P -F#{session_id}`` to capture the session ID in the output.
+        """Create a new session.
 
         Parameters
         ----------
         session_name : str, optional
-            The name to assign to the new session (``-s`` flag).
+            Name of the session
         kill_session : bool, optional
-            If True, kills any existing session with the same name.
+            Kill session if it exists
         attach : bool, optional
-            If True, creates the new session in the foreground (no ``-d`` flag).
+            Attach to session after creating it
         start_directory : str, optional
-            Working directory for the new session (``-c`` flag).
+            Working directory for the session
         window_name : str, optional
-            If given, creates the session's first window with this name (``-n``).
+            Name of the initial window
         window_command : str, optional
-            A shell command to run immediately in the new window; the window
-            closes when the command exits.
+            Command to run in the initial window
         x : int or "-", optional
-            Forces the specified width for the new session if detached (``-x``).
+            Width of new window
         y : int or "-", optional
-            Forces the specified height for the new session if detached (``-y``).
-        environment : dict of str to str, optional
-            Environment variables to set for the session (tmux 3.2+).
-
-        Returns
-        -------
-        Session
-            The newly created :class:`Session`.
-
-        Raises
-        ------
-        exc.TmuxSessionExists
-            If a session with the given `session_name` already exists and
-            `kill_session` is False.
-        exc.BadSessionName
-            If `session_name` is invalid.
-        exc.LibTmuxException
-            If tmux reports an error (stderr output).
+            Height of new window
+        environment : dict, optional
+            Dictionary of environment variables to set
 
         Examples
         --------
-        Sessions can be created without a session name:
+        >>> # Clean up any existing sessions first
+        >>> for name in ["basic", "custom", "env_test"]:
+        ...     if server.has_session(name):
+        ...         server.kill_session(name)
+        >>> # Create a basic session
+        >>> session1 = server.new_session(session_name="basic")
+        >>> session1.name
+        'basic'
 
-        >>> server.new_session()
-        Session($2 2)
+        >>> # Create session with custom window name
+        >>> session2 = server.new_session(
+        ...     session_name="custom",
+        ...     window_name="editor"
+        ... )
+        >>> session2.windows[0].name
+        'editor'
 
-        With a session name:
+        >>> # Create session with environment variables
+        >>> session3 = server.new_session(
+        ...     session_name="env_test",
+        ...     environment={"TEST_VAR": "test_value"}
+        ... )
+        >>> session3.name
+        'env_test'
 
-        >>> server.new_session(session_name='my session')
-        Session($3 my session)
+        >>> # Clean up
+        >>> for name in ["basic", "custom", "env_test"]:
+        ...     server.kill_session(name)
+        Server(socket_name=libtmux_test...)
+        Server(socket_name=libtmux_test...)
+        Server(socket_name=libtmux_test...)
         """
         if session_name is not None:
             session_check_name(session_name)
@@ -600,11 +655,26 @@ class Server(EnvironmentMixin):
 
     @property
     def sessions(self) -> QueryList[Session]:
-        """Return a :class:`QueryList` of all :class:`Session` objects in this server.
+        """Return list of sessions.
 
-        Access advanced filtering and retrieval with:
-        :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
-        :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
+        Examples
+        --------
+        >>> # Clean up any existing test sessions first
+        >>> for name in ["test1", "test2"]:
+        ...     if server.has_session(name):
+        ...         server.kill_session(name)
+        >>> # Create some test sessions
+        >>> session1 = server.new_session(session_name="test1")
+        >>> session2 = server.new_session(session_name="test2")
+        >>> len(server.sessions) >= 2  # May have other sessions
+        True
+        >>> sorted([s.name for s in server.sessions if s.name in ["test1", "test2"]])
+        ['test1', 'test2']
+        >>> # Clean up
+        >>> server.kill_session("test1")
+        Server(socket_name=libtmux_test...)
+        >>> server.kill_session("test2")
+        Server(socket_name=libtmux_test...)
         """
         sessions: list[Session] = []
         with contextlib.suppress(Exception):
@@ -622,6 +692,36 @@ class Server(EnvironmentMixin):
         """Return a :class:`QueryList` of all :class:`Window` objects in this server.
 
         This includes windows in all sessions.
+
+        Examples
+        --------
+        >>> # Clean up any existing test sessions
+        >>> for name in ["test_windows1", "test_windows2"]:
+        ...     if server.has_session(name):
+        ...         server.kill_session(name)
+        >>> # Create sessions with windows
+        >>> session1 = server.new_session(session_name="test_windows1")
+        >>> session2 = server.new_session(session_name="test_windows2")
+        >>> # Create additional windows
+        >>> _ = session1.new_window(window_name="win1")  # Create window
+        >>> _ = session2.new_window(window_name="win2")  # Create window
+        >>> # Each session should have 2 windows (default + new)
+        >>> len([w for w in server.windows if w.session.name == "test_windows1"])
+        2
+        >>> len([w for w in server.windows if w.session.name == "test_windows2"])
+        2
+        >>> # Verify window names
+        >>> wins1 = [w for w in server.windows if w.session.name == "test_windows1"]
+        >>> wins2 = [w for w in server.windows if w.session.name == "test_windows2"]
+        >>> sorted(w.name for w in wins1)
+        ['win1', ...]
+        >>> sorted(w.name for w in wins2)
+        ['win2', ...]
+        >>> # Clean up
+        >>> server.kill_session("test_windows1")
+        Server(socket_name=libtmux_test...)
+        >>> server.kill_session("test_windows2")
+        Server(socket_name=libtmux_test...)
 
         Access advanced filtering and retrieval with:
         :meth:`.windows.get() <libtmux._internal.query_list.QueryList.get()>` and
@@ -642,6 +742,24 @@ class Server(EnvironmentMixin):
         """Return a :class:`QueryList` of all :class:`Pane` objects in this server.
 
         This includes panes from all windows in all sessions.
+
+        Examples
+        --------
+        >>> # Clean up any existing test session
+        >>> if server.has_session("test_panes"):
+        ...     server.kill_session("test_panes")
+        >>> # Create a session and split some panes
+        >>> session = server.new_session(session_name="test_panes")
+        >>> window = session.attached_window
+        >>> # Split into two panes
+        >>> window.split_window()
+        Pane(%... Window(@... 1:..., Session($... test_panes)))
+        >>> # Each window starts with 1 pane, split creates another
+        >>> len([p for p in server.panes if p.window.session.name == "test_panes"])
+        2
+        >>> # Clean up
+        >>> server.kill_session("test_panes")
+        Server(socket_name=libtmux_test...)
 
         Access advanced filtering and retrieval with:
         :meth:`.panes.get() <libtmux._internal.query_list.QueryList.get()>` and
