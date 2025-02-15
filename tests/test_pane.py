@@ -322,3 +322,16 @@ def test_split_pane_size(session: Session) -> None:
 
         new_pane = new_pane.split(direction=PaneDirection.Right, size="10%")
         assert new_pane.pane_width == str(int(window_width_before * 0.1))
+
+
+def test_pane_context_manager(session: Session) -> None:
+    """Test Pane context manager functionality."""
+    window = session.new_window()
+    with window.split() as pane:
+        pane.send_keys('echo "Hello"')
+        assert pane in window.panes
+        assert len(window.panes) == 2  # Initial pane + new pane
+
+    # Pane should be killed after exiting context
+    assert pane not in window.panes
+    assert len(window.panes) == 1  # Only initial pane remains

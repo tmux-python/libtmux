@@ -603,3 +603,15 @@ def test_new_window_with_direction_logs_warning_for_old_tmux(
     assert any("Direction flag ignored" in record.msg for record in caplog.records), (
         "Warning missing"
     )
+
+
+def test_window_context_manager(session: Session) -> None:
+    """Test Window context manager functionality."""
+    with session.new_window() as window:
+        pane = window.split()
+        assert window in session.windows
+        assert pane in window.panes
+        assert len(window.panes) == 2  # Initial pane + new pane
+
+    # Window should be killed after exiting context
+    assert window not in session.windows
