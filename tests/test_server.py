@@ -228,3 +228,71 @@ def test_raise_if_dead_does_not_raise_if_alive(server: Server) -> None:
     """Verify new_session() does not raise if tmux server is alive."""
     server.new_session()
     server.raise_if_dead()
+
+
+def test_on_init(server: Server) -> None:
+    """Verify on_init callback is called during Server initialization."""
+    called_with: list[Server] = []
+
+    def on_init(server: Server) -> None:
+        called_with.append(server)
+
+    myserver = Server(socket_name="test_on_init", on_init=on_init)
+    try:
+        assert len(called_with) == 1
+        assert called_with[0] is myserver
+    finally:
+        if myserver.is_alive():
+            myserver.kill()
+
+
+def test_socket_name_factory(server: Server) -> None:
+    """Verify socket_name_factory generates socket names."""
+    socket_names: list[str] = []
+
+    def socket_name_factory() -> str:
+        name = f"test_socket_{len(socket_names)}"
+        socket_names.append(name)
+        return name
+
+    myserver = Server(socket_name_factory=socket_name_factory)
+    try:
+        assert myserver.socket_name == "test_socket_0"
+        assert socket_names == ["test_socket_0"]
+
+        # Creating another server should use factory again
+        myserver2 = Server(socket_name_factory=socket_name_factory)
+        try:
+            assert myserver2.socket_name == "test_socket_1"
+            assert socket_names == ["test_socket_0", "test_socket_1"]
+        finally:
+            if myserver2.is_alive():
+                myserver2.kill()
+    finally:
+        if myserver.is_alive():
+            myserver.kill()
+        if myserver2.is_alive():
+            myserver2.kill()
+
+
+def test_socket_name_precedence(server: Server) -> None:
+    """Verify socket_name takes precedence over socket_name_factory."""
+
+    def socket_name_factory() -> str:
+        return "from_factory"
+
+    myserver = Server(
+        socket_name="explicit_name",
+        socket_name_factory=socket_name_factory,
+    )
+    myserver2 = Server(socket_name_factory=socket_name_factory)
+    try:
+        assert myserver.socket_name == "explicit_name"
+
+        # Without socket_name, factory is used
+        assert myserver2.socket_name == "from_factory"
+    finally:
+        if myserver.is_alive():
+            myserver.kill()
+        if myserver2.is_alive():
+            myserver2.kill()

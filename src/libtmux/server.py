@@ -59,6 +59,8 @@ class Server(EnvironmentMixin):
     socket_path : str, optional
     config_file : str, optional
     colors : str, optional
+    on_init : callable, optional
+    socket_name_factory : callable, optional
 
     Examples
     --------
@@ -110,6 +112,8 @@ class Server(EnvironmentMixin):
         socket_path: str | pathlib.Path | None = None,
         config_file: str | None = None,
         colors: int | None = None,
+        on_init: t.Callable[[Server], None] | None = None,
+        socket_name_factory: t.Callable[[], str] | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
@@ -120,6 +124,8 @@ class Server(EnvironmentMixin):
             self.socket_path = socket_path
         elif socket_name is not None:
             self.socket_name = socket_name
+        elif socket_name_factory is not None:
+            self.socket_name = socket_name_factory()
 
         tmux_tmpdir = pathlib.Path(os.getenv("TMUX_TMPDIR", "/tmp"))
         socket_name = self.socket_name or "default"
@@ -136,6 +142,9 @@ class Server(EnvironmentMixin):
 
         if colors:
             self.colors = colors
+
+        if on_init is not None:
+            on_init(self)
 
     def is_alive(self) -> bool:
         """Return True if tmux server alive.
