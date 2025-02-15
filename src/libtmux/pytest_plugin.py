@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import functools
 import getpass
 import logging
 import os
@@ -256,3 +257,58 @@ def session(
     assert TEST_SESSION_NAME != "tmuxp"
 
     return session
+
+
+@pytest.fixture
+def TestServer(
+    request: pytest.FixtureRequest,
+) -> type[Server]:
+    """Create a temporary tmux server that cleans up after itself.
+
+    This is similar to the server pytest fixture, but can be used outside of pytest.
+    The server will be killed when the test completes.
+
+    Returns
+    -------
+    type[Server]
+        A factory function that returns a Server with a unique socket_name
+
+    Examples
+    --------
+    >>> server = Server()  # Create server instance
+    >>> server.new_session()
+    Session($... ...)
+    >>> server.is_alive()
+    True
+    >>> # Each call creates a new server with unique socket
+    >>> server2 = Server()
+    >>> server2.socket_name != server.socket_name
+    True
+    """
+    created_sockets: list[str] = []
+
+    def on_init(server: Server) -> None:
+        """Track created servers for cleanup."""
+        created_sockets.append(server.socket_name or "default")
+
+    def socket_name_factory() -> str:
+        """Generate unique socket names."""
+        return f"libtmux_test{next(namer)}"
+
+    def fin() -> None:
+        """Kill all servers created with these sockets."""
+        for socket_name in created_sockets:
+            server = Server(socket_name=socket_name)
+            if server.is_alive():
+                server.kill()
+
+    request.addfinalizer(fin)
+
+    return t.cast(
+        "type[Server]",
+        functools.partial(
+            Server,
+            on_init=on_init,
+            socket_name_factory=socket_name_factory,
+        ),
+    )

@@ -93,6 +93,34 @@ def test_something(session):
 
 The above will assure the libtmux session launches with `-x 800 -y 600`.
 
+(temp_server)=
+
+### Creating temporary servers
+
+If you need multiple independent tmux servers in your tests, the {func}`TestServer fixture <libtmux.pytest_plugin.TestServer>` provides a factory that creates servers with unique socket names. Each server is automatically cleaned up when the test completes.
+
+```python
+def test_something(TestServer):
+    Server = TestServer()  # Get unique partial'd Server
+    server = Server()      # Create server instance
+    
+    session = server.new_session()
+    assert server.is_alive()
+```
+
+You can also use it with custom configurations, similar to the {ref}`server fixture <Setting a tmux configuration>`:
+
+```python
+def test_with_config(TestServer, tmp_path):
+    config_file = tmp_path / "tmux.conf"
+    config_file.write_text("set -g status off")
+    
+    Server = TestServer()
+    server = Server(config_file=str(config_file))
+```
+
+This is particularly useful when testing interactions between multiple tmux servers or when you need to verify behavior across server restarts.
+
 (set_home)=
 
 ### Setting a temporary home directory
