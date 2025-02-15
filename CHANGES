@@ -15,6 +15,11 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version above -->
 
+### Bug fixes
+
+- tests: Import `Self` in a `TYPE_CHECKING` guard to prevent dependency issues.
+  Via #562, Thank you @ppentchev!
+
 ## libtmux 0.42.0 (2025-02-02)
 
 ### Bug fixes
