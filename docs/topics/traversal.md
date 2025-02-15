@@ -22,81 +22,159 @@ Terminal two, `python` or `ptpython` if you have it:
 $ python
 ```
 
-Import `libtmux`:
+## Setup
+
+First, create a test session:
 
 ```python
-import libtmux
+>>> session = server.new_session()  # Create a test session using existing server
 ```
 
-Attach default tmux {class}`~libtmux.Server` to `t`:
+## Server Level
+
+View the server's representation:
 
 ```python
->>> import libtmux
->>> t = libtmux.Server();
->>> t
-Server(socket_path=/tmp/tmux-.../default)
+>>> server  # doctest: +ELLIPSIS
+Server(socket_name=...)
 ```
 
-Get first session {class}`~libtmux.Session` to `session`:
+Get all sessions in the server:
+
+```python
+>>> server.sessions  # doctest: +ELLIPSIS
+[Session($... ...)]
+```
+
+Get all windows across all sessions:
+
+```python
+>>> server.windows  # doctest: +ELLIPSIS
+[Window(@... ..., Session($... ...))]
+```
+
+Get all panes across all windows:
+
+```python
+>>> server.panes  # doctest: +ELLIPSIS
+[Pane(%... Window(@... ..., Session($... ...)))]
+```
+
+## Session Level
+
+Get first session:
 
 ```python
 >>> session = server.sessions[0]
->>> session
-Session($1 ...)
+>>> session  # doctest: +ELLIPSIS
+Session($... ...)
 ```
 
-Get a list of sessions:
+Get windows in a session:
 
 ```python
->>> server.sessions
-[Session($1 ...), Session($0 ...)]
+>>> session.windows  # doctest: +ELLIPSIS
+[Window(@... ..., Session($... ...))]
 ```
 
-Iterate through sessions in a server:
+Get active window and pane:
 
 ```python
->>> for sess in server.sessions:
-...     print(sess)
-Session($1 ...)
-Session($0 ...)
+>>> session.active_window  # doctest: +ELLIPSIS
+Window(@... ..., Session($... ...))
+
+>>> session.active_pane  # doctest: +ELLIPSIS
+Pane(%... Window(@... ..., Session($... ...)))
 ```
 
-Grab a {class}`~libtmux.Window` from a session:
+## Window Level
+
+Get a window and inspect its properties:
 
 ```python
->>> session.windows[0]
-Window(@1 ...:..., Session($1 ...))
+>>> window = session.windows[0]
+>>> window.window_index  # doctest: +ELLIPSIS
+'...'
 ```
 
-Grab the currently focused window from session:
+Access the window's parent session:
 
 ```python
->>> session.active_window
-Window(@1 ...:..., Session($1 ...))
+>>> window.session  # doctest: +ELLIPSIS
+Session($... ...)
+>>> window.session.session_id == session.session_id
+True
 ```
 
-Grab the currently focused {class}`Pane` from session:
+Get panes in a window:
 
 ```python
->>> session.active_pane
-Pane(%1 Window(@1 ...:..., Session($1 ...)))
+>>> window.panes  # doctest: +ELLIPSIS
+[Pane(%... Window(@... ..., Session($... ...)))]
 ```
 
-Assign the attached {class}`~libtmux.Pane` to `p`:
+Get active pane:
 
 ```python
->>> p = session.active_pane
+>>> window.active_pane  # doctest: +ELLIPSIS
+Pane(%... Window(@... ..., Session($... ...)))
 ```
 
-Access the window/server of a pane:
+## Pane Level
+
+Get a pane and traverse upwards:
 
 ```python
->>> p = session.active_pane
->>> p.window
-Window(@1 ...:..., Session($1 ...))
+>>> pane = window.panes[0]
+>>> pane.window.window_id == window.window_id
+True
+>>> pane.session.session_id == session.session_id
+True
+>>> pane.server is server
+True
+```
 
->>> p.server
-Server(socket_name=libtmux_test...)
+## Filtering and Finding Objects
+
+Find windows by index:
+
+```python
+>>> session.windows.filter(window_index=window.window_index)  # doctest: +ELLIPSIS
+[Window(@... ..., Session($... ...))]
+```
+
+Get a specific pane by ID:
+
+```python
+>>> window.panes.get(pane_id=pane.pane_id)  # doctest: +ELLIPSIS
+Pane(%... Window(@... ..., Session($... ...)))
+```
+
+## Checking Relationships
+
+Check if objects are related:
+
+```python
+>>> window in session.windows
+True
+>>> pane in window.panes
+True
+>>> session in server.sessions
+True
+```
+
+Check if a window is active:
+
+```python
+>>> window.window_id == session.active_window.window_id
+True
+```
+
+Check if a pane is active:
+
+```python
+>>> pane.pane_id == window.active_pane.pane_id
+True
 ```
 
 [target]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS
