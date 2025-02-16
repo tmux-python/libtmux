@@ -15,11 +15,9 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
-## libtmux 0.43.0 (2025-02-15)
-
 ### Features
 
-#### Context Managers for tmux Objects
+#### Context Managers for tmux Objects (#566)
 
 Added context manager support for all main tmux objects:
 
@@ -41,6 +39,10 @@ with Server() as server:
 ```
 
 This makes it easier to write clean, safe code that properly cleans up tmux resources.
+
+## libtmux 0.43.0 (2025-02-15)
+
+### Features
 
 #### Server Initialization Callbacks
 
