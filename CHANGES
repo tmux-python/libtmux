@@ -9,17 +9,19 @@ To install via [pip](https://pip.pypa.io/en/stable/), use:
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.44.x (Yet to be released)
+## libtmux 0.45.x (Yet to be released)
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
 - _Future release notes will be placed here_
 
-### Features
+## libtmux 0.44.0 (2025-02-16)
 
-#### Context Managers for tmux Objects (#566)
+### New Features
 
-Added context manager support for all main tmux objects:
+#### Context Managers support (#566)
+
+Added context manager support for all major object types:
 
 - `Server`: Automatically kills the server when exiting the context
 - `Session`: Automatically kills the session when exiting the context
@@ -42,7 +44,7 @@ This makes it easier to write clean, safe code that properly cleans up tmux reso
 
 ## libtmux 0.43.0 (2025-02-15)
 
-### Features
+### New Features
 
 #### Server Initialization Callbacks
 
