@@ -150,44 +150,6 @@ def test_has_version() -> None:
     assert has_version(str(get_version()))
 
 
-def test_has_gt_version() -> None:
-    """Test has_gt_version()."""
-    assert has_gt_version("1.6")
-    assert has_gt_version("1.6b")
-
-    assert not has_gt_version("4.0")
-    assert not has_gt_version("4.0b")
-
-
-def test_has_gte_version() -> None:
-    """Test has_gte_version()."""
-    assert has_gte_version("1.6")
-    assert has_gte_version("1.6b")
-    assert has_gte_version(str(get_version()))
-
-    assert not has_gte_version("4.0")
-    assert not has_gte_version("4.0b")
-
-
-def test_has_lt_version() -> None:
-    """Test has_lt_version()."""
-    assert has_lt_version("4.0a")
-    assert has_lt_version("4.0")
-
-    assert not has_lt_version("1.7")
-    assert not has_lt_version(str(get_version()))
-
-
-def test_has_lte_version() -> None:
-    """Test has_lti_version()."""
-    assert has_lte_version("4.0a")
-    assert has_lte_version("4.0")
-    assert has_lte_version(str(get_version()))
-
-    assert not has_lte_version("1.7")
-    assert not has_lte_version("1.7b")
-
-
 def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify raises if tmux command not found."""
     monkeypatch.setenv("PATH", "")
@@ -277,3 +239,149 @@ def test_get_libtmux_version() -> None:
     version = get_libtmux_version()
     assert isinstance(version, LooseVersion)
     assert LooseVersion(__version__) == version
+
+
+class VersionComparisonFixture(t.NamedTuple):
+    """Test fixture for version comparison functions."""
+
+    test_id: str
+    version: str
+    comparison_type: t.Literal["gt", "gte", "lt", "lte"]
+    expected: bool
+
+
+VERSION_COMPARISON_FIXTURES: list[VersionComparisonFixture] = [
+    # Greater than tests
+    VersionComparisonFixture(
+        test_id="gt_older_version",
+        version="1.6",
+        comparison_type="gt",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="gt_older_version_with_letter",
+        version="1.6b",
+        comparison_type="gt",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="gt_newer_version",
+        version="4.0",
+        comparison_type="gt",
+        expected=False,
+    ),
+    VersionComparisonFixture(
+        test_id="gt_newer_version_with_letter",
+        version="4.0b",
+        comparison_type="gt",
+        expected=False,
+    ),
+    # Greater than or equal tests
+    VersionComparisonFixture(
+        test_id="gte_older_version",
+        version="1.6",
+        comparison_type="gte",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="gte_older_version_with_letter",
+        version="1.6b",
+        comparison_type="gte",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="gte_current_version",
+        version=str(get_version()),
+        comparison_type="gte",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="gte_newer_version",
+        version="4.0",
+        comparison_type="gte",
+        expected=False,
+    ),
+    VersionComparisonFixture(
+        test_id="gte_newer_version_with_letter",
+        version="4.0b",
+        comparison_type="gte",
+        expected=False,
+    ),
+    # Less than tests
+    VersionComparisonFixture(
+        test_id="lt_newer_version_with_letter",
+        version="4.0a",
+        comparison_type="lt",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="lt_newer_version",
+        version="4.0",
+        comparison_type="lt",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="lt_older_version",
+        version="1.7",
+        comparison_type="lt",
+        expected=False,
+    ),
+    VersionComparisonFixture(
+        test_id="lt_current_version",
+        version=str(get_version()),
+        comparison_type="lt",
+        expected=False,
+    ),
+    # Less than or equal tests
+    VersionComparisonFixture(
+        test_id="lte_newer_version_with_letter",
+        version="4.0a",
+        comparison_type="lte",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="lte_newer_version",
+        version="4.0",
+        comparison_type="lte",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="lte_current_version",
+        version=str(get_version()),
+        comparison_type="lte",
+        expected=True,
+    ),
+    VersionComparisonFixture(
+        test_id="lte_older_version",
+        version="1.7",
+        comparison_type="lte",
+        expected=False,
+    ),
+    VersionComparisonFixture(
+        test_id="lte_older_version_with_letter",
+        version="1.7b",
+        comparison_type="lte",
+        expected=False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(VersionComparisonFixture._fields),
+    VERSION_COMPARISON_FIXTURES,
+    ids=[test.test_id for test in VERSION_COMPARISON_FIXTURES],
+)
+def test_version_comparison(
+    test_id: str,
+    version: str,
+    comparison_type: t.Literal["gt", "gte", "lt", "lte"],
+    expected: bool,
+) -> None:
+    """Test version comparison functions."""
+    comparison_funcs = {
+        "gt": has_gt_version,
+        "gte": has_gte_version,
+        "lt": has_lt_version,
+        "lte": has_lte_version,
+    }
+    assert comparison_funcs[comparison_type](version) == expected
