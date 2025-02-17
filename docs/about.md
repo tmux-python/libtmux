@@ -41,7 +41,7 @@ A server will be created automatically upon starting if none exists.
 A server can have multiple sessions. `Ctrl-a s` can be used to switch
 between sessions running on the server.
 
-Sessions, Windows and Panes all have their own unique identifier for
+Sessions, windows and panes all have their own unique identifier for
 internal purposes. {class}`common.TmuxMappingObject` will make use of the
 unique identifiers (`session_id`, `window_id`, `pane_id` ) to look
 up the data stored in the {class}`Server` object.
