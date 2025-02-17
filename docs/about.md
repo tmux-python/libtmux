@@ -82,7 +82,7 @@ How is libtmux able to keep references to panes, windows and sessions?
 
 > Pane index refers to the order of a pane on the screen.
 >
-> Window index refers to the # of the window in the session.
+> Window index refers to the number of the window in the session.
 >
 > To assert pane, window and session data, libtmux will use
 > {meth}`Server.sessions()`, {meth}`Session.windows()`,
