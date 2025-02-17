@@ -15,6 +15,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+### Bug fix
+
+- Fix `typing_extensions` issue by wrapping it in `TYPE_CHECKING`, continuation of #564, via #572.
+
 ### Development
 
 - Improved test organization and coverage in `test_common.py` (#570):

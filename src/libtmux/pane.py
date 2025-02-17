@@ -13,8 +13,6 @@ import pathlib
 import typing as t
 import warnings
 
-from typing_extensions import Self
-
 from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
@@ -28,12 +26,17 @@ from libtmux.neo import Obj, fetch_obj
 from . import exc
 
 if t.TYPE_CHECKING:
+    import sys
     import types
 
     from .server import Server
     from .session import Session
     from .window import Window
 
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 

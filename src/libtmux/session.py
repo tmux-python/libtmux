@@ -13,8 +13,6 @@ import pathlib
 import typing as t
 import warnings
 
-from typing_extensions import Self
-
 from libtmux._internal.query_list import QueryList
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
@@ -33,9 +31,15 @@ from .common import (
 )
 
 if t.TYPE_CHECKING:
+    import sys
     import types
 
     from libtmux.common import tmux_cmd
+
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
 
     from .server import Server
 
