@@ -85,11 +85,23 @@ $ make serve
 
 to start http server.
 
-Helpers: `make build_docs`, `make serve_docs`
+Helpers:
+```console
+$ make build_docs
+$ make serve_docs
+```
 
-Rebuild docs on file change: `make watch_docs` (requires [entr(1)])
+Rebuild docs on file change:
+```console
+$ make watch_docs
+```
+(requires [entr(1)])
 
-Rebuild docs and run server via one terminal: `make dev_docs` (requires above, and a `make(1)` with
+Rebuild docs and run server via one terminal:
+```console
+$ make dev_docs
+```
+(requires above, and a `make(1)` with
 `-J` support, e.g. GNU Make)
 
 ## Linting
