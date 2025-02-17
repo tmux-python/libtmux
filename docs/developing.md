@@ -1,6 +1,6 @@
 # Development
 
-Install and [git] and [uv]
+Install [git] and [uv]
 
 Clone:
 
