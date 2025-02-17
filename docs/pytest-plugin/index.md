@@ -41,7 +41,7 @@ object lookups in the test grid.
 `pytest-tmux` works through providing {ref}`pytest fixtures <pytest:fixtures-api>` - so read up on
 those!
 
-The plugin's fixtures guarantee a fresh, headless `tmux(1)` server, session, window, or pane is
+The plugin's fixtures guarantee a fresh, headless {command}`tmux(1)` server, session, window, or pane is
 passed into your test.
 
 (recommended-fixtures)=
