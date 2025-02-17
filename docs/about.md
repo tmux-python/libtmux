@@ -43,7 +43,7 @@ between sessions running on the server.
 
 Sessions, windows and panes all have their own unique identifier for
 internal purposes. {class}`common.TmuxMappingObject` will make use of the
-unique identifiers (`session_id`, `window_id`, `pane_id` ) to look
+unique identifiers (`session_id`, `window_id`, `pane_id`) to look
 up the data stored in the {class}`Server` object.
 
 | Object           | Prefix | Example                                   |
