@@ -56,9 +56,7 @@ via trunk (can break easily):
 Now, let's open a tmux session.
 
 ```console
-
 $ tmux new-session -n bar -s foo
-
 ```
 
 This tutorial will be using the session and window name in the example.
