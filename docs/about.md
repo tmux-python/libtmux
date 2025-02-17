@@ -66,7 +66,7 @@ libtmux uses `FORMATTERS` in tmux to give identity attributes to
 
 How is libtmux able to keep references to panes, windows and sessions?
 
-> Tmux has unique ID's for sessions, windows and panes.
+> Tmux has unique IDs for sessions, windows and panes.
 >
 > panes use `%`, such as `%1234`
 >
