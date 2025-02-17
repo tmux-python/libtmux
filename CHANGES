@@ -15,6 +15,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+### Packaging
+
+- Types: Only import `typing_extensions` when necessary, via #563, @ppentchev!
+
 ## libtmux 0.44.0 (2025-02-16)
 
 ### New Features
