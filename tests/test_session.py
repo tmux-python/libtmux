@@ -275,19 +275,37 @@ def test_cmd_inserts_session_id(session: Session) -> None:
     assert cmd.cmd[-1] == last_arg
 
 
+class SessionWindowEnvironmentFixture(t.NamedTuple):
+    """Test fixture for window environment variables in sessions."""
+
+    test_id: str
+    environment: dict[str, str]
+
+
+SESSION_WINDOW_ENV_FIXTURES: list[SessionWindowEnvironmentFixture] = [
+    SessionWindowEnvironmentFixture(
+        test_id="single_env_var",
+        environment={"ENV_VAR": "window"},
+    ),
+    SessionWindowEnvironmentFixture(
+        test_id="multiple_env_vars",
+        environment={"ENV_VAR_1": "window_1", "ENV_VAR_2": "window_2"},
+    ),
+]
+
+
 @pytest.mark.skipif(
     has_lt_version("3.0"),
     reason="needs -e flag for new-window which was introduced in 3.0",
 )
 @pytest.mark.parametrize(
-    "environment",
-    [
-        {"ENV_VAR": "window"},
-        {"ENV_VAR_1": "window_1", "ENV_VAR_2": "window_2"},
-    ],
+    list(SessionWindowEnvironmentFixture._fields),
+    SESSION_WINDOW_ENV_FIXTURES,
+    ids=[test.test_id for test in SESSION_WINDOW_ENV_FIXTURES],
 )
 def test_new_window_with_environment(
     session: Session,
+    test_id: str,
     environment: dict[str, str],
 ) -> None:
     """Verify new window with environment vars."""
