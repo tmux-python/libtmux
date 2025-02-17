@@ -72,7 +72,7 @@ How is libtmux able to keep references to panes, windows and sessions?
 >
 > windows use `@`, such as `@2345`
 >
-> sessions use `$`, for money, such as `$13`
+> sessions use `$`, such as `$13`
 >
 > How is libtmux able to handle windows with no names?
 
