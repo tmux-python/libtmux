@@ -1,6 +1,6 @@
 # Development
 
-Install and [git] and [uv]
+Install [git] and [uv]
 
 Clone:
 
@@ -20,15 +20,29 @@ $ uv sync --all-extras --dev
 
 [installation documentation]: https://docs.astral.sh/uv/getting-started/installation/
 [git]: https://git-scm.com/
+[uv]: https://github.com/astral-sh/uv
 
 Makefile commands prefixed with `watch_` will watch files and rerun.
 
 ## Tests
 
-`uv run py.test`
+```console
+$ uv run py.test
+```
 
-Helpers: `make test`
-Rerun tests on file change: `make watch_test` (requires [entr(1)])
+### Helpers
+
+```console
+$ make test
+```
+
+Rerun tests on file change:
+
+```console
+$ make watch_test
+```
+
+(requires [entr(1)])
 
 ### Pytest plugin
 
@@ -44,19 +58,50 @@ Default preview server: http://localhost:8023
 
 [sphinx-autobuild] will automatically build the docs, watch for file changes and launch a server.
 
-From home directory: `make start_docs` From inside `docs/`: `make start`
+From home directory:
+```console
+$ make start_docs
+```
+
+From inside `docs/`:
+```console
+$ make start
+```
 
 [sphinx-autobuild]: https://github.com/executablebooks/sphinx-autobuild
 
 ### Manual documentation (the hard way)
 
-`cd docs/` and `make html` to build. `make serve` to start http server.
+```console
+$ cd docs/
+$ make html
+```
 
-Helpers: `make build_docs`, `make serve_docs`
+to build.
 
-Rebuild docs on file change: `make watch_docs` (requires [entr(1)])
+```console
+$ make serve
+```
 
-Rebuild docs and run server via one terminal: `make dev_docs` (requires above, and a `make(1)` with
+to start http server.
+
+Helpers:
+```console
+$ make build_docs
+$ make serve_docs
+```
+
+Rebuild docs on file change:
+```console
+$ make watch_docs
+```
+(requires [entr(1)])
+
+Rebuild docs and run server via one terminal:
+```console
+$ make dev_docs
+```
+(requires above, and {command}`make(1)` with
 `-J` support, e.g. GNU Make)
 
 ## Linting
@@ -95,7 +140,7 @@ $ make ruff
 $ make watch_ruff
 ```
 
-requires [`entr(1)`].
+requires [entr(1)].
 
 ````
 
@@ -177,7 +222,7 @@ $ make mypy
 $ make watch_mypy
 ```
 
-requires [`entr(1)`].
+requires [entr(1)].
 ````
 
 ## Releasing
@@ -197,15 +242,17 @@ Let's assume we pick 0.9.1
 `CHANGES`: Assure any PRs merged since last release are mentioned. Give a
 thank you to the contributor. Set the header with the new version and the date.
 Leave the "current" header and _Insert changes/features/fixes for next release here_ at
-the top::
+the top:
 
-    current
-    -------
-    - *Insert changes/features/fixes for next release here*
+```
+current
+-------
+- *Insert changes/features/fixes for next release here*
 
-    libtmux 0.9.1 (2020-10-12)
-    --------------------------
-    - :issue:`1`: Fix bug
+libtmux 0.9.1 (2020-10-12)
+--------------------------
+- :issue:`1`: Fix bug
+```
 
 `libtmux/__init__.py` and `__about__.py` - Set version
 
@@ -225,20 +272,21 @@ to PyPI.
 This isn't used yet since package maintainers may want setup.py in the source.
 See https://github.com/tmux-python/tmuxp/issues/625.
 
-As of 0.10, [uv] handles virtualenv creation, package requirements, versioning,
+As of v0.10, [uv] handles virtualenv creation, package requirements, versioning,
 building, and publishing. Therefore there is no setup.py or requirements files.
 
-Update `__version__` in `__about__.py` and `pyproject.toml`::
+Update `__version__` in `__about__.py` and `pyproject.toml`:
 
-    git commit -m 'build(libtmux): Tag v0.1.1'
-    git tag v0.1.1
-    git push
-    git push --tags
+```console
+git commit -m 'build(libtmux): Tag v0.1.1'
+git tag v0.1.1
+git push
+git push --tags
+```
 
 [twine]: https://twine.readthedocs.io/
 [uv]: https://github.com/astral-sh/uv
 [entr(1)]: http://eradman.com/entrproject/
-[`entr(1)`]: http://eradman.com/entrproject/
 [ruff format]: https://docs.astral.sh/ruff/formatter/
 [ruff]: https://ruff.rs
 [mypy]: http://mypy-lang.org/

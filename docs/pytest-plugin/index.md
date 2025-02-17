@@ -33,7 +33,7 @@ The pytest plugin will be automatically detected via pytest, and the fixtures wi
 View libtmux's own [tests/](https://github.com/tmux-python/libtmux/tree/master/tests) as well as
 tmuxp's [tests/](https://github.com/tmux-python/tmuxp/tree/master/tests).
 
-libtmux's tests `autouse` the {ref}`recommended-fixtures` above to ensure stable, assertions and
+libtmux's tests `autouse` the {ref}`recommended-fixtures` above to ensure stable test execution, assertions and
 object lookups in the test grid.
 
 ## pytest-tmux
@@ -41,14 +41,14 @@ object lookups in the test grid.
 `pytest-tmux` works through providing {ref}`pytest fixtures <pytest:fixtures-api>` - so read up on
 those!
 
-The plugin's fixtures guarantee a fresh, headless `tmux(1)` server, session, window, or pane is
+The plugin's fixtures guarantee a fresh, headless {command}`tmux(1)` server, session, window, or pane is
 passed into your test.
 
 (recommended-fixtures)=
 
 ## Recommended fixtures
 
-These are fixtures are automatically used when the plugin is enabled and `pytest` is run.
+These fixtures are automatically used when the plugin is enabled and `pytest` is run.
 
 - Creating temporary, test directories for:
   - `/home/` ({func}`home_path`)
@@ -67,14 +67,14 @@ options:
 - Pass a `config_file` into {class}`~libtmux.Server`
 - Set the `HOME` directory to a local or temporary pytest path with a configuration file
 
-You could also read the code and override {func}`server fixtures <libtmux.pytest_plugin.server>`'s in your own doctest. doctest.
+You could also read the code and override {func}`server fixture <libtmux.pytest_plugin.server>` in your own doctest.
 
 (custom_session_params)=
 
 ### Custom session parameters
 
-You can override `session_params` to custom the `session` fixture. The
-dictionary will directly pass into :meth:`Server.new_session` keyword arguments.
+You can override `session_params` to customize the `session` fixture. The
+dictionary will directly pass into {meth}`Server.new_session` keyword arguments.
 
 ```python
 import pytest

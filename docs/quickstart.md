@@ -50,15 +50,14 @@ via trunk (can break easily):
   ```
 
 [pip]: https://pip.pypa.io/en/stable/
+[ptpython]: https://github.com/prompt-toolkit/ptpython
 
 ## Start a tmux session
 
 Now, let's open a tmux session.
 
 ```console
-
 $ tmux new-session -n bar -s foo
-
 ```
 
 This tutorial will be using the session and window name in the example.
@@ -177,7 +176,7 @@ Session($1 ...)
 
 However, this isn't guaranteed, libtmux works against current tmux information, the
 session's name could be changed, or another tmux session may be created,
-so {meth}`Server.sessions` and {meth}`Server.windows` exists as a lookup.
+so {meth}`Server.sessions` and {meth}`Server.windows` exist as a lookup.
 
 ## Get session by ID
 
