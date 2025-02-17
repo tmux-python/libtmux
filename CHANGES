@@ -15,6 +15,13 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+### Development
+
+- CI: Check for runtime dependencies (#574)
+
+  Kudos @ppentchev for inspiration on the command
+  ([comment](https://github.com/tmux-python/libtmux/pull/572#issuecomment-2663642923)).
+
 ## libtmux 0.44.2 (2025-02-17)
 
 ### Bug fix
