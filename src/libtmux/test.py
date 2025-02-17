@@ -15,14 +15,19 @@ from .exc import WaitTimeout
 logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
+    import sys
     import types
     from collections.abc import Callable, Generator
-
-    from typing_extensions import Self
 
     from libtmux.server import Server
     from libtmux.session import Session
     from libtmux.window import Window
+
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
+
 
 TEST_SESSION_PREFIX = "libtmux_"
 RETRY_TIMEOUT_SECONDS = int(os.getenv("RETRY_TIMEOUT_SECONDS", 8))
