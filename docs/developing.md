@@ -44,7 +44,7 @@ Default preview server: http://localhost:8023
 
 [sphinx-autobuild] will automatically build the docs, watch for file changes and launch a server.
 
-From home directory: `make start_docs` From inside `docs/`: `make start`
+From home directory: `make start_docs`. From inside `docs/`: `make start`.
 
 [sphinx-autobuild]: https://github.com/executablebooks/sphinx-autobuild
 
