@@ -13,8 +13,6 @@ import shlex
 import typing as t
 import warnings
 
-from typing_extensions import Self
-
 from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
@@ -30,10 +28,17 @@ from . import exc
 from .common import PaneDict, WindowOptionDict, handle_option_error
 
 if t.TYPE_CHECKING:
+    import sys
     import types
 
     from .server import Server
     from .session import Session
+
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
+
 
 logger = logging.getLogger(__name__)
 

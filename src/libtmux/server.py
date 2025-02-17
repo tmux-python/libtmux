@@ -15,8 +15,6 @@ import subprocess
 import typing as t
 import warnings
 
-from typing_extensions import Self
-
 from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
 from libtmux.neo import fetch_objs
@@ -39,9 +37,9 @@ if t.TYPE_CHECKING:
     import types
 
     if sys.version_info >= (3, 10):
-        from typing import TypeAlias
+        from typing import Self, TypeAlias
     else:
-        from typing_extensions import TypeAlias
+        from typing_extensions import Self, TypeAlias
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
