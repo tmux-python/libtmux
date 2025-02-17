@@ -95,7 +95,7 @@ $ make ruff
 $ make watch_ruff
 ```
 
-requires [`entr(1)`].
+requires [entr(1)].
 
 ````
 
@@ -177,7 +177,7 @@ $ make mypy
 $ make watch_mypy
 ```
 
-requires [`entr(1)`].
+requires [entr(1)].
 ````
 
 ## Releasing
