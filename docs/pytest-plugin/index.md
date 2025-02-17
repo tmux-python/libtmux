@@ -67,7 +67,7 @@ options:
 - Pass a `config_file` into {class}`~libtmux.Server`
 - Set the `HOME` directory to a local or temporary pytest path with a configuration file
 
-You could also read the code and override {func}`server fixtures <libtmux.pytest_plugin.server>`'s in your own doctest.
+You could also read the code and override {func}`server fixture <libtmux.pytest_plugin.server>` in your own doctest.
 
 (custom_session_params)=
 
