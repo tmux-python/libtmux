@@ -50,6 +50,7 @@ via trunk (can break easily):
   ```
 
 [pip]: https://pip.pypa.io/en/stable/
+[ptpython]: https://github.com/prompt-toolkit/ptpython
 
 ## Start a tmux session
 
