@@ -27,20 +27,31 @@ if t.TYPE_CHECKING:
     ]
 
 
+class VersionTestFixture(t.NamedTuple):
+    """Test fixture for version string validation."""
+
+    test_id: str
+    version: str
+
+
+VERSION_TEST_FIXTURES: list[VersionTestFixture] = [
+    VersionTestFixture(test_id="simple_version", version="1"),
+    VersionTestFixture(test_id="minor_version", version="1.0"),
+    VersionTestFixture(test_id="patch_version", version="1.0.0"),
+    VersionTestFixture(test_id="beta_version", version="1.0.0b"),
+    VersionTestFixture(test_id="beta_with_number", version="1.0.0b1"),
+    VersionTestFixture(test_id="beta_with_os", version="1.0.0b-openbsd"),
+    VersionTestFixture(test_id="next_version", version="1.0.0-next"),
+    VersionTestFixture(test_id="next_with_number", version="1.0.0-next.1"),
+]
+
+
 @pytest.mark.parametrize(
-    "version",
-    [
-        "1",
-        "1.0",
-        "1.0.0",
-        "1.0.0b",
-        "1.0.0b1",
-        "1.0.0b-openbsd",
-        "1.0.0-next",
-        "1.0.0-next.1",
-    ],
+    list(VersionTestFixture._fields),
+    VERSION_TEST_FIXTURES,
+    ids=[test.test_id for test in VERSION_TEST_FIXTURES],
 )
-def test_version(version: str) -> None:
+def test_version(test_id: str, version: str) -> None:
     """Assert LooseVersion constructor against various version strings."""
     assert LooseVersion(version)
 
@@ -48,27 +59,87 @@ def test_version(version: str) -> None:
 class VersionCompareFixture(t.NamedTuple):
     """Test fixture for version comparison."""
 
+    test_id: str
     a: object
     op: VersionCompareOp
     b: object
     raises: type[Exception] | bool
 
 
+VERSION_COMPARE_FIXTURES: list[VersionCompareFixture] = [
+    VersionCompareFixture(
+        test_id="equal_simple",
+        a="1",
+        op=operator.eq,
+        b="1",
+        raises=False,
+    ),
+    VersionCompareFixture(
+        test_id="equal_with_minor",
+        a="1",
+        op=operator.eq,
+        b="1.0",
+        raises=False,
+    ),
+    VersionCompareFixture(
+        test_id="equal_with_patch",
+        a="1",
+        op=operator.eq,
+        b="1.0.0",
+        raises=False,
+    ),
+    VersionCompareFixture(
+        test_id="greater_than_alpha",
+        a="1",
+        op=operator.gt,
+        b="1.0.0a",
+        raises=False,
+    ),
+    VersionCompareFixture(
+        test_id="greater_than_beta",
+        a="1",
+        op=operator.gt,
+        b="1.0.0b",
+        raises=False,
+    ),
+    VersionCompareFixture(
+        test_id="less_than_patch",
+        a="1",
+        op=operator.lt,
+        b="1.0.0p1",
+        raises=False,
+    ),
+    VersionCompareFixture(
+        test_id="less_than_openbsd",
+        a="1",
+        op=operator.lt,
+        b="1.0.0-openbsd",
+        raises=False,
+    ),
+    VersionCompareFixture(
+        test_id="less_than_equal_raises",
+        a="1",
+        op=operator.lt,
+        b="1",
+        raises=AssertionError,
+    ),
+    VersionCompareFixture(
+        test_id="beta_to_rc_compare",
+        a="1.0.0c",
+        op=operator.gt,
+        b="1.0.0b",
+        raises=False,
+    ),
+]
+
+
 @pytest.mark.parametrize(
-    VersionCompareFixture._fields,
-    [
-        VersionCompareFixture(a="1", op=operator.eq, b="1", raises=False),
-        VersionCompareFixture(a="1", op=operator.eq, b="1.0", raises=False),
-        VersionCompareFixture(a="1", op=operator.eq, b="1.0.0", raises=False),
-        VersionCompareFixture(a="1", op=operator.gt, b="1.0.0a", raises=False),
-        VersionCompareFixture(a="1", op=operator.gt, b="1.0.0b", raises=False),
-        VersionCompareFixture(a="1", op=operator.lt, b="1.0.0p1", raises=False),
-        VersionCompareFixture(a="1", op=operator.lt, b="1.0.0-openbsd", raises=False),
-        VersionCompareFixture(a="1", op=operator.lt, b="1", raises=AssertionError),
-        VersionCompareFixture(a="1.0.0c", op=operator.gt, b="1.0.0b", raises=False),
-    ],
+    list(VersionCompareFixture._fields),
+    VERSION_COMPARE_FIXTURES,
+    ids=[test.test_id for test in VERSION_COMPARE_FIXTURES],
 )
 def test_version_compare(
+    test_id: str,
     a: str,
     op: VersionCompareOp,
     b: str,
