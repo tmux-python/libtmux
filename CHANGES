@@ -15,6 +15,8 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+## libtmux 0.44.2 (2025-02-17)
+
 ### Bug fix
 
 - Fix `typing_extensions` issue by wrapping it in `TYPE_CHECKING`, continuation of #564, via #572.
