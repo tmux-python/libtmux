@@ -32,79 +32,6 @@ if t.TYPE_CHECKING:
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
-def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Assert get_version() works with builds from git trunk."""
-
-    class Hi:
-        stdout: t.ClassVar = ["tmux master"]
-        stderr = None
-
-    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
-        return Hi()
-
-    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
-
-    assert has_minimum_version()
-    assert has_gte_version(TMUX_MIN_VERSION)
-    assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
-    assert get_version() == f"{TMUX_MAX_VERSION}-master", (
-        "Is the latest supported version with -master appended"
-    )
-
-
-def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Assert get_version() supports next version."""
-    TMUX_NEXT_VERSION = str(float(TMUX_MAX_VERSION) + 0.1)
-
-    class Hi:
-        stdout: t.ClassVar = [f"tmux next-{TMUX_NEXT_VERSION}"]
-        stderr = None
-
-    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
-        return Hi()
-
-    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
-
-    assert has_minimum_version()
-    assert has_gte_version(TMUX_MIN_VERSION)
-    assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
-    assert get_version() == TMUX_NEXT_VERSION
-
-
-def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Assert get_version() with OpenBSD versions."""
-
-    class Hi:
-        stderr: t.ClassVar = ["tmux: unknown option -- V"]
-
-    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
-        return Hi()
-
-    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
-    monkeypatch.setattr(sys, "platform", "openbsd 5.2")
-    assert has_minimum_version()
-    assert has_gte_version(TMUX_MIN_VERSION)
-    assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
-    assert get_version() == f"{TMUX_MAX_VERSION}-openbsd", (
-        "Is the latest supported version with -openbsd appended"
-    )
-
-
-def test_get_version_too_low(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Assert get_version() raises if tmux version too low."""
-
-    class Hi:
-        stderr: t.ClassVar = ["tmux: unknown option -- V"]
-
-    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> Hi:
-        return Hi()
-
-    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
-    with pytest.raises(LibTmuxException) as exc_info:
-        get_version()
-    exc_info.match("is running tmux 1.3 or earlier")
-
-
 def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Tests version utilities ignores letters such as 1.8b.
 
@@ -385,3 +312,95 @@ def test_version_comparison(
         "lte": has_lte_version,
     }
     assert comparison_funcs[comparison_type](version) == expected
+
+
+class VersionParsingFixture(t.NamedTuple):
+    """Test fixture for version parsing and validation."""
+
+    test_id: str
+    mock_stdout: list[str] | None
+    mock_stderr: list[str] | None
+    mock_platform: str | None
+    expected_version: str | None
+    raises: bool
+    exc_msg_regex: str | None
+
+
+VERSION_PARSING_FIXTURES: list[VersionParsingFixture] = [
+    VersionParsingFixture(
+        test_id="master_version",
+        mock_stdout=["tmux master"],
+        mock_stderr=None,
+        mock_platform=None,
+        expected_version=f"{TMUX_MAX_VERSION}-master",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionParsingFixture(
+        test_id="next_version",
+        mock_stdout=[f"tmux next-{float(TMUX_MAX_VERSION) + 0.1!s}"],
+        mock_stderr=None,
+        mock_platform=None,
+        expected_version=str(float(TMUX_MAX_VERSION) + 0.1),
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionParsingFixture(
+        test_id="openbsd_version",
+        mock_stdout=None,
+        mock_stderr=["tmux: unknown option -- V"],
+        mock_platform="openbsd 5.2",
+        expected_version=f"{TMUX_MAX_VERSION}-openbsd",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionParsingFixture(
+        test_id="too_low_version",
+        mock_stdout=None,
+        mock_stderr=["tmux: unknown option -- V"],
+        mock_platform=None,
+        expected_version=None,
+        raises=True,
+        exc_msg_regex="is running tmux 1.3 or earlier",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(VersionParsingFixture._fields),
+    VERSION_PARSING_FIXTURES,
+    ids=[test.test_id for test in VERSION_PARSING_FIXTURES],
+)
+def test_version_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+    test_id: str,
+    mock_stdout: list[str] | None,
+    mock_stderr: list[str] | None,
+    mock_platform: str | None,
+    expected_version: str | None,
+    raises: bool,
+    exc_msg_regex: str | None,
+) -> None:
+    """Test version parsing and validation."""
+
+    class MockTmuxOutput:
+        stdout = mock_stdout
+        stderr = mock_stderr
+
+    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> MockTmuxOutput:
+        return MockTmuxOutput()
+
+    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
+    if mock_platform is not None:
+        monkeypatch.setattr(sys, "platform", mock_platform)
+
+    if raises:
+        with pytest.raises(LibTmuxException) as exc_info:
+            get_version()
+        if exc_msg_regex is not None:
+            exc_info.match(exc_msg_regex)
+    else:
+        assert get_version() == expected_version
+        assert has_minimum_version()
+        assert has_gte_version(TMUX_MIN_VERSION)
+        assert has_gt_version(TMUX_MAX_VERSION)
