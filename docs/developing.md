@@ -287,7 +287,6 @@ git push --tags
 [twine]: https://twine.readthedocs.io/
 [uv]: https://github.com/astral-sh/uv
 [entr(1)]: http://eradman.com/entrproject/
-[`entr(1)`]: http://eradman.com/entrproject/
 [ruff format]: https://docs.astral.sh/ruff/formatter/
 [ruff]: https://ruff.rs
 [mypy]: http://mypy-lang.org/
