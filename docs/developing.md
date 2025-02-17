@@ -261,12 +261,14 @@ See https://github.com/tmux-python/tmuxp/issues/625.
 As of v0.10, [uv] handles virtualenv creation, package requirements, versioning,
 building, and publishing. Therefore there is no setup.py or requirements files.
 
-Update `__version__` in `__about__.py` and `pyproject.toml`::
+Update `__version__` in `__about__.py` and `pyproject.toml`:
 
-    git commit -m 'build(libtmux): Tag v0.1.1'
-    git tag v0.1.1
-    git push
-    git push --tags
+```console
+git commit -m 'build(libtmux): Tag v0.1.1'
+git tag v0.1.1
+git push
+git push --tags
+```
 
 [twine]: https://twine.readthedocs.io/
 [uv]: https://github.com/astral-sh/uv
