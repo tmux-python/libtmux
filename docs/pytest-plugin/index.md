@@ -33,7 +33,7 @@ The pytest plugin will be automatically detected via pytest, and the fixtures wi
 View libtmux's own [tests/](https://github.com/tmux-python/libtmux/tree/master/tests) as well as
 tmuxp's [tests/](https://github.com/tmux-python/tmuxp/tree/master/tests).
 
-libtmux's tests `autouse` the {ref}`recommended-fixtures` above to ensure stable, assertions and
+libtmux's tests `autouse` the {ref}`recommended-fixtures` above to ensure stable test execution, assertions and
 object lookups in the test grid.
 
 ## pytest-tmux
