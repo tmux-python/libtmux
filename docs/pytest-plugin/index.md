@@ -48,7 +48,7 @@ passed into your test.
 
 ## Recommended fixtures
 
-These are fixtures are automatically used when the plugin is enabled and `pytest` is run.
+These fixtures are automatically used when the plugin is enabled and `pytest` is run.
 
 - Creating temporary, test directories for:
   - `/home/` ({func}`home_path`)
