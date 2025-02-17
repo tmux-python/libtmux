@@ -32,46 +32,6 @@ if t.TYPE_CHECKING:
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
 
 
-def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests version utilities ignores letters such as 1.8b.
-
-    See ticket https://github.com/tmux-python/tmuxp/issues/55.
-
-    In version 0.1.7 this is adjusted to use LooseVersion, in order to
-    allow letters.
-
-    """
-    monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", "1.9a")
-    result = has_minimum_version()
-    assert result
-
-    monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", "1.8a")
-    result = has_minimum_version()
-    assert result
-
-    # Should not throw
-    assert isinstance(has_version("1.8"), bool)
-    assert isinstance(has_version("1.8a"), bool)
-    assert isinstance(has_version("1.9a"), bool)
-
-
-def test_error_version_less_1_7(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test raises if tmux version less than 1.7."""
-
-    def mock_get_version() -> LooseVersion:
-        return LooseVersion("1.7")
-
-    monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)
-    with pytest.raises(LibTmuxException) as excinfo:
-        has_minimum_version()
-        excinfo.match(r"libtmux only supports")
-
-    with pytest.raises(LibTmuxException) as excinfo:
-        has_minimum_version()
-
-        excinfo.match(r"libtmux only supports")
-
-
 def test_has_version() -> None:
     """Test has_version()."""
     assert has_version(str(get_version()))
@@ -404,3 +364,147 @@ def test_version_parsing(
         assert has_minimum_version()
         assert has_gte_version(TMUX_MIN_VERSION)
         assert has_gt_version(TMUX_MAX_VERSION)
+
+
+class VersionValidationFixture(t.NamedTuple):
+    """Test fixture for version validation tests."""
+
+    test_id: str
+    mock_min_version: str | None
+    mock_version: str | None
+    check_type: t.Literal["min_version", "has_version", "type_check"]
+    raises: bool
+    exc_msg_regex: str | None
+
+
+VERSION_VALIDATION_FIXTURES: list[VersionValidationFixture] = [
+    # Letter version tests
+    VersionValidationFixture(
+        test_id="accepts_letter_in_min_version_1_9a",
+        mock_min_version="1.9a",
+        mock_version=None,
+        check_type="min_version",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionValidationFixture(
+        test_id="accepts_letter_in_min_version_1_8a",
+        mock_min_version="1.8a",
+        mock_version=None,
+        check_type="min_version",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionValidationFixture(
+        test_id="accepts_version_1_8",
+        mock_min_version=None,
+        mock_version="1.8",
+        check_type="type_check",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionValidationFixture(
+        test_id="accepts_version_1_8a",
+        mock_min_version=None,
+        mock_version="1.8a",
+        check_type="type_check",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionValidationFixture(
+        test_id="accepts_version_1_9a",
+        mock_min_version=None,
+        mock_version="1.9a",
+        check_type="type_check",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    # Version too low tests
+    VersionValidationFixture(
+        test_id="rejects_version_1_7",
+        mock_min_version=None,
+        mock_version="1.7",
+        check_type="min_version",
+        raises=True,
+        exc_msg_regex=r"libtmux only supports",
+    ),
+    # Additional test cases for version validation
+    VersionValidationFixture(
+        test_id="accepts_master_version",
+        mock_min_version=None,
+        mock_version="master",
+        check_type="type_check",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionValidationFixture(
+        test_id="accepts_next_version",
+        mock_min_version=None,
+        mock_version="next-3.4",
+        check_type="type_check",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionValidationFixture(
+        test_id="accepts_openbsd_version",
+        mock_min_version=None,
+        mock_version="3.3-openbsd",
+        check_type="type_check",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionValidationFixture(
+        test_id="accepts_dev_version",
+        mock_min_version=None,
+        mock_version="3.3-dev",
+        check_type="type_check",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    VersionValidationFixture(
+        test_id="accepts_rc_version",
+        mock_min_version=None,
+        mock_version="3.3-rc2",
+        check_type="type_check",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(VersionValidationFixture._fields),
+    VERSION_VALIDATION_FIXTURES,
+    ids=[test.test_id for test in VERSION_VALIDATION_FIXTURES],
+)
+def test_version_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    test_id: str,
+    mock_min_version: str | None,
+    mock_version: str | None,
+    check_type: t.Literal["min_version", "has_version", "type_check"],
+    raises: bool,
+    exc_msg_regex: str | None,
+) -> None:
+    """Test version validation."""
+    if mock_min_version is not None:
+        monkeypatch.setattr(libtmux.common, "TMUX_MIN_VERSION", mock_min_version)
+
+    if mock_version is not None:
+
+        def mock_get_version() -> LooseVersion:
+            return LooseVersion(mock_version)
+
+        monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)
+
+    if check_type == "min_version":
+        if raises:
+            with pytest.raises(LibTmuxException) as exc_info:
+                has_minimum_version()
+            if exc_msg_regex is not None:
+                exc_info.match(exc_msg_regex)
+        else:
+            assert has_minimum_version()
+    elif check_type == "type_check":
+        assert mock_version is not None  # For type checker
+        assert isinstance(has_version(mock_version), bool)
