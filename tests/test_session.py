@@ -221,21 +221,39 @@ def test_unset_environment(session: Session) -> None:
 class PeriodRaisesBadSessionName(t.NamedTuple):
     """Test fixture for bad session name names."""
 
+    test_id: str
     session_name: str
     raises: bool
 
 
+PERIOD_RAISES_BAD_SESSION_NAME_FIXTURES: list[PeriodRaisesBadSessionName] = [
+    PeriodRaisesBadSessionName(
+        test_id="period_in_name",
+        session_name="hey.period",
+        raises=True,
+    ),
+    PeriodRaisesBadSessionName(
+        test_id="colon_in_name",
+        session_name="hey:its a colon",
+        raises=True,
+    ),
+    PeriodRaisesBadSessionName(
+        test_id="valid_name",
+        session_name="hey moo",
+        raises=False,
+    ),
+]
+
+
 @pytest.mark.parametrize(
-    PeriodRaisesBadSessionName._fields,
-    [
-        PeriodRaisesBadSessionName("hey.period", True),
-        PeriodRaisesBadSessionName("hey:its a colon", True),
-        PeriodRaisesBadSessionName("hey moo", False),
-    ],
+    list(PeriodRaisesBadSessionName._fields),
+    PERIOD_RAISES_BAD_SESSION_NAME_FIXTURES,
+    ids=[test.test_id for test in PERIOD_RAISES_BAD_SESSION_NAME_FIXTURES],
 )
 def test_periods_raise_bad_session_name(
     server: Server,
     session: Session,
+    test_id: str,
     session_name: str,
     raises: bool,
 ) -> None:
