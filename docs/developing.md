@@ -63,7 +63,18 @@ From home directory: `make start_docs`. From inside `docs/`: `make start`.
 
 ### Manual documentation (the hard way)
 
-`cd docs/` and `make html` to build. `make serve` to start http server.
+```console
+$ cd docs/
+$ make html
+```
+
+to build.
+
+```console
+$ make serve
+```
+
+to start http server.
 
 Helpers: `make build_docs`, `make serve_docs`
 
