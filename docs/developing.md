@@ -230,15 +230,17 @@ Let's assume we pick 0.9.1
 `CHANGES`: Assure any PRs merged since last release are mentioned. Give a
 thank you to the contributor. Set the header with the new version and the date.
 Leave the "current" header and _Insert changes/features/fixes for next release here_ at
-the top::
+the top:
 
-    current
-    -------
-    - *Insert changes/features/fixes for next release here*
+```
+current
+-------
+- *Insert changes/features/fixes for next release here*
 
-    libtmux 0.9.1 (2020-10-12)
-    --------------------------
-    - :issue:`1`: Fix bug
+libtmux 0.9.1 (2020-10-12)
+--------------------------
+- :issue:`1`: Fix bug
+```
 
 `libtmux/__init__.py` and `__about__.py` - Set version
 
