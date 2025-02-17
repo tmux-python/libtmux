@@ -56,7 +56,7 @@ up the data stored in the {class}`Server` object.
 ## Similarities to tmux and Pythonics
 
 libtmux was built in the spirit of understanding how tmux operates
-and how python objects and tools can abstract the API's in a pleasant way.
+and how python objects and tools can abstract the APIs in a pleasant way.
 
 libtmux uses `FORMATTERS` in tmux to give identity attributes to
 {class}`Session`, {class}`Window` and {class}`Pane` objects. See
