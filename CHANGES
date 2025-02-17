@@ -15,6 +15,15 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+### Development
+
+- Improved test organization and coverage in `test_common.py` (#570):
+  - Consolidated version-related tests into parametrized fixtures using NamedTuples
+  - Added comprehensive test cases for various version formats (master, next, OpenBSD, dev, rc)
+  - Improved test readability with clear test IDs and logical grouping
+  - Consistent use of pytest parametrize convention across test suite
+- Fix broken test for `test_window_rename` (#570)
+
 ## libtmux 0.44.1 (2025-02-17)
 
 ### Packaging
