@@ -38,7 +38,7 @@ many users don't think about it. tmux automatically connects to a default
 socket name and location for you if none (`-L`, `-S`) is specified.
 A server will be created automatically upon starting if none exists.
 
-A server can have multiple sessions. `Ctrl-a s` can be used to switch
+A server can have multiple sessions. `Ctrl+a s` can be used to switch
 between sessions running on the server.
 
 Sessions, windows and panes all have their own unique identifier for
