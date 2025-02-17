@@ -211,33 +211,53 @@ def test_split_size(session: Session) -> None:
         assert pane.pane_width == str(int(window_width_before * 0.1))
 
 
+class WindowRenameFixture(t.NamedTuple):
+    """Test fixture for window rename functionality."""
+
+    test_id: str
+    window_name_before: str
+    window_name_input: str
+    window_name_after: str
+
+
+WINDOW_RENAME_FIXTURES: list[WindowRenameFixture] = [
+    WindowRenameFixture(
+        test_id="rename_with_spaces",
+        window_name_before="test",
+        window_name_input="ha ha ha fjewlkjflwef",
+        window_name_after="ha ha ha fjewlkjflwef",
+    ),
+    WindowRenameFixture(
+        test_id="rename_with_escapes",
+        window_name_before=r"hello \ wazzup 0",
+        window_name_input=r"hello \ wazzup 0",
+        window_name_after=r"hello \\ wazzup 0",
+    ),
+]
+
+
 @pytest.mark.parametrize(
-    ("window_name_before", "window_name_after"),
-    [("test", "ha ha ha fjewlkjflwef"), ("test", "hello \\ wazzup 0")],
+    list(WindowRenameFixture._fields),
+    WINDOW_RENAME_FIXTURES,
+    ids=[test.test_id for test in WINDOW_RENAME_FIXTURES],
 )
 def test_window_rename(
     session: Session,
+    test_id: str,
     window_name_before: str,
+    window_name_input: str,
     window_name_after: str,
 ) -> None:
     """Test Window.rename_window()."""
-    window_name_before = "test"
-    window_name_after = "ha ha ha fjewlkjflwef"
-
     session.set_option("automatic-rename", "off")
     window = session.new_window(window_name=window_name_before, attach=True)
 
     assert window == session.active_window
     assert window.window_name == window_name_before
 
-    window.rename_window(window_name_after)
+    window.rename_window(window_name_input)
 
     window = session.active_window
-
-    assert window.window_name == window_name_after
-
-    window = session.active_window
-
     assert window.window_name == window_name_after
 
 
@@ -385,24 +405,42 @@ def test_empty_window_name(session: Session) -> None:
     assert "''" in cmd.stdout
 
 
+class WindowSplitEnvironmentFixture(t.NamedTuple):
+    """Test fixture for window split with environment variables."""
+
+    test_id: str
+    environment: dict[str, str]
+
+
+WINDOW_SPLIT_ENV_FIXTURES: list[WindowSplitEnvironmentFixture] = [
+    WindowSplitEnvironmentFixture(
+        test_id="single_env_var",
+        environment={"ENV_VAR": "pane"},
+    ),
+    WindowSplitEnvironmentFixture(
+        test_id="multiple_env_vars",
+        environment={"ENV_VAR_1": "pane_1", "ENV_VAR_2": "pane_2"},
+    ),
+]
+
+
 @pytest.mark.skipif(
     has_lt_version("3.0"),
     reason="needs -e flag for split-window which was introduced in 3.0",
 )
 @pytest.mark.parametrize(
-    "environment",
-    [
-        {"ENV_VAR": "pane"},
-        {"ENV_VAR_1": "pane_1", "ENV_VAR_2": "pane_2"},
-    ],
+    list(WindowSplitEnvironmentFixture._fields),
+    WINDOW_SPLIT_ENV_FIXTURES,
+    ids=[test.test_id for test in WINDOW_SPLIT_ENV_FIXTURES],
 )
 def test_split_with_environment(
     session: Session,
+    test_id: str,
     environment: dict[str, str],
 ) -> None:
     """Verify splitting window with environment variables."""
     env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in Path."
+    assert env is not None, "Cannot find usable `env` in PATH."
 
     window = session.new_window(window_name="split_with_environment")
     pane = window.split(
