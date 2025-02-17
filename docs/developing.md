@@ -101,7 +101,7 @@ Rebuild docs and run server via one terminal:
 ```console
 $ make dev_docs
 ```
-(requires above, and a `make(1)` with
+(requires above, and {command}`make(1)` with
 `-J` support, e.g. GNU Make)
 
 ## Linting
