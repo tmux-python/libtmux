@@ -175,7 +175,7 @@ Session($1 ...)
 
 However, this isn't guaranteed, libtmux works against current tmux information, the
 session's name could be changed, or another tmux session may be created,
-so {meth}`Server.sessions` and {meth}`Server.windows` exists as a lookup.
+so {meth}`Server.sessions` and {meth}`Server.windows` exist as a lookup.
 
 ## Get session by ID
 
