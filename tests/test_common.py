@@ -203,23 +203,59 @@ def test_tmux_cmd_unicode(session: Session) -> None:
 class SessionCheckName(t.NamedTuple):
     """Test fixture for test_session_check_name()."""
 
+    test_id: str
     session_name: str | None
     raises: bool
     exc_msg_regex: str | None
 
 
+SESSION_CHECK_NAME_FIXTURES: list[SessionCheckName] = [
+    SessionCheckName(
+        test_id="empty_string",
+        session_name="",
+        raises=True,
+        exc_msg_regex="empty",
+    ),
+    SessionCheckName(
+        test_id="none_value",
+        session_name=None,
+        raises=True,
+        exc_msg_regex="empty",
+    ),
+    SessionCheckName(
+        test_id="contains_period",
+        session_name="my great session.",
+        raises=True,
+        exc_msg_regex="contains periods",
+    ),
+    SessionCheckName(
+        test_id="contains_colon",
+        session_name="name: great session",
+        raises=True,
+        exc_msg_regex="contains colons",
+    ),
+    SessionCheckName(
+        test_id="valid_name",
+        session_name="new great session",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+    SessionCheckName(
+        test_id="valid_with_special_chars",
+        session_name="ajf8a3fa83fads,,,a",
+        raises=False,
+        exc_msg_regex=None,
+    ),
+]
+
+
 @pytest.mark.parametrize(
-    SessionCheckName._fields,
-    [
-        SessionCheckName("", True, "empty"),
-        SessionCheckName(None, True, "empty"),
-        SessionCheckName("my great session.", True, "contains periods"),
-        SessionCheckName("name: great session", True, "contains colons"),
-        SessionCheckName("new great session", False, None),
-        SessionCheckName("ajf8a3fa83fads,,,a", False, None),
-    ],
+    list(SessionCheckName._fields),
+    SESSION_CHECK_NAME_FIXTURES,
+    ids=[test.test_id for test in SESSION_CHECK_NAME_FIXTURES],
 )
 def test_session_check_name(
+    test_id: str,
     session_name: str | None,
     raises: bool,
     exc_msg_regex: str | None,
