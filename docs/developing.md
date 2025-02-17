@@ -20,6 +20,7 @@ $ uv sync --all-extras --dev
 
 [installation documentation]: https://docs.astral.sh/uv/getting-started/installation/
 [git]: https://git-scm.com/
+[uv]: https://github.com/astral-sh/uv
 
 Makefile commands prefixed with `watch_` will watch files and rerun.
 
