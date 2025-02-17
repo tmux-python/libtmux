@@ -23,6 +23,15 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
+      - name: Test runtime dependencies
+        run: |
+          uv run --no-dev -p python${{ matrix.python-version }} -- python -c '
+          from libtmux import common, constants, exc, formats, neo, pane, server, session, window, __version__
+          server = server.Server()
+          print("libtmux version:", __version__)
+          print("libtmux Server:", server)
+          '
+
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
