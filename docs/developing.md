@@ -35,7 +35,13 @@ $ uv run py.test
 $ make test
 ```
 
-Rerun tests on file change: `make watch_test` (requires [entr(1)])
+Rerun tests on file change:
+
+```console
+$ make watch_test
+```
+
+(requires [entr(1)])
 
 ### Pytest plugin
 
