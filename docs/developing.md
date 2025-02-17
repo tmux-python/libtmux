@@ -257,7 +257,7 @@ to PyPI.
 This isn't used yet since package maintainers may want setup.py in the source.
 See https://github.com/tmux-python/tmuxp/issues/625.
 
-As of 0.10, [uv] handles virtualenv creation, package requirements, versioning,
+As of v0.10, [uv] handles virtualenv creation, package requirements, versioning,
 building, and publishing. Therefore there is no setup.py or requirements files.
 
 Update `__version__` in `__about__.py` and `pyproject.toml`::
