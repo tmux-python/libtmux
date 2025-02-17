@@ -29,7 +29,12 @@ Makefile commands prefixed with `watch_` will watch files and rerun.
 $ uv run py.test
 ```
 
-Helpers: `make test`
+### Helpers
+
+```console
+$ make test
+```
+
 Rerun tests on file change: `make watch_test` (requires [entr(1)])
 
 ### Pytest plugin
