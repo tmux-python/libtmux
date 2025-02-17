@@ -32,7 +32,7 @@ relations of {class}`Server`, {class}`Session`, {class}`Window` and
 | {class}`Window`  | {class}`Pane`    | {class}`Session` |
 | {class}`Pane`    | None             | {class}`Window`  |
 
-Internally, tmux allows multiple servers to be ran on a system. Each one
+Internally, tmux allows multiple servers to be run on a system. Each one
 uses a socket. The server-client architecture is executed so cleanly,
 many users don't think about it. tmux automatically connects to a default
 socket name and location for you if none (`-L`, `-S`) is specified.
