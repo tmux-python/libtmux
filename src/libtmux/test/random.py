@@ -123,6 +123,7 @@ def get_test_window_name(
     'libtmux_...'
 
     Never the same twice:
+
     >>> get_test_window_name(session=session) != get_test_window_name(session=session)
     True
     """
