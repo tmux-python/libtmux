@@ -469,6 +469,7 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         "split-pane": "split-window",
         "splitp": "split-window",
     }
+
     if has_gte_version("3.2"):
         terminal_features = server.show_option("terminal-features")
         assert isinstance(terminal_features, dict)
@@ -486,7 +487,16 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         if has_gte_version("3.4"):
             assert "rxvt*" in terminal_features
             assert terminal_features["rxvt*"] == ["ignorefkeys"]
-    assert server.show_option("terminal-overrides") is None
+
+    # Terminal overrides differ by version
+    if has_gte_version("3.0"):
+        assert server.show_option("terminal-overrides") is None
+    else:
+        terminal_overrides = server.show_option("terminal-overrides")
+        assert isinstance(terminal_overrides, dict)
+        assert "screen*" in terminal_overrides
+        assert "xterm*" in terminal_overrides
+
     assert server.show_option("user-keys") is None
     assert server.show_option("status-format") is None
     assert server.show_option("update-environment") is None
@@ -529,13 +539,74 @@ def test_complex_option_values(server: Server) -> None:
     session.set_option("@empty-option", "")
     assert session.show_option("@empty-option") == ""
 
-    # Test option inheritance
-    parent_val = session.show_option("status-style")
-    session.set_option("status-style", "fg=red")
-    assert session.show_option("status-style") == "fg=red"
-    assert session.show_option("status-style", include_inherited=True) == "fg=red"
-    session.unset_option("status-style")
-    assert session.show_option("status-style", include_inherited=True) == parent_val
+    # Test option inheritance (only for tmux >= 3.0)
+    if has_gte_version("3.0"):
+        parent_val = session.show_option("status-style")
+        session.set_option("status-style", "fg=red")
+        assert session.show_option("status-style") == "fg=red"
+        assert session.show_option("status-style", include_inherited=True) == "fg=red"
+        session.unset_option("status-style")
+        assert session.show_option("status-style", include_inherited=True) == parent_val
+
+
+def test_style_option_validation(server: Server) -> None:
+    """Test style option validation."""
+    session = server.new_session(session_name="test")
+
+    # Valid style (format differs between tmux versions)
+    session.set_option("status-style", "fg=red,bg=default,bold")
+    style = session.show_option("status-style")
+    assert isinstance(style, str)
+    assert "fg=red" in str(style)
+    if has_gte_version("3.0"):
+        assert "bg=default" in str(style)
+        assert "bold" in str(style)
+    else:
+        assert "bright" in str(style)
+
+    # Invalid style should raise OptionError
+    with pytest.raises(OptionError):
+        session.set_option("status-style", "invalid-style")
+
+    # Test complex style with multiple attributes (tmux >= 3.0)
+    if has_gte_version("3.0"):
+        session.set_option(
+            "status-style",
+            "fg=colour240,bg=#525252,bold,underscore",
+        )
+        style = session.show_option("status-style")
+        assert isinstance(style, str)
+        assert style == "fg=colour240,bg=#525252,bold,underscore"
+
+        # Test style with variables
+        session.set_option("status-style", "fg=#{?pane_in_mode,red,green}")
+        style = session.show_option("status-style")
+        assert isinstance(style, str)
+        assert style == "fg=#{?pane_in_mode,red,green}"
+
+
+def test_option_error_handling(server: Server) -> None:
+    """Test error handling for options."""
+    session = server.new_session(session_name="test")
+
+    # Test invalid/unknown option (tmux 3.0+ returns 'invalid option')
+    with pytest.raises(OptionError) as exc_info:
+        session.show_option("non-existent-option")
+    error_msg = str(exc_info.value).lower()
+    assert any(msg in error_msg for msg in ["unknown option", "invalid option"])
+
+    # Test invalid option value
+    with pytest.raises(OptionError):
+        session.set_option("aggressive-resize", "invalid")
+
+    # Test ambiguous option (if supported by tmux version)
+    if has_gte_version("2.4"):
+        with pytest.raises(OptionError) as exc_info:
+            # Use a partial name that could match multiple options
+            session.show_option(
+                "window-"
+            )  # Ambiguous: could be window-size, window-style, etc.
+        assert "ambiguous option" in str(exc_info.value).lower()
 
 
 def test_terminal_features_edge_cases(
@@ -543,6 +614,9 @@ def test_terminal_features_edge_cases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test edge cases for terminal-features option."""
+    if not has_gte_version("3.2"):
+        pytest.skip("terminal-features requires tmux >= 3.2")
+
     # Test empty features
     monkeypatch.setattr(
         server,
@@ -587,53 +661,3 @@ def test_terminal_features_edge_cases(
     assert isinstance(xterm_features, list)
     assert any(f == "feature with space" for f in xterm_features)
     assert any(f == "special*char" for f in xterm_features)
-
-
-def test_style_option_validation(server: Server) -> None:
-    """Test style option validation."""
-    session = server.new_session(session_name="test")
-
-    # Valid style
-    session.set_option("status-style", "fg=red,bg=default,bold")
-    assert session.show_option("status-style") == "fg=red,bg=default,bold"
-
-    # Invalid style should raise OptionError
-    with pytest.raises(OptionError):
-        session.set_option("status-style", "invalid-style")
-
-    # Test complex style with multiple attributes
-    session.set_option(
-        "status-style",
-        "fg=colour240,bg=#525252,bold,underscore",
-    )
-    assert (
-        session.show_option("status-style") == "fg=colour240,bg=#525252,bold,underscore"
-    )
-
-    # Test style with variables
-    session.set_option("status-style", "fg=#{?pane_in_mode,red,green}")
-    assert session.show_option("status-style") == "fg=#{?pane_in_mode,red,green}"
-
-
-def test_option_error_handling(server: Server) -> None:
-    """Test error handling for options."""
-    session = server.new_session(session_name="test")
-
-    # Test invalid/unknown option (tmux 3.0+ returns 'invalid option')
-    with pytest.raises(OptionError) as exc_info:
-        session.show_option("non-existent-option")
-    error_msg = str(exc_info.value).lower()
-    assert any(msg in error_msg for msg in ["unknown option", "invalid option"])
-
-    # Test invalid option value
-    with pytest.raises(OptionError):
-        session.set_option("aggressive-resize", "invalid")
-
-    # Test ambiguous option (if supported by tmux version)
-    if has_gte_version("2.4"):
-        with pytest.raises(OptionError) as exc_info:
-            # Use a partial name that could match multiple options
-            session.show_option(
-                "window-"
-            )  # Ambiguous: could be window-size, window-style, etc.
-        assert "ambiguous option" in str(exc_info.value).lower()
