@@ -64,13 +64,11 @@ _Detailed migration steps for the next version will be posted here._
 ### Renamings (#527)
 
 - `Session.attached_window` renamed to {meth}`Session.active_window`
-  - `Session.attached_window` deprecated 
+  - `Session.attached_window` deprecated
 - `Session.attached_pane` renamed to {meth}`Session.active_pane`
-  - `Session.attached_pane` deprecated 
+  - `Session.attached_pane` deprecated
 - `Window.attached_pane` renamed to {meth}`Window.active_pane`
-  - `Window.attached_pane` deprecated 
-
-
+  - `Window.attached_pane` deprecated
 
 ## 0.28.0: Resizing and detached by default (2024-02-15)
 
@@ -88,6 +86,7 @@ _Detailed migration steps for the next version will be posted here._
 - `Pane.resize_pane()` renamed to {meth}`Pane.resize()` (via #523)
 
   This convention will be more consistent with {meth}`Window.resize()`.
+
 - {meth}`Pane.resize_pane()`'s params changed (#523)
 
   - No longer accepts `-U`, `-D`, `-L`, `-R` directly, instead accepts
@@ -129,9 +128,11 @@ _Detailed migration steps for the next version will be posted here._
 - 0.16 and below: `window['id']`
 
   0.17 and after: `window.id`
+
 - 0.16 and below: `window.get('id')`
 
   0.17 and after: `window.id`
+
 - 0.16 and below: `window.get('id', None)`
 
   0.17 and after: `getattr(window, 'id', None)`
