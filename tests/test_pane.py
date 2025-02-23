@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import time
 import typing as t
 
 import pytest
@@ -74,15 +75,22 @@ def test_capture_pane(session: Session) -> None:
         window_name="capture_pane",
         window_shell=f"{env} PROMPT_COMMAND='' PS1='READY>' sh",
     )
+
+    # Give tmux a moment to create the window and start the shell
+    time.sleep(0.1)
+
     pane = session.active_window.active_pane
     assert pane is not None
 
     def wait_for_prompt() -> bool:
-        pane_contents = "\n".join(pane.capture_pane())
-        return "READY>" in pane_contents
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+            return "READY>" in pane_contents and len(pane_contents.strip()) > 0
+        except Exception:
+            return False
 
     # Wait for shell to be ready with our custom prompt
-    retry_until(wait_for_prompt, 1, raises=True)
+    retry_until(wait_for_prompt, 2, raises=True)
 
     pane_contents = "\n".join(pane.capture_pane())
     assert "READY>" in pane_contents
@@ -94,11 +102,18 @@ def test_capture_pane(session: Session) -> None:
     )
 
     def wait_for_output() -> bool:
-        pane_contents = "\n".join(pane.capture_pane())
-        return "Hello World !" in pane_contents and pane_contents.count("READY>") >= 2
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+            return (
+                "Hello World !" in pane_contents
+                and pane_contents.count("READY>") >= 2
+                and r'printf "\n%s\n" "Hello World !"' in pane_contents
+            )
+        except Exception:
+            return False
 
     # Wait for command output and new prompt
-    retry_until(wait_for_output, 1, raises=True)
+    retry_until(wait_for_output, 2, raises=True)
 
     pane_contents = "\n".join(pane.capture_pane())
     assert r'READY>printf "\n%s\n" "Hello World !"' in pane_contents
