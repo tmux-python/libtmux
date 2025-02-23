@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 import typing as t
 from collections.abc import Callable, Mapping
 from contextlib import suppress
@@ -982,3 +983,55 @@ def test_query_list_comparison_advanced() -> None:
     ql1 = QueryList[int]([1, 2, 3])
     ql2 = QueryList[int]([3, 2, 1])
     assert ql1 != ql2  # Order matters
+
+
+def test_lookup_functions_deep_matching() -> None:
+    """Test deep matching behavior in lookup functions."""
+    # Test lookup_in with deep dictionary matching
+    data: dict[str, t.Any] = {"a": {"b": {"c": "value"}}}
+    rhs: dict[str, t.Any] = {"b": {"c": "value"}}
+    # Deep dictionary matching not implemented yet
+    assert not lookup_in(data, rhs)
+
+    # Test lookup_nin with deep dictionary matching
+    # Deep dictionary matching not implemented yet
+    assert not lookup_nin(data, rhs)
+
+    # Test lookup_in with pattern matching
+    pattern = re.compile(r"test\d+")
+    assert not lookup_in("test123", pattern)  # Pattern matching not implemented yet
+    assert not lookup_nin("test123", pattern)  # Pattern matching not implemented yet
+
+    # Test lookup_in with mixed types in list
+    mixed_list: list[str] = ["string", "123", "key:value"]  # Convert to string list
+    # String in list returns True
+    assert lookup_in("key:value", mixed_list)
+    # String not in list returns True for nin
+    assert lookup_nin("other:value", mixed_list)
+
+    # Test invalid type combinations return False
+    invalid_obj = {"key": "123"}  # type: dict[str, str]  # Valid type but invalid content
+    assert lookup_in(invalid_obj, "test") is False  # Invalid usage but valid types
+    assert lookup_in("test", invalid_obj) is False  # Invalid usage but valid types
+
+
+def test_parse_lookup_error_cases() -> None:
+    """Test error cases in parse_lookup function."""
+    # Test with invalid path type
+    obj = {"field": "value"}
+    assert parse_lookup(obj, 123, "__contains") is None  # type: ignore
+
+    # Test with invalid lookup type
+    assert parse_lookup(obj, "field", 123) is None  # type: ignore
+
+    # Test with path not ending in lookup
+    assert parse_lookup(obj, "field", "__contains") is None
+
+    # Test with empty field name after rsplit
+    assert parse_lookup(obj, "__contains", "__contains") is None
+
+    # Test with invalid object type
+    assert parse_lookup(None, "field", "__contains") is None  # type: ignore
+
+    # Test with path containing invalid characters
+    assert parse_lookup(obj, "field\x00", "__contains") is None
