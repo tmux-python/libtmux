@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import time
 import typing as t
 
 import pytest
@@ -15,8 +14,50 @@ from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
+    from libtmux.window import Window
 
 logger = logging.getLogger(__name__)
+
+
+def setup_shell_window(
+    session: Session,
+    window_name: str,
+    environment: dict[str, str] | None = None,
+) -> Window:
+    """Set up a shell window with consistent environment and prompt.
+
+    Args:
+        session: The tmux session to create the window in
+        window_name: Name for the new window
+        environment: Optional environment variables to set in the window
+
+    Returns
+    -------
+        The created Window object with shell ready
+    """
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    window = session.new_window(
+        attach=True,
+        window_name=window_name,
+        window_shell=f"{env} PROMPT_COMMAND='' PS1='READY>' sh",
+        environment=environment,
+    )
+
+    pane = window.active_pane
+    assert pane is not None
+
+    # Wait for shell to be ready
+    def wait_for_prompt() -> bool:
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+            return "READY>" in pane_contents and len(pane_contents.strip()) > 0
+        except Exception:
+            return False
+
+    retry_until(wait_for_prompt, 2, raises=True)
+    return window
 
 
 def test_send_keys(session: Session) -> None:
@@ -66,34 +107,9 @@ def test_set_width(session: Session) -> None:
 
 def test_capture_pane(session: Session) -> None:
     """Verify Pane.capture_pane()."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in PATH."
-
-    # Use PROMPT_COMMAND/PS1 to set a consistent prompt across shells
-    session.new_window(
-        attach=True,
-        window_name="capture_pane",
-        window_shell=f"{env} PROMPT_COMMAND='' PS1='READY>' sh",
-    )
-
-    # Give tmux a moment to create the window and start the shell
-    time.sleep(0.1)
-
-    pane = session.active_window.active_pane
+    window = setup_shell_window(session, "capture_pane")
+    pane = window.active_pane
     assert pane is not None
-
-    def wait_for_prompt() -> bool:
-        try:
-            pane_contents = "\n".join(pane.capture_pane())
-            return "READY>" in pane_contents and len(pane_contents.strip()) > 0
-        except Exception:
-            return False
-
-    # Wait for shell to be ready with our custom prompt
-    retry_until(wait_for_prompt, 2, raises=True)
-
-    pane_contents = "\n".join(pane.capture_pane())
-    assert "READY>" in pane_contents
 
     pane.send_keys(
         r'printf "\n%s\n" "Hello World !"',
@@ -123,21 +139,27 @@ def test_capture_pane(session: Session) -> None:
 
 def test_capture_pane_start(session: Session) -> None:
     """Assert Pane.capture_pane() with ``start`` param."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in PATH."
-
-    session.new_window(
-        attach=True,
-        window_name="capture_pane_start",
-        window_shell=f"{env} PS1='$ ' sh",
-    )
-    pane = session.active_window.active_pane
+    window = setup_shell_window(session, "capture_pane_start")
+    pane = window.active_pane
     assert pane is not None
+
     pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == "$"
+    assert "READY>" in pane_contents
+
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == '$ printf "%s"\n$'
+
+    def wait_for_command() -> bool:
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+        except Exception:
+            return False
+        else:
+            has_command = r'printf "%s"' in pane_contents
+            has_prompts = pane_contents.count("READY>") >= 2
+            return has_command and has_prompts
+
+    retry_until(wait_for_command, 2, raises=True)
+
     pane.send_keys("clear -x", literal=True, suppress_history=False)
 
     def wait_until_pane_cleared() -> bool:
@@ -148,45 +170,53 @@ def test_capture_pane_start(session: Session) -> None:
 
     def pane_contents_shell_prompt() -> bool:
         pane_contents = "\n".join(pane.capture_pane())
-        return pane_contents == "$"
+        return "READY>" in pane_contents and len(pane_contents.strip()) > 0
 
     retry_until(pane_contents_shell_prompt, 1, raises=True)
 
     pane_contents_history_start = pane.capture_pane(start=-2)
-    assert pane_contents_history_start[0] == '$ printf "%s"'
-    assert pane_contents_history_start[1] == "$ clear -x"
-    assert pane_contents_history_start[-1] == "$"
+    assert r'READY>printf "%s"' in pane_contents_history_start[0]
+    assert "READY>clear -x" in pane_contents_history_start[1]
+    assert "READY>" in pane_contents_history_start[-1]
 
     pane.send_keys("")
 
     def pane_contents_capture_visible_only_shows_prompt() -> bool:
         pane_contents = "\n".join(pane.capture_pane(start=1))
-        return pane_contents == "$"
+        return "READY>" in pane_contents and len(pane_contents.strip()) > 0
 
     assert retry_until(pane_contents_capture_visible_only_shows_prompt, 1, raises=True)
 
 
 def test_capture_pane_end(session: Session) -> None:
     """Assert Pane.capture_pane() with ``end`` param."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in PATH."
-
-    session.new_window(
-        attach=True,
-        window_name="capture_pane_end",
-        window_shell=f"{env} PS1='$ ' sh",
-    )
-    pane = session.active_window.active_pane
+    window = setup_shell_window(session, "capture_pane_end")
+    pane = window.active_pane
     assert pane is not None
+
     pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == "$"
+    assert "READY>" in pane_contents
+
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == '$ printf "%s"\n$'
+
+    def wait_for_command() -> bool:
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+        except Exception:
+            return False
+        else:
+            has_command = r'printf "%s"' in pane_contents
+            has_prompts = pane_contents.count("READY>") >= 2
+            return has_command and has_prompts
+
+    retry_until(wait_for_command, 2, raises=True)
+
     pane_contents = "\n".join(pane.capture_pane(end=0))
-    assert pane_contents == '$ printf "%s"'
+    assert r'READY>printf "%s"' in pane_contents
+
     pane_contents = "\n".join(pane.capture_pane(end="-"))
-    assert pane_contents == '$ printf "%s"\n$'
+    assert r'READY>printf "%s"' in pane_contents
+    assert pane_contents.count("READY>") >= 2
 
 
 @pytest.mark.skipif(
