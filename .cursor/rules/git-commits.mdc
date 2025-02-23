@@ -1,0 +1,82 @@
+---
+description: git-commits: Git commit message standards and AI assistance
+globs: git-commits: Git commit message standards and AI assistance | *.git/* .gitignore .github/* CHANGELOG.md CHANGES.md
+---
+# Git Commit Standards
+
+## Format
+```
+type(scope[component]): concise description
+
+why: explanation of necessity/impact
+what: 
+- technical changes made
+- keep focused on single topic
+
+refs: #issue-number, breaking changes, links
+```
+
+## Commit Types
+- `feat`: New features/enhancements
+- `fix`: Bug fixes
+- `refactor`: Code restructuring
+- `docs`: Documentation changes
+- `chore`: Maintenance tasks (deps, tooling)
+- `test`: Test-related changes
+- `style`: Code style/formatting
+
+## Guidelines
+- Subject line: max 50 chars
+- Body lines: max 72 chars
+- Use imperative mood ("Add" not "Added")
+- Single topic per commit
+- Blank line between subject and body
+- Mark breaking changes with "BREAKING:"
+- Use "See also:" for external links
+
+## AI Assistance in Cursor
+- Stage changes with `git add`
+- Use `@commit` to generate initial message
+- Review and adjust the generated message
+- Ensure it follows format above
+
+## Examples
+
+Good commit:
+```
+feat(subprocess[run]): Switch to unicode-only text handling
+
+why: Improve consistency and type safety in subprocess handling
+what:
+- BREAKING: Changed run() to use text=True by default
+- Removed console_to_str() helper and encoding logic
+- Simplified output handling
+- Updated type hints for better safety
+
+refs: #485
+See also: https://docs.python.org/3/library/subprocess.html
+```
+
+Bad commit:
+```
+updated some stuff and fixed bugs
+```
+
+Cursor Rules: Add development QA and git commit standards (#cursor-rules)
+
+- Add dev-loop.mdc: QA process for code edits
+  - Type checking with mypy
+  - Linting with ruff
+  - Test validation with pytest
+  - Ensures edits are validated before commits
+
+- Add git-commits.mdc: Commit message standards
+  - Structured format with why/what sections
+  - Defined commit types and guidelines
+  - Examples of good/bad commits
+  - AI assistance instructions
+
+Note: These rules help maintain code quality and commit history
+consistency across the project.
+
+See also: https://docs.cursor.com/context/rules-for-ai
