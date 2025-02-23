@@ -1,0 +1,37 @@
+---
+description: QA every edit
+globs: *.py
+---
+
+# First: QA Every edit
+
+Run these commands between edits:
+
+Check typings:
+
+```
+uv run mypy
+```
+
+Lint:
+
+```
+uv run ruff check . --fix; uv run ruff format .;
+```
+
+Check tests:
+
+```
+uv run py.test
+```
+
+Between every edit, rerun:
+- Type checks
+- Lint
+- Tests
+
+If there's any failures *due to the edits*, fix them first, then:
+
+# When your edit is complete: Commit it
+
+Make an atomic commit for the edit, using conventional commits.
