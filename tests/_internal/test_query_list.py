@@ -848,3 +848,137 @@ def test_lookup_name_map() -> None:
     assert LOOKUP_NAME_MAP["endswith"](data, "123")
     assert not LOOKUP_NAME_MAP["in"](data, ["other", "values"])
     assert LOOKUP_NAME_MAP["regex"](data, r"\d+")
+
+
+def test_keygetter_additional_cases() -> None:
+    """Test additional cases for keygetter function."""
+    # Test valid and invalid paths
+    obj = {"a": {"b": 1}}
+    assert keygetter(obj, "a__b") == 1  # Valid path
+    assert keygetter(obj, "x__y__z") is None  # Invalid path returns None
+
+    # Test with non-string paths
+    assert keygetter(obj, None) is None  # type: ignore  # None path returns None
+    assert keygetter(obj, 123) is None  # type: ignore  # Non-string path returns None
+
+    # Test with empty paths
+    assert keygetter(obj, "") is None  # Empty path returns None
+    assert keygetter(obj, "  ") is None  # Whitespace path returns None
+
+    # Test with nested paths that don't exist
+    nested_obj = {"level1": {"level2": {"level3": "value"}}}
+    assert keygetter(nested_obj, "level1__level2__level3") == "value"  # Valid path
+    assert (
+        keygetter(nested_obj, "level1__level2__nonexistent") is None
+    )  # Invalid leaf returns None
+    assert (
+        keygetter(nested_obj, "level1__nonexistent__level3") is None
+    )  # Invalid mid returns None
+    assert (
+        keygetter(nested_obj, "nonexistent__level2__level3") is None
+    )  # Invalid root returns None
+
+
+def test_lookup_functions_more_edge_cases() -> None:
+    """Test additional edge cases for lookup functions."""
+    # TODO: lookup_nin() should handle non-string values correctly
+    # Currently returns False for all non-string values
+    assert not lookup_nin(None, "test")  # type: ignore  # None value returns False
+    assert not lookup_nin(123, "test")  # type: ignore  # Non-string value returns False
+    assert not lookup_nin("test", None)  # type: ignore  # None right-hand side returns False
+    assert not lookup_nin("test", 123)  # type: ignore  # Non-string right-hand side returns False
+
+    # TODO: lookup_nin() should handle dict and list values correctly
+    # Currently returns True for dict not in list and string not in list
+    assert lookup_nin(
+        {"key": "value"}, ["not", "a", "string"]
+    )  # Dict not in list returns True
+    assert lookup_nin(
+        "value", ["not", "a", "string"]
+    )  # String not in list returns True
+    assert not lookup_nin(
+        "item", {"not": "a string"}
+    )  # String not in dict returns False
+
+
+def test_query_list_items_advanced() -> None:
+    """Test advanced items operations in QueryList."""
+    # Test items() with mixed key types
+    data = [
+        {"id": 1, "name": "Alice"},
+        {"id": "2", "name": "Bob"},  # String ID
+        {"name": "Charlie", "uuid": "abc-123"},  # Different key name
+        {"composite": {"id": 4}, "name": "David"},  # Nested ID
+    ]
+    ql = QueryList(data)
+    ql.pk_key = "id"  # Initialize pk_key
+
+    # Test items() with missing keys
+    with pytest.raises(AttributeError):
+        _ = list(ql.items())  # Should raise AttributeError for missing keys
+
+    # Test items() with different key name
+    ql.pk_key = "uuid"
+    with pytest.raises(AttributeError):
+        _ = list(ql.items())  # Should raise AttributeError for missing keys
+
+    # Test items() with nested key
+    ql.pk_key = "composite__id"
+    with pytest.raises(AttributeError):
+        _ = list(ql.items())  # Should raise AttributeError for missing keys
+
+
+def test_query_list_comparison_advanced() -> None:
+    """Test advanced comparison operations in QueryList."""
+    # Test comparison with different types
+    ql1: QueryList[t.Any] = QueryList([1, 2, 3])
+    ql2: QueryList[t.Any] = QueryList([1.0, 2.0, 3.0])
+    assert ql1 == ql2  # Integer vs float comparison
+
+    ql3: QueryList[t.Any] = QueryList(["1", "2", "3"])
+    assert ql1 != ql3  # Integer vs string comparison
+
+    # Test comparison with nested structures
+    data1 = [{"user": {"id": 1, "name": "Alice"}}, {"user": {"id": 2, "name": "Bob"}}]
+    data2 = [{"user": {"id": 1, "name": "Alice"}}, {"user": {"id": 2, "name": "Bob"}}]
+    ql1 = QueryList(data1)
+    ql2 = QueryList(data2)
+    assert ql1 == ql2  # Deep equality comparison
+
+    # Modify nested structure
+    data2[1]["user"]["name"] = "Bobby"
+    ql2 = QueryList(data2)
+    assert ql1 != ql2  # Deep inequality detection
+
+    # Test comparison with custom objects
+    class Point:
+        def __init__(self, x: float, y: float) -> None:
+            self.x = x
+            self.y = y
+
+        def __eq__(self, other: object) -> bool:
+            if not isinstance(other, Point):
+                return NotImplemented
+            return abs(self.x - other.x) < 0.001 and abs(self.y - other.y) < 0.001
+
+    ql1 = QueryList[Point]([Point(1.0, 2.0), Point(3.0, 4.0)])
+    ql2 = QueryList[Point]([Point(1.0001, 1.9999), Point(3.0, 4.0)])
+    assert ql1 == ql2  # Custom equality comparison
+
+    # Test comparison edge cases
+    assert QueryList([]) == QueryList([])  # Empty lists
+    assert QueryList([]) != QueryList([1])  # Empty vs non-empty
+    assert QueryList([None]) == QueryList([None])  # None values
+    assert QueryList([float("nan")]) != QueryList([float("nan")])  # NaN values
+
+    # Test comparison with mixed types
+    mixed_data1 = [1, "2", 3.0, None, [4, 5], {"key": "value"}]
+    mixed_data2 = [1, "2", 3.0, None, [4, 5], {"key": "value"}]
+    ql1 = QueryList[t.Any](mixed_data1)
+    ql2 = QueryList[t.Any](mixed_data2)
+    assert ql1 == ql2  # Mixed type comparison
+
+    # Test comparison with different orders
+    ql1 = QueryList[int]([1, 2, 3])
+    ql2 = QueryList[int]([3, 2, 1])
+    assert ql1 != ql2  # Order matters
