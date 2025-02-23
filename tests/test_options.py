@@ -507,7 +507,13 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         with pytest.raises(OptionError):
             server.show_option("status-format")
 
-    assert server.show_option("update-environment") is None
+    # update-environment was added in tmux 3.0
+    if has_gte_version("3.0"):
+        update_env = server.show_option("update-environment")
+        assert isinstance(update_env, (list, type(None)))
+    else:
+        with pytest.raises(OptionError):
+            server.show_option("update-environment")
 
     # List variables: Pane
     pane = session.active_pane
