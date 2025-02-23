@@ -108,7 +108,11 @@ ExplodedUntypedOptionsDict: TypeAlias = dict[
 ]
 ExplodedComplexUntypedOptionsDict: TypeAlias = dict[
     str,
-    t.Union[str, int, list[str | int], dict[str, list[str | int]], "SparseArray[str]"]
+    str
+    | int
+    | list[str | int]
+    | dict[str, list[str | int]]
+    | SparseArray[str | int]
     | None,
 ]
 
@@ -368,7 +372,7 @@ def explode_arrays(
     """
     options: dict[str, t.Any] = {}
     for key, val in _dict.items():
-        Default: type[dict[t.Any, t.Any] | SparseArray[str]] = (
+        Default: type[dict[t.Any, t.Any] | SparseArray[str | int | bool | None]] = (
             dict if isinstance(key, str) and key == "terminal-features" else SparseArray
         )
         if "[" not in key:
@@ -1071,11 +1075,18 @@ class OptionsMixin(CmdMixin):
             ),
         )
 
-        if not isinstance(output_exploded, dict):
-            return output_exploded
+        if not isinstance(output_exploded, (dict, SparseArray)):
+            return t.cast("ConvertedValue", output_exploded)
 
-        if option not in output_exploded:
+        if isinstance(output_exploded, dict) and option not in output_exploded:
             return None
+
+        if isinstance(output_exploded, SparseArray):
+            try:
+                index = int(option)
+                return output_exploded[index]
+            except (ValueError, KeyError):
+                return None
 
         return t.cast("ConvertedValue | None", output_exploded[option])
 
