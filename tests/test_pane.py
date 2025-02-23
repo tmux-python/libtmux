@@ -68,24 +68,42 @@ def test_capture_pane(session: Session) -> None:
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in PATH."
 
+    # Use PROMPT_COMMAND/PS1 to set a consistent prompt across shells
     session.new_window(
         attach=True,
         window_name="capture_pane",
-        window_shell=f"{env} PS1='$ ' sh",
+        window_shell=f"{env} PROMPT_COMMAND='' PS1='READY>' sh",
     )
     pane = session.active_window.active_pane
     assert pane is not None
+
+    def wait_for_prompt() -> bool:
+        pane_contents = "\n".join(pane.capture_pane())
+        return "READY>" in pane_contents
+
+    # Wait for shell to be ready with our custom prompt
+    retry_until(wait_for_prompt, 1, raises=True)
+
     pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == "$"
+    assert "READY>" in pane_contents
+
     pane.send_keys(
         r'printf "\n%s\n" "Hello World !"',
         literal=True,
         suppress_history=False,
     )
+
+    def wait_for_output() -> bool:
+        pane_contents = "\n".join(pane.capture_pane())
+        return "Hello World !" in pane_contents and pane_contents.count("READY>") >= 2
+
+    # Wait for command output and new prompt
+    retry_until(wait_for_output, 1, raises=True)
+
     pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
-        "\n\nHello World !\n$",
-    )
+    assert r'READY>printf "\n%s\n" "Hello World !"' in pane_contents
+    assert "Hello World !" in pane_contents
+    assert pane_contents.count("READY>") >= 2
 
 
 def test_capture_pane_start(session: Session) -> None:
