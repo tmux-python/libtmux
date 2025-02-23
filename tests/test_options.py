@@ -511,3 +511,129 @@ def test_high_level_api_expectations(server: Server) -> None:
     #    used that behaves like a list but allows for sparse indexes so the indices
     #    aren't lost but the shape is still respected.
     # 3. Python Typings: Should cast the fully structured objects into types
+
+
+def test_complex_option_values(server: Server) -> None:
+    """Test complex option values and edge cases."""
+    session = server.new_session(session_name="test")
+
+    # Test quoted values with spaces
+    session.set_option("@complex-option", "value with spaces")
+    assert session.show_option("@complex-option") == "value with spaces"
+
+    # Test escaped characters
+    session.set_option("@escaped-option", "line1\\nline2")
+    assert session.show_option("@escaped-option") == "line1\\nline2"
+
+    # Test empty values
+    session.set_option("@empty-option", "")
+    assert session.show_option("@empty-option") == ""
+
+    # Test option inheritance
+    parent_val = session.show_option("status-style")
+    session.set_option("status-style", "fg=red")
+    assert session.show_option("status-style") == "fg=red"
+    assert session.show_option("status-style", include_inherited=True) == "fg=red"
+    session.unset_option("status-style")
+    assert session.show_option("status-style", include_inherited=True) == parent_val
+
+
+def test_terminal_features_edge_cases(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test edge cases for terminal-features option."""
+    # Test empty features
+    monkeypatch.setattr(
+        server,
+        "cmd",
+        fake_cmd(stdout=["terminal-features[0] xterm*:"]),
+    )
+    options = server._show_options()
+    terminal_features = t.cast(dict[str, list[str]], options["terminal-features"])
+    assert isinstance(terminal_features, dict)
+    xterm_features = terminal_features["xterm*"]
+    assert isinstance(xterm_features, list)
+    assert xterm_features == [""]  # tmux returns [''] for empty features
+
+    # Test malformed features
+    monkeypatch.setattr(
+        server,
+        "cmd",
+        fake_cmd(stdout=["terminal-features[0] xterm*:invalid:feature:with:colons"]),
+    )
+    options = server._show_options()
+    terminal_features = t.cast(dict[str, list[str]], options["terminal-features"])
+    assert isinstance(terminal_features, dict)
+    xterm_features = terminal_features["xterm*"]
+    assert isinstance(xterm_features, list)
+    assert any(f == "invalid" for f in xterm_features)
+    assert any(f == "feature" for f in xterm_features)
+
+    # Test features with special characters
+    monkeypatch.setattr(
+        server,
+        "cmd",
+        fake_cmd(
+            stdout=[
+                'terminal-features[0] "xterm*:feature with space:special*char"',
+            ],
+        ),
+    )
+    options = server._show_options()
+    terminal_features = t.cast(dict[str, list[str]], options["terminal-features"])
+    assert isinstance(terminal_features, dict)
+    xterm_features = terminal_features["xterm*"]
+    assert isinstance(xterm_features, list)
+    assert any(f == "feature with space" for f in xterm_features)
+    assert any(f == "special*char" for f in xterm_features)
+
+
+def test_style_option_validation(server: Server) -> None:
+    """Test style option validation."""
+    session = server.new_session(session_name="test")
+
+    # Valid style
+    session.set_option("status-style", "fg=red,bg=default,bold")
+    assert session.show_option("status-style") == "fg=red,bg=default,bold"
+
+    # Invalid style should raise OptionError
+    with pytest.raises(OptionError):
+        session.set_option("status-style", "invalid-style")
+
+    # Test complex style with multiple attributes
+    session.set_option(
+        "status-style",
+        "fg=colour240,bg=#525252,bold,underscore",
+    )
+    assert (
+        session.show_option("status-style") == "fg=colour240,bg=#525252,bold,underscore"
+    )
+
+    # Test style with variables
+    session.set_option("status-style", "fg=#{?pane_in_mode,red,green}")
+    assert session.show_option("status-style") == "fg=#{?pane_in_mode,red,green}"
+
+
+def test_option_error_handling(server: Server) -> None:
+    """Test error handling for options."""
+    session = server.new_session(session_name="test")
+
+    # Test invalid/unknown option (tmux 3.0+ returns 'invalid option')
+    with pytest.raises(OptionError) as exc_info:
+        session.show_option("non-existent-option")
+    error_msg = str(exc_info.value).lower()
+    assert any(msg in error_msg for msg in ["unknown option", "invalid option"])
+
+    # Test invalid option value
+    with pytest.raises(OptionError):
+        session.set_option("aggressive-resize", "invalid")
+
+    # Test ambiguous option (if supported by tmux version)
+    if has_gte_version("2.4"):
+        with pytest.raises(OptionError) as exc_info:
+            # Use a partial name that could match multiple options
+            session.show_option(
+                "window-"
+            )  # Ambiguous: could be window-size, window-style, etc.
+        assert "ambiguous option" in str(exc_info.value).lower()
