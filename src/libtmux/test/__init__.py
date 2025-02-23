@@ -34,8 +34,3 @@ if t.TYPE_CHECKING:
         from typing import Self
     else:
         from typing_extensions import Self
-
-
-current_dir = pathlib.Path(__file__)
-example_dir = current_dir.parent / "examples"
-fixtures_dir = current_dir / "fixtures"
