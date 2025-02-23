@@ -9,12 +9,17 @@ import pytest
 from libtmux._internal.query_list import (
     MultipleObjectsReturned,
     ObjectDoesNotExist,
+    PKRequiredException,
     QueryList,
     keygetter,
     lookup_contains,
     lookup_exact,
     lookup_icontains,
     lookup_iexact,
+    lookup_in,
+    lookup_iregex,
+    lookup_nin,
+    lookup_regex,
     parse_lookup,
 )
 
@@ -402,3 +407,113 @@ def test_query_list_methods() -> None:
     # Test bool
     assert bool(ql) is True
     assert bool(QueryList([])) is False
+
+
+def test_lookup_functions_additional_edge_cases() -> None:
+    """Test additional edge cases for lookup functions."""
+    # Test lookup_in with various types
+    assert not lookup_in("value", {"key": "value"})  # String in dict values
+    assert not lookup_in("key", {"key": "value"})  # String in dict keys
+    assert lookup_in("item", ["item", "other"])  # String in list
+    assert not lookup_in("missing", {"key": "value"})  # Missing key in dict
+    assert not lookup_in(123, "123")  # Invalid type combination
+
+    # Test lookup_nin with various types
+    assert not lookup_nin(
+        "missing", {"key": "value"}
+    )  # Missing key in dict returns False
+    assert not lookup_nin(
+        "value", {"key": "value"}
+    )  # String in dict values returns False
+    assert lookup_nin("item", ["other", "another"])  # String not in list
+    assert not lookup_nin("item", ["item", "other"])  # String in list
+    assert not lookup_nin(123, "123")  # Invalid type combination returns False
+
+    # Test lookup_regex with various types
+    assert lookup_regex("test123", r"\d+")  # Match digits
+    assert not lookup_regex("test", r"\d+")  # No match
+    assert not lookup_regex(123, r"\d+")  # Invalid type
+    assert not lookup_regex("test", 123)  # Invalid pattern type
+
+    # Test lookup_iregex with various types
+    assert lookup_iregex("TEST123", r"test\d+")  # Case-insensitive match
+    assert not lookup_iregex("test", r"\d+")  # No match
+    assert not lookup_iregex(123, r"\d+")  # Invalid type
+    assert not lookup_iregex("test", 123)  # Invalid pattern type
+
+
+def test_query_list_items() -> None:
+    """Test QueryList items() method."""
+    # Test items() without pk_key
+    ql = QueryList([{"id": 1}, {"id": 2}])
+    ql.pk_key = None  # Initialize pk_key
+    with pytest.raises(PKRequiredException):
+        ql.items()
+
+
+def test_query_list_filter_with_invalid_op() -> None:
+    """Test QueryList filter with invalid operator."""
+    ql = QueryList([{"id": 1}, {"id": 2}])
+
+    # Test filter with no operator (defaults to exact)
+    result = ql.filter(id=1)
+    assert len(result) == 1
+    assert result[0]["id"] == 1
+
+    # Test filter with valid operator
+    result = ql.filter(id__exact=1)
+    assert len(result) == 1
+    assert result[0]["id"] == 1
+
+    # Test filter with multiple conditions
+    result = ql.filter(id__exact=1, id__in=[1, 2])
+    assert len(result) == 1
+    assert result[0]["id"] == 1
+
+
+def test_query_list_filter_with_callable() -> None:
+    """Test QueryList filter with callable."""
+    ql = QueryList([{"id": 1}, {"id": 2}, {"id": 3}])
+
+    # Test filter with callable
+    def is_even(x: dict[str, int]) -> bool:
+        return x["id"] % 2 == 0
+
+    filtered = ql.filter(is_even)
+    assert len(filtered) == 1
+    assert filtered[0]["id"] == 2
+
+    # Test filter with lambda
+    filtered = ql.filter(lambda x: x["id"] > 2)
+    assert len(filtered) == 1
+    assert filtered[0]["id"] == 3
+
+
+def test_query_list_get_with_callable() -> None:
+    """Test QueryList get with callable."""
+    ql = QueryList([{"id": 1}, {"id": 2}, {"id": 3}])
+
+    # Test get with callable
+    def get_id_2(x: dict[str, int]) -> bool:
+        return x["id"] == 2
+
+    result = ql.get(get_id_2)
+    assert result["id"] == 2
+
+    # Test get with lambda
+    result = ql.get(lambda x: x["id"] == 3)
+    assert result["id"] == 3
+
+    # Test get with callable returning multiple matches
+    def get_id_greater_than_1(x: dict[str, int]) -> bool:
+        return x["id"] > 1
+
+    with pytest.raises(MultipleObjectsReturned):
+        ql.get(get_id_greater_than_1)
+
+    # Test get with callable returning no matches
+    def get_id_greater_than_10(x: dict[str, int]) -> bool:
+        return x["id"] > 10
+
+    with pytest.raises(ObjectDoesNotExist):
+        ql.get(get_id_greater_than_10)
