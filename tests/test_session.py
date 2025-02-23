@@ -12,15 +12,58 @@ from libtmux import exc
 from libtmux.common import has_gte_version, has_lt_version
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
+from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import namer
+from libtmux.test.retry import retry_until
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
+
+
+def setup_shell_window(
+    session: Session,
+    window_name: str,
+    environment: dict[str, str] | None = None,
+) -> Window:
+    """Set up a shell window with consistent environment and prompt.
+
+    Args:
+        session: The tmux session to create the window in
+        window_name: Name for the new window
+        environment: Optional environment variables to set in the window
+
+    Returns
+    -------
+        The created Window object with shell ready
+    """
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    window = session.new_window(
+        attach=True,
+        window_name=window_name,
+        window_shell=f"{env} PROMPT_COMMAND='' PS1='READY>' sh",
+        environment=environment,
+    )
+
+    pane = window.active_pane
+    assert pane is not None
+
+    # Wait for shell to be ready
+    def wait_for_prompt() -> bool:
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+            return "READY>" in pane_contents and len(pane_contents.strip()) > 0
+        except Exception:
+            return False
+
+    retry_until(wait_for_prompt, 2, raises=True)
+    return window
 
 
 def test_has_session(server: Server, session: Session) -> None:
@@ -328,20 +371,26 @@ def test_new_window_with_environment(
     environment: dict[str, str],
 ) -> None:
     """Verify new window with environment vars."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in PATH."
-
-    window = session.new_window(
-        attach=True,
-        window_name="window_with_environment",
-        window_shell=f"{env} PS1='$ ' sh",
+    window = setup_shell_window(
+        session,
+        "window_with_environment",
         environment=environment,
     )
     pane = window.active_pane
     assert pane is not None
-    for k, v in environment.items():
-        pane.send_keys(f"echo ${k}")
-        assert pane.capture_pane()[-2] == v
+
+    for k, expected_value in environment.items():
+        pane.send_keys(f"echo ${k}", literal=True)
+
+        # Wait for command output
+        def wait_for_output(value: str = expected_value) -> bool:
+            try:
+                pane_contents = pane.capture_pane()
+                return any(value in line for line in pane_contents)
+            except Exception:
+                return False
+
+        retry_until(wait_for_output, 2, raises=True)
 
 
 @pytest.mark.skipif(
@@ -353,13 +402,9 @@ def test_new_window_with_environment_logs_warning_for_old_tmux(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Verify new window with environment vars create a warning if tmux is too old."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in PATH."
-
-    session.new_window(
-        attach=True,
-        window_name="window_with_environment",
-        window_shell=f"{env} PS1='$ ' sh",
+    setup_shell_window(
+        session,
+        "window_with_environment",
         environment={"ENV_VAR": "window"},
     )
 
