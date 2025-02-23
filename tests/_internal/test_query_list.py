@@ -698,22 +698,41 @@ def test_query_list_eq_numeric_comparison() -> None:
     )  # Should not be equal since values are different
 
 
+@dataclasses.dataclass
+class Food(t.Mapping[str, t.Any]):
+    fruit: list[str] = dataclasses.field(default_factory=list)
+    breakfast: str | None = None
+
+    def __getitem__(self, key: str) -> t.Any:
+        return getattr(self, key)
+
+    def __iter__(self) -> t.Iterator[str]:
+        return iter(self.__dataclass_fields__)
+
+    def __len__(self) -> int:
+        return len(self.__dataclass_fields__)
+
+
+@dataclasses.dataclass
+class Restaurant(t.Mapping[str, t.Any]):
+    place: str
+    city: str
+    state: str
+    food: Food = dataclasses.field(default_factory=Food)
+
+    def __getitem__(self, key: str) -> t.Any:
+        return getattr(self, key)
+
+    def __iter__(self) -> t.Iterator[str]:
+        return iter(self.__dataclass_fields__)
+
+    def __len__(self) -> int:
+        return len(self.__dataclass_fields__)
+
+
 def test_keygetter_nested_objects() -> None:
     """Test keygetter function with nested objects."""
-
-    @dataclasses.dataclass
-    class Food:
-        fruit: list[str] = dataclasses.field(default_factory=list)
-        breakfast: str | None = None
-
-    @dataclasses.dataclass
-    class Restaurant:
-        place: str
-        city: str
-        state: str
-        food: Food = dataclasses.field(default_factory=Food)
-
-    # Test with nested dataclass
+    # Test with nested dataclass that implements Mapping protocol
     restaurant = Restaurant(
         place="Largo",
         city="Tampa",
@@ -736,7 +755,9 @@ def test_keygetter_nested_objects() -> None:
 
     # Test with non-mapping object (returns the object itself)
     non_mapping = "not a mapping"
-    assert keygetter(non_mapping, "any_key") == non_mapping  # type: ignore
+    assert (
+        keygetter(t.cast(t.Mapping[str, t.Any], non_mapping), "any_key") == non_mapping
+    )
 
 
 def test_query_list_slicing() -> None:
@@ -773,24 +794,33 @@ def test_query_list_attributes() -> None:
 
     # Test pk_key attribute with objects
     @dataclasses.dataclass
-    class Item:
+    class Item(t.Mapping[str, t.Any]):
         id: str
         value: int
 
+        def __getitem__(self, key: str) -> t.Any:
+            return getattr(self, key)
+
+        def __iter__(self) -> t.Iterator[str]:
+            return iter(self.__dataclass_fields__)
+
+        def __len__(self) -> int:
+            return len(self.__dataclass_fields__)
+
     items = [Item("1", 1), Item("2", 2)]
-    ql = QueryList(items)
-    ql.pk_key = "id"
-    assert ql.items() == [("1", items[0]), ("2", items[1])]
+    ql_items: QueryList[t.Any] = QueryList(items)
+    ql_items.pk_key = "id"
+    assert list(ql_items.items()) == [("1", items[0]), ("2", items[1])]
 
     # Test pk_key with non-existent attribute
-    ql.pk_key = "nonexistent"
+    ql_items.pk_key = "nonexistent"
     with pytest.raises(AttributeError):
-        ql.items()
+        ql_items.items()
 
     # Test pk_key with None
-    ql.pk_key = None
+    ql_items.pk_key = None
     with pytest.raises(PKRequiredException):
-        ql.items()
+        ql_items.items()
 
 
 def test_lookup_name_map() -> None:
