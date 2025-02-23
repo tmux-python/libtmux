@@ -371,19 +371,30 @@ class Pane(Obj):
 
         Examples
         --------
-        >>> pane = window.split(shell='sh')
+        >>> import shutil
+        >>> pane = window.split(
+        ...     shell=f"{shutil.which('env')} PROMPT_COMMAND='' PS1='READY>' sh")
+        >>> from libtmux.test.retry import retry_until
+        >>> def wait_for_prompt() -> bool:
+        ...     try:
+        ...         pane_contents = "\n".join(pane.capture_pane())
+        ...         return "READY>" in pane_contents and len(pane_contents.strip()) > 0
+        ...     except Exception:
+        ...         return False
+        >>> retry_until(wait_for_prompt, 2, raises=True)
+        True
         >>> pane.capture_pane()
-        ['$']
+        ['READY>']
 
         >>> pane.send_keys('echo "Hello world"', enter=True)
 
         >>> pane.capture_pane()
-        ['$ echo "Hello world"', 'Hello world', '$']
+        ['READY>echo "Hello world"', 'Hello world', 'READY>']
 
         >>> print('\n'.join(pane.capture_pane()))  # doctest: +NORMALIZE_WHITESPACE
-        $ echo "Hello world"
+        READY>echo "Hello world"
         Hello world
-        $
+        READY>
         """
         prefix = " " if suppress_history else ""
 
