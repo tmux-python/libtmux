@@ -8,19 +8,24 @@ from contextlib import suppress
 import pytest
 
 from libtmux._internal.query_list import (
+    LOOKUP_NAME_MAP,
     MultipleObjectsReturned,
     ObjectDoesNotExist,
     PKRequiredException,
     QueryList,
     keygetter,
     lookup_contains,
+    lookup_endswith,
     lookup_exact,
     lookup_icontains,
+    lookup_iendswith,
     lookup_iexact,
     lookup_in,
     lookup_iregex,
+    lookup_istartswith,
     lookup_nin,
     lookup_regex,
+    lookup_startswith,
     parse_lookup,
 )
 
@@ -619,3 +624,197 @@ def test_filter_error_handling() -> None:
     empty_args: dict[str, t.Any] = {"": "test"}
     result = ql.filter(**empty_args)
     assert len(result) == 0
+
+
+def test_lookup_startswith_endswith_functions() -> None:
+    """Test startswith and endswith lookup functions with various types."""
+    # Test lookup_startswith
+    assert lookup_startswith("test123", "test")  # Basic match
+    assert not lookup_startswith("test123", "123")  # No match at start
+    assert not lookup_startswith(["test"], "test")  # Invalid type for data
+    assert not lookup_startswith("test", ["test"])  # Invalid type for rhs
+    assert not lookup_startswith("test", 123)  # type: ignore  # Invalid type for rhs
+
+    # Test lookup_istartswith
+    assert lookup_istartswith("TEST123", "test")  # Case-insensitive match
+    assert lookup_istartswith("test123", "TEST")  # Case-insensitive match reverse
+    assert not lookup_istartswith("test123", "123")  # No match at start
+    assert not lookup_istartswith(["test"], "test")  # Invalid type for data
+    assert not lookup_istartswith("test", ["test"])  # Invalid type for rhs
+    assert not lookup_istartswith("test", 123)  # type: ignore  # Invalid type for rhs
+
+    # Test lookup_endswith
+    assert lookup_endswith("test123", "123")  # Basic match
+    assert not lookup_endswith("test123", "test")  # No match at end
+    assert not lookup_endswith(["test"], "test")  # Invalid type for data
+    assert not lookup_endswith("test", ["test"])  # Invalid type for rhs
+    assert not lookup_endswith("test", 123)  # type: ignore  # Invalid type for rhs
+
+    # Test lookup_iendswith
+    assert lookup_iendswith("test123", "123")  # Basic match
+    assert lookup_iendswith("test123", "123")  # Case-insensitive match
+    assert lookup_iendswith("test123", "123")  # Case-insensitive match reverse
+    assert not lookup_iendswith("test123", "test")  # No match at end
+    assert not lookup_iendswith(["test"], "test")  # Invalid type for data
+    assert not lookup_iendswith("test", ["test"])  # Invalid type for rhs
+    assert not lookup_iendswith("test", 123)  # type: ignore  # Invalid type for rhs
+
+
+def test_query_list_eq_numeric_comparison() -> None:
+    """Test QueryList __eq__ method with numeric comparisons."""
+    # Test exact numeric matches
+    ql1 = QueryList([{"a": 1, "b": 2.0}])
+    ql2 = QueryList([{"a": 1, "b": 2.0}])
+    assert ql1 == ql2
+
+    # Test numeric comparison within tolerance (difference < 1)
+    ql3 = QueryList([{"a": 1.1, "b": 2.1}])
+    assert ql1 == ql3  # Should be equal since difference is less than 1
+
+    # Test numeric comparison outside tolerance (difference > 1)
+    ql4 = QueryList([{"a": 2.5, "b": 3.5}])
+    assert ql1 != ql4  # Should not be equal since difference is more than 1
+
+    # Test mixed numeric types
+    ql5 = QueryList([{"a": 1, "b": 2}])  # int instead of float
+    assert ql1 == ql5  # Should be equal since values are equivalent
+
+    # Test with nested numeric values
+    ql6 = QueryList([{"a": {"x": 1.0, "y": 2.0}}])
+    ql7 = QueryList([{"a": {"x": 1.1, "y": 2.1}}])
+    assert ql6 == ql7  # Should be equal since differences are less than 1
+
+    # Test with mixed content
+    ql10 = QueryList([{"a": 1, "b": "test"}])
+    ql11 = QueryList([{"a": 1.1, "b": "test"}])
+    assert ql10 == ql11  # Should be equal since numeric difference is less than 1
+
+    # Test with non-dict content (exact equality required)
+    ql8 = QueryList([1, 2, 3])
+    ql9 = QueryList([1, 2, 3])
+    assert ql8 == ql9  # Should be equal since values are exactly the same
+    assert ql8 != QueryList(
+        [1.1, 2.1, 3.1]
+    )  # Should not be equal since values are different
+
+
+def test_keygetter_nested_objects() -> None:
+    """Test keygetter function with nested objects."""
+
+    @dataclasses.dataclass
+    class Food:
+        fruit: list[str] = dataclasses.field(default_factory=list)
+        breakfast: str | None = None
+
+    @dataclasses.dataclass
+    class Restaurant:
+        place: str
+        city: str
+        state: str
+        food: Food = dataclasses.field(default_factory=Food)
+
+    # Test with nested dataclass
+    restaurant = Restaurant(
+        place="Largo",
+        city="Tampa",
+        state="Florida",
+        food=Food(fruit=["banana", "orange"], breakfast="cereal"),
+    )
+    assert keygetter(restaurant, "food") == Food(
+        fruit=["banana", "orange"], breakfast="cereal"
+    )
+    assert keygetter(restaurant, "food__breakfast") == "cereal"
+    assert keygetter(restaurant, "food__fruit") == ["banana", "orange"]
+
+    # Test with non-existent attribute (returns None due to exception handling)
+    with suppress(Exception):
+        assert keygetter(restaurant, "nonexistent") is None
+
+    # Test with invalid path format (returns the object itself)
+    assert keygetter(restaurant, "") == restaurant
+    assert keygetter(restaurant, "__") == restaurant
+
+    # Test with non-mapping object (returns the object itself)
+    non_mapping = "not a mapping"
+    assert keygetter(non_mapping, "any_key") == non_mapping  # type: ignore
+
+
+def test_query_list_slicing() -> None:
+    """Test QueryList slicing operations."""
+    ql = QueryList([1, 2, 3, 4, 5])
+
+    # Test positive indices
+    assert ql[1:3] == QueryList([2, 3])
+    assert ql[0:5:2] == QueryList([1, 3, 5])
+
+    # Test negative indices
+    assert ql[-3:] == QueryList([3, 4, 5])
+    assert ql[:-2] == QueryList([1, 2, 3])
+    assert ql[-4:-2] == QueryList([2, 3])
+
+    # Test steps
+    assert ql[::2] == QueryList([1, 3, 5])
+    assert ql[::-1] == QueryList([5, 4, 3, 2, 1])
+    assert ql[4:0:-2] == QueryList([5, 3])
+
+    # Test empty slices
+    assert ql[5:] == QueryList([])
+    assert ql[-1:-5] == QueryList([])
+
+
+def test_query_list_attributes() -> None:
+    """Test QueryList list behavior and pk_key attribute."""
+    # Test list behavior
+    ql = QueryList([1, 2, 3])
+    assert list(ql) == [1, 2, 3]
+    assert len(ql) == 3
+    assert ql[0] == 1
+    assert ql[-1] == 3
+
+    # Test pk_key attribute with objects
+    @dataclasses.dataclass
+    class Item:
+        id: str
+        value: int
+
+    items = [Item("1", 1), Item("2", 2)]
+    ql = QueryList(items)
+    ql.pk_key = "id"
+    assert ql.items() == [("1", items[0]), ("2", items[1])]
+
+    # Test pk_key with non-existent attribute
+    ql.pk_key = "nonexistent"
+    with pytest.raises(AttributeError):
+        ql.items()
+
+    # Test pk_key with None
+    ql.pk_key = None
+    with pytest.raises(PKRequiredException):
+        ql.items()
+
+
+def test_lookup_name_map() -> None:
+    """Test LOOKUP_NAME_MAP contains all lookup functions."""
+    # Test all lookup functions are in the map
+    assert LOOKUP_NAME_MAP["eq"] == lookup_exact
+    assert LOOKUP_NAME_MAP["exact"] == lookup_exact
+    assert LOOKUP_NAME_MAP["iexact"] == lookup_iexact
+    assert LOOKUP_NAME_MAP["contains"] == lookup_contains
+    assert LOOKUP_NAME_MAP["icontains"] == lookup_icontains
+    assert LOOKUP_NAME_MAP["startswith"] == lookup_startswith
+    assert LOOKUP_NAME_MAP["istartswith"] == lookup_istartswith
+    assert LOOKUP_NAME_MAP["endswith"] == lookup_endswith
+    assert LOOKUP_NAME_MAP["iendswith"] == lookup_iendswith
+    assert LOOKUP_NAME_MAP["in"] == lookup_in
+    assert LOOKUP_NAME_MAP["nin"] == lookup_nin
+    assert LOOKUP_NAME_MAP["regex"] == lookup_regex
+    assert LOOKUP_NAME_MAP["iregex"] == lookup_iregex
+
+    # Test lookup functions behavior through the map
+    data = "test123"
+    assert LOOKUP_NAME_MAP["contains"](data, "test")
+    assert LOOKUP_NAME_MAP["icontains"](data, "TEST")
+    assert LOOKUP_NAME_MAP["startswith"](data, "test")
+    assert LOOKUP_NAME_MAP["endswith"](data, "123")
+    assert not LOOKUP_NAME_MAP["in"](data, ["other", "values"])
+    assert LOOKUP_NAME_MAP["regex"](data, r"\d+")
