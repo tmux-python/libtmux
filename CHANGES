@@ -9,17 +9,19 @@ To install via [pip](https://pip.pypa.io/en/stable/), use:
 $ pip install --user --upgrade --pre libtmux
 ```
 
-## libtmux 0.45.x (Yet to be released)
+## libtmux 0.46.x (Yet to be released)
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
 - _Future release notes will be placed here_
 
+## libtmux 0.45.0 (2025-02-23)
+
 ### Breaking Changes
 
 #### Test helpers: Refactor
 
-Test helper functionality has been split into focused modules (#XXX):
+Test helper functionality has been split into focused modules (#578):
 
 - `libtmux.test` module split into:
   - `libtmux.test.constants`: Test-related constants (`TEST_SESSION_PREFIX`, etc.)
@@ -30,7 +32,7 @@ Test helper functionality has been split into focused modules (#XXX):
 **Breaking**: Import paths have changed. Update imports:
 
 ```python
-# Old (0.45.x and earlier)
+# Old (0.44.x and earlier)
 from libtmux.test import (
     TEST_SESSION_PREFIX,
     get_test_session_name,
@@ -43,7 +45,7 @@ from libtmux.test import (
 ```
 
 ```python
-# New (0.46.0+)
+# New (0.45.0+)
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.environment import EnvironmentVarGuard
 from libtmux.test.random import get_test_session_name, get_test_window_name, namer
