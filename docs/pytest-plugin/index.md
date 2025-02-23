@@ -147,11 +147,3 @@ def set_home(
     :show-inheritance:
     :member-order: bysource
 ```
-
-## Test utilities
-
-```{toctree}
-:maxdepth: 1
-
-test
-```

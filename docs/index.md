@@ -20,6 +20,7 @@ about
 topics/index
 api/index
 pytest-plugin/index
+test-helpers/index
 ```
 
 ```{toctree}
