@@ -15,3 +15,4 @@
 "reference/servers.md" "api/servers.md"
 "reference/sessions.md" "api/sessions.md"
 "reference/windows.md" "api/windows.md"
+"pytest-plugin/test.md" "test-helpers/index.md"
