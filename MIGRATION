@@ -25,6 +25,41 @@ _Detailed migration steps for the next version will be posted here._
 
 <!-- To the maintainers and contributors: please add migration details for the upcoming release here -->
 
+## libtmux 0.45.x (Yet to be released)
+
+### Test helpers: Module moves
+
+Test helper functionality has been split into focused modules (#XXX):
+
+- `libtmux.test` module split into:
+  - `libtmux.test.constants`: Test-related constants (`TEST_SESSION_PREFIX`, etc.)
+  - `libtmux.test.environment`: Environment variable mocking
+  - `libtmux.test.random`: Random string generation utilities
+  - `libtmux.test.temporary`: Temporary session/window management
+
+**Breaking**: Import paths have changed. Update imports:
+
+```python
+# Old (0.45.x and earlier)
+from libtmux.test import (
+    TEST_SESSION_PREFIX,
+    get_test_session_name,
+    get_test_window_name,
+    namer,
+    temp_session,
+    temp_window,
+    EnvironmentVarGuard,
+)
+```
+
+```python
+# New (0.46.0+)
+from libtmux.test.constants import TEST_SESSION_PREFIX
+from libtmux.test.environment import EnvironmentVarGuard
+from libtmux.test.random import get_test_session_name, get_test_window_name, namer
+from libtmux.test.temporary import temp_session, temp_window
+```
+
 ## 0.35.0: Commands require explicit targets (2024-03-17)
 
 ### Commands require explicit targets (#535)

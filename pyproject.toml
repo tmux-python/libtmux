@@ -197,6 +197,7 @@ required-imports = [
 [tool.ruff.lint.flake8-builtins]
 builtins-allowed-modules = [
   "dataclasses",
+  "random",
   "types",
 ]
 

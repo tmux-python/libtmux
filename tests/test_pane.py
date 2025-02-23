@@ -10,7 +10,7 @@ import pytest
 
 from libtmux.common import has_gte_version, has_lt_version, has_lte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
-from libtmux.test import retry_until
+from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
