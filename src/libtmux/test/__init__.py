@@ -10,7 +10,7 @@ import random
 import time
 import typing as t
 
-from .exc import WaitTimeout
+from libtmux.exc import WaitTimeout
 
 logger = logging.getLogger(__name__)
 
