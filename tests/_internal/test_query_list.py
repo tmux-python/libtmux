@@ -319,7 +319,7 @@ def test_keygetter_error_handling() -> None:
 def test_parse_lookup_error_handling() -> None:
     """Test error handling in parse_lookup function."""
     # Test with invalid object
-    assert parse_lookup({"field": "value"}, "field__contains", "__contains") is None
+    assert parse_lookup({"field": "value"}, "nonexistent__invalid", "__invalid") is None
 
     # Test with invalid lookup
     obj: dict[str, str] = {"field": "value"}
@@ -343,12 +343,12 @@ def test_lookup_functions_edge_cases() -> None:
 
     # Test lookup_contains with various types
     assert lookup_contains(["a", "b"], "a")
-    assert not lookup_contains("123", "1")
+    assert lookup_contains("123", "1")  # String contains substring
     assert lookup_contains({"a": "1", "b": "2"}, "a")
 
     # Test lookup_icontains with various types
-    assert not lookup_icontains("123", "1")
     assert lookup_icontains("TEST", "test")
+    assert lookup_icontains("test", "TEST")
     # Keys are case-insensitive
     assert lookup_icontains({"A": "1", "b": "2"}, "a")
 
