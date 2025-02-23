@@ -498,7 +498,15 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         assert "xterm*" in terminal_overrides
 
     assert server.show_option("user-keys") is None
-    assert server.show_option("status-format") is None
+
+    # status-format was added in tmux 2.9
+    if has_gte_version("2.9"):
+        status_format = server.show_option("status-format")
+        assert isinstance(status_format, (dict, type(None)))
+    else:
+        with pytest.raises(OptionError):
+            server.show_option("status-format")
+
     assert server.show_option("update-environment") is None
 
     # List variables: Pane
