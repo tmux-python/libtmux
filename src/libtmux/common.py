@@ -368,10 +368,8 @@ class AsyncTmuxCmd:
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                text=True,
-                errors="backslashreplace",
             )
-            stdout, stderr = await process.communicate()
+            stdout_bytes, stderr_bytes = await process.communicate()
             returncode: int = (
                 process.returncode if process.returncode is not None else -1
             )
@@ -382,6 +380,10 @@ class AsyncTmuxCmd:
             raise exc.LibTmuxException(
                 msg,
             ) from e
+
+        # Decode bytes to string with error handling
+        stdout = stdout_bytes.decode(errors="backslashreplace")
+        stderr = stderr_bytes.decode(errors="backslashreplace")
 
         # Split on newlines and filter empty lines
         stdout_split: list[str] = stdout.split("\n")
