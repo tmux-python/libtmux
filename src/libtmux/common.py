@@ -469,7 +469,7 @@ class AsyncTmuxCmd:
                 msg,
             )
 
-        cmd: list[str] = [tmux_bin] + [str_from_console(a) for a in args]
+        cmd: list[str] = [tmux_bin] + [str(c) for c in args]
 
         try:
             process: asyncio.subprocess.Process = (
@@ -479,7 +479,7 @@ class AsyncTmuxCmd:
                     stderr=asyncio.subprocess.PIPE,
                 )
             )
-            raw_stdout, raw_stderr = await process.communicate()
+            stdout, stderr = await process.communicate()
             returncode: int = (
                 process.returncode if process.returncode is not None else -1
             )
@@ -491,11 +491,14 @@ class AsyncTmuxCmd:
                 msg,
             ) from e
 
-        stdout_str: str = console_to_str(raw_stdout)
-        stderr_str: str = console_to_str(raw_stderr)
+        # Split on newlines and filter empty lines
+        stdout_split: list[str] = stdout.split("\n")
+        # remove trailing newlines from stdout
+        while stdout_split and stdout_split[-1] == "":
+            stdout_split.pop()
 
-        stdout_split: list[str] = [line for line in stdout_str.split("\n") if line]
-        stderr_split: list[str] = [line for line in stderr_str.split("\n") if line]
+        stderr_split = stderr.split("\n")
+        stderr_split = list(filter(None, stderr_split))
 
         if "has-session" in cmd and stderr_split and not stdout_split:
             stdout_split = [stderr_split[0]]
