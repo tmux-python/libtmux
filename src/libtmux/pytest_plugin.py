@@ -13,8 +13,9 @@ import pytest
 
 from libtmux import exc
 from libtmux.server import Server
-from libtmux.test import get_test_session_name, namer
+from libtmux.test import get_test_session_name
 from libtmux.test.constants import TEST_SESSION_PREFIX
+from libtmux.test.random import namer
 
 if t.TYPE_CHECKING:
     import pathlib

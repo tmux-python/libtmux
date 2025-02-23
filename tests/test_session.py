@@ -13,8 +13,8 @@ from libtmux.common import has_gte_version, has_lt_version
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
 from libtmux.session import Session
-from libtmux.test import namer
 from libtmux.test.constants import TEST_SESSION_PREFIX
+from libtmux.test.random import namer
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:

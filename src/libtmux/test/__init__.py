@@ -17,6 +17,8 @@ from libtmux.test.constants import (
     TEST_SESSION_PREFIX,
 )
 
+from .random import namer
+
 logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
@@ -34,35 +36,6 @@ if t.TYPE_CHECKING:
         from typing_extensions import Self
 
 
-class RandomStrSequence:
-    """Factory to generate random string."""
-
-    def __init__(
-        self,
-        characters: str = "abcdefghijklmnopqrstuvwxyz0123456789_",
-    ) -> None:
-        """Create a random letter / number generator. 8 chars in length.
-
-        >>> rng = RandomStrSequence()
-        >>> next(rng)
-        '...'
-        >>> len(next(rng))
-        8
-        >>> type(next(rng))
-        <class 'str'>
-        """
-        self.characters: str = characters
-
-    def __iter__(self) -> RandomStrSequence:
-        """Return self."""
-        return self
-
-    def __next__(self) -> str:
-        """Return next random string."""
-        return "".join(random.sample(self.characters, k=8))
-
-
-namer = RandomStrSequence()
 current_dir = pathlib.Path(__file__)
 example_dir = current_dir.parent / "examples"
 fixtures_dir = current_dir / "fixtures"
