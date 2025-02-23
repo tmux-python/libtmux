@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import typing as t
+from contextlib import suppress
 
 import pytest
 
@@ -9,6 +10,12 @@ from libtmux._internal.query_list import (
     MultipleObjectsReturned,
     ObjectDoesNotExist,
     QueryList,
+    keygetter,
+    lookup_contains,
+    lookup_exact,
+    lookup_icontains,
+    lookup_iexact,
+    parse_lookup,
 )
 
 if t.TYPE_CHECKING:
@@ -291,3 +298,107 @@ def test_filter(
                 else:
                     assert qs.get(filter_expr) == expected_result
             assert exc.match("No objects found")
+
+
+def test_keygetter_error_handling() -> None:
+    """Test error handling in keygetter function."""
+    # Test accessing non-existent key
+    obj: dict[str, int] = {"a": 1}
+    assert keygetter(obj, "b") is None
+
+    # Test accessing nested non-existent key
+    nested_obj: dict[str, dict[str, int]] = {"a": {"b": 1}}
+    assert keygetter(nested_obj, "a__c") is None
+
+    # Test with invalid object type
+    obj_none: t.Any = None
+    with suppress(Exception):  # Exception is expected and logged
+        assert keygetter(obj_none, "any_key") is None
+
+
+def test_parse_lookup_error_handling() -> None:
+    """Test error handling in parse_lookup function."""
+    # Test with invalid object
+    assert parse_lookup({"field": "value"}, "field__contains", "__contains") is None
+
+    # Test with invalid lookup
+    obj: dict[str, str] = {"field": "value"}
+    # Type ignore since we're testing error handling with invalid types
+    assert parse_lookup(obj, "field", None) is None  # type: ignore
+
+    # Test with non-string path
+    assert parse_lookup(obj, None, "__contains") is None  # type: ignore
+
+
+def test_lookup_functions_edge_cases() -> None:
+    """Test edge cases for lookup functions."""
+    # Test lookup_exact with non-string types
+    assert lookup_exact("1", "1")
+    assert not lookup_exact(["a", "b"], "test")
+    assert not lookup_exact({"a": "1"}, "test")
+
+    # Test lookup_iexact with non-string types
+    assert not lookup_iexact(["a", "b"], "test")
+    assert not lookup_iexact({"a": "1"}, "test")
+
+    # Test lookup_contains with various types
+    assert lookup_contains(["a", "b"], "a")
+    assert not lookup_contains("123", "1")
+    assert lookup_contains({"a": "1", "b": "2"}, "a")
+
+    # Test lookup_icontains with various types
+    assert not lookup_icontains("123", "1")
+    assert lookup_icontains("TEST", "test")
+    # Keys are case-insensitive
+    assert lookup_icontains({"A": "1", "b": "2"}, "a")
+
+
+def test_query_list_get_error_cases() -> None:
+    """Test error cases for QueryList.get method."""
+    ql = QueryList([{"id": 1}, {"id": 2}, {"id": 2}])
+
+    # Test get with no results
+    with pytest.raises(ObjectDoesNotExist):
+        ql.get(id=3)
+
+    # Test get with multiple results
+    with pytest.raises(MultipleObjectsReturned):
+        ql.get(id=2)
+
+    # Test get with default
+    assert ql.get(id=3, default=None) is None
+
+
+def test_query_list_filter_error_cases() -> None:
+    """Test error cases for QueryList.filter method."""
+    ql = QueryList([{"id": 1}, {"id": 2}])
+
+    # Test filter with invalid field
+    assert len(ql.filter(nonexistent=1)) == 0
+
+    # Test filter with invalid lookup
+    assert len(ql.filter(id__invalid="test")) == 0
+
+
+def test_query_list_methods() -> None:
+    """Test additional QueryList methods."""
+    ql = QueryList([1, 2, 3])
+
+    # Test len
+    assert len(ql) == 3
+
+    # Test iter
+    assert list(iter(ql)) == [1, 2, 3]
+
+    # Test getitem
+    assert ql[0] == 1
+    assert ql[1:] == QueryList([2, 3])
+
+    # Test eq
+    assert ql == QueryList([1, 2, 3])
+    assert ql != QueryList([1, 2])
+    assert ql == [1, 2, 3]  # QueryList should equal regular list with same contents
+
+    # Test bool
+    assert bool(ql) is True
+    assert bool(QueryList([])) is False
