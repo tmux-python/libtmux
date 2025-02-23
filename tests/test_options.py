@@ -470,18 +470,22 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         "splitp": "split-window",
     }
     if has_gte_version("3.2"):
-        assert server.show_option("terminal-features") == {
-            "screen*": [
-                "title",
-            ],
-            "xterm*": [
-                "clipboard",
-                "ccolour",
-                "cstyle",
-                "focus",
-                "title",
-            ],
-        }
+        terminal_features = server.show_option("terminal-features")
+        assert isinstance(terminal_features, dict)
+        assert "screen*" in terminal_features
+        assert terminal_features["screen*"] == ["title"]
+        assert "xterm*" in terminal_features
+        assert terminal_features["xterm*"] == [
+            "clipboard",
+            "ccolour",
+            "cstyle",
+            "focus",
+            "title",
+        ]
+        # Additional features in tmux 3.4+
+        if has_gte_version("3.4"):
+            assert "rxvt*" in terminal_features
+            assert terminal_features["rxvt*"] == ["ignorefkeys"]
     assert server.show_option("terminal-overrides") is None
     assert server.show_option("user-keys") is None
     assert server.show_option("status-format") is None
