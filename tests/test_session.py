@@ -379,11 +379,10 @@ def test_new_window_with_environment(
     pane = window.active_pane
     assert pane is not None
 
-    for k, expected_value in environment.items():
+    for k, v in environment.items():
         pane.send_keys(f"echo ${k}", literal=True)
 
-        # Wait for command output
-        def wait_for_output(value: str = expected_value) -> bool:
+        def wait_for_output(value: str = v) -> bool:
             try:
                 pane_contents = pane.capture_pane()
                 return any(value in line for line in pane_contents)
