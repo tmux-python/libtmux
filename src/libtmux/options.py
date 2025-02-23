@@ -120,7 +120,7 @@ ExplodedComplexUntypedOptionsDict: TypeAlias = dict[
             int,
             list[t.Union[str, int]],
             dict[str, list[t.Union[str, int]]],
-            "SparseArray[str]",
+            SparseArray[t.Union[str, int]],
         ]
     ],
 ]
@@ -381,7 +381,7 @@ def explode_arrays(
     """
     options: dict[str, t.Any] = {}
     for key, val in _dict.items():
-        Default: type[dict[t.Any, t.Any] | SparseArray[str]] = (
+        Default: type[dict[t.Any, t.Any] | SparseArray[str | int | bool | None]] = (
             dict if isinstance(key, str) and key == "terminal-features" else SparseArray
         )
         if "[" not in key:
@@ -1084,13 +1084,20 @@ class OptionsMixin(CmdMixin):
             ),
         )
 
-        if not isinstance(output_exploded, dict):
-            return output_exploded
+        if not isinstance(output_exploded, (dict, SparseArray)):
+            return t.cast("ConvertedValue", output_exploded)
 
-        if option not in output_exploded:
+        if isinstance(output_exploded, dict) and option not in output_exploded:
             return None
 
-        return t.cast("t.Optional[ConvertedValue]", output_exploded[option])
+        if isinstance(output_exploded, SparseArray):
+            try:
+                index = int(option)
+                return t.cast("ConvertedValue", output_exploded[index])
+            except (ValueError, KeyError):
+                return None
+
+        return t.cast("ConvertedValue", output_exploded[option])
 
     def show_option(
         self,
