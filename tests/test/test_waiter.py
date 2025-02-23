@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 import typing as t
 
-from libtmux.test.retry import WaitTimeout
+from libtmux.exc import WaitTimeout
 from libtmux.test.waiter import (
     PaneWaiter,
     WaiterContentError,
@@ -153,7 +153,7 @@ def test_wait_for_content_inner_exception(
     def mock_capture_pane(*args: t.Any, **kwargs: t.Any) -> list[str]:
         """Mock capture_pane that raises an exception."""
         msg = "Test error"
-        raise Exception(msg)
+        raise WaiterContentError(msg)
 
     monkeypatch.setattr(pane, "capture_pane", mock_capture_pane)
     result = waiter.wait_for_text("some text")
@@ -162,7 +162,7 @@ def test_wait_for_content_inner_exception(
     assert result.error is not None
     assert isinstance(result.error, WaiterContentError)
     assert str(result.error) == "Error capturing pane content"
-    assert isinstance(result.error.__cause__, Exception)
+    assert isinstance(result.error.__cause__, WaiterContentError)
     assert str(result.error.__cause__) == "Test error"
 
 
@@ -205,7 +205,10 @@ def test_wait_for_content_outer_exception_no_custom_message(
     session: Session,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Test exception handling in wait_for_content's outer try-except without custom message."""
+    """Test exception handling in wait_for_content's outer try-except.
+
+    Tests behavior when no custom error message is provided.
+    """
     env = shutil.which("env")
     assert env is not None, "Cannot find usable `env` in PATH."
 
@@ -222,7 +225,7 @@ def test_wait_for_content_outer_exception_no_custom_message(
     def mock_capture_pane(*args: t.Any, **kwargs: t.Any) -> list[str]:
         """Mock capture_pane that raises an exception."""
         msg = "Test error"
-        raise Exception(msg)
+        raise WaiterContentError(msg)
 
     monkeypatch.setattr(pane, "capture_pane", mock_capture_pane)
     result = waiter.wait_for_text("some text")  # No custom error message
@@ -231,19 +234,24 @@ def test_wait_for_content_outer_exception_no_custom_message(
     assert result.error is not None
     assert isinstance(result.error, WaiterContentError)
     assert str(result.error) == "Error capturing pane content"
-    assert isinstance(result.error.__cause__, Exception)
+    assert isinstance(result.error.__cause__, WaiterContentError)
     assert str(result.error.__cause__) == "Test error"
 
 
-def test_wait_for_content_retry_exception(monkeypatch, session) -> None:
+def test_wait_for_content_retry_exception(
+    monkeypatch: MonkeyPatch,
+    session: Session,
+) -> None:
     """Test that retry exceptions are handled correctly."""
-    pane = session.new_window("test_waiter").active_pane
+    window = session.new_window("test_waiter")
+    pane = window.active_pane
+    assert pane is not None
 
     def mock_retry_until(
-        predicate,
-        timeout_seconds=None,
-        interval_seconds=None,
-        raises=None,
+        predicate: t.Callable[[], bool],
+        seconds: float | None = None,
+        interval: float | None = None,
+        raises: bool | None = None,
     ) -> t.NoReturn:
         msg = "Text 'some text' not found in pane"
         raise WaitTimeout(msg)

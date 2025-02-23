@@ -13,8 +13,8 @@ from typing import (
     TypeVar,
 )
 
-from libtmux.exc import LibTmuxException
-from libtmux.test.retry import WaitTimeout, retry_until
+from libtmux.exc import LibTmuxException, WaitTimeout
+from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux.pane import Pane
@@ -62,7 +62,7 @@ class PaneWaiter:
     def _check_content(
         self,
         predicate: t.Callable[[str], bool],
-        result: WaitResult,
+        result: WaitResult[str],
     ) -> bool:
         """Check pane content against predicate.
 
@@ -88,7 +88,8 @@ class PaneWaiter:
             if predicate(content):
                 result.value = content
                 return True
-            return False
+            else:
+                return False
         except Exception as e:
             error = WaiterContentError("Error capturing pane content")
             error.__cause__ = e
@@ -100,16 +101,16 @@ class PaneWaiter:
         timeout_seconds: float | None = None,
         interval_seconds: float | None = None,
         error_message: str | None = None,
-    ) -> WaitResult:
+    ) -> WaitResult[str]:
         """Wait for content in the pane to match a predicate."""
-        result = WaitResult(success=False, value=None, error=None)
+        result = WaitResult[str](success=False, value=None, error=None)
         try:
             # Give the shell a moment to be ready
             time.sleep(0.1)
             success = retry_until(
                 lambda: self._check_content(predicate, result),
                 seconds=timeout_seconds or self.timeout,
-                interval=interval_seconds,
+                interval=interval_seconds or 0.05,
                 raises=True,
             )
             result.success = success
@@ -124,11 +125,7 @@ class PaneWaiter:
             result.error = e
             result.success = False
         except Exception as e:
-            if isinstance(e, (WaiterTimeoutError, WaiterContentError)):
-                result.error = e
-            else:
-                result.error = WaiterContentError("Error capturing pane content")
-                result.error.__cause__ = e
+            result.error = WaiterTimeoutError(error_message or str(e))
             result.success = False
         return result
 
@@ -137,7 +134,7 @@ class PaneWaiter:
         prompt: str,
         timeout_seconds: float | None = None,
         error_message: str | None = None,
-    ) -> WaitResult:
+    ) -> WaitResult[str]:
         """Wait for a specific prompt to appear in the pane."""
         return self.wait_for_content(
             lambda content: prompt in content and len(content.strip()) > 0,
@@ -149,11 +146,15 @@ class PaneWaiter:
         self,
         text: str,
         timeout_seconds: float | None = None,
+        interval_seconds: float | None = None,
         error_message: str | None = None,
-    ) -> WaitResult:
-        """Wait for specific text to appear in the pane."""
+    ) -> WaitResult[str]:
+        """Wait for text to appear in the pane."""
+        if error_message is None:
+            error_message = f"Text '{text}' not found in pane"
         return self.wait_for_content(
             lambda content: text in content,
             timeout_seconds=timeout_seconds,
-            error_message=error_message or f"Text '{text}' not found in pane",
+            interval_seconds=interval_seconds,
+            error_message=error_message,
         )
