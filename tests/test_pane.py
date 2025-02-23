@@ -62,15 +62,42 @@ def setup_shell_window(
 
 def test_send_keys(session: Session) -> None:
     """Verify Pane.send_keys()."""
-    pane = session.active_window.active_pane
+    window = setup_shell_window(session, "test_send_keys")
+    pane = window.active_pane
     assert pane is not None
-    pane.send_keys("c-c", literal=True)
 
-    pane_contents = "\n".join(pane.cmd("capture-pane", "-p").stdout)
-    assert "c-c" in pane_contents
+    # Test literal input
+    pane.send_keys("echo 'test-literal'", literal=True)
 
-    pane.send_keys("c-a", literal=False)
-    assert "c-a" not in pane_contents, "should not print to pane"
+    def wait_for_literal() -> bool:
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+            return (
+                "test-literal" in pane_contents
+                and "echo 'test-literal'" in pane_contents
+                and pane_contents.count("READY>") >= 2
+            )
+        except Exception:
+            return False
+
+    retry_until(wait_for_literal, 2, raises=True)
+
+    # Test non-literal input (should be interpreted as keystrokes)
+    pane.send_keys("c-c", literal=False)  # Send Ctrl-C
+
+    def wait_for_ctrl_c() -> bool:
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+            # Ctrl-C should add a new prompt without executing a command
+            return (
+                # Previous prompt + command + new prompt
+                pane_contents.count("READY>") >= 3
+                and "c-c" not in pane_contents  # The literal string should not appear
+            )
+        except Exception:
+            return False
+
+    retry_until(wait_for_ctrl_c, 2, raises=True)
 
 
 def test_set_height(session: Session) -> None:
@@ -389,9 +416,35 @@ def test_split_pane_size(session: Session) -> None:
 
 def test_pane_context_manager(session: Session) -> None:
     """Test Pane context manager functionality."""
-    window = session.new_window()
-    with window.split() as pane:
-        pane.send_keys('echo "Hello"')
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    window = setup_shell_window(session, "test_context_manager")
+    with window.split(shell=f"{env} PROMPT_COMMAND='' PS1='READY>' sh") as pane:
+        # Wait for shell to be ready in the split pane
+        def wait_for_shell() -> bool:
+            try:
+                pane_contents = "\n".join(pane.capture_pane())
+                return "READY>" in pane_contents and len(pane_contents.strip()) > 0
+            except Exception:
+                return False
+
+        retry_until(wait_for_shell, 2, raises=True)
+
+        pane.send_keys('echo "Hello"', literal=True)
+
+        def wait_for_output() -> bool:
+            try:
+                pane_contents = "\n".join(pane.capture_pane())
+                return (
+                    'echo "Hello"' in pane_contents
+                    and "Hello" in pane_contents
+                    and pane_contents.count("READY>") >= 2
+                )
+            except Exception:
+                return False
+
+        retry_until(wait_for_output, 2, raises=True)
         assert pane in window.panes
         assert len(window.panes) == 2  # Initial pane + new pane
 
