@@ -88,8 +88,7 @@ class PaneWaiter:
             if predicate(content):
                 result.value = content
                 return True
-            else:
-                return False
+            return False
         except Exception as e:
             error = WaiterContentError("Error capturing pane content")
             error.__cause__ = e
