@@ -6,6 +6,22 @@ import logging
 import random
 import typing as t
 
+from libtmux.test.constants import (
+    TEST_SESSION_PREFIX,
+)
+
+logger = logging.getLogger(__name__)
+
+if t.TYPE_CHECKING:
+    import sys
+
+    from libtmux.server import Server
+    from libtmux.session import Session
+
+    if sys.version_info >= (3, 11):
+        pass
+
+
 logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
@@ -44,3 +60,75 @@ class RandomStrSequence:
 
 
 namer = RandomStrSequence()
+
+
+def get_test_session_name(server: Server, prefix: str = TEST_SESSION_PREFIX) -> str:
+    """
+    Faker to create a session name that doesn't exist.
+
+    Parameters
+    ----------
+    server : :class:`libtmux.Server`
+        libtmux server
+    prefix : str
+        prefix for sessions (e.g. ``libtmux_``). Defaults to
+        ``TEST_SESSION_PREFIX``.
+
+    Returns
+    -------
+    str
+        Random session name guaranteed to not collide with current ones.
+
+    Examples
+    --------
+    >>> get_test_session_name(server=server)
+    'libtmux_...'
+
+    Never the same twice:
+    >>> get_test_session_name(server=server) != get_test_session_name(server=server)
+    True
+    """
+    while True:
+        session_name = prefix + next(namer)
+        if not server.has_session(session_name):
+            break
+    return session_name
+
+
+def get_test_window_name(
+    session: Session,
+    prefix: str | None = TEST_SESSION_PREFIX,
+) -> str:
+    """
+    Faker to create a window name that doesn't exist.
+
+    Parameters
+    ----------
+    session : :class:`libtmux.Session`
+        libtmux session
+    prefix : str
+        prefix for windows (e.g. ``libtmux_``). Defaults to
+        ``TEST_SESSION_PREFIX``.
+
+        ATM we reuse the test session prefix here.
+
+    Returns
+    -------
+    str
+        Random window name guaranteed to not collide with current ones.
+
+    Examples
+    --------
+    >>> get_test_window_name(session=session)
+    'libtmux_...'
+
+    Never the same twice:
+    >>> get_test_window_name(session=session) != get_test_window_name(session=session)
+    True
+    """
+    assert prefix is not None
+    while True:
+        window_name = prefix + next(namer)
+        if len(session.windows.filter(window_name=window_name)) == 0:
+            break
+    return window_name
