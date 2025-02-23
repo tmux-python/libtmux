@@ -12,7 +12,8 @@ from libtmux import exc
 from libtmux.common import has_gte_version, has_lt_version
 from libtmux.pane import Pane
 from libtmux.session import Session
-from libtmux.test import TEST_SESSION_PREFIX, namer
+from libtmux.test import namer
+from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:

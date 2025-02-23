@@ -11,6 +11,11 @@ import time
 import typing as t
 
 from libtmux.exc import WaitTimeout
+from libtmux.test.constants import (
+    RETRY_INTERVAL_SECONDS,
+    RETRY_TIMEOUT_SECONDS,
+    TEST_SESSION_PREFIX,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +32,6 @@ if t.TYPE_CHECKING:
         from typing import Self
     else:
         from typing_extensions import Self
-
-
-TEST_SESSION_PREFIX = "libtmux_"
-RETRY_TIMEOUT_SECONDS = int(os.getenv("RETRY_TIMEOUT_SECONDS", 8))
-RETRY_INTERVAL_SECONDS = float(os.getenv("RETRY_INTERVAL_SECONDS", 0.05))
 
 
 class RandomStrSequence:
