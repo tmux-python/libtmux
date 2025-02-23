@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import typing as t
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 
 import pytest
@@ -416,30 +417,28 @@ def test_lookup_functions_additional_edge_cases() -> None:
     assert not lookup_in("key", {"key": "value"})  # String in dict keys
     assert lookup_in("item", ["item", "other"])  # String in list
     assert not lookup_in("missing", {"key": "value"})  # Missing key in dict
-    assert not lookup_in(123, "123")  # Invalid type combination
+    assert not lookup_in(123, "123")  # type: ignore  # Invalid type combination
 
     # Test lookup_nin with various types
-    assert not lookup_nin(
-        "missing", {"key": "value"}
-    )  # Missing key in dict returns False
-    assert not lookup_nin(
-        "value", {"key": "value"}
-    )  # String in dict values returns False
+    # Missing key in dict returns False
+    assert not lookup_nin("missing", {"key": "value"})
+    # String in dict values returns False
+    assert not lookup_nin("value", {"key": "value"})
     assert lookup_nin("item", ["other", "another"])  # String not in list
     assert not lookup_nin("item", ["item", "other"])  # String in list
-    assert not lookup_nin(123, "123")  # Invalid type combination returns False
+    assert not lookup_nin(123, "123")  # type: ignore  # Invalid type combination returns False
 
     # Test lookup_regex with various types
     assert lookup_regex("test123", r"\d+")  # Match digits
     assert not lookup_regex("test", r"\d+")  # No match
-    assert not lookup_regex(123, r"\d+")  # Invalid type
-    assert not lookup_regex("test", 123)  # Invalid pattern type
+    assert not lookup_regex(123, r"\d+")  # type: ignore  # Invalid type
+    assert not lookup_regex("test", 123)  # type: ignore  # Invalid pattern type
 
     # Test lookup_iregex with various types
     assert lookup_iregex("TEST123", r"test\d+")  # Case-insensitive match
     assert not lookup_iregex("test", r"\d+")  # No match
-    assert not lookup_iregex(123, r"\d+")  # Invalid type
-    assert not lookup_iregex("test", 123)  # Invalid pattern type
+    assert not lookup_iregex(123, r"\d+")  # type: ignore  # Invalid type
+    assert not lookup_iregex("test", 123)  # type: ignore  # Invalid pattern type
 
 
 def test_query_list_items() -> None:
@@ -498,11 +497,11 @@ def test_query_list_get_with_callable() -> None:
         return x["id"] == 2
 
     result = ql.get(get_id_2)
-    assert result["id"] == 2
+    assert result is not None and result["id"] == 2  # Check for None before indexing
 
     # Test get with lambda
     result = ql.get(lambda x: x["id"] == 3)
-    assert result["id"] == 3
+    assert result is not None and result["id"] == 3  # Check for None before indexing
 
     # Test get with callable returning multiple matches
     def get_id_greater_than_1(x: dict[str, int]) -> bool:
@@ -517,3 +516,106 @@ def test_query_list_get_with_callable() -> None:
 
     with pytest.raises(ObjectDoesNotExist):
         ql.get(get_id_greater_than_10)
+
+
+def test_query_list_eq_with_mappings() -> None:
+    """Test QueryList __eq__ method with mappings."""
+    # Test comparing mappings with numeric values
+    ql1 = QueryList([{"a": 1, "b": 2}])
+    ql2 = QueryList([{"a": 1, "b": 2}])
+    assert ql1 == ql2
+
+    # Test comparing mappings with different values
+    ql3 = QueryList([{"a": 1, "b": 3}])
+    assert ql1 != ql3
+
+    # Test comparing with non-list
+    assert ql1 != "not a list"
+
+    # Test comparing mappings with different keys
+    ql4 = QueryList([{"a": 1, "c": 2}])
+    assert ql1 != ql4
+
+    # Test comparing mappings with close numeric values (within tolerance)
+    ql5 = QueryList([{"a": 1.0001, "b": 2.0001}])
+    assert ql1 == ql5  # Should be equal since difference is less than 1
+
+    # Test comparing mappings with different numeric values (outside tolerance)
+    ql6 = QueryList([{"a": 2.5, "b": 3.5}])
+    assert ql1 != ql6  # Should not be equal since difference is more than 1
+
+
+def test_lookup_in_with_mappings() -> None:
+    """Test lookup_in function with mappings."""
+    # Test with string in mapping keys
+    data: dict[str, str] = {"key": "value", "other": "value2"}
+    assert not lookup_in("missing", data)  # Key not in mapping
+    assert not lookup_in("value", data)  # Value not in mapping keys
+    assert not lookup_in("key", data)  # Key in mapping but returns False
+
+    # Test with string in mapping values
+    assert not lookup_in("value", data)  # Value in mapping but returns False
+
+    # Test with invalid combinations
+    assert not lookup_in(123, data)  # type: ignore  # Invalid type for data
+    assert not lookup_in("key", 123)  # type: ignore  # Invalid type for rhs
+
+    # Test with list in mapping
+    data_list: list[str] = ["value1", "value2"]
+    assert lookup_in("value1", data_list)  # Value in list returns True
+
+
+def test_lookup_nin_with_mappings() -> None:
+    """Test lookup_nin function with mappings."""
+    # Test with string in mapping keys
+    data: dict[str, str] = {"key": "value", "other": "value2"}
+    assert not lookup_nin("missing", data)  # Key not in mapping returns False
+    assert not lookup_nin("value", data)  # Value not in mapping keys returns False
+    assert not lookup_nin("key", data)  # Key in mapping returns False
+
+    # Test with string in mapping values
+    assert not lookup_nin("value", data)  # Value in mapping returns False
+
+    # Test with invalid combinations
+    assert not lookup_nin(123, data)  # type: ignore  # Invalid type for data
+    assert not lookup_nin("key", 123)  # type: ignore  # Invalid type for rhs
+
+    # Test with list in mapping
+    data_list: list[str] = ["value1", "value2"]
+    assert not lookup_nin("value1", data_list)  # Value in list returns False
+
+
+def test_filter_error_handling() -> None:
+    """Test error handling in filter method."""
+    ql: QueryList[Mapping[str, t.Any]] = QueryList([{"id": 1}, {"id": 2}])
+
+    # Test with non-existent field
+    result = ql.filter(nonexistent=1)
+    assert len(result) == 0
+
+    # Test with invalid lookup
+    result = ql.filter(id__invalid="test")
+    assert len(result) == 0
+
+    # Test with multiple conditions where one is invalid
+    result = ql.filter(id__exact=1, id__invalid="test")
+    assert len(result) == 0
+
+    # Test with non-string paths
+    with pytest.raises(TypeError):
+        # We need to use Any here because we're intentionally testing invalid types
+        numeric_key: t.Any = 123
+        numeric_args: dict[t.Any, t.Any] = {numeric_key: "test"}
+        ql.filter(**numeric_args)
+
+    # Test with None path
+    with pytest.raises(TypeError):
+        # We need to use Any here because we're intentionally testing invalid types
+        none_key: t.Any = None
+        none_args: dict[t.Any, t.Any] = {none_key: "test"}
+        ql.filter(**none_args)
+
+    # Test with empty path
+    empty_args: dict[str, t.Any] = {"": "test"}
+    result = ql.filter(**empty_args)
+    assert len(result) == 0
