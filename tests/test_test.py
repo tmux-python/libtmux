@@ -7,7 +7,7 @@ from time import time
 import pytest
 
 from libtmux.exc import WaitTimeout
-from libtmux.test import retry_until
+from libtmux.test.retry import retry_until
 
 
 def test_retry_three_times() -> None:
