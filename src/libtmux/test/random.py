@@ -79,8 +79,9 @@ def get_test_session_name(server: Server, prefix: str = TEST_SESSION_PREFIX) -> 
     'libtmux_...'
 
     Never the same twice:
-    >>> get_test_session_name(server=server) != \
-    ...     get_test_session_name(server=server)  # pragma: no cover
+    >>> name1 = get_test_session_name(server=server)  # pragma: no cover
+    >>> name2 = get_test_session_name(server=server)  # pragma: no cover
+    >>> name1 != name2  # pragma: no cover
     True
     """
     while True:
@@ -118,9 +119,9 @@ def get_test_window_name(
     'libtmux_...'
 
     Never the same twice:
-
-    >>> get_test_window_name(session=session) != \
-    ...     get_test_window_name(session=session)  # pragma: no cover
+    >>> name1 = get_test_window_name(session=session)  # pragma: no cover
+    >>> name2 = get_test_window_name(session=session)  # pragma: no cover
+    >>> name1 != name2  # pragma: no cover
     True
     """
     assert prefix is not None

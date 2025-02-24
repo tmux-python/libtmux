@@ -121,7 +121,7 @@ def test_environment_var_guard_exit_with_exception() -> None:
 
     # Call __exit__ with exception parameters
     env.__exit__(
-        t.cast(type[BaseException], RuntimeError),
+        t.cast("type[BaseException]", RuntimeError),
         RuntimeError("Test exception"),
         None,
     )
