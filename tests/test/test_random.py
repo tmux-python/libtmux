@@ -165,11 +165,10 @@ def test_get_test_session_name_multiple_collisions(
     monkeypatch.setattr(RandomStrSequence, "__next__", mock_next)
 
     # Create sessions that will cause collisions
-    with server.new_session(collision_names[0]):
-        with server.new_session(collision_names[1]):
-            result = get_test_session_name(server=server)
-            assert result == success_name
-            assert not server.has_session(result)
+    with server.new_session(collision_names[0]), server.new_session(collision_names[1]):
+        result = get_test_session_name(server=server)
+        assert result == success_name
+        assert not server.has_session(result)
 
 
 def test_get_test_window_name_doctest_examples(session: Session) -> None:
