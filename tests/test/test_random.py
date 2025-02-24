@@ -26,7 +26,7 @@ def test_random_str_sequence_default() -> None:
 
     assert isinstance(result, str)
     assert len(result) == 8
-    assert all(c in "abcdefghijklmnopqrstuvwxyz0123456789_" for c in result)
+    assert all(c in rng.characters for c in result)
 
 
 def test_random_str_sequence_custom_chars() -> None:
