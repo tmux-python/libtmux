@@ -34,12 +34,12 @@ class RandomStrSequence:
     ) -> None:
         """Create a random letter / number generator. 8 chars in length.
 
-        >>> rng = RandomStrSequence()
-        >>> next(rng)
+        >>> rng = RandomStrSequence()  # pragma: no cover
+        >>> next(rng)  # pragma: no cover
         '...'
-        >>> len(next(rng))
+        >>> len(next(rng))  # pragma: no cover
         8
-        >>> type(next(rng))
+        >>> type(next(rng))  # pragma: no cover
         <class 'str'>
         """
         self.characters: str = characters
@@ -75,11 +75,11 @@ def get_test_session_name(server: Server, prefix: str = TEST_SESSION_PREFIX) -> 
 
     Examples
     --------
-    >>> get_test_session_name(server=server)
+    >>> get_test_session_name(server=server)  # pragma: no cover
     'libtmux_...'
 
     Never the same twice:
-    >>> get_test_session_name(server=server) != get_test_session_name(server=server)
+    >>> get_test_session_name(server=server) != get_test_session_name(server=server)  # pragma: no cover
     True
     """
     while True:
@@ -113,12 +113,12 @@ def get_test_window_name(
 
     Examples
     --------
-    >>> get_test_window_name(session=session)
+    >>> get_test_window_name(session=session)  # pragma: no cover
     'libtmux_...'
 
     Never the same twice:
 
-    >>> get_test_window_name(session=session) != get_test_window_name(session=session)
+    >>> get_test_window_name(session=session) != get_test_window_name(session=session)  # pragma: no cover
     True
     """
     assert prefix is not None
