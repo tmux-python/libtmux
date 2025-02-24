@@ -1,23 +1,25 @@
 """Random helpers for libtmux and downstream libtmux libraries."""
 
-from __future__ import annotations
+from __future__ import annotations  # pragma: no cover
 
 import logging
 import random
-import typing as t
+import typing as t  # pragma: no cover
 
 from libtmux.test.constants import (
     TEST_SESSION_PREFIX,
 )
 
-if t.TYPE_CHECKING:
-    import sys
+if t.TYPE_CHECKING:  # pragma: no cover
+    import sys  # pragma: no cover
 
-    from libtmux.server import Server
-    from libtmux.session import Session
+    from libtmux.server import Server  # pragma: no cover
+    from libtmux.session import Session  # pragma: no cover
 
-    if sys.version_info >= (3, 11):
-        pass
+    if sys.version_info >= (3, 11):  # pragma: no cover
+        pass  # pragma: no cover
+    else:  # pragma: no cover
+        pass  # pragma: no cover
 
 
 logger = logging.getLogger(__name__)
