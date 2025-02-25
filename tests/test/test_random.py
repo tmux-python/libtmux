@@ -266,3 +266,42 @@ def test_random_str_sequence_self_type() -> None:
     iter_result = iter(rng)
     assert isinstance(iter_result, RandomStrSequence)
     assert iter_result is rng
+
+
+def test_random_str_sequence_small_character_set() -> None:
+    """Test RandomStrSequence with a small character set."""
+    # Using a small set forces it to use all characters
+    small_chars = "abcdefgh"  # Exactly 8 characters
+    rng = RandomStrSequence(characters=small_chars)
+    result = next(rng)
+
+    assert isinstance(result, str)
+    assert len(result) == 8
+    # Since it samples exactly 8 characters, all chars must be used
+    assert sorted(result) == sorted(small_chars)
+
+
+def test_random_str_sequence_insufficient_characters() -> None:
+    """Test RandomStrSequence with too few characters."""
+    # When fewer than 8 chars are provided, random.sample can't work
+    tiny_chars = "abc"  # Only 3 characters
+    rng = RandomStrSequence(characters=tiny_chars)
+
+    # Should raise ValueError since random.sample(population, k)
+    # requires k <= len(population)
+    with pytest.raises(ValueError):
+        next(rng)
+
+
+def test_logger_configured(caplog: pytest.LogCaptureFixture) -> None:
+    """Test that the logger in random.py is properly configured."""
+    # Verify the logger is set up with the correct name
+    assert logger.name == "libtmux.test.random"
+
+    # Test that the logger functions properly
+    with caplog.at_level(logging.DEBUG):
+        logger.debug("Test debug message")
+        logger.info("Test info message")
+
+        assert "Test debug message" in caplog.text
+        assert "Test info message" in caplog.text
