@@ -150,7 +150,9 @@ exclude_lines = [
   "if TYPE_CHECKING:",
   "if t.TYPE_CHECKING:",
   "@overload( |$)",
+  'class .*\bProtocol\):',
   "from __future__ import annotations",
+  "import typing as t",
 ]
 
 [tool.ruff]

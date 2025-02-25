@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from time import time
+from time import sleep, time
 
 import pytest
 
@@ -17,19 +17,19 @@ def test_retry_three_times() -> None:
 
     def call_me_three_times() -> bool:
         nonlocal value
+        sleep(0.3)  # Sleep for 0.3 seconds to simulate work
 
         if value == 2:
             return True
 
         value += 1
-
         return False
 
     retry_until(call_me_three_times, 1)
 
     end = time()
 
-    assert abs((end - ini) - 1.0) > 0 < 0.1
+    assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
 
 
 def test_function_times_out() -> None:
@@ -37,6 +37,9 @@ def test_function_times_out() -> None:
     ini = time()
 
     def never_true() -> bool:
+        sleep(
+            0.1,
+        )  # Sleep for 0.1 seconds to simulate work (called ~10 times in 1 second)
         return False
 
     with pytest.raises(WaitTimeout):
@@ -44,7 +47,7 @@ def test_function_times_out() -> None:
 
     end = time()
 
-    assert abs((end - ini) - 1.0) > 0 < 0.1
+    assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
 
 
 def test_function_times_out_no_raise() -> None:
@@ -52,13 +55,15 @@ def test_function_times_out_no_raise() -> None:
     ini = time()
 
     def never_true() -> bool:
+        sleep(
+            0.1,
+        )  # Sleep for 0.1 seconds to simulate work (called ~10 times in 1 second)
         return False
 
     retry_until(never_true, 1, raises=False)
 
     end = time()
-
-    assert abs((end - ini) - 1.0) > 0 < 0.1
+    assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
 
 
 def test_function_times_out_no_raise_assert() -> None:
@@ -66,13 +71,15 @@ def test_function_times_out_no_raise_assert() -> None:
     ini = time()
 
     def never_true() -> bool:
+        sleep(
+            0.1,
+        )  # Sleep for 0.1 seconds to simulate work (called ~10 times in 1 second)
         return False
 
     assert not retry_until(never_true, 1, raises=False)
 
     end = time()
-
-    assert abs((end - ini) - 1.0) > 0 < 0.1
+    assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
 
 
 def test_retry_three_times_no_raise_assert() -> None:
@@ -82,16 +89,17 @@ def test_retry_three_times_no_raise_assert() -> None:
 
     def call_me_three_times() -> bool:
         nonlocal value
+        sleep(
+            0.3,
+        )  # Sleep for 0.3 seconds to simulate work (called 3 times in ~0.9 seconds)
 
         if value == 2:
             return True
 
         value += 1
-
         return False
 
     assert retry_until(call_me_three_times, 1, raises=False)
 
     end = time()
-
-    assert abs((end - ini) - 1.0) > 0 < 0.1
+    assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations

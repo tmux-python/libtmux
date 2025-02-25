@@ -25,6 +25,40 @@ _Detailed migration steps for the next version will be posted here._
 
 <!-- To the maintainers and contributors: please add migration details for the upcoming release here -->
 
+#### Imports removed from libtmux.test (#580)
+
+Root-level of imports from `libtmux.test` are no longer possible.
+
+```python
+# Before 0.46.0
+from libtmux.test import namer
+```
+
+```python
+# From 0.46.0 onward
+from libtmux.test.named import namer
+```
+
+Same thing with constants:
+
+```python
+# Before 0.46.0
+from libtmux.test import (
+  RETRY_INTERVAL_SECONDS,
+  RETRY_TIMEOUT_SECONDS,
+  TEST_SESSION_PREFIX
+)
+```
+
+```python
+# From 0.46.0 onward
+from libtmux.test.constants import (
+  RETRY_INTERVAL_SECONDS,
+  RETRY_TIMEOUT_SECONDS,
+  TEST_SESSION_PREFIX
+)
+```
+
 ## libtmux 0.45.0 (2025-02-23)
 
 ### Test helpers: Module moves

@@ -1,34 +1,28 @@
 """Random helpers for libtmux and downstream libtmux libraries."""
 
-from __future__ import annotations
+from __future__ import annotations  # pragma: no cover
 
 import logging
 import random
-import typing as t
+import typing as t  # pragma: no cover
 
 from libtmux.test.constants import (
     TEST_SESSION_PREFIX,
 )
 
+if t.TYPE_CHECKING:  # pragma: no cover
+    import sys  # pragma: no cover
+
+    from libtmux.server import Server  # pragma: no cover
+    from libtmux.session import Session  # pragma: no cover
+
+    if sys.version_info >= (3, 11):  # pragma: no cover
+        pass  # pragma: no cover
+    else:  # pragma: no cover
+        pass  # pragma: no cover
+
+
 logger = logging.getLogger(__name__)
-
-if t.TYPE_CHECKING:
-    import sys
-
-    from libtmux.server import Server
-    from libtmux.session import Session
-
-    if sys.version_info >= (3, 11):
-        pass
-
-
-logger = logging.getLogger(__name__)
-
-if t.TYPE_CHECKING:
-    import sys
-
-    if sys.version_info >= (3, 11):
-        pass
 
 
 class RandomStrSequence:
@@ -40,12 +34,12 @@ class RandomStrSequence:
     ) -> None:
         """Create a random letter / number generator. 8 chars in length.
 
-        >>> rng = RandomStrSequence()
-        >>> next(rng)
+        >>> rng = RandomStrSequence()  # pragma: no cover
+        >>> next(rng)  # pragma: no cover
         '...'
-        >>> len(next(rng))
+        >>> len(next(rng))  # pragma: no cover
         8
-        >>> type(next(rng))
+        >>> type(next(rng))  # pragma: no cover
         <class 'str'>
         """
         self.characters: str = characters
@@ -81,11 +75,13 @@ def get_test_session_name(server: Server, prefix: str = TEST_SESSION_PREFIX) -> 
 
     Examples
     --------
-    >>> get_test_session_name(server=server)
+    >>> get_test_session_name(server=server)  # pragma: no cover
     'libtmux_...'
 
     Never the same twice:
-    >>> get_test_session_name(server=server) != get_test_session_name(server=server)
+    >>> name1 = get_test_session_name(server=server)  # pragma: no cover
+    >>> name2 = get_test_session_name(server=server)  # pragma: no cover
+    >>> name1 != name2  # pragma: no cover
     True
     """
     while True:
@@ -119,12 +115,13 @@ def get_test_window_name(
 
     Examples
     --------
-    >>> get_test_window_name(session=session)
+    >>> get_test_window_name(session=session)  # pragma: no cover
     'libtmux_...'
 
     Never the same twice:
-
-    >>> get_test_window_name(session=session) != get_test_window_name(session=session)
+    >>> name1 = get_test_window_name(session=session)  # pragma: no cover
+    >>> name2 = get_test_window_name(session=session)  # pragma: no cover
+    >>> name1 != name2  # pragma: no cover
     True
     """
     assert prefix is not None

@@ -52,7 +52,12 @@ class EnvironmentVarGuard:
     def unset(self, envvar: str) -> None:
         """Unset environment variable."""
         if envvar in self._environ:
-            self._reset[envvar] = self._environ[envvar]
+            # If we previously set this variable in this context, remove it from _unset
+            if envvar in self._unset:
+                self._unset.remove(envvar)
+            # If we haven't saved the original value yet, save it
+            if envvar not in self._reset:
+                self._reset[envvar] = self._environ[envvar]
             del self._environ[envvar]
 
     def __enter__(self) -> Self:
@@ -69,4 +74,5 @@ class EnvironmentVarGuard:
         for envvar, value in self._reset.items():
             self._environ[envvar] = value
         for unset in self._unset:
-            del self._environ[unset]
+            if unset not in self._reset:  # Don't delete variables that were reset
+                del self._environ[unset]
