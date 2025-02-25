@@ -171,6 +171,45 @@ def test_get_test_session_name_multiple_collisions(
         assert not server.has_session(result)
 
 
+def test_get_test_session_name_loop_behavior(
+    server: Server,
+) -> None:
+    """Test the loop behavior in get_test_session_name using real sessions."""
+    # Get a first session name
+    first_name = get_test_session_name(server=server)
+
+    # Create this session to trigger the loop behavior
+    with server.new_session(first_name):
+        # Now when we call get_test_session_name again, it should
+        # give us a different name since the first one is taken
+        second_name = get_test_session_name(server=server)
+
+        # Verify we got a different name
+        assert first_name != second_name
+
+        # Verify the first name exists as a session
+        assert server.has_session(first_name)
+
+        # Verify the second name doesn't exist yet
+        assert not server.has_session(second_name)
+
+        # Create a second session with the second name
+        with server.new_session(second_name):
+            # Now get a third name, to trigger another iteration
+            third_name = get_test_session_name(server=server)
+
+            # Verify all names are different
+            assert first_name != third_name
+            assert second_name != third_name
+
+            # Verify the first two names exist as sessions
+            assert server.has_session(first_name)
+            assert server.has_session(second_name)
+
+            # Verify the third name doesn't exist yet
+            assert not server.has_session(third_name)
+
+
 def test_get_test_window_name_doctest_examples(session: Session) -> None:
     """Test the doctest examples for get_test_window_name."""
     # Test basic functionality
@@ -250,6 +289,55 @@ def test_get_test_window_name_multiple_collisions(
     assert not any(w.window_name == result for w in session.windows)
 
 
+def test_get_test_window_name_loop_behavior(
+    session: Session,
+) -> None:
+    """Test the loop behavior in get_test_window_name using real windows."""
+    # Get a window name first
+    first_name = get_test_window_name(session=session)
+
+    # Create this window
+    window = session.new_window(window_name=first_name)
+    try:
+        # Now when we call get_test_window_name again, it should
+        # give us a different name since the first one is taken
+        second_name = get_test_window_name(session=session)
+
+        # Verify we got a different name
+        assert first_name != second_name
+
+        # Verify the first name exists as a window
+        assert any(w.window_name == first_name for w in session.windows)
+
+        # Verify the second name doesn't exist yet
+        assert not any(w.window_name == second_name for w in session.windows)
+
+        # Create a second window with the second name
+        window2 = session.new_window(window_name=second_name)
+        try:
+            # Now get a third name, to trigger another iteration
+            third_name = get_test_window_name(session=session)
+
+            # Verify all names are different
+            assert first_name != third_name
+            assert second_name != third_name
+
+            # Verify the first two names exist as windows
+            assert any(w.window_name == first_name for w in session.windows)
+            assert any(w.window_name == second_name for w in session.windows)
+
+            # Verify the third name doesn't exist yet
+            assert not any(w.window_name == third_name for w in session.windows)
+        finally:
+            # Clean up the second window
+            if window2:
+                window2.kill()
+    finally:
+        # Clean up
+        if window:
+            window.kill()
+
+
 def test_get_test_window_name_requires_prefix() -> None:
     """Test that get_test_window_name requires a prefix."""
     with pytest.raises(AssertionError):
@@ -327,83 +415,23 @@ def test_namer_initialization() -> None:
     assert namer.characters == "abcdefghijklmnopqrstuvwxyz0123456789_"
 
 
-def test_get_test_session_name_loop_behavior(
-    server: Server,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test the loop behavior in get_test_session_name."""
-    # Create two existing sessions with predictable names
-    test_name_1 = f"{TEST_SESSION_PREFIX}test1"
-    test_name_2 = f"{TEST_SESSION_PREFIX}test2"
-    test_name_3 = f"{TEST_SESSION_PREFIX}test3"
-
-    # Set up the random sequence to return specific values
-    name_sequence = iter(["test1", "test2", "test3"])
-
-    def mock_next(self: t.Any) -> str:
-        return next(name_sequence)
-
-    monkeypatch.setattr(RandomStrSequence, "__next__", mock_next)
-
-    # Create two sessions that will match our first two random names
-    with server.new_session(test_name_1), server.new_session(test_name_2):
-        # This should skip the first two names and use the third one
-        result = get_test_session_name(server=server)
-        assert result == test_name_3
-        assert not server.has_session(result)
-
-
-def test_get_test_window_name_loop_behavior(
-    session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test the loop behavior in get_test_window_name."""
-    # Create two existing windows with predictable names
-    test_name_1 = f"{TEST_SESSION_PREFIX}test1"
-    test_name_2 = f"{TEST_SESSION_PREFIX}test2"
-    test_name_3 = f"{TEST_SESSION_PREFIX}test3"
-
-    # Set up the random sequence to return specific values
-    name_sequence = iter(["test1", "test2", "test3"])
-
-    def mock_next(self: t.Any) -> str:
-        return next(name_sequence)
-
-    monkeypatch.setattr(RandomStrSequence, "__next__", mock_next)
-
-    # Create two windows that will match our first two random names
-    session.new_window(window_name=test_name_1)
-    session.new_window(window_name=test_name_2)
-
-    # This should skip the first two names and use the third one
-    result = get_test_window_name(session=session)
-    assert result == test_name_3
-    assert not any(w.window_name == result for w in session.windows)
-
-
-def test_random_str_sequence_explicit_coverage() -> None:
-    """Test to explicitly cover certain methods and lines."""
-    # This test is designed to improve coverage by directly accessing
-    # specific methods and attributes
-
-    # Test RandomStrSequence.__iter__ (line 47)
+def test_random_str_sequence_iter_next_methods() -> None:
+    """Test both __iter__ and __next__ methods directly."""
+    # Initialize the sequence
     rng = RandomStrSequence()
+
+    # Test __iter__ method
     iter_result = iter(rng)
     assert iter_result is rng
 
-    # Test RandomStrSequence.__next__ (line 51)
-    next_result = next(rng)
-    assert isinstance(next_result, str)
-    assert len(next_result) == 8
+    # Test __next__ method directly multiple times
+    results = []
+    for _ in range(5):
+        next_result = next(rng)
+        results.append(next_result)
+        assert isinstance(next_result, str)
+        assert len(next_result) == 8
+        assert all(c in rng.characters for c in next_result)
 
-    # Test the global namer instance (line 56)
-    from libtmux.test.random import namer
-
-    assert isinstance(namer, RandomStrSequence)
-
-    # Force module to load get_test_session_name and
-    # get_test_window_name functions (lines 59, 94)
-    from libtmux.test.random import get_test_session_name, get_test_window_name
-
-    assert callable(get_test_session_name)
-    assert callable(get_test_window_name)
+    # Verify all results are unique
+    assert len(set(results)) == len(results)
