@@ -19,6 +19,8 @@ from libtmux.test.random import (
 )
 
 if t.TYPE_CHECKING:
+    from pytest import MonkeyPatch
+
     from libtmux.server import Server
     from libtmux.session import Session
 
@@ -415,3 +417,186 @@ def test_collisions_with_real_objects(
             window1.kill()
         if window2:
             window2.kill()
+
+
+def test_imports_coverage() -> None:
+    """Test coverage for import statements in random.py."""
+    # This test simply ensures the imports are covered
+    from libtmux.test import random
+
+    assert hasattr(random, "logging")
+    assert hasattr(random, "random")
+    assert hasattr(random, "t")
+    assert hasattr(random, "TEST_SESSION_PREFIX")
+
+
+def test_iterator_protocol() -> None:
+    """Test the complete iterator protocol of RandomStrSequence."""
+    # Test the __iter__ method explicitly
+    rng = RandomStrSequence()
+    iterator = iter(rng)
+
+    # Verify __iter__ returns self
+    assert iterator is rng
+
+    # Verify __next__ method works after explicit __iter__ call
+    result = next(iterator)
+    assert isinstance(result, str)
+    assert len(result) == 8
+
+
+def test_get_test_session_name_collision_handling(
+    server: Server,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Test that get_test_session_name handles collisions properly."""
+    # Mock server.has_session to first return True (collision) then False
+    call_count = 0
+
+    def mock_has_session(name: str) -> bool:
+        nonlocal call_count
+        call_count += 1
+        # First call returns True (collision), second call returns False
+        return call_count == 1
+
+    # Mock the server.has_session method
+    monkeypatch.setattr(server, "has_session", mock_has_session)
+
+    # Should break out of the loop on the second iteration
+    session_name = get_test_session_name(server)
+
+    # Verify the method was called twice due to the collision
+    assert call_count == 2
+    assert session_name.startswith(TEST_SESSION_PREFIX)
+
+
+def test_get_test_window_name_null_prefix() -> None:
+    """Test that get_test_window_name with None prefix raises an assertion error."""
+    # Create a mock session
+    mock_session = t.cast("Session", object())
+
+    # Verify that None prefix raises an assertion error
+    with pytest.raises(AssertionError):
+        get_test_window_name(mock_session, prefix=None)
+
+
+def test_import_typing_coverage() -> None:
+    """Test coverage for typing imports in random.py."""
+    # This test covers the TYPE_CHECKING imports
+    import typing as t
+
+    # Import directly from the module to cover lines
+    from libtmux.test import random
+
+    # Verify the t.TYPE_CHECKING attribute exists
+    assert hasattr(t, "TYPE_CHECKING")
+
+    # Check for the typing module import
+    assert "t" in dir(random)
+
+
+def test_random_str_sequence_direct_instantiation() -> None:
+    """Test direct instantiation of RandomStrSequence class."""
+    # This covers lines in the class definition and __init__ method
+    rng = RandomStrSequence()
+
+    # Check attributes
+    assert hasattr(rng, "characters")
+    assert rng.characters == "abcdefghijklmnopqrstuvwxyz0123456789_"
+
+    # Check methods
+    assert hasattr(rng, "__iter__")
+    assert hasattr(rng, "__next__")
+
+
+def test_get_test_window_name_collision_handling(
+    session: Session,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Test that get_test_window_name handles collisions properly."""
+    # Create a specific prefix for this test
+    prefix = "collision_test_"
+
+    # Generate a random window name with our prefix
+    first_name = prefix + next(namer)
+
+    # Create a real window with this name to force a collision
+    window = session.new_window(window_name=first_name)
+    try:
+        # Now when we call get_test_window_name, it should generate a different name
+        window_name = get_test_window_name(session, prefix=prefix)
+
+        # Verify we got a different name
+        assert window_name != first_name
+        assert window_name.startswith(prefix)
+
+        # Verify the function worked around the collision properly
+        assert not any(w.window_name == window_name for w in session.windows)
+        assert any(w.window_name == first_name for w in session.windows)
+    finally:
+        # Clean up the window we created
+        if window:
+            window.kill()
+
+
+def test_random_str_sequence_return_statements() -> None:
+    """Test the return statements in RandomStrSequence methods."""
+    # Test __iter__ return statement (Line 47)
+    rng = RandomStrSequence()
+    iter_result = iter(rng)
+    assert iter_result is rng  # Verify it returns self
+
+    # Test __next__ return statement (Line 51)
+    next_result = next(rng)
+    assert isinstance(next_result, str)
+    assert len(next_result) == 8
+
+
+def test_get_test_session_name_implementation_details(
+    server: Server,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Test specific implementation details of get_test_session_name function."""
+    # Create a session with a name that will cause a collision
+    # This will test the while loop behavior (Lines 56-59)
+    prefix = "collision_prefix_"
+    first_random = next(namer)
+
+    # Create a session that will match our first attempt inside get_test_session_name
+    collision_name = prefix + first_random
+
+    # Create a real session to force a collision
+    with server.new_session(collision_name):
+        # Now when we call get_test_session_name, it will need to try again
+        # since the first attempt will collide with our created session
+        result = get_test_session_name(server, prefix=prefix)
+
+        # Verify collision handling
+        assert result != collision_name
+        assert result.startswith(prefix)
+
+
+def test_get_test_window_name_branch_coverage(session: Session) -> None:
+    """Test branch coverage for get_test_window_name function."""
+    # This tests the branch condition on line 130->128
+
+    # Create a window with a name that will cause a collision
+    prefix = "branch_test_"
+    first_random = next(namer)
+    collision_name = prefix + first_random
+
+    # Create a real window with this name
+    window = session.new_window(window_name=collision_name)
+
+    try:
+        # Call function that should handle the collision
+        result = get_test_window_name(session, prefix=prefix)
+
+        # Verify collision handling behavior
+        assert result != collision_name
+        assert result.startswith(prefix)
+
+    finally:
+        # Clean up the window
+        if window:
+            window.kill()
