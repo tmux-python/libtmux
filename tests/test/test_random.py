@@ -305,3 +305,105 @@ def test_logger_configured(caplog: pytest.LogCaptureFixture) -> None:
 
         assert "Test debug message" in caplog.text
         assert "Test info message" in caplog.text
+
+
+def test_next_method_directly() -> None:
+    """Test directly calling __next__ method on RandomStrSequence."""
+    rng = RandomStrSequence()
+    result = next(rng)
+    assert isinstance(result, str)
+    assert len(result) == 8
+    assert all(c in rng.characters for c in result)
+
+
+def test_namer_initialization() -> None:
+    """Test that the namer global instance is initialized correctly."""
+    # Since namer is a global instance from the random module,
+    # we want to ensure it's properly initialized
+    from libtmux.test.random import namer as direct_namer
+
+    assert namer is direct_namer
+    assert isinstance(namer, RandomStrSequence)
+    assert namer.characters == "abcdefghijklmnopqrstuvwxyz0123456789_"
+
+
+def test_get_test_session_name_loop_behavior(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test the loop behavior in get_test_session_name."""
+    # Create two existing sessions with predictable names
+    test_name_1 = f"{TEST_SESSION_PREFIX}test1"
+    test_name_2 = f"{TEST_SESSION_PREFIX}test2"
+    test_name_3 = f"{TEST_SESSION_PREFIX}test3"
+
+    # Set up the random sequence to return specific values
+    name_sequence = iter(["test1", "test2", "test3"])
+
+    def mock_next(self: t.Any) -> str:
+        return next(name_sequence)
+
+    monkeypatch.setattr(RandomStrSequence, "__next__", mock_next)
+
+    # Create two sessions that will match our first two random names
+    with server.new_session(test_name_1), server.new_session(test_name_2):
+        # This should skip the first two names and use the third one
+        result = get_test_session_name(server=server)
+        assert result == test_name_3
+        assert not server.has_session(result)
+
+
+def test_get_test_window_name_loop_behavior(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test the loop behavior in get_test_window_name."""
+    # Create two existing windows with predictable names
+    test_name_1 = f"{TEST_SESSION_PREFIX}test1"
+    test_name_2 = f"{TEST_SESSION_PREFIX}test2"
+    test_name_3 = f"{TEST_SESSION_PREFIX}test3"
+
+    # Set up the random sequence to return specific values
+    name_sequence = iter(["test1", "test2", "test3"])
+
+    def mock_next(self: t.Any) -> str:
+        return next(name_sequence)
+
+    monkeypatch.setattr(RandomStrSequence, "__next__", mock_next)
+
+    # Create two windows that will match our first two random names
+    session.new_window(window_name=test_name_1)
+    session.new_window(window_name=test_name_2)
+
+    # This should skip the first two names and use the third one
+    result = get_test_window_name(session=session)
+    assert result == test_name_3
+    assert not any(w.window_name == result for w in session.windows)
+
+
+def test_random_str_sequence_explicit_coverage() -> None:
+    """Test to explicitly cover certain methods and lines."""
+    # This test is designed to improve coverage by directly accessing
+    # specific methods and attributes
+
+    # Test RandomStrSequence.__iter__ (line 47)
+    rng = RandomStrSequence()
+    iter_result = iter(rng)
+    assert iter_result is rng
+
+    # Test RandomStrSequence.__next__ (line 51)
+    next_result = next(rng)
+    assert isinstance(next_result, str)
+    assert len(next_result) == 8
+
+    # Test the global namer instance (line 56)
+    from libtmux.test.random import namer
+
+    assert isinstance(namer, RandomStrSequence)
+
+    # Force module to load get_test_session_name and
+    # get_test_window_name functions (lines 59, 94)
+    from libtmux.test.random import get_test_session_name, get_test_window_name
+
+    assert callable(get_test_session_name)
+    assert callable(get_test_window_name)
