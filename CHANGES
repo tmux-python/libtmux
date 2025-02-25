@@ -15,6 +15,54 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+### Breaking
+
+#### Imports removed from libtmux.test (#580)
+
+Root-level of imports from `libtmux.test` are no longer possible.
+
+```python
+# Before 0.46.0
+from libtmux.test import namer
+```
+
+```python
+# From 0.46.0 onward
+from libtmux.test.named import namer
+```
+
+Same thing with constants:
+
+```python
+# Before 0.46.0
+from libtmux.test import (
+  RETRY_INTERVAL_SECONDS,
+  RETRY_TIMEOUT_SECONDS,
+  TEST_SESSION_PREFIX
+)
+```
+
+```python
+# From 0.46.0 onward
+from libtmux.test.constants import (
+  RETRY_INTERVAL_SECONDS,
+  RETRY_TIMEOUT_SECONDS,
+  TEST_SESSION_PREFIX
+)
+```
+
+### Development
+
+#### Test helpers: Increased coverage (#580)
+
+Several improvements to the test helper modules:
+
+- Enhanced `EnvironmentVarGuard` in `libtmux.test.environment` to better handle variable cleanup
+- Added comprehensive test suites for test constants and environment utilities
+- Improved docstrings and examples in `libtmux.test.random` with test coverage annotations
+- Fixed potential issues with environment variable handling during tests
+- Added proper coverage markers to exclude type checking blocks from coverage reports
+
 ## libtmux 0.45.0 (2025-02-23)
 
 ### Breaking Changes
