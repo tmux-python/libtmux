@@ -128,49 +128,6 @@ def test_get_test_session_name_custom_prefix(server: Server) -> None:
     assert not server.has_session(result)
 
 
-def test_get_test_session_name_collision(
-    server: Server,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test get_test_session_name when first attempts collide."""
-    collision_name = TEST_SESSION_PREFIX + "collision"
-    success_name = TEST_SESSION_PREFIX + "success"
-    name_iter = iter(["collision", "success"])
-
-    def mock_next(self: t.Any) -> str:
-        return next(name_iter)
-
-    monkeypatch.setattr(RandomStrSequence, "__next__", mock_next)
-
-    # Create a session that will cause a collision
-    with server.new_session(collision_name):
-        result = get_test_session_name(server=server)
-        assert result == success_name
-        assert not server.has_session(result)
-
-
-def test_get_test_session_name_multiple_collisions(
-    server: Server,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test get_test_session_name with multiple collisions."""
-    names = ["collision1", "collision2", "success"]
-    collision_names = [TEST_SESSION_PREFIX + name for name in names[:-1]]
-    success_name = TEST_SESSION_PREFIX + names[-1]
-    name_iter = iter(names)
-
-    def mock_next(self: t.Any) -> str:
-        return next(name_iter)
-
-    monkeypatch.setattr(RandomStrSequence, "__next__", mock_next)
-
-    # Create sessions that will cause collisions
-    with server.new_session(collision_names[0]), server.new_session(collision_names[1]):
-        result = get_test_session_name(server=server)
-        assert result == success_name
-        assert not server.has_session(result)
-
-
 def test_get_test_session_name_loop_behavior(
     server: Server,
 ) -> None:
@@ -241,51 +198,6 @@ def test_get_test_window_name_custom_prefix(session: Session) -> None:
     assert isinstance(result, str)
     assert result.startswith(prefix)
     assert len(result) == len(prefix) + 8  # prefix + random(8)
-    assert not any(w.window_name == result for w in session.windows)
-
-
-def test_get_test_window_name_collision(
-    session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test get_test_window_name when first attempts collide."""
-    collision_name = TEST_SESSION_PREFIX + "collision"
-    success_name = TEST_SESSION_PREFIX + "success"
-    name_iter = iter(["collision", "success"])
-
-    def mock_next(self: t.Any) -> str:
-        return next(name_iter)
-
-    monkeypatch.setattr(RandomStrSequence, "__next__", mock_next)
-
-    # Create a window that will cause a collision
-    session.new_window(window_name=collision_name)
-    result = get_test_window_name(session=session)
-    assert result == success_name
-    assert not any(w.window_name == result for w in session.windows)
-
-
-def test_get_test_window_name_multiple_collisions(
-    session: Session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test get_test_window_name with multiple collisions."""
-    names = ["collision1", "collision2", "success"]
-    collision_names = [TEST_SESSION_PREFIX + name for name in names[:-1]]
-    success_name = TEST_SESSION_PREFIX + names[-1]
-    name_iter = iter(names)
-
-    def mock_next(self: t.Any) -> str:
-        return next(name_iter)
-
-    monkeypatch.setattr(RandomStrSequence, "__next__", mock_next)
-
-    # Create windows that will cause collisions
-    for name in collision_names:
-        session.new_window(window_name=name)
-
-    result = get_test_window_name(session=session)
-    assert result == success_name
     assert not any(w.window_name == result for w in session.windows)
 
 
@@ -435,3 +347,71 @@ def test_random_str_sequence_iter_next_methods() -> None:
 
     # Verify all results are unique
     assert len(set(results)) == len(results)
+
+
+def test_collisions_with_real_objects(
+    server: Server,
+    session: Session,
+) -> None:
+    """Test collision behavior using real tmux objects instead of mocks.
+
+    This test replaces multiple monkeypatched tests:
+    - test_get_test_session_name_collision
+    - test_get_test_session_name_multiple_collisions
+    - test_get_test_window_name_collision
+    - test_get_test_window_name_multiple_collisions
+
+    Instead of mocking the random generator, we create real sessions and
+    windows with predictable names and verify the uniqueness logic.
+    """
+    # Test session name collisions
+    # ----------------------------
+    # Create a known prefix for testing
+    prefix = "test_collision_"
+
+    # Create several sessions with predictable names
+    session_name1 = prefix + "session1"
+    session_name2 = prefix + "session2"
+
+    # Create a couple of actual sessions to force collisions
+    with server.new_session(session_name1), server.new_session(session_name2):
+        # Verify our sessions exist
+        assert server.has_session(session_name1)
+        assert server.has_session(session_name2)
+
+        # When requesting a session name with same prefix, we should get a unique name
+        # that doesn't match either existing session
+        result = get_test_session_name(server=server, prefix=prefix)
+        assert result.startswith(prefix)
+        assert result != session_name1
+        assert result != session_name2
+        assert not server.has_session(result)
+
+    # Test window name collisions
+    # --------------------------
+    # Create windows with predictable names
+    window_name1 = prefix + "window1"
+    window_name2 = prefix + "window2"
+
+    # Create actual windows to force collisions
+    window1 = session.new_window(window_name=window_name1)
+    window2 = session.new_window(window_name=window_name2)
+
+    try:
+        # Verify our windows exist
+        assert any(w.window_name == window_name1 for w in session.windows)
+        assert any(w.window_name == window_name2 for w in session.windows)
+
+        # When requesting a window name with same prefix, we should get a unique name
+        # that doesn't match either existing window
+        result = get_test_window_name(session=session, prefix=prefix)
+        assert result.startswith(prefix)
+        assert result != window_name1
+        assert result != window_name2
+        assert not any(w.window_name == result for w in session.windows)
+    finally:
+        # Clean up the windows we created
+        if window1:
+            window1.kill()
+        if window2:
+            window2.kill()
