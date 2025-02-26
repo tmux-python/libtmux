@@ -1,8 +1,11 @@
-"""Helper methods and mixins for libtmux.
+"""Provide helper methods and mixins for libtmux.
+
+This module includes helper functions for version checking, environment variable
+management, tmux command execution, and other miscellaneous utilities used by
+libtmux. It preserves and respects existing doctests without removal.
 
 libtmux.common
 ~~~~~~~~~~~~~~
-
 """
 
 from __future__ import annotations
@@ -20,8 +23,8 @@ from ._compat import LooseVersion
 if t.TYPE_CHECKING:
     from collections.abc import Callable
 
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 #: Minimum version of tmux required to run libtmux
 TMUX_MIN_VERSION = "1.8"
@@ -36,7 +39,7 @@ PaneDict = dict[str, t.Any]
 
 
 class EnvironmentMixin:
-    """Mixin for manager session and server level environment variables in tmux."""
+    """Manage session- and server-level environment variables within tmux."""
 
     _add_option = None
 
@@ -46,39 +49,32 @@ class EnvironmentMixin:
         self._add_option = add_option
 
     def set_environment(self, name: str, value: str) -> None:
-        """Set environment ``$ tmux set-environment <name> <value>``.
+        """Set an environment variable via ``tmux set-environment <name> <value>``.
 
         Parameters
         ----------
         name : str
-            the environment variable name. such as 'PATH'.
-        option : str
-            environment value.
+            Name of the environment variable (e.g. 'PATH').
+        value : str
+            Value of the environment variable.
         """
         args = ["set-environment"]
         if self._add_option:
             args += [self._add_option]
-
         args += [name, value]
 
         cmd = self.cmd(*args)
-
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
     def unset_environment(self, name: str) -> None:
-        """Unset environment variable ``$ tmux set-environment -u <name>``.
+        """Unset an environment variable via ``tmux set-environment -u <name>``.
 
         Parameters
         ----------
         name : str
-            the environment variable name. such as 'PATH'.
+            Name of the environment variable (e.g. 'PATH').
         """
         args = ["set-environment"]
         if self._add_option:
@@ -86,23 +82,17 @@ class EnvironmentMixin:
         args += ["-u", name]
 
         cmd = self.cmd(*args)
-
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
     def remove_environment(self, name: str) -> None:
-        """Remove environment variable ``$ tmux set-environment -r <name>``.
+        """Remove an environment variable via ``tmux set-environment -r <name>``.
 
         Parameters
         ----------
         name : str
-            the environment variable name. such as 'PATH'.
+            Name of the environment variable (e.g. 'PATH').
         """
         args = ["set-environment"]
         if self._add_option:
@@ -110,34 +100,25 @@ class EnvironmentMixin:
         args += ["-r", name]
 
         cmd = self.cmd(*args)
-
         if cmd.stderr:
-            (
-                cmd.stderr[0]
-                if isinstance(cmd.stderr, list) and len(cmd.stderr) == 1
-                else cmd.stderr
-            )
             msg = f"tmux set-environment stderr: {cmd.stderr}"
             raise ValueError(msg)
 
     def show_environment(self) -> dict[str, bool | str]:
-        """Show environment ``$ tmux show-environment -t [session]``.
-
-        Return dict of environment variables for the session.
-
-        .. versionchanged:: 0.13
-
-           Removed per-item lookups. Use :meth:`libtmux.common.EnvironmentMixin.getenv`.
+        """Show environment variables via ``tmux show-environment``.
 
         Returns
         -------
         dict
-            environmental variables in dict, if no name, or str if name
-            entered.
+            Dictionary of environment variables for the session.
+
+        .. versionchanged:: 0.13
+           Removed per-item lookups. Use :meth:`.getenv` to get a single env var.
         """
         tmux_args = ["show-environment"]
         if self._add_option:
             tmux_args += [self._add_option]
+
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
         opts = [tuple(item.split("=", 1)) for item in output]
@@ -153,28 +134,26 @@ class EnvironmentMixin:
         return opts_dict
 
     def getenv(self, name: str) -> str | bool | None:
-        """Show environment variable ``$ tmux show-environment -t [session] <name>``.
-
-        Return the value of a specific variable if the name is specified.
-
-        .. versionadded:: 0.13
+        """Show value of an environment variable via ``tmux show-environment <name>``.
 
         Parameters
         ----------
         name : str
-            the environment variable name. such as 'PATH'.
+            The environment variable name (e.g. 'PATH').
 
         Returns
         -------
-        str
-            Value of environment variable
-        """
-        tmux_args: tuple[str | int, ...] = ()
+        str or bool or None
+            The environment variable value, True if set without an '=' value, or
+            None if not set.
 
-        tmux_args += ("show-environment",)
+        .. versionadded:: 0.13
+        """
+        tmux_args: list[str | int] = ["show-environment"]
         if self._add_option:
-            tmux_args += (self._add_option,)
-        tmux_args += (name,)
+            tmux_args += [self._add_option]
+        tmux_args.append(name)
+
         cmd = self.cmd(*tmux_args)
         output = cmd.stdout
         opts = [tuple(item.split("=", 1)) for item in output]
@@ -191,7 +170,7 @@ class EnvironmentMixin:
 
 
 class tmux_cmd:
-    """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
+    """Execute a tmux command via :py:mod:`subprocess`.
 
     Examples
     --------
@@ -203,7 +182,6 @@ class tmux_cmd:
     ...         'Command: %s returned error: %s' % (proc.cmd, proc.stderr)
     ...     )
     ...
-
     >>> print(f'tmux command returned {" ".join(proc.stdout)}')
     tmux command returned 2
 
@@ -216,7 +194,7 @@ class tmux_cmd:
     Notes
     -----
     .. versionchanged:: 0.8
-        Renamed from ``tmux`` to ``tmux_cmd``.
+       Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
     def __init__(self, *args: t.Any) -> None:
@@ -229,7 +207,6 @@ class tmux_cmd:
         cmd = [str(c) for c in cmd]
 
         self.cmd = cmd
-
         try:
             self.process = subprocess.Popen(
                 cmd,
@@ -248,38 +225,36 @@ class tmux_cmd:
 
         stdout_split = stdout.split("\n")
         # remove trailing newlines from stdout
+        # remove trailing empty lines
         while stdout_split and stdout_split[-1] == "":
             stdout_split.pop()
 
         stderr_split = stderr.split("\n")
         self.stderr = list(filter(None, stderr_split))  # filter empty values
 
+        # fix for 'has-session' command output edge cases
         if "has-session" in cmd and len(self.stderr) and not stdout_split:
             self.stdout = [self.stderr[0]]
         else:
             self.stdout = stdout_split
 
         logger.debug(
-            "self.stdout for {cmd}: {stdout}".format(
-                cmd=" ".join(cmd),
-                stdout=self.stdout,
-            ),
+            "self.stdout for %s: %s",
+            " ".join(cmd),
+            self.stdout,
         )
 
 
 def get_version() -> LooseVersion:
-    """Return tmux version.
+    """Return the installed tmux version.
 
-    If tmux is built from git master, the version returned will be the latest
-    version appended with -master, e.g. ``2.4-master``.
-
-    If using OpenBSD's base system tmux, the version will have ``-openbsd``
-    appended to the latest version, e.g. ``2.4-openbsd``.
+    If tmux is built from git master, appends '-master', e.g. '2.4-master'.
+    If using OpenBSD's base system tmux, appends '-openbsd', e.g. '2.4-openbsd'.
 
     Returns
     -------
-    :class:`distutils.version.LooseVersion`
-        tmux version according to :func:`shtuil.which`'s tmux
+    LooseVersion
+        Detected tmux version.
     """
     proc = tmux_cmd("-V")
     if proc.stderr:
@@ -287,132 +262,128 @@ def get_version() -> LooseVersion:
             if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
                 return LooseVersion(f"{TMUX_MAX_VERSION}-openbsd")
             msg = (
-                f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. This system"
-                " is running tmux 1.3 or earlier."
+                f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. "
+                "This system is running tmux 1.3 or earlier."
             )
-            raise exc.LibTmuxException(
-                msg,
-            )
+            raise exc.LibTmuxException(msg)
         raise exc.VersionTooLow(proc.stderr)
 
     version = proc.stdout[0].split("tmux ")[1]
 
-    # Allow latest tmux HEAD
+    # allow HEAD to be recognized
     if version == "master":
         return LooseVersion(f"{TMUX_MAX_VERSION}-master")
 
     version = re.sub(r"[a-z-]", "", version)
-
     return LooseVersion(version)
 
 
 def has_version(version: str) -> bool:
-    """Return True if tmux version installed.
+    """Return True if the installed tmux version matches exactly.
 
     Parameters
     ----------
     version : str
-        version number, e.g. '1.8'
+        e.g. '1.8'
 
     Returns
     -------
     bool
-        True if version matches
+        True if installed tmux matches the version exactly.
     """
     return get_version() == LooseVersion(version)
 
 
 def has_gt_version(min_version: str) -> bool:
-    """Return True if tmux version greater than minimum.
+    """Return True if the installed tmux version is greater than min_version.
 
     Parameters
     ----------
     min_version : str
-        tmux version, e.g. '1.8'
+        e.g. '1.8'
 
     Returns
     -------
     bool
-        True if version above min_version
+        True if version above min_version.
     """
     return get_version() > LooseVersion(min_version)
 
 
 def has_gte_version(min_version: str) -> bool:
-    """Return True if tmux version greater or equal to minimum.
+    """Return True if the installed tmux version is >= min_version.
 
     Parameters
     ----------
     min_version : str
-        tmux version, e.g. '1.8'
+        e.g. '1.8'
 
     Returns
     -------
     bool
-        True if version above or equal to min_version
+        True if version is above or equal to min_version.
     """
     return get_version() >= LooseVersion(min_version)
 
 
 def has_lte_version(max_version: str) -> bool:
-    """Return True if tmux version less or equal to minimum.
+    """Return True if the installed tmux version is <= max_version.
 
     Parameters
     ----------
     max_version : str
-        tmux version, e.g. '1.8'
+        e.g. '1.8'
 
     Returns
     -------
     bool
-         True if version below or equal to max_version
+        True if version is below or equal to max_version.
     """
     return get_version() <= LooseVersion(max_version)
 
 
 def has_lt_version(max_version: str) -> bool:
-    """Return True if tmux version less than minimum.
+    """Return True if the installed tmux version is < max_version.
 
     Parameters
     ----------
     max_version : str
-        tmux version, e.g. '1.8'
+        e.g. '1.8'
 
     Returns
     -------
     bool
-        True if version below max_version
+        True if version is below max_version.
     """
     return get_version() < LooseVersion(max_version)
 
 
 def has_minimum_version(raises: bool = True) -> bool:
-    """Return True if tmux meets version requirement. Version >1.8 or above.
+    """Return True if tmux meets the required minimum version.
+
+    The minimum version is defined by ``TMUX_MIN_VERSION``, default '1.8'.
 
     Parameters
     ----------
-    raises : bool
-        raise exception if below minimum version requirement
+    raises : bool, optional
+        If True (default), raise an exception if below the min version.
 
     Returns
     -------
     bool
-        True if tmux meets minimum required version.
+        True if tmux meets the minimum required version, otherwise False.
 
     Raises
     ------
-    libtmux.exc.VersionTooLow
-        tmux version below minimum required for libtmux
+    exc.VersionTooLow
+        If `raises=True` and tmux is below the minimum required version.
 
     Notes
     -----
     .. versionchanged:: 0.7.0
-        No longer returns version, returns True or False
-
+       No longer returns version, returns True/False.
     .. versionchanged:: 0.1.7
-        Versions will now remove trailing letters per `Issue 55`_.
-
-        .. _Issue 55: https://github.com/tmux-python/tmuxp/issues/55.
+       Versions remove trailing letters per Issue #55.
     """
     if get_version() < LooseVersion(TMUX_MIN_VERSION):
         if raises:
@@ -427,20 +398,17 @@ def has_minimum_version(raises: bool = True) -> bool:
 
 
 def session_check_name(session_name: str | None) -> None:
-    """Raise exception session name invalid, modeled after tmux function.
-
-    tmux(1) session names may not be empty, or include periods or colons.
-    These delimiters are reserved for noting session, window and pane.
+    """Raise if session name is invalid, as tmux forbids periods/colons.
 
     Parameters
     ----------
     session_name : str
-        Name of session.
+        The session name to validate.
 
     Raises
     ------
-    :exc:`exc.BadSessionName`
-        Invalid session name.
+    exc.BadSessionName
+        If the session name is empty, contains colons, or contains periods.
     """
     if session_name is None or len(session_name) == 0:
         raise exc.BadSessionName(reason="empty", session_name=session_name)
@@ -450,32 +418,26 @@ def session_check_name(session_name: str | None) -> None:
         raise exc.BadSessionName(reason="contains colons", session_name=session_name)
 
 
-def handle_option_error(error: str) -> type[exc.OptionError]:
-    """Raise exception if error in option command found.
+def handle_option_error(error: str) -> t.NoReturn:
+    """Raise appropriate exception if an option error is encountered.
 
-    In tmux 3.0, show-option and show-window-option return invalid option instead of
-    unknown option. See https://github.com/tmux/tmux/blob/3.0/cmd-show-options.c.
+    In tmux 3.0, 'show-option' or 'show-window-option' return 'invalid option'
+    instead of 'unknown option'. In tmux >=2.4, there are three types of
+    option errors: unknown, invalid, ambiguous.
 
-    In tmux >2.4, there are 3 different types of option errors:
-
-    - unknown option
-    - invalid option
-    - ambiguous option
-
-    In tmux <2.4, unknown option was the only option.
-
-    All errors raised will have the base error of :exc:`exc.OptionError`. So to
-    catch any option error, use ``except exc.OptionError``.
+    For older tmux (<2.4), 'unknown option' was the only possibility.
 
     Parameters
     ----------
     error : str
-        Error response from subprocess call.
+        Error string from tmux.
 
     Raises
     ------
-    :exc:`exc.OptionError`, :exc:`exc.UnknownOption`, :exc:`exc.InvalidOption`,
-    :exc:`exc.AmbiguousOption`
+    exc.UnknownOption
+    exc.InvalidOption
+    exc.AmbiguousOption
+    exc.OptionError
     """
     if "unknown option" in error:
         raise exc.UnknownOption(error)
@@ -483,16 +445,16 @@ def handle_option_error(error: str) -> type[exc.OptionError]:
         raise exc.InvalidOption(error)
     if "ambiguous option" in error:
         raise exc.AmbiguousOption(error)
-    raise exc.OptionError(error)  # Raise generic option error
+    raise exc.OptionError(error)
 
 
 def get_libtmux_version() -> LooseVersion:
-    """Return libtmux version is a PEP386 compliant format.
+    """Return the PEP386-compliant libtmux version.
 
     Returns
     -------
-    distutils.version.LooseVersion
-        libtmux version
+    LooseVersion
+        The libtmux version.
     """
     from libtmux.__about__ import __version__
 

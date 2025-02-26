@@ -1,8 +1,12 @@
-"""Pythonization of the :ref:`tmux(1)` pane.
+"""Provide a Pythonic representation of the :ref:`tmux(1)` pane.
+
+The :class:`Pane` class models a single tmux pane, allowing commands to be
+sent directly to it, as well as traversal to related :class:`Window` and
+:class:`Session` objects. It offers convenience methods for splitting, resizing,
+and interacting with the pane's contents.
 
 libtmux.pane
 ~~~~~~~~~~~~
-
 """
 
 from __future__ import annotations
@@ -50,7 +54,9 @@ class Pane(Obj):
 
     Attributes
     ----------
-    window : :class:`Window`
+    server : Server
+    pane_id : str
+        For example '%1'.
 
     Examples
     --------
@@ -145,12 +151,9 @@ class Pane(Obj):
         )
         return cls(server=server, **pane)
 
-    #
-    # Relations
-    #
     @property
     def window(self) -> Window:
-        """Parent window of pane."""
+        """Return the parent :class:`Window` of this pane."""
         assert isinstance(self.window_id, str)
         from libtmux.window import Window
 
@@ -158,23 +161,35 @@ class Pane(Obj):
 
     @property
     def session(self) -> Session:
-        """Parent session of pane."""
+        """Return the parent :class:`Session` of this pane."""
         return self.window.session
 
-    """
-    Commands (pane-scoped)
-    """
-
+    #
+    # Commands (pane-scoped)
+    #
     def cmd(
         self,
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
     ) -> tmux_cmd:
-        """Execute tmux subcommand within pane context.
+        """Execute a tmux command in the context of this pane.
 
-        Automatically binds target by adding  ``-t`` for object's pane ID to the
-        command. Pass ``target`` to keyword arguments to override.
+        Automatically sets ``-t <pane_id>`` unless overridden by `target`.
+
+        Parameters
+        ----------
+        cmd
+            The tmux subcommand to run (e.g., 'split-window').
+        *args
+            Additional arguments for the tmux command.
+        target, optional
+            Custom target. Default is the current pane's ID.
+
+        Returns
+        -------
+        tmux_cmd
+            Result of the tmux command execution.
 
         Examples
         --------
@@ -183,75 +198,62 @@ class Pane(Obj):
 
         From raw output to an enriched `Pane` object:
 
-        >>> Pane.from_pane_id(pane_id=pane.cmd(
-        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=pane.server)
+        >>> Pane.from_pane_id(
+        ...     pane_id=pane.cmd('split-window', '-P', '-F#{pane_id}').stdout[0],
+        ...     server=pane.server
+        ... )
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
-
-        Parameters
-        ----------
-        target : str, optional
-            Optional custom target override. By default, the target is the pane ID.
-
-        Returns
-        -------
-        :meth:`server.cmd`
         """
         if target is None:
             target = self.pane_id
-
         return self.server.cmd(cmd, *args, target=target)
 
-    """
-    Commands (tmux-like)
-    """
-
+    #
+    # Commands (tmux-like)
+    #
     def resize(
         self,
         /,
-        # Adjustments
         adjustment_direction: ResizeAdjustmentDirection | None = None,
         adjustment: int | None = None,
-        # Manual
         height: str | int | None = None,
         width: str | int | None = None,
-        # Zoom
         zoom: bool | None = None,
-        # Mouse
         mouse: bool | None = None,
-        # Optional flags
         trim_below: bool | None = None,
     ) -> Pane:
-        """Resize tmux pane.
+        """Resize this tmux pane.
 
         Parameters
         ----------
         adjustment_direction : ResizeAdjustmentDirection, optional
-            direction to adjust, ``Up``, ``Down``, ``Left``, ``Right``.
-        adjustment : ResizeAdjustmentDirection, optional
-
-        height : int, optional
-            ``resize-pane -y`` dimensions
-        width : int, optional
-            ``resize-pane -x`` dimensions
-
-        zoom : bool
-            expand pane
-
-        mouse : bool
-            resize via mouse
-
-        trim_below : bool
-            trim below cursor
+            Direction to adjust, ``Up``, ``Down``, ``Left``, ``Right``.
+        adjustment : int, optional
+            Number of cells to move in the specified direction.
+        height : int or str, optional
+            ``resize-pane -y`` dimension, e.g. 20 or "50%".
+        width : int or str, optional
+            ``resize-pane -x`` dimension, e.g. 80 or "25%".
+        zoom : bool, optional
+            If True, expand (zoom) the pane to occupy the entire window.
+        mouse : bool, optional
+            If True, resize via mouse (``-M``).
+        trim_below : bool, optional
+            If True, trim below cursor (``-T``).
 
         Raises
         ------
-        :exc:`exc.LibTmuxException`,
-        :exc:`exc.PaneAdjustmentDirectionRequiresAdjustment`,
+        :exc:`exc.LibTmuxException`
+            If tmux reports an error.
+        :exc:`exc.PaneAdjustmentDirectionRequiresAdjustment`
+            If `adjustment_direction` is given but no `adjustment`.
         :exc:`exc.RequiresDigitOrPercentage`
+            If a provided dimension is neither a digit nor ends with "%".
 
         Returns
         -------
         :class:`Pane`
+            This pane.
 
         Notes
         -----
@@ -271,13 +273,13 @@ class Pane(Obj):
                 f"{RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP[adjustment_direction]}",
                 str(adjustment),
             )
+        # Manual resizing
         elif height or width:
-            # Manual resizing
             if height:
                 if isinstance(height, str):
                     if height.endswith("%") and not has_gte_version("3.1"):
                         raise exc.VersionTooLow
-                    if not height.isdigit() and not height.endswith("%"):
+                    if not (height.isdigit() or height.endswith("%")):
                         raise exc.RequiresDigitOrPercentage
                 tmux_args += (f"-y{height}",)
 
@@ -285,13 +287,13 @@ class Pane(Obj):
                 if isinstance(width, str):
                     if width.endswith("%") and not has_gte_version("3.1"):
                         raise exc.VersionTooLow
-                    if not width.isdigit() and not width.endswith("%"):
+                    if not (width.isdigit() or width.endswith("%")):
                         raise exc.RequiresDigitOrPercentage
-
                 tmux_args += (f"-x{width}",)
+        # Zoom / Unzoom
         elif zoom:
-            # Zoom / Unzoom
             tmux_args += ("-Z",)
+        # Mouse-based resize
         elif mouse:
             tmux_args += ("-M",)
 
@@ -299,7 +301,6 @@ class Pane(Obj):
             tmux_args += ("-T",)
 
         proc = self.cmd("resize-pane", *tmux_args)
-
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
@@ -311,29 +312,28 @@ class Pane(Obj):
         start: t.Literal["-"] | int | None = None,
         end: t.Literal["-"] | int | None = None,
     ) -> str | list[str]:
-        """Capture text from pane.
+        """Capture text from this pane (``tmux capture-pane -p``).
 
-        ``$ tmux capture-pane`` to pane.
-        ``$ tmux capture-pane -S -10`` to pane.
-        ``$ tmux capture-pane`-E 3` to pane.
-        ``$ tmux capture-pane`-S - -E -` to pane.
+        ``$ tmux capture-pane -S -10`` etc.
 
         Parameters
         ----------
-        start: [str,int]
-            Specify the starting line number.
-            Zero is the first line of the visible pane.
-            Positive numbers are lines in the visible pane.
-            Negative numbers are lines in the history.
-            `-` is the start of the history.
-            Default: None
-        end: [str,int]
-            Specify the ending line number.
-            Zero is the first line of the visible pane.
-            Positive numbers are lines in the visible pane.
-            Negative numbers are lines in the history.
-            `-` is the end of the visible pane
-            Default: None
+        start : int, '-', optional
+            Starting line number.
+        end : int, '-', optional
+            Ending line number.
+
+        Returns
+        -------
+        str or list[str]
+            The captured pane text as a list of lines (by default).
+
+        Examples
+        --------
+        Basic usage:
+
+        >>> pane.capture_pane()
+        [...]
         """
         cmd = ["capture-pane", "-p"]
         if start is not None:
@@ -349,25 +349,22 @@ class Pane(Obj):
         suppress_history: bool | None = False,
         literal: bool | None = False,
     ) -> None:
-        r"""``$ tmux send-keys`` to the pane.
+        r"""Send keys (as keyboard input) to this pane.
 
-        A leading space character is added to cmd to avoid polluting the
-        user's history.
+        A leading space character can be added to `cmd` to avoid polluting
+        the user's shell history.
 
         Parameters
         ----------
         cmd : str
-            Text or input into pane
+            Text or input to send.
         enter : bool, optional
-            Send enter after sending the input, default True.
+            If True, send Enter after the input (default).
         suppress_history : bool, optional
-            Prepend a space to command to suppress shell history, default False.
-
-            .. versionchanged:: 0.14
-
-               Default changed from True to False.
+            If True, prepend a space to the command, preventing it from
+            appearing in shell history. Default is False.
         literal : bool, optional
-            Send keys literally, default True.
+            If True, send keys literally (``-l``). Default is False.
 
         Examples
         --------
@@ -410,21 +407,24 @@ class Pane(Obj):
         cmd: str,
         get_text: bool = False,
     ) -> str | list[str] | None:
-        """Display message to pane.
+        """Display or retrieve a message in this pane.
 
-        Displays a message in target-client status line.
+        Uses ``$ tmux display-message``.
 
         Parameters
         ----------
         cmd : str
-            Special parameters to request from pane.
+            The message or format string to display.
         get_text : bool, optional
-            Returns only text without displaying a message in
-            target-client status line.
+            If True, return the text instead of displaying it.
+
+        Returns
+        -------
+        str, list[str], or None
+            The displayed text if `get_text` is True, else None.
         """
         if get_text:
             return self.cmd("display-message", "-p", cmd).stdout
-
         self.cmd("display-message", cmd)
         return None
 
@@ -432,9 +432,17 @@ class Pane(Obj):
         self,
         all_except: bool | None = None,
     ) -> None:
-        """Kill :class:`Pane`.
+        """Kill this :class:`Pane` (``tmux kill-pane``).
 
-        ``$ tmux kill-pane``.
+        Parameters
+        ----------
+        all_except : bool, optional
+            If True, kill all panes except this one.
+
+        Raises
+        ------
+        exc.LibTmuxException
+            If tmux reports an error.
 
         Examples
         --------
@@ -472,27 +480,28 @@ class Pane(Obj):
         True
         """
         flags: tuple[str, ...] = ()
-
         if all_except:
             flags += ("-a",)
 
-        proc = self.cmd(
-            "kill-pane",
-            *flags,
-        )
-
+        proc = self.cmd("kill-pane", *flags)
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    """
-    Commands ("climber"-helpers)
-
-    These are commands that climb to the parent scope's methods with
-    additional scoped window info.
-    """
-
+    #
+    # "Climber"-helpers
+    #
     def select(self) -> Pane:
-        """Select pane.
+        """Select this pane (make it the active pane in its window).
+
+        Returns
+        -------
+        Pane
+            This :class:`Pane`.
+
+        Raises
+        ------
+        exc.LibTmuxException
+            If tmux reports an error.
 
         Examples
         --------
@@ -516,22 +525,16 @@ class Pane(Obj):
         True
         """
         proc = self.cmd("select-pane")
-
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
-
         self.refresh()
-
         return self
 
     def select_pane(self) -> Pane:
-        """Select pane.
+        """Select this pane (deprecated).
 
-        Notes
-        -----
         .. deprecated:: 0.30
-
-           Deprecated in favor of :meth:`.select()`.
+           Use :meth:`.select()`.
         """
         warnings.warn(
             "Pane.select_pane() is deprecated in favor of Pane.select()",
@@ -557,34 +560,33 @@ class Pane(Obj):
         size: str | int | None = None,
         environment: dict[str, str] | None = None,
     ) -> Pane:
-        """Split window and return :class:`Pane`, by default beneath current pane.
+        """Split this pane, returning a new :class:`Pane`.
+
+        By default, splits beneath the current pane. Specify a direction to
+        split horizontally or vertically, a size, and optionally run a shell
+        command in the new pane.
 
         Parameters
         ----------
-        target : optional
-            Optional, custom *target-pane*, used by :meth:`Window.split`.
-        attach : bool, optional
-            make new window the current window after creating it, default
-            True.
+        target : int or str, optional
+            Custom *target-pane*. Defaults to this pane's ID.
         start_directory : str, optional
-            specifies the working directory in which the new window is created.
+            Working directory for the new pane.
+        attach : bool, optional
+            If True, select the new pane immediately (default is False).
         direction : PaneDirection, optional
-            split in direction. If none is specified, assume down.
-        full_window_split: bool, optional
-            split across full window width or height, rather than active pane.
-        zoom: bool, optional
-            expand pane
+            Direction to split, e.g. :attr:`PaneDirection.Right`.
+        full_window_split : bool, optional
+            If True, split across the entire window height/width.
+        zoom : bool, optional
+            If True, zoom the new pane (``-Z``).
         shell : str, optional
-            execute a command on splitting the window.  The pane will close
-            when the command exits.
-
-            NOTE: When this command exits the pane will close.  This feature
-            is useful for long-running processes where the closing of the
-            window upon completion is desired.
-        size: int, optional
-            Cell/row or percentage to occupy with respect to current window.
-        environment: dict, optional
-            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+            Command to run immediately in the new pane. The pane closes when
+            the command exits.
+        size : int or str, optional
+            Size for the new pane (cells or percentage).
+        environment : dict, optional
+            Environment variables for the new pane (tmux 3.0+).
 
         Examples
         --------
@@ -623,7 +625,8 @@ class Pane(Obj):
 
         >>> pane = session.new_window().active_pane
 
-        >>> top_pane = pane.split(direction=PaneDirection.Above, full_window_split=True)
+        >>> top_pane = pane.split(direction=PaneDirection.Above,
+        ...                       full_window_split=True)
 
         >>> (top_pane.at_left, top_pane.at_right,
         ...  top_pane.at_top, top_pane.at_bottom)
@@ -631,16 +634,15 @@ class Pane(Obj):
         True, False)
 
         >>> bottom_pane = pane.split(
-        ... direction=PaneDirection.Below,
-        ... full_window_split=True)
+        ...     direction=PaneDirection.Below,
+        ...     full_window_split=True)
 
         >>> (bottom_pane.at_left, bottom_pane.at_right,
         ...  bottom_pane.at_top, bottom_pane.at_bottom)
         (True, True,
         False, True)
         """
-        tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
-
+        tmux_formats = [f"#{'{'}pane_id{'}'}{FORMAT_SEPARATOR}"]
         tmux_args: tuple[str, ...] = ()
 
         if direction:
@@ -654,7 +656,7 @@ class Pane(Obj):
                     tmux_args += (f"-p{str(size).rstrip('%')}",)
                 else:
                     warnings.warn(
-                        'Ignored size. Use percent in tmux < 3.1, e.g. "size=50%"',
+                        'Ignored size. Use percent in tmux < 3.1, e.g. "50%"',
                         stacklevel=2,
                     )
             else:
@@ -662,14 +664,12 @@ class Pane(Obj):
 
         if full_window_split:
             tmux_args += ("-f",)
-
         if zoom:
             tmux_args += ("-Z",)
 
-        tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
+        tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))
 
         if start_directory is not None:
-            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
             start_path = pathlib.Path(start_directory).expanduser()
             tmux_args += (f"-c{start_path}",)
 
@@ -689,12 +689,9 @@ class Pane(Obj):
             tmux_args += (shell,)
 
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
-
-        # tmux < 1.7. This is added in 1.7.
         if pane_cmd.stderr:
             if "pane too small" in pane_cmd.stderr:
                 raise exc.LibTmuxException(pane_cmd.stderr)
-
             raise exc.LibTmuxException(
                 pane_cmd.stderr,
                 self.__dict__,
@@ -702,52 +699,34 @@ class Pane(Obj):
             )
 
         pane_output = pane_cmd.stdout[0]
-
         pane_formatters = dict(zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR)))
-
         return self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
 
-    """
-    Commands (helpers)
-    """
-
+    #
+    # Commands (helpers)
+    #
     def set_width(self, width: int) -> Pane:
-        """Set pane width.
-
-        Parameters
-        ----------
-        width : int
-            pane width, in cells
-        """
+        """Set pane width in cells."""
         self.resize_pane(width=width)
         return self
 
     def set_height(self, height: int) -> Pane:
-        """Set pane height.
-
-        Parameters
-        ----------
-        height : int
-            height of pain, in cells
-        """
+        """Set pane height in cells."""
         self.resize_pane(height=height)
         return self
 
     def enter(self) -> Pane:
-        """Send carriage return to pane.
-
-        ``$ tmux send-keys`` send Enter to the pane.
-        """
+        """Send an Enter keypress to this pane."""
         self.cmd("send-keys", "Enter")
         return self
 
     def clear(self) -> Pane:
-        """Clear pane."""
+        """Clear the pane by sending 'reset' command."""
         self.send_keys("reset")
         return self
 
     def reset(self) -> Pane:
-        """Reset and clear pane history."""
+        """Reset the pane and clear its history."""
         self.cmd("send-keys", r"-R \; clear-history")
         return self
 
@@ -755,13 +734,13 @@ class Pane(Obj):
     # Dunder
     #
     def __eq__(self, other: object) -> bool:
-        """Equal operator for :class:`Pane` object."""
+        """Compare two panes by their ``pane_id``."""
         if isinstance(other, Pane):
             return self.pane_id == other.pane_id
         return False
 
     def __repr__(self) -> str:
-        """Representation of :class:`Pane` object."""
+        """Return a string representation of this :class:`Pane`."""
         return f"{self.__class__.__name__}({self.pane_id} {self.window})"
 
     #
@@ -876,27 +855,31 @@ class Pane(Obj):
         size: str | int | None = None,
         percent: int | None = None,  # deprecated
         environment: dict[str, str] | None = None,
-    ) -> Pane:  # New Pane, not self
-        """Split window at pane and return newly created :class:`Pane`.
+    ) -> Pane:
+        """Split this pane and return the newly created :class:`Pane` (deprecated).
+
+        .. deprecated:: 0.33
+           Use :meth:`.split`.
 
         Parameters
         ----------
+        target, optional
+            Target for the new pane.
         attach : bool, optional
-            Attach / select pane after creation.
+            If True, select the new pane immediately.
         start_directory : str, optional
-            specifies the working directory in which the new pane is created.
+            Working directory for the new pane.
         vertical : bool, optional
-            split vertically
-        percent: int, optional
-            percentage to occupy with respect to current pane
-        environment: dict, optional
-            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
-
-        Notes
-        -----
-        .. deprecated:: 0.33
-
-           Deprecated in favor of :meth:`.split`.
+            If True (default), split vertically (below).
+        shell : str, optional
+            Command to run in the new pane. Pane closes when command exits.
+        size : str or int, optional
+            Size for the new pane (cells or percentage).
+        percent : int, optional
+            If provided, is converted to a string with a trailing '%' for
+            older tmux. E.g. '25%'.
+        environment : dict[str, str], optional
+            Environment variables for the new pane (tmux 3.0+).
         """
         warnings.warn(
             "Pane.split_window() is deprecated in favor of Pane.split()",
@@ -916,13 +899,10 @@ class Pane(Obj):
         )
 
     def get(self, key: str, default: t.Any | None = None) -> t.Any:
-        """Return key-based lookup. Deprecated by attributes.
+        """Return a key-based lookup (deprecated).
 
         .. deprecated:: 0.16
-
-           Deprecated by attribute lookup, e.g. ``pane['window_name']`` is now
-           accessed via ``pane.window_name``.
-
+           Deprecated by attribute lookup, e.g. ``pane.window_name``.
         """
         warnings.warn(
             "Pane.get() is deprecated",
@@ -932,13 +912,10 @@ class Pane(Obj):
         return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
-        """Return item lookup by key. Deprecated in favor of attributes.
+        """Return an item by key (deprecated).
 
         .. deprecated:: 0.16
-
-           Deprecated in favor of attributes. e.g. ``pane['window_name']`` is now
-           accessed via ``pane.window_name``.
-
+           Deprecated in favor of attributes. e.g. ``pane.window_name``.
         """
         warnings.warn(
             f"Item lookups, e.g. pane['{key}'] is deprecated",
@@ -949,24 +926,18 @@ class Pane(Obj):
 
     def resize_pane(
         self,
-        # Adjustments
         adjustment_direction: ResizeAdjustmentDirection | None = None,
         adjustment: int | None = None,
-        # Manual
         height: str | int | None = None,
         width: str | int | None = None,
-        # Zoom
         zoom: bool | None = None,
-        # Mouse
         mouse: bool | None = None,
-        # Optional flags
         trim_below: bool | None = None,
     ) -> Pane:
-        """Resize pane, deprecated by :meth:`Pane.resize`.
+        """Resize this pane (deprecated).
 
         .. deprecated:: 0.28
-
-           Deprecated by :meth:`Pane.resize`.
+           Use :meth:`.resize`.
         """
         warnings.warn(
             "Deprecated: Use Pane.resize() instead of Pane.resize_pane()",

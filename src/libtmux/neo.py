@@ -1,4 +1,21 @@
-"""Tools for hydrating tmux data into python dataclass objects."""
+"""Provide tools for hydrating tmux data into Python dataclass objects.
+
+This module defines mechanisms for fetching and converting tmux command outputs
+into Python dataclasses (via the :class:`Obj` base class). This facilitates
+more structured and Pythonic interaction with tmux objects such as sessions,
+windows, and panes.
+
+Implementation Notes
+--------------------
+- :func:`fetch_objs` retrieves lists of raw field data from tmux.
+- :func:`fetch_obj` retrieves a single tmux object by its key and ID.
+- :class:`Obj` is a base dataclass that holds common tmux fields.
+
+See Also
+--------
+:func:`fetch_objs`
+:func:`fetch_obj`
+"""
 
 from __future__ import annotations
 
@@ -12,13 +29,12 @@ from libtmux.common import tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
+    from libtmux.server import Server
+
     ListCmd = t.Literal["list-sessions", "list-windows", "list-panes"]
     ListExtraArgs = t.Optional[Iterable[str]]
 
-    from libtmux.server import Server
-
 logger = logging.getLogger(__name__)
-
 
 OutputRaw = dict[str, t.Any]
 OutputsRaw = list[OutputRaw]
@@ -36,7 +52,26 @@ QUIRK_TMUX_3_1_X_0001:
 
 @dataclasses.dataclass()
 class Obj:
-    """Dataclass of generic tmux object."""
+    """Represent a generic tmux dataclass object with standard fields.
+
+    Objects extending this base class derive many fields from tmux commands
+    via the :func:`fetch_objs` and :func:`fetch_obj` functions.
+
+    Parameters
+    ----------
+    server
+        The :class:`Server` instance owning this tmux object.
+
+    Attributes
+    ----------
+    pane_id, window_id, session_id, etc.
+        Various tmux-specific fields automatically populated when refreshed.
+
+    Examples
+    --------
+    Subclasses of :class:`Obj` typically represent concrete tmux entities
+    (e.g., sessions, windows, and panes).
+    """
 
     server: Server
 
@@ -91,7 +126,7 @@ class Obj:
     mouse_standard_flag: str | None = None
     next_session_id: str | None = None
     origin_flag: str | None = None
-    pane_active: str | None = None  # Not detected by script
+    pane_active: str | None = None
     pane_at_bottom: str | None = None
     pane_at_left: str | None = None
     pane_at_right: str | None = None
@@ -146,7 +181,7 @@ class Obj:
     uid: str | None = None
     user: str | None = None
     version: str | None = None
-    window_active: str | None = None  # Not detected by script
+    window_active: str | None = None
     window_active_clients: str | None = None
     window_active_sessions: str | None = None
     window_activity: str | None = None
@@ -176,6 +211,24 @@ class Obj:
         list_cmd: ListCmd = "list-panes",
         list_extra_args: ListExtraArgs | None = None,
     ) -> None:
+        """Refresh fields for this object by re-fetching from tmux.
+
+        Parameters
+        ----------
+        obj_key
+            The field name to match (e.g. 'pane_id').
+        obj_id
+            The object identifier (e.g. '%1').
+        list_cmd
+            The tmux command to use (e.g. 'list-panes').
+        list_extra_args
+            Additional arguments to pass to the tmux command.
+
+        Raises
+        ------
+        exc.TmuxObjectDoesNotExist
+            If the requested object does not exist in tmux's output.
+        """
         assert isinstance(obj_id, str)
         obj = fetch_obj(
             obj_key=obj_key,
@@ -185,9 +238,8 @@ class Obj:
             server=self.server,
         )
         assert obj is not None
-        if obj is not None:
-            for k, v in obj.items():
-                setattr(self, k, v)
+        for k, v in obj.items():
+            setattr(self, k, v)
 
 
 def fetch_objs(
@@ -195,40 +247,54 @@ def fetch_objs(
     list_cmd: ListCmd,
     list_extra_args: ListExtraArgs | None = None,
 ) -> OutputsRaw:
-    """Fetch a listing of raw data from a tmux command."""
+    """Fetch a list of raw data from a tmux command.
+
+    Parameters
+    ----------
+    server
+        The :class:`Server` against which to run the command.
+    list_cmd
+        The tmux command to run (e.g. 'list-sessions', 'list-windows', 'list-panes').
+    list_extra_args
+        Any extra arguments (e.g. ['-a']).
+
+    Returns
+    -------
+    list of dict
+        A list of dictionaries of field-name to field-value mappings.
+
+    Raises
+    ------
+    exc.LibTmuxException
+        If tmux reports an error in stderr.
+    """
     formats = list(Obj.__dataclass_fields__.keys())
 
     cmd_args: list[str | int] = []
-
     if server.socket_name:
         cmd_args.insert(0, f"-L{server.socket_name}")
     if server.socket_path:
         cmd_args.insert(0, f"-S{server.socket_path}")
-    tmux_formats = [f"#{{{f}}}{FORMAT_SEPARATOR}" for f in formats]
 
-    tmux_cmds = [
-        *cmd_args,
-        list_cmd,
-    ]
+    tmux_formats = [f"#{{{f}}}{FORMAT_SEPARATOR}" for f in formats]
+    tmux_cmds = [*cmd_args, list_cmd]
 
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
         tmux_cmds.extend(list(list_extra_args))
 
     tmux_cmds.append("-F{}".format("".join(tmux_formats)))
-
-    proc = tmux_cmd(*tmux_cmds)  # output
+    proc = tmux_cmd(*tmux_cmds)
 
     if proc.stderr:
         raise exc.LibTmuxException(proc.stderr)
 
     obj_output = proc.stdout
-
     obj_formatters = [
         dict(zip(formats, formatter.split(FORMAT_SEPARATOR)))
         for formatter in obj_output
     ]
 
-    # Filter empty values
+    # Filter out empty values
     return [{k: v for k, v in formatter.items() if v} for formatter in obj_formatters]
 
 
@@ -239,7 +305,31 @@ def fetch_obj(
     list_cmd: ListCmd = "list-panes",
     list_extra_args: ListExtraArgs | None = None,
 ) -> OutputRaw:
-    """Fetch raw data from tmux command."""
+    """Fetch a single tmux object by key and ID.
+
+    Parameters
+    ----------
+    server
+        The :class:`Server` instance to query.
+    obj_key
+        The field name to look for (e.g., 'pane_id').
+    obj_id
+        The specific ID to match (e.g., '%0').
+    list_cmd
+        The tmux command to run ('list-panes', 'list-windows', etc.).
+    list_extra_args
+        Extra arguments to pass (e.g., ['-a']).
+
+    Returns
+    -------
+    dict
+        A dictionary of field-name to field-value mappings for the object.
+
+    Raises
+    ------
+    exc.TmuxObjectDoesNotExist
+        If no matching object is found in tmux's output.
+    """
     obj_formatters_filtered = fetch_objs(
         server=server,
         list_cmd=list_cmd,
@@ -250,6 +340,7 @@ def fetch_obj(
     for _obj in obj_formatters_filtered:
         if _obj.get(obj_key) == obj_id:
             obj = _obj
+            break
 
     if obj is None:
         raise exc.TmuxObjectDoesNotExist(
@@ -258,7 +349,5 @@ def fetch_obj(
             list_cmd=list_cmd,
             list_extra_args=list_extra_args,
         )
-
-    assert obj is not None
 
     return obj
