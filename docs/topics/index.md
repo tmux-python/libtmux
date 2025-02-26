@@ -10,4 +10,7 @@ Explore libtmux’s core functionalities and underlying principles at a high lev
 
 context_managers
 traversal
+automation
+advanced_scripting
+use_cases
 ```
