@@ -713,10 +713,12 @@ class Server(EnvironmentMixin):
         >>> # Verify window names
         >>> wins1 = [w for w in server.windows if w.session.name == "test_windows1"]
         >>> wins2 = [w for w in server.windows if w.session.name == "test_windows2"]
-        >>> sorted(w.name for w in wins1)
-        ['win1', ...]
-        >>> sorted(w.name for w in wins2)
-        ['win2', ...]
+        >>> # Default window name can vary (bash, zsh), but win1 should be there
+        >>> "win1" in [w.name for w in wins1]
+        True
+        >>> # Default window name can vary, but win2 should be there
+        >>> "win2" in [w.name for w in wins2]
+        True
         >>> # Clean up
         >>> server.kill_session("test_windows1")
         Server(socket_name=libtmux_test...)
