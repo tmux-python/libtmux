@@ -9,6 +9,15 @@ sessions, windows, and panes. Additionally, `libtmux` powers [tmuxp], a tmux wor
 [![Code Coverage](https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg)](https://codecov.io/gh/tmux-python/libtmux)
 [![License](https://img.shields.io/github/license/tmux-python/libtmux.svg)](https://github.com/tmux-python/libtmux/blob/master/LICENSE)
 
+## Key Features
+
+- **Intuitive API**: Control tmux servers, sessions, windows, and panes with a clean, object-oriented interface
+- **Complete Automation**: Create and manage complex tmux environments programmatically
+- **Type Annotations**: Full typing support for modern Python development
+- **Pytest Plugin**: Built-in testing tools for tmux automation
+- **Context Managers**: Safe session and window management with Python's context protocol
+- **Robust Architecture**: Built on tmux's native concepts of targets and formats
+
 libtmux builds upon tmux's
 [target](http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS) and
 [formats](http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#FORMATS) to
@@ -18,6 +27,17 @@ tmux sessions.
 View the [documentation](https://libtmux.git-pull.com/),
 [API](https://libtmux.git-pull.com/api.html) information and
 [architectural details](https://libtmux.git-pull.com/about.html).
+
+## Use Cases
+
+- **Development Environment Automation**: Set up consistent workspaces across projects
+- **CI/CD Systems**: Create isolated environments for testing and deployment
+- **System Monitoring**: Build interactive dashboards for server administration
+- **Remote Pair Programming**: Facilitate collaborative development sessions
+- **Data Science Workflows**: Manage complex data processing pipelines
+- **Education and Demonstrations**: Create multi-window learning environments
+
+For more detailed examples, see our [use cases documentation](https://libtmux.git-pull.com/topics/use_cases.html).
 
 # Install
 
@@ -245,6 +265,64 @@ Window(@1 1:..., Session($1 ...))
 >>> pane.window.session
 Session($1 ...)
 ```
+
+# Testing with pytest
+
+libtmux includes a pytest plugin that provides fixtures for testing tmux operations:
+
+```python
+def test_session_creation(session):
+    """Test creating a new window in the session."""
+    window = session.new_window(window_name="test_window")
+    assert window.window_name == "test_window"
+    
+    # Create a new pane
+    pane = window.split_window()
+    assert len(window.panes) == 2
+    
+    # Send keys to the pane
+    pane.send_keys("echo 'Hello from test'")
+```
+
+See [pytest plugin documentation](https://libtmux.git-pull.com/pytest-plugin/index.html) for more details.
+
+# Advanced Usage
+
+libtmux supports a wide range of advanced use cases:
+
+## Context Managers
+
+Safely manage sessions and windows with Python's context protocol:
+
+```python
+with Server().new_session(session_name="my_session") as session:
+    window = session.new_window(window_name="my_window")
+    # Work with the window...
+# Session is properly cleaned up when context exits
+```
+
+## Advanced Scripting
+
+Create complex window layouts and integrate with external systems:
+
+```python
+session = server.new_session(session_name="dashboard")
+main = session.new_window(window_name="main")
+
+# Create a grid layout with 4 panes
+top_left = main.attached_pane
+top_right = top_left.split_window(vertical=True)
+bottom_left = top_left.split_window(vertical=False)
+bottom_right = top_right.split_window(vertical=False)
+
+# Configure each pane
+top_left.send_keys("htop", enter=True)
+top_right.send_keys("watch -n 1 df -h", enter=True)
+bottom_left.send_keys("tail -f /var/log/syslog", enter=True)
+bottom_right.send_keys("netstat -tunapl", enter=True)
+```
+
+See [advanced scripting documentation](https://libtmux.git-pull.com/topics/advanced_scripting.html) for more examples.
 
 # Python support
 
