@@ -1,3 +1,5 @@
+(test_helpers_constants)=
+
 # Constants
 
 Test-related constants used across libtmux test helpers.
@@ -7,4 +9,5 @@ Test-related constants used across libtmux test helpers.
    :members:
    :undoc-members:
    :show-inheritance:
+   :member-order: bysource
 ``` 
