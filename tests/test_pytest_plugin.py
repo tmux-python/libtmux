@@ -138,6 +138,7 @@ def test_test_server_cleanup(TestServer: t.Callable[..., Server]) -> None:
 
     # Create new server to verify old one was cleaned up
     new_server = TestServer()
+    assert new_server.socket_name != socket_name  # Verify unique socket name
 
 
 def test_test_server_multiple(TestServer: t.Callable[..., Server]) -> None:

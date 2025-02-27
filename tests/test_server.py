@@ -3,21 +3,18 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
+import time
 import typing as t
 
 import pytest
 
-from libtmux._internal.waiter import expect
-from libtmux.common import (
-    has_gte_version,
-    has_version,
-)
+from libtmux.common import has_gte_version, has_version
 from libtmux.server import Server
-from libtmux.session import Session
 
 if t.TYPE_CHECKING:
-    pass
+    from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
 
@@ -142,26 +139,27 @@ def test_new_session_shell(server: Server) -> None:
 
 
 def test_new_session_shell_env(server: Server) -> None:
-    """Test new_session() with environment variables."""
-    env = {"FOO": "BAR", "other": "value"}
-
-    cmd = "sh -c 'echo $FOO'"
-
+    """Verify ``Server.new_session`` creates valid session running w/ command (#553)."""
+    cmd = "sleep 1m"
+    env = dict(os.environ)
     mysession = server.new_session(
         "test_new_session_env",
         window_command=cmd,
         environment=env,
     )
-
-    # Use waiter to wait for the command to complete
+    time.sleep(0.1)
     window = mysession.windows[0]
     pane = window.panes[0]
-
-    # Wait for the output from the command
-    expect(pane).wait_for_text("BAR")
-
     assert mysession.session_name == "test_new_session_env"
     assert server.has_session("test_new_session_env")
+
+    pane_start_command = pane.pane_start_command
+    assert pane_start_command is not None
+
+    if has_gte_version("3.2"):
+        assert pane_start_command.replace('"', "") == cmd
+    else:
+        assert pane_start_command == cmd
 
 
 @pytest.mark.skipif(has_version("3.2"), reason="Wrong width returned with 3.2")
