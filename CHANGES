@@ -45,6 +45,18 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### New features
+
+#### Waiting (#582)
+
+Added experimental `waiter.py` module for polling for terminal content in tmux panes:
+
+- Fluent API inspired by Playwright for better readability and chainable options
+- Support for multiple pattern types (exact text, contains, regex, custom predicates)
+- Composable waiting conditions with `wait_for_any_content` and `wait_for_all_content`
+- Enhanced error handling with detailed timeouts and match information
+- Robust shell prompt detection
+
 ## libtmux 0.58.0 (2026-05-23)
 
 libtmux 0.58.0 fixes subprocess output decoding on non-UTF-8 locales.
