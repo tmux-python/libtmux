@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import logging
 import shutil
-import time
 import typing as t
 
 import pytest
 
 from libtmux import exc
+from libtmux._internal.waiter import wait_until_pane_ready
 from libtmux.common import has_gte_version, has_lt_version, has_version
 from libtmux.pane import Pane
 from libtmux.server import Server
+from libtmux.session import Session
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
@@ -404,9 +405,9 @@ def test_split_window_with_environment(
     session: Session,
     environment: dict[str, str],
 ) -> None:
-    """Verify splitting window with environment variables."""
+    """Test window.split_window() with environment variables."""
     env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in Path."
+    assert env is not None, "Cannot find usable `env` in PATH."
 
     window = session.new_window(window_name="split_window_with_environment")
     pane = window.split_window(
@@ -414,8 +415,10 @@ def test_split_window_with_environment(
         environment=environment,
     )
     assert pane is not None
-    # wait a bit for the prompt to be ready as the test gets flaky otherwise
-    time.sleep(0.05)
+
+    # Wait for shell prompt to be ready using waiter
+    wait_until_pane_ready(pane)
+
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
         assert pane.capture_pane()[-2] == v

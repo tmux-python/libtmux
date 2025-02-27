@@ -8,9 +8,9 @@ import typing as t
 
 import pytest
 
+from libtmux._internal.waiter import expect
 from libtmux.common import has_gte_version, has_lt_version, has_lte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
-from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -107,17 +107,11 @@ def test_capture_pane_start(session: Session) -> None:
     assert pane_contents == '$ printf "%s"\n$'
     pane.send_keys("clear -x", literal=True, suppress_history=False)
 
-    def wait_until_pane_cleared() -> bool:
-        pane_contents = "\n".join(pane.capture_pane())
-        return "clear -x" not in pane_contents
+    # Using the waiter functionality to wait for the pane to be cleared
+    expect(pane).wait_for_predicate(lambda lines: "clear -x" not in "\n".join(lines))
 
-    retry_until(wait_until_pane_cleared, 1, raises=True)
-
-    def pane_contents_shell_prompt() -> bool:
-        pane_contents = "\n".join(pane.capture_pane())
-        return pane_contents == "$"
-
-    retry_until(pane_contents_shell_prompt, 1, raises=True)
+    # Using the waiter functionality to wait for shell prompt
+    expect(pane).wait_for_exact_text("$")
 
     pane_contents_history_start = pane.capture_pane(start=-2)
     assert pane_contents_history_start[0] == '$ printf "%s"'
@@ -126,11 +120,9 @@ def test_capture_pane_start(session: Session) -> None:
 
     pane.send_keys("")
 
-    def pane_contents_capture_visible_only_shows_prompt() -> bool:
-        pane_contents = "\n".join(pane.capture_pane(start=1))
-        return pane_contents == "$"
-
-    assert retry_until(pane_contents_capture_visible_only_shows_prompt, 1, raises=True)
+    # Using the waiter functionality to verify content
+    result = expect(pane).with_line_range(1, None).wait_for_exact_text("$")
+    assert result.success
 
 
 def test_capture_pane_end(session: Session) -> None:
