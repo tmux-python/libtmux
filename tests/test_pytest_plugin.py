@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import textwrap
-import time
 import typing as t
 
 if t.TYPE_CHECKING:
@@ -12,6 +11,8 @@ if t.TYPE_CHECKING:
     import pytest
 
     from libtmux.server import Server
+
+from libtmux._internal.waiter import wait_for_server_condition
 
 
 def test_plugin(
@@ -132,9 +133,21 @@ def test_test_server_cleanup(TestServer: t.Callable[..., Server]) -> None:
     # Delete server and verify cleanup
     server.kill()
 
-    # Simply wait a short time rather than using the condition
-    # since the server object is already killed
-    time.sleep(0.1)  # Give time for cleanup
+    # Wait for the server to be fully cleaned up
+    def is_server_dead(srv: Server) -> bool:
+        try:
+            return not srv.is_alive()
+        except Exception:
+            # If server is cleaned up, calling is_alive() may raise an exception
+            return True
+
+    wait_for_server_condition(
+        server,
+        is_server_dead,
+        timeout=0.5,
+        interval=0.1,
+        raises=False,
+    )
 
     # Create new server to verify old one was cleaned up
     new_server = TestServer()
