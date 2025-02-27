@@ -1,3 +1,5 @@
+(test_helpers_random)=
+
 # Random
 
 Random string generation utilities for test names.
@@ -7,4 +9,5 @@ Random string generation utilities for test names.
    :members:
    :undoc-members:
    :show-inheritance:
+   :member-order: bysource
 ``` 

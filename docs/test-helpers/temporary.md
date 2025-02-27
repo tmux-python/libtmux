@@ -1,3 +1,5 @@
+(test_helpers_temporary_objects)=
+
 # Temporary Objects
 
 Context managers for temporary tmux objects (sessions, windows).
@@ -7,4 +9,5 @@ Context managers for temporary tmux objects (sessions, windows).
    :members:
    :undoc-members:
    :show-inheritance:
+   :member-order: bysource
 ``` 

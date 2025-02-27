@@ -1,3 +1,5 @@
+(test_helpers_environment)=
+
 # Environment
 
 Environment variable mocking utilities for tests.
@@ -7,4 +9,5 @@ Environment variable mocking utilities for tests.
    :members:
    :undoc-members:
    :show-inheritance:
+   :member-order: bysource
 ``` 
