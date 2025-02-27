@@ -8,6 +8,7 @@ Test helpers for libtmux and downstream libraries.
 constants
 environment
 random
+retry
 temporary
 ```
 
