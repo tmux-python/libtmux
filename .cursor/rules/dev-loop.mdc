@@ -56,3 +56,73 @@ Use `@git-commits.mdc` for assistance with commit message standards.
 ## Development Loop Guidelines
 
 If there are any failures at any step due to your edits, fix them before proceeding to the next step.
+
+## Python Code Standards
+
+### Docstring Guidelines
+
+For `src/**/*.py` files, follow these docstring guidelines:
+
+1. **Use reStructuredText format** for all docstrings.
+   ```python
+   """Short description of the function or class.
+
+   Detailed description using reStructuredText format.
+
+   Parameters
+   ----------
+   param1 : type
+       Description of param1
+   param2 : type
+       Description of param2
+
+   Returns
+   -------
+   type
+       Description of return value
+   """
+   ```
+
+2. **Keep the main description on the first line** after the opening `"""`.
+
+3. **Use NumPy docstyle** for parameter and return value documentation.
+
+### Doctest Guidelines
+
+For doctests in `src/**/*.py` files:
+
+1. **Use narrative descriptions** for test sections rather than inline comments:
+   ```python
+   """Example function.
+
+   Examples
+   --------
+   Create an instance:
+
+   >>> obj = ExampleClass()
+   
+   Verify a property:
+   
+   >>> obj.property
+   'expected value'
+   """
+   ```
+
+2. **Move complex examples** to dedicated test files at `tests/examples/<path_to_module>/test_<example>.py` if they require elaborate setup or multiple steps.
+
+3. **Utilize pytest fixtures** via `doctest_namespace` for more complex test scenarios:
+   ```python
+   """Example with fixture.
+
+   Examples
+   --------
+   >>> # doctest_namespace contains all pytest fixtures from conftest.py
+   >>> example_fixture = getfixture('example_fixture')
+   >>> example_fixture.method()
+   'expected result'
+   """
+   ```
+
+4. **Keep doctests simple and focused** on demonstrating usage rather than comprehensive testing.
+
+5. **Add blank lines between test sections** for improved readability.
