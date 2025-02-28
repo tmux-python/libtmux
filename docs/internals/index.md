@@ -11,6 +11,7 @@ If you need an internal API stabilized please [file an issue](https://github.com
 ```{toctree}
 dataclasses
 frozen_dataclass
+frozen_dataclass_sealable
 query_list
 ```
 
