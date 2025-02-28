@@ -145,6 +145,9 @@ files = [
   "docs/_ext",
 ]
 
+[[tool.mypy.overrides]]
+module = "libtmux._internal.frozen_dataclass"
+disable_error_code = ["method-assign"]
 
 [tool.coverage.run]
 branch = true
