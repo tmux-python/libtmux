@@ -19,21 +19,19 @@ if t.TYPE_CHECKING:
 
 
 class EnvironmentVarGuard:
-    """Mock environmental variables safely.
+    """Safely mock environmental variables within a context manager.
 
-    Helps rotect the environment variable properly.  Can be used as context
-    manager.
+    Ensures any changes to environment variables are reverted upon exit.
 
     Notes
     -----
-    Vendorized to fix issue with Anaconda Python 2 not including test module,
-    see #121 [1]_
+    This is vendorized to address issues where some Python distributions do
+    not include test modules such as test_support.
 
     References
     ----------
-    .. [1] Just installed, "ImportError: cannot import name test_support".
-       GitHub issue for tmuxp. https://github.com/tmux-python/tmuxp/issues/121.
-       Created October 12th, 2015. Accessed April 7th, 2018.
+    #. "ImportError: cannot import name test_support" found in certain Python
+       distributions, see issue #121 in the tmuxp project.
     """
 
     def __init__(self) -> None:
@@ -42,7 +40,7 @@ class EnvironmentVarGuard:
         self._reset: dict[str, str] = {}
 
     def set(self, envvar: str, value: str) -> None:
-        """Set environment variable."""
+        """Set an environment variable, preserving prior state."""
         if envvar not in self._environ:
             self._unset.add(envvar)
         else:
@@ -50,7 +48,7 @@ class EnvironmentVarGuard:
         self._environ[envvar] = value
 
     def unset(self, envvar: str) -> None:
-        """Unset environment variable."""
+        """Unset an environment variable, preserving prior state."""
         if envvar in self._environ:
             # If we previously set this variable in this context, remove it from _unset
             if envvar in self._unset:
@@ -61,7 +59,7 @@ class EnvironmentVarGuard:
             del self._environ[envvar]
 
     def __enter__(self) -> Self:
-        """Return context for for context manager."""
+        """Enter context manager."""
         return self
 
     def __exit__(
@@ -70,7 +68,7 @@ class EnvironmentVarGuard:
         exc_value: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Cleanup to run after context manager finishes."""
+        """Exit context manager, reverting environment changes."""
         for envvar, value in self._reset.items():
             self._environ[envvar] = value
         for unset in self._unset:

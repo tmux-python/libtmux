@@ -1,8 +1,17 @@
-"""libtmux exceptions.
+"""Provide exceptions used by libtmux.
 
 libtmux.exc
 ~~~~~~~~~~~
 
+This module implements exceptions used throughout libtmux for error
+handling in sessions, windows, panes, and general usage. It preserves
+existing exception definitions for backward compatibility and does not
+remove any doctests.
+
+Notes
+-----
+Exceptions in this module inherit from :exc:`LibTmuxException` or
+specialized base classes to form a hierarchy of tmux-related errors.
 """
 
 from __future__ import annotations
@@ -16,19 +25,19 @@ if t.TYPE_CHECKING:
 
 
 class LibTmuxException(Exception):
-    """Base Exception for libtmux Errors."""
+    """Base exception for all libtmux errors."""
 
 
 class TmuxSessionExists(LibTmuxException):
-    """Session does not exist in the server."""
+    """Raised if a tmux session with the requested name already exists."""
 
 
 class TmuxCommandNotFound(LibTmuxException):
-    """Application binary for tmux not found."""
+    """Raised when the tmux binary cannot be found on the system."""
 
 
 class TmuxObjectDoesNotExist(ObjectDoesNotExist):
-    """The query returned multiple objects when only one was expected."""
+    """Raised when a tmux object cannot be found in the server output."""
 
     def __init__(
         self,
@@ -39,19 +48,20 @@ class TmuxObjectDoesNotExist(ObjectDoesNotExist):
         *args: object,
     ) -> None:
         if all(arg is not None for arg in [obj_key, obj_id, list_cmd, list_extra_args]):
-            return super().__init__(
+            super().__init__(
                 f"Could not find {obj_key}={obj_id} for {list_cmd} "
                 f"{list_extra_args if list_extra_args is not None else ''}",
             )
-        return super().__init__("Could not find object")
+        else:
+            super().__init__("Could not find object")
 
 
 class VersionTooLow(LibTmuxException):
-    """Raised if tmux below the minimum version to use libtmux."""
+    """Raised if the installed tmux version is below the minimum required."""
 
 
 class BadSessionName(LibTmuxException):
-    """Disallowed session name for tmux (empty, contains periods or colons)."""
+    """Raised if a tmux session name is disallowed (e.g., empty, has colons/periods)."""
 
     def __init__(
         self,
@@ -62,83 +72,84 @@ class BadSessionName(LibTmuxException):
         msg = f"Bad session name: {reason}"
         if session_name is not None:
             msg += f" (session name: {session_name})"
-        return super().__init__(msg)
+        super().__init__(msg)
 
 
 class OptionError(LibTmuxException):
-    """Root error for any error involving invalid, ambiguous or bad options."""
+    """Base exception for errors involving invalid, ambiguous, or unknown options."""
 
 
 class UnknownOption(OptionError):
-    """Option unknown to tmux show-option(s) or show-window-option(s)."""
+    """Raised if tmux reports an unknown option."""
 
 
 class UnknownColorOption(UnknownOption):
-    """Unknown color option."""
+    """Raised if a server color option is unknown (must be 88 or 256)."""
 
     def __init__(self, *args: object) -> None:
-        return super().__init__("Server.colors must equal 88 or 256")
+        super().__init__("Server.colors must equal 88 or 256")
 
 
 class InvalidOption(OptionError):
-    """Option invalid to tmux, introduced in tmux v2.4."""
+    """Raised if tmux reports an invalid option (tmux >= 2.4)."""
 
 
 class AmbiguousOption(OptionError):
-    """Option that could potentially match more than one."""
+    """Raised if tmux reports an option that could match more than one."""
 
 
 class WaitTimeout(LibTmuxException):
-    """Function timed out without meeting condition."""
+    """Raised when a function times out waiting for a condition."""
 
 
 class VariableUnpackingError(LibTmuxException):
-    """Error unpacking variable."""
+    """Raised when an environment variable cannot be unpacked as expected."""
 
     def __init__(self, variable: t.Any | None = None, *args: object) -> None:
-        return super().__init__(f"Unexpected variable: {variable!s}")
+        super().__init__(f"Unexpected variable: {variable!s}")
 
 
 class PaneError(LibTmuxException):
-    """Any type of pane related error."""
+    """Base exception for pane-related errors."""
 
 
 class PaneNotFound(PaneError):
-    """Pane not found."""
+    """Raised if a specified pane cannot be found."""
 
     def __init__(self, pane_id: str | None = None, *args: object) -> None:
         if pane_id is not None:
-            return super().__init__(f"Pane not found: {pane_id}")
-        return super().__init__("Pane not found")
+            super().__init__(f"Pane not found: {pane_id}")
+        else:
+            super().__init__("Pane not found")
 
 
 class WindowError(LibTmuxException):
-    """Any type of window related error."""
+    """Base exception for window-related errors."""
 
 
 class MultipleActiveWindows(WindowError):
-    """Multiple active windows."""
+    """Raised if multiple active windows are detected (where only one is expected)."""
 
     def __init__(self, count: int, *args: object) -> None:
-        return super().__init__(f"Multiple active windows: {count} found")
+        super().__init__(f"Multiple active windows: {count} found")
 
 
 class NoActiveWindow(WindowError):
-    """No active window found."""
+    """Raised if no active window exists when one is expected."""
 
     def __init__(self, *args: object) -> None:
-        return super().__init__("No active windows found")
+        super().__init__("No active windows found")
 
 
 class NoWindowsExist(WindowError):
-    """No windows exist for object."""
+    """Raised if a session or server has no windows."""
 
     def __init__(self, *args: object) -> None:
-        return super().__init__("No windows exist for object")
+        super().__init__("No windows exist for object")
 
 
 class AdjustmentDirectionRequiresAdjustment(LibTmuxException, ValueError):
-    """If *adjustment_direction* is set, *adjustment* must be set."""
+    """Raised if an adjustment direction is set, but no adjustment value is provided."""
 
     def __init__(self) -> None:
         super().__init__("adjustment_direction requires adjustment")
@@ -148,18 +159,18 @@ class WindowAdjustmentDirectionRequiresAdjustment(
     WindowError,
     AdjustmentDirectionRequiresAdjustment,
 ):
-    """ValueError for :meth:`libtmux.Window.resize_window`."""
+    """Raised if window resizing requires an adjustment value, but none is provided."""
 
 
 class PaneAdjustmentDirectionRequiresAdjustment(
     WindowError,
     AdjustmentDirectionRequiresAdjustment,
 ):
-    """ValueError for :meth:`libtmux.Pane.resize_pane`."""
+    """Raised if pane resizing requires an adjustment value, but none is provided."""
 
 
 class RequiresDigitOrPercentage(LibTmuxException, ValueError):
-    """Requires digit (int or str digit) or a percentage."""
+    """Raised if a sizing argument must be a digit or a percentage."""
 
     def __init__(self) -> None:
         super().__init__("Requires digit (int or str digit) or a percentage.")
