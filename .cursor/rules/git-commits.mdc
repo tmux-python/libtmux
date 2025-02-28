@@ -6,7 +6,7 @@ globs: git-commits: Git commit message standards and AI assistance | *.git/* .gi
 
 ## Format
 ```
-type(scope[component]): concise description
+component(commit type[sub-component/method]): concise description
 
 why: explanation of necessity/impact
 what: 
@@ -16,6 +16,11 @@ what:
 refs: #issue-number, breaking changes, links
 ```
 
+## Component types
+- pyproject(ruff[per-file-ignores]) Ignore B010 (`set-attr-with-constant`) for `path/to/file.py` 
+- Pane(chore[capture_pane]): Fix typo
+- Pane(tests[capture_pane]): Handle edgecase for capture pane
+
 ## Commit Types
 - `feat`: New features/enhancements
 - `fix`: Bug fixes
@@ -24,6 +29,8 @@ refs: #issue-number, breaking changes, links
 - `chore`: Maintenance tasks (deps, tooling)
 - `test`: Test-related changes
 - `style`: Code style/formatting
+- `<component-name>`: If it involves a core file or component / class, e.g.
+  just start with that Pane(chore)
 
 ## Guidelines
 - Subject line: max 50 chars
