@@ -148,6 +148,10 @@ ignore_errors = true
 module = "tests.examples._internal.frozen_dataclass_sealable.test_basic"
 ignore_errors = true
 
+[[tool.mypy.overrides]]
+module = "libtmux._internal.frozen_dataclass"
+disable_error_code = ["method-assign"]
+
 [tool.coverage.run]
 branch = true
 parallel = true
