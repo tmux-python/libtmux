@@ -48,6 +48,7 @@ api/libtmux._internal.query_list
 api/libtmux._internal.constants
 api/libtmux._internal.sparse_array
 frozen_dataclass
+frozen_dataclass_sealable
 ```
 
 ## Environmental variables
