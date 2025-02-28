@@ -132,6 +132,10 @@ files = [
 module = "libtmux._internal.frozen_dataclass"
 disable_error_code = ["method-assign"]
 
+[[tool.mypy.overrides]]
+module = "libtmux._internal.frozen_dataclass_sealable"
+disable_error_code = ["method-assign"]
+
 [tool.coverage.run]
 branch = true
 parallel = true
