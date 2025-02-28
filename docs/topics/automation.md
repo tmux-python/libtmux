@@ -1,4 +1,6 @@
-### 3. Continuous Integration Pipeline
+# Continuous Integration
+
+## General example
 
 Set up a comprehensive continuous integration pipeline using libtmux:
 
@@ -88,11 +90,7 @@ if __name__ == "__main__":
     print(f"Pipeline stages: {[w.window_name for w in session.windows]}")
 ```
 
-### Integration with Other Tools
-
-Libtmux can be easily integrated with other tools and frameworks to create powerful automation systems.
-
-### 1. Integration with Fabric for Remote Deployment
+## Integration with Fabric for Remote Deployment
 
 ```python
 import libtmux
@@ -162,7 +160,7 @@ def deploy_to_environment(session, environment, server_host):
     # and then capture and display the output in the tmux panes
 ```
 
-### 2. Integration with Pytest for Test Automation
+## 2. Integration with Pytest for Test Automation
 
 Libtmux works well with pytest to automate testing across multiple environments:
 
@@ -233,3 +231,4 @@ def run_tests_on_version(session, version, test_path=None):
     
     test_pane.send_keys(f"echo 'Running: {test_command}'", enter=True)
     output_pane.send_keys(f"{test_command} | tee test_output.log", enter=True)
+```
