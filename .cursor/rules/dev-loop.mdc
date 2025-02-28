@@ -3,9 +3,36 @@ description: QA every edit
 globs: *.py
 ---
 
-# First: QA Every edit
+# Development Process
 
-Run these commands between edits:
+## 1. Start with Formatting
+
+Format your code first:
+
+```
+uv run ruff format .
+```
+
+## 2. Run Tests
+
+Verify that your changes pass the tests:
+
+```
+uv run py.test
+```
+
+## 3. Commit Initial Changes
+
+Make an atomic commit for your changes using conventional commits.
+Use `@git-commits.mdc` for assistance with commit message standards.
+
+## 4. Run Linting and Type Checking
+
+Check and fix linting issues:
+
+```
+uv run ruff check . --fix --show-fixes
+```
 
 Check typings:
 
@@ -13,25 +40,19 @@ Check typings:
 uv run mypy
 ```
 
-Lint:
+## 5. Verify Tests Again
 
-```
-uv run ruff check . --fix --show-fixes; uv run ruff format .;
-```
-
-Check tests:
+Ensure tests still pass after linting and type fixes:
 
 ```
 uv run py.test
 ```
 
-Between every edit, rerun:
-- Type checks
-- Lint
-- Tests
+## 6. Final Commit
 
-If there's any failures *due to the edits*, fix them first, then:
+Make a final commit with any linting/typing fixes.
+Use `@git-commits.mdc` for assistance with commit message standards.
 
-# When your edit is complete: Commit it
+## Development Loop Guidelines
 
-Make an atomic commit for the edit, using conventional commits.
+If there are any failures at any step due to your edits, fix them before proceeding to the next step.
