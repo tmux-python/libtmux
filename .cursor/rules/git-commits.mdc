@@ -2,88 +2,93 @@
 description: git-commits: Git commit message standards and AI assistance
 globs: git-commits: Git commit message standards and AI assistance | *.git/* .gitignore .github/* CHANGELOG.md CHANGES.md
 ---
-# Git Commit Standards
+# Optimized Git Commit Standards
 
-## Format
+## Commit Message Format
 ```
-component(commit type[sub-component/method]): concise description
+Component/File(commit-type[Subcomponent/method]): Concise description
 
-why: explanation of necessity/impact
-what: 
-- technical changes made
-- keep focused on single topic
-
-refs: #issue-number, breaking changes, links
-```
-
-## Component types
-- pyproject(ruff[per-file-ignores]) Ignore B010 (`set-attr-with-constant`) for `path/to/file.py` 
-- Pane(chore[capture_pane]): Fix typo
-- Pane(tests[capture_pane]): Handle edgecase for capture pane
-
-## Commit Types
-- `feat`: New features/enhancements
-- `fix`: Bug fixes
-- `refactor`: Code restructuring
-- `docs`: Documentation changes
-- `chore`: Maintenance tasks (deps, tooling)
-- `test`: Test-related changes
-- `style`: Code style/formatting
-- `<component-name>`: If it involves a core file or component / class, e.g.
-  just start with that Pane(chore)
-
-## Guidelines
-- Subject line: max 50 chars
-- Body lines: max 72 chars
-- Use imperative mood ("Add" not "Added")
-- Single topic per commit
-- Blank line between subject and body
-- Mark breaking changes with "BREAKING:"
-- Use "See also:" for external links
-
-## AI Assistance in Cursor
-- Stage changes with `git add`
-- Use `@commit` to generate initial message
-- Review and adjust the generated message
-- Ensure it follows format above
-
-## Examples
-
-Good commit:
-```
-feat(subprocess[run]): Switch to unicode-only text handling
-
-why: Improve consistency and type safety in subprocess handling
+why: Explanation of necessity or impact.
 what:
-- BREAKING: Changed run() to use text=True by default
-- Removed console_to_str() helper and encoding logic
-- Simplified output handling
-- Updated type hints for better safety
+- Specific technical changes made
+- Focused on a single topic
+
+refs: #issue-number, breaking changes, or relevant links
+```
+
+## Component Patterns
+### General Code Changes
+```
+Component/File(feat[method]): Add feature
+Component/File(fix[method]): Fix bug
+Component/File(refactor[method]): Code restructure
+```
+
+### Packages and Dependencies
+| Language   | Standard Packages                  | Dev Packages                  | Extras / Sub-packages                          |
+|------------|------------------------------------|-------------------------------|-----------------------------------------------|
+| General    | `lang(deps):`                      | `lang(deps[dev]):`            |                                               |
+| Python     | `py(deps):`                        | `py(deps[dev]):`              | `py(deps[extra]):`                            |
+| JavaScript | `js(deps):`                        | `js(deps[dev]):`              | `js(deps[subpackage]):`, `js(deps[dev{subpackage}]):` |
+
+#### Examples
+- `py(deps[dev]): Update pytest to v8.1`
+- `js(deps[ui-components]): Upgrade Button component package`
+- `js(deps[dev{linting}]): Add ESLint plugin`
+
+### Documentation Changes
+Prefix with `docs:`
+```
+docs(Component/File[Subcomponent/method]): Update API usage guide
+```
+
+### Test Changes
+Prefix with `tests:`
+```
+tests(Component/File[Subcomponent/method]): Add edge case tests
+```
+
+## Commit Types Summary
+- **feat**: New features or enhancements
+- **fix**: Bug fixes
+- **refactor**: Code restructuring without functional change
+- **docs**: Documentation updates
+- **chore**: Maintenance (dependencies, tooling, config)
+- **test**: Test-related updates
+- **style**: Code style and formatting
+
+## General Guidelines
+- Subject line: Maximum 50 characters
+- Body lines: Maximum 72 characters
+- Use imperative mood (e.g., "Add", "Fix", not "Added", "Fixed")
+- Limit to one topic per commit
+- Separate subject from body with a blank line
+- Mark breaking changes clearly: `BREAKING:`
+- Use `See also:` to provide external references
+
+## AI Assistance Workflow in Cursor
+- Stage changes with `git add`
+- Use `@commit` to generate initial commit message
+- Review and refine generated message
+- Ensure adherence to these standards
+
+## Good Commit Example
+```
+Pane(feat[capture_pane]): Add screenshot capture support
+
+why: Provide visual debugging capability
+what:
+- Implement capturePane method with image export
+- Integrate with existing Pane component logic
+- Document usage in Pane README
 
 refs: #485
-See also: https://docs.python.org/3/library/subprocess.html
+See also: https://example.com/docs/pane-capture
 ```
 
-Bad commit:
+## Bad Commit Example
 ```
-updated some stuff and fixed bugs
+fixed stuff and improved some functions
 ```
 
-Cursor Rules: Add development QA and git commit standards (#cursor-rules)
-
-- Add dev-loop.mdc: QA process for code edits
-  - Type checking with mypy
-  - Linting with ruff
-  - Test validation with pytest
-  - Ensures edits are validated before commits
-
-- Add git-commits.mdc: Commit message standards
-  - Structured format with why/what sections
-  - Defined commit types and guidelines
-  - Examples of good/bad commits
-  - AI assistance instructions
-
-Note: These rules help maintain code quality and commit history
-consistency across the project.
-
-See also: https://docs.cursor.com/context/rules-for-ai
+These guidelines ensure clear, consistent commit histories, facilitating easier code review and maintenance.
