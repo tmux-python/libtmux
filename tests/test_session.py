@@ -117,50 +117,50 @@ def test_new_session(server: Server) -> None:
 
 
 def test_show_options(session: Session) -> None:
-    """Session.show_options() returns dict."""
-    options = session.show_options()
+    """Session._show_options() returns dict."""
+    options = session._show_options()
     assert isinstance(options, dict)
 
 
 def test_set_show_options_single(session: Session) -> None:
-    """Set option then Session.show_options(key)."""
+    """Set option then Session._show_options(key)."""
     session.set_option("history-limit", 20)
-    assert session.show_option("history-limit") == 20
+    assert session._show_option("history-limit") == 20
 
     session.set_option("history-limit", 40)
-    assert session.show_option("history-limit") == 40
+    assert session._show_option("history-limit") == 40
 
-    assert session.show_options()["history-limit"] == 40
+    assert session._show_options()["history-limit"] == 40
 
 
 def test_set_show_option(session: Session) -> None:
-    """Set option then Session.show_option(key)."""
+    """Set option then Session._show_option(key)."""
     session.set_option("history-limit", 20)
-    assert session.show_option("history-limit") == 20
+    assert session._show_option("history-limit") == 20
 
     session.set_option("history-limit", 40)
 
-    assert session.show_option("history-limit") == 40
+    assert session._show_option("history-limit") == 40
 
 
 def test_empty_session_option_returns_None(session: Session) -> None:
-    """Verify Session.show_option returns None for unset option."""
-    assert session.show_option("default-shell") is None
+    """Verify Session._show_option returns None for unset option."""
+    assert session._show_option("default-shell") is None
 
 
 def test_show_option_unknown(session: Session) -> None:
-    """Session.show_option raises UnknownOption for invalid option."""
+    """Session._show_option raises UnknownOption for invalid option."""
     cmd_exception: type[exc.OptionError] = exc.UnknownOption
     if has_gte_version("3.0"):
         cmd_exception = exc.InvalidOption
     with pytest.raises(cmd_exception):
-        session.show_option("moooz")
+        session._show_option("moooz")
 
 
 def test_show_option_ambiguous(session: Session) -> None:
-    """Session.show_option raises AmbiguousOption for ambiguous option."""
+    """Session._show_option raises AmbiguousOption for ambiguous option."""
     with pytest.raises(exc.AmbiguousOption):
-        session.show_option("default-")
+        session._show_option("default-")
 
 
 def test_set_option_ambiguous(session: Session) -> None:

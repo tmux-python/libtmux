@@ -17,20 +17,24 @@ from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
+    OptionScope,
     PaneDirection,
     ResizeAdjustmentDirection,
     WindowDirection,
 )
+from libtmux.hooks import HooksMixin
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
 from . import exc
-from .common import PaneDict, WindowOptionDict, handle_option_error
+from .common import PaneDict
+from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import sys
     import types
 
+    from .common import PaneDict, WindowOptionDict
     from .server import Server
     from .session import Session
 
@@ -44,7 +48,11 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass()
-class Window(Obj):
+class Window(
+    Obj,
+    OptionsMixin,
+    HooksMixin,
+):
     """:term:`tmux(1)` :term:`Window` [window_manual]_.
 
     Holds :class:`Pane` objects.
@@ -99,6 +107,8 @@ class Window(Obj):
        https://man.openbsd.org/tmux.1#DESCRIPTION. Accessed April 1st, 2018.
     """
 
+    default_option_scope: OptionScope | None = OptionScope.Window
+    default_hook_scope: OptionScope | None = OptionScope.Window
     server: Server
 
     def __enter__(self) -> Self:
@@ -436,123 +446,6 @@ class Window(Obj):
 
         return self
 
-    def set_window_option(self, option: str, value: int | str) -> Window:
-        """Set option for tmux window.
-
-        Wraps ``$ tmux set-window-option <option> <value>``.
-
-        Parameters
-        ----------
-        option : str
-            option to set, e.g. 'aggressive-resize'
-        value : str
-            window option value. True/False will turn in 'on' and 'off',
-            also accepts string of 'on' or 'off' directly.
-
-        Raises
-        ------
-        :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
-        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
-        """
-        if isinstance(value, bool) and value:
-            value = "on"
-        elif isinstance(value, bool) and not value:
-            value = "off"
-
-        cmd = self.cmd(
-            "set-window-option",
-            option,
-            value,
-        )
-
-        if isinstance(cmd.stderr, list) and len(cmd.stderr):
-            handle_option_error(cmd.stderr[0])
-
-        return self
-
-    def show_window_options(self, g: bool | None = False) -> WindowOptionDict:
-        """Return dict of options for window.
-
-        .. versionchanged:: 0.13.0
-
-           ``option`` removed, use show_window_option to return an individual option.
-
-        Parameters
-        ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if g:
-            tmux_args += ("-g",)
-
-        tmux_args += ("show-window-options",)
-        cmd = self.cmd(*tmux_args)
-
-        output = cmd.stdout
-
-        # The shlex.split function splits the args at spaces, while also
-        # retaining quoted sub-strings.
-        #   shlex.split('this is "a test"') => ['this', 'is', 'a test']
-
-        window_options: WindowOptionDict = {}
-        for item in output:
-            try:
-                key, val = shlex.split(item)
-            except ValueError:
-                logger.exception(f"Error extracting option: {item}")
-            assert isinstance(key, str)
-            assert isinstance(val, str)
-
-            if isinstance(val, str) and val.isdigit():
-                window_options[key] = int(val)
-
-        return window_options
-
-    def show_window_option(
-        self,
-        option: str,
-        g: bool = False,
-    ) -> str | int | None:
-        """Return option value for the target window.
-
-        todo: test and return True/False for on/off string
-
-        Parameters
-        ----------
-        option : str
-        g : bool, optional
-            Pass ``-g`` flag, global. Default False.
-
-        Raises
-        ------
-        :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
-        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
-        """
-        tmux_args: tuple[str | int, ...] = ()
-
-        if g:
-            tmux_args += ("-g",)
-
-        tmux_args += (option,)
-
-        cmd = self.cmd("show-window-options", *tmux_args)
-
-        if len(cmd.stderr):
-            handle_option_error(cmd.stderr[0])
-
-        window_options_output = cmd.stdout
-
-        if not len(window_options_output):
-            return None
-
-        value_raw = next(shlex.split(item) for item in window_options_output)
-
-        value: str | int = int(value_raw[1]) if value_raw[1].isdigit() else value_raw[1]
-
-        return value
-
     def rename_window(self, new_name: str) -> Window:
         """Rename window.
 
@@ -571,8 +464,6 @@ class Window(Obj):
         >>> window.rename_window('New name')
         Window(@1 1:New name, Session($1 ...))
         """
-        import shlex
-
         lex = shlex.shlex(new_name)
         lex.escape = " "
         lex.whitespace_split = False
@@ -970,6 +861,69 @@ class Window(Obj):
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+    def set_window_option(
+        self,
+        option: str,
+        value: int | str,
+    ) -> Window:
+        """Set option for tmux window. Deprecated by :meth:`Window.set_option()`.
+
+        .. deprecated:: 0.26
+
+           Deprecated by :meth:`Window.set_option()`.
+
+        """
+        warnings.warn(
+            "Window.set_window_option() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.set_option(option=option, value=value)
+
+    def show_window_options(self, g: bool | None = False) -> WindowOptionDict:
+        """Show options for tmux window. Deprecated by :meth:`Window._show_options()`.
+
+        .. deprecated:: 0.26
+
+           Deprecated by :meth:`Window._show_options()`.
+
+        """
+        warnings.warn(
+            "Window.show_window_options() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return t.cast(
+            "WindowOptionDict",
+            self._show_options(
+                g=g,
+                scope=OptionScope.Window,
+            ),
+        )
+
+    def show_window_option(
+        self,
+        option: str,
+        g: bool = False,
+    ) -> str | int | None:
+        """Return option for target window. Deprecated by :meth:`Window._show_option()`.
+
+        .. deprecated:: 0.26
+
+           Deprecated by :meth:`Window._show_option()`.
+
+        """
+        warnings.warn(
+            "Window.show_window_option() is deprecated",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._show_option(
+            option=option,
+            g=g,
+            scope=OptionScope.Window,
+        )
 
     def get(self, key: str, default: t.Any | None = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.

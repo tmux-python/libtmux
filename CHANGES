@@ -208,6 +208,43 @@ Add `TestServer` pytest fixture for creating temporary tmux servers (#565):
 - dev dependencies: Include `typing-extensions` for Python version < 3.11 via
   the `testing` and `lint` groups, via #564.
 
+### Renamed commands
+
+- Renamed `Window.set_window_option()` to {meth}`Window.set_option()` (#516)
+
+  Deprecated `Window.set_window_option()`
+
+- Renamed `Window.show_window_option()` to {meth}`Window.show_option()` (#516)
+
+  Deprecated `Window.show_window_option()`
+
+- Renamed `Window.show_window_options()` to {meth}`Window.show_options()` (#516)
+
+  Deprecated `Window.show_window_options()`
+
+### Improved options
+
+- Option support expanded to server, session, window, and pane
+- Option support enhanced and streamlined via {class}`options.OptionsMixin`.
+
+  - `set_option`
+  - `show_option`
+  - `show_options`
+  - `unset_option`
+
+- {meth}`Window.set_option()` (#516)
+
+  Added arguments:
+
+  - `format` -> `-F`
+  - `unset` -> `-u`
+  - `global` -> `-g`
+  - `unset_panes` -> `-U`: Also unset other panse in windows
+  - `prevent_overwrite`: `-o`
+  - `suppress_warnings`: `-q`
+  - `append`: `-a`
+
+
 ## libtmux 0.42.0 (2025-02-02)
 
 ### Bug fixes
@@ -233,17 +270,6 @@ Add `TestServer` pytest fixture for creating temporary tmux servers (#565):
 
 - `Server`: Fix `colors` docstring to note it accepts `88` or `256`, Thank you
   @TravisDart! (via #544)
-
-### Development
-
-#### chore: Implement PEP 563 deferred annotation resolution (#555)
-
-- Add `from __future__ import annotations` to defer annotation resolution and reduce unnecessary runtime computations during type checking.
-- Enable Ruff checks for PEP-compliant annotations:
-  - [non-pep585-annotation (UP006)](https://docs.astral.sh/ruff/rules/non-pep585-annotation/)
-  - [non-pep604-annotation (UP007)](https://docs.astral.sh/ruff/rules/non-pep604-annotation/)
-
-For more details on PEP 563, see: https://peps.python.org/pep-0563/
 
 ## libtmux 0.40.1 (2024-12-24)
 
