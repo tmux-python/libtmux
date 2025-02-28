@@ -16,7 +16,7 @@ uv run mypy
 Lint:
 
 ```
-uv run ruff check . --fix; uv run ruff format .;
+uv run ruff check . --fix --show-fixes; uv run ruff format .;
 ```
 
 Check tests:
