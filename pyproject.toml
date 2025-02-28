@@ -212,6 +212,9 @@ convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
 "*/__init__.py" = ["F401"]
+"src/libtmux/_internal/frozen_dataclass.py" = [
+  "B010",  # set-attr-with-constant
+]
 
 [tool.pytest.ini_options]
 addopts = [
