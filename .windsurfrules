@@ -111,3 +111,11 @@
   - Separate subject from body with a blank line
   - Mark breaking changes clearly: `BREAKING:`
 </git_commit_standards>
+
+<pytest_testing_guidelines>
+- Use fixtures from conftest.py instead of monkeypatch and MagicMock when available
+- For instance, if using libtmux, use provided fixtures: server, session, window, and pane
+- Document in test docstrings why standard fixtures weren't used for exceptional cases
+- Use tmp_path (pathlib.Path) fixture over Python's tempfile
+- Use monkeypatch fixture over unittest.mock
+</pytest_testing_guidelines>
