@@ -75,3 +75,39 @@
 - Start with an initial commit of functional changes
 - Follow with separate commits for formatting, linting, and type checking fixes
 </git_workflow>
+
+<git_commit_standards>
+- Use the following commit message format:
+  ```
+  Component/File(commit-type[Subcomponent/method]): Concise description
+
+  why: Explanation of necessity or impact.
+  what:
+  - Specific technical changes made
+  - Focused on a single topic
+
+  refs: #issue-number, breaking changes, or relevant links
+  ```
+
+- Common commit types:
+  - **feat**: New features or enhancements
+  - **fix**: Bug fixes
+  - **refactor**: Code restructuring without functional change
+  - **docs**: Documentation updates
+  - **chore**: Maintenance (dependencies, tooling, config)
+  - **test**: Test-related updates
+  - **style**: Code style and formatting
+
+- Prefix Python package changes with:
+  - `py(deps):` for standard packages
+  - `py(deps[dev]):` for development packages
+  - `py(deps[extra]):` for extras/sub-packages
+
+- General guidelines:
+  - Subject line: Maximum 50 characters
+  - Body lines: Maximum 72 characters
+  - Use imperative mood (e.g., "Add", "Fix", not "Added", "Fixed")
+  - Limit to one topic per commit
+  - Separate subject from body with a blank line
+  - Mark breaking changes clearly: `BREAKING:`
+</git_commit_standards>
