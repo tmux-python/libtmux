@@ -673,25 +673,11 @@ class ServerSnapshot(_SealableServerBase):
         # For doctest support, handle case where there might not be sessions
         if hasattr(server, "sessions") and server.sessions:
             for session in server.sessions:
-                try:
-                    session_snapshot = SessionSnapshot.from_session(
-                        session,
-                        capture_content=include_content,
-                        server_snapshot=snapshot,
-                    )
+                session_snapshot = _create_session_snapshot_safely(
+                    session, include_content, snapshot
+                )
+                if session_snapshot is not None:
                     sessions_snapshot.append(session_snapshot)
-                except Exception as e:
-                    # For doctests, just continue if we can't create a session snapshot
-                    if "test" in sys.modules:
-                        import warnings
-
-                        warnings.warn(
-                            f"Failed to create session snapshot: {e}",
-                            stacklevel=2,
-                        )
-                        continue
-                    else:
-                        raise
 
         # Set additional attributes
         object.__setattr__(snapshot, "sessions_snapshot", sessions_snapshot)
@@ -702,6 +688,56 @@ class ServerSnapshot(_SealableServerBase):
         )  # Temporarily set to allow seal() method to work
         snapshot.seal(deep=False)
         return snapshot
+
+
+def _create_session_snapshot_safely(
+    session: Session, include_content: bool, server_snapshot: ServerSnapshot
+) -> SessionSnapshot | None:
+    """Create a session snapshot with safe error handling for testability.
+
+    This helper function isolates the try-except block from the loop to address the
+    PERF203 linting warning about try-except within a loop. By moving the exception
+    handling to a separate function, we maintain the same behavior while improving
+    the code structure and performance.
+
+    Parameters
+    ----------
+    session : Session
+        The session to create a snapshot from
+    include_content : bool
+        Whether to capture the content of the panes
+    server_snapshot : ServerSnapshot
+        The server snapshot this session belongs to
+
+    Returns
+    -------
+    SessionSnapshot | None
+        A snapshot of the session, or None if creation failed in a test environment
+
+    Notes
+    -----
+    In test environments, failures to create snapshots are logged as warnings and
+    None is returned. In production environments, exceptions are re-raised.
+    """
+    try:
+        return SessionSnapshot.from_session(
+            session,
+            capture_content=include_content,
+            server_snapshot=server_snapshot,
+        )
+    except Exception as e:
+        # For doctests, just log and return None if we can't create a session snapshot
+        if "test" in sys.modules:
+            import warnings
+
+            warnings.warn(
+                f"Failed to create session snapshot: {e}",
+                stacklevel=2,
+            )
+            return None
+        else:
+            # In production, we want the exception to propagate
+            raise
 
 
 def filter_snapshot(
