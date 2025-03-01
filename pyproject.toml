@@ -227,6 +227,7 @@ convention = "numpy"
 "src/libtmux/_internal/frozen_dataclass.py" = [
   "B010",  # set-attr-with-constant
 ]
+"tests/_internal/test_frozen_dataclass_sealable.py" = ["RUF009"]
 
 [tool.pytest.ini_options]
 addopts = [
