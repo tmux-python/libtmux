@@ -5,6 +5,17 @@ globs: *.py
 
 # Development Process
 
+## Project Stack
+
+The project uses the following tools and technologies:
+
+- **uv** - Python package management and virtual environments
+- **ruff** - Fast Python linter and formatter
+- **py.test** - Testing framework
+  - **pytest-watcher** - Continuous test runner
+- **mypy** - Static type checking
+- **doctest** - Testing code examples in documentation
+
 ## 1. Start with Formatting
 
 Format your code first:
