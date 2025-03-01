@@ -156,3 +156,14 @@ For doctests in `src/**/*.py` files:
    # Watch specific modules for doctest changes
    uv run ptw . --now --doctest-modules src/path/to/module.py
    ```
+
+### Pytest Testing Guidelines
+
+1. **Use existing fixtures over mocks**:
+   - Use fixtures from conftest.py instead of `monkeypatch` and `MagicMock` when available
+   - For instance, if using libtmux, use provided fixtures: `server`, `session`, `window`, and `pane`
+   - Document in test docstrings why standard fixtures weren't used for exceptional cases
+
+2. **Preferred pytest patterns**:
+   - Use `tmp_path` (pathlib.Path) fixture over Python's `tempfile`
+   - Use `monkeypatch` fixture over `unittest.mock`
