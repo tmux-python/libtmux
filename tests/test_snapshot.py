@@ -287,7 +287,9 @@ def test_snapshot_active_only() -> None:
     mock_server_snap.sessions_snapshot = [mock_session_snap]
 
     # Create mock filter function that passes everything through
-    def mock_filter(snapshot) -> bool:
+    def mock_filter(
+        snapshot: ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot,
+    ) -> bool:
         return True
 
     # Apply the filter with a patch to avoid actual implementation
