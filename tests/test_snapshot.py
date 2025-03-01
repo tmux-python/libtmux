@@ -41,7 +41,7 @@ class TestPaneSnapshot:
 
         # Create a snapshot - use patch to prevent actual sealing
         with patch.object(PaneSnapshot, "seal", return_value=None):
-            snapshot = PaneSnapshot.from_pane(pane)
+            snapshot = PaneSnapshot.from_pane(pane, capture_content=True)
 
         # Check that the snapshot is a sealable instance
         assert is_sealable(snapshot)
