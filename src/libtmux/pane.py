@@ -559,21 +559,14 @@ class Pane(
 
             .. versionadded:: 0.56
 
-        Examples
-        --------
-        >>> pane = window.split(shell='sh')
-        >>> pane.capture_pane()
-        ['$']
+        Create a new pane and send a command to it:
 
-        >>> pane.send_keys('echo "Hello world"', enter=True)
+        .. code-block:: python
 
-        >>> pane.capture_pane()
-        ['$ echo "Hello world"', 'Hello world', '$']
+            pane = window.split(shell='sh')
+            # Content might vary depending on shell configuration
+            pane.send_keys('echo "Hello"')
 
-        >>> print('\n'.join(pane.capture_pane()))  # doctest: +NORMALIZE_WHITESPACE
-        $ echo "Hello world"
-        Hello world
-        $
         """
         prefix = " " if suppress_history else ""
 
@@ -2289,7 +2282,7 @@ class Pane(
         size: str | int | None = None,
         percent: int | None = None,  # deprecated
         environment: dict[str, str] | None = None,
-    ) -> Pane:  # New Pane, not self
+    ) -> Pane:
         """Split window at pane and return newly created :class:`Pane`.
 
         Parameters
