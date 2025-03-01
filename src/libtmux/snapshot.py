@@ -1,20 +1,28 @@
 """Hierarchical snapshots of tmux objects.
 
 libtmux.snapshot
-~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
 
-This module provides read-only snapshot classes for tmux objects that preserve
-the object structure and relationships while preventing modifications or
-tmux command execution.
+- **License**: MIT
+- **Description**: Snapshot data structure for tmux objects
+
+Note on type checking:
+  The snapshot classes intentionally override properties from parent classes with
+  slightly different return types (covariant types - e.g., returning WindowSnapshot
+  instead of Window). This is type-safe at runtime but causes mypy warnings. We use
+  type: ignore[override] comments on these properties and add proper typing.
+
+  Similarly, the seal() methods are implemented by the frozen_dataclass_sealable
+  decorator at runtime but not visible to mypy's static analysis.
 """
 
 from __future__ import annotations
 
 import contextlib
 import copy
+import datetime
 import typing as t
 from dataclasses import field
-from datetime import datetime
 
 from typing_extensions import Self
 
@@ -28,17 +36,22 @@ from libtmux.window import Window
 if t.TYPE_CHECKING:
     from types import TracebackType
 
+    PaneT = t.TypeVar("PaneT", bound=Pane, covariant=True)
+    WindowT = t.TypeVar("WindowT", bound=Window, covariant=True)
+    SessionT = t.TypeVar("SessionT", bound=Session, covariant=True)
+    ServerT = t.TypeVar("ServerT", bound=Server, covariant=True)
+
 
 @frozen_dataclass_sealable
 class PaneSnapshot(Pane):
     """A read-only snapshot of a tmux pane.
 
-    This maintains compatibility with the original Pane class but prevents modification.
+    This maintains compatibility with the original Pane class but prevents
+    modification.
     """
 
-    # Fields only present in snapshot
     pane_content: list[str] | None = None
-    created_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
     window_snapshot: WindowSnapshot | None = field(
         default=None,
         metadata={"mutable_during_init": True},
@@ -68,16 +81,24 @@ class PaneSnapshot(Pane):
         return self.pane_content
 
     @property
-    def window(self) -> WindowSnapshot | None:
-        """Return the WindowSnapshot parent, or None."""
+    def window(self) -> WindowSnapshot | None:  # type: ignore[override]
+        """Return the window this pane belongs to."""
         return self.window_snapshot
 
     @property
-    def session(self) -> SessionSnapshot | None:
-        """Return SessionSnapshot via window_snapshot's session_snapshot, or None."""
-        if self.window_snapshot is not None:
-            return self.window_snapshot.session_snapshot
-        return None
+    def session(self) -> SessionSnapshot | None:  # type: ignore[override]
+        """Return the session this pane belongs to."""
+        return self.window_snapshot.session_snapshot if self.window_snapshot else None
+
+    def seal(self, deep: bool = False) -> None:  # type: ignore[attr-defined]
+        """Seal the snapshot.
+
+        Parameters
+        ----------
+        deep : bool, optional
+            Recursively seal nested sealable objects, by default False
+        """
+        super().seal(deep=deep)
 
     @classmethod
     def from_pane(
@@ -102,26 +123,21 @@ class PaneSnapshot(Pane):
         PaneSnapshot
             A read-only snapshot of the pane
         """
-        # Try capturing the pane's content
         pane_content = None
         if capture_content:
             with contextlib.suppress(Exception):
                 pane_content = pane.capture_pane()
 
-        # Create a new snapshot instance
         snapshot = cls(server=pane.server)
 
-        # Copy all relevant attributes from the original pane
         for name, value in vars(pane).items():
             if not name.startswith("_"):  # Skip private attributes
                 object.__setattr__(snapshot, name, copy.deepcopy(value))
 
-        # Set snapshot-specific fields
         object.__setattr__(snapshot, "pane_content", pane_content)
         object.__setattr__(snapshot, "window_snapshot", window_snapshot)
-        object.__setattr__(snapshot, "created_at", datetime.now())
+        object.__setattr__(snapshot, "created_at", datetime.datetime.now())
 
-        # Seal the snapshot
         snapshot.seal()
 
         return snapshot
@@ -131,11 +147,11 @@ class PaneSnapshot(Pane):
 class WindowSnapshot(Window):
     """A read-only snapshot of a tmux window.
 
-    This maintains compatibility with the original Window class but prevents modification.
+    This maintains compatibility with the original Window class but prevents
+    modification.
     """
 
-    # Fields only present in snapshot
-    created_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
     session_snapshot: SessionSnapshot | None = field(
         default=None,
         metadata={"mutable_during_init": True},
@@ -163,13 +179,13 @@ class WindowSnapshot(Window):
         raise NotImplementedError(error_msg)
 
     @property
-    def panes(self) -> QueryList[PaneSnapshot]:
-        """Return the list of pane snapshots."""
+    def panes(self) -> QueryList[PaneSnapshot]:  # type: ignore[override]
+        """Return the list of panes in this window."""
         return QueryList(self.panes_snapshot)
 
     @property
-    def session(self) -> SessionSnapshot | None:
-        """Return the SessionSnapshot parent, or None."""
+    def session(self) -> SessionSnapshot | None:  # type: ignore[override]
+        """Return the session this window belongs to."""
         return self.session_snapshot
 
     @property
@@ -179,6 +195,16 @@ class WindowSnapshot(Window):
             p for p in self.panes_snapshot if getattr(p, "pane_active", "0") == "1"
         ]
         return active_panes[0] if active_panes else None
+
+    def seal(self, deep: bool = False) -> None:  # type: ignore[attr-defined]
+        """Seal the snapshot.
+
+        Parameters
+        ----------
+        deep : bool, optional
+            Recursively seal nested sealable objects, by default False
+        """
+        super().seal(deep=deep)
 
     @classmethod
     def from_window(
@@ -203,19 +229,15 @@ class WindowSnapshot(Window):
         WindowSnapshot
             A read-only snapshot of the window
         """
-        # Create the window snapshot first (without panes)
         snapshot = cls(server=window.server)
 
-        # Copy window attributes
         for name, value in vars(window).items():
             if not name.startswith("_"):  # Skip private attributes
                 object.__setattr__(snapshot, name, copy.deepcopy(value))
 
-        # Set snapshot-specific fields
-        object.__setattr__(snapshot, "created_at", datetime.now())
+        object.__setattr__(snapshot, "created_at", datetime.datetime.now())
         object.__setattr__(snapshot, "session_snapshot", session_snapshot)
 
-        # Snapshot panes (after session_snapshot is set to maintain bi-directional links)
         panes_snapshot = []
         for pane in window.panes:
             pane_snapshot = PaneSnapshot.from_pane(
@@ -226,7 +248,6 @@ class WindowSnapshot(Window):
             panes_snapshot.append(pane_snapshot)
         object.__setattr__(snapshot, "panes_snapshot", panes_snapshot)
 
-        # Seal the snapshot to prevent further modifications
         snapshot.seal()
 
         return snapshot
@@ -236,11 +257,11 @@ class WindowSnapshot(Window):
 class SessionSnapshot(Session):
     """A read-only snapshot of a tmux session.
 
-    This maintains compatibility with the original Session class but prevents modification.
+    This maintains compatibility with the original Session class but prevents
+    modification.
     """
 
-    # Fields only present in snapshot
-    created_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
     server_snapshot: ServerSnapshot | None = field(
         default=None,
         metadata={"mutable_during_init": True},
@@ -268,28 +289,38 @@ class SessionSnapshot(Session):
         raise NotImplementedError(error_msg)
 
     @property
-    def windows(self) -> QueryList[WindowSnapshot]:
-        """Return the list of window snapshots."""
+    def windows(self) -> QueryList[WindowSnapshot]:  # type: ignore[override]
+        """Return the list of windows in this session."""
         return QueryList(self.windows_snapshot)
 
     @property
-    def server(self) -> ServerSnapshot | None:
-        """Return the ServerSnapshot parent, or None."""
+    def server(self) -> ServerSnapshot | None:  # type: ignore[override]
+        """Return the server this session belongs to."""
         return self.server_snapshot
 
     @property
-    def active_window(self) -> WindowSnapshot | None:
-        """Return the active window snapshot, if any."""
-        active_windows = [
-            w for w in self.windows_snapshot if getattr(w, "window_active", "0") == "1"
-        ]
-        return active_windows[0] if active_windows else None
+    def active_window(self) -> WindowSnapshot | None:  # type: ignore[override]
+        """Return the active window in this session."""
+        for window in self.windows_snapshot:
+            if getattr(window, "window_active", "0") == "1":
+                return window
+        return None if not self.windows_snapshot else self.windows_snapshot[0]
 
     @property
     def active_pane(self) -> PaneSnapshot | None:
         """Return the active pane from the active window, if it exists."""
         active_win = self.active_window
         return active_win.active_pane if active_win else None
+
+    def seal(self, deep: bool = False) -> None:  # type: ignore[attr-defined]
+        """Seal the snapshot.
+
+        Parameters
+        ----------
+        deep : bool, optional
+            Recursively seal nested sealable objects, by default False
+        """
+        super().seal(deep=deep)
 
     @classmethod
     def from_session(
@@ -315,19 +346,15 @@ class SessionSnapshot(Session):
         SessionSnapshot
             A read-only snapshot of the session
         """
-        # Create the session snapshot first (without windows)
         snapshot = cls(server=session.server)
 
-        # Copy session attributes
         for name, value in vars(session).items():
             if not name.startswith("_"):  # Skip private attributes
                 object.__setattr__(snapshot, name, copy.deepcopy(value))
 
-        # Set snapshot-specific fields
-        object.__setattr__(snapshot, "created_at", datetime.now())
+        object.__setattr__(snapshot, "created_at", datetime.datetime.now())
         object.__setattr__(snapshot, "server_snapshot", server_snapshot)
 
-        # Snapshot windows (after server_snapshot is set to maintain bi-directional links)
         windows_snapshot = []
         for window in session.windows:
             window_snapshot = WindowSnapshot.from_window(
@@ -338,7 +365,6 @@ class SessionSnapshot(Session):
             windows_snapshot.append(window_snapshot)
         object.__setattr__(snapshot, "windows_snapshot", windows_snapshot)
 
-        # Seal the snapshot to prevent further modifications
         snapshot.seal()
 
         return snapshot
@@ -348,11 +374,11 @@ class SessionSnapshot(Session):
 class ServerSnapshot(Server):
     """A read-only snapshot of a tmux server.
 
-    This maintains compatibility with the original Server class but prevents modification.
+    This maintains compatibility with the original Server class but prevents
+    modification.
     """
 
-    # Fields only present in snapshot
-    created_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime.datetime = field(default_factory=datetime.datetime.now)
     sessions_snapshot: list[SessionSnapshot] = field(
         default_factory=list,
         metadata={"mutable_during_init": True},
@@ -384,7 +410,7 @@ class ServerSnapshot(Server):
         raise NotImplementedError(error_msg)
 
     def is_alive(self) -> bool:
-        """Return False as snapshot servers are not connected to a live tmux instance."""
+        """Return False as snapshot servers are not connected to live tmux."""
         return False
 
     def raise_if_dead(self) -> None:
@@ -393,19 +419,29 @@ class ServerSnapshot(Server):
         raise ConnectionError(error_msg)
 
     @property
-    def sessions(self) -> QueryList[SessionSnapshot]:
-        """Return the list of session snapshots."""
+    def sessions(self) -> QueryList[SessionSnapshot]:  # type: ignore[override]
+        """Return the list of sessions on this server."""
         return QueryList(self.sessions_snapshot)
 
     @property
-    def windows(self) -> QueryList[WindowSnapshot]:
-        """Return the list of all window snapshots across all sessions."""
+    def windows(self) -> QueryList[WindowSnapshot]:  # type: ignore[override]
+        """Return the list of windows on this server."""
         return QueryList(self.windows_snapshot)
 
     @property
-    def panes(self) -> QueryList[PaneSnapshot]:
-        """Return the list of all pane snapshots across all windows and sessions."""
+    def panes(self) -> QueryList[PaneSnapshot]:  # type: ignore[override]
+        """Return the list of panes on this server."""
         return QueryList(self.panes_snapshot)
+
+    def seal(self, deep: bool = False) -> None:  # type: ignore[attr-defined]
+        """Seal the snapshot.
+
+        Parameters
+        ----------
+        deep : bool, optional
+            Recursively seal nested sealable objects, by default False
+        """
+        super().seal(deep=deep)
 
     @classmethod
     def from_server(
@@ -436,10 +472,8 @@ class ServerSnapshot(Server):
         isinstance(server_snap, ServerSnapshot)  # True
         ```
         """
-        # Create the server snapshot (without sessions, windows, or panes)
         snapshot = cls()
 
-        # Copy server attributes
         for name, value in vars(server).items():
             if not name.startswith("_") and name not in {
                 "sessions",
@@ -448,15 +482,12 @@ class ServerSnapshot(Server):
             }:
                 object.__setattr__(snapshot, name, copy.deepcopy(value))
 
-        # Set snapshot-specific fields
-        object.__setattr__(snapshot, "created_at", datetime.now())
+        object.__setattr__(snapshot, "created_at", datetime.datetime.now())
 
-        # Snapshot all sessions, windows, and panes
         sessions_snapshot = []
         windows_snapshot = []
         panes_snapshot = []
 
-        # First, snapshot all sessions
         for session in server.sessions:
             session_snapshot = SessionSnapshot.from_session(
                 session,
@@ -465,18 +496,15 @@ class ServerSnapshot(Server):
             )
             sessions_snapshot.append(session_snapshot)
 
-            # Collect window and pane snapshots
             for window in session_snapshot.windows:
                 windows_snapshot.append(window)
-                for pane in window.panes:
-                    panes_snapshot.append(pane)
+                # Extend the panes_snapshot list with all panes from the window
+                panes_snapshot.extend(window.panes_snapshot)
 
-        # Set all collected snapshots
         object.__setattr__(snapshot, "sessions_snapshot", sessions_snapshot)
         object.__setattr__(snapshot, "windows_snapshot", windows_snapshot)
         object.__setattr__(snapshot, "panes_snapshot", panes_snapshot)
 
-        # Seal the snapshot to prevent further modifications
         snapshot.seal()
 
         return snapshot
@@ -508,76 +536,64 @@ def filter_snapshot(
     ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot | None
         A new filtered snapshot, or None if everything was filtered out
     """
-    # Handle filtering ServerSnapshot
     if isinstance(snapshot, ServerSnapshot):
         filtered_sessions = []
 
-        # Filter each session
         for sess in snapshot.sessions_snapshot:
-            filtered_sess = filter_snapshot(sess, filter_func)
-            if filtered_sess is not None:
-                filtered_sessions.append(filtered_sess)
+            session_copy = filter_snapshot(sess, filter_func)
+            if session_copy is not None:
+                filtered_sessions.append(t.cast(SessionSnapshot, session_copy))
 
-        # If the server itself fails filter or everything is filtered out, return None
         if not filter_func(snapshot) and not filtered_sessions:
             return None
 
-        # Create a new server snapshot with filtered sessions
         server_copy = copy.deepcopy(snapshot)
-        server_copy.sessions_snapshot = filtered_sessions
+        object.__setattr__(server_copy, "sessions_snapshot", filtered_sessions)
 
-        # Also update windows and panes lists to reflect filtered data
-        server_copy.windows_snapshot = []
-        server_copy.panes_snapshot = []
-        for sess in filtered_sessions:
-            server_copy.windows_snapshot.extend(sess.windows_snapshot)
-            for w in sess.windows_snapshot:
-                server_copy.panes_snapshot.extend(w.panes_snapshot)
+        windows_snapshot = []
+        panes_snapshot = []
+        for session in filtered_sessions:
+            windows_snapshot.extend(session.windows_snapshot)
+            for window in session.windows_snapshot:
+                panes_snapshot.extend(window.panes_snapshot)
+
+        object.__setattr__(server_copy, "windows_snapshot", windows_snapshot)
+        object.__setattr__(server_copy, "panes_snapshot", panes_snapshot)
 
         return server_copy
 
-    # Handle filtering SessionSnapshot
     if isinstance(snapshot, SessionSnapshot):
         filtered_windows = []
 
-        # Filter each window
         for w in snapshot.windows_snapshot:
-            filtered_w = filter_snapshot(w, filter_func)
-            if filtered_w is not None:
-                filtered_windows.append(filtered_w)
+            window_copy = filter_snapshot(w, filter_func)
+            if window_copy is not None:
+                filtered_windows.append(t.cast(WindowSnapshot, window_copy))
 
-        # If the session itself fails filter or everything is filtered out, return None
         if not filter_func(snapshot) and not filtered_windows:
             return None
 
-        # Create a new session snapshot with filtered windows
         session_copy = copy.deepcopy(snapshot)
-        session_copy.windows_snapshot = filtered_windows
+        object.__setattr__(session_copy, "windows_snapshot", filtered_windows)
         return session_copy
 
-    # Handle filtering WindowSnapshot
     if isinstance(snapshot, WindowSnapshot):
         filtered_panes = []
 
-        # Filter each pane - panes are leaf nodes
         filtered_panes = [p for p in snapshot.panes_snapshot if filter_func(p)]
 
-        # If the window itself fails filter or everything is filtered out, return None
         if not filter_func(snapshot) and not filtered_panes:
             return None
 
-        # Create a new window snapshot with filtered panes
         window_copy = copy.deepcopy(snapshot)
-        window_copy.panes_snapshot = filtered_panes
+        object.__setattr__(window_copy, "panes_snapshot", filtered_panes)
         return window_copy
 
-    # Handle filtering PaneSnapshot (leaf node)
     if isinstance(snapshot, PaneSnapshot):
         if filter_func(snapshot):
             return snapshot
         return None
 
-    # Unhandled type
     return snapshot
 
 
@@ -598,19 +614,15 @@ def snapshot_to_dict(
     dict
         A dictionary representation of the snapshot
     """
-    # Base case: For non-snapshot objects, just return them directly
     if not isinstance(
         snapshot,
         (ServerSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot),
     ):
         return t.cast("dict[str, t.Any]", snapshot)
 
-    # Convert dataclass to dict
     result: dict[str, t.Any] = {}
 
-    # Get all fields from the instance
     for name, value in vars(snapshot).items():
-        # Skip internal and parent reference fields - we want a tree, not a graph with cycles
         if name.startswith("_") or name in {
             "server",
             "server_snapshot",
@@ -619,7 +631,6 @@ def snapshot_to_dict(
         }:
             continue
 
-        # Handle lists of snapshots
         if (
             isinstance(value, list)
             and value
@@ -629,16 +640,13 @@ def snapshot_to_dict(
             )
         ):
             result[name] = [snapshot_to_dict(item) for item in value]
-        # Handle nested snapshots
         elif isinstance(
             value,
             (ServerSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot),
         ):
             result[name] = snapshot_to_dict(value)
-        # Handle QueryList (convert to regular list first)
         elif hasattr(value, "list") and callable(getattr(value, "list", None)):
             try:
-                # If it's a QueryList, convert to list of dicts
                 items = value.list()
                 result[name] = []
                 for item in items:
@@ -650,12 +658,9 @@ def snapshot_to_dict(
                     else:
                         result[name] = str(value)
             except Exception:
-                # If not a QueryList, just use the string representation
                 result[name] = str(value)
-        # Handle non-serializable objects
-        elif isinstance(value, datetime):
+        elif isinstance(value, datetime.datetime):
             result[name] = str(value)
-        # Handle remaining basic types
         else:
             result[name] = value
 
@@ -686,7 +691,6 @@ def snapshot_active_only(
             return getattr(obj, "pane_active", "0") == "1"
         if isinstance(obj, WindowSnapshot):
             return getattr(obj, "window_active", "0") == "1"
-        # Servers and sessions are always considered active
         return isinstance(obj, (ServerSnapshot, SessionSnapshot))
 
     filtered = filter_snapshot(full_snapshot, is_active)
