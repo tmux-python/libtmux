@@ -137,6 +137,10 @@ module = "libtmux._internal.frozen_dataclass_sealable"
 disable_error_code = ["method-assign"]
 
 [[tool.mypy.overrides]]
+module = "libtmux.snapshot"
+disable_error_code = ["override"]
+
+[[tool.mypy.overrides]]
 module = "tests._internal.test_frozen_dataclass_sealable"
 ignore_errors = true
 
