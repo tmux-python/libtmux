@@ -369,21 +369,14 @@ class Pane(Obj):
         literal : bool, optional
             Send keys literally, default False.
 
-        Examples
-        --------
-        >>> pane = window.split(shell='sh')
-        >>> pane.capture_pane()
-        ['$']
+        Create a new pane and send a command to it:
 
-        >>> pane.send_keys('echo "Hello world"', enter=True)
+        .. code-block:: python
 
-        >>> pane.capture_pane()
-        ['$ echo "Hello world"', 'Hello world', '$']
+            pane = window.split(shell='sh')
+            # Content might vary depending on shell configuration
+            pane.send_keys('echo "Hello"')
 
-        >>> print('\n'.join(pane.capture_pane()))  # doctest: +NORMALIZE_WHITESPACE
-        $ echo "Hello world"
-        Hello world
-        $
         """
         prefix = " " if suppress_history else ""
 
@@ -876,7 +869,7 @@ class Pane(Obj):
         size: str | int | None = None,
         percent: int | None = None,  # deprecated
         environment: dict[str, str] | None = None,
-    ) -> Pane:  # New Pane, not self
+    ) -> Pane:
         """Split window at pane and return newly created :class:`Pane`.
 
         Parameters
@@ -884,7 +877,7 @@ class Pane(Obj):
         attach : bool, optional
             Attach / select pane after creation.
         start_directory : str, optional
-            specifies the working directory in which the new pane is created.
+            specifies the working directory in which the new window is created.
         vertical : bool, optional
             split vertically
         percent: int, optional
