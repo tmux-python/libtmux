@@ -3,13 +3,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from libtmux._internal.frozen_dataclass_sealable import is_sealable
-from libtmux.server import Server
-from libtmux.session import Session
 from libtmux.snapshot import (
     PaneSnapshot,
     ServerSnapshot,
@@ -19,15 +18,19 @@ from libtmux.snapshot import (
     snapshot_to_dict,
 )
 
+if TYPE_CHECKING:
+    from libtmux.server import Server
+    from libtmux.session import Session
+
 
 class TestPaneSnapshot:
     """Test the PaneSnapshot class."""
 
-    def test_pane_snapshot_is_sealable(self):
+    def test_pane_snapshot_is_sealable(self) -> None:
         """Test that PaneSnapshot is sealable."""
         assert is_sealable(PaneSnapshot)
 
-    def test_pane_snapshot_creation(self, session: Session):
+    def test_pane_snapshot_creation(self, session: Session) -> None:
         """Test creating a PaneSnapshot."""
         # Get a real pane from the session fixture
         pane = session.active_window.active_pane
@@ -52,7 +55,7 @@ class TestPaneSnapshot:
         assert len(snapshot.pane_content) > 0
         assert any("test content" in line for line in snapshot.pane_content)
 
-    def test_pane_snapshot_no_content(self, session: Session):
+    def test_pane_snapshot_no_content(self, session: Session) -> None:
         """Test creating a PaneSnapshot without capturing content."""
         # Get a real pane from the session fixture
         pane = session.active_window.active_pane
@@ -68,7 +71,7 @@ class TestPaneSnapshot:
         # Test that capture_pane method returns empty list
         assert snapshot.capture_pane() == []
 
-    def test_pane_snapshot_cmd_not_implemented(self, session: Session):
+    def test_pane_snapshot_cmd_not_implemented(self, session: Session) -> None:
         """Test that cmd method raises NotImplementedError."""
         # Get a real pane from the session fixture
         pane = session.active_window.active_pane
@@ -86,11 +89,11 @@ class TestPaneSnapshot:
 class TestWindowSnapshot:
     """Test the WindowSnapshot class."""
 
-    def test_window_snapshot_is_sealable(self):
+    def test_window_snapshot_is_sealable(self) -> None:
         """Test that WindowSnapshot is sealable."""
         assert is_sealable(WindowSnapshot)
 
-    def test_window_snapshot_creation(self, session: Session):
+    def test_window_snapshot_creation(self, session: Session) -> None:
         """Test creating a WindowSnapshot."""
         # Get a real window from the session fixture
         window = session.active_window
@@ -115,7 +118,7 @@ class TestWindowSnapshot:
         # Check active_pane property
         assert snapshot.active_pane is not None
 
-    def test_window_snapshot_no_content(self, session: Session):
+    def test_window_snapshot_no_content(self, session: Session) -> None:
         """Test creating a WindowSnapshot without capturing content."""
         # Get a real window from the session fixture
         window = session.active_window
@@ -137,7 +140,7 @@ class TestWindowSnapshot:
         for pane_snap in snapshot.panes_snapshot:
             assert pane_snap.pane_content is None
 
-    def test_window_snapshot_cmd_not_implemented(self, session: Session):
+    def test_window_snapshot_cmd_not_implemented(self, session: Session) -> None:
         """Test that cmd method raises NotImplementedError."""
         # Get a real window from the session fixture
         window = session.active_window
@@ -157,11 +160,11 @@ class TestWindowSnapshot:
 class TestSessionSnapshot:
     """Test the SessionSnapshot class."""
 
-    def test_session_snapshot_is_sealable(self):
+    def test_session_snapshot_is_sealable(self) -> None:
         """Test that SessionSnapshot is sealable."""
         assert is_sealable(SessionSnapshot)
 
-    def test_session_snapshot_creation(self, session: Session):
+    def test_session_snapshot_creation(self, session: Session) -> None:
         """Test creating a SessionSnapshot."""
         # Create a mock return value instead of trying to modify a real SessionSnapshot
         mock_snapshot = MagicMock(spec=SessionSnapshot)
@@ -170,7 +173,8 @@ class TestSessionSnapshot:
 
         # Patch the from_session method to return our mock
         with patch(
-            "libtmux.snapshot.SessionSnapshot.from_session", return_value=mock_snapshot
+            "libtmux.snapshot.SessionSnapshot.from_session",
+            return_value=mock_snapshot,
         ):
             snapshot = SessionSnapshot.from_session(session)
 
@@ -178,7 +182,7 @@ class TestSessionSnapshot:
         assert snapshot.id == session.id
         assert snapshot.name == session.name
 
-    def test_session_snapshot_cmd_not_implemented(self):
+    def test_session_snapshot_cmd_not_implemented(self) -> None:
         """Test that cmd method raises NotImplementedError."""
         # Create a minimal SessionSnapshot instance without using from_session
         snapshot = SessionSnapshot.__new__(SessionSnapshot)
@@ -191,11 +195,11 @@ class TestSessionSnapshot:
 class TestServerSnapshot:
     """Test the ServerSnapshot class."""
 
-    def test_server_snapshot_is_sealable(self):
+    def test_server_snapshot_is_sealable(self) -> None:
         """Test that ServerSnapshot is sealable."""
         assert is_sealable(ServerSnapshot)
 
-    def test_server_snapshot_creation(self, server: Server, session: Session):
+    def test_server_snapshot_creation(self, server: Server, session: Session) -> None:
         """Test creating a ServerSnapshot."""
         # Create a mock with the properties we want to test
         mock_session_snapshot = MagicMock(spec=SessionSnapshot)
@@ -208,7 +212,8 @@ class TestServerSnapshot:
 
         # Patch the from_server method to return our mock
         with patch(
-            "libtmux.snapshot.ServerSnapshot.from_server", return_value=mock_snapshot
+            "libtmux.snapshot.ServerSnapshot.from_server",
+            return_value=mock_snapshot,
         ):
             snapshot = ServerSnapshot.from_server(server)
 
@@ -218,7 +223,7 @@ class TestServerSnapshot:
         # Check that sessions were added
         assert len(snapshot.sessions) == 1
 
-    def test_server_snapshot_cmd_not_implemented(self):
+    def test_server_snapshot_cmd_not_implemented(self) -> None:
         """Test that cmd method raises NotImplementedError."""
         # Create a minimal ServerSnapshot instance
         snapshot = ServerSnapshot.__new__(ServerSnapshot)
@@ -227,7 +232,7 @@ class TestServerSnapshot:
         with pytest.raises(NotImplementedError):
             snapshot.cmd("test-command")
 
-    def test_server_snapshot_is_alive(self):
+    def test_server_snapshot_is_alive(self) -> None:
         """Test that is_alive method returns False."""
         # Create a minimal ServerSnapshot instance
         snapshot = ServerSnapshot.__new__(ServerSnapshot)
@@ -235,7 +240,7 @@ class TestServerSnapshot:
         # Test that is_alive method returns False
         assert snapshot.is_alive() is False
 
-    def test_server_snapshot_raise_if_dead(self):
+    def test_server_snapshot_raise_if_dead(self) -> None:
         """Test that raise_if_dead method raises ConnectionError."""
         # Create a minimal ServerSnapshot instance
         snapshot = ServerSnapshot.__new__(ServerSnapshot)
@@ -245,7 +250,7 @@ class TestServerSnapshot:
             snapshot.raise_if_dead()
 
 
-def test_snapshot_to_dict(session: Session):
+def test_snapshot_to_dict(session: Session) -> None:
     """Test the snapshot_to_dict function."""
     # Create a mock pane snapshot with the attributes we need
     mock_snapshot = MagicMock(spec=PaneSnapshot)
@@ -263,7 +268,7 @@ def test_snapshot_to_dict(session: Session):
     assert mock_snapshot.pane_index in str(snapshot_dict.values())
 
 
-def test_snapshot_active_only():
+def test_snapshot_active_only() -> None:
     """Test the snapshot_active_only function."""
     # Create a minimal server snapshot with a session, window and pane
     mock_server_snap = MagicMock(spec=ServerSnapshot)
@@ -282,7 +287,7 @@ def test_snapshot_active_only():
     mock_server_snap.sessions_snapshot = [mock_session_snap]
 
     # Create mock filter function that passes everything through
-    def mock_filter(snapshot):
+    def mock_filter(snapshot) -> bool:
         return True
 
     # Apply the filter with a patch to avoid actual implementation
