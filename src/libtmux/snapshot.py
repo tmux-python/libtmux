@@ -81,9 +81,10 @@ class PaneSnapshot(_SealablePaneBase):
         NotImplementedError
             This method cannot be used on a snapshot.
         """
-        raise NotImplementedError(
-            "Cannot execute commands on a snapshot. Use a real Pane object instead.",
+        error_msg = (
+            "Cannot execute commands on a snapshot. Use a real Pane object instead."
         )
+        raise NotImplementedError(error_msg)
 
     @property
     def content(self) -> list[str] | None:
@@ -92,8 +93,8 @@ class PaneSnapshot(_SealablePaneBase):
         Returns
         -------
         list[str] | None
-            List of strings representing the content of the pane,
-            or None if no content was captured.
+            List of strings representing the content of the pane, or None if no
+            content was captured.
         """
         return self.pane_content
 
@@ -112,12 +113,13 @@ class PaneSnapshot(_SealablePaneBase):
         Returns
         -------
         list[str]
-            List of strings representing the content of the pane, or empty list if no content
-            was captured
+            List of strings representing the content of the pane, or empty list if
+            no content was captured
 
         Notes
         -----
-        This method is overridden to return the cached content instead of executing tmux commands.
+        This method is overridden to return the cached content instead of executing
+        tmux commands.
         """
         if self.pane_content is None:
             return []
@@ -218,10 +220,11 @@ class PaneSnapshot(_SealablePaneBase):
 
         # If all else fails, raise an error
         if source_server is None:
-            raise ValueError(
+            error_msg = (
                 "Cannot create snapshot: pane has no server attribute "
                 "and no window_snapshot provided"
             )
+            raise ValueError(error_msg)
 
         # Create a new instance
         snapshot = cls.__new__(cls)
@@ -275,9 +278,10 @@ class WindowSnapshot(_SealableWindowBase):
         NotImplementedError
             This method cannot be used on a snapshot.
         """
-        raise NotImplementedError(
-            "Cannot execute commands on a snapshot. Use a real Window object instead.",
+        error_msg = (
+            "Cannot execute commands on a snapshot. Use a real Window object instead."
         )
+        raise NotImplementedError(error_msg)
 
     @property
     def panes(self) -> QueryList[PaneSnapshot]:
@@ -357,10 +361,11 @@ class WindowSnapshot(_SealableWindowBase):
 
         # If all else fails, raise an error
         if source_server is None:
-            raise ValueError(
+            error_msg = (
                 "Cannot create snapshot: window has no server attribute "
                 "and no session_snapshot provided"
             )
+            raise ValueError(error_msg)
 
         # Create a new instance
         snapshot = cls.__new__(cls)
@@ -426,9 +431,10 @@ class SessionSnapshot(_SealableSessionBase):
         NotImplementedError
             This method cannot be used on a snapshot.
         """
-        raise NotImplementedError(
-            "Cannot execute commands on a snapshot. Use a real Session object instead.",
+        error_msg = (
+            "Cannot execute commands on a snapshot. Use a real Session object instead."
         )
+        raise NotImplementedError(error_msg)
 
     @property
     def windows(self) -> QueryList[WindowSnapshot]:
@@ -502,10 +508,11 @@ class SessionSnapshot(_SealableSessionBase):
 
         # If all else fails, raise an error
         if source_server is None:
-            raise ValueError(
+            error_msg = (
                 "Cannot create snapshot: session has no server attribute "
                 "and no server_snapshot provided"
             )
+            raise ValueError(error_msg)
 
         # Create a new instance
         snapshot = cls.__new__(cls)
@@ -579,9 +586,10 @@ class ServerSnapshot(_SealableServerBase):
         NotImplementedError
             This method cannot be used on a snapshot.
         """
-        raise NotImplementedError(
-            "Cannot execute commands on a snapshot. Use a real Server object instead.",
+        error_msg = (
+            "Cannot execute commands on a snapshot. Use a real Server object instead."
         )
+        raise NotImplementedError(error_msg)
 
     @property
     def sessions(self) -> QueryList[SessionSnapshot]:
@@ -619,7 +627,8 @@ class ServerSnapshot(_SealableServerBase):
         ConnectionError
             Always raised since snapshots are not connected to a live tmux server
         """
-        raise ConnectionError("ServerSnapshot is not connected to a live tmux server")
+        error_msg = "ServerSnapshot is not connected to a live tmux server"
+        raise ConnectionError(error_msg)
 
     @classmethod
     def from_server(
@@ -676,7 +685,10 @@ class ServerSnapshot(_SealableServerBase):
                     if "test" in sys.modules:
                         import warnings
 
-                        warnings.warn(f"Failed to create session snapshot: {e}")
+                        warnings.warn(
+                            f"Failed to create session snapshot: {e}",
+                            stacklevel=2,
+                        )
                         continue
                     else:
                         raise
