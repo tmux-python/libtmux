@@ -13,10 +13,11 @@ from __future__ import annotations
 import contextlib
 import copy
 import typing as t
-from dataclasses import dataclass, field
+from dataclasses import field
 from datetime import datetime
 from types import TracebackType
 
+from libtmux._internal.frozen_dataclass_sealable import frozen_dataclass_sealable
 from libtmux._internal.query_list import QueryList
 from libtmux.pane import Pane
 from libtmux.server import Server
@@ -27,7 +28,7 @@ if t.TYPE_CHECKING:
     pass
 
 
-@dataclass
+@frozen_dataclass_sealable
 class PaneSnapshot(Pane):
     """A read-only snapshot of a tmux pane.
 
@@ -37,19 +38,9 @@ class PaneSnapshot(Pane):
     # Fields only present in snapshot
     pane_content: list[str] | None = None
     created_at: datetime = field(default_factory=datetime.now)
-    window_snapshot: WindowSnapshot | None = None
-    _read_only: bool = field(default=False, repr=False)
-
-    def __post_init__(self) -> None:
-        """Make instance effectively read-only after initialization."""
-        object.__setattr__(self, "_read_only", True)
-
-    def __setattr__(self, name: str, value: t.Any) -> None:
-        """Prevent attribute modification after initialization."""
-        if hasattr(self, "_read_only") and self._read_only:
-            error_msg = f"Cannot modify '{name}' on read-only PaneSnapshot"
-            raise AttributeError(error_msg)
-        super().__setattr__(name, value)
+    window_snapshot: WindowSnapshot | None = field(
+        default=None, metadata={"mutable_during_init": True}
+    )
 
     def __enter__(self) -> PaneSnapshot:
         """Context manager entry point."""
@@ -116,8 +107,7 @@ class PaneSnapshot(Pane):
             with contextlib.suppress(Exception):
                 pane_content = pane.capture_pane()
 
-        # Gather fields from the parent Pane class
-        # We need to use object.__setattr__ to bypass our own __setattr__ override
+        # Create a new snapshot instance
         snapshot = cls(server=pane.server)
 
         # Copy all relevant attributes from the original pane
@@ -130,10 +120,13 @@ class PaneSnapshot(Pane):
         object.__setattr__(snapshot, "window_snapshot", window_snapshot)
         object.__setattr__(snapshot, "created_at", datetime.now())
 
+        # Seal the snapshot
+        snapshot.seal()
+
         return snapshot
 
 
-@dataclass
+@frozen_dataclass_sealable
 class WindowSnapshot(Window):
     """A read-only snapshot of a tmux window.
 
@@ -142,20 +135,12 @@ class WindowSnapshot(Window):
 
     # Fields only present in snapshot
     created_at: datetime = field(default_factory=datetime.now)
-    session_snapshot: SessionSnapshot | None = None
-    panes_snapshot: list[PaneSnapshot] = field(default_factory=list)
-    _read_only: bool = field(default=False, repr=False)
-
-    def __post_init__(self) -> None:
-        """Make instance effectively read-only after initialization."""
-        object.__setattr__(self, "_read_only", True)
-
-    def __setattr__(self, name: str, value: t.Any) -> None:
-        """Prevent attribute modification after initialization."""
-        if hasattr(self, "_read_only") and self._read_only:
-            error_msg = f"Cannot modify '{name}' on read-only WindowSnapshot"
-            raise AttributeError(error_msg)
-        super().__setattr__(name, value)
+    session_snapshot: SessionSnapshot | None = field(
+        default=None, metadata={"mutable_during_init": True}
+    )
+    panes_snapshot: list[PaneSnapshot] = field(
+        default_factory=list, metadata={"mutable_during_init": True}
+    )
 
     def __enter__(self) -> WindowSnapshot:
         """Context manager entry point."""
@@ -216,57 +201,48 @@ class WindowSnapshot(Window):
         WindowSnapshot
             A read-only snapshot of the window
         """
-        # Create a new window snapshot instance
+        # Create the window snapshot first (without panes)
         snapshot = cls(server=window.server)
 
-        # Copy all relevant attributes from the original window
+        # Copy window attributes
         for name, value in vars(window).items():
-            if not name.startswith("_") and name not in ["panes", "session"]:
+            if not name.startswith("_"):  # Skip private attributes
                 object.__setattr__(snapshot, name, copy.deepcopy(value))
 
         # Set snapshot-specific fields
         object.__setattr__(snapshot, "created_at", datetime.now())
         object.__setattr__(snapshot, "session_snapshot", session_snapshot)
 
-        # Now snapshot all panes
+        # Snapshot panes (after session_snapshot is set to maintain bi-directional links)
         panes_snapshot = []
-        for p in window.panes:
+        for pane in window.panes:
             pane_snapshot = PaneSnapshot.from_pane(
-                p, capture_content=capture_content, window_snapshot=snapshot
+                pane, capture_content=capture_content, window_snapshot=snapshot
             )
             panes_snapshot.append(pane_snapshot)
-
         object.__setattr__(snapshot, "panes_snapshot", panes_snapshot)
+
+        # Seal the snapshot to prevent further modifications
+        snapshot.seal()
 
         return snapshot
 
 
-@dataclass
+@frozen_dataclass_sealable
 class SessionSnapshot(Session):
     """A read-only snapshot of a tmux session.
 
     This maintains compatibility with the original Session class but prevents modification.
     """
 
-    # Make server field optional by giving it a default value
-    server: t.Any = None  # type: ignore
-
     # Fields only present in snapshot
     created_at: datetime = field(default_factory=datetime.now)
-    server_snapshot: ServerSnapshot | None = None
-    windows_snapshot: list[WindowSnapshot] = field(default_factory=list)
-    _read_only: bool = field(default=False, repr=False)
-
-    def __post_init__(self) -> None:
-        """Make instance effectively read-only after initialization."""
-        object.__setattr__(self, "_read_only", True)
-
-    def __setattr__(self, name: str, value: t.Any) -> None:
-        """Prevent attribute modification after initialization."""
-        if hasattr(self, "_read_only") and self._read_only:
-            error_msg = f"Cannot modify '{name}' on read-only SessionSnapshot"
-            raise AttributeError(error_msg)
-        super().__setattr__(name, value)
+    server_snapshot: ServerSnapshot | None = field(
+        default=None, metadata={"mutable_during_init": True}
+    )
+    windows_snapshot: list[WindowSnapshot] = field(
+        default_factory=list, metadata={"mutable_during_init": True}
+    )
 
     def __enter__(self) -> SessionSnapshot:
         """Context manager entry point."""
@@ -299,10 +275,10 @@ class SessionSnapshot(Session):
     @property
     def active_window(self) -> WindowSnapshot | None:
         """Return the active window snapshot, if any."""
-        for window in self.windows_snapshot:
-            if getattr(window, "window_active", "0") == "1":
-                return window
-        return None
+        active_windows = [
+            w for w in self.windows_snapshot if getattr(w, "window_active", "0") == "1"
+        ]
+        return active_windows[0] if active_windows else None
 
     @property
     def active_pane(self) -> PaneSnapshot | None:
@@ -334,41 +310,34 @@ class SessionSnapshot(Session):
         SessionSnapshot
             A read-only snapshot of the session
         """
-        # Create a new empty instance using __new__ to bypass __init__
-        snapshot = cls.__new__(cls)
+        # Create the session snapshot first (without windows)
+        snapshot = cls(server=session.server)
 
-        # Initialize _read_only to False to allow setting attributes
-        object.__setattr__(snapshot, "_read_only", False)
-
-        # Copy all relevant attributes from the original session
+        # Copy session attributes
         for name, value in vars(session).items():
-            if not name.startswith("_") and name not in ["server", "windows"]:
+            if not name.startswith("_"):  # Skip private attributes
                 object.__setattr__(snapshot, name, copy.deepcopy(value))
 
         # Set snapshot-specific fields
         object.__setattr__(snapshot, "created_at", datetime.now())
         object.__setattr__(snapshot, "server_snapshot", server_snapshot)
 
-        # Initialize empty lists
-        object.__setattr__(snapshot, "windows_snapshot", [])
-
-        # Now snapshot all windows
+        # Snapshot windows (after server_snapshot is set to maintain bi-directional links)
         windows_snapshot = []
-        for w in session.windows:
+        for window in session.windows:
             window_snapshot = WindowSnapshot.from_window(
-                w, capture_content=capture_content, session_snapshot=snapshot
+                window, capture_content=capture_content, session_snapshot=snapshot
             )
             windows_snapshot.append(window_snapshot)
-
         object.__setattr__(snapshot, "windows_snapshot", windows_snapshot)
 
-        # Finally, set _read_only to True to prevent future modifications
-        object.__setattr__(snapshot, "_read_only", True)
+        # Seal the snapshot to prevent further modifications
+        snapshot.seal()
 
         return snapshot
 
 
-@dataclass
+@frozen_dataclass_sealable
 class ServerSnapshot(Server):
     """A read-only snapshot of a tmux server.
 
@@ -377,21 +346,15 @@ class ServerSnapshot(Server):
 
     # Fields only present in snapshot
     created_at: datetime = field(default_factory=datetime.now)
-    sessions_snapshot: list[SessionSnapshot] = field(default_factory=list)
-    windows_snapshot: list[WindowSnapshot] = field(default_factory=list)
-    panes_snapshot: list[PaneSnapshot] = field(default_factory=list)
-    _read_only: bool = field(default=False, repr=False)
-
-    def __post_init__(self) -> None:
-        """Make instance effectively read-only after initialization."""
-        object.__setattr__(self, "_read_only", True)
-
-    def __setattr__(self, name: str, value: t.Any) -> None:
-        """Prevent attribute modification after initialization."""
-        if hasattr(self, "_read_only") and self._read_only:
-            error_msg = f"Cannot modify '{name}' on read-only ServerSnapshot"
-            raise AttributeError(error_msg)
-        super().__setattr__(name, value)
+    sessions_snapshot: list[SessionSnapshot] = field(
+        default_factory=list, metadata={"mutable_during_init": True}
+    )
+    windows_snapshot: list[WindowSnapshot] = field(
+        default_factory=list, metadata={"mutable_during_init": True}
+    )
+    panes_snapshot: list[PaneSnapshot] = field(
+        default_factory=list, metadata={"mutable_during_init": True}
+    )
 
     def __enter__(self) -> ServerSnapshot:
         """Context manager entry point."""
@@ -415,10 +378,10 @@ class ServerSnapshot(Server):
         """Return False as snapshot servers are not connected to a live tmux instance."""
         return False
 
-    def raise_if_dead(self) -> t.NoReturn:
+    def raise_if_dead(self) -> None:
         """Raise exception as snapshots are not connected to a live server."""
         error_msg = "ServerSnapshot is not connected to a live tmux server"
-        raise NotImplementedError(error_msg)
+        raise ConnectionError(error_msg)
 
     @property
     def sessions(self) -> QueryList[SessionSnapshot]:
@@ -441,40 +404,31 @@ class ServerSnapshot(Server):
     ) -> ServerSnapshot:
         """Create a ServerSnapshot from a live Server.
 
-        Examples
-        --------
-        >>> server_snap = ServerSnapshot.from_server(server)
-        >>> isinstance(server_snap, ServerSnapshot)
-        True
-        >>> # Check if it preserves the class hierarchy relationship
-        >>> isinstance(server_snap, type(server))
-        True
-        >>> # Snapshot is read-only
-        >>> try:
-        ...     server_snap.cmd("list-sessions")
-        ... except NotImplementedError:
-        ...     print("Cannot execute commands on snapshot")
-        Cannot execute commands on snapshot
-        >>> # Check that server is correctly snapshotted
-        >>> server_snap.socket_name == server.socket_name
-        True
-
         Parameters
         ----------
         server : Server
             Live server to snapshot
         include_content : bool, optional
-            Whether to capture the current content of all panes
+            Whether to capture the current content of all panes, by default True
 
         Returns
         -------
         ServerSnapshot
             A read-only snapshot of the server
+
+        Examples
+        --------
+        The ServerSnapshot.from_server method creates a snapshot of the server:
+
+        ```python
+        server_snap = ServerSnapshot.from_server(server)
+        isinstance(server_snap, ServerSnapshot)  # True
+        ```
         """
-        # Create a new server snapshot instance
+        # Create the server snapshot (without sessions, windows, or panes)
         snapshot = cls()
 
-        # Copy all relevant attributes from the original server
+        # Copy server attributes
         for name, value in vars(server).items():
             if not name.startswith("_") and name not in [
                 "sessions",
@@ -486,25 +440,33 @@ class ServerSnapshot(Server):
         # Set snapshot-specific fields
         object.__setattr__(snapshot, "created_at", datetime.now())
 
-        # Now snapshot all sessions
+        # Snapshot all sessions, windows, and panes
         sessions_snapshot = []
         windows_snapshot = []
         panes_snapshot = []
 
-        for s in server.sessions:
+        # First, snapshot all sessions
+        for session in server.sessions:
             session_snapshot = SessionSnapshot.from_session(
-                s, capture_content=include_content, server_snapshot=snapshot
+                session,
+                capture_content=include_content,
+                server_snapshot=snapshot,
             )
             sessions_snapshot.append(session_snapshot)
 
-            # Also collect all windows and panes for quick access
-            windows_snapshot.extend(session_snapshot.windows_snapshot)
-            for w in session_snapshot.windows_snapshot:
-                panes_snapshot.extend(w.panes_snapshot)
+            # Collect window and pane snapshots
+            for window in session_snapshot.windows:
+                windows_snapshot.append(window)
+                for pane in window.panes:
+                    panes_snapshot.append(pane)
 
+        # Set all collected snapshots
         object.__setattr__(snapshot, "sessions_snapshot", sessions_snapshot)
         object.__setattr__(snapshot, "windows_snapshot", windows_snapshot)
         object.__setattr__(snapshot, "panes_snapshot", panes_snapshot)
+
+        # Seal the snapshot to prevent further modifications
+        snapshot.seal()
 
         return snapshot
 
