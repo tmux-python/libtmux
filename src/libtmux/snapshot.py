@@ -15,7 +15,8 @@ import copy
 import typing as t
 from dataclasses import field
 from datetime import datetime
-from types import TracebackType
+
+from typing_extensions import Self
 
 from libtmux._internal.frozen_dataclass_sealable import frozen_dataclass_sealable
 from libtmux._internal.query_list import QueryList
@@ -25,7 +26,7 @@ from libtmux.session import Session
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
-    pass
+    from types import TracebackType
 
 
 @frozen_dataclass_sealable
@@ -39,10 +40,11 @@ class PaneSnapshot(Pane):
     pane_content: list[str] | None = None
     created_at: datetime = field(default_factory=datetime.now)
     window_snapshot: WindowSnapshot | None = field(
-        default=None, metadata={"mutable_during_init": True}
+        default=None,
+        metadata={"mutable_during_init": True},
     )
 
-    def __enter__(self) -> PaneSnapshot:
+    def __enter__(self) -> Self:
         """Context manager entry point."""
         return self
 
@@ -53,7 +55,6 @@ class PaneSnapshot(Pane):
         exc_tb: TracebackType | None,
     ) -> None:
         """Context manager exit point."""
-        pass
 
     def cmd(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
         """Prevent executing tmux commands on a snapshot."""
@@ -136,13 +137,15 @@ class WindowSnapshot(Window):
     # Fields only present in snapshot
     created_at: datetime = field(default_factory=datetime.now)
     session_snapshot: SessionSnapshot | None = field(
-        default=None, metadata={"mutable_during_init": True}
+        default=None,
+        metadata={"mutable_during_init": True},
     )
     panes_snapshot: list[PaneSnapshot] = field(
-        default_factory=list, metadata={"mutable_during_init": True}
+        default_factory=list,
+        metadata={"mutable_during_init": True},
     )
 
-    def __enter__(self) -> WindowSnapshot:
+    def __enter__(self) -> Self:
         """Context manager entry point."""
         return self
 
@@ -153,7 +156,6 @@ class WindowSnapshot(Window):
         exc_tb: TracebackType | None,
     ) -> None:
         """Context manager exit point."""
-        pass
 
     def cmd(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
         """Prevent executing tmux commands on a snapshot."""
@@ -217,7 +219,9 @@ class WindowSnapshot(Window):
         panes_snapshot = []
         for pane in window.panes:
             pane_snapshot = PaneSnapshot.from_pane(
-                pane, capture_content=capture_content, window_snapshot=snapshot
+                pane,
+                capture_content=capture_content,
+                window_snapshot=snapshot,
             )
             panes_snapshot.append(pane_snapshot)
         object.__setattr__(snapshot, "panes_snapshot", panes_snapshot)
@@ -238,13 +242,15 @@ class SessionSnapshot(Session):
     # Fields only present in snapshot
     created_at: datetime = field(default_factory=datetime.now)
     server_snapshot: ServerSnapshot | None = field(
-        default=None, metadata={"mutable_during_init": True}
+        default=None,
+        metadata={"mutable_during_init": True},
     )
     windows_snapshot: list[WindowSnapshot] = field(
-        default_factory=list, metadata={"mutable_during_init": True}
+        default_factory=list,
+        metadata={"mutable_during_init": True},
     )
 
-    def __enter__(self) -> SessionSnapshot:
+    def __enter__(self) -> Self:
         """Context manager entry point."""
         return self
 
@@ -255,7 +261,6 @@ class SessionSnapshot(Session):
         exc_tb: TracebackType | None,
     ) -> None:
         """Context manager exit point."""
-        pass
 
     def cmd(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
         """Prevent executing tmux commands on a snapshot."""
@@ -326,7 +331,9 @@ class SessionSnapshot(Session):
         windows_snapshot = []
         for window in session.windows:
             window_snapshot = WindowSnapshot.from_window(
-                window, capture_content=capture_content, session_snapshot=snapshot
+                window,
+                capture_content=capture_content,
+                session_snapshot=snapshot,
             )
             windows_snapshot.append(window_snapshot)
         object.__setattr__(snapshot, "windows_snapshot", windows_snapshot)
@@ -347,16 +354,19 @@ class ServerSnapshot(Server):
     # Fields only present in snapshot
     created_at: datetime = field(default_factory=datetime.now)
     sessions_snapshot: list[SessionSnapshot] = field(
-        default_factory=list, metadata={"mutable_during_init": True}
+        default_factory=list,
+        metadata={"mutable_during_init": True},
     )
     windows_snapshot: list[WindowSnapshot] = field(
-        default_factory=list, metadata={"mutable_during_init": True}
+        default_factory=list,
+        metadata={"mutable_during_init": True},
     )
     panes_snapshot: list[PaneSnapshot] = field(
-        default_factory=list, metadata={"mutable_during_init": True}
+        default_factory=list,
+        metadata={"mutable_during_init": True},
     )
 
-    def __enter__(self) -> ServerSnapshot:
+    def __enter__(self) -> Self:
         """Context manager entry point."""
         return self
 
@@ -367,7 +377,6 @@ class ServerSnapshot(Server):
         exc_tb: TracebackType | None,
     ) -> None:
         """Context manager exit point."""
-        pass
 
     def cmd(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
         """Prevent executing tmux commands on a snapshot."""
@@ -400,7 +409,9 @@ class ServerSnapshot(Server):
 
     @classmethod
     def from_server(
-        cls, server: Server, include_content: bool = True
+        cls,
+        server: Server,
+        include_content: bool = True,
     ) -> ServerSnapshot:
         """Create a ServerSnapshot from a live Server.
 
@@ -430,11 +441,11 @@ class ServerSnapshot(Server):
 
         # Copy server attributes
         for name, value in vars(server).items():
-            if not name.startswith("_") and name not in [
+            if not name.startswith("_") and name not in {
                 "sessions",
                 "windows",
                 "panes",
-            ]:
+            }:
                 object.__setattr__(snapshot, name, copy.deepcopy(value))
 
         # Set snapshot-specific fields
@@ -474,7 +485,8 @@ class ServerSnapshot(Server):
 def filter_snapshot(
     snapshot: ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot,
     filter_func: t.Callable[
-        [ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot], bool
+        [ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot],
+        bool,
     ],
 ) -> ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot | None:
     """Filter a snapshot hierarchy based on a filter function.
@@ -525,7 +537,7 @@ def filter_snapshot(
         return server_copy
 
     # Handle filtering SessionSnapshot
-    elif isinstance(snapshot, SessionSnapshot):
+    if isinstance(snapshot, SessionSnapshot):
         filtered_windows = []
 
         # Filter each window
@@ -544,7 +556,7 @@ def filter_snapshot(
         return session_copy
 
     # Handle filtering WindowSnapshot
-    elif isinstance(snapshot, WindowSnapshot):
+    if isinstance(snapshot, WindowSnapshot):
         filtered_panes = []
 
         # Filter each pane - panes are leaf nodes
@@ -560,7 +572,7 @@ def filter_snapshot(
         return window_copy
 
     # Handle filtering PaneSnapshot (leaf node)
-    elif isinstance(snapshot, PaneSnapshot):
+    if isinstance(snapshot, PaneSnapshot):
         if filter_func(snapshot):
             return snapshot
         return None
@@ -588,9 +600,10 @@ def snapshot_to_dict(
     """
     # Base case: For non-snapshot objects, just return them directly
     if not isinstance(
-        snapshot, (ServerSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot)
+        snapshot,
+        (ServerSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot),
     ):
-        return t.cast(dict[str, t.Any], snapshot)
+        return t.cast("dict[str, t.Any]", snapshot)
 
     # Convert dataclass to dict
     result: dict[str, t.Any] = {}
@@ -598,12 +611,12 @@ def snapshot_to_dict(
     # Get all fields from the instance
     for name, value in vars(snapshot).items():
         # Skip internal and parent reference fields - we want a tree, not a graph with cycles
-        if name.startswith("_") or name in [
+        if name.startswith("_") or name in {
             "server",
             "server_snapshot",
             "session_snapshot",
             "window_snapshot",
-        ]:
+        }:
             continue
 
         # Handle lists of snapshots
@@ -618,7 +631,8 @@ def snapshot_to_dict(
             result[name] = [snapshot_to_dict(item) for item in value]
         # Handle nested snapshots
         elif isinstance(
-            value, (ServerSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot)
+            value,
+            (ServerSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot),
         ):
             result[name] = snapshot_to_dict(value)
         # Handle QueryList (convert to regular list first)
@@ -670,7 +684,7 @@ def snapshot_active_only(
         """Return True if the object is active."""
         if isinstance(obj, PaneSnapshot):
             return getattr(obj, "pane_active", "0") == "1"
-        elif isinstance(obj, WindowSnapshot):
+        if isinstance(obj, WindowSnapshot):
             return getattr(obj, "window_active", "0") == "1"
         # Servers and sessions are always considered active
         return isinstance(obj, (ServerSnapshot, SessionSnapshot))
@@ -679,4 +693,4 @@ def snapshot_active_only(
     if filtered is None:
         error_msg = "No active objects found!"
         raise ValueError(error_msg)
-    return t.cast(ServerSnapshot, filtered)
+    return t.cast("ServerSnapshot", filtered)
