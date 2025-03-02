@@ -111,6 +111,125 @@ if not session:
 print(f"Connected to: {session}")
 ```
 
+## Testable Examples
+
+The following examples can be run as doctests using `py.test --doctest-modules README.md`. They assume that `server`, `session`, `window`, and `pane` objects have already been created.
+
+### Working with Server Objects
+
+```python
+>>> # Verify server is running
+>>> server.is_alive()
+True
+
+>>> # Check server has sessions attribute
+>>> hasattr(server, 'sessions')
+True
+
+>>> # List all tmux sessions
+>>> isinstance(server.sessions, list)
+True
+>>> len(server.sessions) > 0
+True
+
+>>> # At least one session should exist
+>>> len([s for s in server.sessions if s.session_id]) > 0
+True
+```
+
+### Session Operations
+
+```python
+>>> # Check session attributes
+>>> isinstance(session.session_id, str) and session.session_id.startswith('$')
+True
+
+>>> # Verify session name exists
+>>> isinstance(session.session_name, str)
+True
+>>> len(session.session_name) > 0
+True
+
+>>> # Session should have windows
+>>> isinstance(session.windows, list)
+True
+>>> len(session.windows) > 0
+True
+
+>>> # Get active window
+>>> session.active_window is not None
+True
+```
+
+### Window Management
+
+```python
+>>> # Window has an ID
+>>> isinstance(window.window_id, str) and window.window_id.startswith('@')
+True
+
+>>> # Window belongs to a session
+>>> hasattr(window, 'session') and window.session is not None
+True
+
+>>> # Window has panes
+>>> isinstance(window.panes, list)
+True
+>>> len(window.panes) > 0
+True
+
+>>> # Window has a name (could be empty but should be a string)
+>>> isinstance(window.window_name, str)
+True
+```
+
+### Pane Manipulation
+
+```python
+>>> # Pane has an ID
+>>> isinstance(pane.pane_id, str) and pane.pane_id.startswith('%')
+True
+
+>>> # Pane belongs to a window
+>>> hasattr(pane, 'window') and pane.window is not None
+True
+
+>>> # Test sending commands
+>>> pane.send_keys('echo "Hello from libtmux test"', enter=True)
+>>> import time
+>>> time.sleep(1)  # Longer wait to ensure command execution
+>>> output = pane.capture_pane()
+>>> isinstance(output, list)
+True
+>>> len(output) > 0  # Should have some output
+True
+```
+
+### Filtering Objects
+
+```python
+>>> # Session windows should be filterable
+>>> windows = session.windows
+>>> isinstance(windows, list)
+True
+>>> len(windows) > 0
+True
+
+>>> # Filter method should return a list
+>>> filtered_windows = session.windows.filter()
+>>> isinstance(filtered_windows, list)
+True
+
+>>> # Get method should return None or an object
+>>> window_maybe = session.windows.get(window_id=window.window_id)
+>>> window_maybe is None or window_maybe.window_id == window.window_id
+True
+
+>>> # Test basic filtering
+>>> all(hasattr(w, 'window_id') for w in session.windows)
+True
+```
+
 ## Key Features
 
 ### Smart Session Management
