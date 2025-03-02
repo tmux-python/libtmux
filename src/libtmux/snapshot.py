@@ -6,11 +6,8 @@ libtmux.snapshot
 - **License**: MIT
 - **Description**: Snapshot data structure for tmux objects
 
-Note on type checking:
-  The snapshot classes intentionally override properties from parent classes with
-  slightly different return types (covariant types - e.g., returning WindowSnapshot
-  instead of Window). This is type-safe at runtime but causes mypy warnings. We use
-  type: ignore[override] comments on these properties and add proper typing.
+This module provides hierarchical snapshots of tmux objects (Server, Session,
+Window, Pane) that are immutable and maintain the relationships between objects.
 """
 
 from __future__ import annotations
@@ -32,28 +29,74 @@ from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.window import Window
 
-if t.TYPE_CHECKING:
-    PaneT = t.TypeVar("PaneT", bound=Pane, covariant=True)
-    WindowT = t.TypeVar("WindowT", bound=Window, covariant=True)
-    SessionT = t.TypeVar("SessionT", bound=Session, covariant=True)
-    ServerT = t.TypeVar("ServerT", bound=Server, covariant=True)
+# Define type variables for generic typing
+PaneT = t.TypeVar("PaneT", bound=Pane, covariant=True)
+WindowT = t.TypeVar("WindowT", bound=Window, covariant=True)
+SessionT = t.TypeVar("SessionT", bound=Session, covariant=True)
+ServerT = t.TypeVar("ServerT", bound=Server, covariant=True)
+
+# Forward references for type definitions
+ServerSnapshot_t = t.TypeVar("ServerSnapshot_t", bound="ServerSnapshot")
+SessionSnapshot_t = t.TypeVar("SessionSnapshot_t", bound="SessionSnapshot")
+WindowSnapshot_t = t.TypeVar("WindowSnapshot_t", bound="WindowSnapshot")
+PaneSnapshot_t = t.TypeVar("PaneSnapshot_t", bound="PaneSnapshot")
 
 
-# Make base classes implement Sealable
+# Make base classes implement Sealable and use Generics
 class _SealablePaneBase(Pane, Sealable):
     """Base class for sealable pane classes."""
 
 
-class _SealableWindowBase(Window, Sealable):
-    """Base class for sealable window classes."""
+class _SealableWindowBase(Window, Sealable, t.Generic[PaneT]):
+    """Base class for sealable window classes with generic pane type."""
+
+    @property
+    def panes(self) -> QueryList[PaneT]:
+        """Return panes with the appropriate generic type."""
+        return t.cast(QueryList[PaneT], super().panes)
+
+    @property
+    def active_pane(self) -> PaneT | None:
+        """Return active pane with the appropriate generic type."""
+        return t.cast(t.Optional[PaneT], super().active_pane)
 
 
-class _SealableSessionBase(Session, Sealable):
-    """Base class for sealable session classes."""
+class _SealableSessionBase(Session, Sealable, t.Generic[WindowT, PaneT]):
+    """Base class for sealable session classes with generic window and pane types."""
+
+    @property
+    def windows(self) -> QueryList[WindowT]:
+        """Return windows with the appropriate generic type."""
+        return t.cast(QueryList[WindowT], super().windows)
+
+    @property
+    def active_window(self) -> WindowT | None:
+        """Return active window with the appropriate generic type."""
+        return t.cast(t.Optional[WindowT], super().active_window)
+
+    @property
+    def active_pane(self) -> PaneT | None:
+        """Return active pane with the appropriate generic type."""
+        return t.cast(t.Optional[PaneT], super().active_pane)
 
 
-class _SealableServerBase(Server, Sealable):
-    """Base class for sealable server classes."""
+class _SealableServerBase(Server, Sealable, t.Generic[SessionT, WindowT, PaneT]):
+    """Generic base for sealable server with typed session, window, and pane."""
+
+    @property
+    def sessions(self) -> QueryList[SessionT]:
+        """Return sessions with the appropriate generic type."""
+        return t.cast(QueryList[SessionT], super().sessions)
+
+    @property
+    def windows(self) -> QueryList[WindowT]:
+        """Return windows with the appropriate generic type."""
+        return t.cast(QueryList[WindowT], super().windows)
+
+    @property
+    def panes(self) -> QueryList[PaneT]:
+        """Return panes with the appropriate generic type."""
+        return t.cast(QueryList[PaneT], super().panes)
 
 
 @frozen_dataclass_sealable
@@ -251,7 +294,7 @@ class PaneSnapshot(_SealablePaneBase):
 
 
 @frozen_dataclass_sealable
-class WindowSnapshot(_SealableWindowBase):
+class WindowSnapshot(_SealableWindowBase[PaneSnapshot]):
     """A read-only snapshot of a tmux window.
 
     This maintains compatibility with the original Window class but prevents
@@ -404,7 +447,7 @@ class WindowSnapshot(_SealableWindowBase):
 
 
 @frozen_dataclass_sealable
-class SessionSnapshot(_SealableSessionBase):
+class SessionSnapshot(_SealableSessionBase[WindowSnapshot, PaneSnapshot]):
     """A read-only snapshot of a tmux session.
 
     This maintains compatibility with the original Session class but prevents
@@ -551,7 +594,9 @@ class SessionSnapshot(_SealableSessionBase):
 
 
 @frozen_dataclass_sealable
-class ServerSnapshot(_SealableServerBase):
+class ServerSnapshot(
+    _SealableServerBase[SessionSnapshot, WindowSnapshot, PaneSnapshot]
+):
     """A read-only snapshot of a server.
 
     Examples
@@ -690,6 +735,10 @@ class ServerSnapshot(_SealableServerBase):
         return snapshot
 
 
+# Define a Union type for snapshot classes
+SnapshotType = t.Union[ServerSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot]
+
+
 def _create_session_snapshot_safely(
     session: Session, include_content: bool, server_snapshot: ServerSnapshot
 ) -> SessionSnapshot | None:
@@ -741,12 +790,9 @@ def _create_session_snapshot_safely(
 
 
 def filter_snapshot(
-    snapshot: ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot,
-    filter_func: t.Callable[
-        [ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot],
-        bool,
-    ],
-) -> ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot | None:
+    snapshot: SnapshotType,
+    filter_func: t.Callable[[SnapshotType], bool],
+) -> SnapshotType | None:
     """Filter a snapshot hierarchy based on a filter function.
 
     This will prune the snapshot tree, removing any objects that don't match the filter.
@@ -755,7 +801,7 @@ def filter_snapshot(
 
     Parameters
     ----------
-    snapshot : ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot
+    snapshot : SnapshotType
         The snapshot to filter
     filter_func : Callable
         A function that takes a snapshot object and returns True to keep it
@@ -763,16 +809,16 @@ def filter_snapshot(
 
     Returns
     -------
-    ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot | None
+    SnapshotType | None
         A new filtered snapshot, or None if everything was filtered out
     """
     if isinstance(snapshot, ServerSnapshot):
-        filtered_sessions = []
+        filtered_sessions: list[SessionSnapshot] = []
 
         for sess in snapshot.sessions_snapshot:
             session_copy = filter_snapshot(sess, filter_func)
-            if session_copy is not None:
-                filtered_sessions.append(t.cast(SessionSnapshot, session_copy))
+            if session_copy is not None and isinstance(session_copy, SessionSnapshot):
+                filtered_sessions.append(session_copy)
 
         if not filter_func(snapshot) and not filtered_sessions:
             return None
@@ -793,12 +839,12 @@ def filter_snapshot(
         return server_copy
 
     if isinstance(snapshot, SessionSnapshot):
-        filtered_windows = []
+        filtered_windows: list[WindowSnapshot] = []
 
         for w in snapshot.windows_snapshot:
             window_copy = filter_snapshot(w, filter_func)
-            if window_copy is not None:
-                filtered_windows.append(t.cast(WindowSnapshot, window_copy))
+            if window_copy is not None and isinstance(window_copy, WindowSnapshot):
+                filtered_windows.append(window_copy)
 
         if not filter_func(snapshot) and not filtered_windows:
             return None
@@ -808,8 +854,6 @@ def filter_snapshot(
         return session_copy
 
     if isinstance(snapshot, WindowSnapshot):
-        filtered_panes = []
-
         filtered_panes = [p for p in snapshot.panes_snapshot if filter_func(p)]
 
         if not filter_func(snapshot) and not filtered_panes:
@@ -828,7 +872,7 @@ def filter_snapshot(
 
 
 def snapshot_to_dict(
-    snapshot: ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot | t.Any,
+    snapshot: SnapshotType | t.Any,
 ) -> dict[str, t.Any]:
     """Convert a snapshot to a dictionary, avoiding circular references.
 
@@ -836,7 +880,7 @@ def snapshot_to_dict(
 
     Parameters
     ----------
-    snapshot : ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot | Any
+    snapshot : SnapshotType | Any
         The snapshot to convert to a dictionary
 
     Returns
@@ -914,7 +958,7 @@ def snapshot_active_only(
     """
 
     def is_active(
-        obj: ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot,
+        obj: SnapshotType,
     ) -> bool:
         """Return True if the object is active."""
         if isinstance(obj, PaneSnapshot):
@@ -927,4 +971,4 @@ def snapshot_active_only(
     if filtered is None:
         error_msg = "No active objects found!"
         raise ValueError(error_msg)
-    return t.cast("ServerSnapshot", filtered)
+    return t.cast(ServerSnapshot, filtered)
