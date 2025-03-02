@@ -76,6 +76,41 @@ ServerSnapshot
               └── Pane 1 (with optional content)
 ```
 
+## Capabilities and Limitations
+
+Now that you understand the basics, it's important to know what snapshots can and cannot do:
+
+### State and Structure
+
+| Capabilities | Limitations |
+|------------|----------------|
+| ✅ **Structure Preserver**: Captures hierarchical tmux objects (servers, sessions, windows, panes) | ❌ **Memory Snapshot**: Doesn't capture system memory state or processes beyond tmux |
+| ✅ **Immutable Reference**: Creates read-only records that won't change as live tmux changes | ❌ **Time Machine**: Can't revert the actual tmux server to previous states |
+| ✅ **Relationship Keeper**: Maintains parent-child relationships between tmux objects | ❌ **System Restorer**: Can't restore the full system to a previous point in time |
+
+### Content and Data
+
+| Capabilities | Limitations |
+|------------|----------------|
+| ✅ **Content Capturer**: Preserves visible pane text content when requested | ❌ **App State Preserver**: Can't capture internal application state (e.g., vim buffers/cursor) |
+| ✅ **Serialization Mechanism**: Converts tmux state to dictionaries for storage | ❌ **Complete Backup**: Doesn't capture scrollback buffers or hidden app state |
+| ✅ **Configuration Recorder**: Documents session layouts for reference | ❌ **Process Manager**: Doesn't track processes beyond their visible output |
+
+### Functionality
+
+| Capabilities | Limitations |
+|------------|----------------|
+| ✅ **Filtering Tool**: Provides ways to search objects based on custom criteria | ❌ **Server Modifier**: Doesn't change the live tmux server in any way |
+| ✅ **Testing Aid**: Enables tmux automation tests with before/after comparisons | ❌ **State Restorer**: Doesn't automatically recreate previous environments |
+
+### Important Limitations to Note
+
+1. **Not a Complete Environment Restorer**: While you can use snapshots to guide restoration, the module doesn't provide automatic recreation of previous tmux environments. You'd need to implement custom logic to recreate sessions and windows from snapshot data.
+
+2. **No Internal Application State**: Snapshots capture only what's visible in panes, not the internal state of running applications. For example, a snapshot of a pane running vim won't preserve unsaved buffers or the undo history.
+
+3. **Read-Only by Design**: Snapshots intentionally can't modify the live tmux server. This ensures safety but means you must use the regular libtmux API for any modifications.
+
 ## Basic Usage
 
 Creating snapshots is straightforward using the factory functions:
