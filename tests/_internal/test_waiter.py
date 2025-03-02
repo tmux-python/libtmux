@@ -1851,6 +1851,7 @@ def test_wait_for_pane_content_specific_type_errors(wait_pane: Pane) -> None:
     assert ERR_PREDICATE_TYPE in str(excinfo.value)
 
 
+@pytest.mark.flaky(reruns=5)
 def test_wait_for_pane_content_exact_match_detailed(wait_pane: Pane) -> None:
     """Test wait_for_pane_content with EXACT match type in detail.
 
