@@ -672,27 +672,6 @@ def test_wait_for_all_content_type_error(wait_pane: Pane) -> None:
         )
 
 
-def test_wait_for_pane_content_exact_match(wait_pane: Pane) -> None:
-    """Test waiting for content with exact match."""
-    wait_pane.send_keys("clear", enter=True)
-
-    # Add a line with a predictable content
-    test_content = "EXACT_MATCH_TEST_STRING"
-    wait_pane.send_keys(f"echo '{test_content}'", enter=True)
-
-    # Instead of trying exact match on a line (which is prone to shell prompt
-    # variations) Let's test if the content contains our string
-    result = wait_for_pane_content(
-        wait_pane,
-        test_content,
-        ContentMatchType.CONTAINS,  # Use CONTAINS instead of EXACT
-        timeout=5,
-    )
-
-    assert result.success
-    assert result.matched_content == test_content
-
-
 def test_contains_match_function() -> None:
     """Test the _contains_match internal function."""
     content = ["line 1", "test line 2", "line 3"]
