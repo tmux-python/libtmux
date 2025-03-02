@@ -38,20 +38,13 @@ from __future__ import annotations
 import dataclasses
 import functools
 import typing as t
-from typing import (
-    Any,
-    Callable,
-    Protocol,
-    TypeVar,
-    runtime_checkable,
-)
 
 # Type definitions for better type hints
-T = TypeVar("T", bound=type)
+T = t.TypeVar("T", bound=type)
 
 
-@runtime_checkable
-class SealableProtocol(Protocol):
+@t.runtime_checkable
+class SealableProtocol(t.Protocol):
     """Protocol defining the interface for sealable objects."""
 
     _sealed: bool
@@ -116,8 +109,8 @@ class Sealable:
 
 
 def mutable_field(
-    factory: Callable[[], Any] = list,
-) -> dataclasses.Field[Any]:
+    factory: t.Callable[[], t.Any] = list,
+) -> dataclasses.Field[t.Any]:
     """Create a field that is mutable during initialization but immutable after sealing.
 
     Parameters
@@ -136,8 +129,8 @@ def mutable_field(
 
 
 def mutable_during_init(
-    field_method: Callable[[], T] | None = None,
-) -> Any:  # mypy doesn't handle complex return types well here
+    field_method: t.Callable[[], T] | None = None,
+) -> t.Any:  # mypy doesn't handle complex return types well here
     """Mark a field as mutable during initialization but immutable after sealing.
 
     This decorator applies to a method that returns the field's default value.
@@ -230,7 +223,7 @@ def mutable_during_init(
     )
 
 
-def is_sealable(cls_or_obj: Any) -> bool:
+def is_sealable(cls_or_obj: t.Any) -> bool:
     """Check if a class or object is sealable.
 
     Parameters
@@ -498,7 +491,7 @@ def frozen_dataclass_sealable(cls: type) -> type:
                         mutable_fields.add(name)
 
     # Custom attribute setting implementation
-    def custom_setattr(self: Any, name: str, value: Any) -> None:
+    def custom_setattr(self: t.Any, name: str, value: t.Any) -> None:
         # Allow setting private attributes always
         if name.startswith("_"):
             object.__setattr__(self, name, value)
@@ -525,7 +518,7 @@ def frozen_dataclass_sealable(cls: type) -> type:
         raise AttributeError(error_msg)
 
     # Custom attribute deletion implementation
-    def custom_delattr(self: Any, name: str) -> None:
+    def custom_delattr(self: t.Any, name: str) -> None:
         if name.startswith("_"):
             object.__delattr__(self, name)
             return
@@ -539,7 +532,7 @@ def frozen_dataclass_sealable(cls: type) -> type:
         raise AttributeError(error_msg)
 
     # Custom initialization to set initial attribute values
-    def custom_init(self: Any, *args: Any, **kwargs: Any) -> None:
+    def custom_init(self: t.Any, *args: t.Any, **kwargs: t.Any) -> None:
         # Set the initializing flag
         object.__setattr__(self, "_initializing", True)
         object.__setattr__(self, "_sealed", False)
@@ -643,7 +636,7 @@ def frozen_dataclass_sealable(cls: type) -> type:
                 seal_method()
 
     # Define methods that will be attached to the class
-    def seal_method(self: Any, deep: bool = False) -> None:
+    def seal_method(self: t.Any, deep: bool = False) -> None:
         """Seal the object to prevent further modifications.
 
         Parameters
