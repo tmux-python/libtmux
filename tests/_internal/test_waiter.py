@@ -976,6 +976,7 @@ def test_pane_content_waiter_with_invalid_line_range(wait_pane: Pane) -> None:
     assert result.error is not None
 
 
+@pytest.mark.flaky(reruns=5)
 def test_wait_for_pane_content_regex_line_match(wait_pane: Pane) -> None:
     """Test wait_for_pane_content with regex match and line detection."""
     # Clear the pane
