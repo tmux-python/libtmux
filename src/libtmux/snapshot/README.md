@@ -1,19 +1,27 @@
 # libtmux Snapshot Module
 
+> **TL;DR:** Create immutable, point-in-time captures of your tmux environment. Snapshots let you inspect, filter, compare, and store tmux state without modifying the live server. Perfect for testing, automation, and state recovery.
+
 The snapshot module provides a powerful way to capture the state of tmux objects (Server, Session, Window, Pane) as immutable, hierarchical snapshots. These snapshots preserve the structure and relationships between tmux objects while allowing for inspection, filtering, and serialization.
 
 ## Value Proposition
 
 Snapshots provide several key benefits for tmux automation and management:
 
-- **Point-in-time Captures**: Create immutable records of tmux state at specific moments
-- **State Inspection**: Examine the structure of sessions, windows, and panes without modifying them
-- **Testing Support**: Build reliable tests with deterministic tmux state snapshots
-- **Comparison & Diff**: Compare configurations between different sessions or before/after changes
-- **State Serialization**: Convert tmux state to dictionaries for storage or analysis
-- **Safety & Predictability**: Work with tmux state without modifying the actual tmux server
-- **Content Preservation**: Optionally capture pane content to preserve terminal output
-- **Filtering & Searching**: Find specific components within complex tmux arrangements
+### Safe State Handling
+- **Immutable Captures:** Create read-only records of tmux state at specific points in time
+- **Safety & Predictability:** Work with tmux state without modifying the actual tmux server
+- **Content Preservation:** Optionally capture pane content to preserve terminal output
+
+### Testing & Automation
+- **Testing Support:** Build reliable tests with deterministic tmux state snapshots
+- **Comparison & Diff:** Compare configurations between different sessions or before/after changes
+- **State Backup:** Create safety checkpoints before risky operations
+
+### Analysis & Discovery 
+- **Hierarchical Navigation:** Traverse sessions, windows, and panes with consistent object APIs
+- **Filtering & Searching:** Find specific components within complex tmux arrangements
+- **Dictionary Conversion:** Serialize tmux state for storage or analysis
 
 ## Installation
 
@@ -21,6 +29,51 @@ The snapshot module is included with libtmux:
 
 ```bash
 pip install libtmux
+```
+
+## Quick Start
+
+Here's how to quickly get started with snapshots:
+
+```python
+# Import the snapshot module
+from libtmux.snapshot.factory import create_snapshot
+from libtmux import Server
+
+# Connect to the tmux server and create a snapshot
+server = Server()
+snapshot = create_snapshot(server)
+
+# Navigate the snapshot structure
+for session in snapshot.sessions:
+    print(f"Session: {session.name} (ID: {session.session_id})")
+    for window in session.windows:
+        print(f"  Window: {window.name} (ID: {window.window_id})")
+        for pane in window.panes:
+            print(f"    Pane: {pane.pane_id}")
+
+# Find a specific session by name
+filtered = snapshot.filter(lambda obj: hasattr(obj, "name") and obj.name == "my-session")
+
+# Convert to dictionary for serialization
+state_dict = snapshot.to_dict()
+```
+
+### Snapshot Hierarchy
+
+Snapshots maintain the same structure and relationships as live tmux objects:
+
+```
+ServerSnapshot
+  ├── Session 1
+  │     ├── Window 1
+  │     │     ├── Pane 1 (with optional content)
+  │     │     └── Pane 2 (with optional content)
+  │     └── Window 2
+  │           └── Pane 1 (with optional content)
+  └── Session 2
+        └── Window 1
+              └── Pane 1 (with optional content)
 ```
 
 ## Basic Usage
@@ -62,6 +115,8 @@ True
 >>> # Any changes to the real tmux server won't affect this snapshot
 >>> # This makes snapshots ideal for "before/after" comparisons in testing
 ```
+
+> **KEY FEATURE:** Snapshots are completely *immutable* and detached from the live tmux server. Any changes you make to the real tmux environment won't affect your snapshots, making them perfect for state comparison or reference points.
 
 ### Active-Only Snapshots
 
@@ -341,6 +396,8 @@ The filter method creates a new snapshot containing only objects that match your
 >>> # Start with a server snapshot (server fixture from conftest.py)
 >>> server_snapshot = create_snapshot(server)
 ```
+
+> **KEY FEATURE:** The `filter()` method is one of the most powerful snapshot features. It lets you query your tmux hierarchy using any custom logic and returns a new snapshot containing only matching objects while maintaining their relationships.
 
 ### Finding Objects by Property
 
