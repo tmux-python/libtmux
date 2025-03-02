@@ -9,11 +9,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from libtmux._internal.frozen_dataclass_sealable import is_sealable
-from libtmux.snapshot import (
-    PaneSnapshot,
-    ServerSnapshot,
-    SessionSnapshot,
-    WindowSnapshot,
+from libtmux.snapshot.models.pane import PaneSnapshot
+from libtmux.snapshot.models.server import ServerSnapshot
+from libtmux.snapshot.models.session import SessionSnapshot
+from libtmux.snapshot.models.window import WindowSnapshot
+from libtmux.snapshot.utils import (
     snapshot_active_only,
     snapshot_to_dict,
 )
@@ -173,7 +173,7 @@ class TestSessionSnapshot:
 
         # Patch the from_session method to return our mock
         with patch(
-            "libtmux.snapshot.SessionSnapshot.from_session",
+            "libtmux.snapshot.models.session.SessionSnapshot.from_session",
             return_value=mock_snapshot,
         ):
             snapshot = SessionSnapshot.from_session(session)
@@ -212,7 +212,7 @@ class TestServerSnapshot:
 
         # Patch the from_server method to return our mock
         with patch(
-            "libtmux.snapshot.ServerSnapshot.from_server",
+            "libtmux.snapshot.models.server.ServerSnapshot.from_server",
             return_value=mock_snapshot,
         ):
             snapshot = ServerSnapshot.from_server(server)
@@ -293,7 +293,7 @@ def test_snapshot_active_only() -> None:
         return True
 
     # Apply the filter with a patch to avoid actual implementation
-    with patch("libtmux.snapshot.filter_snapshot", side_effect=lambda s, f: s):
+    with patch("libtmux.snapshot.utils.filter_snapshot", side_effect=lambda s, f: s):
         filtered = snapshot_active_only(mock_server_snap)
 
     # Since we're using a mock that passes everything through, the filtered
