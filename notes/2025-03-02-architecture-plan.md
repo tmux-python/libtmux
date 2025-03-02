@@ -9,9 +9,10 @@ The module now implements a hierarchical snapshot system for tmux objects with t
 1. A modular package structure:
    ```
    src/libtmux/snapshot/
-   ├── __init__.py           # Module documentation only, no exports
-   ├── base.py               # Base classes with Sealable mixins
+   ├── __init__.py           # Module documentation and examples
+   ├── base.py               # Base classes with Sealable mixins and common methods
    ├── types.py              # Type definitions, exports, and annotations
+   ├── factory.py            # Type-safe centralized factory functions
    ├── models/
    │   ├── __init__.py       # Package documentation only, no exports
    │   ├── pane.py           # PaneSnapshot implementation
@@ -29,24 +30,36 @@ The module now implements a hierarchical snapshot system for tmux objects with t
 
 3. Each class inherits from both:
    - The corresponding tmux class (Server, Session, etc.)
-   - A `Sealable` base class to provide immutability (defined in `base.py`)
+   - A `SnapshotBase` class (derived from `Sealable`) to provide immutability and common methods
+   - Specialized base classes (`SealablePaneBase`, `SealableWindowBase`, etc.) in `base.py`
 
-4. Utility functions for:
+4. Centralized factory functions in `factory.py`:
+   - Type-safe overloaded `create_snapshot()` function for all tmux object types
+   - `create_snapshot_active()` convenience function for active-only snapshots
+   - Clear return type annotations using overloads
+
+5. Enhanced API with common methods in the `SnapshotBase` class:
+   - `to_dict()` for serialization
+   - `filter()` for transforming snapshots
+   - `active_only()` for creating active-only views
+
+6. Utility functions for:
    - Filtering snapshots (`filter_snapshot`)
    - Converting to dictionaries (`snapshot_to_dict`) 
    - Creating active-only views (`snapshot_active_only`)
 
-5. Direct imports approach:
-   - No re-exports from `__init__.py` files
-   - Users import directly from specific modules
-   - Clear and explicit dependencies between modules
+7. Direct, explicit imports and clean API:
+   - User-friendly factory functions
+   - Clear documentation in docstrings with examples
+   - Consistent API patterns across all snapshot classes
 
 ## Typing Approach
 
 The module makes excellent use of Python's modern typing features:
 
 - Type variables with covariance (`PaneT = t.TypeVar("PaneT", bound=Pane, covariant=True)`)
-- Proper return type annotations with Union types
+- Overloaded functions for type-safe factories
+- Union types with proper return type annotations
 - Type checking guards (`if t.TYPE_CHECKING:`)
 - Type casts for better type safety (`t.cast("ServerSnapshot", filtered)`)
 - Centralized type definitions in `types.py`
@@ -71,20 +84,26 @@ All proposals and enhancements must adhere to these core design principles:
    - `SessionSnapshot` inherits from `Session`
    - `ServerSnapshot` inherits from `Server`
 
+4. **Fluent API**: Provide a fluent, chainable API for working with snapshots.
+   - Methods like `filter()` and `to_dict()` on all snapshot classes
+   - Convenience methods that return new instances (maintaining immutability)
+   - Consistent method names and patterns across all snapshot types
+
 ## Strengths of Current Implementation
 
 1. **Modular Structure**: Smaller, focused files with clear responsibilities
-2. **Separation of Concerns**: Types, base classes, models, and utilities are now properly separated
+2. **Separation of Concerns**: Types, base classes, models, utilities, and factories are properly separated
 3. **Immutability Pattern**: Using `frozen_dataclass_sealable` provides a robust way to create immutable snapshots
-4. **Type Safety**: Strong typing throughout the codebase
-5. **Direct Imports**: Explicit dependencies encourage better code organization
-6. **Maintainability**: Easier to understand, test, and extend each component
+4. **Type Safety**: Strong typing throughout the codebase with overloaded functions for precise return types
+5. **Centralized Factory**: Single entry point with `create_snapshot()` and `create_snapshot_active()` functions
+6. **Common Base Class**: `SnapshotBase` provides shared functionality across all snapshot types
+7. **User-Friendly API**: Clear, consistent methods with comprehensive docstrings and examples
 
 ## Remaining Areas for Improvement
 
-While the modular structure has been implemented, there are still opportunities for enhancing the API:
+While the architecture has been significantly improved, there are still opportunities for further enhancement:
 
-1. **Complex Factory Methods**: The `from_X` methods contain complex logic for finding server references, with multiple fallback strategies:
+1. **Complex Factory Methods**: The individual `from_X` methods in snapshot classes still contain complex logic for finding server references, with multiple fallback strategies:
    ```python
    if source_server is None and window_snapshot is not None:
        source_server = window_snapshot.server
@@ -541,40 +560,28 @@ def create_snapshot(
 
 ```python
 # Simple usage with centralized factory function
-from libtmux.snapshot import create_snapshot
+from libtmux.snapshot.factory import create_snapshot, create_snapshot_active
 
 # Create a snapshot of a server
+server = Server()
 snapshot = create_snapshot(server)
 
 # Create a snapshot with content capture
 snapshot_with_content = create_snapshot(server, capture_content=True)
 
+# Create a snapshot of only active components
+active_snapshot = create_snapshot_active(server)
+
 # Use fluent methods for filtering and transformation
-active_windows = (
-    create_snapshot(server)
-    .filter(lambda s: isinstance(s, WindowSnapshot) and s.active)
-    .to_dict()
-)
+dev_session = snapshot.filter(lambda s: isinstance(s, SessionSnapshot) and s.name == "dev")
+session_data = dev_session.to_dict() if dev_session else None
 
-# Use advanced configuration
-from libtmux.snapshot.models.config import SnapshotConfig
-
-config = SnapshotConfig(
-    capture_content=True,
-    max_content_lines=100,
-    include_active_only=True
-)
-
-snapshot = create_snapshot(server, config=config)
-
-# Use context manager
-from libtmux.snapshot import snapshot_context
-
-with snapshot_context(server) as snapshot:
-    # Work with immutable snapshot
-    dev_session = snapshot.find_session("dev")
-    if dev_session:
-        print(f"Dev session has {len(dev_session.windows)} windows")
+# Find specific components
+main_session = snapshot.find_session("main")
+if main_session:
+    active_window = main_session.active_window
+    if active_window:
+        content = active_window.active_pane.content if active_window.active_pane else None
 ```
 
 ## Implementation Priority and Timeline
@@ -582,9 +589,9 @@ with snapshot_context(server) as snapshot:
 Based on the proposals above, the following implementation timeline is suggested:
 
 1. **Phase 1: Enhanced Factory Functions and Basic Fluent API** (1-2 weeks)
-   - Implement the centralized factory in `factory.py`
-   - Add basic fluent methods to snapshot classes
-   - Update type definitions for better safety
+   - Implement the centralized factory in `factory.py` ✓
+   - Add basic fluent methods to snapshot classes ✓
+   - Update type definitions for better safety ✓
 
 2. **Phase 2: Advanced Type Safety with Protocol Classes** (1-2 weeks)
    - Implement Protocol classes in `types.py`
@@ -598,7 +605,7 @@ Based on the proposals above, the following implementation timeline is suggested
 
 4. **Phase 4: Complete API Refinement and Documentation** (1-2 weeks)
    - Finalize the public API
-   - Add comprehensive docstrings with examples
+   - Add comprehensive docstrings with examples ✓
    - Provide usage examples in README
 
 These proposals maintain the core design principles of inheritance, immutability, and type safety while significantly improving the API ergonomics, type checking, and user experience.
