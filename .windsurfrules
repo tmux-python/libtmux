@@ -119,3 +119,18 @@
 - Use tmp_path (pathlib.Path) fixture over Python's tempfile
 - Use monkeypatch fixture over unittest.mock
 </pytest_testing_guidelines>
+
+<import_guidelines>
+- Prefer namespace imports over importing specific symbols
+- Import modules and access attributes through the namespace:
+  - Use `import enum` and access `enum.Enum` instead of `from enum import Enum`
+  - This applies to standard library modules like pathlib, os, and similar cases
+- For typing, use `import typing as t` and access via the namespace:
+  - Access typing elements as `t.NamedTuple`, `t.TypedDict`, etc.
+  - Note primitive types like unions can be done via `|` pipes
+  - Primitive types like list and dict can be done via `list` and `dict` directly
+- Benefits of namespace imports:
+  - Improves code readability by making the source of symbols clear
+  - Reduces potential naming conflicts
+  - Makes import statements more maintainable
+</import_guidelines>
