@@ -1,6 +1,7 @@
 ---
 description: git-commits: Git commit message standards and AI assistance
 globs: git-commits: Git commit message standards and AI assistance | *.git/* .gitignore .github/* CHANGELOG.md CHANGES.md
+alwaysApply: true
 ---
 # Optimized Git Commit Standards
 

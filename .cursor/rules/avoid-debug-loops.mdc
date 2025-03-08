@@ -1,7 +1,7 @@
 ---
 description: When stuck in debugging loops, break the cycle by minimizing to an MVP, removing debugging cruft, and documenting the issue completely for a fresh approach
 globs: *.py
-alwaysApply: false
+alwaysApply: true
 ---
 # Avoid Debug Loops
 
