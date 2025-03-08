@@ -1,6 +1,7 @@
 ---
 description: QA every edit
 globs: *.py
+alwaysApply: true
 ---
 
 # Development Process
@@ -167,3 +168,20 @@ For doctests in `src/**/*.py` files:
 2. **Preferred pytest patterns**:
    - Use `tmp_path` (pathlib.Path) fixture over Python's `tempfile`
    - Use `monkeypatch` fixture over `unittest.mock`
+
+### Import Guidelines
+
+1. **Prefer namespace imports**:
+   - Import modules and access attributes through the namespace instead of importing specific symbols
+   - Example: Use `import enum` and access `enum.Enum` instead of `from enum import Enum`
+   - This applies to standard library modules like `pathlib`, `os`, and similar cases
+
+2. **Standard aliases**:
+   - For `typing` module, use `import typing as t`
+   - Access typing elements via the namespace: `t.NamedTuple`, `t.TypedDict`, etc.
+   - Note primitive types like unions can be done via `|` pipes and primitive types like list and dict can be done via `list` and `dict` directly.
+
+3. **Benefits of namespace imports**:
+   - Improves code readability by making the source of symbols clear
+   - Reduces potential naming conflicts
+   - Makes import statements more maintainable
