@@ -367,7 +367,7 @@ class Pane(Obj):
 
                Default changed from True to False.
         literal : bool, optional
-            Send keys literally, default True.
+            Send keys literally, default False.
 
         Examples
         --------
