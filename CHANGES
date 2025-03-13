@@ -27,6 +27,10 @@ Added experimental `waiter.py` module for polling for terminal content in tmux p
 - Enhanced error handling with detailed timeouts and match information
 - Robust shell prompt detection
 
+### Documentation
+
+- Typo fix for `Pane.send_keys` (#593), thank you @subbyte!
+
 ## libtmux 0.46.0 (2025-02-25)
 
 ### Breaking
