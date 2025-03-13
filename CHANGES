@@ -15,6 +15,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+### Documentation
+
+- Typo fix for `Pane.send_keys` (#593), thank you @subbyte!
+
 ## libtmux 0.46.0 (2025-02-25)
 
 ### Breaking
