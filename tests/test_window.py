@@ -73,7 +73,7 @@ def test_fresh_window_data(session: Session) -> None:
     assert isinstance(session.server, Server)
     # len(session.active_window.panes))
 
-    assert len(session.windows), 1
+    assert len(session.windows) == 1
     assert len(session.active_window.panes) == 1
     for w in session.windows:
         assert isinstance(w, Window)
