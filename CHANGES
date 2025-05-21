@@ -15,6 +15,18 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+### New features
+
+#### Waiting (#582)
+
+Added experimental `waiter.py` module for polling for terminal content in tmux panes:
+
+- Fluent API inspired by Playwright for better readability and chainable options
+- Support for multiple pattern types (exact text, contains, regex, custom predicates)
+- Composable waiting conditions with `wait_for_any_content` and `wait_for_all_content`
+- Enhanced error handling with detailed timeouts and match information
+- Robust shell prompt detection
+
 ## libtmux 0.46.1 (2025-03-16)
 
 _Maintenance only, no bug fixes or new features_

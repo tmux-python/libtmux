@@ -128,6 +128,11 @@ files = [
   "tests",
 ]
 
+[[tool.mypy.overrides]]
+module = "tests.examples.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
 [tool.coverage.run]
 branch = true
 parallel = true
