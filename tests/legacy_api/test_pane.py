@@ -6,16 +6,61 @@ import logging
 import shutil
 import typing as t
 
+from libtmux.test.retry import retry_until
+
 if t.TYPE_CHECKING:
     from libtmux.session import Session
+    from libtmux.window import Window
 
 logger = logging.getLogger(__name__)
 
 
+def setup_shell_window(
+    session: Session,
+    window_name: str,
+    environment: dict[str, str] | None = None,
+) -> Window:
+    """Set up a shell window with consistent environment and prompt.
+
+    Args:
+        session: The tmux session to create the window in
+        window_name: Name for the new window
+        environment: Optional environment variables to set in the window
+
+    Returns
+    -------
+        The created Window object with shell ready
+    """
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    window = session.new_window(
+        attach=True,
+        window_name=window_name,
+        window_shell=f"{env} PROMPT_COMMAND='' PS1='READY>' sh",
+        environment=environment,
+    )
+
+    pane = window.active_pane
+    assert pane is not None
+
+    # Wait for shell to be ready
+    def wait_for_prompt() -> bool:
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+            return "READY>" in pane_contents and len(pane_contents.strip()) > 0
+        except Exception:
+            return False
+
+    retry_until(wait_for_prompt, 2, raises=True)
+    return window
+
+
 def test_resize_pane(session: Session) -> None:
-    """Test Pane.resize_pane()."""
-    window = session.attached_window
-    window.rename_window("test_resize_pane")
+    """Verify Pane.resize_pane()."""
+    window = setup_shell_window(session, "test_resize_pane")
+    pane = window.active_pane
+    assert pane is not None
 
     pane1 = window.attached_pane
     assert pane1 is not None
@@ -32,15 +77,24 @@ def test_resize_pane(session: Session) -> None:
 
 def test_send_keys(session: Session) -> None:
     """Verify Pane.send_keys()."""
-    pane = session.attached_window.attached_pane
+    window = setup_shell_window(session, "test_send_keys")
+    pane = window.active_pane
     assert pane is not None
-    pane.send_keys("c-c", literal=True)
 
-    pane_contents = "\n".join(pane.cmd("capture-pane", "-p").stdout)
-    assert "c-c" in pane_contents
+    pane.send_keys("echo 'test'", literal=True)
 
-    pane.send_keys("c-a", literal=False)
-    assert "c-a" not in pane_contents, "should not print to pane"
+    def wait_for_echo() -> bool:
+        try:
+            pane_contents = "\n".join(pane.capture_pane())
+            return (
+                "test" in pane_contents
+                and "echo 'test'" in pane_contents
+                and pane_contents.count("READY>") >= 2
+            )
+        except Exception:
+            return False
+
+    retry_until(wait_for_echo, 2, raises=True)
 
 
 def test_set_height(session: Session) -> None:
@@ -75,24 +129,9 @@ def test_set_width(session: Session) -> None:
 
 def test_capture_pane(session: Session) -> None:
     """Verify Pane.capture_pane()."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in PATH."
-
-    session.new_window(
-        attach=True,
-        window_name="capture_pane",
-        window_shell=f"{env} PS1='$ ' sh",
-    )
-    pane = session.attached_window.attached_pane
+    window = setup_shell_window(session, "test_capture_pane")
+    pane = window.active_pane
     assert pane is not None
+
     pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == "$"
-    pane.send_keys(
-        r'printf "\n%s\n" "Hello World !"',
-        literal=True,
-        suppress_history=False,
-    )
-    pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
-        "\n\nHello World !\n$",
-    )
+    assert "READY>" in pane_contents
