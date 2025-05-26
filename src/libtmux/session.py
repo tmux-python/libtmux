@@ -587,7 +587,7 @@ class Session(Obj, EnvironmentMixin):
         self,
         window_name: str | None = None,
         *,
-        start_directory: None = None,
+        start_directory: str | None = None,
         attach: bool = False,
         window_index: str = "",
         window_shell: str | None = None,
@@ -677,7 +677,7 @@ class Session(Obj, EnvironmentMixin):
 
         window_args += ("-P",)
 
-        if start_directory:
+        if start_directory is not None:
             # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
             start_directory = pathlib.Path(start_directory).expanduser()
             window_args += (f"-c{start_directory}",)
