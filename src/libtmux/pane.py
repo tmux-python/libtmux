@@ -13,7 +13,7 @@ import pathlib
 import typing as t
 
 from libtmux import exc
-from libtmux.common import AsyncTmuxCmd, has_gte_version, has_lt_version, tmux_cmd
+from libtmux.common import AsyncTmuxCmd, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
