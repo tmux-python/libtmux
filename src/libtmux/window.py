@@ -14,6 +14,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
+from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -258,7 +259,7 @@ class Window(Obj):
         self,
         /,
         target: int | str | None = None,
-        start_directory: str | None = None,
+        start_directory: StrPath | None = None,
         attach: bool = False,
         direction: PaneDirection | None = None,
         full_window_split: bool | None = None,
@@ -274,7 +275,7 @@ class Window(Obj):
         attach : bool, optional
             make new window the current window after creating it, default
             True.
-        start_directory : str, optional
+        start_directory : str or PathLike, optional
             specifies the working directory in which the new window is created.
         direction : PaneDirection, optional
             split in direction. If none is specified, assume down.
@@ -864,7 +865,7 @@ class Window(Obj):
     def split_window(
         self,
         target: int | str | None = None,
-        start_directory: str | None = None,
+        start_directory: StrPath | None = None,
         attach: bool = False,
         vertical: bool = True,
         shell: str | None = None,
