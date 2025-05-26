@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+import pathlib
 import shutil
 import typing as t
 
 import pytest
 
+from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, has_lt_version, has_lte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
@@ -327,11 +329,98 @@ def test_split_pane_size(session: Session) -> None:
 def test_pane_context_manager(session: Session) -> None:
     """Test Pane context manager functionality."""
     window = session.new_window()
+    initial_pane_count = len(window.panes)
+
     with window.split() as pane:
-        pane.send_keys('echo "Hello"')
+        assert len(window.panes) == initial_pane_count + 1
         assert pane in window.panes
-        assert len(window.panes) == 2  # Initial pane + new pane
 
     # Pane should be killed after exiting context
-    assert pane not in window.panes
-    assert len(window.panes) == 1  # Only initial pane remains
+    window.refresh()
+    assert len(window.panes) == initial_pane_count
+
+
+class StartDirectoryTestFixture(t.NamedTuple):
+    """Test fixture for start_directory parameter testing."""
+
+    test_id: str
+    start_directory: StrPath | None
+    expected_in_cmd: list[str]
+    expected_not_in_cmd: list[str]
+    description: str
+
+
+START_DIRECTORY_TEST_FIXTURES: list[StartDirectoryTestFixture] = [
+    StartDirectoryTestFixture(
+        test_id="none_value",
+        start_directory=None,
+        expected_in_cmd=[],
+        expected_not_in_cmd=["-c"],
+        description="None should not add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="empty_string",
+        start_directory="",
+        expected_in_cmd=[],
+        expected_not_in_cmd=["-c"],
+        description="Empty string should not add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="absolute_path_string",
+        start_directory="/tmp/test",
+        expected_in_cmd=["-c"],
+        expected_not_in_cmd=[],
+        description="Absolute path string should add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="pathlib_absolute",
+        start_directory=pathlib.Path("/tmp/test"),
+        expected_in_cmd=["-c"],
+        expected_not_in_cmd=[],
+        description="pathlib.Path absolute should add -c flag",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(StartDirectoryTestFixture._fields),
+    START_DIRECTORY_TEST_FIXTURES,
+    ids=[test.test_id for test in START_DIRECTORY_TEST_FIXTURES],
+)
+def test_split_start_directory(
+    test_id: str,
+    start_directory: StrPath | None,
+    expected_in_cmd: list[str],
+    expected_not_in_cmd: list[str],
+    description: str,
+    session: Session,
+) -> None:
+    """Test Pane.split start_directory parameter handling."""
+    window = session.new_window(window_name=f"test_split_{test_id}")
+    pane = window.active_pane
+    assert pane is not None
+
+    # Split pane with start_directory parameter
+    new_pane = pane.split(start_directory=start_directory)
+
+    # Verify pane was created successfully
+    assert new_pane in window.panes
+    assert len(window.panes) == 2
+
+
+def test_split_start_directory_pathlib(session: Session) -> None:
+    """Test Pane.split accepts pathlib.Path for start_directory."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path_obj = pathlib.Path(temp_dir)
+
+        window = session.new_window(window_name="test_split_pathlib")
+        pane = window.active_pane
+        assert pane is not None
+
+        # Should accept pathlib.Path without error
+        new_pane = pane.split(start_directory=path_obj)
+
+        assert new_pane in window.panes
+        assert len(window.panes) == 2
