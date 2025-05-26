@@ -317,8 +317,6 @@ class StartDirectoryTestFixture(t.NamedTuple):
 
     test_id: str
     start_directory: StrPath | None
-    expected_in_cmd: list[str]
-    expected_not_in_cmd: list[str]
     description: str
 
 
@@ -326,30 +324,22 @@ START_DIRECTORY_TEST_FIXTURES: list[StartDirectoryTestFixture] = [
     StartDirectoryTestFixture(
         test_id="none_value",
         start_directory=None,
-        expected_in_cmd=[],
-        expected_not_in_cmd=["-c"],
         description="None should not add -c flag",
     ),
     StartDirectoryTestFixture(
         test_id="empty_string",
         start_directory="",
-        expected_in_cmd=[],
-        expected_not_in_cmd=["-c"],
         description="Empty string should not add -c flag",
     ),
     StartDirectoryTestFixture(
-        test_id="absolute_path_string",
-        start_directory="/tmp/test",
-        expected_in_cmd=["-c", "/tmp/test"],
-        expected_not_in_cmd=[],
-        description="Absolute path string should add -c flag",
+        test_id="user_path",
+        start_directory="{user_path}",
+        description="User path should add -c flag",
     ),
     StartDirectoryTestFixture(
-        test_id="pathlib_absolute",
-        start_directory=pathlib.Path("/tmp/test"),
-        expected_in_cmd=["-c", "/tmp/test"],
-        expected_not_in_cmd=[],
-        description="pathlib.Path absolute should add -c flag",
+        test_id="relative_path",
+        start_directory="./relative/path",
+        description="Relative path should add -c flag",
     ),
 ]
 
@@ -362,35 +352,65 @@ START_DIRECTORY_TEST_FIXTURES: list[StartDirectoryTestFixture] = [
 def test_new_session_start_directory(
     test_id: str,
     start_directory: StrPath | None,
-    expected_in_cmd: list[str],
-    expected_not_in_cmd: list[str],
     description: str,
     server: Server,
+    tmp_path: pathlib.Path,
+    user_path: pathlib.Path,
 ) -> None:
     """Test Server.new_session start_directory parameter handling."""
-    # Create session with start_directory parameter
+    # Format path placeholders with actual fixture values
+    actual_start_directory = start_directory
+    expected_path = None
+
+    if start_directory and str(start_directory) not in ["", "None"]:
+        if "{user_path}" in str(start_directory):
+            # Replace placeholder with actual user_path
+            actual_start_directory = str(start_directory).format(user_path=user_path)
+            expected_path = str(user_path)
+        elif str(start_directory).startswith("./"):
+            # For relative paths, use tmp_path as base
+            temp_dir = tmp_path / "relative" / "path"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            actual_start_directory = str(temp_dir)
+            expected_path = str(temp_dir.resolve())
+
+    # Should not raise an error
     session = server.new_session(
-        session_name=f"test_start_dir_{test_id}",
-        start_directory=start_directory,
+        session_name=f"test_session_{test_id}",
+        start_directory=actual_start_directory,
     )
 
-    # Verify session was created successfully
-    assert session.session_name == f"test_start_dir_{test_id}"
-    assert server.has_session(f"test_start_dir_{test_id}")
+    assert session.session_name == f"test_session_{test_id}"
+    assert server.has_session(f"test_session_{test_id}")
+
+    # Verify working directory if we have an expected path
+    if expected_path:
+        active_pane = session.active_window.active_pane
+        assert active_pane is not None
+        active_pane.refresh()
+        if active_pane.pane_current_path:
+            actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
+            assert actual_path == expected_path
 
 
-def test_new_session_start_directory_pathlib(server: Server) -> None:
+def test_new_session_start_directory_pathlib(
+    server: Server, user_path: pathlib.Path
+) -> None:
     """Test Server.new_session accepts pathlib.Path for start_directory."""
-    import tempfile
+    # Pass pathlib.Path directly to test pathlib.Path acceptance
+    session = server.new_session(
+        session_name="test_pathlib_start_dir",
+        start_directory=user_path,
+    )
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        path_obj = pathlib.Path(temp_dir)
+    assert session.session_name == "test_pathlib_start_dir"
+    assert server.has_session("test_pathlib_start_dir")
 
-        # Should accept pathlib.Path without error
-        session = server.new_session(
-            session_name="test_pathlib_start_dir",
-            start_directory=path_obj,
-        )
-
-        assert session.session_name == "test_pathlib_start_dir"
-        assert server.has_session("test_pathlib_start_dir")
+    # Verify working directory
+    active_pane = session.active_window.active_pane
+    assert active_pane is not None
+    active_pane.refresh()
+    if active_pane.pane_current_path:
+        actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
+        expected_path = str(user_path.resolve())
+        assert actual_path == expected_path

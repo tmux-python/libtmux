@@ -345,8 +345,6 @@ class StartDirectoryTestFixture(t.NamedTuple):
 
     test_id: str
     start_directory: StrPath | None
-    expected_in_cmd: list[str]
-    expected_not_in_cmd: list[str]
     description: str
 
 
@@ -354,30 +352,22 @@ START_DIRECTORY_TEST_FIXTURES: list[StartDirectoryTestFixture] = [
     StartDirectoryTestFixture(
         test_id="none_value",
         start_directory=None,
-        expected_in_cmd=[],
-        expected_not_in_cmd=["-c"],
         description="None should not add -c flag",
     ),
     StartDirectoryTestFixture(
         test_id="empty_string",
         start_directory="",
-        expected_in_cmd=[],
-        expected_not_in_cmd=["-c"],
         description="Empty string should not add -c flag",
     ),
     StartDirectoryTestFixture(
-        test_id="absolute_path_string",
-        start_directory="/tmp/test",
-        expected_in_cmd=["-c"],
-        expected_not_in_cmd=[],
-        description="Absolute path string should add -c flag",
+        test_id="user_path",
+        start_directory="{user_path}",
+        description="User path should add -c flag",
     ),
     StartDirectoryTestFixture(
-        test_id="pathlib_absolute",
-        start_directory=pathlib.Path("/tmp/test"),
-        expected_in_cmd=["-c"],
-        expected_not_in_cmd=[],
-        description="pathlib.Path absolute should add -c flag",
+        test_id="relative_path",
+        start_directory="./relative/path",
+        description="Relative path should add -c flag",
     ),
 ]
 
@@ -390,37 +380,63 @@ START_DIRECTORY_TEST_FIXTURES: list[StartDirectoryTestFixture] = [
 def test_split_start_directory(
     test_id: str,
     start_directory: StrPath | None,
-    expected_in_cmd: list[str],
-    expected_not_in_cmd: list[str],
     description: str,
     session: Session,
+    tmp_path: pathlib.Path,
+    user_path: pathlib.Path,
 ) -> None:
     """Test Pane.split start_directory parameter handling."""
     window = session.new_window(window_name=f"test_split_{test_id}")
     pane = window.active_pane
     assert pane is not None
 
-    # Split pane with start_directory parameter
-    new_pane = pane.split(start_directory=start_directory)
+    # Format path placeholders with actual fixture values
+    actual_start_directory = start_directory
+    expected_path = None
 
-    # Verify pane was created successfully
+    if start_directory and str(start_directory) not in ["", "None"]:
+        if "{user_path}" in str(start_directory):
+            # Replace placeholder with actual user_path
+            actual_start_directory = str(start_directory).format(user_path=user_path)
+            expected_path = str(user_path)
+        elif str(start_directory).startswith("./"):
+            # For relative paths, use tmp_path as base
+            temp_dir = tmp_path / "relative" / "path"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            actual_start_directory = str(temp_dir)
+            expected_path = str(temp_dir.resolve())
+
+    # Should not raise an error
+    new_pane = pane.split(start_directory=actual_start_directory)
+
     assert new_pane in window.panes
     assert len(window.panes) == 2
 
+    # Verify working directory if we have an expected path
+    if expected_path:
+        new_pane.refresh()
+        if new_pane.pane_current_path:
+            actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
+            assert actual_path == expected_path
 
-def test_split_start_directory_pathlib(session: Session) -> None:
+
+def test_split_start_directory_pathlib(
+    session: Session, user_path: pathlib.Path
+) -> None:
     """Test Pane.split accepts pathlib.Path for start_directory."""
-    import tempfile
+    window = session.new_window(window_name="test_split_pathlib")
+    pane = window.active_pane
+    assert pane is not None
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        path_obj = pathlib.Path(temp_dir)
+    # Pass pathlib.Path directly to test pathlib.Path acceptance
+    new_pane = pane.split(start_directory=user_path)
 
-        window = session.new_window(window_name="test_split_pathlib")
-        pane = window.active_pane
-        assert pane is not None
+    assert new_pane in window.panes
+    assert len(window.panes) == 2
 
-        # Should accept pathlib.Path without error
-        new_pane = pane.split(start_directory=path_obj)
-
-        assert new_pane in window.panes
-        assert len(window.panes) == 2
+    # Verify working directory
+    new_pane.refresh()
+    if new_pane.pane_current_path:
+        actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
+        expected_path = str(user_path.resolve())
+        assert actual_path == expected_path
