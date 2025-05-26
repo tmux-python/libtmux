@@ -679,7 +679,7 @@ class Session(Obj, EnvironmentMixin):
         window_args += ("-P",)
 
         # Catch empty string and default (`None`)
-        if start_directory and isinstance(start_directory, str):
+        if start_directory:
             # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
             start_directory = pathlib.Path(start_directory).expanduser()
             window_args += (f"-c{start_directory}",)
