@@ -382,10 +382,13 @@ def test_split_start_directory(
     start_directory: StrPath | None,
     description: str,
     session: Session,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
     user_path: pathlib.Path,
 ) -> None:
     """Test Pane.split start_directory parameter handling."""
+    monkeypatch.chdir(tmp_path)
+
     window = session.new_window(window_name=f"test_split_{test_id}")
     pane = window.active_pane
     assert pane is not None
@@ -415,9 +418,9 @@ def test_split_start_directory(
     # Verify working directory if we have an expected path
     if expected_path:
         new_pane.refresh()
-        if new_pane.pane_current_path:
-            actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
-            assert actual_path == expected_path
+        assert new_pane.pane_current_path is not None
+        actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
+        assert actual_path == expected_path
 
 
 def test_split_start_directory_pathlib(
@@ -436,7 +439,7 @@ def test_split_start_directory_pathlib(
 
     # Verify working directory
     new_pane.refresh()
-    if new_pane.pane_current_path:
-        actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
-        expected_path = str(user_path.resolve())
-        assert actual_path == expected_path
+    assert new_pane.pane_current_path is not None
+    actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
+    expected_path = str(user_path.resolve())
+    assert actual_path == expected_path

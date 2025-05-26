@@ -477,10 +477,13 @@ def test_new_window_start_directory(
     start_directory: StrPath | None,
     description: str,
     session: Session,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
     user_path: pathlib.Path,
 ) -> None:
     """Test Session.new_window start_directory parameter handling."""
+    monkeypatch.chdir(tmp_path)
+
     # Format path placeholders with actual fixture values
     actual_start_directory = start_directory
     expected_path = None
@@ -511,9 +514,9 @@ def test_new_window_start_directory(
         active_pane = window.active_pane
         assert active_pane is not None
         active_pane.refresh()
-        if active_pane.pane_current_path:
-            actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
-            assert actual_path == expected_path
+        assert active_pane.pane_current_path is not None
+        actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
+        assert actual_path == expected_path
 
 
 def test_new_window_start_directory_pathlib(
@@ -533,7 +536,7 @@ def test_new_window_start_directory_pathlib(
     active_pane = window.active_pane
     assert active_pane is not None
     active_pane.refresh()
-    if active_pane.pane_current_path:
-        actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
-        expected_path = str(user_path.resolve())
-        assert actual_path == expected_path
+    assert active_pane.pane_current_path is not None
+    actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
+    expected_path = str(user_path.resolve())
+    assert actual_path == expected_path
