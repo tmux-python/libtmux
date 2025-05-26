@@ -13,6 +13,8 @@ import pathlib
 import typing as t
 import warnings
 
+from libtmux import exc
+from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
@@ -22,8 +24,6 @@ from libtmux.constants import (
 )
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import Obj, fetch_obj
-
-from . import exc
 
 if t.TYPE_CHECKING:
     import sys
@@ -548,7 +548,7 @@ class Pane(Obj):
         self,
         /,
         target: int | str | None = None,
-        start_directory: str | None = None,
+        start_directory: StrPath | None = None,
         attach: bool = False,
         direction: PaneDirection | None = None,
         full_window_split: bool | None = None,
@@ -566,7 +566,7 @@ class Pane(Obj):
         attach : bool, optional
             make new window the current window after creating it, default
             True.
-        start_directory : str, optional
+        start_directory : str or PathLike, optional
             specifies the working directory in which the new window is created.
         direction : PaneDirection, optional
             split in direction. If none is specified, assume down.
@@ -668,7 +668,7 @@ class Pane(Obj):
 
         tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
 
-        if start_directory is not None:
+        if start_directory:
             # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
             start_path = pathlib.Path(start_directory).expanduser()
             tmux_args += (f"-c{start_path}",)
@@ -870,7 +870,7 @@ class Pane(Obj):
         self,
         target: int | str | None = None,
         attach: bool = False,
-        start_directory: str | None = None,
+        start_directory: StrPath | None = None,
         vertical: bool = True,
         shell: str | None = None,
         size: str | int | None = None,
@@ -883,7 +883,7 @@ class Pane(Obj):
         ----------
         attach : bool, optional
             Attach / select pane after creation.
-        start_directory : str, optional
+        start_directory : str or PathLike, optional
             specifies the working directory in which the new pane is created.
         vertical : bool, optional
             split vertically
