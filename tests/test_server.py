@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 import os
+import pathlib
 import subprocess
 import time
 import typing as t
 
 import pytest
 
+from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, has_version
 from libtmux.server import Server
 
@@ -308,3 +310,87 @@ def test_server_context_manager(TestServer: type[Server]) -> None:
 
     # Server should be killed after exiting context
     assert not server.is_alive()
+
+
+class StartDirectoryTestFixture(t.NamedTuple):
+    """Test fixture for start_directory parameter testing."""
+
+    test_id: str
+    start_directory: StrPath | None
+    expected_in_cmd: list[str]
+    expected_not_in_cmd: list[str]
+    description: str
+
+
+START_DIRECTORY_TEST_FIXTURES: list[StartDirectoryTestFixture] = [
+    StartDirectoryTestFixture(
+        test_id="none_value",
+        start_directory=None,
+        expected_in_cmd=[],
+        expected_not_in_cmd=["-c"],
+        description="None should not add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="empty_string",
+        start_directory="",
+        expected_in_cmd=[],
+        expected_not_in_cmd=["-c"],
+        description="Empty string should not add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="absolute_path_string",
+        start_directory="/tmp/test",
+        expected_in_cmd=["-c", "/tmp/test"],
+        expected_not_in_cmd=[],
+        description="Absolute path string should add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="pathlib_absolute",
+        start_directory=pathlib.Path("/tmp/test"),
+        expected_in_cmd=["-c", "/tmp/test"],
+        expected_not_in_cmd=[],
+        description="pathlib.Path absolute should add -c flag",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(StartDirectoryTestFixture._fields),
+    START_DIRECTORY_TEST_FIXTURES,
+    ids=[test.test_id for test in START_DIRECTORY_TEST_FIXTURES],
+)
+def test_new_session_start_directory(
+    test_id: str,
+    start_directory: StrPath | None,
+    expected_in_cmd: list[str],
+    expected_not_in_cmd: list[str],
+    description: str,
+    server: Server,
+) -> None:
+    """Test Server.new_session start_directory parameter handling."""
+    # Create session with start_directory parameter
+    session = server.new_session(
+        session_name=f"test_start_dir_{test_id}",
+        start_directory=start_directory,
+    )
+
+    # Verify session was created successfully
+    assert session.session_name == f"test_start_dir_{test_id}"
+    assert server.has_session(f"test_start_dir_{test_id}")
+
+
+def test_new_session_start_directory_pathlib(server: Server) -> None:
+    """Test Server.new_session accepts pathlib.Path for start_directory."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path_obj = pathlib.Path(temp_dir)
+
+        # Should accept pathlib.Path without error
+        session = server.new_session(
+            session_name="test_pathlib_start_dir",
+            start_directory=path_obj,
+        )
+
+        assert session.session_name == "test_pathlib_start_dir"
+        assert server.has_session("test_pathlib_start_dir")
