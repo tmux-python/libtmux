@@ -15,14 +15,15 @@ import subprocess
 import typing as t
 import warnings
 
+from libtmux import exc, formats
 from libtmux._internal.query_list import QueryList
+from libtmux._internal.types import StrPath
 from libtmux.common import tmux_cmd
 from libtmux.neo import fetch_objs
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
 
-from . import exc, formats
 from .common import (
     EnvironmentMixin,
     PaneDict,
@@ -431,7 +432,7 @@ class Server(EnvironmentMixin):
         session_name: str | None = None,
         kill_session: bool = False,
         attach: bool = False,
-        start_directory: str | None = None,
+        start_directory: StrPath | None = None,
         window_name: str | None = None,
         window_command: str | None = None,
         x: int | DashLiteral | None = None,
@@ -466,7 +467,7 @@ class Server(EnvironmentMixin):
         kill_session : bool, optional
             Kill current session if ``$ tmux has-session``.
             Useful for testing workspaces.
-        start_directory : str, optional
+        start_directory : str or PathLike, optional
             specifies the working directory in which the
             new session is created.
         window_name : str, optional
@@ -542,7 +543,9 @@ class Server(EnvironmentMixin):
             tmux_args += ("-d",)
 
         if start_directory:
-            tmux_args += ("-c", start_directory)
+            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-session -c.
+            start_directory = pathlib.Path(start_directory).expanduser()
+            tmux_args += ("-c", str(start_directory))
 
         if window_name:
             tmux_args += ("-n", window_name)
