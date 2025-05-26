@@ -76,3 +76,6 @@ target/
 
 # Monkeytype
 monkeytype.sqlite3
+
+# Claude Code
+.claude/
