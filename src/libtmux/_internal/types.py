@@ -2,7 +2,7 @@
 
 Notes
 -----
-:class:`StrPath` and :class:`StrOrBytesPath` is based on `typeshed's`_.
+:class:`StrPath` is based on `typeshed's`_.
 
 .. _typeshed's: https://github.com/python/typeshed/blob/5ff32f3/stdlib/_typeshed/__init__.pyi#L176-L179
 """  # E501
