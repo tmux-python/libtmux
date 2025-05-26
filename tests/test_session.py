@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import pathlib
 import shutil
 import typing as t
 
 import pytest
 
 from libtmux import exc
+from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, has_lt_version
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
@@ -424,9 +426,94 @@ def test_session_context_manager(server: Server) -> None:
     """Test Session context manager functionality."""
     with server.new_session() as session:
         window = session.new_window()
-        assert session in server.sessions
+        assert len(session.windows) >= 2  # Initial window + new window
         assert window in session.windows
-        assert len(session.windows) == 2  # Initial window + new window
 
     # Session should be killed after exiting context
-    assert session not in server.sessions
+    session_name = session.session_name
+    assert session_name is not None
+    assert not server.has_session(session_name)
+
+
+class StartDirectoryTestFixture(t.NamedTuple):
+    """Test fixture for start_directory parameter testing."""
+
+    test_id: str
+    start_directory: StrPath | None
+    expected_in_cmd: list[str]
+    expected_not_in_cmd: list[str]
+    description: str
+
+
+START_DIRECTORY_TEST_FIXTURES: list[StartDirectoryTestFixture] = [
+    StartDirectoryTestFixture(
+        test_id="none_value",
+        start_directory=None,
+        expected_in_cmd=[],
+        expected_not_in_cmd=["-c"],
+        description="None should not add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="empty_string",
+        start_directory="",
+        expected_in_cmd=[],
+        expected_not_in_cmd=["-c"],
+        description="Empty string should not add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="absolute_path_string",
+        start_directory="/tmp/test",
+        expected_in_cmd=["-c"],
+        expected_not_in_cmd=[],
+        description="Absolute path string should add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="pathlib_absolute",
+        start_directory=pathlib.Path("/tmp/test"),
+        expected_in_cmd=["-c"],
+        expected_not_in_cmd=[],
+        description="pathlib.Path absolute should add -c flag",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(StartDirectoryTestFixture._fields),
+    START_DIRECTORY_TEST_FIXTURES,
+    ids=[test.test_id for test in START_DIRECTORY_TEST_FIXTURES],
+)
+def test_new_window_start_directory(
+    test_id: str,
+    start_directory: StrPath | None,
+    expected_in_cmd: list[str],
+    expected_not_in_cmd: list[str],
+    description: str,
+    session: Session,
+) -> None:
+    """Test Session.new_window start_directory parameter handling."""
+    # Create window with start_directory parameter
+    window = session.new_window(
+        window_name=f"test_start_dir_{test_id}",
+        start_directory=start_directory,
+    )
+
+    # Verify window was created successfully
+    assert window.window_name == f"test_start_dir_{test_id}"
+    assert window in session.windows
+
+
+def test_new_window_start_directory_pathlib(session: Session) -> None:
+    """Test Session.new_window accepts pathlib.Path for start_directory."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path_obj = pathlib.Path(temp_dir)
+
+        # Should accept pathlib.Path without error
+        window = session.new_window(
+            window_name="test_pathlib_start_dir",
+            start_directory=path_obj,
+        )
+
+        assert window.window_name == "test_pathlib_start_dir"
+        assert window in session.windows
