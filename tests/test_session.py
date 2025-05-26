@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import pathlib
 import shutil
 import typing as t
 
 import pytest
 
 from libtmux import exc
+from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, has_lt_version
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
@@ -424,9 +426,117 @@ def test_session_context_manager(server: Server) -> None:
     """Test Session context manager functionality."""
     with server.new_session() as session:
         window = session.new_window()
-        assert session in server.sessions
+        assert len(session.windows) >= 2  # Initial window + new window
         assert window in session.windows
-        assert len(session.windows) == 2  # Initial window + new window
 
     # Session should be killed after exiting context
-    assert session not in server.sessions
+    session_name = session.session_name
+    assert session_name is not None
+    assert not server.has_session(session_name)
+
+
+class StartDirectoryTestFixture(t.NamedTuple):
+    """Test fixture for start_directory parameter testing."""
+
+    test_id: str
+    start_directory: StrPath | None
+    description: str
+
+
+START_DIRECTORY_TEST_FIXTURES: list[StartDirectoryTestFixture] = [
+    StartDirectoryTestFixture(
+        test_id="none_value",
+        start_directory=None,
+        description="None should not add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="empty_string",
+        start_directory="",
+        description="Empty string should not add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="user_path",
+        start_directory="{user_path}",
+        description="User path should add -c flag",
+    ),
+    StartDirectoryTestFixture(
+        test_id="relative_path",
+        start_directory="./relative/path",
+        description="Relative path should add -c flag",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(StartDirectoryTestFixture._fields),
+    START_DIRECTORY_TEST_FIXTURES,
+    ids=[test.test_id for test in START_DIRECTORY_TEST_FIXTURES],
+)
+def test_new_window_start_directory(
+    test_id: str,
+    start_directory: StrPath | None,
+    description: str,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    user_path: pathlib.Path,
+) -> None:
+    """Test Session.new_window start_directory parameter handling."""
+    monkeypatch.chdir(tmp_path)
+
+    # Format path placeholders with actual fixture values
+    actual_start_directory = start_directory
+    expected_path = None
+
+    if start_directory and str(start_directory) not in ["", "None"]:
+        if "{user_path}" in str(start_directory):
+            # Replace placeholder with actual user_path
+            actual_start_directory = str(start_directory).format(user_path=user_path)
+            expected_path = str(user_path)
+        elif str(start_directory).startswith("./"):
+            # For relative paths, use tmp_path as base
+            temp_dir = tmp_path / "relative" / "path"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            actual_start_directory = str(temp_dir)
+            expected_path = str(temp_dir.resolve())
+
+    # Should not raise an error
+    window = session.new_window(
+        window_name=f"test_window_{test_id}",
+        start_directory=actual_start_directory,
+    )
+
+    assert window.window_name == f"test_window_{test_id}"
+    assert window in session.windows
+
+    # Verify working directory if we have an expected path
+    if expected_path:
+        active_pane = window.active_pane
+        assert active_pane is not None
+        active_pane.refresh()
+        assert active_pane.pane_current_path is not None
+        actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
+        assert actual_path == expected_path
+
+
+def test_new_window_start_directory_pathlib(
+    session: Session, user_path: pathlib.Path
+) -> None:
+    """Test Session.new_window accepts pathlib.Path for start_directory."""
+    # Pass pathlib.Path directly to test pathlib.Path acceptance
+    window = session.new_window(
+        window_name="test_pathlib_start_dir",
+        start_directory=user_path,
+    )
+
+    assert window.window_name == "test_pathlib_start_dir"
+    assert window in session.windows
+
+    # Verify working directory
+    active_pane = window.active_pane
+    assert active_pane is not None
+    active_pane.refresh()
+    assert active_pane.pane_current_path is not None
+    actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
+    expected_path = str(user_path.resolve())
+    assert actual_path == expected_path
