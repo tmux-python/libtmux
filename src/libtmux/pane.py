@@ -13,7 +13,7 @@ import pathlib
 import typing as t
 import warnings
 
-from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
+from libtmux.common import AsyncTmuxCmd, has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -200,6 +200,53 @@ class Pane(Obj):
             target = self.pane_id
 
         return self.server.cmd(cmd, *args, target=target)
+
+    async def acmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: str | int | None = None,
+    ) -> AsyncTmuxCmd:
+        """Execute tmux subcommand within pane context.
+
+        Automatically binds target by adding  ``-t`` for object's pane ID to the
+        command. Pass ``target`` to keyword arguments to override.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> async def test_acmd():
+        ...     result = await pane.acmd('split-window', '-P')
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_acmd())
+        libtmux...:...
+
+        From raw output to an enriched `Pane` object:
+
+        >>> async def test_from_pane():
+        ...     pane_id_result = await pane.acmd(
+        ...         'split-window', '-P', '-F#{pane_id}'
+        ...     )
+        ...     return Pane.from_pane_id(
+        ...         pane_id=pane_id_result.stdout[0],
+        ...         server=session.server
+        ...     )
+        >>> asyncio.run(test_from_pane())
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target override. By default, the target is the pane ID.
+
+        Returns
+        -------
+        :meth:`server.cmd`
+        """
+        if target is None:
+            target = self.pane_id
+
+        return await self.server.acmd(cmd, *args, target=target)
 
     """
     Commands (tmux-like)

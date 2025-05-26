@@ -25,7 +25,7 @@ from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
 from . import exc
-from .common import PaneDict, WindowOptionDict, handle_option_error
+from .common import AsyncTmuxCmd, PaneDict, WindowOptionDict, handle_option_error
 
 if t.TYPE_CHECKING:
     import sys
@@ -225,6 +225,55 @@ class Window(Obj):
             target = self.window_id
 
         return self.server.cmd(cmd, *args, target=target)
+
+    async def acmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: str | int | None = None,
+    ) -> AsyncTmuxCmd:
+        """Execute tmux subcommand within window context.
+
+        Automatically binds target by adding  ``-t`` for object's window ID to the
+        command. Pass ``target`` to keyword arguments to override.
+
+        Examples
+        --------
+        Create a pane from a window:
+
+        >>> import asyncio
+        >>> async def test_acmd():
+        ...     result = await window.acmd('split-window', '-P', '-F#{pane_id}')
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_acmd())
+        %...
+
+        Magic, directly to a `Pane`:
+
+        >>> async def test_from_pane():
+        ...     pane_id_result = await session.acmd(
+        ...         'split-window', '-P', '-F#{pane_id}'
+        ...     )
+        ...     return Pane.from_pane_id(
+        ...         pane_id=pane_id_result.stdout[0],
+        ...         server=session.server
+        ...     )
+        >>> asyncio.run(test_from_pane())
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target override. By default, the target is the window ID.
+
+        Returns
+        -------
+        :meth:`server.cmd`
+        """
+        if target is None:
+            target = self.window_id
+
+        return await self.server.acmd(cmd, *args, target=target)
 
     """
     Commands (tmux-like)
