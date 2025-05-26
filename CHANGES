@@ -15,6 +15,20 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+## libtmux 0.46.2 (Unreleased)
+
+### Development
+
+- Add `StrPath` type support for `start_directory` parameters (#596, #597, #598):
+  - `Server.new_session`: Accept PathLike objects for session start directory
+  - `Session.new_window`: Accept PathLike objects for window start directory
+  - `Pane.split` and `Pane.split_window`: Accept PathLike objects for pane start directory
+  - `Window.split` and `Window.split_window`: Accept PathLike objects for pane start directory
+  - Enables `pathlib.Path` objects alongside strings for all start directory parameters
+  - Includes comprehensive tests for all parameter types (None, empty string, string paths, PathLike objects)
+
+  Thank you @Data5tream for the initial commit in #596!
+
 ## libtmux 0.46.1 (2025-03-16)
 
 _Maintenance only, no bug fixes or new features_
