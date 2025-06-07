@@ -14,12 +14,17 @@ if t.TYPE_CHECKING:
     import sys
     from collections.abc import Callable
 
-    from _pytest.python_api import RaisesContext
-
     if sys.version_info >= (3, 10):
         from typing import TypeAlias
     else:
         from typing_extensions import TypeAlias
+
+    try:
+        from _pytest.raises import RaisesExc
+    except ImportError:
+        from _pytest.python_api import RaisesContext  # type: ignore[attr-defined]
+
+        RaisesExc: TypeAlias = RaisesContext[Exception]  # type: ignore[no-redef]
 
     VersionCompareOp: TypeAlias = Callable[
         [t.Any, t.Any],
@@ -146,10 +151,10 @@ def test_version_compare(
     raises: type[Exception] | bool,
 ) -> None:
     """Assert version comparisons."""
-    raises_ctx: RaisesContext[Exception] = (
+    raises_ctx: RaisesExc = (
         pytest.raises(t.cast("type[Exception]", raises))
         if raises
-        else t.cast("RaisesContext[Exception]", does_not_raise())
+        else t.cast("RaisesExc", does_not_raise())
     )
     with raises_ctx:
         assert op(LooseVersion(a), LooseVersion(b))
