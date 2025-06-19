@@ -10,7 +10,6 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, has_lt_version
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
@@ -20,6 +19,7 @@ from libtmux.test.random import namer
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
+    from libtmux._internal.types import StrPath
     from libtmux.server import Server
 
 logger = logging.getLogger(__name__)
@@ -488,8 +488,8 @@ def test_new_window_start_directory(
     actual_start_directory = start_directory
     expected_path = None
 
-    if start_directory and str(start_directory) not in ["", "None"]:
-        if "{user_path}" in str(start_directory):
+    if start_directory and str(start_directory) not in {"", "None"}:
+        if f"{user_path}" in str(start_directory):
             # Replace placeholder with actual user_path
             actual_start_directory = str(start_directory).format(user_path=user_path)
             expected_path = str(user_path)
@@ -520,7 +520,8 @@ def test_new_window_start_directory(
 
 
 def test_new_window_start_directory_pathlib(
-    session: Session, user_path: pathlib.Path
+    session: Session,
+    user_path: pathlib.Path,
 ) -> None:
     """Test Session.new_window accepts pathlib.Path for start_directory."""
     # Pass pathlib.Path directly to test pathlib.Path acceptance

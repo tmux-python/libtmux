@@ -14,7 +14,6 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -31,6 +30,8 @@ from .common import PaneDict, WindowOptionDict, handle_option_error
 if t.TYPE_CHECKING:
     import sys
     import types
+
+    from libtmux._internal.types import StrPath
 
     from .server import Server
     from .session import Session
@@ -793,7 +794,7 @@ class Window(Obj):
         """Representation of :class:`Window` object."""
         return (
             f"{self.__class__.__name__}({self.window_id} "
-            + f"{self.window_index}:{self.window_name}, {self.session})"
+            f"{self.window_index}:{self.window_name}, {self.session})"
         )
 
     #
@@ -899,7 +900,7 @@ class Window(Obj):
             # Deprecated in 3.1 in favor of -l
             warnings.warn(
                 f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
-                + ' ("-l" flag) in tmux 3.1+.',
+                ' ("-l" flag) in tmux 3.1+.',
                 category=DeprecationWarning,
                 stacklevel=2,
             )

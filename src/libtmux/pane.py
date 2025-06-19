@@ -14,7 +14,6 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
@@ -28,6 +27,8 @@ from libtmux.neo import Obj, fetch_obj
 if t.TYPE_CHECKING:
     import sys
     import types
+
+    from libtmux._internal.types import StrPath
 
     from .server import Server
     from .session import Session

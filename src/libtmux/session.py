@@ -833,7 +833,7 @@ class Session(Obj, EnvironmentMixin):
         """
         warnings.warn(
             "Session.attached_window() is deprecated in favor of "
-            + "Session.active_window()",
+            "Session.active_window()",
             category=DeprecationWarning,
             stacklevel=2,
         )

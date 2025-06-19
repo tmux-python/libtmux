@@ -17,7 +17,6 @@ import warnings
 
 from libtmux import exc, formats
 from libtmux._internal.query_list import QueryList
-from libtmux._internal.types import StrPath
 from libtmux.common import tmux_cmd
 from libtmux.neo import fetch_objs
 from libtmux.pane import Pane
@@ -36,6 +35,8 @@ from .common import (
 if t.TYPE_CHECKING:
     import sys
     import types
+
+    from libtmux._internal.types import StrPath
 
     if sys.version_info >= (3, 10):
         from typing import Self, TypeAlias

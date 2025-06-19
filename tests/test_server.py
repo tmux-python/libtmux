@@ -11,11 +11,11 @@ import typing as t
 
 import pytest
 
-from libtmux._internal.types import StrPath
 from libtmux.common import has_gte_version, has_version
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
+    from libtmux._internal.types import StrPath
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -365,8 +365,8 @@ def test_new_session_start_directory(
     actual_start_directory = start_directory
     expected_path = None
 
-    if start_directory and str(start_directory) not in ["", "None"]:
-        if "{user_path}" in str(start_directory):
+    if start_directory and str(start_directory) not in {"", "None"}:
+        if f"{user_path}" in str(start_directory):
             # Replace placeholder with actual user_path
             actual_start_directory = str(start_directory).format(user_path=user_path)
             expected_path = str(user_path)
@@ -397,7 +397,8 @@ def test_new_session_start_directory(
 
 
 def test_new_session_start_directory_pathlib(
-    server: Server, user_path: pathlib.Path
+    server: Server,
+    user_path: pathlib.Path,
 ) -> None:
     """Test Server.new_session accepts pathlib.Path for start_directory."""
     # Pass pathlib.Path directly to test pathlib.Path acceptance
