@@ -49,8 +49,8 @@ Documentation = "https://libtmux.git-pull.com"
 Repository = "https://github.com/tmux-python/libtmux"
 Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
   # Docs
   "sphinx",
   "furo",
@@ -80,7 +80,6 @@ dev-dependencies = [
   "mypy",
 ]
 
-[dependency-groups]
 docs = [
   "sphinx",
   "furo",
