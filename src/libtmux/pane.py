@@ -23,6 +23,7 @@ from libtmux.constants import (
 )
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import Obj, fetch_obj
+from libtmux.snapshot import PaneRecording, PaneSnapshot
 
 if t.TYPE_CHECKING:
     import sys
@@ -342,6 +343,43 @@ class Pane(Obj):
         if end is not None:
             cmd.extend(["-E", str(end)])
         return self.cmd(*cmd).stdout
+
+    def snapshot(
+        self,
+        start: t.Literal["-"] | int | None = None,
+        end: t.Literal["-"] | int | None = None,
+    ) -> PaneSnapshot:
+        """Create a snapshot of the pane's current state.
+
+        This is a convenience method that creates a :class:`PaneSnapshot` instance
+        from the current pane state.
+
+        Parameters
+        ----------
+        start : int | "-" | None
+            Start line for capture_pane
+        end : int | "-" | None
+            End line for capture_pane
+
+        Returns
+        -------
+        PaneSnapshot
+            A frozen snapshot of the pane's current state
+        """
+        return PaneSnapshot.from_pane(self, start=start, end=end)
+
+    def record(self) -> PaneRecording:
+        """Create a new recording for this pane.
+
+        This is a convenience method that creates a :class:`PaneRecording` instance
+        for recording snapshots of this pane.
+
+        Returns
+        -------
+        PaneRecording
+            A new recording instance for this pane
+        """
+        return PaneRecording()
 
     def send_keys(
         self,
