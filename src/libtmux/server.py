@@ -7,6 +7,7 @@ libtmux.server
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import pathlib
@@ -47,6 +48,19 @@ if t.TYPE_CHECKING:
     DashLiteral: TypeAlias = t.Literal["-"]
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_not_in_event_loop() -> None:
+    """Guard synchronous entry points against being called in a running loop."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    message = (
+        "The synchronous libtmux API cannot be used from within a running event loop. "
+        "Please use the 'libtmux.asyncio' API instead."
+    )
+    raise RuntimeError(message)
 
 
 class Server(EnvironmentMixin):
@@ -290,6 +304,8 @@ class Server(EnvironmentMixin):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
+        _ensure_not_in_event_loop()
+
         svr_args: list[str | int] = [cmd]
         cmd_args: list[str | int] = []
         if self.socket_name:
