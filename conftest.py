@@ -10,15 +10,17 @@ https://docs.pytest.org/en/stable/deprecations.html
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import typing as t
 
 import pytest
 from _pytest.doctest import DoctestItem
 
+from libtmux.asyncio import Server as AsyncServer
+from libtmux.asyncio.testing import MockTransport, error, ev, result
 from libtmux.pane import Pane
 from libtmux.pytest_plugin import USING_ZSH
-from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.window import Window
 
@@ -34,18 +36,34 @@ def add_doctest_fixtures(
     doctest_namespace: dict[str, t.Any],
 ) -> None:
     """Configure doctest fixtures for pytest-doctest."""
+    doctest_namespace.setdefault("async_run", asyncio.run)
+    doctest_namespace.setdefault("AsyncServer", AsyncServer)
+    doctest_namespace.setdefault("MockTransport", MockTransport)
+    doctest_namespace.setdefault("result", result)
+    doctest_namespace.setdefault("error", error)
+    doctest_namespace.setdefault("ev", ev)
     if isinstance(request._pyfuncitem, DoctestItem) and shutil.which("tmux"):
         request.getfixturevalue("set_home")
-        doctest_namespace["Server"] = Server
-        doctest_namespace["Session"] = Session
-        doctest_namespace["Window"] = Window
-        doctest_namespace["Pane"] = Pane
-        doctest_namespace["server"] = request.getfixturevalue("server")
-        doctest_namespace["Server"] = request.getfixturevalue("TestServer")
-        session: Session = request.getfixturevalue("session")
-        doctest_namespace["session"] = session
-        doctest_namespace["window"] = session.active_window
-        doctest_namespace["pane"] = session.active_pane
+        doctest_item = request._pyfuncitem
+        module_name = getattr(doctest_item.dtest, "name", "")
+        if module_name.startswith("libtmux.asyncio"):
+            should_override = False
+        else:
+            existing_server = doctest_namespace.get("Server")
+            server_module = getattr(existing_server, "__module__", "")
+            should_override = not server_module.startswith("libtmux.asyncio")
+        if should_override:
+            test_server_factory = request.getfixturevalue("TestServer")
+            doctest_namespace["Server"] = test_server_factory
+            doctest_namespace["Session"] = Session
+            doctest_namespace["Window"] = Window
+            doctest_namespace["Pane"] = Pane
+            doctest_namespace["server"] = request.getfixturevalue("server")
+            doctest_namespace["TestServer"] = test_server_factory
+            session: Session = request.getfixturevalue("session")
+            doctest_namespace["session"] = session
+            doctest_namespace["window"] = session.active_window
+            doctest_namespace["pane"] = session.active_pane
         doctest_namespace["request"] = request
 
 
