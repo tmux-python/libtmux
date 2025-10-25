@@ -13,6 +13,7 @@ import pathlib
 import typing as t
 import warnings
 
+from libtmux._internal.command_runner import CommandResult
 from libtmux._internal.query_list import QueryList
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
@@ -35,7 +36,6 @@ if t.TYPE_CHECKING:
     import types
 
     from libtmux._internal.types import StrPath
-    from libtmux.common import tmux_cmd
 
     if sys.version_info >= (3, 11):
         from typing import Self
@@ -195,7 +195,7 @@ class Session(Obj, EnvironmentMixin):
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Execute tmux subcommand within session context.
 
         Automatically binds target by adding  ``-t`` for object's session ID to the

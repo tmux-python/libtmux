@@ -13,8 +13,9 @@ import shlex
 import typing as t
 import warnings
 
+from libtmux._internal.command_runner import CommandResult
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.common import has_gte_version
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     PaneDirection,
@@ -195,7 +196,7 @@ class Window(Obj):
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Execute tmux subcommand within window context.
 
         Automatically binds target by adding  ``-t`` for object's window ID to the
