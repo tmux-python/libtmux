@@ -1093,7 +1093,7 @@ class OptionsMixin(CmdMixin):
         if isinstance(output_exploded, SparseArray):
             try:
                 index = int(option)
-                return t.cast("ConvertedValue", output_exploded[index])
+                return output_exploded[index]
             except (ValueError, KeyError):
                 return None
 
