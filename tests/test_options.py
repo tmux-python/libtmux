@@ -489,12 +489,16 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
             assert terminal_features["rxvt*"] == ["ignorefkeys"]
 
     # Terminal overrides differ by version
-    # In tmux 3.5+, terminal-overrides has a default value
-    if has_gte_version("3.5"):
+    # tmux 3.0a-3.1b: has default values (xterm*, screen*)
+    # tmux 3.2+: defaults removed, returns None unless explicitly set
+    if has_gte_version("3.2"):
         terminal_overrides = server.show_option("terminal-overrides")
         assert isinstance(terminal_overrides, (dict, type(None)))
     elif has_gte_version("3.0"):
-        assert server.show_option("terminal-overrides") is None
+        # tmux 3.0a/3.1b have defaults like "xterm*:XT:Ms=...,screen*:XT"
+        terminal_overrides = server.show_option("terminal-overrides")
+        assert isinstance(terminal_overrides, dict)
+        assert "screen*" in terminal_overrides or "xterm*" in terminal_overrides
     else:
         terminal_overrides = server.show_option("terminal-overrides")
         assert isinstance(terminal_overrides, dict)
@@ -573,12 +577,14 @@ def test_style_option_validation(server: Server) -> None:
     session = server.new_session(session_name="test")
 
     # Valid style (format differs between tmux versions)
+    # Note: when you set bg=default, tmux internally sets bg to 8 (default color)
+    # and when converting to string, it omits the bg property entirely
     session.set_option("status-style", "fg=red,bg=default,bold")
     style = session.show_option("status-style")
     assert isinstance(style, str)
     assert "fg=red" in str(style)
+    # bg=default is NOT included in output (tmux omits it when bg is default)
     if has_gte_version("3.0"):
-        assert "bg=default" in str(style)
         assert "bold" in str(style)
     else:
         assert "bright" in str(style)
