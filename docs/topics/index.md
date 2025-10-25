@@ -9,5 +9,6 @@ Explore libtmux’s core functionalities and underlying principles at a high lev
 ```{toctree}
 
 context_managers
+control_mode
 traversal
 ```
