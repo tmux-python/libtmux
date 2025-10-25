@@ -19,6 +19,7 @@ from libtmux.test.random import get_test_session_name, namer
 if t.TYPE_CHECKING:
     import pathlib
 
+    from libtmux._internal.command_runner import CommandRunner
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -111,10 +112,37 @@ def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
+def command_runner() -> CommandRunner | None:
+    """Command runner for tests.
+
+    Override this fixture in conftest.py to provide a custom command runner
+    for all tests.
+
+    Returns
+    -------
+    CommandRunner or None
+        Custom command runner, or None to use default subprocess runner
+
+    Examples
+    --------
+    >>> def test_with_default(command_runner):
+    ...     assert command_runner is None  # Default uses subprocess
+
+    To use a custom runner:
+
+    >>> @pytest.fixture
+    ... def command_runner():
+    ...     return MyCustomRunner()
+    """
+    return None
+
+
+@pytest.fixture
 def server(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
     config_file: pathlib.Path,
+    command_runner: CommandRunner | None,
 ) -> Server:
     """Return new, temporary :class:`libtmux.Server`.
 
@@ -141,7 +169,10 @@ def server(
 
         >>> result.assert_outcomes(passed=1)
     """
-    server = Server(socket_name=f"libtmux_test{next(namer)}")
+    server = Server(
+        socket_name=f"libtmux_test{next(namer)}",
+        command_runner=command_runner,
+    )
 
     def fin() -> None:
         server.kill()
@@ -263,6 +294,7 @@ def session(
 @pytest.fixture
 def TestServer(
     request: pytest.FixtureRequest,
+    command_runner: CommandRunner | None,
 ) -> type[Server]:
     """Create a temporary tmux server that cleans up after itself.
 
@@ -309,6 +341,7 @@ def TestServer(
         "type[Server]",
         functools.partial(
             Server,
+            command_runner=command_runner,
             on_init=on_init,
             socket_name_factory=socket_name_factory,
         ),
