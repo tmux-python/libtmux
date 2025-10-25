@@ -227,6 +227,9 @@ testpaths = [
   "docs",
   "README.md",
 ]
+markers = [
+  "benchmark: Performance benchmark tests",
+]
 filterwarnings = [
   "ignore:The frontend.Option(Parser)? class.*:DeprecationWarning::",
   "ignore::DeprecationWarning:libtmux.*:",
