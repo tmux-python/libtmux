@@ -14,7 +14,8 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
+from libtmux._internal.command_runner import CommandResult
+from libtmux.common import has_gte_version, has_lt_version
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -171,7 +172,7 @@ class Pane(Obj):
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Execute tmux subcommand within pane context.
 
         Automatically binds target by adding  ``-t`` for object's pane ID to the

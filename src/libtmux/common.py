@@ -16,6 +16,7 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
+from ._internal.command_runner import CommandResult
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -40,7 +41,7 @@ class EnvironmentMixin:
 
     _add_option = None
 
-    cmd: Callable[[t.Any, t.Any], tmux_cmd]
+    cmd: Callable[[t.Any, t.Any], CommandResult]
 
     def __init__(self, add_option: str | None = None) -> None:
         self._add_option = add_option

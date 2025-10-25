@@ -16,8 +16,8 @@ import typing as t
 import warnings
 
 from libtmux import exc, formats
+from libtmux._internal.command_runner import CommandResult
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
 from libtmux.neo import fetch_objs
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -270,7 +270,7 @@ class Server(EnvironmentMixin):
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Execute tmux command respective of socket name and file, return output.
 
         Examples
