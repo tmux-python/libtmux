@@ -577,17 +577,21 @@ def test_style_option_validation(server: Server) -> None:
     session = server.new_session(session_name="test")
 
     # Valid style (format differs between tmux versions)
-    # Note: when you set bg=default, tmux internally sets bg to 8 (default color)
-    # and when converting to string, it omits the bg property entirely
+    # tmux ≤3.1: Styles are normalized when stored (bold→bright, bg=default omitted)
+    # tmux ≥3.2: Styles stored as strings (literal input, allows format expansion)
     session.set_option("status-style", "fg=red,bg=default,bold")
     style = session.show_option("status-style")
     assert isinstance(style, str)
     assert "fg=red" in str(style)
-    # bg=default is NOT included in output (tmux omits it when bg is default)
-    if has_gte_version("3.0"):
+
+    if has_gte_version("3.2"):
+        # tmux 3.2+: literal string output
+        assert "bg=default" in str(style)
         assert "bold" in str(style)
     else:
+        # tmux <3.2: normalized output (bold→bright, bg=default omitted)
         assert "bright" in str(style)
+        assert "bg=default" not in str(style)
 
     # Invalid style should raise OptionError
     with pytest.raises(OptionError):
