@@ -159,18 +159,22 @@ def test_benchmark_server_integration_subprocess(server: Server) -> None:
 
 
 @pytest.mark.benchmark
-def test_benchmark_server_integration_control_mode(server: Server) -> None:
+def test_benchmark_server_integration_control_mode(
+    TestServer: t.Callable[..., Server],
+) -> None:
     """Benchmark Server with control mode runner.
 
     This tests the performance of high-level Server API using control mode.
     Note: Operations with format strings still use subprocess fallback.
     """
-    assert server.socket_name
-    control_runner = ControlModeCommandRunner(server.socket_name)
+    # Create independent server with unique socket
+    test_server = TestServer()
+    assert test_server.socket_name
+    control_runner = ControlModeCommandRunner(test_server.socket_name)
 
     # Create server with control mode runner
     cm_server = Server(
-        socket_name=server.socket_name,
+        socket_name=test_server.socket_name,
         command_runner=control_runner,
     )
 
