@@ -1847,6 +1847,9 @@ def test_wait_for_pane_content_exact_match_detailed(wait_pane: Pane) -> None:
     # Send a unique string that we can test with an exact match
     wait_pane.send_keys("UNIQUE_TEST_STRING_123", literal=True)
 
+    # Small delay to allow tmux to flush content (needed for older versions like 3.1b)
+    time.sleep(0.1)
+
     # Get the current content to work with
     content = wait_pane.capture_pane()
     content_str = "\n".join(content if isinstance(content, list) else [content])
