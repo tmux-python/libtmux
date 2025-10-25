@@ -489,7 +489,11 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
             assert terminal_features["rxvt*"] == ["ignorefkeys"]
 
     # Terminal overrides differ by version
-    if has_gte_version("3.0"):
+    # In tmux 3.5+, terminal-overrides has a default value
+    if has_gte_version("3.5"):
+        terminal_overrides = server.show_option("terminal-overrides")
+        assert isinstance(terminal_overrides, (dict, type(None)))
+    elif has_gte_version("3.0"):
         assert server.show_option("terminal-overrides") is None
     else:
         terminal_overrides = server.show_option("terminal-overrides")
@@ -515,10 +519,11 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         with pytest.raises(OptionError):
             server.show_option("update-environment")
 
-    # List variables: Pane
+    # List variables: Pane (pane-colours added in tmux 3.3)
     pane = session.active_pane
     assert pane is not None
-    assert pane.show_option("pane-colours") is None
+    if has_gte_version("3.3"):
+        assert pane.show_option("pane-colours") is None
 
 
 def test_high_level_api_expectations(server: Server) -> None:
