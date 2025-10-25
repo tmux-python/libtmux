@@ -38,6 +38,7 @@ if t.TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    from libtmux._internal.command_runner import CommandRunner
     from libtmux._internal.types import StrPath
 
     DashLiteral: TypeAlias = t.Literal["-"]
@@ -64,6 +65,8 @@ class Server(EnvironmentMixin):
     socket_path : str, optional
     config_file : str, optional
     colors : str, optional
+    command_runner : CommandRunner, optional
+        Custom command execution engine. Defaults to subprocess-based runner.
     on_init : callable, optional
     socket_name_factory : callable, optional
 
@@ -124,6 +127,7 @@ class Server(EnvironmentMixin):
         socket_path: str | pathlib.Path | None = None,
         config_file: str | None = None,
         colors: int | None = None,
+        command_runner: CommandRunner | None = None,
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         **kwargs: t.Any,
@@ -131,6 +135,7 @@ class Server(EnvironmentMixin):
         EnvironmentMixin.__init__(self, "-g")
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
+        self._command_runner = command_runner
 
         if socket_path is not None:
             self.socket_path = socket_path
@@ -187,6 +192,39 @@ class Server(EnvironmentMixin):
         """
         if self.is_alive():
             self.kill()
+
+    @property
+    def command_runner(self) -> CommandRunner:
+        """Get or lazily initialize the command runner.
+
+        Returns
+        -------
+        CommandRunner
+            The command execution engine for this server
+
+        Examples
+        --------
+        >>> server = Server(socket_name="default")
+        >>> assert server.command_runner is not None
+        >>> type(server.command_runner).__name__
+        'SubprocessCommandRunner'
+        """
+        if self._command_runner is None:
+            from libtmux._internal.engines import SubprocessCommandRunner
+
+            self._command_runner = SubprocessCommandRunner()
+        return self._command_runner
+
+    @command_runner.setter
+    def command_runner(self, value: CommandRunner) -> None:
+        """Set the command runner.
+
+        Parameters
+        ----------
+        value : CommandRunner
+            New command execution engine
+        """
+        self._command_runner = value
 
     def is_alive(self) -> bool:
         """Return True if tmux server alive.
@@ -298,7 +336,9 @@ class Server(EnvironmentMixin):
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args)
+        # Convert all arguments to strings for the command runner
+        all_args = [str(arg) for arg in [*svr_args, *cmd_args]]
+        return self.command_runner.run(*all_args)
 
     @property
     def attached_sessions(self) -> list[Session]:
