@@ -203,6 +203,33 @@ Window(@3 2:my_window, Session($1 ...))
 
 These execute against real tmux during `pytest --doctest-modules`.
 
+**CRITICAL DOCTEST RULE: NEVER create Server objects directly**
+
+❌ **WRONG - Will kill user's tmux session:**
+```python
+>>> server = Server(socket_name="default")  # DANGEROUS!
+>>> server = Server(socket_name="testing")  # Still dangerous!
+```
+
+✅ **CORRECT - Use lowercase fixtures:**
+```python
+>>> assert server.command_runner is not None  # Uses injected fixture
+>>> server.new_session("test")  # Fixture has unique socket
+```
+
+**Why this matters:**
+- `conftest.py:44` overwrites `Server` with `TestServer` factory
+- `TestServer` tracks ALL created servers via `on_init` callback
+- `TestServer` finalizer kills ALL tracked servers at test suite end
+- If you use `socket_name="default"` → user's session gets killed!
+- If you use any socket name → cleanup may interfere with user
+
+**Safe patterns:**
+1. Use lowercase `server` fixture (unique socket like `libtmux_test3k9m7x2q`)
+2. Use lowercase `session`, `window`, `pane` fixtures
+3. Never instantiate `Server()` directly in doctests
+4. Never use `socket_name="default"` anywhere
+
 #### Parallel Test Execution
 
 **Tests are safe for parallel execution** (`pytest -n auto`):
@@ -291,6 +318,8 @@ Tests run against:
 
 **When writing new tests**:
 - Use `server` and `session` fixtures - they provide real tmux instances
+- **NEVER create `Server()` directly with hardcoded socket names** (use fixtures or `TestServer`)
+- **NEVER use `socket_name="default"` or reuse fixture sockets** (will kill user's tmux!)
 - Never mock tmux - use `retry_until()` for async operations instead
 - Use `temp_session()` / `temp_window()` context managers for temporary objects
 - Use `get_test_session_name()` / `get_test_window_name()` for unique names
