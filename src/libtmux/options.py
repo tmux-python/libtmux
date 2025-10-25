@@ -510,7 +510,7 @@ def explode_complex(
                         if term not in new_overrides:
                             new_overrides[term] = {}
                         if features and "=" in features:
-                            k, v = features.split("=")
+                            k, v = features.split("=", 1)
 
                             if v.isdigit():
                                 v = int(v)
