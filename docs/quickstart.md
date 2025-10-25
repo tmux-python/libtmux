@@ -98,6 +98,17 @@ First, we can grab a {class}`Server`.
 >>> server = libtmux.Server()
 >>> server
 Server(socket_path=/tmp/tmux-.../default)
+
+If you want to persist a control-mode connection instead of launching a
+short-lived ``tmux`` process for every command, inject a different engine at
+construction time:
+
+```python
+>>> from libtmux.engines import ControlModeEngine
+>>> server = libtmux.Server(engine=ControlModeEngine())
+```
+
+The rest of the API remains identical regardless of the engine you choose.
 ```
 
 :::{tip}

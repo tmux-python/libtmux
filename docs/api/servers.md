@@ -9,6 +9,11 @@
 
 tmux initializes a server automatically on first running (e.g. executing `tmux`)
 
+:::{tip}
+Inject a different command engine when constructing :class:`~libtmux.Server`
+to change how tmux commands are executed. See {ref}`engines-topic` for details.
+:::
+
 ```{eval-rst}
 .. autoclass:: libtmux.Server
     :members:
