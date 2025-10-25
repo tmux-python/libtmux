@@ -223,18 +223,20 @@ def test_runner_preserves_output_format(server: Server, session: Session) -> Non
     control_runner.close()
 
 
-def test_runner_with_server_integration(server: Server) -> None:
+def test_runner_with_server_integration(TestServer: t.Callable[..., Server]) -> None:
     """Server works correctly with control mode runner.
 
     Control mode runner transparently falls back to subprocess for commands
     with format strings (-F flag), ensuring all operations work correctly.
     """
-    assert server.socket_name
-    runner = ControlModeCommandRunner(server.socket_name)
+    # Create independent server with unique socket
+    test_server = TestServer()
+    assert test_server.socket_name
+    runner = ControlModeCommandRunner(test_server.socket_name)
 
     # Create server with control mode runner
     cm_server = Server(
-        socket_name=server.socket_name,
+        socket_name=test_server.socket_name,
         command_runner=runner,
     )
 
