@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import typing as t
 from threading import Lock
@@ -118,14 +119,29 @@ class ControlModeCommandRunner:
                 # Shouldn't happen - orphaned output line
                 pass
 
+    def _has_format_flag(self, args: tuple[str, ...]) -> bool:
+        """Check if arguments contain a format string flag (-F).
+
+        Parameters
+        ----------
+        args : tuple[str, ...]
+            Command arguments to check
+
+        Returns
+        -------
+        bool
+            True if -F flag is present, False otherwise
+        """
+        return any(arg.startswith("-F") for arg in args)
+
     def _filter_args(self, args: tuple[str, ...]) -> list[str]:
         """Filter server-level and incompatible flags from args.
 
         Control mode connection is already bound to socket, so we must
         remove -L/-S/-f flags that were prepended by Server.cmd().
 
-        Additionally, tmux control mode does not support custom format
-        strings with -F, so those flags must also be removed.
+        Note: Format flags (-F) are handled via transparent subprocess fallback
+        and won't reach this method.
 
         Parameters
         ----------
@@ -162,13 +178,6 @@ class ControlModeCommandRunner:
             if arg in ("-2", "-8"):
                 continue
 
-            # Skip format flags (not supported in control mode)
-            if arg.startswith("-F"):
-                if len(arg) == 2:  # -F format (two-part)
-                    skip_next = True
-                # else: -Fformat (one-part), already skipped
-                continue
-
             filtered.append(arg)
 
         return filtered
@@ -177,6 +186,9 @@ class ControlModeCommandRunner:
         """Execute tmux command via control mode.
 
         Thread-safe: Only one command executes at a time.
+
+        For commands with format strings (-F flag), transparently falls back
+        to subprocess execution since control mode doesn't support format strings.
 
         Parameters
         ----------
@@ -193,6 +205,12 @@ class ControlModeCommandRunner:
         ConnectionError
             If control mode connection is lost
         """
+        # Transparent fallback for format strings
+        if self._has_format_flag(args):
+            from libtmux.common import tmux_cmd
+
+            return tmux_cmd(*args)  # type: ignore[return-value]
+
         with self._lock:  # Serialize command execution
             if self._process is None or self._parser is None:
                 msg = "Control mode not connected"
@@ -261,7 +279,5 @@ class ControlModeCommandRunner:
 
     def __del__(self) -> None:
         """Ensure connection is closed on object destruction."""
-        import contextlib
-
         with contextlib.suppress(Exception):
             self.close()
