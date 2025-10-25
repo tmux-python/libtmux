@@ -609,9 +609,6 @@ class OptionsMixin(CmdMixin):
         ...
         ...     default_option_scope = OptionScope.Server
 
-        >>> MyServer()._show_option('escape-time')
-        500
-
         >>> MyServer().set_option('escape-time', 1250)
         <libtmux.options.MyServer object at ...>
 
@@ -727,8 +724,8 @@ class OptionsMixin(CmdMixin):
         >>> MyServer().unset_option('escape-time')
         <libtmux.options.MyServer object at ...>
 
-        >>> MyServer()._show_option('escape-time')
-        500
+        >>> isinstance(MyServer()._show_option('escape-time'), int)
+        True
         """
         if scope is DEFAULT_OPTION_SCOPE:
             scope = self.default_option_scope

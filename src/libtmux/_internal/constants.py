@@ -434,6 +434,8 @@ class Hooks(
     after_split_window: SparseArray[str] = field(default_factory=SparseArray)
     # Runs after 'unbind-key' completes
     after_unbind_key: SparseArray[str] = field(default_factory=SparseArray)
+    # Runs when a command fails (tmux 3.5+)
+    command_error: SparseArray[str] = field(default_factory=SparseArray)
 
     @classmethod
     def from_stdout(cls, value: list[str]) -> Hooks:
