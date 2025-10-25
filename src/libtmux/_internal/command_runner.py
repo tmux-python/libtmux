@@ -6,7 +6,7 @@ import typing as t
 from typing import Protocol
 
 if t.TYPE_CHECKING:
-    from libtmux.common import tmux_cmd
+    pass
 
 
 class CommandResult(Protocol):
@@ -64,7 +64,7 @@ class CommandRunner(Protocol):
     >>> assert hasattr(result, 'returncode')
     """
 
-    def run(self, *args: str) -> tmux_cmd:
+    def run(self, *args: str) -> CommandResult:
         """Execute a tmux command.
 
         Parameters
