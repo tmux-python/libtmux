@@ -223,17 +223,11 @@ def test_runner_preserves_output_format(server: Server, session: Session) -> Non
     control_runner.close()
 
 
-@pytest.mark.skip(
-    reason="Control mode doesn't support custom format strings (-F flag). "
-    "This causes Server.new_session() to return default format instead of "
-    "formatted session ID, breaking the object lookup."
-)
 def test_runner_with_server_integration(server: Server) -> None:
     """Server works correctly with control mode runner.
 
-    NOTE: This test is skipped because tmux control mode does not support
-    custom format strings with the -F flag. Operations that rely on format
-    strings (like new_session with -F#{session_id}) will not work correctly.
+    Control mode runner transparently falls back to subprocess for commands
+    with format strings (-F flag), ensuring all operations work correctly.
     """
     assert server.socket_name
     runner = ControlModeCommandRunner(server.socket_name)
