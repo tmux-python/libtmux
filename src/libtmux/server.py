@@ -204,7 +204,6 @@ class Server(EnvironmentMixin):
 
         Examples
         --------
-        >>> server = Server(socket_name="default")
         >>> assert server.command_runner is not None
         >>> type(server.command_runner).__name__
         'SubprocessCommandRunner'

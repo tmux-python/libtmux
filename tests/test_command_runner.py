@@ -30,16 +30,17 @@ def test_server_default_runner(server: Server) -> None:
     assert isinstance(server.command_runner, SubprocessCommandRunner)
 
 
-def test_server_custom_runner() -> None:
+def test_server_custom_runner(TestServer: t.Callable[..., Server]) -> None:
     """Server accepts custom command runner."""
     custom_runner = SubprocessCommandRunner()
-    server = Server(socket_name="test", command_runner=custom_runner)
+    server = TestServer()
+    server.command_runner = custom_runner
     assert server.command_runner is custom_runner
 
 
-def test_server_runner_lazy_init() -> None:
+def test_server_runner_lazy_init(TestServer: t.Callable[..., Server]) -> None:
     """Server lazily initializes command runner."""
-    server = Server(socket_name="test")
+    server = TestServer()
     # Access property to trigger lazy init
     runner = server.command_runner
     assert isinstance(runner, SubprocessCommandRunner)
@@ -113,10 +114,12 @@ def test_runner_with_test_server_factory(TestServer: t.Callable[..., Server]) ->
     assert isinstance(server2.command_runner, SubprocessCommandRunner)
 
 
-def test_backward_compatibility_no_runner_param(server: Server) -> None:
+def test_backward_compatibility_no_runner_param(
+    TestServer: t.Callable[..., Server],
+) -> None:
     """Server works without command_runner parameter (backward compatibility)."""
     # Create server without command_runner parameter
-    new_server = Server(socket_name=f"test_{server.socket_name}")
+    new_server = TestServer()
 
     # Should auto-initialize with SubprocessCommandRunner
     assert new_server.command_runner is not None
@@ -127,9 +130,9 @@ def test_backward_compatibility_no_runner_param(server: Server) -> None:
     assert hasattr(result, "stdout")
 
 
-def test_runner_setter() -> None:
+def test_runner_setter(TestServer: t.Callable[..., Server]) -> None:
     """Server.command_runner can be set after initialization."""
-    server = Server(socket_name="test")
+    server = TestServer()
 
     # Initial runner
     initial_runner = server.command_runner
