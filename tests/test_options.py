@@ -612,11 +612,12 @@ def test_style_option_validation(server: Server) -> None:
             # tmux <3.2: bold→bright
             assert style == "fg=colour240,bg=#525252,bright,underscore"
 
-        # Test style with variables
-        session.set_option("status-style", "fg=#{?pane_in_mode,red,green}")
-        style = session.show_option("status-style")
-        assert isinstance(style, str)
-        assert style == "fg=#{?pane_in_mode,red,green}"
+        # Test style with variables (format expansion added in tmux 3.2)
+        if has_gte_version("3.2"):
+            session.set_option("status-style", "fg=#{?pane_in_mode,red,green}")
+            style = session.show_option("status-style")
+            assert isinstance(style, str)
+            assert style == "fg=#{?pane_in_mode,red,green}"
 
 
 def test_option_error_handling(server: Server) -> None:
