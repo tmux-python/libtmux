@@ -13,7 +13,8 @@ $ pip install --user --upgrade --pre libtmux
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
-- _Future release notes will be placed here_
+- Server now accepts pluggable command engines, defaulting to the existing subprocess runner, so future backends (e.g., control mode) can be injected without breaking compatibility.
+- Added a control mode engine (`ControlModeEngine`) that executes commands via `tmux -C`, paving the way for control-mode powered workflows while keeping the existing API and defaults intact.
 
 ## libtmux 0.46.2 (2025-05-26)
 

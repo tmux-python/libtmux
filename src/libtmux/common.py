@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import logging
 import re
-import shutil
-import subprocess
 import sys
 import typing as t
+
+from libtmux.engines import CommandResult, SubprocessEngine, TmuxEngine
 
 from . import exc
 from ._compat import LooseVersion
@@ -190,8 +190,23 @@ class EnvironmentMixin:
         return opts_dict.get(name)
 
 
+_default_engine: TmuxEngine = SubprocessEngine()
+
+
+def _apply_result(target: tmux_cmd | None, result: CommandResult) -> tmux_cmd:
+    cmd_obj: tmux_cmd = object.__new__(tmux_cmd) if target is None else target
+
+    cmd_obj.cmd = list(result.cmd)
+    cmd_obj.stdout = result.stdout
+    cmd_obj.stderr = result.stderr
+    cmd_obj.returncode = result.returncode
+    cmd_obj.process = result.process
+
+    return cmd_obj
+
+
 class tmux_cmd:
-    """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
+    """Run any :term:`tmux(1)` command through the configured engine.
 
     Examples
     --------
@@ -219,52 +234,50 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
+    cmd: list[str]
+    stdout: list[str]
+    stderr: list[str]
+    returncode: int
+    process: object | None
+
     def __init__(self, *args: t.Any) -> None:
-        tmux_bin = shutil.which("tmux")
-        if not tmux_bin:
-            raise exc.TmuxCommandNotFound
+        result = _default_engine.run(*args)
+        _apply_result(self, result)
 
-        cmd = [tmux_bin]
-        cmd += args  # add the command arguments to cmd
-        cmd = [str(c) for c in cmd]
+    @classmethod
+    def from_result(cls, result: CommandResult) -> tmux_cmd:
+        """Create a :class:`tmux_cmd` instance from a raw result."""
+        return _apply_result(None, result)
 
-        self.cmd = cmd
 
-        try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
-        except Exception:
-            logger.exception(f"Exception for {subprocess.list2cmdline(cmd)}")
-            raise
+def get_default_engine() -> TmuxEngine:
+    """Return the process-based default engine."""
+    return _default_engine
 
-        self.returncode = returncode
 
-        stdout_split = stdout.split("\n")
-        # remove trailing newlines from stdout
-        while stdout_split and stdout_split[-1] == "":
-            stdout_split.pop()
+def set_default_engine(engine: TmuxEngine) -> None:
+    """Override the process-based default engine.
 
-        stderr_split = stderr.split("\n")
-        self.stderr = list(filter(None, stderr_split))  # filter empty values
+    Parameters
+    ----------
+    engine : TmuxEngine
+        Engine implementation that should back :class:`tmux_cmd` and helper functions.
+    """
+    global _default_engine
+    _default_engine = engine
 
-        if "has-session" in cmd and len(self.stderr) and not stdout_split:
-            self.stdout = [self.stderr[0]]
-        else:
-            self.stdout = stdout_split
 
-        logger.debug(
-            "self.stdout for {cmd}: {stdout}".format(
-                cmd=" ".join(cmd),
-                stdout=self.stdout,
-            ),
-        )
+def run_tmux_command(engine: TmuxEngine, *args: t.Any) -> tmux_cmd:
+    """Execute a tmux command using the provided engine.
+
+    Falls back to the global default engine when ``engine`` matches the default,
+    preserving legacy monkeypatching that targets :class:`tmux_cmd` directly.
+    """
+    if engine is _default_engine:
+        return tmux_cmd(*args)
+
+    result = engine.run(*args)
+    return tmux_cmd.from_result(result)
 
 
 def get_version() -> LooseVersion:

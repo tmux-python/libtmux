@@ -12,7 +12,9 @@ import typing as t
 import pytest
 
 from libtmux.common import has_gte_version, has_version
+from libtmux.engines import CommandResult, ControlModeEngine, SubprocessEngine
 from libtmux.server import Server
+from libtmux.test.random import namer
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
@@ -138,6 +140,47 @@ def test_new_session_shell(server: Server) -> None:
         assert pane_start_command.replace('"', "") == cmd
     else:
         assert pane_start_command == cmd
+
+
+class RecordingEngine:
+    """Proxy engine that captures executed commands for assertions."""
+
+    def __init__(self) -> None:
+        self._delegate = SubprocessEngine()
+        self.commands: list[list[str]] = []
+
+    def run(self, *args: str | int) -> CommandResult:
+        """Delegate tmux command execution while recording command vectors."""
+        result = self._delegate.run(*args)
+        self.commands.append(list(result.cmd))
+        return result
+
+
+def test_server_uses_injected_engine() -> None:
+    """Server executes commands via the supplied engine."""
+    engine = RecordingEngine()
+    socket_name = f"libtmux_test{next(namer)}"
+
+    with Server(socket_name=socket_name, engine=engine) as server:
+        session = server.new_session()
+        assert engine.commands, "Engine should capture executed commands"
+        assert any(
+            "new-session" in chunk for command in engine.commands for chunk in command
+        ), "new-session should be recorded"
+        session.kill()
+
+
+def test_server_control_mode_engine() -> None:
+    """Server works with control mode engine."""
+    engine = ControlModeEngine()
+    socket_name = f"libtmux_test{next(namer)}"
+
+    with Server(socket_name=socket_name, engine=engine) as server:
+        session = server.new_session()
+        window = session.new_window(window_name="control")
+        pane = window.split()
+        assert pane.pane_id is not None
+        session.kill()
 
 
 def test_new_session_shell_env(server: Server) -> None:

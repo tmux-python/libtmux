@@ -8,7 +8,7 @@ import typing as t
 from collections.abc import Iterable
 
 from libtmux import exc
-from libtmux.common import tmux_cmd
+from libtmux.common import run_tmux_command
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -216,7 +216,7 @@ def fetch_objs(
 
     tmux_cmds.append("-F{}".format("".join(tmux_formats)))
 
-    proc = tmux_cmd(*tmux_cmds)  # output
+    proc = run_tmux_command(server.engine, *tmux_cmds)
 
     if proc.stderr:
         raise exc.LibTmuxException(proc.stderr)

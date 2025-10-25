@@ -17,7 +17,8 @@ import warnings
 
 from libtmux import exc, formats
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
+from libtmux.common import get_default_engine, run_tmux_command, tmux_cmd
+from libtmux.engines import TmuxEngine
 from libtmux.neo import fetch_objs
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -69,6 +70,10 @@ class Server(EnvironmentMixin):
     colors : str, optional
     on_init : callable, optional
     socket_name_factory : callable, optional
+    engine : :class:`libtmux.engines.TmuxEngine`, optional
+        Execution backend for tmux commands. Defaults to subprocess-based engine.
+    engine : :class:`libtmux.engines.TmuxEngine`, optional
+        Command execution backend. Defaults to the subprocess-based engine.
 
     Examples
     --------
@@ -129,11 +134,13 @@ class Server(EnvironmentMixin):
         colors: int | None = None,
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
+        engine: TmuxEngine | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
+        self.engine: TmuxEngine = engine or get_default_engine()
 
         if socket_path is not None:
             self.socket_path = socket_path
@@ -301,7 +308,7 @@ class Server(EnvironmentMixin):
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args)
+        return run_tmux_command(self.engine, *svr_args, *cmd_args)
 
     @property
     def attached_sessions(self) -> list[Session]:
