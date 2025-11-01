@@ -41,7 +41,9 @@ if t.TYPE_CHECKING:
     if sys.version_info >= (3, 10):
         from typing import Self, TypeAlias
     else:
-        from typing_extensions import Self, TypeAlias
+        from typing import TypeAlias
+
+        from typing_extensions import Self
 
     DashLiteral: TypeAlias = t.Literal["-"]
 

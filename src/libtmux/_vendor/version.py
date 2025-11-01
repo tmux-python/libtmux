@@ -27,11 +27,9 @@ SubLocalType = t.Union[InfiniteTypes, int, str]
 LocalType = t.Union[
     NegativeInfinityType,
     tuple[
-        t.Union[
-            SubLocalType,
-            tuple[SubLocalType, str],
-            tuple[NegativeInfinityType, SubLocalType],
-        ],
+        SubLocalType
+        | tuple[SubLocalType, str]
+        | tuple[NegativeInfinityType, SubLocalType],
         ...,
     ],
 ]
