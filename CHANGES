@@ -3,10 +3,29 @@
 For instructions on installing the development version of libtmux, refer to
 [development releases](https://libtmux.git-pull.com/quickstart.html#developmental-releases).
 
-To install via [pip](https://pip.pypa.io/en/stable/), use:
+[pip](https://pip.pypa.io/en/stable/):
 
 ```console
 $ pip install --user --upgrade --pre libtmux
+```
+
+[pipx](https://pypa.github.io/pipx/docs/):
+
+```console
+$ pipx install --suffix=@next 'libtmux' --pip-args '\--pre' --force
+// Usage: libtmux@next [command]
+```
+
+[uv](https://docs.astral.sh/uv/):
+
+```console
+$ uv add libtmux --prerelease allow
+```
+
+[uvx](https://docs.astral.sh/uv/guides/tools/):
+
+```console
+$ uvx --from 'libtmux' --prerelease allow python
 ```
 
 ## libtmux 0.47.x (Yet to be released)
