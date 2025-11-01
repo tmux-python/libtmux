@@ -21,18 +21,13 @@ from ._structures import Infinity, InfinityType, NegativeInfinity, NegativeInfin
 
 __all__ = ["VERSION_PATTERN", "InvalidVersion", "Version", "parse"]
 
-InfiniteTypes = t.Union[InfinityType, NegativeInfinityType]
-PrePostDevType = t.Union[InfiniteTypes, tuple[str, int]]
-SubLocalType = t.Union[InfiniteTypes, int, str]
-LocalType = t.Union[
-    NegativeInfinityType,
-    tuple[
-        SubLocalType
-        | tuple[SubLocalType, str]
-        | tuple[NegativeInfinityType, SubLocalType],
-        ...,
-    ],
-]
+InfiniteTypes = InfinityType | NegativeInfinityType
+PrePostDevType = InfiniteTypes | tuple[str, int]
+SubLocalType = InfiniteTypes | int | str
+LocalTuple = (
+    SubLocalType | tuple[SubLocalType, str] | tuple[NegativeInfinityType, SubLocalType]
+)
+LocalType = NegativeInfinityType | tuple[LocalTuple, ...]
 CmpKey = tuple[
     int,
     tuple[int, ...],

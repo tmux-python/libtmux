@@ -492,7 +492,7 @@ class QueryList(list[T], t.Generic[T]):
             return False
 
         if len(self) == len(data):
-            for a, b in zip(self, data):
+            for a, b in zip(self, data, strict=False):
                 if isinstance(a, Mapping):
                     a_keys = a.keys()
                     if a.keys == b.keys():

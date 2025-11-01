@@ -704,7 +704,9 @@ class Pane(Obj):
 
         pane_output = pane_cmd.stdout[0]
 
-        pane_formatters = dict(zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR)))
+        pane_formatters = dict(
+            zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR), strict=False),
+        )
 
         return self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
 
