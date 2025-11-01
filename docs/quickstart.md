@@ -41,6 +41,31 @@ the 4th beta release of `1.10.0` before general availability.
   $ pip install --user --upgrade --pre libtmux
   ```
 
+- [pipx]\:
+
+  ```console
+  $ pipx install --suffix=@next 'libtmux' --pip-args '\--pre' --force
+  // Usage: libtmux@next [command]
+  ```
+
+- [uv tool install][uv-tools]\:
+
+  ```console
+  $ uv tool install --prerelease=allow libtmux
+  ```
+
+- [uv]\:
+
+  ```console
+  $ uv add libtmux --prerelease allow
+  ```
+
+- [uvx]\:
+
+  ```console
+  $ uvx --from 'libtmux' --prerelease allow python
+  ```
+
 via trunk (can break easily):
 
 - [pip]\:
@@ -49,7 +74,23 @@ via trunk (can break easily):
   $ pip install --user -e git+https://github.com/tmux-python/libtmux.git#egg=libtmux
   ```
 
+- [pipx]\:
+
+  ```console
+  $ pipx install --suffix=@master 'libtmux @ git+https://github.com/tmux-python/libtmux.git@master' --force
+  ```
+
+- [uv]\:
+
+  ```console
+  $ uv tool install libtmux --from git+https://github.com/tmux-python/libtmux.git
+  ```
+
 [pip]: https://pip.pypa.io/en/stable/
+[pipx]: https://pypa.github.io/pipx/docs/
+[uv]: https://docs.astral.sh/uv/
+[uv-tools]: https://docs.astral.sh/uv/concepts/tools/
+[uvx]: https://docs.astral.sh/uv/guides/tools/
 [ptpython]: https://github.com/prompt-toolkit/ptpython
 
 ## Start a tmux session
