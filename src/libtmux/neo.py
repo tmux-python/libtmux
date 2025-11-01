@@ -13,7 +13,7 @@ from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
     ListCmd = t.Literal["list-sessions", "list-windows", "list-panes"]
-    ListExtraArgs = t.Optional[Iterable[str]]
+    ListExtraArgs = Iterable[str] | None
 
     from libtmux.server import Server
 
@@ -174,7 +174,7 @@ class Obj:
         obj_key: str,
         obj_id: str,
         list_cmd: ListCmd = "list-panes",
-        list_extra_args: ListExtraArgs | None = None,
+        list_extra_args: ListExtraArgs = None,
     ) -> None:
         assert isinstance(obj_id, str)
         obj = fetch_obj(
@@ -193,7 +193,7 @@ class Obj:
 def fetch_objs(
     server: Server,
     list_cmd: ListCmd,
-    list_extra_args: ListExtraArgs | None = None,
+    list_extra_args: ListExtraArgs = None,
 ) -> OutputsRaw:
     """Fetch a listing of raw data from a tmux command."""
     formats = list(Obj.__dataclass_fields__.keys())
@@ -224,7 +224,7 @@ def fetch_objs(
     obj_output = proc.stdout
 
     obj_formatters = [
-        dict(zip(formats, formatter.split(FORMAT_SEPARATOR)))
+        dict(zip(formats, formatter.split(FORMAT_SEPARATOR), strict=False))
         for formatter in obj_output
     ]
 
@@ -237,7 +237,7 @@ def fetch_obj(
     obj_key: str,
     obj_id: str,
     list_cmd: ListCmd = "list-panes",
-    list_extra_args: ListExtraArgs | None = None,
+    list_extra_args: ListExtraArgs = None,
 ) -> OutputRaw:
     """Fetch raw data from tmux command."""
     obj_formatters_filtered = fetch_objs(

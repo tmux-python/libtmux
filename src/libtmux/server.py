@@ -33,15 +33,12 @@ from .common import (
 )
 
 if t.TYPE_CHECKING:
-    import sys
     import types
+    from typing import TypeAlias
+
+    from typing_extensions import Self
 
     from libtmux._internal.types import StrPath
-
-    if sys.version_info >= (3, 10):
-        from typing import Self, TypeAlias
-    else:
-        from typing_extensions import Self, TypeAlias
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
@@ -580,7 +577,11 @@ class Server(EnvironmentMixin):
             os.environ["TMUX"] = env
 
         session_formatters = dict(
-            zip(["session_id"], session_stdout.split(formats.FORMAT_SEPARATOR)),
+            zip(
+                ["session_id"],
+                session_stdout.split(formats.FORMAT_SEPARATOR),
+                strict=False,
+            ),
         )
 
         return Session.from_session_id(

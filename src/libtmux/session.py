@@ -731,7 +731,7 @@ class Session(Obj, EnvironmentMixin):
         window_output = cmd.stdout[0]
 
         window_formatters = dict(
-            zip(["window_id"], window_output.split(FORMAT_SEPARATOR)),
+            zip(["window_id"], window_output.split(FORMAT_SEPARATOR), strict=False),
         )
 
         return Window.from_window_id(

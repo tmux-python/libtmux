@@ -22,7 +22,7 @@ if t.TYPE_CHECKING:
     from libtmux.server import Server
 
     ListCmd = t.Literal["list-sessions", "list-windows", "list-panes"]
-    ListExtraArgs = t.Optional[tuple[str]]
+    ListExtraArgs = tuple[str] | None
 
 
 OutputRaw = dict[str, t.Any]
