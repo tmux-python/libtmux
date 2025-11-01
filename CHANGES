@@ -15,6 +15,10 @@ $ pip install --user --upgrade --pre libtmux
 
 - _Future release notes will be placed here_
 
+### Development
+
+- Add Python 3.14 to test matrix (#601)
+
 ## libtmux 0.46.2 (2025-05-26)
 
 ### Development
