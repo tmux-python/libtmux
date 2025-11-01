@@ -503,7 +503,7 @@ class Window(Obj):
             try:
                 key, val = shlex.split(item)
             except ValueError:
-                logger.exception(f"Error extracting option: {item}")
+                logger.exception("Error extracting option: %s", item)
             assert isinstance(key, str)
             assert isinstance(val, str)
 
@@ -583,7 +583,7 @@ class Window(Obj):
             self.cmd("rename-window", new_name)
             self.window_name = new_name
         except Exception:
-            logger.exception(f"Error renaming window to {new_name}")
+            logger.exception("Error renaming window to %s", new_name)
 
         self.refresh()
 

@@ -107,7 +107,7 @@ def keygetter(
 
     except Exception as e:
         traceback.print_stack()
-        logger.debug(f"The above error was {e}")
+        logger.debug("The above error was %s", e)
         return None
 
     return dct
@@ -143,12 +143,12 @@ def parse_lookup(
     """
     try:
         if isinstance(path, str) and isinstance(lookup, str) and path.endswith(lookup):
-            field_name = path.rsplit(lookup)[0]
+            field_name = path.split(lookup, maxsplit=1)[0]
             if field_name is not None:
                 return keygetter(obj, field_name)
     except Exception as e:
         traceback.print_stack()
-        logger.debug(f"The above error was {e}")
+        logger.debug("The above error was %s", e)
     return None
 
 
