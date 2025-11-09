@@ -252,4 +252,7 @@ testpaths = [
 ]
 markers = [
   "integration: sphinx integration tests (require full sphinx build)",
+  "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
 ]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
