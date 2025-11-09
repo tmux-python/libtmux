@@ -1,4 +1,8 @@
-"""Tests for libtmux with :mod`asyncio` support."""
+"""Tests for libtmux async operations.
+
+SAFETY: All tests use isolated test servers via fixtures.
+Socket names: libtmux_test{8_random_chars} - never affects developer sessions.
+"""
 
 from __future__ import annotations
 
@@ -15,13 +19,48 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# Server.acmd() Tests
+# ============================================================================
+
+
 @pytest.mark.asyncio
-async def test_asyncio(server: Server) -> None:
-    """Test basic asyncio usage."""
+async def test_server_acmd_basic(server: Server) -> None:
+    """Test Server.acmd() basic async command execution.
+
+    Safety: Uses isolated test server from `server` fixture.
+    Server socket: libtmux_test{random} - isolated from developer sessions.
+    """
+    # Test basic command execution
+    result = await server.acmd("list-sessions")
+    # returncode may be 0 or 1 depending on whether sessions exist
+    # The important thing is the command executes asynchronously
+    assert result.returncode in (0, 1)
+    assert isinstance(result.stdout, list)
+    assert isinstance(result.stderr, list)
+
+
+@pytest.mark.asyncio
+async def test_server_acmd_new_session(server: Server) -> None:
+    """Test creating session via Server.acmd().
+
+    Safety: Session created in isolated test server only.
+    """
     result = await server.acmd("new-session", "-d", "-P", "-F#{session_id}")
     session_id = result.stdout[0]
-    session = Session.from_session_id(
-        session_id=session_id,
-        server=server,
-    )
-    assert isinstance(session, Session)
+
+    try:
+        # Verify session was created
+        assert session_id.startswith("$")
+        assert server.has_session(session_id)
+
+        # Verify we can get the session object
+        session = Session.from_session_id(session_id=session_id, server=server)
+        assert isinstance(session, Session)
+        assert session.session_id == session_id
+
+    finally:
+        # Cleanup: kill the session we created
+        if server.has_session(session_id):
+            session = Session.from_session_id(session_id=session_id, server=server)
+            await session.acmd("kill-session")
