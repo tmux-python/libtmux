@@ -8,11 +8,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pytest
 
 from libtmux.session import Session
+
+
+@dataclass(slots=True)
+class SessionQueryInfo:
+    """Structured data returned from async session queries."""
+
+    id: str
+    name: str
+    windows: int
+
 
 if TYPE_CHECKING:
     from libtmux.server import Server
@@ -58,7 +69,9 @@ async def test_server_acmd_new_session(server: Server) -> None:
     # Verify we can get the session object
     session = Session.from_session_id(session_id=session_id, server=server)
     assert isinstance(session, Session)
-    assert session.session_id == session_id
+    session_obj_id = session.session_id
+    assert session_obj_id is not None
+    assert session_obj_id == session_id
 
 
 # ============================================================================
@@ -132,12 +145,15 @@ async def test_concurrent_session_creation(server: Server) -> None:
     assert all(isinstance(s, Session) for s in sessions)
 
     # Verify all session IDs are unique
-    session_ids = {s.session_id for s in sessions}
+    session_ids: set[str] = set()
+    for session in sessions:
+        assert session.session_id is not None
+        session_ids.add(session.session_id)
     assert len(session_ids) == 3
 
     # Verify all sessions exist in server
-    for session in sessions:
-        assert server.has_session(str(session.session_id))
+    for session_id in session_ids:
+        assert server.has_session(session_id)
 
 
 @pytest.mark.asyncio
@@ -160,7 +176,7 @@ async def test_concurrent_session_queries(server: Server) -> None:
         )
         session_ids.append(result.stdout[0])
 
-    async def query_session(session_id: str) -> dict[str, str]:
+    async def query_session(session_id: str) -> SessionQueryInfo:
         """Query session information asynchronously."""
         result = await server.acmd(
             "display-message",
@@ -171,21 +187,19 @@ async def test_concurrent_session_queries(server: Server) -> None:
         )
         output = result.stdout[0]
         parts = output.split(":")
-        return {
-            "id": parts[0],
-            "name": parts[1],
-            "windows": parts[2],
-        }
+        return SessionQueryInfo(id=parts[0], name=parts[1], windows=int(parts[2]))
 
     # Query all sessions concurrently
-    results = await asyncio.gather(*[query_session(sid) for sid in session_ids])
+    results: list[SessionQueryInfo] = await asyncio.gather(
+        *[query_session(sid) for sid in session_ids]
+    )
 
     # Verify all queries returned valid data
     assert len(results) == 5
     for i, info in enumerate(results):
-        assert info["id"] == session_ids[i]
-        assert info["name"] == f"query_test_{i}"
-        assert int(info["windows"]) >= 1
+        assert info.id == session_ids[i]
+        assert info.name == f"query_test_{i}"
+        assert info.windows >= 1
 
 
 @pytest.mark.asyncio
@@ -246,10 +260,14 @@ async def test_anew_session_basic(server: Server) -> None:
     session = await server.anew_session("test_anew_session")
 
     # Verify session created with correct properties
-    assert session.session_name == "test_anew_session"
+    session_name = session.session_name
+    assert session_name is not None
+    assert session_name == "test_anew_session"
     assert server.has_session("test_anew_session")
     assert isinstance(session, Session)
-    assert session.session_id.startswith("$")
+    session_id = session.session_id
+    assert session_id is not None
+    assert session_id.startswith("$")
 
 
 @pytest.mark.asyncio
@@ -270,7 +288,9 @@ async def test_anew_session_with_environment(server: Server) -> None:
     )
 
     # Verify session created
-    assert session.session_name == "test_env_session"
+    env_session_name = session.session_name
+    assert env_session_name is not None
+    assert env_session_name == "test_env_session"
     assert server.has_session("test_env_session")
 
     # Verify environment variables were set
@@ -311,12 +331,15 @@ async def test_anew_session_concurrent(server: Server) -> None:
 
     # Verify all have unique IDs and correct names
     expected_names = ["concurrent_a", "concurrent_b", "concurrent_c", "concurrent_d"]
-    actual_names = [s.session_name for s in sessions]
+    actual_names: list[str] = []
+    for session in sessions:
+        assert session.session_name is not None
+        actual_names.append(session.session_name)
     assert sorted(actual_names) == sorted(expected_names)
 
     # Verify all exist in server
-    for session in sessions:
-        assert server.has_session(session.session_name)
+    for name in actual_names:
+        assert server.has_session(name)
 
 
 # ============================================================================
@@ -341,7 +364,9 @@ async def test_ahas_session(server: Server) -> None:
     assert await server.ahas_session("nonexistent_session_xyz") is False
 
     # Verify exact=True works with session ID
-    assert await server.ahas_session(session.session_id, exact=True) is True
+    session_id = session.session_id
+    assert session_id is not None
+    assert await server.ahas_session(session_id, exact=True) is True
 
 
 @pytest.mark.asyncio
