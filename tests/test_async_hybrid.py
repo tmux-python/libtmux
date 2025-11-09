@@ -294,9 +294,13 @@ async def test_hybrid_error_handling(async_server: Server) -> None:
     socket_name = async_server.socket_name
     assert socket_name is not None
 
+    # Create a session first to ensure server socket exists
+    result = await async_server.acmd("new-session", "-d", "-P", "-F#{session_id}")
+    session_id = result.stdout[0]
+
     # Both patterns handle errors similarly
 
-    # Pattern A: invalid command
+    # Pattern A: invalid command (server socket now exists)
     result_a = await async_server.acmd("invalid-command-xyz")
     assert len(result_a.stderr) > 0
 
@@ -307,3 +311,6 @@ async def test_hybrid_error_handling(async_server: Server) -> None:
     # Both should have similar error messages
     assert "unknown command" in result_a.stderr[0].lower()
     assert "unknown command" in result_b.stderr[0].lower()
+
+    # Cleanup
+    await async_server.acmd("kill-session", "-t", session_id)
