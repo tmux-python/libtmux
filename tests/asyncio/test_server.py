@@ -229,3 +229,145 @@ async def test_batch_session_operations(server: Server) -> None:
         assert session_id.startswith("$")
         assert exists, f"Session {name} not found after creation"
         assert server.has_session(name)
+
+
+# ============================================================================
+# Server.anew_session() Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_anew_session_basic(server: Server) -> None:
+    """Test Server.anew_session() creates session.
+
+    Safety: Session created in isolated test server.
+    Demonstrates: High-level async session creation API.
+    """
+    session = await server.anew_session("test_anew_session")
+
+    # Verify session created with correct properties
+    assert session.session_name == "test_anew_session"
+    assert server.has_session("test_anew_session")
+    assert isinstance(session, Session)
+    assert session.session_id.startswith("$")
+
+
+@pytest.mark.asyncio
+async def test_anew_session_with_environment(server: Server) -> None:
+    """Test Server.anew_session() with environment variables.
+
+    Safety: Session with env vars created in isolated test server.
+    Real-world pattern: Pass environment configuration to session.
+    """
+    env_vars = {
+        "TEST_VAR": "test_value",
+        "ANOTHER_VAR": "another_value",
+    }
+
+    session = await server.anew_session(
+        "test_env_session",
+        environment=env_vars,
+    )
+
+    # Verify session created
+    assert session.session_name == "test_env_session"
+    assert server.has_session("test_env_session")
+
+    # Verify environment variables were set
+    # Query environment in the session's pane
+    result = await session.acmd(
+        "show-environment",
+        "-s",
+        "TEST_VAR",
+    )
+    # tmux formats env vars as: TEST_VAR="test_value"; export TEST_VAR;
+    assert "TEST_VAR" in result.stdout[0]
+    assert "test_value" in result.stdout[0]
+
+
+@pytest.mark.asyncio
+async def test_anew_session_concurrent(server: Server) -> None:
+    """Test creating multiple sessions concurrently via anew_session().
+
+    Safety: All sessions created in isolated test server.
+    Demonstrates: Async benefit - concurrent high-level session creation.
+    """
+
+    async def create_session(name: str) -> Session:
+        """Create session using anew_session()."""
+        return await server.anew_session(name)
+
+    # Create 4 sessions concurrently
+    sessions = await asyncio.gather(
+        create_session("concurrent_a"),
+        create_session("concurrent_b"),
+        create_session("concurrent_c"),
+        create_session("concurrent_d"),
+    )
+
+    # Verify all sessions created
+    assert len(sessions) == 4
+    assert all(isinstance(s, Session) for s in sessions)
+
+    # Verify all have unique IDs and correct names
+    expected_names = ["concurrent_a", "concurrent_b", "concurrent_c", "concurrent_d"]
+    actual_names = [s.session_name for s in sessions]
+    assert sorted(actual_names) == sorted(expected_names)
+
+    # Verify all exist in server
+    for session in sessions:
+        assert server.has_session(session.session_name)
+
+
+# ============================================================================
+# Server.ahas_session() Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_ahas_session(server: Server) -> None:
+    """Test Server.ahas_session() checks session existence.
+
+    Safety: All operations in isolated test server.
+    Demonstrates: Async session existence check.
+    """
+    # Create a session first
+    session = await server.anew_session("test_has_session")
+
+    # Verify ahas_session returns True for existing session
+    assert await server.ahas_session("test_has_session") is True
+
+    # Verify ahas_session returns False for non-existent session
+    assert await server.ahas_session("nonexistent_session_xyz") is False
+
+    # Verify exact=True works with session ID
+    assert await server.ahas_session(session.session_id, exact=True) is True
+
+
+@pytest.mark.asyncio
+async def test_ahas_session_concurrent_checks(server: Server) -> None:
+    """Test checking multiple sessions concurrently via ahas_session().
+
+    Safety: All sessions created/checked in isolated test server.
+    Demonstrates: Async benefit - parallel existence checks.
+    """
+    # Create 3 sessions
+    await asyncio.gather(
+        server.anew_session("check_a"),
+        server.anew_session("check_b"),
+        server.anew_session("check_c"),
+    )
+
+    # Check all sessions concurrently
+    results = await asyncio.gather(
+        server.ahas_session("check_a"),
+        server.ahas_session("check_b"),
+        server.ahas_session("check_c"),
+        server.ahas_session("nonexistent"),
+    )
+
+    # Verify results
+    assert results[0] is True  # check_a exists
+    assert results[1] is True  # check_b exists
+    assert results[2] is True  # check_c exists
+    assert results[3] is False  # nonexistent doesn't exist
