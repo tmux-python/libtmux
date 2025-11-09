@@ -10,10 +10,13 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from libtmux.common_async import tmux_cmd_async, get_version
+# Try importing from installed package, fallback to development mode
+try:
+    from libtmux.common_async import tmux_cmd_async, get_version
+except ImportError:
+    # Development mode: add parent to path
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from libtmux.common_async import tmux_cmd_async, get_version
 
 
 async def demo_basic_command() -> None:
