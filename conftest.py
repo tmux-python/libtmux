@@ -59,6 +59,12 @@ def add_doctest_fixtures(
         )
         doctest_namespace["monkeypatch"] = request.getfixturevalue("monkeypatch")
 
+        # Add async support for async doctests
+        doctest_namespace["asyncio"] = asyncio
+        from libtmux.common_async import tmux_cmd_async, get_version
+        doctest_namespace["tmux_cmd_async"] = tmux_cmd_async
+        doctest_namespace["get_version"] = get_version
+
 
 @pytest.fixture(autouse=True)
 def set_home(
