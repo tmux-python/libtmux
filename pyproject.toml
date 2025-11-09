@@ -258,6 +258,11 @@ convention = "numpy"
   # unfamiliar option cannot take down every other option on the object.
   "BLE001",
 ]
+"examples/*.py" = [
+  # The async demos catch any exception from a deliberately bad tmux command
+  # and print it, so a reader sees how a failure surfaces.
+  "BLE001",
+]
 "src/libtmux/server.py" = [
   # `Server.is_alive` answers a yes/no question about an unreachable server.
   # Every way of failing to reach it is a "no"; callers who need the reason
@@ -286,4 +291,7 @@ testpaths = [
 ]
 markers = [
   "integration: sphinx integration tests (require full sphinx build)",
+  "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
 ]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
