@@ -143,3 +143,63 @@ async def test_parallel_pane_queries(session: Session) -> None:
         assert int(info["width"]) > 0
         assert int(info["height"]) > 0
         assert info["active"] in {"0", "1"}
+
+
+# ============================================================================
+# Window.akill() Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_akill_basic(session: Session) -> None:
+    """Test Window.akill() kills window.
+
+    Safety: Windows created and killed in isolated test session.
+    Demonstrates: High-level async window destruction API.
+    """
+    # Create 2 windows (session starts with 1)
+    window1 = await session.anew_window("window_to_kill")
+    window2 = await session.anew_window("window_to_keep")
+
+    # Get window count before kill
+    result = await session.acmd("list-windows", "-F#{window_id}")
+    windows_before = len(result.stdout)
+    assert windows_before == 3  # original + 2 new
+
+    # Kill window1
+    await window1.akill()
+
+    # Verify window1 is gone
+    result = await session.acmd("list-windows", "-F#{window_id}")
+    windows_after = len(result.stdout)
+    assert windows_after == windows_before - 1
+    assert window1.window_id not in result.stdout
+    assert window2.window_id in result.stdout
+
+
+@pytest.mark.asyncio
+async def test_akill_all_except(session: Session) -> None:
+    """Test Window.akill() with all_except flag.
+
+    Safety: Windows created and killed in isolated test session.
+    Real-world pattern: Clean up all windows except current one.
+    """
+    # Create 4 additional windows (session starts with 1)
+    await session.anew_window("extra_1")
+    await session.anew_window("extra_2")
+    await session.anew_window("extra_3")
+    target_window = await session.anew_window("target_window")
+
+    # Get window count before kill
+    result = await session.acmd("list-windows", "-F#{window_id}")
+    windows_before = len(result.stdout)
+    assert windows_before == 5  # original + 4 new
+
+    # Kill all windows except target_window
+    await target_window.akill(all_except=True)
+
+    # Verify only target_window remains
+    result = await session.acmd("list-windows", "-F#{window_id}")
+    windows_after = result.stdout
+    assert len(windows_after) == 1
+    assert windows_after[0] == target_window.window_id
