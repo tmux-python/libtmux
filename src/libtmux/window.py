@@ -283,23 +283,97 @@ class Window(Obj):
     ) -> None:
         """Kill :class:`Window` asynchronously.
 
-        ``$ tmux kill-window``.
+        This is the async version of :meth:`kill`. It uses ``await self.acmd()``
+        for non-blocking window destruction, making it suitable for async applications.
+
+        Equivalent to::
+
+            $ tmux kill-window
+
+        When ``all_except=True``::
+
+            $ tmux kill-window -a
 
         Parameters
         ----------
         all_except : bool, optional
-            If True, kill all windows except this one.
+            If True, kill all windows in the session except this one.
+            If False or None (default), kill only this window.
+
+            Useful for cleaning up all other windows while keeping one active.
+
+        Raises
+        ------
+        :exc:`exc.LibTmuxException`
+            If tmux command execution fails
+
+        See Also
+        --------
+        :meth:`kill` : Synchronous version of this method
+        :meth:`Session.kill_window` : Kill a window by target
+        :meth:`Session.anew_window` : Create a new window asynchronously
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        After killing a window, the window object should not be used as it no
+        longer represents a valid tmux window.
+
+        When ``all_except=True``, all other windows in the session are destroyed,
+        leaving only the current window active. This is useful for cleaning up
+        a session to a single window.
+
+        .. versionadded:: 0.48.0
+
+            Added async window killing support.
 
         Examples
         --------
-        Kill a window:
+        Kill a single window::
 
-        >>> window_1 = await session.anew_window()
-        >>> window_1 in session.windows
-        True
-        >>> await window_1.akill()
-        >>> window_1 not in session.windows
-        True
+            # Create a window
+            window = await session.anew_window(window_name='temp')
+
+            # Kill it
+            await window.akill()
+            # window no longer exists in session
+
+        Kill all windows except one::
+
+            # Create multiple windows
+            keep_window = await session.anew_window(window_name='main')
+            await session.anew_window(window_name='temp1')
+            await session.anew_window(window_name='temp2')
+            await session.anew_window(window_name='temp3')
+
+            # Kill all except keep_window
+            await keep_window.akill(all_except=True)
+            # Only keep_window remains in session
+
+        Concurrent window cleanup::
+
+            import asyncio
+
+            # Create some temporary windows
+            temp_windows = await asyncio.gather(
+                session.anew_window(window_name='temp1'),
+                session.anew_window(window_name='temp2'),
+                session.anew_window(window_name='temp3'),
+            )
+
+            # Kill all temporary windows concurrently
+            await asyncio.gather(*[w.akill() for w in temp_windows])
+            # All temp windows destroyed in parallel
+
+        Cleanup pattern::
+
+            try:
+                # Do work with window
+                window = await session.anew_window(window_name='work')
+                # ... use window ...
+            finally:
+                # Always clean up
+                await window.akill()
         """
         flags: tuple[str, ...] = ()
 

@@ -295,19 +295,71 @@ class Session(Obj, EnvironmentMixin):
     async def arename_session(self, new_name: str) -> Session:
         """Rename session asynchronously and return session object.
 
+        This is the async version of :meth:`rename_session`. It uses ``await self.acmd()``
+        for non-blocking session renaming, making it suitable for async applications.
+
+        Equivalent to::
+
+            $ tmux rename-session <new_name>
+
         Parameters
         ----------
         new_name : str
-            new session name
+            New name for the session. Must not contain periods (.) or colons (:).
+
+        Returns
+        -------
+        :class:`Session`
+            Returns self (the session object) with updated name
 
         Raises
         ------
         :exc:`exc.BadSessionName`
+            If new_name contains invalid characters (periods or colons)
+        :exc:`exc.LibTmuxException`
+            If tmux command execution fails
+
+        See Also
+        --------
+        :meth:`rename_session` : Synchronous version of this method
+        :meth:`Session.session_name` : Property to get current session name
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        The session object is automatically refreshed after renaming to ensure
+        the session_name property reflects the new name.
+
+        On tmux 2.7 with BSD systems, a "no current client" warning may be
+        raised but is safely ignored as it's a known issue fixed in later versions.
+
+        .. versionadded:: 0.48.0
+
+            Added async session renaming support.
 
         Examples
         --------
-        >>> await session.arename_session("new_name")
-        Session($1 new_name)
+        Basic session rename::
+
+            # Rename the session
+            session = await session.arename_session("new_name")
+            # session.session_name == "new_name"
+
+        Rename and verify::
+
+            old_name = session.session_name
+            await session.arename_session("production")
+
+            # Verify the rename
+            assert session.session_name == "production"
+            assert session.server.has_session("production")
+            assert not session.server.has_session(old_name)
+
+        Chaining operations::
+
+            # arename_session returns self, allowing chaining
+            session = await session.arename_session("new_name")
+            window = await session.anew_window(window_name="main")
         """
         session_check_name(new_name)
 
@@ -343,39 +395,178 @@ class Session(Obj, EnvironmentMixin):
     ) -> Window:
         """Create new window asynchronously, returns new :class:`Window`.
 
+        This is the async version of :meth:`new_window`. It uses ``await self.acmd()``
+        for non-blocking window creation, making it suitable for async applications
+        and enabling concurrent window creation.
+
         By default, this will make the window active. For the new window
         to be created and not set to current, pass in ``attach=False``.
+
+        Equivalent to::
+
+            $ tmux new-window -n <window_name>
 
         Parameters
         ----------
         window_name : str, optional
-        start_directory : str, optional
-            working directory in which the new window is created.
+            Name for the new window. If not provided, tmux will auto-name
+            based on the shell command running in the window.
+
+        start_directory : str or PathLike, optional
+            Working directory in which the new window is created. All panes
+            in the window will default to this directory.
+
+            Supports pathlib.Path objects and tilde expansion (``~/``).
+
+            Equivalent to::
+
+                $ tmux new-window -c <start_directory>
+
         attach : bool, optional
-            make new window the current window after creating it, default True.
-        window_index : str
-            create the new window at the given index position. Default is empty
-            string which will create the window in the next available position.
+            Make the new window the current (active) window after creating it.
+            Default is False, meaning the window is created in the background.
+
+            When False (default)::
+
+                $ tmux new-window -d
+
+        window_index : str, optional
+            Create the new window at the given index position. Default is empty
+            string which creates the window in the next available position.
+
+            Use to control window ordering or create windows at specific indices.
+
         window_shell : str, optional
-            execute a command on starting the window.  The window will close
-            when the command exits.
+            Shell command to execute when starting the window. The window will
+            automatically close when the command exits.
+
+            .. warning::
+
+                When this command exits, the window will close. This feature is
+                useful for long-running processes where automatic cleanup is desired.
+
+        environment : dict[str, str], optional
+            Dictionary of environment variables to set in the new window.
+            Each key-value pair will be set as an environment variable.
+
+            .. note::
+
+                Requires tmux 3.0+. On older versions, this parameter is ignored
+                with a warning.
 
         direction : WindowDirection, optional
-            Insert window before or after target window (tmux 3.2+).
+            Insert the new window before or after the target window.
+            Values: "before" or "after".
+
+            .. note::
+
+                Requires tmux 3.2+. On older versions, this parameter is ignored
+                with a warning.
 
         target_window : str, optional
-            Used by :meth:`Window.new_window` to specify the target window.
+            Target window identifier for positioning the new window when using
+            the direction parameter.
+
+            .. note::
+
+                Requires tmux 3.2+. On older versions, this parameter is ignored
+                with a warning.
 
         Returns
         -------
         :class:`Window`
-            The newly created window.
+            The newly created window object
+
+        Raises
+        ------
+        :exc:`exc.LibTmuxException`
+            If tmux command execution fails
+
+        See Also
+        --------
+        :meth:`new_window` : Synchronous version of this method
+        :meth:`Session.kill_window` : Kill a window
+        :class:`Window` : Window object documentation
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        It's particularly powerful when creating multiple windows concurrently
+        using ``asyncio.gather()``, which can significantly improve performance
+        compared to sequential creation.
+
+        .. versionadded:: 0.48.0
+
+            Added async window creation support.
+
+        .. versionchanged:: 0.28.0
+
+            ``attach`` default changed from ``True`` to ``False``.
 
         Examples
         --------
-        >>> window = await session.anew_window(window_name='My Window')
-        >>> window
-        Window(@... 2:My Window, Session($1 libtmux_...))
+        Basic window creation::
+
+            window = await session.anew_window(window_name='editor')
+            # Window(@2 2:editor, Session($1 my_session))
+
+        With custom working directory::
+
+            from pathlib import Path
+
+            window = await session.anew_window(
+                window_name='project',
+                start_directory='~/code/myproject'
+            )
+            # All panes in this window start in ~/code/myproject
+
+        With environment variables (tmux 3.0+)::
+
+            window = await session.anew_window(
+                window_name='dev',
+                environment={
+                    'NODE_ENV': 'development',
+                    'DEBUG': 'true'
+                }
+            )
+            # Environment variables available in window
+
+        Creating multiple windows concurrently::
+
+            import asyncio
+
+            windows = await asyncio.gather(
+                session.anew_window(window_name='editor'),
+                session.anew_window(window_name='terminal'),
+                session.anew_window(window_name='logs'),
+            )
+            # All three windows created in parallel
+            # len(windows) == 3
+
+        With window shell command::
+
+            window = await session.anew_window(
+                window_name='monitor',
+                window_shell='htop'
+            )
+            # Window runs htop, closes when htop exits
+
+        With specific window index::
+
+            window = await session.anew_window(
+                window_name='first',
+                window_index='1'
+            )
+            # Window created at index 1
+
+        With direction (tmux 3.2+)::
+
+            window = await session.anew_window(
+                window_name='after',
+                direction='after',
+                target_window='@1'
+            )
+            # Window created after window @1
         """
         window_args: tuple[str, ...] = ()
 
