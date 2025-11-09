@@ -234,3 +234,8 @@ filterwarnings = [
   "ignore::DeprecationWarning:libtmux.*:",
   "ignore::DeprecationWarning:tests:",  # tests/
 ]
+markers = [
+  "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
+]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"

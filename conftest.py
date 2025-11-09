@@ -73,3 +73,55 @@ def setup_session(
     """Session-level test configuration for pytest."""
     if USING_ZSH:
         request.getfixturevalue("zshrc")
+
+
+# Async test fixtures
+try:
+    import pytest_asyncio
+    import asyncio
+
+    @pytest_asyncio.fixture
+    async def async_server(server: Server):
+        """Async wrapper for sync server fixture.
+
+        Provides async context while using proven sync server isolation.
+        Server has unique socket name from libtmux_test{random}.
+
+        The sync server fixture creates a Server with:
+        - Unique socket name: libtmux_test{8-random-chars}
+        - Automatic cleanup via request.addfinalizer
+        - Complete isolation from developer's tmux sessions
+
+        This wrapper just ensures we're in an async context.
+        All cleanup is handled by the parent sync fixture.
+        """
+        await asyncio.sleep(0)  # Ensure in async context
+        yield server
+        # Cleanup handled by sync fixture's finalizer
+
+    @pytest_asyncio.fixture
+    async def async_test_server(TestServer: t.Callable[..., Server]):
+        """Async wrapper for TestServer factory fixture.
+
+        Returns factory that creates servers with unique sockets.
+        Each call to factory() creates new isolated server.
+
+        The sync TestServer fixture creates a factory that:
+        - Generates unique socket names per call
+        - Tracks all created servers
+        - Cleans up all servers via request.addfinalizer
+
+        Usage in async tests:
+            server1 = async_test_server()  # Creates server with unique socket
+            server2 = async_test_server()  # Creates another with different socket
+
+        This wrapper just ensures we're in an async context.
+        All cleanup is handled by the parent sync fixture.
+        """
+        await asyncio.sleep(0)  # Ensure in async context
+        yield TestServer
+        # Cleanup handled by TestServer's finalizer
+
+except ImportError:
+    # pytest-asyncio not installed, skip async fixtures
+    pass
