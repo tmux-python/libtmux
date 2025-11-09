@@ -6,12 +6,15 @@ Socket names: libtmux_test{8_random_chars} - never affects developer sessions.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
 import pytest
 
+from libtmux.pane import Pane
 from libtmux.session import Session
+from libtmux.window import Window
 
 if TYPE_CHECKING:
     from libtmux.server import Server
@@ -103,3 +106,71 @@ async def test_session_acmd_new_window(session: Session) -> None:
     result = await session.acmd("list-windows", "-F#{window_id}")
     assert len(result.stdout) == initial_count + 1
     assert window_id in result.stdout
+
+
+# ============================================================================
+# Window.acmd() Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_window_acmd_split_pane(session: Session) -> None:
+    """Test splitting pane via Window.acmd().
+
+    Safety: Pane created in isolated test window only.
+    """
+    window = session.active_window
+    assert window is not None
+
+    # Get initial pane count
+    result = await window.acmd("list-panes", "-F#{pane_id}")
+    initial_pane_count = len(result.stdout)
+
+    # Split window to create new pane
+    result = await window.acmd("split-window", "-P", "-F#{pane_id}")
+    pane_id = result.stdout[0]
+    assert pane_id.startswith("%")
+
+    # Verify new pane was created
+    result = await window.acmd("list-panes", "-F#{pane_id}")
+    assert len(result.stdout) == initial_pane_count + 1
+    assert pane_id in result.stdout
+
+
+# ============================================================================
+# Pane.acmd() Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_pane_acmd_basic(session: Session) -> None:
+    """Test Pane.acmd() executes in pane context.
+
+    Safety: Commands sent to isolated test pane only.
+    """
+    pane = session.active_pane
+    assert pane is not None
+
+    # Display pane ID
+    result = await pane.acmd("display-message", "-p", "#{pane_id}")
+    assert result.stdout[0] == pane.pane_id
+
+
+@pytest.mark.asyncio
+async def test_pane_acmd_send_keys(session: Session) -> None:
+    """Test sending keys via Pane.acmd().
+
+    Safety: Keys sent to isolated test pane only.
+    """
+    pane = session.active_pane
+    assert pane is not None
+
+    # Send echo command
+    await pane.acmd("send-keys", "echo 'test_async_pane'", "Enter")
+
+    # Give command time to execute
+    await asyncio.sleep(0.2)
+
+    # Capture output
+    result = await pane.acmd("capture-pane", "-p")
+    assert any("test_async_pane" in line for line in result.stdout)
