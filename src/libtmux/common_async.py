@@ -65,12 +65,13 @@ import re
 import shutil
 import sys
 import typing as t
+from collections.abc import Awaitable, Generator
 
 from . import exc
 from ._compat import LooseVersion
 
 if t.TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -88,11 +89,11 @@ PaneDict = dict[str, t.Any]
 
 
 class AsyncEnvironmentMixin:
-    """Async mixin for manager session and server level environment variables in tmux."""
+    """Async mixin for managing session and server-level environment variables."""
 
     _add_option = None
 
-    acmd: Callable[[t.Any, t.Any], Coroutine[t.Any, t.Any, tmux_cmd_async]]
+    acmd: Callable[[t.Any, t.Any], Awaitable[tmux_cmd_async]]
 
     def __init__(self, add_option: str | None = None) -> None:
         self._add_option = add_option
@@ -179,7 +180,8 @@ class AsyncEnvironmentMixin:
 
         .. versionchanged:: 0.13
 
-           Removed per-item lookups. Use :meth:`libtmux.common_async.AsyncEnvironmentMixin.getenv`.
+           Removed per-item lookups.
+           Use :meth:`libtmux.common_async.AsyncEnvironmentMixin.getenv`.
 
         Returns
         -------
@@ -242,7 +244,7 @@ class AsyncEnvironmentMixin:
         return opts_dict.get(name)
 
 
-class tmux_cmd_async:
+class tmux_cmd_async(Awaitable["tmux_cmd_async"]):
     """Run any :term:`tmux(1)` command through :py:mod:`asyncio.subprocess`.
 
     This is the async-first implementation. The tmux_cmd class is auto-generated
@@ -254,7 +256,9 @@ class tmux_cmd_async:
 
     >>> async def basic_example():
     ...     # Execute command with isolated socket
-    ...     proc = await tmux_cmd_async('-L', server.socket_name, 'new-session', '-d', '-P', '-F#S')
+    ...     proc = await tmux_cmd_async(
+    ...         '-L', server.socket_name, 'new-session', '-d', '-P', '-F#S'
+    ...     )
     ...     # Verify command executed successfully
     ...     return len(proc.stdout) > 0 and not proc.stderr
     >>> asyncio.run(basic_example())
@@ -279,7 +283,9 @@ class tmux_cmd_async:
     >>> async def check_session():
     ...     # Non-existent session returns non-zero returncode
     ...     sock = server.socket_name
-    ...     result = await tmux_cmd_async('-L', sock, 'has-session', '-t', 'nonexistent_12345')
+    ...     result = await tmux_cmd_async(
+    ...         '-L', sock, 'has-session', '-t', 'nonexistent_12345'
+    ...     )
     ...     return result.returncode != 0
     >>> asyncio.run(check_session())
     True
@@ -341,10 +347,10 @@ class tmux_cmd_async:
         self.returncode = returncode
         self._executed = False
 
-    async def execute(self) -> None:
+    async def execute(self) -> tmux_cmd_async:
         """Execute the tmux command asynchronously."""
         if self._executed:
-            return
+            return self
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -361,6 +367,15 @@ class tmux_cmd_async:
             raise
 
         self._executed = True
+        return self
+
+    async def _run(self) -> tmux_cmd_async:
+        await self.execute()
+        return self
+
+    def __await__(self) -> Generator[t.Any, None, tmux_cmd_async]:
+        """Allow ``await tmux_cmd_async(...)`` to execute the command."""
+        return self._run().__await__()
 
     @property
     def stdout(self) -> list[str]:
@@ -387,12 +402,9 @@ class tmux_cmd_async:
         stderr_split = self._stderr.split("\n")
         return list(filter(None, stderr_split))  # filter empty values
 
-    async def __new__(cls, *args: t.Any, **kwargs: t.Any) -> tmux_cmd_async:
-        """Create and execute tmux command asynchronously."""
-        instance = object.__new__(cls)
-        instance.__init__(*args, **kwargs)
-        await instance.execute()
-        return instance
+    def __new__(cls, *args: t.Any, **kwargs: t.Any) -> tmux_cmd_async:
+        """Create tmux command instance (execution happens when awaited)."""
+        return super().__new__(cls)
 
 
 async def get_version() -> LooseVersion:

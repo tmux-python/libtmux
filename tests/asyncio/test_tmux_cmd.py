@@ -11,13 +11,16 @@ from __future__ import annotations
 
 import asyncio
 import typing as t
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from libtmux import exc
+from libtmux._compat import LooseVersion
 from libtmux.common_async import (
     get_version,
-    has_gte_version,
     has_gt_version,
+    has_gte_version,
     has_lt_version,
     has_lte_version,
     has_minimum_version,
@@ -158,7 +161,7 @@ async def test_tmux_cmd_async_error_handling(async_server: Server) -> None:
         "-P",
         "-F#{session_id}",
     )
-    session_id = result.stdout[0]
+    _ = result.stdout[0]
 
     # Invalid command (server socket now exists)
     result = await tmux_cmd_async("-L", socket_name, "invalid-command-99999")
@@ -378,25 +381,22 @@ async def test_tmux_cmd_async_pane_operations(async_server: Server) -> None:
 @pytest.mark.asyncio
 async def test_has_minimum_version_raises_on_old_version() -> None:
     """Test has_minimum_version raises exception for old tmux version."""
-    from libtmux import exc
-    from libtmux._compat import LooseVersion
-    from unittest.mock import AsyncMock, patch
-
     # Mock get_version to return old version (below minimum)
     mock_old_version = AsyncMock(return_value=LooseVersion("1.0"))
 
-    with patch("libtmux.common_async.get_version", mock_old_version):
-        # Should raise VersionTooLow exception
-        with pytest.raises(exc.VersionTooLow, match="libtmux only supports tmux"):
-            await has_minimum_version(raises=True)
+    with (
+        patch("libtmux.common_async.get_version", mock_old_version),
+        pytest.raises(
+            exc.VersionTooLow,
+            match="libtmux only supports tmux",
+        ),
+    ):
+        await has_minimum_version(raises=True)
 
 
 @pytest.mark.asyncio
 async def test_has_minimum_version_returns_false_without_raising() -> None:
     """Test has_minimum_version returns False without raising when raises=False."""
-    from libtmux._compat import LooseVersion
-    from unittest.mock import AsyncMock, patch
-
     # Mock get_version to return old version (below minimum)
     mock_old_version = AsyncMock(return_value=LooseVersion("1.0"))
 

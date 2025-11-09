@@ -10,12 +10,15 @@ https://docs.pytest.org/en/stable/deprecations.html
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import typing as t
 
 import pytest
+import pytest_asyncio
 from _pytest.doctest import DoctestItem
 
+from libtmux.common_async import get_version, tmux_cmd_async
 from libtmux.pane import Pane
 from libtmux.pytest_plugin import USING_ZSH
 from libtmux.server import Server
@@ -50,7 +53,6 @@ def add_doctest_fixtures(
 
         # Add async support for async doctests
         doctest_namespace["asyncio"] = asyncio
-        from libtmux.common_async import tmux_cmd_async, get_version
         doctest_namespace["tmux_cmd_async"] = tmux_cmd_async
         doctest_namespace["get_version"] = get_version
 
@@ -83,9 +85,6 @@ def setup_session(
 
 # Async test fixtures
 # These require pytest-asyncio to be installed
-import asyncio
-
-import pytest_asyncio
 
 
 @pytest_asyncio.fixture
