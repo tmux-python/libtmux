@@ -277,6 +277,43 @@ class Window(Obj):
 
         return await self.server.acmd(cmd, *args, target=target)
 
+    async def akill(
+        self,
+        all_except: bool | None = None,
+    ) -> None:
+        """Kill :class:`Window` asynchronously.
+
+        ``$ tmux kill-window``.
+
+        Parameters
+        ----------
+        all_except : bool, optional
+            If True, kill all windows except this one.
+
+        Examples
+        --------
+        Kill a window:
+
+        >>> window_1 = await session.anew_window()
+        >>> window_1 in session.windows
+        True
+        >>> await window_1.akill()
+        >>> window_1 not in session.windows
+        True
+        """
+        flags: tuple[str, ...] = ()
+
+        if all_except:
+            flags += ("-a",)
+
+        proc = await self.acmd(
+            "kill-window",
+            *flags,
+        )
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     """
     Commands (tmux-like)
     """
