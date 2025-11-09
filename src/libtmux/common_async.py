@@ -202,14 +202,17 @@ class tmux_cmd_async:
     --------
     Create a new session, check for error:
 
-    >>> proc = await tmux_cmd_async(f'-L{server.socket_name}', 'new-session', '-d', '-P', '-F#S')
-    >>> if proc.stderr:
-    ...     raise exc.LibTmuxException(
-    ...         'Command: %s returned error: %s' % (proc.cmd, proc.stderr)
-    ...     )
+    >>> import asyncio
+    >>>
+    >>> async def main():
+    ...     proc = await tmux_cmd_async(f'-L{server.socket_name}', 'new-session', '-d', '-P', '-F#S')
+    ...     if proc.stderr:
+    ...         raise exc.LibTmuxException(
+    ...             'Command: %s returned error: %s' % (proc.cmd, proc.stderr)
+    ...         )
+    ...     print(f'tmux command returned {" ".join(proc.stdout)}')
     ...
-
-    >>> print(f'tmux command returned {" ".join(proc.stdout)}')
+    >>> asyncio.run(main())
     tmux command returned 2
 
     Equivalent to:
