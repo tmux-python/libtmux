@@ -339,27 +339,46 @@ class Session(Obj, EnvironmentMixin):
 
         Examples
         --------
-        Basic session rename::
+        Basic session rename:
 
-            # Rename the session
-            session = await session.arename_session("new_name")
-            # session.session_name == "new_name"
+        >>> import asyncio
+        >>> async def test_rename():
+        ...     test_session = await server.anew_session("arename_original")
+        ...     renamed_session = await test_session.arename_session("arename_new")
+        ...     new_name = renamed_session.session_name
+        ...     await server.acmd("kill-session", target="arename_new")
+        ...     return new_name
+        >>> asyncio.run(test_rename())
+        'arename_new'
 
-        Rename and verify::
+        Rename and verify:
 
-            old_name = session.session_name
-            await session.arename_session("production")
+        >>> import asyncio
+        >>> async def test_rename_verify():
+        ...     test_session = await server.anew_session("arename_verify_old")
+        ...     old_name = test_session.session_name
+        ...     await test_session.arename_session("arename_verify_new")
+        ...     # Verify the rename
+        ...     has_new = test_session.server.has_session("arename_verify_new")
+        ...     has_old = test_session.server.has_session(old_name)
+        ...     await server.acmd("kill-session", target="arename_verify_new")
+        ...     return (test_session.session_name, has_new, has_old)
+        >>> asyncio.run(test_rename_verify())
+        ('arename_verify_new', True, False)
 
-            # Verify the rename
-            assert session.session_name == "production"
-            assert session.server.has_session("production")
-            assert not session.server.has_session(old_name)
+        Chaining operations:
 
-        Chaining operations::
-
-            # arename_session returns self, allowing chaining
-            session = await session.arename_session("new_name")
-            window = await session.anew_window(window_name="main")
+        >>> import asyncio
+        >>> async def test_chaining():
+        ...     # arename_session returns self, allowing chaining
+        ...     test_session = await server.anew_session("arename_chain_old")
+        ...     renamed_session = await test_session.arename_session("arename_chain_new")
+        ...     window = await renamed_session.anew_window(window_name="main")
+        ...     result = (renamed_session.session_name, window.window_name)
+        ...     await server.acmd("kill-session", target="arename_chain_new")
+        ...     return result
+        >>> asyncio.run(test_chaining())
+        ('arename_chain_new', 'main')
         """
         session_check_name(new_name)
 
@@ -505,68 +524,66 @@ class Session(Obj, EnvironmentMixin):
 
         Examples
         --------
-        Basic window creation::
+        Basic window creation:
 
-            window = await session.anew_window(window_name='editor')
-            # Window(@2 2:editor, Session($1 my_session))
+        >>> import asyncio
+        >>> async def test_basic_window():
+        ...     test_session = await server.anew_session("anew_window_basic")
+        ...     window = await test_session.anew_window(window_name='editor')
+        ...     name = window.window_name
+        ...     await server.acmd("kill-session", target="anew_window_basic")
+        ...     return name
+        >>> asyncio.run(test_basic_window())
+        'editor'
 
-        With custom working directory::
+        With custom working directory:
 
-            from pathlib import Path
+        >>> import asyncio
+        >>> async def test_start_directory():
+        ...     from pathlib import Path
+        ...     test_session = await server.anew_session("anew_window_dir")
+        ...     window = await test_session.anew_window(
+        ...         window_name='project',
+        ...         start_directory='/tmp'
+        ...     )
+        ...     # Verify window was created
+        ...     name = window.window_name
+        ...     await server.acmd("kill-session", target="anew_window_dir")
+        ...     return name
+        >>> asyncio.run(test_start_directory())
+        'project'
 
-            window = await session.anew_window(
-                window_name='project',
-                start_directory='~/code/myproject'
-            )
-            # All panes in this window start in ~/code/myproject
+        Creating multiple windows concurrently:
 
-        With environment variables (tmux 3.0+)::
+        >>> import asyncio
+        >>> async def test_concurrent_windows():
+        ...     test_session = await server.anew_session("anew_window_concurrent")
+        ...     windows = await asyncio.gather(
+        ...         test_session.anew_window(window_name='editor'),
+        ...         test_session.anew_window(window_name='terminal'),
+        ...         test_session.anew_window(window_name='logs'),
+        ...     )
+        ...     names = [w.window_name for w in windows]
+        ...     await server.acmd("kill-session", target="anew_window_concurrent")
+        ...     return (len(windows), names)
+        >>> asyncio.run(test_concurrent_windows())
+        (3, ['editor', 'terminal', 'logs'])
 
-            window = await session.anew_window(
-                window_name='dev',
-                environment={
-                    'NODE_ENV': 'development',
-                    'DEBUG': 'true'
-                }
-            )
-            # Environment variables available in window
+        With specific window index:
 
-        Creating multiple windows concurrently::
-
-            import asyncio
-
-            windows = await asyncio.gather(
-                session.anew_window(window_name='editor'),
-                session.anew_window(window_name='terminal'),
-                session.anew_window(window_name='logs'),
-            )
-            # All three windows created in parallel
-            # len(windows) == 3
-
-        With window shell command::
-
-            window = await session.anew_window(
-                window_name='monitor',
-                window_shell='htop'
-            )
-            # Window runs htop, closes when htop exits
-
-        With specific window index::
-
-            window = await session.anew_window(
-                window_name='first',
-                window_index='1'
-            )
-            # Window created at index 1
-
-        With direction (tmux 3.2+)::
-
-            window = await session.anew_window(
-                window_name='after',
-                direction='after',
-                target_window='@1'
-            )
-            # Window created after window @1
+        >>> import asyncio
+        >>> async def test_window_index():
+        ...     test_session = await server.anew_session("anew_window_index")
+        ...     window = await test_session.anew_window(
+        ...         window_name='custom',
+        ...         window_index='5'
+        ...     )
+        ...     # Verify window was created with correct name
+        ...     name = window.window_name
+        ...     await server.acmd("kill-session", target="anew_window_index")
+        ...     return name
+        >>> asyncio.run(test_window_index())
+        'custom'
         """
         window_args: tuple[str, ...] = ()
 

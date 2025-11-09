@@ -443,42 +443,64 @@ class Server(EnvironmentMixin):
 
         Examples
         --------
-        Basic session existence check::
+        Basic session existence check:
 
-            async def check_session_exists():
-                session = await server.anew_session("test_exists")
-                exists = await server.ahas_session("test_exists")
-                return exists
+        >>> import asyncio
+        >>> async def check_session_exists():
+        ...     session = await server.anew_session("test_ahas_basic")
+        ...     exists = await server.ahas_session("test_ahas_basic")
+        ...     await server.acmd("kill-session", target="test_ahas_basic")
+        ...     return exists
+        >>> asyncio.run(check_session_exists())
+        True
 
-        Checking multiple sessions concurrently::
+        Checking for nonexistent session:
 
-            async def check_multiple_sessions():
-                # Create sessions concurrently
-                await asyncio.gather(
-                    server.anew_session("session_1"),
-                    server.anew_session("session_2"),
-                    server.anew_session("session_3"),
-                )
+        >>> import asyncio
+        >>> async def check_nonexistent():
+        ...     return await server.ahas_session("nonexistent_xyz_123")
+        >>> asyncio.run(check_nonexistent())
+        False
 
-                # Check all sessions concurrently
-                results = await asyncio.gather(
-                    server.ahas_session("session_1"),
-                    server.ahas_session("session_2"),
-                    server.ahas_session("session_3"),
-                )
-                # results will be [True, True, True]
-                return results
+        Checking multiple sessions concurrently:
 
-        Using exact matching::
+        >>> import asyncio
+        >>> async def check_multiple_sessions():
+        ...     # Create sessions concurrently
+        ...     await asyncio.gather(
+        ...         server.anew_session("ahas_s1"),
+        ...         server.anew_session("ahas_s2"),
+        ...         server.anew_session("ahas_s3"),
+        ...     )
+        ...     # Check all sessions concurrently
+        ...     results = await asyncio.gather(
+        ...         server.ahas_session("ahas_s1"),
+        ...         server.ahas_session("ahas_s2"),
+        ...         server.ahas_session("ahas_s3"),
+        ...     )
+        ...     # Cleanup
+        ...     await asyncio.gather(
+        ...         server.acmd("kill-session", target="ahas_s1"),
+        ...         server.acmd("kill-session", target="ahas_s2"),
+        ...         server.acmd("kill-session", target="ahas_s3"),
+        ...     )
+        ...     return results
+        >>> asyncio.run(check_multiple_sessions())
+        [True, True, True]
 
-            session = await server.anew_session("exact_match_test")
+        Using exact matching:
 
-            # Exact match - must match full name
-            await server.ahas_session("exact_match_test", exact=True)  # True
-            await server.ahas_session("exact", exact=True)  # False - partial name
-
-            # Fuzzy match (exact=False) uses fnmatch
-            await server.ahas_session("exact*", exact=False)  # True
+        >>> import asyncio
+        >>> async def test_exact_matching():
+        ...     session = await server.anew_session("exact_match_test")
+        ...     # Exact match - must match full name
+        ...     exact_result = await server.ahas_session("exact_match_test", exact=True)
+        ...     # Partial name should not match with exact=True
+        ...     partial_result = await server.ahas_session("exact", exact=True)
+        ...     await server.acmd("kill-session", target="exact_match_test")
+        ...     return (exact_result, partial_result)
+        >>> asyncio.run(test_exact_matching())
+        (True, False)
         """
         session_check_name(target_session)
 
@@ -635,61 +657,84 @@ class Server(EnvironmentMixin):
 
         Examples
         --------
-        Sessions can be created without a session name (auto-generated IDs)::
+        Sessions can be created without a session name (auto-generated IDs):
 
-            session = await server.anew_session()
-            # Session($2 2) - auto-generated name
+        >>> import asyncio
+        >>> async def test_auto_generated():
+        ...     session1 = await server.anew_session()
+        ...     session2 = await server.anew_session()
+        ...     # Both have auto-generated names
+        ...     has_session1 = session1.session_name is not None
+        ...     has_session2 = session2.session_name is not None
+        ...     # Cleanup
+        ...     await asyncio.gather(
+        ...         server.acmd("kill-session", target=session1.session_name),
+        ...         server.acmd("kill-session", target=session2.session_name),
+        ...     )
+        ...     return (has_session1, has_session2)
+        >>> asyncio.run(test_auto_generated())
+        (True, True)
 
-            session2 = await server.anew_session()
-            # Session($3 3) - sequential IDs
+        With a custom `session_name`:
 
-        With a custom `session_name`::
+        >>> import asyncio
+        >>> async def test_custom_name():
+        ...     session = await server.anew_session(session_name='my_project')
+        ...     name = session.session_name
+        ...     await server.acmd("kill-session", target="my_project")
+        ...     return name
+        >>> asyncio.run(test_custom_name())
+        'my_project'
 
-            session = await server.anew_session(session_name='my_project')
-            # Session($4 my_project)
+        With custom working directory:
 
-        With custom working directory::
+        >>> import asyncio
+        >>> async def test_start_directory():
+        ...     from pathlib import Path
+        ...     session = await server.anew_session(
+        ...         session_name='dev_session',
+        ...         start_directory='/tmp'
+        ...     )
+        ...     # Verify session was created
+        ...     exists = await server.ahas_session('dev_session')
+        ...     await server.acmd("kill-session", target="dev_session")
+        ...     return exists
+        >>> asyncio.run(test_start_directory())
+        True
 
-            from pathlib import Path
+        Creating multiple sessions concurrently:
 
-            session = await server.anew_session(
-                session_name='dev_session',
-                start_directory='/tmp'
-            )
-            # All windows/panes will default to /tmp
+        >>> import asyncio
+        >>> async def test_concurrent_creation():
+        ...     sessions = await asyncio.gather(
+        ...         server.anew_session(session_name='anew_frontend'),
+        ...         server.anew_session(session_name='anew_backend'),
+        ...         server.anew_session(session_name='anew_database'),
+        ...     )
+        ...     names = [s.session_name for s in sessions]
+        ...     # Cleanup
+        ...     await asyncio.gather(
+        ...         server.acmd("kill-session", target="anew_frontend"),
+        ...         server.acmd("kill-session", target="anew_backend"),
+        ...         server.acmd("kill-session", target="anew_database"),
+        ...     )
+        ...     return (len(sessions), names)
+        >>> asyncio.run(test_concurrent_creation())
+        (3, ['anew_frontend', 'anew_backend', 'anew_database'])
 
-        With environment variables (tmux 3.2+)::
+        With custom window configuration:
 
-            session = await server.anew_session(
-                session_name='env_session',
-                environment={
-                    'PROJECT_ENV': 'development',
-                    'DEBUG': 'true'
-                }
-            )
-            # Environment variables available in session
-
-        Creating multiple sessions concurrently::
-
-            import asyncio
-
-            sessions = await asyncio.gather(
-                server.anew_session(session_name='frontend'),
-                server.anew_session(session_name='backend'),
-                server.anew_session(session_name='database'),
-            )
-            # All three sessions created in parallel
-            # len(sessions) == 3
-            # [s.session_name for s in sessions] == ['frontend', 'backend', 'database']
-
-        With custom window configuration::
-
-            session = await server.anew_session(
-                session_name='custom_window',
-                window_name='main',
-                window_command='htop'
-            )
-            # session.active_window.window_name == 'main'
+        >>> import asyncio
+        >>> async def test_custom_window():
+        ...     session = await server.anew_session(
+        ...         session_name='custom_window_test',
+        ...         window_name='main'
+        ...     )
+        ...     window_name = session.active_window.window_name
+        ...     await server.acmd("kill-session", target="custom_window_test")
+        ...     return window_name
+        >>> asyncio.run(test_custom_window())
+        'main'
         """
         if session_name is not None:
             session_check_name(session_name)

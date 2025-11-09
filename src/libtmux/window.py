@@ -329,51 +329,62 @@ class Window(Obj):
 
         Examples
         --------
-        Kill a single window::
+        Kill a single window:
 
-            # Create a window
-            window = await session.anew_window(window_name='temp')
+        >>> import asyncio
+        >>> async def test_kill_single():
+        ...     test_session = await server.anew_session("akill_single")
+        ...     # Create a window
+        ...     window = await test_session.anew_window(window_name='temp')
+        ...     window_id = window.window_id
+        ...     # Kill it
+        ...     await window.akill()
+        ...     # Verify it no longer exists
+        ...     windows = test_session.windows
+        ...     exists = any(w.window_id == window_id for w in windows)
+        ...     await server.acmd("kill-session", target="akill_single")
+        ...     return exists
+        >>> asyncio.run(test_kill_single())
+        False
 
-            # Kill it
-            await window.akill()
-            # window no longer exists in session
+        Kill all windows except one:
 
-        Kill all windows except one::
+        >>> import asyncio
+        >>> async def test_kill_all_except():
+        ...     test_session = await server.anew_session("akill_except")
+        ...     # Create multiple windows
+        ...     keep_window = await test_session.anew_window(window_name='main')
+        ...     await test_session.anew_window(window_name='temp1')
+        ...     await test_session.anew_window(window_name='temp2')
+        ...     await test_session.anew_window(window_name='temp3')
+        ...     # Kill all except keep_window (kills initial + temp windows)
+        ...     await keep_window.akill(all_except=True)
+        ...     # Count remaining windows (should be 1: only keep_window)
+        ...     window_count = len(test_session.windows)
+        ...     await server.acmd("kill-session", target="akill_except")
+        ...     return window_count
+        >>> asyncio.run(test_kill_all_except())
+        1
 
-            # Create multiple windows
-            keep_window = await session.anew_window(window_name='main')
-            await session.anew_window(window_name='temp1')
-            await session.anew_window(window_name='temp2')
-            await session.anew_window(window_name='temp3')
+        Concurrent window cleanup:
 
-            # Kill all except keep_window
-            await keep_window.akill(all_except=True)
-            # Only keep_window remains in session
-
-        Concurrent window cleanup::
-
-            import asyncio
-
-            # Create some temporary windows
-            temp_windows = await asyncio.gather(
-                session.anew_window(window_name='temp1'),
-                session.anew_window(window_name='temp2'),
-                session.anew_window(window_name='temp3'),
-            )
-
-            # Kill all temporary windows concurrently
-            await asyncio.gather(*[w.akill() for w in temp_windows])
-            # All temp windows destroyed in parallel
-
-        Cleanup pattern::
-
-            try:
-                # Do work with window
-                window = await session.anew_window(window_name='work')
-                # ... use window ...
-            finally:
-                # Always clean up
-                await window.akill()
+        >>> import asyncio
+        >>> async def test_concurrent_cleanup():
+        ...     test_session = await server.anew_session("akill_concurrent")
+        ...     # Create some temporary windows
+        ...     temp_windows = await asyncio.gather(
+        ...         test_session.anew_window(window_name='temp1'),
+        ...         test_session.anew_window(window_name='temp2'),
+        ...         test_session.anew_window(window_name='temp3'),
+        ...     )
+        ...     # Kill all temporary windows concurrently
+        ...     await asyncio.gather(*[w.akill() for w in temp_windows])
+        ...     # Count remaining windows (should be 1: initial window)
+        ...     window_count = len(test_session.windows)
+        ...     await server.acmd("kill-session", target="akill_concurrent")
+        ...     return window_count
+        >>> asyncio.run(test_concurrent_cleanup())
+        1
         """
         flags: tuple[str, ...] = ()
 
