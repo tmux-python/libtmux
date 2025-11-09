@@ -1261,6 +1261,10 @@ class Session(
         Raises
         ------
         :exc:`exc.BadSessionName`
+
+        See Also
+        --------
+        :meth:`arename_session` : Async version of this method
         """
         # tmux validates a Format's result after expanding it.
         if isinstance(new_name, str):
@@ -1346,6 +1350,7 @@ class Session(
 
         See Also
         --------
+        :meth:`anew_window` : Async version of this method
         :meth:`Window.new_window()`
 
         Examples
