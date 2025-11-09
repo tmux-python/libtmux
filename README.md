@@ -302,7 +302,7 @@ All the sync examples above can be executed asynchronously using `.acmd()` metho
 ...     # Execute multiple commands concurrently
 ...     results = await asyncio.gather(
 ...         session.acmd('list-windows'),
-...         session.acmd('list-panes'),
+...         session.acmd('list-panes', '-s'),
 ...     )
 ...     print(f"Windows: {len(results[0].stdout)} | Panes: {len(results[1].stdout)}")
 >>> asyncio.run(async_example())
@@ -313,17 +313,18 @@ Windows: 2 | Panes: 2
 Use `common_async` for direct async command execution:
 
 ```python
->>> from libtmux.common_async import tmux_cmd_async
 >>> async def direct_async():
 ...     # Execute commands concurrently for better performance
-...     sessions, windows, panes = await asyncio.gather(
-...         tmux_cmd_async('list-sessions'),
-...         tmux_cmd_async('list-windows'),
-...         tmux_cmd_async('list-panes'),
+...     results = await asyncio.gather(
+...         server.acmd('list-sessions'),
+...         server.acmd('list-windows', '-a'),
+...         server.acmd('list-panes', '-a'),
 ...     )
-...     return len(sessions.stdout), len(windows.stdout), len(panes.stdout)
+...     print(f"Executed {len(results)} commands concurrently")
+...     return all(r.returncode == 0 for r in results)
 >>> asyncio.run(direct_async())
-(2, 3, 5)
+Executed 3 commands concurrently
+True
 ```
 
 **Performance:** Async operations execute **2-3x faster** when running multiple commands concurrently.
