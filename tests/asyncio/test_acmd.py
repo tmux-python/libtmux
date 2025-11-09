@@ -142,8 +142,7 @@ async def test_concurrent_acmd_operations(async_server: Server) -> None:
 async def test_acmd_error_handling(async_server: Server) -> None:
     """Test .acmd() properly handles errors."""
     # Create a session first to ensure server socket exists
-    result = await async_server.acmd("new-session", "-d", "-P", "-F#{session_id}")
-    session_id = result.stdout[0]
+    await async_server.acmd("new-session", "-d", "-P", "-F#{session_id}")
 
     # Invalid command (server socket now exists)
     result = await async_server.acmd("invalid-command-12345")

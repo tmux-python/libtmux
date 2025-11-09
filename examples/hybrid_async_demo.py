@@ -12,18 +12,17 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 
 # Try importing from installed package, fallback to development mode
 try:
-    from libtmux.common import AsyncTmuxCmd
-    from libtmux.common_async import tmux_cmd_async, get_version
+    from libtmux.common_async import get_version, tmux_cmd_async
     from libtmux.server import Server
 except ImportError:
     # Development mode: add parent to path
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    from libtmux.common import AsyncTmuxCmd
-    from libtmux.common_async import tmux_cmd_async, get_version
+    from libtmux.common_async import get_version, tmux_cmd_async
     from libtmux.server import Server
 
 
@@ -56,13 +55,24 @@ async def demo_pattern_a_acmd_methods() -> None:
 
     # Get session details
     print("\n2. Getting session details...")
-    result = await server.acmd("display-message", "-p", "-t", session_id, "-F#{session_name}")
+    result = await server.acmd(
+        "display-message",
+        "-p",
+        "-t",
+        session_id,
+        "-F#{session_name}",
+    )
     session_name = result.stdout[0] if result.stdout else "unknown"
     print(f"   Session name: {session_name}")
 
     # List windows
     print("\n3. Listing windows in session...")
-    result = await server.acmd("list-windows", "-t", session_id, "-F#{window_index}:#{window_name}")
+    result = await server.acmd(
+        "list-windows",
+        "-t",
+        session_id,
+        "-F#{window_index}:#{window_name}",
+    )
     print(f"   Found {len(result.stdout)} windows")
     for window in result.stdout:
         print(f"   - {window}")
@@ -182,12 +192,10 @@ async def demo_performance_comparison() -> None:
     print("=" * 70)
     print()
 
-    import time
-
     # Create test sessions
     print("Setting up test sessions...")
     sessions = []
-    for i in range(4):
+    for _ in range(4):
         cmd = await tmux_cmd_async("new-session", "-d", "-P", "-F#{session_id}")
         sessions.append(cmd.stdout[0])
     print(f"Created {len(sessions)} test sessions")
@@ -203,10 +211,9 @@ async def demo_performance_comparison() -> None:
     # Parallel execution
     print("\n2. Parallel execution (all at once)...")
     start = time.time()
-    await asyncio.gather(*[
-        tmux_cmd_async("list-windows", "-t", session_id)
-        for session_id in sessions
-    ])
+    await asyncio.gather(
+        *[tmux_cmd_async("list-windows", "-t", session_id) for session_id in sessions]
+    )
     parallel_time = time.time() - start
     print(f"   Time: {parallel_time:.4f} seconds")
 
@@ -216,10 +223,9 @@ async def demo_performance_comparison() -> None:
 
     # Cleanup
     print("\nCleaning up test sessions...")
-    await asyncio.gather(*[
-        tmux_cmd_async("kill-session", "-t", session_id)
-        for session_id in sessions
-    ])
+    await asyncio.gather(
+        *[tmux_cmd_async("kill-session", "-t", session_id) for session_id in sessions]
+    )
 
 
 async def main() -> None:
@@ -265,6 +271,7 @@ async def main() -> None:
     except Exception as e:
         print(f"\n❌ Demo failed with error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

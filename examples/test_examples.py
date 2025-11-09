@@ -43,6 +43,7 @@ def test_example_script_executes(script: str) -> None:
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
         cwd=EXAMPLES_DIR.parent,  # Run from project root
     )
 
@@ -65,9 +66,9 @@ def test_examples_directory_structure() -> None:
     """Verify examples directory has expected structure."""
     assert EXAMPLES_DIR.exists(), "Examples directory not found"
     assert (EXAMPLES_DIR / "async_demo.py").exists(), "async_demo.py not found"
-    assert (
-        EXAMPLES_DIR / "hybrid_async_demo.py"
-    ).exists(), "hybrid_async_demo.py not found"
+    assert (EXAMPLES_DIR / "hybrid_async_demo.py").exists(), (
+        "hybrid_async_demo.py not found"
+    )
 
 
 def test_example_has_docstring() -> None:
@@ -80,9 +81,7 @@ def test_example_has_docstring() -> None:
         assert '"""' in content, f"{script} missing docstring"
 
         # Check for shebang (makes it executable)
-        assert content.startswith("#!/usr/bin/env python"), (
-            f"{script} missing shebang"
-        )
+        assert content.startswith("#!/usr/bin/env python"), f"{script} missing shebang"
 
 
 def test_example_is_self_contained() -> None:
@@ -127,6 +126,7 @@ def test_all_examples_can_be_executed() -> None:
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
             cwd=EXAMPLES_DIR.parent,
         )
 

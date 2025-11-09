@@ -7,15 +7,14 @@ executable. They replace the SKIP'd doctests that provided no verification.
 from __future__ import annotations
 
 import asyncio
-import typing as t
+import time
 
 import pytest
 
+import libtmux
 from libtmux import Server
+from libtmux._compat import LooseVersion
 from libtmux.common_async import get_version, tmux_cmd_async
-
-if t.TYPE_CHECKING:
-    from libtmux._compat import LooseVersion
 
 
 @pytest.mark.asyncio
@@ -24,9 +23,6 @@ async def test_module_docstring_pattern_a(async_server: Server) -> None:
 
     From src/libtmux/common_async.py:14-25 (Pattern A example).
     """
-    import asyncio
-
-    import libtmux
 
     async def example() -> list[str]:
         server = libtmux.Server(socket_name=async_server.socket_name)
@@ -44,9 +40,6 @@ async def test_module_docstring_pattern_b(async_server: Server) -> None:
 
     From src/libtmux/common_async.py:27-37 (Pattern B example).
     """
-    import asyncio
-
-    from libtmux.common_async import tmux_cmd_async
 
     async def example() -> list[str]:
         sock = async_server.socket_name
@@ -64,9 +57,6 @@ async def test_module_docstring_concurrent(async_server: Server) -> None:
 
     From src/libtmux/common_async.py:45-59 (Performance example).
     """
-    import asyncio
-
-    from libtmux.common_async import tmux_cmd_async
 
     async def concurrent() -> list[tmux_cmd_async]:
         sock = async_server.socket_name
@@ -75,7 +65,7 @@ async def test_module_docstring_concurrent(async_server: Server) -> None:
             tmux_cmd_async("-L", sock, "list-windows", "-a"),
             tmux_cmd_async("-L", sock, "list-panes", "-a"),
         )
-        return results
+        return list(results)
 
     results = await concurrent()
     assert len(results) == 3
@@ -89,9 +79,6 @@ async def test_tmux_cmd_async_concurrent_example(async_server: Server) -> None:
 
     From src/libtmux/common_async.py:274-289 (Concurrent Operations example).
     """
-    import asyncio
-
-    from libtmux.common_async import tmux_cmd_async
 
     async def concurrent_example() -> list[int]:
         sock = async_server.socket_name
@@ -115,9 +102,6 @@ async def test_tmux_cmd_async_error_handling(async_server: Server) -> None:
 
     From src/libtmux/common_async.py:291-304 (Error Handling example).
     """
-    import asyncio
-
-    from libtmux.common_async import tmux_cmd_async
 
     async def check_session() -> bool:
         sock = async_server.socket_name
@@ -128,9 +112,7 @@ async def test_tmux_cmd_async_error_handling(async_server: Server) -> None:
             "-t",
             "nonexistent_session_12345",
         )
-        if result.returncode != 0:
-            return False
-        return True
+        return result.returncode == 0
 
     result = await check_session()
     assert result is False  # Session should not exist
@@ -142,9 +124,6 @@ async def test_get_version_basic() -> None:
 
     From src/libtmux/common_async.py:428-438 (basic example).
     """
-    import asyncio
-
-    from libtmux.common_async import get_version
 
     async def check_version() -> LooseVersion:
         version = await get_version()
@@ -156,8 +135,6 @@ async def test_get_version_basic() -> None:
     # Should be something like "3.4" or "3.5"
     assert len(str(version)) > 0
     # Verify it can be compared
-    from libtmux._compat import LooseVersion
-
     assert version >= LooseVersion("1.8")  # TMUX_MIN_VERSION
 
 
@@ -167,9 +144,6 @@ async def test_get_version_concurrent(async_server: Server) -> None:
 
     From src/libtmux/common_async.py:440-453 (concurrent operations example).
     """
-    import asyncio
-
-    from libtmux.common_async import get_version, tmux_cmd_async
 
     async def check_all() -> tuple[LooseVersion, int]:
         sock = async_server.socket_name
@@ -190,9 +164,6 @@ async def test_get_version_concurrent(async_server: Server) -> None:
 @pytest.mark.asyncio
 async def test_pattern_a_with_error_handling(async_server: Server) -> None:
     """Test Pattern A with proper error handling and verification."""
-    import asyncio
-
-    import libtmux
 
     async def example() -> bool:
         server = libtmux.Server(socket_name=async_server.socket_name)
@@ -217,12 +188,17 @@ async def test_pattern_a_with_error_handling(async_server: Server) -> None:
 @pytest.mark.asyncio
 async def test_pattern_b_with_socket_isolation(async_server: Server) -> None:
     """Test Pattern B ensures proper socket isolation."""
-    from libtmux.common_async import tmux_cmd_async
-
     sock = async_server.socket_name
 
     # Create session on isolated socket
-    result = await tmux_cmd_async("-L", sock, "new-session", "-d", "-P", "-F#{session_id}")
+    result = await tmux_cmd_async(
+        "-L",
+        sock,
+        "new-session",
+        "-d",
+        "-P",
+        "-F#{session_id}",
+    )
     session_id = result.stdout[0]
 
     # Verify it exists on the isolated socket
@@ -239,10 +215,6 @@ async def test_concurrent_operations_performance(async_server: Server) -> None:
 
     This test demonstrates the 2-3x performance benefit mentioned in docs.
     """
-    import time
-
-    from libtmux.common_async import tmux_cmd_async
-
     sock = async_server.socket_name
 
     # Measure sequential execution
@@ -276,12 +248,20 @@ async def test_all_examples_use_isolated_sockets(async_server: Server) -> None:
     This is critical to ensure tests never affect the developer's working session.
     """
     sock = async_server.socket_name
+    assert sock is not None
 
     # Verify socket is unique test socket
     assert "libtmux_test" in sock or "pytest" in sock.lower()
 
     # Verify we can create and destroy sessions without affecting other sockets
-    result = await tmux_cmd_async("-L", sock, "new-session", "-d", "-P", "-F#{session_id}")
+    result = await tmux_cmd_async(
+        "-L",
+        sock,
+        "new-session",
+        "-d",
+        "-P",
+        "-F#{session_id}",
+    )
     session_id = result.stdout[0]
 
     # Session exists on our socket

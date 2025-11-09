@@ -7,16 +7,18 @@ This example shows how the async-first architecture works with libtmux.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
+import time
 from pathlib import Path
 
 # Try importing from installed package, fallback to development mode
 try:
-    from libtmux.common_async import tmux_cmd_async, get_version
+    from libtmux.common_async import get_version, tmux_cmd_async
 except ImportError:
     # Development mode: add parent to path
     sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-    from libtmux.common_async import tmux_cmd_async, get_version
+    from libtmux.common_async import get_version, tmux_cmd_async
 
 
 async def demo_basic_command() -> None:
@@ -60,7 +62,7 @@ async def demo_concurrent_commands() -> None:
     )
 
     commands = ["list-sessions", "list-windows", "list-panes", "show-options -g"]
-    for cmd, result in zip(commands, results):
+    for cmd, result in zip(commands, results, strict=True):
         if isinstance(result, Exception):
             print(f"\n[{cmd}] Error: {result}")
         else:
@@ -75,7 +77,6 @@ async def demo_comparison_with_sync() -> None:
     print("Demo 3: Performance Comparison")
     print("=" * 60)
 
-    import time
     from libtmux.common import tmux_cmd
 
     # Commands to run
@@ -95,10 +96,8 @@ async def demo_comparison_with_sync() -> None:
     print("\nSync execution (sequential)...")
     start = time.time()
     for cmd in commands:
-        try:
+        with contextlib.suppress(Exception):
             tmux_cmd(*cmd.split())
-        except Exception:
-            pass
     sync_time = time.time() - start
     print(f"  Time: {sync_time:.4f} seconds")
 
@@ -155,6 +154,7 @@ async def main() -> None:
     except Exception as e:
         print(f"\nDemo failed with error: {e}")
         import traceback
+
         traceback.print_exc()
 
 
