@@ -392,30 +392,89 @@ class Server(EnvironmentMixin):
         return await AsyncTmuxCmd.run(*svr_args, *cmd_args)
 
     async def ahas_session(self, target_session: str, exact: bool = True) -> bool:
-        """Return True if session exists (async version).
+        """Return True if session exists asynchronously.
+
+        This is the async version of :meth:`has_session`. It uses ``await self.acmd()``
+        for non-blocking session existence checks, making it suitable for async applications.
+
+        Equivalent to::
+
+            $ tmux has-session -t <target_session>
 
         Parameters
         ----------
         target_session : str
-            session name
-        exact : bool
-            match the session name exactly. tmux uses fnmatch by default.
-            Internally prepends ``=`` to the session in ``$ tmux has-session``.
-            tmux 2.1 and up only.
+            Session name to check for existence
+        exact : bool, optional
+            Match the session name exactly. When True (default), tmux will only
+            match exact session names. When False, tmux uses fnmatch(3) pattern
+            matching. Internally prepends ``=`` to the session when exact=True.
 
-        Raises
-        ------
-        :exc:`exc.BadSessionName`
+            .. note::
+
+                Exact matching requires tmux 2.1+. On older versions, this parameter
+                is ignored and fnmatch behavior is used.
 
         Returns
         -------
         bool
+            True if session exists, False otherwise
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+            If target_session contains invalid characters (periods or colons)
+
+        See Also
+        --------
+        :meth:`has_session` : Synchronous version of this method
+        :meth:`anew_session` : Create a new session asynchronously
+        :meth:`kill_session` : Kill a session
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        It's particularly useful when checking multiple sessions concurrently using
+        ``asyncio.gather()``.
+
+        .. versionadded:: 0.48.0
+
+            Added async session existence check support.
 
         Examples
         --------
-        >>> await server.ahas_session("my_session")
+        Basic session existence check:
+
+        >>> async def check_session_exists():
+        ...     exists = await server.ahas_session("my_session")
+        ...     return exists
+        >>> session = await server.anew_session("test_exists")
+        >>> await server.ahas_session("test_exists")
         True
         >>> await server.ahas_session("nonexistent")
+        False
+
+        Checking multiple sessions concurrently:
+
+        >>> async def check_multiple_sessions():
+        ...     results = await asyncio.gather(
+        ...         server.ahas_session("session_1"),
+        ...         server.ahas_session("session_2"),
+        ...         server.ahas_session("session_3"),
+        ...     )
+        ...     return results
+        >>> await server.anew_session("concurrent_test")
+        Session(...)
+        >>> await server.ahas_session("concurrent_test")
+        True
+
+        Using exact matching:
+
+        >>> await server.anew_session("exact_match_test")
+        Session(...)
+        >>> await server.ahas_session("exact_match_test", exact=True)
+        True
+        >>> await server.ahas_session("exact", exact=True)  # Partial name, exact match
         False
         """
         session_check_name(target_session)
@@ -443,73 +502,198 @@ class Server(EnvironmentMixin):
     ) -> Session:
         """Create new session asynchronously, returns new :class:`Session`.
 
-        Uses ``-P`` flag to print session info, ``-F`` for return formatting
-        returns new Session object.
+        This is the async version of :meth:`new_session`. It uses ``await self.acmd()``
+        for non-blocking session creation, making it suitable for async applications
+        and enabling concurrent session creation.
 
-        ``$ tmux new-session -d`` will create the session in the background
-        ``$ tmux new-session -Ad`` will move to the session name if it already
-        exists. todo: make an option to handle this.
+        Uses ``-P`` flag to print session info, ``-F`` for return formatting,
+        and returns a new :class:`Session` object.
+
+        Equivalent to::
+
+            $ tmux new-session -d -s <session_name>
+
+        .. note::
+
+            ``attach=False`` (default) creates the session in the background::
+
+                $ tmux new-session -d
+
+            This is typically desired for async operations to avoid blocking.
 
         Parameters
         ----------
         session_name : str, optional
-            ::
+            Name for the new session. If not provided, tmux will auto-generate
+            a name (typically sequential numbers: 0, 1, 2, etc.).
+
+            Equivalent to::
 
                 $ tmux new-session -s <session_name>
+
         attach : bool, optional
-            create session in the foreground. ``attach=False`` is equivalent
-            to::
+            Create session in the foreground (True) or background (False, default).
+            For async operations, background creation is typically preferred.
+
+            ``attach=False`` is equivalent to::
 
                 $ tmux new-session -d
 
         Other Parameters
         ----------------
         kill_session : bool, optional
-            Kill current session if ``$ tmux has-session``.
-            Useful for testing workspaces.
+            If True, kill the existing session with the same name before creating
+            a new one. If False (default) and a session with the same name exists,
+            raises :exc:`exc.TmuxSessionExists`.
+
+            Useful for testing workspaces and ensuring a clean slate.
+
         start_directory : str or PathLike, optional
-            specifies the working directory in which the
-            new session is created.
+            Working directory in which the new session is created. All windows
+            and panes in the session will default to this directory.
+
+            Supports pathlib.Path objects and tilde expansion (``~/``).
+
+            Equivalent to::
+
+                $ tmux new-session -c <start_directory>
+
         window_name : str, optional
-            ::
+            Name for the initial window created in the session.
+
+            Equivalent to::
 
                 $ tmux new-session -n <window_name>
+
         window_command : str, optional
-            execute a command on starting the session.  The window will close
-            when the command exits. NOTE: When this command exits the window
-            will close.  This feature is useful for long-running processes
-            where the closing of the window upon completion is desired.
-        x : [int, str], optional
-            Force the specified width instead of the tmux default for a
-            detached session
-        y : [int, str], optional
-            Force the specified height instead of the tmux default for a
-            detached session
+            Shell command to execute when starting the session. The window will
+            automatically close when the command exits.
+
+            .. warning::
+
+                When this command exits, the window will close. This feature is
+                useful for long-running processes where automatic cleanup is desired.
+
+        x : int or '-', optional
+            Force the specified width (in columns) instead of the tmux default
+            for a detached session. Use '-' for tmux default.
+
+        y : int or '-', optional
+            Force the specified height (in rows) instead of the tmux default
+            for a detached session. Use '-' for tmux default.
+
+        environment : dict[str, str], optional
+            Dictionary of environment variables to set in the new session.
+            Each key-value pair will be set as an environment variable.
+
+            .. note::
+
+                Requires tmux 3.2+. On older versions, this parameter is ignored
+                with a warning.
+
+            Equivalent to::
+
+                $ tmux new-session -e KEY1=value1 -e KEY2=value2
 
         Returns
         -------
         :class:`Session`
+            The newly created session object
 
         Raises
         ------
         :exc:`exc.BadSessionName`
+            If session_name contains invalid characters (periods or colons)
+        :exc:`exc.TmuxSessionExists`
+            If a session with the same name already exists and kill_session=False
+        :exc:`exc.LibTmuxException`
+            If tmux command execution fails
+
+        See Also
+        --------
+        :meth:`new_session` : Synchronous version of this method
+        :meth:`ahas_session` : Check if a session exists asynchronously
+        :meth:`kill_session` : Kill a session
+        :class:`Session` : Session object documentation
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        It's particularly powerful when creating multiple sessions concurrently
+        using ``asyncio.gather()``, which can significantly improve performance
+        compared to sequential creation.
+
+        The method temporarily removes the ``TMUX`` environment variable during
+        session creation to allow creating sessions from within tmux itself.
+
+        .. versionadded:: 0.48.0
+
+            Added async session creation support.
 
         Examples
         --------
-        Sessions can be created without a session name (0.14.2+):
+        Sessions can be created without a session name (auto-generated IDs):
 
-        >>> await server.anew_session()
+        >>> session = await server.anew_session()
+        >>> session
         Session($2 2)
 
         Creating them in succession will enumerate IDs (via tmux):
 
-        >>> await server.anew_session()
+        >>> session2 = await server.anew_session()
+        >>> session2
         Session($3 3)
 
-        With a `session_name`:
+        With a custom `session_name`:
 
-        >>> await server.anew_session(session_name='my session')
-        Session($4 my session)
+        >>> session = await server.anew_session(session_name='my_project')
+        >>> session
+        Session($4 my_project)
+
+        With custom working directory:
+
+        >>> from pathlib import Path
+        >>> session = await server.anew_session(
+        ...     session_name='dev_session',
+        ...     start_directory='/tmp'
+        ... )
+        >>> session
+        Session($5 dev_session)
+
+        With environment variables (tmux 3.2+):
+
+        >>> session = await server.anew_session(
+        ...     session_name='env_session',
+        ...     environment={
+        ...         'PROJECT_ENV': 'development',
+        ...         'DEBUG': 'true'
+        ...     }
+        ... )
+        >>> session
+        Session($6 env_session)
+
+        Creating multiple sessions concurrently:
+
+        >>> import asyncio
+        >>> sessions = await asyncio.gather(
+        ...     server.anew_session(session_name='frontend'),
+        ...     server.anew_session(session_name='backend'),
+        ...     server.anew_session(session_name='database'),
+        ... )
+        >>> len(sessions)
+        3
+        >>> [s.session_name for s in sessions]
+        ['frontend', 'backend', 'database']
+
+        With custom window configuration:
+
+        >>> session = await server.anew_session(
+        ...     session_name='custom_window',
+        ...     window_name='main',
+        ...     window_command='htop'
+        ... )
+        >>> session.active_window.window_name
+        'main'
         """
         if session_name is not None:
             session_check_name(session_name)
