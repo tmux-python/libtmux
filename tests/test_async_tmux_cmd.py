@@ -58,8 +58,7 @@ async def test_tmux_cmd_async_basic(async_server: Server) -> None:
     session_id = result.stdout[0]
     assert async_server.has_session(session_id)
 
-    # Cleanup
-    await tmux_cmd_async("-L", socket_name, "kill-session", "-t", session_id)
+    # No manual cleanup needed - server fixture finalizer handles it
 
 
 @pytest.mark.asyncio
@@ -141,13 +140,7 @@ async def test_concurrent_tmux_cmd_async(async_server: Server) -> None:
     for session_id in session_ids:
         assert async_server.has_session(session_id)
 
-    # Cleanup
-    await asyncio.gather(
-        *[
-            tmux_cmd_async("-L", socket_name, "kill-session", "-t", sid)
-            for sid in session_ids
-        ],
-    )
+    # No manual cleanup needed - server fixture finalizer handles it
 
 
 @pytest.mark.asyncio
@@ -187,8 +180,7 @@ async def test_tmux_cmd_async_error_handling(async_server: Server) -> None:
     assert result.returncode != 0
     assert len(result.stderr) > 0
 
-    # Cleanup
-    await tmux_cmd_async("-L", socket_name, "kill-session", "-t", session_id)
+    # No manual cleanup needed - server fixture finalizer handles it
 
 
 @pytest.mark.asyncio
