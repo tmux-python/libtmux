@@ -227,3 +227,35 @@ async def test_concurrent_session_creation(server: Server) -> None:
         for session in sessions:
             if server.has_session(str(session.session_id)):
                 await session.acmd("kill-session")
+
+
+# ============================================================================
+# Error Handling Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_async_invalid_command(server: Server) -> None:
+    """Test async error handling for invalid commands.
+
+    Safety: Invalid commands executed in isolated server only.
+    """
+    # AsyncTmuxCmd captures errors in stderr rather than raising
+    result = await server.acmd("nonexistent-command-xyz")
+
+    # Invalid command should populate stderr
+    assert len(result.stderr) > 0
+    assert result.returncode != 0
+
+
+@pytest.mark.asyncio
+async def test_async_session_not_found(server: Server) -> None:
+    """Test error when targeting nonexistent session.
+
+    Safety: Test only affects isolated server.
+    """
+    # has-session returns non-zero when session doesn't exist
+    result = await server.acmd("has-session", "-t", "nonexistent_session_xyz_123")
+
+    # has-session returns 1 when session doesn't exist
+    assert result.returncode != 0
