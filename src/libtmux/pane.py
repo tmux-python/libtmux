@@ -24,6 +24,9 @@ from libtmux.constants import (
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import Obj, fetch_obj
 
+__all__ = ["Pane", "PaneDirection"]
+
+
 if t.TYPE_CHECKING:
     import sys
     import types
@@ -412,9 +415,9 @@ class Pane(Obj):
 
         Notes
         -----
-        This method is non-blocking and suitable for use in async applications.
-        It's particularly powerful when capturing output from multiple panes concurrently
-        using ``asyncio.gather()``, which can significantly improve performance
+        This method is non-blocking and suitable for async applications. It is
+        especially helpful when capturing output from multiple panes concurrently
+        via ``asyncio.gather()``, which can significantly improve performance
         compared to sequential capture.
 
         .. versionadded:: 0.48.0

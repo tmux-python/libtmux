@@ -295,8 +295,9 @@ class Session(Obj, EnvironmentMixin):
     async def arename_session(self, new_name: str) -> Session:
         """Rename session asynchronously and return session object.
 
-        This is the async version of :meth:`rename_session`. It uses ``await self.acmd()``
-        for non-blocking session renaming, making it suitable for async applications.
+        This is the async version of :meth:`rename_session`. It uses
+        ``await self.acmd()`` for non-blocking session renaming, making it
+        suitable for async applications.
 
         Equivalent to::
 
@@ -372,7 +373,9 @@ class Session(Obj, EnvironmentMixin):
         >>> async def test_chaining():
         ...     # arename_session returns self, allowing chaining
         ...     test_session = await server.anew_session("arename_chain_old")
-        ...     renamed_session = await test_session.arename_session("arename_chain_new")
+        ...     renamed_session = await test_session.arename_session(
+        ...         "arename_chain_new"
+        ...     )
         ...     window = await renamed_session.anew_window(window_name="main")
         ...     result = (renamed_session.session_name, window.window_name)
         ...     await server.acmd("kill-session", target="arename_chain_new")

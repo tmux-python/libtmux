@@ -394,8 +394,9 @@ class Server(EnvironmentMixin):
     async def ahas_session(self, target_session: str, exact: bool = True) -> bool:
         """Return True if session exists asynchronously.
 
-        This is the async version of :meth:`has_session`. It uses ``await self.acmd()``
-        for non-blocking session existence checks, making it suitable for async applications.
+        This is the async version of :meth:`has_session`. It uses
+        ``await self.acmd()`` for non-blocking session existence checks, making
+        it suitable for async applications.
 
         Equivalent to::
 
