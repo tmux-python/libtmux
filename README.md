@@ -247,6 +247,47 @@ True
 
 In a real pane tmux has already set those two variables, so `from_env()` takes no arguments and there is nothing to arrange — this README is not running in a pane, so the example sets them first. Outside tmux there is no pane to return, and `from_env()` raises `NotInsideTmux`.
 
+## Async support
+
+libtmux provides async versions of key methods for use in async applications:
+
+```python
+import asyncio
+from libtmux import Server
+
+
+async def main():
+    server = Server()
+
+    # Create session asynchronously
+    session = await server.anew_session(
+        session_name="async_session", start_directory="~/"
+    )
+
+    # Create windows concurrently
+    windows = await asyncio.gather(
+        session.anew_window(window_name="editor"),
+        session.anew_window(window_name="terminal"),
+        session.anew_window(window_name="logs"),
+    )
+
+    # Check session exists
+    exists = await server.ahas_session("async_session")
+    print(f"Session exists: {exists}")  # True
+
+
+asyncio.run(main())
+```
+
+Available async methods (using 'a' prefix convention):
+- `Server.ahas_session()` - Check if session exists
+- `Server.anew_session()` - Create new session
+- `Session.anew_window()` - Create new window
+- `Session.arename_session()` - Rename session
+- `Window.akill()` - Kill window
+
+See the [async API documentation](https://libtmux.git-pull.com/api/async.html) for details.
+
 ## Core concepts
 
 | libtmux object | tmux concept                | Notes                          |
