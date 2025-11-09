@@ -64,3 +64,42 @@ async def test_server_acmd_new_session(server: Server) -> None:
         if server.has_session(session_id):
             session = Session.from_session_id(session_id=session_id, server=server)
             await session.acmd("kill-session")
+
+
+# ============================================================================
+# Session.acmd() Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_session_acmd_basic(session: Session) -> None:
+    """Test Session.acmd() executes in session context.
+
+    Safety: Uses `session` fixture which depends on isolated `server`.
+    """
+    # List windows in the session
+    result = await session.acmd("list-windows", "-F#{window_id}")
+    assert len(result.stdout) >= 1
+    assert all(wid.startswith("@") for wid in result.stdout)
+
+
+@pytest.mark.asyncio
+async def test_session_acmd_new_window(session: Session) -> None:
+    """Test creating window via Session.acmd().
+
+    Safety: Window created in isolated test session only.
+    """
+    # Get initial window count
+    initial_windows = session.windows
+    initial_count = len(initial_windows)
+
+    # Create new window asynchronously
+    result = await session.acmd("new-window", "-P", "-F#{window_id}")
+    window_id = result.stdout[0]
+    assert window_id.startswith("@")
+
+    # Refresh session and verify window was created
+    # Note: We need to re-query the session to see new window
+    result = await session.acmd("list-windows", "-F#{window_id}")
+    assert len(result.stdout) == initial_count + 1
+    assert window_id in result.stdout
