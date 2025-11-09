@@ -174,3 +174,56 @@ async def test_pane_acmd_send_keys(session: Session) -> None:
     # Capture output
     result = await pane.acmd("capture-pane", "-p")
     assert any("test_async_pane" in line for line in result.stdout)
+
+
+# ============================================================================
+# Concurrent Operations Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_concurrent_session_creation(server: Server) -> None:
+    """Test creating multiple sessions concurrently.
+
+    Safety: All sessions created in isolated test server.
+    Demonstrates async benefit: concurrent tmux operations.
+    """
+
+    async def create_session(index: int) -> Session:
+        """Create a session asynchronously."""
+        result = await server.acmd(
+            "new-session",
+            "-d",
+            "-P",
+            "-F#{session_id}",
+            "-s",
+            f"concurrent_test_{index}",
+        )
+        session_id = result.stdout[0]
+        return Session.from_session_id(session_id=session_id, server=server)
+
+    # Create 3 sessions concurrently
+    sessions = await asyncio.gather(
+        create_session(1),
+        create_session(2),
+        create_session(3),
+    )
+
+    try:
+        # Verify all sessions were created
+        assert len(sessions) == 3
+        assert all(isinstance(s, Session) for s in sessions)
+
+        # Verify all session IDs are unique
+        session_ids = {s.session_id for s in sessions}
+        assert len(session_ids) == 3
+
+        # Verify all sessions exist in server
+        for session in sessions:
+            assert server.has_session(str(session.session_id))
+
+    finally:
+        # Cleanup: kill all created sessions
+        for session in sessions:
+            if server.has_session(str(session.session_id)):
+                await session.acmd("kill-session")
