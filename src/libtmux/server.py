@@ -443,39 +443,42 @@ class Server(EnvironmentMixin):
 
         Examples
         --------
-        Basic session existence check:
+        Basic session existence check::
 
-        >>> async def check_session_exists():
-        ...     exists = await server.ahas_session("my_session")
-        ...     return exists
-        >>> session = await server.anew_session("test_exists")
-        >>> await server.ahas_session("test_exists")
-        True
-        >>> await server.ahas_session("nonexistent")
-        False
+            async def check_session_exists():
+                session = await server.anew_session("test_exists")
+                exists = await server.ahas_session("test_exists")
+                return exists
 
-        Checking multiple sessions concurrently:
+        Checking multiple sessions concurrently::
 
-        >>> async def check_multiple_sessions():
-        ...     results = await asyncio.gather(
-        ...         server.ahas_session("session_1"),
-        ...         server.ahas_session("session_2"),
-        ...         server.ahas_session("session_3"),
-        ...     )
-        ...     return results
-        >>> await server.anew_session("concurrent_test")
-        Session(...)
-        >>> await server.ahas_session("concurrent_test")
-        True
+            async def check_multiple_sessions():
+                # Create sessions concurrently
+                await asyncio.gather(
+                    server.anew_session("session_1"),
+                    server.anew_session("session_2"),
+                    server.anew_session("session_3"),
+                )
 
-        Using exact matching:
+                # Check all sessions concurrently
+                results = await asyncio.gather(
+                    server.ahas_session("session_1"),
+                    server.ahas_session("session_2"),
+                    server.ahas_session("session_3"),
+                )
+                # results will be [True, True, True]
+                return results
 
-        >>> await server.anew_session("exact_match_test")
-        Session(...)
-        >>> await server.ahas_session("exact_match_test", exact=True)
-        True
-        >>> await server.ahas_session("exact", exact=True)  # Partial name, exact match
-        False
+        Using exact matching::
+
+            session = await server.anew_session("exact_match_test")
+
+            # Exact match - must match full name
+            await server.ahas_session("exact_match_test", exact=True)  # True
+            await server.ahas_session("exact", exact=True)  # False - partial name
+
+            # Fuzzy match (exact=False) uses fnmatch
+            await server.ahas_session("exact*", exact=False)  # True
         """
         session_check_name(target_session)
 
@@ -632,68 +635,61 @@ class Server(EnvironmentMixin):
 
         Examples
         --------
-        Sessions can be created without a session name (auto-generated IDs):
+        Sessions can be created without a session name (auto-generated IDs)::
 
-        >>> session = await server.anew_session()
-        >>> session
-        Session($2 2)
+            session = await server.anew_session()
+            # Session($2 2) - auto-generated name
 
-        Creating them in succession will enumerate IDs (via tmux):
+            session2 = await server.anew_session()
+            # Session($3 3) - sequential IDs
 
-        >>> session2 = await server.anew_session()
-        >>> session2
-        Session($3 3)
+        With a custom `session_name`::
 
-        With a custom `session_name`:
+            session = await server.anew_session(session_name='my_project')
+            # Session($4 my_project)
 
-        >>> session = await server.anew_session(session_name='my_project')
-        >>> session
-        Session($4 my_project)
+        With custom working directory::
 
-        With custom working directory:
+            from pathlib import Path
 
-        >>> from pathlib import Path
-        >>> session = await server.anew_session(
-        ...     session_name='dev_session',
-        ...     start_directory='/tmp'
-        ... )
-        >>> session
-        Session($5 dev_session)
+            session = await server.anew_session(
+                session_name='dev_session',
+                start_directory='/tmp'
+            )
+            # All windows/panes will default to /tmp
 
-        With environment variables (tmux 3.2+):
+        With environment variables (tmux 3.2+)::
 
-        >>> session = await server.anew_session(
-        ...     session_name='env_session',
-        ...     environment={
-        ...         'PROJECT_ENV': 'development',
-        ...         'DEBUG': 'true'
-        ...     }
-        ... )
-        >>> session
-        Session($6 env_session)
+            session = await server.anew_session(
+                session_name='env_session',
+                environment={
+                    'PROJECT_ENV': 'development',
+                    'DEBUG': 'true'
+                }
+            )
+            # Environment variables available in session
 
-        Creating multiple sessions concurrently:
+        Creating multiple sessions concurrently::
 
-        >>> import asyncio
-        >>> sessions = await asyncio.gather(
-        ...     server.anew_session(session_name='frontend'),
-        ...     server.anew_session(session_name='backend'),
-        ...     server.anew_session(session_name='database'),
-        ... )
-        >>> len(sessions)
-        3
-        >>> [s.session_name for s in sessions]
-        ['frontend', 'backend', 'database']
+            import asyncio
 
-        With custom window configuration:
+            sessions = await asyncio.gather(
+                server.anew_session(session_name='frontend'),
+                server.anew_session(session_name='backend'),
+                server.anew_session(session_name='database'),
+            )
+            # All three sessions created in parallel
+            # len(sessions) == 3
+            # [s.session_name for s in sessions] == ['frontend', 'backend', 'database']
 
-        >>> session = await server.anew_session(
-        ...     session_name='custom_window',
-        ...     window_name='main',
-        ...     window_command='htop'
-        ... )
-        >>> session.active_window.window_name
-        'main'
+        With custom window configuration::
+
+            session = await server.anew_session(
+                session_name='custom_window',
+                window_name='main',
+                window_command='htop'
+            )
+            # session.active_window.window_name == 'main'
         """
         if session_name is not None:
             session_check_name(session_name)
