@@ -12,7 +12,7 @@ from inside a live tmux session.
 
 ## Requirements
 
-- [tmux] 3.2a or newer
+- [tmux]
 - [pip] - for this handbook's examples
 
 [tmux]: https://tmux.github.io/
@@ -45,14 +45,9 @@ before general availability.
 - [pipx]\:
 
   ```console
-  $ pipx install \
-      --suffix=@next \
-      --pip-args '\--pre' \
-      --force \
-      'libtmux'
+  $ pipx install --suffix=@next 'libtmux' --pip-args '\--pre' --force
+  // Usage: libtmux@next [command]
   ```
-
-  Usage: `libtmux@next [command]`
 
 - [uv tool install][uv-tools]\:
 
@@ -83,10 +78,7 @@ via trunk (can break easily):
 - [pipx]\:
 
   ```console
-  $ pipx install \
-      --suffix=@master \
-      --force \
-      'libtmux @ git+https://github.com/tmux-python/libtmux.git@master'
+  $ pipx install --suffix=@master 'libtmux @ git+https://github.com/tmux-python/libtmux.git@master' --force
   ```
 
 - [uv]\:
@@ -139,7 +131,7 @@ $ ptpython
 ```
 
 ```{module} libtmux
-:no-index:
+
 ```
 
 First, we can grab a {class}`~libtmux.Server`.
@@ -471,38 +463,27 @@ prevents adding it to the user's shell history. Omitting `enter=false` means the
 default behavior (sending the command) is done, without needing to use
 {meth}`pane.enter() <libtmux.Pane.enter>` after.
 
-## Working with options
+## Examples
 
 libtmux provides a unified API for managing tmux options across
 {class}`~libtmux.Server`, {class}`~libtmux.Session`,
 {class}`~libtmux.Window`, and {class}`~libtmux.Pane` objects.
 
-### Getting options
+Want to see more? Check out our example scripts:
 
-```python
->>> server.show_option('buffer-limit')
-50
+- **[examples/async_demo.py]** - Async command execution with performance benchmarks
+- **[examples/hybrid_async_demo.py]** - Both sync and async patterns working together
+- **[More examples]** - Full examples directory on GitHub
 
->>> window.show_options()  # doctest: +ELLIPSIS
-{...}
-```
+For async-specific guides, see:
 
-### Setting options
+- {doc}`/quickstart_async` - Async quickstart tutorial
+- {doc}`/topics/async_programming` - Comprehensive async guide
+- {doc}`/api/common_async` - Async API reference
 
-```python
->>> window.set_option('automatic-rename', False)  # doctest: +ELLIPSIS
-Window(@... ...)
-
->>> window.show_option('automatic-rename')
-False
-
->>> window.unset_option('automatic-rename')  # doctest: +ELLIPSIS
-Window(@... ...)
-```
-
-:::{seealso}
-See {ref}`options-and-hooks` for more details on options and hooks.
-:::
+[examples/async_demo.py]: https://github.com/tmux-python/libtmux/blob/master/examples/async_demo.py
+[examples/hybrid_async_demo.py]: https://github.com/tmux-python/libtmux/blob/master/examples/hybrid_async_demo.py
+[More examples]: https://github.com/tmux-python/libtmux/tree/master/examples
 
 ## Final notes
 
@@ -521,3 +502,4 @@ and our [test suite] (see {ref}`development`.)
 :::
 
 [test suite]: https://github.com/tmux-python/libtmux/tree/master/tests
+[ptpython]: https://github.com/prompt-toolkit/ptpython
