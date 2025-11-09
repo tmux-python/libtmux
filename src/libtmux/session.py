@@ -1158,6 +1158,10 @@ class Session(
         Raises
         ------
         :exc:`exc.BadSessionName`
+
+        See Also
+        --------
+        :meth:`arename_session` : Async version of this method
         """
         session_check_name(new_name)
 
@@ -1237,6 +1241,7 @@ class Session(
 
         See Also
         --------
+        :meth:`anew_window` : Async version of this method
         :meth:`Window.new_window()`
 
         Examples

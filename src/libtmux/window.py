@@ -1548,6 +1548,10 @@ class Window(
 
         ``$ tmux kill-window``.
 
+        See Also
+        --------
+        :meth:`akill` : Async version of this method
+
         Examples
         --------
         Kill a window:
