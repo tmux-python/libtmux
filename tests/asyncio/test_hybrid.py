@@ -86,7 +86,9 @@ async def test_pattern_results_compatible(async_server: Server) -> None:
 
 
 @pytest.mark.asyncio
-async def test_concurrent_mixed_patterns(async_test_server: Callable[..., Server]) -> None:
+async def test_concurrent_mixed_patterns(
+    async_test_server: Callable[..., Server],
+) -> None:
     """Test concurrent operations mixing both patterns."""
     server = async_test_server()
     socket_name = server.socket_name
@@ -146,7 +148,14 @@ async def test_both_patterns_different_servers(
     assert socket1 != socket2
 
     # Pattern A on server1
-    result_a = await server1.acmd("new-session", "-d", "-s", "pattern_a", "-P", "-F#{session_id}")
+    result_a = await server1.acmd(
+        "new-session",
+        "-d",
+        "-s",
+        "pattern_a",
+        "-P",
+        "-F#{session_id}",
+    )
 
     # Pattern B on server2
     result_b = await tmux_cmd_async(
@@ -178,7 +187,14 @@ async def test_hybrid_window_operations(async_server: Server) -> None:
     assert socket_name is not None
 
     # Create session with Pattern A
-    result = await async_server.acmd("new-session", "-d", "-s", "hybrid_test", "-P", "-F#{session_id}")
+    result = await async_server.acmd(
+        "new-session",
+        "-d",
+        "-s",
+        "hybrid_test",
+        "-P",
+        "-F#{session_id}",
+    )
     session_id = result.stdout[0]
 
     # Create window with Pattern B
@@ -208,7 +224,12 @@ async def test_hybrid_window_operations(async_server: Server) -> None:
     assert result_a.returncode == 0
 
     # List windows with both patterns
-    list_a = await async_server.acmd("list-windows", "-t", session_id, "-F#{window_name}")
+    list_a = await async_server.acmd(
+        "list-windows",
+        "-t",
+        session_id,
+        "-F#{window_name}",
+    )
     list_b = await tmux_cmd_async(
         "-L",
         socket_name,
@@ -232,7 +253,14 @@ async def test_hybrid_pane_operations(async_server: Server) -> None:
     assert socket_name is not None
 
     # Create session
-    result = await async_server.acmd("new-session", "-d", "-s", "pane_test", "-P", "-F#{session_id}")
+    result = await async_server.acmd(
+        "new-session",
+        "-d",
+        "-s",
+        "pane_test",
+        "-P",
+        "-F#{session_id}",
+    )
     session_id = result.stdout[0]
 
     # Split pane with Pattern A
@@ -262,7 +290,12 @@ async def test_hybrid_pane_operations(async_server: Server) -> None:
     assert len(list_panes.stdout) == 3
 
     # Both created panes should exist
-    pane_ids_a = await async_server.acmd("list-panes", "-t", session_id, "-F#{pane_id}")
+    pane_ids_a = await async_server.acmd(
+        "list-panes",
+        "-t",
+        session_id,
+        "-F#{pane_id}",
+    )
     pane_ids_b = await tmux_cmd_async(
         "-L",
         socket_name,
@@ -285,8 +318,7 @@ async def test_hybrid_error_handling(async_server: Server) -> None:
     assert socket_name is not None
 
     # Create a session first to ensure server socket exists
-    result = await async_server.acmd("new-session", "-d", "-P", "-F#{session_id}")
-    session_id = result.stdout[0]
+    await async_server.acmd("new-session", "-d", "-P", "-F#{session_id}")
 
     # Both patterns handle errors similarly
 

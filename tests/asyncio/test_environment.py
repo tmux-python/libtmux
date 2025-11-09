@@ -28,7 +28,7 @@ def parse_environment(output: list[str]) -> dict[str, str | bool]:
     - KEY=value -> {KEY: "value"}
     - -KEY -> {KEY: True}  (unset variable)
     """
-    env = {}
+    env: dict[str, str | bool] = {}
     for line in output:
         if "=" in line:
             key, value = line.split("=", 1)
@@ -149,7 +149,12 @@ async def test_server_set_environment_global(async_server: Server) -> None:
     _session = async_server.new_session(session_name="temp")
 
     # Set server-level environment variable
-    result = await async_server.acmd("set-environment", "-g", "SERVER_VAR", "server_value")
+    result = await async_server.acmd(
+        "set-environment",
+        "-g",
+        "SERVER_VAR",
+        "server_value",
+    )
     assert result.returncode == 0
 
     # Verify at server level
@@ -281,10 +286,7 @@ async def test_environment_isolation_between_sessions(async_server: Server) -> N
 async def test_concurrent_sessions_environment(async_server: Server) -> None:
     """Test concurrent environment operations across multiple sessions."""
     # Create 3 sessions
-    sessions = [
-        async_server.new_session(session_name=f"env_test{i}")
-        for i in range(3)
-    ]
+    sessions = [async_server.new_session(session_name=f"env_test{i}") for i in range(3)]
 
     # Set variables concurrently in all sessions
     await asyncio.gather(
@@ -320,6 +322,7 @@ async def test_environment_with_long_value(async_server: Server) -> None:
 
     value = env.get("LONG_VAR")
     assert value == long_value
+    assert isinstance(value, str)
     assert len(value) == 1000
 
 
