@@ -361,8 +361,8 @@ class AsyncTmuxCmd:
                 msg,
             )
 
-        # Convert all arguments to strings, accounting for Python 3.7+ strings
-        cmd: list[str] = [tmux_bin] + [str_from_console(a) for a in args]
+        # Convert all arguments to strings
+        cmd: list[str] = [tmux_bin] + [str(a) for a in args]
 
         try:
             process: asyncio.subprocess.Process = await asyncio.create_subprocess_exec(
@@ -382,8 +382,9 @@ class AsyncTmuxCmd:
                 msg,
             ) from e
 
-        stdout_str: str = console_to_str(raw_stdout)
-        stderr_str: str = console_to_str(raw_stderr)
+        # Decode bytes to string (asyncio subprocess returns bytes)
+        stdout_str: str = raw_stdout.decode("utf-8", errors="backslashreplace")
+        stderr_str: str = raw_stderr.decode("utf-8", errors="backslashreplace")
 
         # Split on newlines, filtering out any trailing empty lines
         stdout_split: list[str] = [line for line in stdout_str.split("\n") if line]
