@@ -8,6 +8,7 @@ Explore libtmux’s core functionalities and underlying principles at a high lev
 
 ```{toctree}
 
+async_programming
 context_managers
 traversal
 ```
