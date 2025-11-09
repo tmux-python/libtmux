@@ -8,12 +8,40 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
     from libtmux.session import Session
+
+
+@dataclass(slots=True)
+class PaneSetupConfig:
+    """Pane command and expected output snippet for setup tests."""
+
+    cmd: str
+    check: str
+
+
+@dataclass(slots=True)
+class PaneSetupResult:
+    """Outcome of pane setup verification."""
+
+    pane_id: str
+    command: str
+    success: bool
+
+
+@dataclass(slots=True)
+class PaneMonitorResult:
+    """Result of monitoring command execution per pane."""
+
+    pane_id: str
+    service: str
+    running: bool
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +59,12 @@ async def test_pane_acmd_basic(session: Session) -> None:
     """
     pane = session.active_pane
     assert pane is not None
+    pane_id = pane.pane_id
+    assert pane_id is not None
 
     # Display pane ID
     result = await pane.acmd("display-message", "-p", "#{pane_id}")
-    assert result.stdout[0] == pane.pane_id
+    assert result.stdout[0] == pane_id
 
 
 @pytest.mark.asyncio
@@ -78,8 +108,13 @@ async def test_concurrent_send_keys_multiple_panes(session: Session) -> None:
     result1 = await window.acmd("split-window", "-h", "-P", "-F#{pane_id}")
     result2 = await window.acmd("split-window", "-v", "-P", "-F#{pane_id}")
 
-    pane_ids = [
-        session.active_pane.pane_id,
+    active_pane = session.active_pane
+    assert active_pane is not None
+    active_pane_id = active_pane.pane_id
+    assert active_pane_id is not None
+
+    pane_ids: list[str] = [
+        active_pane_id,
         result1.stdout[0],
         result2.stdout[0],
     ]
@@ -130,38 +165,39 @@ async def test_batch_pane_setup_automation(session: Session) -> None:
     assert window is not None
 
     # Define pane setup: command and check string
-    pane_configs = [
-        {"cmd": "echo 'Frontend: localhost:3000'", "check": "Frontend"},
-        {"cmd": "echo 'Backend: localhost:8000'", "check": "Backend"},
-        {"cmd": "echo 'Database: localhost:5432'", "check": "Database"},
+    pane_configs: list[PaneSetupConfig] = [
+        PaneSetupConfig(cmd="echo 'Frontend: localhost:3000'", check="Frontend"),
+        PaneSetupConfig(cmd="echo 'Backend: localhost:8000'", check="Backend"),
+        PaneSetupConfig(cmd="echo 'Database: localhost:5432'", check="Database"),
     ]
 
     # Create panes
-    pane_ids = [session.active_pane.pane_id]
-    for _ in range(2):
-        result = await window.acmd("split-window", "-h", "-P", "-F#{pane_id}")
-        pane_ids.append(result.stdout[0])
+    active_pane = session.active_pane
+    assert active_pane is not None
+    first_pane_id = active_pane.pane_id
+    assert first_pane_id is not None
 
-    async def setup_pane(pane_id: str, config: dict[str, str]) -> dict[str, str | bool]:
+    pane_ids: list[str] = [first_pane_id]
+    for _ in range(2):
+        split_result = await window.acmd("split-window", "-h", "-P", "-F#{pane_id}")
+        pane_ids.append(split_result.stdout[0])
+
+    async def setup_pane(pane_id: str, config: PaneSetupConfig) -> PaneSetupResult:
         """Set up a pane with command and verify output."""
         pane = Pane.from_pane_id(pane_id=pane_id, server=session.server)
 
         # Send command
-        await pane.acmd("send-keys", config["cmd"], "Enter")
+        await pane.acmd("send-keys", config.cmd, "Enter")
         await asyncio.sleep(0.2)
 
         # Capture and verify
         result = await pane.acmd("capture-pane", "-p")
-        success = any(config["check"] in line for line in result.stdout)
+        success = any(config.check in line for line in result.stdout)
 
-        return {
-            "pane_id": pane_id,
-            "command": config["cmd"],
-            "success": success,
-        }
+        return PaneSetupResult(pane_id=pane_id, command=config.cmd, success=success)
 
     # Set up all panes concurrently
-    results = await asyncio.gather(
+    results: list[PaneSetupResult] = await asyncio.gather(
         *[
             setup_pane(pid, config)
             for pid, config in zip(pane_ids, pane_configs, strict=False)
@@ -170,8 +206,8 @@ async def test_batch_pane_setup_automation(session: Session) -> None:
 
     # Verify all setups succeeded
     assert len(results) == 3
-    for result in results:
-        assert result["success"], f"Pane {result['pane_id']} setup failed"
+    for pane_result in results:
+        assert pane_result.success, f"Pane {pane_result.pane_id} setup failed"
 
 
 @pytest.mark.asyncio
@@ -190,13 +226,18 @@ async def test_parallel_pane_monitoring(session: Session) -> None:
     result1 = await window.acmd("split-window", "-h", "-P", "-F#{pane_id}")
     result2 = await window.acmd("split-window", "-v", "-P", "-F#{pane_id}")
 
-    pane_ids = [
-        session.active_pane.pane_id,
+    active_pane = session.active_pane
+    assert active_pane is not None
+    active_pane_id = active_pane.pane_id
+    assert active_pane_id is not None
+
+    pane_ids: list[str] = [
+        active_pane_id,
         result1.stdout[0],
         result2.stdout[0],
     ]
 
-    async def send_and_verify(pane_id: str, service_num: int) -> dict[str, str | bool]:
+    async def send_and_verify(pane_id: str, service_num: int) -> PaneMonitorResult:
         """Send command to pane and verify output."""
         pane = Pane.from_pane_id(pane_id=pane_id, server=session.server)
 
@@ -208,21 +249,21 @@ async def test_parallel_pane_monitoring(session: Session) -> None:
         result = await pane.acmd("capture-pane", "-p")
         found = any(f"service_{service_num}_running" in line for line in result.stdout)
 
-        return {
-            "pane_id": pane_id,
-            "service": f"service_{service_num}",
-            "running": found,
-        }
+        return PaneMonitorResult(
+            pane_id=pane_id,
+            service=f"service_{service_num}",
+            running=found,
+        )
 
     # Send commands and monitor all panes concurrently
-    monitor_results = await asyncio.gather(
+    monitor_results: list[PaneMonitorResult] = await asyncio.gather(
         *[send_and_verify(pid, i) for i, pid in enumerate(pane_ids)]
     )
 
     # Verify all services detected
     assert len(monitor_results) == 3
-    for result in monitor_results:
-        assert result["running"], f"Service {result['service']} not detected"
+    for monitor_result in monitor_results:
+        assert monitor_result.running, f"Service {monitor_result.service} not detected"
 
 
 # ============================================================================
@@ -283,7 +324,7 @@ async def test_asend_keys_literal_mode(session: Session) -> None:
     assert pane is not None
 
     # Send literal special character (not a signal)
-    await pane.asend_keys('C-c', literal=True, enter=False)
+    await pane.asend_keys("C-c", literal=True, enter=False)
 
     # Wait briefly
     await asyncio.sleep(0.1)
@@ -326,6 +367,7 @@ async def test_asend_keys_concurrent_multiple_panes(session: Session) -> None:
 
     # Create 3 panes
     pane1 = window.active_pane
+    assert pane1 is not None
     pane2 = window.split()
     pane3 = window.split()
 
@@ -455,6 +497,7 @@ async def test_acapture_pane_concurrent_multiple_panes(session: Session) -> None
 
     # Create 3 panes
     pane1 = window.active_pane
+    assert pane1 is not None
     pane2 = window.split()
     pane3 = window.split()
 
@@ -494,6 +537,9 @@ async def test_asplit_default_below(session: Session) -> None:
     window = session.active_window
     assert window is not None
     pane = window.active_pane
+    assert pane is not None
+    original_pane_id = pane.pane_id
+    assert original_pane_id is not None
 
     initial_pane_count = len(window.panes)
 
@@ -503,7 +549,7 @@ async def test_asplit_default_below(session: Session) -> None:
     # Verify new pane created
     assert len(window.panes) == initial_pane_count + 1
     assert new_pane is not None
-    assert new_pane.pane_id != pane.pane_id
+    assert new_pane.pane_id != original_pane_id
 
 
 @pytest.mark.asyncio
@@ -517,6 +563,9 @@ async def test_asplit_direction_right(session: Session) -> None:
     window = session.active_window
     assert window is not None
     pane = window.active_pane
+    assert pane is not None
+    source_pane_id = pane.pane_id
+    assert source_pane_id is not None
 
     initial_pane_count = len(window.panes)
 
@@ -526,7 +575,7 @@ async def test_asplit_direction_right(session: Session) -> None:
     # Verify new pane created
     assert len(window.panes) == initial_pane_count + 1
     assert new_pane is not None
-    assert new_pane.pane_id != pane.pane_id
+    assert new_pane.pane_id != source_pane_id
 
 
 @pytest.mark.asyncio
@@ -538,21 +587,22 @@ async def test_asplit_with_start_directory(session: Session) -> None:
     window = session.active_window
     assert window is not None
     pane = window.active_pane
+    assert pane is not None
 
     # Split with custom directory
-    new_pane = await pane.asplit(start_directory='/tmp')
+    new_pane = await pane.asplit(start_directory="/tmp")
 
     # Verify pane created
     assert new_pane is not None
 
     # Send pwd command to verify directory
-    await new_pane.asend_keys('pwd')
+    await new_pane.asend_keys("pwd")
     await asyncio.sleep(0.3)
 
     # Check output
     output = new_pane.capture_pane()
     # Verify /tmp appears in output (pwd result)
-    has_tmp = any('/tmp' in line for line in output)
+    has_tmp = any("/tmp" in line for line in output)
     assert has_tmp, f"Expected /tmp in output, got: {output}"
 
 
@@ -565,6 +615,7 @@ async def test_asplit_with_size(session: Session) -> None:
     window = session.active_window
     assert window is not None
     pane = window.active_pane
+    assert pane is not None
 
     initial_pane_count = len(window.panes)
 
@@ -587,6 +638,7 @@ async def test_asplit_with_shell_command(session: Session) -> None:
     window = session.active_window
     assert window is not None
     pane = window.active_pane
+    assert pane is not None
 
     initial_pane_count = len(window.panes)
 
@@ -620,6 +672,7 @@ async def test_asplit_concurrent_multiple_splits(session: Session) -> None:
     window = session.active_window
     assert window is not None
     base_pane = window.active_pane
+    assert base_pane is not None
 
     initial_pane_count = len(window.panes)
 
