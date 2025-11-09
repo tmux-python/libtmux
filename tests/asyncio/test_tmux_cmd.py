@@ -373,3 +373,67 @@ async def test_tmux_cmd_async_pane_operations(async_server: Server) -> None:
     )
     assert new_pane_id in result.stdout
     assert len(result.stdout) >= 2  # At least 2 panes now
+
+
+@pytest.mark.asyncio
+async def test_has_minimum_version_raises_on_old_version() -> None:
+    """Test has_minimum_version raises exception for old tmux version."""
+    from libtmux import exc
+    from libtmux._compat import LooseVersion
+    from unittest.mock import AsyncMock, patch
+
+    # Mock get_version to return old version (below minimum)
+    mock_old_version = AsyncMock(return_value=LooseVersion("1.0"))
+
+    with patch("libtmux.common_async.get_version", mock_old_version):
+        # Should raise VersionTooLow exception
+        with pytest.raises(exc.VersionTooLow, match="libtmux only supports tmux"):
+            await has_minimum_version(raises=True)
+
+
+@pytest.mark.asyncio
+async def test_has_minimum_version_returns_false_without_raising() -> None:
+    """Test has_minimum_version returns False without raising when raises=False."""
+    from libtmux._compat import LooseVersion
+    from unittest.mock import AsyncMock, patch
+
+    # Mock get_version to return old version (below minimum)
+    mock_old_version = AsyncMock(return_value=LooseVersion("1.0"))
+
+    with patch("libtmux.common_async.get_version", mock_old_version):
+        # Should return False without raising
+        result = await has_minimum_version(raises=False)
+        assert result is False
+
+
+@pytest.mark.asyncio
+async def test_version_comparison_boundary_conditions() -> None:
+    """Test version comparison functions at exact boundaries."""
+    # Get actual current version
+    current_version = await get_version()
+    current_version_str = str(current_version)
+
+    # Test exact match scenarios
+    assert await has_version(current_version_str) is True
+    assert await has_gte_version(current_version_str) is True
+    assert await has_lte_version(current_version_str) is True
+
+    # Test false scenarios
+    assert await has_version("999.999") is False
+    assert await has_gt_version("999.999") is False
+    assert await has_lt_version("0.1") is False
+
+
+@pytest.mark.asyncio
+async def test_version_comparison_with_minimum_version() -> None:
+    """Test version comparisons against TMUX_MIN_VERSION."""
+    from libtmux.common_async import TMUX_MIN_VERSION
+
+    # Current version should be >= minimum
+    assert await has_gte_version(TMUX_MIN_VERSION) is True
+
+    # Should not be less than minimum
+    assert await has_lt_version(TMUX_MIN_VERSION) is False
+
+    # has_minimum_version should pass
+    assert await has_minimum_version(raises=False) is True
