@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pytest
@@ -15,6 +16,16 @@ import pytest
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
+
+
+@dataclass(slots=True)
+class ProjectSessionResult:
+    """Summary of concurrently created project sessions."""
+
+    session_id: str
+    name: str
+    window_count: int
+
 
 if TYPE_CHECKING:
     from libtmux.server import Server
@@ -65,9 +76,15 @@ async def test_async_full_workflow(server: Server) -> None:
     assert any("integration_test_complete" in line for line in result.stdout)
 
     # Verify complete object hierarchy
-    assert session.session_id == session_id
-    assert window.window_id == window_id
-    assert pane.pane_id == pane_id
+    session_obj_id = session.session_id
+    assert session_obj_id is not None
+    assert session_obj_id == session_id
+    window_obj_id = window.window_id
+    assert window_obj_id is not None
+    assert window_obj_id == window_id
+    pane_obj_id = pane.pane_id
+    assert pane_obj_id is not None
+    assert pane_obj_id == pane_id
 
 
 @pytest.mark.asyncio
@@ -80,7 +97,7 @@ async def test_multi_session_parallel_automation(server: Server) -> None:
 
     async def setup_project_session(
         name: str, num_windows: int
-    ) -> dict[str, str | int]:
+    ) -> ProjectSessionResult:
         """Create session with multiple windows."""
         # Create session
         result = await server.acmd(
@@ -105,28 +122,29 @@ async def test_multi_session_parallel_automation(server: Server) -> None:
         result = await session.acmd("list-windows", "-F#{window_id}")
         window_count = len(result.stdout)
 
-        return {
-            "session_id": session_id,
-            "name": name,
-            "window_count": window_count,
-        }
+        return ProjectSessionResult(
+            session_id=session_id,
+            name=name,
+            window_count=window_count,
+        )
 
     # Set up 3 project sessions concurrently
-    results = await asyncio.gather(
+    results_tuple = await asyncio.gather(
         setup_project_session("project_frontend", 3),
         setup_project_session("project_backend", 4),
         setup_project_session("project_infra", 2),
     )
+    results: list[ProjectSessionResult] = list(results_tuple)
 
     # Verify all sessions set up correctly
     assert len(results) == 3
-    assert results[0]["window_count"] == 3
-    assert results[1]["window_count"] == 4
-    assert results[2]["window_count"] == 2
+    assert results[0].window_count == 3
+    assert results[1].window_count == 4
+    assert results[2].window_count == 2
 
     # Verify all sessions exist
     for result in results:
-        assert server.has_session(result["name"])
+        assert server.has_session(result.name)
 
 
 @pytest.mark.asyncio
@@ -300,6 +318,8 @@ async def test_async_pane_workflow_complete(server: Server) -> None:
     # Get active pane
     pane1 = session.active_pane
     assert pane1 is not None
+    pane1_id = pane1.pane_id
+    assert pane1_id is not None
 
     # Send command using asend_keys
     await pane1.asend_keys('echo "workflow_step_1"')
@@ -312,10 +332,12 @@ async def test_async_pane_workflow_complete(server: Server) -> None:
     # Split pane using asplit
     pane2 = await pane1.asplit()
     assert pane2 is not None
-    assert pane2.pane_id != pane1.pane_id
+    assert pane2.pane_id is not None
+    assert pane2.pane_id != pane1_id
 
     # Verify both panes exist
     window = session.active_window
+    assert window is not None
     assert len(window.panes) == 2
 
     # Send different commands to each pane concurrently
@@ -342,7 +364,7 @@ async def test_multi_window_pane_automation(server: Server) -> None:
 
     Safety: All operations in isolated test server.
     Demonstrates: Large-scale concurrent pane manipulation.
-    Pattern: 3 windows × 3 panes = 9 panes, all managed concurrently.
+    Pattern: 3 windows x 3 panes = 9 panes, all managed concurrently.
     """
     # Create session
     session = await server.anew_session("multi_window_automation")
@@ -355,11 +377,12 @@ async def test_multi_window_pane_automation(server: Server) -> None:
     )
 
     # Each window should have 1 pane initially
-    all_panes = []
+    all_panes: list[Pane] = []
 
     # For each window, split into 3 panes total
-    for i, window in enumerate(windows_data):
+    for _idx, window in enumerate(windows_data):
         base_pane = window.active_pane
+        assert base_pane is not None
 
         # Create 2 more panes (total 3 per window)
         from libtmux.pane import PaneDirection
@@ -370,23 +393,20 @@ async def test_multi_window_pane_automation(server: Server) -> None:
         )
 
         # Collect all 3 panes from this window
-        all_panes.extend([base_pane] + list(new_panes))
+        all_panes.extend([base_pane, *new_panes])
 
-    # Verify we have 9 panes total (3 windows × 3 panes)
+    # Verify we have 9 panes total (3 windows x 3 panes)
     assert len(all_panes) == 9
 
     # Send unique commands to all 9 panes concurrently
     send_tasks = [
-        pane.asend_keys(f'echo "pane_{i}_output"')
-        for i, pane in enumerate(all_panes)
+        pane.asend_keys(f'echo "pane_{i}_output"') for i, pane in enumerate(all_panes)
     ]
     await asyncio.gather(*send_tasks)
     await asyncio.sleep(0.4)
 
     # Capture output from all 9 panes concurrently
-    outputs = await asyncio.gather(
-        *[pane.acapture_pane() for pane in all_panes]
-    )
+    outputs = await asyncio.gather(*[pane.acapture_pane() for pane in all_panes])
 
     # Verify all panes have correct output
     assert len(outputs) == 9
@@ -405,10 +425,12 @@ async def test_pane_monitoring_dashboard(server: Server) -> None:
     # Create session
     session = await server.anew_session("monitoring_dashboard")
     window = session.active_window
+    assert window is not None
 
     # Create 2x3 grid (6 panes total)
     # Start with 1 pane, split to make 6
     base_pane = window.active_pane
+    assert base_pane is not None
 
     from libtmux.pane import PaneDirection
 
