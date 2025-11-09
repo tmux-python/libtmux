@@ -391,6 +391,206 @@ class Server(EnvironmentMixin):
 
         return await AsyncTmuxCmd.run(*svr_args, *cmd_args)
 
+    async def ahas_session(self, target_session: str, exact: bool = True) -> bool:
+        """Return True if session exists (async version).
+
+        Parameters
+        ----------
+        target_session : str
+            session name
+        exact : bool
+            match the session name exactly. tmux uses fnmatch by default.
+            Internally prepends ``=`` to the session in ``$ tmux has-session``.
+            tmux 2.1 and up only.
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+
+        Returns
+        -------
+        bool
+
+        Examples
+        --------
+        >>> await server.ahas_session("my_session")
+        True
+        >>> await server.ahas_session("nonexistent")
+        False
+        """
+        session_check_name(target_session)
+
+        if exact and has_gte_version("2.1"):
+            target_session = f"={target_session}"
+
+        proc = await self.acmd("has-session", target=target_session)
+
+        return bool(not proc.returncode)
+
+    async def anew_session(
+        self,
+        session_name: str | None = None,
+        kill_session: bool = False,
+        attach: bool = False,
+        start_directory: StrPath | None = None,
+        window_name: str | None = None,
+        window_command: str | None = None,
+        x: int | DashLiteral | None = None,
+        y: int | DashLiteral | None = None,
+        environment: dict[str, str] | None = None,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> Session:
+        """Create new session asynchronously, returns new :class:`Session`.
+
+        Uses ``-P`` flag to print session info, ``-F`` for return formatting
+        returns new Session object.
+
+        ``$ tmux new-session -d`` will create the session in the background
+        ``$ tmux new-session -Ad`` will move to the session name if it already
+        exists. todo: make an option to handle this.
+
+        Parameters
+        ----------
+        session_name : str, optional
+            ::
+
+                $ tmux new-session -s <session_name>
+        attach : bool, optional
+            create session in the foreground. ``attach=False`` is equivalent
+            to::
+
+                $ tmux new-session -d
+
+        Other Parameters
+        ----------------
+        kill_session : bool, optional
+            Kill current session if ``$ tmux has-session``.
+            Useful for testing workspaces.
+        start_directory : str or PathLike, optional
+            specifies the working directory in which the
+            new session is created.
+        window_name : str, optional
+            ::
+
+                $ tmux new-session -n <window_name>
+        window_command : str, optional
+            execute a command on starting the session.  The window will close
+            when the command exits. NOTE: When this command exits the window
+            will close.  This feature is useful for long-running processes
+            where the closing of the window upon completion is desired.
+        x : [int, str], optional
+            Force the specified width instead of the tmux default for a
+            detached session
+        y : [int, str], optional
+            Force the specified height instead of the tmux default for a
+            detached session
+
+        Returns
+        -------
+        :class:`Session`
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+
+        Examples
+        --------
+        Sessions can be created without a session name (0.14.2+):
+
+        >>> await server.anew_session()
+        Session($2 2)
+
+        Creating them in succession will enumerate IDs (via tmux):
+
+        >>> await server.anew_session()
+        Session($3 3)
+
+        With a `session_name`:
+
+        >>> await server.anew_session(session_name='my session')
+        Session($4 my session)
+        """
+        if session_name is not None:
+            session_check_name(session_name)
+
+            if await self.ahas_session(session_name):
+                if kill_session:
+                    await self.acmd("kill-session", target=session_name)
+                    logger.info("session %s exists. killed it.", session_name)
+                else:
+                    msg = f"Session named {session_name} exists"
+                    raise exc.TmuxSessionExists(
+                        msg,
+                    )
+
+        logger.debug("creating session %s", session_name)
+
+        env = os.environ.get("TMUX")
+
+        if env:
+            del os.environ["TMUX"]
+
+        tmux_args: tuple[str | int, ...] = (
+            "-P",
+            "-F#{session_id}",  # output
+        )
+
+        if session_name is not None:
+            tmux_args += (f"-s{session_name}",)
+
+        if not attach:
+            tmux_args += ("-d",)
+
+        if start_directory:
+            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-session -c.
+            start_directory = pathlib.Path(start_directory).expanduser()
+            tmux_args += ("-c", str(start_directory))
+
+        if window_name:
+            tmux_args += ("-n", window_name)
+
+        if x is not None:
+            tmux_args += ("-x", x)
+
+        if y is not None:
+            tmux_args += ("-y", y)
+
+        if environment:
+            if has_gte_version("3.2"):
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Environment flag ignored, tmux 3.2 or newer required.",
+                )
+
+        if window_command:
+            tmux_args += (window_command,)
+
+        proc = await self.acmd("new-session", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        session_stdout = proc.stdout[0]
+
+        if env:
+            os.environ["TMUX"] = env
+
+        session_formatters = dict(
+            zip(
+                ["session_id"],
+                session_stdout.split(formats.FORMAT_SEPARATOR),
+                strict=False,
+            ),
+        )
+
+        return Session.from_session_id(
+            server=self,
+            session_id=session_formatters["session_id"],
+        )
+
     @property
     def attached_sessions(self) -> list[Session]:
         """Return active :class:`Session`s.
