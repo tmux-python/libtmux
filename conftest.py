@@ -10,12 +10,15 @@ https://docs.pytest.org/en/stable/deprecations.html
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import typing as t
 
 import pytest
+import pytest_asyncio
 from _pytest.doctest import DoctestItem
 
+from libtmux.common_async import get_version, tmux_cmd_async
 from libtmux.pane import Pane
 from libtmux.pytest_plugin import USING_ZSH
 from libtmux.server import Server
@@ -48,6 +51,11 @@ def add_doctest_fixtures(
         doctest_namespace["pane"] = session.active_pane
         doctest_namespace["request"] = request
 
+        # Add async support for async doctests
+        doctest_namespace["asyncio"] = asyncio
+        doctest_namespace["tmux_cmd_async"] = tmux_cmd_async
+        doctest_namespace["get_version"] = get_version
+
 
 @pytest.fixture(autouse=True)
 def set_home(
@@ -73,3 +81,51 @@ def setup_session(
     """Session-level test configuration for pytest."""
     if USING_ZSH:
         request.getfixturevalue("zshrc")
+
+
+# Async test fixtures
+# These require pytest-asyncio to be installed
+
+
+@pytest_asyncio.fixture
+async def async_server(server: Server):
+    """Async wrapper for sync server fixture.
+
+    Provides async context while using proven sync server isolation.
+    Server has unique socket name from libtmux_test{random}.
+
+    The sync server fixture creates a Server with:
+    - Unique socket name: libtmux_test{8-random-chars}
+    - Automatic cleanup via request.addfinalizer
+    - Complete isolation from developer's tmux sessions
+
+    This wrapper just ensures we're in an async context.
+    All cleanup is handled by the parent sync fixture.
+    """
+    await asyncio.sleep(0)  # Ensure in async context
+    yield server
+    # Cleanup handled by sync fixture's finalizer
+
+
+@pytest_asyncio.fixture
+async def async_test_server(TestServer: t.Callable[..., Server]):
+    """Async wrapper for TestServer factory fixture.
+
+    Returns factory that creates servers with unique sockets.
+    Each call to factory() creates new isolated server.
+
+    The sync TestServer fixture creates a factory that:
+    - Generates unique socket names per call
+    - Tracks all created servers
+    - Cleans up all servers via request.addfinalizer
+
+    Usage in async tests:
+        server1 = async_test_server()  # Creates server with unique socket
+        server2 = async_test_server()  # Creates another with different socket
+
+    This wrapper just ensures we're in an async context.
+    All cleanup is handled by the parent sync fixture.
+    """
+    await asyncio.sleep(0)  # Ensure in async context
+    yield TestServer
+    # Cleanup handled by TestServer's finalizer
