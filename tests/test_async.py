@@ -48,25 +48,19 @@ async def test_server_acmd_new_session(server: Server) -> None:
     """Test creating session via Server.acmd().
 
     Safety: Session created in isolated test server only.
+    Cleanup: Server fixture finalizer handles session destruction.
     """
     result = await server.acmd("new-session", "-d", "-P", "-F#{session_id}")
     session_id = result.stdout[0]
 
-    try:
-        # Verify session was created
-        assert session_id.startswith("$")
-        assert server.has_session(session_id)
+    # Verify session was created
+    assert session_id.startswith("$")
+    assert server.has_session(session_id)
 
-        # Verify we can get the session object
-        session = Session.from_session_id(session_id=session_id, server=server)
-        assert isinstance(session, Session)
-        assert session.session_id == session_id
-
-    finally:
-        # Cleanup: kill the session we created
-        if server.has_session(session_id):
-            session = Session.from_session_id(session_id=session_id, server=server)
-            await session.acmd("kill-session")
+    # Verify we can get the session object
+    session = Session.from_session_id(session_id=session_id, server=server)
+    assert isinstance(session, Session)
+    assert session.session_id == session_id
 
 
 # ============================================================================
@@ -187,6 +181,7 @@ async def test_concurrent_session_creation(server: Server) -> None:
 
     Safety: All sessions created in isolated test server.
     Demonstrates async benefit: concurrent tmux operations.
+    Cleanup: Server fixture finalizer handles all session destruction.
     """
 
     async def create_session(index: int) -> Session:
@@ -209,24 +204,17 @@ async def test_concurrent_session_creation(server: Server) -> None:
         create_session(3),
     )
 
-    try:
-        # Verify all sessions were created
-        assert len(sessions) == 3
-        assert all(isinstance(s, Session) for s in sessions)
+    # Verify all sessions were created
+    assert len(sessions) == 3
+    assert all(isinstance(s, Session) for s in sessions)
 
-        # Verify all session IDs are unique
-        session_ids = {s.session_id for s in sessions}
-        assert len(session_ids) == 3
+    # Verify all session IDs are unique
+    session_ids = {s.session_id for s in sessions}
+    assert len(session_ids) == 3
 
-        # Verify all sessions exist in server
-        for session in sessions:
-            assert server.has_session(str(session.session_id))
-
-    finally:
-        # Cleanup: kill all created sessions
-        for session in sessions:
-            if server.has_session(str(session.session_id)):
-                await session.acmd("kill-session")
+    # Verify all sessions exist in server
+    for session in sessions:
+        assert server.has_session(str(session.session_id))
 
 
 # ============================================================================
@@ -259,3 +247,51 @@ async def test_async_session_not_found(server: Server) -> None:
 
     # has-session returns 1 when session doesn't exist
     assert result.returncode != 0
+
+
+# ============================================================================
+# Integration Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_async_full_workflow(server: Server) -> None:
+    """Test complete async workflow: session -> window -> pane -> command.
+
+    Safety: All objects created in isolated test server.
+    Demonstrates comprehensive async tmux manipulation.
+    Cleanup: Server fixture finalizer handles all resource destruction.
+    """
+    # Create session
+    result = await server.acmd("new-session", "-d", "-P", "-F#{session_id}")
+    session_id = result.stdout[0]
+    session = Session.from_session_id(session_id=session_id, server=server)
+
+    # Verify session created
+    assert session_id.startswith("$")
+    assert server.has_session(session_id)
+
+    # Create window in session
+    result = await session.acmd("new-window", "-P", "-F#{window_id}")
+    window_id = result.stdout[0]
+    window = Window.from_window_id(window_id=window_id, server=server)
+    assert window_id.startswith("@")
+
+    # Split pane in window
+    result = await window.acmd("split-window", "-P", "-F#{pane_id}")
+    pane_id = result.stdout[0]
+    pane = Pane.from_pane_id(pane_id=pane_id, server=server)
+    assert pane_id.startswith("%")
+
+    # Send command to pane
+    await pane.acmd("send-keys", "echo 'integration_test_complete'", "Enter")
+    await asyncio.sleep(0.2)
+
+    # Verify output
+    result = await pane.acmd("capture-pane", "-p")
+    assert any("integration_test_complete" in line for line in result.stdout)
+
+    # Verify complete object hierarchy
+    assert session.session_id == session_id
+    assert window.window_id == window_id
+    assert pane.pane_id == pane_id
