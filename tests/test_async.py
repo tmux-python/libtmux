@@ -38,7 +38,7 @@ async def test_server_acmd_basic(server: Server) -> None:
     result = await server.acmd("list-sessions")
     # returncode may be 0 or 1 depending on whether sessions exist
     # The important thing is the command executes asynchronously
-    assert result.returncode in (0, 1)
+    assert result.returncode in {0, 1}
     assert isinstance(result.stdout, list)
     assert isinstance(result.stderr, list)
 
