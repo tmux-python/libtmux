@@ -441,6 +441,24 @@ automatically sent, the leading space character prevents adding it to the user's
 shell history. Omitting `enter=false` means the default behavior (sending the
 command) is done, without needing to use `pane.enter()` after.
 
+## Examples
+
+Want to see more? Check out our example scripts:
+
+- **[examples/async_demo.py]** - Async command execution with performance benchmarks
+- **[examples/hybrid_async_demo.py]** - Both sync and async patterns working together
+- **[More examples]** - Full examples directory on GitHub
+
+For async-specific guides, see:
+
+- {doc}`/quickstart_async` - Async quickstart tutorial
+- {doc}`/topics/async_programming` - Comprehensive async guide
+- {doc}`/api/common_async` - Async API reference
+
+[examples/async_demo.py]: https://github.com/tmux-python/libtmux/blob/master/examples/async_demo.py
+[examples/hybrid_async_demo.py]: https://github.com/tmux-python/libtmux/blob/master/examples/hybrid_async_demo.py
+[More examples]: https://github.com/tmux-python/libtmux/tree/master/examples
+
 ## Final notes
 
 These objects created use tmux's internal usage of ID's to make servers,
