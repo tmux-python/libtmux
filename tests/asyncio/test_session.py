@@ -142,3 +142,144 @@ async def test_parallel_window_queries(session: Session) -> None:
     for info in window_infos:
         assert info["id"].startswith("@")
         assert int(info["panes"]) >= 1
+
+
+# ============================================================================
+# Session.anew_window() Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_anew_window_basic(session: Session) -> None:
+    """Test Session.anew_window() creates window.
+
+    Safety: Window created in isolated test session.
+    Demonstrates: High-level async window creation API.
+    """
+    from libtmux.window import Window
+
+    # Get initial window count
+    initial_result = await session.acmd("list-windows", "-F#{window_id}")
+    initial_count = len(initial_result.stdout)
+
+    # Create new window using anew_window()
+    window = await session.anew_window("test_window")
+
+    # Verify window created with correct properties
+    assert isinstance(window, Window)
+    assert window.window_id.startswith("@")
+
+    # Verify window was added to session
+    result = await session.acmd("list-windows", "-F#{window_id}")
+    assert len(result.stdout) == initial_count + 1
+    assert window.window_id in result.stdout
+
+
+@pytest.mark.asyncio
+async def test_anew_window_with_directory(session: Session) -> None:
+    """Test Session.anew_window() with start_directory.
+
+    Safety: Window created in isolated test session.
+    Real-world pattern: Create window in specific working directory.
+    """
+    import asyncio
+    from pathlib import Path
+
+    from libtmux.window import Window
+
+    # Use /tmp as start directory
+    start_dir = Path("/tmp")
+
+    window = await session.anew_window(
+        "dir_window",
+        start_directory=start_dir,
+    )
+
+    # Verify window created
+    assert isinstance(window, Window)
+
+    # Verify working directory by sending pwd command
+    pane = window.active_pane
+    assert pane is not None
+
+    # Clear pane first to ensure clean output
+    await pane.acmd("send-keys", "clear", "Enter")
+    await asyncio.sleep(0.1)
+
+    # Send pwd command
+    await pane.acmd("send-keys", "pwd", "Enter")
+    await asyncio.sleep(0.3)
+
+    # Capture output
+    result = await pane.acmd("capture-pane", "-p", "-S", "-")
+    # Check if /tmp appears in any line of output
+    output_text = "\n".join(result.stdout)
+    assert "/tmp" in output_text, f"Expected /tmp in output, got: {output_text}"
+
+
+@pytest.mark.asyncio
+async def test_anew_window_concurrent(session: Session) -> None:
+    """Test creating multiple windows concurrently via anew_window().
+
+    Safety: All windows created in isolated test session.
+    Demonstrates: Async benefit - concurrent high-level window creation.
+    """
+    import asyncio
+
+    from libtmux.window import Window
+
+    async def create_window(name: str) -> Window:
+        """Create window using anew_window()."""
+        return await session.anew_window(name)
+
+    # Create 4 windows concurrently
+    windows = await asyncio.gather(
+        create_window("window_1"),
+        create_window("window_2"),
+        create_window("window_3"),
+        create_window("window_4"),
+    )
+
+    # Verify all windows created
+    assert len(windows) == 4
+    assert all(isinstance(w, Window) for w in windows)
+
+    # Verify all have unique IDs
+    window_ids = {w.window_id for w in windows}
+    assert len(window_ids) == 4
+
+    # Verify all exist in session
+    result = await session.acmd("list-windows", "-F#{window_id}")
+    for window in windows:
+        assert window.window_id in result.stdout
+
+
+# ============================================================================
+# Session.arename_session() Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_arename_session(session: Session) -> None:
+    """Test Session.arename_session() renames session.
+
+    Safety: Session renamed in isolated test server.
+    Demonstrates: High-level async session rename API.
+    """
+    # Get original name
+    original_name = session.session_name
+
+    # Rename session
+    new_name = "renamed_async_session"
+    result_session = await session.arename_session(new_name)
+
+    # Verify return value is the session object
+    assert result_session is session
+
+    # Verify session was renamed
+    session.refresh()
+    assert session.session_name == new_name
+
+    # Verify old name is gone, new name exists
+    assert not session.server.has_session(original_name)
+    assert session.server.has_session(new_name)
