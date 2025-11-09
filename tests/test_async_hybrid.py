@@ -52,11 +52,7 @@ async def test_both_patterns_same_server(async_server: Server) -> None:
     # Server should see both
     assert len(async_server.sessions) == 2
 
-    # Cleanup both concurrently (mixing patterns!)
-    await asyncio.gather(
-        async_server.acmd("kill-session", "-t", session_a),
-        tmux_cmd_async("-L", socket_name, "kill-session", "-t", session_b),
-    )
+    # No manual cleanup needed - server fixture finalizer handles it
 
 
 @pytest.mark.asyncio
@@ -131,13 +127,7 @@ async def test_concurrent_mixed_patterns(async_test_server: Callable[..., Server
     for session_id in session_ids:
         assert server.has_session(session_id)
 
-    # Cleanup with mixed patterns
-    await asyncio.gather(
-        server.acmd("kill-session", "-t", session_ids[0]),
-        server.acmd("kill-session", "-t", session_ids[1]),
-        tmux_cmd_async("-L", socket_name, "kill-session", "-t", session_ids[2]),
-        tmux_cmd_async("-L", socket_name, "kill-session", "-t", session_ids[3]),
-    )
+    # No manual cleanup needed - server fixture finalizer handles it
 
 
 @pytest.mark.asyncio
@@ -312,5 +302,4 @@ async def test_hybrid_error_handling(async_server: Server) -> None:
     assert "unknown command" in result_a.stderr[0].lower()
     assert "unknown command" in result_b.stderr[0].lower()
 
-    # Cleanup
-    await async_server.acmd("kill-session", "-t", session_id)
+    # No manual cleanup needed - server fixture finalizer handles it

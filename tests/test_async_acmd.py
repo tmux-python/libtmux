@@ -43,8 +43,7 @@ async def test_server_acmd_basic(async_server: Server) -> None:
     session_id = result.stdout[0]
     assert async_server.has_session(session_id)
 
-    # Cleanup
-    await async_server.acmd("kill-session", "-t", session_id)
+    # No manual cleanup needed - server fixture finalizer kills entire server
 
 
 @pytest.mark.asyncio
@@ -133,13 +132,10 @@ async def test_concurrent_acmd_operations(async_server: Server) -> None:
     for session_id in session_ids:
         assert async_server.has_session(session_id)
 
-    # Cleanup concurrently (also demonstrates async)
-    await asyncio.gather(
-        *[async_server.acmd("kill-session", "-t", sid) for sid in session_ids],
-    )
-
     # Performance logging (should be faster than sequential)
     print(f"\nConcurrent operations completed in {elapsed:.4f}s")
+
+    # No manual cleanup needed - server fixture finalizer handles it
 
 
 @pytest.mark.asyncio
@@ -163,8 +159,7 @@ async def test_acmd_error_handling(async_server: Server) -> None:
     assert result.returncode != 0
     assert len(result.stderr) > 0
 
-    # Cleanup
-    await async_server.acmd("kill-session", "-t", session_id)
+    # No manual cleanup needed - server fixture finalizer handles it
 
 
 @pytest.mark.asyncio
@@ -215,10 +210,7 @@ async def test_multiple_servers_acmd(async_test_server: Callable[..., Server]) -
     # Verify actual isolation - sessions are truly separate
     assert session1.session_name == session2.session_name == "test"
 
-    # Cleanup happens automatically via TestServer finalizer
-    # But we can also do it explicitly
-    await server1.acmd("kill-session", "-t", "test")
-    await server2.acmd("kill-session", "-t", "test")
+    # No manual cleanup needed - TestServer finalizer kills all servers
 
 
 @pytest.mark.asyncio
