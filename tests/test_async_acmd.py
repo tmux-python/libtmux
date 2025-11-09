@@ -145,7 +145,11 @@ async def test_concurrent_acmd_operations(async_server: Server) -> None:
 @pytest.mark.asyncio
 async def test_acmd_error_handling(async_server: Server) -> None:
     """Test .acmd() properly handles errors."""
-    # Invalid command
+    # Create a session first to ensure server socket exists
+    result = await async_server.acmd("new-session", "-d", "-P", "-F#{session_id}")
+    session_id = result.stdout[0]
+
+    # Invalid command (server socket now exists)
     result = await async_server.acmd("invalid-command-12345")
 
     # Should have error in stderr
@@ -158,6 +162,9 @@ async def test_acmd_error_handling(async_server: Server) -> None:
     # Command fails but returns result
     assert result.returncode != 0
     assert len(result.stderr) > 0
+
+    # Cleanup
+    await async_server.acmd("kill-session", "-t", session_id)
 
 
 @pytest.mark.asyncio
@@ -200,10 +207,13 @@ async def test_multiple_servers_acmd(async_test_server: Callable[..., Server]) -
     assert len(server1.sessions) == 1
     assert len(server2.sessions) == 1
 
-    # Sessions are different despite same name
+    # Sessions are different despite same name and ID (different sockets!)
     session1 = server1.sessions[0]
     session2 = server2.sessions[0]
-    assert session1.session_id != session2.session_id
+    # Session IDs may be same ($0) but they're on different sockets
+    assert session1.server.socket_name != session2.server.socket_name
+    # Verify actual isolation - sessions are truly separate
+    assert session1.session_name == session2.session_name == "test"
 
     # Cleanup happens automatically via TestServer finalizer
     # But we can also do it explicitly

@@ -156,7 +156,18 @@ async def test_tmux_cmd_async_error_handling(async_server: Server) -> None:
     socket_name = async_server.socket_name
     assert socket_name is not None
 
-    # Invalid command
+    # Create a session first to ensure server socket exists
+    result = await tmux_cmd_async(
+        "-L",
+        socket_name,
+        "new-session",
+        "-d",
+        "-P",
+        "-F#{session_id}",
+    )
+    session_id = result.stdout[0]
+
+    # Invalid command (server socket now exists)
     result = await tmux_cmd_async("-L", socket_name, "invalid-command-99999")
 
     # Should have error
@@ -175,6 +186,9 @@ async def test_tmux_cmd_async_error_handling(async_server: Server) -> None:
     # Command fails
     assert result.returncode != 0
     assert len(result.stderr) > 0
+
+    # Cleanup
+    await tmux_cmd_async("-L", socket_name, "kill-session", "-t", session_id)
 
 
 @pytest.mark.asyncio
@@ -219,10 +233,11 @@ async def test_tmux_cmd_async_with_multiple_servers(
     assert result1.returncode == 0
     assert result2.returncode == 0
 
-    # Different session IDs despite same name
-    assert result1.stdout[0] != result2.stdout[0]
+    # Session IDs may be same ($0 on each socket) but sockets are different
+    # The key test is isolation, not ID uniqueness
+    assert socket1 != socket2  # Different sockets = true isolation
 
-    # Verify isolation
+    # Verify isolation - each server sees only its own session
     assert server1.has_session("test")
     assert server2.has_session("test")
     assert len(server1.sessions) == 1
