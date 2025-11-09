@@ -11,24 +11,30 @@ Async Support Patterns
 
 libtmux provides two complementary async patterns:
 
-**Pattern A**: `.acmd()` methods on Server/Session/Window/Pane objects:
+**Pattern A**: `.acmd()` methods on Server/Session/Window/Pane objects::
 
->>> import asyncio
->>> async def example():
-...     server = libtmux.Server()
-...     result = await server.acmd('list-sessions')
-...     return result.stdout
->>> asyncio.run(example())  # doctest: +SKIP
-[...]
+    import asyncio
+    import libtmux
 
-**Pattern B**: Direct async execution with `tmux_cmd_async()`:
+    async def example():
+        server = libtmux.Server()
+        result = await server.acmd('list-sessions')
+        return result.stdout
 
->>> import asyncio
->>> async def example():
-...     result = await tmux_cmd_async('list-sessions')
-...     return result.stdout
->>> asyncio.run(example())  # doctest: +SKIP
-[...]
+    asyncio.run(example())
+    # Returns: [...]
+
+**Pattern B**: Direct async execution with `tmux_cmd_async()`::
+
+    import asyncio
+    from libtmux.common_async import tmux_cmd_async
+
+    async def example():
+        result = await tmux_cmd_async('list-sessions')
+        return result.stdout
+
+    asyncio.run(example())
+    # Returns: [...]
 
 Both patterns preserve 100% of the synchronous API. See the quickstart guide
 for more information: https://libtmux.git-pull.com/quickstart_async.html
@@ -36,17 +42,21 @@ for more information: https://libtmux.git-pull.com/quickstart_async.html
 Performance
 -----------
 
-Async provides significant performance benefits for concurrent operations:
+Async provides significant performance benefits for concurrent operations::
 
->>> import asyncio
->>> async def concurrent():
-...     # 2-3x faster than sequential execution
-...     results = await asyncio.gather(
-...         tmux_cmd_async('list-sessions'),
-...         tmux_cmd_async('list-windows'),
-...         tmux_cmd_async('list-panes'),
-...     )
->>> asyncio.run(concurrent())  # doctest: +SKIP
+    import asyncio
+    from libtmux.common_async import tmux_cmd_async
+
+    async def concurrent():
+        # 2-3x faster than sequential execution
+        results = await asyncio.gather(
+            tmux_cmd_async('list-sessions'),
+            tmux_cmd_async('list-windows'),
+            tmux_cmd_async('list-panes'),
+        )
+        return results
+
+    asyncio.run(concurrent())
 
 See Also
 --------
@@ -261,29 +271,37 @@ class tmux_cmd_async:
     >>> asyncio.run(main())
     tmux command returned 2
 
-    **Concurrent Operations**: Execute multiple commands in parallel for 2-3x speedup:
+    **Concurrent Operations**: Execute multiple commands in parallel for 2-3x speedup::
 
-    >>> async def concurrent_example():
-    ...     # All commands run concurrently
-    ...     results = await asyncio.gather(
-    ...         tmux_cmd_async('list-sessions'),
-    ...         tmux_cmd_async('list-windows'),
-    ...         tmux_cmd_async('list-panes'),
-    ...     )
-    ...     return [len(r.stdout) for r in results]
-    >>> asyncio.run(concurrent_example())  # doctest: +SKIP
-    [...]
+        import asyncio
+        from libtmux.common_async import tmux_cmd_async
 
-    **Error Handling**: Check return codes and stderr:
+        async def concurrent_example():
+            # All commands run concurrently
+            results = await asyncio.gather(
+                tmux_cmd_async('list-sessions'),
+                tmux_cmd_async('list-windows'),
+                tmux_cmd_async('list-panes'),
+            )
+            return [len(r.stdout) for r in results]
 
-    >>> async def check_session():
-    ...     result = await tmux_cmd_async('has-session', '-t', 'my_session')
-    ...     if result.returncode != 0:
-    ...         print("Session doesn't exist")
-    ...         return False
-    ...     return True
-    >>> asyncio.run(check_session())  # doctest: +SKIP
-    False
+        asyncio.run(concurrent_example())
+        # Returns: [...]
+
+    **Error Handling**: Check return codes and stderr::
+
+        import asyncio
+        from libtmux.common_async import tmux_cmd_async
+
+        async def check_session():
+            result = await tmux_cmd_async('has-session', '-t', 'my_session')
+            if result.returncode != 0:
+                print("Session doesn't exist")
+                return False
+            return True
+
+        asyncio.run(check_session())
+        # Returns: False
 
     Equivalent to:
 
@@ -407,25 +425,32 @@ async def get_version() -> LooseVersion:
 
     Examples
     --------
-    Get tmux version asynchronously:
+    Get tmux version asynchronously::
 
-    >>> import asyncio
-    >>> async def check_version():
-    ...     version = await get_version()
-    ...     print(f"tmux version: {version}")
-    >>> asyncio.run(check_version())  # doctest: +SKIP
-    tmux version: ...
+        import asyncio
+        from libtmux.common_async import get_version
 
-    Use in concurrent operations:
+        async def check_version():
+            version = await get_version()
+            print(f"tmux version: {version}")
 
-    >>> async def check_all():
-    ...     version, sessions = await asyncio.gather(
-    ...         get_version(),
-    ...         tmux_cmd_async('list-sessions'),
-    ...     )
-    ...     return version, len(sessions.stdout)
-    >>> asyncio.run(check_all())  # doctest: +SKIP
-    (..., ...)
+        asyncio.run(check_version())
+        # Prints: tmux version: 3.4
+
+    Use in concurrent operations::
+
+        import asyncio
+        from libtmux.common_async import get_version, tmux_cmd_async
+
+        async def check_all():
+            version, sessions = await asyncio.gather(
+                get_version(),
+                tmux_cmd_async('list-sessions'),
+            )
+            return version, len(sessions.stdout)
+
+        asyncio.run(check_all())
+        # Returns: (LooseVersion('3.4'), 2)
 
     Returns
     -------
