@@ -292,6 +292,159 @@ class Session(Obj, EnvironmentMixin):
             target = self.session_id
         return await self.server.acmd(cmd, *args, target=target)
 
+    async def arename_session(self, new_name: str) -> Session:
+        """Rename session asynchronously and return session object.
+
+        Parameters
+        ----------
+        new_name : str
+            new session name
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+
+        Examples
+        --------
+        >>> await session.arename_session("new_name")
+        Session($1 new_name)
+        """
+        session_check_name(new_name)
+
+        proc = await self.acmd("rename-session", new_name)
+
+        if proc.stderr:
+            if has_version("2.7") and "no current client" in proc.stderr:
+                """tmux 2.7 raises "no current client" warning on BSD systems.
+
+                Should be fixed next release:
+
+                - https://www.mail-archive.com/tech@openbsd.org/msg45186.html
+                - https://marc.info/?l=openbsd-cvs&m=152183263526828&w=2
+                """
+            else:
+                raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+
+        return self
+
+    async def anew_window(
+        self,
+        window_name: str | None = None,
+        *,
+        start_directory: StrPath | None = None,
+        attach: bool = False,
+        window_index: str = "",
+        window_shell: str | None = None,
+        environment: dict[str, str] | None = None,
+        direction: WindowDirection | None = None,
+        target_window: str | None = None,
+    ) -> Window:
+        """Create new window asynchronously, returns new :class:`Window`.
+
+        By default, this will make the window active. For the new window
+        to be created and not set to current, pass in ``attach=False``.
+
+        Parameters
+        ----------
+        window_name : str, optional
+        start_directory : str, optional
+            working directory in which the new window is created.
+        attach : bool, optional
+            make new window the current window after creating it, default True.
+        window_index : str
+            create the new window at the given index position. Default is empty
+            string which will create the window in the next available position.
+        window_shell : str, optional
+            execute a command on starting the window.  The window will close
+            when the command exits.
+
+        direction : WindowDirection, optional
+            Insert window before or after target window (tmux 3.2+).
+
+        target_window : str, optional
+            Used by :meth:`Window.new_window` to specify the target window.
+
+        Returns
+        -------
+        :class:`Window`
+            The newly created window.
+
+        Examples
+        --------
+        >>> window = await session.anew_window(window_name='My Window')
+        >>> window
+        Window(@... 2:My Window, Session($1 libtmux_...))
+        """
+        window_args: tuple[str, ...] = ()
+
+        if not attach:
+            window_args += ("-d",)
+
+        window_args += ("-P",)
+
+        # Catch empty string and default (`None`)
+        if start_directory:
+            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
+            start_directory = pathlib.Path(start_directory).expanduser()
+            window_args += (f"-c{start_directory}",)
+
+        window_args += ("-F#{window_id}",)  # output
+        if window_name is not None and isinstance(window_name, str):
+            window_args += ("-n", window_name)
+
+        if environment:
+            if has_gte_version("3.0"):
+                for k, v in environment.items():
+                    window_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Environment flag ignored, requires tmux 3.0 or newer.",
+                )
+
+        if direction is not None:
+            if has_gte_version("3.2"):
+                window_args += (WINDOW_DIRECTION_FLAG_MAP[direction],)
+            else:
+                logger.warning(
+                    "Direction flag ignored, requires tmux 3.1 or newer.",
+                )
+
+        target: str | None = None
+        if window_index is not None:
+            # empty string for window_index will use the first one available
+            target = f"{self.session_id}:{window_index}"
+        if target_window:
+            if has_gte_version("3.2"):
+                target = target_window
+            else:
+                logger.warning(
+                    "Window target ignored, requires tmux 3.1 or newer.",
+                )
+        elif window_index is not None:
+            # empty string for window_index will use the first one available
+            window_args += (f"-t{self.session_id}:{window_index}",)
+
+        if window_shell:
+            window_args += (window_shell,)
+
+        cmd = await self.acmd("new-window", *window_args, target=target)
+
+        if cmd.stderr:
+            raise exc.LibTmuxException(cmd.stderr)
+
+        window_output = cmd.stdout[0]
+
+        window_formatters = dict(
+            zip(["window_id"], window_output.split(FORMAT_SEPARATOR), strict=False),
+        )
+
+        return Window.from_window_id(
+            server=self.server,
+            window_id=window_formatters["window_id"],
+        )
+
     """
     Commands (tmux-like)
     """
