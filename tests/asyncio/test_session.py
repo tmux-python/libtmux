@@ -7,12 +7,32 @@ Socket names: libtmux_test{8_random_chars} - never affects developer sessions.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pytest
 
 if TYPE_CHECKING:
     from libtmux.session import Session
+
+
+@dataclass(slots=True)
+class WindowInfo:
+    """Minimal window details fetched concurrently during tests."""
+
+    id: str
+    name: str
+    panes: int
+
+
+@dataclass(slots=True)
+class ProjectSessionStatus:
+    """Summary of session setup used for verification."""
+
+    session_id: str
+    name: str
+    window_count: int
+
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +137,7 @@ async def test_parallel_window_queries(session: Session) -> None:
     result = await session.acmd("list-windows", "-F#{window_id}")
     window_ids = result.stdout
 
-    async def get_window_info(window_id: str) -> dict[str, str]:
+    async def get_window_info(window_id: str) -> WindowInfo:
         """Get window name and pane count."""
         result = await session.acmd(
             "display-message",
@@ -128,20 +148,18 @@ async def test_parallel_window_queries(session: Session) -> None:
         )
         output = result.stdout[0]
         parts = output.split(":")
-        return {
-            "id": parts[0],
-            "name": parts[1],
-            "panes": parts[2],
-        }
+        return WindowInfo(id=parts[0], name=parts[1], panes=int(parts[2]))
 
     # Query all windows concurrently
-    window_infos = await asyncio.gather(*[get_window_info(wid) for wid in window_ids])
+    window_infos: list[WindowInfo] = await asyncio.gather(
+        *[get_window_info(wid) for wid in window_ids]
+    )
 
     # Verify all queries succeeded
     assert len(window_infos) >= 3
     for info in window_infos:
-        assert info["id"].startswith("@")
-        assert int(info["panes"]) >= 1
+        assert info.id.startswith("@")
+        assert info.panes >= 1
 
 
 # ============================================================================
@@ -167,12 +185,14 @@ async def test_anew_window_basic(session: Session) -> None:
 
     # Verify window created with correct properties
     assert isinstance(window, Window)
-    assert window.window_id.startswith("@")
+    window_id = window.window_id
+    assert window_id is not None
+    assert window_id.startswith("@")
 
     # Verify window was added to session
     result = await session.acmd("list-windows", "-F#{window_id}")
     assert len(result.stdout) == initial_count + 1
-    assert window.window_id in result.stdout
+    assert window_id in result.stdout
 
 
 @pytest.mark.asyncio
@@ -245,13 +265,16 @@ async def test_anew_window_concurrent(session: Session) -> None:
     assert all(isinstance(w, Window) for w in windows)
 
     # Verify all have unique IDs
-    window_ids = {w.window_id for w in windows}
+    window_ids: set[str] = set()
+    for window in windows:
+        assert window.window_id is not None
+        window_ids.add(window.window_id)
     assert len(window_ids) == 4
 
     # Verify all exist in session
     result = await session.acmd("list-windows", "-F#{window_id}")
-    for window in windows:
-        assert window.window_id in result.stdout
+    for window_id in window_ids:
+        assert window_id in result.stdout
 
 
 # ============================================================================
@@ -268,6 +291,7 @@ async def test_arename_session(session: Session) -> None:
     """
     # Get original name
     original_name = session.session_name
+    assert original_name is not None
 
     # Rename session
     new_name = "renamed_async_session"
@@ -278,7 +302,9 @@ async def test_arename_session(session: Session) -> None:
 
     # Verify session was renamed
     session.refresh()
-    assert session.session_name == new_name
+    current_name = session.session_name
+    assert current_name is not None
+    assert current_name == new_name
 
     # Verify old name is gone, new name exists
     assert not session.server.has_session(original_name)
