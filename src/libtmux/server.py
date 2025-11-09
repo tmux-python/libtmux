@@ -832,6 +832,10 @@ class Server(
         Returns
         -------
         bool
+
+        See Also
+        --------
+        :meth:`ahas_session` : Async version of this method
         """
         session_check_name(target_session)
 
@@ -2366,6 +2370,10 @@ class Server(
         Raises
         ------
         :exc:`exc.BadSessionName`
+
+        See Also
+        --------
+        :meth:`anew_session` : Async version of this method
 
         Examples
         --------
