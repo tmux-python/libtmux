@@ -101,6 +101,7 @@ pane_interaction
 floating_panes
 workspace_setup
 automation_patterns
+async_programming
 context_managers
 options_and_hooks
 clients
