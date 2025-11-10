@@ -279,3 +279,188 @@ async def test_async_command_timeout_handling(server: Server) -> None:
     # All should succeed with reasonable timeout
     assert len(results) == 3
     assert all(success for _, success in results)
+
+
+# ============================================================================
+# Async Pane Method Integration Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_async_pane_workflow_complete(server: Server) -> None:
+    """Test complete pane lifecycle with new async methods.
+
+    Safety: All operations in isolated test server.
+    Demonstrates: Full async workflow using asend_keys, acapture_pane, asplit.
+    Pattern: Create -> send -> capture -> split -> concurrent ops -> cleanup.
+    """
+    # Create session
+    session = await server.anew_session("pane_workflow_test")
+
+    # Get active pane
+    pane1 = session.active_pane
+    assert pane1 is not None
+
+    # Send command using asend_keys
+    await pane1.asend_keys('echo "workflow_step_1"')
+    await asyncio.sleep(0.2)
+
+    # Capture output using acapture_pane
+    output1 = await pane1.acapture_pane()
+    assert any("workflow_step_1" in line for line in output1)
+
+    # Split pane using asplit
+    pane2 = await pane1.asplit()
+    assert pane2 is not None
+    assert pane2.pane_id != pane1.pane_id
+
+    # Verify both panes exist
+    window = session.active_window
+    assert len(window.panes) == 2
+
+    # Send different commands to each pane concurrently
+    await asyncio.gather(
+        pane1.asend_keys('echo "pane1_data"'),
+        pane2.asend_keys('echo "pane2_data"'),
+    )
+    await asyncio.sleep(0.3)
+
+    # Capture outputs concurrently
+    outputs = await asyncio.gather(
+        pane1.acapture_pane(),
+        pane2.acapture_pane(),
+    )
+
+    # Verify both outputs
+    assert any("pane1_data" in line for line in outputs[0])
+    assert any("pane2_data" in line for line in outputs[1])
+
+
+@pytest.mark.asyncio
+async def test_multi_window_pane_automation(server: Server) -> None:
+    """Test complex multi-window, multi-pane async automation.
+
+    Safety: All operations in isolated test server.
+    Demonstrates: Large-scale concurrent pane manipulation.
+    Pattern: 3 windows × 3 panes = 9 panes, all managed concurrently.
+    """
+    # Create session
+    session = await server.anew_session("multi_window_automation")
+
+    # Create 3 windows concurrently
+    windows_data = await asyncio.gather(
+        session.anew_window(window_name="window1"),
+        session.anew_window(window_name="window2"),
+        session.anew_window(window_name="window3"),
+    )
+
+    # Each window should have 1 pane initially
+    all_panes = []
+
+    # For each window, split into 3 panes total
+    for i, window in enumerate(windows_data):
+        base_pane = window.active_pane
+
+        # Create 2 more panes (total 3 per window)
+        from libtmux.pane import PaneDirection
+
+        new_panes = await asyncio.gather(
+            base_pane.asplit(direction=PaneDirection.Right),
+            base_pane.asplit(direction=PaneDirection.Below),
+        )
+
+        # Collect all 3 panes from this window
+        all_panes.extend([base_pane] + list(new_panes))
+
+    # Verify we have 9 panes total (3 windows × 3 panes)
+    assert len(all_panes) == 9
+
+    # Send unique commands to all 9 panes concurrently
+    send_tasks = [
+        pane.asend_keys(f'echo "pane_{i}_output"')
+        for i, pane in enumerate(all_panes)
+    ]
+    await asyncio.gather(*send_tasks)
+    await asyncio.sleep(0.4)
+
+    # Capture output from all 9 panes concurrently
+    outputs = await asyncio.gather(
+        *[pane.acapture_pane() for pane in all_panes]
+    )
+
+    # Verify all panes have correct output
+    assert len(outputs) == 9
+    for i, output in enumerate(outputs):
+        assert any(f"pane_{i}_output" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_pane_monitoring_dashboard(server: Server) -> None:
+    """Test monitoring dashboard pattern with async pane methods.
+
+    Safety: All operations in isolated test server.
+    Demonstrates: Real-world monitoring use case with periodic capture.
+    Pattern: 2x3 grid of panes, periodic concurrent monitoring.
+    """
+    # Create session
+    session = await server.anew_session("monitoring_dashboard")
+    window = session.active_window
+
+    # Create 2x3 grid (6 panes total)
+    # Start with 1 pane, split to make 6
+    base_pane = window.active_pane
+
+    from libtmux.pane import PaneDirection
+
+    # Create top row (3 panes)
+    pane2 = await base_pane.asplit(direction=PaneDirection.Right)
+    pane3 = await base_pane.asplit(direction=PaneDirection.Right)
+
+    # Create bottom row (3 more panes)
+    pane4 = await base_pane.asplit(direction=PaneDirection.Below)
+    pane5 = await pane2.asplit(direction=PaneDirection.Below)
+    pane6 = await pane3.asplit(direction=PaneDirection.Below)
+
+    all_panes = [base_pane, pane2, pane3, pane4, pane5, pane6]
+
+    # Verify grid created
+    assert len(window.panes) == 6
+
+    # Send "monitoring" commands to each pane
+    monitor_commands = [
+        'echo "CPU: 45%"',
+        'echo "Memory: 60%"',
+        'echo "Disk: 30%"',
+        'echo "Network: 100Mbps"',
+        'echo "Processes: 150"',
+        'echo "Uptime: 5 days"',
+    ]
+
+    await asyncio.gather(
+        *[
+            pane.asend_keys(cmd)
+            for pane, cmd in zip(all_panes, monitor_commands, strict=False)
+        ]
+    )
+    await asyncio.sleep(0.3)
+
+    # Periodically capture all panes (simulate 3 monitoring rounds)
+    for round_num in range(3):
+        # Capture all panes concurrently
+        outputs = await asyncio.gather(*[pane.acapture_pane() for pane in all_panes])
+
+        # Verify all panes have output
+        assert len(outputs) == 6
+
+        # Verify specific monitoring data appears
+        assert any("CPU:" in line for line in outputs[0])
+        assert any("Memory:" in line for line in outputs[1])
+        assert any("Disk:" in line for line in outputs[2])
+
+        # Wait before next monitoring round
+        if round_num < 2:
+            await asyncio.sleep(0.2)
+
+    # Verify dashboard functional after 3 rounds
+    final_outputs = await asyncio.gather(*[pane.acapture_pane() for pane in all_panes])
+    assert all(len(output) > 0 for output in final_outputs)
