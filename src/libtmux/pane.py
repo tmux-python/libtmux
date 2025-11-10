@@ -838,6 +838,10 @@ class Pane(Obj):
             Negative numbers are lines in the history.
             `-` is the end of the visible pane
             Default: None
+
+        See Also
+        --------
+        :meth:`acapture_pane` : Async version of this method
         """
         cmd = ["capture-pane", "-p"]
         if start is not None:
@@ -872,6 +876,10 @@ class Pane(Obj):
                Default changed from True to False.
         literal : bool, optional
             Send keys literally, default False.
+
+        See Also
+        --------
+        :meth:`asend_keys` : Async version of this method
 
         Examples
         --------
@@ -1089,6 +1097,10 @@ class Pane(Obj):
             Cell/row or percentage to occupy with respect to current window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+
+        See Also
+        --------
+        :meth:`asplit` : Async version of this method
 
         Examples
         --------
