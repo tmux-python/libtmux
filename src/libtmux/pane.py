@@ -942,6 +942,10 @@ class Pane(
         list[str] or None
             Captured pane content, or ``None`` when *to_buffer* is set.
 
+        See Also
+        --------
+        :meth:`acapture_pane` : Async version of this method
+
         Examples
         --------
         >>> pane = window.split(shell='sh')
@@ -1062,6 +1066,10 @@ class Pane(
             Handle keys as key names (``-K`` flag). Requires tmux 3.4+.
 
             .. versionadded:: 0.56
+
+        See Also
+        --------
+        :meth:`asend_keys` : Async version of this method
 
         Examples
         --------
@@ -1514,6 +1522,10 @@ class Pane(
             .. versionadded:: 0.56
         environment: dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
+
+        See Also
+        --------
+        :meth:`asplit` : Async version of this method
 
         Examples
         --------
