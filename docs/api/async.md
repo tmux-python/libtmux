@@ -121,6 +121,101 @@ await window.akill(all_except=True)
 
 See {meth}`Window.akill` for full documentation.
 
+### Pane Async Methods
+
+```{eval-rst}
+.. autosummary::
+   :toctree: _autosummary
+
+   Pane.asend_keys
+   Pane.acapture_pane
+   Pane.asplit
+```
+
+#### Pane.asend_keys()
+
+Send keys to pane asynchronously, enabling non-blocking command execution.
+
+```python
+# Basic usage
+await pane.asend_keys('echo "Hello"', enter=True)
+
+# Send without executing
+await pane.asend_keys('ls -la', enter=False)
+
+# Literal mode (special chars as text)
+await pane.asend_keys('C-c', literal=True)
+
+# Suppress shell history
+await pane.asend_keys('secret_command', suppress_history=True)
+
+# Concurrent execution across multiple panes
+await asyncio.gather(
+    pane1.asend_keys('echo "pane1"'),
+    pane2.asend_keys('echo "pane2"'),
+    pane3.asend_keys('echo "pane3"'),
+)
+```
+
+See {meth}`Pane.asend_keys` for full documentation.
+
+#### Pane.acapture_pane()
+
+Capture pane output asynchronously, enabling concurrent monitoring.
+
+```python
+# Capture visible pane
+output = await pane.acapture_pane()
+
+# Capture with history (last 10 lines)
+output = await pane.acapture_pane(start=-10)
+
+# Capture specific range
+output = await pane.acapture_pane(start=0, end=5)
+
+# Capture complete scrollback
+output = await pane.acapture_pane(start="-", end="-")
+
+# Concurrent capture from multiple panes
+outputs = await asyncio.gather(
+    pane1.acapture_pane(),
+    pane2.acapture_pane(),
+    pane3.acapture_pane(),
+)
+```
+
+See {meth}`Pane.acapture_pane` for full documentation.
+
+#### Pane.asplit()
+
+Split pane asynchronously, enabling rapid layout creation.
+
+```python
+# Default split (below)
+new_pane = await pane.asplit()
+
+# Vertical split (right)
+from libtmux.pane import PaneDirection
+new_pane = await pane.asplit(direction=PaneDirection.Right)
+
+# With custom directory and size
+new_pane = await pane.asplit(
+    start_directory='/tmp',
+    size="30%"
+)
+
+# With shell command (auto-closes)
+new_pane = await pane.asplit(shell='echo "done"')
+
+# Concurrent splits for rapid layout
+new_panes = await asyncio.gather(
+    pane.asplit(direction=PaneDirection.Right),
+    pane.asplit(direction=PaneDirection.Below),
+)
+```
+
+See {meth}`Pane.asplit` for full documentation.
+
 ## Usage Patterns
 
 ### Basic Async Pattern
