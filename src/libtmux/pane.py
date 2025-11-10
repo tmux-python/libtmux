@@ -1214,6 +1214,10 @@ class Pane(
         list[str] or None
             Captured pane content, or ``None`` when *to_buffer* is set.
 
+        See Also
+        --------
+        :meth:`acapture_pane` : Async version of this method
+
         Examples
         --------
         >>> pane = window.split(shell='sh')
@@ -1390,6 +1394,10 @@ class Pane(
         ValueError
             If ``cmd`` is ``None`` and no flag-only path is selected
             (``reset``, ``repeat``, or ``copy_mode_cmd``).
+
+        See Also
+        --------
+        :meth:`asend_keys` : Async version of this method
 
         Examples
         --------
@@ -1905,6 +1913,10 @@ class Pane(
         keep : bool, optional
             Keep the pane open until a key is pressed after exit (``-k``).
             Requires tmux 3.7+. These 3.7 flags warn and are ignored below 3.7.
+
+        See Also
+        --------
+        :meth:`asplit` : Async version of this method
 
         Examples
         --------
