@@ -60,7 +60,7 @@ Create a new session asynchronously.
 session = await server.anew_session(
     session_name="my_project",
     start_directory="~/code/myproject",
-    environment={"NODE_ENV": "development"}
+    environment={"NODE_ENV": "development"},
 )
 ```
 
@@ -81,10 +81,7 @@ See {meth}`Server.anew_session` for full documentation.
 Create a new window asynchronously.
 
 ```python
-window = await session.anew_window(
-    window_name="editor",
-    start_directory="/tmp"
-)
+window = await session.anew_window(window_name="editor", start_directory="/tmp")
 ```
 
 See {meth}`Session.anew_window` for full documentation.
@@ -121,6 +118,99 @@ await window.akill(all_except=True)
 
 See {meth}`Window.akill` for full documentation.
 
+### Pane Async Methods
+
+```{eval-rst}
+.. autosummary::
+   :toctree: _autosummary
+
+   Pane.asend_keys
+   Pane.acapture_pane
+   Pane.asplit
+```
+
+#### Pane.asend_keys()
+
+Send keys to pane asynchronously, enabling non-blocking command execution.
+
+```python
+# Basic usage
+await pane.asend_keys('echo "Hello"', enter=True)
+
+# Send without executing
+await pane.asend_keys("ls -la", enter=False)
+
+# Literal mode (special chars as text)
+await pane.asend_keys("C-c", literal=True)
+
+# Suppress shell history
+await pane.asend_keys("secret_command", suppress_history=True)
+
+# Concurrent execution across multiple panes
+await asyncio.gather(
+    pane1.asend_keys('echo "pane1"'),
+    pane2.asend_keys('echo "pane2"'),
+    pane3.asend_keys('echo "pane3"'),
+)
+```
+
+See {meth}`Pane.asend_keys` for full documentation.
+
+#### Pane.acapture_pane()
+
+Capture pane output asynchronously, enabling concurrent monitoring.
+
+```python
+# Capture visible pane
+output = await pane.acapture_pane()
+
+# Capture with history (last 10 lines)
+output = await pane.acapture_pane(start=-10)
+
+# Capture specific range
+output = await pane.acapture_pane(start=0, end=5)
+
+# Capture complete scrollback
+output = await pane.acapture_pane(start="-", end="-")
+
+# Concurrent capture from multiple panes
+outputs = await asyncio.gather(
+    pane1.acapture_pane(),
+    pane2.acapture_pane(),
+    pane3.acapture_pane(),
+)
+```
+
+See {meth}`Pane.acapture_pane` for full documentation.
+
+#### Pane.asplit()
+
+Split pane asynchronously, enabling rapid layout creation.
+
+```python
+# Default split (below)
+new_pane = await pane.asplit()
+
+# Vertical split (right)
+from libtmux.pane import PaneDirection
+
+new_pane = await pane.asplit(direction=PaneDirection.Right)
+
+# With custom directory and size
+new_pane = await pane.asplit(start_directory="/tmp", size="30%")
+
+# With shell command (auto-closes)
+new_pane = await pane.asplit(shell='echo "done"')
+
+# Concurrent splits for rapid layout
+new_panes = await asyncio.gather(
+    pane.asplit(direction=PaneDirection.Right),
+    pane.asplit(direction=PaneDirection.Below),
+)
+```
+
+See {meth}`Pane.asplit` for full documentation.
+
 ## Usage Patterns
 
 ### Basic Async Pattern
@@ -128,6 +218,7 @@ See {meth}`Window.akill` for full documentation.
 ```python
 import asyncio
 from libtmux import Server
+
 
 async def main():
     server = Server()
@@ -142,6 +233,7 @@ async def main():
     exists = await server.ahas_session("my_session")
     print(f"Session exists: {exists}")
 
+
 asyncio.run(main())
 ```
 
@@ -152,22 +244,20 @@ One of the key benefits of async methods is the ability to run multiple operatio
 ```python
 import asyncio
 
+
 async def setup_project_workspace():
     server = Server()
 
     # Create multiple sessions concurrently
     frontend, backend, database = await asyncio.gather(
         server.anew_session(
-            session_name="frontend",
-            start_directory="~/project/frontend"
+            session_name="frontend", start_directory="~/project/frontend"
         ),
         server.anew_session(
-            session_name="backend",
-            start_directory="~/project/backend"
+            session_name="backend", start_directory="~/project/backend"
         ),
         server.anew_session(
-            session_name="database",
-            start_directory="~/project/database"
+            session_name="database", start_directory="~/project/database"
         ),
     )
 
@@ -194,18 +284,17 @@ from libtmux import Server
 app = FastAPI()
 server = Server()
 
+
 @app.post("/sessions/")
 async def create_session(name: str, directory: str = None):
     """Create a tmux session via API."""
-    session = await server.anew_session(
-        session_name=name,
-        start_directory=directory
-    )
+    session = await server.anew_session(session_name=name, start_directory=directory)
 
     return {
         "session_id": session.session_id,
         "session_name": session.session_name,
     }
+
 
 @app.get("/sessions/{name}")
 async def check_session(name: str):
@@ -220,28 +309,32 @@ async def check_session(name: str):
 from aiohttp import web
 from libtmux import Server
 
+
 async def handle_create_session(request):
     server = Server()
     data = await request.json()
 
     session = await server.anew_session(
-        session_name=data["name"],
-        start_directory=data.get("directory")
+        session_name=data["name"], start_directory=data.get("directory")
     )
 
-    return web.json_response({
-        "session_id": session.session_id,
-        "session_name": session.session_name,
-    })
+    return web.json_response(
+        {
+            "session_id": session.session_id,
+            "session_name": session.session_name,
+        }
+    )
+
 
 app = web.Application()
-app.router.add_post('/sessions', handle_create_session)
+app.router.add_post("/sessions", handle_create_session)
 ```
 
 ### Error Handling
 
 ```python
 from libtmux import exc
+
 
 async def safe_session_creation(server, name):
     """Create session with proper error handling."""
@@ -355,6 +448,7 @@ Async methods use `await self.acmd()` instead of `self.cmd()`:
 def has_session(self, target_session: str) -> bool:
     proc = self.cmd("has-session", target=target_session)
     return bool(not proc.returncode)
+
 
 # Async version
 async def ahas_session(self, target_session: str) -> bool:
