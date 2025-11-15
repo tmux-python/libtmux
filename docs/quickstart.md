@@ -441,6 +441,86 @@ automatically sent, the leading space character prevents adding it to the user's
 shell history. Omitting `enter=false` means the default behavior (sending the
 command) is done, without needing to use `pane.enter()` after.
 
+## Async Support
+
+For async applications, libtmux provides async versions of key methods using the 'a' prefix naming convention.
+
+### Basic Async Usage
+
+```python
+import asyncio
+from libtmux import Server
+
+async def main():
+    server = Server()
+
+    # Create session asynchronously
+    session = await server.anew_session(session_name="async_demo")
+
+    # Create window asynchronously
+    window = await session.anew_window(window_name="async_window")
+
+    # Check session exists
+    exists = await server.ahas_session("async_demo")
+    print(f"Session exists: {exists}")  # True
+
+asyncio.run(main())
+```
+
+### Concurrent Operations
+
+One of the key benefits of async methods is concurrent execution:
+
+```python
+import asyncio
+
+async def setup_workspace():
+    server = Server()
+
+    # Create multiple sessions concurrently
+    frontend, backend, database = await asyncio.gather(
+        server.anew_session(
+            session_name="frontend",
+            start_directory="~/project/frontend"
+        ),
+        server.anew_session(
+            session_name="backend",
+            start_directory="~/project/backend"
+        ),
+        server.anew_session(
+            session_name="database",
+            start_directory="~/project/database"
+        ),
+    )
+
+    # Set up windows in each session concurrently
+    await asyncio.gather(
+        frontend.anew_window(window_name="editor"),
+        frontend.anew_window(window_name="server"),
+        backend.anew_window(window_name="api"),
+        backend.anew_window(window_name="tests"),
+    )
+
+    return frontend, backend, database
+```
+
+### Available Async Methods
+
+- {meth}`Server.ahas_session` - Check if session exists
+- {meth}`Server.anew_session` - Create new session
+- {meth}`Session.anew_window` - Create new window
+- {meth}`Session.arename_session` - Rename session
+- {meth}`Window.akill` - Kill window
+
+### When to Use Async
+
+Use async methods when:
+- Your application uses asyncio
+- You need to perform multiple tmux operations concurrently
+- You're integrating with async frameworks (FastAPI, aiohttp, etc.)
+
+For more details, see {ref}`async`.
+
 ## Final notes
 
 These objects created use tmux's internal usage of ID's to make servers,
