@@ -16,6 +16,7 @@ import typing as t
 import warnings
 
 from libtmux import exc, formats
+from libtmux._internal.engines.subprocess_engine import SubprocessEngine
 from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
 from libtmux.neo import fetch_objs
@@ -38,6 +39,7 @@ if t.TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    from libtmux._internal.engines.base import Engine
     from libtmux._internal.types import StrPath
 
     DashLiteral: TypeAlias = t.Literal["-"]
@@ -126,11 +128,16 @@ class Server(EnvironmentMixin):
         colors: int | None = None,
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
+        engine: Engine | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
+
+        if engine is None:
+            engine = SubprocessEngine()
+        self.engine = engine
 
         if socket_path is not None:
             self.socket_path = socket_path
@@ -222,7 +229,12 @@ class Server(EnvironmentMixin):
         if self.config_file:
             cmd_args.insert(0, f"-f{self.config_file}")
 
-        subprocess.check_call([tmux_bin, *cmd_args])
+        proc = self.engine.run(*cmd_args)
+        if proc.returncode is not None and proc.returncode != 0:
+            raise subprocess.CalledProcessError(
+                returncode=proc.returncode,
+                cmd=[tmux_bin, *cmd_args],
+            )
 
     #
     # Command
@@ -298,7 +310,7 @@ class Server(EnvironmentMixin):
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args)
+        return self.engine.run(*svr_args, *cmd_args)
 
     @property
     def attached_sessions(self) -> list[Session]:
