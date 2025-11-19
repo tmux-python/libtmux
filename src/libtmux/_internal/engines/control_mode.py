@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import shutil
 import subprocess
 import threading
@@ -44,6 +45,7 @@ class ControlModeEngine(Engine):
         if server_args:
             cmd.extend(str(a) for a in server_args)
         cmd.append("-C")
+        cmd.extend(["new-session", "-A", "-s", "libtmux_control_mode"])
 
         logger.debug(f"Starting Control Mode process: {cmd}")
         self.process = subprocess.Popen(
@@ -56,6 +58,17 @@ class ControlModeEngine(Engine):
             errors="backslashreplace",
         )
         self._server_args = server_args
+
+        # Consume startup command output
+        assert self.process.stdout is not None
+        while True:
+            line = self.process.stdout.readline()
+            if not line:
+                # EOF immediately?
+                logger.warning("Control Mode process exited immediately")
+                break
+            if line.startswith("%end") or line.startswith("%error"):
+                break
 
     def run(
         self,
@@ -82,13 +95,13 @@ class ControlModeEngine(Engine):
             assert self.process.stdout is not None
 
             # Construct the command line
-            # We use subprocess.list2cmdline for basic quoting, but we need to be
-            # careful. tmux control mode accepts a single line.
+            # We use shlex.join for correct shell-like quoting, required by tmux control
+            # mode.
             full_args = [cmd]
             if cmd_args:
                 full_args.extend(str(a) for a in cmd_args)
 
-            command_line = subprocess.list2cmdline(full_args)
+            command_line = shlex.join(full_args)
 
             logger.debug(f"Sending to Control Mode: {command_line}")
             try:
@@ -122,10 +135,21 @@ class ControlModeEngine(Engine):
 
                 if line.startswith("%begin"):
                     # Start of response
+                    # %begin time id flags
+                    parts = line.split()
+                    if len(parts) > 3:
+                        flags = int(parts[3])
+                        if flags & 1:
+                            returncode = 1
                     continue
                 elif line.startswith("%end"):
                     # End of success response
-                    returncode = 0
+                    # %end time id flags
+                    parts = line.split()
+                    if len(parts) > 3:
+                        flags = int(parts[3])
+                        if flags & 1:
+                            returncode = 1
                     break
                 elif line.startswith("%error"):
                     # End of error response
@@ -143,6 +167,10 @@ class ControlModeEngine(Engine):
 
             # Tmux usually puts error message in stdout (captured above) for %error
             # But we moved it to stderr_lines if %error occurred.
+
+            # If we detected failure via flags but got %end, treat stdout as potentially
+            # containing info?
+            # For now, keep stdout as is.
 
             # Mimic subprocess.communicate output structure
             return tmux_cmd(
