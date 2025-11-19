@@ -13,6 +13,11 @@ class Engine(ABC):
     """Abstract base class for tmux execution engines."""
 
     @abstractmethod
-    def run(self, *args: t.Any) -> tmux_cmd:
+    def run(
+        self,
+        cmd: str,
+        cmd_args: t.Sequence[str | int] | None = None,
+        server_args: t.Sequence[str | int] | None = None,
+    ) -> tmux_cmd:
         """Run a tmux command and return the result."""
         ...

@@ -221,19 +221,19 @@ class Server(EnvironmentMixin):
         if tmux_bin is None:
             raise exc.TmuxCommandNotFound
 
-        cmd_args: list[str] = ["list-sessions"]
+        server_args: list[str] = []
         if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
+            server_args.append(f"-L{self.socket_name}")
         if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
+            server_args.append(f"-S{self.socket_path}")
         if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
+            server_args.append(f"-f{self.config_file}")
 
-        proc = self.engine.run(*cmd_args)
+        proc = self.engine.run("list-sessions", server_args=server_args)
         if proc.returncode is not None and proc.returncode != 0:
             raise subprocess.CalledProcessError(
                 returncode=proc.returncode,
-                cmd=[tmux_bin, *cmd_args],
+                cmd=[tmux_bin, *server_args, "list-sessions"],
             )
 
     #
@@ -292,25 +292,24 @@ class Server(EnvironmentMixin):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: list[str | int] = [cmd]
-        cmd_args: list[str | int] = []
+        server_args: list[str | int] = []
         if self.socket_name:
-            svr_args.insert(0, f"-L{self.socket_name}")
+            server_args.append(f"-L{self.socket_name}")
         if self.socket_path:
-            svr_args.insert(0, f"-S{self.socket_path}")
+            server_args.append(f"-S{self.socket_path}")
         if self.config_file:
-            svr_args.insert(0, f"-f{self.config_file}")
+            server_args.append(f"-f{self.config_file}")
         if self.colors:
             if self.colors == 256:
-                svr_args.insert(0, "-2")
+                server_args.append("-2")
             elif self.colors == 88:
-                svr_args.insert(0, "-8")
+                server_args.append("-8")
             else:
                 raise exc.UnknownColorOption
 
-        cmd_args = ["-t", str(target), *args] if target is not None else [*args]
+        cmd_args = ["-t", str(target), *args] if target is not None else list(args)
 
-        return self.engine.run(*svr_args, *cmd_args)
+        return self.engine.run(cmd, cmd_args=cmd_args, server_args=server_args)
 
     @property
     def attached_sessions(self) -> list[Session]:
