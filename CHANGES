@@ -32,7 +32,27 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
-- _Future release notes will be placed here_
+_Future release notes will be placed here_
+
+### Features
+
+- Control-mode–first engine protocol (experimental): adds structured command results,
+  notification parsing (layout changes, unlinked windows, client detach/session change,
+  session rename, paste-buffer events), and stats while keeping existing
+  `Server/Session/Window/Pane.cmd` return type (`tmux_cmd`) stable. (#605)
+
+### Compatibility
+
+- Control mode creates a bootstrap session named ``libtmux_control_mode``; callers that
+  enumerate sessions should ignore or filter it. APIs remain unchanged for tmux command
+  return objects; new metadata is attached for advanced users. (#605)
+
+### Testing
+
+- `uv run ruff check . --fix --show-fixes`
+- `uv run ruff format .`
+- `uv run mypy`
+- `uv run py.test`
 
 ## libtmux 0.47.0 (2025-11-01)
 
