@@ -436,6 +436,78 @@ class Server(EnvironmentMixin):
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def connect(self, session_name: str) -> Session:
+        """Connect to a session, creating if it doesn't exist.
+
+        Returns an existing session if found, otherwise creates a new detached session.
+
+        Parameters
+        ----------
+        session_name : str
+            Name of the session to connect to.
+
+        Returns
+        -------
+        :class:`Session`
+            The connected or newly created session.
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+            If the session name is invalid (contains '.' or ':').
+        :exc:`exc.LibTmuxException`
+            If tmux returns an error.
+
+        Examples
+        --------
+        >>> session = server.connect('my_session')
+        >>> session.name
+        'my_session'
+
+        Calling again returns the same session:
+
+        >>> session2 = server.connect('my_session')
+        >>> session2.session_id == session.session_id
+        True
+        """
+        session_check_name(session_name)
+
+        # Check if session already exists
+        if self.has_session(session_name):
+            session = self.sessions.get(session_name=session_name)
+            if session is None:
+                msg = "Session lookup failed after has_session passed"
+                raise exc.LibTmuxException(msg)
+            return session
+
+        # Session doesn't exist, create it
+        # Save and clear TMUX env var (same as new_session)
+        env = os.environ.get("TMUX")
+        if env:
+            del os.environ["TMUX"]
+
+        proc = self.cmd(
+            "new-session",
+            "-d",
+            f"-s{session_name}",
+            "-P",
+            "-F#{session_id}",
+        )
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        session_id = proc.stdout[0]
+
+        # Restore TMUX env var
+        if env:
+            os.environ["TMUX"] = env
+
+        return Session.from_session_id(
+            server=self,
+            session_id=session_id,
+        )
+
     def new_session(
         self,
         session_name: str | None = None,
