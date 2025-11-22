@@ -11,6 +11,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._internal.engines.base import ExitStatus
 from libtmux._internal.engines.control_mode import ControlModeEngine
 from libtmux.server import Server
 
@@ -45,8 +46,12 @@ def test_control_mode_engine_basic(tmp_path: pathlib.Path) -> None:
     assert "libtmux_control_mode" in session_names
 
     # run a command that returns output
-    output = server.cmd("display-message", "-p", "hello").stdout
-    assert output == ["hello"]
+    output_cmd = server.cmd("display-message", "-p", "hello")
+    assert output_cmd.stdout == ["hello"]
+    assert getattr(output_cmd, "exit_status", ExitStatus.OK) in (
+        ExitStatus.OK,
+        0,
+    )
 
     # cleanup
     server.kill()
@@ -63,34 +68,37 @@ def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     """ControlModeEngine should surface timeouts and clean up the process."""
 
     class BlockingStdout:
-        def readline(self) -> str:
+        def __iter__(self) -> "BlockingStdout":
+            return self
+
+        def __next__(self) -> str:  # pragma: no cover - simple block
             time.sleep(0.05)
-            return ""
+            raise StopIteration
 
     class FakeProcess:
         def __init__(self) -> None:
             self.stdin = io.StringIO()
             self.stdout = BlockingStdout()
+            self.stderr = None
             self._terminated = False
 
-        def poll(self) -> None:
-            return None
-
-        def terminate(self) -> None:
+        def terminate(self) -> None:  # pragma: no cover - simple stub
             self._terminated = True
 
-        def wait(self, timeout: float | None = None) -> None:
+        def kill(self) -> None:  # pragma: no cover - simple stub
+            self._terminated = True
+
+        def wait(self, timeout: float | None = None) -> None:  # pragma: no cover
             return None
 
     engine = ControlModeEngine(command_timeout=0.01)
 
     fake_process = FakeProcess()
 
-    def fake_start(
-        server_args: t.Sequence[str | int] | None,
-    ) -> None:  # pragma: no cover - simple stub
-        engine.process = t.cast(subprocess.Popen[str], fake_process)
+    def fake_start(server_args: t.Sequence[str | int] | None) -> None:
+        engine.tmux_bin = "tmux"
         engine._server_args = tuple(server_args or ())
+        engine.process = t.cast(subprocess.Popen[str], fake_process)
 
     monkeypatch.setattr(engine, "_start_process", fake_start)
 

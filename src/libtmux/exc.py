@@ -96,6 +96,18 @@ class ControlModeTimeout(LibTmuxException):
     """tmux control mode command did not return within the timeout."""
 
 
+class ControlModeProtocolError(LibTmuxException):
+    """Protocol-level error while parsing control mode stream."""
+
+
+class ControlModeConnectionError(LibTmuxException):
+    """Control mode connection was lost unexpectedly."""
+
+
+class SubprocessTimeout(LibTmuxException):
+    """tmux subprocess exceeded the allowed timeout."""
+
+
 class VariableUnpackingError(LibTmuxException):
     """Error unpacking variable."""
 

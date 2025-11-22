@@ -8,8 +8,7 @@ import subprocess
 import typing as t
 
 from libtmux import exc
-from libtmux._internal.engines.base import Engine
-from libtmux.common import tmux_cmd
+from libtmux._internal.engines.base import CommandResult, Engine, ExitStatus
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +16,14 @@ logger = logging.getLogger(__name__)
 class SubprocessEngine(Engine):
     """Engine that runs tmux commands via subprocess."""
 
-    def run(
+    def run_result(
         self,
         cmd: str,
         cmd_args: t.Sequence[str | int] | None = None,
         server_args: t.Sequence[str | int] | None = None,
         timeout: float | None = None,
-    ) -> tmux_cmd:
-        """Run a tmux command using subprocess.Popen."""
-        # Kept for API parity with ControlModeEngine; subprocess variant is synchronous.
-        _ = timeout
+    ) -> CommandResult:
+        """Run a tmux command using ``subprocess.Popen``."""
         tmux_bin = shutil.which("tmux")
         if not tmux_bin:
             raise exc.TmuxCommandNotFound
@@ -48,19 +45,23 @@ class SubprocessEngine(Engine):
                 text=True,
                 errors="backslashreplace",
             )
-            stdout_str, stderr_str = process.communicate()
+            stdout_str, stderr_str = process.communicate(timeout=timeout)
             returncode = process.returncode
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            msg = "tmux subprocess timed out"
+            raise exc.SubprocessTimeout(msg) from None
         except Exception:
             logger.exception(f"Exception for {subprocess.list2cmdline(full_cmd_str)}")
             raise
 
         stdout_split = stdout_str.split("\n")
-        # remove trailing newlines from stdout
         while stdout_split and stdout_split[-1] == "":
             stdout_split.pop()
 
         stderr_split = stderr_str.split("\n")
-        stderr = list(filter(None, stderr_split))  # filter empty values
+        stderr = list(filter(None, stderr_split))
 
         if "has-session" in full_cmd_str and len(stderr) and not stdout_split:
             stdout = [stderr[0]]
@@ -74,9 +75,11 @@ class SubprocessEngine(Engine):
             ),
         )
 
-        return tmux_cmd(
-            cmd=full_cmd_str,
+        exit_status = ExitStatus.OK if returncode == 0 else ExitStatus.ERROR
+
+        return CommandResult(
+            argv=full_cmd_str,
             stdout=stdout,
             stderr=stderr,
-            returncode=returncode,
+            exit_status=exit_status,
         )
