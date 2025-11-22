@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import typing as t
+
+import pytest
+
 from libtmux._internal.engines.base import (
     CommandResult,
     ExitStatus,
@@ -9,6 +13,15 @@ from libtmux._internal.engines.base import (
     command_result_to_tmux_cmd,
 )
 from libtmux._internal.engines.control_protocol import CommandContext, ControlProtocol
+
+
+class NotificationFixture(t.NamedTuple):
+    """Fixture for notification parsing cases."""
+
+    test_id: str
+    line: str
+    expected_kind: NotificationKind
+    expected_subset: dict[str, str]
 
 
 def test_command_result_wraps_tmux_cmd() -> None:
@@ -59,3 +72,91 @@ def test_control_protocol_notifications() -> None:
     proto.feed_line("%sessions-changed")
     proto.feed_line("%sessions-changed")
     assert proto.get_stats(restarts=0).dropped_notifications >= 1
+
+
+NOTIFICATION_FIXTURES: list[NotificationFixture] = [
+    NotificationFixture(
+        test_id="layout_change",
+        line="%layout-change @1 abcd efgh 0",
+        expected_kind=NotificationKind.WINDOW_LAYOUT_CHANGED,
+        expected_subset={
+            "window_id": "@1",
+            "window_layout": "abcd",
+            "window_visible_layout": "efgh",
+            "window_raw_flags": "0",
+        },
+    ),
+    NotificationFixture(
+        test_id="unlinked_window_add",
+        line="%unlinked-window-add @2",
+        expected_kind=NotificationKind.UNLINKED_WINDOW_ADD,
+        expected_subset={"window_id": "@2"},
+    ),
+    NotificationFixture(
+        test_id="unlinked_window_close",
+        line="%unlinked-window-close @3",
+        expected_kind=NotificationKind.UNLINKED_WINDOW_CLOSE,
+        expected_subset={"window_id": "@3"},
+    ),
+    NotificationFixture(
+        test_id="unlinked_window_renamed",
+        line="%unlinked-window-renamed @4 new-name",
+        expected_kind=NotificationKind.UNLINKED_WINDOW_RENAMED,
+        expected_subset={"window_id": "@4", "name": "new-name"},
+    ),
+    NotificationFixture(
+        test_id="client_session_changed",
+        line="%client-session-changed c1 $5 sname",
+        expected_kind=NotificationKind.CLIENT_SESSION_CHANGED,
+        expected_subset={
+            "client_name": "c1",
+            "session_id": "$5",
+            "session_name": "sname",
+        },
+    ),
+    NotificationFixture(
+        test_id="client_detached",
+        line="%client-detached c1",
+        expected_kind=NotificationKind.CLIENT_DETACHED,
+        expected_subset={"client_name": "c1"},
+    ),
+    NotificationFixture(
+        test_id="session_renamed",
+        line="%session-renamed $5 new-name",
+        expected_kind=NotificationKind.SESSION_RENAMED,
+        expected_subset={"session_id": "$5", "session_name": "new-name"},
+    ),
+    NotificationFixture(
+        test_id="paste_buffer_changed",
+        line="%paste-buffer-changed buf1",
+        expected_kind=NotificationKind.PASTE_BUFFER_CHANGED,
+        expected_subset={"name": "buf1"},
+    ),
+    NotificationFixture(
+        test_id="paste_buffer_deleted",
+        line="%paste-buffer-deleted buf1",
+        expected_kind=NotificationKind.PASTE_BUFFER_DELETED,
+        expected_subset={"name": "buf1"},
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(NotificationFixture._fields),
+    NOTIFICATION_FIXTURES,
+    ids=[fixture.test_id for fixture in NOTIFICATION_FIXTURES],
+)
+def test_control_protocol_notification_parsing(
+    test_id: str,
+    line: str,
+    expected_kind: NotificationKind,
+    expected_subset: dict[str, str],
+) -> None:
+    """Ensure the parser recognizes mapped control-mode notifications."""
+    proto = ControlProtocol()
+    proto.feed_line(line)
+    notif = proto.get_notification(timeout=0.05)
+    assert notif is not None
+    assert notif.kind is expected_kind
+    for key, value in expected_subset.items():
+        assert notif.data.get(key) == value

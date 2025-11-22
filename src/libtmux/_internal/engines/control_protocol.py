@@ -79,14 +79,31 @@ def _parse_notification(line: str, parts: list[str]) -> Notification:
     elif tag == "%pane-mode-changed" and len(parts) >= 2:
         kind = NotificationKind.PANE_MODE_CHANGED
         data = {"pane_id": parts[1], "mode": parts[2:]}
+    elif tag == "%layout-change" and len(parts) >= 5:
+        kind = NotificationKind.WINDOW_LAYOUT_CHANGED
+        data = {
+            "window_id": parts[1],
+            "window_layout": parts[2],
+            "window_visible_layout": parts[3],
+            "window_raw_flags": parts[4],
+        }
     elif tag == "%window-add" and len(parts) >= 2:
         kind = NotificationKind.WINDOW_ADD
+        data = {"window_id": parts[1], "rest": parts[2:]}
+    elif tag == "%unlinked-window-add" and len(parts) >= 2:
+        kind = NotificationKind.UNLINKED_WINDOW_ADD
         data = {"window_id": parts[1], "rest": parts[2:]}
     elif tag == "%window-close" and len(parts) >= 2:
         kind = NotificationKind.WINDOW_CLOSE
         data = {"window_id": parts[1]}
+    elif tag == "%unlinked-window-close" and len(parts) >= 2:
+        kind = NotificationKind.UNLINKED_WINDOW_CLOSE
+        data = {"window_id": parts[1]}
     elif tag == "%window-renamed" and len(parts) >= 3:
         kind = NotificationKind.WINDOW_RENAMED
+        data = {"window_id": parts[1], "name": " ".join(parts[2:])}
+    elif tag == "%unlinked-window-renamed" and len(parts) >= 3:
+        kind = NotificationKind.UNLINKED_WINDOW_RENAMED
         data = {"window_id": parts[1], "name": " ".join(parts[2:])}
     elif tag == "%window-pane-changed" and len(parts) >= 3:
         kind = NotificationKind.WINDOW_PANE_CHANGED
@@ -94,11 +111,30 @@ def _parse_notification(line: str, parts: list[str]) -> Notification:
     elif tag == "%session-changed" and len(parts) >= 2:
         kind = NotificationKind.SESSION_CHANGED
         data = {"session_id": parts[1]}
+    elif tag == "%client-session-changed" and len(parts) >= 4:
+        kind = NotificationKind.CLIENT_SESSION_CHANGED
+        data = {
+            "client_name": parts[1],
+            "session_id": parts[2],
+            "session_name": parts[3],
+        }
+    elif tag == "%client-detached" and len(parts) >= 2:
+        kind = NotificationKind.CLIENT_DETACHED
+        data = {"client_name": parts[1]}
+    elif tag == "%session-renamed" and len(parts) >= 3:
+        kind = NotificationKind.SESSION_RENAMED
+        data = {"session_id": parts[1], "session_name": " ".join(parts[2:])}
     elif tag == "%sessions-changed":
         kind = NotificationKind.SESSIONS_CHANGED
     elif tag == "%session-window-changed" and len(parts) >= 3:
         kind = NotificationKind.SESSION_WINDOW_CHANGED
         data = {"session_id": parts[1], "window_id": parts[2]}
+    elif tag == "%paste-buffer-changed" and len(parts) >= 2:
+        kind = NotificationKind.PASTE_BUFFER_CHANGED
+        data = {"name": parts[1]}
+    elif tag == "%paste-buffer-deleted" and len(parts) >= 2:
+        kind = NotificationKind.PASTE_BUFFER_DELETED
+        data = {"name": parts[1]}
     elif tag == "%pause" and len(parts) >= 2:
         kind = NotificationKind.PAUSE
         data = {"pane_id": parts[1]}
