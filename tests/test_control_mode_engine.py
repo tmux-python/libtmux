@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import io
 import pathlib
+import subprocess
+import time
+import typing as t
 
+import pytest
+
+from libtmux import exc
 from libtmux._internal.engines.control_mode import ControlModeEngine
 from libtmux.server import Server
 
@@ -50,3 +57,44 @@ def test_control_mode_engine_basic(tmp_path: pathlib.Path) -> None:
 
     engine.process.wait(timeout=2)
     assert engine.process.poll() is not None
+
+
+def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ControlModeEngine should surface timeouts and clean up the process."""
+
+    class BlockingStdout:
+        def readline(self) -> str:
+            time.sleep(0.05)
+            return ""
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdin = io.StringIO()
+            self.stdout = BlockingStdout()
+            self._terminated = False
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            self._terminated = True
+
+        def wait(self, timeout: float | None = None) -> None:
+            return None
+
+    engine = ControlModeEngine(command_timeout=0.01)
+
+    fake_process = FakeProcess()
+
+    def fake_start(
+        server_args: t.Sequence[str | int] | None,
+    ) -> None:  # pragma: no cover - simple stub
+        engine.process = t.cast(subprocess.Popen[str], fake_process)
+        engine._server_args = tuple(server_args or ())
+
+    monkeypatch.setattr(engine, "_start_process", fake_start)
+
+    with pytest.raises(exc.ControlModeTimeout):
+        engine.run("list-sessions")
+
+    assert engine.process is None

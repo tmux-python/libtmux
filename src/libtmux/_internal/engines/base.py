@@ -18,6 +18,7 @@ class Engine(ABC):
         cmd: str,
         cmd_args: t.Sequence[str | int] | None = None,
         server_args: t.Sequence[str | int] | None = None,
+        timeout: float | None = None,
     ) -> tmux_cmd:
         """Run a tmux command and return the result."""
         ...

@@ -92,6 +92,10 @@ class WaitTimeout(LibTmuxException):
     """Function timed out without meeting condition."""
 
 
+class ControlModeTimeout(LibTmuxException):
+    """tmux control mode command did not return within the timeout."""
+
+
 class VariableUnpackingError(LibTmuxException):
     """Error unpacking variable."""
 

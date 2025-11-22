@@ -22,8 +22,11 @@ class SubprocessEngine(Engine):
         cmd: str,
         cmd_args: t.Sequence[str | int] | None = None,
         server_args: t.Sequence[str | int] | None = None,
+        timeout: float | None = None,
     ) -> tmux_cmd:
         """Run a tmux command using subprocess.Popen."""
+        # Kept for API parity with ControlModeEngine; subprocess variant is synchronous.
+        _ = timeout
         tmux_bin = shutil.which("tmux")
         if not tmux_bin:
             raise exc.TmuxCommandNotFound
