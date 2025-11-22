@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
-import queue
 import shlex
 import shutil
 import subprocess
 import threading
-import time
 import typing as t
 
 from libtmux import exc
-from libtmux._internal.engines.base import Engine
-from libtmux.common import tmux_cmd
+from libtmux._internal.engines.base import (
+    CommandResult,
+    Engine,
+    EngineStats,
+    ExitStatus,
+    Notification,
+)
+from libtmux._internal.engines.control_protocol import (
+    CommandContext,
+    ControlProtocol,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,82 +28,154 @@ logger = logging.getLogger(__name__)
 class ControlModeEngine(Engine):
     """Engine that runs tmux commands via a persistent Control Mode process."""
 
-    def __init__(self, command_timeout: float | None = 10.0) -> None:
+    def __init__(
+        self,
+        command_timeout: float | None = 10.0,
+        notification_queue_size: int = 4096,
+    ) -> None:
         self.process: subprocess.Popen[str] | None = None
         self._lock = threading.Lock()
         self._server_args: tuple[str | int, ...] | None = None
         self.command_timeout = command_timeout
-        self._queue: queue.Queue[str | None] = queue.Queue(maxsize=1024)
+        self.tmux_bin: str | None = None
         self._reader_thread: threading.Thread | None = None
         self._stderr_thread: threading.Thread | None = None
-        self.tmux_bin: str | None = None
+        self._notification_queue_size = notification_queue_size
+        self._protocol = ControlProtocol(
+            notification_queue_size=notification_queue_size,
+        )
+        self._restarts = 0
 
+    # Lifecycle ---------------------------------------------------------
     def close(self) -> None:
-        """Terminate the tmux control mode process."""
-        if self.process:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait()
+        """Terminate the tmux control mode process and clean up threads."""
+        proc = self.process
+        if proc is None:
+            return
+
+        try:
+            proc.terminate()
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+        finally:
             self.process = None
             self._server_args = None
-            # Unblock any waiters
-            with contextlib.suppress(queue.Full):
-                self._queue.put_nowait(None)
+            self._protocol.mark_dead("engine closed")
 
-    def __del__(self) -> None:
-        """Cleanup the process on destruction."""
+    def __del__(self) -> None:  # pragma: no cover - best effort cleanup
+        """Ensure subprocess is terminated on GC."""
         self.close()
 
-    def _reader(self, process: subprocess.Popen[str]) -> None:
-        """Background thread to read stdout and push to queue."""
-        assert process.stdout is not None
+    # Engine API --------------------------------------------------------
+    def run_result(
+        self,
+        cmd: str,
+        cmd_args: t.Sequence[str | int] | None = None,
+        server_args: t.Sequence[str | int] | None = None,
+        timeout: float | None = None,
+    ) -> CommandResult:
+        """Run a tmux command and return a :class:`CommandResult`."""
+        incoming_server_args = tuple(server_args or ())
+        effective_timeout = timeout if timeout is not None else self.command_timeout
+        attempts = 0
+
         while True:
-            try:
-                line = process.stdout.readline()
-            except (ValueError, OSError):
-                break
+            attempts += 1
+            with self._lock:
+                self._ensure_process(incoming_server_args)
+                assert self.process is not None
+                full_argv: list[str] = [
+                    self.tmux_bin or "tmux",
+                    *[str(x) for x in incoming_server_args],
+                    cmd,
+                ]
+                if cmd_args:
+                    full_argv.extend(str(a) for a in cmd_args)
 
-            if not line:
-                # EOF
-                with contextlib.suppress(queue.Full):
-                    self._queue.put_nowait(None)
-                break
+                ctx = CommandContext(argv=full_argv)
+                self._protocol.register_command(ctx)
 
-            if line.startswith("%") and not line.startswith(
-                ("%begin", "%end", "%error"),
-            ):
-                logger.debug("Control Mode Notification: %s", line.rstrip("\n"))
-                continue
+                command_line = shlex.join([cmd, *(str(a) for a in cmd_args or [])])
+                try:
+                    self._write_line(command_line, server_args=incoming_server_args)
+                except exc.ControlModeConnectionError:
+                    if attempts >= 2:
+                        raise
+                    # retry the full cycle with a fresh process/context
+                    continue
 
-            try:
-                self._queue.put(line, timeout=1)
-            except queue.Full:
-                logger.warning("Control Mode queue full; dropping line")
+            # Wait outside the lock so multiple callers can run concurrently
+            if not ctx.wait(timeout=effective_timeout):
+                self.close()
+                msg = "tmux control mode command timed out"
+                raise exc.ControlModeTimeout(msg)
 
-    def _drain_stderr(self, process: subprocess.Popen[str]) -> None:
-        """Continuously drain stderr to prevent child blocking."""
-        if process.stderr is None:
+            if ctx.error is not None:
+                raise ctx.error
+
+            if ctx.exit_status is None:
+                ctx.exit_status = ExitStatus.OK
+
+            return self._protocol.build_result(ctx)
+
+    def iter_notifications(
+        self,
+        *,
+        timeout: float | None = None,
+    ) -> t.Iterator[Notification]:
+        """Yield control-mode notifications until the stream ends."""
+        while True:
+            notif = self._protocol.get_notification(timeout=timeout)
+            if notif is None:
+                return
+            if notif.kind.name == "EXIT":
+                return
+            yield notif
+
+    def get_stats(self) -> EngineStats:
+        """Return diagnostic statistics for the engine."""
+        return self._protocol.get_stats(restarts=self._restarts)
+
+    # Internals ---------------------------------------------------------
+    def _ensure_process(self, server_args: tuple[str | int, ...]) -> None:
+        if self.process is None:
+            self._start_process(server_args)
             return
-        for err_line in process.stderr:
-            logger.debug("Control Mode stderr: %s", err_line.rstrip("\n"))
 
-    def _start_process(self, server_args: t.Sequence[str | int] | None) -> None:
-        """Start the tmux control mode process."""
+        if server_args != self._server_args:
+            logger.warning(
+                (
+                    "Server args changed; restarting Control Mode process. "
+                    "Old: %s, New: %s"
+                ),
+                self._server_args,
+                server_args,
+            )
+            self.close()
+            self._start_process(server_args)
+
+    def _start_process(self, server_args: tuple[str | int, ...]) -> None:
         tmux_bin = shutil.which("tmux")
         if not tmux_bin:
             raise exc.TmuxCommandNotFound
+
         self.tmux_bin = tmux_bin
+        self._server_args = server_args
+        self._protocol = ControlProtocol(
+            notification_queue_size=self._notification_queue_size,
+        )
 
-        normalized_args: tuple[str | int, ...] = tuple(server_args or ())
-
-        cmd = [tmux_bin]
-        if normalized_args:
-            cmd.extend(str(a) for a in normalized_args)
-        cmd.append("-C")
-        cmd.extend(["new-session", "-A", "-s", "libtmux_control_mode"])
+        cmd = [
+            tmux_bin,
+            *[str(a) for a in server_args],
+            "-C",
+            "new-session",
+            "-A",
+            "-s",
+            "libtmux_control_mode",
+        ]
 
         logger.debug("Starting Control Mode process: %s", cmd)
         self.process = subprocess.Popen(
@@ -106,16 +184,25 @@ class ControlModeEngine(Engine):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            bufsize=0,  # Unbuffered
+            bufsize=0,
             errors="backslashreplace",
         )
-        self._server_args = normalized_args
 
-        # reset queues from prior runs
-        while not self._queue.empty():
-            self._queue.get_nowait()
+        # The initial command (new-session) emits an output block; register
+        # a context so the protocol can consume it.
+        bootstrap_ctx = CommandContext(
+            argv=[
+                tmux_bin,
+                *[str(a) for a in server_args],
+                "new-session",
+                "-A",
+                "-s",
+                "libtmux_control_mode",
+            ],
+        )
+        self._protocol.register_command(bootstrap_ctx)
 
-        # Start IO threads
+        # Start IO threads after registration to avoid early protocol errors.
         self._reader_thread = threading.Thread(
             target=self._reader,
             args=(self.process,),
@@ -130,139 +217,42 @@ class ControlModeEngine(Engine):
         )
         self._stderr_thread.start()
 
-        # Consume startup command output with the same timeout used for commands.
-        try:
-            self._read_response(cmd="new-session", timeout=self.command_timeout)
-        except exc.ControlModeTimeout:
-            logger.exception("Control Mode bootstrap command timed out")
+        if not bootstrap_ctx.wait(timeout=self.command_timeout):
             self.close()
-            raise
+            msg = "Control Mode bootstrap command timed out"
+            raise exc.ControlModeTimeout(msg)
 
-    def _read_response(self, cmd: str, timeout: float | None) -> tmux_cmd:
-        """Read response from the queue."""
-        stdout_lines: list[str] = []
-        stderr_lines: list[str] = []
-        returncode = 0
-
-        start_time = time.monotonic()
-
-        while True:
-            if timeout is None:
-                remaining: float | None = None
-            else:
-                elapsed = time.monotonic() - start_time
-                remaining = timeout - elapsed
-                if remaining <= 0:
-                    msg = "tmux control mode command timed out"
-                    raise exc.ControlModeTimeout(msg)
-
-            try:
-                line = self._queue.get(timeout=remaining)
-            except queue.Empty:
-                msg = "tmux control mode command timed out"
-                raise exc.ControlModeTimeout(msg) from None
-
-            if line is None:
-                logger.error("Unexpected EOF from Control Mode process")
-                returncode = 1
-                break
-
-            line = line.rstrip("\n")
-
-            if line.startswith("%begin"):
-                parts = line.split()
-                if len(parts) > 3:
-                    flags = int(parts[3])
-                    if flags & 1:
-                        returncode = 1
-                continue
-            if line.startswith("%end"):
-                parts = line.split()
-                if len(parts) > 3:
-                    flags = int(parts[3])
-                    if flags & 1:
-                        returncode = 1
-                break
-            if line.startswith("%error"):
-                returncode = 1
-                stderr_lines = stdout_lines
-                stdout_lines = []
-                break
-
-            stdout_lines.append(line)
-
-        if cmd == "has-session" and stderr_lines and not stdout_lines:
-            stdout_lines = [stderr_lines[0]]
-
-        return tmux_cmd(
-            cmd=[],
-            stdout=stdout_lines,
-            stderr=stderr_lines,
-            returncode=returncode,
-        )
-
-    def run(
+    def _write_line(
         self,
-        cmd: str,
-        cmd_args: t.Sequence[str | int] | None = None,
-        server_args: t.Sequence[str | int] | None = None,
-        timeout: float | None = None,
-    ) -> tmux_cmd:
-        """Run a tmux command via Control Mode."""
-        with self._lock:
-            incoming_server_args = tuple(server_args or ())
+        command_line: str,
+        *,
+        server_args: tuple[str | int, ...],
+    ) -> None:
+        assert self.process is not None
+        assert self.process.stdin is not None
 
-            if self.process is None:
-                self._start_process(incoming_server_args)
-            elif incoming_server_args != self._server_args:
-                # If server_args changed, we might need a new process.
-                # For now, just warn or restart. Restarting is safer.
-                logger.warning(
-                    "Server args changed; restarting Control Mode process. "
-                    "Old: %s, New: %s",
-                    self._server_args,
-                    incoming_server_args,
-                )
-                self.close()
-                self._start_process(incoming_server_args)
+        try:
+            self.process.stdin.write(command_line + "\n")
+            self.process.stdin.flush()
+        except BrokenPipeError:
+            logger.exception("Control Mode process died, restarting...")
+            self.close()
+            self._restarts += 1
+            msg = "control mode process unavailable"
+            raise exc.ControlModeConnectionError(msg) from None
 
-            assert self.process is not None
-            assert self.process.stdin is not None
-            # Construct the command line
-            full_args = [cmd]
-            if cmd_args:
-                full_args.extend(str(a) for a in cmd_args)
+    def _reader(self, process: subprocess.Popen[str]) -> None:
+        assert process.stdout is not None
+        try:
+            for raw in process.stdout:
+                self._protocol.feed_line(raw.rstrip("\n"))
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("Control Mode reader thread crashed")
+        finally:
+            self._protocol.mark_dead("EOF from tmux")
 
-            command_line = shlex.join(full_args)
-
-            logger.debug("Sending to Control Mode: %s", command_line)
-            try:
-                self.process.stdin.write(command_line + "\n")
-                self.process.stdin.flush()
-            except BrokenPipeError:
-                # Process died?
-                logger.exception("Control Mode process died, restarting...")
-                self.close()
-                self._start_process(incoming_server_args)
-                assert self.process is not None
-                assert self.process.stdin is not None
-                assert self.process.stdout is not None
-                self.process.stdin.write(command_line + "\n")
-                self.process.stdin.flush()
-
-            effective_timeout = timeout if timeout is not None else self.command_timeout
-
-            try:
-                result = self._read_response(cmd=cmd, timeout=effective_timeout)
-            except exc.ControlModeTimeout:
-                self.close()
-                raise
-
-            full_cmd = [self.tmux_bin or "tmux"]
-            if incoming_server_args:
-                full_cmd.extend(str(x) for x in incoming_server_args)
-            full_cmd.append(cmd)
-            if cmd_args:
-                full_cmd.extend(str(x) for x in cmd_args)
-            result.cmd = full_cmd
-            return result
+    def _drain_stderr(self, process: subprocess.Popen[str]) -> None:
+        if process.stderr is None:
+            return
+        for err_line in process.stderr:
+            logger.debug("Control Mode stderr: %s", err_line.rstrip("\n"))
