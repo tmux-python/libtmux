@@ -16,6 +16,7 @@ import typing as t
 import warnings
 
 from libtmux import exc, formats
+from libtmux._internal.engines.subprocess_engine import SubprocessEngine
 from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
 from libtmux.neo import fetch_objs
@@ -38,6 +39,7 @@ if t.TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    from libtmux._internal.engines.base import Engine
     from libtmux._internal.types import StrPath
 
     DashLiteral: TypeAlias = t.Literal["-"]
@@ -126,11 +128,16 @@ class Server(EnvironmentMixin):
         colors: int | None = None,
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
+        engine: Engine | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
+
+        if engine is None:
+            engine = SubprocessEngine()
+        self.engine = engine
 
         if socket_path is not None:
             self.socket_path = socket_path
@@ -214,15 +221,20 @@ class Server(EnvironmentMixin):
         if tmux_bin is None:
             raise exc.TmuxCommandNotFound
 
-        cmd_args: list[str] = ["list-sessions"]
+        server_args: list[str] = []
         if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
+            server_args.append(f"-L{self.socket_name}")
         if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
+            server_args.append(f"-S{self.socket_path}")
         if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
+            server_args.append(f"-f{self.config_file}")
 
-        subprocess.check_call([tmux_bin, *cmd_args])
+        proc = self.engine.run("list-sessions", server_args=server_args)
+        if proc.returncode is not None and proc.returncode != 0:
+            raise subprocess.CalledProcessError(
+                returncode=proc.returncode,
+                cmd=[tmux_bin, *server_args, "list-sessions"],
+            )
 
     #
     # Command
@@ -280,25 +292,24 @@ class Server(EnvironmentMixin):
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: list[str | int] = [cmd]
-        cmd_args: list[str | int] = []
+        server_args: list[str | int] = []
         if self.socket_name:
-            svr_args.insert(0, f"-L{self.socket_name}")
+            server_args.append(f"-L{self.socket_name}")
         if self.socket_path:
-            svr_args.insert(0, f"-S{self.socket_path}")
+            server_args.append(f"-S{self.socket_path}")
         if self.config_file:
-            svr_args.insert(0, f"-f{self.config_file}")
+            server_args.append(f"-f{self.config_file}")
         if self.colors:
             if self.colors == 256:
-                svr_args.insert(0, "-2")
+                server_args.append("-2")
             elif self.colors == 88:
-                svr_args.insert(0, "-8")
+                server_args.append("-8")
             else:
                 raise exc.UnknownColorOption
 
-        cmd_args = ["-t", str(target), *args] if target is not None else [*args]
+        cmd_args = ["-t", str(target), *args] if target is not None else list(args)
 
-        return tmux_cmd(*svr_args, *cmd_args)
+        return self.engine.run(cmd, cmd_args=cmd_args, server_args=server_args)
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -424,6 +435,78 @@ class Server(EnvironmentMixin):
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+    def connect(self, session_name: str) -> Session:
+        """Connect to a session, creating if it doesn't exist.
+
+        Returns an existing session if found, otherwise creates a new detached session.
+
+        Parameters
+        ----------
+        session_name : str
+            Name of the session to connect to.
+
+        Returns
+        -------
+        :class:`Session`
+            The connected or newly created session.
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+            If the session name is invalid (contains '.' or ':').
+        :exc:`exc.LibTmuxException`
+            If tmux returns an error.
+
+        Examples
+        --------
+        >>> session = server.connect('my_session')
+        >>> session.name
+        'my_session'
+
+        Calling again returns the same session:
+
+        >>> session2 = server.connect('my_session')
+        >>> session2.session_id == session.session_id
+        True
+        """
+        session_check_name(session_name)
+
+        # Check if session already exists
+        if self.has_session(session_name):
+            session = self.sessions.get(session_name=session_name)
+            if session is None:
+                msg = "Session lookup failed after has_session passed"
+                raise exc.LibTmuxException(msg)
+            return session
+
+        # Session doesn't exist, create it
+        # Save and clear TMUX env var (same as new_session)
+        env = os.environ.get("TMUX")
+        if env:
+            del os.environ["TMUX"]
+
+        proc = self.cmd(
+            "new-session",
+            "-d",
+            f"-s{session_name}",
+            "-P",
+            "-F#{session_id}",
+        )
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        session_id = proc.stdout[0]
+
+        # Restore TMUX env var
+        if env:
+            os.environ["TMUX"] = env
+
+        return Session.from_session_id(
+            server=self,
+            session_id=session_id,
+        )
 
     def new_session(
         self,

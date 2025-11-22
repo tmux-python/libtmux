@@ -12,6 +12,9 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._internal.engines.base import Engine
+from libtmux._internal.engines.control_mode import ControlModeEngine
+from libtmux._internal.engines.subprocess_engine import SubprocessEngine
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
@@ -115,6 +118,7 @@ def server(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
     config_file: pathlib.Path,
+    engine_name: str,
 ) -> Server:
     """Return new, temporary :class:`libtmux.Server`.
 
@@ -141,7 +145,10 @@ def server(
 
         >>> result.assert_outcomes(passed=1)
     """
-    server = Server(socket_name=f"libtmux_test{next(namer)}")
+    server = Server(
+        socket_name=f"libtmux_test{next(namer)}",
+        engine=_build_engine(engine_name),
+    )
 
     def fin() -> None:
         server.kill()
@@ -311,5 +318,26 @@ def TestServer(
             Server,
             on_init=on_init,
             socket_name_factory=socket_name_factory,
+            engine=_build_engine(request.getfixturevalue("engine_name")),
         ),
     )
+
+
+@pytest.fixture
+def engine_name(request: pytest.FixtureRequest) -> str:
+    """Engine selector fixture, driven by CLI or parametrization."""
+    if hasattr(request, "param"):
+        return t.cast(str, request.param)
+    try:
+        return t.cast(str, request.config.getoption("--engine"))
+    except ValueError:
+        # Option may not be registered when libtmux is used purely as a plugin
+        # dependency in downstream projects. Default to subprocess for safety.
+        return "subprocess"
+
+
+def _build_engine(engine_name: str) -> Engine:
+    """Return engine instance by name."""
+    if engine_name == "control":
+        return ControlModeEngine()
+    return SubprocessEngine()

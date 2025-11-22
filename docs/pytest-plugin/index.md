@@ -137,6 +137,31 @@ def set_home(
     monkeypatch.setenv("HOME", str(user_path))
 ```
 
+## Selecting tmux engines (experimental)
+
+Fixtures can run against different execution engines. By default the
+`subprocess` engine is used. You can choose control mode globally:
+
+```console
+$ pytest --engine=control
+```
+
+Or per-test via the `engines` marker (uses parametrization) and the `engine_name`
+fixture:
+
+```python
+import pytest
+
+@pytest.mark.engines(["subprocess", "control"])
+def test_my_flow(server, engine_name):
+    # server uses the selected engine, engine_name reflects the current one
+    assert engine_name in {"subprocess", "control"}
+    assert server.is_alive()
+```
+
+`TestServer` also respects the selected engine. Control mode is experimental and
+its APIs may change between releases.
+
 ## Fixtures
 
 ```{eval-rst}

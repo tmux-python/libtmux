@@ -11,6 +11,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux.common import has_gte_version, has_version
 from libtmux.server import Server
 
@@ -162,6 +163,35 @@ def test_new_session_shell_env(server: Server) -> None:
         assert pane_start_command.replace('"', "") == cmd
     else:
         assert pane_start_command == cmd
+
+
+def test_connect_creates_new_session(server: Server) -> None:
+    """Server.connect creates a new session when it doesn't exist."""
+    session = server.connect("test_connect_new")
+    assert session.name == "test_connect_new"
+    assert session.session_id is not None
+
+
+def test_connect_reuses_existing_session(server: Server, session: Session) -> None:
+    """Server.connect reuses an existing session instead of creating a new one."""
+    # First call creates
+    session1 = server.connect("test_connect_reuse")
+    assert session1.name == "test_connect_reuse"
+    session_id_1 = session1.session_id
+
+    # Second call should return the same session
+    session2 = server.connect("test_connect_reuse")
+    assert session2.session_id == session_id_1
+    assert session2.name == "test_connect_reuse"
+
+
+def test_connect_invalid_name(server: Server) -> None:
+    """Server.connect raises BadSessionName for invalid session names."""
+    with pytest.raises(exc.BadSessionName):
+        server.connect("invalid.name")
+
+    with pytest.raises(exc.BadSessionName):
+        server.connect("invalid:name")
 
 
 @pytest.mark.skipif(has_version("3.2"), reason="Wrong width returned with 3.2")

@@ -157,6 +157,23 @@ in your server object. `libtmux.Server(socket_name='mysocket')` is
 equivalent to `$ tmux -L mysocket`.
 :::
 
+### Optional: Control mode (experimental)
+
+Control mode keeps a persistent tmux client open and streams
+notifications. Enable it by injecting a control-mode engine:
+
+```python
+from libtmux._internal.engines.control_mode import ControlModeEngine
+from libtmux.server import Server
+
+engine = ControlModeEngine()
+server = Server(engine=engine)
+session = server.new_session(session_name="ctrl")
+print(session.name)
+```
+
+See {ref}`control-mode` for details, caveats, and notification handling.
+
 `server` is now a living object bound to the tmux server's Sessions,
 Windows and Panes.
 
