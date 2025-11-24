@@ -24,3 +24,14 @@ def test_control_sandbox_smoke(control_sandbox: t.ContextManager[Server]) -> Non
         # Run a simple command to ensure control mode path works.
         out = server.cmd("display-message", "-p", "hi")
         assert out.stdout == ["hi"]
+
+
+def test_control_sandbox_isolation(control_sandbox: t.ContextManager[Server]) -> None:
+    """Sandbox should isolate HOME/TMUX_TMPDIR and use a unique socket."""
+    with control_sandbox as server:
+        assert server.socket_name is not None
+        assert server.socket_name.startswith("libtmux_test")
+        # Ensure TMUX is unset so the sandbox never reuses a user server
+        import os
+
+        assert "TMUX" not in os.environ

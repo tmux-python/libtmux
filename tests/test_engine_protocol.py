@@ -12,7 +12,11 @@ from libtmux._internal.engines.base import (
     NotificationKind,
     command_result_to_tmux_cmd,
 )
-from libtmux._internal.engines.control_protocol import CommandContext, ControlProtocol
+from libtmux._internal.engines.control_protocol import (
+    CommandContext,
+    ControlProtocol,
+    ParserState,
+)
 
 
 class NotificationFixture(t.NamedTuple):
@@ -22,6 +26,14 @@ class NotificationFixture(t.NamedTuple):
     line: str
     expected_kind: NotificationKind
     expected_subset: dict[str, str]
+
+
+class ProtocolErrorFixture(t.NamedTuple):
+    """Fixture for protocol error handling."""
+
+    test_id: str
+    line: str
+    expected_reason: str
 
 
 def test_command_result_wraps_tmux_cmd() -> None:
@@ -72,6 +84,31 @@ def test_control_protocol_notifications() -> None:
     proto.feed_line("%sessions-changed")
     proto.feed_line("%sessions-changed")
     assert proto.get_stats(restarts=0).dropped_notifications >= 1
+
+
+PROTOCOL_ERROR_CASES: list[ProtocolErrorFixture] = [
+    ProtocolErrorFixture(
+        test_id="unexpected_end",
+        line="%end 123 1 0",
+        expected_reason="unexpected %end",
+    ),
+    ProtocolErrorFixture(
+        test_id="no_pending_begin",
+        line="%begin 999 1 0",
+        expected_reason="no pending command for %begin",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", PROTOCOL_ERROR_CASES, ids=lambda c: c.test_id)
+def test_control_protocol_errors(case: ProtocolErrorFixture) -> None:
+    """Protocol errors should mark the parser DEAD and record last_error."""
+    proto = ControlProtocol()
+    proto.feed_line(case.line)
+    stats = proto.get_stats(restarts=0)
+    assert proto.state is ParserState.DEAD
+    assert stats.last_error is not None
+    assert case.expected_reason in stats.last_error
 
 
 NOTIFICATION_FIXTURES: list[NotificationFixture] = [
