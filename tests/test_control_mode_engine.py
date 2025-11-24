@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import pathlib
-import subprocess
 import time
 import typing as t
 
@@ -86,6 +85,7 @@ def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
             self.stdout = BlockingStdout()
             self.stderr = None
             self._terminated = False
+            self.pid = 1234
 
         def terminate(self) -> None:  # pragma: no cover - simple stub
             self._terminated = True
@@ -96,6 +96,9 @@ def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
         def wait(self, timeout: float | None = None) -> None:  # pragma: no cover
             return None
 
+        def poll(self) -> int | None:  # pragma: no cover - simple stub
+            return 0
+
     engine = ControlModeEngine(command_timeout=0.01)
 
     fake_process = FakeProcess()
@@ -103,7 +106,7 @@ def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_start(server_args: t.Sequence[str | int] | None) -> None:
         engine.tmux_bin = "tmux"
         engine._server_args = tuple(server_args or ())
-        engine.process = t.cast(subprocess.Popen[str], fake_process)
+        engine.process = fake_process
 
     monkeypatch.setattr(engine, "_start_process", fake_start)
 
@@ -122,6 +125,7 @@ def test_control_mode_per_command_timeout(monkeypatch: pytest.MonkeyPatch) -> No
             self.stdout: t.Iterator[str] = iter([])  # no output
             self.stderr = None
             self._terminated = False
+            self.pid = 5678
 
         def terminate(self) -> None:
             self._terminated = True
@@ -132,12 +136,15 @@ def test_control_mode_per_command_timeout(monkeypatch: pytest.MonkeyPatch) -> No
         def wait(self, timeout: float | None = None) -> None:
             return None
 
+        def poll(self) -> int | None:
+            return 0
+
     engine = ControlModeEngine(command_timeout=5.0)
 
     def fake_start(server_args: t.Sequence[str | int] | None) -> None:
         engine.tmux_bin = "tmux"
         engine._server_args = tuple(server_args or ())
-        engine.process = t.cast(subprocess.Popen[str], FakeProcess())
+        engine.process = FakeProcess()
 
     monkeypatch.setattr(engine, "_start_process", fake_start)
 
@@ -243,6 +250,7 @@ def test_write_line_broken_pipe_increments_restart(
         def __init__(self) -> None:
             self.stdin = FakeStdin()
             self._terminated = False
+            self.pid = 9999
 
         def terminate(self) -> None:
             self._terminated = True
@@ -253,8 +261,11 @@ def test_write_line_broken_pipe_increments_restart(
         def wait(self, timeout: float | None = None) -> None:
             return None
 
+        def poll(self) -> int | None:
+            return 0
+
     engine = ControlModeEngine()
-    engine.process = FakeProcess()  # type: ignore[assignment]
+    engine.process = FakeProcess()
 
     with pytest.raises(case.should_raise):
         engine._write_line("list-sessions", server_args=())
