@@ -37,6 +37,7 @@ class AttachFixture(t.NamedTuple):
     test_id: str
     attach_to: str
     expect_attached: bool
+    expect_notification: bool = False
 
 
 TRAILING_OUTPUT_CASES = [
@@ -581,6 +582,7 @@ class CaptureRangeFixture(t.NamedTuple):
     start: int | None
     end: int | None
     expected_tail: str
+    flags: tuple[str, ...] = ()
 
 
 class InternalNameCollisionFixture(t.NamedTuple):
@@ -675,6 +677,7 @@ def test_internal_session_name_collision(case: InternalNameCollisionFixture) -> 
             test_id="attach_existing",
             attach_to="shared_session",
             expect_attached=True,
+            expect_notification=True,
         ),
         pytest.param(
             AttachFixture(
@@ -714,6 +717,11 @@ def test_attach_to_existing_session(case: AttachFixture) -> None:
         # because we filter control clients from "attached" semantics.
         attached = server.attached_sessions
         assert attached == []
+
+        if case.expect_notification:
+            # Drain notifications to confirm control stream is flowing.
+            notif = next(server.engine.iter_notifications(timeout=0.5), None)
+            assert notif is not None
     finally:
         with contextlib.suppress(Exception):
             bootstrap.kill()
