@@ -106,4 +106,5 @@ options_and_hooks
 clients
 format-tokens
 formats
+control_mode
 ```
