@@ -589,6 +589,14 @@ class CaptureRangeFixture(t.NamedTuple):
     flags: tuple[str, ...] = ()
 
 
+class CaptureScrollbackFixture(t.NamedTuple):
+    """Fixture for capture-pane scrollback handling."""
+
+    test_id: str
+    start: int
+    expected_tail: str
+
+
 class InternalNameCollisionFixture(t.NamedTuple):
     """Fixture for internal session name collisions."""
 
@@ -634,6 +642,52 @@ def test_capture_pane_respects_range(case: CaptureRangeFixture) -> None:
             suppress_history=False,
         )
         lines = pane.capture_pane(start=case.start, end=case.end)
+        assert lines
+        assert lines[-1].strip() == case.expected_tail
+    finally:
+        with contextlib.suppress(Exception):
+            server.kill()
+
+
+@pytest.mark.engines(["control"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            CaptureScrollbackFixture(
+                test_id="capture_scrollback_trims_prompt_only",
+                start=-50,
+                expected_tail="line3",
+            ),
+            marks=pytest.mark.xfail(
+                reason=(
+                    "control-mode capture scrollback races shell output; TODO stabilize"
+                ),
+                strict=False,
+            ),
+        ),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_capture_pane_scrollback(case: CaptureScrollbackFixture) -> None:
+    """capture-pane with small scrollback should include recent lines."""
+    socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
+    engine = ControlModeEngine()
+    server = Server(socket_name=socket_name, engine=engine)
+    try:
+        session = server.new_session(
+            session_name="capture_scrollback",
+            attach=False,
+            kill_session=True,
+        )
+        pane = session.active_pane
+        assert pane is not None
+        pane.send_keys(
+            'printf "line1\\nline2\\nline3\\n"',
+            literal=True,
+            suppress_history=False,
+        )
+        lines = pane.capture_pane(start=case.start)
         assert lines
         assert lines[-1].strip() == case.expected_tail
     finally:
@@ -793,3 +847,15 @@ def test_list_clients_control_flag_filters_attached() -> None:
     finally:
         with contextlib.suppress(Exception):
             server.kill()
+
+
+@pytest.mark.engines(["control"])
+@pytest.mark.xfail(
+    reason=(
+        "attach_to notifications are not yet deterministic; need explicit sync point"
+    ),
+    strict=False,
+)
+def test_attach_to_emits_notification_deterministically() -> None:
+    """Placeholder documenting desired deterministic attach_to notification."""
+    pytest.xfail("pending deterministic notification capture for attach_to")
