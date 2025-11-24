@@ -119,6 +119,9 @@ def test_control_client_lists_control_flag(
     )
     proto.register_command(list_ctx)
     proc.stdin.write('list-clients -F"#{client_pid} #{client_flags} #{session_name}"\n')
+    # Register detach to avoid protocol error on trailing %begin/%end
+    detach_ctx = CommandContext(argv=["tmux", "detach-client"])
+    proto.register_command(detach_ctx)
     proc.stdin.write("detach-client\n")
     proc.stdin.flush()
 
@@ -129,5 +132,7 @@ def test_control_client_lists_control_flag(
     assert list_ctx.done.wait(timeout=0.5)
     result = proto.build_result(list_ctx)
     assert any(
-        len(parts := line.split()) >= 2 and "C" in parts[1] for line in result.stdout
+        len(parts := line.split()) >= 2
+        and ("C" in parts[1] or "control-mode" in parts[1])
+        for line in result.stdout
     )
