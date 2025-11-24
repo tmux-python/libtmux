@@ -605,6 +605,7 @@ class InternalNameCollisionFixture(t.NamedTuple):
             ),
             marks=pytest.mark.xfail(
                 reason="control-mode capture may race shell; TODO fix",
+                strict=False,
             ),
         ),
     ],
@@ -637,9 +638,12 @@ def test_capture_pane_respects_range(case: CaptureRangeFixture) -> None:
 
 
 @pytest.mark.engines(["control"])
+@pytest.mark.xfail(
+    reason="control-mode capture -N can race shell; TODO fix upstream",
+    strict=False,
+)
 def test_capture_pane_preserves_joined_lines() -> None:
     """capture-pane -N should keep joined lines (no trimming/rewrap)."""
-    pytest.xfail("control-mode capture -N can race shell; TODO fix upstream")
     socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
     engine = ControlModeEngine()
     server = Server(socket_name=socket_name, engine=engine)
