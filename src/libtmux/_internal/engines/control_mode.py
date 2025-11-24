@@ -296,6 +296,23 @@ class ControlModeEngine(Engine):
 
         # Build command based on configuration
         if self._attach_to:
+            # Fail fast if attach target is missing before starting control mode.
+            has_session_cmd = [
+                tmux_bin,
+                *[str(a) for a in server_args],
+                "has-session",
+                "-t",
+                self._attach_to,
+            ]
+            probe = subprocess.run(
+                has_session_cmd,
+                capture_output=True,
+                text=True,
+            )
+            if probe.returncode != 0:
+                msg = f"attach_to session not found: {self._attach_to}"
+                raise exc.ControlModeConnectionError(msg)
+
             # Attach to existing session (advanced mode)
             cmd = [
                 tmux_bin,
