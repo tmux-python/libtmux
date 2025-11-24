@@ -141,33 +141,58 @@ The following deprecations from 0.50.0 continue to emit {class}`DeprecationWarni
 
 ### Features
 
-- Control-mode–first engine protocol (experimental): adds structured command results,
-  notification parsing (layout changes, unlinked windows, client detach/session change,
-  session rename, paste-buffer events), and stats while keeping existing
-  `Server/Session/Window/Pane.cmd` return type (`tmux_cmd`) stable. (#605)
-- Control mode engine's internal connection session is now automatically filtered from
-  `Server.sessions` and `Server.has_session()`, making engine choice transparent to
-  users. Advanced users can access all sessions via `Server._sessions_all()`. (#605)
-- `ControlModeEngine` accepts optional `internal_session_name` and `attach_to`
-  parameters for advanced session management scenarios. (#605)
-- `Server.connect()`: New convenience method for session management. Returns an
-  existing session if found, otherwise creates a new detached session. Simplifies
-  common session reuse patterns and works transparently with both subprocess and
-  control-mode engines.
-- Control-mode diagnostics: bounded notification queue with drop counting,
-  richer exceptions (`ControlModeTimeout`, `ControlModeProtocolError`,
-  `ControlModeConnectionError`, `SubprocessTimeout`), and documented retry/timeout
-  behaviour. Control sandbox pytest fixture provides a hermetic control-mode server
-  for integration tests.
+#### Control mode engine (experimental) (#605)
+- Control-mode–first engine stack with structured `CommandResult`, notification parsing
+  (%layout-change, unlinked window add/close/rename, client session change/detach, paste buffer),
+  and stats, while keeping the public `cmd` API returning `tmux_cmd`.
+- Internal control session is automatically filtered from `Server.sessions` /
+  `Server.has_session()`; advanced users can inspect all sessions via
+  `Server._sessions_all()`.
+- `ControlModeEngine` accepts `internal_session_name` (default `libtmux_control_mode`)
+  and `attach_to` for advanced connection strategies.
+
+Example:
+
+```python
+from libtmux._internal.engines.control_mode import ControlModeEngine
+from libtmux.server import Server
+
+engine = ControlModeEngine(command_timeout=5)
+server = Server(engine=engine)
+session = server.new_session(session_name="ctrl")
+for notif in engine.iter_notifications(timeout=0.1):
+    print(notif.kind, notif.data)
+```
+
+#### Convenience APIs (#605)
+- `Server.connect()` returns an existing session or creates a new detached one,
+  working with both subprocess and control-mode engines.
+
+#### Diagnostics and resilience (#605)
+- Bounded notification queue with drop counting; exposed via engine stats.
+- Expanded exceptions: `ControlModeTimeout`, `ControlModeProtocolError`,
+  `ControlModeConnectionError`, `SubprocessTimeout`; documented retry/timeout behaviour.
+- Control-mode capture-pane trims trailing whitespace-only lines to mirror subprocess
+  semantics; first capture after send-keys briefly retries to avoid prompt races.
+
+#### Testing utilities (#605)
+- Control sandbox fixture provides a hermetic control-mode tmux server (isolated HOME,
+  TMUX_TMPDIR, unique socket); handy for integration-style tests.
+  Example:
+
+  ```python
+  @pytest.mark.engines(["control"])
+  def test_control_sandbox(control_sandbox):
+      with control_sandbox as server:
+          out = server.cmd("display-message", "-p", "hi")
+          assert out.stdout == ["hi"]
+  ```
 
 ### Compatibility
 
-- Control mode's internal session is now automatically filtered from user-facing APIs.
-  Code that previously filtered `libtmux_control_mode` manually can be simplified.
-  APIs remain unchanged for tmux command return objects; new metadata is attached for
-  advanced users. (#605)
-- Control-mode `capture-pane` trims trailing whitespace-only lines to align with
-  subprocess behaviour; explicit range flags (`-S/-E`) remain exact.
+- Control mode internal session filtering is engine-driven; callers no longer need
+  to manually exclude `libtmux_control_mode`. APIs stay unchanged; additional metadata
+  is attached for advanced users. (#605)
 
 ## libtmux 0.50.1 (2025-12-06)
 
