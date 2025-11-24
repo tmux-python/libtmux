@@ -46,6 +46,7 @@ class ControlModeEngine(Engine):
         notification_queue_size: int = 4096,
         internal_session_name: str | None = None,
         attach_to: str | None = None,
+        process_factory: t.Callable[[list[str]], subprocess.Popen[str]] | None = None,
     ) -> None:
         """Initialize control mode engine.
 
@@ -68,6 +69,10 @@ class ControlModeEngine(Engine):
             .. warning::
                Attaching to user sessions can cause notification spam from
                pane output. Use for advanced scenarios only.
+        process_factory : Callable[[list[str]], subprocess.Popen], optional
+            Test hook to override how the tmux control-mode process is created.
+            When provided, it receives the argv list and must return an object
+            compatible with ``subprocess.Popen`` (stdin/stdout/stderr streams).
         """
         self.process: subprocess.Popen[str] | None = None
         self._lock = threading.Lock()
@@ -83,6 +88,7 @@ class ControlModeEngine(Engine):
         self._restarts = 0
         self._internal_session_name = internal_session_name or "libtmux_control_mode"
         self._attach_to = attach_to
+        self._process_factory = process_factory
 
     # Lifecycle ---------------------------------------------------------
     def close(self) -> None:
@@ -92,11 +98,15 @@ class ControlModeEngine(Engine):
             return
 
         try:
-            proc.terminate()
-            proc.wait(timeout=1)
+            if hasattr(proc, "terminate"):
+                proc.terminate()  # type: ignore[call-arg]
+            if hasattr(proc, "wait"):
+                proc.wait(timeout=1)  # type: ignore[call-arg]
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+            if hasattr(proc, "kill"):
+                proc.kill()  # type: ignore[call-arg]
+            if hasattr(proc, "wait"):
+                proc.wait()  # type: ignore[call-arg]
         finally:
             self.process = None
             self._server_args = None
@@ -147,6 +157,7 @@ class ControlModeEngine(Engine):
             # Wait outside the lock so multiple callers can run concurrently
             if not ctx.wait(timeout=effective_timeout):
                 self.close()
+                self._restarts += 1
                 msg = "tmux control mode command timed out"
                 raise exc.ControlModeTimeout(msg)
 
@@ -350,7 +361,8 @@ class ControlModeEngine(Engine):
             ]
 
         logger.debug("Starting Control Mode process: %s", cmd)
-        self.process = subprocess.Popen(
+        popen_factory = self._process_factory or subprocess.Popen
+        self.process = popen_factory(  # type: ignore[arg-type]
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
