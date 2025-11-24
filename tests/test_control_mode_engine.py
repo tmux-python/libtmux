@@ -99,7 +99,7 @@ def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
         def poll(self) -> int | None:  # pragma: no cover - simple stub
             return 0
 
-    engine = ControlModeEngine(command_timeout=0.01)
+    engine = ControlModeEngine(command_timeout=0.01, start_threads=False)
 
     fake_process: _ControlProcess = FakeProcess()
 
@@ -139,7 +139,7 @@ def test_control_mode_per_command_timeout(monkeypatch: pytest.MonkeyPatch) -> No
         def poll(self) -> int | None:
             return 0
 
-    engine = ControlModeEngine(command_timeout=5.0)
+    engine = ControlModeEngine(command_timeout=5.0, start_threads=False)
 
     def fake_start(server_args: t.Sequence[str | int] | None) -> None:
         engine.tmux_bin = "tmux"

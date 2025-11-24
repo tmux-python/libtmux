@@ -80,6 +80,8 @@ class ControlModeEngine(Engine):
         internal_session_name: str | None = None,
         attach_to: str | None = None,
         process_factory: _ProcessFactory | None = None,
+        max_retries: int = 1,
+        start_threads: bool = True,
     ) -> None:
         """Initialize control mode engine.
 
@@ -106,6 +108,12 @@ class ControlModeEngine(Engine):
             Test hook to override how the tmux control-mode process is created.
             When provided, it receives the argv list and must return an object
             compatible with ``subprocess.Popen`` (stdin/stdout/stderr streams).
+        max_retries : int, optional
+            Number of times to retry a command after a BrokenPipeError while
+            writing to the control-mode process. Default: 1.
+        start_threads : bool, optional
+            Internal/testing hook to skip spawning reader/stderr threads when
+            using a fake process that feeds the protocol directly. Default: True.
         """
         self.process: _ControlProcess | None = None
         self._lock = threading.Lock()
@@ -122,6 +130,8 @@ class ControlModeEngine(Engine):
         self._internal_session_name = internal_session_name or "libtmux_control_mode"
         self._attach_to = attach_to
         self._process_factory = process_factory
+        self._max_retries = max(0, max_retries)
+        self._start_threads = start_threads
 
     # Lifecycle ---------------------------------------------------------
     def close(self) -> None:
@@ -178,7 +188,7 @@ class ControlModeEngine(Engine):
                 try:
                     self._write_line(command_line, server_args=incoming_server_args)
                 except exc.ControlModeConnectionError:
-                    if attempts >= 2:
+                    if attempts > self._max_retries:
                         raise
                     # retry the full cycle with a fresh process/context
                     continue
@@ -409,19 +419,20 @@ class ControlModeEngine(Engine):
         self._protocol.register_command(bootstrap_ctx)
 
         # Start IO threads after registration to avoid early protocol errors.
-        self._reader_thread = threading.Thread(
-            target=self._reader,
-            args=(self.process,),
-            daemon=True,
-        )
-        self._reader_thread.start()
+        if self._start_threads:
+            self._reader_thread = threading.Thread(
+                target=self._reader,
+                args=(self.process,),
+                daemon=True,
+            )
+            self._reader_thread.start()
 
-        self._stderr_thread = threading.Thread(
-            target=self._drain_stderr,
-            args=(self.process,),
-            daemon=True,
-        )
-        self._stderr_thread.start()
+            self._stderr_thread = threading.Thread(
+                target=self._drain_stderr,
+                args=(self.process,),
+                daemon=True,
+            )
+            self._stderr_thread.start()
 
         if not bootstrap_ctx.wait(timeout=self.command_timeout):
             self.close()
