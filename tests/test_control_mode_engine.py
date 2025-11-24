@@ -6,12 +6,13 @@ import io
 import pathlib
 import time
 import typing as t
+from typing import cast
 
 import pytest
 
 from libtmux import exc
 from libtmux._internal.engines.base import ExitStatus
-from libtmux._internal.engines.control_mode import ControlModeEngine
+from libtmux._internal.engines.control_mode import ControlModeEngine, _ControlProcess
 from libtmux._internal.engines.control_protocol import ControlProtocol
 from libtmux.server import Server
 
@@ -106,7 +107,7 @@ def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_start(server_args: t.Sequence[str | int] | None) -> None:
         engine.tmux_bin = "tmux"
         engine._server_args = tuple(server_args or ())
-        engine.process = fake_process
+        engine.process = cast(_ControlProcess, fake_process)
 
     monkeypatch.setattr(engine, "_start_process", fake_start)
 
@@ -144,7 +145,7 @@ def test_control_mode_per_command_timeout(monkeypatch: pytest.MonkeyPatch) -> No
     def fake_start(server_args: t.Sequence[str | int] | None) -> None:
         engine.tmux_bin = "tmux"
         engine._server_args = tuple(server_args or ())
-        engine.process = FakeProcess()
+        engine.process = cast(_ControlProcess, FakeProcess())
 
     monkeypatch.setattr(engine, "_start_process", fake_start)
 
@@ -265,7 +266,7 @@ def test_write_line_broken_pipe_increments_restart(
             return 0
 
     engine = ControlModeEngine()
-    engine.process = FakeProcess()
+    engine.process = cast(_ControlProcess, FakeProcess())
 
     with pytest.raises(case.should_raise):
         engine._write_line("list-sessions", server_args=())
