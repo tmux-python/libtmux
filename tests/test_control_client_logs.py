@@ -97,3 +97,37 @@ def test_control_client_notification_parsing(
     notif = proto.get_notification(timeout=0.1)
     assert notif is not None
     assert notif.kind.name in {"SESSION_CHANGED", "CLIENT_SESSION_CHANGED", "RAW"}
+
+
+@pytest.mark.engines(["control"])
+def test_control_client_lists_control_flag(
+    control_client_logs: tuple[t.Any, ControlProtocol],
+) -> None:
+    """list-clients should show control client with C flag on tmux >= 3.2."""
+    proc, proto = control_client_logs
+    if has_lt_version("3.2"):
+        pytest.skip("tmux < 3.2 omits client_flags")
+
+    assert proc.stdin is not None
+    list_ctx = CommandContext(
+        argv=[
+            "tmux",
+            "list-clients",
+            "-F",
+            "#{client_pid} #{client_flags} #{session_name}",
+        ],
+    )
+    proto.register_command(list_ctx)
+    proc.stdin.write('list-clients -F"#{client_pid} #{client_flags} #{session_name}"\n')
+    proc.stdin.write("detach-client\n")
+    proc.stdin.flush()
+
+    stdout_data, _ = proc.communicate(timeout=5)
+    for line in stdout_data.splitlines():
+        proto.feed_line(line.rstrip("\n"))
+
+    assert list_ctx.done.wait(timeout=0.5)
+    result = proto.build_result(list_ctx)
+    assert any(
+        len(parts := line.split()) >= 2 and "C" in parts[1] for line in result.stdout
+    )
