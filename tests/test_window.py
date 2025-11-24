@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
-import time
 import typing as t
 
 import pytest
@@ -21,6 +20,7 @@ from libtmux.constants import (
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.window import Window
+from tests.helpers import wait_for_line
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
@@ -464,11 +464,14 @@ def test_split_with_environment(
         environment=environment,
     )
     assert pane is not None
-    # wait a bit for the prompt to be ready as the test gets flaky otherwise
-    time.sleep(0.05)
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
-        assert pane.capture_pane()[-2] == v
+
+        def _match(line: str, expected: str = v) -> bool:
+            return line.strip() == expected
+
+        lines = wait_for_line(pane, _match)
+        assert any(_match(line) for line in lines)
 
 
 def test_split_window_zoom(
