@@ -121,6 +121,31 @@ class WaitTimeout(LibTmuxException):
     """Function timed out without meeting condition."""
 
 
+class ControlModeTimeout(LibTmuxException):
+    """tmux control-mode command did not return before the configured timeout.
+
+    Raised by :class:`~libtmux._internal.engines.control_mode.ControlModeEngine`
+    when a command block fails to finish. The engine will close and restart the
+    control client after emitting this error.
+    """
+
+
+class ControlModeProtocolError(LibTmuxException):
+    """Protocol-level error while parsing the control-mode stream.
+
+    Indicates malformed `%begin/%end/%error` framing or an unexpected parser
+    state. The control client is marked dead and must be restarted.
+    """
+
+
+class ControlModeConnectionError(LibTmuxException):
+    """Control-mode connection was lost unexpectedly (EOF/broken pipe)."""
+
+
+class SubprocessTimeout(LibTmuxException):
+    """tmux subprocess exceeded the allowed timeout for the invoked command."""
+
+
 class VariableUnpackingError(LibTmuxException):
     """Error unpacking variable."""
 

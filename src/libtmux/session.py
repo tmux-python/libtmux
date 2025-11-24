@@ -582,11 +582,21 @@ class Session(
         :exc:`libtmux.exc.LibTmuxException`
             If tmux returns an error.
         """
+        target: str | None = None
         if target_window:
+            # Scope the target to this session so control-mode's internal
+            # client session does not steal context.
+            session_target = self.session_id
             if isinstance(target_window, int):
-                target = f"{self.window_name}:{target_window}"
+                target = f"{session_target}:{target_window}"
             else:
-                target = f"{target_window}"
+                # Allow fully-qualified targets and window IDs to pass through.
+                if ":" in target_window or target_window.startswith("@"):
+                    target = target_window
+                else:
+                    target = f"{session_target}:{target_window}"
+        else:
+            target = self.session_id
 
         proc = self.cmd("kill-window", target=target)
 

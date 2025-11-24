@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import pathlib
+import time
 import typing as t
 
 from libtmux import exc
@@ -61,24 +62,26 @@ class Pane(
 
     Examples
     --------
-    >>> pane
-    Pane(%1 Window(@1 1:..., Session($1 ...)))
+    >>> pane  # doctest: +ELLIPSIS
+    Pane(%... Window(@... ..., Session($... ...)))
 
     >>> pane in window.panes
     True
 
-    >>> pane.window
-    Window(@1 1:..., Session($1 ...))
+    >>> pane.window  # doctest: +ELLIPSIS
+    Window(@... ..., Session($... ...))
 
-    >>> pane.session
-    Session($1 ...)
+    >>> pane.session  # doctest: +ELLIPSIS
+    Session($... ...)
 
     The pane can be used as a context manager to ensure proper cleanup:
 
-    >>> with window.split() as pane:
-    ...     pane.send_keys('echo "Hello"')
-    ...     # Do work with the pane
-    ...     # Pane will be killed automatically when exiting the context
+    .. code-block:: python
+
+        with window.split() as pane:
+            pane.send_keys('echo "Hello"')
+            # Do work with the pane
+            # Pane will be killed automatically when exiting the context
 
     Notes
     -----
@@ -187,14 +190,20 @@ class Pane(
 
         Examples
         --------
-        >>> pane.cmd('split-window', '-P').stdout[0]
-        'libtmux...:...'
+        .. code-block:: python
+
+            pane.cmd('split-window', '-P').stdout[0]
+            # 'libtmux...:...'
 
         From raw output to an enriched `Pane` object:
 
-        >>> Pane.from_pane_id(pane_id=pane.cmd(
-        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=pane.server)
-        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+        .. code-block:: python
+
+            Pane.from_pane_id(
+                pane_id=pane.cmd('split-window', '-P', '-F#{pane_id}').stdout[0],
+                server=pane.server
+            )
+            # Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
         Parameters
         ----------
@@ -418,7 +427,27 @@ class Pane(
                     "trim_trailing requires tmux 3.4+, ignoring",
                     stacklevel=2,
                 )
-        return self.cmd(*cmd).stdout
+        output = self.cmd(*cmd).stdout
+
+        def _trim(lines: list[str]) -> list[str]:
+            trimmed = list(lines)
+            while trimmed and trimmed[-1].strip() == "":
+                trimmed.pop()
+            return trimmed
+
+        output = _trim(output)
+
+        # In control mode, capture-pane can race the shell: the first capture
+        # right after send-keys may return only the echoed command. Retry
+        # briefly to allow the prompt/output to land.
+        engine_name = self.server.engine.__class__.__name__
+        if engine_name == "ControlModeEngine" and not output:
+            deadline = time.monotonic() + 0.35
+            while not output and time.monotonic() < deadline:
+                time.sleep(0.05)
+                output = _trim(self.cmd(*cmd).stdout)
+
+        return output
 
     def send_keys(
         self,

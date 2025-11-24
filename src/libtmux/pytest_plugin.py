@@ -13,6 +13,9 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._internal.engines.base import Engine
+from libtmux._internal.engines.control_mode import ControlModeEngine
+from libtmux._internal.engines.subprocess_engine import SubprocessEngine
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
@@ -114,6 +117,7 @@ def server(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
     config_file: pathlib.Path,
+    engine_name: str,
 ) -> Server:
     """Return new, temporary :class:`libtmux.Server`.
 
@@ -140,7 +144,23 @@ def server(
 
         >>> result.assert_outcomes(passed=1)
     """
-    server = Server(socket_name=f"libtmux_test{next(namer)}")
+    socket_name = f"libtmux_test{next(namer)}"
+
+    # Bootstrap: Create "tmuxp" session BEFORE control mode starts
+    # This allows control mode to attach to it, avoiding internal session creation
+    if engine_name == "control":
+        import subprocess
+
+        subprocess.run(
+            ["tmux", "-L", socket_name, "new-session", "-d", "-s", "tmuxp"],
+            check=False,  # Ignore if already exists
+            capture_output=True,
+        )
+        engine = _build_engine(engine_name, attach_to="tmuxp")
+    else:
+        engine = _build_engine(engine_name)
+
+    server = Server(socket_name=socket_name, engine=engine)
 
     def fin() -> None:
         server.kill()
@@ -310,5 +330,34 @@ def TestServer(
             Server,
             on_init=on_init,
             socket_name_factory=socket_name_factory,
+            engine=_build_engine(request.getfixturevalue("engine_name")),
         ),
     )
+
+
+@pytest.fixture
+def engine_name(request: pytest.FixtureRequest) -> str:
+    """Engine selector fixture, driven by CLI or parametrization."""
+    if hasattr(request, "param"):
+        return t.cast(str, request.param)
+    try:
+        return t.cast(str, request.config.getoption("--engine"))
+    except ValueError:
+        # Option may not be registered when libtmux is used purely as a plugin
+        # dependency in downstream projects. Default to subprocess for safety.
+        return "subprocess"
+
+
+def _build_engine(engine_name: str, attach_to: str | None = None) -> Engine:
+    """Return engine instance by name.
+
+    Parameters
+    ----------
+    engine_name : str
+        Name of engine: "control" or "subprocess"
+    attach_to : str, optional
+        For control mode: session name to attach to instead of creating internal session
+    """
+    if engine_name == "control":
+        return ControlModeEngine(attach_to=attach_to)
+    return SubprocessEngine()
