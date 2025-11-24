@@ -74,3 +74,26 @@ def test_control_client_capture_stream_parses(
     assert display_ctx.done.wait(timeout=0.5)
     result = proto.build_result(display_ctx)
     assert "hello" in result.stdout or "hello" in "".join(result.stdout)
+
+
+def test_control_client_notification_parsing(
+    control_client_logs: tuple[t.Any, ControlProtocol],
+) -> None:
+    """Control client log stream should produce notifications."""
+    proc, proto = control_client_logs
+    assert proc.stdin is not None
+
+    ctx = CommandContext(argv=["tmux", "display-message", "-p", "ping"])
+    proto.register_command(ctx)
+    # send a trivial command and rely on session-changed notification from attach
+    proc.stdin.write("display-message -p ping\n")
+    proc.stdin.write("detach-client\n")
+    proc.stdin.flush()
+
+    stdout_data, _ = proc.communicate(timeout=5)
+    for line in stdout_data.splitlines():
+        proto.feed_line(line.rstrip("\n"))
+
+    notif = proto.get_notification(timeout=0.1)
+    assert notif is not None
+    assert notif.kind.name in {"SESSION_CHANGED", "CLIENT_SESSION_CHANGED", "RAW"}
