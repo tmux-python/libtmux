@@ -28,6 +28,36 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _ControlProcess(t.Protocol):
+    """Protocol for control-mode process handle (real or test fake)."""
+
+    stdin: t.TextIO | None
+    stdout: t.Iterable[str] | None
+    stderr: t.Iterable[str] | None
+
+    def terminate(self) -> None: ...
+
+    def kill(self) -> None: ...
+
+    def wait(self, timeout: float | None = None) -> t.Any: ...
+
+
+class _ProcessFactory(t.Protocol):
+    """Protocol for constructing a control-mode process."""
+
+    def __call__(
+        self,
+        cmd: list[str],
+        *,
+        stdin: t.Any,
+        stdout: t.Any,
+        stderr: t.Any,
+        text: bool,
+        bufsize: int,
+        errors: str,
+    ) -> _ControlProcess: ...
+
+
 class ControlModeEngine(Engine):
     """Engine that runs tmux commands via a persistent Control Mode process.
 
@@ -46,7 +76,7 @@ class ControlModeEngine(Engine):
         notification_queue_size: int = 4096,
         internal_session_name: str | None = None,
         attach_to: str | None = None,
-        process_factory: t.Callable[[list[str]], subprocess.Popen[str]] | None = None,
+        process_factory: _ProcessFactory | None = None,
     ) -> None:
         """Initialize control mode engine.
 
@@ -69,12 +99,12 @@ class ControlModeEngine(Engine):
             .. warning::
                Attaching to user sessions can cause notification spam from
                pane output. Use for advanced scenarios only.
-        process_factory : Callable[[list[str]], subprocess.Popen], optional
+        process_factory : _ProcessFactory, optional
             Test hook to override how the tmux control-mode process is created.
             When provided, it receives the argv list and must return an object
             compatible with ``subprocess.Popen`` (stdin/stdout/stderr streams).
         """
-        self.process: subprocess.Popen[str] | None = None
+        self.process: _ControlProcess | None = None
         self._lock = threading.Lock()
         self._server_args: tuple[str | int, ...] | None = None
         self.command_timeout = command_timeout
@@ -98,15 +128,11 @@ class ControlModeEngine(Engine):
             return
 
         try:
-            if hasattr(proc, "terminate"):
-                proc.terminate()  # type: ignore[call-arg]
-            if hasattr(proc, "wait"):
-                proc.wait(timeout=1)  # type: ignore[call-arg]
+            proc.terminate()
+            proc.wait(timeout=1)
         except subprocess.TimeoutExpired:
-            if hasattr(proc, "kill"):
-                proc.kill()  # type: ignore[call-arg]
-            if hasattr(proc, "wait"):
-                proc.wait()  # type: ignore[call-arg]
+            proc.kill()
+            proc.wait()
         finally:
             self.process = None
             self._server_args = None
@@ -361,8 +387,10 @@ class ControlModeEngine(Engine):
             ]
 
         logger.debug("Starting Control Mode process: %s", cmd)
-        popen_factory = self._process_factory or subprocess.Popen
-        self.process = popen_factory(  # type: ignore[arg-type]
+        popen_factory: _ProcessFactory = (
+            self._process_factory or subprocess.Popen  # type: ignore[assignment]
+        )
+        self.process = popen_factory(
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -416,7 +444,7 @@ class ControlModeEngine(Engine):
             msg = "control mode process unavailable"
             raise exc.ControlModeConnectionError(msg) from None
 
-    def _reader(self, process: subprocess.Popen[str]) -> None:
+    def _reader(self, process: _ControlProcess) -> None:
         assert process.stdout is not None
         try:
             for raw in process.stdout:
@@ -426,7 +454,7 @@ class ControlModeEngine(Engine):
         finally:
             self._protocol.mark_dead("EOF from tmux")
 
-    def _drain_stderr(self, process: subprocess.Popen[str]) -> None:
+    def _drain_stderr(self, process: _ControlProcess) -> None:
         if process.stderr is None:
             return
         for err_line in process.stderr:
