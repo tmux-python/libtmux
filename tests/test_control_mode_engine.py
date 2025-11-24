@@ -471,10 +471,6 @@ class BackpressureFixture(t.NamedTuple):
     expect_iter: bool
 
 
-@pytest.mark.xfail(
-    reason="control-mode notification backpressure integration not stable yet",
-    strict=False,
-)
 @pytest.mark.parametrize(
     "case",
     [
@@ -489,13 +485,29 @@ class BackpressureFixture(t.NamedTuple):
 )
 def test_notifications_overflow_then_iter(case: BackpressureFixture) -> None:
     """Flood notif queue then ensure iter_notifications still yields."""
-    engine = ControlModeEngine()
-    engine._protocol = ControlProtocol(notification_queue_size=case.queue_size)
-    for _ in range(case.overflow):
-        engine._protocol.feed_line("%sessions-changed")
+    # Build scripted process that emits many notifications and a single command block.
+    notif_lines = ["%sessions-changed"] * case.overflow
+    command_block = ["%begin 99 1 0", "%end 99 1 0"]
+    script = [*notif_lines, *command_block, "%exit"]
+    factory = ProcessFactory(deque([ScriptedProcess(script, pid=3333)]))
+
+    engine = ControlModeEngine(
+        process_factory=factory,
+        start_threads=True,
+        notification_queue_size=case.queue_size,
+    )
+
+    # Run a dummy command to consume the %begin/%end.
+    res = engine.run_result("list-sessions")
+    assert res.exit_status is ExitStatus.OK
+
+    stats = engine.get_stats()
+    assert stats.dropped_notifications >= case.overflow - case.queue_size
+
     if case.expect_iter:
-        notif = next(engine.iter_notifications(timeout=0.05), None)
+        notif = next(engine.iter_notifications(timeout=0.1), None)
         assert notif is not None
+        assert notif.kind.name == "SESSIONS_CHANGED"
 
 
 class TimeoutRestartFixture(t.NamedTuple):
