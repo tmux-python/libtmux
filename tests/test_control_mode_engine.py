@@ -13,6 +13,7 @@ import pytest
 from libtmux import exc
 from libtmux._internal.engines.base import ExitStatus
 from libtmux._internal.engines.control_mode import ControlModeEngine
+from libtmux._internal.engines.control_protocol import ControlProtocol
 from libtmux.server import Server
 
 
@@ -112,6 +113,40 @@ def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     assert engine.process is None
 
 
+def test_control_mode_per_command_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Per-call timeout should close process and raise ControlModeTimeout."""
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdin = io.StringIO()
+            self.stdout: t.Iterator[str] = iter([])  # no output
+            self.stderr = None
+            self._terminated = False
+
+        def terminate(self) -> None:
+            self._terminated = True
+
+        def kill(self) -> None:
+            self._terminated = True
+
+        def wait(self, timeout: float | None = None) -> None:
+            return None
+
+    engine = ControlModeEngine(command_timeout=5.0)
+
+    def fake_start(server_args: t.Sequence[str | int] | None) -> None:
+        engine.tmux_bin = "tmux"
+        engine._server_args = tuple(server_args or ())
+        engine.process = t.cast(subprocess.Popen[str], FakeProcess())
+
+    monkeypatch.setattr(engine, "_start_process", fake_start)
+
+    with pytest.raises(exc.ControlModeTimeout):
+        engine.run("list-sessions", timeout=0.01)
+
+    assert engine.process is None
+
+
 def test_control_mode_custom_session_name(tmp_path: pathlib.Path) -> None:
     """Control mode engine can use custom internal session name."""
     socket_path = tmp_path / "tmux-custom-session-test"
@@ -173,3 +208,83 @@ def test_control_mode_attach_to_existing(tmp_path: pathlib.Path) -> None:
     server2.kill()
     assert control_engine.process is not None
     control_engine.process.wait(timeout=2)
+
+
+class RestartFixture(t.NamedTuple):
+    """Fixture for restart/broken-pipe handling."""
+
+    test_id: str
+    should_raise: type[BaseException]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        RestartFixture(
+            test_id="broken_pipe_increments_restart",
+            should_raise=exc.ControlModeConnectionError,
+        ),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_write_line_broken_pipe_increments_restart(
+    case: RestartFixture,
+) -> None:
+    """Broken pipe should raise ControlModeConnectionError and bump restarts."""
+
+    class FakeStdin:
+        def write(self, _: str) -> None:
+            raise BrokenPipeError
+
+        def flush(self) -> None:  # pragma: no cover - not reached
+            return None
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdin = FakeStdin()
+
+    engine = ControlModeEngine()
+    engine.process = FakeProcess()  # type: ignore[assignment]
+
+    with pytest.raises(case.should_raise):
+        engine._write_line("list-sessions", server_args=())
+    assert engine._restarts == 1
+    assert engine.process is None
+
+
+class NotificationOverflowFixture(t.NamedTuple):
+    """Fixture for notification overflow handling."""
+
+    test_id: str
+    queue_size: int
+    overflow: int
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        NotificationOverflowFixture(
+            test_id="iter_notifications_after_drop",
+            queue_size=1,
+            overflow=3,
+        ),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_iter_notifications_survives_overflow(
+    case: NotificationOverflowFixture,
+) -> None:
+    """iter_notifications should continue yielding after queue drops."""
+    engine = ControlModeEngine()
+    engine._protocol = ControlProtocol(notification_queue_size=case.queue_size)
+
+    for _ in range(case.overflow):
+        engine._protocol.feed_line("%sessions-changed")
+
+    stats = engine.get_stats()
+    assert stats.dropped_notifications >= case.overflow - case.queue_size
+
+    notif_iter = engine.iter_notifications(timeout=0.01)
+    first = next(notif_iter, None)
+    assert first is not None
+    assert first.kind.name == "SESSIONS_CHANGED"
