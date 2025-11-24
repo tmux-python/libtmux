@@ -298,3 +298,32 @@ def test_iter_notifications_survives_overflow(
     first = next(notif_iter, None)
     assert first is not None
     assert first.kind.name == "SESSIONS_CHANGED"
+
+
+class RestartRetryFixture(t.NamedTuple):
+    """Fixture for restart + retry behavior."""
+
+    test_id: str
+    raise_once: bool
+
+
+@pytest.mark.xfail(reason="Engine retry path not covered yet", strict=False)
+@pytest.mark.parametrize(
+    "case",
+    [
+        RestartRetryFixture(
+            test_id="retry_after_broken_pipe",
+            raise_once=True,
+        ),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_run_result_retries_after_broken_pipe(
+    case: RestartRetryFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Placeholder: run_result should retry after broken pipe and succeed."""
+    engine = ControlModeEngine()
+    # TODO: Implement retry simulation when engine supports injectable I/O.
+    with pytest.raises(exc.ControlModeConnectionError):
+        engine.run("list-sessions")
