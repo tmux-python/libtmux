@@ -36,6 +36,7 @@ class AttachFixture(t.NamedTuple):
 
     test_id: str
     attach_to: str
+    expect_attached: bool
 
 
 TRAILING_OUTPUT_CASES = [
@@ -573,11 +574,116 @@ def test_session_kill_handles_control_eof() -> None:
             server.kill()
 
 
+class CaptureRangeFixture(t.NamedTuple):
+    """Fixture for capture-pane range/flag behavior."""
+
+    test_id: str
+    start: int | None
+    end: int | None
+    expected_tail: str
+
+
+class InternalNameCollisionFixture(t.NamedTuple):
+    """Fixture for internal session name collisions."""
+
+    test_id: str
+    internal_name: str
+
+
 @pytest.mark.engines(["control"])
 @pytest.mark.parametrize(
     "case",
     [
-        AttachFixture(test_id="attach_existing", attach_to="shared_session"),
+        CaptureRangeFixture(
+            test_id="capture_with_range_untrimmed",
+            start=-1,
+            end=-1,
+            expected_tail="line2",
+        ),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_capture_pane_respects_range(case: CaptureRangeFixture) -> None:
+    """capture-pane with explicit range should return requested lines."""
+    socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
+    engine = ControlModeEngine()
+    server = Server(socket_name=socket_name, engine=engine)
+    try:
+        session = server.new_session(
+            session_name="capture_range",
+            attach=False,
+            kill_session=True,
+        )
+        pane = session.active_pane
+        assert pane is not None
+        pane.send_keys(
+            'printf "line1\\nline2\\n"',
+            literal=True,
+            suppress_history=False,
+        )
+        lines = pane.capture_pane(start=case.start, end=case.end)
+        assert lines
+        assert lines[-1].strip() == case.expected_tail
+    finally:
+        with contextlib.suppress(Exception):
+            server.kill()
+
+
+@pytest.mark.engines(["control"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            InternalNameCollisionFixture(
+                test_id="collision_same_name",
+                internal_name="libtmux_control_mode",
+            ),
+            marks=pytest.mark.xfail(
+                reason="Engine does not yet guard internal session name collisions",
+            ),
+        ),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_internal_session_name_collision(case: InternalNameCollisionFixture) -> None:
+    """Two control engines with same internal name should not mask user sessions."""
+    socket_one = f"libtmux_test_{uuid.uuid4().hex[:8]}"
+    socket_two = f"libtmux_test_{uuid.uuid4().hex[:8]}"
+    engine1 = ControlModeEngine(internal_session_name=case.internal_name)
+    engine2 = ControlModeEngine(internal_session_name=case.internal_name)
+    server1 = Server(socket_name=socket_one, engine=engine1)
+    server2 = Server(socket_name=socket_two, engine=engine2)
+
+    try:
+        server1.new_session(session_name="user_one", attach=False, kill_session=True)
+        server2.new_session(session_name="user_two", attach=False, kill_session=True)
+
+        assert any(s.session_name == "user_one" for s in server1.sessions)
+        assert any(s.session_name == "user_two" for s in server2.sessions)
+    finally:
+        with contextlib.suppress(Exception):
+            server1.kill()
+        with contextlib.suppress(Exception):
+            server2.kill()
+
+
+@pytest.mark.engines(["control"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        AttachFixture(
+            test_id="attach_existing",
+            attach_to="shared_session",
+            expect_attached=True,
+        ),
+        pytest.param(
+            AttachFixture(
+                test_id="attach_missing",
+                attach_to="missing_session",
+                expect_attached=False,
+            ),
+            id="attach_missing_session",
+        ),
     ],
     ids=lambda c: c.test_id,
 )
@@ -594,6 +700,11 @@ def test_attach_to_existing_session(case: AttachFixture) -> None:
         )
         engine = ControlModeEngine(attach_to=case.attach_to)
         server = Server(socket_name=socket_name, engine=engine)
+        if not case.expect_attached:
+            with pytest.raises(exc.ControlModeConnectionError):
+                _ = server.sessions
+            return
+
         sessions = server.sessions
         assert len(sessions) == 1
         assert sessions[0].session_name == case.attach_to
