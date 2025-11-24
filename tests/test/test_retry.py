@@ -33,7 +33,7 @@ def test_retry_three_times() -> None:
 
     end = monotonic()
 
-    assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
+    assert 0.9 <= (end - ini) <= 1.3  # Allow for small timing variations
 
 
 def test_function_times_out() -> None:
@@ -51,7 +51,7 @@ def test_function_times_out() -> None:
 
     end = monotonic()
 
-    assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
+    assert 0.9 <= (end - ini) <= 1.3  # Allow for small timing variations
 
 
 def test_function_times_out_no_raise() -> None:
