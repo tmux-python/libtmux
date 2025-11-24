@@ -31,6 +31,13 @@ class TrailingOutputFixture(t.NamedTuple):
     expected_stdout: list[str]
 
 
+class AttachFixture(t.NamedTuple):
+    """Fixture for attach_to behaviours."""
+
+    test_id: str
+    attach_to: str
+
+
 TRAILING_OUTPUT_CASES = [
     pytest.param(
         TrailingOutputFixture(
@@ -564,3 +571,36 @@ def test_session_kill_handles_control_eof() -> None:
     finally:
         with contextlib.suppress(Exception):
             server.kill()
+
+
+@pytest.mark.engines(["control"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        AttachFixture(test_id="attach_existing", attach_to="shared_session"),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_attach_to_existing_session(case: AttachFixture) -> None:
+    """Control mode attach_to should not create/hide a management session."""
+    socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
+    bootstrap = Server(socket_name=socket_name)
+    try:
+        # Create the target session via subprocess engine
+        bootstrap.new_session(
+            session_name=case.attach_to,
+            attach=False,
+            kill_session=True,
+        )
+        engine = ControlModeEngine(attach_to=case.attach_to)
+        server = Server(socket_name=socket_name, engine=engine)
+        sessions = server.sessions
+        assert len(sessions) == 1
+        assert sessions[0].session_name == case.attach_to
+
+        attached = server.attached_sessions
+        assert len(attached) == 1
+        assert attached[0].session_name == case.attach_to
+    finally:
+        with contextlib.suppress(Exception):
+            bootstrap.kill()
