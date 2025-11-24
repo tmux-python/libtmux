@@ -242,6 +242,16 @@ def test_write_line_broken_pipe_increments_restart(
     class FakeProcess:
         def __init__(self) -> None:
             self.stdin = FakeStdin()
+            self._terminated = False
+
+        def terminate(self) -> None:
+            self._terminated = True
+
+        def kill(self) -> None:  # pragma: no cover - simple stub
+            self._terminated = True
+
+        def wait(self, timeout: float | None = None) -> None:
+            return None
 
     engine = ControlModeEngine()
     engine.process = FakeProcess()  # type: ignore[assignment]
