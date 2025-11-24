@@ -305,6 +305,7 @@ class RestartRetryFixture(t.NamedTuple):
 
     test_id: str
     raise_once: bool
+    expect_xfail: bool
 
 
 @pytest.mark.xfail(reason="Engine retry path not covered yet", strict=False)
@@ -314,6 +315,12 @@ class RestartRetryFixture(t.NamedTuple):
         RestartRetryFixture(
             test_id="retry_after_broken_pipe",
             raise_once=True,
+            expect_xfail=True,
+        ),
+        RestartRetryFixture(
+            test_id="retry_after_timeout",
+            raise_once=False,
+            expect_xfail=True,
         ),
     ],
     ids=lambda c: c.test_id,
