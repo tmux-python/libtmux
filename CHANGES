@@ -139,6 +139,36 @@ The following deprecations from 0.50.0 continue to emit {class}`DeprecationWarni
 | `set_window_option()`, `show_window_option()`, `show_window_options()` | {meth}`~libtmux.window.Window.set_option`, {meth}`~libtmux.window.Window.show_option`, {meth}`~libtmux.window.Window.show_options` | 0.50.0 | Window |
 | `g` parameter on options/hooks methods | `global_` on {meth}`~libtmux.options.OptionsMixin.set_option`, {meth}`~libtmux.options.OptionsMixin.show_option`, {meth}`~libtmux.options.OptionsMixin.show_options` | 0.50.0 | Options & hooks |
 
+### Features
+
+- Control-mode–first engine protocol (experimental): adds structured command results,
+  notification parsing (layout changes, unlinked windows, client detach/session change,
+  session rename, paste-buffer events), and stats while keeping existing
+  `Server/Session/Window/Pane.cmd` return type (`tmux_cmd`) stable. (#605)
+- Control mode engine's internal connection session is now automatically filtered from
+  `Server.sessions` and `Server.has_session()`, making engine choice transparent to
+  users. Advanced users can access all sessions via `Server._sessions_all()`. (#605)
+- `ControlModeEngine` accepts optional `internal_session_name` and `attach_to`
+  parameters for advanced session management scenarios. (#605)
+- `Server.connect()`: New convenience method for session management. Returns an
+  existing session if found, otherwise creates a new detached session. Simplifies
+  common session reuse patterns and works transparently with both subprocess and
+  control-mode engines.
+- Control-mode diagnostics: bounded notification queue with drop counting,
+  richer exceptions (`ControlModeTimeout`, `ControlModeProtocolError`,
+  `ControlModeConnectionError`, `SubprocessTimeout`), and documented retry/timeout
+  behaviour. Control sandbox pytest fixture provides a hermetic control-mode server
+  for integration tests.
+
+### Compatibility
+
+- Control mode's internal session is now automatically filtered from user-facing APIs.
+  Code that previously filtered `libtmux_control_mode` manually can be simplified.
+  APIs remain unchanged for tmux command return objects; new metadata is attached for
+  advanced users. (#605)
+- Control-mode `capture-pane` trims trailing whitespace-only lines to align with
+  subprocess behaviour; explicit range flags (`-S/-E`) remain exact.
+
 ## libtmux 0.50.1 (2025-12-06)
 
 ### Documentation (#612)
