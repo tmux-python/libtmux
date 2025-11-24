@@ -34,12 +34,15 @@ class _ControlProcess(t.Protocol):
     stdin: t.TextIO | None
     stdout: t.Iterable[str] | None
     stderr: t.Iterable[str] | None
+    pid: int | None
 
     def terminate(self) -> None: ...
 
     def kill(self) -> None: ...
 
     def wait(self, timeout: float | None = None) -> t.Any: ...
+
+    def poll(self) -> int | None: ...
 
 
 class _ProcessFactory(t.Protocol):
