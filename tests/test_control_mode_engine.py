@@ -6,7 +6,6 @@ import io
 import pathlib
 import time
 import typing as t
-from typing import cast
 
 import pytest
 
@@ -82,11 +81,11 @@ def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 
     class FakeProcess:
         def __init__(self) -> None:
-            self.stdin = io.StringIO()
-            self.stdout = BlockingStdout()
-            self.stderr = None
-            self._terminated = False
-            self.pid = 1234
+            self.stdin: t.TextIO | None = io.StringIO()
+            self.stdout: t.Iterable[str] | None = BlockingStdout()
+            self.stderr: t.Iterable[str] | None = iter([])
+            self._terminated: bool = False
+            self.pid: int | None = 1234
 
         def terminate(self) -> None:  # pragma: no cover - simple stub
             self._terminated = True
@@ -94,20 +93,20 @@ def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
         def kill(self) -> None:  # pragma: no cover - simple stub
             self._terminated = True
 
-        def wait(self, timeout: float | None = None) -> None:  # pragma: no cover
-            return None
+        def wait(self, timeout: float | None = None) -> int | None:  # pragma: no cover
+            return 0
 
         def poll(self) -> int | None:  # pragma: no cover - simple stub
             return 0
 
     engine = ControlModeEngine(command_timeout=0.01)
 
-    fake_process = FakeProcess()
+    fake_process: _ControlProcess = FakeProcess()
 
     def fake_start(server_args: t.Sequence[str | int] | None) -> None:
         engine.tmux_bin = "tmux"
         engine._server_args = tuple(server_args or ())
-        engine.process = cast(_ControlProcess, fake_process)
+        engine.process = fake_process
 
     monkeypatch.setattr(engine, "_start_process", fake_start)
 
@@ -122,11 +121,11 @@ def test_control_mode_per_command_timeout(monkeypatch: pytest.MonkeyPatch) -> No
 
     class FakeProcess:
         def __init__(self) -> None:
-            self.stdin = io.StringIO()
-            self.stdout: t.Iterator[str] = iter([])  # no output
-            self.stderr = None
-            self._terminated = False
-            self.pid = 5678
+            self.stdin: t.TextIO | None = io.StringIO()
+            self.stdout: t.Iterable[str] | None = iter([])  # no output
+            self.stderr: t.Iterable[str] | None = iter([])
+            self._terminated: bool = False
+            self.pid: int | None = 5678
 
         def terminate(self) -> None:
             self._terminated = True
@@ -134,8 +133,8 @@ def test_control_mode_per_command_timeout(monkeypatch: pytest.MonkeyPatch) -> No
         def kill(self) -> None:
             self._terminated = True
 
-        def wait(self, timeout: float | None = None) -> None:
-            return None
+        def wait(self, timeout: float | None = None) -> int | None:
+            return 0
 
         def poll(self) -> int | None:
             return 0
@@ -145,7 +144,8 @@ def test_control_mode_per_command_timeout(monkeypatch: pytest.MonkeyPatch) -> No
     def fake_start(server_args: t.Sequence[str | int] | None) -> None:
         engine.tmux_bin = "tmux"
         engine._server_args = tuple(server_args or ())
-        engine.process = cast(_ControlProcess, FakeProcess())
+        fake_proc: _ControlProcess = FakeProcess()
+        engine.process = fake_proc
 
     monkeypatch.setattr(engine, "_start_process", fake_start)
 
@@ -240,8 +240,8 @@ def test_write_line_broken_pipe_increments_restart(
 ) -> None:
     """Broken pipe should raise ControlModeConnectionError and bump restarts."""
 
-    class FakeStdin:
-        def write(self, _: str) -> None:
+    class FakeStdin(io.StringIO):
+        def write(self, _: str) -> int:  # pragma: no cover - simple stub
             raise BrokenPipeError
 
         def flush(self) -> None:  # pragma: no cover - not reached
@@ -249,9 +249,11 @@ def test_write_line_broken_pipe_increments_restart(
 
     class FakeProcess:
         def __init__(self) -> None:
-            self.stdin = FakeStdin()
-            self._terminated = False
-            self.pid = 9999
+            self.stdin: t.TextIO | None = FakeStdin()
+            self.stdout: t.Iterable[str] | None = iter([])
+            self.stderr: t.Iterable[str] | None = iter([])
+            self._terminated: bool = False
+            self.pid: int | None = 9999
 
         def terminate(self) -> None:
             self._terminated = True
@@ -259,14 +261,15 @@ def test_write_line_broken_pipe_increments_restart(
         def kill(self) -> None:  # pragma: no cover - simple stub
             self._terminated = True
 
-        def wait(self, timeout: float | None = None) -> None:
-            return None
+        def wait(self, timeout: float | None = None) -> int | None:
+            return 0
 
         def poll(self) -> int | None:
             return 0
 
     engine = ControlModeEngine()
-    engine.process = cast(_ControlProcess, FakeProcess())
+    fake_proc: _ControlProcess = FakeProcess()
+    engine.process = fake_proc
 
     with pytest.raises(case.should_raise):
         engine._write_line("list-sessions", server_args=())
