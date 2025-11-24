@@ -137,6 +137,53 @@ def set_home(
     monkeypatch.setenv("HOME", str(user_path))
 ```
 
+## Selecting tmux engines (experimental)
+
+Fixtures can run against different execution engines. By default the
+`subprocess` engine is used. You can choose control mode globally:
+
+```console
+$ pytest --engine=control
+```
+
+Or per-test via the `engines` marker (uses parametrization) and the `engine_name`
+fixture:
+
+```python
+import pytest
+
+@pytest.mark.engines(["subprocess", "control"])
+def test_my_flow(server, engine_name):
+    # server uses the selected engine, engine_name reflects the current one
+    assert engine_name in {"subprocess", "control"}
+    assert server.is_alive()
+```
+
+`TestServer` also respects the selected engine. Control mode is experimental and
+its APIs may change between releases.
+
+### Control sandbox fixture (experimental)
+
+Use ``control_sandbox`` when you need a hermetic control-mode server for a test:
+
+```python
+import typing as t
+import pytest
+from libtmux.server import Server
+
+@pytest.mark.engines(["control"])
+def test_control_sandbox(control_sandbox: t.ContextManager[Server]):
+    with control_sandbox as server:
+        session = server.new_session(session_name="sandbox", attach=False)
+        out = server.cmd("display-message", "-p", "hi")
+        assert out.stdout == ["hi"]
+```
+
+The fixture:
+- Spins up a unique socket name and isolates ``HOME`` / ``TMUX_TMPDIR``
+- Clears inherited ``TMUX`` so it never attaches to the user's server
+- Uses ``ControlModeEngine`` and cleans up the server on exit
+
 ## Fixtures
 
 ```{eval-rst}
