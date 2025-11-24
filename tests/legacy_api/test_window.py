@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import time
 import typing as t
 
 import pytest
@@ -382,8 +381,6 @@ def test_split_window_with_environment(
         environment=environment,
     )
     assert pane is not None
-    # wait a bit for the prompt to be ready as the test gets flaky otherwise
-    time.sleep(0.05)
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
         assert pane.capture_pane()[-2] == v

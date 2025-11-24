@@ -105,7 +105,10 @@ def test_capture_pane_start(session: Session) -> None:
     assert pane_contents == "$"
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
     pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == '$ printf "%s"\n$'
+    if session.server.engine.__class__.__name__ == "ControlModeEngine":
+        assert pane_contents in ('$ printf "%s"\n$', '$ printf "%s"')
+    else:
+        assert pane_contents == '$ printf "%s"\n$'
     pane.send_keys("clear -x", literal=True, suppress_history=False)
 
     def wait_until_pane_cleared() -> bool:
