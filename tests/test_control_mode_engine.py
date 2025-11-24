@@ -370,3 +370,28 @@ def test_notifications_overflow_then_iter(case: BackpressureFixture) -> None:
     if case.expect_iter:
         notif = next(engine.iter_notifications(timeout=0.05), None)
         assert notif is not None
+
+
+class TimeoutRestartFixture(t.NamedTuple):
+    """Fixture for per-command timeout restart behavior."""
+
+    test_id: str
+
+
+@pytest.mark.xfail(
+    reason="per-command timeout restart needs injectable control-mode transport",
+    strict=False,
+)
+@pytest.mark.parametrize(
+    "case",
+    [
+        TimeoutRestartFixture(test_id="timeout_triggers_restart_then_succeeds"),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_run_result_timeout_triggers_restart(case: TimeoutRestartFixture) -> None:
+    """Placeholder: timeout should restart control process and allow next command."""
+    _ = ControlModeEngine(command_timeout=0.0001)
+    pytest.xfail(
+        "control-mode needs injectable process to simulate per-call timeout",
+    )
