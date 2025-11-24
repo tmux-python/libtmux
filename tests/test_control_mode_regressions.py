@@ -767,3 +767,29 @@ def test_attach_to_existing_session(case: AttachFixture) -> None:
     finally:
         with contextlib.suppress(Exception):
             bootstrap.kill()
+
+
+@pytest.mark.engines(["control"])
+@pytest.mark.xfail(
+    reason="list-clients filtering vs attached_sessions needs stable control flag",
+    strict=False,
+)
+def test_list_clients_control_flag_filters_attached() -> None:
+    """Control client row should have C flag and be filtered from attached_sessions."""
+    if has_lt_version("3.2"):
+        pytest.skip("tmux < 3.2 omits client_flags")
+    socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
+    engine = ControlModeEngine()
+    server = Server(socket_name=socket_name, engine=engine)
+    try:
+        _ = server.sessions  # start control mode
+        res = server.cmd(
+            "list-clients",
+            "-F",
+            "#{client_pid} #{client_flags} #{session_name}",
+        )
+        assert any("C" in line.split()[1] for line in res.stdout)
+        assert server.attached_sessions == []
+    finally:
+        with contextlib.suppress(Exception):
+            server.kill()

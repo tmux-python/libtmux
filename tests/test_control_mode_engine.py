@@ -334,3 +334,39 @@ def test_run_result_retries_after_broken_pipe(
     # TODO: Implement retry simulation when engine supports injectable I/O.
     with pytest.raises(exc.ControlModeConnectionError):
         engine.run("list-sessions")
+
+
+class BackpressureFixture(t.NamedTuple):
+    """Fixture for notification backpressure integration."""
+
+    test_id: str
+    queue_size: int
+    overflow: int
+    expect_iter: bool
+
+
+@pytest.mark.xfail(
+    reason="control-mode notification backpressure integration not stable yet",
+    strict=False,
+)
+@pytest.mark.parametrize(
+    "case",
+    [
+        BackpressureFixture(
+            test_id="notif_overflow_iter",
+            queue_size=1,
+            overflow=5,
+            expect_iter=True,
+        ),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_notifications_overflow_then_iter(case: BackpressureFixture) -> None:
+    """Flood notif queue then ensure iter_notifications still yields."""
+    engine = ControlModeEngine()
+    engine._protocol = ControlProtocol(notification_queue_size=case.queue_size)
+    for _ in range(case.overflow):
+        engine._protocol.feed_line("%sessions-changed")
+    if case.expect_iter:
+        notif = next(engine.iter_notifications(timeout=0.05), None)
+        assert notif is not None
