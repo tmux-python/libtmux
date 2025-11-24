@@ -692,12 +692,13 @@ def test_attach_to_existing_session(case: AttachFixture) -> None:
     socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
     bootstrap = Server(socket_name=socket_name)
     try:
-        # Create the target session via subprocess engine
-        bootstrap.new_session(
-            session_name=case.attach_to,
-            attach=False,
-            kill_session=True,
-        )
+        if case.expect_attached:
+            # Create the target session via subprocess engine
+            bootstrap.new_session(
+                session_name=case.attach_to,
+                attach=False,
+                kill_session=True,
+            )
         engine = ControlModeEngine(attach_to=case.attach_to)
         server = Server(socket_name=socket_name, engine=engine)
         if not case.expect_attached:
