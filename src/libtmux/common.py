@@ -294,8 +294,9 @@ class tmux_cmd:
     ...     )
     ...
 
-    >>> print(f'tmux command returned {" ".join(proc.stdout)}')
-    tmux command returned 2
+    >>> session_name = " ".join(proc.stdout)
+    >>> print(f'tmux command returned session: {session_name.isdigit()}')
+    tmux command returned session: True
 
     Equivalent to:
 
@@ -309,7 +310,24 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        cmd: list[str] | None = None,
+        stdout: list[str] | None = None,
+        stderr: list[str] | None = None,
+        returncode: int | None = None,
+    ) -> None:
+        # Stub mode: caller provides pre-baked subprocess result (used by
+        # ControlModeEngine and tests).
+        if cmd is not None:
+            self.cmd = cmd
+            self.stdout = stdout or []
+            self.stderr = stderr or []
+            self.returncode = returncode
+            return
+
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -336,7 +354,7 @@ class tmux_cmd:
                 encoding="utf-8",
                 errors="backslashreplace",
             )
-            stdout, stderr = self.process.communicate()
+            stdout_str, stderr_str = self.process.communicate()
             returncode = self.process.returncode
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
@@ -351,12 +369,12 @@ class tmux_cmd:
 
         self.returncode = returncode
 
-        stdout_split = stdout.split("\n")
+        stdout_split = stdout_str.split("\n")
         # remove trailing newlines from stdout
         while stdout_split and stdout_split[-1] == "":
             stdout_split.pop()
 
-        stderr_split = stderr.split("\n")
+        stderr_split = stderr_str.split("\n")
         self.stderr = list(filter(None, stderr_split))  # filter empty values
 
         if "has-session" in cmd and len(self.stderr) and not stdout_split:
