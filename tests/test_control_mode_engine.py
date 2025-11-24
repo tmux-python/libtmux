@@ -6,6 +6,8 @@ import io
 import pathlib
 import time
 import typing as t
+from collections import deque
+from dataclasses import dataclass
 
 import pytest
 
@@ -315,40 +317,149 @@ def test_iter_notifications_survives_overflow(
     assert first.kind.name == "SESSIONS_CHANGED"
 
 
-class RestartRetryFixture(t.NamedTuple):
-    """Fixture for restart + retry behavior."""
+@dataclass
+class ScriptedProcess:
+    """Fake control-mode process that plays back scripted stdout and errors."""
+
+    stdin: t.TextIO | None
+    stdout: t.Iterable[str] | None
+    stderr: t.Iterable[str] | None
+    pid: int | None = 4242
+    broken_on_write: bool = False
+    writes: list[str] | None = None
+
+    def __init__(
+        self,
+        stdout_lines: list[str],
+        *,
+        broken_on_write: bool = False,
+        pid: int | None = 4242,
+    ) -> None:
+        self.stdin = io.StringIO()
+        self.stdout = tuple(stdout_lines)
+        self.stderr = ()
+        self.pid = pid
+        self.broken_on_write = broken_on_write
+        self.writes = []
+
+    def terminate(self) -> None:
+        """Stub terminate."""
+        return None
+
+    def kill(self) -> None:
+        """Stub kill."""
+        return None
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        """Stub wait."""
+        return 0
+
+    def poll(self) -> int | None:
+        """Stub poll."""
+        return 0
+
+    def write_line(self, line: str) -> None:
+        """Record a write or raise BrokenPipe."""
+        if self.broken_on_write:
+            raise BrokenPipeError
+        assert self.writes is not None
+        self.writes.append(line)
+
+
+class ProcessFactory:
+    """Scriptable process factory for control-mode tests."""
+
+    def __init__(self, procs: deque[ScriptedProcess]) -> None:
+        self.procs = procs
+        self.calls = 0
+
+    def __call__(
+        self,
+        cmd: list[str],
+        *,
+        stdin: t.Any,
+        stdout: t.Any,
+        stderr: t.Any,
+        text: bool,
+        bufsize: int,
+        errors: str,
+    ) -> _ControlProcess:
+        """Return the next scripted process."""
+        self.calls += 1
+        return self.procs.popleft()
+
+
+class RetryOutcome(t.NamedTuple):
+    """Fixture for restart/timeout retry behavior."""
 
     test_id: str
-    raise_once: bool
-    expect_xfail: bool
+    broken_once: bool
+    expect_timeout: bool
 
 
-@pytest.mark.xfail(reason="Engine retry path not covered yet", strict=False)
 @pytest.mark.parametrize(
     "case",
     [
-        RestartRetryFixture(
-            test_id="retry_after_broken_pipe",
-            raise_once=True,
-            expect_xfail=True,
+        RetryOutcome(
+            test_id="retry_after_broken_pipe_succeeds",
+            broken_once=True,
+            expect_timeout=False,
         ),
-        RestartRetryFixture(
-            test_id="retry_after_timeout",
-            raise_once=False,
-            expect_xfail=True,
+        RetryOutcome(
+            test_id="timeout_then_retry_succeeds",
+            broken_once=False,
+            expect_timeout=True,
         ),
     ],
     ids=lambda c: c.test_id,
 )
-def test_run_result_retries_after_broken_pipe(
-    case: RestartRetryFixture,
-    monkeypatch: pytest.MonkeyPatch,
+def test_run_result_retries_with_process_factory(
+    case: RetryOutcome,
 ) -> None:
-    """Placeholder: run_result should retry after broken pipe and succeed."""
-    engine = ControlModeEngine()
-    # TODO: Implement retry simulation when engine supports injectable I/O.
-    with pytest.raises(exc.ControlModeConnectionError):
-        engine.run("list-sessions")
+    """run_result should restart and succeed after broken pipe or timeout."""
+    # First process: either breaks on write or hangs (timeout path).
+    if case.expect_timeout:
+        first_stdout: list[str] = []  # no output triggers timeout
+        broken = False
+    else:
+        first_stdout = []
+        broken = True
+
+    first = ScriptedProcess(first_stdout, broken_on_write=broken, pid=1111)
+
+    # Second process: successful %begin/%end for list-sessions.
+    second = ScriptedProcess(
+        [
+            "%begin 1 1 0",
+            "%end 1 1 0",
+        ],
+        pid=2222,
+    )
+
+    factory = ProcessFactory(deque([first, second]))
+
+    engine = ControlModeEngine(
+        command_timeout=0.01 if case.expect_timeout else 5.0,
+        process_factory=factory,
+        start_threads=True,
+        max_retries=1,
+    )
+
+    if case.expect_timeout:
+        with pytest.raises(exc.ControlModeTimeout):
+            engine.run("list-sessions", timeout=0.02)
+    else:
+        with pytest.raises(exc.ControlModeConnectionError):
+            engine.run("list-sessions")
+
+    assert engine._restarts == 1
+    assert factory.calls == 1 or factory.calls == 2
+
+    # Second attempt should succeed.
+    res = engine.run_result("list-sessions")
+    assert res.exit_status is ExitStatus.OK
+    assert engine._restarts >= 1
+    assert factory.calls == 2
 
 
 class BackpressureFixture(t.NamedTuple):
