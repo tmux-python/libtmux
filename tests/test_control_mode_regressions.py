@@ -598,9 +598,10 @@ def test_attach_to_existing_session(case: AttachFixture) -> None:
         assert len(sessions) == 1
         assert sessions[0].session_name == case.attach_to
 
+        # Only the control client is attached; attached_sessions should be empty
+        # because we filter control clients from "attached" semantics.
         attached = server.attached_sessions
-        assert len(attached) == 1
-        assert attached[0].session_name == case.attach_to
+        assert attached == []
     finally:
         with contextlib.suppress(Exception):
             bootstrap.kill()
