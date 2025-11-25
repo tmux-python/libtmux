@@ -48,8 +48,12 @@ def test_control_mode_engine_basic(tmp_path: pathlib.Path) -> None:
     # Verify bootstrap session exists but is filtered (use internal method)
     all_sessions = server._sessions_all()
     all_session_names = [s.name for s in all_sessions]
-    assert "libtmux_control_mode" in all_session_names
-    assert len(all_sessions) == 2  # test_sess + libtmux_control_mode
+    # Internal session now uses UUID-based name: libtmux_ctrl_XXXXXXXX
+    assert any(
+        name is not None and name.startswith("libtmux_ctrl_")
+        for name in all_session_names
+    )
+    assert len(all_sessions) == 2  # test_sess + libtmux_ctrl_*
 
     # run a command that returns output
     output_cmd = server.cmd("display-message", "-p", "hello")
