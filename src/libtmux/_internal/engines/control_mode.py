@@ -149,7 +149,11 @@ class ControlModeEngine(Engine):
 
     # Lifecycle ---------------------------------------------------------
     def close(self) -> None:
-        """Terminate the tmux control mode process and clean up threads."""
+        """Terminate the tmux control mode process and clean up threads.
+
+        Terminates the subprocess and waits for reader/stderr threads to
+        finish. Non-daemon threads ensure clean shutdown without races.
+        """
         proc = self.process
         if proc is None:
             return
@@ -164,6 +168,12 @@ class ControlModeEngine(Engine):
             self.process = None
             self._server_args = None
             self._protocol.mark_dead("engine closed")
+
+            # Join threads to ensure clean shutdown (non-daemon threads)
+            if self._reader_thread is not None and self._reader_thread.is_alive():
+                self._reader_thread.join(timeout=2)
+            if self._stderr_thread is not None and self._stderr_thread.is_alive():
+                self._stderr_thread.join(timeout=2)
 
     def __del__(self) -> None:  # pragma: no cover - best effort cleanup
         """Ensure subprocess is terminated on GC."""
@@ -481,18 +491,19 @@ class ControlModeEngine(Engine):
         self._protocol.register_command(bootstrap_ctx)
 
         # Start IO threads after registration to avoid early protocol errors.
+        # Non-daemon threads ensure clean shutdown via join() in close().
         if self._start_threads:
             self._reader_thread = threading.Thread(
                 target=self._reader,
                 args=(self.process,),
-                daemon=True,
+                daemon=False,
             )
             self._reader_thread.start()
 
             self._stderr_thread = threading.Thread(
                 target=self._drain_stderr,
                 args=(self.process,),
-                daemon=True,
+                daemon=False,
             )
             self._stderr_thread.start()
 
