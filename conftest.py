@@ -40,13 +40,6 @@ def add_doctest_fixtures(
 ) -> None:
     """Configure doctest fixtures for pytest-doctest."""
     if isinstance(request._pyfuncitem, DoctestItem) and shutil.which("tmux"):
-        # Skip doctests for control mode: attach_to fixture lifecycle
-        # doesn't survive doctests that kill sessions/servers.
-        # TODO: Investigate proper fix for control mode doctest support.
-        engine_opt = request.config.getoption("--engine", default="subprocess")
-        if engine_opt == "control":
-            pytest.skip("doctests not supported with --engine=control")
-
         request.getfixturevalue("set_home")
         doctest_namespace["Server"] = Server
         doctest_namespace["Session"] = Session
@@ -205,3 +198,21 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         else:
             params = [metafunc.config.getoption("--engine")]
         metafunc.parametrize("engine_name", params, indirect=True)
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config,
+    items: list[pytest.Item],
+) -> None:
+    """Filter out doctests when running with control engine.
+
+    Remove doctests from collection to avoid pytest's _use_item_location
+    bug: DoctestItem.reportinfo() returns None lineno for fixture doctests,
+    which triggers assertion failure in _pytest/reports.py:420 when skipped.
+    """
+    engine_opt = config.getoption("--engine", default="subprocess")
+    if engine_opt != "control":
+        return
+
+    # Filter out DoctestItems - can't use skip markers due to pytest bug
+    items[:] = [item for item in items if not isinstance(item, DoctestItem)]
