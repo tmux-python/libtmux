@@ -311,6 +311,53 @@ class ControlModeEngine(Engine):
         msg = f"Notification queue did not become idle within {timeout}s"
         raise TimeoutError(msg)
 
+    def set_client_flags(
+        self,
+        *,
+        no_output: bool | None = None,
+        pause_after: int | None = None,
+    ) -> None:
+        """Set control client flags via refresh-client.
+
+        These correspond to tmux's runtime client flags (set via
+        ``refresh-client -f``), not connection-time parameters. This follows
+        tmux's design where CLIENT_CONTROL_* flags are modified at runtime.
+
+        Parameters
+        ----------
+        no_output : bool, optional
+            Filter %output notifications (reduces noise when attached to active panes).
+            Set to True to enable, False to disable, None to leave unchanged.
+        pause_after : int, optional
+            Pause output after N seconds of buffering (flow control).
+            Set to 0 to disable, positive int to enable, None to leave unchanged.
+
+        Examples
+        --------
+        >>> engine.set_client_flags(no_output=True)  # doctest: +SKIP
+        >>> engine.set_client_flags(pause_after=5)   # doctest: +SKIP
+        >>> engine.set_client_flags(no_output=False) # doctest: +SKIP
+        """
+        flags: list[str] = []
+        if no_output is True:
+            flags.append("no-output")
+        elif no_output is False:
+            flags.append("no-output=off")
+
+        if pause_after is not None:
+            if pause_after == 0:
+                flags.append("pause-after=none")
+            else:
+                flags.append(f"pause-after={pause_after}")
+
+        if flags:
+            server_args = self._server_context.to_args() if self._server_context else ()
+            self.run(
+                "refresh-client",
+                cmd_args=("-f", ",".join(flags)),
+                server_args=server_args,
+            )
+
     def get_stats(self) -> EngineStats:
         """Return diagnostic statistics for the engine."""
         return self._protocol.get_stats(restarts=self._restarts)
