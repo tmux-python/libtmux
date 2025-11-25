@@ -310,10 +310,8 @@ class Server(
         >>> tmux = Server(socket_name="no_exist")
         >>> assert not tmux.is_alive()
         """
-        server_args = tuple(self._build_server_args())
-
         # Use engine hook to allow engines to probe without bootstrapping.
-        probe_result = self.engine.probe_server_alive(server_args)
+        probe_result = self.engine.probe_server_alive()
         if probe_result is not None:
             return probe_result
 
@@ -345,7 +343,7 @@ class Server(
         server_args = tuple(self._build_server_args())
 
         # Use engine hook to allow engines to probe without bootstrapping.
-        probe_result = self.engine.probe_server_alive(server_args)
+        probe_result = self.engine.probe_server_alive()
         if probe_result is not None:
             if not probe_result:
                 tmux_bin_probe = shutil.which("tmux") or "tmux"
@@ -359,7 +357,7 @@ class Server(
         if resolved is None:
             raise exc.TmuxCommandNotFound
 
-        proc = self.engine.run("list-sessions", server_args=server_args)
+        proc = self.cmd("list-sessions")
         if proc.returncode is not None and proc.returncode != 0:
             raise subprocess.CalledProcessError(
                 returncode=proc.returncode,
@@ -487,19 +485,7 @@ class Server(
         sessions = list(self.sessions.filter(session_attached__noeq="1"))
 
         # Let the engine hide its own internal client if it wants to.
-        filter_fn = getattr(self.engine, "exclude_internal_sessions", None)
-        if callable(filter_fn):
-            server_args = tuple(self._build_server_args())
-            try:
-                sessions = filter_fn(
-                    sessions,
-                    server_args=server_args,
-                )
-            except TypeError:
-                # Subprocess engine does not accept server_args; ignore.
-                sessions = filter_fn(sessions)
-
-        return sessions
+        return self.engine.filter_sessions(sessions)
 
     def has_session(self, target_session: str, exact: bool = True) -> bool:
         """Return True if session exists (excluding internal engine sessions).
@@ -2331,11 +2317,9 @@ class Server(
         """
         session_check_name(target_session)
 
-        server_args = tuple(self._build_server_args())
-
         # Use engine hook to check if switch-client is meaningful.
         # For control mode, this ensures there is at least one non-control client.
-        if not self.engine.can_switch_client(server_args=server_args):
+        if not self.engine.can_switch_client():
             msg = "no current client"
             raise exc.LibTmuxException(msg)
 

@@ -201,11 +201,10 @@ class Engine(ABC):
         return
 
     # Optional hooks ---------------------------------------------------
-    def probe_server_alive(
-        self,
-        server_args: tuple[str | int, ...],
-    ) -> bool | None:
+    def probe_server_alive(self) -> bool | None:
         """Probe if tmux server is alive without starting the engine.
+
+        Uses the bound :attr:`_server_context` for connection details.
 
         Returns
         -------
@@ -219,12 +218,10 @@ class Engine(ABC):
         """
         return None
 
-    def can_switch_client(
-        self,
-        *,
-        server_args: tuple[str | int, ...] | None = None,
-    ) -> bool:
+    def can_switch_client(self) -> bool:
         """Check if switch-client is meaningful for this engine.
+
+        Uses the bound :attr:`_server_context` for connection details.
 
         Returns
         -------
@@ -239,13 +236,24 @@ class Engine(ABC):
         """Names of sessions reserved for engine internals."""
         return set()
 
-    def exclude_internal_sessions(
+    def filter_sessions(
         self,
         sessions: list[Session],
-        *,
-        server_args: tuple[str | int, ...] | None = None,
-    ) -> list[Session]:  # pragma: no cover - overridden by control mode
-        """Allow engines to hide internal/management sessions from user lists."""
+    ) -> list[Session]:
+        """Filter sessions, hiding any internal/management sessions.
+
+        Uses the bound :attr:`_server_context` for connection details.
+
+        Parameters
+        ----------
+        sessions : list[Session]
+            All sessions from the server.
+
+        Returns
+        -------
+        list[Session]
+            Sessions after filtering out any engine-internal ones.
+        """
         return sessions
 
     def get_stats(self) -> EngineStats:  # pragma: no cover - default noop
