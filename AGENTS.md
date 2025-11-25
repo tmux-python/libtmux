@@ -96,7 +96,7 @@ make watch_mypy
 
 ### Development Workflow
 
-Follow this workflow for code changes (see `.cursor/rules/dev-loop.mdc`):
+Follow this workflow for code changes:
 
 1. **Format First**: `uv run ruff format .`
 2. **Run Tests**: `uv run pytest`
@@ -181,7 +181,7 @@ These fixtures handle setup and teardown automatically, creating isolated test e
 
 ### Testing Guidelines
 
-1. **Use existing fixtures over mocks** (see `.cursor/rules/dev-loop.mdc`)
+1. **Use existing fixtures over mocks**
    - Use fixtures from conftest.py instead of `monkeypatch` and `MagicMock` when available
    - For libtmux, use provided fixtures: `server`, `session`, `window`, and `pane`
    - Document in test docstrings why standard fixtures weren't used for exceptional cases
@@ -206,7 +206,7 @@ def test_window_rename(window):
 
 ## Coding Standards
 
-For detailed coding standards, refer to `.cursor/rules/dev-loop.mdc`. Key highlights:
+Key highlights:
 
 ### Imports
 
@@ -216,7 +216,7 @@ For detailed coding standards, refer to `.cursor/rules/dev-loop.mdc`. Key highli
 
 ### Docstrings
 
-Follow NumPy docstring style for all functions and methods (see `.cursor/rules/dev-loop.mdc`):
+Follow NumPy docstring style for all functions and methods:
 
 ```python
 """Short description of the function or class.
@@ -245,8 +245,6 @@ type
 4. **Add blank lines between test sections** for improved readability
 
 ### Git Commit Standards
-
-See `.cursor/rules/git-commits.mdc` for detailed commit message standards.
 
 Format commit messages as:
 ```
@@ -283,8 +281,6 @@ what:
 
 ## Debugging Tips
 
-See `.cursor/rules/avoid-debug-loops.mdc` for detailed debugging guidance.
-
 When stuck in debugging loops:
 
 1. **Pause and acknowledge the loop**
@@ -320,14 +316,3 @@ libtmux uses tmux's format system extensively:
 - Architecture: https://libtmux.git-pull.com/about.html
 - tmux man page: http://man.openbsd.org/OpenBSD-current/man1/tmux.1
 - tmuxp (workspace manager): https://tmuxp.git-pull.com/
-
-## Cursor Rules Reference
-
-This project uses Cursor rules (`.cursor/rules/*.mdc`) to provide context-specific guidance:
-
-- **dev-loop.mdc**: Development workflow and QA process
-- **git-commits.mdc**: Git commit message standards
-- **avoid-debug-loops.mdc**: Debugging best practices
-- **notes-llms-txt.mdc**: LLM-optimized markdown format for notes
-
-These rules are automatically applied based on file patterns and provide additional guidance to AI assistants.
