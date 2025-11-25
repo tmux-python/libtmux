@@ -16,6 +16,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
+from libtmux._internal.engines.base import ServerContext
 from libtmux._internal.engines.subprocess_engine import SubprocessEngine
 from libtmux._internal.env import (
     TMUX,
@@ -393,6 +394,15 @@ class Server(
 
         if colors:
             self.colors = colors
+
+        # Bind engine to server context for hook calls
+        self.engine.bind(
+            ServerContext(
+                socket_name=self.socket_name,
+                socket_path=str(self.socket_path) if self.socket_path else None,
+                config_file=self.config_file,
+            ),
+        )
 
         if on_init is not None:
             on_init(self)
