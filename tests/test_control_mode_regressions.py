@@ -783,18 +783,10 @@ def test_internal_session_name_collision(case: InternalNameCollisionFixture) -> 
             expect_attached=True,
             expect_notification=True,
         ),
-        pytest.param(
-            AttachFixture(
-                test_id="attach_missing",
-                attach_to="missing_session",
-                expect_attached=False,
-            ),
-            id="attach_missing_session",
-            marks=pytest.mark.xfail(
-                reason="lazy engine init: server.sessions doesn't start engine "
-                "when no sessions exist, so attach_to error not raised",
-                strict=False,
-            ),
+        AttachFixture(
+            test_id="attach_missing",
+            attach_to="missing_session",
+            expect_attached=False,
         ),
     ],
     ids=lambda c: c.test_id,
