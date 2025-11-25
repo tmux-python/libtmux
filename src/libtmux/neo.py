@@ -11,7 +11,7 @@ from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux._compat import LooseVersion
-from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.common import get_version, raise_if_stderr
 from libtmux.formats import FORMAT_SEPARATOR, Format
 
 if t.TYPE_CHECKING:
@@ -1157,18 +1157,20 @@ def fetch_objs(
     tmux_version = str(get_version(tmux_bin=server.tmux_bin))
     _fields, format_string = get_output_format(list_cmd, tmux_version)
 
-    tmux_cmds: list[str | int] = [
-        *server._socket_args(),
-        list_cmd,
-    ]
+    cmd_args: list[str | int] = []
 
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
-        tmux_cmds.extend(list(list_extra_args))
+        cmd_args.extend(list(list_extra_args))
 
     if filter is not None:
-        tmux_cmds.extend(["-f", str(filter)])
+        cmd_args.extend(["-f", str(filter)])
 
-    tmux_cmds.append(f"-F{format_string}")
+    cmd_args.append(f"-F{format_string}")
+
+    tmux_cmds = [
+        list_cmd,
+        *cmd_args,
+    ]
 
     cmd_str: str | None = None
 
@@ -1182,10 +1184,8 @@ def fetch_objs(
             },
         )
 
-    proc = tmux_cmd(
-        *tmux_cmds,
-        tmux_bin=server.tmux_bin,
-    )
+    # Route through the server's engine via server.cmd()
+    proc = server.cmd(list_cmd, *cmd_args)
 
     raise_if_stderr(proc, list_cmd)
 
