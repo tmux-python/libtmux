@@ -322,10 +322,7 @@ class ControlModeEngine(Engine):
             return set()
         return {self._internal_session_name}
 
-    def probe_server_alive(
-        self,
-        server_args: tuple[str | int, ...],
-    ) -> bool | None:
+    def probe_server_alive(self) -> bool | None:
         """Check if tmux server is alive without starting control mode.
 
         Performs a direct subprocess check to avoid bootstrapping the control
@@ -340,25 +337,24 @@ class ControlModeEngine(Engine):
         if tmux_bin is None:
             return False
 
+        server_args = self._server_context.to_args() if self._server_context else ()
         result = subprocess.run(
-            [tmux_bin, *[str(a) for a in server_args], "list-sessions"],
+            [tmux_bin, *server_args, "list-sessions"],
             check=False,
             capture_output=True,
         )
         return result.returncode == 0
 
-    def exclude_internal_sessions(
+    def filter_sessions(
         self,
         sessions: list[Session],
-        *,
-        server_args: tuple[str | int, ...] | None = None,
     ) -> list[Session]:
         """Hide sessions that are only attached via the control-mode client."""
         if self.process is None or self.process.pid is None:
             return sessions
 
         ctrl_pid = str(self.process.pid)
-        effective_server_args = server_args or self._server_args or ()
+        server_args = self._server_context.to_args() if self._server_context else ()
 
         proc = self.run(
             "list-clients",
@@ -366,7 +362,7 @@ class ControlModeEngine(Engine):
                 "-F",
                 "#{client_pid} #{client_flags} #{session_name}",
             ),
-            server_args=effective_server_args,
+            server_args=server_args,
         )
         pid_map: dict[str, list[tuple[str, str]]] = {}
         for line in proc.stdout:
@@ -396,22 +392,18 @@ class ControlModeEngine(Engine):
 
         return filtered
 
-    def can_switch_client(
-        self,
-        *,
-        server_args: tuple[str | int, ...] | None = None,
-    ) -> bool:
+    def can_switch_client(self) -> bool:
         """Return True if there is at least one non-control client attached."""
         if self.process is None or self.process.pid is None:
             return False
 
         ctrl_pid = str(self.process.pid)
-        effective_server_args = server_args or self._server_args or ()
+        server_args = self._server_context.to_args() if self._server_context else ()
 
         proc = self.run(
             "list-clients",
             cmd_args=("-F", "#{client_pid} #{client_flags}"),
-            server_args=effective_server_args,
+            server_args=server_args,
         )
         for line in proc.stdout:
             parts = line.split()
