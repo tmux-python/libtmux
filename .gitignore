@@ -78,7 +78,6 @@ target/
 monkeytype.sqlite3
 
 # Claude code
-**/CLAUDE.md
 **/CLAUDE.local.md
 **/CLAUDE.*.md
 **/.claude/settings.local.json
