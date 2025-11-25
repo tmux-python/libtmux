@@ -1032,7 +1032,7 @@ The 0.50.0 option/hook deprecations remain soft warnings for now:
   `Server.has_session()`; advanced users can inspect all sessions via
   `Server._sessions_all()`.
 - `ControlModeEngine` accepts `internal_session_name` (default `libtmux_control_mode`)
-  and `attach_to` for advanced connection strategies.
+  and `control_session` for advanced connection strategies.
 
 Example:
 

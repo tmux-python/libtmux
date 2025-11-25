@@ -32,10 +32,10 @@ class TrailingOutputFixture(t.NamedTuple):
 
 
 class AttachFixture(t.NamedTuple):
-    """Fixture for attach_to behaviours."""
+    """Fixture for control_session behaviours."""
 
     test_id: str
-    attach_to: str
+    control_session: str
     expect_attached: bool
     expect_notification: bool = False
 
@@ -779,31 +779,31 @@ def test_internal_session_name_collision(case: InternalNameCollisionFixture) -> 
     [
         AttachFixture(
             test_id="attach_existing",
-            attach_to="shared_session",
+            control_session="shared_session",
             expect_attached=True,
             expect_notification=True,
         ),
         AttachFixture(
             test_id="attach_missing",
-            attach_to="missing_session",
+            control_session="missing_session",
             expect_attached=False,
         ),
     ],
     ids=lambda c: c.test_id,
 )
-def test_attach_to_existing_session(case: AttachFixture) -> None:
-    """Control mode attach_to should not create/hide a management session."""
+def test_control_session_existing(case: AttachFixture) -> None:
+    """Control mode control_session should not create/hide a management session."""
     socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
     bootstrap = Server(socket_name=socket_name)
     try:
         if case.expect_attached:
             # Create the target session via subprocess engine
             bootstrap.new_session(
-                session_name=case.attach_to,
+                session_name=case.control_session,
                 attach=False,
                 kill_session=True,
             )
-        engine = ControlModeEngine(attach_to=case.attach_to)
+        engine = ControlModeEngine(control_session=case.control_session)
         server = Server(socket_name=socket_name, engine=engine)
         if not case.expect_attached:
             with pytest.raises(exc.ControlModeConnectionError):
@@ -812,7 +812,7 @@ def test_attach_to_existing_session(case: AttachFixture) -> None:
 
         sessions = server.sessions
         assert len(sessions) == 1
-        assert sessions[0].session_name == case.attach_to
+        assert sessions[0].session_name == case.control_session
 
         # Only the control client is attached; attached_sessions should be empty
         # because we filter control clients from "attached" semantics.
@@ -823,7 +823,7 @@ def test_attach_to_existing_session(case: AttachFixture) -> None:
             # Drain notifications to confirm control stream is flowing.
             notif = next(server.engine.iter_notifications(timeout=0.5), None)
             if notif is None:
-                pytest.xfail("attach_to did not emit notification within timeout")
+                pytest.xfail("control_session did not emit notification within timeout")
     finally:
         with contextlib.suppress(Exception):
             bootstrap.kill()
@@ -863,17 +863,17 @@ def test_list_clients_control_flag_filters_attached() -> None:
 
 
 @pytest.mark.engines(["control"])
-def test_attach_to_can_drain_notifications() -> None:
-    """drain_notifications() provides explicit sync point for attach_to notifications.
+def test_control_session_can_drain_notifications() -> None:
+    """drain_notifications() provides explicit sync for control_session notifications.
 
-    When using attach_to mode, the control client may receive many notifications
-    from pane output. The drain_notifications() helper waits until the notification
-    queue is idle, providing a deterministic sync point.
+    When using control_session mode, the control client may receive many
+    notifications from pane output. The drain_notifications() helper waits until
+    the notification queue is idle, providing a deterministic sync point.
     """
     socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
     bootstrap = Server(socket_name=socket_name)
     try:
-        # Create a session for attach_to to connect to
+        # Create a session for control_session to connect to
         bootstrap.new_session(
             session_name="drain_test",
             attach=False,
@@ -881,7 +881,7 @@ def test_attach_to_can_drain_notifications() -> None:
         )
 
         # Control mode will attach to existing session
-        engine = ControlModeEngine(attach_to="drain_test")
+        engine = ControlModeEngine(control_session="drain_test")
         server = Server(socket_name=socket_name, engine=engine)
 
         # Start the engine by accessing sessions

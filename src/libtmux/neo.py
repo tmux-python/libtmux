@@ -669,6 +669,11 @@ def fetch_objs(
     Runs a tmux list command (e.g. ``list-sessions``) with the format string
     from :func:`get_output_format` and parses each line of output into a dict.
 
+    Routes all commands through the server's engine, enabling:
+    - Control mode persistent connection for fetch operations
+    - Engine-specific validation (e.g., control_session preflight checks)
+    - Consistent error handling across all tmux operations
+
     Parameters
     ----------
     server : :class:`~libtmux.server.Server`
