@@ -211,12 +211,14 @@ class Server(
         >>> tmux = Server(socket_name="no_exist")
         >>> assert not tmux.is_alive()
         """
-        # Avoid spinning up control-mode just to probe.
-        from libtmux._internal.engines.control_mode import ControlModeEngine
+        server_args = tuple(self._build_server_args())
 
-        if isinstance(self.engine, ControlModeEngine):
-            return self._probe_server() == 0
+        # Use engine hook to allow engines to probe without bootstrapping.
+        probe_result = self.engine.probe_server_alive(server_args)
+        if probe_result is not None:
+            return probe_result
 
+        # Default: run list-sessions through the engine.
         try:
             res = self.cmd("list-sessions")
         except Exception:
@@ -233,23 +235,24 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        from libtmux._internal.engines.control_mode import ControlModeEngine
+        server_args = tuple(self._build_server_args())
 
-        if isinstance(self.engine, ControlModeEngine):
-            rc = self._probe_server()
-            if rc != 0:
+        # Use engine hook to allow engines to probe without bootstrapping.
+        probe_result = self.engine.probe_server_alive(server_args)
+        if probe_result is not None:
+            if not probe_result:
                 tmux_bin_probe = shutil.which("tmux") or "tmux"
                 raise subprocess.CalledProcessError(
-                    returncode=rc,
-                    cmd=[tmux_bin_probe, *self._build_server_args(), "list-sessions"],
+                    returncode=1,
+                    cmd=[tmux_bin_probe, *server_args, "list-sessions"],
                 )
             return
 
+        # Default: run list-sessions through the engine.
         tmux_bin = shutil.which("tmux")
         if tmux_bin is None:
             raise exc.TmuxCommandNotFound
 
-        server_args = self._build_server_args()
         proc = self.engine.run("list-sessions", server_args=server_args)
         if proc.returncode is not None and proc.returncode != 0:
             raise subprocess.CalledProcessError(
@@ -483,10 +486,9 @@ class Server(
 
         server_args = tuple(self._build_server_args())
 
-        # If the engine knows there are no "real" clients, mirror tmux's
-        # `no current client` error before dispatching.
-        can_switch = getattr(self.engine, "can_switch_client", None)
-        if callable(can_switch) and not can_switch(server_args=server_args):
+        # Use engine hook to check if switch-client is meaningful.
+        # For control mode, this ensures there is at least one non-control client.
+        if not self.engine.can_switch_client(server_args=server_args):
             msg = "no current client"
             raise exc.LibTmuxException(msg)
 
