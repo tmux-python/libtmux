@@ -101,7 +101,7 @@ creating an internal one:
 server.new_session("shared")
 
 # Control mode attaches to it for its connection
-engine = ControlModeEngine(attach_to="shared")
+engine = ControlModeEngine(control_session="shared")
 server = Server(engine=engine)
 
 # The shared session is visible (not filtered)

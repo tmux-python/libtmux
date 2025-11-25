@@ -185,7 +185,7 @@ def fetch_objs(
 
     Routes all commands through the server's engine, enabling:
     - Control mode persistent connection for fetch operations
-    - Engine-specific validation (e.g., attach_to preflight checks)
+    - Engine-specific validation (e.g., control_session preflight checks)
     - Consistent error handling across all tmux operations
     """
     formats = list(Obj.__dataclass_fields__.keys())

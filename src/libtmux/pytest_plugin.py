@@ -156,7 +156,7 @@ def server(
             check=False,  # Ignore if already exists
             capture_output=True,
         )
-        engine = _build_engine(engine_name, attach_to="tmuxp")
+        engine = _build_engine(engine_name, control_session="tmuxp")
     else:
         engine = _build_engine(engine_name)
 
@@ -348,16 +348,16 @@ def engine_name(request: pytest.FixtureRequest) -> str:
         return "subprocess"
 
 
-def _build_engine(engine_name: str, attach_to: str | None = None) -> Engine:
+def _build_engine(engine_name: str, control_session: str | None = None) -> Engine:
     """Return engine instance by name.
 
     Parameters
     ----------
     engine_name : str
         Name of engine: "control" or "subprocess"
-    attach_to : str, optional
+    control_session : str, optional
         For control mode: session name to attach to instead of creating internal session
     """
     if engine_name == "control":
-        return ControlModeEngine(attach_to=attach_to)
+        return ControlModeEngine(control_session=control_session)
     return SubprocessEngine()
