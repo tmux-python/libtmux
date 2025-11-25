@@ -89,7 +89,7 @@ class ControlModeEngine(Engine):
         command_timeout: float | None = 10.0,
         notification_queue_size: int = 4096,
         internal_session_name: str | None = None,
-        attach_to: str | None = None,
+        control_session: str | None = None,
         process_factory: _ProcessFactory | None = None,
         max_retries: int = 1,
         start_threads: bool = True,
@@ -109,7 +109,7 @@ class ControlModeEngine(Engine):
             The internal session is used for connection management and is
             automatically filtered from user-facing APIs. A unique name is
             generated automatically to avoid collisions with user sessions.
-        attach_to : str, optional
+        control_session : str, optional
             Attach to existing session instead of creating internal one.
             When set, control mode attaches to this session for its connection.
 
@@ -142,7 +142,7 @@ class ControlModeEngine(Engine):
         self._internal_session_name = (
             internal_session_name or f"libtmux_ctrl_{uuid.uuid4().hex[:8]}"
         )
-        self._attach_to = attach_to
+        self._control_session = control_session
         self._process_factory = process_factory
         self._max_retries = max(0, max_retries)
         self._start_threads = start_threads
@@ -273,7 +273,7 @@ class ControlModeEngine(Engine):
 
         This helper is useful when you need to wait for notification activity
         to settle after an operation that may generate multiple notifications
-        (e.g., attach-session in attach_to mode).
+        (e.g., attach-session in control_session mode).
 
         Parameters
         ----------
@@ -318,7 +318,7 @@ class ControlModeEngine(Engine):
     @property
     def internal_session_names(self) -> set[str]:
         """Session names reserved for the engine's control connection."""
-        if self._attach_to:
+        if self._control_session:
             return set()
         return {self._internal_session_name}
 
@@ -376,8 +376,8 @@ class ControlModeEngine(Engine):
             sess_name = sess_obj.session_name or ""
 
             # Never expose the internal control session we create to hold the
-            # control client when attach_to is unset.
-            if not self._attach_to and sess_name == self._internal_session_name:
+            # control client when control_session is unset.
+            if not self._control_session and sess_name == self._internal_session_name:
                 continue
 
             clients = pid_map.get(sess_name, [])
@@ -444,14 +444,14 @@ class ControlModeEngine(Engine):
         )
 
         # Build command based on configuration
-        if self._attach_to:
+        if self._control_session:
             # Fail fast if attach target is missing before starting control mode.
             has_session_cmd = [
                 tmux_bin,
                 *[str(a) for a in server_args],
                 "has-session",
                 "-t",
-                self._attach_to,
+                self._control_session,
             ]
             probe = subprocess.run(
                 has_session_cmd,
@@ -459,7 +459,7 @@ class ControlModeEngine(Engine):
                 text=True,
             )
             if probe.returncode != 0:
-                msg = f"attach_to session not found: {self._attach_to}"
+                msg = f"control_session not found: {self._control_session}"
                 raise exc.ControlModeConnectionError(msg)
 
             # Attach to existing session (advanced mode)
@@ -469,14 +469,14 @@ class ControlModeEngine(Engine):
                 "-C",
                 "attach-session",
                 "-t",
-                self._attach_to,
+                self._control_session,
             ]
             bootstrap_argv = [
                 tmux_bin,
                 *[str(a) for a in server_args],
                 "attach-session",
                 "-t",
-                self._attach_to,
+                self._control_session,
             ]
         else:
             # Create or attach to internal session (default)

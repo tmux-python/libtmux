@@ -149,7 +149,7 @@ The following deprecations from 0.50.0 continue to emit {class}`DeprecationWarni
   `Server.has_session()`; advanced users can inspect all sessions via
   `Server._sessions_all()`.
 - `ControlModeEngine` accepts `internal_session_name` (default `libtmux_control_mode`)
-  and `attach_to` for advanced connection strategies.
+  and `control_session` for advanced connection strategies.
 
 Example:
 

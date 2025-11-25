@@ -193,7 +193,7 @@ def test_control_mode_custom_session_name(tmp_path: pathlib.Path) -> None:
     engine.process.wait(timeout=2)
 
 
-def test_control_mode_attach_to_existing(tmp_path: pathlib.Path) -> None:
+def test_control_mode_control_session_existing(tmp_path: pathlib.Path) -> None:
     """Control mode can attach to existing session (advanced opt-in)."""
     socket_path = tmp_path / "tmux-attach-test"
 
@@ -209,7 +209,7 @@ def test_control_mode_attach_to_existing(tmp_path: pathlib.Path) -> None:
     server1.new_session(session_name="shared_session")
 
     # Control mode attaches to existing session (no internal session created)
-    control_engine = ControlModeEngine(attach_to="shared_session")
+    control_engine = ControlModeEngine(control_session="shared_session")
     server2 = Server(socket_path=socket_path, engine=control_engine)
 
     # Should see the shared session
