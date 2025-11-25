@@ -26,14 +26,18 @@ class ServerContext:
     config_file: str | None = None
 
     def to_args(self) -> tuple[str, ...]:
-        """Convert context to tmux server argument tuple."""
+        """Convert context to tmux server argument tuple.
+
+        Returns args in concatenated form (e.g., ``-Lsocket_name``) to match
+        the format used by ``Server._build_server_args()``.
+        """
         args: list[str] = []
         if self.socket_name:
-            args.extend(["-L", self.socket_name])
+            args.append(f"-L{self.socket_name}")
         if self.socket_path:
-            args.extend(["-S", str(self.socket_path)])
+            args.append(f"-S{self.socket_path}")
         if self.config_file:
-            args.extend(["-f", str(self.config_file)])
+            args.append(f"-f{self.config_file}")
         return tuple(args)
 
 
