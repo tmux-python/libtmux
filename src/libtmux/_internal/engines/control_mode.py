@@ -169,10 +169,20 @@ class ControlModeEngine(Engine):
             self._server_args = None
             self._protocol.mark_dead("engine closed")
 
-            # Join threads to ensure clean shutdown (non-daemon threads)
-            if self._reader_thread is not None and self._reader_thread.is_alive():
+            # Join threads to ensure clean shutdown (non-daemon threads).
+            # Skip join if called from within the thread itself (e.g., during GC).
+            current = threading.current_thread()
+            if (
+                self._reader_thread is not None
+                and self._reader_thread.is_alive()
+                and self._reader_thread is not current
+            ):
                 self._reader_thread.join(timeout=2)
-            if self._stderr_thread is not None and self._stderr_thread.is_alive():
+            if (
+                self._stderr_thread is not None
+                and self._stderr_thread.is_alive()
+                and self._stderr_thread is not current
+            ):
                 self._stderr_thread.join(timeout=2)
 
     def __del__(self) -> None:  # pragma: no cover - best effort cleanup
@@ -311,6 +321,31 @@ class ControlModeEngine(Engine):
         if self._attach_to:
             return set()
         return {self._internal_session_name}
+
+    def probe_server_alive(
+        self,
+        server_args: tuple[str | int, ...],
+    ) -> bool | None:
+        """Check if tmux server is alive without starting control mode.
+
+        Performs a direct subprocess check to avoid bootstrapping the control
+        mode connection just to probe server liveness.
+
+        Returns
+        -------
+        bool
+            True if server is alive (list-sessions returns 0), False otherwise.
+        """
+        tmux_bin = shutil.which("tmux")
+        if tmux_bin is None:
+            return False
+
+        result = subprocess.run(
+            [tmux_bin, *[str(a) for a in server_args], "list-sessions"],
+            check=False,
+            capture_output=True,
+        )
+        return result.returncode == 0
 
     def exclude_internal_sessions(
         self,

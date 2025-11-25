@@ -161,6 +161,39 @@ class Engine(ABC):
         return
 
     # Optional hooks ---------------------------------------------------
+    def probe_server_alive(
+        self,
+        server_args: tuple[str | int, ...],
+    ) -> bool | None:
+        """Probe if tmux server is alive without starting the engine.
+
+        Returns
+        -------
+        bool | None
+            True if server is alive, False if dead, None to use default check.
+            Return None to fall back to running ``list-sessions`` via the engine.
+
+        Notes
+        -----
+        Override in engines that shouldn't start on probe (e.g., ControlModeEngine).
+        """
+        return None
+
+    def can_switch_client(
+        self,
+        *,
+        server_args: tuple[str | int, ...] | None = None,
+    ) -> bool:
+        """Check if switch-client is meaningful for this engine.
+
+        Returns
+        -------
+        bool
+            True if there is at least one client that can be switched.
+            Default implementation returns True (assumes switching is allowed).
+        """
+        return True
+
     @property
     def internal_session_names(self) -> set[str]:
         """Names of sessions reserved for engine internals."""
