@@ -799,7 +799,11 @@ class Server(
                 server=self,
             ):
                 sessions.append(Session(server=self, **obj))  # noqa: PERF401
+        except (exc.ControlModeConnectionError, exc.ControlModeTimeout):
+            # Propagate control mode connection/timeout errors
+            raise
         except Exception:
+            # Catch other exceptions (e.g., no sessions exist)
             pass
 
         return QueryList(sessions)
