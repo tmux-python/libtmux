@@ -8,7 +8,6 @@ import typing as t
 from collections.abc import Iterable
 
 from libtmux import exc
-from libtmux.common import tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -182,28 +181,24 @@ def fetch_objs(
     list_cmd: ListCmd,
     list_extra_args: ListExtraArgs = None,
 ) -> OutputsRaw:
-    """Fetch a listing of raw data from a tmux command."""
+    """Fetch a listing of raw data from a tmux command.
+
+    Routes all commands through the server's engine, enabling:
+    - Control mode persistent connection for fetch operations
+    - Engine-specific validation (e.g., attach_to preflight checks)
+    - Consistent error handling across all tmux operations
+    """
     formats = list(Obj.__dataclass_fields__.keys())
-
-    cmd_args: list[str | int] = []
-
-    if server.socket_name:
-        cmd_args.insert(0, f"-L{server.socket_name}")
-    if server.socket_path:
-        cmd_args.insert(0, f"-S{server.socket_path}")
     tmux_formats = [f"#{{{f}}}{FORMAT_SEPARATOR}" for f in formats]
 
-    tmux_cmds = [
-        *cmd_args,
-        list_cmd,
-    ]
-
+    # Build command arguments for the list command
+    cmd_args: list[str] = []
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
-        tmux_cmds.extend(list(list_extra_args))
+        cmd_args.extend(list(list_extra_args))
+    cmd_args.append("-F{}".format("".join(tmux_formats)))
 
-    tmux_cmds.append("-F{}".format("".join(tmux_formats)))
-
-    proc = tmux_cmd(*tmux_cmds)  # output
+    # Route through engine via server.cmd()
+    proc = server.cmd(list_cmd, *cmd_args)
 
     if proc.stderr:
         raise exc.LibTmuxException(proc.stderr)
