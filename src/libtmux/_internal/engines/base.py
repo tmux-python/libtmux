@@ -13,6 +13,30 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 
+@dataclasses.dataclass(frozen=True)
+class ServerContext:
+    """Immutable server connection context.
+
+    Passed to :meth:`Engine.bind` so engines can execute commands
+    without requiring `server_args` on every hook call.
+    """
+
+    socket_name: str | None = None
+    socket_path: str | None = None
+    config_file: str | None = None
+
+    def to_args(self) -> tuple[str, ...]:
+        """Convert context to tmux server argument tuple."""
+        args: list[str] = []
+        if self.socket_name:
+            args.extend(["-L", self.socket_name])
+        if self.socket_path:
+            args.extend(["-S", str(self.socket_path)])
+        if self.config_file:
+            args.extend(["-f", str(self.config_file)])
+        return tuple(args)
+
+
 class ExitStatus(enum.Enum):
     """Exit status returned by tmux control mode commands."""
 
@@ -122,6 +146,22 @@ class Engine(ABC):
     :meth:`run_result` and rely on the base :meth:`run` adapter unless they have
     a strong reason to override both.
     """
+
+    _server_context: ServerContext | None = None
+
+    def bind(self, context: ServerContext) -> None:
+        """Bind engine to server context.
+
+        Called by :class:`Server.__init__` to provide connection details.
+        Engines can use this to run commands without requiring ``server_args``
+        on every hook call.
+
+        Parameters
+        ----------
+        context : ServerContext
+            Immutable server connection context.
+        """
+        self._server_context = context
 
     def run(
         self,
