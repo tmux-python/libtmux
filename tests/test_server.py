@@ -221,7 +221,8 @@ def test_has_session_excludes_control_mode(
 
     # With bootstrap approach, control mode attaches to "tmuxp" (which IS visible)
     assert server.has_session("tmuxp")
-    # Old internal session name should not exist
+    # Internal session (libtmux_ctrl_*) should be filtered from has_session()
+    # The old hard-coded name is no longer used; now uses UUID-based names
     assert not server.has_session("libtmux_control_mode")
 
 

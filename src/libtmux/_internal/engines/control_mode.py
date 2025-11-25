@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import threading
 import typing as t
+import uuid
 
 from libtmux import exc
 from libtmux._internal.engines.base import (
@@ -67,10 +68,20 @@ class ControlModeEngine(Engine):
     By default, creates an internal session for connection management.
     This session is hidden from user-facing APIs like Server.sessions.
 
-    Commands raise :class:`~libtmux.exc.ControlModeTimeout` or
-    :class:`~libtmux.exc.ControlModeConnectionError` on stalls/disconnects; a
-    bounded notification queue (default 4096) records out-of-band events with
-    drop counting when consumers fall behind.
+    Error Handling
+    --------------
+    Connection errors (BrokenPipeError, EOF) raise
+    :class:`~libtmux.exc.ControlModeConnectionError` and are automatically
+    retried up to ``max_retries`` times (default: 1).
+
+    Timeouts raise :class:`~libtmux.exc.ControlModeTimeout` and are NOT retried.
+    If operations frequently timeout, increase ``command_timeout``.
+
+    Notifications
+    -------------
+    A bounded notification queue (default 4096) records out-of-band events with
+    drop counting when consumers fall behind. Use :meth:`iter_notifications` to
+    consume events or :meth:`drain_notifications` to wait for idle state.
     """
 
     def __init__(
@@ -93,10 +104,11 @@ class ControlModeEngine(Engine):
             Size of notification queue. Default: 4096
         internal_session_name : str, optional
             Custom name for internal control session.
-            Default: "libtmux_control_mode"
+            Default: Auto-generated unique name (libtmux_ctrl_XXXXXXXX)
 
             The internal session is used for connection management and is
-            automatically filtered from user-facing APIs.
+            automatically filtered from user-facing APIs. A unique name is
+            generated automatically to avoid collisions with user sessions.
         attach_to : str, optional
             Attach to existing session instead of creating internal one.
             When set, control mode attaches to this session for its connection.
@@ -127,7 +139,9 @@ class ControlModeEngine(Engine):
             notification_queue_size=notification_queue_size,
         )
         self._restarts = 0
-        self._internal_session_name = internal_session_name or "libtmux_control_mode"
+        self._internal_session_name = (
+            internal_session_name or f"libtmux_ctrl_{uuid.uuid4().hex[:8]}"
+        )
         self._attach_to = attach_to
         self._process_factory = process_factory
         self._max_retries = max(0, max_retries)
@@ -229,6 +243,54 @@ class ControlModeEngine(Engine):
                 return
             yield notif
 
+    def drain_notifications(
+        self,
+        *,
+        idle_duration: float = 0.1,
+        timeout: float = 8.0,
+    ) -> list[Notification]:
+        """Drain notifications until the queue is idle.
+
+        This helper is useful when you need to wait for notification activity
+        to settle after an operation that may generate multiple notifications
+        (e.g., attach-session in attach_to mode).
+
+        Parameters
+        ----------
+        idle_duration : float, optional
+            Consider the queue idle after this many seconds of silence.
+            Default: 0.1 (100ms)
+        timeout : float, optional
+            Maximum time to wait for idle state. Default: 8.0
+            Matches RETRY_TIMEOUT_SECONDS from libtmux.test.retry.
+
+        Returns
+        -------
+        list[Notification]
+            All notifications received before idle state.
+
+        Raises
+        ------
+        TimeoutError
+            If timeout is reached before idle state.
+        """
+        import time
+
+        collected: list[Notification] = []
+        deadline = time.monotonic() + timeout
+
+        while time.monotonic() < deadline:
+            notif = self._protocol.get_notification(timeout=idle_duration)
+            if notif is None:
+                # Queue was idle for idle_duration - we're done
+                return collected
+            if notif.kind.name == "EXIT":
+                return collected
+            collected.append(notif)
+
+        msg = f"Notification queue did not become idle within {timeout}s"
+        raise TimeoutError(msg)
+
     def get_stats(self) -> EngineStats:
         """Return diagnostic statistics for the engine."""
         return self._protocol.get_stats(restarts=self._restarts)
@@ -281,7 +343,7 @@ class ControlModeEngine(Engine):
             non_control_clients = [
                 (pid, flags)
                 for pid, flags in clients
-                if "C" not in flags and pid != ctrl_pid
+                if "control-mode" not in flags and pid != ctrl_pid
             ]
 
             if non_control_clients:
@@ -310,7 +372,7 @@ class ControlModeEngine(Engine):
             parts = line.split()
             if len(parts) >= 2:
                 pid, flags = parts[0], parts[1]
-                if "C" not in flags and pid != ctrl_pid:
+                if "control-mode" not in flags and pid != ctrl_pid:
                     return True
 
         return False
