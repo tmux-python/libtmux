@@ -685,8 +685,9 @@ class Pane(
         output = proc.stdout
 
         def _trim(lines: list[str]) -> list[str]:
+            # Match engine trimming: remove only empty strings, not whitespace-only
             trimmed = list(lines)
-            while trimmed and trimmed[-1].strip() == "":
+            while trimmed and trimmed[-1] == "":
                 trimmed.pop()
             return trimmed
 
