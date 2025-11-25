@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import pathlib
+import queue
+import threading
 import time
 import typing as t
 from collections import deque
@@ -321,9 +323,102 @@ def test_iter_notifications_survives_overflow(
     assert first.kind.name == "SESSIONS_CHANGED"
 
 
+class ScriptedStdin:
+    """Fake stdin that can optionally raise BrokenPipeError on write."""
+
+    def __init__(self, broken: bool = False) -> None:
+        """Initialize stdin.
+
+        Parameters
+        ----------
+        broken : bool
+            If True, write() and flush() raise BrokenPipeError.
+        """
+        self._broken = broken
+        self._buf: list[str] = []
+
+    def write(self, data: str) -> int:
+        """Write data or raise BrokenPipeError if broken."""
+        if self._broken:
+            raise BrokenPipeError
+        self._buf.append(data)
+        return len(data)
+
+    def flush(self) -> None:
+        """Flush or raise BrokenPipeError if broken."""
+        if self._broken:
+            raise BrokenPipeError
+
+
+class ScriptedStdout:
+    """Queue-backed stdout that blocks like real subprocess I/O.
+
+    Lines are fed from a background thread, simulating the pacing of real
+    process output. The iterator blocks on __next__ until a line is available
+    or EOF.
+    """
+
+    def __init__(self, lines: list[str], delay: float = 0.0) -> None:
+        """Initialize stdout iterator.
+
+        Parameters
+        ----------
+        lines : list[str]
+            Lines to emit (without trailing newlines).
+        delay : float
+            Optional delay between lines in seconds.
+        """
+        self._queue: queue.Queue[str | None] = queue.Queue()
+        self._delay = delay
+        self._closed = threading.Event()
+        self._lines_fed = threading.Event()
+
+        # Start feeder thread that pushes lines with optional delay
+        self._feeder = threading.Thread(
+            target=self._feed,
+            args=(lines,),
+            daemon=True,
+        )
+        self._feeder.start()
+
+    def _feed(self, lines: list[str]) -> None:
+        """Feed lines into the queue from a background thread."""
+        for line in lines:
+            if self._delay > 0:
+                time.sleep(self._delay)
+            self._queue.put(line)
+        # Sentinel signals EOF
+        self._queue.put(None)
+        self._lines_fed.set()
+
+    def __iter__(self) -> ScriptedStdout:
+        """Return iterator (self)."""
+        return self
+
+    def __next__(self) -> str:
+        """Block until next line or raise StopIteration at EOF."""
+        item = self._queue.get()  # Blocks until available
+        if item is None:
+            self._closed.set()
+            raise StopIteration
+        return item
+
+    def wait_until_fed(self, timeout: float | None = None) -> bool:
+        """Wait until all lines have been put into the queue."""
+        return self._lines_fed.wait(timeout=timeout)
+
+    def wait_until_consumed(self, timeout: float | None = None) -> bool:
+        """Wait until the iterator has reached EOF."""
+        return self._closed.wait(timeout=timeout)
+
+
 @dataclass
 class ScriptedProcess:
-    """Fake control-mode process that plays back scripted stdout and errors."""
+    """Fake control-mode process that plays back scripted stdout and errors.
+
+    Uses ScriptedStdout (queue-backed iterator) instead of a tuple to match
+    real subprocess I/O semantics where reads are blocking/async.
+    """
 
     stdin: t.TextIO | None
     stdout: t.Iterable[str] | None
@@ -331,6 +426,8 @@ class ScriptedProcess:
     pid: int | None = 4242
     broken_on_write: bool = False
     writes: list[str] | None = None
+    _stdin_impl: ScriptedStdin | None = None
+    _stdout_impl: ScriptedStdout | None = None
 
     def __init__(
         self,
@@ -338,10 +435,26 @@ class ScriptedProcess:
         *,
         broken_on_write: bool = False,
         pid: int | None = 4242,
+        line_delay: float = 0.0,
     ) -> None:
-        self.stdin = io.StringIO()
-        self.stdout = tuple(stdout_lines)
-        self.stderr = ()
+        """Initialize scripted process.
+
+        Parameters
+        ----------
+        stdout_lines : list[str]
+            Lines to emit on stdout (without trailing newlines).
+        broken_on_write : bool
+            If True, writes to stdin raise BrokenPipeError.
+        pid : int | None
+            Process ID to report.
+        line_delay : float
+            Delay between stdout lines in seconds. Use for timeout tests.
+        """
+        self._stdin_impl = ScriptedStdin(broken=broken_on_write)
+        self.stdin = t.cast(t.TextIO, self._stdin_impl)
+        self._stdout_impl = ScriptedStdout(stdout_lines, delay=line_delay)
+        self.stdout: t.Iterable[str] | None = self._stdout_impl
+        self.stderr: t.Iterable[str] | None = iter(())
         self.pid = pid
         self.broken_on_write = broken_on_write
         self.writes = []
@@ -368,6 +481,18 @@ class ScriptedProcess:
             raise BrokenPipeError
         assert self.writes is not None
         self.writes.append(line)
+
+    def wait_stdout_fed(self, timeout: float | None = None) -> bool:
+        """Wait until all stdout lines have been queued."""
+        if self._stdout_impl is None:
+            return True
+        return self._stdout_impl.wait_until_fed(timeout)
+
+    def wait_stdout_consumed(self, timeout: float | None = None) -> bool:
+        """Wait until stdout iteration has reached EOF."""
+        if self._stdout_impl is None:
+            return True
+        return self._stdout_impl.wait_until_consumed(timeout)
 
 
 class ProcessFactory:
@@ -420,7 +545,14 @@ class RetryOutcome(t.NamedTuple):
 def test_run_result_retries_with_process_factory(
     case: RetryOutcome,
 ) -> None:
-    """run_result should restart and succeed after broken pipe or timeout."""
+    """run_result should restart and succeed after broken pipe or timeout.
+
+    This test verifies that after a failure (broken pipe or timeout) on the
+    first attempt, a subsequent call to run_result() succeeds with a fresh
+    process.
+
+    Uses max_retries=0 so errors surface immediately on the first call.
+    """
     # First process: either breaks on write or hangs (timeout path).
     if case.expect_timeout:
         first_stdout: list[str] = []  # no output triggers timeout
@@ -431,22 +563,29 @@ def test_run_result_retries_with_process_factory(
 
     first = ScriptedProcess(first_stdout, broken_on_write=broken, pid=1111)
 
-    # Second process: successful %begin/%end for list-sessions.
+    # Second process: successful %begin/%end for bootstrap AND list-sessions.
+    # The reader will consume all lines, so we need output for:
+    # 1. Bootstrap command (new-session): %begin/%end
+    # 2. list-sessions command: %begin/%end
+    # Small delay allows command registration before response is parsed.
     second = ScriptedProcess(
         [
-            "%begin 1 1 0",
-            "%end 1 1 0",
+            "%begin 1 1 0",  # bootstrap begin
+            "%end 1 1 0",  # bootstrap end
+            "%begin 2 1 0",  # list-sessions begin
+            "%end 2 1 0",  # list-sessions end
         ],
         pid=2222,
+        line_delay=0.01,  # 10ms between lines for proper sequencing
     )
 
     factory = ProcessFactory(deque([first, second]))
 
     engine = ControlModeEngine(
-        command_timeout=0.01 if case.expect_timeout else 5.0,
+        command_timeout=0.05 if case.expect_timeout else 5.0,
         process_factory=factory,
         start_threads=True,
-        max_retries=1,
+        max_retries=0,  # No internal retries - error surfaces immediately
     )
 
     if case.expect_timeout:
@@ -456,10 +595,11 @@ def test_run_result_retries_with_process_factory(
         with pytest.raises(exc.ControlModeConnectionError):
             engine.run("list-sessions")
 
+    # After failure, _restarts should be incremented
     assert engine._restarts == 1
-    assert factory.calls == 1 or factory.calls == 2
+    assert factory.calls == 1
 
-    # Second attempt should succeed.
+    # Second attempt should succeed with fresh process.
     res = engine.run_result("list-sessions")
     assert res.exit_status is ExitStatus.OK
     assert engine._restarts >= 1
@@ -489,11 +629,17 @@ class BackpressureFixture(t.NamedTuple):
 )
 def test_notifications_overflow_then_iter(case: BackpressureFixture) -> None:
     """Flood notif queue then ensure iter_notifications still yields."""
-    # Build scripted process that emits many notifications and a single command block.
+    # Build scripted process that emits:
+    # 1. Bootstrap command response (%begin/%end)
+    # 2. Many notifications (to overflow the queue)
+    # 3. A command response for list-sessions
+    bootstrap_block = ["%begin 1 1 0", "%end 1 1 0"]
     notif_lines = ["%sessions-changed"] * case.overflow
     command_block = ["%begin 99 1 0", "%end 99 1 0"]
-    script = [*notif_lines, *command_block, "%exit"]
-    factory = ProcessFactory(deque([ScriptedProcess(script, pid=3333)]))
+    script = [*bootstrap_block, *notif_lines, *command_block, "%exit"]
+    factory = ProcessFactory(
+        deque([ScriptedProcess(script, pid=3333, line_delay=0.01)])
+    )
 
     engine = ControlModeEngine(
         process_factory=factory,
