@@ -2607,6 +2607,9 @@ class Server(
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
+        except (exc.ControlModeConnectionError, exc.ControlModeTimeout):
+            # Propagate control mode connection/timeout errors
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(sessions)
