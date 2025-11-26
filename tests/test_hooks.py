@@ -307,3 +307,221 @@ def test_hooks_mixin(
             0: "set-option -g status-left-style bg=red",
         },
     )
+
+
+# =============================================================================
+# Comprehensive Hook Test Grid
+# =============================================================================
+
+
+class HookTestCase(t.NamedTuple):
+    """Test case for hook validation."""
+
+    test_id: str
+    hook: str  # tmux hook name (hyphenated)
+    min_version: str = "3.0"  # Minimum tmux version required
+    xfail_reason: str | None = None  # Mark as expected failure with reason
+
+
+# --- Alert Hooks ---
+ALERT_HOOKS: list[HookTestCase] = [
+    HookTestCase("alert_activity", "alert-activity"),
+    HookTestCase("alert_bell", "alert-bell"),
+    HookTestCase("alert_silence", "alert-silence"),
+]
+
+# --- Client Hooks ---
+CLIENT_HOOKS: list[HookTestCase] = [
+    HookTestCase("client_active", "client-active"),
+    HookTestCase("client_attached", "client-attached"),
+    HookTestCase("client_detached", "client-detached"),
+    HookTestCase("client_focus_in", "client-focus-in"),
+    HookTestCase("client_focus_out", "client-focus-out"),
+    HookTestCase("client_resized", "client-resized"),
+    HookTestCase("client_session_changed", "client-session-changed"),
+]
+
+# --- Session Hooks ---
+SESSION_HOOKS: list[HookTestCase] = [
+    HookTestCase("session_created", "session-created"),
+    HookTestCase("session_closed", "session-closed"),
+    HookTestCase("session_renamed", "session-renamed"),
+]
+
+# --- Window Hooks ---
+WINDOW_HOOKS: list[HookTestCase] = [
+    HookTestCase("window_linked", "window-linked"),
+    HookTestCase("window_renamed", "window-renamed"),
+    HookTestCase("window_resized", "window-resized"),
+    HookTestCase("window_unlinked", "window-unlinked"),
+    HookTestCase("session_window_changed", "session-window-changed"),
+]
+
+# --- Pane Hooks ---
+PANE_HOOKS: list[HookTestCase] = [
+    HookTestCase("pane_died", "pane-died"),
+    HookTestCase("pane_exited", "pane-exited"),
+    HookTestCase("pane_focus_in", "pane-focus-in"),
+    HookTestCase("pane_focus_out", "pane-focus-out"),
+    HookTestCase("pane_mode_changed", "pane-mode-changed"),
+    HookTestCase("pane_set_clipboard", "pane-set-clipboard"),
+]
+
+# --- After-* Hooks ---
+AFTER_HOOKS: list[HookTestCase] = [
+    HookTestCase("after_bind_key", "after-bind-key"),
+    HookTestCase("after_capture_pane", "after-capture-pane"),
+    HookTestCase("after_copy_mode", "after-copy-mode"),
+    HookTestCase("after_display_message", "after-display-message"),
+    HookTestCase("after_display_panes", "after-display-panes"),
+    HookTestCase("after_kill_pane", "after-kill-pane"),
+    HookTestCase("after_list_buffers", "after-list-buffers"),
+    HookTestCase("after_list_clients", "after-list-clients"),
+    HookTestCase("after_list_keys", "after-list-keys"),
+    HookTestCase("after_list_panes", "after-list-panes"),
+    HookTestCase("after_list_sessions", "after-list-sessions"),
+    HookTestCase("after_list_windows", "after-list-windows"),
+    HookTestCase("after_load_buffer", "after-load-buffer"),
+    HookTestCase("after_lock_server", "after-lock-server"),
+    HookTestCase("after_new_session", "after-new-session"),
+    HookTestCase("after_new_window", "after-new-window"),
+    HookTestCase("after_paste_buffer", "after-paste-buffer"),
+    HookTestCase("after_pipe_pane", "after-pipe-pane"),
+    HookTestCase("after_queue", "after-queue"),
+    HookTestCase("after_refresh_client", "after-refresh-client"),
+    HookTestCase("after_rename_session", "after-rename-session"),
+    HookTestCase("after_rename_window", "after-rename-window"),
+    HookTestCase("after_resize_pane", "after-resize-pane"),
+    HookTestCase("after_resize_window", "after-resize-window"),
+    HookTestCase("after_save_buffer", "after-save-buffer"),
+    HookTestCase("after_select_layout", "after-select-layout"),
+    HookTestCase("after_select_pane", "after-select-pane"),
+    HookTestCase("after_select_window", "after-select-window"),
+    HookTestCase("after_send_keys", "after-send-keys"),
+    HookTestCase("after_set_buffer", "after-set-buffer"),
+    HookTestCase("after_set_environment", "after-set-environment"),
+    HookTestCase("after_set_hook", "after-set-hook"),
+    HookTestCase("after_set_option", "after-set-option"),
+    HookTestCase("after_show_environment", "after-show-environment"),
+    HookTestCase("after_show_messages", "after-show-messages"),
+    HookTestCase("after_show_options", "after-show-options"),
+    HookTestCase("after_split_window", "after-split-window"),
+    HookTestCase("after_unbind_key", "after-unbind-key"),
+]
+
+# --- New Hooks (tmux 3.5+) ---
+NEW_HOOKS: list[HookTestCase] = [
+    HookTestCase(
+        "pane_title_changed",
+        "pane-title-changed",
+        "3.5",
+        xfail_reason="pane-title-changed requires tmux 3.5+",
+    ),
+    HookTestCase(
+        "client_light_theme",
+        "client-light-theme",
+        "3.5",
+        xfail_reason="client-light-theme requires tmux 3.5+",
+    ),
+    HookTestCase(
+        "client_dark_theme",
+        "client-dark-theme",
+        "3.5",
+        xfail_reason="client-dark-theme requires tmux 3.5+",
+    ),
+]
+
+# Combine all hook test cases
+ALL_HOOK_TEST_CASES: list[HookTestCase] = (
+    ALERT_HOOKS + CLIENT_HOOKS + SESSION_HOOKS + WINDOW_HOOKS + PANE_HOOKS + AFTER_HOOKS
+)
+
+
+def _build_hook_params() -> list[t.Any]:
+    """Build pytest params with appropriate marks."""
+    params = []
+    for tc in ALL_HOOK_TEST_CASES:
+        marks: list[t.Any] = []
+        if tc.xfail_reason:
+            marks.append(pytest.mark.xfail(reason=tc.xfail_reason))
+        params.append(pytest.param(tc, id=tc.test_id, marks=marks))
+    return params
+
+
+@pytest.mark.parametrize("test_case", _build_hook_params())
+def test_hook_set_show_unset_cycle(server: Server, test_case: HookTestCase) -> None:
+    """Test set/show/unset cycle for each hook.
+
+    This parametrized test ensures all hooks in the libtmux constants can be:
+    1. Set with a command
+    2. Shown and verified
+    3. Unset cleanly
+    """
+    if not has_gte_version(test_case.min_version):
+        pytest.skip(f"Requires tmux {test_case.min_version}+")
+
+    session = server.new_session(session_name="test_hook_cycle")
+    window = session.active_window
+    assert window is not None
+    pane = window.active_pane
+    assert pane is not None
+
+    hook_cmd = "display-message 'test hook fired'"
+
+    # Test set_hook (using session-level hook which works on all tmux versions)
+    session.set_hook(f"{test_case.hook}[0]", hook_cmd)
+
+    # Test show_hook
+    result = session._show_hook(f"{test_case.hook}[0]")
+    assert result is not None, f"Expected hook {test_case.hook} to be set"
+
+    # Parse and verify
+    hooks = Hooks.from_stdout(result)
+    hook_attr = test_case.hook.replace("-", "_")
+    hook_value = getattr(hooks, hook_attr, None)
+    assert hook_value is not None, f"Hook attribute {hook_attr} not found in Hooks"
+    assert len(hook_value) > 0, f"Expected hook {test_case.hook} to have values"
+    assert "display-message" in hook_value[0], (
+        f"Expected 'display-message' in hook value, got: {hook_value[0]}"
+    )
+
+    # Test unset_hook
+    session.unset_hook(f"{test_case.hook}[0]")
+
+    # Verify unset
+    result_after_unset = session._show_hook(f"{test_case.hook}[0]")
+    if result_after_unset:
+        hooks_after = Hooks.from_stdout(result_after_unset)
+        hook_value_after = getattr(hooks_after, hook_attr, None)
+        # After unset, the hook should be empty or have empty value
+        if hook_value_after:
+            assert len(hook_value_after.as_list()) == 0 or hook_value_after[0] == "", (
+                f"Expected hook {test_case.hook} to be unset"
+            )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [pytest.param(tc, id=tc.test_id) for tc in NEW_HOOKS],
+)
+def test_new_hooks_version_gated(server: Server, test_case: HookTestCase) -> None:
+    """Test new hooks that require tmux 3.5+.
+
+    These hooks are version-gated and will skip on older tmux versions.
+    """
+    if not has_gte_version(test_case.min_version):
+        pytest.skip(f"Requires tmux {test_case.min_version}+")
+
+    session = server.new_session(session_name="test_new_hooks")
+
+    hook_cmd = "display-message 'new hook fired'"
+
+    # Test set_hook
+    session.set_hook(f"{test_case.hook}[0]", hook_cmd)
+
+    # Test show_hook
+    result = session._show_hook(f"{test_case.hook}[0]")
+    assert result is not None, f"Expected hook {test_case.hook} to be set"
+
+    # Cleanup
+    session.unset_hook(f"{test_case.hook}[0]")
