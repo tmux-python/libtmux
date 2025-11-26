@@ -1413,8 +1413,9 @@ def test_wait_for_any_content_exact_match(wait_pane: Pane) -> None:
     This specifically targets lines 823-827 in the wait_for_any_content function,
     ensuring exact matching works correctly.
     """
-    # Clear the pane and add specific content
+    # Clear the pane and wait for shell to be ready (idiomatic pattern)
     wait_pane.send_keys("clear", enter=True)
+    wait_until_pane_ready(wait_pane, timeout=2.0)
 
     # Capture the current content to match it exactly later
     content = wait_pane.capture_pane()
