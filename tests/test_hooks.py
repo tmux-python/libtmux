@@ -417,18 +417,8 @@ NEW_HOOKS: list[HookTestCase] = [
         "3.5",
         xfail_reason="pane-title-changed requires tmux 3.5+",
     ),
-    HookTestCase(
-        "client_light_theme",
-        "client-light-theme",
-        "3.5",
-        xfail_reason="client-light-theme requires tmux 3.5+",
-    ),
-    HookTestCase(
-        "client_dark_theme",
-        "client-dark-theme",
-        "3.5",
-        xfail_reason="client-dark-theme requires tmux 3.5+",
-    ),
+    # NOTE: client-light-theme and client-dark-theme are not in any released tmux
+    # version yet (will be in 3.6+). Add them back when 3.6 is released.
 ]
 
 # Combine all hook test cases

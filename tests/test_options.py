@@ -992,7 +992,7 @@ PANE_BOOLEAN_OPTIONS: list[OptionTestCase] = [
         "pane_alternate_screen", "alternate-screen", OptionScope.Pane, "on", bool, "3.0"
     ),
     OptionTestCase(
-        "pane_scroll_on_clear", "scroll-on-clear", OptionScope.Pane, "on", bool, "3.2"
+        "pane_scroll_on_clear", "scroll-on-clear", OptionScope.Pane, "on", bool, "3.3"
     ),
     OptionTestCase(
         "pane_synchronize_panes",
@@ -1012,7 +1012,7 @@ PANE_CHOICE_OPTIONS: list[OptionTestCase] = [
         OptionScope.Pane,
         "all",
         str,
-        "3.3",
+        "3.4",
     ),
     # remain-on-exit: "on"/"off" return bool, use "failed" for str test (3.2+)
     OptionTestCase(
