@@ -332,11 +332,11 @@ ALERT_HOOKS: list[HookTestCase] = [
 
 # --- Client Hooks ---
 CLIENT_HOOKS: list[HookTestCase] = [
-    HookTestCase("client_active", "client-active"),
+    HookTestCase("client_active", "client-active", "3.3"),
     HookTestCase("client_attached", "client-attached"),
     HookTestCase("client_detached", "client-detached"),
-    HookTestCase("client_focus_in", "client-focus-in"),
-    HookTestCase("client_focus_out", "client-focus-out"),
+    HookTestCase("client_focus_in", "client-focus-in", "3.3"),
+    HookTestCase("client_focus_out", "client-focus-out", "3.3"),
     HookTestCase("client_resized", "client-resized"),
     HookTestCase("client_session_changed", "client-session-changed"),
 ]
@@ -352,7 +352,7 @@ SESSION_HOOKS: list[HookTestCase] = [
 WINDOW_HOOKS: list[HookTestCase] = [
     HookTestCase("window_linked", "window-linked"),
     HookTestCase("window_renamed", "window-renamed"),
-    HookTestCase("window_resized", "window-resized"),
+    HookTestCase("window_resized", "window-resized", "3.3"),
     HookTestCase("window_unlinked", "window-unlinked"),
     HookTestCase("session_window_changed", "session-window-changed"),
 ]

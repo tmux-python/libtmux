@@ -728,6 +728,7 @@ SERVER_INTEGER_OPTIONS: list[OptionTestCase] = [
         OptionScope.Server,
         50,
         int,
+        "3.3",
     ),
 ]
 
@@ -765,7 +766,7 @@ SERVER_STRING_OPTIONS: list[OptionTestCase] = [
         "screen-256color",
         str,
     ),
-    OptionTestCase("server_editor", "editor", OptionScope.Server, "vim", str),
+    OptionTestCase("server_editor", "editor", OptionScope.Server, "vim", str, "3.2"),
 ]
 
 # --- Session Options ---
