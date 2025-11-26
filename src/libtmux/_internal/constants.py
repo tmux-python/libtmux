@@ -44,6 +44,9 @@ class ServerOptions(
     terminal_features: TerminalFeatures = field(default_factory=dict)
     terminal_overrides: SparseArray[str] = field(default_factory=SparseArray)
     user_keys: SparseArray[str] = field(default_factory=SparseArray)
+    # tmux 3.5+ options
+    default_client_command: str | None = field(default=None)
+    extended_keys_format: t.Literal["csi-u", "xterm"] | None = field(default=None)
 
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
@@ -180,6 +183,8 @@ class WindowOptions(
         default=None,
     )
     wrap_search: t.Literal["on", "off"] | None = field(default=None)
+    # tmux 3.5+ options
+    tiled_layout_max_columns: int | None = field(default=None)
 
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
@@ -215,6 +220,9 @@ class PaneOptions(
     synchronize_panes: t.Literal["on", "off"] | None = field(default=None)
     window_active_style: str | None = field(default=None)
     window_style: str | None = field(default=None)
+    # tmux 3.5+ options
+    pane_scrollbars: t.Literal["off", "modal", "on"] | None = field(default=None)
+    pane_scrollbars_style: str | None = field(default=None)
 
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
@@ -292,6 +300,12 @@ class Hooks(
     window_resized: SparseArray[str] = field(default_factory=SparseArray)
     # Run when a window is unlinked from a session.
     window_unlinked: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when a pane title changes (tmux 3.5+)
+    pane_title_changed: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when terminal reports a light theme (tmux 3.5+)
+    client_light_theme: SparseArray[str] = field(default_factory=SparseArray)
+    # Run when terminal reports a dark theme (tmux 3.5+)
+    client_dark_theme: SparseArray[str] = field(default_factory=SparseArray)
 
     # --- Tmux control mode hooks ---
     # The client has detached.
