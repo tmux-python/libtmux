@@ -1,4 +1,38 @@
-"""Helpers for tmux hooks."""
+"""Helpers for tmux hooks.
+
+tmux Hook Version Compatibility
+-------------------------------
+Hook array support requires tmux 3.0+.
+
+**tmux 3.0+**:
+- Hooks are array options (e.g., ``session-renamed[0]``, ``session-renamed[1]``)
+- Sparse indices supported (can have gaps: ``[0]``, ``[5]``, ``[10]``)
+- Session-level hooks available
+
+**tmux 3.2+**:
+- Window-level hooks via ``-w`` flag
+- Pane-level hooks via ``-p`` flag
+- Hook scope separation (session vs window vs pane)
+
+**tmux 3.3+**:
+- ``client-active`` hook
+- ``window-resized`` hook
+
+**tmux 3.5+**:
+- ``pane-title-changed`` hook
+- ``client-light-theme`` / ``client-dark-theme`` hooks
+- ``command-error`` hook
+
+Bulk Operations API
+-------------------
+This module provides bulk operations for managing multiple indexed hooks:
+
+- :meth:`~HooksMixin.get_hook_indices` - Get list of existing indices for a hook
+- :meth:`~HooksMixin.get_hook_values` - Get all values as SparseArray
+- :meth:`~HooksMixin.set_hooks_bulk` - Set multiple hooks at once
+- :meth:`~HooksMixin.clear_hook` - Unset all indexed values for a hook
+- :meth:`~HooksMixin.append_hook` - Append at next available index
+"""
 
 from __future__ import annotations
 
@@ -10,6 +44,7 @@ import warnings
 from libtmux._internal.constants import (
     Hooks,
 )
+from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import CmdMixin, has_lt_version
 from libtmux.constants import (
     DEFAULT_OPTION_SCOPE,
@@ -23,6 +58,7 @@ if t.TYPE_CHECKING:
     from typing_extensions import Self
 
 HookDict = dict[str, t.Any]
+HookValues = dict[int, str] | SparseArray[str] | list[str]
 
 logger = logging.getLogger(__name__)
 
@@ -344,3 +380,253 @@ class HooksMixin(CmdMixin):
             return None
         hooks = Hooks.from_stdout(hooks_output)
         return getattr(hooks, hook.replace("-", "_"), None)
+
+    # --- Bulk operations API ---
+
+    def get_hook_indices(
+        self,
+        hook: str,
+        global_: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+    ) -> list[int]:
+        """Get list of indices that exist for a hook.
+
+        Parameters
+        ----------
+        hook : str
+            Hook name, e.g. 'session-renamed'
+        global_ : bool
+            Use global hooks
+        scope : OptionScope | None
+            Scope for the hook
+        ignore_errors : bool | None
+            Suppress errors
+
+        Returns
+        -------
+        list[int]
+            Sorted list of indices that exist for this hook.
+
+        Examples
+        --------
+        >>> # After setting hooks at indices 0, 1, 5:
+        >>> # session.get_hook_indices('session-renamed')
+        >>> # [0, 1, 5]
+        """
+        hooks_output = self._show_hook(
+            hook=hook,
+            global_=global_,
+            scope=scope,
+            ignore_errors=ignore_errors,
+        )
+        if hooks_output is None:
+            return []
+        hooks = Hooks.from_stdout(hooks_output)
+        hook_array = getattr(hooks, hook.replace("-", "_"), None)
+        if hook_array is None or not isinstance(hook_array, SparseArray):
+            return []
+        return sorted(hook_array.keys())
+
+    def get_hook_values(
+        self,
+        hook: str,
+        global_: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+    ) -> SparseArray[str]:
+        """Get all indexed values for a hook as SparseArray.
+
+        Parameters
+        ----------
+        hook : str
+            Hook name, e.g. 'session-renamed'
+        global_ : bool
+            Use global hooks
+        scope : OptionScope | None
+            Scope for the hook
+        ignore_errors : bool | None
+            Suppress errors
+
+        Returns
+        -------
+        SparseArray[str]
+            SparseArray containing hook values at their original indices.
+
+        Examples
+        --------
+        >>> # values = session.get_hook_values('session-renamed')
+        >>> # for val in values.iter_values():
+        >>> #     print(val)
+        """
+        hooks_output = self._show_hook(
+            hook=hook,
+            global_=global_,
+            scope=scope,
+            ignore_errors=ignore_errors,
+        )
+        if hooks_output is None:
+            return SparseArray()
+        hooks = Hooks.from_stdout(hooks_output)
+        hook_array = getattr(hooks, hook.replace("-", "_"), None)
+        if hook_array is None or not isinstance(hook_array, SparseArray):
+            return SparseArray()
+        # Type narrowing doesn't work with isinstance for generics, so cast
+        result: SparseArray[str] = hook_array
+        return result
+
+    def set_hooks_bulk(
+        self,
+        hook: str,
+        values: HookValues,
+        *,
+        clear_existing: bool = False,
+        global_: bool | None = None,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+    ) -> Self:
+        """Set multiple indexed hooks at once.
+
+        Parameters
+        ----------
+        hook : str
+            Hook name, e.g. 'session-renamed'
+        values : HookValues
+            Values to set. Can be:
+            - dict[int, str]: {0: 'cmd1', 1: 'cmd2'} - explicit indices
+            - SparseArray[str]: preserves indices from another hook
+            - list[str]: ['cmd1', 'cmd2'] - sequential indices starting at 0
+        clear_existing : bool
+            If True, unset all existing hook values first
+        global_ : bool | None
+            Use global hooks
+        scope : OptionScope | None
+            Scope for the hook
+
+        Returns
+        -------
+        Self
+            Returns self for method chaining.
+
+        Examples
+        --------
+        Set hooks with explicit indices:
+
+        >>> # session.set_hooks_bulk('session-renamed', {
+        >>> #     0: 'display-message "hook 0"',
+        >>> #     1: 'display-message "hook 1"',
+        >>> # })
+
+        Set hooks from a list (sequential indices):
+
+        >>> # session.set_hooks_bulk('after-new-window', [
+        >>> #     'select-pane -t 0',
+        >>> #     'send-keys "clear" Enter',
+        >>> # ])
+
+        Replace all existing hooks:
+
+        >>> # session.set_hooks_bulk('session-renamed', [...], clear_existing=True)
+        """
+        if clear_existing:
+            self.clear_hook(hook, global_=global_, scope=scope)
+
+        # Convert list to dict with sequential indices
+        if isinstance(values, list):
+            values = dict(enumerate(values))
+
+        for index, value in values.items():
+            self.set_hook(
+                f"{hook}[{index}]",
+                value,
+                global_=global_,
+                scope=scope,
+            )
+
+        return self
+
+    def clear_hook(
+        self,
+        hook: str,
+        global_: bool | None = None,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        ignore_errors: bool | None = None,
+    ) -> Self:
+        """Unset all indexed values for a hook.
+
+        Parameters
+        ----------
+        hook : str
+            Hook name, e.g. 'session-renamed'
+        global_ : bool | None
+            Use global hooks
+        scope : OptionScope | None
+            Scope for the hook
+        ignore_errors : bool | None
+            Suppress errors when unsetting
+
+        Returns
+        -------
+        Self
+            Returns self for method chaining.
+
+        Examples
+        --------
+        >>> # session.clear_hook('session-renamed')
+        """
+        indices = self.get_hook_indices(
+            hook,
+            global_=global_ if global_ is not None else False,
+            scope=scope,
+            ignore_errors=ignore_errors,
+        )
+        for index in indices:
+            self.unset_hook(
+                f"{hook}[{index}]",
+                global_=global_,
+                scope=scope,
+                ignore_errors=ignore_errors,
+            )
+        return self
+
+    def append_hook(
+        self,
+        hook: str,
+        value: str,
+        global_: bool | None = None,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+    ) -> Self:
+        """Append a hook value at the next available index.
+
+        Parameters
+        ----------
+        hook : str
+            Hook name, e.g. 'session-renamed'
+        value : str
+            Hook command to append
+        global_ : bool | None
+            Use global hooks
+        scope : OptionScope | None
+            Scope for the hook
+
+        Returns
+        -------
+        Self
+            Returns self for method chaining.
+
+        Examples
+        --------
+        >>> # session.append_hook('session-renamed', 'display-message "appended"')
+        """
+        indices = self.get_hook_indices(
+            hook,
+            global_=global_ if global_ is not None else False,
+            scope=scope,
+        )
+        next_index = max(indices) + 1 if indices else 0
+        self.set_hook(
+            f"{hook}[{next_index}]",
+            value,
+            global_=global_,
+            scope=scope,
+        )
+        return self
