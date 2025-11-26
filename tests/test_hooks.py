@@ -525,3 +525,293 @@ def test_new_hooks_version_gated(server: Server, test_case: HookTestCase) -> Non
 
     # Cleanup
     session.unset_hook(f"{test_case.hook}[0]")
+
+
+# =============================================================================
+# Bulk Operations API Tests
+# =============================================================================
+
+
+class BulkOpTestCase(t.NamedTuple):
+    """Test case for bulk hook operations."""
+
+    test_id: str
+    operation: str  # "get_indices", "get_values", "set_bulk", "clear", "append"
+    hook: str  # Hook name to test
+    setup_hooks: dict[int, str]  # Initial hooks to set (index -> value)
+    operation_args: dict[str, t.Any]  # Args for operation
+    expected_indices: list[int]  # Expected indices after operation
+    expected_contains: list[str] | None = None  # Strings expected in values
+
+
+# --- get_hook_indices tests ---
+GET_INDICES_TESTS: list[BulkOpTestCase] = [
+    BulkOpTestCase(
+        "get_indices_empty",
+        "get_indices",
+        "session-renamed",
+        {},
+        {},
+        [],
+    ),
+    BulkOpTestCase(
+        "get_indices_sequential",
+        "get_indices",
+        "session-renamed",
+        {
+            0: "display-message 'hook 0'",
+            1: "display-message 'hook 1'",
+            2: "display-message 'hook 2'",
+        },
+        {},
+        [0, 1, 2],
+    ),
+    BulkOpTestCase(
+        "get_indices_sparse",
+        "get_indices",
+        "session-renamed",
+        {
+            0: "display-message 'hook 0'",
+            5: "display-message 'hook 5'",
+            10: "display-message 'hook 10'",
+        },
+        {},
+        [0, 5, 10],
+    ),
+]
+
+# --- get_hook_values tests ---
+GET_VALUES_TESTS: list[BulkOpTestCase] = [
+    BulkOpTestCase(
+        "get_values_empty",
+        "get_values",
+        "session-renamed",
+        {},
+        {},
+        [],
+    ),
+    BulkOpTestCase(
+        "get_values_sparse",
+        "get_values",
+        "session-renamed",
+        {0: "display-message 'hook 0'", 5: "display-message 'hook 5'"},
+        {},
+        [0, 5],
+        ["display-message"],
+    ),
+]
+
+# --- set_hooks_bulk tests ---
+SET_BULK_TESTS: list[BulkOpTestCase] = [
+    BulkOpTestCase(
+        "set_bulk_with_dict",
+        "set_bulk",
+        "session-renamed",
+        {},
+        {
+            "values": {
+                0: "display-message 'hook 0'",
+                1: "display-message 'hook 1'",
+                5: "display-message 'hook 5'",
+            },
+        },
+        [0, 1, 5],
+        ["hook 0", "hook 1", "hook 5"],
+    ),
+    BulkOpTestCase(
+        "set_bulk_with_list",
+        "set_bulk",
+        "session-renamed",
+        {},
+        {
+            "values": [
+                "display-message 'hook 0'",
+                "display-message 'hook 1'",
+                "display-message 'hook 2'",
+            ],
+        },
+        [0, 1, 2],
+    ),
+    BulkOpTestCase(
+        "set_bulk_clear_existing",
+        "set_bulk",
+        "session-renamed",
+        {0: "display-message 'old 0'", 1: "display-message 'old 1'"},
+        {"values": {0: "display-message 'new 0'"}, "clear_existing": True},
+        [0],
+        ["new 0"],
+    ),
+]
+
+# --- clear_hook tests ---
+CLEAR_TESTS: list[BulkOpTestCase] = [
+    BulkOpTestCase(
+        "clear_hook",
+        "clear",
+        "session-renamed",
+        {0: "display-message 'hook 0'", 5: "display-message 'hook 5'"},
+        {},
+        [],
+    ),
+]
+
+# --- append_hook tests ---
+APPEND_TESTS: list[BulkOpTestCase] = [
+    BulkOpTestCase(
+        "append_to_empty",
+        "append",
+        "session-renamed",
+        {},
+        {"value": "display-message 'appended'"},
+        [0],
+        ["appended"],
+    ),
+    BulkOpTestCase(
+        "append_sequential",
+        "append",
+        "session-renamed",
+        {0: "display-message 'initial'"},
+        {"value": "display-message 'appended'"},
+        [0, 1],
+    ),
+    BulkOpTestCase(
+        "append_after_sparse",
+        "append",
+        "session-renamed",
+        {0: "display-message 'at 0'", 10: "display-message 'at 10'"},
+        {"value": "display-message 'appended'"},
+        [0, 10, 11],
+        ["appended"],
+    ),
+]
+
+# Combine all bulk operation test cases
+ALL_BULK_OP_TESTS: list[BulkOpTestCase] = (
+    GET_INDICES_TESTS + GET_VALUES_TESTS + SET_BULK_TESTS + CLEAR_TESTS + APPEND_TESTS
+)
+
+
+def _build_bulk_op_params() -> list[t.Any]:
+    """Build pytest params for bulk operation tests."""
+    return [pytest.param(tc, id=tc.test_id) for tc in ALL_BULK_OP_TESTS]
+
+
+@pytest.mark.parametrize("test_case", _build_bulk_op_params())
+def test_bulk_hook_operation(server: Server, test_case: BulkOpTestCase) -> None:
+    """Test bulk hook operations.
+
+    This parametrized test ensures all bulk operations work correctly:
+    - get_hook_indices: returns sorted list of existing indices
+    - get_hook_values: returns SparseArray with values
+    - set_hooks_bulk: sets multiple hooks at once
+    - clear_hook: removes all indexed values
+    - append_hook: appends at next available index
+    """
+    session = server.new_session(session_name="test_bulk_ops")
+
+    # Setup initial hooks
+    for idx, val in test_case.setup_hooks.items():
+        session.set_hook(f"{test_case.hook}[{idx}]", val)
+
+    # Perform operation based on type
+    if test_case.operation == "get_indices":
+        result = session.get_hook_indices(test_case.hook)
+        assert result == test_case.expected_indices
+
+    elif test_case.operation == "get_values":
+        values = session.get_hook_values(test_case.hook)
+        assert isinstance(values, SparseArray)
+        assert sorted(values.keys()) == test_case.expected_indices
+        if test_case.expected_contains:
+            for expected_str in test_case.expected_contains:
+                assert any(expected_str in v for v in values.values())
+
+    elif test_case.operation == "set_bulk":
+        session.set_hooks_bulk(test_case.hook, **test_case.operation_args)
+        indices = session.get_hook_indices(test_case.hook)
+        assert indices == test_case.expected_indices
+        if test_case.expected_contains:
+            values = session.get_hook_values(test_case.hook)
+            for expected_str in test_case.expected_contains:
+                assert any(expected_str in v for v in values.values())
+
+    elif test_case.operation == "clear":
+        session.clear_hook(test_case.hook)
+        indices = session.get_hook_indices(test_case.hook)
+        assert indices == test_case.expected_indices
+
+    elif test_case.operation == "append":
+        session.append_hook(test_case.hook, test_case.operation_args["value"])
+        indices = session.get_hook_indices(test_case.hook)
+        assert indices == test_case.expected_indices
+        if test_case.expected_contains:
+            values = session.get_hook_values(test_case.hook)
+            for expected_str in test_case.expected_contains:
+                assert any(expected_str in v for v in values.values())
+
+    # Cleanup
+    session.clear_hook(test_case.hook)
+
+
+def test_bulk_hook_values_iteration(server: Server) -> None:
+    """Test iterating over hook values in sorted order."""
+    session = server.new_session(session_name="test_bulk_ops")
+
+    # Set hooks at sparse indices (out of order)
+    session.set_hook("session-renamed[5]", "display-message 'fifth'")
+    session.set_hook("session-renamed[0]", "display-message 'zeroth'")
+    session.set_hook("session-renamed[2]", "display-message 'second'")
+
+    values = session.get_hook_values("session-renamed")
+    value_list = list(values.iter_values())
+
+    # Values should be in sorted index order
+    assert len(value_list) == 3
+    assert "zeroth" in value_list[0]
+    assert "second" in value_list[1]
+    assert "fifth" in value_list[2]
+
+    # Cleanup
+    session.clear_hook("session-renamed")
+
+
+def test_bulk_hook_set_with_sparse_array(server: Server) -> None:
+    """Test set_hooks_bulk with SparseArray input."""
+    session = server.new_session(session_name="test_bulk_ops")
+
+    sparse: SparseArray[str] = SparseArray()
+    sparse.add(0, "display-message 'from sparse 0'")
+    sparse.add(10, "display-message 'from sparse 10'")
+
+    session.set_hooks_bulk("session-renamed", sparse)
+
+    indices = session.get_hook_indices("session-renamed")
+    assert indices == [0, 10]
+
+    # Cleanup
+    session.clear_hook("session-renamed")
+
+
+def test_bulk_hook_method_chaining(server: Server) -> None:
+    """Test that bulk operations support method chaining."""
+    session = server.new_session(session_name="test_bulk_ops")
+
+    # Chain operations
+    result = (
+        session.set_hooks_bulk(
+            "session-renamed",
+            ["display-message 'hook 0'"],
+        )
+        .append_hook("session-renamed", "display-message 'hook 1'")
+        .append_hook("session-renamed", "display-message 'hook 2'")
+    )
+
+    # Should return the session
+    assert result is session
+
+    # Verify all hooks set
+    indices = session.get_hook_indices("session-renamed")
+    assert indices == [0, 1, 2]
+
+    # Cleanup
+    session.clear_hook("session-renamed")
