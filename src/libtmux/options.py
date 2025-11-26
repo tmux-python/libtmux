@@ -369,6 +369,31 @@ def explode_arrays(
     ... "terminal-features": {0: "xterm*:clipboard:ccolour:cstyle:focus",
     ... 5: "screen*:title"}}
     True
+
+    Use ``force_array=True`` for hooks, which always use array format:
+
+    >>> from libtmux._internal.sparse_array import SparseArray
+
+    >>> hooks_output = io.StringIO(r'''
+    ... session-renamed[0] display-message 'renamed'
+    ... session-renamed[5] refresh-client
+    ... pane-focus-in[0] run-shell 'echo focus'
+    ... ''')
+    >>> hooks_exploded = explode_arrays(
+    ...     parse_options_to_dict(hooks_output),
+    ...     force_array=True,
+    ... )
+
+    Each hook becomes a SparseArray preserving indices:
+
+    >>> isinstance(hooks_exploded["session-renamed"], SparseArray)
+    True
+    >>> hooks_exploded["session-renamed"][0]
+    "display-message 'renamed'"
+    >>> hooks_exploded["session-renamed"][5]
+    'refresh-client'
+    >>> sorted(hooks_exploded["session-renamed"].keys())
+    [0, 5]
     """
     options: dict[str, t.Any] = {}
     for key, val in _dict.items():
