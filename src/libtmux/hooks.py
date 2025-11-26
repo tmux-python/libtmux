@@ -410,9 +410,17 @@ class HooksMixin(CmdMixin):
 
         Examples
         --------
-        >>> # After setting hooks at indices 0, 1, 5:
-        >>> # session.get_hook_indices('session-renamed')
-        >>> # [0, 1, 5]
+        >>> session.set_hook('session-renamed[0]', 'display-message "test"')
+        Session($...)
+
+        >>> session.set_hook('session-renamed[5]', 'display-message "test"')
+        Session($...)
+
+        >>> session.get_hook_indices('session-renamed')
+        [0, 5]
+
+        >>> session.clear_hook('session-renamed')
+        Session($...)
         """
         hooks_output = self._show_hook(
             hook=hook,
@@ -455,9 +463,18 @@ class HooksMixin(CmdMixin):
 
         Examples
         --------
-        >>> # values = session.get_hook_values('session-renamed')
-        >>> # for val in values.iter_values():
-        >>> #     print(val)
+        >>> session.set_hook('session-renamed[0]', 'display-message "first"')
+        Session($...)
+
+        >>> values = session.get_hook_values('session-renamed')
+        >>> 0 in values
+        True
+
+        >>> 'display-message' in values[0]
+        True
+
+        >>> session.clear_hook('session-renamed')
+        Session($...)
         """
         hooks_output = self._show_hook(
             hook=hook,
@@ -511,21 +528,40 @@ class HooksMixin(CmdMixin):
         --------
         Set hooks with explicit indices:
 
-        >>> # session.set_hooks_bulk('session-renamed', {
-        >>> #     0: 'display-message "hook 0"',
-        >>> #     1: 'display-message "hook 1"',
-        >>> # })
+        >>> session.set_hooks_bulk('session-renamed', {
+        ...     0: 'display-message "hook 0"',
+        ...     1: 'display-message "hook 1"',
+        ... })
+        Session($...)
+
+        >>> session.get_hook_indices('session-renamed')
+        [0, 1]
 
         Set hooks from a list (sequential indices):
 
-        >>> # session.set_hooks_bulk('after-new-window', [
-        >>> #     'select-pane -t 0',
-        >>> #     'send-keys "clear" Enter',
-        >>> # ])
+        >>> session.set_hooks_bulk('after-new-window', [
+        ...     'select-pane -t 0',
+        ...     'send-keys "clear" Enter',
+        ... ])
+        Session($...)
 
-        Replace all existing hooks:
+        >>> session.get_hook_indices('after-new-window')
+        [0, 1]
 
-        >>> # session.set_hooks_bulk('session-renamed', [...], clear_existing=True)
+        Replace all existing hooks with ``clear_existing=True``:
+
+        >>> session.set_hooks_bulk('session-renamed', {0: 'display-message "new"'},
+        ...                        clear_existing=True)
+        Session($...)
+
+        >>> session.get_hook_indices('session-renamed')
+        [0]
+
+        >>> session.clear_hook('session-renamed')
+        Session($...)
+
+        >>> session.clear_hook('after-new-window')
+        Session($...)
         """
         if clear_existing:
             self.clear_hook(hook, global_=global_, scope=scope)
@@ -571,7 +607,20 @@ class HooksMixin(CmdMixin):
 
         Examples
         --------
-        >>> # session.clear_hook('session-renamed')
+        >>> session.set_hook('session-renamed[0]', 'display-message "test"')
+        Session($...)
+
+        >>> session.set_hook('session-renamed[1]', 'display-message "test2"')
+        Session($...)
+
+        >>> session.get_hook_indices('session-renamed')
+        [0, 1]
+
+        >>> session.clear_hook('session-renamed')
+        Session($...)
+
+        >>> session.get_hook_indices('session-renamed')
+        []
         """
         indices = self.get_hook_indices(
             hook,
@@ -615,7 +664,17 @@ class HooksMixin(CmdMixin):
 
         Examples
         --------
-        >>> # session.append_hook('session-renamed', 'display-message "appended"')
+        >>> session.set_hook('session-renamed[0]', 'display-message "first"')
+        Session($...)
+
+        >>> session.append_hook('session-renamed', 'display-message "appended"')
+        Session($...)
+
+        >>> session.get_hook_indices('session-renamed')
+        [0, 1]
+
+        >>> session.clear_hook('session-renamed')
+        Session($...)
         """
         indices = self.get_hook_indices(
             hook,
