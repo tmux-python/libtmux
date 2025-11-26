@@ -442,19 +442,6 @@ def test_show_option_pane_fixture(
 
     assert result == expected
 
-    if expected is None:
-        assert result is not None, (
-            f"Expected {expected} to be {type(expected)}, got None"
-        )
-
-    if isinstance(expected, dict):
-        assert isinstance(result, dict), f'Expected dict, got "{type(result)}"'
-
-        for k, v in expected.items():
-            assert k in result
-
-            assert result[k] == v
-
 
 def test_stable_baseline_options_and_hooks(server: Server) -> None:
     """Ensure stable baseline across tmux versions."""
