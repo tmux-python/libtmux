@@ -252,7 +252,71 @@ class Options(
 class Hooks(
     SkipDefaultFieldsReprMixin,
 ):
-    """tmux hooks data structure."""
+    """tmux hooks data structure.
+
+    Parses tmux hook output into typed :class:`SparseArray` fields, preserving
+    array indices for hooks that can have multiple commands at different indices.
+
+    Examples
+    --------
+    Parse raw tmux hook output:
+
+    >>> from libtmux._internal.constants import Hooks
+
+    >>> raw = [
+    ...     "session-renamed[0] set-option -g status-left-style bg=red",
+    ...     "session-renamed[1] display-message 'session renamed'",
+    ... ]
+    >>> hooks = Hooks.from_stdout(raw)
+
+    Access individual hook commands by index:
+
+    >>> hooks.session_renamed[0]
+    'set-option -g status-left-style bg=red'
+    >>> hooks.session_renamed[1]
+    "display-message 'session renamed'"
+
+    Get all commands as a list (sorted by index):
+
+    >>> hooks.session_renamed.as_list()
+    ['set-option -g status-left-style bg=red', "display-message 'session renamed'"]
+
+    Sparse indices are preserved (gaps in index numbers):
+
+    >>> raw_sparse = [
+    ...     "pane-focus-in[0] refresh-client",
+    ...     "pane-focus-in[5] display-message 'focus'",
+    ... ]
+    >>> hooks_sparse = Hooks.from_stdout(raw_sparse)
+    >>> 0 in hooks_sparse.pane_focus_in
+    True
+    >>> 5 in hooks_sparse.pane_focus_in
+    True
+    >>> 3 in hooks_sparse.pane_focus_in
+    False
+    >>> sorted(hooks_sparse.pane_focus_in.keys())
+    [0, 5]
+
+    Iterate over values in index order:
+
+    >>> for cmd in hooks_sparse.pane_focus_in.iter_values():
+    ...     print(cmd)
+    refresh-client
+    display-message 'focus'
+
+    Multiple hook types in one parse:
+
+    >>> raw_multi = [
+    ...     "after-new-window[0] select-pane -t 0",
+    ...     "after-new-window[1] send-keys 'clear' Enter",
+    ...     "window-renamed[0] refresh-client -S",
+    ... ]
+    >>> hooks_multi = Hooks.from_stdout(raw_multi)
+    >>> len(hooks_multi.after_new_window)
+    2
+    >>> len(hooks_multi.window_renamed)
+    1
+    """
 
     # --- Tmux normal hooks ---
     # Run when a window has activity. See monitor-activity.
@@ -453,6 +517,54 @@ class Hooks(
 
     @classmethod
     def from_stdout(cls, value: list[str]) -> Hooks:
+        """Parse raw tmux hook output into a Hooks instance.
+
+        The parsing pipeline:
+
+        1. ``parse_options_to_dict()`` - Parse "key value" lines into dict
+        2. ``explode_arrays(force_array=True)`` - Extract array indices into SparseArray
+        3. ``explode_complex()`` - Handle complex option types
+        4. Rename keys: ``session-renamed`` → ``session_renamed``
+
+        Parameters
+        ----------
+        value : list[str]
+            Raw tmux output lines from ``show-hooks`` command.
+
+        Returns
+        -------
+        Hooks
+            Parsed hooks with SparseArray fields for each hook type.
+
+        Examples
+        --------
+        Basic parsing:
+
+        >>> from libtmux._internal.constants import Hooks
+
+        >>> raw = ["session-renamed[0] display-message 'renamed'"]
+        >>> hooks = Hooks.from_stdout(raw)
+        >>> hooks.session_renamed[0]
+        "display-message 'renamed'"
+
+        The pipeline preserves sparse indices:
+
+        >>> raw = [
+        ...     "after-select-window[0] refresh-client",
+        ...     "after-select-window[10] display-message 'selected'",
+        ... ]
+        >>> hooks = Hooks.from_stdout(raw)
+        >>> sorted(hooks.after_select_window.keys())
+        [0, 10]
+
+        Empty input returns empty SparseArrays:
+
+        >>> hooks_empty = Hooks.from_stdout([])
+        >>> len(hooks_empty.session_renamed)
+        0
+        >>> hooks_empty.session_renamed.as_list()
+        []
+        """
         from libtmux.options import (
             explode_arrays,
             explode_complex,
