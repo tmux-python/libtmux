@@ -696,3 +696,411 @@ def test_terminal_features_edge_cases(
     assert isinstance(xterm_features, list)
     assert any(f == "feature with space" for f in xterm_features)
     assert any(f == "special*char" for f in xterm_features)
+
+
+# =============================================================================
+# Comprehensive Option Test Grid
+# =============================================================================
+
+
+class OptionTestCase(t.NamedTuple):
+    """Test case for option validation."""
+
+    test_id: str
+    option: str  # tmux option name (hyphenated)
+    scope: OptionScope
+    test_value: t.Any  # Value to set
+    expected_type: type  # Expected Python type after retrieval
+    min_version: str | None = None  # Minimum tmux version required
+    xfail_reason: str | None = None  # Mark as expected failure with reason
+
+
+# --- Server Options ---
+SERVER_INTEGER_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase("server_buffer_limit", "buffer-limit", OptionScope.Server, 100, int),
+    OptionTestCase("server_escape_time", "escape-time", OptionScope.Server, 50, int),
+    OptionTestCase(
+        "server_message_limit", "message-limit", OptionScope.Server, 500, int
+    ),
+    OptionTestCase(
+        "server_prompt_history_limit",
+        "prompt-history-limit",
+        OptionScope.Server,
+        50,
+        int,
+    ),
+]
+
+SERVER_BOOLEAN_OPTIONS: list[OptionTestCase] = [
+    # Note: exit-empty and exit-unattached are tested with "off" to avoid killing server
+    OptionTestCase("server_exit_empty", "exit-empty", OptionScope.Server, "off", bool),
+    OptionTestCase(
+        "server_exit_unattached", "exit-unattached", OptionScope.Server, "off", bool
+    ),
+    OptionTestCase(
+        "server_focus_events", "focus-events", OptionScope.Server, "on", bool
+    ),
+]
+
+SERVER_CHOICE_OPTIONS: list[OptionTestCase] = [
+    # extended-keys: "on"/"off" return bool, use "always" for str test (3.2+)
+    OptionTestCase(
+        "server_extended_keys",
+        "extended-keys",
+        OptionScope.Server,
+        "always",
+        str,
+        "3.2",
+    ),
+    OptionTestCase(
+        "server_set_clipboard", "set-clipboard", OptionScope.Server, "external", str
+    ),
+]
+
+SERVER_STRING_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "server_default_terminal",
+        "default-terminal",
+        OptionScope.Server,
+        "screen-256color",
+        str,
+    ),
+    OptionTestCase("server_editor", "editor", OptionScope.Server, "vim", str),
+]
+
+# --- Session Options ---
+SESSION_INTEGER_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase("session_base_index", "base-index", OptionScope.Session, 1, int),
+    OptionTestCase(
+        "session_display_panes_time",
+        "display-panes-time",
+        OptionScope.Session,
+        2000,
+        int,
+    ),
+    OptionTestCase(
+        "session_display_time", "display-time", OptionScope.Session, 1000, int
+    ),
+    OptionTestCase(
+        "session_history_limit", "history-limit", OptionScope.Session, 5000, int
+    ),
+    OptionTestCase(
+        "session_lock_after_time", "lock-after-time", OptionScope.Session, 300, int
+    ),
+    OptionTestCase("session_repeat_time", "repeat-time", OptionScope.Session, 500, int),
+    OptionTestCase(
+        "session_status_interval", "status-interval", OptionScope.Session, 5, int
+    ),
+    OptionTestCase(
+        "session_status_left_length", "status-left-length", OptionScope.Session, 20, int
+    ),
+    OptionTestCase(
+        "session_status_right_length",
+        "status-right-length",
+        OptionScope.Session,
+        30,
+        int,
+    ),
+]
+
+SESSION_BOOLEAN_OPTIONS: list[OptionTestCase] = [
+    # Note: destroy-unattached is tested with "off" to avoid destroying test session
+    OptionTestCase(
+        "session_destroy_unattached",
+        "destroy-unattached",
+        OptionScope.Session,
+        "off",
+        bool,
+    ),
+    OptionTestCase("session_mouse", "mouse", OptionScope.Session, "on", bool),
+    OptionTestCase(
+        "session_renumber_windows", "renumber-windows", OptionScope.Session, "on", bool
+    ),
+    OptionTestCase("session_set_titles", "set-titles", OptionScope.Session, "on", bool),
+]
+
+SESSION_CHOICE_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "session_activity_action", "activity-action", OptionScope.Session, "any", str
+    ),
+    OptionTestCase(
+        "session_bell_action", "bell-action", OptionScope.Session, "any", str
+    ),
+    # detach-on-destroy: "on"/"off" return bool, use "no-detached" (3.2+) for str
+    OptionTestCase(
+        "session_detach_on_destroy",
+        "detach-on-destroy",
+        OptionScope.Session,
+        "no-detached",
+        str,
+        "3.2",
+    ),
+    OptionTestCase(
+        "session_silence_action", "silence-action", OptionScope.Session, "none", str
+    ),
+    OptionTestCase(
+        "session_status_keys", "status-keys", OptionScope.Session, "vi", str
+    ),
+    OptionTestCase(
+        "session_status_justify", "status-justify", OptionScope.Session, "left", str
+    ),
+    OptionTestCase(
+        "session_status_position", "status-position", OptionScope.Session, "bottom", str
+    ),
+    # visual-*: "on"/"off" return bool, use "both" for str test
+    OptionTestCase(
+        "session_visual_activity", "visual-activity", OptionScope.Session, "both", str
+    ),
+    OptionTestCase(
+        "session_visual_bell", "visual-bell", OptionScope.Session, "both", str
+    ),
+    OptionTestCase(
+        "session_visual_silence", "visual-silence", OptionScope.Session, "both", str
+    ),
+]
+
+SESSION_STRING_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "session_default_command", "default-command", OptionScope.Session, "", str
+    ),
+    OptionTestCase(
+        "session_status_left", "status-left", OptionScope.Session, "[#S]", str
+    ),
+    OptionTestCase(
+        "session_status_right", "status-right", OptionScope.Session, "%H:%M", str
+    ),
+]
+
+SESSION_STYLE_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "session_status_style", "status-style", OptionScope.Session, "fg=green", str
+    ),
+    OptionTestCase(
+        "session_status_left_style",
+        "status-left-style",
+        OptionScope.Session,
+        "fg=blue",
+        str,
+    ),
+    OptionTestCase(
+        "session_status_right_style",
+        "status-right-style",
+        OptionScope.Session,
+        "fg=yellow",
+        str,
+    ),
+    OptionTestCase(
+        "session_message_style", "message-style", OptionScope.Session, "fg=red", str
+    ),
+]
+
+# --- Window Options ---
+WINDOW_INTEGER_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "window_pane_base_index", "pane-base-index", OptionScope.Window, 1, int
+    ),
+    OptionTestCase(
+        "window_monitor_silence", "monitor-silence", OptionScope.Window, 10, int
+    ),
+]
+
+WINDOW_BOOLEAN_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "window_aggressive_resize", "aggressive-resize", OptionScope.Window, "on", bool
+    ),
+    OptionTestCase(
+        "window_automatic_rename", "automatic-rename", OptionScope.Window, "off", bool
+    ),
+    OptionTestCase(
+        "window_monitor_activity", "monitor-activity", OptionScope.Window, "on", bool
+    ),
+    OptionTestCase(
+        "window_monitor_bell", "monitor-bell", OptionScope.Window, "on", bool
+    ),
+    OptionTestCase("window_wrap_search", "wrap-search", OptionScope.Window, "on", bool),
+]
+
+WINDOW_CHOICE_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "window_clock_mode_style", "clock-mode-style", OptionScope.Window, "24", int
+    ),
+    OptionTestCase("window_mode_keys", "mode-keys", OptionScope.Window, "vi", str),
+    # pane-border-status: "off" returns bool, use "top" for str test
+    OptionTestCase(
+        "window_pane_border_status",
+        "pane-border-status",
+        OptionScope.Window,
+        "top",
+        str,
+    ),
+    OptionTestCase(
+        "window_window_size", "window-size", OptionScope.Window, "latest", str, "3.1"
+    ),
+]
+
+WINDOW_STRING_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "window_pane_border_format",
+        "pane-border-format",
+        OptionScope.Window,
+        "#{pane_index}",
+        str,
+    ),
+]
+
+WINDOW_STYLE_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "window_mode_style", "mode-style", OptionScope.Window, "fg=white", str
+    ),
+    OptionTestCase(
+        "window_pane_border_style",
+        "pane-border-style",
+        OptionScope.Window,
+        "fg=green",
+        str,
+    ),
+    OptionTestCase(
+        "window_pane_active_border_style",
+        "pane-active-border-style",
+        OptionScope.Window,
+        "fg=red",
+        str,
+    ),
+    OptionTestCase(
+        "window_window_status_style",
+        "window-status-style",
+        OptionScope.Window,
+        "fg=cyan",
+        str,
+    ),
+    OptionTestCase(
+        "window_window_status_current_style",
+        "window-status-current-style",
+        OptionScope.Window,
+        "fg=magenta",
+        str,
+    ),
+]
+
+# --- Pane Options ---
+PANE_BOOLEAN_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "pane_allow_rename", "allow-rename", OptionScope.Pane, "off", bool, "3.0"
+    ),
+    OptionTestCase(
+        "pane_alternate_screen", "alternate-screen", OptionScope.Pane, "on", bool, "3.0"
+    ),
+    OptionTestCase(
+        "pane_scroll_on_clear", "scroll-on-clear", OptionScope.Pane, "on", bool, "3.2"
+    ),
+    OptionTestCase(
+        "pane_synchronize_panes",
+        "synchronize-panes",
+        OptionScope.Pane,
+        "off",
+        bool,
+        "3.1",
+    ),
+]
+
+PANE_CHOICE_OPTIONS: list[OptionTestCase] = [
+    # allow-passthrough: "on"/"off" return bool, use "all" for str test (3.3+)
+    OptionTestCase(
+        "pane_allow_passthrough",
+        "allow-passthrough",
+        OptionScope.Pane,
+        "all",
+        str,
+        "3.3",
+    ),
+    # remain-on-exit: "on"/"off" return bool, use "failed" for str test (3.2+)
+    OptionTestCase(
+        "pane_remain_on_exit",
+        "remain-on-exit",
+        OptionScope.Pane,
+        "failed",
+        str,
+        "3.2",
+    ),
+]
+
+PANE_STYLE_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "pane_window_style", "window-style", OptionScope.Pane, "default", str, "3.0"
+    ),
+    OptionTestCase(
+        "pane_window_active_style",
+        "window-active-style",
+        OptionScope.Pane,
+        "default",
+        str,
+        "3.0",
+    ),
+]
+
+# Combine all option test cases
+ALL_OPTION_TEST_CASES: list[OptionTestCase] = (
+    SERVER_INTEGER_OPTIONS
+    + SERVER_BOOLEAN_OPTIONS
+    + SERVER_CHOICE_OPTIONS
+    + SERVER_STRING_OPTIONS
+    + SESSION_INTEGER_OPTIONS
+    + SESSION_BOOLEAN_OPTIONS
+    + SESSION_CHOICE_OPTIONS
+    + SESSION_STRING_OPTIONS
+    + SESSION_STYLE_OPTIONS
+    + WINDOW_INTEGER_OPTIONS
+    + WINDOW_BOOLEAN_OPTIONS
+    + WINDOW_CHOICE_OPTIONS
+    + WINDOW_STRING_OPTIONS
+    + WINDOW_STYLE_OPTIONS
+    + PANE_BOOLEAN_OPTIONS
+    + PANE_CHOICE_OPTIONS
+    + PANE_STYLE_OPTIONS
+)
+
+
+def _build_option_params() -> list[t.Any]:
+    """Build pytest params with appropriate marks."""
+    params = []
+    for tc in ALL_OPTION_TEST_CASES:
+        marks: list[t.Any] = []
+        if tc.xfail_reason:
+            marks.append(pytest.mark.xfail(reason=tc.xfail_reason))
+        params.append(pytest.param(tc, id=tc.test_id, marks=marks))
+    return params
+
+
+@pytest.mark.parametrize("test_case", _build_option_params())
+def test_option_set_show_cycle(server: Server, test_case: OptionTestCase) -> None:
+    """Test set/show cycle for each option type."""
+    if not has_gte_version("3.0"):
+        pytest.skip("Option tests require tmux 3.0+")
+
+    if test_case.min_version and not has_gte_version(test_case.min_version):
+        pytest.skip(f"Requires tmux {test_case.min_version}+")
+
+    # Get appropriate target object
+    session = server.new_session(session_name="test_option_cycle")
+    window = session.active_window
+    assert window is not None
+    pane = window.active_pane
+    assert pane is not None
+
+    targets = {
+        OptionScope.Server: server,
+        OptionScope.Session: session,
+        OptionScope.Window: window,
+        OptionScope.Pane: pane,
+    }
+    target = targets[test_case.scope]
+
+    # Test set
+    target.set_option(test_case.option, test_case.test_value)
+
+    # Test show
+    result = target.show_option(test_case.option)
+    assert result is not None, f"Expected {test_case.option} to be set, got None"
+    assert isinstance(result, test_case.expected_type), (
+        f"Expected {test_case.expected_type.__name__}, got {type(result).__name__}"
+    )
