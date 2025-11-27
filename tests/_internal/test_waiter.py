@@ -27,7 +27,7 @@ from libtmux._internal.waiter import (
     wait_for_window_panes,
     wait_until_pane_ready,
 )
-from libtmux.common import has_gte_version
+from libtmux.common import has_gte_version, has_version
 from libtmux.exc import WaitTimeout
 
 if TYPE_CHECKING:
@@ -1835,6 +1835,10 @@ def test_wait_for_pane_content_specific_type_errors(wait_pane: Pane) -> None:
     assert ERR_PREDICATE_TYPE in str(excinfo.value)
 
 
+@pytest.mark.skipif(
+    has_version("3.4"),
+    reason="Flaky on tmux 3.4 due to capture-pane line wrapping differences",
+)
 def test_wait_for_pane_content_exact_match_detailed(wait_pane: Pane) -> None:
     """Test wait_for_pane_content with EXACT match type in detail.
 
