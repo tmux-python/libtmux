@@ -127,7 +127,7 @@ All examples in this documentation are actual test files from the libtmux test s
 ## Extended Retry Functionality
 
 ```{eval-rst}
-.. automodule:: libtmux.test.retry_extended
+.. automodule:: libtmux._internal.retry_extended
    :members:
    :undoc-members:
    :show-inheritance:
