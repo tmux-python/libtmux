@@ -378,16 +378,14 @@ TEST_FIXTURES: list[OptionDataclassTestFixture] = [
         .split("\n"),
         dataclass_attribute="command_alias",
         tmux_option="command-alias",
-        expected=TmuxArray(
-            {
-                "split-pane": "split-window",
-                "splitp": "split-window",
-                "server-info": "show-messages -JT",
-                "info": "show-messages -JT",
-                "choose-window": "choose-tree -w",
-                "choose-session": "choose-tree -s",
-            },
-        ),
+        expected={
+            "split-pane": "split-window",
+            "splitp": "split-window",
+            "server-info": "show-messages -JT",
+            "info": "show-messages -JT",
+            "choose-window": "choose-tree -w",
+            "choose-session": "choose-tree -s",
+        },
     ),
 ]
 
