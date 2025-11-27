@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
-import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -15,43 +13,30 @@ if TYPE_CHECKING:
 
 
 @pytest.mark.example
-@pytest.mark.skip(reason="Test is unreliable in CI environment due to timing issues")
 def test_wait_until_ready(session: Session) -> None:
-    """Demonstrate waiting for shell prompt."""
+    """Demonstrate waiting for shell readiness using a marker command.
+
+    This test shows how to reliably detect when a shell is ready by sending
+    a known command and waiting for its output, rather than trying to detect
+    environment-specific shell prompts.
+    """
     window = session.new_window(window_name="test_shell_ready")
     pane = window.active_pane
     assert pane is not None
 
-    # Force shell prompt by sending a few commands and waiting
-    pane.send_keys("echo 'test command'")
-    pane.send_keys("ls")
+    # Use a unique marker to prove shell is ready and responsive.
+    # This is more reliable than trying to detect shell prompts (which vary)
+    marker = "SHELL_READY_MARKER_12345"
+    pane.send_keys(f"echo '{marker}'")
 
-    # For test purposes, look for any common shell prompt characters
-    # The wait_until_pane_ready function works either with:
-    # 1. A string to find (will use CONTAINS match_type)
-    # 2. A predicate function taking lines and returning bool
-    # (will use PREDICATE match_type)
-
-    # Using a regex to match common shell prompt characters: $, %, >, #
-
-    # Try with a simple string first
+    # Wait for the marker - proves shell executed the command
     result = wait_until_pane_ready(
         pane,
-        shell_prompt="$",
-        timeout=10,  # Increased timeout
+        shell_prompt=marker,
+        match_type=ContentMatchType.CONTAINS,
+        timeout=10,
     )
 
-    if not result.success:
-        # Fall back to regex pattern if the specific character wasn't found
-        result = wait_until_pane_ready(
-            pane,
-            shell_prompt=re.compile(r"[$%>#]"),  # Using standard prompt characters
-            match_type=ContentMatchType.REGEX,
-            timeout=10,  # Increased timeout
-        )
+    assert result.success, f"Shell did not become ready: {result.error}"
 
-    assert result.success
-
-    # Only kill the window if the test is still running
-    with contextlib.suppress(Exception):
-        window.kill()
+    window.kill()
