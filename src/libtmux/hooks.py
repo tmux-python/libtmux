@@ -483,6 +483,18 @@ class HooksMixin(CmdMixin):
         >>> session.unset_hook('after-new-window')  # doctest: +SKIP
         Session($...)
         """
+        # Hook arrays require tmux 3.0+. On older versions, hooks are stored
+        # by exact name (e.g. "session-renamed[0]" is a literal name, not an
+        # array index). See tmux commit dfb7bb68 (April 2019).
+        if has_lt_version("3.0"):
+            warnings.warn(
+                "Hook arrays require tmux 3.0+. "
+                "On older versions, set_hooks creates hooks with literal bracket "
+                "names (e.g. 'session-renamed[0]') instead of array indices, "
+                "and clear_existing/unset_hook may not work as expected.",
+                stacklevel=2,
+            )
+
         if clear_existing:
             self.unset_hook(hook, global_=global_, scope=scope)
 
