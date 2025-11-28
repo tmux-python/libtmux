@@ -607,3 +607,35 @@ def test_version_deprecation_warns_once(monkeypatch: pytest.MonkeyPatch) -> None
         libtmux.common._check_deprecated_version(LooseVersion("3.1"))
 
     assert len(w) == 1
+
+
+def test_version_deprecation_via_get_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test deprecation warning fires through get_version() call.
+
+    This integration test verifies the warning is emitted when calling
+    get_version() with an old tmux version, testing the full call chain.
+    """
+    import warnings
+
+    import libtmux.common
+
+    class MockTmuxOutput:
+        stdout: t.ClassVar = ["tmux 3.1"]
+        stderr: t.ClassVar[list[str]] = []
+
+    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> MockTmuxOutput:
+        return MockTmuxOutput()
+
+    monkeypatch.setattr(libtmux.common, "_version_deprecation_checked", False)
+    monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
+    monkeypatch.delenv("LIBTMUX_SUPPRESS_VERSION_WARNING", raising=False)
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        version = libtmux.common.get_version()
+
+    assert str(version) == "3.1"
+    assert len(w) == 1
+    assert issubclass(w[0].category, FutureWarning)
+    assert "3.1" in str(w[0].message)
+    assert "3.2a" in str(w[0].message)
