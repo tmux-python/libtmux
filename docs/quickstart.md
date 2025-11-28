@@ -12,7 +12,8 @@ from inside a live tmux session.
 
 ## Requirements
 
-- [tmux]
+- [tmux] 3.2a or newer (recommended)
+  - tmux 1.8 - 3.1 are deprecated and will be unsupported in a future release
 - [pip] - for this handbook's examples
 
 [tmux]: https://tmux.github.io/
