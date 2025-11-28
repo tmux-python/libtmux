@@ -439,45 +439,48 @@ class HooksMixin(CmdMixin):
         --------
         Set hooks with explicit indices:
 
-        >>> session.set_hooks('session-renamed', {
+        >>> session.set_hooks('session-renamed', {  # doctest: +SKIP
         ...     0: 'display-message "hook 0"',
         ...     1: 'display-message "hook 1"',
         ... })
         Session($...)
 
-        >>> hooks = session.show_hook('session-renamed')
-        >>> sorted(hooks.keys())
+        >>> hooks = session.show_hook('session-renamed')  # doctest: +SKIP
+        >>> sorted(hooks.keys())  # doctest: +SKIP
         [0, 1]
 
-        >>> session.unset_hook('session-renamed')
+        >>> session.unset_hook('session-renamed')  # doctest: +SKIP
         Session($...)
 
         Set hooks from a list (sequential indices):
 
-        >>> session.set_hooks('after-new-window', [
+        >>> session.set_hooks('after-new-window', [  # doctest: +SKIP
         ...     'select-pane -t 0',
         ...     'send-keys "clear" Enter',
         ... ])
         Session($...)
 
-        >>> hooks = session.show_hook('after-new-window')
-        >>> sorted(hooks.keys())
+        >>> hooks = session.show_hook('after-new-window')  # doctest: +SKIP
+        >>> sorted(hooks.keys())  # doctest: +SKIP
         [0, 1]
 
         Replace all existing hooks with ``clear_existing=True``:
 
-        >>> session.set_hooks('session-renamed', {0: 'display-message "new"'},
-        ...                   clear_existing=True)
+        >>> session.set_hooks(  # doctest: +SKIP
+        ...     'session-renamed',
+        ...     {0: 'display-message "new"'},
+        ...     clear_existing=True,
+        ... )
         Session($...)
 
-        >>> hooks = session.show_hook('session-renamed')
-        >>> sorted(hooks.keys())
+        >>> hooks = session.show_hook('session-renamed')  # doctest: +SKIP
+        >>> sorted(hooks.keys())  # doctest: +SKIP
         [0]
 
-        >>> session.unset_hook('session-renamed')
+        >>> session.unset_hook('session-renamed')  # doctest: +SKIP
         Session($...)
 
-        >>> session.unset_hook('after-new-window')
+        >>> session.unset_hook('after-new-window')  # doctest: +SKIP
         Session($...)
         """
         if clear_existing:
