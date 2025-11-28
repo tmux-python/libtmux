@@ -28,17 +28,24 @@ $ uv add libtmux --prerelease allow
 $ uvx --from 'libtmux' --prerelease allow python
 ```
 
-## libtmux 0.48.x (Yet to be released)
+## libtmux 0.49.x (Yet to be released)
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
 _Future release notes will be placed here_
 
-### Deprecations
+## libtmux 0.48.0 (2025-11-28)
 
-- tmux versions below 3.2a are now deprecated (#606). A `FutureWarning` will
-  be emitted on first use. Support for these versions will be removed in a future
-  release. Set `LIBTMUX_SUPPRESS_VERSION_WARNING=1` to suppress the warning.
+### Breaking Changes
+
+#### Minimum tmux version bumped to 3.2+ (606)
+
+tmux versions below 3.2a are now deprecated. libtmux 0.48.0 will be the last
+version to support tmux below 3.2. This is to ensure support for hooks, options,
+and newer tmux features.
+
+A `FutureWarning` will be emitted on first use. Support for these versions will be removed in a future
+release. Set `LIBTMUX_SUPPRESS_VERSION_WARNING=1` to suppress the warning.
 
 ### Internal
 
