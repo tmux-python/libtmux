@@ -585,7 +585,7 @@ def test_version_deprecation_warning(
 
     if expected_warning:
         assert len(w) == 1
-        assert issubclass(w[0].category, DeprecationWarning)
+        assert issubclass(w[0].category, FutureWarning)
         assert version in str(w[0].message)
         assert "3.2a" in str(w[0].message)
     else:
