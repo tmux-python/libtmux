@@ -439,62 +439,50 @@ class HooksMixin(CmdMixin):
         --------
         Set hooks with explicit indices:
 
-        >>> session.set_hooks('session-renamed', {  # doctest: +SKIP
+        >>> session.set_hooks('session-renamed', {
         ...     0: 'display-message "hook 0"',
         ...     1: 'display-message "hook 1"',
         ... })
         Session($...)
 
-        >>> hooks = session.show_hook('session-renamed')  # doctest: +SKIP
-        >>> sorted(hooks.keys())  # doctest: +SKIP
+        >>> hooks = session.show_hook('session-renamed')
+        >>> sorted(hooks.keys())
         [0, 1]
 
-        >>> session.unset_hook('session-renamed')  # doctest: +SKIP
+        >>> session.unset_hook('session-renamed')
         Session($...)
 
         Set hooks from a list (sequential indices):
 
-        >>> session.set_hooks('after-new-window', [  # doctest: +SKIP
+        >>> session.set_hooks('after-new-window', [
         ...     'select-pane -t 0',
         ...     'send-keys "clear" Enter',
         ... ])
         Session($...)
 
-        >>> hooks = session.show_hook('after-new-window')  # doctest: +SKIP
-        >>> sorted(hooks.keys())  # doctest: +SKIP
+        >>> hooks = session.show_hook('after-new-window')
+        >>> sorted(hooks.keys())
         [0, 1]
 
         Replace all existing hooks with ``clear_existing=True``:
 
-        >>> session.set_hooks(  # doctest: +SKIP
+        >>> session.set_hooks(
         ...     'session-renamed',
         ...     {0: 'display-message "new"'},
         ...     clear_existing=True,
         ... )
         Session($...)
 
-        >>> hooks = session.show_hook('session-renamed')  # doctest: +SKIP
-        >>> sorted(hooks.keys())  # doctest: +SKIP
+        >>> hooks = session.show_hook('session-renamed')
+        >>> sorted(hooks.keys())
         [0]
 
-        >>> session.unset_hook('session-renamed')  # doctest: +SKIP
+        >>> session.unset_hook('session-renamed')
         Session($...)
 
-        >>> session.unset_hook('after-new-window')  # doctest: +SKIP
+        >>> session.unset_hook('after-new-window')
         Session($...)
         """
-        # Hook arrays require tmux 3.0+. On older versions, hooks are stored
-        # by exact name (e.g. "session-renamed[0]" is a literal name, not an
-        # array index). See tmux commit dfb7bb68 (April 2019).
-        if has_lt_version("3.0"):
-            warnings.warn(
-                "Hook arrays require tmux 3.0+. "
-                "On older versions, set_hooks creates hooks with literal bracket "
-                "names (e.g. 'session-renamed[0]') instead of array indices, "
-                "and clear_existing/unset_hook may not work as expected.",
-                stacklevel=2,
-            )
-
         if clear_existing:
             self.unset_hook(hook, global_=global_, scope=scope)
 
