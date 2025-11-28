@@ -250,6 +250,8 @@ Session($1 ...)
 
 Unsupported / no security releases or bug fixes:
 
+- tmux < 3.2: The backports branch is
+  [`v0.48.x`](https://github.com/tmux-python/libtmux/tree/v0.48.x).
 - Python 2.x: The backports branch is
   [`v0.8.x`](https://github.com/tmux-python/libtmux/tree/v0.8.x).
 
@@ -264,7 +266,7 @@ See donation options at <https://tony.sh/support.html>.
 
 # Project details
 
-- tmux support: 1.8+
+- tmux support: >= 3.2a
 - python support: >= 3.10, pypy, pypy3
 - Source: <https://github.com/tmux-python/libtmux>
 - Docs: <https://libtmux.git-pull.com>
