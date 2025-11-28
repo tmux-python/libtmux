@@ -8,16 +8,10 @@ import pytest
 
 from libtmux._internal.constants import Hooks
 from libtmux._internal.sparse_array import SparseArray
-from libtmux.common import has_gte_version, has_lt_version
+from libtmux.common import has_gte_version
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
-
-if has_lt_version("3.0"):
-    pytest.skip(
-        reason="only support hooks in tmux 3.0 and above",
-        allow_module_level=True,
-    )
 
 
 def test_hooks_raw_cmd(
