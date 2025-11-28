@@ -32,7 +32,17 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
-- _Future release notes will be placed here_
+_Future release notes will be placed here_
+
+### Deprecations
+
+- tmux versions below 3.2a are now deprecated (#606). A `DeprecationWarning` will
+  be emitted on first use. Support for these versions will be removed in a future
+  release. Set `LIBTMUX_SUPPRESS_VERSION_WARNING=1` to suppress the warning.
+
+### Internal
+
+- Added `TMUX_SOFT_MIN_VERSION` constant (3.2a) for deprecation threshold (#606)
 
 ### What's new
 
