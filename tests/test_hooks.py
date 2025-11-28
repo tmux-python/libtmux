@@ -517,84 +517,24 @@ def test_new_hooks_version_gated(server: Server, test_case: HookTestCase) -> Non
 
 
 # =============================================================================
-# Bulk Operations API Tests
+# set_hooks Tests
 # =============================================================================
 
 
-class BulkOpTestCase(t.NamedTuple):
-    """Test case for bulk hook operations."""
+class SetHooksTestCase(t.NamedTuple):
+    """Test case for set_hooks operations."""
 
     test_id: str
-    operation: str  # "get_indices", "get_values", "set_bulk", "clear", "append"
     hook: str  # Hook name to test
     setup_hooks: dict[int, str]  # Initial hooks to set (index -> value)
-    operation_args: dict[str, t.Any]  # Args for operation
+    operation_args: dict[str, t.Any]  # Args for set_hooks
     expected_indices: list[int]  # Expected indices after operation
     expected_contains: list[str] | None = None  # Strings expected in values
 
 
-# --- get_hook_indices tests ---
-GET_INDICES_TESTS: list[BulkOpTestCase] = [
-    BulkOpTestCase(
-        "get_indices_empty",
-        "get_indices",
-        "session-renamed",
-        {},
-        {},
-        [],
-    ),
-    BulkOpTestCase(
-        "get_indices_sequential",
-        "get_indices",
-        "session-renamed",
-        {
-            0: "display-message 'hook 0'",
-            1: "display-message 'hook 1'",
-            2: "display-message 'hook 2'",
-        },
-        {},
-        [0, 1, 2],
-    ),
-    BulkOpTestCase(
-        "get_indices_sparse",
-        "get_indices",
-        "session-renamed",
-        {
-            0: "display-message 'hook 0'",
-            5: "display-message 'hook 5'",
-            10: "display-message 'hook 10'",
-        },
-        {},
-        [0, 5, 10],
-    ),
-]
-
-# --- get_hook_values tests ---
-GET_VALUES_TESTS: list[BulkOpTestCase] = [
-    BulkOpTestCase(
-        "get_values_empty",
-        "get_values",
-        "session-renamed",
-        {},
-        {},
-        [],
-    ),
-    BulkOpTestCase(
-        "get_values_sparse",
-        "get_values",
-        "session-renamed",
-        {0: "display-message 'hook 0'", 5: "display-message 'hook 5'"},
-        {},
-        [0, 5],
-        ["display-message"],
-    ),
-]
-
-# --- set_hooks tests ---
-SET_BULK_TESTS: list[BulkOpTestCase] = [
-    BulkOpTestCase(
-        "set_bulk_with_dict",
-        "set_bulk",
+SET_HOOKS_TESTS: list[SetHooksTestCase] = [
+    SetHooksTestCase(
+        "set_hooks_with_dict",
         "session-renamed",
         {},
         {
@@ -607,9 +547,8 @@ SET_BULK_TESTS: list[BulkOpTestCase] = [
         [0, 1, 5],
         ["hook 0", "hook 1", "hook 5"],
     ),
-    BulkOpTestCase(
-        "set_bulk_with_list",
-        "set_bulk",
+    SetHooksTestCase(
+        "set_hooks_with_list",
         "session-renamed",
         {},
         {
@@ -621,9 +560,8 @@ SET_BULK_TESTS: list[BulkOpTestCase] = [
         },
         [0, 1, 2],
     ),
-    BulkOpTestCase(
-        "set_bulk_clear_existing",
-        "set_bulk",
+    SetHooksTestCase(
+        "set_hooks_clear_existing",
         "session-renamed",
         {0: "display-message 'old 0'", 1: "display-message 'old 1'"},
         {"values": {0: "display-message 'new 0'"}, "clear_existing": True},
@@ -632,141 +570,68 @@ SET_BULK_TESTS: list[BulkOpTestCase] = [
     ),
 ]
 
-# --- clear_hook tests ---
-CLEAR_TESTS: list[BulkOpTestCase] = [
-    BulkOpTestCase(
-        "clear_hook",
-        "clear",
-        "session-renamed",
-        {0: "display-message 'hook 0'", 5: "display-message 'hook 5'"},
-        {},
-        [],
-    ),
-]
 
-# --- append_hook tests ---
-APPEND_TESTS: list[BulkOpTestCase] = [
-    BulkOpTestCase(
-        "append_to_empty",
-        "append",
-        "session-renamed",
-        {},
-        {"value": "display-message 'appended'"},
-        [0],
-        ["appended"],
-    ),
-    BulkOpTestCase(
-        "append_sequential",
-        "append",
-        "session-renamed",
-        {0: "display-message 'initial'"},
-        {"value": "display-message 'appended'"},
-        [0, 1],
-    ),
-    BulkOpTestCase(
-        "append_after_sparse",
-        "append",
-        "session-renamed",
-        {0: "display-message 'at 0'", 10: "display-message 'at 10'"},
-        {"value": "display-message 'appended'"},
-        [0, 10, 11],
-        ["appended"],
-    ),
-]
-
-# Combine all bulk operation test cases
-ALL_BULK_OP_TESTS: list[BulkOpTestCase] = (
-    GET_INDICES_TESTS + GET_VALUES_TESTS + SET_BULK_TESTS + CLEAR_TESTS + APPEND_TESTS
-)
+def _build_set_hooks_params() -> list[t.Any]:
+    """Build pytest params for set_hooks tests."""
+    return [pytest.param(tc, id=tc.test_id) for tc in SET_HOOKS_TESTS]
 
 
-def _build_bulk_op_params() -> list[t.Any]:
-    """Build pytest params for bulk operation tests."""
-    return [pytest.param(tc, id=tc.test_id) for tc in ALL_BULK_OP_TESTS]
-
-
-@pytest.mark.parametrize("test_case", _build_bulk_op_params())
-def test_bulk_hook_operation(server: Server, test_case: BulkOpTestCase) -> None:
-    """Test bulk hook operations.
-
-    This parametrized test ensures all bulk operations work correctly:
-    - get_hook_indices: returns sorted list of existing indices
-    - get_hook_values: returns SparseArray with values
-    - set_hooks: sets multiple hooks at once
-    - clear_hook: removes all indexed values
-    - append_hook: appends at next available index
-    """
-    session = server.new_session(session_name="test_bulk_ops")
+@pytest.mark.parametrize("test_case", _build_set_hooks_params())
+def test_set_hooks(server: Server, test_case: SetHooksTestCase) -> None:
+    """Test set_hooks operations."""
+    session = server.new_session(session_name="test_set_hooks")
 
     # Setup initial hooks
     for idx, val in test_case.setup_hooks.items():
         session.set_hook(f"{test_case.hook}[{idx}]", val)
 
-    # Perform operation based on type
-    if test_case.operation == "get_indices":
-        result = session.get_hook_indices(test_case.hook)
-        assert result == test_case.expected_indices
+    # Perform set_hooks
+    session.set_hooks(test_case.hook, **test_case.operation_args)
 
-    elif test_case.operation == "get_values":
-        values = session.get_hook_values(test_case.hook)
-        assert isinstance(values, SparseArray)
-        assert sorted(values.keys()) == test_case.expected_indices
-        if test_case.expected_contains:
-            for expected_str in test_case.expected_contains:
-                assert any(expected_str in v for v in values.values())
+    # Verify via show_hook
+    hooks = session.show_hook(test_case.hook)
+    assert hooks is not None
+    assert isinstance(hooks, SparseArray)
+    assert sorted(hooks.keys()) == test_case.expected_indices
 
-    elif test_case.operation == "set_bulk":
-        session.set_hooks(test_case.hook, **test_case.operation_args)
-        indices = session.get_hook_indices(test_case.hook)
-        assert indices == test_case.expected_indices
-        if test_case.expected_contains:
-            values = session.get_hook_values(test_case.hook)
-            for expected_str in test_case.expected_contains:
-                assert any(expected_str in v for v in values.values())
-
-    elif test_case.operation == "clear":
-        session.clear_hook(test_case.hook)
-        indices = session.get_hook_indices(test_case.hook)
-        assert indices == test_case.expected_indices
-
-    elif test_case.operation == "append":
-        session.append_hook(test_case.hook, test_case.operation_args["value"])
-        indices = session.get_hook_indices(test_case.hook)
-        assert indices == test_case.expected_indices
-        if test_case.expected_contains:
-            values = session.get_hook_values(test_case.hook)
-            for expected_str in test_case.expected_contains:
-                assert any(expected_str in v for v in values.values())
+    if test_case.expected_contains:
+        for expected_str in test_case.expected_contains:
+            assert any(expected_str in v for v in hooks.values())
 
     # Cleanup
-    session.clear_hook(test_case.hook)
+    session.unset_hook(test_case.hook)
 
 
-def test_bulk_hook_values_iteration(server: Server) -> None:
-    """Test iterating over hook values in sorted order."""
-    session = server.new_session(session_name="test_bulk_ops")
+def test_show_hook_returns_sparse_array(server: Server) -> None:
+    """Test that show_hook returns SparseArray for array hooks."""
+    session = server.new_session(session_name="test_show_hook")
 
     # Set hooks at sparse indices (out of order)
     session.set_hook("session-renamed[5]", "display-message 'fifth'")
     session.set_hook("session-renamed[0]", "display-message 'zeroth'")
     session.set_hook("session-renamed[2]", "display-message 'second'")
 
-    values = session.get_hook_values("session-renamed")
-    value_list = list(values.iter_values())
+    hooks = session.show_hook("session-renamed")
+    assert hooks is not None
+    assert isinstance(hooks, SparseArray)
 
-    # Values should be in sorted index order
+    # Check keys (indices)
+    assert sorted(hooks.keys()) == [0, 2, 5]
+
+    # Check values via iter_values (sorted order)
+    value_list = list(hooks.iter_values())
     assert len(value_list) == 3
     assert "zeroth" in value_list[0]
     assert "second" in value_list[1]
     assert "fifth" in value_list[2]
 
     # Cleanup
-    session.clear_hook("session-renamed")
+    session.unset_hook("session-renamed")
 
 
-def test_bulk_hook_set_with_sparse_array(server: Server) -> None:
+def test_set_hooks_with_sparse_array(server: Server) -> None:
     """Test set_hooks with SparseArray input."""
-    session = server.new_session(session_name="test_bulk_ops")
+    session = server.new_session(session_name="test_set_hooks_sparse")
 
     sparse: SparseArray[str] = SparseArray()
     sparse.add(0, "display-message 'from sparse 0'")
@@ -774,33 +639,82 @@ def test_bulk_hook_set_with_sparse_array(server: Server) -> None:
 
     session.set_hooks("session-renamed", sparse)
 
-    indices = session.get_hook_indices("session-renamed")
-    assert indices == [0, 10]
+    hooks = session.show_hook("session-renamed")
+    assert hooks is not None
+    assert isinstance(hooks, SparseArray)
+    assert sorted(hooks.keys()) == [0, 10]
 
     # Cleanup
-    session.clear_hook("session-renamed")
+    session.unset_hook("session-renamed")
 
 
-def test_bulk_hook_method_chaining(server: Server) -> None:
-    """Test that bulk operations support method chaining."""
-    session = server.new_session(session_name="test_bulk_ops")
+def test_set_hooks_method_chaining(server: Server) -> None:
+    """Test that set_hooks supports method chaining."""
+    session = server.new_session(session_name="test_set_hooks_chain")
 
-    # Chain operations
+    # Chain set_hooks with set_hook (append=True)
     result = (
         session.set_hooks(
             "session-renamed",
             ["display-message 'hook 0'"],
         )
-        .append_hook("session-renamed", "display-message 'hook 1'")
-        .append_hook("session-renamed", "display-message 'hook 2'")
+        .set_hook("session-renamed", "display-message 'hook 1'", append=True)
+        .set_hook("session-renamed", "display-message 'hook 2'", append=True)
     )
 
     # Should return the session
     assert result is session
 
-    # Verify all hooks set
-    indices = session.get_hook_indices("session-renamed")
-    assert indices == [0, 1, 2]
+    # Verify all hooks set via show_hook
+    hooks = session.show_hook("session-renamed")
+    assert hooks is not None
+    assert isinstance(hooks, SparseArray)
+    assert sorted(hooks.keys()) == [0, 1, 2]
 
     # Cleanup
-    session.clear_hook("session-renamed")
+    session.unset_hook("session-renamed")
+
+
+def test_unset_hook_clears_all_indices(server: Server) -> None:
+    """Test that unset_hook without index clears all hook indices."""
+    session = server.new_session(session_name="test_unset_hook")
+
+    # Set hooks at multiple indices
+    session.set_hook("session-renamed[0]", "display-message 'hook 0'")
+    session.set_hook("session-renamed[5]", "display-message 'hook 5'")
+    session.set_hook("session-renamed[10]", "display-message 'hook 10'")
+
+    # Verify hooks exist
+    hooks = session.show_hook("session-renamed")
+    assert hooks is not None
+    assert isinstance(hooks, SparseArray)
+    assert sorted(hooks.keys()) == [0, 5, 10]
+
+    # Unset without index should clear all
+    session.unset_hook("session-renamed")
+
+    # Verify hooks are cleared
+    hooks_after = session.show_hook("session-renamed")
+    assert hooks_after is None or (
+        isinstance(hooks_after, SparseArray) and len(hooks_after) == 0
+    )
+
+
+def test_set_hook_append_flag(server: Server) -> None:
+    """Test set_hook with append=True uses tmux's -a flag."""
+    session = server.new_session(session_name="test_append_flag")
+
+    # Set initial hook
+    session.set_hook("session-renamed[0]", "display-message 'initial'")
+
+    # Append using set_hook with append=True
+    session.set_hook("session-renamed", "display-message 'appended'", append=True)
+
+    # Verify both hooks exist
+    hooks = session.show_hook("session-renamed")
+    assert hooks is not None
+    assert isinstance(hooks, SparseArray)
+    assert len(hooks) == 2
+
+    # Cleanup
+    session.unset_hook("session-renamed")
