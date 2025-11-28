@@ -27,11 +27,7 @@ Bulk Operations API
 -------------------
 This module provides bulk operations for managing multiple indexed hooks:
 
-- :meth:`~HooksMixin.get_hook_indices` - Get list of existing indices for a hook
-- :meth:`~HooksMixin.get_hook_values` - Get all values as SparseArray
-- :meth:`~HooksMixin.set_hooks_bulk` - Set multiple hooks at once
-- :meth:`~HooksMixin.clear_hook` - Unset all indexed values for a hook
-- :meth:`~HooksMixin.append_hook` - Append at next available index
+- :meth:`~HooksMixin.set_hooks` - Set multiple hooks at once
 """
 
 from __future__ import annotations
@@ -492,7 +488,7 @@ class HooksMixin(CmdMixin):
         result: SparseArray[str] = hook_array
         return result
 
-    def set_hooks_bulk(
+    def set_hooks(
         self,
         hook: str,
         values: HookValues,
@@ -528,39 +524,42 @@ class HooksMixin(CmdMixin):
         --------
         Set hooks with explicit indices:
 
-        >>> session.set_hooks_bulk('session-renamed', {
+        >>> session.set_hooks('session-renamed', {
         ...     0: 'display-message "hook 0"',
         ...     1: 'display-message "hook 1"',
         ... })
         Session($...)
 
-        >>> session.get_hook_indices('session-renamed')
+        >>> hooks = session.show_hook('session-renamed')
+        >>> sorted(hooks.keys())
         [0, 1]
 
         Set hooks from a list (sequential indices):
 
-        >>> session.set_hooks_bulk('after-new-window', [
+        >>> session.set_hooks('after-new-window', [
         ...     'select-pane -t 0',
         ...     'send-keys "clear" Enter',
         ... ])
         Session($...)
 
-        >>> session.get_hook_indices('after-new-window')
+        >>> hooks = session.show_hook('after-new-window')
+        >>> sorted(hooks.keys())
         [0, 1]
 
         Replace all existing hooks with ``clear_existing=True``:
 
-        >>> session.set_hooks_bulk('session-renamed', {0: 'display-message "new"'},
-        ...                        clear_existing=True)
+        >>> session.set_hooks('session-renamed', {0: 'display-message "new"'},
+        ...                   clear_existing=True)
         Session($...)
 
-        >>> session.get_hook_indices('session-renamed')
+        >>> hooks = session.show_hook('session-renamed')
+        >>> sorted(hooks.keys())
         [0]
 
-        >>> session.clear_hook('session-renamed')
+        >>> session.unset_hook('session-renamed')
         Session($...)
 
-        >>> session.clear_hook('after-new-window')
+        >>> session.unset_hook('after-new-window')
         Session($...)
         """
         if clear_existing:
