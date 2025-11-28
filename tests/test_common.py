@@ -508,3 +508,102 @@ def test_version_validation(
     elif check_type == "type_check":
         assert mock_version is not None  # For type checker
         assert isinstance(has_version(mock_version), bool)
+
+
+class VersionDeprecationFixture(t.NamedTuple):
+    """Test fixture for version deprecation warning."""
+
+    test_id: str
+    version: str
+    suppress_env: bool
+    expected_warning: bool
+
+
+VERSION_DEPRECATION_FIXTURES: list[VersionDeprecationFixture] = [
+    VersionDeprecationFixture(
+        test_id="deprecated_version_warns",
+        version="3.1",
+        suppress_env=False,
+        expected_warning=True,
+    ),
+    VersionDeprecationFixture(
+        test_id="old_deprecated_version_warns",
+        version="2.9",
+        suppress_env=False,
+        expected_warning=True,
+    ),
+    VersionDeprecationFixture(
+        test_id="current_version_no_warning",
+        version="3.2a",
+        suppress_env=False,
+        expected_warning=False,
+    ),
+    VersionDeprecationFixture(
+        test_id="newer_version_no_warning",
+        version="3.5",
+        suppress_env=False,
+        expected_warning=False,
+    ),
+    VersionDeprecationFixture(
+        test_id="env_var_suppresses_warning",
+        version="3.0",
+        suppress_env=True,
+        expected_warning=False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(VersionDeprecationFixture._fields),
+    VERSION_DEPRECATION_FIXTURES,
+    ids=[test.test_id for test in VERSION_DEPRECATION_FIXTURES],
+)
+def test_version_deprecation_warning(
+    test_id: str,
+    version: str,
+    suppress_env: bool,
+    expected_warning: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test version deprecation warning behavior."""
+    import warnings
+
+    import libtmux.common
+
+    # Reset the warning flag for each test
+    monkeypatch.setattr(libtmux.common, "_version_deprecation_checked", False)
+
+    # Set or clear the suppress env var
+    if suppress_env:
+        monkeypatch.setenv("LIBTMUX_SUPPRESS_VERSION_WARNING", "1")
+    else:
+        monkeypatch.delenv("LIBTMUX_SUPPRESS_VERSION_WARNING", raising=False)
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        libtmux.common._check_deprecated_version(LooseVersion(version))
+
+    if expected_warning:
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+        assert version in str(w[0].message)
+        assert "3.2a" in str(w[0].message)
+    else:
+        assert len(w) == 0
+
+
+def test_version_deprecation_warns_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that deprecation warning only fires once per process."""
+    import warnings
+
+    import libtmux.common
+
+    monkeypatch.setattr(libtmux.common, "_version_deprecation_checked", False)
+    monkeypatch.delenv("LIBTMUX_SUPPRESS_VERSION_WARNING", raising=False)
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        libtmux.common._check_deprecated_version(LooseVersion("3.1"))
+        libtmux.common._check_deprecated_version(LooseVersion("3.1"))
+
+    assert len(w) == 1
