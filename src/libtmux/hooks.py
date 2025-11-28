@@ -1,17 +1,14 @@
 """Helpers for tmux hooks.
 
-tmux Hook Version Compatibility
--------------------------------
-Hook array support requires tmux 3.0+.
+tmux Hook Features
+------------------
+Hooks are array options (e.g., ``session-renamed[0]``, ``session-renamed[1]``)
+with sparse index support (can have gaps: ``[0]``, ``[5]``, ``[10]``).
 
-**tmux 3.0+**:
-- Hooks are array options (e.g., ``session-renamed[0]``, ``session-renamed[1]``)
-- Sparse indices supported (can have gaps: ``[0]``, ``[5]``, ``[10]``)
-- Session-level hooks available
+All features available in libtmux's minimum supported version (tmux 3.2+):
 
-**tmux 3.2+**:
-- Window-level hooks via ``-w`` flag
-- Pane-level hooks via ``-p`` flag
+- Session, window, and pane-level hooks
+- Window hooks via ``-w`` flag, pane hooks via ``-p`` flag
 - Hook scope separation (session vs window vs pane)
 
 **tmux 3.3+**:
