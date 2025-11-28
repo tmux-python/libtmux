@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 TMUX_MIN_VERSION = "1.8"
 
 #: Most recent version of tmux supported
-TMUX_MAX_VERSION = "3.4"
+TMUX_MAX_VERSION = "3.6"
 
 SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
