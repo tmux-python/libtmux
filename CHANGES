@@ -34,6 +34,12 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 - _Future release notes will be placed here_
 
+### What's new
+
+#### tmux 3.6 support (#607)
+
+Added tmux 3.6 to test grid and `TMUX_MAX_VERSION` 3.4 -> 3.6.
+
 ## libtmux 0.47.0 (2025-11-01)
 
 ### Breaking changes
