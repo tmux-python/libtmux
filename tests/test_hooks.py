@@ -590,7 +590,7 @@ GET_VALUES_TESTS: list[BulkOpTestCase] = [
     ),
 ]
 
-# --- set_hooks_bulk tests ---
+# --- set_hooks tests ---
 SET_BULK_TESTS: list[BulkOpTestCase] = [
     BulkOpTestCase(
         "set_bulk_with_dict",
@@ -692,7 +692,7 @@ def test_bulk_hook_operation(server: Server, test_case: BulkOpTestCase) -> None:
     This parametrized test ensures all bulk operations work correctly:
     - get_hook_indices: returns sorted list of existing indices
     - get_hook_values: returns SparseArray with values
-    - set_hooks_bulk: sets multiple hooks at once
+    - set_hooks: sets multiple hooks at once
     - clear_hook: removes all indexed values
     - append_hook: appends at next available index
     """
@@ -716,7 +716,7 @@ def test_bulk_hook_operation(server: Server, test_case: BulkOpTestCase) -> None:
                 assert any(expected_str in v for v in values.values())
 
     elif test_case.operation == "set_bulk":
-        session.set_hooks_bulk(test_case.hook, **test_case.operation_args)
+        session.set_hooks(test_case.hook, **test_case.operation_args)
         indices = session.get_hook_indices(test_case.hook)
         assert indices == test_case.expected_indices
         if test_case.expected_contains:
@@ -765,14 +765,14 @@ def test_bulk_hook_values_iteration(server: Server) -> None:
 
 
 def test_bulk_hook_set_with_sparse_array(server: Server) -> None:
-    """Test set_hooks_bulk with SparseArray input."""
+    """Test set_hooks with SparseArray input."""
     session = server.new_session(session_name="test_bulk_ops")
 
     sparse: SparseArray[str] = SparseArray()
     sparse.add(0, "display-message 'from sparse 0'")
     sparse.add(10, "display-message 'from sparse 10'")
 
-    session.set_hooks_bulk("session-renamed", sparse)
+    session.set_hooks("session-renamed", sparse)
 
     indices = session.get_hook_indices("session-renamed")
     assert indices == [0, 10]
@@ -787,7 +787,7 @@ def test_bulk_hook_method_chaining(server: Server) -> None:
 
     # Chain operations
     result = (
-        session.set_hooks_bulk(
+        session.set_hooks(
             "session-renamed",
             ["display-message 'hook 0'"],
         )
