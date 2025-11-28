@@ -10,7 +10,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_gte_version, has_lt_version, has_version
+from libtmux.common import has_gte_version, has_version
 from libtmux.constants import OptionScope
 from libtmux.pane import Pane
 from libtmux.server import Server
