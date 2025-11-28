@@ -63,7 +63,7 @@ def _check_deprecated_version(version: LooseVersion) -> None:
             f"libtmux release. Please upgrade to tmux {TMUX_SOFT_MIN_VERSION} "
             "or newer. Set LIBTMUX_SUPPRESS_VERSION_WARNING=1 to suppress this "
             "warning.",
-            DeprecationWarning,
+            FutureWarning,
             stacklevel=4,
         )
 
