@@ -449,6 +449,9 @@ class HooksMixin(CmdMixin):
         >>> sorted(hooks.keys())
         [0, 1]
 
+        >>> session.unset_hook('session-renamed')
+        Session($...)
+
         Set hooks from a list (sequential indices):
 
         >>> session.set_hooks('after-new-window', [
