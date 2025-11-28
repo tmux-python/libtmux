@@ -355,17 +355,43 @@ class HooksMixin(CmdMixin):
         global_: bool = False,
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         ignore_errors: bool | None = None,
-    ) -> str | int | None:
-        """Return value for the hook.
+    ) -> str | int | SparseArray[str] | None:
+        """Return value for a hook.
+
+        For array hooks (e.g., ``session-renamed``), returns a
+        :class:`~libtmux._internal.sparse_array.SparseArray` with hook values
+        at their original indices. Use ``.keys()`` for indices and ``.values()``
+        for values.
 
         Parameters
         ----------
         hook : str
+            Hook name to query
+
+        Returns
+        -------
+        str | int | SparseArray[str] | None
+            Hook value. For array hooks, returns SparseArray.
 
         Raises
         ------
         :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
         :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
+
+        Examples
+        --------
+        >>> session.set_hook('session-renamed[0]', 'display-message "test"')
+        Session($...)
+
+        >>> hooks = session.show_hook('session-renamed')
+        >>> isinstance(hooks, SparseArray)
+        True
+
+        >>> sorted(hooks.keys())
+        [0]
+
+        >>> session.unset_hook('session-renamed')
+        Session($...)
         """
         hooks_output = self._show_hook(
             hook=hook,
