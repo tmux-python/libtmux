@@ -246,14 +246,14 @@ Window(@1 1:..., Session($1 ...))
 Session($1 ...)
 ```
 
-# Python support
+# Backports
 
 Unsupported / no security releases or bug fixes:
 
-- tmux < 3.2: The backports branch is
-  [`v0.48.x`](https://github.com/tmux-python/libtmux/tree/v0.48.x).
 - Python 2.x: The backports branch is
   [`v0.8.x`](https://github.com/tmux-python/libtmux/tree/v0.8.x).
+- tmux 1.8 to 3.1c: The backports branch is
+  [`v0.48.x`](https://github.com/tmux-python/libtmux/tree/v0.48.x).
 
 # Donations
 
