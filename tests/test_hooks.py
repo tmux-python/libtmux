@@ -900,3 +900,69 @@ def test_set_hook_flag_combinations(
     session.unset_hook(hook_name)
     if test_case.flag_kwargs.get("global_"):
         server.cmd("set-hook", "-gu", hook_name)
+
+
+# =============================================================================
+# Hook Scope Tests
+# =============================================================================
+
+
+class HookScopeTestCase(t.NamedTuple):
+    """Test case for hook scope handling."""
+
+    test_id: str
+    scope: str  # "session", "window", "pane"
+    scope_flag: str  # tmux flag for show-hooks
+    min_version: str = "3.2"
+
+
+HOOK_SCOPE_TEST_CASES: list[HookScopeTestCase] = [
+    HookScopeTestCase("session_scope", "session", ""),
+    HookScopeTestCase("window_scope", "window", "-w", "3.2"),
+    HookScopeTestCase("pane_scope", "pane", "-p", "3.2"),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [pytest.param(tc, id=tc.test_id) for tc in HOOK_SCOPE_TEST_CASES],
+)
+def test_hook_scope_handling(
+    server: Server,
+    test_case: HookScopeTestCase,
+) -> None:
+    """Test hooks at different scopes (session, window, pane)."""
+    if not has_gte_version(test_case.min_version):
+        pytest.skip(f"Requires tmux {test_case.min_version}+")
+
+    session = server.new_session(session_name="test_scope")
+    window = session.active_window
+    assert window is not None
+    pane = window.active_pane
+    assert pane is not None
+
+    hook_name = "session-renamed"
+    hook_cmd = f"display-message '{test_case.scope} scope test'"
+
+    # Set hook at the appropriate scope
+    if test_case.scope == "session":
+        session.set_hook(f"{hook_name}[0]", hook_cmd)
+        result = session._show_hook(f"{hook_name}[0]")
+    elif test_case.scope == "window":
+        window.set_hook(f"{hook_name}[0]", hook_cmd)
+        result = window._show_hook(f"{hook_name}[0]")
+    else:  # pane
+        pane.set_hook(f"{hook_name}[0]", hook_cmd)
+        result = pane._show_hook(f"{hook_name}[0]")
+
+    assert result is not None
+    assert len(result) > 0
+    assert "display-message" in result[0]
+
+    # Cleanup
+    if test_case.scope == "session":
+        session.unset_hook(hook_name)
+    elif test_case.scope == "window":
+        window.unset_hook(hook_name)
+    else:
+        pane.unset_hook(hook_name)
