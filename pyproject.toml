@@ -152,6 +152,10 @@ exclude_lines = [
   'class .*\bProtocol\):',
   "from __future__ import annotations",
   "import typing as t",
+  "^\\s*\\.\\.\\.$",
+  "^\\s*pass$",
+  "^\\s*assert ",
+  "^\\s*logger\\.",
 ]
 
 [tool.ruff]
