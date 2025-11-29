@@ -677,7 +677,6 @@ class Pane(Obj):
 
         pane_cmd = self.cmd("split-window", *tmux_args, target=target)
 
-        # tmux < 1.7. This is added in 1.7.
         if pane_cmd.stderr:
             if "pane too small" in pane_cmd.stderr:
                 raise exc.LibTmuxException(pane_cmd.stderr)
