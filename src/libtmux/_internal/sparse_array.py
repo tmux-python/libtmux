@@ -125,8 +125,15 @@ class SparseArray(dict[int, T], t.Generic[T]):
         --------
         >>> from libtmux._internal.sparse_array import SparseArray
 
+        Appending to an empty array starts at index 0:
+
         >>> arr: SparseArray[str] = SparseArray()
-        >>> arr.add(0, "first")
+        >>> arr.append("first")
+        >>> arr[0]
+        'first'
+
+        Appending to a non-empty array adds at max index + 1:
+
         >>> arr.add(5, "at index 5")
         >>> arr.append("appended")
         >>> arr[6]
@@ -135,7 +142,7 @@ class SparseArray(dict[int, T], t.Generic[T]):
         >>> arr[7]
         'another'
         """
-        index = max(self.keys()) + 1
+        index = max(self.keys(), default=-1) + 1
         self[index] = value
 
     def iter_values(self) -> t.Iterator[T]:
