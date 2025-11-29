@@ -10,7 +10,6 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_gte_version, has_lt_version
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -30,9 +29,8 @@ def test_has_session(server: Server, session: Session) -> None:
     TEST_SESSION_NAME = session.session_name
     assert TEST_SESSION_NAME is not None
     assert server.has_session(TEST_SESSION_NAME)
-    if has_gte_version("2.1"):
-        assert not server.has_session(TEST_SESSION_NAME[:-2])
-        assert server.has_session(TEST_SESSION_NAME[:-2], exact=False)
+    assert not server.has_session(TEST_SESSION_NAME[:-2])
+    assert server.has_session(TEST_SESSION_NAME[:-2], exact=False)
     assert not server.has_session("asdf2314324321")
 
 
@@ -151,11 +149,8 @@ def test_empty_session_option_returns_None(session: Session) -> None:
 
 
 def test_show_option_unknown(session: Session) -> None:
-    """Session.show_option raises UnknownOption for invalid option."""
-    cmd_exception: type[exc.OptionError] = exc.UnknownOption
-    if has_gte_version("3.0"):
-        cmd_exception = exc.InvalidOption
-    with pytest.raises(cmd_exception):
+    """Session.show_option raises InvalidOption for invalid option."""
+    with pytest.raises(exc.InvalidOption):
         session.show_option("moooz")
 
 
@@ -172,13 +167,9 @@ def test_set_option_ambiguous(session: Session) -> None:
 
 
 def test_set_option_invalid(session: Session) -> None:
-    """Session.set_option raises UnknownOption for invalid option."""
-    if has_gte_version("2.4"):
-        with pytest.raises(exc.InvalidOption):
-            session.set_option("afewewfew", 43)
-    else:
-        with pytest.raises(exc.UnknownOption):
-            session.set_option("afewewfew", 43)
+    """Session.set_option raises InvalidOption for invalid option."""
+    with pytest.raises(exc.InvalidOption):
+        session.set_option("afewewfew", 43)
 
 
 def test_show_environment(session: Session) -> None:
@@ -315,10 +306,6 @@ SESSION_WINDOW_ENV_FIXTURES: list[SessionWindowEnvironmentFixture] = [
 ]
 
 
-@pytest.mark.skipif(
-    has_lt_version("3.0"),
-    reason="needs -e flag for new-window which was introduced in 3.0",
-)
 @pytest.mark.parametrize(
     list(SessionWindowEnvironmentFixture._fields),
     SESSION_WINDOW_ENV_FIXTURES,
@@ -346,34 +333,6 @@ def test_new_window_with_environment(
         assert pane.capture_pane()[-2] == v
 
 
-@pytest.mark.skipif(
-    has_gte_version("3.0"),
-    reason="3.0 has the -e flag on new-window",
-)
-def test_new_window_with_environment_logs_warning_for_old_tmux(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Verify new window with environment vars create a warning if tmux is too old."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in PATH."
-
-    session.new_window(
-        attach=True,
-        window_name="window_with_environment",
-        window_shell=f"{env} PS1='$ ' sh",
-        environment={"ENV_VAR": "window"},
-    )
-
-    assert any("Environment flag ignored" in record.msg for record in caplog.records), (
-        "Warning missing"
-    )
-
-
-@pytest.mark.skipif(
-    has_lt_version("3.2"),
-    reason="Only 3.2+ has the -a and -b flag on new-window",
-)
 def test_session_new_window_with_direction(
     session: Session,
 ) -> None:
@@ -401,25 +360,6 @@ def test_session_new_window_with_direction(
     assert window_after.window_index == "3"
     assert window_initial.window_index == "4"
     assert window_before.window_index == "1"
-
-
-@pytest.mark.skipif(
-    has_gte_version("3.1"),
-    reason="Only 3.1 has the -a and -b flag on new-window",
-)
-def test_session_new_window_with_direction_logs_warning_for_old_tmux(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Verify new window with direction create a warning if tmux is too old."""
-    session.new_window(
-        window_name="session_window_with_direction",
-        direction=WindowDirection.After,
-    )
-
-    assert any("Direction flag ignored" in record.msg for record in caplog.records), (
-        "Warning missing"
-    )
 
 
 def test_session_context_manager(server: Server) -> None:
