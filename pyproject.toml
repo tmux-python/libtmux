@@ -155,7 +155,11 @@ exclude_lines = [
   "^\\s*\\.\\.\\.$",
   "^\\s*pass$",
   "^\\s*assert ",
-  "^\\s*logger\\.",
+  "^\\s*logger\\s*=",
+  "^import ",
+  "^from .* import",
+  ": TypeAlias = ",
+  "= t\\.TypeVar\\(",
 ]
 
 [tool.ruff]
