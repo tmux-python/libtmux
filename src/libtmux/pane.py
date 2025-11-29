@@ -14,7 +14,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
+from libtmux.common import tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -275,20 +275,21 @@ class Pane(Obj):
         elif height or width:
             # Manual resizing
             if height:
-                if isinstance(height, str):
-                    if height.endswith("%") and not has_gte_version("3.1"):
-                        raise exc.VersionTooLow
-                    if not height.isdigit() and not height.endswith("%"):
-                        raise exc.RequiresDigitOrPercentage
+                if (
+                    isinstance(height, str)
+                    and not height.isdigit()
+                    and not height.endswith("%")
+                ):
+                    raise exc.RequiresDigitOrPercentage
                 tmux_args += (f"-y{height}",)
 
             if width:
-                if isinstance(width, str):
-                    if width.endswith("%") and not has_gte_version("3.1"):
-                        raise exc.VersionTooLow
-                    if not width.isdigit() and not width.endswith("%"):
-                        raise exc.RequiresDigitOrPercentage
-
+                if (
+                    isinstance(width, str)
+                    and not width.isdigit()
+                    and not width.endswith("%")
+                ):
+                    raise exc.RequiresDigitOrPercentage
                 tmux_args += (f"-x{width}",)
         elif zoom:
             # Zoom / Unzoom
@@ -650,16 +651,7 @@ class Pane(Obj):
             tmux_args += tuple(PANE_DIRECTION_FLAG_MAP[PaneDirection.Below])
 
         if size is not None:
-            if has_lt_version("3.1"):
-                if isinstance(size, str) and size.endswith("%"):
-                    tmux_args += (f"-p{str(size).rstrip('%')}",)
-                else:
-                    warnings.warn(
-                        'Ignored size. Use percent in tmux < 3.1, e.g. "size=50%"',
-                        stacklevel=2,
-                    )
-            else:
-                tmux_args += (f"-l{size}",)
+            tmux_args += (f"-l{size}",)
 
         if full_window_split:
             tmux_args += ("-f",)
@@ -678,13 +670,8 @@ class Pane(Obj):
             tmux_args += ("-d",)
 
         if environment:
-            if has_gte_version("3.0"):
-                for k, v in environment.items():
-                    tmux_args += (f"-e{k}={v}",)
-            else:
-                logger.warning(
-                    "Environment flag ignored, tmux 3.0 or newer required.",
-                )
+            for k, v in environment.items():
+                tmux_args += (f"-e{k}={v}",)
 
         if shell:
             tmux_args += (shell,)
