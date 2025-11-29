@@ -773,3 +773,28 @@ def test_show_hooks_stores_string_values(
 
     # Cleanup
     session.unset_hook(test_case.hook.split("[")[0])
+
+
+# =============================================================================
+# run_hook Tests
+# =============================================================================
+
+
+def test_run_hook_basic(server: Server) -> None:
+    """Test run_hook() method exists and can be called without error."""
+    if not has_gte_version("3.2"):
+        pytest.skip("Requires tmux >= 3.2")
+
+    session = server.new_session(session_name="test_run_hook")
+
+    # Set a hook first
+    session.set_hook("session-renamed[0]", 'display-message "test"')
+
+    # Run the hook immediately - should not raise
+    result = session.run_hook("session-renamed[0]")
+
+    # Verify returns self for chaining
+    assert result is session
+
+    # Cleanup
+    session.unset_hook("session-renamed")
