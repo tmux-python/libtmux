@@ -19,6 +19,7 @@ from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
 from libtmux.exc import OptionError
+from libtmux.options import convert_values
 from libtmux.pane import Pane
 
 if t.TYPE_CHECKING:
@@ -1198,3 +1199,80 @@ def test_show_options_returns_expected_keys(
             f"Expected '{key}' in {test_case.scope.name} options, "
             f"got keys: {list(options.keys())[:10]}..."
         )
+
+
+# =============================================================================
+# convert_values Tests
+# =============================================================================
+
+
+class ConvertValuesSparseTestCase(t.NamedTuple):
+    """Test case for convert_values with SparseArray (via dict branch)."""
+
+    test_id: str
+    initial_values: dict[int, str]  # index -> value
+    expected_converted: dict[int, t.Any]  # index -> converted value
+
+
+CONVERT_SPARSE_TEST_CASES: list[ConvertValuesSparseTestCase] = [
+    ConvertValuesSparseTestCase(
+        "boolean_on_off",
+        {0: "on", 1: "off"},
+        {0: True, 1: False},
+    ),
+    ConvertValuesSparseTestCase(
+        "numeric_conversion",
+        {0: "50", 5: "100"},
+        {0: 50, 5: 100},
+    ),
+    ConvertValuesSparseTestCase(
+        "mixed_values",
+        {0: "on", 1: "50", 2: "text"},
+        {0: True, 1: 50, 2: "text"},
+    ),
+    ConvertValuesSparseTestCase(
+        "sparse_indices",
+        {0: "on", 10: "off", 100: "42"},
+        {0: True, 10: False, 100: 42},
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [pytest.param(tc, id=tc.test_id) for tc in CONVERT_SPARSE_TEST_CASES],
+)
+def test_convert_values_sparse_array(
+    test_case: ConvertValuesSparseTestCase,
+) -> None:
+    """Test convert_values handles SparseArray via dict branch.
+
+    Note: SparseArray inherits from dict, so the dict branch in convert_values
+    handles it correctly. This test verifies that behavior.
+    """
+    sparse: SparseArray[str] = SparseArray()
+    for idx, val in test_case.initial_values.items():
+        sparse.add(idx, val)
+
+    result = convert_values(sparse)
+
+    assert isinstance(result, SparseArray)
+    for idx, expected in test_case.expected_converted.items():
+        assert result[idx] == expected, f"Index {idx}: {result[idx]} != {expected}"
+
+
+def test_convert_values_preserves_sparse_keys() -> None:
+    """Test convert_values preserves sparse array indices."""
+    sparse: SparseArray[str] = SparseArray()
+    sparse.add(0, "on")
+    sparse.add(5, "off")
+    sparse.add(99, "100")
+
+    result = convert_values(sparse)
+
+    # Keys should be preserved
+    assert isinstance(result, SparseArray)
+    assert sorted(result.keys()) == [0, 5, 99]
+    assert result[0] is True
+    assert result[5] is False
+    assert result[99] == 100
