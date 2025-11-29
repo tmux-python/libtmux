@@ -676,9 +676,9 @@ class OptionsMixin(CmdMixin):
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
             assert scope in OPTION_SCOPE_FLAG_MAP
-            flags.append(
-                OPTION_SCOPE_FLAG_MAP[scope],
-            )
+            scope_flag = OPTION_SCOPE_FLAG_MAP[scope]
+            if scope_flag:  # Session scope has empty string, skip it
+                flags.append(scope_flag)
 
         cmd = self.cmd(
             "set-option",
@@ -764,9 +764,9 @@ class OptionsMixin(CmdMixin):
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
             assert scope in OPTION_SCOPE_FLAG_MAP
-            flags.append(
-                OPTION_SCOPE_FLAG_MAP[scope],
-            )
+            scope_flag = OPTION_SCOPE_FLAG_MAP[scope]
+            if scope_flag:  # Session scope has empty string, skip it
+                flags.append(scope_flag)
 
         cmd = self.cmd(
             "set-option",
@@ -830,7 +830,9 @@ class OptionsMixin(CmdMixin):
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
             assert scope in OPTION_SCOPE_FLAG_MAP
-            flags += (OPTION_SCOPE_FLAG_MAP[scope],)
+            scope_flag = OPTION_SCOPE_FLAG_MAP[scope]
+            if scope_flag:  # Session scope has empty string, skip it
+                flags += (scope_flag,)
 
         if include_inherited is not None and include_inherited:
             flags += ("-A",)
@@ -1053,7 +1055,9 @@ class OptionsMixin(CmdMixin):
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
             assert scope in OPTION_SCOPE_FLAG_MAP
-            flags += (OPTION_SCOPE_FLAG_MAP[scope],)
+            scope_flag = OPTION_SCOPE_FLAG_MAP[scope]
+            if scope_flag:  # Session scope has empty string, skip it
+                flags += (scope_flag,)
 
         if ignore_errors is not None and ignore_errors:
             flags += ("-q",)
