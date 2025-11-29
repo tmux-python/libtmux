@@ -11,6 +11,7 @@ If you need an internal API stabilized please [file an issue](https://github.com
 ```{toctree}
 dataclasses
 query_list
+waiter
 ```
 
 ## Environmental variables
