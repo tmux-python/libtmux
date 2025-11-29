@@ -586,7 +586,7 @@ class Pane(Obj):
         size: int, optional
             Cell/row or percentage to occupy with respect to current window.
         environment: dict, optional
-            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+            Environmental variables for new pane. Passthrough to ``-e``.
 
         Examples
         --------
@@ -662,7 +662,6 @@ class Pane(Obj):
         tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
 
         if start_directory:
-            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
             start_path = pathlib.Path(start_directory).expanduser()
             tmux_args += (f"-c{start_path}",)
 
@@ -880,7 +879,7 @@ class Pane(Obj):
         percent: int, optional
             percentage to occupy with respect to current pane
         environment: dict, optional
-            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+            Environmental variables for new pane. Passthrough to ``-e``.
 
         Notes
         -----

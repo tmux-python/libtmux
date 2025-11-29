@@ -321,7 +321,7 @@ VERSION_PARSING_FIXTURES: list[VersionParsingFixture] = [
         mock_platform=None,
         expected_version=None,
         raises=True,
-        exc_msg_regex="is running tmux 1.3 or earlier",
+        exc_msg_regex="does not meet the minimum tmux version requirement",
     ),
 ]
 

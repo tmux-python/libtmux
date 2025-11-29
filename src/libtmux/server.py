@@ -324,7 +324,6 @@ class Server(EnvironmentMixin):
         exact : bool
             match the session name exactly. tmux uses fnmatch by default.
             Internally prepends ``=`` to the session in ``$ tmux has-session``.
-            tmux 2.1 and up only.
 
         Raises
         ------
@@ -540,7 +539,6 @@ class Server(EnvironmentMixin):
             tmux_args += ("-d",)
 
         if start_directory:
-            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-session -c.
             start_directory = pathlib.Path(start_directory).expanduser()
             tmux_args += ("-c", str(start_directory))
 

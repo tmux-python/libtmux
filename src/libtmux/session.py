@@ -610,7 +610,7 @@ class Session(Obj, EnvironmentMixin):
                 window upon completion is desired.
 
         direction : WindowDirection, optional
-            Insert window before or after target window (tmux 3.2+).
+            Insert window before or after target window.
 
         target_window : str, optional
             Used by :meth:`Window.new_window` to specify the target window.
@@ -664,7 +664,6 @@ class Session(Obj, EnvironmentMixin):
 
         # Catch empty string and default (`None`)
         if start_directory:
-            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
             start_directory = pathlib.Path(start_directory).expanduser()
             window_args += (f"-c{start_directory}",)
 

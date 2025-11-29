@@ -294,7 +294,7 @@ class Window(Obj):
         size: int, optional
             Cell/row or percentage to occupy with respect to current window.
         environment: dict, optional
-            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+            Environmental variables for new pane. Passthrough to ``-e``.
         """
         active_pane = self.active_pane or self.panes[0]
         return active_pane.split(
@@ -891,7 +891,7 @@ class Window(Obj):
             # Deprecated in 3.1 in favor of -l
             warnings.warn(
                 f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
-                ' ("-l" flag) in tmux 3.1+.',
+                '(using the "-l" flag).',
                 category=DeprecationWarning,
                 stacklevel=2,
             )

@@ -288,7 +288,7 @@ def get_version() -> LooseVersion:
                 return LooseVersion(f"{TMUX_MAX_VERSION}-openbsd")
             msg = (
                 f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. This system"
-                " is running tmux 1.3 or earlier."
+                " does not meet the minimum tmux version requirement."
             )
             raise exc.LibTmuxException(
                 msg,
@@ -456,16 +456,11 @@ def session_check_name(session_name: str | None) -> None:
 def handle_option_error(error: str) -> type[exc.OptionError]:
     """Raise exception if error in option command found.
 
-    In tmux 3.0, show-option and show-window-option return invalid option instead of
-    unknown option. See https://github.com/tmux/tmux/blob/3.0/cmd-show-options.c.
-
-    In tmux >2.4, there are 3 different types of option errors:
+    There are 3 different types of option errors:
 
     - unknown option
     - invalid option
     - ambiguous option
-
-    In tmux <2.4, unknown option was the only option.
 
     All errors raised will have the base error of :exc:`exc.OptionError`. So to
     catch any option error, use ``except exc.OptionError``.

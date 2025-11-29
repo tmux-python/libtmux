@@ -24,16 +24,6 @@ OutputRaw = dict[str, t.Any]
 OutputsRaw = list[OutputRaw]
 
 
-"""
-Quirks:
-
-QUIRK_TMUX_3_1_X_0001:
-
-- tmux 3.1 and 3.1a:
-- server crash with list-panes w/ buffer_created, client_activity, client_created
-"""
-
-
 @dataclasses.dataclass()
 class Obj:
     """Dataclass of generic tmux object."""
@@ -43,14 +33,11 @@ class Obj:
     active_window_index: str | None = None
     alternate_saved_x: str | None = None
     alternate_saved_y: str | None = None
-    # See QUIRK_TMUX_3_1_X_0001
     buffer_name: str | None = None
     buffer_sample: str | None = None
     buffer_size: str | None = None
-    # See QUIRK_TMUX_3_1_X_0001
     client_cell_height: str | None = None
     client_cell_width: str | None = None
-    # See QUIRK_TMUX_3_1_X_0001
     client_discarded: str | None = None
     client_flags: str | None = None
     client_height: str | None = None
