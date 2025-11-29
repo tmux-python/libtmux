@@ -1090,3 +1090,111 @@ def test_option_set_show_cycle(server: Server, test_case: OptionTestCase) -> Non
     assert isinstance(result, test_case.expected_type), (
         f"Expected {test_case.expected_type.__name__}, got {type(result).__name__}"
     )
+
+
+# =============================================================================
+# show_options Tests
+# =============================================================================
+
+# Scope-specific expected keys (verified with global_=True)
+SERVER_EXPECTED_KEYS = ["buffer-limit", "escape-time", "exit-empty", "focus-events"]
+SESSION_EXPECTED_KEYS = ["base-index", "history-limit", "status"]
+WINDOW_EXPECTED_KEYS = ["mode-keys", "pane-base-index", "automatic-rename"]
+
+
+class ShowOptionsTestCase(t.NamedTuple):
+    """Test case for show_options validation."""
+
+    test_id: str
+    scope: OptionScope
+    expected_keys: list[str]
+    global_: bool = False
+    include_inherited: bool = False
+    min_version: str = "3.2"
+
+
+SHOW_OPTIONS_TEST_CASES: list[ShowOptionsTestCase] = [
+    # Server scope tests
+    ShowOptionsTestCase(
+        test_id="server_global",
+        scope=OptionScope.Server,
+        expected_keys=SERVER_EXPECTED_KEYS,
+        global_=True,
+    ),
+    ShowOptionsTestCase(
+        test_id="server_global_inherited",
+        scope=OptionScope.Server,
+        expected_keys=SERVER_EXPECTED_KEYS,
+        global_=True,
+        include_inherited=True,
+    ),
+    # Session scope tests (require global_=True for defaults)
+    ShowOptionsTestCase(
+        test_id="session_global",
+        scope=OptionScope.Session,
+        expected_keys=SESSION_EXPECTED_KEYS,
+        global_=True,
+    ),
+    ShowOptionsTestCase(
+        test_id="session_global_inherited",
+        scope=OptionScope.Session,
+        expected_keys=SESSION_EXPECTED_KEYS,
+        global_=True,
+        include_inherited=True,
+    ),
+    # Window scope tests
+    ShowOptionsTestCase(
+        test_id="window_global",
+        scope=OptionScope.Window,
+        expected_keys=WINDOW_EXPECTED_KEYS,
+        global_=True,
+    ),
+    ShowOptionsTestCase(
+        test_id="window_global_inherited",
+        scope=OptionScope.Window,
+        expected_keys=WINDOW_EXPECTED_KEYS,
+        global_=True,
+        include_inherited=True,
+    ),
+]
+
+
+def _build_show_options_params() -> list[t.Any]:
+    """Build pytest params for show_options tests."""
+    return [pytest.param(tc, id=tc.test_id) for tc in SHOW_OPTIONS_TEST_CASES]
+
+
+@pytest.mark.parametrize("test_case", _build_show_options_params())
+def test_show_options_returns_expected_keys(
+    server: Server,
+    test_case: ShowOptionsTestCase,
+) -> None:
+    """Test that show_options() returns dict with expected scope-specific keys."""
+    if not has_gte_version(test_case.min_version):
+        pytest.skip(f"Requires tmux >= {test_case.min_version}")
+
+    session = server.new_session(session_name="test_show_options")
+    window = session.active_window
+    pane = window.active_pane
+    assert pane is not None
+
+    # Use server for all scopes (matches test_options_grid pattern)
+    options = server.show_options(
+        global_=test_case.global_,
+        scope=test_case.scope,
+        include_inherited=test_case.include_inherited,
+    )
+
+    assert isinstance(options, dict)
+    assert len(options) > 0, (
+        f"Expected non-empty dict for scope={test_case.scope.name}, "
+        f"global_={test_case.global_}"
+    )
+
+    # Verify expected keys exist (with or without * suffix for inherited)
+    for key in test_case.expected_keys:
+        # Check for key or key* (inherited marker)
+        assert key in options or f"{key}*" in options, (
+            f"Expected '{key}' in {test_case.scope.name} options, "
+            f"got keys: {list(options.keys())[:10]}..."
+        )
