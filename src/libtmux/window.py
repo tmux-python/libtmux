@@ -25,7 +25,7 @@ from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.pane import Pane
 
 from . import exc
-from .common import PaneDict, WindowOptionDict, handle_option_error
+from .common import AsyncTmuxCmd, PaneDict, WindowOptionDict, handle_option_error
 
 if t.TYPE_CHECKING:
     import sys
@@ -227,6 +227,177 @@ class Window(Obj):
             target = self.window_id
 
         return self.server.cmd(cmd, *args, target=target)
+
+    async def acmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: str | int | None = None,
+    ) -> AsyncTmuxCmd:
+        """Execute tmux subcommand within window context.
+
+        Automatically binds target by adding  ``-t`` for object's window ID to the
+        command. Pass ``target`` to keyword arguments to override.
+
+        Examples
+        --------
+        Create a pane from a window:
+
+        >>> import asyncio
+        >>> async def test_acmd():
+        ...     result = await window.acmd('split-window', '-P', '-F#{pane_id}')
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_acmd())
+        %...
+
+        Magic, directly to a `Pane`:
+
+        >>> async def test_from_pane():
+        ...     pane_id_result = await session.acmd(
+        ...         'split-window', '-P', '-F#{pane_id}'
+        ...     )
+        ...     return Pane.from_pane_id(
+        ...         pane_id=pane_id_result.stdout[0],
+        ...         server=session.server
+        ...     )
+        >>> asyncio.run(test_from_pane())
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target override. By default, the target is the window ID.
+
+        Returns
+        -------
+        :meth:`server.cmd`
+        """
+        if target is None:
+            target = self.window_id
+
+        return await self.server.acmd(cmd, *args, target=target)
+
+    async def akill(
+        self,
+        all_except: bool | None = None,
+    ) -> None:
+        """Kill :class:`Window` asynchronously.
+
+        This is the async version of :meth:`kill`. It uses ``await self.acmd()``
+        for non-blocking window destruction, making it suitable for async applications.
+
+        Equivalent to::
+
+            $ tmux kill-window
+
+        When ``all_except=True``::
+
+            $ tmux kill-window -a
+
+        Parameters
+        ----------
+        all_except : bool, optional
+            If True, kill all windows in the session except this one.
+            If False or None (default), kill only this window.
+
+            Useful for cleaning up all other windows while keeping one active.
+
+        Raises
+        ------
+        :exc:`exc.LibTmuxException`
+            If tmux command execution fails
+
+        See Also
+        --------
+        :meth:`kill` : Synchronous version of this method
+        :meth:`Session.kill_window` : Kill a window by target
+        :meth:`Session.anew_window` : Create a new window asynchronously
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        After killing a window, the window object should not be used as it no
+        longer represents a valid tmux window.
+
+        When ``all_except=True``, all other windows in the session are destroyed,
+        leaving only the current window active. This is useful for cleaning up
+        a session to a single window.
+
+        .. versionadded:: 0.48.0
+
+            Added async window killing support.
+
+        Examples
+        --------
+        Kill a single window:
+
+        >>> import asyncio
+        >>> async def test_kill_single():
+        ...     test_session = await server.anew_session("akill_single")
+        ...     # Create a window
+        ...     window = await test_session.anew_window(window_name='temp')
+        ...     window_id = window.window_id
+        ...     # Kill it
+        ...     await window.akill()
+        ...     # Verify it no longer exists
+        ...     windows = test_session.windows
+        ...     exists = any(w.window_id == window_id for w in windows)
+        ...     await server.acmd("kill-session", target="akill_single")
+        ...     return exists
+        >>> asyncio.run(test_kill_single())
+        False
+
+        Kill all windows except one:
+
+        >>> import asyncio
+        >>> async def test_kill_all_except():
+        ...     test_session = await server.anew_session("akill_except")
+        ...     # Create multiple windows
+        ...     keep_window = await test_session.anew_window(window_name='main')
+        ...     await test_session.anew_window(window_name='temp1')
+        ...     await test_session.anew_window(window_name='temp2')
+        ...     await test_session.anew_window(window_name='temp3')
+        ...     # Kill all except keep_window (kills initial + temp windows)
+        ...     await keep_window.akill(all_except=True)
+        ...     # Count remaining windows (should be 1: only keep_window)
+        ...     window_count = len(test_session.windows)
+        ...     await server.acmd("kill-session", target="akill_except")
+        ...     return window_count
+        >>> asyncio.run(test_kill_all_except())
+        1
+
+        Concurrent window cleanup:
+
+        >>> import asyncio
+        >>> async def test_concurrent_cleanup():
+        ...     test_session = await server.anew_session("akill_concurrent")
+        ...     # Create some temporary windows
+        ...     temp_windows = await asyncio.gather(
+        ...         test_session.anew_window(window_name='temp1'),
+        ...         test_session.anew_window(window_name='temp2'),
+        ...         test_session.anew_window(window_name='temp3'),
+        ...     )
+        ...     # Kill all temporary windows concurrently
+        ...     await asyncio.gather(*[w.akill() for w in temp_windows])
+        ...     # Count remaining windows (should be 1: initial window)
+        ...     window_count = len(test_session.windows)
+        ...     await server.acmd("kill-session", target="akill_concurrent")
+        ...     return window_count
+        >>> asyncio.run(test_concurrent_cleanup())
+        1
+        """
+        flags: tuple[str, ...] = ()
+
+        if all_except:
+            flags += ("-a",)
+
+        proc = await self.acmd(
+            "kill-window",
+            *flags,
+        )
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
 
     """
     Commands (tmux-like)
@@ -596,6 +767,10 @@ class Window(Obj):
         """Kill :class:`Window`.
 
         ``$ tmux kill-window``.
+
+        See Also
+        --------
+        :meth:`akill` : Async version of this method
 
         Examples
         --------

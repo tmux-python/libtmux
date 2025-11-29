@@ -246,6 +246,46 @@ Window(@1 1:..., Session($1 ...))
 Session($1 ...)
 ```
 
+# Async support
+
+libtmux provides async versions of key methods for use in async applications:
+
+```python
+import asyncio
+from libtmux import Server
+
+async def main():
+    server = Server()
+
+    # Create session asynchronously
+    session = await server.anew_session(
+        session_name="async_session",
+        start_directory="~/"
+    )
+
+    # Create windows concurrently
+    windows = await asyncio.gather(
+        session.anew_window(window_name="editor"),
+        session.anew_window(window_name="terminal"),
+        session.anew_window(window_name="logs"),
+    )
+
+    # Check session exists
+    exists = await server.ahas_session("async_session")
+    print(f"Session exists: {exists}")  # True
+
+asyncio.run(main())
+```
+
+Available async methods (using 'a' prefix convention):
+- `Server.ahas_session()` - Check if session exists
+- `Server.anew_session()` - Create new session
+- `Session.anew_window()` - Create new window
+- `Session.arename_session()` - Rename session
+- `Window.akill()` - Kill window
+
+See the [async API documentation](https://libtmux.git-pull.com/api/async.html) for details.
+
 # Python support
 
 Unsupported / no security releases or bug fixes:

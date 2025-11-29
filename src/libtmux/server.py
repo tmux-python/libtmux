@@ -24,6 +24,7 @@ from libtmux.session import Session
 from libtmux.window import Window
 
 from .common import (
+    AsyncTmuxCmd,
     EnvironmentMixin,
     PaneDict,
     SessionDict,
@@ -250,8 +251,12 @@ class Server(EnvironmentMixin):
 
         Output of `tmux -L ... new-window -P -F#{window_id}` to a `Window` object:
 
-        >>> Window.from_window_id(window_id=session.cmd(
-        ... 'new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
+        >>> Window.from_window_id(
+        ...     window_id=session.cmd(
+        ...         'new-window', '-P', '-F#{window_id}'
+        ...     ).stdout[0],
+        ...     server=session.server,
+        ... )
         Window(@4 3:..., Session($1 libtmux_...))
 
         Create a pane from a window:
@@ -262,7 +267,9 @@ class Server(EnvironmentMixin):
         Output of `tmux -L ... split-window -P -F#{pane_id}` to a `Pane` object:
 
         >>> Pane.from_pane_id(pane_id=window.cmd(
-        ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
+        ...     'split-window', '-P', '-F#{pane_id}').stdout[0],
+        ...     server=window.server
+        ... )
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
         Parameters
@@ -300,6 +307,516 @@ class Server(EnvironmentMixin):
 
         return tmux_cmd(*svr_args, *cmd_args)
 
+    async def acmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: str | int | None = None,
+    ) -> AsyncTmuxCmd:
+        """Execute tmux command respective of socket name and file, return output.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> async def test_acmd():
+        ...     result = await server.acmd('display-message', 'hi')
+        ...     print(result.stdout)
+        >>> asyncio.run(test_acmd())
+        []
+
+        New session:
+
+        >>> async def test_new_session():
+        ...     result = await server.acmd(
+        ...         'new-session', '-d', '-P', '-F#{session_id}'
+        ...     )
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_new_session())
+        $...
+
+        Output of `tmux -L ... new-window -P -F#{window_id}` to a `Window` object:
+
+        >>> async def test_new_window():
+        ...     result = await session.acmd('new-window', '-P', '-F#{window_id}')
+        ...     window_id = result.stdout[0]
+        ...     window = Window.from_window_id(window_id=window_id, server=server)
+        ...     print(window)
+        >>> asyncio.run(test_new_window())
+        Window(@... ...:..., Session($... libtmux_...))
+
+        Create a pane from a window:
+
+        >>> async def test_split_window():
+        ...     result = await server.acmd('split-window', '-P', '-F#{pane_id}')
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_split_window())
+        %...
+
+        Output of `tmux -L ... split-window -P -F#{pane_id}` to a `Pane` object:
+
+        >>> async def test_pane():
+        ...     result = await window.acmd('split-window', '-P', '-F#{pane_id}')
+        ...     pane_id = result.stdout[0]
+        ...     pane = Pane.from_pane_id(pane_id=pane_id, server=server)
+        ...     print(pane)
+        >>> asyncio.run(test_pane())
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target.
+
+        Returns
+        -------
+        :class:`common.AsyncTmuxCmd`
+        """
+        svr_args: list[str | int] = [cmd]
+        cmd_args: list[str | int] = []
+        if self.socket_name:
+            svr_args.insert(0, f"-L{self.socket_name}")
+        if self.socket_path:
+            svr_args.insert(0, f"-S{self.socket_path}")
+        if self.config_file:
+            svr_args.insert(0, f"-f{self.config_file}")
+        if self.colors:
+            if self.colors == 256:
+                svr_args.insert(0, "-2")
+            elif self.colors == 88:
+                svr_args.insert(0, "-8")
+            else:
+                raise exc.UnknownColorOption
+
+        cmd_args = ["-t", str(target), *args] if target is not None else [*args]
+
+        return await AsyncTmuxCmd.run(*svr_args, *cmd_args)
+
+    async def ahas_session(self, target_session: str, exact: bool = True) -> bool:
+        """Return True if session exists asynchronously.
+
+        This is the async version of :meth:`has_session`. It uses
+        ``await self.acmd()`` for non-blocking session existence checks, making
+        it suitable for async applications.
+
+        Equivalent to::
+
+            $ tmux has-session -t <target_session>
+
+        Parameters
+        ----------
+        target_session : str
+            Session name to check for existence
+        exact : bool, optional
+            Match the session name exactly. When True (default), tmux will only
+            match exact session names. When False, tmux uses fnmatch(3) pattern
+            matching. Internally prepends ``=`` to the session when exact=True.
+
+            .. note::
+
+                Exact matching requires tmux 2.1+. On older versions, this parameter
+                is ignored and fnmatch behavior is used.
+
+        Returns
+        -------
+        bool
+            True if session exists, False otherwise
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+            If target_session contains invalid characters (periods or colons)
+
+        See Also
+        --------
+        :meth:`has_session` : Synchronous version of this method
+        :meth:`anew_session` : Create a new session asynchronously
+        :meth:`kill_session` : Kill a session
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        It's particularly useful when checking multiple sessions concurrently using
+        ``asyncio.gather()``.
+
+        .. versionadded:: 0.48.0
+
+            Added async session existence check support.
+
+        Examples
+        --------
+        Basic session existence check:
+
+        >>> import asyncio
+        >>> async def check_session_exists():
+        ...     session = await server.anew_session("test_ahas_basic")
+        ...     exists = await server.ahas_session("test_ahas_basic")
+        ...     await server.acmd("kill-session", target="test_ahas_basic")
+        ...     return exists
+        >>> asyncio.run(check_session_exists())
+        True
+
+        Checking for nonexistent session:
+
+        >>> import asyncio
+        >>> async def check_nonexistent():
+        ...     return await server.ahas_session("nonexistent_xyz_123")
+        >>> asyncio.run(check_nonexistent())
+        False
+
+        Checking multiple sessions concurrently:
+
+        >>> import asyncio
+        >>> async def check_multiple_sessions():
+        ...     # Create sessions concurrently
+        ...     await asyncio.gather(
+        ...         server.anew_session("ahas_s1"),
+        ...         server.anew_session("ahas_s2"),
+        ...         server.anew_session("ahas_s3"),
+        ...     )
+        ...     # Check all sessions concurrently
+        ...     results = await asyncio.gather(
+        ...         server.ahas_session("ahas_s1"),
+        ...         server.ahas_session("ahas_s2"),
+        ...         server.ahas_session("ahas_s3"),
+        ...     )
+        ...     # Cleanup
+        ...     await asyncio.gather(
+        ...         server.acmd("kill-session", target="ahas_s1"),
+        ...         server.acmd("kill-session", target="ahas_s2"),
+        ...         server.acmd("kill-session", target="ahas_s3"),
+        ...     )
+        ...     return results
+        >>> asyncio.run(check_multiple_sessions())
+        [True, True, True]
+
+        Using exact matching:
+
+        >>> import asyncio
+        >>> async def test_exact_matching():
+        ...     session = await server.anew_session("exact_match_test")
+        ...     # Exact match - must match full name
+        ...     exact_result = await server.ahas_session("exact_match_test", exact=True)
+        ...     # Partial name should not match with exact=True
+        ...     partial_result = await server.ahas_session("exact", exact=True)
+        ...     await server.acmd("kill-session", target="exact_match_test")
+        ...     return (exact_result, partial_result)
+        >>> asyncio.run(test_exact_matching())
+        (True, False)
+        """
+        session_check_name(target_session)
+
+        if exact and has_gte_version("2.1"):
+            target_session = f"={target_session}"
+
+        proc = await self.acmd("has-session", target=target_session)
+
+        return bool(not proc.returncode)
+
+    async def anew_session(
+        self,
+        session_name: str | None = None,
+        kill_session: bool = False,
+        attach: bool = False,
+        start_directory: StrPath | None = None,
+        window_name: str | None = None,
+        window_command: str | None = None,
+        x: int | DashLiteral | None = None,
+        y: int | DashLiteral | None = None,
+        environment: dict[str, str] | None = None,
+        *args: t.Any,
+        **kwargs: t.Any,
+    ) -> Session:
+        """Create new session asynchronously, returns new :class:`Session`.
+
+        This is the async version of :meth:`new_session`. It uses ``await self.acmd()``
+        for non-blocking session creation, making it suitable for async applications
+        and enabling concurrent session creation.
+
+        Uses ``-P`` flag to print session info, ``-F`` for return formatting,
+        and returns a new :class:`Session` object.
+
+        Equivalent to::
+
+            $ tmux new-session -d -s <session_name>
+
+        .. note::
+
+            ``attach=False`` (default) creates the session in the background::
+
+                $ tmux new-session -d
+
+            This is typically desired for async operations to avoid blocking.
+
+        Parameters
+        ----------
+        session_name : str, optional
+            Name for the new session. If not provided, tmux will auto-generate
+            a name (typically sequential numbers: 0, 1, 2, etc.).
+
+            Equivalent to::
+
+                $ tmux new-session -s <session_name>
+
+        attach : bool, optional
+            Create session in the foreground (True) or background (False, default).
+            For async operations, background creation is typically preferred.
+
+            ``attach=False`` is equivalent to::
+
+                $ tmux new-session -d
+
+        Other Parameters
+        ----------------
+        kill_session : bool, optional
+            If True, kill the existing session with the same name before creating
+            a new one. If False (default) and a session with the same name exists,
+            raises :exc:`exc.TmuxSessionExists`.
+
+            Useful for testing workspaces and ensuring a clean slate.
+
+        start_directory : str or PathLike, optional
+            Working directory in which the new session is created. All windows
+            and panes in the session will default to this directory.
+
+            Supports pathlib.Path objects and tilde expansion (``~/``).
+
+            Equivalent to::
+
+                $ tmux new-session -c <start_directory>
+
+        window_name : str, optional
+            Name for the initial window created in the session.
+
+            Equivalent to::
+
+                $ tmux new-session -n <window_name>
+
+        window_command : str, optional
+            Shell command to execute when starting the session. The window will
+            automatically close when the command exits.
+
+            .. warning::
+
+                When this command exits, the window will close. This feature is
+                useful for long-running processes where automatic cleanup is desired.
+
+        x : int or '-', optional
+            Force the specified width (in columns) instead of the tmux default
+            for a detached session. Use '-' for tmux default.
+
+        y : int or '-', optional
+            Force the specified height (in rows) instead of the tmux default
+            for a detached session. Use '-' for tmux default.
+
+        environment : dict[str, str], optional
+            Dictionary of environment variables to set in the new session.
+            Each key-value pair will be set as an environment variable.
+
+            .. note::
+
+                Requires tmux 3.2+. On older versions, this parameter is ignored
+                with a warning.
+
+            Equivalent to::
+
+                $ tmux new-session -e KEY1=value1 -e KEY2=value2
+
+        Returns
+        -------
+        :class:`Session`
+            The newly created session object
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+            If session_name contains invalid characters (periods or colons)
+        :exc:`exc.TmuxSessionExists`
+            If a session with the same name already exists and kill_session=False
+        :exc:`exc.LibTmuxException`
+            If tmux command execution fails
+
+        See Also
+        --------
+        :meth:`new_session` : Synchronous version of this method
+        :meth:`ahas_session` : Check if a session exists asynchronously
+        :meth:`kill_session` : Kill a session
+        :class:`Session` : Session object documentation
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        It's particularly powerful when creating multiple sessions concurrently
+        using ``asyncio.gather()``, which can significantly improve performance
+        compared to sequential creation.
+
+        The method temporarily removes the ``TMUX`` environment variable during
+        session creation to allow creating sessions from within tmux itself.
+
+        .. versionadded:: 0.48.0
+
+            Added async session creation support.
+
+        Examples
+        --------
+        Sessions can be created without a session name (auto-generated IDs):
+
+        >>> import asyncio
+        >>> async def test_auto_generated():
+        ...     session1 = await server.anew_session()
+        ...     session2 = await server.anew_session()
+        ...     # Both have auto-generated names
+        ...     has_session1 = session1.session_name is not None
+        ...     has_session2 = session2.session_name is not None
+        ...     # Cleanup
+        ...     await asyncio.gather(
+        ...         server.acmd("kill-session", target=session1.session_name),
+        ...         server.acmd("kill-session", target=session2.session_name),
+        ...     )
+        ...     return (has_session1, has_session2)
+        >>> asyncio.run(test_auto_generated())
+        (True, True)
+
+        With a custom `session_name`:
+
+        >>> import asyncio
+        >>> async def test_custom_name():
+        ...     session = await server.anew_session(session_name='my_project')
+        ...     name = session.session_name
+        ...     await server.acmd("kill-session", target="my_project")
+        ...     return name
+        >>> asyncio.run(test_custom_name())
+        'my_project'
+
+        With custom working directory:
+
+        >>> import asyncio
+        >>> async def test_start_directory():
+        ...     from pathlib import Path
+        ...     session = await server.anew_session(
+        ...         session_name='dev_session',
+        ...         start_directory='/tmp'
+        ...     )
+        ...     # Verify session was created
+        ...     exists = await server.ahas_session('dev_session')
+        ...     await server.acmd("kill-session", target="dev_session")
+        ...     return exists
+        >>> asyncio.run(test_start_directory())
+        True
+
+        Creating multiple sessions concurrently:
+
+        >>> import asyncio
+        >>> async def test_concurrent_creation():
+        ...     sessions = await asyncio.gather(
+        ...         server.anew_session(session_name='anew_frontend'),
+        ...         server.anew_session(session_name='anew_backend'),
+        ...         server.anew_session(session_name='anew_database'),
+        ...     )
+        ...     names = [s.session_name for s in sessions]
+        ...     # Cleanup
+        ...     await asyncio.gather(
+        ...         server.acmd("kill-session", target="anew_frontend"),
+        ...         server.acmd("kill-session", target="anew_backend"),
+        ...         server.acmd("kill-session", target="anew_database"),
+        ...     )
+        ...     return (len(sessions), names)
+        >>> asyncio.run(test_concurrent_creation())
+        (3, ['anew_frontend', 'anew_backend', 'anew_database'])
+
+        With custom window configuration:
+
+        >>> import asyncio
+        >>> async def test_custom_window():
+        ...     session = await server.anew_session(
+        ...         session_name='custom_window_test',
+        ...         window_name='main'
+        ...     )
+        ...     window_name = session.active_window.window_name
+        ...     await server.acmd("kill-session", target="custom_window_test")
+        ...     return window_name
+        >>> asyncio.run(test_custom_window())
+        'main'
+        """
+        if session_name is not None:
+            session_check_name(session_name)
+
+            if await self.ahas_session(session_name):
+                if kill_session:
+                    await self.acmd("kill-session", target=session_name)
+                    logger.info("session %s exists. killed it.", session_name)
+                else:
+                    msg = f"Session named {session_name} exists"
+                    raise exc.TmuxSessionExists(
+                        msg,
+                    )
+
+        logger.debug("creating session %s", session_name)
+
+        env = os.environ.get("TMUX")
+
+        if env:
+            del os.environ["TMUX"]
+
+        tmux_args: tuple[str | int, ...] = (
+            "-P",
+            "-F#{session_id}",  # output
+        )
+
+        if session_name is not None:
+            tmux_args += (f"-s{session_name}",)
+
+        if not attach:
+            tmux_args += ("-d",)
+
+        if start_directory:
+            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-session -c.
+            start_directory = pathlib.Path(start_directory).expanduser()
+            tmux_args += ("-c", str(start_directory))
+
+        if window_name:
+            tmux_args += ("-n", window_name)
+
+        if x is not None:
+            tmux_args += ("-x", x)
+
+        if y is not None:
+            tmux_args += ("-y", y)
+
+        if environment:
+            if has_gte_version("3.2"):
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Environment flag ignored, tmux 3.2 or newer required.",
+                )
+
+        if window_command:
+            tmux_args += (window_command,)
+
+        proc = await self.acmd("new-session", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        session_stdout = proc.stdout[0]
+
+        if env:
+            os.environ["TMUX"] = env
+
+        session_formatters = dict(
+            zip(
+                ["session_id"],
+                session_stdout.split(formats.FORMAT_SEPARATOR),
+                strict=False,
+            ),
+        )
+
+        return Session.from_session_id(
+            server=self,
+            session_id=session_formatters["session_id"],
+        )
+
     @property
     def attached_sessions(self) -> list[Session]:
         """Return active :class:`Session`s.
@@ -334,6 +851,10 @@ class Server(EnvironmentMixin):
         Returns
         -------
         bool
+
+        See Also
+        --------
+        :meth:`ahas_session` : Async version of this method
         """
         session_check_name(target_session)
 
@@ -491,6 +1012,10 @@ class Server(EnvironmentMixin):
         Raises
         ------
         :exc:`exc.BadSessionName`
+
+        See Also
+        --------
+        :meth:`anew_session` : Async version of this method
 
         Examples
         --------

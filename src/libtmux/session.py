@@ -22,6 +22,7 @@ from libtmux.window import Window
 
 from . import exc
 from .common import (
+    AsyncTmuxCmd,
     EnvironmentMixin,
     WindowDict,
     handle_option_error,
@@ -234,6 +235,426 @@ class Session(Obj, EnvironmentMixin):
         if target is None:
             target = self.session_id
         return self.server.cmd(cmd, *args, target=target)
+
+    async def acmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: str | int | None = None,
+    ) -> AsyncTmuxCmd:
+        """Execute tmux subcommand within session context.
+
+        Automatically binds target by adding  ``-t`` for object's session ID to the
+        command. Pass ``target`` to keyword arguments to override.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> async def test_acmd():
+        ...     result = await session.acmd('new-window', '-P')
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_acmd())
+        libtmux...:....0
+
+        From raw output to an enriched `Window` object:
+
+        >>> async def test_from_window():
+        ...     window_id_result = await session.acmd(
+        ...         'new-window', '-P', '-F#{window_id}'
+        ...     )
+        ...     return Window.from_window_id(
+        ...         window_id=window_id_result.stdout[0],
+        ...         server=session.server
+        ...     )
+        >>> asyncio.run(test_from_window())
+        Window(@... ...:..., Session($1 libtmux_...))
+
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target override. By default, the target is the session ID.
+
+        Returns
+        -------
+        :meth:`server.cmd`
+
+        Notes
+        -----
+        .. versionchanged:: 0.34
+
+           Passing target by ``-t`` is ignored. Use ``target`` keyword argument instead.
+
+        .. versionchanged:: 0.8
+
+            Renamed from ``.tmux`` to ``.cmd``.
+        """
+        if target is None:
+            target = self.session_id
+        return await self.server.acmd(cmd, *args, target=target)
+
+    async def arename_session(self, new_name: str) -> Session:
+        """Rename session asynchronously and return session object.
+
+        This is the async version of :meth:`rename_session`. It uses
+        ``await self.acmd()`` for non-blocking session renaming, making it
+        suitable for async applications.
+
+        Equivalent to::
+
+            $ tmux rename-session <new_name>
+
+        Parameters
+        ----------
+        new_name : str
+            New name for the session. Must not contain periods (.) or colons (:).
+
+        Returns
+        -------
+        :class:`Session`
+            Returns self (the session object) with updated name
+
+        Raises
+        ------
+        :exc:`exc.BadSessionName`
+            If new_name contains invalid characters (periods or colons)
+        :exc:`exc.LibTmuxException`
+            If tmux command execution fails
+
+        See Also
+        --------
+        :meth:`rename_session` : Synchronous version of this method
+        :meth:`Session.session_name` : Property to get current session name
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        The session object is automatically refreshed after renaming to ensure
+        the session_name property reflects the new name.
+
+        On tmux 2.7 with BSD systems, a "no current client" warning may be
+        raised but is safely ignored as it's a known issue fixed in later versions.
+
+        .. versionadded:: 0.48.0
+
+            Added async session renaming support.
+
+        Examples
+        --------
+        Basic session rename:
+
+        >>> import asyncio
+        >>> async def test_rename():
+        ...     test_session = await server.anew_session("arename_original")
+        ...     renamed_session = await test_session.arename_session("arename_new")
+        ...     new_name = renamed_session.session_name
+        ...     await server.acmd("kill-session", target="arename_new")
+        ...     return new_name
+        >>> asyncio.run(test_rename())
+        'arename_new'
+
+        Rename and verify:
+
+        >>> import asyncio
+        >>> async def test_rename_verify():
+        ...     test_session = await server.anew_session("arename_verify_old")
+        ...     old_name = test_session.session_name
+        ...     await test_session.arename_session("arename_verify_new")
+        ...     # Verify the rename
+        ...     has_new = test_session.server.has_session("arename_verify_new")
+        ...     has_old = test_session.server.has_session(old_name)
+        ...     await server.acmd("kill-session", target="arename_verify_new")
+        ...     return (test_session.session_name, has_new, has_old)
+        >>> asyncio.run(test_rename_verify())
+        ('arename_verify_new', True, False)
+
+        Chaining operations:
+
+        >>> import asyncio
+        >>> async def test_chaining():
+        ...     # arename_session returns self, allowing chaining
+        ...     test_session = await server.anew_session("arename_chain_old")
+        ...     renamed_session = await test_session.arename_session(
+        ...         "arename_chain_new"
+        ...     )
+        ...     window = await renamed_session.anew_window(window_name="main")
+        ...     result = (renamed_session.session_name, window.window_name)
+        ...     await server.acmd("kill-session", target="arename_chain_new")
+        ...     return result
+        >>> asyncio.run(test_chaining())
+        ('arename_chain_new', 'main')
+        """
+        session_check_name(new_name)
+
+        proc = await self.acmd("rename-session", new_name)
+
+        if proc.stderr:
+            if has_version("2.7") and "no current client" in proc.stderr:
+                """tmux 2.7 raises "no current client" warning on BSD systems.
+
+                Should be fixed next release:
+
+                - https://www.mail-archive.com/tech@openbsd.org/msg45186.html
+                - https://marc.info/?l=openbsd-cvs&m=152183263526828&w=2
+                """
+            else:
+                raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+
+        return self
+
+    async def anew_window(
+        self,
+        window_name: str | None = None,
+        *,
+        start_directory: StrPath | None = None,
+        attach: bool = False,
+        window_index: str = "",
+        window_shell: str | None = None,
+        environment: dict[str, str] | None = None,
+        direction: WindowDirection | None = None,
+        target_window: str | None = None,
+    ) -> Window:
+        """Create new window asynchronously, returns new :class:`Window`.
+
+        This is the async version of :meth:`new_window`. It uses ``await self.acmd()``
+        for non-blocking window creation, making it suitable for async applications
+        and enabling concurrent window creation.
+
+        By default, this will make the window active. For the new window
+        to be created and not set to current, pass in ``attach=False``.
+
+        Equivalent to::
+
+            $ tmux new-window -n <window_name>
+
+        Parameters
+        ----------
+        window_name : str, optional
+            Name for the new window. If not provided, tmux will auto-name
+            based on the shell command running in the window.
+
+        start_directory : str or PathLike, optional
+            Working directory in which the new window is created. All panes
+            in the window will default to this directory.
+
+            Supports pathlib.Path objects and tilde expansion (``~/``).
+
+            Equivalent to::
+
+                $ tmux new-window -c <start_directory>
+
+        attach : bool, optional
+            Make the new window the current (active) window after creating it.
+            Default is False, meaning the window is created in the background.
+
+            When False (default)::
+
+                $ tmux new-window -d
+
+        window_index : str, optional
+            Create the new window at the given index position. Default is empty
+            string which creates the window in the next available position.
+
+            Use to control window ordering or create windows at specific indices.
+
+        window_shell : str, optional
+            Shell command to execute when starting the window. The window will
+            automatically close when the command exits.
+
+            .. warning::
+
+                When this command exits, the window will close. This feature is
+                useful for long-running processes where automatic cleanup is desired.
+
+        environment : dict[str, str], optional
+            Dictionary of environment variables to set in the new window.
+            Each key-value pair will be set as an environment variable.
+
+            .. note::
+
+                Requires tmux 3.0+. On older versions, this parameter is ignored
+                with a warning.
+
+        direction : WindowDirection, optional
+            Insert the new window before or after the target window.
+            Values: "before" or "after".
+
+            .. note::
+
+                Requires tmux 3.2+. On older versions, this parameter is ignored
+                with a warning.
+
+        target_window : str, optional
+            Target window identifier for positioning the new window when using
+            the direction parameter.
+
+            .. note::
+
+                Requires tmux 3.2+. On older versions, this parameter is ignored
+                with a warning.
+
+        Returns
+        -------
+        :class:`Window`
+            The newly created window object
+
+        Raises
+        ------
+        :exc:`exc.LibTmuxException`
+            If tmux command execution fails
+
+        See Also
+        --------
+        :meth:`new_window` : Synchronous version of this method
+        :meth:`Session.kill_window` : Kill a window
+        :class:`Window` : Window object documentation
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        It's particularly powerful when creating multiple windows concurrently
+        using ``asyncio.gather()``, which can significantly improve performance
+        compared to sequential creation.
+
+        .. versionadded:: 0.48.0
+
+            Added async window creation support.
+
+        .. versionchanged:: 0.28.0
+
+            ``attach`` default changed from ``True`` to ``False``.
+
+        Examples
+        --------
+        Basic window creation:
+
+        >>> import asyncio
+        >>> async def test_basic_window():
+        ...     test_session = await server.anew_session("anew_window_basic")
+        ...     window = await test_session.anew_window(window_name='editor')
+        ...     name = window.window_name
+        ...     await server.acmd("kill-session", target="anew_window_basic")
+        ...     return name
+        >>> asyncio.run(test_basic_window())
+        'editor'
+
+        With custom working directory:
+
+        >>> import asyncio
+        >>> async def test_start_directory():
+        ...     from pathlib import Path
+        ...     test_session = await server.anew_session("anew_window_dir")
+        ...     window = await test_session.anew_window(
+        ...         window_name='project',
+        ...         start_directory='/tmp'
+        ...     )
+        ...     # Verify window was created
+        ...     name = window.window_name
+        ...     await server.acmd("kill-session", target="anew_window_dir")
+        ...     return name
+        >>> asyncio.run(test_start_directory())
+        'project'
+
+        Creating multiple windows concurrently:
+
+        >>> import asyncio
+        >>> async def test_concurrent_windows():
+        ...     test_session = await server.anew_session("anew_window_concurrent")
+        ...     windows = await asyncio.gather(
+        ...         test_session.anew_window(window_name='editor'),
+        ...         test_session.anew_window(window_name='terminal'),
+        ...         test_session.anew_window(window_name='logs'),
+        ...     )
+        ...     names = [w.window_name for w in windows]
+        ...     await server.acmd("kill-session", target="anew_window_concurrent")
+        ...     return (len(windows), names)
+        >>> asyncio.run(test_concurrent_windows())
+        (3, ['editor', 'terminal', 'logs'])
+
+        With specific window index:
+
+        >>> import asyncio
+        >>> async def test_window_index():
+        ...     test_session = await server.anew_session("anew_window_index")
+        ...     window = await test_session.anew_window(
+        ...         window_name='custom',
+        ...         window_index='5'
+        ...     )
+        ...     # Verify window was created with correct name
+        ...     name = window.window_name
+        ...     await server.acmd("kill-session", target="anew_window_index")
+        ...     return name
+        >>> asyncio.run(test_window_index())
+        'custom'
+        """
+        window_args: tuple[str, ...] = ()
+
+        if not attach:
+            window_args += ("-d",)
+
+        window_args += ("-P",)
+
+        # Catch empty string and default (`None`)
+        if start_directory:
+            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
+            start_directory = pathlib.Path(start_directory).expanduser()
+            window_args += (f"-c{start_directory}",)
+
+        window_args += ("-F#{window_id}",)  # output
+        if window_name is not None and isinstance(window_name, str):
+            window_args += ("-n", window_name)
+
+        if environment:
+            if has_gte_version("3.0"):
+                for k, v in environment.items():
+                    window_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Environment flag ignored, requires tmux 3.0 or newer.",
+                )
+
+        if direction is not None:
+            if has_gte_version("3.2"):
+                window_args += (WINDOW_DIRECTION_FLAG_MAP[direction],)
+            else:
+                logger.warning(
+                    "Direction flag ignored, requires tmux 3.1 or newer.",
+                )
+
+        target: str | None = None
+        if window_index is not None:
+            # empty string for window_index will use the first one available
+            target = f"{self.session_id}:{window_index}"
+        if target_window:
+            if has_gte_version("3.2"):
+                target = target_window
+            else:
+                logger.warning(
+                    "Window target ignored, requires tmux 3.1 or newer.",
+                )
+        elif window_index is not None:
+            # empty string for window_index will use the first one available
+            window_args += (f"-t{self.session_id}:{window_index}",)
+
+        if window_shell:
+            window_args += (window_shell,)
+
+        cmd = await self.acmd("new-window", *window_args, target=target)
+
+        if cmd.stderr:
+            raise exc.LibTmuxException(cmd.stderr)
+
+        window_output = cmd.stdout[0]
+
+        window_formatters = dict(
+            zip(["window_id"], window_output.split(FORMAT_SEPARATOR), strict=False),
+        )
+
+        return Window.from_window_id(
+            server=self.server,
+            window_id=window_formatters["window_id"],
+        )
 
     """
     Commands (tmux-like)
@@ -563,6 +984,10 @@ class Session(Obj, EnvironmentMixin):
         Raises
         ------
         :exc:`exc.BadSessionName`
+
+        See Also
+        --------
+        :meth:`arename_session` : Async version of this method
         """
         session_check_name(new_name)
 
@@ -632,6 +1057,7 @@ class Session(Obj, EnvironmentMixin):
 
         See Also
         --------
+        :meth:`anew_window` : Async version of this method
         :meth:`Window.new_window()`
 
         Examples

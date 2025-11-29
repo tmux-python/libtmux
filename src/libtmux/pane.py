@@ -14,7 +14,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux.common import has_gte_version, has_lt_version, tmux_cmd
+from libtmux.common import AsyncTmuxCmd, has_gte_version, has_lt_version, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -23,6 +23,9 @@ from libtmux.constants import (
 )
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.neo import Obj, fetch_obj
+
+__all__ = ["Pane", "PaneDirection"]
+
 
 if t.TYPE_CHECKING:
     import sys
@@ -202,6 +205,509 @@ class Pane(Obj):
 
         return self.server.cmd(cmd, *args, target=target)
 
+    async def acmd(
+        self,
+        cmd: str,
+        *args: t.Any,
+        target: str | int | None = None,
+    ) -> AsyncTmuxCmd:
+        """Execute tmux subcommand within pane context.
+
+        Automatically binds target by adding  ``-t`` for object's pane ID to the
+        command. Pass ``target`` to keyword arguments to override.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> async def test_acmd():
+        ...     result = await pane.acmd('split-window', '-P')
+        ...     print(result.stdout[0])
+        >>> asyncio.run(test_acmd())
+        libtmux...:...
+
+        From raw output to an enriched `Pane` object:
+
+        >>> async def test_from_pane():
+        ...     pane_id_result = await pane.acmd(
+        ...         'split-window', '-P', '-F#{pane_id}'
+        ...     )
+        ...     return Pane.from_pane_id(
+        ...         pane_id=pane_id_result.stdout[0],
+        ...         server=session.server
+        ...     )
+        >>> asyncio.run(test_from_pane())
+        Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
+
+        Parameters
+        ----------
+        target : str, optional
+            Optional custom target override. By default, the target is the pane ID.
+
+        Returns
+        -------
+        :meth:`server.cmd`
+        """
+        if target is None:
+            target = self.pane_id
+
+        return await self.server.acmd(cmd, *args, target=target)
+
+    async def asend_keys(
+        self,
+        cmd: str,
+        enter: bool | None = True,
+        suppress_history: bool | None = False,
+        literal: bool | None = False,
+    ) -> None:
+        r"""``$ tmux send-keys`` to the pane asynchronously.
+
+        This is the async version of :meth:`send_keys`. It uses ``await self.acmd()``
+        for non-blocking command execution, making it suitable for async applications
+        and enabling concurrent command execution across multiple panes.
+
+        A leading space character is added to cmd to avoid polluting the
+        user's history when suppress_history is True.
+
+        Parameters
+        ----------
+        cmd : str
+            Text or input into pane
+        enter : bool, optional
+            Send enter after sending the input, default True.
+        suppress_history : bool, optional
+            Prepend a space to command to suppress shell history, default False.
+
+            .. versionchanged:: 0.14
+
+               Default changed from True to False.
+        literal : bool, optional
+            Send keys literally, default False.
+
+        See Also
+        --------
+        :meth:`send_keys` : Synchronous version of this method
+        :meth:`acapture_pane` : Capture pane output asynchronously
+        :meth:`acmd` : Execute arbitrary tmux commands asynchronously
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        It's particularly powerful when sending commands to multiple panes concurrently
+        using ``asyncio.gather()``, which can significantly improve performance
+        compared to sequential execution.
+
+        .. versionadded:: 0.48.0
+
+            Added async send_keys support.
+
+        Examples
+        --------
+        Basic command execution:
+
+        >>> import asyncio
+        >>> async def test_basic_send():
+        ...     test_session = await server.anew_session("asend_basic")
+        ...     pane = test_session.active_pane
+        ...     await pane.asend_keys('echo "Hello world"', enter=True)
+        ...     # Wait a moment for command to execute
+        ...     await asyncio.sleep(0.1)
+        ...     output = pane.capture_pane()
+        ...     has_hello = any("Hello world" in line for line in output)
+        ...     await server.acmd("kill-session", target="asend_basic")
+        ...     return has_hello
+        >>> asyncio.run(test_basic_send())
+        True
+
+        Send without enter:
+
+        >>> import asyncio
+        >>> async def test_no_enter():
+        ...     test_session = await server.anew_session("asend_no_enter")
+        ...     pane = test_session.active_pane
+        ...     await pane.asend_keys('echo test', enter=False)
+        ...     await server.acmd("kill-session", target="asend_no_enter")
+        ...     # Command sent but not executed (no enter)
+        >>> asyncio.run(test_no_enter())
+
+        Literal mode (special characters sent as-is):
+
+        >>> import asyncio
+        >>> async def test_literal():
+        ...     test_session = await server.anew_session("asend_literal")
+        ...     pane = test_session.active_pane
+        ...     await pane.asend_keys('C-c', literal=True, enter=False)
+        ...     await server.acmd("kill-session", target="asend_literal")
+        ...     # Sends literal "C-c" text, not Ctrl-C signal
+        >>> asyncio.run(test_literal())
+
+        Concurrent command execution across multiple panes:
+
+        >>> import asyncio
+        >>> async def test_concurrent_send():
+        ...     test_session = await server.anew_session("asend_concurrent")
+        ...     window = test_session.active_window
+        ...     pane1 = window.active_pane
+        ...     pane2 = window.split()
+        ...     pane3 = window.split()
+        ...     # Send commands to all panes concurrently
+        ...     await asyncio.gather(
+        ...         pane1.asend_keys('echo pane1'),
+        ...         pane2.asend_keys('echo pane2'),
+        ...         pane3.asend_keys('echo pane3'),
+        ...     )
+        ...     await server.acmd("kill-session", target="asend_concurrent")
+        ...     # All three commands sent in parallel
+        >>> asyncio.run(test_concurrent_send())
+        """
+        prefix = " " if suppress_history else ""
+
+        if literal:
+            await self.acmd("send-keys", "-l", prefix + cmd)
+        else:
+            await self.acmd("send-keys", prefix + cmd)
+
+        if enter:
+            await self.acmd("send-keys", "Enter")
+
+    async def acapture_pane(
+        self,
+        start: t.Literal["-"] | int | None = None,
+        end: t.Literal["-"] | int | None = None,
+    ) -> str | list[str]:
+        """Capture text from pane asynchronously.
+
+        This is the async version of :meth:`capture_pane`. It uses ``await self.acmd()``
+        for non-blocking output capture, making it suitable for async applications
+        and enabling concurrent output capture from multiple panes.
+
+        ``$ tmux capture-pane`` to pane.
+        ``$ tmux capture-pane -S -10`` to pane.
+        ``$ tmux capture-pane -E 3`` to pane.
+        ``$ tmux capture-pane -S - -E -`` to pane.
+
+        Parameters
+        ----------
+        start : str or int, optional
+            Specify the starting line number.
+            - Zero is the first line of the visible pane
+            - Positive numbers are lines in the visible pane
+            - Negative numbers are lines in the history
+            - ``"-"`` is the start of the history
+            Default: None (capture visible pane only)
+        end : str or int, optional
+            Specify the ending line number.
+            - Zero is the first line of the visible pane
+            - Positive numbers are lines in the visible pane
+            - Negative numbers are lines in the history
+            - ``"-"`` is the end of the visible pane
+            Default: None (capture to end of visible pane)
+
+        Returns
+        -------
+        str or list[str]
+            Captured pane content
+
+        See Also
+        --------
+        :meth:`capture_pane` : Synchronous version of this method
+        :meth:`asend_keys` : Send keys to pane asynchronously
+        :meth:`acmd` : Execute arbitrary tmux commands asynchronously
+
+        Notes
+        -----
+        This method is non-blocking and suitable for async applications. It is
+        especially helpful when capturing output from multiple panes concurrently
+        via ``asyncio.gather()``, which can significantly improve performance
+        compared to sequential capture.
+
+        .. versionadded:: 0.48.0
+
+            Added async capture_pane support.
+
+        Examples
+        --------
+        Basic pane output capture:
+
+        >>> import asyncio
+        >>> async def test_basic_capture():
+        ...     test_session = await server.anew_session("acapture_basic")
+        ...     pane = test_session.active_pane
+        ...     await pane.asend_keys('echo "Test output"')
+        ...     await asyncio.sleep(0.1)
+        ...     output = await pane.acapture_pane()
+        ...     has_test = any("Test output" in line for line in output)
+        ...     await server.acmd("kill-session", target="acapture_basic")
+        ...     return has_test
+        >>> asyncio.run(test_basic_capture())
+        True
+
+        Capture with line range:
+
+        >>> import asyncio
+        >>> async def test_range_capture():
+        ...     test_session = await server.anew_session("acapture_range")
+        ...     pane = test_session.active_pane
+        ...     # Send multiple lines
+        ...     await pane.asend_keys('echo line1')
+        ...     await pane.asend_keys('echo line2')
+        ...     await pane.asend_keys('echo line3')
+        ...     await asyncio.sleep(0.1)
+        ...     # Capture last 5 lines
+        ...     output = await pane.acapture_pane(start=-5, end="-")
+        ...     is_list = isinstance(output, list)
+        ...     await server.acmd("kill-session", target="acapture_range")
+        ...     return is_list
+        >>> asyncio.run(test_range_capture())
+        True
+
+        Concurrent output capture from multiple panes:
+
+        >>> import asyncio
+        >>> async def test_concurrent_capture():
+        ...     test_session = await server.anew_session("acapture_concurrent")
+        ...     window = test_session.active_window
+        ...     pane1 = window.active_pane
+        ...     pane2 = window.split()
+        ...     pane3 = window.split()
+        ...     # Send commands to all panes
+        ...     await asyncio.gather(
+        ...         pane1.asend_keys('echo output1'),
+        ...         pane2.asend_keys('echo output2'),
+        ...         pane3.asend_keys('echo output3'),
+        ...     )
+        ...     await asyncio.sleep(0.1)
+        ...     # Capture output from all panes concurrently
+        ...     outputs = await asyncio.gather(
+        ...         pane1.acapture_pane(),
+        ...         pane2.acapture_pane(),
+        ...         pane3.acapture_pane(),
+        ...     )
+        ...     await server.acmd("kill-session", target="acapture_concurrent")
+        ...     return len(outputs)
+        >>> asyncio.run(test_concurrent_capture())
+        3
+        """
+        cmd_parts: list[str] = ["capture-pane", "-p"]
+        if start is not None:
+            cmd_parts.extend(["-S", str(start)])
+        if end is not None:
+            cmd_parts.extend(["-E", str(end)])
+        result = await self.acmd(*cmd_parts)
+        return result.stdout
+
+    async def asplit(
+        self,
+        /,
+        target: int | str | None = None,
+        start_directory: StrPath | None = None,
+        attach: bool = False,
+        direction: PaneDirection | None = None,
+        full_window_split: bool | None = None,
+        zoom: bool | None = None,
+        shell: str | None = None,
+        size: str | int | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> Pane:
+        """Split window asynchronously and return :class:`Pane`.
+
+        This is the async version of :meth:`split`. It uses ``await self.acmd()``
+        for non-blocking pane creation, making it suitable for async applications
+        and enabling concurrent pane creation.
+
+        By default, splits beneath the current pane.
+
+        Parameters
+        ----------
+        target : optional
+            Optional, custom *target-pane*, used by :meth:`Window.asplit`.
+        attach : bool, optional
+            Make new pane the current pane after creating it, default False.
+        start_directory : str or PathLike, optional
+            Working directory in which the new pane is created.
+        direction : PaneDirection, optional
+            Direction to split: Above, Below (default), Left, or Right.
+        full_window_split : bool, optional
+            Split across full window width or height, rather than active pane.
+        zoom : bool, optional
+            Expand pane after creation.
+        shell : str, optional
+            Execute a command when splitting the pane. The pane will close
+            when the command exits.
+
+            .. warning::
+
+                When this command exits, the pane will close. This feature is
+                useful for long-running processes where automatic cleanup is desired.
+        size : int or str, optional
+            Cell/row count or percentage to occupy with respect to current window.
+            Examples: ``50`` (50 cells), ``"50%"`` (50 percent).
+        environment : dict[str, str], optional
+            Environmental variables for new pane.
+
+            .. note::
+
+                Requires tmux 3.0+. On older versions, this parameter is ignored
+                with a warning.
+
+        Returns
+        -------
+        :class:`Pane`
+            The newly created pane object
+
+        Raises
+        ------
+        :exc:`exc.LibTmuxException`
+            If tmux command execution fails (e.g., pane too small)
+
+        See Also
+        --------
+        :meth:`split` : Synchronous version of this method
+        :meth:`asend_keys` : Send keys to pane asynchronously
+        :meth:`acapture_pane` : Capture pane output asynchronously
+
+        Notes
+        -----
+        This method is non-blocking and suitable for use in async applications.
+        It's particularly powerful when creating multiple panes concurrently
+        using ``asyncio.gather()``, which can significantly improve performance
+        compared to sequential creation.
+
+        .. versionadded:: 0.48.0
+
+            Added async split_window support.
+
+        Examples
+        --------
+        Basic horizontal split (default - below current pane):
+
+        >>> import asyncio
+        >>> async def test_basic_split():
+        ...     test_session = await server.anew_session("asplit_basic")
+        ...     pane = test_session.active_pane
+        ...     new_pane = await pane.asplit()
+        ...     pane_count = len(test_session.active_window.panes)
+        ...     await server.acmd("kill-session", target="asplit_basic")
+        ...     return pane_count
+        >>> asyncio.run(test_basic_split())
+        2
+
+        Vertical split with custom directory:
+
+        >>> import asyncio
+        >>> async def test_vertical_split():
+        ...     test_session = await server.anew_session("asplit_vertical")
+        ...     pane = test_session.active_pane
+        ...     new_pane = await pane.asplit(
+        ...         direction=PaneDirection.Right,
+        ...         start_directory='/tmp'
+        ...     )
+        ...     pane_count = len(test_session.active_window.panes)
+        ...     await server.acmd("kill-session", target="asplit_vertical")
+        ...     return pane_count
+        >>> asyncio.run(test_vertical_split())
+        2
+
+        Split with size specification:
+
+        >>> import asyncio
+        >>> async def test_split_with_size():
+        ...     test_session = await server.anew_session("asplit_size")
+        ...     pane = test_session.active_pane
+        ...     new_pane = await pane.asplit(size="30%")
+        ...     pane_count = len(test_session.active_window.panes)
+        ...     await server.acmd("kill-session", target="asplit_size")
+        ...     return pane_count
+        >>> asyncio.run(test_split_with_size())
+        2
+
+        Concurrent multi-pane creation:
+
+        >>> import asyncio
+        >>> async def test_concurrent_splits():
+        ...     test_session = await server.anew_session("asplit_concurrent")
+        ...     window = test_session.active_window
+        ...     base_pane = window.active_pane
+        ...     # Create multiple panes concurrently
+        ...     new_panes = await asyncio.gather(
+        ...         base_pane.asplit(direction=PaneDirection.Below),
+        ...         base_pane.asplit(direction=PaneDirection.Right),
+        ...     )
+        ...     pane_count = len(window.panes)
+        ...     await server.acmd("kill-session", target="asplit_concurrent")
+        ...     return pane_count >= 3
+        >>> asyncio.run(test_concurrent_splits())
+        True
+        """
+        tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
+
+        tmux_args: tuple[str, ...] = ()
+
+        if direction:
+            tmux_args += tuple(PANE_DIRECTION_FLAG_MAP[direction])
+        else:
+            tmux_args += tuple(PANE_DIRECTION_FLAG_MAP[PaneDirection.Below])
+
+        if size is not None:
+            if has_lt_version("3.1"):
+                if isinstance(size, str) and size.endswith("%"):
+                    tmux_args += (f"-p{str(size).rstrip('%')}",)
+                else:
+                    warnings.warn(
+                        'Ignored size. Use percent in tmux < 3.1, e.g. "size=50%"',
+                        stacklevel=2,
+                    )
+            else:
+                tmux_args += (f"-l{size}",)
+
+        if full_window_split:
+            tmux_args += ("-f",)
+
+        if zoom:
+            tmux_args += ("-Z",)
+
+        tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
+
+        if start_directory:
+            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-window -c.
+            start_path = pathlib.Path(start_directory).expanduser()
+            tmux_args += (f"-c{start_path}",)
+
+        if not attach:
+            tmux_args += ("-d",)
+
+        if environment:
+            if has_gte_version("3.0"):
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
+            else:
+                logger.warning(
+                    "Environment flag ignored, tmux 3.0 or newer required.",
+                )
+
+        if shell:
+            tmux_args += (shell,)
+
+        pane_cmd = await self.acmd("split-window", *tmux_args, target=target)
+
+        # tmux < 1.7. This is added in 1.7.
+        if pane_cmd.stderr:
+            if "pane too small" in pane_cmd.stderr:
+                raise exc.LibTmuxException(pane_cmd.stderr)
+
+            raise exc.LibTmuxException(
+                pane_cmd.stderr,
+                self.__dict__,
+                self.window.panes,
+            )
+
+        pane_output = pane_cmd.stdout[0]
+
+        pane_formatters = dict(
+            zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR), strict=False),
+        )
+
+        return self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
+
     """
     Commands (tmux-like)
     """
@@ -335,6 +841,10 @@ class Pane(Obj):
             Negative numbers are lines in the history.
             `-` is the end of the visible pane
             Default: None
+
+        See Also
+        --------
+        :meth:`acapture_pane` : Async version of this method
         """
         cmd = ["capture-pane", "-p"]
         if start is not None:
@@ -369,6 +879,10 @@ class Pane(Obj):
                Default changed from True to False.
         literal : bool, optional
             Send keys literally, default False.
+
+        See Also
+        --------
+        :meth:`asend_keys` : Async version of this method
 
         Examples
         --------
@@ -586,6 +1100,10 @@ class Pane(Obj):
             Cell/row or percentage to occupy with respect to current window.
         environment: dict, optional
             Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+
+        See Also
+        --------
+        :meth:`asplit` : Async version of this method
 
         Examples
         --------
