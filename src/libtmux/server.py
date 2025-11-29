@@ -28,7 +28,6 @@ from .common import (
     PaneDict,
     SessionDict,
     WindowDict,
-    has_gte_version,
     session_check_name,
 )
 
@@ -325,7 +324,6 @@ class Server(EnvironmentMixin):
         exact : bool
             match the session name exactly. tmux uses fnmatch by default.
             Internally prepends ``=`` to the session in ``$ tmux has-session``.
-            tmux 2.1 and up only.
 
         Raises
         ------
@@ -337,7 +335,7 @@ class Server(EnvironmentMixin):
         """
         session_check_name(target_session)
 
-        if exact and has_gte_version("2.1"):
+        if exact:
             target_session = f"={target_session}"
 
         proc = self.cmd("has-session", target=target_session)
@@ -541,7 +539,6 @@ class Server(EnvironmentMixin):
             tmux_args += ("-d",)
 
         if start_directory:
-            # as of 2014-02-08 tmux 1.9-dev doesn't expand ~ in new-session -c.
             start_directory = pathlib.Path(start_directory).expanduser()
             tmux_args += ("-c", str(start_directory))
 
@@ -555,13 +552,8 @@ class Server(EnvironmentMixin):
             tmux_args += ("-y", y)
 
         if environment:
-            if has_gte_version("3.2"):
-                for k, v in environment.items():
-                    tmux_args += (f"-e{k}={v}",)
-            else:
-                logger.warning(
-                    "Environment flag ignored, tmux 3.2 or newer required.",
-                )
+            for k, v in environment.items():
+                tmux_args += (f"-e{k}={v}",)
 
         if window_command:
             tmux_args += (window_command,)

@@ -10,7 +10,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_gte_version, has_lt_version, has_version
+from libtmux.common import has_version
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.window import Window
@@ -144,10 +144,7 @@ def test_split_window_shell(session: Session) -> None:
     assert window.width is not None
     assert window.panes[0].height is not None
     assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
-    if has_gte_version("3.2"):
-        assert pane.get("pane_start_command", "").replace('"', "") == cmd
-    else:
-        assert pane.get("pane_start_command") == cmd
+    assert pane.get("pane_start_command", "").replace('"', "") == cmd
 
 
 def test_split_window_horizontal(session: Session) -> None:
@@ -188,30 +185,17 @@ def test_split_window_size(session: Session) -> None:
     window = session.new_window(window_name="split_window window size")
     window.resize(height=100, width=100)
 
-    if has_gte_version("3.1"):
-        pane = window.split_window(size=10)
-        assert pane.pane_height == "10"
+    pane = window.split_window(size=10)
+    assert pane.pane_height == "10"
 
-        pane = window.split_window(vertical=False, size=10)
-        assert pane.pane_width == "10"
+    pane = window.split_window(vertical=False, size=10)
+    assert pane.pane_width == "10"
 
-        pane = window.split_window(size="10%")
-        assert pane.pane_height == "8"
+    pane = window.split_window(size="10%")
+    assert pane.pane_height == "8"
 
-        pane = window.split_window(vertical=False, size="10%")
-        assert pane.pane_width == "8"
-    else:
-        window_height_before = (
-            int(window.window_height) if isinstance(window.window_height, str) else 0
-        )
-        window_width_before = (
-            int(window.window_width) if isinstance(window.window_width, str) else 0
-        )
-        pane = window.split_window(size="10%")
-        assert pane.pane_height == str(int(window_height_before * 0.1))
-
-        pane = window.split_window(vertical=False, size="10%")
-        assert pane.pane_width == str(int(window_width_before * 0.1))
+    pane = window.split_window(vertical=False, size="10%")
+    assert pane.pane_width == "8"
 
 
 @pytest.mark.parametrize(
@@ -279,9 +263,8 @@ def test_set_show_window_options(session: Session) -> None:
     assert window.show_window_option("main-pane-height") == 40
     assert window.show_window_options()["main-pane-height"] == 40
 
-    if has_gte_version("2.3"):
-        window.set_window_option("pane-border-format", " #P ")
-        assert window.show_window_option("pane-border-format") == " #P "
+    window.set_window_option("pane-border-format", " #P ")
+    assert window.show_window_option("pane-border-format") == " #P "
 
 
 def test_empty_window_option_returns_None(session: Session) -> None:
@@ -303,13 +286,10 @@ def test_show_window_option(session: Session) -> None:
 
 
 def test_show_window_option_unknown(session: Session) -> None:
-    """Window.show_window_option raises UnknownOption for bad option key."""
+    """Window.show_window_option raises InvalidOption for bad option key."""
     window = session.new_window(window_name="test_window")
 
-    cmd_exception: type[exc.OptionError] = exc.UnknownOption
-    if has_gte_version("3.0"):
-        cmd_exception = exc.InvalidOption
-    with pytest.raises(cmd_exception):
+    with pytest.raises(exc.InvalidOption):
         window.show_window_option("moooz")
 
 
@@ -330,15 +310,11 @@ def test_set_window_option_ambiguous(session: Session) -> None:
 
 
 def test_set_window_option_invalid(session: Session) -> None:
-    """Window.set_window_option raises ValueError for invalid option key."""
+    """Window.set_window_option raises InvalidOption for invalid option key."""
     window = session.new_window(window_name="test_window")
 
-    if has_gte_version("2.4"):
-        with pytest.raises(exc.InvalidOption):
-            window.set_window_option("afewewfew", 43)
-    else:
-        with pytest.raises(exc.UnknownOption):
-            window.set_window_option("afewewfew", 43)
+    with pytest.raises(exc.InvalidOption):
+        window.set_window_option("afewewfew", 43)
 
 
 def test_move_window(session: Session) -> None:
@@ -366,10 +342,6 @@ def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
     window.select_layout()
 
 
-@pytest.mark.skipif(
-    has_lt_version("3.2"),
-    reason="needs filter introduced in tmux >= 3.2",
-)
 def test_empty_window_name(session: Session) -> None:
     """New windows can be created with empty string for window name."""
     session.set_option("automatic-rename", "off")
@@ -389,10 +361,6 @@ def test_empty_window_name(session: Session) -> None:
     assert "''" in cmd.stdout
 
 
-@pytest.mark.skipif(
-    has_lt_version("3.0"),
-    reason="needs -e flag for split-window which was introduced in 3.0",
-)
 @pytest.mark.parametrize(
     "environment",
     [
@@ -419,26 +387,3 @@ def test_split_window_with_environment(
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
         assert pane.capture_pane()[-2] == v
-
-
-@pytest.mark.skipif(
-    has_gte_version("3.0"),
-    reason="3.0 has the -e flag on split-window",
-)
-def test_split_window_with_environment_logs_warning_for_old_tmux(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Verify splitting window with environment variables warns if tmux too old."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in Path."
-
-    window = session.new_window(window_name="split_window_with_environment")
-    window.split_window(
-        shell=f"{env} PS1='$ ' sh",
-        environment={"ENV_VAR": "pane"},
-    )
-
-    assert any("Environment flag ignored" in record.msg for record in caplog.records), (
-        "Warning missing"
-    )

@@ -14,7 +14,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.common import tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     PaneDirection,
@@ -294,7 +294,7 @@ class Window(Obj):
         size: int, optional
             Cell/row or percentage to occupy with respect to current window.
         environment: dict, optional
-            Environmental variables for new pane. tmux 3.0+ only. Passthrough to ``-e``.
+            Environmental variables for new pane. Passthrough to ``-e``.
         """
         active_pane = self.active_pane or self.panes[0]
         return active_pane.split(
@@ -357,10 +357,6 @@ class Window(Obj):
         2. Manual resizing: ``height`` and / or ``width``.
         3. Expand or shrink: ``expand`` or ``shrink``.
         """
-        if not has_gte_version("2.9"):
-            warnings.warn("resize() requires tmux 2.9 or newer", stacklevel=2)
-            return self
-
         tmux_args: tuple[str, ...] = ()
 
         # Adjustments
@@ -694,11 +690,6 @@ class Window(Obj):
 
         Examples
         --------
-        .. ::
-            >>> import pytest
-            >>> from libtmux.common import has_lt_version
-            >>> if has_lt_version('3.2'):
-            ...     pytest.skip('This doctest requires tmux 3.2 or newer')
         >>> window_initial = session.new_window(window_name='Example')
         >>> window_initial
         Window(@... 2:Example, Session($1 libtmux_...))
@@ -900,7 +891,7 @@ class Window(Obj):
             # Deprecated in 3.1 in favor of -l
             warnings.warn(
                 f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
-                ' ("-l" flag) in tmux 3.1+.',
+                '(using the "-l" flag).',
                 category=DeprecationWarning,
                 stacklevel=2,
             )

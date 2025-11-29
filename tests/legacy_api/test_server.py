@@ -8,7 +8,6 @@ import typing as t
 
 import pytest
 
-from libtmux.common import has_gte_version
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -130,10 +129,7 @@ def test_new_session_shell(server: Server) -> None:
     pane_start_command = pane.get("pane_start_command")
     assert pane_start_command is not None
 
-    if has_gte_version("3.2"):
-        assert pane_start_command.replace('"', "") == cmd
-    else:
-        assert pane_start_command == cmd
+    assert pane_start_command.replace('"', "") == cmd
 
 
 def test_no_server_sessions() -> None:

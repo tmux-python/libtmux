@@ -102,7 +102,7 @@ def test_get_version_too_low(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
     with pytest.raises(LibTmuxException) as exc_info:
         get_version()
-    exc_info.match("is running tmux 1.3 or earlier")
+    exc_info.match("does not meet the minimum tmux version requirement")
 
 
 def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:

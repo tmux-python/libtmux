@@ -9,7 +9,6 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_gte_version, has_lt_version
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.test.constants import TEST_SESSION_PREFIX
@@ -27,9 +26,8 @@ def test_has_session(server: Server, session: Session) -> None:
     TEST_SESSION_NAME = session.get("session_name")
     assert TEST_SESSION_NAME is not None
     assert server.has_session(TEST_SESSION_NAME)
-    if has_gte_version("2.1"):
-        assert not server.has_session(TEST_SESSION_NAME[:-2])
-        assert server.has_session(TEST_SESSION_NAME[:-2], exact=False)
+    assert not server.has_session(TEST_SESSION_NAME[:-2])
+    assert server.has_session(TEST_SESSION_NAME[:-2], exact=False)
     assert not server.has_session("asdf2314324321")
 
 
@@ -148,11 +146,8 @@ def test_empty_session_option_returns_None(session: Session) -> None:
 
 
 def test_show_option_unknown(session: Session) -> None:
-    """Session.show_option raises UnknownOption for invalid option."""
-    cmd_exception: type[exc.OptionError] = exc.UnknownOption
-    if has_gte_version("3.0"):
-        cmd_exception = exc.InvalidOption
-    with pytest.raises(cmd_exception):
+    """Session.show_option raises InvalidOption for invalid option."""
+    with pytest.raises(exc.InvalidOption):
         session.show_option("moooz")
 
 
@@ -169,13 +164,9 @@ def test_set_option_ambiguous(session: Session) -> None:
 
 
 def test_set_option_invalid(session: Session) -> None:
-    """Session.set_option raises UnknownOption for invalid option."""
-    if has_gte_version("2.4"):
-        with pytest.raises(exc.InvalidOption):
-            session.set_option("afewewfew", 43)
-    else:
-        with pytest.raises(exc.UnknownOption):
-            session.set_option("afewewfew", 43)
+    """Session.set_option raises InvalidOption for invalid option."""
+    with pytest.raises(exc.InvalidOption):
+        session.set_option("afewewfew", 43)
 
 
 def test_show_environment(session: Session) -> None:
@@ -264,10 +255,6 @@ def test_cmd_inserts_session_id(session: Session) -> None:
     assert cmd.cmd[-1] == last_arg
 
 
-@pytest.mark.skipif(
-    has_lt_version("3.0"),
-    reason="needs -e flag for new-window which was introduced in 3.0",
-)
 @pytest.mark.parametrize(
     "environment",
     [
@@ -294,27 +281,3 @@ def test_new_window_with_environment(
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
         assert pane.capture_pane()[-2] == v
-
-
-@pytest.mark.skipif(
-    has_gte_version("3.0"),
-    reason="3.0 has the -e flag on new-window",
-)
-def test_new_window_with_environment_logs_warning_for_old_tmux(
-    session: Session,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Verify new window with environment vars create a warning if tmux is too old."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in PATH."
-
-    session.new_window(
-        attach=True,
-        window_name="window_with_environment",
-        window_shell=f"{env} PS1='$ ' sh",
-        environment={"ENV_VAR": "window"},
-    )
-
-    assert any("Environment flag ignored" in record.msg for record in caplog.records), (
-        "Warning missing"
-    )
