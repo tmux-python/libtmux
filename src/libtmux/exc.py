@@ -81,7 +81,7 @@ class UnknownColorOption(UnknownOption):
 
 
 class InvalidOption(OptionError):
-    """Option invalid to tmux, introduced in tmux v2.4."""
+    """Option invalid to tmux."""
 
 
 class AmbiguousOption(OptionError):
