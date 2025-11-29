@@ -211,6 +211,7 @@ Key highlights:
 ### Imports
 
 - **Use namespace imports**: `import enum` instead of `from enum import Enum`
+  - **Exception**: `dataclasses` module may use `from dataclasses import dataclass, field` for cleaner decorator syntax
 - **For typing**, use `import typing as t` and access via namespace: `t.NamedTuple`, etc.
 - **Use `from __future__ import annotations`** at the top of all Python files
 
