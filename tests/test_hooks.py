@@ -712,3 +712,64 @@ def test_set_hook_append_flag(server: Server) -> None:
 
     # Cleanup
     session.unset_hook("session-renamed")
+
+
+# =============================================================================
+# show_hooks Tests
+# =============================================================================
+
+
+class ShowHooksTestCase(t.NamedTuple):
+    """Test case for show_hooks validation."""
+
+    test_id: str
+    hook: str
+    value: str
+    expected_value: str
+    expected_type: type
+    min_version: str = "3.2"
+
+
+SHOW_HOOKS_TEST_CASES: list[ShowHooksTestCase] = [
+    ShowHooksTestCase(
+        test_id="string_hook_value",
+        hook="session-renamed[0]",
+        value='display-message "test"',
+        expected_value="display-message test",  # tmux strips quotes in output
+        expected_type=str,
+    ),
+    ShowHooksTestCase(
+        test_id="multiple_hooks",
+        hook="session-renamed[1]",
+        value='display-message "another"',
+        expected_value="display-message another",  # tmux strips quotes in output
+        expected_type=str,
+    ),
+]
+
+
+def _build_show_hooks_params() -> list[t.Any]:
+    """Build pytest params for show_hooks tests."""
+    return [pytest.param(tc, id=tc.test_id) for tc in SHOW_HOOKS_TEST_CASES]
+
+
+@pytest.mark.parametrize("test_case", _build_show_hooks_params())
+def test_show_hooks_stores_string_values(
+    server: Server,
+    test_case: ShowHooksTestCase,
+) -> None:
+    """Test that show_hooks() correctly stores string hook values."""
+    if not has_gte_version(test_case.min_version):
+        pytest.skip(f"Requires tmux >= {test_case.min_version}")
+
+    session = server.new_session(session_name="test_show_hooks")
+
+    session.set_hook(test_case.hook, test_case.value)
+    hooks = session.show_hooks()
+
+    assert test_case.hook in hooks
+    assert isinstance(hooks[test_case.hook], test_case.expected_type)
+    assert hooks[test_case.hook] == test_case.expected_value
+
+    # Cleanup
+    session.unset_hook(test_case.hook.split("[")[0])

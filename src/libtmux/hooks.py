@@ -30,7 +30,6 @@ This module provides bulk operations for managing multiple indexed hooks:
 from __future__ import annotations
 
 import logging
-import shlex
 import typing as t
 import warnings
 
@@ -254,7 +253,37 @@ class HooksMixin(CmdMixin):
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         ignore_errors: bool | None = None,
     ) -> HookDict:
-        """Return a dict of hooks for the target."""
+        """Return a dict of hooks for the target.
+
+        Parameters
+        ----------
+        global_ : bool, optional
+            Pass ``-g`` flag for global hooks, default False.
+        scope : OptionScope | _DefaultOptionScope | None, optional
+            Hook scope (Server/Session/Window/Pane), defaults to object's scope.
+        ignore_errors : bool, optional
+            Suppress errors with ``-q`` flag.
+
+        Returns
+        -------
+        HookDict
+            Dictionary mapping hook names to their values.
+
+        Examples
+        --------
+        >>> session.set_hook('session-renamed[0]', 'display-message "test"')
+        Session($...)
+
+        >>> hooks = session.show_hooks()
+        >>> isinstance(hooks, dict)
+        True
+
+        >>> 'session-renamed[0]' in hooks
+        True
+
+        >>> session.unset_hook('session-renamed')
+        Session($...)
+        """
         if scope is DEFAULT_OPTION_SCOPE:
             scope = self.default_hook_scope
 
@@ -283,16 +312,20 @@ class HooksMixin(CmdMixin):
         output = cmd.stdout
         hooks: HookDict = {}
         for item in output:
-            try:
-                key, val = shlex.split(item)
-            except ValueError:
+            # Split on first whitespace only to handle multi-word hook values
+            parts = item.split(None, 1)
+            if len(parts) == 2:
+                key, val = parts
+            elif len(parts) == 1:
+                key, val = parts[0], None
+            else:
                 logger.warning(f"Error extracting hook: {item}")
-                key, val = item, None
-            assert isinstance(key, str)
-            assert isinstance(val, str) or val is None
+                continue
 
             if isinstance(val, str) and val.isdigit():
                 hooks[key] = int(val)
+            elif isinstance(val, str):
+                hooks[key] = val
 
         return hooks
 
