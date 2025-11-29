@@ -16,6 +16,7 @@ hide-toc: true
 :maxdepth: 2
 
 quickstart
+quickstart_async
 about
 topics/index
 api/index
