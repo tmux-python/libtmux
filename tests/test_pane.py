@@ -9,7 +9,6 @@ import typing as t
 
 import pytest
 
-from libtmux.common import has_gte_version, has_lt_version, has_lte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
 
@@ -158,10 +157,6 @@ def test_capture_pane_end(session: Session) -> None:
     assert pane_contents == '$ printf "%s"\n$'
 
 
-@pytest.mark.skipif(
-    has_lte_version("3.1"),
-    reason="3.2 has the -Z flag on split-window",
-)
 def test_pane_split_window_zoom(
     session: Session,
 ) -> None:
@@ -188,10 +183,6 @@ def test_pane_split_window_zoom(
     assert pane_with_zoom.height == pane_with_zoom.window_height
 
 
-@pytest.mark.skipif(
-    has_lt_version("2.9"),
-    reason="resize-window only exists in tmux 2.9+",
-)
 def test_resize_pane(
     session: Session,
 ) -> None:
@@ -229,21 +220,20 @@ def test_resize_pane(
     )
     assert int(pane.pane_width) == 75
 
-    if has_gte_version("3.1"):
-        # Manual: Height percentage
-        window.select_layout("main-vertical")
-        pane_height_before = int(pane.pane_height)
-        pane.resize_pane(
-            height="15%",
-        )
-        assert int(pane.pane_height) == 75
+    # Manual: Height percentage
+    window.select_layout("main-vertical")
+    pane_height_before = int(pane.pane_height)
+    pane.resize_pane(
+        height="15%",
+    )
+    assert int(pane.pane_height) == 75
 
-        # Manual: Width percentage
-        window.select_layout("main-horizontal")
-        pane.resize_pane(
-            width="15%",
-        )
-        assert int(pane.pane_width) == 75
+    # Manual: Width percentage
+    window.select_layout("main-horizontal")
+    pane.resize_pane(
+        width="15%",
+    )
+    assert int(pane.pane_width) == 75
 
     #
     # Adjustments
@@ -287,43 +277,30 @@ def test_split_pane_size(session: Session) -> None:
     pane = window.active_pane
     assert pane is not None
 
-    if has_gte_version("3.1"):
-        short_pane = pane.split(size=10)
-        assert short_pane.pane_height == "10"
+    short_pane = pane.split(size=10)
+    assert short_pane.pane_height == "10"
 
-        assert short_pane.at_left
-        assert short_pane.at_right
-        assert not short_pane.at_top
-        assert short_pane.at_bottom
+    assert short_pane.at_left
+    assert short_pane.at_right
+    assert not short_pane.at_top
+    assert short_pane.at_bottom
 
-        narrow_pane = pane.split(direction=PaneDirection.Right, size=10)
-        assert narrow_pane.pane_width == "10"
+    narrow_pane = pane.split(direction=PaneDirection.Right, size=10)
+    assert narrow_pane.pane_width == "10"
 
-        assert not narrow_pane.at_left
-        assert narrow_pane.at_right
-        assert narrow_pane.at_top
-        assert not narrow_pane.at_bottom
+    assert not narrow_pane.at_left
+    assert narrow_pane.at_right
+    assert narrow_pane.at_top
+    assert not narrow_pane.at_bottom
 
-        new_pane = pane.split(size="10%")
-        assert new_pane.pane_height == "8"
+    new_pane = pane.split(size="10%")
+    assert new_pane.pane_height == "8"
 
-        new_pane = short_pane.split(direction=PaneDirection.Right, size="10%")
-        assert new_pane.pane_width == "10"
+    new_pane = short_pane.split(direction=PaneDirection.Right, size="10%")
+    assert new_pane.pane_width == "10"
 
-        assert not new_pane.at_left
-        assert new_pane.at_right
-    else:
-        window_height_before = (
-            int(window.window_height) if isinstance(window.window_height, str) else 0
-        )
-        window_width_before = (
-            int(window.window_width) if isinstance(window.window_width, str) else 0
-        )
-        new_pane = pane.split(size="10%")
-        assert new_pane.pane_height == str(int(window_height_before * 0.1))
-
-        new_pane = new_pane.split(direction=PaneDirection.Right, size="10%")
-        assert new_pane.pane_width == str(int(window_width_before * 0.1))
+    assert not new_pane.at_left
+    assert new_pane.at_right
 
 
 def test_pane_context_manager(session: Session) -> None:
