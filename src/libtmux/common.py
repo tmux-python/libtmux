@@ -24,48 +24,15 @@ logger = logging.getLogger(__name__)
 
 
 #: Minimum version of tmux required to run libtmux
-TMUX_MIN_VERSION = "1.8"
+TMUX_MIN_VERSION = "3.2a"
 
 #: Most recent version of tmux supported
 TMUX_MAX_VERSION = "3.6"
-
-#: Minimum version before deprecation warning is shown
-TMUX_SOFT_MIN_VERSION = "3.2a"
 
 SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
 WindowOptionDict = dict[str, t.Any]
 PaneDict = dict[str, t.Any]
-
-#: Flag to ensure deprecation warning is only shown once per process
-_version_deprecation_checked: bool = False
-
-
-def _check_deprecated_version(version: LooseVersion) -> None:
-    """Check if tmux version is deprecated and warn once.
-
-    This is called from get_version() on first invocation.
-    """
-    global _version_deprecation_checked
-    if _version_deprecation_checked:
-        return
-    _version_deprecation_checked = True
-
-    import os
-    import warnings
-
-    if os.environ.get("LIBTMUX_SUPPRESS_VERSION_WARNING"):
-        return
-
-    if version < LooseVersion(TMUX_SOFT_MIN_VERSION):
-        warnings.warn(
-            f"tmux {version} is deprecated and will be unsupported in a future "
-            f"libtmux release. Please upgrade to tmux {TMUX_SOFT_MIN_VERSION} "
-            "or newer. Set LIBTMUX_SUPPRESS_VERSION_WARNING=1 to suppress this "
-            "warning.",
-            FutureWarning,
-            stacklevel=4,
-        )
 
 
 class EnvironmentMixin:
@@ -336,9 +303,7 @@ def get_version() -> LooseVersion:
 
     version = re.sub(r"[a-z-]", "", version)
 
-    version_obj = LooseVersion(version)
-    _check_deprecated_version(version_obj)
-    return version_obj
+    return LooseVersion(version)
 
 
 def has_version(version: str) -> bool:
@@ -422,7 +387,7 @@ def has_lt_version(max_version: str) -> bool:
 
 
 def has_minimum_version(raises: bool = True) -> bool:
-    """Return True if tmux meets version requirement. Version >1.8 or above.
+    """Return True if tmux meets version requirement. Version >= 3.2a.
 
     Parameters
     ----------
@@ -441,6 +406,9 @@ def has_minimum_version(raises: bool = True) -> bool:
 
     Notes
     -----
+    .. versionchanged:: 0.49.0
+        Minimum version bumped to 3.2a. For older tmux, use libtmux v0.48.x.
+
     .. versionchanged:: 0.7.0
         No longer returns version, returns True or False
 
@@ -454,7 +422,7 @@ def has_minimum_version(raises: bool = True) -> bool:
             msg = (
                 f"libtmux only supports tmux {TMUX_MIN_VERSION} and greater. This "
                 f"system has {get_version()} installed. Upgrade your tmux to use "
-                "libtmux."
+                "libtmux, or use libtmux v0.48.x for older tmux versions."
             )
             raise exc.VersionTooLow(msg)
         return False
