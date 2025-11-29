@@ -14,7 +14,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.common import tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     PaneDirection,
@@ -357,10 +357,6 @@ class Window(Obj):
         2. Manual resizing: ``height`` and / or ``width``.
         3. Expand or shrink: ``expand`` or ``shrink``.
         """
-        if not has_gte_version("2.9"):
-            warnings.warn("resize() requires tmux 2.9 or newer", stacklevel=2)
-            return self
-
         tmux_args: tuple[str, ...] = ()
 
         # Adjustments
@@ -694,11 +690,6 @@ class Window(Obj):
 
         Examples
         --------
-        .. ::
-            >>> import pytest
-            >>> from libtmux.common import has_lt_version
-            >>> if has_lt_version('3.2'):
-            ...     pytest.skip('This doctest requires tmux 3.2 or newer')
         >>> window_initial = session.new_window(window_name='Example')
         >>> window_initial
         Window(@... 2:Example, Session($1 libtmux_...))
