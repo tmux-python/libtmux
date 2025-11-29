@@ -32,7 +32,17 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
-_Future release notes will be placed here_
+### Breaking Changes
+
+#### tmux 1.8 to 3.1c support removed (#608)
+
+Support for tmux versions below 3.2a has been removed. This completes the
+deprecation announced in v0.48.0.
+
+- Minimum tmux version is now 3.2a (`TMUX_MIN_VERSION`)
+- Removed `TMUX_SOFT_MIN_VERSION` constant and deprecation warning system
+- Removed version guards throughout the codebase
+- For users on older tmux, use libtmux v0.48.x
 
 ## libtmux 0.48.0 (2025-11-28)
 
