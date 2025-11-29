@@ -25,8 +25,6 @@ from .common import (
     EnvironmentMixin,
     WindowDict,
     handle_option_error,
-    has_gte_version,
-    has_version,
     session_check_name,
 )
 
@@ -569,16 +567,7 @@ class Session(Obj, EnvironmentMixin):
         proc = self.cmd("rename-session", new_name)
 
         if proc.stderr:
-            if has_version("2.7") and "no current client" in proc.stderr:
-                """tmux 2.7 raises "no current client" warning on BSD systems.
-
-                Should be fixed next release:
-
-                - https://www.mail-archive.com/tech@openbsd.org/msg45186.html
-                - https://marc.info/?l=openbsd-cvs&m=152183263526828&w=2
-                """
-            else:
-                raise exc.LibTmuxException(proc.stderr)
+            raise exc.LibTmuxException(proc.stderr)
 
         self.refresh()
 
@@ -636,11 +625,6 @@ class Session(Obj, EnvironmentMixin):
 
         Examples
         --------
-        .. ::
-            >>> import pytest
-            >>> from libtmux.common import has_lt_version
-            >>> if has_lt_version('3.2'):
-            ...     pytest.skip('direction doctests require tmux 3.2 or newer')
         >>> window_initial = session.new_window(window_name='Example')
         >>> window_initial
         Window(@... 2:Example, Session($1 libtmux_...))
@@ -689,33 +673,18 @@ class Session(Obj, EnvironmentMixin):
             window_args += ("-n", window_name)
 
         if environment:
-            if has_gte_version("3.0"):
-                for k, v in environment.items():
-                    window_args += (f"-e{k}={v}",)
-            else:
-                logger.warning(
-                    "Environment flag ignored, requires tmux 3.0 or newer.",
-                )
+            for k, v in environment.items():
+                window_args += (f"-e{k}={v}",)
 
         if direction is not None:
-            if has_gte_version("3.2"):
-                window_args += (WINDOW_DIRECTION_FLAG_MAP[direction],)
-            else:
-                logger.warning(
-                    "Direction flag ignored, requires tmux 3.1 or newer.",
-                )
+            window_args += (WINDOW_DIRECTION_FLAG_MAP[direction],)
 
         target: str | None = None
         if window_index is not None:
             # empty string for window_index will use the first one available
             target = f"{self.session_id}:{window_index}"
         if target_window:
-            if has_gte_version("3.2"):
-                target = target_window
-            else:
-                logger.warning(
-                    "Window target ignored, requires tmux 3.1 or newer.",
-                )
+            target = target_window
         elif window_index is not None:
             # empty string for window_index will use the first one available
             window_args += (f"-t{self.session_id}:{window_index}",)
