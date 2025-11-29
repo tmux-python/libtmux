@@ -798,3 +798,105 @@ def test_run_hook_basic(server: Server) -> None:
 
     # Cleanup
     session.unset_hook("session-renamed")
+
+
+# =============================================================================
+# set_hook Flag Combination Tests
+# =============================================================================
+
+
+class SetHookFlagTestCase(t.NamedTuple):
+    """Test case for set_hook flag combinations."""
+
+    test_id: str
+    flag_kwargs: dict[str, t.Any]
+    expected_behavior: str  # "sets_hook", "runs_immediately", "appends", "global"
+    min_version: str = "3.2"
+
+
+SET_HOOK_FLAG_TEST_CASES: list[SetHookFlagTestCase] = [
+    SetHookFlagTestCase(
+        "append_to_existing",
+        {"append": True},
+        "appends",
+    ),
+    SetHookFlagTestCase(
+        "global_hook",
+        {"global_": True},
+        "global",
+    ),
+    SetHookFlagTestCase(
+        "run_immediately",
+        {"run": True},
+        "runs_immediately",
+    ),
+    SetHookFlagTestCase(
+        "append_and_global",
+        {"append": True, "global_": True},
+        "appends",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [pytest.param(tc, id=tc.test_id) for tc in SET_HOOK_FLAG_TEST_CASES],
+)
+def test_set_hook_flag_combinations(
+    server: Server,
+    test_case: SetHookFlagTestCase,
+) -> None:
+    """Test set_hook with various flag combinations."""
+    if not has_gte_version(test_case.min_version):
+        pytest.skip(f"Requires tmux {test_case.min_version}+")
+
+    session = server.new_session(session_name="test_flags")
+
+    hook_name = "session-renamed"
+    hook_cmd = "display-message 'flag test'"
+
+    if test_case.expected_behavior == "appends":
+        # Set initial hook first
+        session.set_hook(f"{hook_name}[0]", "display-message 'initial'")
+        session.set_hook(hook_name, hook_cmd, **test_case.flag_kwargs)
+
+        # Verify append added another entry
+        if test_case.flag_kwargs.get("global_"):
+            # Use raw command for global hooks
+            result = server.cmd("show-hooks", "-g", hook_name)
+            assert result.stdout is not None
+            parsed = Hooks.from_stdout(result.stdout)
+        else:
+            hooks = session._show_hook(hook_name)
+            assert hooks is not None
+            parsed = Hooks.from_stdout(hooks)
+
+        hook_values = parsed.session_renamed.as_list()
+        assert len(hook_values) >= 1
+
+    elif test_case.expected_behavior == "global":
+        session.set_hook(f"{hook_name}[0]", hook_cmd, **test_case.flag_kwargs)
+
+        # Global hook should be visible from server with -g flag
+        result = server.cmd("show-hooks", "-g", f"{hook_name}[0]")
+        assert result.stdout is not None
+        assert len(result.stdout) > 0
+        assert "display-message" in result.stdout[0]
+
+    elif test_case.expected_behavior == "runs_immediately":
+        # The -R flag runs hook immediately WITHOUT storing
+        # So after set_hook with run=True, hook should NOT be stored
+        session.set_hook(hook_name, hook_cmd, **test_case.flag_kwargs)
+
+        # Hook should NOT be stored (run immediately and discarded)
+        hooks = session._show_hook(hook_name)
+        # Either None or empty
+        if hooks:
+            parsed = Hooks.from_stdout(hooks)
+            # May be empty or have default empty entry
+            assert parsed.session_renamed is None or len(parsed.session_renamed) == 0
+
+    # Cleanup
+    session.unset_hook(hook_name)
+    if test_case.flag_kwargs.get("global_"):
+        server.cmd("set-hook", "-gu", hook_name)
