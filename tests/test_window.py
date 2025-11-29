@@ -722,3 +722,75 @@ def test_split_start_directory_pathlib(
     actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
     expected_path = str(user_path.resolve())
     assert actual_path == expected_path
+
+
+# --- Deprecation Warning Tests ---
+
+
+class DeprecatedMethodTestCase(t.NamedTuple):
+    """Test case for deprecated method warnings."""
+
+    test_id: str
+    method_name: str  # Name of deprecated method to call
+    args: tuple[t.Any, ...]  # Positional args
+    kwargs: dict[str, t.Any]  # Keyword args
+    expected_warning_match: str  # Regex pattern to match warning message
+
+
+DEPRECATED_WINDOW_METHOD_TEST_CASES: list[DeprecatedMethodTestCase] = [
+    DeprecatedMethodTestCase(
+        test_id="set_window_option",
+        method_name="set_window_option",
+        args=("main-pane-height", 20),
+        kwargs={},
+        expected_warning_match=r"Window\.set_window_option\(\) is deprecated",
+    ),
+    DeprecatedMethodTestCase(
+        test_id="show_window_options",
+        method_name="show_window_options",
+        args=(),
+        kwargs={},
+        expected_warning_match=r"Window\.show_window_options\(\) is deprecated",
+    ),
+    DeprecatedMethodTestCase(
+        test_id="show_window_options_global",
+        method_name="show_window_options",
+        args=(),
+        kwargs={"g": True},
+        expected_warning_match=r"Window\.show_window_options\(\) is deprecated",
+    ),
+    DeprecatedMethodTestCase(
+        test_id="show_window_option",
+        method_name="show_window_option",
+        args=("main-pane-height",),
+        kwargs={},
+        expected_warning_match=r"Window\.show_window_option\(\) is deprecated",
+    ),
+    DeprecatedMethodTestCase(
+        test_id="show_window_option_global",
+        method_name="show_window_option",
+        args=("main-pane-height",),
+        kwargs={"g": True},
+        expected_warning_match=r"Window\.show_window_option\(\) is deprecated",
+    ),
+]
+
+
+def _build_deprecated_method_params() -> list[t.Any]:
+    """Build pytest params for deprecated method tests."""
+    return [
+        pytest.param(tc, id=tc.test_id) for tc in DEPRECATED_WINDOW_METHOD_TEST_CASES
+    ]
+
+
+@pytest.mark.parametrize("test_case", _build_deprecated_method_params())
+def test_deprecated_window_methods_emit_warning(
+    session: Session,
+    test_case: DeprecatedMethodTestCase,
+) -> None:
+    """Verify deprecated Window methods emit DeprecationWarning."""
+    window = session.new_window(window_name="test_deprecation")
+    method = getattr(window, test_case.method_name)
+
+    with pytest.warns(DeprecationWarning, match=test_case.expected_warning_match):
+        method(*test_case.args, **test_case.kwargs)
