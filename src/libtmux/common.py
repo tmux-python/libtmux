@@ -312,7 +312,7 @@ def has_version(version: str) -> bool:
     Parameters
     ----------
     version : str
-        version number, e.g. '1.8'
+        version number, e.g. '3.2a'
 
     Returns
     -------
@@ -328,7 +328,7 @@ def has_gt_version(min_version: str) -> bool:
     Parameters
     ----------
     min_version : str
-        tmux version, e.g. '1.8'
+        tmux version, e.g. '3.2a'
 
     Returns
     -------
@@ -344,7 +344,7 @@ def has_gte_version(min_version: str) -> bool:
     Parameters
     ----------
     min_version : str
-        tmux version, e.g. '1.8'
+        tmux version, e.g. '3.2a'
 
     Returns
     -------
@@ -360,7 +360,7 @@ def has_lte_version(max_version: str) -> bool:
     Parameters
     ----------
     max_version : str
-        tmux version, e.g. '1.8'
+        tmux version, e.g. '3.2a'
 
     Returns
     -------
@@ -376,7 +376,7 @@ def has_lt_version(max_version: str) -> bool:
     Parameters
     ----------
     max_version : str
-        tmux version, e.g. '1.8'
+        tmux version, e.g. '3.2a'
 
     Returns
     -------
