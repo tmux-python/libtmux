@@ -875,11 +875,11 @@ class Window(
         return self.set_option(option=option, value=value)
 
     def show_window_options(self, g: bool | None = False) -> WindowOptionDict:
-        """Show options for tmux window. Deprecated by :meth:`Window._show_options()`.
+        """Show options for tmux window. Deprecated by :meth:`Window.show_options()`.
 
         .. deprecated:: 0.26
 
-           Deprecated by :meth:`Window._show_options()`.
+           Deprecated by :meth:`Window.show_options()`.
 
         """
         warnings.warn(
@@ -887,8 +887,8 @@ class Window(
             category=DeprecationWarning,
             stacklevel=2,
         )
-        return self._show_options(
-            g=g,
+        return self.show_options(
+            global_=g or False,
             scope=OptionScope.Window,
         )
 
