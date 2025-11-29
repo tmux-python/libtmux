@@ -939,6 +939,52 @@ class OptionsMixin(CmdMixin):
 
         return t.cast("ExplodedComplexUntypedOptionsDict", output_exploded)
 
+    def show_options(
+        self,
+        global_: bool = False,
+        scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
+        include_hooks: bool | None = None,
+        include_inherited: bool | None = None,
+    ) -> ExplodedComplexUntypedOptionsDict:
+        """Return all options for the target.
+
+        Parameters
+        ----------
+        global_ : bool, optional
+            Pass ``-g`` flag for global options, default False.
+        scope : OptionScope | _DefaultOptionScope | None, optional
+            Option scope (Server/Session/Window/Pane), defaults to object's scope.
+        include_hooks : bool, optional
+            Include hook options (``-H`` flag).
+        include_inherited : bool, optional
+            Include inherited options (``-A`` flag).
+
+        Returns
+        -------
+        ExplodedComplexUntypedOptionsDict
+            Dictionary with all options, arrays exploded and values converted.
+
+        Raises
+        ------
+        :exc:`exc.OptionError`, :exc:`exc.UnknownOption`,
+        :exc:`exc.InvalidOption`, :exc:`exc.AmbiguousOption`
+
+        Examples
+        --------
+        >>> options = server.show_options()
+        >>> isinstance(options, dict)
+        True
+
+        >>> 'buffer-limit' in options
+        True
+        """
+        return self._show_options(
+            global_=global_,
+            scope=scope,
+            include_hooks=include_hooks,
+            include_inherited=include_inherited,
+        )
+
     def _show_option_raw(
         self,
         option: str,
