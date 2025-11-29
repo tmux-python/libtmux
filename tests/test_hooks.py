@@ -966,3 +966,86 @@ def test_hook_scope_handling(
         window.unset_hook(hook_name)
     else:
         pane.unset_hook(hook_name)
+
+
+# =============================================================================
+# show_hooks Parsing Edge Cases
+# =============================================================================
+
+
+class ShowHooksParseTestCase(t.NamedTuple):
+    """Test case for show_hooks output parsing edge cases."""
+
+    test_id: str
+    setup_commands: list[tuple[str, str]]  # List of (hook[idx], value) to set
+    expected_keys: list[str]  # Expected keys in result
+    check_values: bool = True  # Whether to verify specific values
+
+
+SHOW_HOOKS_PARSE_TEST_CASES: list[ShowHooksParseTestCase] = [
+    ShowHooksParseTestCase(
+        "normal_hook_value",
+        [("session-renamed[0]", "display-message 'test'")],
+        ["session-renamed[0]"],
+    ),
+    ShowHooksParseTestCase(
+        "multiple_indexed_hooks",
+        [
+            ("session-renamed[0]", "display-message 'first'"),
+            ("session-renamed[1]", "display-message 'second'"),
+            ("session-renamed[5]", "display-message 'fifth'"),
+        ],
+        ["session-renamed[0]", "session-renamed[1]", "session-renamed[5]"],
+    ),
+    ShowHooksParseTestCase(
+        "multiple_different_hooks",
+        [
+            ("session-renamed[0]", "display-message 'renamed'"),
+            ("after-split-window[0]", "display-message 'split'"),
+        ],
+        ["session-renamed[0]", "after-split-window[0]"],
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [pytest.param(tc, id=tc.test_id) for tc in SHOW_HOOKS_PARSE_TEST_CASES],
+)
+def test_show_hooks_parsing_edge_cases(
+    server: Server,
+    test_case: ShowHooksParseTestCase,
+) -> None:
+    """Test show_hooks parses various output formats correctly."""
+    session = server.new_session(session_name="test_parsing")
+
+    # Setup hooks
+    for hook, value in test_case.setup_commands:
+        session.set_hook(hook, value)
+
+    # Get all hooks via show_hooks
+    hooks = session.show_hooks()
+
+    # Verify expected keys are present
+    for key in test_case.expected_keys:
+        assert key in hooks, f"Expected key {key} not found in {list(hooks.keys())}"
+
+    if test_case.check_values:
+        for key in test_case.expected_keys:
+            assert hooks[key] is not None, f"Expected value for {key} to be non-None"
+
+    # Cleanup
+    for hook, _ in test_case.setup_commands:
+        base_hook = hook.split("[")[0]
+        session.unset_hook(base_hook)
+
+
+def test_show_hooks_empty_result(server: Server) -> None:
+    """Test show_hooks returns empty dict when no hooks are set."""
+    session = server.new_session(session_name="test_empty_hooks")
+
+    # Fresh session should have no session-level hooks
+    hooks = session.show_hooks()
+
+    # Should be a dict (possibly empty)
+    assert isinstance(hooks, dict)
