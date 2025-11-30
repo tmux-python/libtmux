@@ -9,6 +9,7 @@ Explore libtmux's core functionalities and underlying principles at a high level
 ```{toctree}
 
 traversal
+filtering
 pane_interaction
 workspace_setup
 automation_patterns
