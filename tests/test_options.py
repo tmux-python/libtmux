@@ -19,7 +19,7 @@ from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
 from libtmux.exc import OptionError
-from libtmux.options import TerminalOverrides, convert_values
+from libtmux.options import TerminalOverrides, convert_values, explode_arrays
 from libtmux.pane import Pane
 
 if t.TYPE_CHECKING:
@@ -1417,4 +1417,80 @@ def test_show_option_indexed_array(
         )
         assert not isinstance(result, SparseArray), (
             f"Expected single value for '{test_case.option}', got SparseArray"
+        )
+
+
+# =============================================================================
+# explode_arrays Inherited Marker Tests
+# =============================================================================
+
+
+class ExplodeArraysInheritedCase(t.NamedTuple):
+    """Test case for explode_arrays with inherited marker preservation."""
+
+    test_id: str
+    raw_input: dict[str, str | None]
+    expected_key: str
+    expected_indices: dict[int, str]
+
+
+EXPLODE_ARRAYS_INHERITED_CASES: list[ExplodeArraysInheritedCase] = [
+    ExplodeArraysInheritedCase(
+        test_id="inherited_array_marker_preserved",
+        raw_input={"status-format[0]*": "fmt0", "status-format[1]*": "fmt1"},
+        expected_key="status-format*",
+        expected_indices={0: "fmt0", 1: "fmt1"},
+    ),
+    ExplodeArraysInheritedCase(
+        test_id="non_inherited_array_no_marker",
+        raw_input={"status-format[0]": "fmt0", "status-format[1]": "fmt1"},
+        expected_key="status-format",
+        expected_indices={0: "fmt0", 1: "fmt1"},
+    ),
+    ExplodeArraysInheritedCase(
+        test_id="mixed_inherited_indices",
+        raw_input={"opt[0]*": "v0", "opt[5]*": "v5", "opt[10]*": "v10"},
+        expected_key="opt*",
+        expected_indices={0: "v0", 5: "v5", 10: "v10"},
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [pytest.param(tc, id=tc.test_id) for tc in EXPLODE_ARRAYS_INHERITED_CASES],
+)
+def test_explode_arrays_preserves_inherited_marker(
+    test_case: ExplodeArraysInheritedCase,
+) -> None:
+    """Test that explode_arrays preserves the inherited marker (*) for array options.
+
+    When tmux returns inherited array options with the -A flag, each index includes
+    a trailing asterisk (e.g., "status-format[0]*"). The explode_arrays function
+    should preserve this marker in the resulting key, producing "status-format*"
+    instead of stripping it to just "status-format".
+
+    This ensures consistency with scalar inherited options, which already preserve
+    the "*" marker (e.g., "visual-activity*" stays as "visual-activity*").
+    """
+    result = explode_arrays(test_case.raw_input)
+
+    assert test_case.expected_key in result, (
+        f"Expected key '{test_case.expected_key}' not found in result. "
+        f"Got keys: {list(result.keys())}"
+    )
+
+    array_value = result[test_case.expected_key]
+    # explode_arrays returns SparseArray for most options (dict-like with int keys)
+    assert isinstance(array_value, SparseArray), (
+        f"Expected SparseArray for array option, got {type(array_value).__name__}"
+    )
+
+    for idx, expected_val in test_case.expected_indices.items():
+        assert idx in array_value, (
+            f"Expected index {idx} not found in array. "
+            f"Got indices: {list(array_value.keys())}"
+        )
+        assert array_value[idx] == expected_val, (
+            f"Value at index {idx}: expected '{expected_val}', got '{array_value[idx]}'"
         )
