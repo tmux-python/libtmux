@@ -78,7 +78,7 @@ OPTION_SCOPE_FLAG_MAP: dict[OptionScope, str] = {
 }
 
 HOOK_SCOPE_FLAG_MAP: dict[OptionScope, str] = {
-    OptionScope.Server: "",
+    OptionScope.Server: "-g",
     OptionScope.Session: "",
     OptionScope.Window: "-w",
     OptionScope.Pane: "-p",
