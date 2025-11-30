@@ -242,12 +242,9 @@ def convert_values(
     if value is None:
         return None
     if isinstance(value, dict):
+        # Note: SparseArray inherits from dict, so this branch handles both
         for k, v in value.items():
             value[k] = convert_value(v)
-        return value
-    if isinstance(value, SparseArray):
-        for v in value.iter_values():
-            value[v] = convert_value(v)
         return value
     if isinstance(value, list):
         for idx, v in enumerate(value):
