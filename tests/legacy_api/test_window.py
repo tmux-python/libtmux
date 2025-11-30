@@ -52,7 +52,7 @@ def test_fresh_window_data(session: Session) -> None:
     """Verify window data is fresh."""
     attached_window = session.attached_window
     assert attached_window is not None
-    pane_base_idx = attached_window.show_window_option("pane-base-index", g=True)
+    pane_base_idx = attached_window._show_option("pane-base-index", global_=True)
     assert pane_base_idx is not None
     pane_base_index = int(pane_base_idx)
 
@@ -252,8 +252,8 @@ def test_show_window_options(session: Session) -> None:
     assert isinstance(options, dict)
 
 
-def test_set_show_window_options(session: Session) -> None:
-    """Set option then Window.show_window_options(key)."""
+def test_set_window_and_show_window_options(session: Session) -> None:
+    """Window.set_window_option() then Window.show_window_options(key)."""
     window = session.new_window(window_name="test_window")
 
     window.set_window_option("main-pane-height", 20)

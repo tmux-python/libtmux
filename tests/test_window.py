@@ -13,6 +13,7 @@ import pytest
 from libtmux import exc
 from libtmux._internal.query_list import ObjectDoesNotExist
 from libtmux.constants import (
+    OptionScope,
     PaneDirection,
     ResizeAdjustmentDirection,
     WindowDirection,
@@ -59,7 +60,7 @@ def test_fresh_window_data(session: Session) -> None:
     """Verify window data is fresh."""
     active_window = session.active_window
     assert active_window is not None
-    pane_base_idx = active_window.show_window_option("pane-base-index", g=True)
+    pane_base_idx = active_window._show_option("pane-base-index", global_=True)
     assert pane_base_idx is not None
     pane_base_index = int(pane_base_idx)
 
@@ -233,7 +234,7 @@ def test_window_rename(
     window_name_after: str,
 ) -> None:
     """Test Window.rename_window()."""
-    session.set_option("automatic-rename", "off")
+    session.set_option("automatic-rename", "off", scope=None)
     window = session.new_window(window_name=window_name_before, attach=True)
 
     assert window == session.active_window
@@ -267,9 +268,30 @@ def test_show_window_options(session: Session) -> None:
     options = window.show_window_options()
     assert isinstance(options, dict)
 
+    options_2 = window._show_options()
+    assert isinstance(options_2, dict)
 
-def test_set_show_window_options(session: Session) -> None:
-    """Set option then Window.show_window_options(key)."""
+    pane_options = window._show_options(scope=OptionScope.Pane)
+    assert isinstance(pane_options, dict)
+
+    pane_options_global = window._show_options(scope=OptionScope.Pane, global_=True)
+    assert isinstance(pane_options_global, dict)
+
+    window_options = window._show_options(scope=OptionScope.Window)
+    assert isinstance(window_options, dict)
+
+    window_options_global = window._show_options(scope=OptionScope.Window, global_=True)
+    assert isinstance(window_options_global, dict)
+
+    server_options = window._show_options(scope=OptionScope.Server)
+    assert isinstance(server_options, dict)
+
+    server_options_global = window._show_options(scope=OptionScope.Server, global_=True)
+    assert isinstance(server_options_global, dict)
+
+
+def test_set_window_and_show_window_options(session: Session) -> None:
+    """Window.set_window_option() then Window.show_window_options(key)."""
     window = session.new_window(window_name="test_window")
 
     window.set_window_option("main-pane-height", 20)
@@ -281,6 +303,26 @@ def test_set_show_window_options(session: Session) -> None:
 
     window.set_window_option("pane-border-format", " #P ")
     assert window.show_window_option("pane-border-format") == " #P "
+
+
+def test_set_and_show_window_options(session: Session) -> None:
+    """Window.set_option() then Window._show_options(key)."""
+    window = session.new_window(window_name="test_window")
+
+    window.set_option("main-pane-height", 20)
+    assert window._show_option("main-pane-height") == 20
+
+    window.set_option("main-pane-height", 40)
+    assert window._show_option("main-pane-height") == 40
+
+    # By default, show-options will session scope, even if target is a window
+    with pytest.raises(KeyError):
+        assert window._show_options(scope=OptionScope.Session)["main-pane-height"] == 40
+
+    assert window._show_option("main-pane-height") == 40
+
+    window.set_option("pane-border-format", " #P ")
+    assert window._show_option("pane-border-format") == " #P "
 
 
 def test_empty_window_option_returns_None(session: Session) -> None:
@@ -662,3 +704,76 @@ def test_split_start_directory_pathlib(
     actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
     expected_path = str(user_path.resolve())
     assert actual_path == expected_path
+
+
+# --- Deprecation Warning Tests ---
+
+
+class DeprecatedMethodTestCase(t.NamedTuple):
+    """Test case for deprecated method warnings."""
+
+    test_id: str
+    method_name: str  # Name of deprecated method to call
+    args: tuple[t.Any, ...]  # Positional args
+    kwargs: dict[str, t.Any]  # Keyword args
+    expected_warning_match: str  # Regex pattern to match warning message
+
+
+DEPRECATED_WINDOW_METHOD_TEST_CASES: list[DeprecatedMethodTestCase] = [
+    DeprecatedMethodTestCase(
+        test_id="set_window_option",
+        method_name="set_window_option",
+        args=("main-pane-height", 20),
+        kwargs={},
+        expected_warning_match=r"Window\.set_window_option\(\) is deprecated",
+    ),
+    DeprecatedMethodTestCase(
+        test_id="show_window_options",
+        method_name="show_window_options",
+        args=(),
+        kwargs={},
+        expected_warning_match=r"Window\.show_window_options\(\) is deprecated",
+    ),
+    DeprecatedMethodTestCase(
+        test_id="show_window_options_global",
+        method_name="show_window_options",
+        args=(),
+        kwargs={"g": True},
+        expected_warning_match=r"Window\.show_window_options\(\) is deprecated",
+    ),
+    DeprecatedMethodTestCase(
+        test_id="show_window_option",
+        method_name="show_window_option",
+        args=("main-pane-height",),
+        kwargs={},
+        expected_warning_match=r"Window\.show_window_option\(\) is deprecated",
+    ),
+    DeprecatedMethodTestCase(
+        test_id="show_window_option_global",
+        method_name="show_window_option",
+        args=("main-pane-height",),
+        kwargs={"g": True},
+        expected_warning_match=r"Window\.show_window_option\(\) is deprecated",
+    ),
+]
+
+
+def _build_deprecated_method_params() -> list[t.Any]:
+    """Build pytest params for deprecated method tests."""
+    return [
+        pytest.param(tc, id=tc.test_id) for tc in DEPRECATED_WINDOW_METHOD_TEST_CASES
+    ]
+
+
+@pytest.mark.filterwarnings("ignore:g argument is deprecated:DeprecationWarning")
+@pytest.mark.parametrize("test_case", _build_deprecated_method_params())
+def test_deprecated_window_methods_emit_warning(
+    session: Session,
+    test_case: DeprecatedMethodTestCase,
+) -> None:
+    """Verify deprecated Window methods emit DeprecationWarning."""
+    window = session.new_window(window_name="test_deprecation")
+    method = getattr(window, test_case.method_name)
+
+    with pytest.warns(DeprecationWarning, match=test_case.expected_warning_match):
+        method(*test_case.args, **test_case.kwargs)

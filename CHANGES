@@ -34,6 +34,149 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 _Future release notes will be placed here_
 
+### Overview
+
+libtmux 0.50 brings a major enhancement to option and hook management. The new
+{class}`~options.OptionsMixin` and {class}`~hooks.HooksMixin` classes provide a
+unified, typed API for managing tmux options and hooks across all object types.
+
+**Highlights:**
+
+- **Unified Options API**: New `show_option()`, `show_options()`, `set_option()`,
+  and `unset_option()` methods available on Server, Session, Window, and Pane.
+- **Hook Management**: Full programmatic control over tmux hooks with support for
+  indexed hook arrays and bulk operations.
+- **SparseArray**: New internal data structure for handling tmux's sparse indexed
+  arrays (e.g., `command-alias[0]`, `command-alias[99]`).
+- **tmux 3.2+ baseline**: Removed support for tmux versions below 3.2a, enabling
+  cleaner code and full hook/option feature support.
+
+### What's New
+
+#### Unified Options API (#516)
+
+All tmux objects now share a consistent options interface through
+{class}`~options.OptionsMixin`:
+
+```python
+import libtmux
+
+server = libtmux.Server()
+session = server.sessions[0]
+window = session.windows[0]
+pane = window.panes[0]
+
+# Get all options as a structured dict
+session.show_options()
+# {'activity-action': 'other', 'base-index': 0, ...}
+
+# Get a single option value
+session.show_option('base-index')
+# 0
+
+# Set an option
+window.set_option('automatic-rename', True)
+
+# Unset an option (revert to default)
+window.unset_option('automatic-rename')
+```
+
+**New methods on Server, Session, Window, and Pane:**
+
+| Method | Description |
+|--------|-------------|
+| `show_options()` | Get all options as a structured dict |
+| `show_option(name)` | Get a single option value |
+| `set_option(name, value)` | Set an option |
+| `unset_option(name)` | Unset/remove an option |
+
+**New parameters for `set_option()`:**
+
+| Parameter | tmux flag | Description |
+|-----------|-----------|-------------|
+| `_format` | `-F` | Expand format strings in value |
+| `unset` | `-u` | Unset the option |
+| `global_` | `-g` | Set as global option |
+| `unset_panes` | `-U` | Also unset in child panes |
+| `prevent_overwrite` | `-o` | Don't overwrite if exists |
+| `suppress_warnings` | `-q` | Suppress warnings |
+| `append` | `-a` | Append to existing value |
+
+#### Hook Management (#516)
+
+New {class}`~hooks.HooksMixin` provides programmatic control over tmux hooks:
+
+```python
+session = server.sessions[0]
+
+# Set a hook
+session.set_hook('session-renamed', 'display-message "Renamed!"')
+
+# Get hook value
+session.show_hook('session-renamed')
+# 'display-message "Renamed!"'
+
+# Get all hooks
+session.show_hooks()
+# {'session-renamed': 'display-message "Renamed!"'}
+
+# Remove a hook
+session.unset_hook('session-renamed')
+```
+
+**Indexed hooks and bulk operations:**
+
+tmux hooks support multiple values via indices (e.g., `session-renamed[0]`,
+`session-renamed[1]`). The bulk operations API makes this easy:
+
+```python
+# Set multiple hooks at once
+session.set_hooks('session-renamed', {
+    0: 'display-message "Hook 0"',
+    1: 'display-message "Hook 1"',
+    5: 'run-shell "echo hook 5"',
+})
+```
+
+**Hook methods available on Server, Session, Window, and Pane:**
+
+| Method | Description |
+|--------|-------------|
+| `set_hook(hook, value)` | Set a hook |
+| `show_hook(hook)` | Get hook value (returns SparseArray for indexed hooks) |
+| `show_hooks()` | Get all hooks |
+| `unset_hook(hook)` | Remove a hook |
+| `run_hook(hook)` | Run a hook immediately |
+| `set_hooks(hook, values)` | Set multiple indexed hooks at once |
+
+#### SparseArray for Indexed Options (#516)
+
+tmux uses sparse indexed arrays for options like `command-alias[0]`,
+`command-alias[99]`, `terminal-features[0]`. Python lists can't represent
+gaps in indices, so libtmux introduces {class}`~_internal.sparse_array.SparseArray`:
+
+```python
+>>> from libtmux._internal.sparse_array import SparseArray
+
+>>> arr: SparseArray[str] = SparseArray()
+>>> arr.add(0, "first")
+>>> arr.add(99, "ninety-ninth")  # Gap in indices preserved!
+>>> arr[0]
+'first'
+>>> arr[99]
+'ninety-ninth'
+>>> list(arr.keys())
+[0, 99]
+>>> list(arr.iter_values())  # Values in index order
+['first', 'ninety-ninth']
+```
+
+#### New Constants (#516)
+
+- {class}`~constants.OptionScope` enum: `Server`, `Session`, `Window`, `Pane`
+- `OPTION_SCOPE_FLAG_MAP`: Maps scope to tmux flags (`-s`, `-w`, `-p`)
+- `HOOK_SCOPE_FLAG_MAP`: Maps scope to hook flags
+
 ## libtmux 0.49.0 (2025-11-29)
 
 ### Breaking Changes
@@ -47,6 +190,35 @@ deprecation announced in v0.48.0.
 - Removed `TMUX_SOFT_MIN_VERSION` constant and deprecation warning system
 - Removed version guards throughout the codebase
 - For users on older tmux, use libtmux v0.48.x
+
+#### Deprecated Window methods (#516)
+
+The following methods are deprecated and will be removed in a future release:
+
+| Deprecated | Replacement |
+|------------|-------------|
+| `Window.set_window_option()` | `Window.set_option()` |
+| `Window.show_window_option()` | `Window.show_option()` |
+| `Window.show_window_options()` | `Window.show_options()` |
+
+The old methods will emit a {class}`DeprecationWarning` when called:
+
+```python
+window.set_window_option('automatic-rename', 'on')
+# DeprecationWarning: Window.set_window_option() is deprecated
+
+# Use the new method instead:
+window.set_option('automatic-rename', True)
+```
+
+### tmux Version Compatibility
+
+| Feature | Minimum tmux |
+|---------|-------------|
+| All options/hooks features | 3.2+ |
+| Window/Pane hook scopes (`-w`, `-p`) | 3.2+ |
+| `client-active`, `window-resized` hooks | 3.3+ |
+| `pane-title-changed` hook | 3.5+ |
 
 ## libtmux 0.48.0 (2025-11-28)
 
