@@ -22,11 +22,11 @@ libtmux is a typed Python API over [tmux], the terminal multiplexer. Stop shelli
 ### ✨ Features
 
 - Typed, object-oriented control of tmux state
-- Query and traverse live sessions, windows, and panes
+- Query and [traverse](https://libtmux.git-pull.com/topics/traversal.html) live sessions, windows, and panes
 - Raw escape hatch via `.cmd(...)` on any object
 - Works with multiple tmux sockets and servers
-- Context managers for automatic cleanup
-- pytest plugin for isolated tmux fixtures
+- [Context managers](https://libtmux.git-pull.com/topics/context_managers.html) for automatic cleanup
+- [pytest plugin](https://libtmux.git-pull.com/pytest-plugin/index.html) for isolated tmux fixtures
 - Proven in production via tmuxp and other tooling
 
 ## Requirements & support
@@ -155,6 +155,8 @@ Session($... ...)
 
 ### Control sessions and windows
 
+[**Learn more about Workspace Setup**](https://libtmux.git-pull.com/topics/workspace_setup.html)
+
 ```python
 >>> session.rename_session('my-session')
 Session($... my-session)
@@ -177,6 +179,8 @@ Window(@... ...:bg-work, Session($... ...))
 ```
 
 ### Split windows and send keys
+
+[**Learn more about Pane Interaction**](https://libtmux.git-pull.com/topics/pane_interaction.html)
 
 ```python
 >>> pane = window.split(attach=False)
@@ -204,6 +208,8 @@ Pane(%... ...)
 ```
 
 ### Traverse the hierarchy
+
+[**Learn more about Traversal**](https://libtmux.git-pull.com/topics/traversal.html)
 
 Navigate from pane up to window to session:
 
@@ -243,11 +249,24 @@ pane.send_keys("echo 'hello from libtmux'", enter=True)
 
 ## Testing & fixtures
 
-- [pytest plugin][pytest-plugin] provides fresh tmux server/session/window/pane fixtures
+[**Learn more about the pytest plugin**](https://libtmux.git-pull.com/pytest-plugin/index.html)
+
+Writing a tool that interacts with tmux? Use our fixtures to keep your tests clean and isolated.
+
+```python
+def test_my_tmux_tool(session):
+    # session is a real tmux session in an isolated server
+    window = session.new_window(window_name="test")
+    pane = window.active_pane
+    pane.send_keys("echo 'hello from test'", enter=True)
+
+    assert window.window_name == "test"
+    # Fixtures handle cleanup automatically
+```
+
+- Fresh tmux server/session/window/pane fixtures per test
 - Temporary HOME and tmux config fixtures keep indices stable
 - `TestServer` helper spins up multiple isolated tmux servers
-
-[pytest-plugin]: https://libtmux.git-pull.com/pytest-plugin/index.html
 
 ## When you might not need libtmux
 
@@ -257,17 +276,30 @@ pane.send_keys("echo 'hello from libtmux'", enter=True)
 
 ## Project links
 
-- Docs: [docs]
-- API reference: [api]
-- Architecture: [architecture]
-- Changelog: [history]
-- Migration notes: [migration]
-- Issues: [issues]
-- Test coverage: [coverage]
-- Releases: [releases]
-- License: [license]
-- Support: [support]
-- **[The Tao of tmux][tao]** — deep-dive book on tmux fundamentals
+**Topics:**
+[Traversal](https://libtmux.git-pull.com/topics/traversal.html) ·
+[Pane Interaction](https://libtmux.git-pull.com/topics/pane_interaction.html) ·
+[Workspace Setup](https://libtmux.git-pull.com/topics/workspace_setup.html) ·
+[Automation Patterns](https://libtmux.git-pull.com/topics/automation_patterns.html) ·
+[Context Managers](https://libtmux.git-pull.com/topics/context_managers.html) ·
+[Options & Hooks](https://libtmux.git-pull.com/topics/options_and_hooks.html)
+
+**Reference:**
+[Docs][docs] ·
+[API][api] ·
+[pytest plugin](https://libtmux.git-pull.com/pytest-plugin/index.html) ·
+[Architecture][architecture] ·
+[Changelog][history] ·
+[Migration][migration]
+
+**Project:**
+[Issues][issues] ·
+[Coverage][coverage] ·
+[Releases][releases] ·
+[License][license] ·
+[Support][support]
+
+**[The Tao of tmux][tao]** — deep-dive book on tmux fundamentals
 
 ## Contributing & support
 
