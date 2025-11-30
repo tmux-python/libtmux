@@ -765,6 +765,7 @@ def _build_deprecated_method_params() -> list[t.Any]:
     ]
 
 
+@pytest.mark.filterwarnings("ignore:g argument is deprecated:DeprecationWarning")
 @pytest.mark.parametrize("test_case", _build_deprecated_method_params())
 def test_deprecated_window_methods_emit_warning(
     session: Session,
