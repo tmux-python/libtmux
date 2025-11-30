@@ -26,6 +26,7 @@ if t.TYPE_CHECKING:
     from typing_extensions import LiteralString
 
     from libtmux.server import Server
+    from libtmux.session import Session
 
 
 def test_options(server: Server) -> None:
@@ -1276,3 +1277,12 @@ def test_convert_values_preserves_sparse_keys() -> None:
     assert result[0] is True
     assert result[5] is False
     assert result[99] == 100
+
+
+def test_show_option_g_parameter_emits_deprecation_warning(
+    session: Session,
+) -> None:
+    """Test show_option() emits DeprecationWarning when g parameter is used."""
+    server = session.server
+    with pytest.warns(DeprecationWarning, match=r"g argument is deprecated"):
+        server.show_option("buffer-limit", g=True)
