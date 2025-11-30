@@ -441,6 +441,38 @@ automatically sent, the leading space character prevents adding it to the user's
 shell history. Omitting `enter=false` means the default behavior (sending the
 command) is done, without needing to use `pane.enter()` after.
 
+## Working with options
+
+libtmux provides a unified API for managing tmux options across Server, Session,
+Window, and Pane objects.
+
+### Getting options
+
+```python
+>>> server.show_option('buffer-limit')
+50
+
+>>> window.show_options()  # doctest: +ELLIPSIS
+{...}
+```
+
+### Setting options
+
+```python
+>>> window.set_option('automatic-rename', False)  # doctest: +ELLIPSIS
+Window(@... ...)
+
+>>> window.show_option('automatic-rename')
+False
+
+>>> window.unset_option('automatic-rename')  # doctest: +ELLIPSIS
+Window(@... ...)
+```
+
+:::{seealso}
+See {ref}`options-and-hooks` for more details on options and hooks.
+:::
+
 ## Final notes
 
 These objects created use tmux's internal usage of ID's to make servers,
