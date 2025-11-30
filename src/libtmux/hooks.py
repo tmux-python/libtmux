@@ -432,7 +432,7 @@ class HooksMixin(CmdMixin):
         if hooks_output is None:
             return None
         hooks = Hooks.from_stdout(hooks_output)
-        return getattr(hooks, hook.replace("-", "_"), None)
+        return getattr(hooks, hook.lstrip("%").replace("-", "_"), None)
 
     def set_hooks(
         self,
