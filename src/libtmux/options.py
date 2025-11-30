@@ -1146,15 +1146,16 @@ class OptionsMixin(CmdMixin):
         if not len(options_output):
             return None
 
-        output_exploded = convert_values(
-            explode_complex(
-                explode_arrays(
-                    parse_options_to_dict(
-                        io.StringIO("\n".join(cmd.stdout)),
-                    ),
-                ),
-            ),
-        )
+        # Parse raw output first (preserves indexed keys like "status-format[0]")
+        output_raw = parse_options_to_dict(io.StringIO("\n".join(cmd.stdout)))
+
+        # Direct lookup for indexed queries (e.g., "status-format[0]")
+        # tmux returns only that index's value, so we handle it before exploding
+        if option in output_raw:
+            return convert_value(output_raw[option])
+
+        # For base name queries, explode arrays and return structured data
+        output_exploded = convert_values(explode_complex(explode_arrays(output_raw)))
 
         if not isinstance(output_exploded, (dict, SparseArray)):
             return t.cast("ConvertedValue", output_exploded)
