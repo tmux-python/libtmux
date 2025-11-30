@@ -243,7 +243,6 @@ class HooksMixin(CmdMixin):
         self,
         global_: bool | None = False,
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
-        ignore_errors: bool | None = None,
     ) -> HookDict:
         """Return a dict of hooks for the target.
 
@@ -253,8 +252,6 @@ class HooksMixin(CmdMixin):
             Pass ``-g`` flag for global hooks, default False.
         scope : OptionScope | _DefaultOptionScope | None, optional
             Hook scope (Server/Session/Window/Pane), defaults to object's scope.
-        ignore_errors : bool, optional
-            Suppress errors with ``-q`` flag.
 
         Returns
         -------
@@ -295,10 +292,6 @@ class HooksMixin(CmdMixin):
                 )
             else:
                 flags += (flag,)
-
-        if ignore_errors is not None and ignore_errors:
-            assert isinstance(ignore_errors, bool)
-            flags += ("-q",)
 
         cmd = self.cmd("show-hooks", *flags)
         output = cmd.stdout
