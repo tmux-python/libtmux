@@ -13,8 +13,6 @@
   </p>
 </div>
 
----
-
 ## 🐍 What is libtmux?
 
 libtmux is a typed Python API over [tmux], the terminal multiplexer. Stop shelling out and parsing `tmux ls`. Instead, interact with real Python objects: `Server`, `Session`, `Window`, and `Pane`. The same API powers [tmuxp], so it stays battle-tested in real-world workflows.
