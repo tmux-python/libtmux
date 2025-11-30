@@ -28,11 +28,13 @@ $ uv add libtmux --prerelease allow
 $ uvx --from 'libtmux' --prerelease allow python
 ```
 
-## libtmux 0.50.x (Yet to be released)
+## libtmux 0.51.x (Yet to be released)
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
 _Future release notes will be placed here_
+
+## libtmux 0.50.0 (2025-11-30)
 
 ### Overview
 
