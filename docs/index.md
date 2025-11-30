@@ -1,19 +1,14 @@
----
-hide-toc: true
----
-
 (index)=
 
+# libtmux
+
 ```{include} ../README.md
-
+:start-after: </div>
 ```
-
-## Table of Contents
-
-:hidden:
 
 ```{toctree}
 :maxdepth: 2
+:hidden:
 
 quickstart
 about
