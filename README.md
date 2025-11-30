@@ -226,10 +226,12 @@ Session($... ...)
 
 | libtmux object | tmux concept                | Notes                          |
 |----------------|-----------------------------|--------------------------------|
-| `Server`       | tmux server / socket        | Entry point; owns sessions     |
-| `Session`      | tmux session (`$0`, `$1`,...) | Owns windows                   |
-| `Window`       | tmux window (`@1`, `@2`,...)  | Owns panes                     |
-| `Pane`         | tmux pane (`%1`, `%2`,...)    | Where commands run             |
+| [`Server`](https://libtmux.git-pull.com/api/servers.html) | tmux server / socket | Entry point; owns sessions |
+| [`Session`](https://libtmux.git-pull.com/api/sessions.html) | tmux session (`$0`, `$1`,...) | Owns windows |
+| [`Window`](https://libtmux.git-pull.com/api/windows.html) | tmux window (`@1`, `@2`,...) | Owns panes |
+| [`Pane`](https://libtmux.git-pull.com/api/panes.html) | tmux pane (`%1`, `%2`,...) | Where commands run |
+
+Also available: [`Options`](https://libtmux.git-pull.com/api/options.html) and [`Hooks`](https://libtmux.git-pull.com/api/hooks.html) abstractions for tmux configuration.
 
 Collections are live and queryable:
 
