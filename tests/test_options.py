@@ -1286,3 +1286,63 @@ def test_show_option_g_parameter_emits_deprecation_warning(
     server = session.server
     with pytest.warns(DeprecationWarning, match=r"g argument is deprecated"):
         server.show_option("buffer-limit", g=True)
+
+
+# =============================================================================
+# show_option with Indexed Array Tests
+# =============================================================================
+
+
+class ShowOptionIndexedTestCase(t.NamedTuple):
+    """Test case for show_option with bracketed array index."""
+
+    test_id: str
+    option: str
+    expect_sparse_array: bool  # True for base name, False for indexed
+
+
+SHOW_OPTION_INDEXED_TEST_CASES: list[ShowOptionIndexedTestCase] = [
+    ShowOptionIndexedTestCase(
+        test_id="indexed_returns_value",
+        option="status-format[0]",
+        expect_sparse_array=False,
+    ),
+    ShowOptionIndexedTestCase(
+        test_id="base_name_returns_sparse_array",
+        option="status-format",
+        expect_sparse_array=True,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [pytest.param(tc, id=tc.test_id) for tc in SHOW_OPTION_INDEXED_TEST_CASES],
+)
+def test_show_option_indexed_array(
+    session: Session,
+    test_case: ShowOptionIndexedTestCase,
+) -> None:
+    """Test show_option handles bracketed array indices correctly.
+
+    When querying an option with a bracketed index (e.g., 'status-format[0]'),
+    tmux returns only that specific index's value. When querying the base name
+    (e.g., 'status-format'), tmux returns all indexed values.
+
+    This test verifies libtmux correctly:
+    - Returns a single value for indexed queries
+    - Returns a SparseArray for base name queries on array options
+    """
+    result = session.show_option(test_case.option, global_=True)
+    if test_case.expect_sparse_array:
+        assert isinstance(result, SparseArray), (
+            f"Expected SparseArray for '{test_case.option}', "
+            f"got {type(result).__name__}"
+        )
+    else:
+        assert result is not None, (
+            f"Expected a value for '{test_case.option}', got None"
+        )
+        assert not isinstance(result, SparseArray), (
+            f"Expected single value for '{test_case.option}', got SparseArray"
+        )
