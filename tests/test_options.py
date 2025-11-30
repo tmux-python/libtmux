@@ -618,12 +618,17 @@ def test_complex_option_values(server: Server) -> None:
 
     # Test option inheritance (only for tmux >= 3.0)
     if has_gte_version("3.0"):
-        parent_val = session.show_option("status-style")
+        # Capture the inherited value (from global scope). Need include_inherited
+        # because without an explicit session-level value, show_option returns None
+        inherited_val = session.show_option("status-style", include_inherited=True)
         session.set_option("status-style", "fg=red")
         assert session.show_option("status-style") == "fg=red"
         assert session.show_option("status-style", include_inherited=True) == "fg=red"
         session.unset_option("status-style")
-        assert session.show_option("status-style", include_inherited=True) == parent_val
+        # After unsetting, should get inherited value back
+        assert (
+            session.show_option("status-style", include_inherited=True) == inherited_val
+        )
 
 
 def test_style_option_validation(server: Server) -> None:

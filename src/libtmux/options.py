@@ -1152,10 +1152,18 @@ class OptionsMixin(CmdMixin):
         # Parse raw output first (preserves indexed keys like "status-format[0]")
         output_raw = parse_options_to_dict(io.StringIO("\n".join(cmd.stdout)))
 
+        # Handle tmux's inherited option marker: tmux appends "*" to option names
+        # that are inherited from a parent scope (e.g., "visual-activity*" for an
+        # option inherited from global scope). We need to check for both the exact
+        # option name and the name with "*" suffix.
+        option_key = option
+        if option not in output_raw and f"{option}*" in output_raw:
+            option_key = f"{option}*"
+
         # Direct lookup for indexed queries (e.g., "status-format[0]")
         # tmux returns only that index's value, so we handle it before exploding
-        if option in output_raw:
-            return convert_value(output_raw[option])
+        if option_key in output_raw:
+            return convert_value(output_raw[option_key])
 
         # For base name queries, explode arrays and return structured data
         output_exploded = convert_values(explode_complex(explode_arrays(output_raw)))
@@ -1163,8 +1171,13 @@ class OptionsMixin(CmdMixin):
         if not isinstance(output_exploded, (dict, SparseArray)):
             return t.cast("ConvertedValue", output_exploded)
 
-        if isinstance(output_exploded, dict) and option not in output_exploded:
-            return None
+        # Check for inherited marker in exploded output as well
+        exploded_key = option
+        if isinstance(output_exploded, dict):
+            if option not in output_exploded and f"{option}*" in output_exploded:
+                exploded_key = f"{option}*"
+            if exploded_key not in output_exploded:
+                return None
 
         if isinstance(output_exploded, SparseArray):
             try:
@@ -1173,7 +1186,7 @@ class OptionsMixin(CmdMixin):
             except (ValueError, KeyError):
                 return None
 
-        return t.cast("ConvertedValue | None", output_exploded[option])
+        return t.cast("ConvertedValue | None", output_exploded[exploded_key])
 
     def show_option(
         self,
