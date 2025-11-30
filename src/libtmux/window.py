@@ -897,11 +897,11 @@ class Window(
         option: str,
         g: bool = False,
     ) -> str | int | None:
-        """Return option for target window. Deprecated by :meth:`Window._show_option()`.
+        """Return option for target window. Deprecated by :meth:`Window.show_option()`.
 
         .. deprecated:: 0.26
 
-           Deprecated by :meth:`Window._show_option()`.
+           Deprecated by :meth:`Window.show_option()`.
 
         """
         warnings.warn(
@@ -909,7 +909,7 @@ class Window(
             category=DeprecationWarning,
             stacklevel=2,
         )
-        return self._show_option(
+        return self.show_option(
             option=option,
             g=g,
             scope=OptionScope.Window,
