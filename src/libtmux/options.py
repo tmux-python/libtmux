@@ -408,13 +408,17 @@ def explode_arrays(
 
         try:
             matchgroup = re.match(
-                r"(?P<hook>[\w-]+)(\[(?P<index>\d+)\])?",
+                r"(?P<option>[\w-]+)(\[(?P<index>\d+)\])?(?P<inherited>\*)?",
                 key,
             )
             if matchgroup is not None:
                 match = matchgroup.groupdict()
-                if match.get("hook") and match.get("index"):
-                    key = match["hook"]
+                if match.get("option") and match.get("index"):
+                    # Preserve inherited marker (*) if present
+                    base_key = match["option"]
+                    if match.get("inherited"):
+                        base_key += "*"
+                    key = base_key
                     index = int(match["index"])
 
                     if options.get(key) is None:
