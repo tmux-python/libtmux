@@ -136,6 +136,14 @@ class HooksMixin(CmdMixin):
         if scope is DEFAULT_OPTION_SCOPE:
             scope = self.default_hook_scope
 
+        if g:
+            warnings.warn(
+                "g argument is deprecated in favor of global_",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            global_ = g
+
         flags: list[str] = []
 
         if unset is not None and unset:
