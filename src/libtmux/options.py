@@ -1210,7 +1210,7 @@ class OptionsMixin(CmdMixin):
         """
         return self._show_option(
             option=option,
-            global_=global_,
+            global_=global_ or g,
             scope=scope,
             ignore_errors=ignore_errors,
             include_hooks=include_hooks,
