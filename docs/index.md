@@ -4,8 +4,10 @@ hide-toc: true
 
 (index)=
 
-```{include} ../README.md
+# libtmux
 
+```{include} ../README.md
+:start-after: </div>
 ```
 
 ## Table of Contents
