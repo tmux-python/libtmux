@@ -136,20 +136,6 @@ session.set_hooks('session-renamed', {
     1: 'display-message "Hook 1"',
     5: 'run-shell "echo hook 5"',
 })
-
-# Get all indexed values for a hook
-session.get_hook_values('session-renamed')
-# SparseArray({0: 'display-message "Hook 0"', 1: '...', 5: '...'})
-
-# Get just the indices
-session.get_hook_indices('session-renamed')
-# [0, 1, 5]
-
-# Append at next available index
-session.append_hook('session-renamed', 'display-message "Hook 6"')
-
-# Clear all indexed values for a hook
-session.clear_hook('session-renamed')
 ```
 
 **Hook methods available on Server, Session, Window, and Pane:**
@@ -157,15 +143,11 @@ session.clear_hook('session-renamed')
 | Method | Description |
 |--------|-------------|
 | `set_hook(hook, value)` | Set a hook |
-| `show_hook(hook)` | Get hook value |
+| `show_hook(hook)` | Get hook value (returns SparseArray for indexed hooks) |
 | `show_hooks()` | Get all hooks |
 | `unset_hook(hook)` | Remove a hook |
 | `run_hook(hook)` | Run a hook immediately |
-| `set_hooks(hook, values)` | Set multiple indexed hooks |
-| `get_hook_indices(hook)` | Get list of indices |
-| `get_hook_values(hook)` | Get all values as SparseArray |
-| `append_hook(hook, value)` | Append at next index |
-| `clear_hook(hook)` | Remove all indexed values |
+| `set_hooks(hook, values)` | Set multiple indexed hooks at once |
 
 #### SparseArray for Indexed Options (#516)
 
