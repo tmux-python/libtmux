@@ -1,7 +1,3 @@
----
-hide-toc: true
----
-
 (index)=
 
 # libtmux
@@ -10,12 +6,9 @@ hide-toc: true
 :start-after: </div>
 ```
 
-## Table of Contents
-
-:hidden:
-
 ```{toctree}
 :maxdepth: 2
+:hidden:
 
 quickstart
 about
