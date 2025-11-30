@@ -72,6 +72,7 @@ class HooksMixin(CmdMixin):
     def run_hook(
         self,
         hook: str,
+        global_: bool | None = None,
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
     ) -> Self:
         """Run a hook immediately. Useful for testing."""
@@ -79,6 +80,9 @@ class HooksMixin(CmdMixin):
             scope = self.default_hook_scope
 
         flags: list[str] = ["-R"]
+
+        if global_ is not None and global_:
+            flags.append("-g")
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
             assert scope in HOOK_SCOPE_FLAG_MAP
