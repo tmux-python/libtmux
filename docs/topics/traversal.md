@@ -136,7 +136,12 @@ True
 
 ## Filtering and Finding Objects
 
-Find windows by index:
+libtmux collections support Django-style filtering with `filter()` and `get()`.
+For comprehensive coverage of all lookup operators, see {ref}`querylist-filtering`.
+
+### Basic Filtering
+
+Find windows by exact attribute match:
 
 ```python
 >>> session.windows.filter(window_index=window.window_index)  # doctest: +ELLIPSIS
@@ -148,6 +153,109 @@ Get a specific pane by ID:
 ```python
 >>> window.panes.get(pane_id=pane.pane_id)  # doctest: +ELLIPSIS
 Pane(%... Window(@... ..., Session($... ...)))
+```
+
+### Partial Matching
+
+Use lookup suffixes like `__contains`, `__startswith`, `__endswith`:
+
+```python
+>>> # Create windows to demonstrate filtering
+>>> w1 = session.new_window(window_name="app-frontend")
+>>> w2 = session.new_window(window_name="app-backend")
+>>> w3 = session.new_window(window_name="logs")
+
+>>> # Find windows starting with 'app-'
+>>> session.windows.filter(window_name__startswith='app-')  # doctest: +ELLIPSIS
+[Window(@... ...:app-frontend, Session($... ...)), Window(@... ...:app-backend, Session($... ...))]
+
+>>> # Find windows containing 'end'
+>>> session.windows.filter(window_name__contains='end')  # doctest: +ELLIPSIS
+[Window(@... ...:app-frontend, Session($... ...)), Window(@... ...:app-backend, Session($... ...))]
+
+>>> # Clean up
+>>> w1.kill()
+>>> w2.kill()
+>>> w3.kill()
+```
+
+### Case-Insensitive Matching
+
+Prefix any lookup with `i` for case-insensitive matching:
+
+```python
+>>> # Create windows with mixed case
+>>> w1 = session.new_window(window_name="MyApp")
+>>> w2 = session.new_window(window_name="myapp-worker")
+
+>>> # Case-insensitive search
+>>> session.windows.filter(window_name__istartswith='myapp')  # doctest: +ELLIPSIS
+[Window(@... ...:MyApp, Session($... ...)), Window(@... ...:myapp-worker, Session($... ...))]
+
+>>> # Clean up
+>>> w1.kill()
+>>> w2.kill()
+```
+
+### Regex Filtering
+
+For complex patterns, use `__regex` or `__iregex`:
+
+```python
+>>> # Create versioned windows
+>>> w1 = session.new_window(window_name="release-v1.0")
+>>> w2 = session.new_window(window_name="release-v2.0")
+>>> w3 = session.new_window(window_name="dev")
+
+>>> # Match semantic version pattern
+>>> session.windows.filter(window_name__regex=r'v\d+\.\d+')  # doctest: +ELLIPSIS
+[Window(@... ...:release-v1.0, Session($... ...)), Window(@... ...:release-v2.0, Session($... ...))]
+
+>>> # Clean up
+>>> w1.kill()
+>>> w2.kill()
+>>> w3.kill()
+```
+
+### Chaining Filters
+
+Multiple conditions can be combined:
+
+```python
+>>> # Create windows for chaining example
+>>> w1 = session.new_window(window_name="api-prod")
+>>> w2 = session.new_window(window_name="api-staging")
+>>> w3 = session.new_window(window_name="web-prod")
+
+>>> # Multiple conditions in one call (AND)
+>>> session.windows.filter(
+...     window_name__startswith='api',
+...     window_name__endswith='prod'
+... )  # doctest: +ELLIPSIS
+[Window(@... ...:api-prod, Session($... ...))]
+
+>>> # Chained calls (also AND)
+>>> session.windows.filter(
+...     window_name__contains='api'
+... ).filter(
+...     window_name__contains='staging'
+... )  # doctest: +ELLIPSIS
+[Window(@... ...:api-staging, Session($... ...))]
+
+>>> # Clean up
+>>> w1.kill()
+>>> w2.kill()
+>>> w3.kill()
+```
+
+### Get with Default
+
+Avoid exceptions when an object might not exist:
+
+```python
+>>> # Returns None instead of raising ObjectDoesNotExist
+>>> session.windows.get(window_name="nonexistent", default=None) is None
+True
 ```
 
 ## Checking Relationships
