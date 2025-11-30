@@ -319,7 +319,6 @@ class HooksMixin(CmdMixin):
         hook: str,
         global_: bool = False,
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
-        ignore_errors: bool | None = None,
     ) -> list[str] | None:
         """Return value for the hook.
 
@@ -352,9 +351,6 @@ class HooksMixin(CmdMixin):
             else:
                 flags += (flag,)
 
-        if ignore_errors is not None and ignore_errors:
-            flags += ("-q",)
-
         flags += (hook,)
 
         cmd = self.cmd("show-hooks", *flags)
@@ -369,7 +365,6 @@ class HooksMixin(CmdMixin):
         hook: str,
         global_: bool = False,
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
-        ignore_errors: bool | None = None,
     ) -> str | int | SparseArray[str] | None:
         """Return value for a hook.
 
@@ -412,7 +407,6 @@ class HooksMixin(CmdMixin):
             hook=hook,
             global_=global_,
             scope=scope,
-            ignore_errors=ignore_errors,
         )
         if hooks_output is None:
             return None
