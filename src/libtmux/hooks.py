@@ -113,7 +113,6 @@ class HooksMixin(CmdMixin):
         value: int | str,
         unset: bool | None = None,
         run: bool | None = None,
-        ignore_errors: bool | None = None,
         append: bool | None = None,
         g: bool | None = None,
         global_: bool | None = None,
@@ -155,10 +154,6 @@ class HooksMixin(CmdMixin):
         if run is not None and run:
             assert isinstance(run, bool)
             flags.append("-R")
-
-        if ignore_errors is not None and ignore_errors:
-            assert isinstance(ignore_errors, bool)
-            flags.append("-q")
 
         if append is not None and append:
             assert isinstance(append, bool)
