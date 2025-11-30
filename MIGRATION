@@ -25,6 +25,93 @@ _Detailed migration steps for the next version will be posted here._
 
 <!-- To the maintainers and contributors: please add migration details for the upcoming release here -->
 
+## libtmux 0.50.0: Unified Options and Hooks API (#516)
+
+### New unified options API
+
+All tmux objects (Server, Session, Window, Pane) now share a consistent options
+interface through {class}`~libtmux.options.OptionsMixin`:
+
+```python
+# Get all options
+session.show_options()
+
+# Get a single option
+session.show_option('base-index')
+
+# Set an option
+window.set_option('automatic-rename', True)
+
+# Unset an option
+window.unset_option('automatic-rename')
+```
+
+### New hooks API
+
+All tmux objects now support hook management through
+{class}`~libtmux.hooks.HooksMixin`:
+
+```python
+# Set a hook
+session.set_hook('session-renamed', 'display-message "Renamed!"')
+
+# Get hook value
+session.show_hook('session-renamed')
+
+# Get all hooks
+session.show_hooks()
+
+# Remove a hook
+session.unset_hook('session-renamed')
+```
+
+### Deprecated Window methods
+
+The following `Window` methods are deprecated and will be removed in a future
+release:
+
+| Deprecated | Replacement |
+|------------|-------------|
+| `Window.set_window_option()` | {meth}`Window.set_option() <libtmux.Window.set_option>` |
+| `Window.show_window_option()` | {meth}`Window.show_option() <libtmux.Window.show_option>` |
+| `Window.show_window_options()` | {meth}`Window.show_options() <libtmux.Window.show_options>` |
+
+**Before (deprecated):**
+
+```python
+window.set_window_option('automatic-rename', 'on')
+window.show_window_option('automatic-rename')
+window.show_window_options()
+```
+
+**After (0.50.0+):**
+
+```python
+window.set_option('automatic-rename', True)
+window.show_option('automatic-rename')
+window.show_options()
+```
+
+### Deprecated `g` parameter
+
+The `g` parameter for global options is deprecated in favor of `global_`:
+
+**Before (deprecated):**
+
+```python
+session.show_option('status', g=True)
+session.set_option('status', 'off', g=True)
+```
+
+**After (0.50.0+):**
+
+```python
+session.show_option('status', global_=True)
+session.set_option('status', 'off', global_=True)
+```
+
+Using the old `g` parameter will emit a {class}`DeprecationWarning`.
+
 ## libtmux 0.46.0 (2025-02-25)
 
 #### Imports removed from libtmux.test (#580)
