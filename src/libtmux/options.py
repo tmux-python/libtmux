@@ -1208,9 +1208,13 @@ class OptionsMixin(CmdMixin):
         >>> MyServer().show_option('exit-unattached', global_=True)
         False
         """
+        if g:
+            warnings.warn("g argument is deprecated in favor of global_", stacklevel=2)
+            global_ = g
+
         return self._show_option(
             option=option,
-            global_=global_ or g,
+            global_=global_,
             scope=scope,
             ignore_errors=ignore_errors,
             include_hooks=include_hooks,
