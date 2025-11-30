@@ -425,6 +425,7 @@ class HooksMixin(CmdMixin):
         """
         hooks_output = self._show_hook(
             hook=hook,
+            global_=global_,
             scope=scope,
             ignore_errors=ignore_errors,
         )
