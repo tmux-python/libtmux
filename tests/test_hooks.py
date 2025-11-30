@@ -623,6 +623,74 @@ def test_show_hook_returns_sparse_array(server: Server) -> None:
     session.unset_hook("session-renamed")
 
 
+class IndexedHookLookupCase(t.NamedTuple):
+    """Test fixture for indexed hook lookups."""
+
+    test_id: str
+    hook_name: str
+    hook_index: int
+    hook_value: str
+
+
+@pytest.mark.parametrize(
+    IndexedHookLookupCase._fields,
+    [
+        IndexedHookLookupCase(
+            test_id="index_zero",
+            hook_name="session-renamed",
+            hook_index=0,
+            hook_value="display-message 'test zero'",
+        ),
+        IndexedHookLookupCase(
+            test_id="index_five",
+            hook_name="session-renamed",
+            hook_index=5,
+            hook_value="display-message 'test five'",
+        ),
+        IndexedHookLookupCase(
+            test_id="window_hook",
+            hook_name="window-renamed",
+            hook_index=0,
+            hook_value="display-message 'window test'",
+        ),
+    ],
+    ids=lambda x: x.test_id if isinstance(x, IndexedHookLookupCase) else x,
+)
+def test_show_hook_indexed_lookup(
+    server: Server,
+    test_id: str,
+    hook_name: str,
+    hook_index: int,
+    hook_value: str,
+) -> None:
+    """Test that show_hook with indexed hook name returns the specific value.
+
+    Per tmux.1, hooks are array options that can be queried by index.
+    When calling show_hook("session-renamed[0]"), it should return the string
+    value at that index, not a SparseArray.
+    """
+    session = server.new_session(session_name="test_indexed_lookup")
+    indexed_hook = f"{hook_name}[{hook_index}]"
+
+    # Set the hook
+    session.set_hook(indexed_hook, hook_value)
+
+    # Query with indexed name - should return the specific value, not SparseArray
+    result = session.show_hook(indexed_hook)
+    assert result is not None
+    assert isinstance(result, str), f"Expected str, got {type(result)}"
+    # tmux may normalize quotes, so check the essential parts are present
+    assert "display-message" in result
+
+    # Verify base hook query still returns SparseArray
+    base_result = session.show_hook(hook_name)
+    assert isinstance(base_result, SparseArray)
+    assert hook_index in base_result
+
+    # Cleanup
+    session.unset_hook(hook_name)
+
+
 def test_set_hooks_with_sparse_array(server: Server) -> None:
     """Test set_hooks with SparseArray input."""
     session = server.new_session(session_name="test_set_hooks_sparse")

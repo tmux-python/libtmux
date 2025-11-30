@@ -30,6 +30,7 @@ This module provides bulk operations for managing multiple indexed hooks:
 from __future__ import annotations
 
 import logging
+import re
 import typing as t
 import warnings
 
@@ -411,7 +412,20 @@ class HooksMixin(CmdMixin):
         if hooks_output is None:
             return None
         hooks = Hooks.from_stdout(hooks_output)
-        return getattr(hooks, hook.lstrip("%").replace("-", "_"), None)
+
+        # Check if this is an indexed query (e.g., "session-renamed[0]")
+        # For indexed queries, return the specific value like _show_option does
+        hook_attr = hook.lstrip("%").replace("-", "_")
+        index_match = re.search(r"\[(\d+)\]$", hook_attr)
+        if index_match:
+            # Strip the index for attribute lookup
+            base_hook_attr = re.sub(r"\[\d+\]$", "", hook_attr)
+            hook_val = getattr(hooks, base_hook_attr, None)
+            if isinstance(hook_val, SparseArray):
+                return hook_val.get(int(index_match.group(1)))
+            return hook_val
+
+        return getattr(hooks, hook_attr, None)
 
     def set_hooks(
         self,
