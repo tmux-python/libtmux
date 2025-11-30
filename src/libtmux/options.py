@@ -667,7 +667,11 @@ class OptionsMixin(CmdMixin):
             flags.append("-a")
 
         if g is not None:
-            warnings.warn("g argument is deprecated in favor of global_", stacklevel=2)
+            warnings.warn(
+                "g argument is deprecated in favor of global_",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
             global_ = g
 
         if global_ is not None and global_:
@@ -823,7 +827,11 @@ class OptionsMixin(CmdMixin):
         flags: tuple[str, ...] = ()
 
         if g:
-            warnings.warn("g argument is deprecated in favor of global_", stacklevel=2)
+            warnings.warn(
+                "g argument is deprecated in favor of global_",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
             flags += ("-g",)
         elif global_:
             flags += ("-g",)
@@ -1048,7 +1056,11 @@ class OptionsMixin(CmdMixin):
         flags: tuple[str | int, ...] = ()
 
         if g:
-            warnings.warn("g argument is deprecated in favor of global_", stacklevel=2)
+            warnings.warn(
+                "g argument is deprecated in favor of global_",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
             flags += ("-g",)
         elif global_:
             flags += ("-g",)
@@ -1209,7 +1221,11 @@ class OptionsMixin(CmdMixin):
         False
         """
         if g:
-            warnings.warn("g argument is deprecated in favor of global_", stacklevel=2)
+            warnings.warn(
+                "g argument is deprecated in favor of global_",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
             global_ = g
 
         return self._show_option(
