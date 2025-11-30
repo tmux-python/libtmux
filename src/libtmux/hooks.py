@@ -191,7 +191,6 @@ class HooksMixin(CmdMixin):
         self,
         hook: str,
         global_: bool | None = None,
-        ignore_errors: bool | None = None,
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
     ) -> Self:
         """Unset hook for tmux target.
@@ -212,10 +211,6 @@ class HooksMixin(CmdMixin):
             scope = self.default_hook_scope
 
         flags: list[str] = ["-u"]
-
-        if ignore_errors is not None and ignore_errors:
-            assert isinstance(ignore_errors, bool)
-            flags.append("-q")
 
         if global_ is not None and global_:
             assert isinstance(global_, bool)
