@@ -19,7 +19,7 @@ from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
 from libtmux.exc import OptionError
-from libtmux.options import convert_values
+from libtmux.options import TerminalOverrides, convert_values
 from libtmux.pane import Pane
 
 if t.TYPE_CHECKING:
@@ -299,6 +299,73 @@ def test_terminal_overrides(
     assert "xterm-256color" in options_["terminal-overrides"]
     assert isinstance(options_["terminal-overrides"]["xterm-256color"], dict)
     assert options_["terminal-overrides"]["xterm-256color"] == {"Tc": None}
+
+
+class TerminalOverridesMultiFeatureCase(t.NamedTuple):
+    """Test fixture for terminal-overrides with multiple features per terminal."""
+
+    test_id: str
+    raw_entry: str
+    expected_term: str
+    expected_features: dict[str, str | int | None]
+
+
+@pytest.mark.parametrize(
+    TerminalOverridesMultiFeatureCase._fields,
+    [
+        TerminalOverridesMultiFeatureCase(
+            test_id="two_flags",
+            raw_entry="xterm*:smcup@:rmcup@",
+            expected_term="xterm*",
+            expected_features={"smcup@": None, "rmcup@": None},
+        ),
+        TerminalOverridesMultiFeatureCase(
+            test_id="flag_and_keyval",
+            raw_entry="xterm*:XT:Ms=clipboard",
+            expected_term="xterm*",
+            expected_features={"XT": None, "Ms": "clipboard"},
+        ),
+        TerminalOverridesMultiFeatureCase(
+            test_id="multiple_keyvals",
+            raw_entry="screen*:Tc:RGB:setab=test",
+            expected_term="screen*",
+            expected_features={
+                "Tc": None,
+                "RGB": None,
+                "setab": "test",
+            },
+        ),
+        TerminalOverridesMultiFeatureCase(
+            test_id="integer_value",
+            raw_entry="tmux*:colors=256:Tc",
+            expected_term="tmux*",
+            expected_features={"colors": 256, "Tc": None},
+        ),
+    ],
+    ids=lambda x: x.test_id if isinstance(x, TerminalOverridesMultiFeatureCase) else x,
+)
+def test_terminal_overrides_multi_feature(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    test_id: str,
+    raw_entry: str,
+    expected_term: str,
+    expected_features: dict[str, str | int | None],
+) -> None:
+    """Test terminal-overrides parsing with multiple features per terminal.
+
+    Per tmux.1 (lines 4311-4326), terminal-overrides entries are colon-separated
+    strings: terminal pattern followed by a LIST of features (not just one).
+    For example, 'xterm*:XT:Ms=value' should parse as two features: XT and Ms.
+    """
+    mock_options = [f"terminal-overrides[0] {raw_entry}"]
+    monkeypatch.setattr(server, "cmd", fake_cmd(stdout=mock_options))
+    options_ = server._show_options()
+
+    assert "terminal-overrides" in options_
+    term_overrides = t.cast(TerminalOverrides, options_["terminal-overrides"])
+    assert expected_term in term_overrides
+    assert term_overrides[expected_term] == expected_features
 
 
 def test_command_alias(

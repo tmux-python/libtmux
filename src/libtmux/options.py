@@ -519,18 +519,21 @@ def explode_complex(
 
                 for item in val.iter_values():
                     try:
-                        term, features = item.split(":", maxsplit=1)
+                        # Split on all colons: first part is terminal pattern,
+                        # remaining parts are individual features/capabilities
+                        parts = item.split(":")
+                        term = parts[0]
+                        features = parts[1:]
+
                         if term not in new_overrides:
                             new_overrides[term] = {}
-                        if features and "=" in features:
-                            k, v = features.split("=", 1)
 
-                            if v.isdigit():
-                                v = int(v)
-
-                            new_overrides[term][k] = v
-                        else:
-                            new_overrides[term][features] = None
+                        for feature in features:
+                            if feature and "=" in feature:
+                                k, v = feature.split("=", 1)
+                                new_overrides[term][k] = int(v) if v.isdigit() else v
+                            elif feature:
+                                new_overrides[term][feature] = None
                     except Exception:  # NOQA: PERF203
                         logger.exception("Error parsing options")
                 options[key] = new_overrides
