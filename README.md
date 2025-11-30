@@ -134,6 +134,8 @@ Create a new session:
 
 ### List and filter sessions
 
+[**Learn more about Filtering**](https://libtmux.git-pull.com/topics/filtering.html)
+
 ```python
 >>> server.sessions
 [Session($... ...), ...]
@@ -278,6 +280,7 @@ def test_my_tmux_tool(session):
 
 **Topics:**
 [Traversal](https://libtmux.git-pull.com/topics/traversal.html) ·
+[Filtering](https://libtmux.git-pull.com/topics/filtering.html) ·
 [Pane Interaction](https://libtmux.git-pull.com/topics/pane_interaction.html) ·
 [Workspace Setup](https://libtmux.git-pull.com/topics/workspace_setup.html) ·
 [Automation Patterns](https://libtmux.git-pull.com/topics/automation_patterns.html) ·
