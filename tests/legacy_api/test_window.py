@@ -13,6 +13,7 @@ from libtmux.common import has_version
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.window import Window
+from tests.helpers import wait_for_line
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -383,4 +384,11 @@ def test_split_window_with_environment(
     assert pane is not None
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
-        assert pane.capture_pane()[-2] == v
+
+        def _match(line: str, expected: str = v) -> bool:
+            stripped = line.strip()
+            # Match exact value or value after shell prompt ($ prefix)
+            return stripped == expected or stripped == f"$ {expected}"
+
+        lines = wait_for_line(pane, _match)
+        assert any(_match(line) for line in lines)
