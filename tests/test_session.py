@@ -343,7 +343,9 @@ def test_new_window_with_environment(
         pane.send_keys(f"echo ${k}")
 
         def _match(line: str, expected: str = v) -> bool:
-            return line.strip() == expected
+            stripped = line.strip()
+            # Match exact value or value after shell prompt ($ prefix)
+            return stripped == expected or stripped == f"$ {expected}"
 
         lines = wait_for_line(pane, _match)
         assert any(_match(line) for line in lines)
