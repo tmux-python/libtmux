@@ -14,10 +14,16 @@ if t.TYPE_CHECKING:
     from libtmux.server import Server
 
 
+@pytest.mark.engines(["subprocess"])
 def test_hooks_raw_cmd(
     server: Server,
 ) -> None:
-    """Raw hook set, show, unset via cmd."""
+    """Raw hook set, show, unset via cmd.
+
+    Note: This test is subprocess-only because control mode requires explicit
+    targets (-t) for show-hooks to work correctly. In subprocess mode, tmux
+    inherits session context from the TMUX environment variable.
+    """
     session = server.new_session(session_name="test hooks")
     window = session.active_window
     pane = window.active_pane
@@ -193,10 +199,16 @@ def test_hooks_raw_cmd(
         assert pane.cmd("show-hooks", "-p", "session-renamed[0]").stdout == []
 
 
+@pytest.mark.engines(["subprocess"])
 def test_hooks_dataclass(
     server: Server,
 ) -> None:
-    """Tests for hooks dataclass."""
+    """Tests for hooks dataclass.
+
+    Note: This test is subprocess-only because control mode requires explicit
+    targets (-t) for show-hooks to work correctly. In subprocess mode, tmux
+    inherits session context from the TMUX environment variable.
+    """
     session = server.new_session(session_name="test hooks")
     window = session.active_window
     pane = window.active_pane
