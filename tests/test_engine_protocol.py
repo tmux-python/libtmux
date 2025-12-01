@@ -92,11 +92,6 @@ PROTOCOL_ERROR_CASES: list[ProtocolErrorFixture] = [
         line="%end 123 1 0",
         expected_reason="unexpected %end",
     ),
-    ProtocolErrorFixture(
-        test_id="no_pending_begin",
-        line="%begin 999 1 0",
-        expected_reason="no pending command for %begin",
-    ),
 ]
 
 
@@ -109,6 +104,27 @@ def test_control_protocol_errors(case: ProtocolErrorFixture) -> None:
     assert proto.state is ParserState.DEAD
     assert stats.last_error is not None
     assert case.expected_reason in stats.last_error
+
+
+def test_control_protocol_skips_unexpected_begin() -> None:
+    """Unexpected %begin (e.g., from hook execution) should enter SKIPPING state.
+
+    This is not a fatal error - hooks can trigger additional %begin/%end blocks
+    that have no matching registered command. The protocol skips these blocks
+    instead of marking the connection dead.
+    """
+    proto = ControlProtocol()
+    proto.feed_line("%begin 999 1 0")
+    assert proto.state is ParserState.SKIPPING
+    # Output during skipped block is ignored
+    proto.feed_line("some hook output")
+    assert proto.state is ParserState.SKIPPING
+    # End of skipped block returns to IDLE
+    proto.feed_line("%end 999 1 0")
+    assert proto.state is ParserState.IDLE
+    # Connection is still usable
+    stats = proto.get_stats(restarts=0)
+    assert stats.last_error is None
 
 
 NOTIFICATION_FIXTURES: list[NotificationFixture] = [
