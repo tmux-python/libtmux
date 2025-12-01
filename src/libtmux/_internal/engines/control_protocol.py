@@ -61,6 +61,7 @@ class ParserState(enum.Enum):
 
     IDLE = enum.auto()
     IN_COMMAND = enum.auto()
+    SKIPPING = enum.auto()  # Skipping unexpected %begin/%end block
     DEAD = enum.auto()
 
 
@@ -214,10 +215,17 @@ class ControlProtocol:
     def _handle_plain_line(self, line: str) -> None:
         if self.state is ParserState.IN_COMMAND and self._current:
             self._current.stdout.append(line)
+        elif self.state is ParserState.SKIPPING:
+            # Ignore output from skipped blocks (hook command output)
+            pass
         else:
             logger.debug("Unexpected plain line outside command: %r", line)
 
     def _on_begin(self, parts: list[str]) -> None:
+        if self.state is ParserState.SKIPPING:
+            # Nested %begin while skipping - ignore
+            logger.debug("Nested %%begin while skipping: %s", parts)
+            return
         if self.state is not ParserState.IDLE:
             self._protocol_error("nested %begin")
             return
@@ -233,7 +241,12 @@ class ControlProtocol:
         try:
             ctx = self._pending.popleft()
         except IndexError:
-            self._protocol_error(f"no pending command for %begin id={cmd_id}")
+            # No pending command - this is likely from a hook action.
+            # Skip this block instead of killing the connection.
+            logger.debug(
+                "Unexpected %%begin id=%d (hook execution?), skipping block", cmd_id
+            )
+            self.state = ParserState.SKIPPING
             return
 
         ctx.cmd_id = cmd_id
@@ -244,6 +257,11 @@ class ControlProtocol:
         self.state = ParserState.IN_COMMAND
 
     def _on_end_or_error(self, tag: str, parts: list[str]) -> None:
+        if self.state is ParserState.SKIPPING:
+            # End of skipped block - return to idle
+            logger.debug("Skipped block ended with %s", tag)
+            self.state = ParserState.IDLE
+            return
         if self.state is not ParserState.IN_COMMAND or self._current is None:
             self._protocol_error(f"unexpected {tag}")
             return
