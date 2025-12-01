@@ -179,19 +179,7 @@ gaps in indices, so libtmux introduces {class}`~_internal.sparse_array.SparseArr
 - `OPTION_SCOPE_FLAG_MAP`: Maps scope to tmux flags (`-s`, `-w`, `-p`)
 - `HOOK_SCOPE_FLAG_MAP`: Maps scope to hook flags
 
-## libtmux 0.49.0 (2025-11-29)
-
-### Breaking Changes
-
-#### tmux 1.8 to 3.1c support removed (#608)
-
-Support for tmux versions below 3.2a has been removed. This completes the
-deprecation announced in v0.48.0.
-
-- Minimum tmux version is now 3.2a (`TMUX_MIN_VERSION`)
-- Removed `TMUX_SOFT_MIN_VERSION` constant and deprecation warning system
-- Removed version guards throughout the codebase
-- For users on older tmux, use libtmux v0.48.x
+### Breaking changes
 
 #### Deprecated Window methods (#516)
 
@@ -221,6 +209,20 @@ window.set_option('automatic-rename', True)
 | Window/Pane hook scopes (`-w`, `-p`) | 3.2+ |
 | `client-active`, `window-resized` hooks | 3.3+ |
 | `pane-title-changed` hook | 3.5+ |
+
+## libtmux 0.49.0 (2025-11-29)
+
+### Breaking Changes
+
+#### tmux 1.8 to 3.1c support removed (#608)
+
+Support for tmux versions below 3.2a has been removed. This completes the
+deprecation announced in v0.48.0.
+
+- Minimum tmux version is now 3.2a (`TMUX_MIN_VERSION`)
+- Removed `TMUX_SOFT_MIN_VERSION` constant and deprecation warning system
+- Removed version guards throughout the codebase
+- For users on older tmux, use libtmux v0.48.x
 
 ## libtmux 0.48.0 (2025-11-28)
 
