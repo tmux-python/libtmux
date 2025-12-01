@@ -69,13 +69,13 @@ Tip: libtmux is pre-1.0. Pin a range in projects to avoid surprises:
 requirements.txt:
 
 ```ini
-libtmux==0.49.*
+libtmux==0.50.*
 ```
 
 pyproject.toml:
 
 ```toml
-libtmux = "0.49.*"
+libtmux = "0.50.*"
 ```
 
 ## 🚀 Quickstart
