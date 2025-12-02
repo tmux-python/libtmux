@@ -191,6 +191,18 @@ NOTIFICATION_FIXTURES: list[NotificationFixture] = [
         expected_kind=NotificationKind.PASTE_BUFFER_DELETED,
         expected_subset={"name": "buf1"},
     ),
+    NotificationFixture(
+        test_id="message",
+        line="%message Hello world from tmux",
+        expected_kind=NotificationKind.MESSAGE,
+        expected_subset={"text": "Hello world from tmux"},
+    ),
+    NotificationFixture(
+        test_id="config_error",
+        line="%config-error /home/user/.tmux.conf:10: unknown option",
+        expected_kind=NotificationKind.CONFIG_ERROR,
+        expected_subset={"error": "/home/user/.tmux.conf:10: unknown option"},
+    ),
 ]
 
 

@@ -155,6 +155,12 @@ def _parse_notification(line: str, parts: list[str]) -> Notification:
         data = {"name": parts[1], "type": parts[2], "value": " ".join(parts[3:])}
     elif tag == "%exit":
         kind = NotificationKind.EXIT
+    elif tag == "%message" and len(parts) >= 2:
+        kind = NotificationKind.MESSAGE
+        data = {"text": " ".join(parts[1:])}
+    elif tag == "%config-error" and len(parts) >= 2:
+        kind = NotificationKind.CONFIG_ERROR
+        data = {"error": " ".join(parts[1:])}
 
     return Notification(kind=kind, when=now, raw=line, data=data)
 
