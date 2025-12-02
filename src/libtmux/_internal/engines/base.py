@@ -99,6 +99,8 @@ class NotificationKind(enum.Enum):
     CONTINUE = enum.auto()
     SUBSCRIPTION_CHANGED = enum.auto()
     EXIT = enum.auto()
+    MESSAGE = enum.auto()
+    CONFIG_ERROR = enum.auto()
     RAW = enum.auto()
 
 
