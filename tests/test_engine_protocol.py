@@ -203,6 +203,62 @@ NOTIFICATION_FIXTURES: list[NotificationFixture] = [
         expected_kind=NotificationKind.CONFIG_ERROR,
         expected_subset={"error": "/home/user/.tmux.conf:10: unknown option"},
     ),
+    NotificationFixture(
+        test_id="subscription_changed_session",
+        line="%subscription-changed mysub $1 - - - : session value here",
+        expected_kind=NotificationKind.SUBSCRIPTION_CHANGED,
+        expected_subset={
+            "name": "mysub",
+            "session_id": "$1",
+            "window_id": None,
+            "pane_id": None,
+            "value": "session value here",
+        },
+    ),
+    NotificationFixture(
+        test_id="subscription_changed_pane",
+        line="%subscription-changed mysub $1 @2 0 %3 : pane value",
+        expected_kind=NotificationKind.SUBSCRIPTION_CHANGED,
+        expected_subset={
+            "name": "mysub",
+            "session_id": "$1",
+            "window_id": "@2",
+            "window_index": "0",
+            "pane_id": "%3",
+            "value": "pane value",
+        },
+    ),
+    NotificationFixture(
+        test_id="extended_output_with_colon",
+        line="%extended-output %5 1500 : output with spaces",
+        expected_kind=NotificationKind.PANE_EXTENDED_OUTPUT,
+        expected_subset={
+            "pane_id": "%5",
+            "behind_ms": "1500",
+            "payload": "output with spaces",
+        },
+    ),
+    NotificationFixture(
+        test_id="session_changed_with_name",
+        line="%session-changed $1 my session name",
+        expected_kind=NotificationKind.SESSION_CHANGED,
+        expected_subset={
+            "session_id": "$1",
+            "session_name": "my session name",
+        },
+    ),
+    NotificationFixture(
+        test_id="exit_with_reason",
+        line="%exit server exited",
+        expected_kind=NotificationKind.EXIT,
+        expected_subset={"reason": "server exited"},
+    ),
+    NotificationFixture(
+        test_id="exit_no_reason",
+        line="%exit",
+        expected_kind=NotificationKind.EXIT,
+        expected_subset={"reason": None},
+    ),
 ]
 
 
