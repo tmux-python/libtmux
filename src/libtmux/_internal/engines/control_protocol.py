@@ -78,13 +78,17 @@ def _parse_notification(line: str, parts: list[str]) -> Notification:
     if tag == "%output" and len(parts) >= 3:
         kind = NotificationKind.PANE_OUTPUT
         data = {"pane_id": parts[1], "payload": " ".join(parts[2:])}
-    elif tag == "%extended-output" and len(parts) >= 4:
-        kind = NotificationKind.PANE_EXTENDED_OUTPUT
-        data = {
-            "pane_id": parts[1],
-            "behind_ms": parts[2],
-            "payload": " ".join(parts[3:]),
-        }
+    elif tag == "%extended-output" and len(parts) >= 3:
+        # Format: %extended-output %{pane_id} {age_ms} : {payload}
+        # The colon separates metadata from payload
+        colon_idx = line.find(" : ")
+        if colon_idx != -1:
+            kind = NotificationKind.PANE_EXTENDED_OUTPUT
+            data = {
+                "pane_id": parts[1],
+                "behind_ms": parts[2],
+                "payload": line[colon_idx + 3:],
+            }
     elif tag == "%pane-mode-changed" and len(parts) >= 2:
         kind = NotificationKind.PANE_MODE_CHANGED
         data = {"pane_id": parts[1], "mode": parts[2:]}
@@ -117,9 +121,10 @@ def _parse_notification(line: str, parts: list[str]) -> Notification:
     elif tag == "%window-pane-changed" and len(parts) >= 3:
         kind = NotificationKind.WINDOW_PANE_CHANGED
         data = {"window_id": parts[1], "pane_id": parts[2]}
-    elif tag == "%session-changed" and len(parts) >= 2:
+    elif tag == "%session-changed" and len(parts) >= 3:
+        # Format: %session-changed ${session_id} {session_name}
         kind = NotificationKind.SESSION_CHANGED
-        data = {"session_id": parts[1]}
+        data = {"session_id": parts[1], "session_name": " ".join(parts[2:])}
     elif tag == "%client-session-changed" and len(parts) >= 4:
         kind = NotificationKind.CLIENT_SESSION_CHANGED
         data = {
@@ -150,11 +155,24 @@ def _parse_notification(line: str, parts: list[str]) -> Notification:
     elif tag == "%continue" and len(parts) >= 2:
         kind = NotificationKind.CONTINUE
         data = {"pane_id": parts[1]}
-    elif tag == "%subscription-changed" and len(parts) >= 4:
-        kind = NotificationKind.SUBSCRIPTION_CHANGED
-        data = {"name": parts[1], "type": parts[2], "value": " ".join(parts[3:])}
+    elif tag == "%subscription-changed" and len(parts) >= 6:
+        # Format: %subscription-changed {name} ${session_id} @{window_id} {index} %{pane_id} : {value}
+        # Fields can be "-" for "not applicable". Colon separates metadata from value.
+        colon_idx = line.find(" : ")
+        if colon_idx != -1:
+            kind = NotificationKind.SUBSCRIPTION_CHANGED
+            data = {
+                "name": parts[1],
+                "session_id": parts[2] if parts[2] != "-" else None,
+                "window_id": parts[3] if parts[3] != "-" else None,
+                "window_index": parts[4] if parts[4] != "-" else None,
+                "pane_id": parts[5] if parts[5] != "-" else None,
+                "value": line[colon_idx + 3:],
+            }
     elif tag == "%exit":
+        # Format: %exit or %exit {reason}
         kind = NotificationKind.EXIT
+        data = {"reason": " ".join(parts[1:]) if len(parts) > 1 else None}
     elif tag == "%message" and len(parts) >= 2:
         kind = NotificationKind.MESSAGE
         data = {"text": " ".join(parts[1:])}
