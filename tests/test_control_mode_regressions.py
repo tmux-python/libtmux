@@ -18,7 +18,6 @@ from libtmux._internal.engines.control_protocol import (
     CommandContext,
     ControlProtocol,
 )
-from libtmux.common import has_lt_version
 from libtmux.server import Server
 from tests.helpers import wait_for_line
 
@@ -239,16 +238,10 @@ def test_environment_propagation(case: EnvPropagationFixture) -> None:
     """Environment vars should surface inside panes (tmux >= 3.2 for -e support).
 
     Uses ``wait_for_line`` to allow control-mode capture to observe the shell
-    output after send-keys; older tmux releases ignore ``-e`` and are skipped.
+    output after send-keys.
     """
-    if has_lt_version("3.2"):
-        pytest.skip("tmux < 3.2 ignores -e in this environment")
-
     env = shutil.which("env")
     assert env is not None
-
-    if has_lt_version("3.2"):
-        pytest.skip("tmux < 3.2 does not support -e on new-window/split")
 
     socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
     engine = ControlModeEngine()
@@ -533,14 +526,8 @@ ENV_MULTI_CASES = [
 @pytest.mark.parametrize("case", ENV_MULTI_CASES)
 def test_environment_multi_var_propagation(case: EnvMultiFixture) -> None:
     """Multiple ``-e`` flags should all be delivered inside the pane (tmux >= 3.2)."""
-    if has_lt_version("3.2"):
-        pytest.skip("tmux < 3.2 ignores -e in this environment")
-
     env = shutil.which("env")
     assert env is not None
-
-    if has_lt_version("3.2"):
-        pytest.skip("tmux < 3.2 does not support -e on new-window")
 
     socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
     engine = ControlModeEngine()
@@ -837,8 +824,6 @@ def test_list_clients_control_flag_filters_attached() -> None:
     The engine's exclude_internal_sessions() method checks for this flag and
     filters control clients from attached_sessions.
     """
-    if has_lt_version("3.2"):
-        pytest.skip("tmux < 3.2 omits client_flags")
     socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
     engine = ControlModeEngine()
     server = Server(socket_name=socket_name, engine=engine)

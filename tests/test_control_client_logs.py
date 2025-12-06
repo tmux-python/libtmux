@@ -7,7 +7,6 @@ import typing as t
 import pytest
 
 from libtmux._internal.engines.control_protocol import CommandContext, ControlProtocol
-from libtmux.common import has_lt_version
 
 
 @pytest.mark.engines(["control"])
@@ -39,8 +38,6 @@ def test_control_client_lists_clients(
 
     assert list_ctx.done.wait(timeout=0.5)
     result = proto.build_result(list_ctx)
-    if has_lt_version("3.2"):
-        pytest.xfail("tmux < 3.2 omits client_flags field in list-clients")
 
     saw_control_flag = any(
         len(parts := line.split()) >= 2
@@ -105,8 +102,6 @@ def test_control_client_lists_control_flag(
 ) -> None:
     """list-clients should show control client with C flag on tmux >= 3.2."""
     proc, proto = control_client_logs
-    if has_lt_version("3.2"):
-        pytest.skip("tmux < 3.2 omits client_flags")
 
     assert proc.stdin is not None
     list_ctx = CommandContext(
