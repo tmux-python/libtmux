@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 def _trim_lines(lines: list[str]) -> list[str]:
-    """Remove trailing empty strings to mirror subprocess behaviour."""
+    """Remove trailing empty or whitespace-only lines to mirror subprocess behaviour."""
     trimmed = list(lines)
-    while trimmed and trimmed[-1] == "":
+    while trimmed and trimmed[-1].strip() == "":
         trimmed.pop()
     return trimmed
 

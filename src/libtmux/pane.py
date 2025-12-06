@@ -430,9 +430,9 @@ class Pane(
         output = self.cmd(*cmd).stdout
 
         def _trim(lines: list[str]) -> list[str]:
-            # Match engine trimming: remove only empty strings, not whitespace-only
+            # Match engine trimming: remove trailing empty or whitespace-only lines
             trimmed = list(lines)
-            while trimmed and trimmed[-1] == "":
+            while trimmed and trimmed[-1].strip() == "":
                 trimmed.pop()
             return trimmed
 
