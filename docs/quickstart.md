@@ -129,7 +129,7 @@ $ ptpython
 ```
 
 ```{module} libtmux
-
+:no-index:
 ```
 
 First, we can grab a {class}`Server`.

@@ -13,7 +13,7 @@ your case, we won't stabilize APIs until we're sure everything is by the book.
 [connect with us]: https://github.com/tmux-python/libtmux/discussions
 
 ```{module} libtmux.pytest_plugin
-
+:no-index:
 ```
 
 ## Usage
