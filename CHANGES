@@ -32,7 +32,13 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
-_Future release notes will be placed here_
+_Upcoming changes will be written here._
+
+### Documentation (#612)
+
+- Normalize docs headings and Sphinx module directives to fix anchor and index generation issues.
+- Tweak Sphinx type-hints configuration to avoid RST indentation conflicts and suppress forward-reference warnings.
+- Refresh docstrings and cross-references (pane/window APIs, environment helpers, pytest plugin) for clearer return types and stable anchors.
 
 ## libtmux 0.50.0 (2025-11-30)
 
