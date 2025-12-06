@@ -100,6 +100,11 @@ jobs:
           COV_CORE_SOURCE: .
           COV_CORE_CONFIG: .coveragerc
           COV_CORE_DATAFILE: .coverage.eager
+      - name: Test with pytest (control engine)
+        continue-on-error: ${{ matrix.tmux-version == 'master' }}
+        run: |
+          tmux -V
+          uv run py.test --engine=control -n auto --verbose
       - uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
