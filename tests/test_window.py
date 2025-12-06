@@ -86,13 +86,17 @@ def test_fresh_window_data(session: Session) -> None:
 
     active_window = session.active_window
     assert active_window is not None
-    active_window.select_pane(pane_base_index)
+    pane_to_select = active_window.panes.get(pane_index=str(pane_base_index))
+    assert pane_to_select is not None
+    pane_to_select.select()
 
     active_pane = session.active_pane
     assert active_pane is not None
     active_pane.send_keys("cd /srv/www/flaskr")
 
-    active_window.select_pane(pane_base_index + 1)
+    pane_to_select_2 = active_window.panes.get(pane_index=str(pane_base_index + 1))
+    assert pane_to_select_2 is not None
+    pane_to_select_2.select()
     active_pane = session.active_pane
     assert active_pane is not None
     active_pane.send_keys("source .venv/bin/activate")
@@ -104,7 +108,9 @@ def test_fresh_window_data(session: Session) -> None:
     assert current_windows == len(session.windows)
 
     session.select_window("1")
-    session.kill_window(target_window="hey")
+    window_to_kill = session.windows.get(window_name="hey")
+    assert window_to_kill is not None
+    window_to_kill.kill()
     current_windows -= 1
     assert current_windows == len(session.windows)
 
@@ -247,7 +253,7 @@ def test_window_rename(
 
 
 def test_kill_window(session: Session) -> None:
-    """Test window.kill_window() kills window."""
+    """Test window.kill() kills window."""
     session.new_window()
     # create a second window to not kick out the client.
     # there is another way to do this via options too.
@@ -256,16 +262,16 @@ def test_kill_window(session: Session) -> None:
 
     assert w.window_id is not None
 
-    w.kill_window()
+    w.kill()
     with pytest.raises(ObjectDoesNotExist):
         w.refresh()
 
 
 def test_show_window_options(session: Session) -> None:
-    """Window.show_window_options() returns dict."""
+    """Window.show_options() returns dict."""
     window = session.new_window(window_name="test_window")
 
-    options = window.show_window_options()
+    options = window.show_options()
     assert isinstance(options, dict)
 
     options_2 = window._show_options()
@@ -291,18 +297,18 @@ def test_show_window_options(session: Session) -> None:
 
 
 def test_set_window_and_show_window_options(session: Session) -> None:
-    """Window.set_window_option() then Window.show_window_options(key)."""
+    """Window.set_option() then Window.show_option(key)."""
     window = session.new_window(window_name="test_window")
 
-    window.set_window_option("main-pane-height", 20)
-    assert window.show_window_option("main-pane-height") == 20
+    window.set_option("main-pane-height", 20)
+    assert window.show_option("main-pane-height") == 20
 
-    window.set_window_option("main-pane-height", 40)
-    assert window.show_window_option("main-pane-height") == 40
-    assert window.show_window_options()["main-pane-height"] == 40
+    window.set_option("main-pane-height", 40)
+    assert window.show_option("main-pane-height") == 40
+    assert window.show_options()["main-pane-height"] == 40
 
-    window.set_window_option("pane-border-format", " #P ")
-    assert window.show_window_option("pane-border-format") == " #P "
+    window.set_option("pane-border-format", " #P ")
+    assert window.show_option("pane-border-format") == " #P "
 
 
 def test_set_and_show_window_options(session: Session) -> None:
@@ -328,51 +334,51 @@ def test_set_and_show_window_options(session: Session) -> None:
 def test_empty_window_option_returns_None(session: Session) -> None:
     """Verify unset window option returns None."""
     window = session.new_window(window_name="test_window")
-    assert window.show_window_option("alternate-screen") is None
+    assert window.show_option("alternate-screen") is None
 
 
 def test_show_window_option(session: Session) -> None:
-    """Set option then Window.show_window_option(key)."""
+    """Set option then Window.show_option(key)."""
     window = session.new_window(window_name="test_window")
 
-    window.set_window_option("main-pane-height", 20)
-    assert window.show_window_option("main-pane-height") == 20
+    window.set_option("main-pane-height", 20)
+    assert window.show_option("main-pane-height") == 20
 
-    window.set_window_option("main-pane-height", 40)
-    assert window.show_window_option("main-pane-height") == 40
-    assert window.show_window_option("main-pane-height") == 40
+    window.set_option("main-pane-height", 40)
+    assert window.show_option("main-pane-height") == 40
+    assert window.show_option("main-pane-height") == 40
 
 
 def test_show_window_option_unknown(session: Session) -> None:
-    """Window.show_window_option raises InvalidOption for bad option key."""
+    """Window.show_option raises InvalidOption for bad option key."""
     window = session.new_window(window_name="test_window")
 
     with pytest.raises(exc.InvalidOption):
-        window.show_window_option("moooz")
+        window.show_option("moooz")
 
 
 def test_show_window_option_ambiguous(session: Session) -> None:
-    """show_window_option raises AmbiguousOption for ambiguous option."""
+    """show_option raises AmbiguousOption for ambiguous option."""
     window = session.new_window(window_name="test_window")
 
     with pytest.raises(exc.AmbiguousOption):
-        window.show_window_option("clock-mode")
+        window.show_option("clock-mode")
 
 
 def test_set_window_option_ambiguous(session: Session) -> None:
-    """set_window_option raises AmbiguousOption for ambiguous option."""
+    """set_option raises AmbiguousOption for ambiguous option."""
     window = session.new_window(window_name="test_window")
 
     with pytest.raises(exc.AmbiguousOption):
-        window.set_window_option("clock-mode", 12)
+        window.set_option("clock-mode", 12)
 
 
 def test_set_window_option_invalid(session: Session) -> None:
-    """Window.set_window_option raises InvalidOption for invalid option key."""
+    """Window.set_option raises InvalidOption for invalid option key."""
     window = session.new_window(window_name="test_window")
 
     with pytest.raises(exc.InvalidOption):
-        window.set_window_option("afewewfew", 43)
+        window.set_option("afewewfew", 43)
 
 
 def test_move_window(session: Session) -> None:
@@ -710,70 +716,57 @@ def test_split_start_directory_pathlib(
 
 
 class DeprecatedMethodTestCase(t.NamedTuple):
-    """Test case for deprecated method warnings."""
+    """Test case for deprecated method errors."""
 
     test_id: str
     method_name: str  # Name of deprecated method to call
     args: tuple[t.Any, ...]  # Positional args
     kwargs: dict[str, t.Any]  # Keyword args
-    expected_warning_match: str  # Regex pattern to match warning message
+    expected_error_match: str  # Regex pattern to match error message
 
 
-DEPRECATED_WINDOW_METHOD_TEST_CASES: list[DeprecatedMethodTestCase] = [
+# These methods were deprecated in 0.50.0 and still emit warnings (not errors)
+DEPRECATED_WARNING_WINDOW_METHOD_TEST_CASES: list[DeprecatedMethodTestCase] = [
     DeprecatedMethodTestCase(
         test_id="set_window_option",
         method_name="set_window_option",
         args=("main-pane-height", 20),
         kwargs={},
-        expected_warning_match=r"Window\.set_window_option\(\) is deprecated",
+        expected_error_match=r"Window\.set_window_option\(\) is deprecated",
     ),
     DeprecatedMethodTestCase(
         test_id="show_window_options",
         method_name="show_window_options",
         args=(),
         kwargs={},
-        expected_warning_match=r"Window\.show_window_options\(\) is deprecated",
-    ),
-    DeprecatedMethodTestCase(
-        test_id="show_window_options_global",
-        method_name="show_window_options",
-        args=(),
-        kwargs={"g": True},
-        expected_warning_match=r"Window\.show_window_options\(\) is deprecated",
+        expected_error_match=r"Window\.show_window_options\(\) is deprecated",
     ),
     DeprecatedMethodTestCase(
         test_id="show_window_option",
         method_name="show_window_option",
         args=("main-pane-height",),
         kwargs={},
-        expected_warning_match=r"Window\.show_window_option\(\) is deprecated",
-    ),
-    DeprecatedMethodTestCase(
-        test_id="show_window_option_global",
-        method_name="show_window_option",
-        args=("main-pane-height",),
-        kwargs={"g": True},
-        expected_warning_match=r"Window\.show_window_option\(\) is deprecated",
+        expected_error_match=r"Window\.show_window_option\(\) is deprecated",
     ),
 ]
 
 
-def _build_deprecated_method_params() -> list[t.Any]:
-    """Build pytest params for deprecated method tests."""
+def _build_deprecated_warning_method_params() -> list[t.Any]:
+    """Build pytest params for deprecated method warning tests."""
     return [
-        pytest.param(tc, id=tc.test_id) for tc in DEPRECATED_WINDOW_METHOD_TEST_CASES
+        pytest.param(tc, id=tc.test_id)
+        for tc in DEPRECATED_WARNING_WINDOW_METHOD_TEST_CASES
     ]
 
 
-@pytest.mark.filterwarnings("ignore:g argument is deprecated:DeprecationWarning")
-@pytest.mark.parametrize("test_case", _build_deprecated_method_params())
+@pytest.mark.parametrize("test_case", _build_deprecated_warning_method_params())
 def test_deprecated_window_methods_emit_warning(
     session: Session,
     test_case: DeprecatedMethodTestCase,
 ) -> None:
-    """Verify deprecated Window methods emit DeprecationWarning."""
+    """Verify deprecated Window methods emit DeprecationWarning (0.50.0)."""
     window = session.new_window(window_name="test_deprecation")
     method = getattr(window, test_case.method_name)
 
-    with pytest.warns(DeprecationWarning, match=test_case.expected_warning_match):
+    with pytest.warns(DeprecationWarning, match=test_case.expected_error_match):
         method(*test_case.args, **test_case.kwargs)

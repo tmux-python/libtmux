@@ -1,389 +1,169 @@
-"""Test for libtmux Window object."""
+"""Tests for deprecated libtmux Window APIs.
+
+These tests verify that deprecated methods raise exc.DeprecatedError.
+"""
 
 from __future__ import annotations
 
-import logging
-import shutil
-import time
 import typing as t
 
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_version
-from libtmux.pane import Pane
-from libtmux.server import Server
-from libtmux.window import Window
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
 
-logger = logging.getLogger(__name__)
-
-
-def test_select_window(session: Session) -> None:
-    """Test Window.select_window()."""
-    window_count = len(session._windows)
-    # to do, get option for   base-index from tmux
-    # for now however, let's get the index from the first window.
-    assert window_count == 1
-
-    assert session.attached_window is not None
-    assert session.attached_window.index is not None
-    window_base_index = int(session.attached_window.index)
-
-    window = session.new_window(window_name="testing 3")
-
-    # self.assertEqual(2,
-    # int(session.attached_window.index))
-    assert window.index is not None
-    assert int(window_base_index) + 1 == int(window.index)
-
-    session.select_window(str(window_base_index))
-    assert window_base_index == int(session.attached_window.index)
-
-    session.select_window("testing 3")
-    assert int(window_base_index) + 1 == int(session.attached_window.index)
-
-    assert len(session._windows) == 2
-
-
-def test_fresh_window_data(session: Session) -> None:
-    """Verify window data is fresh."""
-    attached_window = session.attached_window
-    assert attached_window is not None
-    pane_base_idx = attached_window._show_option("pane-base-index", global_=True)
-    assert pane_base_idx is not None
-    pane_base_index = int(pane_base_idx)
-
-    assert len(session.windows) == 1
-
-    assert len(session.attached_window.panes) == 1
-    current_windows = len(session._windows)
-    assert session.get("session_id") != "@0"
-    assert current_windows == 1
-
-    assert len(session.attached_window.panes) == 1
-    assert isinstance(session.server, Server)
-    # len(session.attached_window.panes))
-
-    assert len(session.windows) == 1
-    assert len(session.attached_window.panes) == 1
-    for w in session.windows:
-        assert isinstance(w, Window)
-    window = session.attached_window
-    assert isinstance(window, Window)
-    assert len(session.attached_window.panes) == 1
-    window.split_window()
-
-    attached_window = session.attached_window
-    assert attached_window is not None
-    attached_window.select_pane(pane_base_index)
-
-    attached_pane = session.attached_pane
-    assert attached_pane is not None
-    attached_pane.send_keys("cd /srv/www/flaskr")
-
-    attached_window.select_pane(pane_base_index + 1)
-    attached_pane = session.attached_pane
-    assert attached_pane is not None
-    attached_pane.send_keys("source .venv/bin/activate")
-    session.new_window(window_name="second")
-    current_windows += 1
-    assert current_windows == len(session._windows)
-    session.new_window(window_name="hey")
-    current_windows += 1
-    assert current_windows == len(session._windows)
-
-    session.select_window("1")
-    session.kill_window(target_window="hey")
-    current_windows -= 1
-    assert current_windows == len(session._windows)
-
-
-def test_newest_pane_data(session: Session) -> None:
-    """Test window.panes has fresh data."""
-    window = session.new_window(window_name="test", attach=True)
-    assert isinstance(window, Window)
-    assert len(window.panes) == 1
-    window.split_window(attach=True)
-
-    assert len(window.panes) == 2
-    # note: the below used to accept -h, removing because split_window now
-    # has attach as its only argument now
-    window.split_window(attach=True)
-    assert len(window.panes) == 3
-
-
-def test_attached_pane(session: Session) -> None:
-    """Window.attached_window returns active Pane."""
-    window = session.attached_window  # current window
-    assert isinstance(window.attached_pane, Pane)
-
-
-def test_split_window(session: Session) -> None:
-    """Window.split_window() splits window, returns new Pane, vertical."""
-    window_name = "test split window"
-    window = session.new_window(window_name=window_name, attach=True)
-    pane = window.split_window()
-    assert len(window.panes) == 2
-    assert isinstance(pane, Pane)
-    assert window.width is not None
-    assert window.panes[0].height is not None
-    assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
-
-
-def test_split_window_shell(session: Session) -> None:
-    """Window.split_window() splits window, returns new Pane, vertical."""
-    window_name = "test split window"
-    cmd = "sleep 1m"
-    window = session.new_window(window_name=window_name, attach=True)
-    pane = window.split_window(shell=cmd)
-    assert len(window.panes) == 2
-    assert isinstance(pane, Pane)
-    assert window.width is not None
-    assert window.panes[0].height is not None
-    assert float(window.panes[0].height) <= ((float(window.width) + 1) / 2)
-    assert pane.get("pane_start_command", "").replace('"', "") == cmd
-
-
-def test_split_window_horizontal(session: Session) -> None:
-    """Window.split_window() splits window, returns new Pane, horizontal."""
-    window_name = "test split window"
-    window = session.new_window(window_name=window_name, attach=True)
-    pane = window.split_window(vertical=False)
-    assert len(window.panes) == 2
-    assert isinstance(pane, Pane)
-    assert window.width is not None
-    assert window.panes[0].width is not None
-    assert float(window.panes[0].width) <= ((float(window.width) + 1) / 2)
 
+def test_split_window_raises_deprecated_error(session: Session) -> None:
+    """Test Window.split_window() raises exc.DeprecatedError."""
+    window = session.active_window
 
-@pytest.mark.filterwarnings("ignore:.*deprecated in favor of Window.split()")
-@pytest.mark.filterwarnings("ignore:.*vertical is not required to pass with direction.")
-def test_split_percentage(
-    session: Session,
-) -> None:
-    """Test deprecated percent param."""
-    window = session.new_window(window_name="split window size")
-    window.resize(height=100, width=100)
-    window_height_before = (
-        int(window.window_height) if isinstance(window.window_height, str) else 0
-    )
-    if has_version("3.4"):
-        pytest.skip(
-            "tmux 3.4 has a split-window bug."
-            " See https://github.com/tmux/tmux/pull/3840.",
-        )
-    with pytest.warns(match="Deprecated in favor of size.*"):
-        pane = window.split_window(percent=10)
-        assert pane.pane_height == str(int(window_height_before * 0.1))
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\.split_window\(\) was deprecated"
+    ):
+        window.split_window()
 
 
-def test_split_window_size(session: Session) -> None:
-    """Window.split_window() respects size."""
-    window = session.new_window(window_name="split_window window size")
-    window.resize(height=100, width=100)
+def test_attached_pane_raises_deprecated_error(session: Session) -> None:
+    """Test Window.attached_pane raises exc.DeprecatedError."""
+    window = session.active_window
 
-    pane = window.split_window(size=10)
-    assert pane.pane_height == "10"
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\.attached_pane was deprecated"
+    ):
+        _ = window.attached_pane
 
-    pane = window.split_window(vertical=False, size=10)
-    assert pane.pane_width == "10"
 
-    pane = window.split_window(size="10%")
-    assert pane.pane_height == "8"
+def test_select_window_raises_deprecated_error(session: Session) -> None:
+    """Test Window.select_window() raises exc.DeprecatedError."""
+    window = session.active_window
 
-    pane = window.split_window(vertical=False, size="10%")
-    assert pane.pane_width == "8"
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\.select_window\(\) was deprecated"
+    ):
+        window.select_window()
 
 
-@pytest.mark.parametrize(
-    ("window_name_before", "window_name_after"),
-    [("test", "ha ha ha fjewlkjflwef"), ("test", "hello \\ wazzup 0")],
-)
-def test_window_rename(
-    session: Session,
-    window_name_before: str,
-    window_name_after: str,
-) -> None:
-    """Test Window.rename_window()."""
-    window_name_before = "test"
-    window_name_after = "ha ha ha fjewlkjflwef"
+def test_kill_window_raises_deprecated_error(session: Session) -> None:
+    """Test Window.kill_window() raises exc.DeprecatedError."""
+    # Create a new window to kill (so we don't kill our only window)
+    session.new_window(window_name="extra_window")
+    window = session.active_window
 
-    session.set_option("automatic-rename", "off")
-    window = session.new_window(window_name=window_name_before, attach=True)
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\.kill_window\(\) was deprecated"
+    ):
+        window.kill_window()
 
-    assert window == session.attached_window
-    assert window.get("window_name") == window_name_before
 
-    window.rename_window(window_name_after)
+def test_set_window_option_emits_deprecation_warning(session: Session) -> None:
+    """Test Window.set_window_option() emits DeprecationWarning."""
+    window = session.active_window
 
-    window = session.attached_window
+    with pytest.warns(
+        DeprecationWarning, match=r"Window\.set_window_option\(\) is deprecated"
+    ):
+        window.set_window_option("main-pane-height", 20)
 
-    assert window.get("window_name") == window_name_after
 
-    window = session.attached_window
+def test_show_window_options_emits_deprecation_warning(session: Session) -> None:
+    """Test Window.show_window_options() emits DeprecationWarning."""
+    window = session.active_window
 
-    assert window.get("window_name") == window_name_after
+    with pytest.warns(
+        DeprecationWarning, match=r"Window\.show_window_options\(\) is deprecated"
+    ):
+        window.show_window_options()
 
 
-def test_kill_window(session: Session) -> None:
-    """Test window.kill_window() kills window."""
-    session.new_window()
-    # create a second window to not kick out the client.
-    # there is another way to do this via options too.
+def test_show_window_option_emits_deprecation_warning(session: Session) -> None:
+    """Test Window.show_window_option() emits DeprecationWarning."""
+    window = session.active_window
 
-    w = session.attached_window
+    with pytest.warns(
+        DeprecationWarning, match=r"Window\.show_window_option\(\) is deprecated"
+    ):
+        window.show_window_option("main-pane-height")
 
-    assert isinstance(w.get("window_id"), str)
-    assert len(session.windows.filter(window_id=w.get("window_id"))) == 1
 
-    w.kill_window()
+def test_window_get_raises_deprecated_error(session: Session) -> None:
+    """Test Window.get() raises exc.DeprecatedError."""
+    window = session.active_window
 
-    assert len(session.windows.filter(window_id=w.get("window_id"))) == 0
+    with pytest.raises(exc.DeprecatedError, match=r"Window\.get\(\) was deprecated"):
+        window.get("window_id")
 
 
-def test_show_window_options(session: Session) -> None:
-    """Window.show_window_options() returns dict."""
-    window = session.new_window(window_name="test_window")
+def test_window_getitem_raises_deprecated_error(session: Session) -> None:
+    """Test Window.__getitem__() raises exc.DeprecatedError."""
+    window = session.active_window
 
-    options = window.show_window_options()
-    assert isinstance(options, dict)
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\[key\] lookup was deprecated"
+    ):
+        _ = window["window_id"]
 
 
-def test_set_window_and_show_window_options(session: Session) -> None:
-    """Window.set_window_option() then Window.show_window_options(key)."""
-    window = session.new_window(window_name="test_window")
+def test_window_get_by_id_raises_deprecated_error(session: Session) -> None:
+    """Test Window.get_by_id() raises exc.DeprecatedError."""
+    window = session.active_window
 
-    window.set_window_option("main-pane-height", 20)
-    assert window.show_window_option("main-pane-height") == 20
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\.get_by_id\(\) was deprecated"
+    ):
+        window.get_by_id("%0")
 
-    window.set_window_option("main-pane-height", 40)
-    assert window.show_window_option("main-pane-height") == 40
-    assert window.show_window_options()["main-pane-height"] == 40
 
-    window.set_window_option("pane-border-format", " #P ")
-    assert window.show_window_option("pane-border-format") == " #P "
+def test_window_where_raises_deprecated_error(session: Session) -> None:
+    """Test Window.where() raises exc.DeprecatedError."""
+    window = session.active_window
 
+    with pytest.raises(exc.DeprecatedError, match=r"Window\.where\(\) was deprecated"):
+        window.where({"pane_id": "%0"})
 
-def test_empty_window_option_returns_None(session: Session) -> None:
-    """Verify unset window option returns None."""
-    window = session.new_window(window_name="test_window")
-    assert window.show_window_option("alternate-screen") is None
 
+def test_window_find_where_raises_deprecated_error(session: Session) -> None:
+    """Test Window.find_where() raises exc.DeprecatedError."""
+    window = session.active_window
 
-def test_show_window_option(session: Session) -> None:
-    """Set option then Window.show_window_option(key)."""
-    window = session.new_window(window_name="test_window")
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\.find_where\(\) was deprecated"
+    ):
+        window.find_where({"pane_id": "%0"})
 
-    window.set_window_option("main-pane-height", 20)
-    assert window.show_window_option("main-pane-height") == 20
 
-    window.set_window_option("main-pane-height", 40)
-    assert window.show_window_option("main-pane-height") == 40
-    assert window.show_window_option("main-pane-height") == 40
+def test_window_list_panes_raises_deprecated_error(session: Session) -> None:
+    """Test Window.list_panes() raises exc.DeprecatedError."""
+    window = session.active_window
 
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\.list_panes\(\) was deprecated"
+    ):
+        window.list_panes()
 
-def test_show_window_option_unknown(session: Session) -> None:
-    """Window.show_window_option raises InvalidOption for bad option key."""
-    window = session.new_window(window_name="test_window")
 
-    with pytest.raises(exc.InvalidOption):
-        window.show_window_option("moooz")
+def test_window_children_raises_deprecated_error(session: Session) -> None:
+    """Test Window.children raises exc.DeprecatedError."""
+    window = session.active_window
 
+    with pytest.raises(exc.DeprecatedError, match=r"Window\.children was deprecated"):
+        _ = window.children
 
-def test_show_window_option_ambiguous(session: Session) -> None:
-    """show_window_option raises AmbiguousOption for ambiguous option."""
-    window = session.new_window(window_name="test_window")
 
-    with pytest.raises(exc.AmbiguousOption):
-        window.show_window_option("clock-mode")
+def test_window__panes_raises_deprecated_error(session: Session) -> None:
+    """Test Window._panes raises exc.DeprecatedError."""
+    window = session.active_window
 
+    with pytest.raises(exc.DeprecatedError, match=r"Window\._panes was deprecated"):
+        _ = window._panes
 
-def test_set_window_option_ambiguous(session: Session) -> None:
-    """set_window_option raises AmbiguousOption for ambiguous option."""
-    window = session.new_window(window_name="test_window")
 
-    with pytest.raises(exc.AmbiguousOption):
-        window.set_window_option("clock-mode", 12)
+def test_window__list_panes_raises_deprecated_error(session: Session) -> None:
+    """Test Window._list_panes() raises exc.DeprecatedError."""
+    window = session.active_window
 
-
-def test_set_window_option_invalid(session: Session) -> None:
-    """Window.set_window_option raises InvalidOption for invalid option key."""
-    window = session.new_window(window_name="test_window")
-
-    with pytest.raises(exc.InvalidOption):
-        window.set_window_option("afewewfew", 43)
-
-
-def test_move_window(session: Session) -> None:
-    """Window.move_window results in changed index."""
-    window = session.new_window(window_name="test_window")
-    assert window.index is not None
-    new_index = str(int(window.index) + 1)
-    window.move_window(new_index)
-    assert window.index == new_index
-
-
-def test_move_window_to_other_session(server: Server, session: Session) -> None:
-    """Window.move_window to other session."""
-    window = session.new_window(window_name="test_window")
-    new_session = server.new_session("test_move_window")
-    window.move_window(session=new_session.get("session_id"))
-    window_id = window.get("window_id")
-    assert window_id is not None
-    assert new_session.get_by_id(window_id) == window
-
-
-def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
-    """Tmux allows select-layout with no arguments, so let's allow it here."""
-    window = session.new_window(window_name="test_window")
-    window.select_layout()
-
-
-def test_empty_window_name(session: Session) -> None:
-    """New windows can be created with empty string for window name."""
-    session.set_option("automatic-rename", "off")
-    window = session.new_window(window_name="''", attach=True)
-
-    assert window == session.attached_window
-    assert window.get("window_name") == "''"
-    assert session.name is not None
-
-    cmd = session.cmd(
-        "list-windows",
-        "-F",
-        "#{window_name}",
-        "-f",
-        "#{==:#{session_name}," + session.name + "}",
-    )
-    assert "''" in cmd.stdout
-
-
-@pytest.mark.parametrize(
-    "environment",
-    [
-        {"ENV_VAR": "pane"},
-        {"ENV_VAR_1": "pane_1", "ENV_VAR_2": "pane_2"},
-    ],
-)
-def test_split_window_with_environment(
-    session: Session,
-    environment: dict[str, str],
-) -> None:
-    """Verify splitting window with environment variables."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in Path."
-
-    window = session.new_window(window_name="split_window_with_environment")
-    pane = window.split_window(
-        shell=f"{env} PS1='$ ' sh",
-        environment=environment,
-    )
-    assert pane is not None
-    # wait a bit for the prompt to be ready as the test gets flaky otherwise
-    time.sleep(0.05)
-    for k, v in environment.items():
-        pane.send_keys(f"echo ${k}")
-        assert pane.capture_pane()[-2] == v
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\._list_panes\(\) was deprecated"
+    ):
+        window._list_panes()

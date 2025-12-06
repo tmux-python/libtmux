@@ -19,8 +19,8 @@ def test_hooks_raw_cmd(
 ) -> None:
     """Raw hook set, show, unset via cmd."""
     session = server.new_session(session_name="test hooks")
-    window = session.attached_window
-    pane = window.attached_pane
+    window = session.active_window
+    pane = window.active_pane
     assert pane is not None
 
     #
@@ -198,8 +198,8 @@ def test_hooks_dataclass(
 ) -> None:
     """Tests for hooks dataclass."""
     session = server.new_session(session_name="test hooks")
-    window = session.attached_window
-    pane = window.attached_pane
+    window = session.active_window
+    pane = window.active_pane
     assert pane is not None
 
     #
@@ -277,8 +277,8 @@ def test_hooks_mixin(
 ) -> None:
     """Tests for hooks."""
     session = server.new_session(session_name="test hooks")
-    window = session.attached_window
-    pane = window.attached_pane
+    window = session.active_window
+    pane = window.active_pane
     assert pane is not None
 
     pane.set_hook("session-renamed[0]", "set -g status-left-style bg=red")

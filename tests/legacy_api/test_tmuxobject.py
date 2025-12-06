@@ -1,194 +1,85 @@
-"""Tests for libtmux TmuxRelationalObject and TmuxMappingObject."""
+"""Tests for deprecated libtmux TmuxRelationalObject APIs.
+
+These tests verify that deprecated methods raise exc.DeprecatedError.
+"""
 
 from __future__ import annotations
 
-import logging
 import typing as t
 
-from libtmux.pane import Pane
-from libtmux.session import Session
-from libtmux.test.constants import TEST_SESSION_PREFIX
-from libtmux.test.random import namer
-from libtmux.window import Window
+import pytest
+
+from libtmux import exc
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
-
-logger = logging.getLogger(__name__)
-
-
-"""Test the :class:`TmuxRelationalObject` base class object."""
+    from libtmux.session import Session
 
 
-def test_find_where(server: Server, session: Session) -> None:
-    """Test that find_where() retrieves single matching object."""
-    # server.find_where
-    for session in server.sessions:
-        session_id = session.get("session_id")
-        assert session_id is not None
-
-        assert server.find_where({"session_id": session_id}) == session
-        assert isinstance(server.find_where({"session_id": session_id}), Session)
-
-        # session.find_where
-        for window in session.windows:
-            window_id = window.get("window_id")
-            assert window_id is not None
-
-            assert session.find_where({"window_id": window_id}) == window
-            assert isinstance(session.find_where({"window_id": window_id}), Window)
-
-            # window.find_where
-            for pane in window.panes:
-                pane_id = pane.get("pane_id")
-                assert pane_id is not None
-
-                assert window.find_where({"pane_id": pane_id}) == pane
-                assert isinstance(window.find_where({"pane_id": pane_id}), Pane)
+def test_server_find_where_raises_deprecated_error(server: Server) -> None:
+    """Test Server.find_where() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\.find_where\(\) was deprecated"
+    ):
+        server.find_where({"session_name": "test"})
 
 
-def test_find_where_None(server: Server, session: Session) -> None:
-    """.find_where returns None if no results found."""
-    while True:
-        nonexistent_session = TEST_SESSION_PREFIX + next(namer)
-
-        if not server.has_session(nonexistent_session):
-            break
-
-    assert server.find_where({"session_name": nonexistent_session}) is None
+def test_session_find_where_raises_deprecated_error(session: Session) -> None:
+    """Test Session.find_where() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\.find_where\(\) was deprecated"
+    ):
+        session.find_where({"window_name": "test"})
 
 
-def test_find_where_multiple_infos(server: Server, session: Session) -> None:
-    """.find_where returns objects with multiple attributes."""
-    for session in server.sessions:
-        session_id = session.get("session_id")
-        assert session_id is not None
-        session_name = session.get("session_name")
-        assert session_name is not None
-
-        find_where = server.find_where(
-            {"session_id": session_id, "session_name": session_name},
-        )
-
-        assert find_where == session
-        assert isinstance(find_where, Session)
-
-        # session.find_where
-        for window in session.windows:
-            window_id = window.get("window_id")
-            assert window_id is not None
-            window_index = window.get("window_index")
-            assert window_index is not None
-
-            find_where_window = session.find_where(
-                {"window_id": window_id, "window_index": window_index},
-            )
-
-            assert find_where_window == window
-            assert isinstance(find_where_window, Window)
-
-            # window.find_where
-            for pane in window.panes:
-                pane_id = pane.get("pane_id")
-                assert pane_id is not None
-                pane_tty = pane.get("pane_tty")
-                assert pane_tty is not None
-
-                find_where_pane = window.find_where(
-                    {"pane_id": pane_id, "pane_tty": pane_tty},
-                )
-
-                assert find_where_pane == pane
-                assert isinstance(find_where_pane, Pane)
+def test_window_find_where_raises_deprecated_error(session: Session) -> None:
+    """Test Window.find_where() raises exc.DeprecatedError."""
+    window = session.active_window
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\.find_where\(\) was deprecated"
+    ):
+        window.find_where({"pane_id": "%0"})
 
 
-def test_where(server: Server, session: Session) -> None:
-    """Test self.where() returns matching objects."""
-    window = session.attached_window
-    window.split_window()  # create second pane
-
-    for session in server.sessions:
-        session_id = session.get("session_id")
-        assert session_id is not None
-        session_name = session.get("session_name")
-        assert session_name is not None
-
-        server_sessions = server.where(
-            {"session_id": session_id, "session_name": session_name},
-        )
-
-        assert len(server_sessions) == 1
-        assert isinstance(server_sessions, list)
-        assert server_sessions[0] == session
-        assert isinstance(server_sessions[0], Session)
-
-        # session.where
-        for window in session.windows:
-            window_id = window.get("window_id")
-            assert window_id is not None
-
-            window_index = window.get("window_index")
-            assert window_index is not None
-
-            session_windows = session.where(
-                {"window_id": window_id, "window_index": window_index},
-            )
-
-            assert len(session_windows) == 1
-            assert isinstance(session_windows, list)
-            assert session_windows[0] == window
-            assert isinstance(session_windows[0], Window)
-
-            # window.where
-            for pane in window.panes:
-                pane_id = pane.get("pane_id")
-                assert pane_id is not None
-
-                pane_tty = pane.get("pane_tty")
-                assert pane_tty is not None
-
-                window_panes = window.where({"pane_id": pane_id, "pane_tty": pane_tty})
-
-                assert len(window_panes) == 1
-                assert isinstance(window_panes, list)
-                assert window_panes[0] == pane
-                assert isinstance(window_panes[0], Pane)
+def test_server_where_raises_deprecated_error(server: Server) -> None:
+    """Test Server.where() raises exc.DeprecatedError."""
+    with pytest.raises(exc.DeprecatedError, match=r"Server\.where\(\) was deprecated"):
+        server.where({"session_name": "test"})
 
 
-def test_get_by_id(server: Server, session: Session) -> None:
-    """Test self.get_by_id() retrieves child object."""
-    window = session.attached_window
+def test_session_where_raises_deprecated_error(session: Session) -> None:
+    """Test Session.where() raises exc.DeprecatedError."""
+    with pytest.raises(exc.DeprecatedError, match=r"Session\.where\(\) was deprecated"):
+        session.where({"window_name": "test"})
 
-    window.split_window()  # create second pane
 
-    for session in server.sessions:
-        session_id = session.get("session_id")
-        assert session_id is not None
-        get_session_by_id = server.get_by_id(session_id)
+def test_window_where_raises_deprecated_error(session: Session) -> None:
+    """Test Window.where() raises exc.DeprecatedError."""
+    window = session.active_window
+    with pytest.raises(exc.DeprecatedError, match=r"Window\.where\(\) was deprecated"):
+        window.where({"pane_id": "%0"})
 
-        assert get_session_by_id == session
-        assert isinstance(get_session_by_id, Session)
-        assert server.get_by_id("$" + next(namer)) is None
 
-        # session.get_by_id
-        for window in session.windows:
-            window_id = window.get("window_id")
-            assert window_id is not None
+def test_server_get_by_id_raises_deprecated_error(server: Server) -> None:
+    """Test Server.get_by_id() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\.get_by_id\(\) was deprecated"
+    ):
+        server.get_by_id("$0")
 
-            get_window_by_id = session.get_by_id(window_id)
 
-            assert get_window_by_id == window
-            assert isinstance(get_window_by_id, Window)
+def test_session_get_by_id_raises_deprecated_error(session: Session) -> None:
+    """Test Session.get_by_id() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\.get_by_id\(\) was deprecated"
+    ):
+        session.get_by_id("@0")
 
-            assert session.get_by_id("@" + next(namer)) is None
 
-            # window.get_by_id
-            for pane in window.panes:
-                pane_id = pane.get("pane_id")
-                assert pane_id is not None
-
-                get_pane_by_id = window.get_by_id(pane_id)
-
-                assert get_pane_by_id == pane
-                assert isinstance(get_pane_by_id, Pane)
-                assert window.get_by_id("%" + next(namer)) is None
+def test_window_get_by_id_raises_deprecated_error(session: Session) -> None:
+    """Test Window.get_by_id() raises exc.DeprecatedError."""
+    window = session.active_window
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Window\.get_by_id\(\) was deprecated"
+    ):
+        window.get_by_id("%0")

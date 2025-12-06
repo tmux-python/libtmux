@@ -65,8 +65,8 @@ def test_pane(
 
     old_pane_size = pane.pane_height
 
-    pane.resize_pane(adjustment_direction=ResizeAdjustmentDirection.Down, adjustment=25)
-    pane.resize_pane(
+    pane.resize(adjustment_direction=ResizeAdjustmentDirection.Down, adjustment=25)
+    pane.resize(
         adjustment_direction=ResizeAdjustmentDirection.Right,
         adjustment=25,
     )

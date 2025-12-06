@@ -1,4 +1,8 @@
-"""Tests for utility functions in libtmux."""
+"""Tests for utility functions in libtmux.
+
+Note: This file tests common utilities, not deprecated APIs.
+The tests use the current API.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +13,7 @@ import typing as t
 import pytest
 
 import libtmux
+from libtmux import exc
 from libtmux._compat import LooseVersion
 from libtmux.common import (
     TMUX_MAX_VERSION,
@@ -24,7 +29,6 @@ from libtmux.common import (
     session_check_name,
     tmux_cmd,
 )
-from libtmux.exc import BadSessionName, LibTmuxException, TmuxCommandNotFound
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -100,7 +104,7 @@ def test_get_version_too_low(monkeypatch: pytest.MonkeyPatch) -> None:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
-    with pytest.raises(LibTmuxException) as exc_info:
+    with pytest.raises(exc.LibTmuxException) as exc_info:
         get_version()
     exc_info.match("does not meet the minimum tmux version requirement")
 
@@ -135,11 +139,11 @@ def test_error_version_less_1_7(monkeypatch: pytest.MonkeyPatch) -> None:
         return LooseVersion("1.7")
 
     monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)
-    with pytest.raises(LibTmuxException) as excinfo:
+    with pytest.raises(exc.LibTmuxException) as excinfo:
         has_minimum_version()
         excinfo.match(r"libtmux only supports")
 
-    with pytest.raises(LibTmuxException) as excinfo:
+    with pytest.raises(exc.LibTmuxException) as excinfo:
         has_minimum_version()
 
         excinfo.match(r"libtmux only supports")
@@ -191,7 +195,7 @@ def test_has_lte_version() -> None:
 def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify raises if tmux command not found."""
     monkeypatch.setenv("PATH", "")
-    with pytest.raises(TmuxCommandNotFound):
+    with pytest.raises(exc.TmuxCommandNotFound):
         tmux_cmd("-V")
 
 
@@ -226,7 +230,7 @@ def test_session_check_name(
 ) -> None:
     """Verify session_check_name()."""
     if raises:
-        with pytest.raises(BadSessionName) as exc_info:
+        with pytest.raises(exc.BadSessionName) as exc_info:
             session_check_name(session_name)
         if exc_msg_regex is not None:
             assert exc_info.match(exc_msg_regex)

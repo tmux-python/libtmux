@@ -1,169 +1,101 @@
-"""Test for libtmux Server object."""
+"""Tests for deprecated libtmux Server APIs.
+
+These tests verify that deprecated methods raise exc.DeprecatedError.
+"""
 
 from __future__ import annotations
 
-import logging
-import subprocess
-import typing as t
-
 import pytest
 
+from libtmux import exc
 from libtmux.server import Server
 
-if t.TYPE_CHECKING:
-    from libtmux.session import Session
 
-logger = logging.getLogger(__name__)
-
-
-def test_has_session(server: Server, session: Session) -> None:
-    """Server.has_session() returns True if session exists."""
-    session_name = session.get("session_name")
-    assert session_name is not None
-    assert server.has_session(session_name)
-    assert not server.has_session("asdf2314324321")
+def test_kill_server_raises_deprecated_error(server: Server) -> None:
+    """Test Server.kill_server() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\.kill_server\(\) was deprecated"
+    ):
+        server.kill_server()
 
 
-def test_socket_name(server: Server) -> None:
-    """``-L`` socket_name.
-
-    ``-L`` socket_name  file name of socket. which will be stored in
-            env TMUX_TMPDIR or /tmp if unset.)
-
-    """
-    myserver = Server(socket_name="test")
-
-    assert myserver.socket_name == "test"
+def test_server_get_by_id_raises_deprecated_error(server: Server) -> None:
+    """Test Server.get_by_id() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\.get_by_id\(\) was deprecated"
+    ):
+        server.get_by_id("$0")
 
 
-def test_socket_path(server: Server) -> None:
-    """``-S`` socket_path  (alternative path for server socket)."""
-    myserver = Server(socket_path="test")
-
-    assert myserver.socket_path == "test"
-
-
-def test_config(server: Server) -> None:
-    """``-f`` file for tmux(1) configuration."""
-    myserver = Server(config_file="test")
-    assert myserver.config_file == "test"
+def test_server_where_raises_deprecated_error(server: Server) -> None:
+    """Test Server.where() raises exc.DeprecatedError."""
+    with pytest.raises(exc.DeprecatedError, match=r"Server\.where\(\) was deprecated"):
+        server.where({"session_name": "test"})
 
 
-def test_256_colors(server: Server) -> None:
-    """Assert Server respects ``colors=256``."""
-    myserver = Server(colors=256)
-    assert myserver.colors == 256
-
-    proc = myserver.cmd("list-sessions")
-
-    assert "-2" in proc.cmd
-    assert "-8" not in proc.cmd
+def test_server_find_where_raises_deprecated_error(server: Server) -> None:
+    """Test Server.find_where() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\.find_where\(\) was deprecated"
+    ):
+        server.find_where({"session_name": "test"})
 
 
-def test_88_colors(server: Server) -> None:
-    """Assert Server respects ``colors=88``."""
-    myserver = Server(colors=88)
-    assert myserver.colors == 88
-
-    proc = myserver.cmd("list-sessions")
-
-    assert "-8" in proc.cmd
-    assert "-2" not in proc.cmd
+def test_server_list_sessions_raises_deprecated_error(server: Server) -> None:
+    """Test Server.list_sessions() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\.list_sessions\(\) was deprecated"
+    ):
+        server.list_sessions()
 
 
-def test_show_environment(server: Server) -> None:
-    """Server.show_environment() returns dict."""
-    vars_ = server.show_environment()
-    assert isinstance(vars_, dict)
+def test_server_children_raises_deprecated_error(server: Server) -> None:
+    """Test Server.children raises exc.DeprecatedError."""
+    with pytest.raises(exc.DeprecatedError, match=r"Server\.children was deprecated"):
+        _ = server.children
 
 
-def test_getenv(server: Server, session: Session) -> None:
-    """Set environment then Server.show_environment(key)."""
-    server.set_environment("FOO", "BAR")
-    assert server.getenv("FOO") == "BAR"
-
-    server.set_environment("FOO", "DAR")
-    assert server.getenv("FOO") == "DAR"
-
-    assert server.show_environment()["FOO"] == "DAR"
+def test_server__sessions_raises_deprecated_error(server: Server) -> None:
+    """Test Server._sessions raises exc.DeprecatedError."""
+    with pytest.raises(exc.DeprecatedError, match=r"Server\._sessions was deprecated"):
+        _ = server._sessions
 
 
-def test_show_environment_not_set(server: Server) -> None:
-    """Unset environment variable returns None."""
-    assert server.getenv("BAR") is None
+def test_server__list_sessions_raises_deprecated_error(server: Server) -> None:
+    """Test Server._list_sessions() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\._list_sessions\(\) was deprecated"
+    ):
+        server._list_sessions()
 
 
-def test_new_session(server: Server) -> None:
-    """Server.new_session creates and returns valid session."""
-    mysession = server.new_session("test_new_session")
-    assert mysession.get("session_name") == "test_new_session"
-    assert server.has_session("test_new_session")
+def test_server__list_windows_raises_deprecated_error(server: Server) -> None:
+    """Test Server._list_windows() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\._list_windows\(\) was deprecated"
+    ):
+        server._list_windows()
 
 
-def test_new_session_no_name(server: Server) -> None:
-    """Server.new_session works with no name."""
-    first_session = server.new_session()
-    first_session_name = first_session.get("session_name")
-    assert first_session_name is not None
-    assert server.has_session(first_session_name)
-
-    expected_session_name = str(int(first_session_name) + 1)
-
-    # When a new session is created, it should enumerate
-    second_session = server.new_session()
-    second_session_name = second_session.get("session_name")
-    assert expected_session_name == second_session_name
-    assert second_session_name is not None
-    assert server.has_session(second_session_name)
+def test_server__update_windows_raises_deprecated_error(server: Server) -> None:
+    """Test Server._update_windows() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\._update_windows\(\) was deprecated"
+    ):
+        server._update_windows()
 
 
-def test_new_session_shell(server: Server) -> None:
-    """Verify ``Server.new_session`` creates valid session running w/ command."""
-    cmd = "sleep 1m"
-    mysession = server.new_session("test_new_session", window_command=cmd)
-    window = mysession.list_windows()[0]
-    pane = window.list_panes()[0]
-    assert mysession.get("session_name") == "test_new_session"
-    assert server.has_session("test_new_session")
-
-    pane_start_command = pane.get("pane_start_command")
-    assert pane_start_command is not None
-
-    assert pane_start_command.replace('"', "") == cmd
+def test_server__list_panes_raises_deprecated_error(server: Server) -> None:
+    """Test Server._list_panes() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\._list_panes\(\) was deprecated"
+    ):
+        server._list_panes()
 
 
-def test_no_server_sessions() -> None:
-    """Verify ``Server.sessions`` returns empty list without tmux server."""
-    server = Server(socket_name="test_attached_session_no_server")
-    assert server.sessions == []
-
-
-def test_no_server_attached_sessions() -> None:
-    """Verify ``Server.attached_sessions`` returns empty list without tmux server."""
-    server = Server(socket_name="test_no_server_attached_sessions")
-    assert server.attached_sessions == []
-
-
-def test_no_server_is_alive() -> None:
-    """Verify is_alive() returns False without tmux server."""
-    dead_server = Server(socket_name="test_no_server_is_alive")
-    assert not dead_server.is_alive()
-
-
-def test_with_server_is_alive(server: Server) -> None:
-    """Verify is_alive() returns True when tmux server is alive."""
-    server.new_session()
-    assert server.is_alive()
-
-
-def test_raise_if_dead_no_server_raises() -> None:
-    """Verify new_session() raises if tmux server is dead."""
-    dead_server = Server(socket_name="test_attached_session_no_server")
-    with pytest.raises(subprocess.SubprocessError):
-        dead_server.raise_if_dead()
-
-
-def test_raise_if_dead_does_not_raise_if_alive(server: Server) -> None:
-    """Verify new_session() does not raise if tmux server is alive."""
-    server.new_session()
-    server.raise_if_dead()
+def test_server__update_panes_raises_deprecated_error(server: Server) -> None:
+    """Test Server._update_panes() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Server\._update_panes\(\) was deprecated"
+    ):
+        server._update_panes()

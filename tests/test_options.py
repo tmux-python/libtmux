@@ -8,6 +8,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux._internal.constants import (
     Options,
     PaneOptions,
@@ -18,7 +19,6 @@ from libtmux._internal.constants import (
 from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
-from libtmux.exc import OptionError
 from libtmux.options import TerminalOverrides, convert_values, explode_arrays
 from libtmux.pane import Pane
 
@@ -33,24 +33,24 @@ def test_options(server: Server) -> None:
     """Test basic options."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     for obj in [server, session, window, pane]:
         obj._show_options()
         obj._show_options(global_=True)
         obj._show_options(include_inherited=True)
         obj._show_options(include_hooks=True)
-        with pytest.raises(OptionError):
+        with pytest.raises(exc.OptionError):
             obj._show_option("test")
         if has_gte_version("3.0"):
             obj._show_option("test", ignore_errors=True)
-        with pytest.raises(OptionError):
+        with pytest.raises(exc.OptionError):
             obj.set_option("test", "invalid")
         if isinstance(obj, Pane):
             if has_gte_version("3.0"):
                 obj.set_option("test", "invalid", ignore_errors=True)
             else:
-                with pytest.raises(OptionError):
+                with pytest.raises(exc.OptionError):
                     obj.set_option("test", "invalid", ignore_errors=True)
         else:
             obj.set_option("test", "invalid", ignore_errors=True)
@@ -60,7 +60,7 @@ def test_options_server(server: Server) -> None:
     """Test server options."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     server.set_option("buffer-limit", 100)
     assert server._show_option("buffer-limit") == 100
@@ -84,7 +84,7 @@ def test_options_server(server: Server) -> None:
     if has_gte_version("3.0"):
         pane.set_option("buffer-limit", 100)
     else:
-        with pytest.raises(OptionError):
+        with pytest.raises(exc.OptionError):
             pane.set_option("buffer-limit", 100)
 
     if has_gte_version("3.0"):
@@ -122,7 +122,7 @@ def test_options_window(server: Server) -> None:
     """Test window options."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    window.split_window(attach=False)
+    window.split(attach=False)
 
     window_options_ = window._show_options(scope=OptionScope.Window)
 
@@ -134,7 +134,7 @@ def test_options_pane(server: Server) -> None:
     """Test pane options."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     pane_options_ = pane._show_options(scope=OptionScope.Pane)
 
@@ -146,7 +146,7 @@ def test_options_grid(server: Server) -> None:
     """Test options against grid."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     for include_inherited in [True, False]:
         for global_ in [True, False]:
@@ -501,7 +501,7 @@ def test_show_option_pane_fixture(
     """Test Pane.show_option(s)?."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     monkeypatch.setattr(pane, "cmd", fake_cmd(stdout=mocked_cmd_stdout))
 
@@ -566,7 +566,7 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         status_format = server.show_option("status-format")
         assert isinstance(status_format, (dict, type(None)))
     else:
-        with pytest.raises(OptionError):
+        with pytest.raises(exc.OptionError):
             server.show_option("status-format")
 
     # update-environment was added in tmux 3.0
@@ -574,7 +574,7 @@ def test_stable_baseline_options_and_hooks(server: Server) -> None:
         update_env = server.show_option("update-environment")
         assert isinstance(update_env, (list, type(None)))
     else:
-        with pytest.raises(OptionError):
+        with pytest.raises(exc.OptionError):
             server.show_option("update-environment")
 
     # List variables: Pane (pane-colours added in tmux 3.3)
@@ -653,7 +653,7 @@ def test_style_option_validation(server: Server) -> None:
         assert "bg=default" not in str(style)
 
     # Invalid style should raise OptionError
-    with pytest.raises(OptionError):
+    with pytest.raises(exc.OptionError):
         session.set_option("status-style", "invalid-style")
 
     # Test complex style with multiple attributes (tmux >= 3.0)
@@ -684,18 +684,18 @@ def test_option_error_handling(server: Server) -> None:
     session = server.new_session(session_name="test")
 
     # Test invalid/unknown option (tmux 3.0+ returns 'invalid option')
-    with pytest.raises(OptionError) as exc_info:
+    with pytest.raises(exc.OptionError) as exc_info:
         session.show_option("non-existent-option")
     error_msg = str(exc_info.value).lower()
     assert any(msg in error_msg for msg in ["unknown option", "invalid option"])
 
     # Test invalid option value
-    with pytest.raises(OptionError):
+    with pytest.raises(exc.OptionError):
         session.set_option("aggressive-resize", "invalid")
 
     # Test ambiguous option (if supported by tmux version)
     if has_gte_version("2.4"):
-        with pytest.raises(OptionError) as exc_info:
+        with pytest.raises(exc.OptionError) as exc_info:
             # Use a partial name that could match multiple options
             session.show_option(
                 "window-"
