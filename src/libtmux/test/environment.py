@@ -21,19 +21,13 @@ if t.TYPE_CHECKING:
 class EnvironmentVarGuard:
     """Mock environmental variables safely.
 
-    Helps rotect the environment variable properly.  Can be used as context
+    Helps protect the environment variable properly. Can be used as context
     manager.
 
     Notes
     -----
     Vendorized to fix issue with Anaconda Python 2 not including test module,
-    see #121 [1]_
-
-    References
-    ----------
-    .. [1] Just installed, "ImportError: cannot import name test_support".
-       GitHub issue for tmuxp. https://github.com/tmux-python/tmuxp/issues/121.
-       Created October 12th, 2015. Accessed April 7th, 2018.
+    see `tmuxp#121 <https://github.com/tmux-python/tmuxp/issues/121>`_.
     """
 
     def __init__(self) -> None:

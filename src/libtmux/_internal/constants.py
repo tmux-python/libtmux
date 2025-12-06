@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 class ServerOptions(
     SkipDefaultFieldsReprMixin,
 ):
+    """Container for tmux server options."""
+
     backspace: str | None = field(default=None)
     buffer_limit: int | None = field(default=None)
     command_alias: SparseArray[str] = field(default_factory=SparseArray)
@@ -59,6 +61,8 @@ class ServerOptions(
 class SessionOptions(
     SkipDefaultFieldsReprMixin,
 ):
+    """Container for tmux session options."""
+
     activity_action: t.Literal["any", "none", "current", "other"] | None = field(
         default=None,
     )
@@ -134,6 +138,8 @@ class SessionOptions(
 class WindowOptions(
     SkipDefaultFieldsReprMixin,
 ):
+    """Container for tmux window options."""
+
     aggressive_resize: t.Literal["on", "off"] | None = field(default=None)
     automatic_rename: t.Literal["on", "off"] | None = field(default=None)
     automatic_rename_format: str | None = field(default=None)
@@ -197,6 +203,8 @@ class WindowOptions(
 class PaneOptions(
     SkipDefaultFieldsReprMixin,
 ):
+    """Container for tmux pane options."""
+
     allow_passthrough: t.Literal["on", "off", "all"] | None = field(default=None)
     allow_rename: t.Literal["on", "off"] | None = field(default=None)
     alternate_screen: t.Literal["on", "off"] | None = field(default=None)
@@ -239,6 +247,8 @@ class Options(
     PaneOptions,
     SkipDefaultFieldsReprMixin,
 ):
+    """Container for all tmux options (server, session, window, and pane)."""
+
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
         # Remove asaterisk from inherited options
