@@ -34,15 +34,7 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 _Upcoming changes will be written here._
 
-## libtmux 0.50.1 (2025-12-06)
-
-### Documentation (#612)
-
-- Normalize docs headings and Sphinx module directives to fix anchor and index generation issues.
-- Tweak Sphinx type-hints configuration to avoid RST indentation conflicts and suppress forward-reference warnings.
-- Refresh docstrings and cross-references (pane/window APIs, environment helpers, pytest plugin) for clearer return types and stable anchors.
-- Fix incorrect return type annotations for `capture_pane()` and `display_message()` methods
-  (changed from `str | list[str]` to `list[str]` - the methods always return a list).
+### Breaking changes
 
 #### APIs deprecated (#611)
 
@@ -66,6 +58,16 @@ The following deprecations from 0.50.0 continue to emit {class}`DeprecationWarni
 |----------------|-------------|------------|------|
 | `set_window_option()`, `show_window_option()`, `show_window_options()` | {meth}`~libtmux.window.Window.set_option`, {meth}`~libtmux.window.Window.show_option`, {meth}`~libtmux.window.Window.show_options` | 0.50.0 | Window |
 | `g` parameter on options/hooks methods | `global_` on {meth}`~libtmux.options.OptionsMixin.set_option`, {meth}`~libtmux.options.OptionsMixin.show_option`, {meth}`~libtmux.options.OptionsMixin.show_options` | 0.50.0 | Options & hooks |
+
+## libtmux 0.50.1 (2025-12-06)
+
+### Documentation (#612)
+
+- Normalize docs headings and Sphinx module directives to fix anchor and index generation issues.
+- Tweak Sphinx type-hints configuration to avoid RST indentation conflicts and suppress forward-reference warnings.
+- Refresh docstrings and cross-references (pane/window APIs, environment helpers, pytest plugin) for clearer return types and stable anchors.
+- Fix incorrect return type annotations for `capture_pane()` and `display_message()` methods
+  (changed from `str | list[str]` to `list[str]` - the methods always return a list).
 
 ## libtmux 0.50.0 (2025-11-30)
 
