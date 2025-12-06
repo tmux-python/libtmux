@@ -323,6 +323,76 @@ def test_iter_notifications_survives_overflow(
     assert first.kind.name == "SESSIONS_CHANGED"
 
 
+class SetClientFlagsCase(t.NamedTuple):
+    """Fixture for refresh-client flag construction."""
+
+    test_id: str
+    kwargs: dict[str, t.Any]
+    expected_flags: set[str]
+    expect_run: bool
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        SetClientFlagsCase(
+            test_id="enable_no_output_with_pause",
+            kwargs={"no_output": True, "pause_after": 1},
+            expected_flags={"no-output", "pause-after=1"},
+            expect_run=True,
+        ),
+        SetClientFlagsCase(
+            test_id="disable_no_output_clear_pause",
+            kwargs={"no_output": False, "pause_after": 0},
+            expected_flags={"no-output=off", "pause-after=none"},
+            expect_run=True,
+        ),
+        SetClientFlagsCase(
+            test_id="noop_when_no_flags",
+            kwargs={},
+            expected_flags=set(),
+            expect_run=False,
+        ),
+    ],
+    ids=lambda c: c.test_id,
+)
+def test_set_client_flags_builds_refresh_client(case: SetClientFlagsCase) -> None:
+    """set_client_flags should call refresh-client with correct flag string."""
+    engine = ControlModeEngine(start_threads=False)
+    calls: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
+
+    class DummyCmd:
+        stdout: list[str] = []
+        stderr: list[str] = []
+        returncode = 0
+
+    def fake_run(
+        cmd: str,
+        cmd_args: t.Sequence[str | int] | None = None,
+        server_args: t.Sequence[str | int] | None = None,
+        timeout: float | None = None,
+    ) -> DummyCmd:  # type: ignore[override]
+        calls.append((cmd, tuple(cmd_args or ()), tuple(server_args or ())))
+        return DummyCmd()
+
+    engine.run = fake_run  # type: ignore[assignment]
+
+    engine.set_client_flags(**case.kwargs)
+
+    if not case.expect_run:
+        assert calls == []
+        return
+
+    assert len(calls) == 1
+    cmd, cmd_args, server_args = calls[0]
+    assert cmd == "refresh-client"
+    assert cmd_args and cmd_args[0] == "-f"
+    flags_str = cmd_args[1] if len(cmd_args) > 1 else ""
+    for flag in case.expected_flags:
+        assert flag in flags_str
+    assert server_args == ()
+
+
 class ScriptedStdin:
     """Fake stdin that can optionally raise BrokenPipeError on write."""
 
