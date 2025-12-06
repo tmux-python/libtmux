@@ -482,7 +482,7 @@ wheels = [
 
 [[package]]
 name = "libtmux"
-version = "0.50.0"
+version = "0.50.1"
 source = { editable = "." }
 
 [package.dev-dependencies]

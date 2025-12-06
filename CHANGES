@@ -34,6 +34,8 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 _Upcoming changes will be written here._
 
+## libtmux 0.50.1 (2025-12-06)
+
 ### Documentation (#612)
 
 - Normalize docs headings and Sphinx module directives to fix anchor and index generation issues.
