@@ -74,7 +74,6 @@ import logging
 import re
 import shlex
 import typing as t
-import warnings
 
 from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import CmdMixin
@@ -671,12 +670,11 @@ class OptionsMixin(CmdMixin):
             flags.append("-a")
 
         if g is not None:
-            warnings.warn(
-                "g argument is deprecated in favor of global_",
-                category=DeprecationWarning,
-                stacklevel=2,
+            raise exc.DeprecatedError(
+                deprecated="g parameter",
+                replacement="global_ parameter",
+                version="0.50.0",
             )
-            global_ = g
 
         if global_ is not None and global_:
             assert isinstance(global_, bool)
@@ -831,13 +829,13 @@ class OptionsMixin(CmdMixin):
         flags: tuple[str, ...] = ()
 
         if g:
-            warnings.warn(
-                "g argument is deprecated in favor of global_",
-                category=DeprecationWarning,
-                stacklevel=2,
+            raise exc.DeprecatedError(
+                deprecated="g parameter",
+                replacement="global_ parameter",
+                version="0.50.0",
             )
-            flags += ("-g",)
-        elif global_:
+
+        if global_:
             flags += ("-g",)
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
@@ -1060,13 +1058,13 @@ class OptionsMixin(CmdMixin):
         flags: tuple[str | int, ...] = ()
 
         if g:
-            warnings.warn(
-                "g argument is deprecated in favor of global_",
-                category=DeprecationWarning,
-                stacklevel=2,
+            raise exc.DeprecatedError(
+                deprecated="g parameter",
+                replacement="global_ parameter",
+                version="0.50.0",
             )
-            flags += ("-g",)
-        elif global_:
+
+        if global_:
             flags += ("-g",)
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
@@ -1239,12 +1237,11 @@ class OptionsMixin(CmdMixin):
         False
         """
         if g:
-            warnings.warn(
-                "g argument is deprecated in favor of global_",
-                category=DeprecationWarning,
-                stacklevel=2,
+            raise exc.DeprecatedError(
+                deprecated="g parameter",
+                replacement="global_ parameter",
+                version="0.50.0",
             )
-            global_ = g
 
         return self._show_option(
             option=option,
