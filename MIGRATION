@@ -19,6 +19,92 @@ well.
    [tracker]: https://github.com/tmux-python/libtmux/discussions
 ```
 
+## Complete Deprecation Reference
+
+This table provides a quick reference for all deprecated APIs. See version-specific
+sections below for detailed migration examples and code samples.
+
+### Method Renamings
+
+| Class | Deprecated | Replacement | Since |
+|-------|------------|-------------|-------|
+| Server | `kill_server()` | `kill()` | 0.30.0 (2024-02-16) |
+| Session | `attach_session()` | `attach()` | 0.30.0 (2024-02-16) |
+| Session | `kill_session()` | `kill()` | 0.30.0 (2024-02-16) |
+| Window | `select_window()` | `select()` | 0.30.0 (2024-02-16) |
+| Window | `kill_window()` | `kill()` | 0.30.0 (2024-02-16) |
+| Window | `split_window()` | `split()` | 0.33.0 (2024-03-17) |
+| Window | `set_window_option()` | `set_option()` | 0.50.0 (2025-11-30) |
+| Window | `show_window_option()` | `show_option()` | 0.50.0 (2025-11-30) |
+| Window | `show_window_options()` | `show_options()` | 0.50.0 (2025-11-30) |
+| Pane | `select_pane()` | `select()` | 0.30.0 (2024-02-16) |
+| Pane | `resize_pane()` | `resize()` | 0.28.0 (2024-02-14) |
+| Pane | `split_window()` | `split()` | 0.33.0 (2024-03-17) |
+
+### Property Renamings
+
+| Class | Deprecated | Replacement | Since |
+|-------|------------|-------------|-------|
+| Session | `attached_window` | `active_window` | 0.31.0 (2024-02-17) |
+| Session | `attached_pane` | `active_pane` | 0.31.0 (2024-02-17) |
+| Window | `attached_pane` | `active_pane` | 0.31.0 (2024-02-17) |
+
+### Parameter Changes
+
+| Method(s) | Deprecated | Replacement | Since |
+|-----------|------------|-------------|-------|
+| Options/hooks methods | `g` | `global_` | 0.50.0 (2025-11-30) |
+| `split_window()` / `split()` | `percent` | `size` | 0.28.0 (2024-02-14) |
+| `split_window()` / `split()` | `vertical`/`horizontal` | `direction` (PaneDirection) | 0.33.0 (2024-03-17) |
+| `resize_pane()` | `-U`, `-D`, `-L`, `-R` | `adjustment_direction` | 0.28.0 (2024-02-14) |
+| `Server.get_by_id()` | `id` | `session_id` | 0.26.0 (2024-02-06) |
+| `Session.get_by_id()` | `id` | `window_id` | 0.26.0 (2024-02-06) |
+| `Window.get_by_id()` | `id` | `pane_id` | 0.26.0 (2024-02-06) |
+
+### Query/Filter API Changes
+
+| Class | Deprecated | Replacement | Since |
+|-------|------------|-------------|-------|
+| Server | `list_sessions()` / `_list_sessions()` | `sessions` property | 0.17.0 (2022-12-26) |
+| Server | `where({...})` | `sessions.filter(**kwargs)` | 0.17.0 (2022-12-26) |
+| Server | `find_where({...})` | `sessions.get(default=None, **kwargs)` | 0.17.0 (2022-12-26) |
+| Server | `get_by_id(id)` | `sessions.get(session_id=..., default=None)` | 0.17.0 (2022-12-26) |
+| Session | `list_windows()` / `_list_windows()` | `windows` property | 0.17.0 (2022-12-26) |
+| Session | `where({...})` | `windows.filter(**kwargs)` | 0.17.0 (2022-12-26) |
+| Session | `find_where({...})` | `windows.get(default=None, **kwargs)` | 0.17.0 (2022-12-26) |
+| Session | `get_by_id(id)` | `windows.get(window_id=..., default=None)` | 0.17.0 (2022-12-26) |
+| Window | `list_panes()` / `_list_panes()` | `panes` property | 0.17.0 (2022-12-26) |
+| Window | `where({...})` | `panes.filter(**kwargs)` | 0.17.0 (2022-12-26) |
+| Window | `find_where({...})` | `panes.get(default=None, **kwargs)` | 0.17.0 (2022-12-26) |
+| Window | `get_by_id(id)` | `panes.get(pane_id=..., default=None)` | 0.17.0 (2022-12-26) |
+| All | `children` property | `sessions`/`windows`/`panes` | 0.17.0 (2022-12-26) |
+
+### Attribute Access Changes
+
+| Pattern | Deprecated | Replacement | Since |
+|---------|------------|-------------|-------|
+| Dict key access | `obj['key']` | `obj.key` | 0.17.0 (2022-12-26) |
+| Dict get | `obj.get('key')` | `obj.key` | 0.17.0 (2022-12-26) |
+| Dict get w/ default | `obj.get('key', None)` | `getattr(obj, 'key', None)` | 0.17.0 (2022-12-26) |
+
+### Removed Items
+
+| Item | Removed In | Migration |
+|------|------------|-----------|
+| tmux < 3.2a support | 0.49.0 (2025-11-29) | Upgrade tmux or use libtmux 0.48.x |
+| `console_to_str()` | 0.42.0 (2025-02-02) | Use `text=True` in subprocess |
+| `str_from_console()` | 0.42.0 (2025-02-02) | Use `text=True` in subprocess |
+| `common.which()` | 0.12.0 (2022-07-13) | Use `shutil.which()` |
+
+### Default Behavior Changes
+
+| Method | Old Default | New Default | Since |
+|--------|-------------|-------------|-------|
+| `Session.new_window()` | `attach=True` | `attach=False` | 0.28.0 (2024-02-14) |
+| `Window.split_window()` | `attach=True` | `attach=False` | 0.28.0 (2024-02-14) |
+
+---
+
 ## Upcoming Release
 
 _Detailed migration steps for the next version will be posted here._
