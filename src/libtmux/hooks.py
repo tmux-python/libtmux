@@ -127,7 +127,7 @@ class HooksMixin(CmdMixin):
         ----------
         hook : str
             hook to set, e.g. 'aggressive-resize'
-        value : str
+        value : int | str
             hook command.
 
         Raises

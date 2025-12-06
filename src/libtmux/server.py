@@ -487,10 +487,10 @@ class Server(
             when the command exits. NOTE: When this command exits the window
             will close.  This feature is useful for long-running processes
             where the closing of the window upon completion is desired.
-        x : [int, str], optional
+        x : int | str, optional
             Force the specified width instead of the tmux default for a
             detached session
-        y : [int, str], optional
+        y : int | str, optional
             Force the specified height instead of the tmux default for a
             detached session
 

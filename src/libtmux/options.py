@@ -52,19 +52,17 @@ invalid option: my-custom-option
 Inherited options
 -----------------
 
-`tmux show-options` -A can include inherited options. The raw output of an inherited
-option is detected by the key having a *:
+``tmux show-options`` -A can include inherited options. The raw output of an inherited
+option is detected by the key having a ``*``::
 
-```
-visual-activity* on
-visual-bell* off
-```
+    visual-activity* on
+    visual-bell* off
 
-A list of options that are inherited is kept at `Options.context._inherited_options` and
-`Options.context.inherited_options`.
+A list of options that are inherited is kept at ``Options.context._inherited_options`` and
+``Options.context.inherited_options``.
 
 They are mixed with the normal options,
-to differentiate them, run `show_options()` without ``include_inherited=True``.
+to differentiate them, run ``show_options()`` without ``include_inherited=True``.
 """
 
 from __future__ import annotations
@@ -604,7 +602,7 @@ class OptionsMixin(CmdMixin):
 
         .. deprecated:: 0.28
 
-           Deprecated by ``g`` for global, use `global_`` instead.
+           Deprecated by ``g`` for global, use ``global_`` instead.
 
         Raises
         ------

@@ -66,7 +66,7 @@ class EnvironmentMixin:
         ----------
         name : str
             the environment variable name. such as 'PATH'.
-        option : str
+        value : str
             environment value.
         """
         args = ["set-environment"]
@@ -427,9 +427,8 @@ def has_minimum_version(raises: bool = True) -> bool:
         No longer returns version, returns True or False
 
     .. versionchanged:: 0.1.7
-        Versions will now remove trailing letters per `Issue 55`_.
-
-        .. _Issue 55: https://github.com/tmux-python/tmuxp/issues/55.
+        Versions will now remove trailing letters per
+        `Issue 55 <https://github.com/tmux-python/tmuxp/issues/55>`_.
     """
     if get_version() < LooseVersion(TMUX_MIN_VERSION):
         if raises:

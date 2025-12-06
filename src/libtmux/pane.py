@@ -326,24 +326,24 @@ class Pane(
 
         ``$ tmux capture-pane`` to pane.
         ``$ tmux capture-pane -S -10`` to pane.
-        ``$ tmux capture-pane`-E 3` to pane.
-        ``$ tmux capture-pane`-S - -E -` to pane.
+        ``$ tmux capture-pane -E 3`` to pane.
+        ``$ tmux capture-pane -S - -E -`` to pane.
 
         Parameters
         ----------
-        start: [str,int]
+        start : str | int, optional
             Specify the starting line number.
             Zero is the first line of the visible pane.
             Positive numbers are lines in the visible pane.
             Negative numbers are lines in the history.
-            `-` is the start of the history.
+            ``-`` is the start of the history.
             Default: None
-        end: [str,int]
+        end : str | int, optional
             Specify the ending line number.
             Zero is the first line of the visible pane.
             Positive numbers are lines in the visible pane.
             Negative numbers are lines in the history.
-            `-` is the end of the visible pane
+            ``-`` is the end of the visible pane.
             Default: None
         """
         cmd = ["capture-pane", "-p"]
