@@ -111,15 +111,18 @@ issue_url_tpl = f"{about['__github__']}/issues/{{issue_id}}"
 # sphinx.ext.autodoc
 autoclass_content = "both"
 autodoc_member_order = "bysource"
-# Automatically extract typehints when specified and place them in
-# descriptions of the relevant function/method.
-autodoc_typehints = "description"
+# Show type hints in signature only (not in description) to avoid RST
+# indentation conflicts from sphinx-autodoc-typehints type injection
+autodoc_typehints = "signature"
 # Don't show class signature with the class' name.
 autodoc_class_signature = "separated"
 toc_object_entries_show_parents = "hide"
 
 # sphinx-autodoc-typehints
-always_document_param_types = True
+# When autodoc_typehints = "signature", disable all docstring modifications
+# to prevent RST parsing conflicts
+always_document_param_types = False
+typehints_document_rtype = False
 
 # Suppress warnings for forward references that can't be resolved
 # (types in TYPE_CHECKING blocks used for circular import avoidance)
