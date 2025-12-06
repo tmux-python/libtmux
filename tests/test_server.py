@@ -158,6 +158,7 @@ def test_new_session_shell_env(server: Server) -> None:
     assert pane_start_command.replace('"', "") == cmd
 
 
+@pytest.mark.engines(["subprocess", "control"])
 def test_connect_creates_new_session(server: Server) -> None:
     """Server.connect creates a new session when it doesn't exist."""
     session = server.connect("test_connect_new")
@@ -165,6 +166,7 @@ def test_connect_creates_new_session(server: Server) -> None:
     assert session.session_id is not None
 
 
+@pytest.mark.engines(["subprocess", "control"])
 def test_connect_reuses_existing_session(server: Server, session: Session) -> None:
     """Server.connect reuses an existing session instead of creating a new one."""
     # First call creates
@@ -178,6 +180,7 @@ def test_connect_reuses_existing_session(server: Server, session: Session) -> No
     assert session2.name == "test_connect_reuse"
 
 
+@pytest.mark.engines(["subprocess", "control"])
 def test_connect_invalid_name(server: Server) -> None:
     """Server.connect raises BadSessionName for invalid session names."""
     with pytest.raises(exc.BadSessionName):
