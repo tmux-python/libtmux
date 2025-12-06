@@ -15,4 +15,5 @@ workspace_setup
 automation_patterns
 context_managers
 options_and_hooks
+control_mode
 ```
