@@ -118,6 +118,9 @@ autodoc_typehints = "description"
 autodoc_class_signature = "separated"
 toc_object_entries_show_parents = "hide"
 
+# sphinx-autodoc-typehints
+always_document_param_types = True
+
 # sphinx-copybutton
 copybutton_prompt_text = (
     r">>> |\.\.\. |> |\$ |\# | In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
