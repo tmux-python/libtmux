@@ -797,8 +797,9 @@ class OptionsMixin(CmdMixin):
 
         Parameters
         ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
+        g : bool, optional
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Examples
         --------
@@ -864,8 +865,9 @@ class OptionsMixin(CmdMixin):
 
         Parameters
         ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
+        g : bool, optional
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Examples
         --------
@@ -913,8 +915,9 @@ class OptionsMixin(CmdMixin):
 
         Parameters
         ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
+        g : bool, optional
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Examples
         --------
@@ -1013,7 +1016,8 @@ class OptionsMixin(CmdMixin):
         ----------
         option : str
         g : bool, optional
-            Pass ``-g`` flag, global. Default False.
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Raises
         ------
@@ -1104,7 +1108,8 @@ class OptionsMixin(CmdMixin):
         ----------
         option : str
         g : bool, optional
-            Pass ``-g`` flag, global. Default False.
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Raises
         ------
@@ -1206,7 +1211,8 @@ class OptionsMixin(CmdMixin):
         ----------
         option : str
         g : bool, optional
-            Pass ``-g`` flag, global. Default False.
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Raises
         ------
