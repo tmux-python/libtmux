@@ -25,7 +25,7 @@ class NotificationFixture(t.NamedTuple):
     test_id: str
     line: str
     expected_kind: NotificationKind
-    expected_subset: dict[str, str]
+    expected_subset: dict[str, str | None]
 
 
 class ProtocolErrorFixture(t.NamedTuple):
@@ -121,7 +121,7 @@ def test_control_protocol_skips_unexpected_begin() -> None:
     assert proto.state is ParserState.SKIPPING
     # End of skipped block returns to IDLE
     proto.feed_line("%end 999 1 0")
-    assert proto.state is ParserState.IDLE
+    assert proto.state == ParserState.IDLE  # type: ignore[comparison-overlap]
     # Connection is still usable
     stats = proto.get_stats(restarts=0)
     assert stats.last_error is None

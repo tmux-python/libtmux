@@ -87,7 +87,7 @@ def _parse_notification(line: str, parts: list[str]) -> Notification:
             data = {
                 "pane_id": parts[1],
                 "behind_ms": parts[2],
-                "payload": line[colon_idx + 3:],
+                "payload": line[colon_idx + 3 :],
             }
     elif tag == "%pane-mode-changed" and len(parts) >= 2:
         kind = NotificationKind.PANE_MODE_CHANGED
@@ -156,7 +156,8 @@ def _parse_notification(line: str, parts: list[str]) -> Notification:
         kind = NotificationKind.CONTINUE
         data = {"pane_id": parts[1]}
     elif tag == "%subscription-changed" and len(parts) >= 6:
-        # Format: %subscription-changed {name} ${session_id} @{window_id} {index} %{pane_id} : {value}
+        # Format: %subscription-changed {name} ${session_id} @{window_id} {index}
+        #         %{pane_id} : {value}
         # Fields can be "-" for "not applicable". Colon separates metadata from value.
         colon_idx = line.find(" : ")
         if colon_idx != -1:
@@ -167,7 +168,7 @@ def _parse_notification(line: str, parts: list[str]) -> Notification:
                 "window_id": parts[3] if parts[3] != "-" else None,
                 "window_index": parts[4] if parts[4] != "-" else None,
                 "pane_id": parts[5] if parts[5] != "-" else None,
-                "value": line[colon_idx + 3:],
+                "value": line[colon_idx + 3 :],
             }
     elif tag == "%exit":
         # Format: %exit or %exit {reason}
