@@ -321,7 +321,7 @@ class Pane(
         self,
         start: t.Literal["-"] | int | None = None,
         end: t.Literal["-"] | int | None = None,
-    ) -> str | list[str]:
+    ) -> list[str]:
         """Capture text from pane.
 
         ``$ tmux capture-pane`` to pane.
@@ -348,7 +348,7 @@ class Pane(
 
         Returns
         -------
-        str | list[str]
+        list[str]
             Captured pane content.
         """
         cmd = ["capture-pane", "-p"]
@@ -416,7 +416,7 @@ class Pane(
         self,
         cmd: str,
         get_text: t.Literal[True],
-    ) -> str | list[str]: ...
+    ) -> list[str]: ...
 
     @t.overload
     def display_message(self, cmd: str, get_text: t.Literal[False]) -> None: ...
@@ -425,7 +425,7 @@ class Pane(
         self,
         cmd: str,
         get_text: bool = False,
-    ) -> str | list[str] | None:
+    ) -> list[str] | None:
         """Display message to pane.
 
         Displays a message in target-client status line.
@@ -440,7 +440,7 @@ class Pane(
 
         Returns
         -------
-        str | list[str] | None
+        list[str] | None
             Message output if get_text is True, otherwise None.
         """
         if get_text:
