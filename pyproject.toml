@@ -63,6 +63,7 @@ dev = [
   "pytest-mock",
   "pytest-watcher",
   "pytest-xdist",
+  "syrupy",
   # Coverage
   "codecov",
   "coverage",
