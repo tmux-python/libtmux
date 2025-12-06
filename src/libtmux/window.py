@@ -284,27 +284,32 @@ class Window(
         Parameters
         ----------
         attach : bool, optional
-            make new window the current window after creating it, default
+            Make new window the current window after creating it, default
             True.
         start_directory : str or PathLike, optional
-            specifies the working directory in which the new window is created.
+            Specifies the working directory in which the new window is created.
         direction : PaneDirection, optional
-            split in direction. If none is specified, assume down.
-        full_window_split: bool, optional
-            split across full window width or height, rather than active pane.
-        zoom: bool, optional
-            expand pane
+            Split in direction. If none is specified, assume down.
+        full_window_split : bool, optional
+            Split across full window width or height, rather than active pane.
+        zoom : bool, optional
+            Expand pane.
         shell : str, optional
-            execute a command on splitting the window.  The pane will close
+            Execute a command on splitting the window. The pane will close
             when the command exits.
 
-            NOTE: When this command exits the pane will close.  This feature
+            NOTE: When this command exits the pane will close. This feature
             is useful for long-running processes where the closing of the
             window upon completion is desired.
-        size: int, optional
+        size : int, optional
             Cell/row or percentage to occupy with respect to current window.
-        environment: dict, optional
+        environment : dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
+
+        Returns
+        -------
+        :class:`Pane`
+            The newly created pane.
         """
         active_pane = self.active_pane or self.panes[0]
         return active_pane.split(
@@ -409,7 +414,7 @@ class Window(
         Parameters
         ----------
         layout : str, optional
-            string of the layout, 'even-horizontal', 'tiled', etc. Entering
+            String of the layout, 'even-horizontal', 'tiled', etc. Entering
             None (leaving this blank) is same as ``select-layout`` with no
             layout. In recent tmux versions, it picks the most recently
             set layout.
@@ -430,7 +435,17 @@ class Window(
                 Panes are spread out as evenly as possible over the window in
                 both rows and columns.
             'custom'
-                custom dimensions (see :term:`tmux(1)` manpages).
+                Custom dimensions (see :term:`tmux(1)` manpages).
+
+        Returns
+        -------
+        :class:`Window`
+            Self, for method chaining.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error.
         """
         cmd = ["select-layout"]
 
@@ -539,11 +554,21 @@ class Window(
         Parameters
         ----------
         destination : str, optional
-            the ``target window`` or index to move the window to, default:
-            empty string
+            The ``target window`` or index to move the window to, default:
+            empty string.
         session : str, optional
-            the ``target session`` or index to move the window to, default:
+            The ``target session`` or index to move the window to, default:
             current session.
+
+        Returns
+        -------
+        :class:`Window`
+            Self, for method chaining.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error.
         """
         session = session or self.session_id
         proc = self.cmd(

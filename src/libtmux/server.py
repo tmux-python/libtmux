@@ -313,7 +313,7 @@ class Server(
 
     @property
     def attached_sessions(self) -> list[Session]:
-        """Return active :class:`Session`s.
+        """Return active :class:`Session` instances.
 
         Examples
         --------
@@ -322,7 +322,8 @@ class Server(
 
         Returns
         -------
-        list of :class:`Session`
+        list[:class:`Session`]
+            Sessions that are attached.
         """
         return self.sessions.filter(session_attached__noeq="1")
 

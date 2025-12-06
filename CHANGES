@@ -32,7 +32,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
-_Future release notes will be placed here_
+_Upcoming changes will be written here._
+
+### Documentation (#612)
+
+- Normalize docs headings and Sphinx module directives to fix anchor and index generation issues.
+- Tweak Sphinx type-hints configuration to avoid RST indentation conflicts and suppress forward-reference warnings.
+- Refresh docstrings and cross-references (pane/window APIs, environment helpers, pytest plugin) for clearer return types and stable anchors.
+- Fix incorrect return type annotations for `capture_pane()` and `display_message()` methods
+  (changed from `str | list[str]` to `list[str]` - the methods always return a list).
 
 ## libtmux 0.50.0 (2025-11-30)
 
@@ -55,7 +63,7 @@ unified, typed API for managing tmux options and hooks across all object types.
 
 ### What's New
 
-#### Unified Options API (#516)
+### Unified Options API (#516)
 
 All tmux objects now share a consistent options interface through
 {class}`~options.OptionsMixin`:
@@ -104,7 +112,7 @@ window.unset_option('automatic-rename')
 | `suppress_warnings` | `-q` | Suppress warnings |
 | `append` | `-a` | Append to existing value |
 
-#### Hook Management (#516)
+### Hook Management (#516)
 
 New {class}`~hooks.HooksMixin` provides programmatic control over tmux hooks:
 
@@ -151,7 +159,7 @@ session.set_hooks('session-renamed', {
 | `run_hook(hook)` | Run a hook immediately |
 | `set_hooks(hook, values)` | Set multiple indexed hooks at once |
 
-#### SparseArray for Indexed Options (#516)
+### SparseArray for Indexed Options (#516)
 
 tmux uses sparse indexed arrays for options like `command-alias[0]`,
 `command-alias[99]`, `terminal-features[0]`. Python lists can't represent
@@ -173,7 +181,7 @@ gaps in indices, so libtmux introduces {class}`~_internal.sparse_array.SparseArr
 ['first', 'ninety-ninth']
 ```
 
-#### New Constants (#516)
+### New Constants (#516)
 
 - {class}`~constants.OptionScope` enum: `Server`, `Session`, `Window`, `Pane`
 - `OPTION_SCOPE_FLAG_MAP`: Maps scope to tmux flags (`-s`, `-w`, `-p`)
@@ -181,7 +189,7 @@ gaps in indices, so libtmux introduces {class}`~_internal.sparse_array.SparseArr
 
 ### Breaking changes
 
-#### Deprecated Window methods (#516)
+### Deprecated Window methods (#516)
 
 The following methods are deprecated and will be removed in a future release:
 
@@ -214,7 +222,7 @@ window.set_option('automatic-rename', True)
 
 ### Breaking Changes
 
-#### tmux 1.8 to 3.1c support removed (#608)
+### tmux 1.8 to 3.1c support removed (#608)
 
 Support for tmux versions below 3.2a has been removed. This completes the
 deprecation announced in v0.48.0.
@@ -228,7 +236,7 @@ deprecation announced in v0.48.0.
 
 ### Breaking Changes
 
-#### Minimum tmux version bumped to 3.2+ (606)
+### Minimum tmux version bumped to 3.2+ (606)
 
 tmux versions below 3.2a are now deprecated. libtmux 0.48.0 will be the last
 version to support tmux below 3.2. This is to ensure support for hooks, options,
@@ -243,7 +251,7 @@ release. Set `LIBTMUX_SUPPRESS_VERSION_WARNING=1` to suppress the warning.
 
 ### What's new
 
-#### tmux 3.6 support (#607)
+### tmux 3.6 support (#607)
 
 Added tmux 3.6 to test grid and `TMUX_MAX_VERSION` 3.4 -> 3.6.
 
@@ -288,7 +296,7 @@ be a few months in waiting (watchers / snapshots are in development in #587).
 
 ### Breaking
 
-#### Imports removed from libtmux.test (#580)
+### Imports removed from libtmux.test (#580)
 
 Root-level of imports from `libtmux.test` are no longer possible.
 
@@ -324,7 +332,7 @@ from libtmux.test.constants import (
 
 ### Development
 
-#### Test helpers: Increased coverage (#580)
+### Test helpers: Increased coverage (#580)
 
 Several improvements to the test helper modules:
 
@@ -338,7 +346,7 @@ Several improvements to the test helper modules:
 
 ### Breaking Changes
 
-#### Test helpers: Refactor
+### Test helpers: Refactor
 
 Test helper functionality has been split into focused modules (#578):
 
@@ -403,7 +411,7 @@ from libtmux.test.temporary import temp_session, temp_window
 
 ### New Features
 
-#### Context Managers support (#566)
+### Context Managers support (#566)
 
 Added context manager support for all major object types:
 
@@ -430,7 +438,7 @@ This makes it easier to write clean, safe code that properly cleans up tmux reso
 
 ### New Features
 
-#### Server Initialization Callbacks
+### Server Initialization Callbacks
 
 Server now accepts 2 new optional params, `socket_name_factory` and `on_init` callbacks (#565):
 
@@ -439,7 +447,7 @@ Server now accepts 2 new optional params, `socket_name_factory` and `on_init` ca
 - Useful for creating multiple servers with unique names and tracking server instances
 - Socket name factory is tried after socket_name, maintaining backward compatibility
 
-#### New test fixture: `TestServer`
+### New test fixture: `TestServer`
 
 Add `TestServer` pytest fixture for creating temporary tmux servers (#565):
 
@@ -493,7 +501,7 @@ Add `TestServer` pytest fixture for creating temporary tmux servers (#565):
 
 ### Development
 
-#### chore: Implement PEP 563 deferred annotation resolution (#555)
+### chore: Implement PEP 563 deferred annotation resolution (#555)
 
 - Add `from __future__ import annotations` to defer annotation resolution and reduce unnecessary runtime computations during type checking.
 - Enable Ruff checks for PEP-compliant annotations:
@@ -549,13 +557,13 @@ _Maintenance only, no bug fixes or new features_
 
 ### Breaking changes
 
-#### Project and package management: poetry to uv (#547)
+### Project and package management: poetry to uv (#547)
 
 [uv] is the new package and project manager for the project, replacing Poetry.
 
 [uv]: https://github.com/astral-sh/uv
 
-#### Build system: poetry to hatchling (#547)
+### Build system: poetry to hatchling (#547)
 
 [Build system] moved from [poetry] to [hatchling].
 
@@ -568,8 +576,6 @@ _Maintenance only, no bug fixes or new features_
 - Code quality: Use f-strings in more places (#540)
 
   via [ruff 0.4.2](https://github.com/astral-sh/ruff/blob/v0.4.2/CHANGELOG.md).
-
-[uv]: https://github.com/astral-sh/uv
 
 ### Documentation
 
@@ -659,7 +665,7 @@ _Maintenance only, no bug fixes or new features_
 
 ### Breaking changes
 
-#### Command target change (#535)
+### Command target change (#535)
 
 Commands: All `cmd()` methods using custom or overridden targets must use the keyword argument
 `target`. This avoids entanglement with inner shell values that include `-t` for
@@ -674,7 +680,7 @@ other purposes. These methods include:
 
 ### Breaking changes
 
-#### Improved new sessions (#532)
+### Improved new sessions (#532)
 
 - `Session.new_window()`:
 
@@ -686,7 +692,7 @@ other purposes. These methods include:
 
 [PEP 3102]: https://www.python.org/dev/peps/pep-3102/
 
-#### Improved window splitting (#532)
+### Improved window splitting (#532)
 
 - `Window.split_window()` to {meth}`Window.split()`
 
@@ -701,7 +707,7 @@ other purposes. These methods include:
 
   - Learned `zoom`
 
-#### Tweak: Pane position (#532)
+### Tweak: Pane position (#532)
 
 It's now possible to retrieve the position of a pane in a window via a
 `bool` helper::
@@ -811,11 +817,11 @@ _Maintenance only, no bug fixes or new features_
 
 ## libtmux 0.29.0 (2024-02-16)
 
-#### Fixes
+### Fixes
 
 - Use {exc}`DeprecationWarning` for APIs set to be deprecated (#526)
 
-#### Testing
+### Testing
 
 - pytest: Ignore {exc}`DeprecationWarning` by default (#526)
 
@@ -823,11 +829,11 @@ _Maintenance only, no bug fixes or new features_
 
 _Maintenance only, no bug fixes or new features_
 
-#### Testing
+### Testing
 
 - CI: Bump actions to node 20+ versions
 
-#### Documentation
+### Documentation
 
 - Refine docs and add migration for v0.28.0
 
@@ -835,7 +841,7 @@ _Maintenance only, no bug fixes or new features_
 
 ### Breaking changes
 
-#### Detached / unselected by default (#523)
+### Detached / unselected by default (#523)
 
 To ensure consistency and principle of least surprise, keep these set to
 not use `-a` unless explicitly specified.
@@ -1240,7 +1246,7 @@ _Maintenance only, no bug fixes or new features_
 
 ### New features
 
-#### Detect if server active (#448)
+### Detect if server active (#448)
 
 - `Server.is_alive()`
 - `Server.raise_if_dead()`
@@ -1583,10 +1589,8 @@ _Maintenance only, no bug fixes or new features_
 
 - Python 3.7 and 3.8 returns in 0.12.0
 
-  ~~Final python 3.7 and 3.8 release~~
-
-  ~~Fixes and security updates will go to
-  [`v0.11.x`](https://github.com/tmux-python/libtmux/tree/v0.11.x)~~
+  *Note: This was not the final Python 3.7 and 3.8 release as originally stated.
+  Python 3.7 and 3.8 support was extended in 0.12.0.*
 
 - Internal: Use new separator to split `tmux(1)` formatting information (#289,
   #343)

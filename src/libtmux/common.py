@@ -65,9 +65,14 @@ class EnvironmentMixin:
         Parameters
         ----------
         name : str
-            the environment variable name. such as 'PATH'.
+            The environment variable name, e.g. 'PATH'.
         value : str
-            environment value.
+            Environment value.
+
+        Raises
+        ------
+        ValueError
+            If tmux returns an error.
         """
         args = ["set-environment"]
         if self._add_option:
@@ -92,7 +97,12 @@ class EnvironmentMixin:
         Parameters
         ----------
         name : str
-            the environment variable name. such as 'PATH'.
+            The environment variable name, e.g. 'PATH'.
+
+        Raises
+        ------
+        ValueError
+            If tmux returns an error.
         """
         args = ["set-environment"]
         if self._add_option:
@@ -116,7 +126,12 @@ class EnvironmentMixin:
         Parameters
         ----------
         name : str
-            the environment variable name. such as 'PATH'.
+            The environment variable name, e.g. 'PATH'.
+
+        Raises
+        ------
+        ValueError
+            If tmux returns an error.
         """
         args = ["set-environment"]
         if self._add_option:

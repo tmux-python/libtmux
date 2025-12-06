@@ -114,7 +114,7 @@ Using the old `g` parameter will emit a {class}`DeprecationWarning`.
 
 ## libtmux 0.46.0 (2025-02-25)
 
-#### Imports removed from libtmux.test (#580)
+### Imports removed from libtmux.test (#580)
 
 Root-level of imports from `libtmux.test` are no longer possible.
 
@@ -230,7 +230,7 @@ from libtmux.test.temporary import temp_session, temp_window
 
 ## 0.28.0: Resizing and detached by default (2024-02-15)
 
-#### Detach by default
+### Detach by default
 
 - {meth}`Session.new_window()` + {meth}`Window.split_window()` no longer attaches by default (#523)
 
@@ -239,7 +239,7 @@ from libtmux.test.temporary import temp_session, temp_window
 
   For the old behavior in 0.28.0 and beyond, pass `attach=True` explicitly.
 
-#### Resizing panes
+### Resizing panes
 
 - `Pane.resize_pane()` renamed to {meth}`Pane.resize()` (via #523)
 

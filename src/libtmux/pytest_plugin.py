@@ -7,6 +7,7 @@ import functools
 import getpass
 import logging
 import os
+import pathlib
 import typing as t
 
 import pytest
@@ -17,8 +18,6 @@ from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
 
 if t.TYPE_CHECKING:
-    import pathlib
-
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)

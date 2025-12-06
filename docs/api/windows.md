@@ -7,7 +7,7 @@
 - Identified by `@`, e.g. `@313`
 
 ```{module} libtmux
-
+:no-index:
 ```
 
 ```{eval-rst}

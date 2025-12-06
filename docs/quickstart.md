@@ -129,7 +129,7 @@ $ ptpython
 ```
 
 ```{module} libtmux
-
+:no-index:
 ```
 
 First, we can grab a {class}`Server`.
@@ -491,4 +491,3 @@ and our [test suite] (see {ref}`development`.)
 
 [workspacebuilder.py]: https://github.com/tmux-python/libtmux/blob/master/libtmux/workspacebuilder.py
 [test suite]: https://github.com/tmux-python/libtmux/tree/master/tests
-[ptpython]: https://github.com/prompt-toolkit/ptpython
