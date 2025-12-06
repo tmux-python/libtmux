@@ -1,283 +1,118 @@
-"""Test for libtmux Session object."""
+"""Tests for deprecated libtmux Session APIs.
+
+These tests verify that deprecated methods raise exc.DeprecatedError.
+"""
 
 from __future__ import annotations
 
-import logging
-import shutil
 import typing as t
 
 import pytest
 
 from libtmux import exc
-from libtmux.pane import Pane
-from libtmux.session import Session
-from libtmux.test.constants import TEST_SESSION_PREFIX
-from libtmux.test.random import namer
-from libtmux.window import Window
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
+    from libtmux.session import Session
 
-logger = logging.getLogger(__name__)
 
+def test_attached_window_raises_deprecated_error(session: Session) -> None:
+    """Test Session.attached_window raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\.attached_window was deprecated"
+    ):
+        _ = session.attached_window
 
-def test_has_session(server: Server, session: Session) -> None:
-    """Server.has_session returns True if has session_name exists."""
-    TEST_SESSION_NAME = session.get("session_name")
-    assert TEST_SESSION_NAME is not None
-    assert server.has_session(TEST_SESSION_NAME)
-    assert not server.has_session(TEST_SESSION_NAME[:-2])
-    assert server.has_session(TEST_SESSION_NAME[:-2], exact=False)
-    assert not server.has_session("asdf2314324321")
 
+def test_attached_pane_raises_deprecated_error(session: Session) -> None:
+    """Test Session.attached_pane raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\.attached_pane was deprecated"
+    ):
+        _ = session.attached_pane
 
-def test_select_window(session: Session) -> None:
-    """Session.select_window moves window."""
-    # get the current window_base_index, since different user tmux config
-    # may start at 0 or 1, or whatever they want.
-    window_idx = session.attached_window.get("window_index")
-    assert window_idx is not None
-    window_base_index = int(window_idx)
 
-    session.new_window(window_name="test_window")
-    window_count = len(session._windows)
+def test_attach_session_raises_deprecated_error(session: Session) -> None:
+    """Test Session.attach_session() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\.attach_session\(\) was deprecated"
+    ):
+        session.attach_session()
 
-    assert window_count >= 2  # 2 or more windows
 
-    assert len(session._windows) == window_count
+def test_kill_session_raises_deprecated_error(server: Server) -> None:
+    """Test Session.kill_session() raises exc.DeprecatedError."""
+    # Create a new session to kill (so we don't kill our test session)
+    new_session = server.new_session(session_name="test_kill_session", detach=True)
 
-    # tmux selects a window, moves to it, shows it as attached_window
-    selected_window1 = session.select_window(window_base_index)
-    assert isinstance(selected_window1, Window)
-    attached_window1 = session.attached_window
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\.kill_session\(\) was deprecated"
+    ):
+        new_session.kill_session()
 
-    assert selected_window1.id == attached_window1.id
+    # Clean up using the new API
+    new_session.kill()
 
-    # again: tmux selects a window, moves to it, shows it as
-    # attached_window
-    selected_window2 = session.select_window(window_base_index + 1)
-    assert isinstance(selected_window2, Window)
-    attached_window2 = session.attached_window
 
-    assert selected_window2.id == attached_window2.id
+def test_session_get_raises_deprecated_error(session: Session) -> None:
+    """Test Session.get() raises exc.DeprecatedError."""
+    with pytest.raises(exc.DeprecatedError, match=r"Session\.get\(\) was deprecated"):
+        session.get("session_name")
 
-    # assure these windows were really different
-    assert selected_window1.id != selected_window2.id
 
+def test_session_getitem_raises_deprecated_error(session: Session) -> None:
+    """Test Session.__getitem__() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\[key\] lookup was deprecated"
+    ):
+        _ = session["session_name"]
 
-def test_select_window_returns_Window(session: Session) -> None:
-    """Session.select_window returns Window object."""
-    window_count = len(session._windows)
-    assert len(session._windows) == window_count
 
-    window_idx = session.attached_window.get("window_index")
-    assert window_idx is not None
-    window_base_index = int(window_idx)
-    window = session.select_window(window_base_index)
-    assert isinstance(window, Window)
+def test_session_get_by_id_raises_deprecated_error(session: Session) -> None:
+    """Test Session.get_by_id() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\.get_by_id\(\) was deprecated"
+    ):
+        session.get_by_id("@0")
 
 
-def test_attached_window(session: Session) -> None:
-    """Session.attached_window returns Window."""
-    assert isinstance(session.attached_window, Window)
+def test_session_where_raises_deprecated_error(session: Session) -> None:
+    """Test Session.where() raises exc.DeprecatedError."""
+    with pytest.raises(exc.DeprecatedError, match=r"Session\.where\(\) was deprecated"):
+        session.where({"window_name": "test"})
 
 
-def test_attached_pane(session: Session) -> None:
-    """Session.attached_pane returns Pane."""
-    assert isinstance(session.attached_pane, Pane)
+def test_session_find_where_raises_deprecated_error(session: Session) -> None:
+    """Test Session.find_where() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\.find_where\(\) was deprecated"
+    ):
+        session.find_where({"window_name": "test"})
 
 
-def test_session_rename(session: Session) -> None:
-    """Session.rename_session renames session."""
-    session_name = session.get("session_name")
-    assert session_name is not None
-    TEST_SESSION_NAME = session_name
+def test_session_list_windows_raises_deprecated_error(session: Session) -> None:
+    """Test Session.list_windows() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\.list_windows\(\) was deprecated"
+    ):
+        session.list_windows()
 
-    test_name = "testingdis_sessname"
-    session.rename_session(test_name)
-    session_name = session.get("session_name")
-    assert session_name is not None
-    assert session_name == test_name
-    session.rename_session(TEST_SESSION_NAME)
-    session_name = session.get("session_name")
-    assert session_name is not None
-    assert session_name == TEST_SESSION_NAME
 
+def test_session_children_raises_deprecated_error(session: Session) -> None:
+    """Test Session.children raises exc.DeprecatedError."""
+    with pytest.raises(exc.DeprecatedError, match=r"Session\.children was deprecated"):
+        _ = session.children
 
-def test_new_session(server: Server) -> None:
-    """Server.new_session creates new session."""
-    new_session_name = TEST_SESSION_PREFIX + next(namer)
-    new_session = server.new_session(session_name=new_session_name, detach=True)
 
-    assert isinstance(new_session, Session)
-    assert new_session.get("session_name") == new_session_name
+def test_session__windows_raises_deprecated_error(session: Session) -> None:
+    """Test Session._windows raises exc.DeprecatedError."""
+    with pytest.raises(exc.DeprecatedError, match=r"Session\._windows was deprecated"):
+        _ = session._windows
 
 
-def test_show_options(session: Session) -> None:
-    """Session._show_options() returns dict."""
-    options = session._show_options()
-    assert isinstance(options, dict)
-
-
-def test_set_show_options_single(session: Session) -> None:
-    """Set option then Session._show_options(key)."""
-    session.set_option("history-limit", 20)
-    assert session._show_option("history-limit") == 20
-
-    session.set_option("history-limit", 40)
-    assert session._show_option("history-limit") == 40
-
-    assert session._show_options()["history-limit"] == 40
-
-
-def test_set_show_option(session: Session) -> None:
-    """Set option then Session._show_option(key)."""
-    session.set_option("history-limit", 20)
-    assert session._show_option("history-limit") == 20
-
-    session.set_option("history-limit", 40)
-
-    assert session._show_option("history-limit") == 40
-
-
-def test_empty_session_option_returns_None(session: Session) -> None:
-    """Verify Session._show_option returns None for unset option."""
-    assert session._show_option("default-shell") is None
-
-
-def test_show_option_unknown(session: Session) -> None:
-    """Session.show_option raises InvalidOption for invalid option."""
-    with pytest.raises(exc.InvalidOption):
-        session.show_option("moooz")
-
-
-def test_show_option_ambiguous(session: Session) -> None:
-    """Session._show_option raises AmbiguousOption for ambiguous option."""
-    with pytest.raises(exc.AmbiguousOption):
-        session._show_option("default-")
-
-
-def test_set_option_ambiguous(session: Session) -> None:
-    """Session.set_option raises AmbiguousOption for invalid option."""
-    with pytest.raises(exc.AmbiguousOption):
-        session.set_option("default-", 43)
-
-
-def test_set_option_invalid(session: Session) -> None:
-    """Session.set_option raises InvalidOption for invalid option."""
-    with pytest.raises(exc.InvalidOption):
-        session.set_option("afewewfew", 43)
-
-
-def test_show_environment(session: Session) -> None:
-    """Session.show_environment() returns dict."""
-    vars_ = session.show_environment()
-    assert isinstance(vars_, dict)
-
-
-def test_set_show_environment_single(session: Session) -> None:
-    """Set environment then Session.show_environment(key)."""
-    session.set_environment("FOO", "BAR")
-    assert session.getenv("FOO") == "BAR"
-
-    session.set_environment("FOO", "DAR")
-    assert session.getenv("FOO") == "DAR"
-
-    assert session.show_environment()["FOO"] == "DAR"
-
-
-def test_show_environment_not_set(session: Session) -> None:
-    """Not set environment variable returns None."""
-    assert session.getenv("BAR") is None
-
-
-def test_remove_environment(session: Session) -> None:
-    """Remove environment variable."""
-    assert session.getenv("BAM") is None
-    session.set_environment("BAM", "OK")
-    assert session.getenv("BAM") == "OK"
-    session.remove_environment("BAM")
-    assert session.getenv("BAM") is None
-
-
-def test_unset_environment(session: Session) -> None:
-    """Unset environment variable."""
-    assert session.getenv("BAM") is None
-    session.set_environment("BAM", "OK")
-    assert session.getenv("BAM") == "OK"
-    session.unset_environment("BAM")
-    assert session.getenv("BAM") is None
-
-
-@pytest.mark.parametrize(
-    ("session_name", "raises"),
-    [("hey.period", True), ("hey:its a colon", True), ("hey moo", False)],
-)
-def test_periods_raise_badsessionname(
-    server: Server,
-    session: Session,
-    session_name: str,
-    raises: bool,
-) -> None:
-    """Verify session names with periods raise BadSessionName."""
-    new_name = session_name + "moo"  # used for rename / switch
-    if raises:
-        with pytest.raises(exc.BadSessionName):
-            session.rename_session(new_name)
-
-        with pytest.raises(exc.BadSessionName):
-            server.new_session(session_name)
-
-        with pytest.raises(exc.BadSessionName):
-            server.has_session(session_name)
-
-        with pytest.raises(exc.BadSessionName):
-            server.switch_client(new_name)
-
-        with pytest.raises(exc.BadSessionName):
-            server.attach_session(new_name)
-
-    else:
-        server.new_session(session_name)
-        server.has_session(session_name)
-        session.rename_session(new_name)
-        with pytest.raises(exc.LibTmuxException):
-            server.switch_client(new_name)
-
-
-def test_cmd_inserts_session_id(session: Session) -> None:
-    """Verify Session.cmd() inserts session_id."""
-    current_session_id = session.id
-    last_arg = "last-arg"
-    cmd = session.cmd("not-a-command", last_arg)
-    assert "-t" in cmd.cmd
-    assert current_session_id in cmd.cmd
-    assert cmd.cmd[-1] == last_arg
-
-
-@pytest.mark.parametrize(
-    "environment",
-    [
-        {"ENV_VAR": "window"},
-        {"ENV_VAR_1": "window_1", "ENV_VAR_2": "window_2"},
-    ],
-)
-def test_new_window_with_environment(
-    session: Session,
-    environment: dict[str, str],
-) -> None:
-    """Verify new window with environment vars."""
-    env = shutil.which("env")
-    assert env is not None, "Cannot find usable `env` in PATH."
-
-    window = session.new_window(
-        attach=True,
-        window_name="window_with_environment",
-        window_shell=f"{env} PS1='$ ' sh",
-        environment=environment,
-    )
-    pane = window.attached_pane
-    assert pane is not None
-    for k, v in environment.items():
-        pane.send_keys(f"echo ${k}")
-        assert pane.capture_pane()[-2] == v
+def test_session__list_windows_raises_deprecated_error(session: Session) -> None:
+    """Test Session._list_windows() raises exc.DeprecatedError."""
+    with pytest.raises(
+        exc.DeprecatedError, match=r"Session\._list_windows\(\) was deprecated"
+    ):
+        session._list_windows()

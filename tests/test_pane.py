@@ -183,10 +183,10 @@ def test_pane_split_window_zoom(
     assert pane_with_zoom.height == pane_with_zoom.window_height
 
 
-def test_resize_pane(
+def test_resize(
     session: Session,
 ) -> None:
-    """Verify resizing window."""
+    """Verify resizing pane."""
     session.cmd("detach-client", "-s")
 
     window = session.active_window
@@ -208,14 +208,14 @@ def test_resize_pane(
 
     # Manual: Height
     pane_height_before = int(pane.pane_height)
-    pane.resize_pane(
+    pane.resize(
         height="50",
     )
     assert int(pane.pane_height) == 50
 
     # Manual: Width
     window.select_layout("main-horizontal")
-    pane.resize_pane(
+    pane.resize(
         width="75",
     )
     assert int(pane.pane_width) == 75
@@ -223,14 +223,14 @@ def test_resize_pane(
     # Manual: Height percentage
     window.select_layout("main-vertical")
     pane_height_before = int(pane.pane_height)
-    pane.resize_pane(
+    pane.resize(
         height="15%",
     )
     assert int(pane.pane_height) == 75
 
     # Manual: Width percentage
     window.select_layout("main-horizontal")
-    pane.resize_pane(
+    pane.resize(
         width="15%",
     )
     assert int(pane.pane_width) == 75
@@ -241,7 +241,7 @@ def test_resize_pane(
 
     # Adjustment: Down
     pane_height_before = int(pane.pane_height)
-    pane.resize_pane(
+    pane.resize(
         adjustment_direction=ResizeAdjustmentDirection.Down,
         adjustment=pane_height_adjustment * 2,
     )
@@ -249,7 +249,7 @@ def test_resize_pane(
 
     # Adjustment: Up
     pane_height_before = int(pane.pane_height)
-    pane.resize_pane(
+    pane.resize(
         adjustment_direction=ResizeAdjustmentDirection.Up,
         adjustment=pane_height_adjustment,
     )
@@ -258,12 +258,12 @@ def test_resize_pane(
     #
     # Zoom
     #
-    pane.resize_pane(height=50)
+    pane.resize(height=50)
 
     # Zoom
-    pane.resize_pane(height=2)
+    pane.resize(height=2)
     pane_height_before = int(pane.pane_height)
-    pane.resize_pane(
+    pane.resize(
         zoom=True,
     )
     pane_height_expanded = int(pane.pane_height)

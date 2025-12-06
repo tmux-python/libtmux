@@ -44,6 +44,29 @@ _Upcoming changes will be written here._
 - Fix incorrect return type annotations for `capture_pane()` and `display_message()` methods
   (changed from `str | list[str]` to `list[str]` - the methods always return a list).
 
+#### APIs deprecated (#611)
+
+Legacy API methods (deprecated in 0.16-0.33) now raise {exc}`~libtmux.exc.DeprecatedError` (hard error) instead of emitting {class}`DeprecationWarning`.
+
+See {doc}`migration` for full context and examples.
+
+| Deprecated API | Replacement | Deprecated | Raises | Note |
+|----------------|-------------|------------|--------|------|
+| `kill_server()` | {meth}`~libtmux.Server.kill` | 0.30.0 | 0.51.0 | Server |
+| `attach_session()`, `kill_session()` | {meth}`~libtmux.Session.attach`, {meth}`~libtmux.Session.kill` | 0.30.0 | 0.51.0 | Session |
+| `select_window()`, `kill_window()`, `split_window()` | {meth}`~libtmux.Window.select`, {meth}`~libtmux.Window.kill`, {meth}`~libtmux.Window.split` | 0.30.0 / 0.33.0 | 0.51.0 | Window |
+| `resize_pane()`, `select_pane()`, `split_window()` | {meth}`~libtmux.Pane.resize`, {meth}`~libtmux.Pane.select`, {meth}`~libtmux.Pane.split` | 0.28.0 / 0.30.0 / 0.33.0 | 0.51.0 | Pane |
+| `attached_window`, `attached_pane` | {attr}`~libtmux.Session.active_window`, {attr}`~libtmux.Session.active_pane` / {attr}`~libtmux.Window.active_pane` | 0.31.0 | 0.51.0 | Session/Window |
+| `list_*()`, `_list_*()`, `_update_*()`, `children`, `where()`, `find_where()`, `get_by_id()` | {attr}`~libtmux.Server.sessions` / {attr}`~libtmux.Session.windows` / {attr}`~libtmux.Window.panes` with {meth}`~libtmux.common.QueryList.filter` / {meth}`~libtmux.common.QueryList.get` | 0.16.0 / 0.17.0 | 0.51.0 | Query/filter helpers |
+| Dict-style access (`obj["key"]`, `obj.get(...)`) | Attribute access (e.g., {attr}`~libtmux.window.Window.window_name`) | 0.17.0 | 0.51.0 | All tmux objects |
+
+The following deprecations from 0.50.0 continue to emit {class}`DeprecationWarning` (soft deprecation):
+
+| Deprecated API | Replacement | Deprecated | Note |
+|----------------|-------------|------------|------|
+| `set_window_option()`, `show_window_option()`, `show_window_options()` | {meth}`~libtmux.window.Window.set_option`, {meth}`~libtmux.window.Window.show_option`, {meth}`~libtmux.window.Window.show_options` | 0.50.0 | Window |
+| `g` parameter on options/hooks methods | `global_` on {meth}`~libtmux.options.OptionsMixin.set_option`, {meth}`~libtmux.options.OptionsMixin.show_option`, {meth}`~libtmux.options.OptionsMixin.show_options` | 0.50.0 | Options & hooks |
+
 ## libtmux 0.50.0 (2025-11-30)
 
 ### Overview

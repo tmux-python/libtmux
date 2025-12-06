@@ -797,31 +797,10 @@ class Window(
 
            ``percent=25`` deprecated in favor of ``size="25%"``.
         """
-        warnings.warn(
-            "Window.split_window() is deprecated in favor of Window.split()",
-            category=DeprecationWarning,
-            stacklevel=2,
-        )
-
-        if percent is not None:
-            # Deprecated in 3.1 in favor of -l
-            warnings.warn(
-                f'Deprecated in favor of size="{str(percent).rstrip("%")}%" '
-                '(using the "-l" flag).',
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
-            if size is None:
-                size = f"{str(percent).rstrip('%')}%"
-
-        return self.split(
-            target=target,
-            start_directory=start_directory,
-            attach=attach,
-            direction=PaneDirection.Below if vertical else PaneDirection.Right,
-            shell=shell,
-            size=size,
-            environment=environment,
+        raise exc.DeprecatedError(
+            deprecated="Window.split_window()",
+            replacement="Window.split()",
+            version="0.33.0",
         )
 
     @property
@@ -834,15 +813,11 @@ class Window(
 
            Deprecated in favor of :meth:`.active_pane`.
         """
-        warnings.warn(
-            "Window.attached_pane() is deprecated in favor of Window.active_pane()",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window.attached_pane",
+            replacement="Window.active_pane",
+            version="0.31.0",
         )
-        panes = self.panes.filter(pane_active="1")
-        if len(panes) > 0:
-            return panes[0]
-        return None
 
     def select_window(self) -> Window:
         """Select window.
@@ -853,13 +828,11 @@ class Window(
 
            Deprecated in favor of :meth:`.select()`.
         """
-        warnings.warn(
-            "Window.select_window() is deprecated in favor of Window.select()",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window.select_window()",
+            replacement="Window.select()",
+            version="0.30.0",
         )
-        assert isinstance(self.window_index, str)
-        return self.session.select_window(self.window_index)
 
     def kill_window(self) -> None:
         """Kill the current :class:`Window` object. ``$ tmux kill-window``.
@@ -870,15 +843,11 @@ class Window(
 
            Deprecated in favor of :meth:`.kill()`.
         """
-        warnings.warn(
-            "Window.kill_server() is deprecated in favor of Window.kill()",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window.kill_window()",
+            replacement="Window.kill()",
+            version="0.30.0",
         )
-        proc = self.cmd("kill-window")
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
 
     def set_window_option(
         self,
@@ -887,13 +856,13 @@ class Window(
     ) -> Window:
         """Set option for tmux window. Deprecated by :meth:`Window.set_option()`.
 
-        .. deprecated:: 0.26
+        .. deprecated:: 0.50
 
            Deprecated by :meth:`Window.set_option()`.
 
         """
         warnings.warn(
-            "Window.set_window_option() is deprecated",
+            "Window.set_window_option() is deprecated in favor of Window.set_option()",
             category=DeprecationWarning,
             stacklevel=2,
         )
@@ -902,13 +871,14 @@ class Window(
     def show_window_options(self, g: bool | None = False) -> WindowOptionDict:
         """Show options for tmux window. Deprecated by :meth:`Window.show_options()`.
 
-        .. deprecated:: 0.26
+        .. deprecated:: 0.50
 
            Deprecated by :meth:`Window.show_options()`.
 
         """
         warnings.warn(
-            "Window.show_window_options() is deprecated",
+            "Window.show_window_options() is deprecated"
+            " in favor of Window.show_options()",
             category=DeprecationWarning,
             stacklevel=2,
         )
@@ -924,53 +894,51 @@ class Window(
     ) -> str | int | None:
         """Return option for target window. Deprecated by :meth:`Window.show_option()`.
 
-        .. deprecated:: 0.26
+        .. deprecated:: 0.50
 
            Deprecated by :meth:`Window.show_option()`.
 
         """
         warnings.warn(
-            "Window.show_window_option() is deprecated",
+            "Window.show_window_option() is deprecated"
+            " in favor of Window.show_option()",
             category=DeprecationWarning,
             stacklevel=2,
         )
         return self.show_option(
             option=option,
-            g=g,
-            scope=OptionScope.Window,
+            global_=g,
         )
 
     def get(self, key: str, default: t.Any | None = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
 
-        .. deprecated:: 0.16
+        .. deprecated:: 0.17
 
            Deprecated by attribute lookup.e.g. ``window['window_name']`` is now
            accessed via ``window.window_name``.
 
         """
-        warnings.warn(
-            "Window.get() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window.get()",
+            replacement="direct attribute access (e.g., window.window_name)",
+            version="0.17.0",
         )
-        return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
         """Return item lookup by key. Deprecated in favor of attributes.
 
-        .. deprecated:: 0.16
+        .. deprecated:: 0.17
 
            Deprecated in favor of attributes. e.g. ``window['window_name']`` is now
            accessed via ``window.window_name``.
 
         """
-        warnings.warn(
-            f"Item lookups, e.g. window['{key}'] is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window[key] lookup",
+            replacement="direct attribute access (e.g., window.window_name)",
+            version="0.17.0",
         )
-        return getattr(self, key)
 
     def get_by_id(self, pane_id: str) -> Pane | None:
         """Return pane by id. Deprecated in favor of :meth:`.panes.get()`.
@@ -980,100 +948,94 @@ class Window(
            Deprecated by :meth:`.panes.get()`.
 
         """
-        warnings.warn(
-            "Window.get_by_id() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window.get_by_id()",
+            replacement="Window.panes.get(pane_id=..., default=None)",
+            version="0.16.0",
         )
-        return self.panes.get(pane_id=pane_id, default=None)
 
     def where(self, kwargs: dict[str, t.Any]) -> list[Pane]:
         """Filter through panes, return list of :class:`Pane`.
 
-        .. deprecated:: 0.16
+        .. deprecated:: 0.17
 
            Deprecated by :meth:`.panes.filter()`.
 
         """
-        warnings.warn(
-            "Window.where() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window.where()",
+            replacement="Window.panes.filter()",
+            version="0.17.0",
         )
-        try:
-            return self.panes.filter(**kwargs)
-        except IndexError:
-            return []
 
     def find_where(self, kwargs: dict[str, t.Any]) -> Pane | None:
         """Filter through panes, return first :class:`Pane`.
 
-        .. deprecated:: 0.16
+        .. deprecated:: 0.17
 
            Slated to be removed in favor of :meth:`.panes.get()`.
 
         """
-        warnings.warn(
-            "Window.find_where() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window.find_where()",
+            replacement="Window.panes.get(default=None, **kwargs)",
+            version="0.17.0",
         )
-        return self.panes.get(default=None, **kwargs)
 
     def _list_panes(self) -> list[PaneDict]:
         """Return list of panes (deprecated in favor of :meth:`.panes`).
 
-        .. deprecated:: 0.16
+        .. deprecated:: 0.17
 
            Slated to be removed in favor of :attr:`.panes`.
 
         """
-        warnings.warn(
-            "Window._list_panes() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window._list_panes()",
+            replacement="Window.panes property",
+            version="0.17.0",
         )
-        return [pane.__dict__ for pane in self.panes]
 
     @property
     def _panes(self) -> list[PaneDict]:
         """Property / alias to return :meth:`~._list_panes`.
 
-        .. deprecated:: 0.16
+        .. deprecated:: 0.17
 
            Slated to be removed in favor of :attr:`.panes`.
 
         """
-        warnings.warn("_panes is deprecated", category=DeprecationWarning, stacklevel=2)
-        return self._list_panes()
+        raise exc.DeprecatedError(
+            deprecated="Window._panes",
+            replacement="Window.panes property",
+            version="0.17.0",
+        )
 
     def list_panes(self) -> list[Pane]:
         """Return list of :class:`Pane` for the window.
 
-        .. deprecated:: 0.16
+        .. deprecated:: 0.17
 
            Slated to be removed in favor of :attr:`.panes`.
 
         """
-        warnings.warn(
-            "list_panes() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window.list_panes()",
+            replacement="Window.panes property",
+            version="0.17.0",
         )
-        return self.panes
 
     @property
     def children(self) -> QueryList[Pane]:
         """Was used by TmuxRelationalObject (but that's longer used in this class).
 
-        .. deprecated:: 0.16
+        .. deprecated:: 0.17
 
            Slated to be removed in favor of :attr:`.panes`.
 
         """
-        warnings.warn(
-            "Window.children is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Window.children",
+            replacement="Window.panes property",
+            version="0.17.0",
         )
-        return self.panes

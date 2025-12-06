@@ -6,7 +6,7 @@ from time import sleep, time
 
 import pytest
 
-from libtmux.exc import WaitTimeout
+from libtmux import exc
 from libtmux.test.retry import retry_until
 
 
@@ -42,7 +42,7 @@ def test_function_times_out() -> None:
         )  # Sleep for 0.1 seconds to simulate work (called ~10 times in 1 second)
         return False
 
-    with pytest.raises(WaitTimeout):
+    with pytest.raises(exc.WaitTimeout):
         retry_until(never_true, 1)
 
     end = time()
