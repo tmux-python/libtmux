@@ -169,9 +169,8 @@ print(server.list_sessions())  # legacy behavior
 
 ## Environment propagation requirements
 
-- tmux **3.2 or newer** is required for ``-e KEY=VAL`` on ``new-session``,
-  ``new-window``, and ``split-window``. Older tmux versions ignore ``-e``; the
-  library emits a warning and tests skip these cases.
+- libtmux requires tmux **3.2 or newer**; ``-e KEY=VAL`` on ``new-session``,
+  ``new-window``, and ``split-window`` is supported natively.
 - Environment tests and examples may wait briefly after ``send-keys`` so the
   shell prompt/output reaches the pane before capture.
 
@@ -189,3 +188,9 @@ The pytest fixture ``control_sandbox`` provides an isolated control-mode tmux
 server with a unique socket, HOME/TMUX_TMPDIR isolation, and automatic cleanup.
 It is used by the regression suite and can be reused in custom tests when you
 need a hermetic control-mode client.
+
+## Testing control mode
+
+- Run `uv run pytest --engine=control` to execute the suite against the
+  control-mode engine. CI runs both subprocess and control engines across 
+  supported tmux versions.
