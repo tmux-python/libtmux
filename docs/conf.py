@@ -121,6 +121,12 @@ toc_object_entries_show_parents = "hide"
 # sphinx-autodoc-typehints
 always_document_param_types = True
 
+# Suppress warnings for forward references that can't be resolved
+# (types in TYPE_CHECKING blocks used for circular import avoidance)
+suppress_warnings = [
+    "sphinx_autodoc_typehints.forward_reference",
+]
+
 # sphinx-copybutton
 copybutton_prompt_text = (
     r">>> |\.\.\. |> |\$ |\# | In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
