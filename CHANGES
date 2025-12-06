@@ -34,6 +34,24 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 _Future release notes will be placed here_
 
+#### APIs deprecated (#611)
+
+Legacy API methods now raise `libtmux.exc.DeprecatedError` (hard error) instead of emitting `DeprecationWarning`.
+
+See {doc}`migration` for full context and examples.
+
+| Deprecated API | Replacement | Note |
+|----------------|-------------|------|
+| `kill_server()` | {meth}`~libtmux.Server.kill` | Server
+| `attach_session()`, `kill_session()` | {meth}`~libtmux.Session.attach`, {meth}`~libtmux.Session.kill` | Session
+| `select_window()`, `kill_window()`, `split_window()` | {meth}`~libtmux.Window.select`, {meth}`~libtmux.Window.kill`, {meth}`~libtmux.Window.split` | Window
+| `resize_pane()`, `select_pane()`, `split_window()` | {meth}`~libtmux.Pane.resize`, {meth}`~libtmux.Pane.select`, {meth}`~libtmux.Pane.split` | Pane
+| `attached_window`, `attached_pane` | {attr}`~libtmux.Session.active_window`, {attr}`~libtmux.Session.active_pane` / {attr}`~libtmux.Window.active_pane` | Session/Window
+| `list_*()`, `_list_*()`, `_update_*()`, `children`, `where()`, `find_where()`, `get_by_id()` | {attr}`~libtmux.Server.sessions` / {attr}`~libtmux.Session.windows` / {attr}`~libtmux.Window.panes` with {meth}`~libtmux.common.QueryList.filter` / {meth}`~libtmux.common.QueryList.get` | Query/filter helpers
+| Dict-style access (`obj["key"]`, `obj.get(...)`) | Attribute access (e.g., {attr}`~libtmux.window.Window.window_name`) | All tmux objects
+| `set_window_option()`, `show_window_option()`, `show_window_options()` | {meth}`~libtmux.window.Window.set_option`, {meth}`~libtmux.window.Window.show_option`, {meth}`~libtmux.window.Window.show_options` | Window
+| `g` parameter on options/hooks methods | `global_` on {meth}`~libtmux.options.OptionsMixin.set_option`, {meth}`~libtmux.options.OptionsMixin.show_option`, {meth}`~libtmux.options.OptionsMixin.show_options` | Options & hooks
+
 ## libtmux 0.50.0 (2025-11-30)
 
 ### Overview
