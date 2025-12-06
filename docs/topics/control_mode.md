@@ -149,6 +149,25 @@ print(server.list_sessions())  # legacy behavior
 - Notifications are queued; drops are counted when consumers fall behind.
 - Timeouts raise ``ControlModeTimeout`` and restart the control client.
 
+## Runtime client flags
+
+- Use :meth:`ControlModeEngine.set_client_flags` to toggle tmux's control
+  client flags at runtime (``no-output``, ``pause-after``, ``wait-exit``, and
+  general client flags like ``read-only`` and ``ignore-size``). Passing
+  ``False`` clears a flag using tmux's ``!flag`` syntax; ``pause_after=0`` also
+  clears pause-after.
+- Per-pane flow control can be adjusted with
+  :meth:`ControlModeEngine.set_pane_flow`, which wraps ``refresh-client -A``.
+  Call ``set_pane_flow(pane_id, state="continue")`` to resume a paused pane.
+
+## Subscriptions
+
+- :meth:`ControlModeEngine.subscribe` wraps ``refresh-client -B`` to add or
+  remove control-mode subscriptions. Provide a ``name``, optional ``what``
+  scope (``%1``, ``@2``, ``%*``, ``@*``, or empty for the attached session),
+  and a ``format`` string. Pass ``format=None`` to remove a subscription by
+  name.
+
 ## Errors, timeouts, and retries
 
 - ``ControlModeTimeout`` — command block did not finish before
