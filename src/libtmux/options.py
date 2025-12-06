@@ -72,7 +72,6 @@ import logging
 import re
 import shlex
 import typing as t
-import warnings
 
 from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import CmdMixin
@@ -669,12 +668,11 @@ class OptionsMixin(CmdMixin):
             flags.append("-a")
 
         if g is not None:
-            warnings.warn(
-                "g argument is deprecated in favor of global_",
-                category=DeprecationWarning,
-                stacklevel=2,
+            raise exc.DeprecatedError(
+                deprecated="g parameter",
+                replacement="global_ parameter",
+                version="0.50.0",
             )
-            global_ = g
 
         if global_ is not None and global_:
             assert isinstance(global_, bool)
@@ -797,8 +795,9 @@ class OptionsMixin(CmdMixin):
 
         Parameters
         ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
+        g : bool, optional
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Examples
         --------
@@ -829,13 +828,13 @@ class OptionsMixin(CmdMixin):
         flags: tuple[str, ...] = ()
 
         if g:
-            warnings.warn(
-                "g argument is deprecated in favor of global_",
-                category=DeprecationWarning,
-                stacklevel=2,
+            raise exc.DeprecatedError(
+                deprecated="g parameter",
+                replacement="global_ parameter",
+                version="0.50.0",
             )
-            flags += ("-g",)
-        elif global_:
+
+        if global_:
             flags += ("-g",)
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
@@ -864,8 +863,9 @@ class OptionsMixin(CmdMixin):
 
         Parameters
         ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
+        g : bool, optional
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Examples
         --------
@@ -913,8 +913,9 @@ class OptionsMixin(CmdMixin):
 
         Parameters
         ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
+        g : bool, optional
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Examples
         --------
@@ -1013,7 +1014,8 @@ class OptionsMixin(CmdMixin):
         ----------
         option : str
         g : bool, optional
-            Pass ``-g`` flag, global. Default False.
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Raises
         ------
@@ -1058,13 +1060,13 @@ class OptionsMixin(CmdMixin):
         flags: tuple[str | int, ...] = ()
 
         if g:
-            warnings.warn(
-                "g argument is deprecated in favor of global_",
-                category=DeprecationWarning,
-                stacklevel=2,
+            raise exc.DeprecatedError(
+                deprecated="g parameter",
+                replacement="global_ parameter",
+                version="0.50.0",
             )
-            flags += ("-g",)
-        elif global_:
+
+        if global_:
             flags += ("-g",)
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
@@ -1104,7 +1106,8 @@ class OptionsMixin(CmdMixin):
         ----------
         option : str
         g : bool, optional
-            Pass ``-g`` flag, global. Default False.
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Raises
         ------
@@ -1206,7 +1209,8 @@ class OptionsMixin(CmdMixin):
         ----------
         option : str
         g : bool, optional
-            Pass ``-g`` flag, global. Default False.
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead. Raises :exc:`~libtmux.exc.DeprecatedError`.
 
         Raises
         ------
@@ -1237,12 +1241,11 @@ class OptionsMixin(CmdMixin):
         False
         """
         if g:
-            warnings.warn(
-                "g argument is deprecated in favor of global_",
-                category=DeprecationWarning,
-                stacklevel=2,
+            raise exc.DeprecatedError(
+                deprecated="g parameter",
+                replacement="global_ parameter",
+                version="0.50.0",
             )
-            global_ = g
 
         return self._show_option(
             option=option,

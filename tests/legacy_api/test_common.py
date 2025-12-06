@@ -1,4 +1,8 @@
-"""Tests for utility functions in libtmux."""
+"""Tests for utility functions in libtmux.
+
+Note: This file tests common utilities, not deprecated APIs.
+The tests use the current API.
+"""
 
 from __future__ import annotations
 

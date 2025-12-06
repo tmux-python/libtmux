@@ -47,6 +47,8 @@ from libtmux.constants import (
 )
 from libtmux.options import handle_option_error
 
+from . import exc
+
 if t.TYPE_CHECKING:
     from typing_extensions import Self
 
@@ -139,12 +141,11 @@ class HooksMixin(CmdMixin):
             scope = self.default_hook_scope
 
         if g:
-            warnings.warn(
-                "g argument is deprecated in favor of global_",
-                category=DeprecationWarning,
-                stacklevel=2,
+            raise exc.DeprecatedError(
+                deprecated="g parameter",
+                replacement="global_ parameter",
+                version="0.50.0",
             )
-            global_ = g
 
         flags: list[str] = []
 

@@ -11,7 +11,6 @@ import dataclasses
 import logging
 import pathlib
 import typing as t
-import warnings
 
 from libtmux import exc
 from libtmux.common import tmux_cmd
@@ -544,16 +543,11 @@ class Pane(
 
            Deprecated in favor of :meth:`.select()`.
         """
-        warnings.warn(
-            "Pane.select_pane() is deprecated in favor of Pane.select()",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Pane.select_pane()",
+            replacement="Pane.select()",
+            version="0.30.0",
         )
-        assert isinstance(self.pane_id, str)
-        pane = self.window.select_pane(self.pane_id)
-        if pane is None:
-            raise exc.PaneNotFound(pane_id=self.pane_id)
-        return pane
 
     def split(
         self,
@@ -716,7 +710,7 @@ class Pane(
         width : int
             pane width, in cells
         """
-        self.resize_pane(width=width)
+        self.resize(width=width)
         return self
 
     def set_height(self, height: int) -> Pane:
@@ -727,7 +721,7 @@ class Pane(
         height : int
             height of pain, in cells
         """
-        self.resize_pane(height=height)
+        self.resize(height=height)
         return self
 
     def enter(self) -> Pane:
@@ -895,21 +889,10 @@ class Pane(
 
            Deprecated in favor of :meth:`.split`.
         """
-        warnings.warn(
-            "Pane.split_window() is deprecated in favor of Pane.split()",
-            category=DeprecationWarning,
-            stacklevel=2,
-        )
-        if size is None and percent is not None:
-            size = f"{str(percent).rstrip('%')}%"
-        return self.split(
-            target=target,
-            attach=attach,
-            start_directory=start_directory,
-            direction=PaneDirection.Below if vertical else PaneDirection.Right,
-            shell=shell,
-            size=size,
-            environment=environment,
+        raise exc.DeprecatedError(
+            deprecated="Pane.split_window()",
+            replacement="Pane.split()",
+            version="0.33.0",
         )
 
     def get(self, key: str, default: t.Any | None = None) -> t.Any:
@@ -921,12 +904,11 @@ class Pane(
            accessed via ``pane.window_name``.
 
         """
-        warnings.warn(
-            "Pane.get() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Pane.get()",
+            replacement="direct attribute access (e.g., pane.pane_id)",
+            version="0.16.0",
         )
-        return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
         """Return item lookup by key. Deprecated in favor of attributes.
@@ -937,12 +919,11 @@ class Pane(
            accessed via ``pane.window_name``.
 
         """
-        warnings.warn(
-            f"Item lookups, e.g. pane['{key}'] is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Pane[key] lookup",
+            replacement="direct attribute access (e.g., pane.pane_id)",
+            version="0.16.0",
         )
-        return getattr(self, key)
 
     def resize_pane(
         self,
@@ -965,17 +946,8 @@ class Pane(
 
            Deprecated by :meth:`Pane.resize`.
         """
-        warnings.warn(
-            "Deprecated: Use Pane.resize() instead of Pane.resize_pane()",
-            category=DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.resize(
-            adjustment_direction=adjustment_direction,
-            adjustment=adjustment,
-            height=height,
-            width=width,
-            zoom=zoom,
-            mouse=mouse,
-            trim_below=trim_below,
+        raise exc.DeprecatedError(
+            deprecated="Pane.resize_pane()",
+            replacement="Pane.resize()",
+            version="0.28.0",
         )
