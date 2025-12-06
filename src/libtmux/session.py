@@ -11,7 +11,6 @@ import dataclasses
 import logging
 import pathlib
 import typing as t
-import warnings
 
 from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
@@ -644,12 +643,11 @@ class Session(
 
            Deprecated in favor of :meth:`.active_pane`.
         """
-        warnings.warn(
-            "Session.attached_pane() is deprecated in favor of Session.active_pane()",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.attached_pane",
+            replacement="Session.active_pane",
+            version="0.31.0",
         )
-        return self.active_window.active_pane
 
     @property
     def attached_window(self) -> Window:
@@ -661,13 +659,11 @@ class Session(
 
            Deprecated in favor of :meth:`.active_window`.
         """
-        warnings.warn(
-            "Session.attached_window() is deprecated in favor of "
-            "Session.active_window()",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.attached_window",
+            replacement="Session.active_window",
+            version="0.31.0",
         )
-        return self.active_window
 
     def attach_session(self) -> Session:
         """Return ``$ tmux attach-session`` aka alias: ``$ tmux attach``.
@@ -678,17 +674,11 @@ class Session(
 
            Deprecated in favor of :meth:`.attach()`.
         """
-        warnings.warn(
-            "Session.attach_session() is deprecated in favor of Session.attach()",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.attach_session()",
+            replacement="Session.attach()",
+            version="0.30.0",
         )
-        proc = self.cmd("attach-session")
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-        return self
 
     def kill_session(self) -> None:
         """Destroy session.
@@ -699,15 +689,11 @@ class Session(
 
            Deprecated in favor of :meth:`.kill()`.
         """
-        warnings.warn(
-            "Session.kill_session() is deprecated in favor of Session.kill()",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.kill_session()",
+            replacement="Session.kill()",
+            version="0.30.0",
         )
-        proc = self.cmd("kill-session")
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
 
     def get(self, key: str, default: t.Any | None = None) -> t.Any:
         """Return key-based lookup. Deprecated by attributes.
@@ -718,12 +704,11 @@ class Session(
            accessed via ``session.session_name``.
 
         """
-        warnings.warn(
-            "Session.get() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.get()",
+            replacement="direct attribute access (e.g., session.session_name)",
+            version="0.16.0",
         )
-        return getattr(self, key, default)
 
     def __getitem__(self, key: str) -> t.Any:
         """Return item lookup by key. Deprecated in favor of attributes.
@@ -734,12 +719,11 @@ class Session(
            accessed via ``session.session_name``.
 
         """
-        warnings.warn(
-            f"Item lookups, e.g. session['{key}'] is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session[key] lookup",
+            replacement="direct attribute access (e.g., session.session_name)",
+            version="0.16.0",
         )
-        return getattr(self, key)
 
     def get_by_id(self, session_id: str) -> Window | None:
         """Return window by id. Deprecated in favor of :meth:`.windows.get()`.
@@ -749,12 +733,11 @@ class Session(
            Deprecated by :meth:`.windows.get()`.
 
         """
-        warnings.warn(
-            "Session.get_by_id() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.get_by_id()",
+            replacement="Session.windows.get(window_id=..., default=None)",
+            version="0.16.0",
         )
-        return self.windows.get(window_id=session_id, default=None)
 
     def where(self, kwargs: dict[str, t.Any]) -> list[Window]:
         """Filter through windows, return list of :class:`Window`.
@@ -764,15 +747,11 @@ class Session(
            Deprecated by :meth:`.windows.filter()`.
 
         """
-        warnings.warn(
-            "Session.where() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.where()",
+            replacement="Session.windows.filter()",
+            version="0.16.0",
         )
-        try:
-            return self.windows.filter(**kwargs)
-        except IndexError:
-            return []
 
     def find_where(self, kwargs: dict[str, t.Any]) -> Window | None:
         """Filter through windows, return first :class:`Window`.
@@ -782,12 +761,11 @@ class Session(
            Slated to be removed in favor of :meth:`.windows.get()`.
 
         """
-        warnings.warn(
-            "Session.find_where() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.find_where()",
+            replacement="Session.windows.get(default=None, **kwargs)",
+            version="0.16.0",
         )
-        return self.windows.get(default=None, **kwargs)
 
     def _list_windows(self) -> list[WindowDict]:
         """Return list of windows (deprecated in favor of :attr:`.windows`).
@@ -797,12 +775,11 @@ class Session(
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn(
-            "Session._list_windows() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session._list_windows()",
+            replacement="Session.windows property",
+            version="0.16.0",
         )
-        return [w.__dict__ for w in self.windows]
 
     @property
     def _windows(self) -> list[WindowDict]:
@@ -813,12 +790,11 @@ class Session(
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn(
-            "Session._windows is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session._windows",
+            replacement="Session.windows property",
+            version="0.16.0",
         )
-        return self._list_windows()
 
     def list_windows(self) -> list[Window]:
         """Return a list of :class:`Window` from the ``tmux(1)`` session.
@@ -828,12 +804,11 @@ class Session(
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn(
-            "Session.list_windows() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.list_windows()",
+            replacement="Session.windows property",
+            version="0.16.0",
         )
-        return self.windows
 
     @property
     def children(self) -> QueryList[Window]:
@@ -844,9 +819,8 @@ class Session(
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn(
-            "Session.children is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Session.children",
+            replacement="Session.windows property",
+            version="0.16.0",
         )
-        return self.windows
