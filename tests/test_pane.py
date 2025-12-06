@@ -11,6 +11,7 @@ import pytest
 
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
+from tests.helpers import wait_for_line
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
@@ -83,10 +84,16 @@ def test_capture_pane(session: Session) -> None:
         literal=True,
         suppress_history=False,
     )
+    # Wait for "Hello World !" to appear in output (handles control mode async)
+    wait_for_line(pane, lambda line: "Hello World !" in line)
     pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
-        "\n\nHello World !\n$",
-    )
+    expected_full = r'$ printf "\n%s\n" "Hello World !"' + "\n\nHello World !\n$"
+    expected_no_prompt = r'$ printf "\n%s\n" "Hello World !"' + "\n\nHello World !"
+    if session.server.engine.__class__.__name__ == "ControlModeEngine":
+        # Control mode may capture before prompt appears (async behavior)
+        assert pane_contents in (expected_full, expected_no_prompt)
+    else:
+        assert pane_contents == expected_full
 
 
 def test_capture_pane_start(session: Session) -> None:
