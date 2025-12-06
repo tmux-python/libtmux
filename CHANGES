@@ -569,8 +569,6 @@ _Maintenance only, no bug fixes or new features_
 
   via [ruff 0.4.2](https://github.com/astral-sh/ruff/blob/v0.4.2/CHANGELOG.md).
 
-[uv]: https://github.com/astral-sh/uv
-
 ### Documentation
 
 - Fix docstrings in `query_list` for `MultipleObjectsReturned` and
