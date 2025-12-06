@@ -316,39 +316,76 @@ class ControlModeEngine(Engine):
         *,
         no_output: bool | None = None,
         pause_after: int | None = None,
+        wait_exit: bool | None = None,
+        ignore_size: bool | None = None,
+        active_pane: bool | None = None,
+        read_only: bool | None = None,
+        no_detach_on_destroy: bool | None = None,
     ) -> None:
-        """Set control client flags via refresh-client.
+        """Set control client flags via ``refresh-client -f``.
 
-        These correspond to tmux's runtime client flags (set via
-        ``refresh-client -f``), not connection-time parameters. This follows
-        tmux's design where CLIENT_CONTROL_* flags are modified at runtime.
+        These are runtime flags on the connected client. Boolean flags are
+        toggled using tmux's ``!flag`` negation semantics and are left unchanged
+        when passed ``None``.
 
         Parameters
         ----------
         no_output : bool, optional
-            Filter %output notifications (reduces noise when attached to active panes).
-            Set to True to enable, False to disable, None to leave unchanged.
+            Filter ``%output`` notifications. ``False`` clears the flag.
         pause_after : int, optional
-            Pause output after N seconds of buffering (flow control).
-            Set to 0 to disable, positive int to enable, None to leave unchanged.
+            Pause after N seconds of buffering; 0 clears the flag.
+        wait_exit : bool, optional
+            Keep control connection alive until tmux exit is reported.
+        ignore_size : bool, optional
+            Ignore size updates from the client.
+        active_pane : bool, optional
+            Mark client as active-pane.
+        read_only : bool, optional
+            Prevent modifications from this client.
+        no_detach_on_destroy : bool, optional
+            Mirror tmux's ``no-detach-on-destroy`` client flag.
 
         Examples
         --------
         >>> engine.set_client_flags(no_output=True)  # doctest: +SKIP
         >>> engine.set_client_flags(pause_after=5)   # doctest: +SKIP
+        >>> engine.set_client_flags(wait_exit=True)  # doctest: +SKIP
         >>> engine.set_client_flags(no_output=False) # doctest: +SKIP
         """
+
+        def _bool_flag(name: str, value: bool | None) -> str | None:
+            if value is None:
+                return None
+            return name if value else f"!{name}"
+
         flags: list[str] = []
-        if no_output is True:
-            flags.append("no-output")
-        elif no_output is False:
-            flags.append("no-output=off")
+
+        maybe_flag = _bool_flag("no-output", no_output)
+        if maybe_flag:
+            flags.append(maybe_flag)
 
         if pause_after is not None:
+            if pause_after < 0:
+                msg = "pause_after must be >= 0"
+                raise ValueError(msg)
             if pause_after == 0:
-                flags.append("pause-after=none")
+                flags.append("!pause-after")
             else:
                 flags.append(f"pause-after={pause_after}")
+
+        maybe_flag = _bool_flag("wait-exit", wait_exit)
+        if maybe_flag:
+            flags.append(maybe_flag)
+
+        for name, value in (
+            ("ignore-size", ignore_size),
+            ("active-pane", active_pane),
+            ("read-only", read_only),
+            ("no-detach-on-destroy", no_detach_on_destroy),
+        ):
+            maybe_flag = _bool_flag(name, value)
+            if maybe_flag:
+                flags.append(maybe_flag)
 
         if flags:
             server_args = self._server_context.to_args() if self._server_context else ()
@@ -357,6 +394,56 @@ class ControlModeEngine(Engine):
                 cmd_args=("-f", ",".join(flags)),
                 server_args=server_args,
             )
+
+    def set_pane_flow(self, pane_id: str | int, state: str = "continue") -> None:
+        """Set per-pane flow control for the control client.
+
+        This maps to ``refresh-client -A pane:state`` where ``state`` is one of
+        ``on``, ``off``, ``pause``, or ``continue``. The default resumes a
+        paused pane.
+        """
+        if state not in {"on", "off", "pause", "continue"}:
+            msg = "state must be one of on|off|pause|continue"
+            raise ValueError(msg)
+
+        server_args = self._server_context.to_args() if self._server_context else ()
+        self.run(
+            "refresh-client",
+            cmd_args=("-A", f"{pane_id}:{state}"),
+            server_args=server_args,
+        )
+
+    def subscribe(
+        self,
+        name: str,
+        *,
+        what: str | None = None,
+        fmt: str | None = None,
+    ) -> None:
+        """Manage control-mode subscriptions.
+
+        Subscriptions emit ``%subscription-changed`` notifications when the
+        provided format changes. Passing ``format=None`` removes the
+        subscription by name.
+        """
+        server_args = self._server_context.to_args() if self._server_context else ()
+
+        if fmt is None:
+            # Remove subscription
+            self.run(
+                "refresh-client",
+                cmd_args=("-B", name),
+                server_args=server_args,
+            )
+            return
+
+        target = what or ""
+        payload = f"{name}:{target}:{fmt}"
+        self.run(
+            "refresh-client",
+            cmd_args=("-B", payload),
+            server_args=server_args,
+        )
 
     def get_stats(self) -> EngineStats:
         """Return diagnostic statistics for the engine."""
