@@ -18,7 +18,7 @@ from libtmux._internal.constants import (
 from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
 from libtmux.constants import OptionScope
-from libtmux.exc import OptionError
+from libtmux.exc import DeprecatedError, OptionError
 from libtmux.options import TerminalOverrides, convert_values, explode_arrays
 from libtmux.pane import Pane
 
@@ -33,7 +33,7 @@ def test_options(server: Server) -> None:
     """Test basic options."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     for obj in [server, session, window, pane]:
         obj._show_options()
@@ -60,7 +60,7 @@ def test_options_server(server: Server) -> None:
     """Test server options."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     server.set_option("buffer-limit", 100)
     assert server._show_option("buffer-limit") == 100
@@ -122,7 +122,7 @@ def test_options_window(server: Server) -> None:
     """Test window options."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    window.split_window(attach=False)
+    window.split(attach=False)
 
     window_options_ = window._show_options(scope=OptionScope.Window)
 
@@ -134,7 +134,7 @@ def test_options_pane(server: Server) -> None:
     """Test pane options."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     pane_options_ = pane._show_options(scope=OptionScope.Pane)
 
@@ -146,7 +146,7 @@ def test_options_grid(server: Server) -> None:
     """Test options against grid."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     for include_inherited in [True, False]:
         for global_ in [True, False]:
@@ -501,7 +501,7 @@ def test_show_option_pane_fixture(
     """Test Pane.show_option(s)?."""
     session = server.new_session(session_name="test")
     window = session.new_window(window_name="test")
-    pane = window.split_window(attach=False)
+    pane = window.split(attach=False)
 
     monkeypatch.setattr(pane, "cmd", fake_cmd(stdout=mocked_cmd_stdout))
 
@@ -1351,12 +1351,12 @@ def test_convert_values_preserves_sparse_keys() -> None:
     assert result[99] == 100
 
 
-def test_show_option_g_parameter_emits_deprecation_warning(
+def test_show_option_g_parameter_raises_deprecated_error(
     session: Session,
 ) -> None:
-    """Test show_option() emits DeprecationWarning when g parameter is used."""
+    """Test show_option() raises DeprecatedError when g parameter is used."""
     server = session.server
-    with pytest.warns(DeprecationWarning, match=r"g argument is deprecated"):
+    with pytest.raises(DeprecatedError, match=r"g parameter was deprecated"):
         server.show_option("buffer-limit", g=True)
 
 
