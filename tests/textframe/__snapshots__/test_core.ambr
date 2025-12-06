@@ -1,0 +1,45 @@
+# serializer version: 1
+# name: test_frame_rendering[basic_success]
+  '''
+  +----------+
+  |hello     |
+  |world     |
+  +----------+
+  '''
+# ---
+# name: test_frame_rendering[empty_frame]
+  '''
+  +-----+
+  |     |
+  |     |
+  +-----+
+  '''
+# ---
+# name: test_frame_rendering[overflow_width]
+  '''
+  +---------------------+
+  |this line is too long|
+  |row 2                |
+  |row 3                |
+  +---------------------+
+  +---------------------+
+  |          ...........|
+  |          ...........|
+  |.....................|
+  +---------------------+
+  '''
+# ---
+# name: test_nested_serialization
+  list([
+    '''
+      +-----+
+      |one  |
+      +-----+
+    ''',
+    '''
+      +-----+
+      |two  |
+      +-----+
+    ''',
+  ])
+# ---
