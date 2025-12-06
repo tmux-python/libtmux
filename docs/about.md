@@ -1,5 +1,3 @@
-(internals)=
-
 (about)=
 
 # About

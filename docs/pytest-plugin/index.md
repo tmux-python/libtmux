@@ -12,8 +12,6 @@ your case, we won't stabilize APIs until we're sure everything is by the book.
 
 [connect with us]: https://github.com/tmux-python/libtmux/discussions
 
-```
-
 ```{module} libtmux.pytest_plugin
 
 ```
@@ -58,6 +56,8 @@ These fixtures are automatically used when the plugin is enabled and `pytest` is
   - `base-index -g 1`
 
   These are set to ensure panes and windows can be reliably referenced and asserted.
+
+(setting_a_tmux_configuration)=
 
 ## Setting a tmux configuration
 
@@ -108,7 +108,7 @@ def test_something(TestServer):
     assert server.is_alive()
 ```
 
-You can also use it with custom configurations, similar to the {ref}`server fixture <Setting a tmux configuration>`:
+You can also use it with custom configurations, similar to the {ref}`server fixture <setting_a_tmux_configuration>`:
 
 ```python
 def test_with_config(TestServer, tmp_path):

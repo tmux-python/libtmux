@@ -1581,10 +1581,8 @@ _Maintenance only, no bug fixes or new features_
 
 - Python 3.7 and 3.8 returns in 0.12.0
 
-  ~~Final python 3.7 and 3.8 release~~
-
-  ~~Fixes and security updates will go to
-  [`v0.11.x`](https://github.com/tmux-python/libtmux/tree/v0.11.x)~~
+  *Note: This was not the final Python 3.7 and 3.8 release as originally stated.
+  Python 3.7 and 3.8 support was extended in 0.12.0.*
 
 - Internal: Use new separator to split `tmux(1)` formatting information (#289,
   #343)
