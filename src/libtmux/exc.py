@@ -19,6 +19,26 @@ class LibTmuxException(Exception):
     """Base Exception for libtmux Errors."""
 
 
+class DeprecatedError(LibTmuxException):
+    """Raised when a deprecated function, method, or parameter is used.
+
+    This exception provides clear guidance on what to use instead.
+    """
+
+    def __init__(
+        self,
+        *,
+        deprecated: str,
+        replacement: str,
+        version: str,
+    ) -> None:
+        msg = (
+            f"{deprecated} was deprecated in {version} and has been removed. "
+            f"Use {replacement} instead."
+        )
+        super().__init__(msg)
+
+
 class TmuxSessionExists(LibTmuxException):
     """Session does not exist in the server."""
 
