@@ -57,9 +57,9 @@ sections below for detailed migration examples and code samples.
 | `split_window()` / `split()` | `percent` | `size` | 0.28.0 (2024-02-14) |
 | `split_window()` / `split()` | `vertical`/`horizontal` | `direction` (PaneDirection) | 0.33.0 (2024-03-17) |
 | `resize_pane()` | `-U`, `-D`, `-L`, `-R` | `adjustment_direction` | 0.28.0 (2024-02-14) |
-| `Server.get_by_id()` | `id` | `session_id` | 0.26.0 (2024-02-06) |
-| `Session.get_by_id()` | `id` | `window_id` | 0.26.0 (2024-02-06) |
-| `Window.get_by_id()` | `id` | `pane_id` | 0.26.0 (2024-02-06) |
+| `Server.get_by_id()` | `id` | `session_id` | 0.16.0 (2022-12-10) |
+| `Session.get_by_id()` | `id` | `window_id` | 0.16.0 (2022-12-10) |
+| `Window.get_by_id()` | `id` | `pane_id` | 0.16.0 (2022-12-10) |
 
 ### Query/Filter API Changes
 
@@ -68,15 +68,15 @@ sections below for detailed migration examples and code samples.
 | Server | `list_sessions()` / `_list_sessions()` | `sessions` property | 0.17.0 (2022-12-26) |
 | Server | `where({...})` | `sessions.filter(**kwargs)` | 0.17.0 (2022-12-26) |
 | Server | `find_where({...})` | `sessions.get(default=None, **kwargs)` | 0.17.0 (2022-12-26) |
-| Server | `get_by_id(id)` | `sessions.get(session_id=..., default=None)` | 0.17.0 (2022-12-26) |
+| Server | `get_by_id(id)` | `sessions.get(session_id=..., default=None)` | 0.16.0 (2022-12-10) |
 | Session | `list_windows()` / `_list_windows()` | `windows` property | 0.17.0 (2022-12-26) |
 | Session | `where({...})` | `windows.filter(**kwargs)` | 0.17.0 (2022-12-26) |
 | Session | `find_where({...})` | `windows.get(default=None, **kwargs)` | 0.17.0 (2022-12-26) |
-| Session | `get_by_id(id)` | `windows.get(window_id=..., default=None)` | 0.17.0 (2022-12-26) |
+| Session | `get_by_id(id)` | `windows.get(window_id=..., default=None)` | 0.16.0 (2022-12-10) |
 | Window | `list_panes()` / `_list_panes()` | `panes` property | 0.17.0 (2022-12-26) |
 | Window | `where({...})` | `panes.filter(**kwargs)` | 0.17.0 (2022-12-26) |
 | Window | `find_where({...})` | `panes.get(default=None, **kwargs)` | 0.17.0 (2022-12-26) |
-| Window | `get_by_id(id)` | `panes.get(pane_id=..., default=None)` | 0.17.0 (2022-12-26) |
+| Window | `get_by_id(id)` | `panes.get(pane_id=..., default=None)` | 0.16.0 (2022-12-10) |
 | All | `children` property | `sessions`/`windows`/`panes` | 0.17.0 (2022-12-26) |
 
 ### Attribute Access Changes
