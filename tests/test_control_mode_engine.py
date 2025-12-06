@@ -362,17 +362,19 @@ def test_set_client_flags_builds_refresh_client(case: SetClientFlagsCase) -> Non
     calls: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
 
     class DummyCmd:
-        stdout: list[str] = []
-        stderr: list[str] = []
-        returncode = 0
+        stdout: t.ClassVar[list[str]] = []
+        stderr: t.ClassVar[list[str]] = []
+        returncode: t.ClassVar[int] = 0
 
     def fake_run(
         cmd: str,
         cmd_args: t.Sequence[str | int] | None = None,
         server_args: t.Sequence[str | int] | None = None,
         timeout: float | None = None,
-    ) -> DummyCmd:  # type: ignore[override]
-        calls.append((cmd, tuple(cmd_args or ()), tuple(server_args or ())))
+    ) -> DummyCmd:
+        cmd_args_tuple = tuple(str(a) for a in (cmd_args or ()))
+        server_args_tuple = tuple(str(a) for a in (server_args or ()))
+        calls.append((cmd, cmd_args_tuple, server_args_tuple))
         return DummyCmd()
 
     engine.run = fake_run  # type: ignore[assignment]
