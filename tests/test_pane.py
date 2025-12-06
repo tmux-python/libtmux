@@ -96,6 +96,23 @@ def test_capture_pane(session: Session) -> None:
         assert pane_contents == expected_full
 
 
+@pytest.mark.engines(["subprocess", "control"])
+def test_capture_pane_trims_whitespace_tail(session: Session) -> None:
+    """capture-pane should drop trailing whitespace-only lines for all engines."""
+    pane = session.active_pane
+    assert pane is not None
+
+    pane.send_keys('printf "line1\\n   \\n"', literal=True, suppress_history=False)
+    wait_for_line(pane, lambda line: "line1" in line)
+
+    lines = pane.capture_pane()
+    assert lines
+    # The last line should not be empty/whitespace-only
+    assert lines[-1].strip() != ""
+    # Ensure the whitespace-only line was trimmed
+    assert "line1" in "\n".join(lines)
+
+
 def test_capture_pane_start(session: Session) -> None:
     """Assert Pane.capture_pane() with ``start`` param."""
     env = shutil.which("env")

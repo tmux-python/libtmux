@@ -64,6 +64,14 @@ TRAILING_OUTPUT_CASES = [
         ),
         id="many_blanks",
     ),
+    pytest.param(
+        TrailingOutputFixture(
+            test_id="whitespace_tail",
+            raw_lines=["line1", "   ", " ", ""],
+            expected_stdout=["line1"],
+        ),
+        id="whitespace_tail",
+    ),
 ]
 
 
