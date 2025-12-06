@@ -13,7 +13,6 @@ import pathlib
 import shutil
 import subprocess
 import typing as t
-import warnings
 
 from libtmux import exc, formats
 from libtmux._internal.query_list import QueryList
@@ -693,12 +692,11 @@ class Server(
            Deprecated in favor of :meth:`.kill()`.
 
         """
-        warnings.warn(
-            "Server.kill_server() is deprecated in favor of Server.kill()",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server.kill_server()",
+            replacement="Server.kill()",
+            version="0.30.0",
         )
-        self.cmd("kill-server")
 
     def _list_panes(self) -> list[PaneDict]:
         """Return list of panes in :py:obj:`dict` form.
@@ -713,12 +711,11 @@ class Server(
            Deprecated in favor of :attr:`.panes`.
 
         """
-        warnings.warn(
-            "Server._list_panes() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server._list_panes()",
+            replacement="Server.panes property",
+            version="0.16.0",
         )
-        return [p.__dict__ for p in self.panes]
 
     def _update_panes(self) -> Server:
         """Update internal pane data and return ``self`` for chainability.
@@ -731,13 +728,11 @@ class Server(
         -------
         :class:`Server`
         """
-        warnings.warn(
-            "Server._update_panes() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server._update_panes()",
+            replacement="Server.panes property",
+            version="0.16.0",
         )
-        self._list_panes()
-        return self
 
     def get_by_id(self, session_id: str) -> Session | None:
         """Return session by id. Deprecated in favor of :meth:`.sessions.get()`.
@@ -747,12 +742,11 @@ class Server(
            Deprecated by :meth:`.sessions.get()`.
 
         """
-        warnings.warn(
-            "Server.get_by_id() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server.get_by_id()",
+            replacement="Server.sessions.get(session_id=..., default=None)",
+            version="0.16.0",
         )
-        return self.sessions.get(session_id=session_id, default=None)
 
     def where(self, kwargs: dict[str, t.Any]) -> list[Session]:
         """Filter through sessions, return list of :class:`Session`.
@@ -762,15 +756,11 @@ class Server(
            Deprecated by :meth:`.session.filter()`.
 
         """
-        warnings.warn(
-            "Server.find_where() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server.where()",
+            replacement="Server.sessions.filter()",
+            version="0.16.0",
         )
-        try:
-            return self.sessions.filter(**kwargs)
-        except IndexError:
-            return []
 
     def find_where(self, kwargs: dict[str, t.Any]) -> Session | None:
         """Filter through sessions, return first :class:`Session`.
@@ -780,12 +770,11 @@ class Server(
            Slated to be removed in favor of :meth:`.sessions.get()`.
 
         """
-        warnings.warn(
-            "Server.find_where() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server.find_where()",
+            replacement="Server.sessions.get(default=None, **kwargs)",
+            version="0.16.0",
         )
-        return self.sessions.get(default=None, **kwargs)
 
     def _list_windows(self) -> list[WindowDict]:
         """Return list of windows in :py:obj:`dict` form.
@@ -800,12 +789,11 @@ class Server(
            Slated to be removed in favor of :attr:`.windows`.
 
         """
-        warnings.warn(
-            "Server._list_windows() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server._list_windows()",
+            replacement="Server.windows property",
+            version="0.16.0",
         )
-        return [w.__dict__ for w in self.windows]
 
     def _update_windows(self) -> Server:
         """Update internal window data and return ``self`` for chainability.
@@ -815,13 +803,11 @@ class Server(
            Deprecated in favor of :attr:`.windows` and returning ``self``.
 
         """
-        warnings.warn(
-            "Server._update_windows() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server._update_windows()",
+            replacement="Server.windows property",
+            version="0.16.0",
         )
-        self._list_windows()
-        return self
 
     @property
     def _sessions(self) -> list[SessionDict]:
@@ -832,12 +818,11 @@ class Server(
            Slated to be removed in favor of :attr:`.sessions`.
 
         """
-        warnings.warn(
-            "Server._sessions is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server._sessions",
+            replacement="Server.sessions property",
+            version="0.16.0",
         )
-        return self._list_sessions()
 
     def _list_sessions(self) -> list[SessionDict]:
         """Return list of session object dictionaries.
@@ -846,12 +831,11 @@ class Server(
 
            Slated to be removed in favor of :attr:`.sessions`.
         """
-        warnings.warn(
-            "Server._list_sessions() is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server._list_sessions()",
+            replacement="Server.sessions property",
+            version="0.16.0",
         )
-        return [s.__dict__ for s in self.sessions]
 
     def list_sessions(self) -> list[Session]:
         """Return list of :class:`Session` from the ``tmux(1)`` session.
@@ -864,12 +848,11 @@ class Server(
         -------
         list of :class:`Session`
         """
-        warnings.warn(
-            "Server.list_sessions is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server.list_sessions()",
+            replacement="Server.sessions property",
+            version="0.16.0",
         )
-        return self.sessions
 
     @property
     def children(self) -> QueryList[Session]:
@@ -880,9 +863,8 @@ class Server(
            Slated to be removed in favor of :attr:`.sessions`.
 
         """
-        warnings.warn(
-            "Server.children is deprecated",
-            category=DeprecationWarning,
-            stacklevel=2,
+        raise exc.DeprecatedError(
+            deprecated="Server.children",
+            replacement="Server.sessions property",
+            version="0.16.0",
         )
-        return self.sessions
