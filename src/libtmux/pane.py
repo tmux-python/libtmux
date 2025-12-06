@@ -345,6 +345,11 @@ class Pane(
             Negative numbers are lines in the history.
             ``-`` is the end of the visible pane.
             Default: None
+
+        Returns
+        -------
+        str | list[str]
+            Captured pane content.
         """
         cmd = ["capture-pane", "-p"]
         if start is not None:
@@ -432,6 +437,11 @@ class Pane(
         get_text : bool, optional
             Returns only text without displaying a message in
             target-client status line.
+
+        Returns
+        -------
+        str | list[str] | None
+            Message output if get_text is True, otherwise None.
         """
         if get_text:
             return self.cmd("display-message", "-p", cmd).stdout
@@ -714,7 +724,12 @@ class Pane(
         Parameters
         ----------
         width : int
-            pane width, in cells
+            Pane width, in cells.
+
+        Returns
+        -------
+        :class:`Pane`
+            Self, for method chaining.
         """
         self.resize_pane(width=width)
         return self
@@ -725,7 +740,12 @@ class Pane(
         Parameters
         ----------
         height : int
-            height of pain, in cells
+            Pane height, in cells.
+
+        Returns
+        -------
+        :class:`Pane`
+            Self, for method chaining.
         """
         self.resize_pane(height=height)
         return self

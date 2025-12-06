@@ -578,7 +578,12 @@ class Session(
         Parameters
         ----------
         target_window : str, optional
-            window to kill
+            Window to kill.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If tmux returns an error.
         """
         if target_window:
             if isinstance(target_window, int):
