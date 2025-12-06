@@ -19,6 +19,35 @@ class LibTmuxException(Exception):
     """Base Exception for libtmux Errors."""
 
 
+class DeprecatedError(LibTmuxException):
+    """Raised when a deprecated function, method, or parameter is used.
+
+    This exception provides clear guidance on what to use instead.
+
+    Parameters
+    ----------
+    deprecated : str
+        The name of the deprecated API (e.g., "Pane.resize_pane()")
+    replacement : str
+        The recommended replacement API to use instead
+    version : str
+        The version when the API was deprecated (e.g., "0.28.0")
+    """
+
+    def __init__(
+        self,
+        *,
+        deprecated: str,
+        replacement: str,
+        version: str,
+    ) -> None:
+        msg = (
+            f"{deprecated} was deprecated in {version} and has been removed. "
+            f"Use {replacement} instead."
+        )
+        super().__init__(msg)
+
+
 class TmuxSessionExists(LibTmuxException):
     """Session does not exist in the server."""
 

@@ -797,8 +797,9 @@ class OptionsMixin(CmdMixin):
 
         Parameters
         ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
+        g : bool, optional
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead.
 
         Examples
         --------
@@ -834,8 +835,9 @@ class OptionsMixin(CmdMixin):
                 category=DeprecationWarning,
                 stacklevel=2,
             )
-            flags += ("-g",)
-        elif global_:
+            global_ = g
+
+        if global_:
             flags += ("-g",)
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
@@ -864,8 +866,9 @@ class OptionsMixin(CmdMixin):
 
         Parameters
         ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
+        g : bool, optional
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead.
 
         Examples
         --------
@@ -913,8 +916,9 @@ class OptionsMixin(CmdMixin):
 
         Parameters
         ----------
-        g : str, optional
-            Pass ``-g`` flag for global variable, default False.
+        g : bool, optional
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead.
 
         Examples
         --------
@@ -1013,7 +1017,8 @@ class OptionsMixin(CmdMixin):
         ----------
         option : str
         g : bool, optional
-            Pass ``-g`` flag, global. Default False.
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead.
 
         Raises
         ------
@@ -1063,8 +1068,9 @@ class OptionsMixin(CmdMixin):
                 category=DeprecationWarning,
                 stacklevel=2,
             )
-            flags += ("-g",)
-        elif global_:
+            global_ = g
+
+        if global_:
             flags += ("-g",)
 
         if scope is not None and not isinstance(scope, _DefaultOptionScope):
@@ -1104,7 +1110,8 @@ class OptionsMixin(CmdMixin):
         ----------
         option : str
         g : bool, optional
-            Pass ``-g`` flag, global. Default False.
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead.
 
         Raises
         ------
@@ -1206,7 +1213,8 @@ class OptionsMixin(CmdMixin):
         ----------
         option : str
         g : bool, optional
-            Pass ``-g`` flag, global. Default False.
+            .. deprecated:: 0.50.0
+               Use ``global_`` instead.
 
         Raises
         ------
