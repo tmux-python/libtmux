@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
+OverflowBehavior = t.Literal["error", "truncate"]
+
 
 class ContentOverflowError(ValueError):
     """Raised when content does not fit into the configured frame dimensions.
@@ -38,6 +40,10 @@ class TextFrame:
         Width of the inner content area.
     content_height : int
         Height of the inner content area.
+    overflow_behavior : OverflowBehavior
+        How to handle content that exceeds frame dimensions.
+        - "error": Raise ContentOverflowError with visual diagnostic.
+        - "truncate": Silently clip content to fit.
     fill_char : str
         Character to pad empty space. Defaults to space.
     content : list[str]
@@ -56,6 +62,7 @@ class TextFrame:
 
     content_width: int
     content_height: int
+    overflow_behavior: OverflowBehavior = "error"
     fill_char: str = " "
     content: list[str] = field(default_factory=list)
 
@@ -78,7 +85,7 @@ class TextFrame:
             raise ValueError(msg)
 
     def set_content(self, lines: Sequence[str]) -> None:
-        """Set content, applying validation logic.
+        """Set content, applying validation or truncation based on overflow_behavior.
 
         Parameters
         ----------
@@ -88,7 +95,7 @@ class TextFrame:
         Raises
         ------
         ContentOverflowError
-            If content exceeds frame dimensions.
+            If content exceeds frame dimensions and overflow_behavior is "error".
         """
         input_lines = list(lines)
 
@@ -99,12 +106,18 @@ class TextFrame:
         is_overflow = max_w > self.content_width or max_h > self.content_height
 
         if is_overflow:
-            visual = self._render_overflow(input_lines, max_w, max_h)
-            raise ContentOverflowError(
-                f"Content ({max_w}x{max_h}) exceeds frame "
-                f"({self.content_width}x{self.content_height})",
-                overflow_visual=visual,
-            )
+            if self.overflow_behavior == "error":
+                visual = self._render_overflow(input_lines, max_w, max_h)
+                msg = (
+                    f"Content ({max_w}x{max_h}) exceeds frame "
+                    f"({self.content_width}x{self.content_height})"
+                )
+                raise ContentOverflowError(msg, overflow_visual=visual)
+            # Truncate mode: clip to frame dimensions
+            input_lines = [
+                line[: self.content_width]
+                for line in input_lines[: self.content_height]
+            ]
 
         self.content = input_lines
 
