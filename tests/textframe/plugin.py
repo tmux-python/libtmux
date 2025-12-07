@@ -1,70 +1,63 @@
 """Syrupy snapshot extension for TextFrame objects.
 
-This module provides a custom serializer that renders TextFrame objects
-and ContentOverflowError exceptions as ASCII art in snapshot files.
+This module provides a single-file snapshot extension that renders TextFrame
+objects and ContentOverflowError exceptions as ASCII art in .frame files.
 """
 
 from __future__ import annotations
 
 import typing as t
 
-from syrupy.extensions.amber import AmberSnapshotExtension
-from syrupy.extensions.amber.serializer import AmberDataSerializer
+from syrupy.extensions.single_file import SingleFileSnapshotExtension, WriteMode
 
 from .core import ContentOverflowError, TextFrame
 
 
-class TextFrameSerializer(AmberDataSerializer):
-    """Custom serializer that renders TextFrame objects as ASCII frames.
+class TextFrameExtension(SingleFileSnapshotExtension):
+    """Single-file extension for TextFrame snapshots (.frame files).
 
-    This serializer intercepts TextFrame and ContentOverflowError objects,
-    converting them to their ASCII representation before passing them
-    to the base serializer for formatting.
+    Each test snapshot is stored in its own .frame file, providing cleaner
+    git diffs compared to the multi-snapshot .ambr format.
 
     Notes
     -----
-    By subclassing AmberDataSerializer, we ensure TextFrame objects are
-    correctly rendered even when nested inside lists, dicts, or other
-    data structures.
+    This extension serializes:
+    - TextFrame objects → their render() output
+    - ContentOverflowError → their overflow_visual attribute
+    - Other types → str() representation
     """
 
-    @classmethod
-    def _serialize(
-        cls,
+    _write_mode = WriteMode.TEXT
+    file_extension = "frame"
+
+    def serialize(
+        self,
         data: t.Any,
         *,
-        depth: int = 0,
-        **kwargs: t.Any,
+        exclude: t.Any = None,
+        include: t.Any = None,
+        matcher: t.Any = None,
     ) -> str:
-        """Serialize data, converting TextFrame objects to ASCII.
+        """Serialize data to ASCII frame representation.
 
         Parameters
         ----------
         data : Any
             The data to serialize.
-        depth : int
-            Current indentation depth.
-        **kwargs : Any
-            Additional serialization options.
+        exclude : Any
+            Properties to exclude (unused for TextFrame).
+        include : Any
+            Properties to include (unused for TextFrame).
+        matcher : Any
+            Custom matcher (unused for TextFrame).
 
         Returns
         -------
         str
-            Serialized representation.
+            ASCII representation of the data.
         """
-        # Intercept TextFrame: Render it to ASCII
         if isinstance(data, TextFrame):
-            return super()._serialize(data.render(), depth=depth, **kwargs)
-
-        # Intercept ContentOverflowError: Render the visual diff
+            return data.render()
         if isinstance(data, ContentOverflowError):
-            return super()._serialize(data.overflow_visual, depth=depth, **kwargs)
-
-        # Default behavior for all other types
-        return super()._serialize(data, depth=depth, **kwargs)
-
-
-class TextFrameExtension(AmberSnapshotExtension):
-    """Syrupy extension that uses the TextFrameSerializer."""
-
-    serializer_class = TextFrameSerializer
+            return data.overflow_visual
+        return str(data)
