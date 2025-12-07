@@ -97,6 +97,27 @@ def test_pane_output(textframe_snapshot):
 The `textframe_snapshot` fixture and assertion hooks are auto-discovered via
 pytest's `pytest11` entry point when the `textframe` extra is installed.
 
+#### Pane.capture_frame() (#613)
+
+New {meth}`~libtmux.pane.Pane.capture_frame` method that wraps
+{meth}`~libtmux.pane.Pane.capture_pane` and returns a
+{class}`~libtmux.textframe.TextFrame` for visualization and snapshot testing.
+
+```python
+def test_cli_output(pane, textframe_snapshot):
+    pane.send_keys("echo 'Hello'", enter=True)
+
+    # Wait for output, then capture as frame
+    frame = pane.capture_frame(content_width=40, content_height=10)
+    assert frame == textframe_snapshot
+```
+
+**Features:**
+
+- Defaults to pane dimensions when `content_width` / `content_height` not specified
+- Uses `overflow_behavior="truncate"` by default for CI robustness
+- Accepts same `start` / `end` parameters as `capture_pane()`
+
 ## libtmux 0.53.0 (2025-12-14)
 
 ### Breaking changes
