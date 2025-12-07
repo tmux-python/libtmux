@@ -34,6 +34,41 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 _Upcoming changes will be written here._
 
+#### Pane.capture_pane() enhanced (#614)
+
+The {meth}`~libtmux.pane.Pane.capture_pane` method now supports 5 new parameters
+that expose additional tmux `capture-pane` flags:
+
+| Parameter | tmux Flag | Description |
+|-----------|-----------|-------------|
+| `escape_sequences` | `-e` | Include ANSI escape sequences (colors, attributes) |
+| `escape_non_printable` | `-C` | Escape non-printable chars as octal `\xxx` |
+| `join_wrapped` | `-J` | Join wrapped lines back together |
+| `preserve_trailing` | `-N` | Preserve trailing spaces at line ends |
+| `trim_trailing` | `-T` | Trim trailing empty positions (tmux 3.4+) |
+
+**Capturing colored output:**
+
+```python
+# Capture with ANSI escape sequences preserved
+pane.send_keys('printf "\\033[31mRED\\033[0m"', enter=True)
+output = pane.capture_pane(escape_sequences=True)
+# Output contains: '\x1b[31mRED\x1b[0m'
+```
+
+**Joining wrapped lines:**
+
+```python
+# Long lines that wrap are joined back together
+output = pane.capture_pane(join_wrapped=True)
+```
+
+**Version compatibility:**
+
+The `trim_trailing` parameter requires tmux 3.4+. If used with an older version,
+a warning is issued and the flag is ignored. All other parameters work with
+libtmux's minimum supported version (tmux 3.2a).
+
 ## libtmux 0.51.0 (2025-12-06)
 
 ### Breaking changes
