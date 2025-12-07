@@ -1,10 +1,29 @@
 # TextFrame - ASCII Frame Simulator
 
-:::{warning}
-This is a testing utility in `tests/textframe/`. It is **not** part of the public API.
-:::
-
 TextFrame provides a fixed-size ASCII frame simulator for visualizing terminal content with overflow detection and diagnostic rendering. It integrates with [syrupy](https://github.com/tophat/syrupy) for snapshot testing and pytest for rich assertion output.
+
+## Installation
+
+TextFrame is available as an optional extra:
+
+```bash
+pip install libtmux[textframe]
+```
+
+This installs syrupy and registers the pytest plugin automatically.
+
+## Quick Start
+
+After installation, the `textframe_snapshot` fixture and `pytest_assertrepr_compare` hook are auto-discovered by pytest:
+
+```python
+from libtmux.textframe import TextFrame
+
+def test_my_terminal_ui(textframe_snapshot):
+    frame = TextFrame(content_width=20, content_height=5)
+    frame.set_content(["Hello", "World"])
+    assert frame == textframe_snapshot
+```
 
 ## Overview
 
@@ -20,7 +39,7 @@ TextFrame is designed for testing terminal UI components. It provides:
 ### TextFrame Dataclass
 
 ```python
-from tests.textframe.core import TextFrame, ContentOverflowError
+from libtmux.textframe import TextFrame, ContentOverflowError
 
 # Create a frame with fixed dimensions
 frame = TextFrame(content_width=10, content_height=2)
@@ -79,7 +98,7 @@ TextFrame uses syrupy's `SingleFileSnapshotExtension` to store each snapshot in 
 ### Extension Implementation
 
 ```python
-# tests/textframe/plugin.py
+# src/libtmux/textframe/plugin.py
 from syrupy.extensions.single_file import SingleFileSnapshotExtension, WriteMode
 
 class TextFrameExtension(SingleFileSnapshotExtension):
@@ -100,36 +119,34 @@ Key design decisions:
 2. **`_write_mode = WriteMode.TEXT`**: Stores snapshots as text (not binary)
 3. **Custom serialization**: Renders TextFrame objects and ContentOverflowError exceptions as ASCII art
 
-### Fixture Override Pattern
+### Auto-Discovered Fixtures
 
-The snapshot fixture is overridden in `conftest.py` using syrupy's `use_extension()` pattern:
+When `libtmux[textframe]` is installed, the following fixture is available:
 
 ```python
-# tests/textframe/conftest.py
 @pytest.fixture
-def snapshot(snapshot: SnapshotAssertion) -> SnapshotAssertion:
+def textframe_snapshot(snapshot: SnapshotAssertion) -> SnapshotAssertion:
+    """Snapshot fixture configured with TextFrameExtension."""
     return snapshot.use_extension(TextFrameExtension)
 ```
-
-This pattern works because pytest fixtures that request themselves receive the parent scope's version.
 
 ### Snapshot Directory Structure
 
 ```
-tests/textframe/__snapshots__/
-  test_core/
+__snapshots__/
+  test_module/
     test_frame_rendering[basic_success].frame
     test_frame_rendering[overflow_width].frame
     test_frame_rendering[empty_frame].frame
     ...
 ```
 
-## Pure pytest Assertion Hook
+## pytest Assertion Hook
 
-For TextFrame-to-TextFrame comparisons (without syrupy), a `pytest_assertrepr_compare` hook provides rich diff output:
+The `pytest_assertrepr_compare` hook provides rich diff output for TextFrame comparisons:
 
 ```python
-# tests/textframe/conftest.py
+# Auto-registered via pytest11 entry point
 def pytest_assertrepr_compare(config, op, left, right):
     if not isinstance(left, TextFrame) or not isinstance(right, TextFrame):
         return None
@@ -159,6 +176,25 @@ This hook intercepts `assert frame1 == frame2` comparisons and shows:
 - Dimension mismatches (width/height)
 - Line-by-line diff using `difflib.ndiff`
 
+## Plugin Discovery
+
+The textframe plugin is registered via pytest's entry point mechanism:
+
+```toml
+# pyproject.toml
+[project.entry-points.pytest11]
+libtmux-textframe = "libtmux.textframe.plugin"
+
+[project.optional-dependencies]
+textframe = ["syrupy>=4.0.0"]
+```
+
+When installed with `pip install libtmux[textframe]`:
+1. syrupy is installed as a dependency
+2. The pytest11 entry point is registered
+3. pytest auto-discovers the plugin on startup
+4. `textframe_snapshot` fixture and assertion hooks are available
+
 ## Architecture Patterns
 
 ### From syrupy
@@ -170,8 +206,8 @@ This hook intercepts `assert frame1 == frame2` comparisons and shows:
 ### From pytest
 
 - **`pytest_assertrepr_compare` hook**: Return `list[str]` for custom assertion output
-- **Fixture override pattern**: Request same-named fixture to get parent scope's version
-- **`ndiff` for diffs**: Character-level diff with `+`/`-` prefixes
+- **pytest11 entry points**: Auto-discovery of installed plugins
+- **Fixture auto-discovery**: Fixtures defined in plugins are globally available
 
 ### From CPython dataclasses
 
@@ -183,8 +219,16 @@ This hook intercepts `assert frame1 == frame2` comparisons and shows:
 
 | File | Purpose |
 |------|---------|
-| `tests/textframe/core.py` | `TextFrame` dataclass and `ContentOverflowError` |
-| `tests/textframe/plugin.py` | Syrupy `TextFrameExtension` |
-| `tests/textframe/conftest.py` | Fixture override and `pytest_assertrepr_compare` hook |
-| `tests/textframe/test_core.py` | Parametrized tests with snapshot assertions |
-| `tests/textframe/__snapshots__/test_core/*.frame` | Snapshot baselines |
+| `src/libtmux/textframe/core.py` | `TextFrame` dataclass and `ContentOverflowError` |
+| `src/libtmux/textframe/plugin.py` | Syrupy extension, pytest hooks, and fixtures |
+| `src/libtmux/textframe/__init__.py` | Public API exports |
+
+## Public API
+
+```python
+from libtmux.textframe import (
+    TextFrame,           # Core dataclass
+    ContentOverflowError, # Exception with visual diagnostic
+    TextFrameExtension,  # Syrupy extension for custom usage
+)
+```
