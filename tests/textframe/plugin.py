@@ -10,7 +10,7 @@ import typing as t
 
 from syrupy.extensions.single_file import SingleFileSnapshotExtension, WriteMode
 
-from .core import ContentOverflowError, TextFrame
+from libtmux.textframe import ContentOverflowError, TextFrame
 
 
 class TextFrameExtension(SingleFileSnapshotExtension):
