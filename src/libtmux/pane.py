@@ -468,13 +468,14 @@ class Pane(
 
         Examples
         --------
+        >>> pane = window.split(shell='sh')
         >>> pane.send_keys('echo "Hello"', enter=True)
         >>> import time; time.sleep(0.1)
         >>> frame = pane.capture_frame(content_width=20, content_height=5)
         >>> 'Hello' in frame.render()
         True
 
-        >>> print(frame.render())  # doctest: +SKIP
+        >>> print(frame.render())
         +--------------------+
         |$ echo "Hello"      |
         |Hello               |
