@@ -32,6 +32,71 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
+### New features
+
+#### TextFrame primitive (#613)
+
+New {class}`~libtmux.textframe.TextFrame` dataclass for testing terminal UI output.
+Provides a fixed-size ASCII frame simulator with overflow detection - useful for
+validating `capture_pane()` output and terminal rendering in tests.
+
+```python
+from libtmux.textframe import TextFrame
+
+frame = TextFrame(content_width=10, content_height=2)
+frame.set_content(["hello", "world"])
+print(frame.render())
+# +----------+
+# |hello     |
+# |world     |
+# +----------+
+```
+
+**Features:**
+
+- Configurable dimensions with `content_width` and `content_height`
+- Overflow handling: `overflow_behavior="error"` raises {class}`~libtmux.textframe.ContentOverflowError`
+  with visual diagnostic, `overflow_behavior="truncate"` clips content silently
+- Dimension validation via `__post_init__`
+
+#### pytest assertion hook for TextFrame (#613)
+
+Rich assertion output when comparing {class}`~libtmux.textframe.TextFrame` objects.
+Shows dimension mismatches and line-by-line content diffs using `difflib.ndiff`.
+
+```
+TextFrame comparison failed:
+  width: 20 != 10
+Content diff:
+- +----------+
++ +--------------------+
+```
+
+#### syrupy snapshot extension for TextFrame (#613)
+
+{class}`~libtmux.textframe.TextFrameExtension` stores snapshots as `.frame` files -
+one file per test for cleaner git diffs.
+
+**Installation:**
+
+```console
+$ pip install libtmux[textframe]
+```
+
+**Usage:**
+
+```python
+from libtmux.textframe import TextFrame
+
+def test_pane_output(textframe_snapshot):
+    frame = TextFrame(content_width=20, content_height=5)
+    frame.set_content(["Hello", "World"])
+    assert frame == textframe_snapshot
+```
+
+The `textframe_snapshot` fixture and assertion hooks are auto-discovered via
+pytest's `pytest11` entry point when the `textframe` extra is installed.
+
 ## libtmux 0.53.0 (2025-12-14)
 
 ### Breaking changes
