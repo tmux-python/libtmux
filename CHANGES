@@ -103,11 +103,56 @@ New {meth}`~libtmux.pane.Pane.capture_frame` method that wraps
 {meth}`~libtmux.pane.Pane.capture_pane` and returns a
 {class}`~libtmux.textframe.TextFrame` for visualization and snapshot testing.
 
+**Basic usage:**
+
+```python
+pane.send_keys('echo "Hello, TextFrame!"', enter=True)
+frame = pane.capture_frame(content_width=30, content_height=5)
+print(frame.render())
+# +------------------------------+
+# |$ echo "Hello, TextFrame!"    |
+# |Hello, TextFrame!             |
+# |$                             |
+# |                              |
+# |                              |
+# +------------------------------+
+```
+
+**Multiline output:**
+
+```python
+pane.send_keys('printf "a\\nb\\nc\\n"', enter=True)
+frame = pane.capture_frame(content_width=20, content_height=6)
+print(frame.render())
+# +--------------------+
+# |$ printf "a\nb\nc\n"|
+# |a                   |
+# |b                   |
+# |c                   |
+# |$                   |
+# |                    |
+# +--------------------+
+```
+
+**Truncation (long lines clipped to frame width):**
+
+```python
+pane.send_keys('echo "' + "x" * 50 + '"', enter=True)
+frame = pane.capture_frame(content_width=15, content_height=4)
+print(frame.render())
+# +---------------+
+# |$ echo "xxxxxxx|
+# |xxxxxxxxxxxxxxx|
+# |$              |
+# |               |
+# +---------------+
+```
+
+**Snapshot testing:**
+
 ```python
 def test_cli_output(pane, textframe_snapshot):
     pane.send_keys("echo 'Hello'", enter=True)
-
-    # Wait for output, then capture as frame
     frame = pane.capture_frame(content_width=40, content_height=10)
     assert frame == textframe_snapshot
 ```
