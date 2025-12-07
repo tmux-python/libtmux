@@ -59,6 +59,24 @@ class TextFrame:
     fill_char: str = " "
     content: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        """Validate frame dimensions and fill character.
+
+        Raises
+        ------
+        ValueError
+            If dimensions are not positive or fill_char is not a single character.
+        """
+        if self.content_width <= 0:
+            msg = "content_width must be positive"
+            raise ValueError(msg)
+        if self.content_height <= 0:
+            msg = "content_height must be positive"
+            raise ValueError(msg)
+        if len(self.fill_char) != 1:
+            msg = "fill_char must be a single character"
+            raise ValueError(msg)
+
     def set_content(self, lines: Sequence[str]) -> None:
         """Set content, applying validation logic.
 
