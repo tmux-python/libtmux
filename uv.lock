@@ -617,6 +617,11 @@ name = "libtmux"
 version = "0.56.0"
 source = { editable = "." }
 
+[package.optional-dependencies]
+textframe = [
+    { name = "syrupy" },
+]
+
 [package.dev-dependencies]
 coverage = [
     { name = "codecov" },
@@ -665,6 +670,8 @@ testing = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "syrupy", marker = "extra == 'textframe'", specifier = ">=4.0.0" }]
+provides-extras = ["textframe"]
 
 [package.metadata.requires-dev]
 coverage = [
