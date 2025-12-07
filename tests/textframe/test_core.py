@@ -22,6 +22,7 @@ class Case(t.NamedTuple):
     height: int
     lines: Sequence[str]
     expected_exception: type[BaseException] | None
+    overflow_behavior: t.Literal["error", "truncate"] = "error"
 
 
 CASES: tuple[Case, ...] = (
@@ -46,6 +47,30 @@ CASES: tuple[Case, ...] = (
         lines=[],
         expected_exception=None,
     ),
+    Case(
+        id="truncate_width",
+        width=5,
+        height=2,
+        lines=["hello world", "foo"],
+        expected_exception=None,
+        overflow_behavior="truncate",
+    ),
+    Case(
+        id="truncate_height",
+        width=10,
+        height=1,
+        lines=["row 1", "row 2", "row 3"],
+        expected_exception=None,
+        overflow_behavior="truncate",
+    ),
+    Case(
+        id="truncate_both",
+        width=5,
+        height=2,
+        lines=["hello world", "foo bar baz", "extra row"],
+        expected_exception=None,
+        overflow_behavior="truncate",
+    ),
 )
 
 
@@ -60,7 +85,11 @@ def test_frame_rendering(case: Case, snapshot: SnapshotAssertion) -> None:
     snapshot : SnapshotAssertion
         Syrupy snapshot fixture configured with TextFrameExtension.
     """
-    frame = TextFrame(content_width=case.width, content_height=case.height)
+    frame = TextFrame(
+        content_width=case.width,
+        content_height=case.height,
+        overflow_behavior=case.overflow_behavior,
+    )
 
     ctx: t.Any = (
         pytest.raises(case.expected_exception)
