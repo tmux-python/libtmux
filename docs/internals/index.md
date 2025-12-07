@@ -47,6 +47,7 @@ api/libtmux._internal.dataclasses
 api/libtmux._internal.query_list
 api/libtmux._internal.constants
 api/libtmux._internal.sparse_array
+textframe
 ```
 
 ## Environmental variables
