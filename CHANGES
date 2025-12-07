@@ -162,6 +162,8 @@ def test_cli_output(pane, textframe_snapshot):
 - Defaults to pane dimensions when `content_width` / `content_height` not specified
 - Uses `overflow_behavior="truncate"` by default for CI robustness
 - Accepts same `start` / `end` parameters as `capture_pane()`
+- Forwards all `capture_pane()` flags: `escape_sequences`, `escape_non_printable`,
+  `join_wrapped`, `preserve_trailing`, `trim_trailing`
 
 ## libtmux 0.53.0 (2025-12-14)
 
