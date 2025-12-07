@@ -320,8 +320,14 @@ class Pane(
         self,
         start: t.Literal["-"] | int | None = None,
         end: t.Literal["-"] | int | None = None,
+        *,
+        escape_sequences: bool = False,
+        escape_non_printable: bool = False,
+        join_wrapped: bool = False,
+        preserve_trailing: bool = False,
+        trim_trailing: bool = False,
     ) -> list[str]:
-        """Capture text from pane.
+        r"""Capture text from pane.
 
         ``$ tmux capture-pane`` to pane.
         ``$ tmux capture-pane -S -10`` to pane.
@@ -344,17 +350,74 @@ class Pane(
             Negative numbers are lines in the history.
             ``-`` is the end of the visible pane.
             Default: None
+        escape_sequences : bool, optional
+            Include ANSI escape sequences for text and background attributes
+            (``-e`` flag). Useful for capturing colored output.
+            Default: False
+        escape_non_printable : bool, optional
+            Escape non-printable characters as octal ``\\xxx`` format
+            (``-C`` flag). Useful for binary-safe capture.
+            Default: False
+        join_wrapped : bool, optional
+            Join wrapped lines and preserve trailing spaces (``-J`` flag).
+            Lines that were wrapped by tmux will be joined back together.
+            Default: False
+        preserve_trailing : bool, optional
+            Preserve trailing spaces at each line's end (``-N`` flag).
+            Default: False
+        trim_trailing : bool, optional
+            Trim trailing positions with no characters (``-T`` flag).
+            Only includes characters up to the last used cell.
+            Requires tmux 3.4+. If used with tmux < 3.4, a warning
+            is issued and the flag is ignored.
+            Default: False
 
         Returns
         -------
         list[str]
             Captured pane content.
+
+        Examples
+        --------
+        >>> pane = window.split(shell='sh')
+        >>> pane.capture_pane()
+        ['$']
+
+        >>> pane.send_keys('echo "Hello world"', enter=True)
+
+        >>> pane.capture_pane()
+        ['$ echo "Hello world"', 'Hello world', '$']
+
+        >>> print(chr(10).join(pane.capture_pane()))
+        $ echo "Hello world"
+        Hello world
+        $
         """
+        import warnings
+
+        from libtmux.common import has_gte_version
+
         cmd = ["capture-pane", "-p"]
         if start is not None:
             cmd.extend(["-S", str(start)])
         if end is not None:
             cmd.extend(["-E", str(end)])
+        if escape_sequences:
+            cmd.append("-e")
+        if escape_non_printable:
+            cmd.append("-C")
+        if join_wrapped:
+            cmd.append("-J")
+        if preserve_trailing:
+            cmd.append("-N")
+        if trim_trailing:
+            if has_gte_version("3.4"):
+                cmd.append("-T")
+            else:
+                warnings.warn(
+                    "trim_trailing requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
         return self.cmd(*cmd).stdout
 
     def send_keys(
