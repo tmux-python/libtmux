@@ -223,6 +223,74 @@ When installed with `pip install libtmux[textframe]`:
 | `src/libtmux/textframe/plugin.py` | Syrupy extension, pytest hooks, and fixtures |
 | `src/libtmux/textframe/__init__.py` | Public API exports |
 
+## Pane.capture_frame() Integration
+
+The `Pane.capture_frame()` method provides a high-level way to capture pane content as a TextFrame:
+
+```python
+from libtmux.test.retry import retry_until
+
+def test_cli_output(pane, textframe_snapshot):
+    """Test CLI output with visual snapshot."""
+    pane.send_keys("echo 'Hello, World!'", enter=True)
+
+    # Wait for output to appear
+    def output_appeared():
+        return "Hello" in "\n".join(pane.capture_pane())
+    retry_until(output_appeared, 2, raises=True)
+
+    # Capture as frame for snapshot comparison
+    frame = pane.capture_frame(content_width=40, content_height=10)
+    assert frame == textframe_snapshot
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `start` | `int \| "-" \| None` | `None` | Starting line (same as `capture_pane`) |
+| `end` | `int \| "-" \| None` | `None` | Ending line (same as `capture_pane`) |
+| `content_width` | `int \| None` | Pane width | Frame width in characters |
+| `content_height` | `int \| None` | Pane height | Frame height in lines |
+| `overflow_behavior` | `"error" \| "truncate"` | `"truncate"` | How to handle overflow |
+
+### Design Decisions
+
+**Why `overflow_behavior="truncate"` by default?**
+
+Pane content can exceed nominal dimensions during:
+- Terminal resize transitions
+- Shell startup (MOTD, prompts)
+- ANSI escape sequences in output
+
+Using `truncate` avoids spurious test failures in CI environments.
+
+**Why does it call `self.refresh()`?**
+
+Pane dimensions can change (resize, zoom). `refresh()` ensures we use current values when `content_width` or `content_height` are not specified.
+
+### Using with retry_until
+
+For asynchronous terminal output, combine with `retry_until`:
+
+```python
+from libtmux.test.retry import retry_until
+
+def test_async_output(session):
+    """Wait for output using capture_frame in retry loop."""
+    window = session.new_window()
+    pane = window.active_pane
+
+    pane.send_keys('for i in 1 2 3; do echo "line $i"; done', enter=True)
+
+    def all_lines_present():
+        frame = pane.capture_frame(content_width=40, content_height=10)
+        rendered = frame.render()
+        return all(f"line {i}" in rendered for i in [1, 2, 3])
+
+    retry_until(all_lines_present, 3, raises=True)
+```
+
 ## Public API
 
 ```python
