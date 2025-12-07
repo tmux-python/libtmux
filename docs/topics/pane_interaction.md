@@ -131,6 +131,75 @@ True
 True
 ```
 
+### Capture with ANSI escape sequences
+
+Capture colored output with escape sequences preserved using `escape_sequences=True`:
+
+```python
+>>> import time
+
+>>> pane.send_keys('printf "\\033[31mRED\\033[0m \\033[32mGREEN\\033[0m"')
+>>> time.sleep(0.1)
+
+>>> # Capture with ANSI codes stripped (default)
+>>> output = pane.capture_pane()
+>>> 'RED' in '\\n'.join(output)
+True
+
+>>> # Capture with ANSI escape sequences preserved
+>>> colored_output = pane.capture_pane(escape_sequences=True)
+>>> isinstance(colored_output, list)
+True
+```
+
+### Join wrapped lines
+
+Long lines that wrap in the terminal can be joined back together:
+
+```python
+>>> import time
+
+>>> # Send a very long line that will wrap
+>>> pane.send_keys('echo "' + 'x' * 200 + '"')
+>>> time.sleep(0.1)
+
+>>> # Capture with wrapped lines joined
+>>> output = pane.capture_pane(join_wrapped=True)
+>>> isinstance(output, list)
+True
+```
+
+### Preserve trailing spaces
+
+By default, trailing spaces are trimmed. Use `preserve_trailing=True` to keep them:
+
+```python
+>>> import time
+
+>>> pane.send_keys('printf "text   \\n"')  # 3 trailing spaces
+>>> time.sleep(0.1)
+
+>>> # Capture with trailing spaces preserved
+>>> output = pane.capture_pane(preserve_trailing=True)
+>>> isinstance(output, list)
+True
+```
+
+### Capture flags summary
+
+| Parameter | tmux Flag | Description |
+|-----------|-----------|-------------|
+| `escape_sequences` | `-e` | Include ANSI escape sequences (colors, attributes) |
+| `escape_non_printable` | `-C` | Escape non-printable chars as octal `\xxx` |
+| `join_wrapped` | `-J` | Join wrapped lines back together |
+| `preserve_trailing` | `-N` | Preserve trailing spaces at line ends |
+| `trim_trailing` | `-T` | Trim trailing empty positions (tmux 3.4+) |
+
+:::{note}
+The `trim_trailing` parameter requires tmux 3.4+. If used with an older version,
+a warning is issued and the flag is ignored.
+:::
+
 ## Waiting for Output
 
 A common pattern in automation is waiting for a command to complete.
