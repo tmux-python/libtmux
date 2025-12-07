@@ -8,7 +8,7 @@ from contextlib import nullcontext as does_not_raise
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from .core import ContentOverflowError, TextFrame
+from libtmux.textframe import ContentOverflowError, TextFrame
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
