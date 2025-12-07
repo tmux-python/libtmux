@@ -13,6 +13,7 @@ dataclasses
 query_list
 constants
 sparse_array
+textframe
 ```
 
 ## Environmental variables
