@@ -685,3 +685,181 @@ def test_capture_frame_snapshot_parametrized(
 
     # Compare against snapshot
     assert frame == snapshot
+
+
+# =============================================================================
+# Flag Forwarding Tests
+# =============================================================================
+
+
+class CaptureFrameFlagCase(t.NamedTuple):
+    """Test case for capture_frame() flag forwarding to capture_pane()."""
+
+    test_id: str
+    command: str
+    escape_sequences: bool
+    escape_non_printable: bool
+    join_wrapped: bool
+    preserve_trailing: bool
+    trim_trailing: bool
+    expected_pattern: str | None
+    not_expected_pattern: str | None
+    min_tmux_version: str | None
+
+
+CAPTURE_FRAME_FLAG_CASES: list[CaptureFrameFlagCase] = [
+    CaptureFrameFlagCase(
+        test_id="escape_sequences_color",
+        command='printf "\\033[31mRED\\033[0m"',
+        escape_sequences=True,
+        escape_non_printable=False,
+        join_wrapped=False,
+        preserve_trailing=False,
+        trim_trailing=False,
+        expected_pattern=r"\x1b\[31m",
+        not_expected_pattern=None,
+        min_tmux_version=None,
+    ),
+    CaptureFrameFlagCase(
+        test_id="no_escape_sequences",
+        command='printf "\\033[31mRED\\033[0m"',
+        escape_sequences=False,
+        escape_non_printable=False,
+        join_wrapped=False,
+        preserve_trailing=False,
+        trim_trailing=False,
+        expected_pattern=r"RED",
+        not_expected_pattern=r"\x1b\[",
+        min_tmux_version=None,
+    ),
+    CaptureFrameFlagCase(
+        test_id="join_wrapped_long_line",
+        command="printf '%s' \"$(seq 1 30 | tr -d '\\n')\"",
+        escape_sequences=False,
+        escape_non_printable=False,
+        join_wrapped=True,
+        preserve_trailing=False,
+        trim_trailing=False,
+        # With join_wrapped, wrapped lines are joined - verify contiguous sequence
+        expected_pattern=r"123456789101112131415161718192021222324252627282930",
+        not_expected_pattern=None,
+        min_tmux_version=None,
+    ),
+    CaptureFrameFlagCase(
+        test_id="preserve_trailing_spaces",
+        command='printf "text   \\n"',
+        escape_sequences=False,
+        escape_non_printable=False,
+        join_wrapped=False,
+        preserve_trailing=True,
+        trim_trailing=False,
+        expected_pattern=r"text   ",
+        not_expected_pattern=None,
+        min_tmux_version=None,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(CaptureFrameFlagCase._fields),
+    CAPTURE_FRAME_FLAG_CASES,
+    ids=[case.test_id for case in CAPTURE_FRAME_FLAG_CASES],
+)
+def test_capture_frame_flag_forwarding(
+    test_id: str,
+    command: str,
+    escape_sequences: bool,
+    escape_non_printable: bool,
+    join_wrapped: bool,
+    preserve_trailing: bool,
+    trim_trailing: bool,
+    expected_pattern: str | None,
+    not_expected_pattern: str | None,
+    min_tmux_version: str | None,
+    session: Session,
+) -> None:
+    """Test that capture_frame() correctly forwards flags to capture_pane().
+
+    Parameters
+    ----------
+    test_id : str
+        Unique identifier for the test case.
+    command : str
+        Shell command to execute.
+    escape_sequences : bool
+        Include ANSI escape sequences.
+    escape_non_printable : bool
+        Escape non-printable characters.
+    join_wrapped : bool
+        Join wrapped lines.
+    preserve_trailing : bool
+        Preserve trailing spaces.
+    trim_trailing : bool
+        Trim trailing positions.
+    expected_pattern : str | None
+        Regex pattern expected in output.
+    not_expected_pattern : str | None
+        Regex pattern that should NOT be in output.
+    min_tmux_version : str | None
+        Minimum tmux version required.
+    session : Session
+        pytest fixture providing tmux session.
+    """
+    import re
+
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        attach=True,
+        window_name=f"flag_{test_id}",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    # Wait for shell prompt
+    def prompt_ready() -> bool:
+        return "$" in "\n".join(pane.capture_pane())
+
+    retry_until(prompt_ready, 2, raises=True)
+
+    # Send command and wait for completion marker
+    marker = f"__DONE_{test_id}__"
+    pane.send_keys(f"{command}; echo {marker}", literal=True)
+
+    def marker_ready() -> bool:
+        return marker in "\n".join(pane.capture_pane())
+
+    retry_until(marker_ready, 3, raises=True)
+
+    # Capture frame with specified flags
+    frame = pane.capture_frame(
+        content_width=80,
+        content_height=24,
+        escape_sequences=escape_sequences,
+        escape_non_printable=escape_non_printable,
+        join_wrapped=join_wrapped,
+        preserve_trailing=preserve_trailing,
+        trim_trailing=trim_trailing,
+    )
+
+    # Get rendered content (without frame borders)
+    rendered = frame.render()
+
+    # Verify expected pattern
+    if expected_pattern:
+        assert re.search(expected_pattern, rendered, re.DOTALL), (
+            f"Expected pattern '{expected_pattern}' not found in:\n{rendered}"
+        )
+
+    # Verify not_expected pattern is absent
+    if not_expected_pattern:
+        assert not re.search(not_expected_pattern, rendered, re.DOTALL), (
+            f"Unexpected pattern '{not_expected_pattern}' found in:\n{rendered}"
+        )
