@@ -8,7 +8,8 @@ from difflib import ndiff
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from .core import TextFrame
+from libtmux.textframe import TextFrame
+
 from .plugin import TextFrameExtension
 
 
