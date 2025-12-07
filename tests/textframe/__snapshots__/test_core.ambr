@@ -29,6 +29,29 @@
   +---------------------+
   '''
 # ---
+# name: test_frame_rendering[truncate_both]
+  '''
+  +-----+
+  |hello|
+  |foo b|
+  +-----+
+  '''
+# ---
+# name: test_frame_rendering[truncate_height]
+  '''
+  +----------+
+  |row 1     |
+  +----------+
+  '''
+# ---
+# name: test_frame_rendering[truncate_width]
+  '''
+  +-----+
+  |hello|
+  |foo  |
+  +-----+
+  '''
+# ---
 # name: test_nested_serialization
   list([
     '''
