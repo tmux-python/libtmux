@@ -367,3 +367,321 @@ def test_capture_frame_preserves_content(session: Session) -> None:
         truncated = line[: frame.content_width]
         if truncated.strip():  # Non-empty lines
             assert truncated in frame.render()
+
+
+# =============================================================================
+# Exhaustive Snapshot Tests
+# =============================================================================
+
+
+class SnapshotCase(t.NamedTuple):
+    """Snapshot test case for exhaustive capture_frame() variations.
+
+    This NamedTuple defines the parameters for parametrized snapshot tests
+    that cover all combinations of capture_frame() options.
+
+    Attributes
+    ----------
+    test_id : str
+        Unique identifier for the test case, used in snapshot filenames.
+    command : str
+        Shell command to execute (empty string for prompt-only tests).
+    content_width : int
+        Frame width in characters.
+    content_height : int
+        Frame height in lines.
+    start : t.Literal["-"] | int | None
+        Starting line for capture (None = default).
+    end : t.Literal["-"] | int | None
+        Ending line for capture (None = default).
+    overflow_behavior : t.Literal["error", "truncate"]
+        How to handle content exceeding frame dimensions.
+    wait_for : str
+        String to wait for before capturing (ensures output is ready).
+    """
+
+    test_id: str
+    command: str
+    content_width: int
+    content_height: int
+    start: t.Literal["-"] | int | None
+    end: t.Literal["-"] | int | None
+    overflow_behavior: t.Literal["error", "truncate"]
+    wait_for: str
+
+
+SNAPSHOT_CASES: list[SnapshotCase] = [
+    # --- Dimension Variations ---
+    SnapshotCase(
+        test_id="prompt_only",
+        command="",
+        content_width=20,
+        content_height=3,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="$",
+    ),
+    SnapshotCase(
+        test_id="echo_simple",
+        command='echo "hello"',
+        content_width=25,
+        content_height=4,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="hello",
+    ),
+    SnapshotCase(
+        test_id="echo_multiline",
+        command='printf "a\\nb\\nc\\n"',
+        content_width=20,
+        content_height=6,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="c",
+    ),
+    SnapshotCase(
+        test_id="wide_frame",
+        command='echo "test"',
+        content_width=60,
+        content_height=3,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="test",
+    ),
+    SnapshotCase(
+        test_id="narrow_frame",
+        command='echo "test"',
+        content_width=10,
+        content_height=3,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="test",
+    ),
+    SnapshotCase(
+        test_id="tall_frame",
+        command='echo "x"',
+        content_width=20,
+        content_height=10,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="x",
+    ),
+    SnapshotCase(
+        test_id="short_frame",
+        command='echo "x"',
+        content_width=20,
+        content_height=2,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="x",
+    ),
+    # --- Start/End Parameter Variations ---
+    SnapshotCase(
+        test_id="start_zero",
+        command='echo "line"',
+        content_width=30,
+        content_height=5,
+        start=0,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="line",
+    ),
+    SnapshotCase(
+        test_id="end_zero",
+        command='echo "line"',
+        content_width=30,
+        content_height=3,
+        start=None,
+        end=0,
+        overflow_behavior="truncate",
+        wait_for="line",
+    ),
+    SnapshotCase(
+        test_id="end_dash",
+        command='echo "line"',
+        content_width=30,
+        content_height=5,
+        start=None,
+        end="-",
+        overflow_behavior="truncate",
+        wait_for="line",
+    ),
+    SnapshotCase(
+        test_id="start_end_range",
+        command='printf "L1\\nL2\\nL3\\nL4\\n"',
+        content_width=30,
+        content_height=5,
+        start=0,
+        end=2,
+        overflow_behavior="truncate",
+        wait_for="L4",
+    ),
+    # --- Truncation Behavior ---
+    SnapshotCase(
+        test_id="truncate_width",
+        command='echo "' + "x" * 50 + '"',
+        content_width=15,
+        content_height=4,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="xxxx",
+    ),
+    SnapshotCase(
+        test_id="truncate_height",
+        command='printf "L1\\nL2\\nL3\\nL4\\nL5\\nL6\\nL7\\nL8\\nL9\\nL10\\n"',
+        content_width=30,
+        content_height=3,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="L10",
+    ),
+    # --- Special Characters ---
+    SnapshotCase(
+        test_id="special_chars",
+        command='echo "!@#$%"',
+        content_width=25,
+        content_height=4,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="!@#$%",
+    ),
+    SnapshotCase(
+        test_id="unicode_basic",
+        command='echo "cafe"',  # Using ASCII to avoid shell encoding issues
+        content_width=25,
+        content_height=4,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="cafe",
+    ),
+    # --- Edge Cases ---
+    SnapshotCase(
+        test_id="empty_lines",
+        command='printf "\\n\\n\\n"',
+        content_width=20,
+        content_height=6,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="$",
+    ),
+    SnapshotCase(
+        test_id="spaces_only",
+        command='echo "   "',
+        content_width=20,
+        content_height=4,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="$",
+    ),
+    SnapshotCase(
+        test_id="mixed_content",
+        command='echo "abc 123 !@#"',
+        content_width=30,
+        content_height=4,
+        start=None,
+        end=None,
+        overflow_behavior="truncate",
+        wait_for="abc 123 !@#",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(SnapshotCase._fields),
+    SNAPSHOT_CASES,
+    ids=[case.test_id for case in SNAPSHOT_CASES],
+)
+def test_capture_frame_snapshot_parametrized(
+    test_id: str,
+    command: str,
+    content_width: int,
+    content_height: int,
+    start: t.Literal["-"] | int | None,
+    end: t.Literal["-"] | int | None,
+    overflow_behavior: t.Literal["error", "truncate"],
+    wait_for: str,
+    session: Session,
+    snapshot: SnapshotAssertion,
+) -> None:
+    """Exhaustive snapshot tests for capture_frame() parameter variations.
+
+    This parametrized test covers all combinations of capture_frame() options
+    including dimensions, start/end parameters, truncation, special characters,
+    and edge cases.
+
+    Parameters
+    ----------
+    test_id : str
+        Unique identifier for the test case.
+    command : str
+        Shell command to execute (empty for prompt-only).
+    content_width : int
+        Frame width in characters.
+    content_height : int
+        Frame height in lines.
+    start : t.Literal["-"] | int | None
+        Starting line for capture.
+    end : t.Literal["-"] | int | None
+        Ending line for capture.
+    overflow_behavior : t.Literal["error", "truncate"]
+        How to handle overflow.
+    wait_for : str
+        String to wait for before capturing.
+    session : Session
+        pytest fixture providing tmux session.
+    snapshot : SnapshotAssertion
+        syrupy snapshot fixture with TextFrameExtension.
+    """
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    window = session.new_window(
+        attach=True,
+        window_name=f"snap_{test_id}",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    # Wait for shell prompt to appear
+    def prompt_ready() -> bool:
+        return "$" in "\n".join(pane.capture_pane())
+
+    retry_until(prompt_ready, 2, raises=True)
+
+    # Send command if provided
+    if command:
+        pane.send_keys(command, literal=True, suppress_history=False)
+
+    # Wait for expected content
+    if wait_for:
+
+        def content_ready() -> bool:
+            return wait_for in "\n".join(pane.capture_pane())
+
+        retry_until(content_ready, 2, raises=True)
+
+    # Capture frame with specified parameters
+    frame = pane.capture_frame(
+        start=start,
+        end=end,
+        content_width=content_width,
+        content_height=content_height,
+        overflow_behavior=overflow_behavior,
+    )
+
+    # Compare against snapshot
+    assert frame == snapshot
