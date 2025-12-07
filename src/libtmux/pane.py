@@ -430,8 +430,13 @@ class Pane(
         content_width: int | None = None,
         content_height: int | None = None,
         overflow_behavior: OverflowBehavior = "truncate",
+        escape_sequences: bool = False,
+        escape_non_printable: bool = False,
+        join_wrapped: bool = False,
+        preserve_trailing: bool = False,
+        trim_trailing: bool = False,
     ) -> TextFrame:
-        """Capture pane content as a TextFrame.
+        r"""Capture pane content as a TextFrame.
 
         Combines :meth:`capture_pane` with :class:`~libtmux.textframe.TextFrame`
         for visualization and snapshot testing.
@@ -460,6 +465,19 @@ class Pane(
             How to handle content that exceeds frame dimensions.
             Defaults to ``"truncate"`` since pane content may exceed
             nominal dimensions during terminal transitions.
+        escape_sequences : bool, optional
+            Include ANSI escape sequences for text and background attributes.
+            Useful for capturing colored output. Default: False
+        escape_non_printable : bool, optional
+            Escape non-printable characters as octal ``\\xxx`` format.
+            Default: False
+        join_wrapped : bool, optional
+            Join wrapped lines back together. Default: False
+        preserve_trailing : bool, optional
+            Preserve trailing spaces at each line's end. Default: False
+        trim_trailing : bool, optional
+            Trim trailing positions with no characters.
+            Requires tmux 3.4+. Default: False
 
         Returns
         -------
@@ -486,8 +504,16 @@ class Pane(
         """
         from libtmux.textframe import TextFrame as TextFrameClass
 
-        # Capture content
-        lines = self.capture_pane(start=start, end=end)
+        # Capture content with all flags forwarded
+        lines = self.capture_pane(
+            start=start,
+            end=end,
+            escape_sequences=escape_sequences,
+            escape_non_printable=escape_non_printable,
+            join_wrapped=join_wrapped,
+            preserve_trailing=preserve_trailing,
+            trim_trailing=trim_trailing,
+        )
 
         # Use pane dimensions if not specified
         self.refresh()
