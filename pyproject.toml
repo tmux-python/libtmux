@@ -71,6 +71,7 @@ dev = [
   "pytest-mock",
   "pytest-watcher",
   "pytest-xdist",
+  "syrupy",
   # Coverage
   "codecov",
   "coverage",
@@ -112,8 +113,12 @@ lint = [
   "mypy",
 ]
 
+[project.optional-dependencies]
+textframe = ["syrupy>=4.0.0"]
+
 [project.entry-points.pytest11]
 libtmux = "libtmux.pytest_plugin"
+libtmux-textframe = "libtmux.textframe.plugin"
 
 [build-system]
 requires = ["hatchling"]
