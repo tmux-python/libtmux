@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import curses
+import shutil
 import sys
 import typing as t
 from dataclasses import dataclass, field
@@ -250,7 +251,10 @@ class TextFrame:
 
         while True:
             stdscr.clear()
-            max_y, max_x = stdscr.getmaxyx()
+
+            # Query terminal size directly (handles resize without signals)
+            term_size = shutil.get_terminal_size()
+            max_x, max_y = term_size.columns, term_size.lines
 
             # Calculate scroll bounds
             max_scroll_y = max(0, len(lines) - max_y + 1)
