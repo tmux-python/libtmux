@@ -13,13 +13,15 @@ import sys
 import typing as t
 from dataclasses import dataclass, field
 
+from libtmux.exc import LibTmuxException
+
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
 OverflowBehavior = t.Literal["error", "truncate"]
 
 
-class ContentOverflowError(ValueError):
+class ContentOverflowError(LibTmuxException, ValueError):
     """Raised when content does not fit into the configured frame dimensions.
 
     Attributes
