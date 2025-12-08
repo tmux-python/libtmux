@@ -55,6 +55,30 @@ Output:
 +----------+
 ```
 
+### Interactive Display
+
+For exploring large frames interactively, use `display()` to open a scrollable curses viewer:
+
+```python
+frame = TextFrame(content_width=80, content_height=50)
+frame.set_content(["line %d" % i for i in range(50)])
+frame.display()  # Opens interactive viewer
+```
+
+**Controls:**
+
+| Key | Action |
+|-----|--------|
+| ↑/↓ or w/s or k/j | Scroll up/down |
+| ←/→ or a/d or h/l | Scroll left/right |
+| PgUp/PgDn | Page up/down |
+| Home/End | Jump to top/bottom |
+| q, Esc, Ctrl-C | Quit |
+
+The viewer shows a status bar at the bottom with scroll position, frame dimensions, and help text.
+
+**Note:** `display()` requires an interactive terminal (TTY). It raises `RuntimeError` if stdout is not a TTY (e.g., when piped or in CI environments).
+
 ### Overflow Behavior
 
 TextFrame supports two overflow behaviors:
