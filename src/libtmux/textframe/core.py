@@ -6,6 +6,9 @@ with overflow detection and diagnostic rendering.
 
 from __future__ import annotations
 
+import contextlib
+import curses
+import sys
 import typing as t
 from dataclasses import dataclass, field
 
@@ -189,3 +192,122 @@ class TextFrame:
             line = lines[r] if r < len(lines) else ""
             body.append(f"|{line.ljust(w, self.fill_char)}|")
         return "\n".join([border, *body, border])
+
+    def display(self) -> None:
+        """Display frame in interactive scrollable curses viewer.
+
+        Opens a full-screen terminal viewer with scrolling support for
+        exploring large frame content interactively.
+
+        Controls
+        --------
+        Navigation:
+            - Arrow keys: Scroll up/down/left/right
+            - w/a/s/d: Scroll up/left/down/right
+            - k/h/j/l (vim): Scroll up/left/down/right
+            - PgUp/PgDn: Page up/down
+            - Home/End: Jump to top/bottom
+
+        Exit:
+            - q: Quit
+            - Esc: Quit
+            - Ctrl-C: Quit
+
+        Raises
+        ------
+        RuntimeError
+            If stdout is not a TTY (not an interactive terminal).
+
+        Examples
+        --------
+        >>> pane = session.active_window.active_pane
+        >>> frame = pane.capture_frame()
+        >>> frame.display()  # Opens interactive viewer  # doctest: +SKIP
+        """
+        if not sys.stdout.isatty():
+            msg = "display() requires an interactive terminal"
+            raise RuntimeError(msg)
+
+        curses.wrapper(self._curses_display)
+
+    def _curses_display(self, stdscr: curses.window) -> None:
+        """Curses main loop for interactive display.
+
+        Parameters
+        ----------
+        stdscr : curses.window
+            The curses standard screen window.
+        """
+        curses.curs_set(0)  # Hide cursor
+
+        # Render full frame once
+        rendered = self.render()
+        lines = rendered.split("\n")
+
+        # Scroll state
+        scroll_y = 0
+        scroll_x = 0
+
+        while True:
+            stdscr.clear()
+            max_y, max_x = stdscr.getmaxyx()
+
+            # Calculate scroll bounds
+            max_scroll_y = max(0, len(lines) - max_y + 1)
+            max_scroll_x = max(0, max(len(line) for line in lines) - max_x)
+
+            # Clamp scroll position
+            scroll_y = max(0, min(scroll_y, max_scroll_y))
+            scroll_x = max(0, min(scroll_x, max_scroll_x))
+
+            # Draw visible portion
+            for i, line in enumerate(lines[scroll_y : scroll_y + max_y - 1]):
+                if i >= max_y - 1:
+                    break
+                display_line = line[scroll_x : scroll_x + max_x]
+                with contextlib.suppress(curses.error):
+                    stdscr.addstr(i, 0, display_line)
+
+            # Status line
+            status = (
+                f" [{scroll_y + 1}/{len(lines)}] "
+                f"{self.content_width}x{self.content_height} | q:quit "
+            )
+            with contextlib.suppress(curses.error):
+                stdscr.addstr(max_y - 1, 0, status[: max_x - 1], curses.A_REVERSE)
+
+            stdscr.refresh()
+
+            # Handle input
+            try:
+                key = stdscr.getch()
+            except KeyboardInterrupt:
+                break
+
+            # Exit keys
+            if key in (ord("q"), 27):  # q or Esc
+                break
+
+            # Vertical navigation
+            if key in (curses.KEY_UP, ord("w"), ord("k")):
+                scroll_y = max(0, scroll_y - 1)
+            elif key in (curses.KEY_DOWN, ord("s"), ord("j")):
+                scroll_y = min(max_scroll_y, scroll_y + 1)
+
+            # Horizontal navigation
+            elif key in (curses.KEY_LEFT, ord("a"), ord("h")):
+                scroll_x = max(0, scroll_x - 1)
+            elif key in (curses.KEY_RIGHT, ord("d"), ord("l")):
+                scroll_x = min(max_scroll_x, scroll_x + 1)
+
+            # Page navigation
+            elif key == curses.KEY_PPAGE:  # Page Up
+                scroll_y = max(0, scroll_y - (max_y - 2))
+            elif key == curses.KEY_NPAGE:  # Page Down
+                scroll_y = min(max_scroll_y, scroll_y + (max_y - 2))
+
+            # Jump navigation
+            elif key == curses.KEY_HOME:
+                scroll_y = 0
+            elif key == curses.KEY_END:
+                scroll_y = max_scroll_y
