@@ -1,12 +1,19 @@
-"""Tests for TextFrame.display() interactive viewer."""
+"""Tests for TextFrame.display() interactive viewer.
+
+Note on MagicMock usage: These tests require MagicMock to create mock curses.window
+objects with configurable return values and side effects. pytest's monkeypatch
+fixture patches existing attributes but doesn't create mock objects with the
+call tracking and behavior configuration needed for curses window simulation.
+"""
 
 from __future__ import annotations
 
 import curses
 import io
 import os
+import sys
 import typing as t
-from unittest.mock import MagicMock, patch
+import unittest.mock
 
 import pytest
 
@@ -39,40 +46,38 @@ EXIT_KEY_CASES: tuple[ExitKeyCase, ...] = (
 
 
 @pytest.fixture
-def mock_curses_env() -> t.Generator[None, None, None]:
+def mock_curses_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Mock curses module-level functions that require initscr()."""
-    with (
-        patch("curses.curs_set"),
-        patch("curses.A_REVERSE", 0),
-    ):
-        yield
+    monkeypatch.setattr(curses, "curs_set", lambda x: None)
+    monkeypatch.setattr(curses, "A_REVERSE", 0)
 
 
-def test_display_raises_when_not_tty() -> None:
+def test_display_raises_when_not_tty(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify display() raises RuntimeError when stdout is not a TTY."""
     frame = TextFrame(content_width=10, content_height=2)
     frame.set_content(["hello", "world"])
 
-    with (
-        patch("sys.stdout", new=io.StringIO()),
-        pytest.raises(RuntimeError, match="interactive terminal"),
-    ):
+    monkeypatch.setattr(sys, "stdout", io.StringIO())
+
+    with pytest.raises(RuntimeError, match="interactive terminal"):
         frame.display()
 
 
-def test_display_calls_curses_wrapper_when_tty() -> None:
+def test_display_calls_curses_wrapper_when_tty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify display() calls curses.wrapper when stdout is a TTY."""
     frame = TextFrame(content_width=10, content_height=2)
     frame.set_content(["hello", "world"])
 
-    with (
-        patch("sys.stdout.isatty", return_value=True),
-        patch("curses.wrapper") as mock_wrapper,
-    ):
-        frame.display()
-        mock_wrapper.assert_called_once()
-        args = mock_wrapper.call_args[0]
-        assert args[0].__name__ == "_curses_display"
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    mock_wrapper = unittest.mock.MagicMock()
+    monkeypatch.setattr(curses, "wrapper", mock_wrapper)
+
+    frame.display()
+    mock_wrapper.assert_called_once()
+    args = mock_wrapper.call_args[0]
+    assert args[0].__name__ == "_curses_display"
 
 
 @pytest.mark.parametrize("case", EXIT_KEY_CASES, ids=lambda c: c.id)
@@ -84,7 +89,7 @@ def test_curses_display_exit_keys(
     frame = TextFrame(content_width=10, content_height=2)
     frame.set_content(["hello", "world"])
 
-    mock_stdscr = MagicMock()
+    mock_stdscr = unittest.mock.MagicMock()
 
     if case.side_effect:
         mock_stdscr.getch.side_effect = case.side_effect
@@ -101,7 +106,7 @@ def test_curses_display_scroll_navigation(mock_curses_env: None) -> None:
     frame = TextFrame(content_width=10, content_height=10)
     frame.set_content([f"line {i}" for i in range(10)])
 
-    mock_stdscr = MagicMock()
+    mock_stdscr = unittest.mock.MagicMock()
 
     # Simulate: down arrow, then quit
     mock_stdscr.getch.side_effect = [curses.KEY_DOWN, ord("q")]
@@ -117,7 +122,7 @@ def test_curses_display_status_line(mock_curses_env: None) -> None:
     frame = TextFrame(content_width=10, content_height=2)
     frame.set_content(["hello", "world"])
 
-    mock_stdscr = MagicMock()
+    mock_stdscr = unittest.mock.MagicMock()
     mock_stdscr.getch.return_value = ord("q")
 
     frame._curses_display(mock_stdscr)
@@ -131,7 +136,10 @@ def test_curses_display_status_line(mock_curses_env: None) -> None:
     assert len(status_calls) > 0, "Status line should be displayed"
 
 
-def test_curses_display_uses_shutil_terminal_size(mock_curses_env: None) -> None:
+def test_curses_display_uses_shutil_terminal_size(
+    mock_curses_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify terminal size is queried via shutil.get_terminal_size().
 
     This approach works reliably in tmux/multiplexers because it directly
@@ -141,12 +149,14 @@ def test_curses_display_uses_shutil_terminal_size(mock_curses_env: None) -> None
     frame = TextFrame(content_width=10, content_height=2)
     frame.set_content(["hello", "world"])
 
-    mock_stdscr = MagicMock()
+    mock_stdscr = unittest.mock.MagicMock()
     mock_stdscr.getch.return_value = ord("q")
 
-    with patch(
+    mock_get_size = unittest.mock.MagicMock(return_value=os.terminal_size((120, 40)))
+    monkeypatch.setattr(
         "libtmux.textframe.core.shutil.get_terminal_size",
-        return_value=os.terminal_size((120, 40)),
-    ) as mock_get_size:
-        frame._curses_display(mock_stdscr)
-        mock_get_size.assert_called()
+        mock_get_size,
+    )
+
+    frame._curses_display(mock_stdscr)
+    mock_get_size.assert_called()
