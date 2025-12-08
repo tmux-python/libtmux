@@ -58,6 +58,7 @@ print(frame.render())
 - Overflow handling: `overflow_behavior="error"` raises {class}`~libtmux.textframe.ContentOverflowError`
   with visual diagnostic, `overflow_behavior="truncate"` clips content silently
 - Dimension validation via `__post_init__`
+- Interactive curses viewer via `display()` for exploring large frames
 
 #### pytest assertion hook for TextFrame (#613)
 
