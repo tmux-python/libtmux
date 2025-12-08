@@ -11,8 +11,8 @@ auto-discovered by pytest through the pytest11 entry point.
 
 from __future__ import annotations
 
+import difflib
 import typing as t
-from difflib import ndiff
 
 import pytest
 from syrupy.assertion import SnapshotAssertion
@@ -120,7 +120,7 @@ def pytest_assertrepr_compare(
     if left_render != right_render:
         lines.append("")
         lines.append("Content diff:")
-        lines.extend(ndiff(right_render, left_render))
+        lines.extend(difflib.ndiff(right_render, left_render))
 
     return lines
 
