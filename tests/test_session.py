@@ -481,3 +481,87 @@ def test_new_window_start_directory_pathlib(
     actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
     expected_path = str(user_path.resolve())
     assert actual_path == expected_path
+
+
+class SessionAttachRefreshFixture(t.NamedTuple):
+    """Test fixture for Session.attach() refresh behavior regression.
+
+    This tests the scenario where a session is killed while the user is attached,
+    and then attach() tries to call refresh() which fails because the session
+    no longer exists.
+
+    See: https://github.com/tmux-python/tmuxp/issues/1002
+    """
+
+    test_id: str
+    kill_session_before_refresh: bool
+    expect_no_exception: bool
+
+
+SESSION_ATTACH_REFRESH_FIXTURES: list[SessionAttachRefreshFixture] = [
+    SessionAttachRefreshFixture(
+        test_id="session_killed_during_attach_should_not_raise",
+        kill_session_before_refresh=True,
+        expect_no_exception=True,  # attach() should NOT raise if session gone
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(SessionAttachRefreshFixture._fields),
+    SESSION_ATTACH_REFRESH_FIXTURES,
+    ids=[test.test_id for test in SESSION_ATTACH_REFRESH_FIXTURES],
+)
+def test_session_attach_does_not_fail_if_session_killed_during_attach(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    test_id: str,
+    kill_session_before_refresh: bool,
+    expect_no_exception: bool,
+) -> None:
+    """Regression test: Session.attach() should not fail if session is killed.
+
+    When a user is attached to a tmux session via `tmuxp load`, then kills the
+    session from within tmux (e.g., kills all windows), and then detaches,
+    the attach() method should not raise an exception.
+
+    Currently, attach() calls self.refresh() after attach-session returns, which
+    fails with TmuxObjectDoesNotExist if the session no longer exists.
+
+    The fix is to remove the refresh() call from attach() since:
+    1. attach-session is a blocking interactive command
+    2. Session state can change arbitrarily while the user is attached
+    3. Refreshing after such a command makes no semantic sense
+    """
+    from libtmux.common import tmux_cmd
+
+    # Create a new session specifically for this test
+    test_session = server.new_session(detach=True)
+
+    # Store original cmd method
+    original_cmd = test_session.cmd
+
+    # Create a mock tmux_cmd result that simulates successful attach-session
+    class MockTmuxCmd:
+        def __init__(self) -> None:
+            self.stdout: list[str] = []
+            self.stderr: list[str] = []
+            self.cmd: list[str] = ["tmux", "attach-session"]
+
+    def patched_cmd(cmd_name: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+        """Patched cmd that kills session after attach-session."""
+        if cmd_name == "attach-session" and kill_session_before_refresh:
+            # Simulate: attach-session succeeded, user worked, then killed session
+            # This happens BEFORE refresh() is called
+            test_session.kill()
+            return MockTmuxCmd()  # type: ignore[return-value]
+        return original_cmd(cmd_name, *args, **kwargs)
+
+    monkeypatch.setattr(test_session, "cmd", patched_cmd)
+
+    # This should NOT raise an exception - the session being killed during
+    # attachment is a valid scenario that should be handled gracefully
+    if expect_no_exception:
+        # After the fix (removing refresh()), this should not raise
+        test_session.attach()
+        # Test passes if no exception is raised
