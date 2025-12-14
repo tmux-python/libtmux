@@ -329,8 +329,6 @@ class Session(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        self.refresh()
-
         return self
 
     def kill(
