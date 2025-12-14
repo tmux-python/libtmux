@@ -32,6 +32,27 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
+### Breaking changes
+
+#### Session.attach() no longer calls refresh() (#616)
+
+{meth}`~libtmux.Session.attach` previously called {meth}`~libtmux.neo.Obj.refresh`
+after the `attach-session` command returned. This was semantically incorrect since
+`attach-session` is a blocking interactive command where session state can change
+arbitrarily during attachment.
+
+This was never strictly defined behavior as libtmux abstracts tmux internals away.
+Code that relied on the session object being refreshed after `attach()` should
+explicitly call `session.refresh()` if needed.
+
+### Bug fixes
+
+#### Session.attach() no longer fails if session killed during attachment (#616)
+
+Fixed an issue where {meth}`~libtmux.Session.attach` would raise
+{exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a user killed the session while
+attached (e.g., closing all windows) and then detached.
+
 ## libtmux 0.52.1 (2025-12-07)
 
 ### CI
