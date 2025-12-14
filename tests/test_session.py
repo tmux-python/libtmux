@@ -6,6 +6,7 @@ import logging
 import pathlib
 import shutil
 import typing as t
+from contextlib import nullcontext as does_not_raise
 
 import pytest
 
@@ -18,6 +19,15 @@ from libtmux.test.random import namer
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
+    from typing import TypeAlias
+
+    try:
+        from _pytest.raises import RaisesExc
+    except ImportError:
+        from _pytest.python_api import RaisesContext  # type: ignore[attr-defined]
+
+        RaisesExc: TypeAlias = RaisesContext[Exception]  # type: ignore[no-redef]
+
     from libtmux._internal.types import StrPath
     from libtmux.server import Server
 
@@ -481,3 +491,92 @@ def test_new_window_start_directory_pathlib(
     actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
     expected_path = str(user_path.resolve())
     assert actual_path == expected_path
+
+
+class SessionAttachRefreshFixture(t.NamedTuple):
+    """Test fixture for Session.attach() refresh behavior regression.
+
+    This tests the scenario where a session is killed while the user is attached,
+    and then attach() tries to call refresh() which fails because the session
+    no longer exists.
+
+    See: https://github.com/tmux-python/tmuxp/issues/1002
+    """
+
+    test_id: str
+    raises: type[Exception] | bool
+
+
+SESSION_ATTACH_REFRESH_FIXTURES: list[SessionAttachRefreshFixture] = [
+    SessionAttachRefreshFixture(
+        test_id="session_killed_during_attach_should_not_raise",
+        raises=False,  # attach() should NOT raise if session gone
+    ),
+]
+
+
+@pytest.mark.xfail(
+    reason="Bug: attach() calls refresh() which fails if session killed during attach. "
+    "See: https://github.com/tmux-python/tmuxp/issues/1002",
+    raises=Exception,
+    strict=True,
+)
+@pytest.mark.parametrize(
+    list(SessionAttachRefreshFixture._fields),
+    SESSION_ATTACH_REFRESH_FIXTURES,
+    ids=[test.test_id for test in SESSION_ATTACH_REFRESH_FIXTURES],
+)
+def test_session_attach_does_not_fail_if_session_killed_during_attach(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    test_id: str,
+    raises: type[Exception] | bool,
+) -> None:
+    """Regression test: Session.attach() should not fail if session is killed.
+
+    When a user is attached to a tmux session via `tmuxp load`, then kills the
+    session from within tmux (e.g., kills all windows), and then detaches,
+    the attach() method should not raise an exception.
+
+    Currently, attach() calls self.refresh() after attach-session returns, which
+    fails with TmuxObjectDoesNotExist if the session no longer exists.
+
+    The fix is to remove the refresh() call from attach() since:
+    1. attach-session is a blocking interactive command
+    2. Session state can change arbitrarily while the user is attached
+    3. Refreshing after such a command makes no semantic sense
+    """
+    from libtmux.common import tmux_cmd
+
+    # Create a new session specifically for this test
+    test_session = server.new_session(detach=True)
+
+    # Store original cmd method
+    original_cmd = test_session.cmd
+
+    # Create a mock tmux_cmd result that simulates successful attach-session
+    class MockTmuxCmd:
+        def __init__(self) -> None:
+            self.stdout: list[str] = []
+            self.stderr: list[str] = []
+            self.cmd: list[str] = ["tmux", "attach-session"]
+
+    def patched_cmd(cmd_name: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+        """Patched cmd that kills session after attach-session."""
+        if cmd_name == "attach-session":
+            # Simulate: attach-session succeeded, user worked, then killed session
+            # This happens BEFORE refresh() is called
+            test_session.kill()
+            return MockTmuxCmd()  # type: ignore[return-value]
+        return original_cmd(cmd_name, *args, **kwargs)
+
+    monkeypatch.setattr(test_session, "cmd", patched_cmd)
+
+    # Use context manager pattern for exception handling
+    raises_ctx: RaisesExc = (
+        pytest.raises(t.cast("type[Exception]", raises))
+        if raises
+        else t.cast("RaisesExc", does_not_raise())
+    )
+    with raises_ctx:
+        test_session.attach()
