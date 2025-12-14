@@ -515,12 +515,6 @@ SESSION_ATTACH_REFRESH_FIXTURES: list[SessionAttachRefreshFixture] = [
 ]
 
 
-@pytest.mark.xfail(
-    reason="Bug: attach() calls refresh() which fails if session killed during attach. "
-    "See: https://github.com/tmux-python/tmuxp/issues/1002",
-    raises=Exception,
-    strict=True,
-)
 @pytest.mark.parametrize(
     list(SessionAttachRefreshFixture._fields),
     SESSION_ATTACH_REFRESH_FIXTURES,
