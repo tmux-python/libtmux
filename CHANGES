@@ -32,6 +32,140 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
+### New features
+
+#### TextFrame primitive (#613)
+
+New {class}`~libtmux.textframe.TextFrame` dataclass for testing terminal UI output.
+Provides a fixed-size ASCII frame simulator with overflow detection - useful for
+validating `capture_pane()` output and terminal rendering in tests.
+
+```python
+from libtmux.textframe import TextFrame
+
+frame = TextFrame(content_width=10, content_height=2)
+frame.set_content(["hello", "world"])
+print(frame.render())
+# +----------+
+# |hello     |
+# |world     |
+# +----------+
+```
+
+**Features:**
+
+- Configurable dimensions with `content_width` and `content_height`
+- Overflow handling: `overflow_behavior="error"` raises {class}`~libtmux.textframe.ContentOverflowError`
+  with visual diagnostic, `overflow_behavior="truncate"` clips content silently
+- Dimension validation via `__post_init__`
+- Interactive curses viewer via `display()` for exploring large frames
+
+#### pytest assertion hook for TextFrame (#613)
+
+Rich assertion output when comparing {class}`~libtmux.textframe.TextFrame` objects.
+Shows dimension mismatches and line-by-line content diffs using `difflib.ndiff`.
+
+```
+TextFrame comparison failed:
+  width: 20 != 10
+Content diff:
+- +----------+
++ +--------------------+
+```
+
+#### syrupy snapshot extension for TextFrame (#613)
+
+{class}`~libtmux.textframe.TextFrameExtension` stores snapshots as `.frame` files -
+one file per test for cleaner git diffs.
+
+**Installation:**
+
+```console
+$ pip install libtmux[textframe]
+```
+
+**Usage:**
+
+```python
+from libtmux.textframe import TextFrame
+
+def test_pane_output(textframe_snapshot):
+    frame = TextFrame(content_width=20, content_height=5)
+    frame.set_content(["Hello", "World"])
+    assert frame == textframe_snapshot
+```
+
+The `textframe_snapshot` fixture and assertion hooks are auto-discovered via
+pytest's `pytest11` entry point when the `textframe` extra is installed.
+
+#### Pane.capture_frame() (#613)
+
+New {meth}`~libtmux.pane.Pane.capture_frame` method that wraps
+{meth}`~libtmux.pane.Pane.capture_pane` and returns a
+{class}`~libtmux.textframe.TextFrame` for visualization and snapshot testing.
+
+**Basic usage:**
+
+```python
+pane.send_keys('echo "Hello, TextFrame!"', enter=True)
+frame = pane.capture_frame(content_width=30, content_height=5)
+print(frame.render())
+# +------------------------------+
+# |$ echo "Hello, TextFrame!"    |
+# |Hello, TextFrame!             |
+# |$                             |
+# |                              |
+# |                              |
+# +------------------------------+
+```
+
+**Multiline output:**
+
+```python
+pane.send_keys('printf "a\\nb\\nc\\n"', enter=True)
+frame = pane.capture_frame(content_width=20, content_height=6)
+print(frame.render())
+# +--------------------+
+# |$ printf "a\nb\nc\n"|
+# |a                   |
+# |b                   |
+# |c                   |
+# |$                   |
+# |                    |
+# +--------------------+
+```
+
+**Truncation (long lines clipped to frame width):**
+
+```python
+pane.send_keys('echo "' + "x" * 50 + '"', enter=True)
+frame = pane.capture_frame(content_width=15, content_height=4)
+print(frame.render())
+# +---------------+
+# |$ echo "xxxxxxx|
+# |xxxxxxxxxxxxxxx|
+# |$              |
+# |               |
+# +---------------+
+```
+
+**Snapshot testing:**
+
+```python
+def test_cli_output(pane, textframe_snapshot):
+    pane.send_keys("echo 'Hello'", enter=True)
+    frame = pane.capture_frame(content_width=40, content_height=10)
+    assert frame == textframe_snapshot
+```
+
+**Features:**
+
+- Defaults to pane dimensions when `content_width` / `content_height` not specified
+- Uses `overflow_behavior="truncate"` by default for CI robustness
+- Accepts same `start` / `end` parameters as `capture_pane()`
+- Forwards all `capture_pane()` flags: `escape_sequences`, `escape_non_printable`,
+  `join_wrapped`, `preserve_trailing`, `trim_trailing`
+
 ## libtmux 0.53.0 (2025-12-14)
 
 ### Breaking changes

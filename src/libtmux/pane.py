@@ -31,6 +31,8 @@ if t.TYPE_CHECKING:
     import types
 
     from libtmux._internal.types import StrPath
+    from libtmux.textframe import TextFrame
+    from libtmux.textframe.core import OverflowBehavior
 
     from .server import Server
     from .session import Session
@@ -419,6 +421,120 @@ class Pane(
                     stacklevel=2,
                 )
         return self.cmd(*cmd).stdout
+
+    def capture_frame(
+        self,
+        start: t.Literal["-"] | int | None = None,
+        end: t.Literal["-"] | int | None = None,
+        *,
+        content_width: int | None = None,
+        content_height: int | None = None,
+        overflow_behavior: OverflowBehavior = "truncate",
+        escape_sequences: bool = False,
+        escape_non_printable: bool = False,
+        join_wrapped: bool = False,
+        preserve_trailing: bool = False,
+        trim_trailing: bool = False,
+    ) -> TextFrame:
+        r"""Capture pane content as a TextFrame.
+
+        Combines :meth:`capture_pane` with :class:`~libtmux.textframe.TextFrame`
+        for visualization and snapshot testing.
+
+        Parameters
+        ----------
+        start : str | int, optional
+            Starting line number (same as :meth:`capture_pane`).
+            Zero is the first line of the visible pane.
+            Positive numbers are lines in the visible pane.
+            Negative numbers are lines in the history.
+            ``-`` is the start of the history.
+            Default: None
+        end : str | int, optional
+            Ending line number (same as :meth:`capture_pane`).
+            Zero is the first line of the visible pane.
+            Positive numbers are lines in the visible pane.
+            Negative numbers are lines in the history.
+            ``-`` is the end of the visible pane.
+            Default: None
+        content_width : int, optional
+            Frame width. Defaults to pane's current width.
+        content_height : int, optional
+            Frame height. Defaults to pane's current height.
+        overflow_behavior : OverflowBehavior, optional
+            How to handle content that exceeds frame dimensions.
+            Defaults to ``"truncate"`` since pane content may exceed
+            nominal dimensions during terminal transitions.
+        escape_sequences : bool, optional
+            Include ANSI escape sequences for text and background attributes.
+            Useful for capturing colored output. Default: False
+        escape_non_printable : bool, optional
+            Escape non-printable characters as octal ``\\xxx`` format.
+            Default: False
+        join_wrapped : bool, optional
+            Join wrapped lines back together. Default: False
+        preserve_trailing : bool, optional
+            Preserve trailing spaces at each line's end. Default: False
+        trim_trailing : bool, optional
+            Trim trailing positions with no characters.
+            Requires tmux 3.4+. Default: False
+
+        Returns
+        -------
+        :class:`~libtmux.textframe.TextFrame`
+            Frame containing captured pane content.
+
+        Examples
+        --------
+        >>> pane = window.split(shell='sh')
+        >>> pane.send_keys('echo "Hello"', enter=True)
+        >>> import time; time.sleep(0.1)
+        >>> frame = pane.capture_frame(content_width=20, content_height=5)
+        >>> 'Hello' in frame.render()
+        True
+
+        >>> print(frame.render())
+        +--------------------+
+        |$ echo "Hello"      |
+        |Hello               |
+        |$                   |
+        |                    |
+        |                    |
+        +--------------------+
+        """
+        from libtmux.textframe import TextFrame as TextFrameClass
+
+        # Capture content with all flags forwarded
+        lines = self.capture_pane(
+            start=start,
+            end=end,
+            escape_sequences=escape_sequences,
+            escape_non_printable=escape_non_printable,
+            join_wrapped=join_wrapped,
+            preserve_trailing=preserve_trailing,
+            trim_trailing=trim_trailing,
+        )
+
+        # Use pane dimensions if not specified
+        self.refresh()
+        width = (
+            content_width if content_width is not None else int(self.pane_width or 80)
+        )
+        height = (
+            content_height
+            if content_height is not None
+            else int(self.pane_height or 24)
+        )
+
+        # Create and populate frame
+        frame = TextFrameClass(
+            content_width=width,
+            content_height=height,
+            overflow_behavior=overflow_behavior,
+        )
+        frame.set_content(lines)
+
+        return frame
 
     def send_keys(
         self,
