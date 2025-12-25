@@ -280,6 +280,18 @@ what:
 - Update send_keys to pass -l flag when literal=True
 - Add tests for literal key sending
 ```
+For multi-line commits, use heredoc to preserve formatting:
+```bash
+git commit -m "$(cat <<'EOF'
+feat(Component[method]) add feature description
+
+why: Explanation of the change.
+what:
+- First change
+- Second change
+EOF
+)"
+```
 
 ## Debugging Tips
 
