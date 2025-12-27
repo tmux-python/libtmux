@@ -32,6 +32,10 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
+### Documentation
+
+Move documentation deployment to GitHub OIDC and AWS CLI.
+
 ## libtmux 0.53.0 (2025-12-14)
 
 ### Breaking changes
