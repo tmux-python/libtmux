@@ -32,6 +32,13 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
+### Development
+
+#### Makefile -> Justfile (#617)
+
+- Migrate from `Makefile` to `justfile` for running development tasks
+- Update documentation to reference `just` commands
+
 ### Documentation
 
 Move documentation deployment to GitHub OIDC and AWS CLI.
