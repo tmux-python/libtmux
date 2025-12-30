@@ -239,8 +239,42 @@ type
 """
 ```
 
-### Doctest Guidelines
+### Doctests
 
+**All functions and methods MUST have working doctests.** Doctests serve as both documentation and tests.
+
+**CRITICAL RULES:**
+- Doctests MUST actually execute - never comment out function calls or similar
+- Doctests MUST NOT be converted to `.. code-block::` as a workaround (code-blocks don't run)
+- If you cannot create a working doctest, **STOP and ask for help**
+
+**Available tools for doctests:**
+- `doctest_namespace` fixtures: `server`, `session`, `window`, `pane`, `Server`, `Session`, `Window`, `Pane`, `request`
+- Ellipsis for variable output: `# doctest: +ELLIPSIS`
+- Update `conftest.py` to add new fixtures to `doctest_namespace`
+
+**`# doctest: +SKIP` is NOT permitted** - it's just another workaround that doesn't test anything. Use the fixtures properly - tmux is required to run tests anyway.
+
+**Using fixtures in doctests:**
+```python
+>>> server.new_session(session_name='my_session')  # server from doctest_namespace
+Session($... my_session)
+>>> session.new_window(window_name='my_window')  # session from doctest_namespace
+Window(@... ...:my_window, Session($... ...))
+>>> pane.send_keys('echo hello')  # pane from doctest_namespace
+>>> pane.capture_pane()  # doctest: +ELLIPSIS
+[...'echo hello'...]
+```
+
+**When output varies, use ellipsis:**
+```python
+>>> window.window_id  # doctest: +ELLIPSIS
+'@...'
+>>> session.session_id  # doctest: +ELLIPSIS
+'$...'
+```
+
+**Additional guidelines:**
 1. **Use narrative descriptions** for test sections rather than inline comments
 2. **Move complex examples** to dedicated test files at `tests/examples/<path_to_module>/test_<example>.py`
 3. **Keep doctests simple and focused** on demonstrating usage
