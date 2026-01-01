@@ -110,6 +110,7 @@ def test_control_engine_filters_doctests(
         "--doctest-modules",
         str(test_file),
     )
+    result.stdout.fnmatch_lines(["*deselected*"])
     result.assert_outcomes(passed=1)
 
 
