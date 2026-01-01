@@ -179,21 +179,3 @@ def control_client_logs(
                 stdout_f.close()
             with contextlib.suppress(Exception):
                 stderr_f.close()
-
-
-def pytest_collection_modifyitems(
-    config: pytest.Config,
-    items: list[pytest.Item],
-) -> None:
-    """Filter out doctests when running with control engine.
-
-    Remove doctests from collection to avoid pytest's _use_item_location
-    bug: DoctestItem.reportinfo() returns None lineno for fixture doctests,
-    which triggers assertion failure in _pytest/reports.py:420 when skipped.
-    """
-    engine_opt = config.getoption("--engine", default="subprocess")
-    if engine_opt != "control":
-        return
-
-    # Filter out DoctestItems - can't use skip markers due to pytest bug
-    items[:] = [item for item in items if not isinstance(item, DoctestItem)]

@@ -78,6 +78,41 @@ def test_repo_git_remote_checkout(
     result.assert_outcomes(passed=1)
 
 
+def test_control_engine_filters_doctests(
+    pytester: pytest.Pytester,
+) -> None:
+    """Doctests should be filtered when running with --engine=control."""
+    pytester.plugins = ["pytest_plugin"]
+    tests_path = pytester.path / "tests"
+    tests_path.mkdir()
+    test_file = tests_path / "example.py"
+    test_file.write_text(
+        textwrap.dedent(
+            """
+            def add(x, y):
+                \"\"\"Return x + y.
+
+                >>> add(1, 1)
+                3
+                \"\"\"
+                return x + y
+
+
+            def test_dummy():
+                assert True
+            """,
+        ),
+        encoding="utf-8",
+    )
+
+    result = pytester.runpytest(
+        "--engine=control",
+        "--doctest-modules",
+        str(test_file),
+    )
+    result.assert_outcomes(passed=1)
+
+
 def test_test_server(TestServer: t.Callable[..., Server]) -> None:
     """Test TestServer creates and cleans up server."""
     server = TestServer()
