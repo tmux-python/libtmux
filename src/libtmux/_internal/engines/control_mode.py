@@ -557,11 +557,15 @@ class ControlModeEngine(Engine):
 
     def can_switch_client(self) -> bool:
         """Return True if there is at least one non-control client attached."""
+        server_args = self._server_context.to_args() if self._server_context else ()
+        if self.process is None or self.process.pid is None:
+            with self._lock:
+                self._ensure_process(tuple(server_args))
+
         if self.process is None or self.process.pid is None:
             return False
 
         ctrl_pid = str(self.process.pid)
-        server_args = self._server_context.to_args() if self._server_context else ()
 
         proc = self.run(
             "list-clients",
