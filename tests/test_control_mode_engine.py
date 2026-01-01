@@ -66,14 +66,13 @@ def test_control_mode_engine_basic(tmp_path: pathlib.Path) -> None:
     )
 
     # cleanup
+    proc = engine.process
     server.kill()
-    # Engine process should terminate eventually (ControlModeEngine.close is called
-    # manually or via weakref/del)
-    # Server.kill() kills the tmux SERVER. The control mode client process should
-    # exit as a result.
-
-    engine.process.wait(timeout=2)
-    assert engine.process.poll() is not None
+    # Server.kill() now closes the engine, which should terminate the client.
+    assert proc is not None
+    proc.wait(timeout=2)
+    assert proc.poll() is not None
+    assert engine.process is None
 
 
 def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -188,9 +187,11 @@ def test_control_mode_custom_session_name(tmp_path: pathlib.Path) -> None:
     assert len(all_sessions) == 2
 
     # Cleanup
+    proc = engine.process
     server.kill()
-    assert engine.process is not None
-    engine.process.wait(timeout=2)
+    assert proc is not None
+    proc.wait(timeout=2)
+    assert engine.process is None
 
 
 def test_control_mode_control_session_existing(tmp_path: pathlib.Path) -> None:
@@ -221,9 +222,11 @@ def test_control_mode_control_session_existing(tmp_path: pathlib.Path) -> None:
     assert len(all_sessions) == 1  # Only shared_session
 
     # Cleanup
+    proc = control_engine.process
     server2.kill()
-    assert control_engine.process is not None
-    control_engine.process.wait(timeout=2)
+    assert proc is not None
+    proc.wait(timeout=2)
+    assert control_engine.process is None
 
 
 class RestartFixture(t.NamedTuple):

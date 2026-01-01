@@ -7,6 +7,7 @@ libtmux.server
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pathlib
@@ -541,13 +542,18 @@ class Server(
         >>> svr.is_alive()
         False
         """
-        proc = self.cmd("kill-server")
-        if proc.stderr:
-            stderr_text = " ".join(str(line) for line in proc.stderr)
-            if _is_daemon_not_up_error(stderr_text):
-                return
-            raise exc.LibTmuxException(proc.stderr)
-        logger.info("server killed", extra={"tmux_subcommand": "kill-server"})
+        try:
+            proc = self.cmd("kill-server")
+            if proc.stderr:
+                stderr_text = " ".join(str(line) for line in proc.stderr)
+                if _is_daemon_not_up_error(stderr_text):
+                    return
+                raise exc.LibTmuxException(proc.stderr)
+            logger.info("server killed", extra={"tmux_subcommand": "kill-server"})
+        finally:
+            # Ensure engine resources (e.g., control-mode threads) are released.
+            with contextlib.suppress(Exception):
+                self.engine.close()
 
     def kill_session(self, target_session: str | int) -> Server:
         """Kill tmux session.

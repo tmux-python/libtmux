@@ -196,6 +196,8 @@ def server(
 
     def fin() -> None:
         _reap_test_server(server.socket_name)
+        with contextlib.suppress(Exception):
+            server.engine.close()
 
     request.addfinalizer(fin)
 
