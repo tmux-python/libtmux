@@ -17,6 +17,7 @@ from libtmux.session import Session
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import namer
 from libtmux.window import Window
+from tests.helpers import wait_for_line
 
 if t.TYPE_CHECKING:
     from typing import TypeAlias
@@ -340,7 +341,14 @@ def test_new_window_with_environment(
     assert pane is not None
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
-        assert pane.capture_pane()[-2] == v
+
+        def _match(line: str, expected: str = v) -> bool:
+            stripped = line.strip()
+            # Match exact value or value after shell prompt ($ prefix)
+            return stripped == expected or stripped == f"$ {expected}"
+
+        lines = wait_for_line(pane, _match)
+        assert any(_match(line) for line in lines)
 
 
 def test_session_new_window_with_direction(

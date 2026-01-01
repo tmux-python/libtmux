@@ -10,6 +10,7 @@ https://docs.pytest.org/en/stable/deprecations.html
 
 from __future__ import annotations
 
+import pathlib
 import shutil
 import typing as t
 
