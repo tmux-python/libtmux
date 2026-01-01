@@ -169,7 +169,11 @@ def control_client_logs(
                 if proc.stdin:
                     proc.stdin.close()
             proc.terminate()
-            proc.wait(timeout=2)
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=2)
             with contextlib.suppress(Exception):
                 stdout_f.close()
             with contextlib.suppress(Exception):

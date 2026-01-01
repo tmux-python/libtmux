@@ -95,6 +95,7 @@ class ControlModeEngine(Engine):
         process_factory: _ProcessFactory | None = None,
         max_retries: int = 1,
         start_threads: bool = True,
+        shutdown_timeout: float = 2.0,
     ) -> None:
         """Initialize control mode engine.
 
@@ -128,6 +129,9 @@ class ControlModeEngine(Engine):
         start_threads : bool, optional
             Internal/testing hook to skip spawning reader/stderr threads when
             using a fake process that feeds the protocol directly. Default: True.
+        shutdown_timeout : float, optional
+            Time in seconds to wait for the control-mode process and threads
+            to shut down during :meth:`close`. Default: 2.0.
         """
         self.process: _ControlProcess | None = None
         self._lock = threading.Lock()
@@ -148,6 +152,7 @@ class ControlModeEngine(Engine):
         self._process_factory = process_factory
         self._max_retries = max(0, max_retries)
         self._start_threads = start_threads
+        self._shutdown_timeout = shutdown_timeout
 
     # Lifecycle ---------------------------------------------------------
     def close(self) -> None:
@@ -162,10 +167,16 @@ class ControlModeEngine(Engine):
 
         try:
             proc.terminate()
-            proc.wait(timeout=1)
+            proc.wait(timeout=self._shutdown_timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
-            proc.wait()
+            try:
+                proc.wait(timeout=self._shutdown_timeout)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Control Mode process did not exit within %.2fs",
+                    self._shutdown_timeout,
+                )
         finally:
             # Join threads to ensure clean shutdown (non-daemon threads).
             # Skip join if called from within the thread itself (e.g., during GC).
@@ -175,13 +186,23 @@ class ControlModeEngine(Engine):
                 and self._reader_thread.is_alive()
                 and self._reader_thread is not current
             ):
-                self._reader_thread.join(timeout=2)
+                self._reader_thread.join(timeout=self._shutdown_timeout)
+                if self._reader_thread.is_alive():
+                    logger.warning(
+                        "Control Mode reader thread did not exit within %.2fs",
+                        self._shutdown_timeout,
+                    )
             if (
                 self._stderr_thread is not None
                 and self._stderr_thread.is_alive()
                 and self._stderr_thread is not current
             ):
-                self._stderr_thread.join(timeout=2)
+                self._stderr_thread.join(timeout=self._shutdown_timeout)
+                if self._stderr_thread.is_alive():
+                    logger.warning(
+                        "Control Mode stderr thread did not exit within %.2fs",
+                        self._shutdown_timeout,
+                    )
 
             # Close pipes to avoid unraisable BrokenPipe errors on GC.
             for stream in (proc.stdin, proc.stdout, proc.stderr):
