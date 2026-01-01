@@ -449,9 +449,7 @@ class Pane(
             return stripped.startswith(("$ ", "% ", "# "))
 
         def _needs_retry(lines: list[str]) -> bool:
-            if not lines:
-                return True
-            return (
+            return (not lines) or (
                 len(lines) == 1
                 and _prompt_prefix(lines[0])
                 and not _prompt_only(lines[0])
