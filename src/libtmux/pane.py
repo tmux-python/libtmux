@@ -451,11 +451,11 @@ class Pane(
         def _needs_retry(lines: list[str]) -> bool:
             if not lines:
                 return True
-            if len(lines) == 1 and _prompt_prefix(lines[0]) and not _prompt_only(
-                lines[0]
-            ):
-                return True
-            return False
+            return (
+                len(lines) == 1
+                and _prompt_prefix(lines[0])
+                and not _prompt_only(lines[0])
+            )
 
         engine_name = self.server.engine.__class__.__name__
         if engine_name == "ControlModeEngine" and _needs_retry(output):
