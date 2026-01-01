@@ -409,7 +409,10 @@ def pytest_collection_modifyitems(
     bug: DoctestItem.reportinfo() returns None lineno for fixture doctests,
     which triggers assertion failure in _pytest/reports.py:420 when skipped.
     """
-    engine_opt = config.getoption("--engine", default="subprocess")
+    try:
+        engine_opt = config.getoption("--engine", default="subprocess")
+    except ValueError:
+        engine_opt = "subprocess"
     if engine_opt != "control":
         return
 
