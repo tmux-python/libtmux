@@ -82,6 +82,9 @@ def test_filter_sessions_handles_spaces_in_names() -> None:
 
     class DummyProcess:
         pid = 1000
+        stdin: t.TextIO | None = None
+        stdout: t.Iterable[str] | None = None
+        stderr: t.Iterable[str] | None = None
 
         def terminate(self) -> None:
             return None
