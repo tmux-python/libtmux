@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import pathlib
 import queue
+import subprocess
 import threading
 import time
 import typing as t
@@ -257,6 +258,38 @@ def test_can_switch_client_handles_empty_flags() -> None:
     engine.run = fake_run  # type: ignore[assignment]
 
     assert engine.can_switch_client() is True
+
+
+def test_close_warns_on_shutdown_timeout() -> None:
+    """Close should not hang if the control-mode process refuses to exit."""
+    engine = ControlModeEngine(start_threads=False, shutdown_timeout=0.01)
+
+    class DummyProcess:
+        pid = 1234
+        stdin: t.TextIO | None = None
+        stdout: t.Iterable[str] | None = None
+        stderr: t.Iterable[str] | None = None
+        terminate_called = False
+        kill_called = False
+
+        def terminate(self) -> None:
+            self.terminate_called = True
+
+        def kill(self) -> None:
+            self.kill_called = True
+
+        def wait(self, timeout: float | None = None) -> int:
+            timeout_value = 0.0 if timeout is None else timeout
+            raise subprocess.TimeoutExpired(cmd="tmux", timeout=timeout_value)
+
+    dummy = DummyProcess()
+    engine.process = dummy  # type: ignore[assignment]
+
+    engine.close()
+
+    assert dummy.terminate_called is True
+    assert dummy.kill_called is True
+    assert engine.process is None
 
 
 def test_control_mode_custom_session_name(tmp_path: pathlib.Path) -> None:
