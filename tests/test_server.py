@@ -200,6 +200,7 @@ def test_connect_restores_tmux_env_on_error(
     class DummyCmd:
         stdout: list[str] = []
         stderr: list[str] = ["boom"]
+        returncode: int = 1
 
     def fake_cmd(*args: t.Any, **kwargs: t.Any) -> DummyCmd:
         return DummyCmd()
