@@ -544,15 +544,16 @@ class ControlModeEngine(Engine):
 
         proc = self.run(
             "list-clients",
-            cmd_args=("-F", "#{client_pid} #{client_flags}"),
+            cmd_args=("-F", "#{client_pid}\t#{client_flags}"),
             server_args=server_args,
         )
         for line in proc.stdout:
-            parts = line.split()
-            if len(parts) >= 2:
-                pid, flags = parts[0], parts[1]
-                if "control-mode" not in flags and pid != ctrl_pid:
-                    return True
+            parts = line.split("\t", 1)
+            if len(parts) != 2:
+                continue
+            pid, flags = parts
+            if "control-mode" not in flags and pid != ctrl_pid:
+                return True
 
         return False
 
