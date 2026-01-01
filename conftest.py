@@ -10,17 +10,13 @@ https://docs.pytest.org/en/stable/deprecations.html
 
 from __future__ import annotations
 
-import contextlib
 import pathlib
 import shutil
-import subprocess
 import typing as t
-import uuid
 
 import pytest
 from _pytest.doctest import DoctestItem
 
-from libtmux._internal.engines.control_protocol import CommandContext, ControlProtocol
 from libtmux.pane import Pane
 from libtmux.pytest_plugin import USING_ZSH
 from libtmux.server import Server
@@ -78,104 +74,3 @@ def setup_session(
     """Session-level test configuration for pytest."""
     if USING_ZSH:
         request.getfixturevalue("zshrc")
-
-
-# ---------------------------------------------------------------------------
-# Control-mode sandbox helper
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-@contextlib.contextmanager
-def control_sandbox(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path_factory: pytest.TempPathFactory,
-) -> t.Iterator[Server]:
-    """Provide an isolated control-mode server for a test.
-
-    - Creates a unique tmux socket name per invocation
-    - Isolates HOME and TMUX_TMPDIR under a per-test temp directory
-    - Clears TMUX env var to avoid inheriting user sessions
-    - Uses ControlModeEngine; on exit, kills the server best-effort
-    """
-    socket_name = f"libtmux_test_{uuid.uuid4().hex[:8]}"
-    base = tmp_path_factory.mktemp("ctrl_sandbox")
-    home = base / "home"
-    tmux_tmpdir = base / "tmux"
-    home.mkdir()
-    tmux_tmpdir.mkdir()
-
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("TMUX_TMPDIR", str(tmux_tmpdir))
-    monkeypatch.delenv("TMUX", raising=False)
-
-    from libtmux._internal.engines.control_mode import ControlModeEngine
-
-    server = Server(socket_name=socket_name, engine=ControlModeEngine())
-
-    try:
-        yield server
-    finally:
-        with contextlib.suppress(Exception):
-            server.kill()
-        with contextlib.suppress(Exception):
-            server.engine.close()
-
-
-@pytest.fixture
-def control_client_logs(
-    control_sandbox: t.ContextManager[Server],
-    tmp_path_factory: pytest.TempPathFactory,
-) -> t.Iterator[tuple[subprocess.Popen[str], ControlProtocol, pathlib.Path]]:
-    """Spawn a raw tmux -C client against the sandbox and log stdout/stderr."""
-    base = tmp_path_factory.mktemp("ctrl_logs")
-    stdout_path = base / "control_stdout.log"
-    stderr_path = base / "control_stderr.log"
-
-    with control_sandbox as server:
-        cmd = [
-            "tmux",
-            "-L",
-            server.socket_name or "",
-            "-C",
-            "attach-session",
-            "-t",
-            "ctrltest",
-        ]
-        # Ensure ctrltest exists
-        server.cmd("new-session", "-d", "-s", "ctrltest")
-        stdout_f = stdout_path.open("w+", buffering=1)
-        stderr_f = stderr_path.open("w+", buffering=1)
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=stdout_f,
-            stderr=stderr_f,
-            text=True,
-            bufsize=1,
-        )
-        proto = ControlProtocol()
-        # tmux -C will emit a %begin/%end pair for this initial attach-session;
-        # queue a matching context so the parser has a pending command.
-        proto.register_command(CommandContext(argv=list(cmd)))
-        try:
-            yield proc, proto, stdout_path
-        finally:
-            with contextlib.suppress(Exception):
-                if proc.stdin:
-                    proc.stdin.write("kill-session -t ctrltest\n")
-                    proc.stdin.flush()
-            with contextlib.suppress(Exception):
-                if proc.stdin:
-                    proc.stdin.close()
-            with contextlib.suppress(Exception):
-                proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=2)
-            with contextlib.suppress(Exception):
-                stdout_f.close()
-            with contextlib.suppress(Exception):
-                stderr_f.close()
