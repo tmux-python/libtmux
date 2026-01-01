@@ -148,7 +148,7 @@ The following deprecations from 0.50.0 continue to emit {class}`DeprecationWarni
 - Internal control session is automatically filtered from `Server.sessions` /
   `Server.has_session()`; advanced users can inspect all sessions via
   `Server._sessions_all()`.
-- `ControlModeEngine` accepts `internal_session_name` (default `libtmux_control_mode`)
+- `ControlModeEngine` accepts `internal_session_name` (default `libtmux_ctrl_XXXXXXXX`)
   and `control_session` for advanced connection strategies.
 
 Example:
@@ -191,7 +191,7 @@ for notif in engine.iter_notifications(timeout=0.1):
 ### Compatibility
 
 - Control mode internal session filtering is engine-driven; callers no longer need
-  to manually exclude `libtmux_control_mode`. APIs stay unchanged; additional metadata
+  to manually exclude `libtmux_ctrl_*`. APIs stay unchanged; additional metadata
   is attached for advanced users. (#605)
 
 ## libtmux 0.50.1 (2025-12-06)
