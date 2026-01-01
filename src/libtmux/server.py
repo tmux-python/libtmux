@@ -7,6 +7,7 @@ libtmux.server
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pathlib
@@ -440,7 +441,12 @@ class Server(
         >>> svr.is_alive()
         False
         """
-        self.cmd("kill-server")
+        try:
+            self.cmd("kill-server")
+        finally:
+            # Ensure engine resources (e.g., control-mode threads) are released.
+            with contextlib.suppress(Exception):
+                self.engine.close()
 
     def kill_session(self, target_session: str | int) -> Server:
         """Kill tmux session.

@@ -163,7 +163,10 @@ def server(
     server = Server(socket_name=socket_name, engine=engine)
 
     def fin() -> None:
-        server.kill()
+        with contextlib.suppress(Exception):
+            server.kill()
+        with contextlib.suppress(Exception):
+            server.engine.close()
 
     request.addfinalizer(fin)
 
