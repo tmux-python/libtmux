@@ -17,8 +17,8 @@ from libtmux import exc
 from libtmux._internal.engines.base import ExitStatus
 from libtmux._internal.engines.control_mode import ControlModeEngine, _ControlProcess
 from libtmux._internal.engines.control_protocol import ControlProtocol
-from libtmux.session import Session
 from libtmux.server import Server
+from libtmux.session import Session
 
 
 def test_control_mode_engine_basic(tmp_path: pathlib.Path) -> None:
@@ -82,6 +82,15 @@ def test_filter_sessions_handles_spaces_in_names() -> None:
 
     class DummyProcess:
         pid = 1000
+
+        def terminate(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
 
     class DummyResult:
         def __init__(self, stdout: list[str]) -> None:

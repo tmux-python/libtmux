@@ -198,9 +198,10 @@ def test_connect_restores_tmux_env_on_error(
     monkeypatch.setenv("TMUX", "tmux-test")
 
     class DummyCmd:
-        stdout: list[str] = []
-        stderr: list[str] = ["boom"]
-        returncode: int = 1
+        def __init__(self) -> None:
+            self.stdout: list[str] = []
+            self.stderr: list[str] = ["boom"]
+            self.returncode: int = 1
 
     def fake_cmd(*args: t.Any, **kwargs: t.Any) -> DummyCmd:
         return DummyCmd()
