@@ -131,6 +131,8 @@ def control_sandbox(
     finally:
         with contextlib.suppress(Exception):
             server.kill()
+        with contextlib.suppress(Exception):
+            server.engine.close()
 
 
 @pytest.fixture
