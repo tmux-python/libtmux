@@ -165,6 +165,9 @@ def control_client_logs(
                 if proc.stdin:
                     proc.stdin.write("kill-session -t ctrltest\n")
                     proc.stdin.flush()
+            with contextlib.suppress(Exception):
+                if proc.stdin:
+                    proc.stdin.close()
             proc.terminate()
             proc.wait(timeout=2)
             with contextlib.suppress(Exception):

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import logging
 import shlex
 import shutil
@@ -165,10 +167,6 @@ class ControlModeEngine(Engine):
             proc.kill()
             proc.wait()
         finally:
-            self.process = None
-            self._server_args = None
-            self._protocol.mark_dead("engine closed")
-
             # Join threads to ensure clean shutdown (non-daemon threads).
             # Skip join if called from within the thread itself (e.g., during GC).
             current = threading.current_thread()
@@ -184,6 +182,16 @@ class ControlModeEngine(Engine):
                 and self._stderr_thread is not current
             ):
                 self._stderr_thread.join(timeout=2)
+
+            # Close pipes to avoid unraisable BrokenPipe errors on GC.
+            for stream in (proc.stdin, proc.stdout, proc.stderr):
+                if isinstance(stream, io.IOBase):
+                    with contextlib.suppress(Exception):
+                        stream.close()
+
+            self.process = None
+            self._server_args = None
+            self._protocol.mark_dead("engine closed")
 
     def __del__(self) -> None:  # pragma: no cover - best effort cleanup
         """Ensure subprocess is terminated on GC."""
