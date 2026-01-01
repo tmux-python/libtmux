@@ -422,4 +422,13 @@ def pytest_collection_modifyitems(
         return
 
     # Filter out DoctestItems - can't use skip markers due to pytest bug
-    items[:] = [item for item in items if not isinstance(item, DoctestItem)]
+    kept: list[pytest.Item] = []
+    removed: list[pytest.Item] = []
+    for item in items:
+        if isinstance(item, DoctestItem):
+            removed.append(item)
+        else:
+            kept.append(item)
+    if removed:
+        config.hook.pytest_deselected(items=removed)
+    items[:] = kept
