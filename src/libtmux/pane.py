@@ -441,10 +441,26 @@ class Pane(
         # In control mode, capture-pane can race the shell: the first capture
         # right after send-keys may return only the echoed command. Retry
         # briefly to allow the prompt/output to land.
+        def _prompt_only(line: str) -> bool:
+            return line.strip() in {"$", "%", "#"}
+
+        def _prompt_prefix(line: str) -> bool:
+            stripped = line.lstrip()
+            return stripped.startswith(("$ ", "% ", "# "))
+
+        def _needs_retry(lines: list[str]) -> bool:
+            if not lines:
+                return True
+            if len(lines) == 1 and _prompt_prefix(lines[0]) and not _prompt_only(
+                lines[0]
+            ):
+                return True
+            return False
+
         engine_name = self.server.engine.__class__.__name__
-        if engine_name == "ControlModeEngine" and not output:
+        if engine_name == "ControlModeEngine" and _needs_retry(output):
             deadline = time.monotonic() + 0.35
-            while not output and time.monotonic() < deadline:
+            while _needs_retry(output) and time.monotonic() < deadline:
                 time.sleep(0.05)
                 output = _trim(self.cmd(*cmd).stdout)
 
