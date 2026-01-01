@@ -17,6 +17,7 @@ from libtmux import exc
 from libtmux._internal.engines.base import ExitStatus
 from libtmux._internal.engines.control_mode import ControlModeEngine, _ControlProcess
 from libtmux._internal.engines.control_protocol import ControlProtocol
+from libtmux.session import Session
 from libtmux.server import Server
 
 
@@ -73,6 +74,47 @@ def test_control_mode_engine_basic(tmp_path: pathlib.Path) -> None:
     proc.wait(timeout=2)
     assert proc.poll() is not None
     assert engine.process is None
+
+
+def test_filter_sessions_handles_spaces_in_names() -> None:
+    """filter_sessions should handle session names that include spaces."""
+    engine = ControlModeEngine(start_threads=False)
+
+    class DummyProcess:
+        pid = 1000
+
+    class DummyResult:
+        def __init__(self, stdout: list[str]) -> None:
+            self.stdout = stdout
+
+    class DummySession:
+        def __init__(self, name: str) -> None:
+            self.session_name = name
+
+    engine.process = DummyProcess()  # type: ignore[assignment]
+
+    def fake_run(
+        cmd: str,
+        cmd_args: t.Sequence[str | int] | None = None,
+        server_args: t.Sequence[str | int] | None = None,
+        timeout: float | None = None,
+    ) -> DummyResult:
+        return DummyResult(
+            [
+                "1000\tcontrol-mode\tmy session",
+                "2000\t\tmy session",
+                "3000\tcontrol-mode\tother",
+            ],
+        )
+
+    engine.run = fake_run  # type: ignore[assignment]
+
+    sessions = t.cast(
+        list[Session],
+        [DummySession("my session"), DummySession("other")],
+    )
+    filtered = engine.filter_sessions(sessions)
+    assert [session.session_name for session in filtered] == ["my session"]
 
 
 def test_control_mode_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
