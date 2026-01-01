@@ -494,15 +494,15 @@ class ControlModeEngine(Engine):
             "list-clients",
             cmd_args=(
                 "-F",
-                "#{client_pid} #{client_flags} #{session_name}",
+                "#{client_pid}\t#{client_flags}\t#{session_name}",
             ),
             server_args=server_args,
         )
         pid_map: dict[str, list[tuple[str, str]]] = {}
         for line in proc.stdout:
-            parts = line.split()
+            parts = line.split("\t", 2)
             if len(parts) >= 3:
-                pid, flags, sess_name = parts[0], parts[1], parts[2]
+                pid, flags, sess_name = parts
                 pid_map.setdefault(sess_name, []).append((pid, flags))
 
         filtered: list[Session] = []
