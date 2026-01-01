@@ -565,22 +565,23 @@ class Server(
         if env:
             del os.environ["TMUX"]
 
-        proc = self.cmd(
-            "new-session",
-            "-d",
-            f"-s{session_name}",
-            "-P",
-            "-F#{session_id}",
-        )
+        try:
+            proc = self.cmd(
+                "new-session",
+                "-d",
+                f"-s{session_name}",
+                "-P",
+                "-F#{session_id}",
+            )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+            if proc.stderr:
+                raise exc.LibTmuxException(proc.stderr)
 
-        session_id = proc.stdout[0]
-
-        # Restore TMUX env var
-        if env:
-            os.environ["TMUX"] = env
+            session_id = proc.stdout[0]
+        finally:
+            # Restore TMUX env var
+            if env:
+                os.environ["TMUX"] = env
 
         return Session.from_session_id(
             server=self,

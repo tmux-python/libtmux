@@ -190,6 +190,28 @@ def test_connect_invalid_name(server: Server) -> None:
         server.connect("invalid:name")
 
 
+def test_connect_restores_tmux_env_on_error(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Server.connect should restore TMUX env var after failure."""
+    monkeypatch.setenv("TMUX", "tmux-test")
+
+    class DummyCmd:
+        stdout: list[str] = []
+        stderr: list[str] = ["boom"]
+
+    def fake_cmd(*args: t.Any, **kwargs: t.Any) -> DummyCmd:
+        return DummyCmd()
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+
+    with pytest.raises(exc.LibTmuxException):
+        server.connect("connect_fail")
+
+    assert os.environ.get("TMUX") == "tmux-test"
+
+
 def test_sessions_excludes_internal_control_mode(
     server: Server,
     request: pytest.FixtureRequest,
