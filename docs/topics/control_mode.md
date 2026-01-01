@@ -43,7 +43,7 @@ for notif in engine.iter_notifications(timeout=0.1):
 
 :::{note}
 Control mode creates an internal session for connection management (default name:
-`libtmux_control_mode`). This session is automatically filtered from
+`libtmux_ctrl_XXXXXXXX`). This session is automatically filtered from
 `Server.sessions` and `Server.has_session()` to maintain engine transparency.
 :::
 
@@ -97,8 +97,9 @@ For expert use cases, control mode can attach to an existing session instead of
 creating an internal one:
 
 ```python
-# Create a session first
-server.new_session("shared")
+# Create a session first (subprocess engine by default)
+bootstrap = Server()
+bootstrap.new_session("shared", attach=False)
 
 # Control mode attaches to it for its connection
 engine = ControlModeEngine(control_session="shared")
