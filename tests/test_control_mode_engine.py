@@ -216,6 +216,49 @@ def test_control_mode_per_command_timeout(monkeypatch: pytest.MonkeyPatch) -> No
     assert engine.process is None
 
 
+def test_can_switch_client_handles_empty_flags() -> None:
+    """can_switch_client should treat empty client_flags as valid."""
+    engine = ControlModeEngine(start_threads=False)
+
+    class DummyProcess:
+        pid = 1000
+        stdin: t.TextIO | None = None
+        stdout: t.Iterable[str] | None = None
+        stderr: t.Iterable[str] | None = None
+
+        def terminate(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+    class DummyResult:
+        def __init__(self, stdout: list[str]) -> None:
+            self.stdout = stdout
+
+    engine.process = DummyProcess()  # type: ignore[assignment]
+
+    def fake_run(
+        cmd: str,
+        cmd_args: t.Sequence[str | int] | None = None,
+        server_args: t.Sequence[str | int] | None = None,
+        timeout: float | None = None,
+    ) -> DummyResult:
+        return DummyResult(
+            [
+                "1000\tcontrol-mode",
+                "2000\t",
+            ],
+        )
+
+    engine.run = fake_run  # type: ignore[assignment]
+
+    assert engine.can_switch_client() is True
+
+
 def test_control_mode_custom_session_name(tmp_path: pathlib.Path) -> None:
     """Control mode engine can use custom internal session name."""
     socket_path = tmp_path / "tmux-custom-session-test"
