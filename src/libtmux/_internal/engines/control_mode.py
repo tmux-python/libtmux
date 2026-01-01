@@ -498,7 +498,7 @@ class ControlModeEngine(Engine):
         """
         tmux_bin = shutil.which("tmux")
         if tmux_bin is None:
-            return False
+            return None
 
         server_args = self._server_context.to_args() if self._server_context else ()
         result = subprocess.run(
