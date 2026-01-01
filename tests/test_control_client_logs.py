@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pathlib
 import typing as t
 
 import pytest
@@ -11,10 +12,10 @@ from libtmux._internal.engines.control_protocol import CommandContext, ControlPr
 
 @pytest.mark.engines(["control"])
 def test_control_client_lists_clients(
-    control_client_logs: tuple[t.Any, ControlProtocol],
+    control_client_logs: tuple[t.Any, ControlProtocol, pathlib.Path],
 ) -> None:
     """Raw control client should report itself with control-mode flag."""
-    proc, proto = control_client_logs
+    proc, proto, stdout_path = control_client_logs
 
     assert proc.stdin is not None
     list_ctx = CommandContext(
@@ -32,7 +33,8 @@ def test_control_client_lists_clients(
     proc.stdin.write("detach-client\n")
     proc.stdin.flush()
 
-    stdout_data, _ = proc.communicate(timeout=5)
+    proc.wait(timeout=5)
+    stdout_data = stdout_path.read_text()
     for line in stdout_data.splitlines():
         proto.feed_line(line.rstrip("\n"))
 
@@ -49,10 +51,10 @@ def test_control_client_lists_clients(
 
 @pytest.mark.engines(["control"])
 def test_control_client_capture_stream_parses(
-    control_client_logs: tuple[t.Any, ControlProtocol],
+    control_client_logs: tuple[t.Any, ControlProtocol, pathlib.Path],
 ) -> None:
     """Ensure ControlProtocol can parse raw stream from the logged control client."""
-    proc, proto = control_client_logs
+    proc, proto, stdout_path = control_client_logs
     assert proc.stdin is not None
 
     display_ctx = CommandContext(argv=["tmux", "display-message", "-p", "hello"])
@@ -63,7 +65,8 @@ def test_control_client_capture_stream_parses(
     proc.stdin.write("detach-client\n")
     proc.stdin.flush()
 
-    stdout_data, _ = proc.communicate(timeout=5)
+    proc.wait(timeout=5)
+    stdout_data = stdout_path.read_text()
 
     for line in stdout_data.splitlines():
         proto.feed_line(line.rstrip("\n"))
@@ -74,10 +77,10 @@ def test_control_client_capture_stream_parses(
 
 
 def test_control_client_notification_parsing(
-    control_client_logs: tuple[t.Any, ControlProtocol],
+    control_client_logs: tuple[t.Any, ControlProtocol, pathlib.Path],
 ) -> None:
     """Control client log stream should produce notifications."""
-    proc, proto = control_client_logs
+    proc, proto, stdout_path = control_client_logs
     assert proc.stdin is not None
 
     ctx = CommandContext(argv=["tmux", "display-message", "-p", "ping"])
@@ -87,7 +90,8 @@ def test_control_client_notification_parsing(
     proc.stdin.write("detach-client\n")
     proc.stdin.flush()
 
-    stdout_data, _ = proc.communicate(timeout=5)
+    proc.wait(timeout=5)
+    stdout_data = stdout_path.read_text()
     for line in stdout_data.splitlines():
         proto.feed_line(line.rstrip("\n"))
 
@@ -98,10 +102,10 @@ def test_control_client_notification_parsing(
 
 @pytest.mark.engines(["control"])
 def test_control_client_lists_control_flag(
-    control_client_logs: tuple[t.Any, ControlProtocol],
+    control_client_logs: tuple[t.Any, ControlProtocol, pathlib.Path],
 ) -> None:
     """list-clients should show control client with C flag on tmux >= 3.2."""
-    proc, proto = control_client_logs
+    proc, proto, stdout_path = control_client_logs
 
     assert proc.stdin is not None
     list_ctx = CommandContext(
@@ -120,7 +124,8 @@ def test_control_client_lists_control_flag(
     proc.stdin.write("detach-client\n")
     proc.stdin.flush()
 
-    stdout_data, _ = proc.communicate(timeout=5)
+    proc.wait(timeout=5)
+    stdout_data = stdout_path.read_text()
     for line in stdout_data.splitlines():
         proto.feed_line(line.rstrip("\n"))
 
