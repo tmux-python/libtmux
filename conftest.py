@@ -137,7 +137,7 @@ def control_sandbox(
 def control_client_logs(
     control_sandbox: t.ContextManager[Server],
     tmp_path_factory: pytest.TempPathFactory,
-) -> t.Iterator[tuple[subprocess.Popen[str], ControlProtocol]]:
+) -> t.Iterator[tuple[subprocess.Popen[str], ControlProtocol, pathlib.Path]]:
     """Spawn a raw tmux -C client against the sandbox and log stdout/stderr."""
     base = tmp_path_factory.mktemp("ctrl_logs")
     stdout_path = base / "control_stdout.log"
@@ -155,12 +155,12 @@ def control_client_logs(
         ]
         # Ensure ctrltest exists
         server.cmd("new-session", "-d", "-s", "ctrltest")
-        stdout_path.open("w+", buffering=1)
+        stdout_f = stdout_path.open("w+", buffering=1)
         stderr_f = stderr_path.open("w+", buffering=1)
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
+            stdout=stdout_f,
             stderr=stderr_f,
             text=True,
             bufsize=1,
@@ -170,7 +170,7 @@ def control_client_logs(
         # queue a matching context so the parser has a pending command.
         proto.register_command(CommandContext(argv=list(cmd)))
         try:
-            yield proc, proto
+            yield proc, proto, stdout_path
         finally:
             with contextlib.suppress(Exception):
                 if proc.stdin:
@@ -178,6 +178,10 @@ def control_client_logs(
                     proc.stdin.flush()
             proc.terminate()
             proc.wait(timeout=2)
+            with contextlib.suppress(Exception):
+                stdout_f.close()
+            with contextlib.suppress(Exception):
+                stderr_f.close()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
