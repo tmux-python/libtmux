@@ -364,3 +364,36 @@ def _build_engine(engine_name: str, control_session: str | None = None) -> Engin
     if engine_name == "control":
         return ControlModeEngine(control_session=control_session)
     return SubprocessEngine()
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Add CLI options for selecting tmux engine."""
+    parser.addoption(
+        "--engine",
+        action="store",
+        default="subprocess",
+        choices=["subprocess", "control"],
+        help="Select tmux engine for fixtures (default: subprocess).",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers",
+        (
+            "engines(names): run the test once for each engine in 'names' "
+            "(e.g. ['control', 'subprocess'])."
+        ),
+    )
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """Parametrize engine_name when requested by tests."""
+    if "engine_name" in metafunc.fixturenames:
+        marker = metafunc.definition.get_closest_marker("engines")
+        if marker:
+            params = list(marker.args[0])
+        else:
+            params = [metafunc.config.getoption("--engine")]
+        metafunc.parametrize("engine_name", params, indirect=True)
