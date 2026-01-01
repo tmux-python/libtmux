@@ -159,7 +159,8 @@ class ControlModeEngine(Engine):
         """Terminate the tmux control mode process and clean up threads.
 
         Terminates the subprocess and waits for reader/stderr threads to
-        finish. Non-daemon threads ensure clean shutdown without races.
+        finish. Threads are daemonized to avoid hanging interpreter shutdown
+        if cleanup is interrupted, but close() still joins for a clean exit.
         """
         proc = self.process
         if proc is None:
@@ -178,7 +179,13 @@ class ControlModeEngine(Engine):
                     self._shutdown_timeout,
                 )
         finally:
-            # Join threads to ensure clean shutdown (non-daemon threads).
+            # Close pipes first to unblock reader/stderr threads.
+            for stream in (proc.stdin, proc.stdout, proc.stderr):
+                if isinstance(stream, io.IOBase):
+                    with contextlib.suppress(Exception):
+                        stream.close()
+
+            # Join threads to ensure clean shutdown.
             # Skip join if called from within the thread itself (e.g., during GC).
             current = threading.current_thread()
             if (
@@ -203,12 +210,6 @@ class ControlModeEngine(Engine):
                         "Control Mode stderr thread did not exit within %.2fs",
                         self._shutdown_timeout,
                     )
-
-            # Close pipes to avoid unraisable BrokenPipe errors on GC.
-            for stream in (proc.stdin, proc.stdout, proc.stderr):
-                if isinstance(stream, io.IOBase):
-                    with contextlib.suppress(Exception):
-                        stream.close()
 
             self.process = None
             self._server_args = None
@@ -686,19 +687,19 @@ class ControlModeEngine(Engine):
         self._protocol.register_command(bootstrap_ctx)
 
         # Start IO threads after registration to avoid early protocol errors.
-        # Non-daemon threads ensure clean shutdown via join() in close().
+        # Daemon threads prevent interpreter hang if cleanup is interrupted.
         if self._start_threads:
             self._reader_thread = threading.Thread(
                 target=self._reader,
                 args=(self.process,),
-                daemon=False,
+                daemon=True,
             )
             self._reader_thread.start()
 
             self._stderr_thread = threading.Thread(
                 target=self._drain_stderr,
                 args=(self.process,),
-                daemon=False,
+                daemon=True,
             )
             self._stderr_thread.start()
 
