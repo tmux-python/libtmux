@@ -2925,7 +2925,7 @@ class Pane(
             version="0.33.0",
         )
 
-    def get(self, key: str, default: t.Any | None = None) -> t.Any:
+    def get(self, key: str, default: object | None = None) -> object:
         """Return key-based lookup. Deprecated by attributes.
 
         .. deprecated:: 0.17
@@ -2940,7 +2940,7 @@ class Pane(
             version="0.17.0",
         )
 
-    def __getitem__(self, key: str) -> t.Any:
+    def __getitem__(self, key: str) -> object:
         """Return item lookup by key. Deprecated in favor of attributes.
 
         .. deprecated:: 0.17
