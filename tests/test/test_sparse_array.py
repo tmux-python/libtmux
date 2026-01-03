@@ -7,13 +7,14 @@ import typing as t
 import pytest
 
 from libtmux._internal.sparse_array import SparseArray, is_sparse_array_list
+from libtmux.options import ExplodedComplexUntypedOptionsDict
 
 
 class IsSparseArrayListTestCase(t.NamedTuple):
     """Test case for is_sparse_array_list TypeGuard function."""
 
     test_id: str
-    input_dict: dict[str, t.Any]
+    input_dict: ExplodedComplexUntypedOptionsDict
     expected: bool
 
 
@@ -39,12 +40,12 @@ IS_SPARSE_ARRAY_LIST_TEST_CASES: list[IsSparseArrayListTestCase] = [
     IsSparseArrayListTestCase("empty_dict", {}, True),
     IsSparseArrayListTestCase(
         "sparse_arrays_only",
-        {"hook1": SparseArray(), "hook2": SparseArray()},
+        {"hook1": SparseArray[str | int](), "hook2": SparseArray[str | int]()},
         True,
     ),
     IsSparseArrayListTestCase(
         "mixed_values",
-        {"hook1": SparseArray(), "opt": "string"},
+        {"hook1": SparseArray[str | int](), "opt": "string"},
         False,
     ),
     IsSparseArrayListTestCase(
