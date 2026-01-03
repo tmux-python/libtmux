@@ -11,8 +11,8 @@ from libtmux._internal.query_list import (
     QueryList,
 )
 
-if t.TYPE_CHECKING:
-    from collections.abc import Callable
+FilterExpr: t.TypeAlias = t.Callable[[object], bool] | object | None
+ExpectedResult: t.TypeAlias = QueryList[object] | list[object]
 
 
 @dataclasses.dataclass
@@ -256,9 +256,9 @@ class Obj:
     ],
 )
 def test_filter(
-    items: list[dict[str, t.Any]],
-    filter_expr: Callable[[t.Any], bool] | t.Any | None,
-    expected_result: QueryList[t.Any] | list[dict[str, t.Any]],
+    items: list[object],
+    filter_expr: FilterExpr,
+    expected_result: ExpectedResult,
 ) -> None:
     qs = QueryList(items)
     if filter_expr is not None:
