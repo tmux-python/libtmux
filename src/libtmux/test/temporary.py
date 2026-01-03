@@ -39,6 +39,19 @@ class TempSessionParams(t.TypedDict, total=False):
     environment: dict[str, str] | None
 
 
+class TempSessionKwargs(t.TypedDict, total=False):
+    """Keyword arguments forwarded to :meth:`Server.new_session`."""
+
+    kill_session: bool
+    attach: bool
+    start_directory: StrPath | None
+    window_name: str | None
+    window_command: str | None
+    x: int | t.Literal["-"] | None
+    y: int | t.Literal["-"] | None
+    environment: dict[str, str] | None
+
+
 class TempWindowParams(t.TypedDict, total=False):
     """Keyword arguments for :func:`temp_window`."""
 
@@ -52,23 +65,44 @@ class TempWindowParams(t.TypedDict, total=False):
     target_window: str | None
 
 
+class TempWindowKwargs(t.TypedDict, total=False):
+    """Keyword arguments forwarded to :meth:`Session.new_window`."""
+
+    start_directory: StrPath | None
+    attach: bool
+    window_index: str
+    window_shell: str | None
+    environment: dict[str, str] | None
+    direction: WindowDirection | None
+    target_window: str | None
+
+
 @contextlib.contextmanager
 def _temp_session(
     server: Server,
     *args: t.Any,
-    **kwargs: t.Any,
+    **kwargs: object,
 ) -> t.Iterator[Session]:
-    if "session_name" in kwargs:
-        session_name = kwargs.pop("session_name")
+    kwargs_typed = t.cast("TempSessionParams", dict(kwargs))
+    if "session_name" in kwargs_typed:
+        session_name = kwargs_typed["session_name"]
     else:
         session_name = get_test_session_name(server)
+    kwargs_no_name = t.cast(
+        "TempSessionKwargs",
+        {k: v for k, v in kwargs_typed.items() if k != "session_name"},
+    )
 
-    session = server.new_session(session_name, *args, **kwargs)
+    session = server.new_session(
+        session_name,
+        *args,
+        **kwargs_no_name,
+    )
 
     try:
         yield session
     finally:
-        if server.has_session(session_name):
+        if isinstance(session_name, str) and server.has_session(session_name):
             session.kill()
 
 
@@ -83,14 +117,14 @@ def temp_session(
 def temp_session(
     server: Server,
     *args: t.Any,
-    **kwargs: t.Any,
+    **kwargs: object,
 ) -> contextlib.AbstractContextManager[Session]: ...
 
 
 def temp_session(
     server: Server,
     *args: t.Any,
-    **kwargs: t.Any,
+    **kwargs: object,
 ) -> contextlib.AbstractContextManager[Session]:
     """
     Return a context manager with a temporary session.
@@ -129,14 +163,23 @@ def temp_session(
 def _temp_window(
     session: Session,
     *args: t.Any,
-    **kwargs: t.Any,
+    **kwargs: object,
 ) -> t.Iterator[Window]:
-    if "window_name" not in kwargs:
-        window_name = get_test_window_name(session)
+    kwargs_typed = t.cast("TempWindowParams", dict(kwargs))
+    if "window_name" in kwargs_typed:
+        window_name = kwargs_typed["window_name"]
     else:
-        window_name = kwargs.pop("window_name")
+        window_name = get_test_window_name(session)
+    kwargs_no_name = t.cast(
+        "TempWindowKwargs",
+        {k: v for k, v in kwargs_typed.items() if k != "window_name"},
+    )
 
-    window = session.new_window(window_name, *args, **kwargs)
+    window = session.new_window(
+        window_name,
+        *args,
+        **kwargs_no_name,
+    )
 
     # Get ``window_id`` before returning it, it may be killed within context.
     window_id = window.window_id
@@ -161,14 +204,14 @@ def temp_window(
 def temp_window(
     session: Session,
     *args: t.Any,
-    **kwargs: t.Any,
+    **kwargs: object,
 ) -> contextlib.AbstractContextManager[Window]: ...
 
 
 def temp_window(
     session: Session,
     *args: t.Any,
-    **kwargs: t.Any,
+    **kwargs: object,
 ) -> contextlib.AbstractContextManager[Window]:
     """
     Return a context manager with a temporary window.
