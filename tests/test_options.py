@@ -443,7 +443,7 @@ class OptionDataclassTestFixture(t.NamedTuple):
     tmux_option: str  # e.g. terminal-features
 
     # results
-    expected: t.Any  # e.g. 50, TerminalFeatures({}), etc.
+    expected: dict[str, str | list[str]]
     dataclass_attribute: str  # e.g. terminal_features
 
 
@@ -503,7 +503,7 @@ def test_mocked_cmd_stdoutclass_fixture(
     test_id: str,
     mocked_cmd_stdout: list[str],
     tmux_option: str,
-    expected: t.Any,
+    expected: dict[str, str | list[str]],
     dataclass_attribute: str,
     server: Server,
 ) -> None:
@@ -528,7 +528,7 @@ def test_show_option_pane_fixture(
     test_id: str,
     mocked_cmd_stdout: list[str],
     tmux_option: str,
-    expected: t.Any,
+    expected: dict[str, str | list[str]],
     dataclass_attribute: str,
     server: Server,
 ) -> None:
