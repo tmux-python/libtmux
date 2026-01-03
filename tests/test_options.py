@@ -23,6 +23,7 @@ from libtmux.options import TerminalOverrides, convert_values, explode_arrays
 from libtmux.pane import Pane
 
 if t.TYPE_CHECKING:
+    from _pytest.mark.structures import ParameterSet
     from typing_extensions import LiteralString
 
     from libtmux.server import Server
@@ -768,7 +769,7 @@ class OptionTestCase(t.NamedTuple):
     test_id: str
     option: str  # tmux option name (hyphenated)
     scope: OptionScope
-    test_value: t.Any  # Value to set
+    test_value: str | int  # Value to set
     expected_type: type  # Expected Python type after retrieval
     min_version: str | None = None  # Minimum tmux version required
     xfail_reason: str | None = None  # Mark as expected failure with reason
@@ -1120,11 +1121,11 @@ ALL_OPTION_TEST_CASES: list[OptionTestCase] = (
 )
 
 
-def _build_option_params() -> list[t.Any]:
+def _build_option_params() -> list[ParameterSet]:
     """Build pytest params with appropriate marks."""
     params = []
     for tc in ALL_OPTION_TEST_CASES:
-        marks: list[t.Any] = []
+        marks: list[pytest.MarkDecorator] = []
         if tc.xfail_reason:
             marks.append(pytest.mark.xfail(reason=tc.xfail_reason))
         params.append(pytest.param(tc, id=tc.test_id, marks=marks))
@@ -1233,7 +1234,7 @@ SHOW_OPTIONS_TEST_CASES: list[ShowOptionsTestCase] = [
 ]
 
 
-def _build_show_options_params() -> list[t.Any]:
+def _build_show_options_params() -> list[ParameterSet]:
     """Build pytest params for show_options tests."""
     return [pytest.param(tc, id=tc.test_id) for tc in SHOW_OPTIONS_TEST_CASES]
 
@@ -1284,7 +1285,7 @@ class ConvertValuesSparseTestCase(t.NamedTuple):
 
     test_id: str
     initial_values: dict[int, str]  # index -> value
-    expected_converted: dict[int, t.Any]  # index -> converted value
+    expected_converted: dict[int, bool | int | str]
 
 
 CONVERT_SPARSE_TEST_CASES: list[ConvertValuesSparseTestCase] = [
