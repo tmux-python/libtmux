@@ -27,7 +27,7 @@ def temp_session(
     server: Server,
     *args: t.Any,
     **kwargs: t.Any,
-) -> Generator[Session, t.Any, t.Any]:
+) -> Generator[Session, None, None]:
     """
     Return a context manager with a temporary session.
 
@@ -78,7 +78,7 @@ def temp_window(
     session: Session,
     *args: t.Any,
     **kwargs: t.Any,
-) -> Generator[Window, t.Any, t.Any]:
+) -> Generator[Window, None, None]:
     """
     Return a context manager with a temporary window.
 
