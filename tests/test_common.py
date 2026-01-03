@@ -347,7 +347,7 @@ def test_version_parsing(
         stdout = mock_stdout
         stderr = mock_stderr
 
-    def mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> MockTmuxOutput:
+    def mock_tmux_cmd(*args: object, **kwargs: object) -> MockTmuxOutput:
         return MockTmuxOutput()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
