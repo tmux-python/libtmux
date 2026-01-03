@@ -910,7 +910,7 @@ class Window(
             global_=g,
         )
 
-    def get(self, key: str, default: t.Any | None = None) -> t.Any:
+    def get(self, key: str, default: object | None = None) -> object:
         """Return key-based lookup. Deprecated by attributes.
 
         .. deprecated:: 0.17
@@ -925,7 +925,7 @@ class Window(
             version="0.17.0",
         )
 
-    def __getitem__(self, key: str) -> t.Any:
+    def __getitem__(self, key: str) -> object:
         """Return item lookup by key. Deprecated in favor of attributes.
 
         .. deprecated:: 0.17
@@ -954,7 +954,7 @@ class Window(
             version="0.16.0",
         )
 
-    def where(self, kwargs: dict[str, t.Any]) -> list[Pane]:
+    def where(self, kwargs: dict[str, object]) -> list[Pane]:
         """Filter through panes, return list of :class:`Pane`.
 
         .. deprecated:: 0.17
@@ -968,7 +968,7 @@ class Window(
             version="0.17.0",
         )
 
-    def find_where(self, kwargs: dict[str, t.Any]) -> Pane | None:
+    def find_where(self, kwargs: dict[str, object]) -> Pane | None:
         """Filter through panes, return first :class:`Pane`.
 
         .. deprecated:: 0.17
