@@ -25,7 +25,7 @@ if t.TYPE_CHECKING:
     ListExtraArgs = tuple[str] | None
 
 
-OutputRaw = dict[str, t.Any]
+OutputRaw = dict[str, str]
 OutputsRaw = list[OutputRaw]
 
 
