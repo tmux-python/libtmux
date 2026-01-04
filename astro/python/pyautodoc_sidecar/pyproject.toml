@@ -3,7 +3,9 @@ name = "pyautodoc-sidecar"
 version = "0.0.1"
 description = "Python sidecar for the libtmux autodoc pipeline."
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "docutils",
+]
 
 [build-system]
 requires = ["hatchling"]
