@@ -118,6 +118,9 @@ importers:
       '@libtmux/py-bridge':
         specifier: workspace:*
         version: link:../py-bridge
+      '@libtmux/py-introspect':
+        specifier: workspace:*
+        version: link:../py-introspect
       '@libtmux/py-parse':
         specifier: workspace:*
         version: link:../py-parse

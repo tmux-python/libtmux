@@ -14,5 +14,5 @@ const value = variable.value ? `= ${variable.value}` : ''
   <div class="autodoc-signature">
     {signature} {value}
   </div>
-  <Docstring value={variable.docstring} />
+  <Docstring value={variable.docstring} html={variable.docstringHtml} />
 </section>

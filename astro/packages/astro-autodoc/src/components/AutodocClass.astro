@@ -22,7 +22,7 @@ const bases = klass.bases.length > 0 ? `(${klass.bases.join(', ')})` : ''
     ) : null}
   </header>
 
-  <Docstring value={klass.docstring} />
+  <Docstring value={klass.docstring} html={klass.docstringHtml} />
 
   {klass.attributes.length > 0 ? (
     <div class="autodoc-divider">

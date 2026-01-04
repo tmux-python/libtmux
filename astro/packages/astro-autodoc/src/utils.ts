@@ -9,6 +9,10 @@ export const formatSignature = (signature: string, returns: string | null): stri
     return signature
   }
 
+  if (signature.includes('->')) {
+    return signature
+  }
+
   return `${signature} -> ${returns}`
 }
 

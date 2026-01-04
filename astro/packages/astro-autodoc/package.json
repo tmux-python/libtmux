@@ -23,6 +23,7 @@
   "dependencies": {
     "@libtmux/api-model": "workspace:*",
     "@libtmux/py-bridge": "workspace:*",
+    "@libtmux/py-introspect": "workspace:*",
     "@libtmux/py-parse": "workspace:*"
   },
   "peerDependencies": {

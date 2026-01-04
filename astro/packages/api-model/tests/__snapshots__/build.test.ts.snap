@@ -10,7 +10,10 @@ exports[`buildApiPackage > builds a package model suitable for rendering 1`] = `
           "attributes": [
             {
               "annotation": "str",
+              "annotationValue": null,
               "docstring": null,
+              "docstringFormat": "unknown",
+              "docstringHtml": null,
               "isPrivate": false,
               "kind": "variable",
               "location": {
@@ -26,7 +29,10 @@ exports[`buildApiPackage > builds a package model suitable for rendering 1`] = `
             },
             {
               "annotation": "int",
+              "annotationValue": null,
               "docstring": null,
+              "docstringFormat": "unknown",
+              "docstringHtml": null,
               "isPrivate": false,
               "kind": "variable",
               "location": {
@@ -46,6 +52,8 @@ exports[`buildApiPackage > builds a package model suitable for rendering 1`] = `
             "dataclasses.dataclass",
           ],
           "docstring": "Widget model.",
+          "docstringFormat": "unknown",
+          "docstringHtml": null,
           "isPrivate": false,
           "kind": "class",
           "location": {
@@ -64,6 +72,8 @@ Returns
 -------
 str
     Label string.",
+              "docstringFormat": "unknown",
+              "docstringHtml": null,
               "isAsync": false,
               "isPrivate": false,
               "kind": "method",
@@ -77,6 +87,7 @@ str
               "parameters": [
                 {
                   "annotation": null,
+                  "annotationValue": null,
                   "default": null,
                   "kind": "positional-or-keyword",
                   "name": "self",
@@ -85,6 +96,7 @@ str
               ],
               "qualname": "sample_module.Widget.label",
               "returns": "str",
+              "returnsValue": null,
               "signature": "(self)",
               "summary": "Return a label.",
             },
@@ -97,7 +109,10 @@ str
           "attributes": [
             {
               "annotation": "int",
+              "annotationValue": null,
               "docstring": null,
+              "docstringFormat": "unknown",
+              "docstringHtml": null,
               "isPrivate": false,
               "kind": "variable",
               "location": {
@@ -115,6 +130,8 @@ str
           "bases": [],
           "decorators": [],
           "docstring": "Container type.",
+          "docstringFormat": "unknown",
+          "docstringHtml": null,
           "isPrivate": false,
           "kind": "class",
           "location": {
@@ -135,6 +152,8 @@ Returns
 -------
 int
     Item count.",
+              "docstringFormat": "unknown",
+              "docstringHtml": null,
               "isAsync": false,
               "isPrivate": false,
               "kind": "method",
@@ -148,6 +167,7 @@ int
               "parameters": [
                 {
                   "annotation": null,
+                  "annotationValue": null,
                   "default": null,
                   "kind": "positional-or-keyword",
                   "name": "self",
@@ -156,6 +176,7 @@ int
               ],
               "qualname": "sample_module.Container.item_count",
               "returns": "int",
+              "returnsValue": null,
               "signature": "(self)",
               "summary": "Return count of items.",
             },
@@ -163,6 +184,8 @@ int
               "className": "Container",
               "decorators": [],
               "docstring": "Refresh the container.",
+              "docstringFormat": "unknown",
+              "docstringHtml": null,
               "isAsync": true,
               "isPrivate": false,
               "kind": "method",
@@ -176,6 +199,7 @@ int
               "parameters": [
                 {
                   "annotation": null,
+                  "annotationValue": null,
                   "default": null,
                   "kind": "positional-or-keyword",
                   "name": "self",
@@ -184,6 +208,7 @@ int
               ],
               "qualname": "sample_module.Container.refresh",
               "returns": "None",
+              "returnsValue": null,
               "signature": "(self)",
               "summary": "Refresh the container.",
             },
@@ -194,6 +219,8 @@ int
         },
       ],
       "docstring": "Sample module for AST scanning.",
+      "docstringFormat": "unknown",
+      "docstringHtml": null,
       "exports": [],
       "functions": [
         {
@@ -209,6 +236,8 @@ Returns
 -------
 str
     Greeting string.",
+          "docstringFormat": "unknown",
+          "docstringHtml": null,
           "isAsync": false,
           "isPrivate": false,
           "kind": "function",
@@ -222,6 +251,7 @@ str
           "parameters": [
             {
               "annotation": "str",
+              "annotationValue": null,
               "default": null,
               "kind": "positional-or-keyword",
               "name": "name",
@@ -230,6 +260,7 @@ str
           ],
           "qualname": "sample_module.greet",
           "returns": "str",
+          "returnsValue": null,
           "signature": "(name: str)",
           "summary": "Return a friendly greeting.",
         },
@@ -246,6 +277,8 @@ Returns
 -------
 typing.Any
     Input value.",
+          "docstringFormat": "unknown",
+          "docstringHtml": null,
           "isAsync": false,
           "isPrivate": false,
           "kind": "function",
@@ -259,6 +292,7 @@ typing.Any
           "parameters": [
             {
               "annotation": "t.Any",
+              "annotationValue": null,
               "default": null,
               "kind": "positional-or-keyword",
               "name": "value",
@@ -267,6 +301,7 @@ typing.Any
           ],
           "qualname": "sample_module.uses_typing",
           "returns": "t.Any",
+          "returnsValue": null,
           "signature": "(value: t.Any)",
           "summary": "Return provided value.",
         },
@@ -291,7 +326,10 @@ typing.Any
       "variables": [
         {
           "annotation": "str",
+          "annotationValue": null,
           "docstring": null,
+          "docstringFormat": "unknown",
+          "docstringHtml": null,
           "isPrivate": false,
           "kind": "variable",
           "location": {
