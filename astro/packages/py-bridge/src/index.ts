@@ -53,10 +53,7 @@ export const resolvePythonCommand = async (override?: PythonCommand): Promise<Py
   return FALLBACK_COMMAND
 }
 
-export const mergePythonPath = (
-  env: NodeJS.ProcessEnv | undefined,
-  extraPath: string,
-): NodeJS.ProcessEnv => {
+export const mergePythonPath = (env: NodeJS.ProcessEnv | undefined, extraPath: string): NodeJS.ProcessEnv => {
   const current = env?.PYTHONPATH ?? process.env.PYTHONPATH ?? ''
   const pythonPath = [extraPath, current].filter(Boolean).join(path.delimiter)
 
@@ -67,10 +64,7 @@ export const mergePythonPath = (
   }
 }
 
-export const runPythonJson = async (
-  args: string[],
-  options: PythonRunOptions = {},
-): Promise<unknown> => {
+export const runPythonJson = async (args: string[], options: PythonRunOptions = {}): Promise<unknown> => {
   const command = await resolvePythonCommand(options.pythonCommand)
   const result = await execa(command[0], [...command.slice(1), ...args], {
     cwd: options.cwd,
