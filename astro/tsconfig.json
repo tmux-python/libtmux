@@ -18,23 +18,31 @@
     "declarationMap": true,
     "baseUrl": ".",
     "paths": {
-      "@libtmux/py-ast": ["./packages/core/py-ast/src"],
-      "@libtmux/api-model": ["./packages/core/api-model/src"],
-      "@libtmux/intersphinx": ["./packages/core/intersphinx/src"],
-      "@libtmux/astro-autodoc": ["./packages/astro/autodoc/src"],
-      "@libtmux/astro-intersphinx": ["./packages/astro/intersphinx/src"],
-      "@libtmux/docs-site": ["./packages/site/docs"]
+      "@libtmux/schema": ["./packages/schema/src"],
+      "@libtmux/py-bridge": ["./packages/py-bridge/src"],
+      "@libtmux/py-parse": ["./packages/py-parse/src"],
+      "@libtmux/py-introspect": ["./packages/py-introspect/src"],
+      "@libtmux/api-model": ["./packages/api-model/src"],
+      "@libtmux/core": ["./packages/core/src"],
+      "@libtmux/intersphinx": ["./packages/intersphinx/src"],
+      "@libtmux/astro-autodoc": ["./packages/astro-autodoc/src"],
+      "@libtmux/astro-intersphinx": ["./packages/astro-intersphinx/src"],
+      "@libtmux/docs-site": ["./apps/docs"]
     },
     "sourceMap": true,
     "useDefineForClassFields": true
   },
   "files": [],
   "references": [
-    { "path": "./packages/core/py-ast" },
-    { "path": "./packages/core/api-model" },
-    { "path": "./packages/core/intersphinx" },
-    { "path": "./packages/astro/autodoc" },
-    { "path": "./packages/astro/intersphinx" },
-    { "path": "./packages/site/docs" }
+    { "path": "./packages/schema" },
+    { "path": "./packages/py-bridge" },
+    { "path": "./packages/py-parse" },
+    { "path": "./packages/py-introspect" },
+    { "path": "./packages/api-model" },
+    { "path": "./packages/core" },
+    { "path": "./packages/intersphinx" },
+    { "path": "./packages/astro-autodoc" },
+    { "path": "./packages/astro-intersphinx" },
+    { "path": "./apps/docs" }
   ]
 }
