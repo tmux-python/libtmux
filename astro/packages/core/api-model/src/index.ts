@@ -1,2 +1,2 @@
-export * from './build'
-export * from './schema'
+export * from './build.ts'
+export * from './schema.ts'

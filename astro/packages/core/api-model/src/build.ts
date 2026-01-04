@@ -14,7 +14,7 @@ import {
   ApiParameterSchema,
   type ApiVariable,
   ApiVariableSchema,
-} from './schema'
+} from './schema.ts'
 
 export type BuildOptions = {
   name: string

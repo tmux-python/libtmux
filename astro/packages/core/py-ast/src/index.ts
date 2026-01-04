@@ -1,7 +1,14 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execa } from 'execa'
-import { type PyImport, type PyModule, PyModuleArraySchema, PyModuleSchema, type PyNode, PyNodeSchema } from './schema'
+import {
+  type PyImport,
+  type PyModule,
+  PyModuleArraySchema,
+  PyModuleSchema,
+  type PyNode,
+  PyNodeSchema,
+} from './schema.ts'
 
 export type PythonCommand = [string, ...string[]]
 
@@ -126,4 +133,4 @@ export function* walkPyNodes(modules: PyModule[]): Generator<PyQualifiedNode> {
 
 export const parsePyNode = (input: unknown): PyNode => PyNodeSchema.parse(input)
 
-export * from './schema'
+export * from './schema.ts'
