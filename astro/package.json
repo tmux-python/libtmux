@@ -15,7 +15,7 @@
     "ncu": "pnpm run --recursive ncu",
     "ncu-local": "ncu",
     "biome-all": "pnpm run --recursive biome",
-    "biome-full": "biome lint . --apply --max-diagnostics=100 && biome check . --apply && biome format . --write",
+    "biome-full": "biome lint . --write --max-diagnostics=100 && biome check . --write && biome format . --write",
     "test": "pnpm run --recursive test",
     "update": "pnpm run --recursive update",
     "update:all": "ncu -u; pnpm --recursive run 'ncu' -u",
