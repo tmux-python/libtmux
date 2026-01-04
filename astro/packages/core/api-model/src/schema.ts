@@ -9,13 +9,7 @@ export const ApiLocationSchema = z.object({
 
 export const ApiParameterSchema = z.object({
   name: z.string(),
-  kind: z.enum([
-    'positional-only',
-    'positional-or-keyword',
-    'var-positional',
-    'keyword-only',
-    'var-keyword',
-  ]),
+  kind: z.enum(['positional-only', 'positional-or-keyword', 'var-positional', 'keyword-only', 'var-keyword']),
   annotation: z.string().nullable(),
   default: z.string().nullable(),
   signature: z.string(),
