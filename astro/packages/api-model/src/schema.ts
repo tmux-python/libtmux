@@ -11,6 +11,7 @@ export const ApiParameterSchema = z.object({
   name: z.string(),
   kind: z.enum(['positional-only', 'positional-or-keyword', 'var-positional', 'keyword-only', 'var-keyword']),
   annotation: z.string().nullable(),
+  annotationValue: z.string().nullable().optional(),
   default: z.string().nullable(),
   signature: z.string(),
 })
@@ -19,6 +20,8 @@ export const ApiBaseSchema = z.object({
   name: z.string(),
   qualname: z.string(),
   docstring: z.string().nullable(),
+  docstringFormat: z.enum(['rst', 'markdown', 'plain', 'unknown']),
+  docstringHtml: z.string().nullable(),
   summary: z.string().nullable(),
   isPrivate: z.boolean(),
   location: ApiLocationSchema,
@@ -29,6 +32,7 @@ export const ApiFunctionSchema = ApiBaseSchema.extend({
   signature: z.string(),
   parameters: z.array(ApiParameterSchema),
   returns: z.string().nullable(),
+  returnsValue: z.string().nullable().optional(),
   decorators: z.array(z.string()),
   isAsync: z.boolean(),
 })
@@ -41,6 +45,7 @@ export const ApiMethodSchema = ApiFunctionSchema.extend({
 export const ApiVariableSchema = ApiBaseSchema.extend({
   kind: z.literal('variable'),
   annotation: z.string().nullable(),
+  annotationValue: z.string().nullable().optional(),
   value: z.string().nullable(),
 })
 
