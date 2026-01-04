@@ -1,13 +1,10 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
 import { scanPythonPaths } from '@libtmux/py-ast'
+import { describe, expect, it } from 'vitest'
 import { buildApiPackage } from '../src/build'
 
-const fixturesRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../py-ast/tests/fixtures',
-)
+const fixturesRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../py-ast/tests/fixtures')
 
 const samplePath = path.join(fixturesRoot, 'sample_module.py')
 

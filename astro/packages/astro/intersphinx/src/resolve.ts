@@ -1,9 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import {
-  parseInventory,
-  type IntersphinxInventory,
-  type IntersphinxItem,
-} from '@libtmux/intersphinx'
+import { type IntersphinxInventory, type IntersphinxItem, parseInventory } from '@libtmux/intersphinx'
 
 export type IntersphinxRef = {
   name: string
@@ -29,10 +25,7 @@ export const resolveIntersphinx = (
   return index.get(`${domain}:${role}:${ref.name}`)
 }
 
-export const loadInventoryFromFile = async (
-  filePath: string,
-  baseUrl: string,
-): Promise<IntersphinxInventory> => {
+export const loadInventoryFromFile = async (filePath: string, baseUrl: string): Promise<IntersphinxInventory> => {
   const buffer = await readFile(filePath)
   return parseInventory(buffer, baseUrl)
 }
