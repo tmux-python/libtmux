@@ -1,0 +1,15 @@
+---
+import { resolveIntersphinx } from '../resolve'
+
+const { inventory, ref, label, class: className } = Astro.props
+const item = resolveIntersphinx(inventory, ref)
+const text = label ?? item?.displayName ?? ref.name
+---
+
+{item ? (
+  <a href={item.url} class={className}>
+    {text}
+  </a>
+) : (
+  <span class={className}>{text}</span>
+)}
