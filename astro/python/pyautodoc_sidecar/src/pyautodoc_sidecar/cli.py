@@ -66,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
         choices=["string", "value"],
         default="string",
     )
+    intro_module.add_argument("--mock-import", action="append", default=[])
+    intro_module.add_argument("--autodoc-mock", action="store_true")
 
     intro_package = subparsers.add_parser(
         "introspect-package", help="Introspect a package."
@@ -78,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         choices=["string", "value"],
         default="string",
     )
+    intro_package.add_argument("--mock-import", action="append", default=[])
+    intro_package.add_argument("--autodoc-mock", action="store_true")
 
     args = parser.parse_args(argv)
     payload: dict[str, t.Any]
@@ -95,6 +99,8 @@ def main(argv: list[str] | None = None) -> int:
                 root=root,
                 include_private=args.include_private,
                 annotation_format=args.annotation_format,
+                mock_imports=args.mock_import,
+                autodoc_mock=args.autodoc_mock,
             )
         ]
         payload = {"protocolVersion": PROTOCOL_VERSION, "modules": modules}
@@ -105,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
             root=root,
             include_private=args.include_private,
             annotation_format=args.annotation_format,
+            mock_imports=args.mock_import,
+            autodoc_mock=args.autodoc_mock,
         )
         payload = {"protocolVersion": PROTOCOL_VERSION, "modules": modules}
     else:
