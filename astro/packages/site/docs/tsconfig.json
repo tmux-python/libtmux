@@ -2,16 +2,11 @@
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "composite": true,
-    "rootDir": "src",
     "outDir": "dist",
-    "types": ["astro/client"]
+    "types": ["astro/client"],
+    "rootDir": "../../",
+    "paths": {}
   },
   "include": ["src", "tests"],
-  "references": [
-    { "path": "../../core/py-ast" },
-    { "path": "../../core/api-model" },
-    { "path": "../../core/intersphinx" },
-    { "path": "../../astro/autodoc" },
-    { "path": "../../astro/intersphinx" }
-  ]
+  "references": []
 }
