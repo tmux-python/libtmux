@@ -10,4 +10,27 @@ describe('PyIntrospectPayloadSchema', () => {
 
     expect(() => PyIntrospectPayloadSchema.parse(payload)).not.toThrow()
   })
+
+  it('accepts a minimal module payload', () => {
+    const payload = {
+      protocolVersion: 1,
+      modules: [
+        {
+          kind: 'module',
+          name: 'demo',
+          qualname: 'demo',
+          isPrivate: false,
+          classes: [],
+          functions: [],
+          variables: [],
+          docstringRaw: null,
+          docstringFormat: 'unknown',
+          docstringHtml: null,
+          summary: null,
+        },
+      ],
+    }
+
+    expect(() => PyIntrospectPayloadSchema.parse(payload)).not.toThrow()
+  })
 })
