@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mergePythonPath, runPythonJson, type PythonCommand } from '@libtmux/py-bridge'
-import { PyIntrospectPayloadSchema, type PyIntrospectPayload } from '@libtmux/schema'
+import { mergePythonPath, type PythonCommand, runPythonJson } from '@libtmux/py-bridge'
+import { type PyIntrospectPayload, PyIntrospectPayloadSchema } from '@libtmux/schema'
 
 export type IntrospectOptions = {
   root?: string

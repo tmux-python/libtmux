@@ -1,13 +1,13 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { mergePythonPath, runPythonJson, type PythonCommand } from '@libtmux/py-bridge'
+import { mergePythonPath, type PythonCommand, runPythonJson } from '@libtmux/py-bridge'
 import {
-  PyModuleSchema,
-  PyNodeSchema,
-  PyParsePayloadSchema,
   type PyImport,
   type PyModule,
+  PyModuleSchema,
   type PyNode,
+  PyNodeSchema,
+  PyParsePayloadSchema,
 } from '@libtmux/schema'
 
 export type ScanOptions = {
