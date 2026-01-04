@@ -1,9 +1,9 @@
 import { inflateSync } from 'node:zlib'
 import {
-  IntersphinxInventorySchema,
-  IntersphinxItemSchema,
   type IntersphinxInventory,
+  IntersphinxInventorySchema,
   type IntersphinxItem,
+  IntersphinxItemSchema,
 } from './schema'
 
 const HEADER_LINES = 4

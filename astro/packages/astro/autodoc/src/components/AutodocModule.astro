@@ -1,10 +1,10 @@
 ---
 import '../styles.css'
+import { slugify } from '../utils'
 import AutodocClass from './AutodocClass.astro'
 import AutodocFunction from './AutodocFunction.astro'
 import AutodocVariable from './AutodocVariable.astro'
 import Docstring from './Docstring.astro'
-import { slugify } from '../utils'
 
 const { module } = Astro.props
 const anchor = slugify(module.qualname)
