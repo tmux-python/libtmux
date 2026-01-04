@@ -13,7 +13,7 @@ const anchor = slugify(module.qualname)
 <section id={anchor} class="autodoc autodoc-module">
   <header class="autodoc-card">
     <div class="autodoc-title">module {module.qualname}</div>
-    <Docstring value={module.docstring} />
+    <Docstring value={module.docstring} html={module.docstringHtml} />
     {module.imports.length > 0 ? (
       <div>
         <div class="autodoc-pill">Imports</div>

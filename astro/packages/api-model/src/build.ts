@@ -1,4 +1,16 @@
-import type { PyClass, PyFunction, PyImport, PyModule, PyParameter, PyVariable } from '@libtmux/schema'
+import type {
+  PyClass,
+  PyFunction,
+  PyImport,
+  PyIntrospectClass,
+  PyIntrospectFunction,
+  PyIntrospectModule,
+  PyIntrospectParameter,
+  PyIntrospectVariable,
+  PyModule,
+  PyParameter,
+  PyVariable,
+} from '@libtmux/schema'
 import {
   type ApiClass,
   ApiClassSchema,
@@ -21,6 +33,7 @@ export type BuildOptions = {
   root: string
   includePrivate?: boolean
   generatedAt?: string
+  introspection?: PyIntrospectModule[]
 }
 
 const summarizeDocstring = (docstring: string | null): string | null => {
@@ -32,7 +45,13 @@ const summarizeDocstring = (docstring: string | null): string | null => {
   return firstLine?.trim() || null
 }
 
-const formatParameterSignature = (param: PyParameter): string => {
+const formatParameterSignature = (param: {
+  name: string
+  kind: string
+  annotation?: string | null
+  annotationText?: string | null
+  default?: string | null
+}): string => {
   let name = param.name
 
   if (param.kind === 'var-positional') {
@@ -43,8 +62,9 @@ const formatParameterSignature = (param: PyParameter): string => {
     name = `**${name}`
   }
 
-  if (param.annotation) {
-    name = `${name}: ${param.annotation}`
+  const annotation = param.annotationText ?? param.annotation
+  if (annotation) {
+    name = `${name}: ${annotation}`
   }
 
   if (param.default) {
@@ -54,13 +74,32 @@ const formatParameterSignature = (param: PyParameter): string => {
   return name
 }
 
-const buildParameter = (param: PyParameter): ApiParameter =>
+const buildParameter = (param: PyParameter, introspected?: PyIntrospectParameter): ApiParameter =>
   ApiParameterSchema.parse({
-    ...param,
-    signature: formatParameterSignature(param),
+    name: param.name,
+    kind: introspected?.kind ?? param.kind,
+    annotation: introspected?.annotationText ?? param.annotation,
+    annotationValue: introspected?.annotationValue ?? null,
+    default: introspected?.default ?? param.default,
+    signature: formatParameterSignature({
+      name: param.name,
+      kind: introspected?.kind ?? param.kind,
+      annotationText: introspected?.annotationText ?? null,
+      annotation: param.annotation,
+      default: introspected?.default ?? param.default,
+    }),
   })
 
-const buildSignature = (parameters: PyParameter[]): string => {
+const buildSignature = (
+  parameters: Array<
+    { kind: string } & {
+      name: string
+      annotation?: string | null
+      annotationText?: string | null
+      default?: string | null
+    }
+  >,
+): string => {
   const positionalOnly = parameters.filter((param) => param.kind === 'positional-only')
   const positional = parameters.filter((param) => param.kind === 'positional-or-keyword')
   const varPositional = parameters.find((param) => param.kind === 'var-positional')
@@ -100,42 +139,108 @@ const buildSignature = (parameters: PyParameter[]): string => {
   return `(${parts.join(', ')})`
 }
 
-const buildFunction = (fn: PyFunction): ApiFunction =>
-  ApiFunctionSchema.parse({
+const stripSignatureReturn = (signature: string): string => {
+  const arrowIndex = signature.lastIndexOf(' -> ')
+  if (arrowIndex === -1) {
+    return signature
+  }
+
+  return signature.slice(0, arrowIndex)
+}
+
+const buildDocFields = (
+  docstring: string | null,
+  introspected?: {
+    docstringRaw: string | null
+    docstringFormat: 'rst' | 'markdown' | 'plain' | 'unknown'
+    docstringHtml: string | null
+    summary: string | null
+  },
+) => {
+  const raw = introspected?.docstringRaw ?? docstring
+  return {
+    docstring: raw,
+    docstringFormat: introspected?.docstringFormat ?? 'unknown',
+    docstringHtml: introspected?.docstringHtml ?? null,
+    summary: introspected?.summary ?? summarizeDocstring(raw),
+  }
+}
+
+const buildFunction = (fn: PyFunction, introspected?: PyIntrospectFunction): ApiFunction => {
+  const parameters = fn.parameters.map((param) =>
+    buildParameter(
+      param,
+      introspected?.parameters.find((item) => item.name === param.name),
+    ),
+  )
+
+  return ApiFunctionSchema.parse({
     ...fn,
     kind: 'function',
-    signature: buildSignature(fn.parameters),
-    parameters: fn.parameters.map(buildParameter),
-    summary: summarizeDocstring(fn.docstring),
+    signature: introspected ? stripSignatureReturn(introspected.signature) : buildSignature(parameters),
+    parameters,
+    returns: introspected?.returns.annotationText ?? fn.returns,
+    returnsValue: introspected?.returns.annotationValue ?? null,
+    isAsync: introspected?.isAsync ?? fn.isAsync,
+    ...buildDocFields(fn.docstring, introspected),
   })
+}
 
-const buildMethod = (fn: PyFunction, className: string): ApiMethod =>
-  ApiMethodSchema.parse({
+const buildMethod = (fn: PyFunction, className: string, introspected?: PyIntrospectFunction): ApiMethod => {
+  const parameters = fn.parameters.map((param) =>
+    buildParameter(
+      param,
+      introspected?.parameters.find((item) => item.name === param.name),
+    ),
+  )
+
+  return ApiMethodSchema.parse({
     ...fn,
     kind: 'method',
-    signature: buildSignature(fn.parameters),
-    parameters: fn.parameters.map(buildParameter),
-    summary: summarizeDocstring(fn.docstring),
+    signature: introspected ? stripSignatureReturn(introspected.signature) : buildSignature(parameters),
+    parameters,
+    returns: introspected?.returns.annotationText ?? fn.returns,
+    returnsValue: introspected?.returns.annotationValue ?? null,
+    isAsync: introspected?.isAsync ?? fn.isAsync,
+    ...buildDocFields(fn.docstring, introspected),
     className,
   })
+}
 
-const buildVariable = (variable: PyVariable): ApiVariable =>
+const buildVariable = (variable: PyVariable, introspected?: PyIntrospectVariable): ApiVariable =>
   ApiVariableSchema.parse({
     ...variable,
-    summary: summarizeDocstring(variable.docstring),
+    annotation: introspected?.annotationText ?? variable.annotation,
+    annotationValue: introspected?.annotationValue ?? null,
+    value: introspected?.value ?? variable.value,
+    ...buildDocFields(variable.docstring, introspected),
   })
 
-const buildClass = (klass: PyClass, includePrivate: boolean): ApiClass => {
+const indexByQualname = <T extends { qualname: string }>(items: T[] | undefined): Map<string, T> => {
+  if (!items) {
+    return new Map()
+  }
+
+  return new Map(items.map((item) => [item.qualname, item]))
+}
+
+const buildClass = (klass: PyClass, includePrivate: boolean, introspected?: PyIntrospectClass): ApiClass => {
+  const methodIndex = indexByQualname(introspected?.methods)
+  const attributeIndex = indexByQualname(introspected?.attributes)
+
   const methods = klass.methods
     .filter((method) => includePrivate || !method.isPrivate)
-    .map((method) => buildMethod(method, klass.name))
+    .map((method) => buildMethod(method, klass.name, methodIndex.get(method.qualname)))
 
-  const attributes = klass.attributes.filter((attribute) => includePrivate || !attribute.isPrivate).map(buildVariable)
+  const attributes = klass.attributes
+    .filter((attribute) => includePrivate || !attribute.isPrivate)
+    .map((attribute) => buildVariable(attribute, attributeIndex.get(attribute.qualname)))
 
   return ApiClassSchema.parse({
     ...klass,
     kind: 'class',
-    summary: summarizeDocstring(klass.docstring),
+    bases: introspected?.bases ?? klass.bases,
+    ...buildDocFields(klass.docstring, introspected),
     methods,
     attributes,
   })
@@ -149,28 +254,31 @@ const buildImportLine = (item: PyImport): string => {
   return `import ${item.names.join(', ')}`
 }
 
-const buildModule = (module: PyModule, includePrivate: boolean): ApiModule => {
+const buildModule = (module: PyModule, includePrivate: boolean, introspected?: PyIntrospectModule): ApiModule => {
+  const classIndex = indexByQualname(introspected?.classes)
+  const functionIndex = indexByQualname(introspected?.functions)
+  const variableIndex = indexByQualname(introspected?.variables)
+
   const classes = module.items
     .filter((item): item is PyClass => item.kind === 'class')
     .filter((item) => includePrivate || !item.isPrivate)
-    .map((item) => buildClass(item, includePrivate))
+    .map((item) => buildClass(item, includePrivate, classIndex.get(item.qualname)))
 
   const functions = module.items
     .filter((item): item is PyFunction => item.kind === 'function')
     .filter((item) => includePrivate || !item.isPrivate)
-    .map(buildFunction)
+    .map((item) => buildFunction(item, functionIndex.get(item.qualname)))
 
   const variables = module.items
     .filter((item): item is PyVariable => item.kind === 'variable')
     .filter((item) => includePrivate || !item.isPrivate)
-    .map(buildVariable)
+    .map((item) => buildVariable(item, variableIndex.get(item.qualname)))
 
   return ApiModuleSchema.parse({
     kind: 'module',
     name: module.name,
     qualname: module.qualname,
-    docstring: module.docstring,
-    summary: summarizeDocstring(module.docstring),
+    ...buildDocFields(module.docstring, introspected),
     isPrivate: module.name.startsWith('_'),
     location: module.location,
     path: module.path,
@@ -185,8 +293,11 @@ const buildModule = (module: PyModule, includePrivate: boolean): ApiModule => {
 export const buildApiPackage = (modules: PyModule[], options: BuildOptions): ApiPackage => {
   const includePrivate = options.includePrivate ?? false
   const generatedAt = options.generatedAt ?? new Date().toISOString()
+  const introspectionIndex = indexByQualname(options.introspection)
 
-  const apiModules = modules.map((module) => buildModule(module, includePrivate))
+  const apiModules = modules.map((module) =>
+    buildModule(module, includePrivate, introspectionIndex.get(module.qualname)),
+  )
 
   return ApiPackageSchema.parse({
     name: options.name,
