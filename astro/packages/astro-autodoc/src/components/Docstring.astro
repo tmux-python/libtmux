@@ -2,11 +2,13 @@
 import '../styles.css'
 import { splitDocstring } from '../utils'
 
-const { value } = Astro.props
+const { value, html } = Astro.props
 const blocks = splitDocstring(value ?? null)
 ---
 
-{blocks.length > 0 ? (
+{html ? (
+  <div class="autodoc-doc" set:html={html} />
+) : blocks.length > 0 ? (
   <div class="autodoc-doc">
     {blocks.map((block) => (
       <p>{block}</p>
