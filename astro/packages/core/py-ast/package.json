@@ -5,7 +5,10 @@
   "description": "Python AST scanner for libtmux docs",
   "main": "src/index.ts",
   "types": "src/index.ts",
-  "files": ["src", "python"],
+  "files": [
+    "src",
+    "python"
+  ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
@@ -16,7 +19,7 @@
     "update": "pnpm update",
     "ncu": "ncu",
     "clean": "rm -rf dist/ node_modules/.cache/",
-    "biome": "biome check . --apply && biome format . --write"
+    "biome": "biome check . --write && biome format . --write"
   },
   "dependencies": {
     "execa": "^9.6.1",
