@@ -31,6 +31,7 @@ export const getApiModel = async (): Promise<ApiPackage> => {
     introspect: true,
     introspectPackage: 'libtmux',
     annotationFormat: 'string',
+    mockImports: ['pytest'],
   })
 
   return cached
