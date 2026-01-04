@@ -13,6 +13,8 @@ export type LoadApiOptions = {
   introspect?: boolean
   introspectPackage?: string
   annotationFormat?: 'string' | 'value'
+  mockImports?: string[]
+  autodocMock?: boolean
   pythonCommand?: PythonCommand
 }
 
@@ -30,6 +32,8 @@ export const loadApiPackage = async (options: LoadApiOptions): Promise<ApiPackag
           root: options.root,
           includePrivate: options.includePrivate,
           annotationFormat: options.annotationFormat,
+          mockImports: options.mockImports,
+          autodocMock: options.autodocMock,
           pythonCommand: options.pythonCommand,
         })
       ).modules
