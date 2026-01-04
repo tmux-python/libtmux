@@ -1,0 +1,61 @@
+.autodoc {
+  --autodoc-border: color-mix(in oklab, currentColor 14%, transparent);
+  --autodoc-muted: color-mix(in oklab, currentColor 55%, transparent);
+  --autodoc-highlight: color-mix(in oklab, currentColor 90%, transparent);
+  font-family: inherit;
+}
+
+.autodoc h2,
+.autodoc h3,
+.autodoc h4 {
+  letter-spacing: -0.01em;
+}
+
+.autodoc-card {
+  border: 1px solid var(--autodoc-border);
+  border-radius: 16px;
+  padding: 1.25rem;
+  background: color-mix(in oklab, currentColor 2%, transparent);
+}
+
+.autodoc-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.autodoc-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.autodoc-signature {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.95rem;
+  color: var(--autodoc-highlight);
+}
+
+.autodoc-doc {
+  color: var(--autodoc-muted);
+  line-height: 1.6;
+}
+
+.autodoc-divider {
+  border-top: 1px dashed var(--autodoc-border);
+  margin: 1.25rem 0;
+}
+
+.autodoc-anchor {
+  text-decoration: none;
+  color: inherit;
+}
+
+.autodoc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  border: 1px solid var(--autodoc-border);
+  color: var(--autodoc-muted);
+}

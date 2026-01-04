@@ -1,0 +1,15 @@
+---
+import '../styles.css'
+import { splitDocstring } from '../utils'
+
+const { value } = Astro.props
+const blocks = splitDocstring(value ?? null)
+---
+
+{blocks.length > 0 ? (
+  <div class="autodoc-doc">
+    {blocks.map((block) => (
+      <p>{block}</p>
+    ))}
+  </div>
+) : null}
