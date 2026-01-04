@@ -7,7 +7,9 @@ import inspect
 import pathlib
 import pkgutil
 import sys
+import types
 import typing as t
+from unittest import mock
 
 
 def ensure_sys_path(root: pathlib.Path | None) -> None:
@@ -31,6 +33,82 @@ def ensure_sys_path(root: pathlib.Path | None) -> None:
     root_str = str(root)
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
+
+
+def make_mock_module(name: str) -> types.ModuleType:
+    """Create a mock module placeholder.
+
+    Parameters
+    ----------
+    name : str
+        Module name.
+
+    Returns
+    -------
+    types.ModuleType
+        Module placeholder with lazy attributes.
+    """
+    module = types.ModuleType(name)
+    module.__dict__["__mock__"] = True
+
+    def __getattr__(_attr: str) -> mock.MagicMock:
+        return mock.MagicMock()
+
+    module.__getattr__ = __getattr__  # type: ignore[assignment]
+    module.__path__ = []  # type: ignore[attr-defined]
+    return module
+
+
+def apply_mock_imports(names: t.Iterable[str]) -> None:
+    """Register mocked modules in sys.modules.
+
+    Parameters
+    ----------
+    names : Iterable[str]
+        Module names to mock.
+    """
+    for name in names:
+        if not name:
+            continue
+        parts = name.split(".")
+        for idx in range(1, len(parts) + 1):
+            target = ".".join(parts[:idx])
+            if target not in sys.modules:
+                sys.modules[target] = make_mock_module(target)
+            if idx > 1:
+                parent_name = ".".join(parts[: idx - 1])
+                parent = sys.modules[parent_name]
+                child = sys.modules[target]
+                setattr(parent, parts[idx - 1], child)
+
+
+def import_module_with_mocks(
+    module_name: str,
+    *,
+    root: pathlib.Path | None,
+    mock_imports: t.Sequence[str] | None,
+    autodoc_mock: bool,
+) -> types.ModuleType:
+    """Import a module with optional mocking for missing deps."""
+    ensure_sys_path(root)
+    if mock_imports:
+        apply_mock_imports(mock_imports)
+
+    if not autodoc_mock:
+        return importlib.import_module(module_name)
+
+    attempts = 0
+    while True:
+        try:
+            return importlib.import_module(module_name)
+        except ModuleNotFoundError as exc:
+            missing = exc.name
+            if not missing or missing == module_name:
+                raise
+            apply_mock_imports([missing])
+            attempts += 1
+            if attempts > 25:
+                raise
 
 
 def safe_repr(value: t.Any) -> str | None:
@@ -489,6 +567,8 @@ def introspect_module(
     root: pathlib.Path | None,
     include_private: bool,
     annotation_format: str,
+    mock_imports: t.Sequence[str] | None = None,
+    autodoc_mock: bool = False,
 ) -> dict[str, t.Any]:
     """Introspect a module.
 
@@ -502,6 +582,10 @@ def introspect_module(
         Whether to include private members.
     annotation_format : str
         Annotation format selector.
+    mock_imports : Sequence[str] | None
+        Modules to mock during import.
+    autodoc_mock : bool
+        Mock missing imports encountered during import.
 
     Returns
     -------
@@ -514,8 +598,12 @@ def introspect_module(
     >>> result['kind']
     'module'
     """
-    ensure_sys_path(root)
-    module = importlib.import_module(module_name)
+    module = import_module_with_mocks(
+        module_name,
+        root=root,
+        mock_imports=mock_imports,
+        autodoc_mock=autodoc_mock,
+    )
     doc_fields = render_docstring(getattr(module, "__doc__", None))
     exports = resolve_public_names(module, include_private)
 
@@ -580,6 +668,8 @@ def walk_package_modules(
     package_name: str,
     *,
     root: pathlib.Path | None,
+    mock_imports: t.Sequence[str] | None = None,
+    autodoc_mock: bool = False,
 ) -> list[str]:
     """Walk modules within a package.
 
@@ -589,6 +679,10 @@ def walk_package_modules(
         Package to inspect.
     root : pathlib.Path | None
         Root path to add to sys.path.
+    mock_imports : Sequence[str] | None
+        Modules to mock during import.
+    autodoc_mock : bool
+        Mock missing imports encountered during import.
 
     Returns
     -------
@@ -601,8 +695,12 @@ def walk_package_modules(
     >>> modules[0]
     'json'
     """
-    ensure_sys_path(root)
-    package = importlib.import_module(package_name)
+    package = import_module_with_mocks(
+        package_name,
+        root=root,
+        mock_imports=mock_imports,
+        autodoc_mock=autodoc_mock,
+    )
     names = [package.__name__]
 
     if not hasattr(package, "__path__"):
@@ -620,6 +718,8 @@ def introspect_package(
     root: pathlib.Path | None,
     include_private: bool,
     annotation_format: str,
+    mock_imports: t.Sequence[str] | None = None,
+    autodoc_mock: bool = False,
 ) -> list[dict[str, t.Any]]:
     """Introspect every module within a package.
 
@@ -633,6 +733,10 @@ def introspect_package(
         Whether to include private members.
     annotation_format : str
         Annotation format selector.
+    mock_imports : Sequence[str] | None
+        Modules to mock during import.
+    autodoc_mock : bool
+        Mock missing imports encountered during import.
 
     Returns
     -------
@@ -646,13 +750,20 @@ def introspect_package(
     'module'
     """
     modules = []
-    for module_name in walk_package_modules(package_name, root=root):
+    for module_name in walk_package_modules(
+        package_name,
+        root=root,
+        mock_imports=mock_imports,
+        autodoc_mock=autodoc_mock,
+    ):
         modules.append(
             introspect_module(
                 module_name,
                 root=root,
                 include_private=include_private,
                 annotation_format=annotation_format,
+                mock_imports=mock_imports,
+                autodoc_mock=autodoc_mock,
             )
         )
     return modules
