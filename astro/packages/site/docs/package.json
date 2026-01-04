@@ -19,7 +19,7 @@
     "ncu": "ncu",
     "update": "pnpm update",
     "clean": "rm -rf dist/ node_modules/.cache/",
-    "biome": "biome check . --apply && biome format . --write"
+    "biome": "biome check . --write && biome format . --write"
   },
   "dependencies": {
     "@astrojs/mdx": "^4.3.13",
