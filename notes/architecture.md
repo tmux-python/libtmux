@@ -47,8 +47,9 @@ python files -> py-parse (ast) -> py-introspect (inspect)
            -> api-model (merge, normalize) -> api-index.json -> astro UI
 ```
 
-Current implementation note: `py-parse` is wired to the sidecar, while
-`py-introspect` returns empty payloads until runtime introspection is implemented.
+Current implementation note: `py-parse` is wired to the sidecar, and
+`py-introspect` now returns runtime data (signatures, annotations, docstrings)
+for module/package imports.
 
 ## Schema firewall
 
