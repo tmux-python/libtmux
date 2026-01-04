@@ -4,7 +4,7 @@ import {
   IntersphinxInventorySchema,
   type IntersphinxItem,
   IntersphinxItemSchema,
-} from './schema'
+} from './schema.ts'
 
 const HEADER_LINES = 4
 
