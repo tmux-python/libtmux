@@ -1,6 +1,6 @@
-import { buildApiPackage } from '@libtmux/api-model'
-import { scanPythonPaths, type PythonCommand } from '@libtmux/py-ast'
 import type { ApiPackage } from '@libtmux/api-model'
+import { buildApiPackage } from '@libtmux/api-model'
+import { type PythonCommand, scanPythonPaths } from '@libtmux/py-ast'
 
 export type LoadApiOptions = {
   name: string

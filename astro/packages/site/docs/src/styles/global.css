@@ -1,4 +1,4 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
 :root {
   --color-paper: 0.97 0.02 95;
@@ -13,24 +13,25 @@ html {
 }
 
 body {
-  background: radial-gradient(circle at 10% 20%, oklch(var(--color-accent) / 0.12), transparent 60%),
+  background:
+    radial-gradient(circle at 10% 20%, oklch(var(--color-accent) / 0.12), transparent 60%),
     radial-gradient(circle at 90% 10%, oklch(var(--color-accent-two) / 0.18), transparent 55%),
     linear-gradient(120deg, oklch(var(--color-paper) / 1), oklch(var(--color-paper) / 0.96));
   color: oklch(var(--color-ink) / 1);
-  font-family: 'Space Grotesk', ui-sans-serif, sans-serif;
+  font-family: "Space Grotesk", ui-sans-serif, sans-serif;
 }
 
 h1,
 h2,
 h3,
 h4 {
-  font-family: 'Fraunces', ui-serif, serif;
+  font-family: "Fraunces", ui-serif, serif;
   letter-spacing: -0.02em;
 }
 
 code,
 pre {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 @layer components {

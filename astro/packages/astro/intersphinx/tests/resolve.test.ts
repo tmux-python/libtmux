@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import type { IntersphinxInventory } from '@libtmux/intersphinx'
+import { describe, expect, it } from 'vitest'
 import { resolveIntersphinx } from '../src/resolve'
 
 describe('resolveIntersphinx', () => {
