@@ -1,14 +1,7 @@
-import { execa } from 'execa'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  PyModuleArraySchema,
-  PyModuleSchema,
-  PyNodeSchema,
-  type PyImport,
-  type PyModule,
-  type PyNode,
-} from './schema'
+import { execa } from 'execa'
+import { type PyImport, type PyModule, PyModuleArraySchema, PyModuleSchema, type PyNode, PyNodeSchema } from './schema'
 
 export type PythonCommand = [string, ...string[]]
 
@@ -108,12 +101,16 @@ export const scanPythonModule = async (
   return PyModuleSchema.parse(modules[0])
 }
 
-export const collectImports = (modules: PyModule[]): PyImport[] =>
-  modules.flatMap((module) => module.imports)
+export const collectImports = (modules: PyModule[]): PyImport[] => modules.flatMap((module) => module.imports)
 
-export function* walkPyNodes(modules: PyModule[]): Generator<PyNode> {
+export type PyQualifiedNode = Exclude<PyNode, PyImport>
+
+export function* walkPyNodes(modules: PyModule[]): Generator<PyQualifiedNode> {
   for (const module of modules) {
     for (const item of module.items) {
+      if (item.kind === 'import') {
+        continue
+      }
       yield item
       if (item.kind === 'class') {
         for (const method of item.methods) {
