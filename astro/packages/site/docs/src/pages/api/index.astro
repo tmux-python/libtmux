@@ -1,0 +1,20 @@
+---
+import { AutodocPackage } from '@libtmux/astro-autodoc'
+import BaseLayout from '../../layouts/BaseLayout.astro'
+import { getApiModel } from '../../lib/api'
+
+const api = await getApiModel()
+---
+
+<BaseLayout title="API Reference" description="Autodoc-generated API reference for libtmux.">
+  <section class="surface p-8">
+    <div class="tag">API</div>
+    <h1 class="text-4xl">API reference</h1>
+    <p class="max-w-2xl text-ink/70">
+      This reference is generated directly from the libtmux source tree using the new AST-powered
+      pipeline. Use the module index to jump to classes, methods, and helper functions.
+    </p>
+  </section>
+
+  <AutodocPackage pkg={api} />
+</BaseLayout>

@@ -1,0 +1,48 @@
+---
+import '../styles.css'
+import AutodocFunction from './AutodocFunction.astro'
+import AutodocVariable from './AutodocVariable.astro'
+import Docstring from './Docstring.astro'
+import { slugify } from '../utils'
+
+const { klass } = Astro.props
+const anchor = slugify(klass.qualname)
+const bases = klass.bases.length > 0 ? `(${klass.bases.join(', ')})` : ''
+---
+
+<section id={anchor} class="autodoc-card autodoc">
+  <header>
+    <div class="autodoc-title">class {klass.name}{bases}</div>
+    {klass.decorators.length > 0 ? (
+      <div>
+        {klass.decorators.map((decorator) => (
+          <span class="autodoc-pill">@{decorator}</span>
+        ))}
+      </div>
+    ) : null}
+  </header>
+
+  <Docstring value={klass.docstring} />
+
+  {klass.attributes.length > 0 ? (
+    <div class="autodoc-divider">
+      <h4>Attributes</h4>
+      <div class="autodoc-grid">
+        {klass.attributes.map((attribute) => (
+          <AutodocVariable variable={attribute} />
+        ))}
+      </div>
+    </div>
+  ) : null}
+
+  {klass.methods.length > 0 ? (
+    <div class="autodoc-divider">
+      <h4>Methods</h4>
+      <div class="autodoc-grid">
+        {klass.methods.map((method) => (
+          <AutodocFunction fn={method} label={`${klass.name}.${method.name}`} />
+        ))}
+      </div>
+    </div>
+  ) : null}
+</section>
