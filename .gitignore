@@ -87,3 +87,7 @@ docs/_static/css/fonts.css
 **/CLAUDE.*.md
 **/.claude/settings.local.json
 .playwright-mcp/
+
+# Allow Astro app helpers (lib/ is ignored globally)
+!astro/apps/docs/src/lib/
+!astro/apps/docs/src/lib/**
