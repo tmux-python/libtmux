@@ -18,117 +18,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  packages/astro/autodoc:
-    dependencies:
-      '@libtmux/api-model':
-        specifier: workspace:*
-        version: link:../../core/api-model
-      '@libtmux/py-ast':
-        specifier: workspace:*
-        version: link:../../core/py-ast
-      astro:
-        specifier: ^5.0.0
-        version: 5.16.6(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(rollup@4.54.0)(typescript@5.9.3)(yaml@2.8.2)
-    devDependencies:
-      '@biomejs/biome':
-        specifier: 2.3.11
-        version: 2.3.11
-      '@types/node':
-        specifier: ^25.0.3
-        version: 25.0.3
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.0.16
-        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
-
-  packages/astro/intersphinx:
-    dependencies:
-      '@libtmux/intersphinx':
-        specifier: workspace:*
-        version: link:../../core/intersphinx
-      astro:
-        specifier: ^5.0.0
-        version: 5.16.6(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(rollup@4.54.0)(typescript@5.9.3)(yaml@2.8.2)
-    devDependencies:
-      '@biomejs/biome':
-        specifier: 2.3.11
-        version: 2.3.11
-      '@types/node':
-        specifier: ^25.0.3
-        version: 25.0.3
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.0.16
-        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
-
-  packages/core/api-model:
-    dependencies:
-      '@libtmux/py-ast':
-        specifier: workspace:*
-        version: link:../py-ast
-      zod:
-        specifier: ^4.3.5
-        version: 4.3.5
-    devDependencies:
-      '@biomejs/biome':
-        specifier: 2.3.11
-        version: 2.3.11
-      '@types/node':
-        specifier: ^25.0.3
-        version: 25.0.3
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.0.16
-        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
-
-  packages/core/intersphinx:
-    dependencies:
-      zod:
-        specifier: ^4.3.5
-        version: 4.3.5
-    devDependencies:
-      '@biomejs/biome':
-        specifier: 2.3.11
-        version: 2.3.11
-      '@types/node':
-        specifier: ^25.0.3
-        version: 25.0.3
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.0.16
-        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
-
-  packages/core/py-ast:
-    dependencies:
-      execa:
-        specifier: ^9.6.1
-        version: 9.6.1
-      zod:
-        specifier: ^4.3.5
-        version: 4.3.5
-    devDependencies:
-      '@biomejs/biome':
-        specifier: 2.3.11
-        version: 2.3.11
-      '@types/node':
-        specifier: ^25.0.3
-        version: 25.0.3
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-      vitest:
-        specifier: ^4.0.16
-        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
-
-  packages/site/docs:
+  apps/docs:
     dependencies:
       '@astrojs/mdx':
         specifier: ^4.3.13
@@ -147,19 +37,19 @@ importers:
         version: 5.2.10
       '@libtmux/api-model':
         specifier: workspace:*
-        version: link:../../core/api-model
+        version: link:../../packages/api-model
       '@libtmux/astro-autodoc':
         specifier: workspace:*
-        version: link:../../astro/autodoc
+        version: link:../../packages/astro-autodoc
       '@libtmux/astro-intersphinx':
         specifier: workspace:*
-        version: link:../../astro/intersphinx
+        version: link:../../packages/astro-intersphinx
       '@libtmux/intersphinx':
         specifier: workspace:*
-        version: link:../../core/intersphinx
-      '@libtmux/py-ast':
+        version: link:../../packages/intersphinx
+      '@libtmux/py-parse':
         specifier: workspace:*
-        version: link:../../core/py-ast
+        version: link:../../packages/py-parse
       '@tailwindcss/typography':
         specifier: ^0.5.19
         version: 0.5.19(tailwindcss@4.1.18)
@@ -182,6 +72,210 @@ importers:
       '@astrojs/check':
         specifier: ^0.9.6
         version: 0.9.6(prettier@3.7.4)(typescript@5.9.3)
+      '@biomejs/biome':
+        specifier: 2.3.11
+        version: 2.3.11
+      '@types/node':
+        specifier: ^25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/api-model:
+    dependencies:
+      '@libtmux/py-parse':
+        specifier: workspace:*
+        version: link:../py-parse
+      '@libtmux/schema':
+        specifier: workspace:*
+        version: link:../schema
+      zod:
+        specifier: ^4.3.5
+        version: 4.3.5
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.3.11
+        version: 2.3.11
+      '@types/node':
+        specifier: ^25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/astro-autodoc:
+    dependencies:
+      '@libtmux/api-model':
+        specifier: workspace:*
+        version: link:../api-model
+      '@libtmux/py-bridge':
+        specifier: workspace:*
+        version: link:../py-bridge
+      '@libtmux/py-parse':
+        specifier: workspace:*
+        version: link:../py-parse
+      astro:
+        specifier: ^5.0.0
+        version: 5.16.6(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(rollup@4.54.0)(typescript@5.9.3)(yaml@2.8.2)
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.3.11
+        version: 2.3.11
+      '@types/node':
+        specifier: ^25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/astro-intersphinx:
+    dependencies:
+      '@libtmux/intersphinx':
+        specifier: workspace:*
+        version: link:../intersphinx
+      astro:
+        specifier: ^5.0.0
+        version: 5.16.6(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(rollup@4.54.0)(typescript@5.9.3)(yaml@2.8.2)
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.3.11
+        version: 2.3.11
+      '@types/node':
+        specifier: ^25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/core:
+    dependencies:
+      '@libtmux/api-model':
+        specifier: workspace:*
+        version: link:../api-model
+      '@libtmux/py-introspect':
+        specifier: workspace:*
+        version: link:../py-introspect
+      '@libtmux/py-parse':
+        specifier: workspace:*
+        version: link:../py-parse
+      '@libtmux/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.3.11
+        version: 2.3.11
+      '@types/node':
+        specifier: ^25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/intersphinx:
+    dependencies:
+      zod:
+        specifier: ^4.3.5
+        version: 4.3.5
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.3.11
+        version: 2.3.11
+      '@types/node':
+        specifier: ^25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/py-bridge:
+    dependencies:
+      execa:
+        specifier: ^9.6.1
+        version: 9.6.1
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.3.11
+        version: 2.3.11
+      '@types/node':
+        specifier: ^25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/py-introspect:
+    dependencies:
+      '@libtmux/py-bridge':
+        specifier: workspace:*
+        version: link:../py-bridge
+      '@libtmux/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.3.11
+        version: 2.3.11
+      '@types/node':
+        specifier: ^25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/py-parse:
+    dependencies:
+      '@libtmux/py-bridge':
+        specifier: workspace:*
+        version: link:../py-bridge
+      '@libtmux/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.3.11
+        version: 2.3.11
+      '@types/node':
+        specifier: ^25.0.3
+        version: 25.0.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.16
+        version: 4.0.16(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.8.2)
+
+  packages/schema:
+    dependencies:
+      zod:
+        specifier: ^4.3.5
+        version: 4.3.5
+    devDependencies:
       '@biomejs/biome':
         specifier: 2.3.11
         version: 2.3.11
