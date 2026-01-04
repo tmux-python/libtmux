@@ -119,7 +119,7 @@ def parse_parameters(args: ast.arguments) -> list[dict[str, str | None]]:
     positional = list(args.posonlyargs) + list(args.args)
     defaults = [None] * (len(positional) - len(args.defaults)) + list(args.defaults)
 
-    for param, default in zip(positional, defaults):
+    for param, default in zip(positional, defaults, strict=True):
         kind = (
             "positional-only" if param in args.posonlyargs else "positional-or-keyword"
         )
@@ -142,7 +142,7 @@ def parse_parameters(args: ast.arguments) -> list[dict[str, str | None]]:
             }
         )
 
-    for kwonly, default in zip(args.kwonlyargs, args.kw_defaults):
+    for kwonly, default in zip(args.kwonlyargs, args.kw_defaults, strict=True):
         params.append(
             {
                 "name": kwonly.arg,
@@ -168,7 +168,7 @@ def parse_parameters(args: ast.arguments) -> list[dict[str, str | None]]:
 def parse_function(
     node: ast.FunctionDef | ast.AsyncFunctionDef, qualname: str
 ) -> dict[str, t.Any]:
-    """Parse a function or method definition.
+    r"""Parse a function or method definition.
 
     Parameters
     ----------
@@ -267,7 +267,7 @@ def parse_assignment(
 
 
 def parse_class(node: ast.ClassDef, qualname: str) -> dict[str, t.Any]:
-    """Parse a class definition with methods and attributes.
+    r"""Parse a class definition with methods and attributes.
 
     Parameters
     ----------
@@ -347,9 +347,13 @@ def parse_import(node: ast.Import | ast.ImportFrom) -> dict[str, t.Any]:
         else:
             names.append(alias.name)
 
+    module = getattr(node, "module", None)
+    if module is None and isinstance(node, ast.Import) and len(node.names) == 1:
+        module = node.names[0].name
+
     return {
         "kind": "import",
-        "module": getattr(node, "module", None),
+        "module": module,
         "names": names,
         "level": getattr(node, "level", None),
         "location": node_location(node),
