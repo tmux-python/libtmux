@@ -1,0 +1,34 @@
+---
+import '../styles.css'
+import AutodocModule from './AutodocModule.astro'
+import { slugify } from '../utils'
+
+const { pkg } = Astro.props
+---
+
+<section class="autodoc autodoc-package">
+  <header class="autodoc-card">
+    <div class="autodoc-title">{pkg.name} API Reference</div>
+    <p class="autodoc-doc">
+      Generated at {pkg.generatedAt} from {pkg.root}.
+    </p>
+    <div>
+      <span class="autodoc-pill">Modules</span>
+      <ul>
+        {pkg.modules.map((module) => (
+          <li>
+            <a class="autodoc-anchor" href={`#${slugify(module.qualname)}`}>
+              {module.qualname}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </header>
+
+  <div class="autodoc-grid">
+    {pkg.modules.map((module) => (
+      <AutodocModule module={module} />
+    ))}
+  </div>
+</section>
