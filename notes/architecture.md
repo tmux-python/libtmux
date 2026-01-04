@@ -11,9 +11,8 @@ libtmux/
    ├- AGENTS.md
    ├- pnpm-workspace.yaml
    ├- package.json
-   ├- tsconfig.base.json
-   ├- vitest.workspace.ts
-   ├- biome.json
+   ├- tsconfig.json
+   ├- biome.jsonc
    ├- packages/
    │  ├- schema/
    │  ├- py-bridge/
@@ -47,6 +46,9 @@ python files -> py-parse (ast) -> py-introspect (inspect)
           \                         /
            -> api-model (merge, normalize) -> api-index.json -> astro UI
 ```
+
+Current implementation note: `py-parse` is wired to the sidecar, while
+`py-introspect` returns empty payloads until runtime introspection is implemented.
 
 ## Schema firewall
 
