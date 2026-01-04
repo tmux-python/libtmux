@@ -42,6 +42,14 @@ inheritance, and intersphinx URL resolution).
 10. Rebuild the docs site layout in Astro and migrate prose content
     incrementally.
 
+## Status (January 4, 2026)
+
+- Workspace retiering completed (`packages/*`, `apps/docs`, `python/pyautodoc_sidecar`).
+- `schema`, `py-bridge`, `py-parse`, `py-introspect`, and `core` scaffolds in place.
+- `parse-files` implemented via sidecar `ast` parsing; introspection commands are
+  stubbed and still need real output.
+- Docs app moved to `astro/apps/docs` with updated configs.
+
 ## Testing and QA
 
 - Vitest workspace split:
