@@ -2,9 +2,10 @@
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "composite": true,
-    "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "rootDir": "../../",
+    "paths": {}
   },
   "include": ["src", "tests"],
-  "references": [{ "path": "../py-ast" }]
+  "references": []
 }
