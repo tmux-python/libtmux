@@ -22,7 +22,7 @@ if t.TYPE_CHECKING:
         RaisesExc: TypeAlias = RaisesContext[Exception]  # type: ignore[no-redef]
 
     VersionCompareOp: TypeAlias = Callable[
-        [t.Any, t.Any],
+        [LooseVersion, LooseVersion],
         bool,
     ]
 
@@ -60,9 +60,9 @@ class VersionCompareFixture(t.NamedTuple):
     """Test fixture for version comparison."""
 
     test_id: str
-    a: object
+    a: str
     op: VersionCompareOp
-    b: object
+    b: str
     raises: type[Exception] | bool
 
 
