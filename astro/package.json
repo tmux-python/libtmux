@@ -1,0 +1,35 @@
+{
+  "name": "@libtmux/docs-monorepo",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "pnpm --filter @libtmux/docs-site start",
+    "build": "pnpm --filter @libtmux/docs-site build",
+    "preview": "pnpm --filter @libtmux/docs-site preview",
+    "clean": "pnpm run --recursive clean",
+    "distclean": "pnpm run --recursive distclean",
+    "format": "pnpm run --recursive format",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "ncu": "pnpm run --recursive ncu",
+    "ncu-local": "ncu",
+    "biome-all": "pnpm run --recursive biome",
+    "biome-full": "biome lint . --apply --max-diagnostics=100 && biome check . --apply && biome format . --write",
+    "test": "pnpm run --recursive test",
+    "update": "pnpm run --recursive update",
+    "update:all": "ncu -u; pnpm --recursive run 'ncu' -u",
+    "deduplicate": "pnpm dedupe",
+    "type-check": "pnpm run --recursive type-check",
+    "type-check:watch": "pnpm run --recursive type-check:watch"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.27.0",
+  "devDependencies": {
+    "@biomejs/biome": "2.3.11",
+    "npm-check-updates": "^19.2.1",
+    "typescript": "^5.9.3"
+  }
+}
