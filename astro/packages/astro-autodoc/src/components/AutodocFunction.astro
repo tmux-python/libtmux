@@ -12,5 +12,5 @@ const signature = formatSignature(fn.signature, fn.returns)
 <section id={anchor} class="autodoc-card autodoc">
   <div class="autodoc-title">{title}</div>
   <div class="autodoc-signature">{signature}</div>
-  <Docstring value={fn.docstring} />
+  <Docstring value={fn.docstring} html={fn.docstringHtml} />
 </section>
