@@ -16,5 +16,5 @@ export const autodocComponents = {
   Docstring,
 }
 
-export * from './load'
-export * from './utils'
+export * from './load.ts'
+export * from './utils.ts'
