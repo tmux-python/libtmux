@@ -7,6 +7,8 @@ export type IntrospectOptions = {
   root?: string
   includePrivate?: boolean
   annotationFormat?: 'string' | 'value'
+  mockImports?: string[]
+  autodocMock?: boolean
   pythonCommand?: PythonCommand
   env?: NodeJS.ProcessEnv
   cwd?: string
@@ -42,6 +44,16 @@ export const introspectModule = async (
     args.push('--annotation-format', options.annotationFormat)
   }
 
+  if (options.mockImports) {
+    for (const name of options.mockImports) {
+      args.push('--mock-import', name)
+    }
+  }
+
+  if (options.autodocMock) {
+    args.push('--autodoc-mock')
+  }
+
   const payload = await runPythonJson(args, {
     pythonCommand: options.pythonCommand,
     cwd: options.cwd ?? sidecarRoot,
@@ -69,6 +81,16 @@ export const introspectPackage = async (
 
   if (options.annotationFormat) {
     args.push('--annotation-format', options.annotationFormat)
+  }
+
+  if (options.mockImports) {
+    for (const name of options.mockImports) {
+      args.push('--mock-import', name)
+    }
+  }
+
+  if (options.autodocMock) {
+    args.push('--autodoc-mock')
   }
 
   const payload = await runPythonJson(args, {
