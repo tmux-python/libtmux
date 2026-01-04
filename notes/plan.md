@@ -46,8 +46,10 @@ inheritance, and intersphinx URL resolution).
 
 - Workspace retiering completed (`packages/*`, `apps/docs`, `python/pyautodoc_sidecar`).
 - `schema`, `py-bridge`, `py-parse`, `py-introspect`, and `core` scaffolds in place.
-- `parse-files` implemented via sidecar `ast` parsing; introspection commands are
-  stubbed and still need real output.
+- Sidecar `parse-files` implemented via `ast` parsing; introspection implemented
+  for modules and packages (signatures, annotations, docstrings).
+- `api-model` and `astro-autodoc` now consume introspection output for
+  signatures and docstring HTML.
 - Docs app moved to `astro/apps/docs` with updated configs.
 
 ## Testing and QA
