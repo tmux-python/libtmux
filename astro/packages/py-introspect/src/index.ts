@@ -6,6 +6,7 @@ import { type PyIntrospectPayload, PyIntrospectPayloadSchema } from '@libtmux/sc
 export type IntrospectOptions = {
   root?: string
   includePrivate?: boolean
+  annotationFormat?: 'string' | 'value'
   pythonCommand?: PythonCommand
   env?: NodeJS.ProcessEnv
   cwd?: string
@@ -37,6 +38,10 @@ export const introspectModule = async (
     args.push('--include-private')
   }
 
+  if (options.annotationFormat) {
+    args.push('--annotation-format', options.annotationFormat)
+  }
+
   const payload = await runPythonJson(args, {
     pythonCommand: options.pythonCommand,
     cwd: options.cwd ?? sidecarRoot,
@@ -60,6 +65,10 @@ export const introspectPackage = async (
 
   if (options.includePrivate) {
     args.push('--include-private')
+  }
+
+  if (options.annotationFormat) {
+    args.push('--annotation-format', options.annotationFormat)
   }
 
   const payload = await runPythonJson(args, {
