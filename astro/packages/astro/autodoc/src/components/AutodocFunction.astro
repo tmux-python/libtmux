@@ -1,7 +1,7 @@
 ---
 import '../styles.css'
-import Docstring from './Docstring.astro'
 import { formatSignature, slugify } from '../utils'
+import Docstring from './Docstring.astro'
 
 const { fn, label } = Astro.props
 const anchor = slugify(fn.qualname)
