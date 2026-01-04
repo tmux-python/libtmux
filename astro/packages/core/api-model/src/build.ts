@@ -1,26 +1,19 @@
-import type {
-  PyClass,
-  PyFunction,
-  PyImport,
-  PyModule,
-  PyParameter,
-  PyVariable,
-} from '@libtmux/py-ast'
+import type { PyClass, PyFunction, PyImport, PyModule, PyParameter, PyVariable } from '@libtmux/py-ast'
 import {
-  ApiClassSchema,
-  ApiFunctionSchema,
-  ApiMethodSchema,
-  ApiModuleSchema,
-  ApiPackageSchema,
-  ApiParameterSchema,
-  ApiVariableSchema,
   type ApiClass,
+  ApiClassSchema,
   type ApiFunction,
+  ApiFunctionSchema,
   type ApiMethod,
+  ApiMethodSchema,
   type ApiModule,
+  ApiModuleSchema,
   type ApiPackage,
+  ApiPackageSchema,
   type ApiParameter,
+  ApiParameterSchema,
   type ApiVariable,
+  ApiVariableSchema,
 } from './schema'
 
 export type BuildOptions = {
@@ -137,9 +130,7 @@ const buildClass = (klass: PyClass, includePrivate: boolean): ApiClass => {
     .filter((method) => includePrivate || !method.isPrivate)
     .map((method) => buildMethod(method, klass.name))
 
-  const attributes = klass.attributes
-    .filter((attribute) => includePrivate || !attribute.isPrivate)
-    .map(buildVariable)
+  const attributes = klass.attributes.filter((attribute) => includePrivate || !attribute.isPrivate).map(buildVariable)
 
   return ApiClassSchema.parse({
     ...klass,
@@ -205,7 +196,9 @@ export const buildApiPackage = (modules: PyModule[], options: BuildOptions): Api
   })
 }
 
-export const buildApiIndex = (api: ApiPackage): Map<string, ApiModule | ApiClass | ApiFunction | ApiMethod | ApiVariable> => {
+export const buildApiIndex = (
+  api: ApiPackage,
+): Map<string, ApiModule | ApiClass | ApiFunction | ApiMethod | ApiVariable> => {
   const index = new Map<string, ApiModule | ApiClass | ApiFunction | ApiMethod | ApiVariable>()
 
   for (const module of api.modules) {
