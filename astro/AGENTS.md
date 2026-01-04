@@ -18,15 +18,21 @@ Astro-based documentation monorepo for libtmux. It replaces the existing Sphinx 
 
 ```
 packages/
-├── core/
-│   ├── py-ast/            # Python AST scanner + Zod schemas
-│   ├── api-model/         # High-level API model + snapshots
-│   └── intersphinx/       # Intersphinx inventory parser
-├── astro/
-│   ├── autodoc/           # Astro components + helpers for API rendering
-│   └── intersphinx/       # Astro helpers for intersphinx resolution
-└── site/
-    └── docs/              # Astro docs site for libtmux
+├── schema/                # Zod contracts (schema firewall)
+├── py-bridge/             # uv/uvx subprocess boundary
+├── py-parse/              # Static AST parsing
+├── py-introspect/         # Runtime introspection
+├── api-model/             # High-level API model + snapshots
+├── core/                  # Orchestration + caching
+├── intersphinx/           # Intersphinx inventory parser
+├── astro-autodoc/         # Astro components + helpers for API rendering
+└── astro-intersphinx/     # Astro helpers for intersphinx resolution
+
+apps/
+└── docs/                  # Astro docs site for libtmux
+
+python/
+└── pyautodoc_sidecar/     # Python sidecar invoked via uv run
 ```
 
 ## Workflow Commands
@@ -63,5 +69,5 @@ pnpm ncu
 
 1. **Monorepo layering**: core packages must not depend on astro packages.
 2. **Autodoc data**: use Zod schemas for validated data flow between packages.
-3. **Python scanning**: default to uvx when available; allow an override for local Python executables.
+3. **Python scanning**: default to `uv run` with a sidecar project; allow an override for local Python executables and optional `uvx` tool mode.
 4. **Astro hydration**: any React components must include an explicit client directive.
