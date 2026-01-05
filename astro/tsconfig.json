@@ -25,6 +25,7 @@
       "@libtmux/api-model": ["./packages/api-model/src"],
       "@libtmux/core": ["./packages/core/src"],
       "@libtmux/intersphinx": ["./packages/intersphinx/src"],
+      "@libtmux/rst-lite": ["./packages/rst-lite/src"],
       "@libtmux/astro-autodoc": ["./packages/astro-autodoc/src"],
       "@libtmux/astro-intersphinx": ["./packages/astro-intersphinx/src"],
       "@libtmux/docs-site": ["./apps/docs"]
@@ -41,6 +42,7 @@
     { "path": "./packages/api-model" },
     { "path": "./packages/core" },
     { "path": "./packages/intersphinx" },
+    { "path": "./packages/rst-lite" },
     { "path": "./packages/astro-autodoc" },
     { "path": "./packages/astro-intersphinx" },
     { "path": "./apps/docs" }
