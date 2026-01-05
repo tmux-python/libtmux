@@ -3,6 +3,8 @@ import { buildApiPackage } from '@libtmux/api-model'
 import type { PythonCommand } from '@libtmux/py-bridge'
 import { introspectPackage } from '@libtmux/py-introspect'
 import { scanPythonPaths } from '@libtmux/py-parse'
+import type { RoleResolver } from '@libtmux/rst-lite'
+import { type DocstringRenderMode, renderDocstrings } from './docstrings.ts'
 
 export type LoadApiOptions = {
   name: string
@@ -15,6 +17,8 @@ export type LoadApiOptions = {
   annotationFormat?: 'string' | 'value'
   mockImports?: string[]
   autodocMock?: boolean
+  docstringRenderer?: DocstringRenderMode
+  docstringRoleResolver?: RoleResolver
   pythonCommand?: PythonCommand
 }
 
@@ -39,11 +43,16 @@ export const loadApiPackage = async (options: LoadApiOptions): Promise<ApiPackag
       ).modules
     : undefined
 
-  return buildApiPackage(modules, {
+  const api = buildApiPackage(modules, {
     name: options.name,
     root: options.root,
     includePrivate: options.includePrivate,
     generatedAt: options.generatedAt,
     introspection,
+  })
+
+  return renderDocstrings(api, {
+    mode: options.docstringRenderer,
+    roleResolver: options.docstringRoleResolver,
   })
 }
