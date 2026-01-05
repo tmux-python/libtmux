@@ -81,3 +81,7 @@ monkeytype.sqlite3
 **/CLAUDE.local.md
 **/CLAUDE.*.md
 **/.claude/settings.local.json
+
+# Allow Astro app helpers (lib/ is ignored globally)
+!astro/apps/docs/src/lib/
+!astro/apps/docs/src/lib/**
