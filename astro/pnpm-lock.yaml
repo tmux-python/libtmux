@@ -124,6 +124,9 @@ importers:
       '@libtmux/py-parse':
         specifier: workspace:*
         version: link:../py-parse
+      '@libtmux/rst-lite':
+        specifier: workspace:*
+        version: link:../rst-lite
       astro:
         specifier: ^5.0.0
         version: 5.16.6(@types/node@25.0.3)(jiti@2.6.1)(lightningcss@1.30.2)(rollup@4.54.0)(typescript@5.9.3)(yaml@2.8.2)

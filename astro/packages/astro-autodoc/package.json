@@ -24,7 +24,8 @@
     "@libtmux/api-model": "workspace:*",
     "@libtmux/py-bridge": "workspace:*",
     "@libtmux/py-introspect": "workspace:*",
-    "@libtmux/py-parse": "workspace:*"
+    "@libtmux/py-parse": "workspace:*",
+    "@libtmux/rst-lite": "workspace:*"
   },
   "peerDependencies": {
     "astro": "^5.0.0"
