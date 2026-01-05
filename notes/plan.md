@@ -39,7 +39,9 @@ inheritance, and intersphinx URL resolution).
 8. Build `astro-autodoc` integration and components, including a virtual module
    and API page generation helpers.
 9. Build `intersphinx` parser and `astro-intersphinx` integration.
-10. Rebuild the docs site layout in Astro and migrate prose content
+10. Add `rst-lite` docstring rendering to avoid Sphinx role warnings and keep
+    output deterministic.
+11. Rebuild the docs site layout in Astro and migrate prose content
     incrementally.
 
 ## Status (January 4, 2026)
@@ -51,6 +53,8 @@ inheritance, and intersphinx URL resolution).
 - `api-model` and `astro-autodoc` now consume introspection output for
   signatures and docstring HTML.
 - Docs app moved to `astro/apps/docs` with updated configs.
+- Added `@libtmux/rst-lite` with snapshot tests for parsing/rendering docstring
+  RST subsets (headings, lists, directives, inline roles, code blocks).
 
 ## Testing and QA
 
