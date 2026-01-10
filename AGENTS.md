@@ -181,16 +181,18 @@ These fixtures handle setup and teardown automatically, creating isolated test e
 
 ### Testing Guidelines
 
-1. **Use existing fixtures over mocks**
+1. **Use functional tests only**: Write tests as standalone functions, not classes. Avoid `class TestFoo:` groupings - use descriptive function names and file organization instead.
+
+2. **Use existing fixtures over mocks**
    - Use fixtures from conftest.py instead of `monkeypatch` and `MagicMock` when available
    - For libtmux, use provided fixtures: `server`, `session`, `window`, and `pane`
    - Document in test docstrings why standard fixtures weren't used for exceptional cases
 
-2. **Preferred pytest patterns**
+3. **Preferred pytest patterns**
    - Use `tmp_path` (pathlib.Path) fixture over Python's `tempfile`
    - Use `monkeypatch` fixture over `unittest.mock`
 
-3. **Running tests continuously**
+4. **Running tests continuously**
    - Use pytest-watcher during development: `uv run ptw .`
    - For doctests: `uv run ptw . --now --doctest-modules`
 
