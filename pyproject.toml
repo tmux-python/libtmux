@@ -52,7 +52,7 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 [dependency-groups]
 dev = [
   # Docs
-  "sphinx",
+  "sphinx<9",
   "furo",
   "gp-libs",
   "sphinx-autobuild",
@@ -81,7 +81,7 @@ dev = [
 ]
 
 docs = [
-  "sphinx",
+  "sphinx<9",
   "furo",
   "gp-libs",
   "sphinx-autobuild",
