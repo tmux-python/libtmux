@@ -555,7 +555,11 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
             self.stderr: list[str] = []
             self.cmd: list[str] = ["tmux", "attach-session"]
 
-    def patched_cmd(cmd_name: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def patched_cmd(
+        cmd_name: str,
+        *args: object,
+        **kwargs: str | int | None,
+    ) -> tmux_cmd:
         """Patched cmd that kills session after attach-session."""
         if cmd_name == "attach-session":
             # Simulate: attach-session succeeded, user worked, then killed session
