@@ -59,10 +59,10 @@ def retry_until(
 
     >>> assert retry_until(fn, raises=False)
     """
-    ini = time.time()
+    ini = time.monotonic()
 
     while not fun():
-        end = time.time()
+        end = time.monotonic()
         if end - ini >= seconds:
             if raises:
                 raise WaitTimeout
