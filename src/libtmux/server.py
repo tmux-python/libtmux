@@ -29,6 +29,7 @@ from .common import (
     PaneDict,
     SessionDict,
     WindowDict,
+    _rust_server,
     session_check_name,
 )
 from .options import OptionsMixin
@@ -204,6 +205,17 @@ class Server(
         >>> tmux = Server(socket_name="no_exist")
         >>> assert not tmux.is_alive()
         """
+        if os.getenv("LIBTMUX_BACKEND") == "rust":
+            try:
+                socket_path = (
+                    str(self.socket_path)
+                    if isinstance(self.socket_path, pathlib.Path)
+                    else self.socket_path
+                )
+                server = _rust_server(self.socket_name, socket_path, self.colors)
+                return bool(server.is_alive())
+            except Exception:
+                return False
         try:
             res = self.cmd("list-sessions")
         except Exception:
@@ -221,9 +233,23 @@ class Server(
         <class 'subprocess.CalledProcessError'>
         """
         if os.getenv("LIBTMUX_BACKEND") == "rust":
-            proc = self.cmd("list-sessions")
-            if proc.returncode != 0:
-                raise subprocess.CalledProcessError(proc.returncode, proc.cmd)
+            rust_cmd_args: list[str] = ["list-sessions"]
+            if self.socket_name:
+                rust_cmd_args.insert(0, f"-L{self.socket_name}")
+            if self.socket_path:
+                rust_cmd_args.insert(0, f"-S{self.socket_path}")
+            if self.config_file:
+                rust_cmd_args.insert(0, f"-f{self.config_file}")
+            try:
+                socket_path = (
+                    str(self.socket_path)
+                    if isinstance(self.socket_path, pathlib.Path)
+                    else self.socket_path
+                )
+                server = _rust_server(self.socket_name, socket_path, self.colors)
+                server.require_server()
+            except Exception as err:
+                raise subprocess.CalledProcessError(1, rust_cmd_args) from err
             return
         tmux_bin = shutil.which("tmux")
         if tmux_bin is None:
