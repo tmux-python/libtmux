@@ -317,6 +317,11 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
+        if os.getenv("LIBTMUX_BACKEND") == "rust":
+            proc = self.cmd("list-sessions")
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, proc.cmd)
+            return
         resolved = self.tmux_bin or shutil.which("tmux")
         if resolved is None:
             raise exc.TmuxCommandNotFound
