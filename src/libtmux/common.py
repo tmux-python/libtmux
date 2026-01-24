@@ -22,6 +22,12 @@ from . import exc
 from ._compat import LooseVersion
 from ._internal import trace as libtmux_trace
 
+try:
+    from .otel import start_span
+except Exception:  # pragma: no cover - optional dependency
+    def start_span(name: str, **fields):
+        return libtmux_trace.span(name, **fields)
+
 if t.TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -41,11 +47,27 @@ PaneDict = dict[str, t.Any]
 
 _RUST_BACKEND = os.getenv("LIBTMUX_BACKEND") == "rust"
 _RUST_SERVER_CACHE: dict[
-    tuple[str | None, str | None, int | None, str | None, str | None, bool | None],
+    tuple[
+        str | None,
+        str | None,
+        int | None,
+        str | None,
+        str | None,
+        bool | None,
+        str | None,
+    ],
     t.Any,
 ] = {}
 _RUST_SERVER_CONFIG: dict[
-    tuple[str | None, str | None, int | None, str | None, str | None, bool | None],
+    tuple[
+        str | None,
+        str | None,
+        int | None,
+        str | None,
+        str | None,
+        bool | None,
+        str | None,
+    ],
     set[str],
 ] = {}
 
@@ -88,7 +110,7 @@ def _rust_run_with_config(
     cmd_parts: list[str],
     cmd_list: list[str],
 ) -> tuple[list[str], list[str], int, list[str]]:
-    with libtmux_trace.span(
+    with start_span(
         "rust_run_with_config",
         layer="tmux-bin",
         cmd=" ".join(cmd_parts),
@@ -182,6 +204,9 @@ def _rust_server(
     connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
     server_kind = os.getenv("LIBTMUX_RUST_SERVER_KIND")
     control_autostart = _env_bool("LIBTMUX_RUST_CONTROL_AUTOSTART")
+    mux_server_bin = os.getenv("LIBTMUX_RUST_MUX_SERVER_BIN") or os.getenv(
+        "MUX_SERVER_BIN"
+    )
     key = (
         socket_name,
         socket_path,
@@ -189,6 +214,7 @@ def _rust_server(
         connection_kind,
         server_kind,
         control_autostart,
+        mux_server_bin,
     )
     server = _RUST_SERVER_CACHE.get(key)
     if server is None:
@@ -201,7 +227,9 @@ def _rust_server(
             kwargs["server_kind"] = server_kind
         if control_autostart is not None:
             kwargs["control_autostart"] = control_autostart
-        with libtmux_trace.span(
+        if mux_server_bin:
+            kwargs["mux_server_bin"] = mux_server_bin
+        with start_span(
             "rust_server_init",
             layer="python",
             socket_name=socket_name,
@@ -209,6 +237,7 @@ def _rust_server(
             connection_kind=connection_kind,
             server_kind=server_kind,
             control_autostart=control_autostart,
+            mux_server_bin=mux_server_bin,
         ):
             server = rust_backend.Server(
                 socket_path=socket_path,
@@ -249,7 +278,10 @@ def _rust_cmd_result(
     connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
     server_kind = os.getenv("LIBTMUX_RUST_SERVER_KIND")
     control_autostart = _env_bool("LIBTMUX_RUST_CONTROL_AUTOSTART")
-    with libtmux_trace.span(
+    mux_server_bin = os.getenv("LIBTMUX_RUST_MUX_SERVER_BIN") or os.getenv(
+        "MUX_SERVER_BIN"
+    )
+    with start_span(
         "rust_cmd_result",
         layer="python",
         cmd=" ".join(cmd_parts),
@@ -259,6 +291,7 @@ def _rust_cmd_result(
         connection_kind=connection_kind,
         server_kind=server_kind,
         control_autostart=control_autostart,
+        mux_server_bin=mux_server_bin,
     ):
         if connection_kind in {"bin", "tmux-bin"} and config_file:
             cmd_parts = ["-f", config_file, *cmd_parts]
@@ -272,11 +305,12 @@ def _rust_cmd_result(
             connection_kind,
             server_kind,
             control_autostart,
+            mux_server_bin,
         )
         if config_file:
             loaded = _RUST_SERVER_CONFIG.setdefault(key, set())
             if config_file not in loaded:
-                with libtmux_trace.span("rust_server_is_alive", layer="rust"):
+                with start_span("rust_server_is_alive", layer="rust"):
                     server_alive = bool(server.is_alive())
                 if not server_alive:
                     stdout_lines, stderr_lines, exit_code, cmd_args = (
@@ -293,7 +327,7 @@ def _rust_cmd_result(
                     return stdout_lines, stderr_lines, exit_code, cmd_args
                 quoted = shlex.quote(config_file)
                 try:
-                    with libtmux_trace.span(
+                    with start_span(
                         "rust_server_source_file",
                         layer="rust",
                         config_file=config_file,
@@ -310,7 +344,7 @@ def _rust_cmd_result(
 
         cmd_line = " ".join(shlex.quote(part) for part in cmd_parts)
         try:
-            with libtmux_trace.span(
+            with start_span(
                 "rust_server_cmd",
                 layer="rust",
                 cmd=cmd_line,
@@ -557,7 +591,7 @@ class tmux_cmd:
 
     def __init__(self, *args: t.Any) -> None:
         if _RUST_BACKEND:
-            with libtmux_trace.span("tmux_cmd", layer="python", backend="rust"):
+            with start_span("tmux_cmd", layer="python", backend="rust"):
                 stdout, stderr, returncode, cmd = _rust_cmd_result(args)
                 self.cmd = cmd
                 self.returncode = returncode
@@ -576,7 +610,7 @@ class tmux_cmd:
         self.cmd = cmd
 
         try:
-            with libtmux_trace.span(
+            with start_span(
                 "tmux_cmd",
                 layer="tmux-bin",
                 backend="tmux-bin",
