@@ -16,6 +16,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
+from libtmux._internal import trace as libtmux_trace
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
@@ -295,16 +296,27 @@ class Server(
         >>> assert not tmux.is_alive()
         """
         if os.getenv("LIBTMUX_BACKEND") == "rust":
-            try:
-                socket_path = (
-                    str(self.socket_path)
-                    if isinstance(self.socket_path, pathlib.Path)
-                    else self.socket_path
-                )
-                server = _rust_server(self.socket_name, socket_path, self.colors)
-                return bool(server.is_alive())
-            except Exception:
-                return False
+            with libtmux_trace.span(
+                "server_is_alive",
+                layer="python",
+                backend="rust",
+                socket_name=self.socket_name,
+                socket_path=str(self.socket_path) if self.socket_path else None,
+            ):
+                try:
+                    socket_path = (
+                        str(self.socket_path)
+                        if isinstance(self.socket_path, pathlib.Path)
+                        else self.socket_path
+                    )
+                    server = _rust_server(self.socket_name, socket_path, self.colors)
+                    with libtmux_trace.span(
+                        "rust_server_is_alive",
+                        layer="rust",
+                    ):
+                        return bool(server.is_alive())
+                except Exception:
+                    return False
         try:
             res = self.cmd("list-sessions")
         except Exception:
@@ -330,24 +342,35 @@ class Server(
         <class 'subprocess.CalledProcessError'>
         """
         if os.getenv("LIBTMUX_BACKEND") == "rust":
-            rust_cmd_args: list[str] = ["list-sessions"]
-            if self.socket_name:
-                rust_cmd_args.insert(0, f"-L{self.socket_name}")
-            if self.socket_path:
-                rust_cmd_args.insert(0, f"-S{self.socket_path}")
-            if self.config_file:
-                rust_cmd_args.insert(0, f"-f{self.config_file}")
-            try:
-                socket_path = (
-                    str(self.socket_path)
-                    if isinstance(self.socket_path, pathlib.Path)
-                    else self.socket_path
-                )
-                server = _rust_server(self.socket_name, socket_path, self.colors)
-                server.require_server()
-            except Exception as err:
-                raise subprocess.CalledProcessError(1, rust_cmd_args) from err
-            return
+            with libtmux_trace.span(
+                "server_raise_if_dead",
+                layer="python",
+                backend="rust",
+                socket_name=self.socket_name,
+                socket_path=str(self.socket_path) if self.socket_path else None,
+            ):
+                rust_cmd_args: list[str] = ["list-sessions"]
+                if self.socket_name:
+                    rust_cmd_args.insert(0, f"-L{self.socket_name}")
+                if self.socket_path:
+                    rust_cmd_args.insert(0, f"-S{self.socket_path}")
+                if self.config_file:
+                    rust_cmd_args.insert(0, f"-f{self.config_file}")
+                try:
+                    socket_path = (
+                        str(self.socket_path)
+                        if isinstance(self.socket_path, pathlib.Path)
+                        else self.socket_path
+                    )
+                    server = _rust_server(self.socket_name, socket_path, self.colors)
+                    with libtmux_trace.span(
+                        "rust_server_require",
+                        layer="rust",
+                    ):
+                        server.require_server()
+                except Exception as err:
+                    raise subprocess.CalledProcessError(1, rust_cmd_args) from err
+                return
         resolved = self.tmux_bin or shutil.which("tmux")
         if resolved is None:
             raise exc.TmuxCommandNotFound
