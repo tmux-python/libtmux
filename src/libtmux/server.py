@@ -18,6 +18,13 @@ import warnings
 from libtmux import exc
 from libtmux._internal import trace as libtmux_trace
 from libtmux._internal.env import socket_path_from_env
+
+try:
+    from libtmux.otel import start_span
+except Exception:  # pragma: no cover - optional dependency
+    def start_span(name: str, **fields):
+        return libtmux_trace.span(name, **fields)
+
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
@@ -296,7 +303,7 @@ class Server(
         >>> assert not tmux.is_alive()
         """
         if os.getenv("LIBTMUX_BACKEND") == "rust":
-            with libtmux_trace.span(
+            with start_span(
                 "server_is_alive",
                 layer="python",
                 backend="rust",
@@ -310,7 +317,7 @@ class Server(
                         else self.socket_path
                     )
                     server = _rust_server(self.socket_name, socket_path, self.colors)
-                    with libtmux_trace.span(
+                    with start_span(
                         "rust_server_is_alive",
                         layer="rust",
                     ):
@@ -342,7 +349,7 @@ class Server(
         <class 'subprocess.CalledProcessError'>
         """
         if os.getenv("LIBTMUX_BACKEND") == "rust":
-            with libtmux_trace.span(
+            with start_span(
                 "server_raise_if_dead",
                 layer="python",
                 backend="rust",
@@ -363,7 +370,7 @@ class Server(
                         else self.socket_path
                     )
                     server = _rust_server(self.socket_name, socket_path, self.colors)
-                    with libtmux_trace.span(
+                    with start_span(
                         "rust_server_require",
                         layer="rust",
                     ):
