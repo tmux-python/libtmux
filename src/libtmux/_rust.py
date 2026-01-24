@@ -13,15 +13,22 @@ _EXPORTS = ("Server",)
 _NATIVE: Any | None = None
 
 
+class RustBackendImportError(ImportError):
+    """Raise when the Rust backend cannot be imported."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "libtmux rust backend requires the vibe_tmux extension to be installed"
+        )
+
+
 def _load_native() -> Any:
     global _NATIVE
     if _NATIVE is None:
         try:
             _NATIVE = importlib.import_module("vibe_tmux")
         except Exception as exc:  # pragma: no cover - import path is env-dependent
-            raise ImportError(
-                "libtmux rust backend requires the vibe_tmux extension to be installed"
-            ) from exc
+            raise RustBackendImportError() from exc
     return _NATIVE
 
 
