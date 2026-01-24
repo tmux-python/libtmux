@@ -12,6 +12,11 @@ jobs:
       matrix:
         python-version: ['3.14']
         tmux-version: ['3.2a', '3.3a', '3.4', '3.5', '3.6', 'master']
+        backend: ['default']
+        include:
+          - python-version: '3.14'
+            tmux-version: '3.6'
+            backend: 'rust-control'
     steps:
       - uses: actions/checkout@v6
 
@@ -78,6 +83,24 @@ jobs:
           export PATH=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin:$PATH
           ls $HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin
           tmux -V
+          backend="${{ matrix.backend }}"
+          if [ "$backend" != "default" ]; then
+            if ! uv run python - <<'PY'
+import importlib.util
+import sys
+sys.exit(0 if importlib.util.find_spec("vibe_tmux") else 1)
+PY
+            then
+              echo "vibe_tmux not installed; skipping rust backend tests"
+              exit 0
+            fi
+            export LIBTMUX_BACKEND=rust
+            export LIBTMUX_RUST_CONNECTION_KIND=protocol
+            if [ "$backend" = "rust-control" ]; then
+              export LIBTMUX_RUST_CONTROL_MODE=1
+              export LIBTMUX_RUST_CONTROL_AUTOSTART=1
+            fi
+          fi
           uv run py.test --cov=./ --cov-append --cov-report=xml -n auto --verbose
         env:
           COV_CORE_SOURCE: .
