@@ -16,6 +16,7 @@ import typing as t
 import pytest
 from _pytest.doctest import DoctestItem
 
+from libtmux._internal import trace as libtmux_trace
 from libtmux.pane import Pane
 from libtmux.pytest_plugin import USING_ZSH
 from libtmux.server import Server
@@ -26,6 +27,34 @@ if t.TYPE_CHECKING:
     import pathlib
 
 pytest_plugins = ["pytester"]
+
+
+@pytest.fixture(autouse=True, scope="session")
+def trace_session() -> None:
+    """Initialize trace collection when enabled."""
+    if not libtmux_trace.TRACE_ENABLED:
+        return
+    if libtmux_trace.TRACE_RESET:
+        libtmux_trace.reset_trace()
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Print trace summary in pytest's terminal summary."""
+    if not libtmux_trace.TRACE_ENABLED:
+        return
+    terminalreporter.section("libtmux trace")
+    terminalreporter.write_line(libtmux_trace.summarize())
+
+
+@pytest.fixture(autouse=True)
+def trace_test_context(request: pytest.FixtureRequest) -> t.Iterator[None]:
+    """Attach the current pytest node id to trace events."""
+    if not libtmux_trace.TRACE_ENABLED:
+        yield
+        return
+    libtmux_trace.set_test_context(request.node.nodeid)
+    yield
+    libtmux_trace.set_test_context(None)
 
 
 @pytest.fixture(autouse=True)
