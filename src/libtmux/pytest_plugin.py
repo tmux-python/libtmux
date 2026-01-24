@@ -14,6 +14,7 @@ import pytest
 
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
+from libtmux.common import _rust_server
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
@@ -23,6 +24,13 @@ if t.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 USING_ZSH = "zsh" in os.getenv("SHELL", "")
+
+
+def _env_truthy(name: str) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _reap_test_server(socket_name: str | None) -> None:
@@ -49,10 +57,6 @@ def _reap_test_server(socket_name: str | None) -> None:
         if srv.is_alive():
             srv.kill()
 
-    # ``Server(socket_name=...)`` does not populate ``socket_path`` —
-    # the Server class only derives the path when neither ``socket_name``
-    # nor ``socket_path`` was supplied. Recompute the location tmux uses
-    # so we can unlink the file regardless of daemon state.
     tmux_tmpdir = pathlib.Path(os.environ.get("TMUX_TMPDIR", "/tmp"))
     socket_path = tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name
     with contextlib.suppress(OSError):
@@ -173,8 +177,25 @@ def server(
         >>> result.assert_outcomes(passed=1)
     """
     server = Server(socket_name=f"libtmux_test{next(namer)}")
+    rust_refresh = None
+    rust_server = None
+
+    if os.getenv("LIBTMUX_BACKEND") == "rust" and _env_truthy(
+        "LIBTMUX_RUST_CONTROL_MODE"
+    ):
+        socket_path = (
+            str(server.socket_path)
+            if isinstance(server.socket_path, pathlib.Path)
+            else server.socket_path
+        )
+        rust_server = _rust_server(server.socket_name, socket_path, server.colors)
+        rust_refresh = rust_server.subscribe(10)
+        setattr(server, "_rust_refresh", rust_refresh)
 
     def fin() -> None:
+        if rust_server is not None:
+            with contextlib.suppress(Exception):
+                rust_server.close()
         _reap_test_server(server.socket_name)
 
     request.addfinalizer(fin)
