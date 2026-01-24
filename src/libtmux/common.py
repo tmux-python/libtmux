@@ -41,10 +41,12 @@ PaneDict = dict[str, t.Any]
 
 _RUST_BACKEND = os.getenv("LIBTMUX_BACKEND") == "rust"
 _RUST_SERVER_CACHE: dict[
-    tuple[str | None, str | None, int | None, str | None, str | None], t.Any
+    tuple[str | None, str | None, int | None, str | None, str | None, bool | None],
+    t.Any,
 ] = {}
 _RUST_SERVER_CONFIG: dict[
-    tuple[str | None, str | None, int | None, str | None, str | None], set[str]
+    tuple[str | None, str | None, int | None, str | None, str | None, bool | None],
+    set[str],
 ] = {}
 
 
@@ -65,6 +67,18 @@ def _resolve_rust_socket_path(socket_path: str | None, socket_name: str | None) 
     with contextlib.suppress(OSError):
         socket_dir.chmod(0o700)
     return str(socket_dir / name)
+
+
+def _env_bool(name: str) -> bool | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return None
 
 
 def _rust_run_with_config(
@@ -167,7 +181,15 @@ def _rust_server(
 ) -> t.Any:
     connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
     server_kind = os.getenv("LIBTMUX_RUST_SERVER_KIND")
-    key = (socket_name, socket_path, colors, connection_kind, server_kind)
+    control_autostart = _env_bool("LIBTMUX_RUST_CONTROL_AUTOSTART")
+    key = (
+        socket_name,
+        socket_path,
+        colors,
+        connection_kind,
+        server_kind,
+        control_autostart,
+    )
     server = _RUST_SERVER_CACHE.get(key)
     if server is None:
         from libtmux import _rust as rust_backend
@@ -177,6 +199,8 @@ def _rust_server(
             kwargs["connection_kind"] = connection_kind
         if server_kind:
             kwargs["server_kind"] = server_kind
+        if control_autostart is not None:
+            kwargs["control_autostart"] = control_autostart
         with libtmux_trace.span(
             "rust_server_init",
             layer="python",
@@ -184,6 +208,7 @@ def _rust_server(
             socket_path=socket_path,
             connection_kind=connection_kind,
             server_kind=server_kind,
+            control_autostart=control_autostart,
         ):
             server = rust_backend.Server(
                 socket_path=socket_path,
@@ -223,6 +248,7 @@ def _rust_cmd_result(
 
     connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
     server_kind = os.getenv("LIBTMUX_RUST_SERVER_KIND")
+    control_autostart = _env_bool("LIBTMUX_RUST_CONTROL_AUTOSTART")
     with libtmux_trace.span(
         "rust_cmd_result",
         layer="python",
@@ -232,13 +258,21 @@ def _rust_cmd_result(
         config_file=config_file,
         connection_kind=connection_kind,
         server_kind=server_kind,
+        control_autostart=control_autostart,
     ):
         if connection_kind in {"bin", "tmux-bin"} and config_file:
             cmd_parts = ["-f", config_file, *cmd_parts]
             config_file = None
 
         server = _rust_server(socket_name, socket_path, colors)
-        key = (socket_name, socket_path, colors, connection_kind, server_kind)
+        key = (
+            socket_name,
+            socket_path,
+            colors,
+            connection_kind,
+            server_kind,
+            control_autostart,
+        )
         if config_file:
             loaded = _RUST_SERVER_CONFIG.setdefault(key, set())
             if config_file not in loaded:
