@@ -8,7 +8,9 @@ libtmux.common
 from __future__ import annotations
 
 import logging
+import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -33,6 +35,142 @@ SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
 WindowOptionDict = dict[str, t.Any]
 PaneDict = dict[str, t.Any]
+
+_RUST_BACKEND = os.getenv("LIBTMUX_BACKEND") == "rust"
+_RUST_SERVER_CACHE: dict[tuple[str | None, str | None, int | None], t.Any] = {}
+_RUST_SERVER_CONFIG: dict[tuple[str | None, str | None, int | None], set[str]] = {}
+
+
+def _parse_tmux_args(args: tuple[t.Any, ...]) -> tuple[
+    str | None, str | None, str | None, int | None, list[str]
+]:
+    socket_name: str | None = None
+    socket_path: str | None = None
+    config_file: str | None = None
+    colors: int | None = None
+    cmd_parts: list[str] = []
+    parsing_globals = True
+
+    idx = 0
+    while idx < len(args):
+        arg = str(args[idx])
+        if parsing_globals and arg == "--":
+            parsing_globals = False
+            idx += 1
+            continue
+        if parsing_globals and arg.startswith("-L") and len(arg) > 2:
+            socket_name = arg[2:]
+            idx += 1
+            continue
+        if parsing_globals and arg == "-L" and idx + 1 < len(args):
+            socket_name = str(args[idx + 1])
+            idx += 2
+            continue
+        if parsing_globals and arg.startswith("-S") and len(arg) > 2:
+            socket_path = arg[2:]
+            idx += 1
+            continue
+        if parsing_globals and arg == "-S" and idx + 1 < len(args):
+            socket_path = str(args[idx + 1])
+            idx += 2
+            continue
+        if parsing_globals and arg.startswith("-f") and len(arg) > 2:
+            config_file = arg[2:]
+            idx += 1
+            continue
+        if parsing_globals and arg == "-f" and idx + 1 < len(args):
+            config_file = str(args[idx + 1])
+            idx += 2
+            continue
+        if parsing_globals and arg == "-2":
+            colors = 256
+            idx += 1
+            continue
+        if parsing_globals and arg == "-8":
+            colors = 88
+            idx += 1
+            continue
+        if parsing_globals:
+            parsing_globals = False
+        cmd_parts.append(arg)
+        idx += 1
+
+    return socket_name, socket_path, config_file, colors, cmd_parts
+
+
+def _rust_server(
+    socket_name: str | None,
+    socket_path: str | None,
+    colors: int | None,
+    config_file: str | None,
+) -> t.Any:
+    key = (socket_name, socket_path, colors)
+    server = _RUST_SERVER_CACHE.get(key)
+    if server is None:
+        from libtmux import _rust as rust_backend
+
+        connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
+        kwargs: dict[str, t.Any] = {}
+        if connection_kind:
+            kwargs["connection_kind"] = connection_kind
+        server = rust_backend.Server(
+            socket_path=socket_path,
+            socket_name=socket_name,
+            **kwargs,
+        )
+        _RUST_SERVER_CACHE[key] = server
+        _RUST_SERVER_CONFIG[key] = set()
+
+    if config_file:
+        loaded = _RUST_SERVER_CONFIG.setdefault(key, set())
+        if config_file not in loaded:
+            quoted = shlex.quote(config_file)
+            server.cmd(f"source-file {quoted}")
+            loaded.add(config_file)
+
+    return server
+
+
+def _rust_cmd_result(args: tuple[t.Any, ...]) -> tuple[list[str], list[str], int, list[str]]:
+    socket_name, socket_path, config_file, colors, cmd_parts = _parse_tmux_args(args)
+    cmd_list = [str(c) for c in args]
+    if not cmd_parts:
+        return [], [], 0, cmd_list
+    if cmd_parts == ["-V"]:
+        tmux_bin = shutil.which("tmux")
+        if not tmux_bin:
+            raise exc.TmuxCommandNotFound
+        process = subprocess.Popen(
+            [tmux_bin, "-V"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="backslashreplace",
+        )
+        stdout_raw, stderr_raw = process.communicate()
+        stdout = stdout_raw.split("\n") if stdout_raw else []
+        while stdout and stdout[-1] == "":
+            stdout.pop()
+        stderr = list(filter(None, stderr_raw.split("\n"))) if stderr_raw else []
+        return stdout, stderr, process.returncode, cmd_list
+
+    connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
+    if connection_kind in {"bin", "tmux-bin"} and config_file:
+        cmd_parts = ["-f", config_file, *cmd_parts]
+        config_file = None
+
+    server = _rust_server(socket_name, socket_path, colors, config_file)
+
+    cmd = " ".join(shlex.quote(part) for part in cmd_parts)
+    result = server.cmd(cmd)
+    stdout = result.stdout.split("\n") if result.stdout else []
+    while stdout and stdout[-1] == "":
+        stdout.pop()
+    stderr_raw = getattr(result, "exit_message", None) or ""
+    stderr = list(filter(None, stderr_raw.split("\n"))) if stderr_raw else []
+    if "has-session" in cmd_list and stderr and not stdout:
+        stdout = [stderr[0]]
+    return stdout, stderr, result.exit_code, cmd_list
 
 
 class CmdProtocol(t.Protocol):
@@ -249,6 +387,14 @@ class tmux_cmd:
     """
 
     def __init__(self, *args: t.Any) -> None:
+        if _RUST_BACKEND:
+            stdout, stderr, returncode, cmd = _rust_cmd_result(args)
+            self.cmd = cmd
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+            return
+
         tmux_bin = shutil.which("tmux")
         if not tmux_bin:
             raise exc.TmuxCommandNotFound
