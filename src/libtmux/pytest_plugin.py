@@ -161,7 +161,7 @@ def server(
             else server.socket_path
         )
         rust_server = _rust_server(server.socket_name, socket_path, server.colors)
-        rust_refresh = rust_server.subscribe(10)
+        rust_refresh = rust_server.subscribe(10, capture_view=False)
         setattr(server, "_rust_refresh", rust_refresh)
 
     def fin() -> None:
