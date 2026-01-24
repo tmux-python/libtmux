@@ -21,6 +21,7 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
+from ._internal import trace as libtmux_trace
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -70,25 +71,33 @@ def _rust_run_with_config(
     cmd_parts: list[str],
     cmd_list: list[str],
 ) -> tuple[list[str], list[str], int, list[str]]:
-    tmux_bin = shutil.which("tmux")
-    if not tmux_bin:
-        raise exc.TmuxCommandNotFound
-    resolved_socket = _resolve_rust_socket_path(socket_path, socket_name)
-    process = subprocess.Popen(
-        [tmux_bin, "-S", resolved_socket, "-f", config_file, *cmd_parts],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        errors="backslashreplace",
-    )
-    stdout_raw, stderr_raw = process.communicate()
-    stdout_lines = stdout_raw.split("\n") if stdout_raw else []
-    while stdout_lines and stdout_lines[-1] == "":
-        stdout_lines.pop()
-    stderr_lines = list(filter(None, stderr_raw.split("\n"))) if stderr_raw else []
-    if "has-session" in cmd_list and stderr_lines and not stdout_lines:
-        stdout_lines = [stderr_lines[0]]
-    return stdout_lines, stderr_lines, process.returncode, cmd_list
+    with libtmux_trace.span(
+        "rust_run_with_config",
+        layer="tmux-bin",
+        cmd=" ".join(cmd_parts),
+        socket_name=socket_name,
+        socket_path=socket_path,
+        config_file=config_file,
+    ):
+        tmux_bin = shutil.which("tmux")
+        if not tmux_bin:
+            raise exc.TmuxCommandNotFound
+        resolved_socket = _resolve_rust_socket_path(socket_path, socket_name)
+        process = subprocess.Popen(
+            [tmux_bin, "-S", resolved_socket, "-f", config_file, *cmd_parts],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="backslashreplace",
+        )
+        stdout_raw, stderr_raw = process.communicate()
+        stdout_lines = stdout_raw.split("\n") if stdout_raw else []
+        while stdout_lines and stdout_lines[-1] == "":
+            stdout_lines.pop()
+        stderr_lines = list(filter(None, stderr_raw.split("\n"))) if stderr_raw else []
+        if "has-session" in cmd_list and stderr_lines and not stdout_lines:
+            stdout_lines = [stderr_lines[0]]
+        return stdout_lines, stderr_lines, process.returncode, cmd_list
 
 
 def _parse_tmux_args(
@@ -162,11 +171,18 @@ def _rust_server(
         kwargs: dict[str, t.Any] = {}
         if connection_kind:
             kwargs["connection_kind"] = connection_kind
-        server = rust_backend.Server(
-            socket_path=socket_path,
+        with libtmux_trace.span(
+            "rust_server_init",
+            layer="python",
             socket_name=socket_name,
-            **kwargs,
-        )
+            socket_path=socket_path,
+            connection_kind=connection_kind,
+        ):
+            server = rust_backend.Server(
+                socket_path=socket_path,
+                socket_name=socket_name,
+                **kwargs,
+            )
         _RUST_SERVER_CACHE[key] = server
         _RUST_SERVER_CONFIG[key] = set()
 
@@ -199,48 +215,75 @@ def _rust_cmd_result(
         return stdout, stderr, process.returncode, cmd_list
 
     connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
-    if connection_kind in {"bin", "tmux-bin"} and config_file:
-        cmd_parts = ["-f", config_file, *cmd_parts]
-        config_file = None
+    with libtmux_trace.span(
+        "rust_cmd_result",
+        layer="python",
+        cmd=" ".join(cmd_parts),
+        socket_name=socket_name,
+        socket_path=socket_path,
+        config_file=config_file,
+        connection_kind=connection_kind,
+    ):
+        if connection_kind in {"bin", "tmux-bin"} and config_file:
+            cmd_parts = ["-f", config_file, *cmd_parts]
+            config_file = None
 
-    server = _rust_server(socket_name, socket_path, colors)
-    key = (socket_name, socket_path, colors)
-    if config_file:
-        loaded = _RUST_SERVER_CONFIG.setdefault(key, set())
-        if config_file not in loaded:
-            if not server.is_alive():
-                stdout_lines, stderr_lines, exit_code, cmd_args = _rust_run_with_config(
-                    socket_path,
-                    socket_name,
-                    config_file,
-                    cmd_parts,
-                    cmd_list,
-                )
-                if exit_code == 0:
-                    loaded.add(config_file)
-                return stdout_lines, stderr_lines, exit_code, cmd_args
-            quoted = shlex.quote(config_file)
-            try:
-                server.cmd(f"source-file {quoted}")
-            except Exception as err:
-                message = str(err)
-                error_stdout: list[str] = []
-                error_stderr = [message] if message else []
-                if "has-session" in cmd_list and error_stderr and not error_stdout:
-                    error_stdout = [error_stderr[0]]
-                return error_stdout, error_stderr, 1, cmd_list
-            loaded.add(config_file)
+        server = _rust_server(socket_name, socket_path, colors)
+        key = (socket_name, socket_path, colors)
+        if config_file:
+            loaded = _RUST_SERVER_CONFIG.setdefault(key, set())
+            if config_file not in loaded:
+                with libtmux_trace.span("rust_server_is_alive", layer="rust"):
+                    server_alive = bool(server.is_alive())
+                if not server_alive:
+                    stdout_lines, stderr_lines, exit_code, cmd_args = (
+                        _rust_run_with_config(
+                            socket_path,
+                            socket_name,
+                            config_file,
+                            cmd_parts,
+                            cmd_list,
+                        )
+                    )
+                    if exit_code == 0:
+                        loaded.add(config_file)
+                    return stdout_lines, stderr_lines, exit_code, cmd_args
+                quoted = shlex.quote(config_file)
+                try:
+                    with libtmux_trace.span(
+                        "rust_server_source_file",
+                        layer="rust",
+                        config_file=config_file,
+                    ):
+                        server.cmd(f"source-file {quoted}")
+                except Exception as err:
+                    message = str(err)
+                    error_stdout: list[str] = []
+                    error_stderr = [message] if message else []
+                    if "has-session" in cmd_list and error_stderr and not error_stdout:
+                        error_stdout = [error_stderr[0]]
+                    return error_stdout, error_stderr, 1, cmd_list
+                loaded.add(config_file)
 
-    cmd_line = " ".join(shlex.quote(part) for part in cmd_parts)
-    try:
-        result = server.cmd(cmd_line)
-    except Exception as err:
-        message = str(err)
-        error_stdout_lines: list[str] = []
-        error_stderr_lines = [message] if message else []
-        if "has-session" in cmd_list and error_stderr_lines and not error_stdout_lines:
-            error_stdout_lines = [error_stderr_lines[0]]
-        return error_stdout_lines, error_stderr_lines, 1, cmd_list
+        cmd_line = " ".join(shlex.quote(part) for part in cmd_parts)
+        try:
+            with libtmux_trace.span(
+                "rust_server_cmd",
+                layer="rust",
+                cmd=cmd_line,
+            ):
+                result = server.cmd(cmd_line)
+        except Exception as err:
+            message = str(err)
+            error_stdout_lines: list[str] = []
+            error_stderr_lines = [message] if message else []
+            if (
+                "has-session" in cmd_list
+                and error_stderr_lines
+                and not error_stdout_lines
+            ):
+                error_stdout_lines = [error_stderr_lines[0]]
+            return error_stdout_lines, error_stderr_lines, 1, cmd_list
 
     stdout_lines = result.stdout.split("\n") if result.stdout else []
     while stdout_lines and stdout_lines[-1] == "":
@@ -526,12 +569,13 @@ class tmux_cmd:
 
     def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
         if _RUST_BACKEND:
-            stdout, stderr, returncode, cmd = _rust_cmd_result(args)
-            self.cmd = cmd
-            self.returncode = returncode
-            self.stdout = stdout
-            self.stderr = stderr
-            return
+            with libtmux_trace.span("tmux_cmd", layer="python", backend="rust"):
+                stdout, stderr, returncode, cmd = _rust_cmd_result(args)
+                self.cmd = cmd
+                self.returncode = returncode
+                self.stdout = stdout
+                self.stderr = stderr
+                return
 
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
@@ -551,16 +595,22 @@ class tmux_cmd:
             )
 
         try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="backslashreplace",
-            )
-            stdout_text, stderr_text = self.process.communicate()
-            returncode = self.process.returncode
+            with libtmux_trace.span(
+                "tmux_cmd",
+                layer="tmux-bin",
+                backend="tmux-bin",
+                cmd=" ".join(cmd),
+            ):
+                self.process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="backslashreplace",
+                )
+                stdout_text, stderr_text = self.process.communicate()
+                returncode = self.process.returncode
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         except Exception:
