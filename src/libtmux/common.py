@@ -40,8 +40,12 @@ WindowOptionDict = dict[str, t.Any]
 PaneDict = dict[str, t.Any]
 
 _RUST_BACKEND = os.getenv("LIBTMUX_BACKEND") == "rust"
-_RUST_SERVER_CACHE: dict[tuple[str | None, str | None, int | None], t.Any] = {}
-_RUST_SERVER_CONFIG: dict[tuple[str | None, str | None, int | None], set[str]] = {}
+_RUST_SERVER_CACHE: dict[
+    tuple[str | None, str | None, int | None, str | None, str | None], t.Any
+] = {}
+_RUST_SERVER_CONFIG: dict[
+    tuple[str | None, str | None, int | None, str | None, str | None], set[str]
+] = {}
 
 
 def _resolve_rust_socket_path(socket_path: str | None, socket_name: str | None) -> str:
@@ -161,21 +165,25 @@ def _rust_server(
     socket_path: str | None,
     colors: int | None,
 ) -> t.Any:
-    key = (socket_name, socket_path, colors)
+    connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
+    server_kind = os.getenv("LIBTMUX_RUST_SERVER_KIND")
+    key = (socket_name, socket_path, colors, connection_kind, server_kind)
     server = _RUST_SERVER_CACHE.get(key)
     if server is None:
         from libtmux import _rust as rust_backend
 
-        connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
         kwargs: dict[str, t.Any] = {}
         if connection_kind:
             kwargs["connection_kind"] = connection_kind
+        if server_kind:
+            kwargs["server_kind"] = server_kind
         with libtmux_trace.span(
             "rust_server_init",
             layer="python",
             socket_name=socket_name,
             socket_path=socket_path,
             connection_kind=connection_kind,
+            server_kind=server_kind,
         ):
             server = rust_backend.Server(
                 socket_path=socket_path,
@@ -214,6 +222,7 @@ def _rust_cmd_result(
         return stdout, stderr, process.returncode, cmd_list
 
     connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
+    server_kind = os.getenv("LIBTMUX_RUST_SERVER_KIND")
     with libtmux_trace.span(
         "rust_cmd_result",
         layer="python",
@@ -222,13 +231,14 @@ def _rust_cmd_result(
         socket_path=socket_path,
         config_file=config_file,
         connection_kind=connection_kind,
+        server_kind=server_kind,
     ):
         if connection_kind in {"bin", "tmux-bin"} and config_file:
             cmd_parts = ["-f", config_file, *cmd_parts]
             config_file = None
 
         server = _rust_server(socket_name, socket_path, colors)
-        key = (socket_name, socket_path, colors)
+        key = (socket_name, socket_path, colors, connection_kind, server_kind)
         if config_file:
             loaded = _RUST_SERVER_CONFIG.setdefault(key, set())
             if config_file not in loaded:
