@@ -270,6 +270,10 @@ def _rust_cmd_result(
                 "rust_server_cmd",
                 layer="rust",
                 cmd=cmd_line,
+                socket_name=socket_name,
+                socket_path=socket_path,
+                config_file=config_file,
+                connection_kind=connection_kind,
             ):
                 result = server.cmd(cmd_line)
         except Exception as err:
