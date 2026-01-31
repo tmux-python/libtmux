@@ -49,6 +49,13 @@ Documentation = "https://libtmux.git-pull.com"
 Repository = "https://github.com/tmux-python/libtmux"
 Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
+[project.optional-dependencies]
+otel = [
+  "opentelemetry-api",
+  "opentelemetry-sdk",
+  "opentelemetry-exporter-otlp",
+]
+
 [dependency-groups]
 dev = [
   # Docs
@@ -111,6 +118,11 @@ lint = [
   "ruff",
   "mypy",
 ]
+otel = [
+  "opentelemetry-api",
+  "opentelemetry-sdk",
+  "opentelemetry-exporter-otlp",
+]
 
 [project.entry-points.pytest11]
 libtmux = "libtmux.pytest_plugin"
@@ -126,6 +138,13 @@ files = [
   "src",
   "tests",
 ]
+
+[[tool.mypy.overrides]]
+module = [
+  "opentelemetry",
+  "opentelemetry.*",
+]
+ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true

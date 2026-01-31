@@ -8,6 +8,7 @@ libtmux.common
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -259,6 +260,22 @@ class tmux_cmd:
 
         self.cmd = cmd
 
+        env = None
+        try:
+            from libtmux.otel import current_trace_headers
+        except Exception:  # pragma: no cover - optional dependency
+            current_trace_headers = None  # type: ignore[assignment]
+
+        if current_trace_headers is not None:
+            headers = current_trace_headers()
+            if headers and headers.traceparent:
+                env = os.environ.copy()
+                env["TRACEPARENT"] = headers.traceparent
+                if headers.tracestate:
+                    env["TRACESTATE"] = headers.tracestate
+                if headers.baggage:
+                    env["BAGGAGE"] = headers.baggage
+
         try:
             self.process = subprocess.Popen(
                 cmd,
@@ -266,6 +283,7 @@ class tmux_cmd:
                 stderr=subprocess.PIPE,
                 text=True,
                 errors="backslashreplace",
+                env=env,
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
