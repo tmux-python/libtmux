@@ -20,10 +20,14 @@ from libtmux._internal import trace as libtmux_trace
 from libtmux._internal.env import socket_path_from_env
 
 try:
-    from libtmux.otel import start_span
+    from libtmux.otel import start_span, traceparent_scope
 except Exception:  # pragma: no cover - optional dependency
     def start_span(name: str, **fields):
         return libtmux_trace.span(name, **fields)
+
+    @contextlib.contextmanager
+    def traceparent_scope():
+        yield
 
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
@@ -321,7 +325,8 @@ class Server(
                         "rust_server_is_alive",
                         layer="rust",
                     ):
-                        return bool(server.is_alive())
+                        with traceparent_scope():
+                            return bool(server.is_alive())
                 except Exception:
                     return False
         try:
@@ -374,7 +379,8 @@ class Server(
                         "rust_server_require",
                         layer="rust",
                     ):
-                        server.require_server()
+                        with traceparent_scope():
+                            server.require_server()
                 except Exception as err:
                     raise subprocess.CalledProcessError(1, rust_cmd_args) from err
                 return
