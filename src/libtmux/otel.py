@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from typing import Any
 
 from ._internal import trace as libtmux_trace
@@ -130,3 +130,80 @@ def start_span(name: str, attributes: dict[str, Any] | None = None, **fields: An
     filtered = {k: _normalize_attr(v) for k, v in otel_attrs.items() if _normalize_attr(v) is not None}
     stack.enter_context(_tracer.start_as_current_span(name, attributes=filtered))
     return stack
+
+
+def _traceparent_from_current() -> tuple[str, str | None] | None:
+    try:
+        from opentelemetry import propagate, trace
+    except Exception:
+        return None
+
+    carrier: dict[str, str] = {}
+    try:
+        propagate.inject(carrier)
+    except Exception:
+        carrier = {}
+
+    traceparent = carrier.get("traceparent")
+    tracestate = carrier.get("tracestate")
+
+    if not traceparent:
+        try:
+            span = trace.get_current_span()
+            ctx = span.get_span_context()
+            trace_id = getattr(ctx, "trace_id", 0)
+            span_id = getattr(ctx, "span_id", 0)
+            if not trace_id or not span_id:
+                return None
+            sampled = bool(getattr(ctx, "trace_flags", None) and ctx.trace_flags.sampled)
+            flags = "01" if sampled else "00"
+            traceparent = f"00-{trace_id:032x}-{span_id:016x}-{flags}"
+        except Exception:
+            return None
+
+    return traceparent, tracestate
+
+
+@contextmanager
+def traceparent_scope():
+    if not _otel_enabled():
+        yield
+        return
+
+    trace_headers = _traceparent_from_current()
+    if not trace_headers:
+        yield
+        return
+
+    traceparent, tracestate = trace_headers
+
+    try:
+        import vibe_tmux
+    except Exception:
+        yield
+        return
+
+    setter = getattr(vibe_tmux, "otel_set_traceparent", None)
+    clearer = getattr(vibe_tmux, "otel_clear_traceparent", None)
+    if setter is None:
+        setter = getattr(vibe_tmux, "set_traceparent_context", None)
+        clearer = getattr(vibe_tmux, "clear_traceparent_context", None)
+
+    if setter is None:
+        yield
+        return
+
+    ok = False
+    try:
+        ok = bool(setter(traceparent, tracestate))
+    except Exception:
+        ok = False
+
+    try:
+        yield
+    finally:
+        if ok and clearer is not None:
+            try:
+                clearer()
+            except Exception:
+                pass
