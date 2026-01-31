@@ -23,10 +23,14 @@ from ._compat import LooseVersion
 from ._internal import trace as libtmux_trace
 
 try:
-    from .otel import start_span
+    from .otel import start_span, traceparent_scope
 except Exception:  # pragma: no cover - optional dependency
     def start_span(name: str, **fields):
         return libtmux_trace.span(name, **fields)
+
+    @contextlib.contextmanager
+    def traceparent_scope():
+        yield
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -239,11 +243,12 @@ def _rust_server(
             control_autostart=control_autostart,
             mux_server_bin=mux_server_bin,
         ):
-            server = rust_backend.Server(
-                socket_path=socket_path,
-                socket_name=socket_name,
-                **kwargs,
-            )
+            with traceparent_scope():
+                server = rust_backend.Server(
+                    socket_path=socket_path,
+                    socket_name=socket_name,
+                    **kwargs,
+                )
         _RUST_SERVER_CACHE[key] = server
         _RUST_SERVER_CONFIG[key] = set()
 
@@ -311,7 +316,8 @@ def _rust_cmd_result(
             loaded = _RUST_SERVER_CONFIG.setdefault(key, set())
             if config_file not in loaded:
                 with start_span("rust_server_is_alive", layer="rust"):
-                    server_alive = bool(server.is_alive())
+                    with traceparent_scope():
+                        server_alive = bool(server.is_alive())
                 if not server_alive:
                     stdout_lines, stderr_lines, exit_code, cmd_args = (
                         _rust_run_with_config(
@@ -332,7 +338,8 @@ def _rust_cmd_result(
                         layer="rust",
                         config_file=config_file,
                     ):
-                        server.cmd(f"source-file {quoted}")
+                        with traceparent_scope():
+                            server.cmd(f"source-file {quoted}")
                 except Exception as err:
                     message = str(err)
                     error_stdout: list[str] = []
@@ -353,7 +360,8 @@ def _rust_cmd_result(
                 config_file=config_file,
                 connection_kind=connection_kind,
             ):
-                result = server.cmd(cmd_line)
+                with traceparent_scope():
+                    result = server.cmd(cmd_line)
         except Exception as err:
             message = str(err)
             error_stdout_lines: list[str] = []
