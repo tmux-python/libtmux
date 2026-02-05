@@ -11,6 +11,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -180,6 +181,50 @@ def test_new_session_environmental_variables(
     my_session = server.new_session("test_new_session", environment={"FOO": "HI"})
 
     assert my_session.show_environment()["FOO"] == "HI"
+
+
+@pytest.mark.xfail(
+    raises=exc.TmuxObjectDoesNotExist,
+    reason="Race condition: new_session() may fail when list-sessions "
+    "doesn't yet see the session created by new-session. "
+    "See https://github.com/tmux-python/libtmux/issues/624",
+    strict=True,
+)
+def test_new_session_race_condition(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Simulate race between new-session and list-sessions (#624).
+
+    In PyInstaller + Python 3.13 + Docker, LD_LIBRARY_PATH contamination
+    can crash the tmux server after new-session returns, causing the
+    subsequent list-sessions to not find the newly created session.
+
+    This test monkeypatches fetch_objs to return an empty list on the
+    first list-sessions call, reproducing that exact failure window.
+    """
+    from libtmux import neo
+
+    original_fetch_objs = neo.fetch_objs
+    first_list_sessions_call = True
+
+    def fetch_objs_stale_first_call(
+        server: Server,
+        list_cmd: t.Literal["list-sessions", "list-windows", "list-panes"],
+        list_extra_args: t.Iterable[str] | None = None,
+    ) -> list[dict[str, t.Any]]:
+        nonlocal first_list_sessions_call
+        if list_cmd == "list-sessions" and first_list_sessions_call:
+            first_list_sessions_call = False
+            return []
+        return original_fetch_objs(
+            server=server,
+            list_cmd=list_cmd,
+            list_extra_args=list_extra_args,
+        )
+
+    monkeypatch.setattr(neo, "fetch_objs", fetch_objs_stale_first_call)
+    server.new_session(session_name="race_test")
 
 
 def test_no_server_sessions() -> None:
