@@ -177,6 +177,22 @@ class Obj:
                 setattr(self, k, v)
 
 
+def get_output_format() -> tuple[list[str], str]:
+    """Return field names and tmux format string for all Obj fields."""
+    # Exclude 'server' - it's a Python object, not a tmux format variable
+    formats = [f for f in Obj.__dataclass_fields__.keys() if f != "server"]
+    tmux_formats = [f"#{{{f}}}{FORMAT_SEPARATOR}" for f in formats]
+    return formats, "".join(tmux_formats)
+
+
+def parse_output(output: str) -> OutputRaw:
+    """Parse tmux output formatted with get_output_format() into a dict."""
+    # Exclude 'server' - it's a Python object, not a tmux format variable
+    formats = [f for f in Obj.__dataclass_fields__.keys() if f != "server"]
+    formatter = dict(zip(formats, output.split(FORMAT_SEPARATOR), strict=False))
+    return {k: v for k, v in formatter.items() if v}
+
+
 def fetch_objs(
     server: Server,
     list_cmd: ListCmd,

@@ -19,7 +19,7 @@ from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
-from libtmux.neo import fetch_objs
+from libtmux.neo import fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
@@ -539,9 +539,11 @@ class Server(
         if env:
             del os.environ["TMUX"]
 
+        _fields, format_string = get_output_format()
+
         tmux_args: tuple[str | int, ...] = (
             "-P",
-            "-F#{session_id}",  # output
+            f"-F{format_string}",
         )
 
         if session_name is not None:
@@ -580,18 +582,9 @@ class Server(
         if env:
             os.environ["TMUX"] = env
 
-        session_formatters = dict(
-            zip(
-                ["session_id"],
-                session_stdout.split(formats.FORMAT_SEPARATOR),
-                strict=False,
-            ),
-        )
+        session_data = parse_output(session_stdout)
 
-        return Session.from_session_id(
-            server=self,
-            session_id=session_formatters["session_id"],
-        )
+        return Session(server=self, **session_data)
 
     #
     # Relations
