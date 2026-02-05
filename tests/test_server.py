@@ -194,36 +194,53 @@ def test_new_session_race_condition(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Simulate race between new-session and list-sessions (#624).
+    """Reproduce server crash between new-session and list-sessions (#624).
 
-    In PyInstaller + Python 3.13 + Docker, LD_LIBRARY_PATH contamination
-    can crash the tmux server after new-session returns, causing the
-    subsequent list-sessions to not find the newly created session.
+    In PyInstaller + Docker, LD_LIBRARY_PATH contamination from the
+    bootloader (pyi_utils_posix.c:384-412) causes the tmux server to load
+    incompatible bundled libraries instead of system libraries. The server
+    (forked via proc_fork_and_daemon in proc.c:358-380) crashes after
+    the client returns the session_id from new-session.
 
-    This test monkeypatches fetch_objs to return an empty list on the
-    first list-sessions call, reproducing that exact failure window.
+    This test injects a real server kill at the exact point between
+    new-session and list-sessions, then starts a replacement server.
+    All tmux commands and libtmux parsing run against real tmux — only
+    the crash timing is controlled.
     """
     from libtmux import neo
 
     original_fetch_objs = neo.fetch_objs
-    first_list_sessions_call = True
+    server_crashed = False
 
-    def fetch_objs_stale_first_call(
+    def fetch_objs_with_server_crash(
         server: Server,
         list_cmd: t.Literal["list-sessions", "list-windows", "list-panes"],
         list_extra_args: t.Iterable[str] | None = None,
     ) -> list[dict[str, t.Any]]:
-        nonlocal first_list_sessions_call
-        if list_cmd == "list-sessions" and first_list_sessions_call:
-            first_list_sessions_call = False
-            return []
+        nonlocal server_crashed
+        if list_cmd == "list-sessions" and not server_crashed:
+            server_crashed = True
+            # Simulate server crash: kill and start replacement
+            server.cmd("kill-server")
+            server.cmd("new-session", "-d", "-s", "_replacement")
+        # Call the REAL fetch_objs — runs real list-sessions against
+        # the replacement server, parses real output
         return original_fetch_objs(
             server=server,
             list_cmd=list_cmd,
             list_extra_args=list_extra_args,
         )
 
-    monkeypatch.setattr(neo, "fetch_objs", fetch_objs_stale_first_call)
+    monkeypatch.setattr(neo, "fetch_objs", fetch_objs_with_server_crash)
+
+    # Bumper session: advances session IDs so race_test gets $1+,
+    # avoiding collision with replacement server's $0
+    server.cmd("new-session", "-d", "-s", "_bumper")
+
+    # This calls real new-session ($1), then from_session_id →
+    # fetch_obj → our patched fetch_objs (kills server, starts
+    # replacement) → real list-sessions (finds $0, not $1) →
+    # TmuxObjectDoesNotExist
     server.new_session(session_name="race_test")
 
 
