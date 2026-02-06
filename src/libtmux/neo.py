@@ -188,7 +188,7 @@ def get_output_format() -> tuple[list[str], str]:
 def parse_output(output: str) -> OutputRaw:
     """Parse tmux output formatted with get_output_format() into a dict."""
     # Exclude 'server' - it's a Python object, not a tmux format variable
-    formats = [f for f in Obj.__dataclass_fields__.keys() if f != "server"]
+    formats = [f for f in Obj.__dataclass_fields__ if f != "server"]
     formatter = dict(zip(formats, output.split(FORMAT_SEPARATOR), strict=False))
     return {k: v for k, v in formatter.items() if v}
 
