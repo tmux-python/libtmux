@@ -1,4 +1,4 @@
-# ruff: NOQA: E501
+# ruff: noqa: E501
 """Helpers for tmux options.
 
 Option parsing function trade testability and clarity for performance.
