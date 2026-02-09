@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import typing as t
 
-from libtmux import exc, formats
+from libtmux import exc
 from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
 from libtmux.constants import OptionScope
@@ -539,7 +539,7 @@ class Server(
         if env:
             del os.environ["TMUX"]
 
-        _fields, format_string = get_output_format()
+        format_string = get_output_format()[1]
 
         tmux_args: tuple[str | int, ...] = (
             "-P",
