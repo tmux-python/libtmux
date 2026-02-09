@@ -539,7 +539,7 @@ class Server(
         if env:
             del os.environ["TMUX"]
 
-        format_string = get_output_format()[1]
+        _fields, format_string = get_output_format()
 
         tmux_args: tuple[str | int, ...] = (
             "-P",
