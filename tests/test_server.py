@@ -11,6 +11,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -102,6 +103,95 @@ def test_new_session(server: Server) -> None:
     mysession = server.new_session("test_new_session")
     assert mysession.session_name == "test_new_session"
     assert server.has_session("test_new_session")
+
+
+def test_new_session_empty_stdout(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Server.new_session raises LibTmuxException on empty stdout.
+
+    Uses monkeypatch to simulate empty stdout, which cannot be triggered
+    through normal tmux operations.
+    """
+    original_cmd = server.cmd
+
+    def mock_cmd(cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        result = original_cmd(cmd, *args, **kwargs)
+        if cmd == "new-session":
+            result.stdout = []
+        return result
+
+    monkeypatch.setattr(server, "cmd", mock_cmd)
+
+    with pytest.raises(exc.LibTmuxException, match="new-session produced no output"):
+        server.new_session(session_name="test_empty_stdout")
+
+    monkeypatch.undo()
+    if server.has_session("test_empty_stdout"):
+        server.kill_session("test_empty_stdout")
+
+
+def test_new_session_restores_tmux_env_on_error(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Server.new_session restores TMUX env var even when an exception is raised.
+
+    Uses monkeypatch to simulate empty stdout, which cannot be triggered
+    through normal tmux operations.
+    """
+    original_cmd = server.cmd
+    sentinel = "/tmp/libtmux-test-fake-socket,12345,0"
+
+    monkeypatch.setenv("TMUX", sentinel)
+
+    def mock_cmd(cmd: str, *args: t.Any, **kwargs: t.Any) -> t.Any:
+        result = original_cmd(cmd, *args, **kwargs)
+        if cmd == "new-session":
+            result.stdout = []
+        return result
+
+    monkeypatch.setattr(server, "cmd", mock_cmd)
+
+    with pytest.raises(exc.LibTmuxException, match="new-session produced no output"):
+        server.new_session(session_name="test_env_restore")
+
+    assert os.environ.get("TMUX") == sentinel
+
+    monkeypatch.undo()
+    if server.has_session("test_env_restore"):
+        server.kill_session("test_env_restore")
+
+
+def test_new_session_restores_tmux_env_on_setup_error(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Server.new_session restores TMUX env var when setup code before cmd() raises.
+
+    Uses monkeypatch to make pathlib.Path.expanduser raise, which cannot be
+    triggered through normal tmux operations. This verifies the try/finally
+    covers the arg-building phase, not just the cmd() call.
+    """
+    sentinel = "/tmp/libtmux-test-fake-socket,99999,0"
+
+    monkeypatch.setenv("TMUX", sentinel)
+
+    def broken_expanduser(self: pathlib.Path) -> t.Any:
+        msg = "injected setup error"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(pathlib.Path, "expanduser", broken_expanduser)
+
+    with pytest.raises(RuntimeError, match="injected setup error"):
+        server.new_session(
+            session_name="test_setup_error",
+            start_directory=tmp_path,
+        )
+
+    assert os.environ.get("TMUX") == sentinel
 
 
 def test_new_session_no_name(server: Server) -> None:
