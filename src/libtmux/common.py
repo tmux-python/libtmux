@@ -7,8 +7,12 @@ libtmux.common
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
+import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -16,6 +20,17 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
+from ._internal import trace as libtmux_trace
+
+try:
+    from .otel import start_span, traceparent_scope
+except Exception:  # pragma: no cover - optional dependency
+    def start_span(name: str, **fields):
+        return libtmux_trace.span(name, **fields)
+
+    @contextlib.contextmanager
+    def traceparent_scope():
+        yield
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -33,6 +48,340 @@ SessionDict = dict[str, t.Any]
 WindowDict = dict[str, t.Any]
 WindowOptionDict = dict[str, t.Any]
 PaneDict = dict[str, t.Any]
+
+_RUST_BACKEND = os.getenv("LIBTMUX_BACKEND") == "rust"
+_RUST_SERVER_CACHE: dict[
+    tuple[
+        str | None,
+        str | None,
+        int | None,
+        str | None,
+        str | None,
+        bool | None,
+        str | None,
+    ],
+    t.Any,
+] = {}
+_RUST_SERVER_CONFIG: dict[
+    tuple[
+        str | None,
+        str | None,
+        int | None,
+        str | None,
+        str | None,
+        bool | None,
+        str | None,
+    ],
+    set[str],
+] = {}
+
+
+def _resolve_rust_socket_path(socket_path: str | None, socket_name: str | None) -> str:
+    if socket_path:
+        return socket_path
+    uid = os.geteuid()
+    name = socket_name or "default"
+    base = (
+        os.getenv("TMUX_TMPDIR")
+        or os.getenv("XDG_RUNTIME_DIR")
+        or f"/run/user/{uid}"
+        or "/tmp"
+    )
+    base_path = pathlib.Path(base)
+    socket_dir = base_path / f"tmux-{uid}"
+    socket_dir.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        socket_dir.chmod(0o700)
+    return str(socket_dir / name)
+
+
+def _env_bool(name: str) -> bool | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _rust_run_with_config(
+    socket_path: str | None,
+    socket_name: str | None,
+    config_file: str,
+    cmd_parts: list[str],
+    cmd_list: list[str],
+) -> tuple[list[str], list[str], int, list[str]]:
+    with start_span(
+        "rust_run_with_config",
+        layer="tmux-bin",
+        cmd=" ".join(cmd_parts),
+        socket_name=socket_name,
+        socket_path=socket_path,
+        config_file=config_file,
+    ):
+        tmux_bin = shutil.which("tmux")
+        if not tmux_bin:
+            raise exc.TmuxCommandNotFound
+        resolved_socket = _resolve_rust_socket_path(socket_path, socket_name)
+        process = subprocess.Popen(
+            [tmux_bin, "-S", resolved_socket, "-f", config_file, *cmd_parts],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="backslashreplace",
+        )
+        stdout_raw, stderr_raw = process.communicate()
+        stdout_lines = stdout_raw.split("\n") if stdout_raw else []
+        while stdout_lines and stdout_lines[-1] == "":
+            stdout_lines.pop()
+        stderr_lines = list(filter(None, stderr_raw.split("\n"))) if stderr_raw else []
+        if "has-session" in cmd_list and stderr_lines and not stdout_lines:
+            stdout_lines = [stderr_lines[0]]
+        return stdout_lines, stderr_lines, process.returncode, cmd_list
+
+
+def _parse_tmux_args(args: tuple[t.Any, ...]) -> tuple[
+    str | None, str | None, str | None, int | None, list[str]
+]:
+    socket_name: str | None = None
+    socket_path: str | None = None
+    config_file: str | None = None
+    colors: int | None = None
+    cmd_parts: list[str] = []
+    parsing_globals = True
+
+    idx = 0
+    while idx < len(args):
+        arg = str(args[idx])
+        if parsing_globals and arg == "--":
+            parsing_globals = False
+            idx += 1
+            continue
+        if parsing_globals and arg.startswith("-L") and len(arg) > 2:
+            socket_name = arg[2:]
+            idx += 1
+            continue
+        if parsing_globals and arg == "-L" and idx + 1 < len(args):
+            socket_name = str(args[idx + 1])
+            idx += 2
+            continue
+        if parsing_globals and arg.startswith("-S") and len(arg) > 2:
+            socket_path = arg[2:]
+            idx += 1
+            continue
+        if parsing_globals and arg == "-S" and idx + 1 < len(args):
+            socket_path = str(args[idx + 1])
+            idx += 2
+            continue
+        if parsing_globals and arg.startswith("-f") and len(arg) > 2:
+            config_file = arg[2:]
+            idx += 1
+            continue
+        if parsing_globals and arg == "-f" and idx + 1 < len(args):
+            config_file = str(args[idx + 1])
+            idx += 2
+            continue
+        if parsing_globals and arg == "-2":
+            colors = 256
+            idx += 1
+            continue
+        if parsing_globals and arg == "-8":
+            colors = 88
+            idx += 1
+            continue
+        if parsing_globals:
+            parsing_globals = False
+        cmd_parts.append(arg)
+        idx += 1
+
+    return socket_name, socket_path, config_file, colors, cmd_parts
+
+
+def _rust_server(
+    socket_name: str | None,
+    socket_path: str | None,
+    colors: int | None,
+) -> t.Any:
+    connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
+    server_kind = os.getenv("LIBTMUX_RUST_SERVER_KIND")
+    control_autostart = _env_bool("LIBTMUX_RUST_CONTROL_AUTOSTART")
+    mux_server_bin = os.getenv("LIBTMUX_RUST_MUX_SERVER_BIN") or os.getenv(
+        "MUX_SERVER_BIN"
+    )
+    key = (
+        socket_name,
+        socket_path,
+        colors,
+        connection_kind,
+        server_kind,
+        control_autostart,
+        mux_server_bin,
+    )
+    server = _RUST_SERVER_CACHE.get(key)
+    if server is None:
+        from libtmux import _rust as rust_backend
+
+        kwargs: dict[str, t.Any] = {}
+        if connection_kind:
+            kwargs["connection_kind"] = connection_kind
+        if server_kind:
+            kwargs["server_kind"] = server_kind
+        if control_autostart is not None:
+            kwargs["control_autostart"] = control_autostart
+        if mux_server_bin:
+            kwargs["mux_server_bin"] = mux_server_bin
+        with start_span(
+            "rust_server_init",
+            layer="python",
+            socket_name=socket_name,
+            socket_path=socket_path,
+            connection_kind=connection_kind,
+            server_kind=server_kind,
+            control_autostart=control_autostart,
+            mux_server_bin=mux_server_bin,
+        ):
+            with traceparent_scope():
+                server = rust_backend.Server(
+                    socket_path=socket_path,
+                    socket_name=socket_name,
+                    **kwargs,
+                )
+        _RUST_SERVER_CACHE[key] = server
+        _RUST_SERVER_CONFIG[key] = set()
+
+    return server
+
+
+def _rust_cmd_result(
+    args: tuple[t.Any, ...],
+) -> tuple[list[str], list[str], int, list[str]]:
+    socket_name, socket_path, config_file, colors, cmd_parts = _parse_tmux_args(args)
+    cmd_list = [str(c) for c in args]
+    if not cmd_parts:
+        return [], [], 0, cmd_list
+    if cmd_parts == ["-V"]:
+        tmux_bin = shutil.which("tmux")
+        if not tmux_bin:
+            raise exc.TmuxCommandNotFound
+        process = subprocess.Popen(
+            [tmux_bin, "-V"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="backslashreplace",
+        )
+        stdout_raw, stderr_raw = process.communicate()
+        stdout = stdout_raw.split("\n") if stdout_raw else []
+        while stdout and stdout[-1] == "":
+            stdout.pop()
+        stderr = list(filter(None, stderr_raw.split("\n"))) if stderr_raw else []
+        return stdout, stderr, process.returncode, cmd_list
+
+    connection_kind = os.getenv("LIBTMUX_RUST_CONNECTION_KIND")
+    server_kind = os.getenv("LIBTMUX_RUST_SERVER_KIND")
+    control_autostart = _env_bool("LIBTMUX_RUST_CONTROL_AUTOSTART")
+    mux_server_bin = os.getenv("LIBTMUX_RUST_MUX_SERVER_BIN") or os.getenv(
+        "MUX_SERVER_BIN"
+    )
+    with start_span(
+        "rust_cmd_result",
+        layer="python",
+        cmd=" ".join(cmd_parts),
+        socket_name=socket_name,
+        socket_path=socket_path,
+        config_file=config_file,
+        connection_kind=connection_kind,
+        server_kind=server_kind,
+        control_autostart=control_autostart,
+        mux_server_bin=mux_server_bin,
+    ):
+        if connection_kind in {"bin", "tmux-bin"} and config_file:
+            cmd_parts = ["-f", config_file, *cmd_parts]
+            config_file = None
+
+        server = _rust_server(socket_name, socket_path, colors)
+        key = (
+            socket_name,
+            socket_path,
+            colors,
+            connection_kind,
+            server_kind,
+            control_autostart,
+            mux_server_bin,
+        )
+        if config_file:
+            loaded = _RUST_SERVER_CONFIG.setdefault(key, set())
+            if config_file not in loaded:
+                with start_span("rust_server_is_alive", layer="rust"):
+                    with traceparent_scope():
+                        server_alive = bool(server.is_alive())
+                if not server_alive:
+                    stdout_lines, stderr_lines, exit_code, cmd_args = (
+                        _rust_run_with_config(
+                            socket_path,
+                            socket_name,
+                            config_file,
+                            cmd_parts,
+                            cmd_list,
+                        )
+                    )
+                    if exit_code == 0:
+                        loaded.add(config_file)
+                    return stdout_lines, stderr_lines, exit_code, cmd_args
+                quoted = shlex.quote(config_file)
+                try:
+                    with start_span(
+                        "rust_server_source_file",
+                        layer="rust",
+                        config_file=config_file,
+                    ):
+                        with traceparent_scope():
+                            server.cmd(f"source-file {quoted}")
+                except Exception as err:
+                    message = str(err)
+                    error_stdout: list[str] = []
+                    error_stderr = [message] if message else []
+                    if "has-session" in cmd_list and error_stderr and not error_stdout:
+                        error_stdout = [error_stderr[0]]
+                    return error_stdout, error_stderr, 1, cmd_list
+                loaded.add(config_file)
+
+        cmd_line = " ".join(shlex.quote(part) for part in cmd_parts)
+        try:
+            with start_span(
+                "rust_server_cmd",
+                layer="rust",
+                cmd=cmd_line,
+                socket_name=socket_name,
+                socket_path=socket_path,
+                config_file=config_file,
+                connection_kind=connection_kind,
+            ):
+                with traceparent_scope():
+                    result = server.cmd(cmd_line)
+        except Exception as err:
+            message = str(err)
+            error_stdout_lines: list[str] = []
+            error_stderr_lines = [message] if message else []
+            if (
+                "has-session" in cmd_list
+                and error_stderr_lines
+                and not error_stdout_lines
+            ):
+                error_stdout_lines = [error_stderr_lines[0]]
+            return error_stdout_lines, error_stderr_lines, 1, cmd_list
+
+    stdout_lines = result.stdout.split("\n") if result.stdout else []
+    while stdout_lines and stdout_lines[-1] == "":
+        stdout_lines.pop()
+    stderr_raw = getattr(result, "exit_message", None) or ""
+    stderr_lines = list(filter(None, stderr_raw.split("\n"))) if stderr_raw else []
+    if "has-session" in cmd_list and stderr_lines and not stdout_lines:
+        stdout_lines = [stderr_lines[0]]
+    return stdout_lines, stderr_lines, result.exit_code, cmd_list
 
 
 class CmdProtocol(t.Protocol):
@@ -249,6 +598,15 @@ class tmux_cmd:
     """
 
     def __init__(self, *args: t.Any) -> None:
+        if _RUST_BACKEND:
+            with start_span("tmux_cmd", layer="python", backend="rust"):
+                stdout, stderr, returncode, cmd = _rust_cmd_result(args)
+                self.cmd = cmd
+                self.returncode = returncode
+                self.stdout = stdout
+                self.stderr = stderr
+                return
+
         tmux_bin = shutil.which("tmux")
         if not tmux_bin:
             raise exc.TmuxCommandNotFound
@@ -260,27 +618,33 @@ class tmux_cmd:
         self.cmd = cmd
 
         try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
+            with start_span(
+                "tmux_cmd",
+                layer="tmux-bin",
+                backend="tmux-bin",
+                cmd=" ".join(cmd),
+            ):
+                self.process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    errors="backslashreplace",
+                )
+                stdout_text, stderr_text = self.process.communicate()
+                returncode = self.process.returncode
         except Exception:
             logger.exception(f"Exception for {subprocess.list2cmdline(cmd)}")
             raise
 
         self.returncode = returncode
 
-        stdout_split = stdout.split("\n")
+        stdout_split = stdout_text.split("\n")
         # remove trailing newlines from stdout
         while stdout_split and stdout_split[-1] == "":
             stdout_split.pop()
 
-        stderr_split = stderr.split("\n")
+        stderr_split = stderr_text.split("\n")
         self.stderr = list(filter(None, stderr_split))  # filter empty values
 
         if "has-session" in cmd and len(self.stderr) and not stdout_split:
