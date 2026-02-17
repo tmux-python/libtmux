@@ -539,46 +539,51 @@ class Server(
         if env:
             del os.environ["TMUX"]
 
-        tmux_args: tuple[str | int, ...] = (
-            "-P",
-            "-F#{session_id}",  # output
-        )
+        try:
+            tmux_args: tuple[str | int, ...] = (
+                "-P",
+                "-F#{session_id}",  # output
+            )
 
-        if session_name is not None:
-            tmux_args += (f"-s{session_name}",)
+            if session_name is not None:
+                tmux_args += (f"-s{session_name}",)
 
-        if not attach:
-            tmux_args += ("-d",)
+            if not attach:
+                tmux_args += ("-d",)
 
-        if start_directory:
-            start_directory = pathlib.Path(start_directory).expanduser()
-            tmux_args += ("-c", str(start_directory))
+            if start_directory:
+                start_directory = pathlib.Path(start_directory).expanduser()
+                tmux_args += ("-c", str(start_directory))
 
-        if window_name:
-            tmux_args += ("-n", window_name)
+            if window_name:
+                tmux_args += ("-n", window_name)
 
-        if x is not None:
-            tmux_args += ("-x", x)
+            if x is not None:
+                tmux_args += ("-x", x)
 
-        if y is not None:
-            tmux_args += ("-y", y)
+            if y is not None:
+                tmux_args += ("-y", y)
 
-        if environment:
-            for k, v in environment.items():
-                tmux_args += (f"-e{k}={v}",)
+            if environment:
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
 
-        if window_command:
-            tmux_args += (window_command,)
+            if window_command:
+                tmux_args += (window_command,)
 
-        proc = self.cmd("new-session", *tmux_args)
+            proc = self.cmd("new-session", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+            if proc.stderr:
+                raise exc.LibTmuxException(proc.stderr)
 
-        session_stdout = proc.stdout[0]
+            if not proc.stdout:
+                msg = "new-session produced no output"
+                raise exc.LibTmuxException(msg)
 
-        if env:
-            os.environ["TMUX"] = env
+            session_stdout = proc.stdout[0]
+        finally:
+            if env:
+                os.environ["TMUX"] = env
 
         session_formatters = dict(
             zip(
