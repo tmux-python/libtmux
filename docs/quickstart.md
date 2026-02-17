@@ -157,6 +157,23 @@ in your server object. `libtmux.Server(socket_name='mysocket')` is
 equivalent to `$ tmux -L mysocket`.
 :::
 
+### Optional: Control mode (experimental)
+
+Control mode keeps a persistent tmux client open and streams
+notifications. Enable it by injecting a control-mode engine:
+
+```python
+from libtmux._internal.engines.control_mode import ControlModeEngine
+from libtmux.server import Server
+
+engine = ControlModeEngine()
+server = Server(engine=engine)
+session = server.new_session(session_name="ctrl")
+print(session.name)
+```
+
+See {ref}`control-mode` for details, caveats, and notification handling.
+
 `server` is now a living object bound to the tmux server's Sessions,
 Windows and Panes.
 
@@ -262,6 +279,41 @@ Session($1 foo)
 ```
 
 to give us a `session` object to play with.
+
+## Connect to or create a session
+
+A simpler approach is to use {meth}`Server.connect()`, which returns an existing
+session or creates it if it doesn't exist:
+
+```python
+>>> session = server.connect('my_project')
+>>> session.name
+'my_project'
+
+>>> # Calling again returns the same session
+>>> session2 = server.connect('my_project')
+>>> session2.session_id == session.session_id
+True
+```
+
+This is particularly useful for:
+
+- Development workflows where you want to reuse existing sessions
+- Scripts that should create a session on first run, then reattach
+- Working with both subprocess and control-mode engines transparently
+
+Compare with the traditional approach:
+
+```python
+>>> # Traditional: check then create
+>>> if server.has_session('my_project'):
+...     session = server.sessions.get(session_name='my_project')
+... else:
+...     session = server.new_session('my_project')
+
+>>> # Simpler with connect()
+>>> session = server.connect('my_project')
+```
 
 ## Playing with our tmux session
 

@@ -121,6 +121,60 @@ class WaitTimeout(LibTmuxException):
     """Function timed out without meeting condition."""
 
 
+class ControlModeTimeout(LibTmuxException):
+    """tmux control-mode command did not return before the configured timeout.
+
+    This is a **terminal failure** - the operation took too long and is NOT
+    automatically retried. If you expect slow operations, increase the timeout
+    parameter when creating the engine or calling commands.
+
+    This is distinct from :class:`ControlModeConnectionError`, which indicates
+    a transient connection failure (like BrokenPipeError) and IS automatically
+    retried up to ``max_retries`` times.
+
+    Raised by :class:`~libtmux._internal.engines.control_mode.ControlModeEngine`
+    when a command block fails to finish within the timeout. The engine will
+    close and restart the control client after emitting this error, but will NOT
+    retry the timed-out command.
+
+    If commands timeout frequently, increase the timeout::
+
+        engine = ControlModeEngine(command_timeout=30.0)
+        server = Server(engine=engine)
+
+    Or override per-command::
+
+        server.cmd("slow-command", timeout=60.0)
+    """
+
+
+class ControlModeProtocolError(LibTmuxException):
+    """Protocol-level error while parsing the control-mode stream.
+
+    Indicates malformed `%begin/%end/%error` framing or an unexpected parser
+    state. The control client is marked dead and must be restarted.
+    """
+
+
+class ControlModeConnectionError(LibTmuxException):
+    """Control-mode connection was lost unexpectedly (EOF/broken pipe).
+
+    This is a **retriable error** - the engine will automatically retry the
+    command up to ``max_retries`` times (default: 1) after restarting the
+    control client connection.
+
+    This is distinct from :class:`ControlModeTimeout`, which indicates the
+    operation took too long and is NOT automatically retried.
+
+    Raised when writing to the control-mode process fails with BrokenPipeError
+    or when unexpected EOF is encountered.
+    """
+
+
+class SubprocessTimeout(LibTmuxException):
+    """tmux subprocess exceeded the allowed timeout for the invoked command."""
+
+
 class VariableUnpackingError(LibTmuxException):
     """Error unpacking variable."""
 

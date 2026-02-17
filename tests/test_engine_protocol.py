@@ -1,0 +1,283 @@
+"""Unit tests for engine protocol and wrappers."""
+
+from __future__ import annotations
+
+import typing as t
+
+import pytest
+
+from libtmux._internal.engines.base import (
+    CommandResult,
+    ExitStatus,
+    NotificationKind,
+    command_result_to_tmux_cmd,
+)
+from libtmux._internal.engines.control_protocol import (
+    CommandContext,
+    ControlProtocol,
+    ParserState,
+)
+
+
+class NotificationFixture(t.NamedTuple):
+    """Fixture for notification parsing cases."""
+
+    test_id: str
+    line: str
+    expected_kind: NotificationKind
+    expected_subset: dict[str, str | None]
+
+
+class ProtocolErrorFixture(t.NamedTuple):
+    """Fixture for protocol error handling."""
+
+    test_id: str
+    line: str
+    expected_reason: str
+
+
+def test_command_result_wraps_tmux_cmd() -> None:
+    """CommandResult should adapt cleanly into tmux_cmd wrapper."""
+    result = CommandResult(
+        argv=["tmux", "-V"],
+        stdout=["tmux 3.4"],
+        stderr=[],
+        exit_status=ExitStatus.OK,
+        cmd_id=7,
+    )
+
+    wrapped = command_result_to_tmux_cmd(result)
+
+    assert wrapped.stdout == ["tmux 3.4"]
+    assert wrapped.returncode == 0
+    assert getattr(wrapped, "cmd_id", None) == 7
+
+
+def test_control_protocol_parses_begin_end() -> None:
+    """Parser should map %begin/%end into a completed context."""
+    proto = ControlProtocol()
+    ctx = CommandContext(argv=["tmux", "list-sessions"])
+    proto.register_command(ctx)
+
+    proto.feed_line("%begin 1700000000 10 0")
+    proto.feed_line("session-one")
+    proto.feed_line("%end 1700000001 10 0")
+
+    assert ctx.done.wait(timeout=0.05)
+
+    result = proto.build_result(ctx)
+    assert result.stdout == ["session-one"]
+    assert result.exit_status is ExitStatus.OK
+    assert result.cmd_id == 10
+
+
+def test_control_protocol_notifications() -> None:
+    """Notifications should enqueue and track drop counts when bounded."""
+    proto = ControlProtocol(notification_queue_size=1)
+    proto.feed_line("%sessions-changed")
+
+    notif = proto.get_notification(timeout=0.05)
+    assert notif is not None
+    assert notif.kind is NotificationKind.SESSIONS_CHANGED
+
+    # queue is bounded; pushing another should increment drop counter when full
+    proto.feed_line("%sessions-changed")
+    proto.feed_line("%sessions-changed")
+    assert proto.get_stats(restarts=0).dropped_notifications >= 1
+
+
+PROTOCOL_ERROR_CASES: list[ProtocolErrorFixture] = [
+    ProtocolErrorFixture(
+        test_id="unexpected_end",
+        line="%end 123 1 0",
+        expected_reason="unexpected %end",
+    ),
+]
+
+
+@pytest.mark.parametrize("case", PROTOCOL_ERROR_CASES, ids=lambda c: c.test_id)
+def test_control_protocol_errors(case: ProtocolErrorFixture) -> None:
+    """Protocol errors should mark the parser DEAD and record last_error."""
+    proto = ControlProtocol()
+    proto.feed_line(case.line)
+    stats = proto.get_stats(restarts=0)
+    assert proto.state is ParserState.DEAD
+    assert stats.last_error is not None
+    assert case.expected_reason in stats.last_error
+
+
+def test_control_protocol_skips_unexpected_begin() -> None:
+    """Unexpected %begin (e.g., from hook execution) should enter SKIPPING state.
+
+    This is not a fatal error - hooks can trigger additional %begin/%end blocks
+    that have no matching registered command. The protocol skips these blocks
+    instead of marking the connection dead.
+    """
+    proto = ControlProtocol()
+    proto.feed_line("%begin 999 1 0")
+    assert proto.state is ParserState.SKIPPING
+    # Output during skipped block is ignored
+    proto.feed_line("some hook output")
+    assert proto.state is ParserState.SKIPPING
+    # End of skipped block returns to IDLE
+    proto.feed_line("%end 999 1 0")
+    assert proto.state == ParserState.IDLE  # type: ignore[comparison-overlap]
+    # Connection is still usable
+    stats = proto.get_stats(restarts=0)
+    assert stats.last_error is None
+
+
+NOTIFICATION_FIXTURES: list[NotificationFixture] = [
+    NotificationFixture(
+        test_id="layout_change",
+        line="%layout-change @1 abcd efgh 0",
+        expected_kind=NotificationKind.WINDOW_LAYOUT_CHANGED,
+        expected_subset={
+            "window_id": "@1",
+            "window_layout": "abcd",
+            "window_visible_layout": "efgh",
+            "window_raw_flags": "0",
+        },
+    ),
+    NotificationFixture(
+        test_id="unlinked_window_add",
+        line="%unlinked-window-add @2",
+        expected_kind=NotificationKind.UNLINKED_WINDOW_ADD,
+        expected_subset={"window_id": "@2"},
+    ),
+    NotificationFixture(
+        test_id="unlinked_window_close",
+        line="%unlinked-window-close @3",
+        expected_kind=NotificationKind.UNLINKED_WINDOW_CLOSE,
+        expected_subset={"window_id": "@3"},
+    ),
+    NotificationFixture(
+        test_id="unlinked_window_renamed",
+        line="%unlinked-window-renamed @4 new-name",
+        expected_kind=NotificationKind.UNLINKED_WINDOW_RENAMED,
+        expected_subset={"window_id": "@4", "name": "new-name"},
+    ),
+    NotificationFixture(
+        test_id="client_session_changed",
+        line="%client-session-changed c1 $5 sname",
+        expected_kind=NotificationKind.CLIENT_SESSION_CHANGED,
+        expected_subset={
+            "client_name": "c1",
+            "session_id": "$5",
+            "session_name": "sname",
+        },
+    ),
+    NotificationFixture(
+        test_id="client_detached",
+        line="%client-detached c1",
+        expected_kind=NotificationKind.CLIENT_DETACHED,
+        expected_subset={"client_name": "c1"},
+    ),
+    NotificationFixture(
+        test_id="session_renamed",
+        line="%session-renamed $5 new-name",
+        expected_kind=NotificationKind.SESSION_RENAMED,
+        expected_subset={"session_id": "$5", "session_name": "new-name"},
+    ),
+    NotificationFixture(
+        test_id="paste_buffer_changed",
+        line="%paste-buffer-changed buf1",
+        expected_kind=NotificationKind.PASTE_BUFFER_CHANGED,
+        expected_subset={"name": "buf1"},
+    ),
+    NotificationFixture(
+        test_id="paste_buffer_deleted",
+        line="%paste-buffer-deleted buf1",
+        expected_kind=NotificationKind.PASTE_BUFFER_DELETED,
+        expected_subset={"name": "buf1"},
+    ),
+    NotificationFixture(
+        test_id="message",
+        line="%message Hello world from tmux",
+        expected_kind=NotificationKind.MESSAGE,
+        expected_subset={"text": "Hello world from tmux"},
+    ),
+    NotificationFixture(
+        test_id="config_error",
+        line="%config-error /home/user/.tmux.conf:10: unknown option",
+        expected_kind=NotificationKind.CONFIG_ERROR,
+        expected_subset={"error": "/home/user/.tmux.conf:10: unknown option"},
+    ),
+    NotificationFixture(
+        test_id="subscription_changed_session",
+        line="%subscription-changed mysub $1 - - - : session value here",
+        expected_kind=NotificationKind.SUBSCRIPTION_CHANGED,
+        expected_subset={
+            "name": "mysub",
+            "session_id": "$1",
+            "window_id": None,
+            "pane_id": None,
+            "value": "session value here",
+        },
+    ),
+    NotificationFixture(
+        test_id="subscription_changed_pane",
+        line="%subscription-changed mysub $1 @2 0 %3 : pane value",
+        expected_kind=NotificationKind.SUBSCRIPTION_CHANGED,
+        expected_subset={
+            "name": "mysub",
+            "session_id": "$1",
+            "window_id": "@2",
+            "window_index": "0",
+            "pane_id": "%3",
+            "value": "pane value",
+        },
+    ),
+    NotificationFixture(
+        test_id="extended_output_with_colon",
+        line="%extended-output %5 1500 : output with spaces",
+        expected_kind=NotificationKind.PANE_EXTENDED_OUTPUT,
+        expected_subset={
+            "pane_id": "%5",
+            "behind_ms": "1500",
+            "payload": "output with spaces",
+        },
+    ),
+    NotificationFixture(
+        test_id="session_changed_with_name",
+        line="%session-changed $1 my session name",
+        expected_kind=NotificationKind.SESSION_CHANGED,
+        expected_subset={
+            "session_id": "$1",
+            "session_name": "my session name",
+        },
+    ),
+    NotificationFixture(
+        test_id="exit_with_reason",
+        line="%exit server exited",
+        expected_kind=NotificationKind.EXIT,
+        expected_subset={"reason": "server exited"},
+    ),
+    NotificationFixture(
+        test_id="exit_no_reason",
+        line="%exit",
+        expected_kind=NotificationKind.EXIT,
+        expected_subset={"reason": None},
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(NotificationFixture._fields),
+    NOTIFICATION_FIXTURES,
+    ids=[fixture.test_id for fixture in NOTIFICATION_FIXTURES],
+)
+def test_control_protocol_notification_parsing(
+    test_id: str,
+    line: str,
+    expected_kind: NotificationKind,
+    expected_subset: dict[str, str],
+) -> None:
+    """Ensure the parser recognizes mapped control-mode notifications."""
+    proto = ControlProtocol()
+    proto.feed_line(line)
+    notif = proto.get_notification(timeout=0.05)
+    assert notif is not None
+    assert notif.kind is expected_kind
+    for key, value in expected_subset.items():
+        assert notif.data.get(key) == value

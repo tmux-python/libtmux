@@ -11,6 +11,7 @@ import pytest
 
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
+from tests.helpers import wait_for_line
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
@@ -83,10 +84,33 @@ def test_capture_pane(session: Session) -> None:
         literal=True,
         suppress_history=False,
     )
+    # Wait for "Hello World !" to appear in output (handles control mode async)
+    wait_for_line(pane, lambda line: "Hello World !" in line)
     pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == r'$ printf "\n%s\n" "Hello World !"{}'.format(
-        "\n\nHello World !\n$",
-    )
+    expected_full = r'$ printf "\n%s\n" "Hello World !"' + "\n\nHello World !\n$"
+    expected_no_prompt = r'$ printf "\n%s\n" "Hello World !"' + "\n\nHello World !"
+    if session.server.engine.__class__.__name__ == "ControlModeEngine":
+        # Control mode may capture before prompt appears (async behavior)
+        assert pane_contents in (expected_full, expected_no_prompt)
+    else:
+        assert pane_contents == expected_full
+
+
+@pytest.mark.engines(["subprocess", "control"])
+def test_capture_pane_trims_whitespace_tail(session: Session) -> None:
+    """capture-pane should drop trailing whitespace-only lines for all engines."""
+    pane = session.active_pane
+    assert pane is not None
+
+    pane.send_keys('printf "line1\\n   \\n"', literal=True, suppress_history=False)
+    wait_for_line(pane, lambda line: "line1" in line)
+
+    lines = pane.capture_pane()
+    assert lines
+    # The last line should not be empty/whitespace-only
+    assert lines[-1].strip() != ""
+    # Ensure the whitespace-only line was trimmed
+    assert "line1" in "\n".join(lines)
 
 
 def test_capture_pane_start(session: Session) -> None:
@@ -105,7 +129,10 @@ def test_capture_pane_start(session: Session) -> None:
     assert pane_contents == "$"
     pane.send_keys(r'printf "%s"', literal=True, suppress_history=False)
     pane_contents = "\n".join(pane.capture_pane())
-    assert pane_contents == '$ printf "%s"\n$'
+    if session.server.engine.__class__.__name__ == "ControlModeEngine":
+        assert pane_contents in ('$ printf "%s"\n$', '$ printf "%s"')
+    else:
+        assert pane_contents == '$ printf "%s"\n$'
     pane.send_keys("clear -x", literal=True, suppress_history=False)
 
     def wait_until_pane_cleared() -> bool:

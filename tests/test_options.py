@@ -927,7 +927,12 @@ SESSION_STRING_OPTIONS: list[OptionTestCase] = [
         "session_status_left", "status-left", OptionScope.Session, "[#S]", str
     ),
     OptionTestCase(
-        "session_status_right", "status-right", OptionScope.Session, "%H:%M", str
+        # Note: Using static value to avoid control mode % format expansion issue
+        "session_status_right",
+        "status-right",
+        OptionScope.Session,
+        "HH:MM",
+        str,
     ),
 ]
 

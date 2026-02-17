@@ -143,6 +143,61 @@ The following deprecations from 0.50.0 continue to emit {class}`DeprecationWarni
 | `set_window_option()`, `show_window_option()`, `show_window_options()` | {meth}`~libtmux.window.Window.set_option`, {meth}`~libtmux.window.Window.show_option`, {meth}`~libtmux.window.Window.show_options` | 0.50.0 | Window |
 | `g` parameter on options/hooks methods | `global_` on {meth}`~libtmux.options.OptionsMixin.set_option`, {meth}`~libtmux.options.OptionsMixin.show_option`, {meth}`~libtmux.options.OptionsMixin.show_options` | 0.50.0 | Options & hooks |
 
+### Features
+
+#### Control mode engine (experimental) (#605)
+- Control-mode–first engine stack with structured `CommandResult`, notification parsing
+  (%layout-change, unlinked window add/close/rename, client session change/detach, paste buffer),
+  and stats, while keeping the public `cmd` API returning `tmux_cmd`.
+- Internal control session is automatically filtered from `Server.sessions` /
+  `Server.has_session()`; advanced users can inspect all sessions via
+  `Server._sessions_all()`.
+- `ControlModeEngine` accepts `internal_session_name` (default `libtmux_ctrl_XXXXXXXX`)
+  and `control_session` for advanced connection strategies.
+
+Example:
+
+```python
+from libtmux._internal.engines.control_mode import ControlModeEngine
+from libtmux.server import Server
+
+engine = ControlModeEngine(command_timeout=5)
+server = Server(engine=engine)
+session = server.new_session(session_name="ctrl")
+for notif in engine.iter_notifications(timeout=0.1):
+    print(notif.kind, notif.data)
+```
+
+#### Convenience APIs (#605)
+- `Server.connect()` returns an existing session or creates a new detached one,
+  working with both subprocess and control-mode engines.
+
+#### Diagnostics and resilience (#605)
+- Bounded notification queue with drop counting; exposed via engine stats.
+- Expanded exceptions: `ControlModeTimeout`, `ControlModeProtocolError`,
+  `ControlModeConnectionError`, `SubprocessTimeout`; documented retry/timeout behaviour.
+- Control-mode capture-pane trims trailing whitespace-only lines to mirror subprocess
+  semantics; first capture after send-keys briefly retries to avoid prompt races.
+
+#### Testing utilities (#605)
+- Control sandbox fixture provides a hermetic control-mode tmux server (isolated HOME,
+  TMUX_TMPDIR, unique socket); handy for integration-style tests.
+  Example:
+
+  ```python
+  @pytest.mark.engines(["control"])
+  def test_control_sandbox(control_sandbox):
+      with control_sandbox as server:
+          out = server.cmd("display-message", "-p", "hi")
+          assert out.stdout == ["hi"]
+  ```
+
+### Compatibility
+
+- Control mode internal session filtering is engine-driven; callers no longer need
+  to manually exclude `libtmux_ctrl_*`. APIs stay unchanged; additional metadata
+  is attached for advanced users. (#605)
+
 ## libtmux 0.50.1 (2025-12-06)
 
 ### Documentation (#612)

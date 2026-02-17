@@ -11,6 +11,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -155,6 +156,118 @@ def test_new_session_shell_env(server: Server) -> None:
     assert pane_start_command is not None
 
     assert pane_start_command.replace('"', "") == cmd
+
+
+@pytest.mark.engines(["subprocess", "control"])
+def test_connect_creates_new_session(server: Server) -> None:
+    """Server.connect creates a new session when it doesn't exist."""
+    session = server.connect("test_connect_new")
+    assert session.name == "test_connect_new"
+    assert session.session_id is not None
+
+
+@pytest.mark.engines(["subprocess", "control"])
+def test_connect_reuses_existing_session(server: Server, session: Session) -> None:
+    """Server.connect reuses an existing session instead of creating a new one."""
+    # First call creates
+    session1 = server.connect("test_connect_reuse")
+    assert session1.name == "test_connect_reuse"
+    session_id_1 = session1.session_id
+
+    # Second call should return the same session
+    session2 = server.connect("test_connect_reuse")
+    assert session2.session_id == session_id_1
+    assert session2.name == "test_connect_reuse"
+
+
+@pytest.mark.engines(["subprocess", "control"])
+def test_connect_invalid_name(server: Server) -> None:
+    """Server.connect raises BadSessionName for invalid session names."""
+    with pytest.raises(exc.BadSessionName):
+        server.connect("invalid.name")
+
+    with pytest.raises(exc.BadSessionName):
+        server.connect("invalid:name")
+
+
+def test_connect_restores_tmux_env_on_error(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Server.connect should restore TMUX env var after failure."""
+    monkeypatch.setenv("TMUX", "tmux-test")
+
+    class DummyCmd:
+        def __init__(self) -> None:
+            self.stdout: list[str] = []
+            self.stderr: list[str] = ["boom"]
+            self.returncode: int = 1
+
+    def fake_cmd(*args: t.Any, **kwargs: t.Any) -> DummyCmd:
+        return DummyCmd()
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+
+    with pytest.raises(exc.LibTmuxException):
+        server.connect("connect_fail")
+
+    assert os.environ.get("TMUX") == "tmux-test"
+
+
+def test_sessions_excludes_internal_control_mode(
+    server: Server,
+    request: pytest.FixtureRequest,
+) -> None:
+    """server.sessions should hide internal control mode session."""
+    engine_name = request.config.getoption("--engine", default="subprocess")
+    if engine_name != "control":
+        pytest.skip("Control mode only")
+
+    # Create user session
+    user_session = server.new_session(session_name="my_app_session")
+
+    # With bootstrap approach, control mode attaches to "tmuxp" session
+    # Both "tmuxp" and user session are visible (tmuxp is reused, not internal)
+    assert len(server.sessions) == 2
+    session_names = [s.name for s in server.sessions]
+    assert "my_app_session" in session_names
+    assert "tmuxp" in session_names
+
+    # Cleanup
+    user_session.kill()
+
+
+def test_has_session_excludes_control_mode(
+    server: Server,
+    request: pytest.FixtureRequest,
+) -> None:
+    """has_session should return False for internal control session."""
+    engine_name = request.config.getoption("--engine", default="subprocess")
+    if engine_name != "control":
+        pytest.skip("Control mode only")
+
+    # With bootstrap approach, control mode attaches to "tmuxp" (which IS visible)
+    assert server.has_session("tmuxp")
+    # Internal session (libtmux_ctrl_*) should be filtered from has_session()
+    # The old hard-coded name is no longer used; now uses UUID-based names
+    assert not server.has_session("libtmux_control_mode")
+
+
+def test_session_count_engine_agnostic(
+    server: Server,
+    session: Session,
+) -> None:
+    """Session count should be engine-agnostic (excluding internal)."""
+    # Both engines should show same pattern
+    # session fixture creates one test session
+    # Subprocess: 1 test session
+    # Control: 1 test session + 1 internal (filtered)
+
+    # Find test sessions (created by fixture with TEST_SESSION_PREFIX)
+    test_sessions = [
+        s for s in server.sessions if s.name and s.name.startswith("libtmux_")
+    ]
+    assert len(test_sessions) >= 1  # At least the fixture's session
 
 
 @pytest.mark.skipif(True, reason="tmux 3.2 returns wrong width - test needs rework")
