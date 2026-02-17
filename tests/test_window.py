@@ -23,6 +23,8 @@ from libtmux.server import Server
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
+    from _pytest.mark.structures import ParameterSet
+
     from libtmux._internal.types import StrPath
     from libtmux.session import Session
 
@@ -720,8 +722,8 @@ class DeprecatedMethodTestCase(t.NamedTuple):
 
     test_id: str
     method_name: str  # Name of deprecated method to call
-    args: tuple[t.Any, ...]  # Positional args
-    kwargs: dict[str, t.Any]  # Keyword args
+    args: tuple[str | int | bool, ...]  # Positional args
+    kwargs: dict[str, str | int | bool]  # Keyword args
     expected_error_match: str  # Regex pattern to match error message
 
 
@@ -751,7 +753,7 @@ DEPRECATED_WARNING_WINDOW_METHOD_TEST_CASES: list[DeprecatedMethodTestCase] = [
 ]
 
 
-def _build_deprecated_warning_method_params() -> list[t.Any]:
+def _build_deprecated_warning_method_params() -> list[ParameterSet]:
     """Build pytest params for deprecated method warning tests."""
     return [
         pytest.param(tc, id=tc.test_id)
