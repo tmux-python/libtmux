@@ -1,0 +1,352 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`scanPythonPaths > parses python modules into zod-backed structures 1`] = `
+{
+  "docstring": "Sample module for AST scanning.",
+  "exports": [],
+  "imports": [
+    {
+      "kind": "import",
+      "level": 0,
+      "location": {
+        "colOffset": 0,
+        "endColOffset": 34,
+        "endLineno": 3,
+        "lineno": 3,
+      },
+      "module": "__future__",
+      "names": [
+        "annotations",
+      ],
+    },
+    {
+      "kind": "import",
+      "level": null,
+      "location": {
+        "colOffset": 0,
+        "endColOffset": 18,
+        "endLineno": 5,
+        "lineno": 5,
+      },
+      "module": "dataclasses",
+      "names": [
+        "dataclasses",
+      ],
+    },
+    {
+      "kind": "import",
+      "level": null,
+      "location": {
+        "colOffset": 0,
+        "endColOffset": 18,
+        "endLineno": 6,
+        "lineno": 6,
+      },
+      "module": "typing",
+      "names": [
+        "typing as t",
+      ],
+    },
+  ],
+  "isPackage": false,
+  "items": [
+    {
+      "annotation": "str",
+      "docstring": null,
+      "isPrivate": false,
+      "kind": "variable",
+      "location": {
+        "colOffset": 0,
+        "endColOffset": 23,
+        "endLineno": 8,
+        "lineno": 8,
+      },
+      "name": "CONSTANT",
+      "qualname": "sample_module.CONSTANT",
+      "value": "'value'",
+    },
+    {
+      "decorators": [],
+      "docstring": "Return a friendly greeting.
+
+Parameters
+----------
+name : str
+    Name to greet.
+
+Returns
+-------
+str
+    Greeting string.",
+      "isAsync": false,
+      "isPrivate": false,
+      "kind": "function",
+      "location": {
+        "colOffset": 0,
+        "endColOffset": 26,
+        "endLineno": 24,
+        "lineno": 11,
+      },
+      "name": "greet",
+      "parameters": [
+        {
+          "annotation": "str",
+          "default": null,
+          "kind": "positional-or-keyword",
+          "name": "name",
+        },
+      ],
+      "qualname": "sample_module.greet",
+      "returns": "str",
+    },
+    {
+      "attributes": [
+        {
+          "annotation": "str",
+          "docstring": null,
+          "isPrivate": false,
+          "kind": "variable",
+          "location": {
+            "colOffset": 4,
+            "endColOffset": 13,
+            "endLineno": 35,
+            "lineno": 35,
+          },
+          "name": "name",
+          "qualname": "sample_module.Widget.name",
+          "value": null,
+        },
+        {
+          "annotation": "int",
+          "docstring": null,
+          "isPrivate": false,
+          "kind": "variable",
+          "location": {
+            "colOffset": 4,
+            "endColOffset": 17,
+            "endLineno": 36,
+            "lineno": 36,
+          },
+          "name": "size",
+          "qualname": "sample_module.Widget.size",
+          "value": "1",
+        },
+      ],
+      "bases": [],
+      "decorators": [
+        "dataclasses.dataclass",
+      ],
+      "docstring": "Widget model.",
+      "isPrivate": false,
+      "kind": "class",
+      "location": {
+        "colOffset": 0,
+        "endColOffset": 41,
+        "endLineno": 46,
+        "lineno": 32,
+      },
+      "methods": [
+        {
+          "decorators": [],
+          "docstring": "Return a label.
+
+Returns
+-------
+str
+    Label string.",
+          "isAsync": false,
+          "isPrivate": false,
+          "kind": "function",
+          "location": {
+            "colOffset": 4,
+            "endColOffset": 41,
+            "endLineno": 46,
+            "lineno": 38,
+          },
+          "name": "label",
+          "parameters": [
+            {
+              "annotation": null,
+              "default": null,
+              "kind": "positional-or-keyword",
+              "name": "self",
+            },
+          ],
+          "qualname": "sample_module.Widget.label",
+          "returns": "str",
+        },
+      ],
+      "name": "Widget",
+      "qualname": "sample_module.Widget",
+    },
+    {
+      "attributes": [
+        {
+          "annotation": "int",
+          "docstring": null,
+          "isPrivate": false,
+          "kind": "variable",
+          "location": {
+            "colOffset": 4,
+            "endColOffset": 18,
+            "endLineno": 52,
+            "lineno": 52,
+          },
+          "name": "count",
+          "qualname": "sample_module.Container.count",
+          "value": "0",
+        },
+      ],
+      "bases": [],
+      "decorators": [],
+      "docstring": "Container type.",
+      "isPrivate": false,
+      "kind": "class",
+      "location": {
+        "colOffset": 0,
+        "endColOffset": 19,
+        "endLineno": 77,
+        "lineno": 49,
+      },
+      "methods": [
+        {
+          "decorators": [],
+          "docstring": "Create a container.
+
+Parameters
+----------
+items : list[str]
+    Items to store.",
+          "isAsync": false,
+          "isPrivate": true,
+          "kind": "function",
+          "location": {
+            "colOffset": 4,
+            "endColOffset": 26,
+            "endLineno": 62,
+            "lineno": 54,
+          },
+          "name": "__init__",
+          "parameters": [
+            {
+              "annotation": null,
+              "default": null,
+              "kind": "positional-or-keyword",
+              "name": "self",
+            },
+            {
+              "annotation": "list[str]",
+              "default": null,
+              "kind": "positional-or-keyword",
+              "name": "items",
+            },
+          ],
+          "qualname": "sample_module.Container.__init__",
+          "returns": "None",
+        },
+        {
+          "decorators": [
+            "property",
+          ],
+          "docstring": "Return count of items.
+
+Returns
+-------
+int
+    Item count.",
+          "isAsync": false,
+          "isPrivate": false,
+          "kind": "function",
+          "location": {
+            "colOffset": 4,
+            "endColOffset": 30,
+            "endLineno": 73,
+            "lineno": 65,
+          },
+          "name": "item_count",
+          "parameters": [
+            {
+              "annotation": null,
+              "default": null,
+              "kind": "positional-or-keyword",
+              "name": "self",
+            },
+          ],
+          "qualname": "sample_module.Container.item_count",
+          "returns": "int",
+        },
+        {
+          "decorators": [],
+          "docstring": "Refresh the container.",
+          "isAsync": true,
+          "isPrivate": false,
+          "kind": "function",
+          "location": {
+            "colOffset": 4,
+            "endColOffset": 19,
+            "endLineno": 77,
+            "lineno": 75,
+          },
+          "name": "refresh",
+          "parameters": [
+            {
+              "annotation": null,
+              "default": null,
+              "kind": "positional-or-keyword",
+              "name": "self",
+            },
+          ],
+          "qualname": "sample_module.Container.refresh",
+          "returns": "None",
+        },
+      ],
+      "name": "Container",
+      "qualname": "sample_module.Container",
+    },
+    {
+      "decorators": [],
+      "docstring": "Return provided value.
+
+Parameters
+----------
+value : typing.Any
+    Input value.
+
+Returns
+-------
+typing.Any
+    Input value.",
+      "isAsync": false,
+      "isPrivate": false,
+      "kind": "function",
+      "location": {
+        "colOffset": 0,
+        "endColOffset": 16,
+        "endLineno": 93,
+        "lineno": 80,
+      },
+      "name": "uses_typing",
+      "parameters": [
+        {
+          "annotation": "t.Any",
+          "default": null,
+          "kind": "positional-or-keyword",
+          "name": "value",
+        },
+      ],
+      "qualname": "sample_module.uses_typing",
+      "returns": "t.Any",
+    },
+  ],
+  "kind": "module",
+  "location": {
+    "colOffset": 0,
+    "endColOffset": null,
+    "endLineno": null,
+    "lineno": 1,
+  },
+  "name": "sample_module",
+  "path": "/home/d/work/python/libtmux/astro/packages/py-parse/tests/fixtures/sample_module.py",
+  "qualname": "sample_module",
+}
+`;
