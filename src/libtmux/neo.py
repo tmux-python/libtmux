@@ -233,7 +233,13 @@ def parse_output(output: str) -> OutputRaw:
     False
     """
     formats, _ = get_output_format()
-    formatter = dict(zip(formats, output.split(FORMAT_SEPARATOR), strict=False))
+    values = output.split(FORMAT_SEPARATOR)
+
+    # Remove the trailing empty string from the split
+    if values and values[-1] == "":
+        values = values[:-1]
+
+    formatter = dict(zip(formats, values, strict=True))
     return {k: v for k, v in formatter.items() if v}
 
 

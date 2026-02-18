@@ -109,6 +109,8 @@ def test_new_session_returns_populated_session(server: Server) -> None:
     session = server.new_session(session_name="test_populated")
     assert session.session_id is not None
     assert session.session_name == "test_populated"
+    assert session.window_id is not None
+    assert session.pane_id is not None
 
 
 def test_new_session_no_name(server: Server) -> None:
