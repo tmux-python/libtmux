@@ -104,6 +104,15 @@ def test_new_session(server: Server) -> None:
     assert server.has_session("test_new_session")
 
 
+def test_new_session_returns_populated_session(server: Server) -> None:
+    """Server.new_session returns Session populated from -P output."""
+    session = server.new_session(session_name="test_populated")
+    assert session.session_id is not None
+    assert session.session_name == "test_populated"
+    assert session.window_id is not None
+    assert session.pane_id is not None
+
+
 def test_new_session_no_name(server: Server) -> None:
     """Server.new_session works with no name."""
     first_session = server.new_session()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import logging
 import typing as t
 from collections.abc import Iterable
@@ -177,13 +178,115 @@ class Obj:
                 setattr(self, k, v)
 
 
+@functools.cache
+def get_output_format() -> tuple[tuple[str, ...], str]:
+    """Return field names and tmux format string for all Obj fields.
+
+    Excludes the ``server`` field, which is a Python object reference
+    rather than a tmux format variable.
+
+    Returns
+    -------
+    tuple[tuple[str, ...], str]
+        A tuple of (field_names, tmux_format_string).
+
+    Examples
+    --------
+    >>> from libtmux.neo import get_output_format
+    >>> fields, fmt = get_output_format()
+    >>> 'session_id' in fields
+    True
+    >>> 'server' in fields
+    False
+    """
+    # Exclude 'server' - it's a Python object, not a tmux format variable
+    formats = tuple(f for f in Obj.__dataclass_fields__ if f != "server")
+    tmux_formats = [f"#{{{f}}}{FORMAT_SEPARATOR}" for f in formats]
+    return formats, "".join(tmux_formats)
+
+
+def parse_output(output: str) -> OutputRaw:
+    """Parse tmux output formatted with get_output_format() into a dict.
+
+    Parameters
+    ----------
+    output : str
+        Raw tmux output produced with the format string from
+        :func:`get_output_format`.
+
+    Returns
+    -------
+    OutputRaw
+        A dict mapping field names to non-empty string values.
+
+    Examples
+    --------
+    >>> from libtmux.neo import get_output_format, parse_output
+    >>> from libtmux.formats import FORMAT_SEPARATOR
+    >>> fields, fmt = get_output_format()
+    >>> values = [''] * len(fields)
+    >>> values[fields.index('session_id')] = '$1'
+    >>> result = parse_output(FORMAT_SEPARATOR.join(values) + FORMAT_SEPARATOR)
+    >>> result['session_id']
+    '$1'
+    >>> 'buffer_sample' in result
+    False
+    """
+    formats, _ = get_output_format()
+    values = output.split(FORMAT_SEPARATOR)
+
+    # Remove the trailing empty string from the split
+    if values and values[-1] == "":
+        values = values[:-1]
+
+    formatter = dict(zip(formats, values, strict=True))
+    return {k: v for k, v in formatter.items() if v}
+
+
 def fetch_objs(
     server: Server,
     list_cmd: ListCmd,
     list_extra_args: ListExtraArgs = None,
 ) -> OutputsRaw:
-    """Fetch a listing of raw data from a tmux command."""
-    formats = list(Obj.__dataclass_fields__.keys())
+    """Fetch a listing of raw data from a tmux command.
+
+    Runs a tmux list command (e.g. ``list-sessions``) with the format string
+    from :func:`get_output_format` and parses each line of output into a dict.
+
+    Parameters
+    ----------
+    server : :class:`~libtmux.server.Server`
+        The tmux server to query.
+    list_cmd : ListCmd
+        The tmux list command to run, e.g. ``"list-sessions"``,
+        ``"list-windows"``, or ``"list-panes"``.
+    list_extra_args : ListExtraArgs, optional
+        Extra arguments appended to the tmux command (e.g. ``("-a",)``
+        for all windows/panes, or ``["-t", session_id]`` to filter).
+
+    Returns
+    -------
+    OutputsRaw
+        A list of dicts, each mapping tmux format field names to their
+        non-empty string values.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.LibTmuxException`
+        If the tmux command writes to stderr.
+
+    Examples
+    --------
+    >>> from libtmux.neo import fetch_objs
+    >>> objs = fetch_objs(server=server, list_cmd="list-sessions")
+    >>> isinstance(objs, list)
+    True
+    >>> isinstance(objs[0], dict)
+    True
+    >>> 'session_id' in objs[0]
+    True
+    """
+    _fields, format_string = get_output_format()
 
     cmd_args: list[str | int] = []
 
@@ -191,7 +294,6 @@ def fetch_objs(
         cmd_args.insert(0, f"-L{server.socket_name}")
     if server.socket_path:
         cmd_args.insert(0, f"-S{server.socket_path}")
-    tmux_formats = [f"#{{{f}}}{FORMAT_SEPARATOR}" for f in formats]
 
     tmux_cmds = [
         *cmd_args,
@@ -201,22 +303,14 @@ def fetch_objs(
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
         tmux_cmds.extend(list(list_extra_args))
 
-    tmux_cmds.append("-F{}".format("".join(tmux_formats)))
+    tmux_cmds.append(f"-F{format_string}")
 
     proc = tmux_cmd(*tmux_cmds)  # output
 
     if proc.stderr:
         raise exc.LibTmuxException(proc.stderr)
 
-    obj_output = proc.stdout
-
-    obj_formatters = [
-        dict(zip(formats, formatter.split(FORMAT_SEPARATOR), strict=False))
-        for formatter in obj_output
-    ]
-
-    # Filter empty values
-    return [{k: v for k, v in formatter.items() if v} for formatter in obj_formatters]
+    return [parse_output(line) for line in proc.stdout]
 
 
 def fetch_obj(

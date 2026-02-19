@@ -14,12 +14,12 @@ import shutil
 import subprocess
 import typing as t
 
-from libtmux import exc, formats
+from libtmux import exc
 from libtmux._internal.query_list import QueryList
 from libtmux.common import tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
-from libtmux.neo import fetch_objs
+from libtmux.neo import fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.window import Window
@@ -539,59 +539,54 @@ class Server(
         if env:
             del os.environ["TMUX"]
 
-        tmux_args: tuple[str | int, ...] = (
-            "-P",
-            "-F#{session_id}",  # output
-        )
+        try:
+            _fields, format_string = get_output_format()
 
-        if session_name is not None:
-            tmux_args += (f"-s{session_name}",)
+            tmux_args: tuple[str | int, ...] = (
+                "-P",
+                f"-F{format_string}",
+            )
 
-        if not attach:
-            tmux_args += ("-d",)
+            if session_name is not None:
+                tmux_args += (f"-s{session_name}",)
 
-        if start_directory:
-            start_directory = pathlib.Path(start_directory).expanduser()
-            tmux_args += ("-c", str(start_directory))
+            if not attach:
+                tmux_args += ("-d",)
 
-        if window_name:
-            tmux_args += ("-n", window_name)
+            if start_directory:
+                start_directory = pathlib.Path(start_directory).expanduser()
+                tmux_args += ("-c", str(start_directory))
 
-        if x is not None:
-            tmux_args += ("-x", x)
+            if window_name:
+                tmux_args += ("-n", window_name)
 
-        if y is not None:
-            tmux_args += ("-y", y)
+            if x is not None:
+                tmux_args += ("-x", x)
 
-        if environment:
-            for k, v in environment.items():
-                tmux_args += (f"-e{k}={v}",)
+            if y is not None:
+                tmux_args += ("-y", y)
 
-        if window_command:
-            tmux_args += (window_command,)
+            if environment:
+                for k, v in environment.items():
+                    tmux_args += (f"-e{k}={v}",)
 
-        proc = self.cmd("new-session", *tmux_args)
+            if window_command:
+                tmux_args += (window_command,)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+            proc = self.cmd("new-session", *tmux_args)
 
-        session_stdout = proc.stdout[0]
+            if proc.stderr:
+                raise exc.LibTmuxException(proc.stderr)
 
-        if env:
-            os.environ["TMUX"] = env
+            session_stdout = proc.stdout[0]
 
-        session_formatters = dict(
-            zip(
-                ["session_id"],
-                session_stdout.split(formats.FORMAT_SEPARATOR),
-                strict=False,
-            ),
-        )
+        finally:
+            if env:
+                os.environ["TMUX"] = env
 
-        return Session.from_session_id(
-            server=self,
-            session_id=session_formatters["session_id"],
-        )
+        session_data = parse_output(session_stdout)
+
+        return Session(server=self, **session_data)
 
     #
     # Relations

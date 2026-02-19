@@ -36,6 +36,26 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Bug fixes
+
+#### Fix race condition in new_session() (#625)
+
+Fixed {exc}`~libtmux.exc.TmuxObjectDoesNotExist` raised by
+{meth}`~libtmux.Server.new_session` in some environments (e.g. PyInstaller-bundled
+binaries, Python 3.13+, Docker containers).
+
+Previously, `new_session()` ran `tmux new-session -P -F#{session_id}` to create the
+session, then immediately issued a separate `list-sessions` query to hydrate the
+{class}`~libtmux.Session` object. In certain environments the session was not yet
+visible to `list-sessions`, causing a spurious failure.
+
+The fix expands the `-F` format string to include all session fields and parses the
+`new-session -P` output directly into the returned `Session`, eliminating the
+follow-up query entirely. This is also one fewer subprocess call per session
+creation.
+
+Closes: #624. Thank you @neubig!
+
 ### Development
 
 #### Makefile -> Justfile (#617)
