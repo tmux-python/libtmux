@@ -36,6 +36,8 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+## libtmux 0.53.1 (2026-02-18)
+
 ### Bug fixes
 
 #### Fix race condition in new_session() (#625)
