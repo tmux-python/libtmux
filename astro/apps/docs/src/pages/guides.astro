@@ -1,0 +1,38 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+
+const guides = [
+  {
+    title: 'Session orchestration',
+    description: 'Create, rename, and connect sessions with confidence.',
+  },
+  {
+    title: 'Window choreography',
+    description: 'Split panes, resize layouts, and move windows programmatically.',
+  },
+  {
+    title: 'Testing with tmux',
+    description: 'Use pytest fixtures to spin up temporary tmux environments.',
+  },
+]
+---
+
+<BaseLayout title="Guides" description="Guided workflows for libtmux.">
+  <section class="surface p-10">
+    <div class="tag">Guides</div>
+    <h1 class="text-4xl">Workflow-first documentation.</h1>
+    <p class="max-w-2xl text-ink/70">
+      These guides mirror the tmux lifecycle. Each guide follows a workflow, from session startup
+      through pane automation. Use them as blueprints for your own tooling.
+    </p>
+  </section>
+
+  <section class="grid gap-6 md:grid-cols-3">
+    {guides.map((guide) => (
+      <article class="surface p-6">
+        <h2 class="text-xl">{guide.title}</h2>
+        <p class="text-sm text-ink/70">{guide.description}</p>
+      </article>
+    ))}
+  </section>
+</BaseLayout>
