@@ -76,7 +76,6 @@ def temp_session(
 @contextlib.contextmanager
 def temp_window(
     session: Session,
-    *args: t.Any,
     **kwargs: t.Any,
 ) -> Generator[Window, t.Any, t.Any]:
     """
@@ -94,8 +93,6 @@ def temp_window(
 
     Other Parameters
     ----------------
-    args : list
-        Arguments passed into :meth:`Session.new_window`
     kwargs : dict
         Keyword arguments passed into :meth:`Session.new_window`
 
@@ -120,7 +117,7 @@ def temp_window(
     else:
         window_name = kwargs.pop("window_name")
 
-    window = session.new_window(window_name, *args, **kwargs)
+    window = session.new_window(window_name, **kwargs)
 
     # Get ``window_id`` before returning it, it may be killed within context.
     window_id = window.window_id
