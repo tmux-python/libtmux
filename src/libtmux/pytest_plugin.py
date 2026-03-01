@@ -24,6 +24,19 @@ logger = logging.getLogger(__name__)
 USING_ZSH = "zsh" in os.getenv("SHELL", "")
 
 
+class SessionParams(t.TypedDict, total=False):
+    """Keyword arguments for :meth:`libtmux.Server.new_session` in tests."""
+
+    kill_session: bool
+    attach: bool
+    start_directory: os.PathLike[str] | str | None
+    window_name: str | None
+    window_command: str | None
+    x: int | t.Literal["-"] | None
+    y: int | t.Literal["-"] | None
+    environment: dict[str, str] | None
+
+
 @pytest.fixture(scope="session")
 def home_path(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
     """Temporary `/home/` path."""
@@ -151,7 +164,7 @@ def server(
 
 
 @pytest.fixture
-def session_params() -> dict[str, t.Any]:
+def session_params() -> SessionParams:
     """Return new, temporary :class:`libtmux.Session`.
 
     >>> import pytest
@@ -191,7 +204,7 @@ def session_params() -> dict[str, t.Any]:
 @pytest.fixture
 def session(
     request: pytest.FixtureRequest,
-    session_params: dict[str, t.Any],
+    session_params: SessionParams,
     server: Server,
 ) -> Session:
     """Return new, temporary :class:`libtmux.Session`.

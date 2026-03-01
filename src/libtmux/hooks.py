@@ -50,7 +50,7 @@ from libtmux.options import handle_option_error
 if t.TYPE_CHECKING:
     from typing_extensions import Self
 
-HookDict = dict[str, t.Any]
+HookDict = dict[str, int | str]
 HookValues = dict[int, str] | SparseArray[str] | list[str]
 
 logger = logging.getLogger(__name__)
