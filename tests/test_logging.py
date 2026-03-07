@@ -20,7 +20,7 @@ def test_tmux_cmd_debug_logging_schema(
     """Test that tmux_cmd produces structured log records per AGENTS.md."""
     with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
         server.cmd("list-sessions")
-    records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
+    records = [r for r in caplog.records if hasattr(r, "tmux_exit_code")]
     assert len(records) >= 1
     record = t.cast(t.Any, records[0])
     assert isinstance(record.tmux_cmd, str)
