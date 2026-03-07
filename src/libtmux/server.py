@@ -598,7 +598,17 @@ class Server(
 
         session_data = parse_output(session_stdout)
 
-        return Session(server=self, **session_data)
+        session = Session(server=self, **session_data)
+
+        logger.info(
+            "session created",
+            extra={
+                "tmux_subcommand": "new-session",
+                "tmux_session": session.session_name,
+            },
+        )
+
+        return session
 
     #
     # Relations
