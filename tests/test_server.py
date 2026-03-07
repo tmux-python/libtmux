@@ -423,15 +423,23 @@ def test_tmux_bin_default(server: Server) -> None:
 
 
 def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
-    """Custom tmux_bin path is used for commands."""
+    """Custom tmux_bin path is used for commands.
+
+    Uses a manual Server instance (not the ``server`` fixture) because this
+    test must control the tmux_bin parameter at construction time.
+    """
     tmux_path = shutil.which("tmux")
     assert tmux_path is not None
     s = Server(socket_name="test_tmux_bin", tmux_bin=tmux_path)
-    assert s.tmux_bin == tmux_path
-    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
-        s.cmd("list-sessions")
-    running_records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
-    assert any(tmux_path in r.tmux_cmd for r in running_records)
+    try:
+        assert s.tmux_bin == tmux_path
+        with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+            s.cmd("list-sessions")
+        running_records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
+        assert any(tmux_path in r.tmux_cmd for r in running_records)
+    finally:
+        if s.is_alive():
+            s.kill()
 
 
 def test_tmux_bin_invalid_path() -> None:
