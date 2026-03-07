@@ -284,7 +284,7 @@ class tmux_cmd:
             logger.error(  # noqa: TRY400
                 "tmux subprocess failed",
                 extra={
-                    "tmux_cmd": subprocess.list2cmdline(cmd),
+                    "tmux_cmd": shlex.join(cmd),
                 },
             )
             raise
@@ -308,7 +308,7 @@ class tmux_cmd:
             logger.debug(
                 "tmux command completed",
                 extra={
-                    "tmux_cmd": subprocess.list2cmdline(cmd),
+                    "tmux_cmd": shlex.join(cmd),
                     "tmux_exit_code": self.returncode,
                     "tmux_stdout": self.stdout[:100],
                     "tmux_stderr": self.stderr[:100],
