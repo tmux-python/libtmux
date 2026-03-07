@@ -71,6 +71,7 @@ class Server(
     colors : str, optional
     on_init : callable, optional
     socket_name_factory : callable, optional
+    tmux_bin : str or pathlib.Path, optional
 
     Examples
     --------
