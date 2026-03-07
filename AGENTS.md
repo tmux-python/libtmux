@@ -307,6 +307,7 @@ Pass structured data on every log call where useful for filtering, searching, or
 | `tmux_session` | `str` | session name |
 | `tmux_window` | `str` | window name or index |
 | `tmux_pane` | `str` | pane identifier |
+| `tmux_option_key` | `str` | tmux option name |
 
 **Heavy/optional keys** (DEBUG only, potentially large):
 
