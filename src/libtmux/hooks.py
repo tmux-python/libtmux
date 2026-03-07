@@ -70,6 +70,13 @@ class HooksMixin(CmdMixin):
         self.default_hook_scope = default_hook_scope
         self.hooks = Hooks()
 
+    @property
+    def _tmux_bin(self) -> str | None:
+        """Resolve tmux_bin from self (Server) or self.server (Session/Window/Pane)."""
+        return getattr(self, "tmux_bin", None) or getattr(
+            getattr(self, "server", None), "tmux_bin", None
+        )
+
     def run_hook(
         self,
         hook: str,
@@ -89,7 +96,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2"):
+            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
                 warnings.warn(
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,
@@ -168,7 +175,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2"):
+            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
                 warnings.warn(
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,
@@ -221,7 +228,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2"):
+            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
                 warnings.warn(
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,
@@ -286,7 +293,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2"):
+            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
                 warnings.warn(
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,
@@ -344,7 +351,7 @@ class HooksMixin(CmdMixin):
             assert scope in HOOK_SCOPE_FLAG_MAP
 
             flag = HOOK_SCOPE_FLAG_MAP[scope]
-            if flag in {"-p", "-w"} and has_lt_version("3.2"):
+            if flag in {"-p", "-w"} and has_lt_version("3.2", tmux_bin=self._tmux_bin):
                 warnings.warn(
                     "Scope flag '-w' and '-p' requires tmux 3.2+. Ignoring.",
                     stacklevel=2,

@@ -453,7 +453,7 @@ def test_capture_pane_trim_trailing_warning(
     from libtmux import common
 
     # Mock has_gte_version to return False for 3.4
-    monkeypatch.setattr(common, "has_gte_version", lambda v: v != "3.4")
+    monkeypatch.setattr(common, "has_gte_version", lambda v, **kw: v != "3.4")
 
     pane = session.active_window.split(shell="sh")
 

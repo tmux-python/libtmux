@@ -411,7 +411,7 @@ class Pane(
         if preserve_trailing:
             cmd.append("-N")
         if trim_trailing:
-            if has_gte_version("3.4"):
+            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
                 cmd.append("-T")
             else:
                 warnings.warn(
