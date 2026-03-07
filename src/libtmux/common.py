@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -259,7 +260,11 @@ class tmux_cmd:
 
         self.cmd = cmd
 
-        logger.debug("running %s", subprocess.list2cmdline(cmd))
+        logger.debug(
+            "running %s",
+            shlex.join(cmd),
+            extra={"tmux_cmd": shlex.join(cmd)},
+        )
 
         try:
             self.process = subprocess.Popen(
