@@ -260,12 +260,13 @@ class tmux_cmd:
 
         self.cmd = cmd
 
-        cmd_str = shlex.join(cmd)
-        logger.debug(
-            "running %s",
-            cmd_str,
-            extra={"tmux_cmd": cmd_str},
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            cmd_str = shlex.join(cmd)
+            logger.debug(
+                "running %s",
+                cmd_str,
+                extra={"tmux_cmd": cmd_str},
+            )
 
         try:
             self.process = subprocess.Popen(
