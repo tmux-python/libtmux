@@ -260,10 +260,11 @@ class tmux_cmd:
 
         self.cmd = cmd
 
+        cmd_str = shlex.join(cmd)
         logger.debug(
             "running %s",
-            shlex.join(cmd),
-            extra={"tmux_cmd": shlex.join(cmd)},
+            cmd_str,
+            extra={"tmux_cmd": cmd_str},
         )
 
         try:
