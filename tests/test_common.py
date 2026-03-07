@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sys
 import typing as t
@@ -27,6 +28,7 @@ from libtmux.common import (
 )
 
 if t.TYPE_CHECKING:
+    from libtmux.server import Server
     from libtmux.session import Session
 
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
@@ -508,3 +510,15 @@ def test_version_validation(
     elif check_type == "type_check":
         assert mock_version is not None  # For type checker
         assert isinstance(has_version(mock_version), bool)
+
+
+def test_tmux_cmd_pre_execution_logging(
+    caplog: pytest.LogCaptureFixture,
+    server: Server,
+) -> None:
+    """Verify tmux_cmd logs command before execution."""
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        server.cmd("list-sessions")
+    assert any(
+        "running" in r.message and "list-sessions" in r.message for r in caplog.records
+    )

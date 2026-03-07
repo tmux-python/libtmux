@@ -259,6 +259,8 @@ class tmux_cmd:
 
         self.cmd = cmd
 
+        logger.debug("running %s", subprocess.list2cmdline(cmd))
+
         try:
             self.process = subprocess.Popen(
                 cmd,
