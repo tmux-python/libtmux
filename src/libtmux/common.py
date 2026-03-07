@@ -263,8 +263,7 @@ class tmux_cmd:
         if logger.isEnabledFor(logging.DEBUG):
             cmd_str = shlex.join(cmd)
             logger.debug(
-                "running %s",
-                cmd_str,
+                "tmux command dispatched",
                 extra={"tmux_cmd": cmd_str},
             )
 
