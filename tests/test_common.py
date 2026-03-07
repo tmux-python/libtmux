@@ -519,6 +519,10 @@ def test_tmux_cmd_pre_execution_logging(
     """Verify tmux_cmd logs command before execution."""
     with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
         server.cmd("list-sessions")
-    running_records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
+    running_records = [
+        r
+        for r in caplog.records
+        if hasattr(r, "tmux_cmd") and not hasattr(r, "tmux_exit_code")
+    ]
     assert len(running_records) > 0
     assert "list-sessions" in running_records[0].tmux_cmd
