@@ -481,12 +481,11 @@ class Window(
         lex.escape = " "
         lex.whitespace_split = False
 
-        try:
-            self.cmd("rename-window", new_name)
-            self.window_name = new_name
-        except Exception:
-            logger.exception("Error renaming window to %s", new_name)
+        proc = self.cmd("rename-window", new_name)
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
 
+        self.window_name = new_name
         self.refresh()
 
         return self
