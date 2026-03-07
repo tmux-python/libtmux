@@ -538,13 +538,12 @@ class Server(
                         msg,
                     )
 
-        logger.debug(
-            "creating session",
-            extra={
-                "tmux_session": session_name,
-                "tmux_subcommand": "new-session",
-            },
-        )
+        extra: dict[str, str] = {
+            "tmux_subcommand": "new-session",
+        }
+        if session_name is not None:
+            extra["tmux_session"] = str(session_name)
+        logger.debug("creating session", extra=extra)
 
         env = os.environ.get("TMUX")
 
@@ -600,13 +599,12 @@ class Server(
 
         session = Session(server=self, **session_data)
 
-        logger.info(
-            "session created",
-            extra={
-                "tmux_subcommand": "new-session",
-                "tmux_session": session.session_name,
-            },
-        )
+        info_extra: dict[str, str] = {
+            "tmux_subcommand": "new-session",
+        }
+        if session.session_name is not None:
+            info_extra["tmux_session"] = str(session.session_name)
+        logger.info("session created", extra=info_extra)
 
         return session
 

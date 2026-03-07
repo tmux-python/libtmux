@@ -439,14 +439,13 @@ class Session(
 
         self.refresh()
 
-        logger.info(
-            "session renamed",
-            extra={
-                "tmux_subcommand": "rename-session",
-                "tmux_session": new_name,
-                "tmux_target": self.session_id,
-            },
-        )
+        extra: dict[str, str] = {
+            "tmux_subcommand": "rename-session",
+            "tmux_session": new_name,
+        }
+        if self.session_id is not None:
+            extra["tmux_target"] = str(self.session_id)
+        logger.info("session renamed", extra=extra)
 
         return self
 
