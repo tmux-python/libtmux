@@ -552,7 +552,7 @@ class Window(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        msg = "windows killed" if all_except else "window killed"
+        msg = "other windows killed" if all_except else "window killed"
         extra: dict[str, str] = {
             "tmux_subcommand": "kill-window",
         }

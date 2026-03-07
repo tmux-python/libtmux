@@ -395,6 +395,7 @@ class Session(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+        msg = "other sessions killed" if all_except else "session killed"
         extra: dict[str, str] = {
             "tmux_subcommand": "kill-session",
         }
@@ -402,7 +403,7 @@ class Session(
             extra["tmux_session"] = str(self.session_name)
         if self.session_id is not None:
             extra["tmux_target"] = str(self.session_id)
-        logger.info("session killed", extra=extra)
+        logger.info(msg, extra=extra)
 
     def switch_client(self) -> Session:
         """Switch client to session.

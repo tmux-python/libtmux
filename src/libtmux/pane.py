@@ -573,7 +573,8 @@ class Pane(
         if self.pane_id is not None:
             extra["tmux_pane"] = str(self.pane_id)
             extra["tmux_target"] = str(self.pane_id)
-        logger.info("pane killed", extra=extra)
+        msg = "other panes killed" if all_except else "pane killed"
+        logger.info(msg, extra=extra)
 
     """
     Commands ("climber"-helpers)
