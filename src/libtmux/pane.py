@@ -842,6 +842,7 @@ class Pane(
         Returns
         -------
         :class:`Pane`
+            The pane instance, for method chaining.
 
         Examples
         --------
