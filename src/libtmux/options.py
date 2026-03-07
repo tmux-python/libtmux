@@ -431,7 +431,6 @@ def explode_arrays(
                 options[key] = val
             logger.warning(
                 "tmux options parse failed",
-                exc_info=True,
                 extra={"tmux_option_key": key},
             )
     return options
@@ -519,7 +518,6 @@ def explode_complex(
                     except Exception:  # NOQA: PERF203
                         logger.warning(
                             "tmux options parse failed",
-                            exc_info=True,
                             extra={"tmux_option_key": key},
                         )
                 options[key] = new_val
@@ -547,7 +545,6 @@ def explode_complex(
                     except Exception:  # NOQA: PERF203
                         logger.warning(
                             "tmux options parse failed",
-                            exc_info=True,
                             extra={"tmux_option_key": key},
                         )
                 options[key] = new_overrides
@@ -567,7 +564,6 @@ def explode_complex(
                     except Exception:  # NOQA: PERF203
                         logger.warning(
                             "tmux options parse failed",
-                            exc_info=True,
                             extra={"tmux_option_key": key},
                         )
                 options[key] = new_aliases
@@ -579,7 +575,6 @@ def explode_complex(
             options[key] = val
             logger.warning(
                 "tmux options parse failed",
-                exc_info=True,
                 extra={"tmux_option_key": key},
             )
     return options
