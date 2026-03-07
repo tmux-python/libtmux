@@ -109,7 +109,6 @@ def keygetter(
             "key lookup failed for path: %s",
             path,
             exc_info=True,
-            stack_info=True,
         )
         return None
 
@@ -154,7 +153,6 @@ def parse_lookup(
             "lookup parsing failed for path: %s",
             path,
             exc_info=True,
-            stack_info=True,
         )
     return None
 
