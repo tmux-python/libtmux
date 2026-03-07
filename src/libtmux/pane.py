@@ -567,6 +567,15 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+        logger.info(
+            "pane killed",
+            extra={
+                "tmux_subcommand": "kill-pane",
+                "tmux_pane": self.pane_id,
+                "tmux_target": self.pane_id,
+            },
+        )
+
     """
     Commands ("climber"-helpers)
 
@@ -769,7 +778,20 @@ class Pane(
             zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR), strict=False),
         )
 
-        return self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
+        pane = self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
+
+        logger.info(
+            "pane created",
+            extra={
+                "tmux_subcommand": "split-window",
+                "tmux_session": self.session.session_name,
+                "tmux_window": self.window.window_name,
+                "tmux_pane": pane.pane_id,
+                "tmux_target": target,
+            },
+        )
+
+        return pane
 
     """
     Commands (helpers)

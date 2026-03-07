@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import string
 import sys
 import typing as t
@@ -14,7 +13,6 @@ from libtmux.test.random import (
     RandomStrSequence,
     get_test_session_name,
     get_test_window_name,
-    logger,
     namer,
 )
 
@@ -23,12 +21,6 @@ if t.TYPE_CHECKING:
 
     from libtmux.server import Server
     from libtmux.session import Session
-
-
-def test_logger() -> None:
-    """Test that the logger is properly configured."""
-    assert isinstance(logger, logging.Logger)
-    assert logger.name == "libtmux.test.random"
 
 
 def test_random_str_sequence_default() -> None:
@@ -295,20 +287,6 @@ def test_random_str_sequence_insufficient_characters() -> None:
         next(rng)
 
 
-def test_logger_configured(caplog: pytest.LogCaptureFixture) -> None:
-    """Test that the logger in random.py is properly configured."""
-    # Verify the logger is set up with the correct name
-    assert logger.name == "libtmux.test.random"
-
-    # Test that the logger functions properly
-    with caplog.at_level(logging.DEBUG):
-        logger.debug("Test debug message")
-        logger.info("Test info message")
-
-        assert "Test debug message" in caplog.text
-        assert "Test info message" in caplog.text
-
-
 def test_next_method_directly() -> None:
     """Test directly calling __next__ method on RandomStrSequence."""
     rng = RandomStrSequence()
@@ -424,7 +402,6 @@ def test_imports_coverage() -> None:
     # This test simply ensures the imports are covered
     from libtmux.test import random
 
-    assert hasattr(random, "logging")
     assert hasattr(random, "random")
     assert hasattr(random, "t")
     assert hasattr(random, "TEST_SESSION_PREFIX")

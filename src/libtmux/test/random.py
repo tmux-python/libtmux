@@ -2,7 +2,6 @@
 
 from __future__ import annotations  # pragma: no cover
 
-import logging
 import random
 import typing as t  # pragma: no cover
 
@@ -20,9 +19,6 @@ if t.TYPE_CHECKING:  # pragma: no cover
         pass  # pragma: no cover
     else:  # pragma: no cover
         pass  # pragma: no cover
-
-
-logger = logging.getLogger(__name__)
 
 
 class RandomStrSequence:

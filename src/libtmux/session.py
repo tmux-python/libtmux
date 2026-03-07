@@ -395,6 +395,15 @@ class Session(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+        logger.info(
+            "session killed",
+            extra={
+                "tmux_subcommand": "kill-session",
+                "tmux_session": self.session_name,
+                "tmux_target": self.session_id,
+            },
+        )
+
     def switch_client(self) -> Session:
         """Switch client to session.
 
@@ -429,6 +438,15 @@ class Session(
             raise exc.LibTmuxException(proc.stderr)
 
         self.refresh()
+
+        logger.info(
+            "session renamed",
+            extra={
+                "tmux_subcommand": "rename-session",
+                "tmux_session": new_name,
+                "tmux_target": self.session_id,
+            },
+        )
 
         return self
 
@@ -561,10 +579,22 @@ class Session(
             zip(["window_id"], window_output.split(FORMAT_SEPARATOR), strict=False),
         )
 
-        return Window.from_window_id(
+        window = Window.from_window_id(
             server=self.server,
             window_id=window_formatters["window_id"],
         )
+
+        logger.info(
+            "window created",
+            extra={
+                "tmux_subcommand": "new-window",
+                "tmux_session": self.session_name,
+                "tmux_window": window_name,
+                "tmux_target": target,
+            },
+        )
+
+        return window
 
     def kill_window(self, target_window: str | None = None) -> None:
         """Close a tmux window, and all panes inside it, ``$ tmux kill-window``.
