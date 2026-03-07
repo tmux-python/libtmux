@@ -306,9 +306,10 @@ def fetch_objs(
 
     tmux_cmds.append(f"-F{format_string}")
 
-    cmd_str = shlex.join([str(x) for x in tmux_cmds])
+    cmd_str: str | None = None
 
     if logger.isEnabledFor(logging.DEBUG):
+        cmd_str = shlex.join([str(x) for x in tmux_cmds])
         logger.debug(
             "tmux list queried",
             extra={
@@ -325,6 +326,8 @@ def fetch_objs(
     outputs = [parse_output(line) for line in proc.stdout]
 
     if logger.isEnabledFor(logging.DEBUG):
+        if cmd_str is None:
+            cmd_str = shlex.join([str(x) for x in tmux_cmds])
         logger.debug(
             "tmux list parsed",
             extra={
