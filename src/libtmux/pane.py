@@ -567,14 +567,13 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        logger.info(
-            "pane killed",
-            extra={
-                "tmux_subcommand": "kill-pane",
-                "tmux_pane": self.pane_id,
-                "tmux_target": self.pane_id,
-            },
-        )
+        extra: dict[str, str] = {
+            "tmux_subcommand": "kill-pane",
+        }
+        if self.pane_id is not None:
+            extra["tmux_pane"] = str(self.pane_id)
+            extra["tmux_target"] = str(self.pane_id)
+        logger.info("pane killed", extra=extra)
 
     """
     Commands ("climber"-helpers)
@@ -780,16 +779,18 @@ class Pane(
 
         pane = self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
 
-        logger.info(
-            "pane created",
-            extra={
-                "tmux_subcommand": "split-window",
-                "tmux_session": self.session.session_name,
-                "tmux_window": self.window.window_name,
-                "tmux_pane": pane.pane_id,
-                "tmux_target": target,
-            },
-        )
+        extra: dict[str, str] = {
+            "tmux_subcommand": "split-window",
+            "tmux_pane": str(pane.pane_id),
+        }
+        if self.session.session_name is not None:
+            extra["tmux_session"] = str(self.session.session_name)
+        if self.window.window_name is not None:
+            extra["tmux_window"] = str(self.window.window_name)
+        if target is not None:
+            extra["tmux_target"] = str(target)
+
+        logger.info("pane created", extra=extra)
 
         return pane
 

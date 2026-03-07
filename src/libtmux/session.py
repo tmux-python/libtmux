@@ -395,14 +395,14 @@ class Session(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        logger.info(
-            "session killed",
-            extra={
-                "tmux_subcommand": "kill-session",
-                "tmux_session": self.session_name,
-                "tmux_target": self.session_id,
-            },
-        )
+        extra: dict[str, str] = {
+            "tmux_subcommand": "kill-session",
+        }
+        if self.session_name is not None:
+            extra["tmux_session"] = str(self.session_name)
+        if self.session_id is not None:
+            extra["tmux_target"] = str(self.session_id)
+        logger.info("session killed", extra=extra)
 
     def switch_client(self) -> Session:
         """Switch client to session.
@@ -584,19 +584,21 @@ class Session(
             window_id=window_formatters["window_id"],
         )
 
-        logger.info(
-            "window created",
-            extra={
-                "tmux_subcommand": "new-window",
-                "tmux_session": self.session_name,
-                "tmux_window": window_name,
-                "tmux_target": target,
-            },
-        )
+        extra: dict[str, str] = {
+            "tmux_subcommand": "new-window",
+        }
+        if self.session_name is not None:
+            extra["tmux_session"] = str(self.session_name)
+        if window.window_name is not None:
+            extra["tmux_window"] = str(window.window_name)
+        if target is not None:
+            extra["tmux_target"] = str(target)
+
+        logger.info("window created", extra=extra)
 
         return window
 
-    def kill_window(self, target_window: str | None = None) -> None:
+    def kill_window(self, target_window: str | int | None = None) -> None:
         """Close a tmux window, and all panes inside it, ``$ tmux kill-window``.
 
         Kill the current window or the window at ``target-window``. removing it
@@ -612,9 +614,10 @@ class Session(
         :exc:`libtmux.exc.LibTmuxException`
             If tmux returns an error.
         """
-        if target_window:
+        target: str | int | None = target_window
+        if target_window is not None:
             if isinstance(target_window, int):
-                target = f"{self.window_name}:{target_window}"
+                target = f"{self.session_name}:{target_window}"
             else:
                 target = f"{target_window}"
 
@@ -622,6 +625,15 @@ class Session(
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+        extra: dict[str, str] = {
+            "tmux_subcommand": "kill-window",
+        }
+        if self.session_name is not None:
+            extra["tmux_session"] = str(self.session_name)
+        if target is not None:
+            extra["tmux_target"] = str(target)
+        logger.info("window killed", extra=extra)
 
     #
     # Dunder
