@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from .__about__ import (
     __author__,
     __copyright__,
@@ -16,6 +18,8 @@ from .pane import Pane
 from .server import Server
 from .session import Session
 from .window import Window
+
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 __all__ = (
     "Pane",

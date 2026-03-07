@@ -36,6 +36,42 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Structured lifecycle logging across Server, Session, Window, and Pane (#637)
+
+All lifecycle operations (create, kill, rename, split) now emit INFO-level log
+records with structured `extra` context. Every log call includes scalar keys
+such as `tmux_subcommand`, `tmux_session`, `tmux_window`, `tmux_pane`, and
+`tmux_target` for filtering in log aggregators and test assertions via
+`caplog.records`.
+
+- Add `NullHandler` to library `__init__.py` per Python logging best practices
+- Add DEBUG-level structured logs for `tmux_cmd` execution with `isEnabledFor` guards
+- Replace f-string log formatting with lazy `%s` formatting throughout
+- Replace `traceback.print_stack()` calls with proper `logger.debug(exc_info=True)`
+- Replace `logger.exception()` in options parsing with `logger.warning()` and `tmux_option_key` context
+- Remove unused logger definitions from modules that don't log
+
+### Bug fixes
+
+#### Window.rename_window() now raises on failure instead of silently swallowing (#637)
+
+Previously `rename_window()` caught all exceptions and logged them, masking
+tmux errors. It now propagates the error, consistent with all other command
+methods.
+
+#### Server.kill() captures stderr and handles "no server running" gracefully (#637)
+
+`Server.kill()` previously discarded the tmux return value. It now checks
+stderr, raises on unexpected errors, and silently returns for expected
+conditions ("no server running", "error connecting to").
+
+#### Server.new_session() checks kill-session stderr (#637)
+
+When `kill_session=True` and the existing session kill fails, `new_session()`
+now raises `LibTmuxException` with the stderr instead of proceeding silently.
+
 ## libtmux 0.53.1 (2026-02-18)
 
 ### Bug fixes

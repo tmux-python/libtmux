@@ -307,6 +307,7 @@ Pass structured data on every log call where useful for filtering, searching, or
 | `tmux_session` | `str` | session name |
 | `tmux_window` | `str` | window name or index |
 | `tmux_pane` | `str` | pane identifier |
+| `tmux_option_key` | `str` | tmux option name |
 
 **Heavy/optional keys** (DEBUG only, potentially large):
 
@@ -314,6 +315,8 @@ Pass structured data on every log call where useful for filtering, searching, or
 |-----|------|---------|
 | `tmux_stdout` | `list[str]` | tmux stdout lines (truncate or cap; `%(tmux_stdout)s` produces repr) |
 | `tmux_stderr` | `list[str]` | tmux stderr lines (same caveats) |
+| `tmux_stdout_len` | `int` | number of stdout lines |
+| `tmux_stderr_len` | `int` | number of stderr lines |
 
 Treat established keys as compatibility-sensitive — downstream users may build dashboards and alerts on them. Change deliberately.
 

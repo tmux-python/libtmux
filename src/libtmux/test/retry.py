@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import time
 import typing as t
 
@@ -11,8 +10,6 @@ from libtmux.test.constants import (
     RETRY_INTERVAL_SECONDS,
     RETRY_TIMEOUT_SECONDS,
 )
-
-logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
     import sys

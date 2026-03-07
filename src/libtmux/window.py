@@ -481,13 +481,21 @@ class Window(
         lex.escape = " "
         lex.whitespace_split = False
 
-        try:
-            self.cmd("rename-window", new_name)
-            self.window_name = new_name
-        except Exception:
-            logger.exception("Error renaming window to %s", new_name)
+        proc = self.cmd("rename-window", new_name)
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
 
+        self.window_name = new_name
         self.refresh()
+
+        extra: dict[str, str] = {
+            "tmux_subcommand": "rename-window",
+        }
+        if self.window_name is not None:
+            extra["tmux_window"] = str(self.window_name)
+        if self.window_id is not None:
+            extra["tmux_target"] = str(self.window_id)
+        logger.info("window renamed", extra=extra)
 
         return self
 
@@ -543,6 +551,16 @@ class Window(
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+        msg = "other windows killed" if all_except else "window killed"
+        extra: dict[str, str] = {
+            "tmux_subcommand": "kill-window",
+        }
+        if self.window_name is not None:
+            extra["tmux_window"] = str(self.window_name)
+        if self.window_id is not None:
+            extra["tmux_target"] = str(self.window_id)
+        logger.info(msg, extra=extra)
 
     def move_window(
         self,

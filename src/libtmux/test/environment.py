@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import typing as t
-
-logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
     import sys

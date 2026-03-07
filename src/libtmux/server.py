@@ -372,7 +372,16 @@ class Server(
         >>> svr.is_alive()
         False
         """
-        self.cmd("kill-server")
+        proc = self.cmd("kill-server")
+        if proc.stderr:
+            stderr_text = " ".join(str(line) for line in proc.stderr)
+            if (
+                "no server running" in stderr_text
+                or "error connecting to" in stderr_text
+            ):
+                return
+            raise exc.LibTmuxException(proc.stderr)
+        logger.info("server killed", extra={"tmux_subcommand": "kill-server"})
 
     def kill_session(self, target_session: str | int) -> Server:
         """Kill tmux session.
@@ -524,15 +533,28 @@ class Server(
 
             if self.has_session(session_name):
                 if kill_session:
-                    self.cmd("kill-session", target=session_name)
-                    logger.info("session %s exists. killed it.", session_name)
+                    proc = self.cmd("kill-session", target=session_name)
+                    if proc.stderr:
+                        raise exc.LibTmuxException(proc.stderr)
+                    logger.info(
+                        "existing session killed",
+                        extra={
+                            "tmux_session": session_name,
+                            "tmux_subcommand": "kill-session",
+                        },
+                    )
                 else:
                     msg = f"Session named {session_name} exists"
                     raise exc.TmuxSessionExists(
                         msg,
                     )
 
-        logger.debug("creating session %s", session_name)
+        extra: dict[str, str] = {
+            "tmux_subcommand": "new-session",
+        }
+        if session_name is not None:
+            extra["tmux_session"] = str(session_name)
+        logger.debug("creating session", extra=extra)
 
         env = os.environ.get("TMUX")
 
@@ -586,7 +608,16 @@ class Server(
 
         session_data = parse_output(session_stdout)
 
-        return Session(server=self, **session_data)
+        session = Session(server=self, **session_data)
+
+        info_extra: dict[str, str] = {
+            "tmux_subcommand": "new-session",
+        }
+        if session.session_name is not None:
+            info_extra["tmux_session"] = str(session.session_name)
+        logger.info("session created", extra=info_extra)
+
+        return session
 
     #
     # Relations

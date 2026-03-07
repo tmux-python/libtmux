@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import contextlib
-import logging
 import typing as t
 
 from libtmux.test.random import get_test_session_name, get_test_window_name
-
-logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
     import sys

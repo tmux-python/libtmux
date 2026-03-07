@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import logging
+import shlex
 import typing as t
 from collections.abc import Iterable
 
@@ -305,12 +306,38 @@ def fetch_objs(
 
     tmux_cmds.append(f"-F{format_string}")
 
+    cmd_str: str | None = None
+
+    if logger.isEnabledFor(logging.DEBUG):
+        cmd_str = shlex.join([str(x) for x in tmux_cmds])
+        logger.debug(
+            "tmux list queried",
+            extra={
+                "tmux_subcommand": list_cmd,
+                "tmux_cmd": cmd_str,
+            },
+        )
+
     proc = tmux_cmd(*tmux_cmds)  # output
 
     if proc.stderr:
         raise exc.LibTmuxException(proc.stderr)
 
-    return [parse_output(line) for line in proc.stdout]
+    outputs = [parse_output(line) for line in proc.stdout]
+
+    if logger.isEnabledFor(logging.DEBUG):
+        if cmd_str is None:
+            cmd_str = shlex.join([str(x) for x in tmux_cmds])
+        logger.debug(
+            "tmux list parsed",
+            extra={
+                "tmux_subcommand": list_cmd,
+                "tmux_cmd": cmd_str,
+                "tmux_stdout_len": len(proc.stdout),
+            },
+        )
+
+    return outputs
 
 
 def fetch_obj(

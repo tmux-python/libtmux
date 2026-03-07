@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import logging
 import typing as t
 from dataclasses import dataclass, field
 
@@ -18,8 +17,6 @@ T = t.TypeVar("T")
 
 TerminalFeatures = dict[str, list[str]]
 HookArray: TypeAlias = "dict[str, SparseArray[str]]"
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(repr=False)
