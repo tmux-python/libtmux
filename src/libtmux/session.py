@@ -606,7 +606,7 @@ class Session(
 
         Parameters
         ----------
-        target_window : str, optional
+        target_window : str | int, optional
             Window to kill.
 
         Raises
