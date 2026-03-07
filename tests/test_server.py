@@ -441,3 +441,12 @@ def test_tmux_bin_invalid_path() -> None:
     s = Server(tmux_bin="/nonexistent/tmux")
     with pytest.raises(exc.TmuxCommandNotFound):
         s.cmd("list-sessions")
+
+
+def test_tmux_bin_invalid_path_raise_if_dead() -> None:
+    """Invalid tmux_bin raises TmuxCommandNotFound in raise_if_dead()."""
+    from libtmux import exc
+
+    s = Server(tmux_bin="/nonexistent/tmux")
+    with pytest.raises(exc.TmuxCommandNotFound):
+        s.raise_if_dead()

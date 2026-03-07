@@ -236,7 +236,10 @@ class Server(
         if self.config_file:
             cmd_args.insert(0, f"-f{self.config_file}")
 
-        subprocess.check_call([resolved, *cmd_args])
+        try:
+            subprocess.check_call([resolved, *cmd_args])
+        except FileNotFoundError:
+            raise exc.TmuxCommandNotFound from None
 
     #
     # Command
