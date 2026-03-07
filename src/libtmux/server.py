@@ -525,14 +525,26 @@ class Server(
             if self.has_session(session_name):
                 if kill_session:
                     self.cmd("kill-session", target=session_name)
-                    logger.info("session %s exists. killed it.", session_name)
+                    logger.info(
+                        "existing session killed",
+                        extra={
+                            "tmux_session": session_name,
+                            "tmux_subcommand": "kill-session",
+                        },
+                    )
                 else:
                     msg = f"Session named {session_name} exists"
                     raise exc.TmuxSessionExists(
                         msg,
                     )
 
-        logger.debug("creating session %s", session_name)
+        logger.debug(
+            "creating session",
+            extra={
+                "tmux_session": session_name,
+                "tmux_subcommand": "new-session",
+            },
+        )
 
         env = os.environ.get("TMUX")
 

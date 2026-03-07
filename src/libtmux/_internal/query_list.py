@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import re
-import traceback
 import typing as t
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
@@ -105,9 +104,13 @@ def keygetter(
             elif hasattr(dct, sub_field):
                 dct = getattr(dct, sub_field)
 
-    except Exception as e:
-        traceback.print_stack()
-        logger.debug("The above error was %s", e)
+    except Exception:
+        logger.debug(
+            "key lookup failed for path: %s",
+            path,
+            exc_info=True,
+            stack_info=True,
+        )
         return None
 
     return dct
@@ -146,9 +149,13 @@ def parse_lookup(
             field_name = path.split(lookup, maxsplit=1)[0]
             if field_name is not None:
                 return keygetter(obj, field_name)
-    except Exception as e:
-        traceback.print_stack()
-        logger.debug("The above error was %s", e)
+    except Exception:
+        logger.debug(
+            "lookup parsing failed for path: %s",
+            path,
+            exc_info=True,
+            stack_info=True,
+        )
     return None
 
 

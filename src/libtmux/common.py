@@ -270,7 +270,13 @@ class tmux_cmd:
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
         except Exception:
-            logger.exception(f"Exception for {subprocess.list2cmdline(cmd)}")
+            logger.error(
+                "tmux subprocess failed",
+                exc_info=True,
+                extra={
+                    "tmux_cmd": subprocess.list2cmdline(cmd),
+                },
+            )
             raise
 
         self.returncode = returncode
@@ -288,12 +294,17 @@ class tmux_cmd:
         else:
             self.stdout = stdout_split
 
-        logger.debug(
-            "self.stdout for {cmd}: {stdout}".format(
-                cmd=" ".join(cmd),
-                stdout=self.stdout,
-            ),
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "tmux command completed",
+                extra={
+                    "tmux_cmd": subprocess.list2cmdline(cmd),
+                    "tmux_exit_code": self.returncode,
+                    "tmux_stdout": self.stdout[:100],
+                    "tmux_stderr": self.stderr[:100],
+                    "tmux_stdout_len": len(self.stdout),
+                },
+            )
 
 
 def get_version() -> LooseVersion:

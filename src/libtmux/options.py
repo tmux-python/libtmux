@@ -429,7 +429,11 @@ def explode_arrays(
                     options[key][0] = val
             else:
                 options[key] = val
-            logger.exception("Error parsing options")
+            logger.warning(
+                "tmux options parse failed",
+                exc_info=True,
+                extra={"tmux_option_key": key},
+            )
     return options
 
 
@@ -513,7 +517,11 @@ def explode_complex(
                         term, features = item.split(":", maxsplit=1)
                         new_val[term] = features.split(":")
                     except Exception:  # NOQA: PERF203
-                        logger.exception("Error parsing options")
+                        logger.warning(
+                            "tmux options parse failed",
+                            exc_info=True,
+                            extra={"tmux_option_key": key},
+                        )
                 options[key] = new_val
                 continue
             if isinstance(val, SparseArray) and key == "terminal-overrides":
@@ -537,7 +545,11 @@ def explode_complex(
                             elif feature:
                                 new_overrides[term][feature] = None
                     except Exception:  # NOQA: PERF203
-                        logger.exception("Error parsing options")
+                        logger.warning(
+                            "tmux options parse failed",
+                            exc_info=True,
+                            extra={"tmux_option_key": key},
+                        )
                 options[key] = new_overrides
                 continue
             if isinstance(val, SparseArray) and key == "command-alias":
@@ -553,7 +565,11 @@ def explode_complex(
                             options[key] = {}
                         new_aliases[alias] = command
                     except Exception:  # NOQA: PERF203
-                        logger.exception("Error parsing options")
+                        logger.warning(
+                            "tmux options parse failed",
+                            exc_info=True,
+                            extra={"tmux_option_key": key},
+                        )
                 options[key] = new_aliases
                 continue
             options[key] = val
@@ -561,7 +577,11 @@ def explode_complex(
 
         except Exception:
             options[key] = val
-            logger.exception("Error parsing options")
+            logger.warning(
+                "tmux options parse failed",
+                exc_info=True,
+                extra={"tmux_option_key": key},
+            )
     return options
 
 
