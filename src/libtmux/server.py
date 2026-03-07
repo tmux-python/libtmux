@@ -372,7 +372,16 @@ class Server(
         >>> svr.is_alive()
         False
         """
-        self.cmd("kill-server")
+        proc = self.cmd("kill-server")
+        if proc.stderr:
+            stderr_text = " ".join(str(line) for line in proc.stderr)
+            if (
+                "no server running" in stderr_text
+                or "error connecting to" in stderr_text
+            ):
+                return
+            raise exc.LibTmuxException(proc.stderr)
+        logger.info("server killed", extra={"tmux_subcommand": "kill-server"})
 
     def kill_session(self, target_session: str | int) -> Server:
         """Kill tmux session.
@@ -524,7 +533,9 @@ class Server(
 
             if self.has_session(session_name):
                 if kill_session:
-                    self.cmd("kill-session", target=session_name)
+                    proc = self.cmd("kill-session", target=session_name)
+                    if proc.stderr:
+                        raise exc.LibTmuxException(proc.stderr)
                     logger.info(
                         "existing session killed",
                         extra={
