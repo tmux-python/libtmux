@@ -321,7 +321,7 @@ def fetch_objs(
 
     proc = tmux_cmd(
         *tmux_cmds,
-        tmux_bin=server.tmux_bin if server is not None else None,
+        tmux_bin=server.tmux_bin,
     )
 
     if proc.stderr:
