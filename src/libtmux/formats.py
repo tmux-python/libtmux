@@ -3,6 +3,12 @@
 libtmux.formats
 ~~~~~~~~~~~~~~~
 
+These lists are **reference documentation only** — they are not imported
+or consumed at runtime. The active format mechanism is
+:class:`libtmux.neo.Obj`, whose dataclass fields are introspected by
+:func:`libtmux.neo.get_output_format` to build tmux format strings
+dynamically.
+
 For reference: https://github.com/tmux/tmux/blob/master/format.c
 
 """
