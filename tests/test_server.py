@@ -432,7 +432,9 @@ def test_tmux_bin_custom_path() -> None:
 
 
 def test_tmux_bin_invalid_path() -> None:
-    """Invalid tmux_bin raises on command execution."""
+    """Invalid tmux_bin raises TmuxCommandNotFound."""
+    from libtmux import exc
+
     s = Server(tmux_bin="/nonexistent/tmux")
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(exc.TmuxCommandNotFound):
         s.cmd("list-sessions")

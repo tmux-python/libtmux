@@ -276,6 +276,8 @@ class tmux_cmd:
             )
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
+        except FileNotFoundError:
+            raise exc.TmuxCommandNotFound from None
         except Exception:
             logger.error(  # noqa: TRY400
                 "tmux subprocess failed",
