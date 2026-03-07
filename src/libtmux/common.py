@@ -270,9 +270,8 @@ class tmux_cmd:
             stdout, stderr = self.process.communicate()
             returncode = self.process.returncode
         except Exception:
-            logger.error(
+            logger.error(  # noqa: TRY400
                 "tmux subprocess failed",
-                exc_info=True,
                 extra={
                     "tmux_cmd": subprocess.list2cmdline(cmd),
                 },
