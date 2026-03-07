@@ -143,7 +143,7 @@ class Server(
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
-        self.tmux_bin = str(tmux_bin) if tmux_bin else None
+        self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
