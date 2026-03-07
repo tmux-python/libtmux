@@ -321,6 +321,9 @@ def test_set_title_special_characters(session: Session) -> None:
     pane.set_title("my pane title")
     assert pane.pane_title == "my pane title"
 
+    pane.set_title("my π pane")
+    assert pane.pane_title == "my π pane"
+
 
 def test_pane_context_manager(session: Session) -> None:
     """Test Pane context manager functionality."""
