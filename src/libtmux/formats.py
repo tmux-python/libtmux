@@ -67,7 +67,7 @@ PANE_FORMATS = [
     "pane_index",
     "pane_width",
     "pane_height",
-    # "pane_title",  # removed in 3.1+
+    "pane_title",
     "pane_id",
     "pane_active",
     "pane_dead",

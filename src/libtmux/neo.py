@@ -103,6 +103,7 @@ class Obj:
     pane_start_command: str | None = None
     pane_start_path: str | None = None
     pane_tabs: str | None = None
+    pane_title: str | None = None
     pane_top: str | None = None
     pane_tty: str | None = None
     pane_width: str | None = None

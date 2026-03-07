@@ -303,6 +303,25 @@ def test_split_pane_size(session: Session) -> None:
     assert new_pane.at_right
 
 
+def test_set_title(session: Session) -> None:
+    """Test Pane.set_title() sets pane title."""
+    window = session.active_window
+    pane = window.active_pane
+    assert pane is not None
+    result = pane.set_title("test-title")
+    assert result == pane  # returns self for chaining
+    assert pane.pane_title == "test-title"
+    assert pane.title == "test-title"
+
+
+def test_set_title_special_characters(session: Session) -> None:
+    """Test Pane.set_title() with spaces and unicode."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.set_title("my pane title")
+    assert pane.pane_title == "my pane title"
+
+
 def test_pane_context_manager(session: Session) -> None:
     """Test Pane context manager functionality."""
     window = session.new_window()
