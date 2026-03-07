@@ -426,7 +426,7 @@ def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
     """Custom tmux_bin path is used for commands."""
     tmux_path = shutil.which("tmux")
     assert tmux_path is not None
-    s = Server(tmux_bin=tmux_path)
+    s = Server(socket_name="test_tmux_bin", tmux_bin=tmux_path)
     assert s.tmux_bin == tmux_path
     with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
         s.cmd("list-sessions")
