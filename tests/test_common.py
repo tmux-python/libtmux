@@ -494,7 +494,7 @@ def test_version_validation(
 
     if mock_version is not None:
 
-        def mock_get_version() -> LooseVersion:
+        def mock_get_version(tmux_bin: str | None = None) -> LooseVersion:
             return LooseVersion(mock_version)
 
         monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)

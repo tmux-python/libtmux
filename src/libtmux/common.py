@@ -318,7 +318,7 @@ class tmux_cmd:
             )
 
 
-def get_version() -> LooseVersion:
+def get_version(tmux_bin: str | None = None) -> LooseVersion:
     """Return tmux version.
 
     If tmux is built from git master, the version returned will be the latest
@@ -327,12 +327,19 @@ def get_version() -> LooseVersion:
     If using OpenBSD's base system tmux, the version will have ``-openbsd``
     appended to the latest version, e.g. ``2.4-openbsd``.
 
+    Parameters
+    ----------
+    tmux_bin : str, optional
+        Path to tmux binary. If *None*, uses the system tmux from
+        :func:`shutil.which`.
+
     Returns
     -------
     :class:`distutils.version.LooseVersion`
-        tmux version according to :func:`shtuil.which`'s tmux
+        tmux version according to *tmux_bin* if provided, otherwise the
+        system tmux from :func:`shutil.which`
     """
-    proc = tmux_cmd("-V")
+    proc = tmux_cmd("-V", tmux_bin=tmux_bin)
     if proc.stderr:
         if proc.stderr[0] == "tmux: unknown option -- V":
             if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
@@ -357,93 +364,105 @@ def get_version() -> LooseVersion:
     return LooseVersion(version)
 
 
-def has_version(version: str) -> bool:
+def has_version(version: str, tmux_bin: str | None = None) -> bool:
     """Return True if tmux version installed.
 
     Parameters
     ----------
     version : str
         version number, e.g. '3.2a'
+    tmux_bin : str, optional
+        Path to tmux binary. If *None*, uses the system tmux.
 
     Returns
     -------
     bool
         True if version matches
     """
-    return get_version() == LooseVersion(version)
+    return get_version(tmux_bin=tmux_bin) == LooseVersion(version)
 
 
-def has_gt_version(min_version: str) -> bool:
+def has_gt_version(min_version: str, tmux_bin: str | None = None) -> bool:
     """Return True if tmux version greater than minimum.
 
     Parameters
     ----------
     min_version : str
         tmux version, e.g. '3.2a'
+    tmux_bin : str, optional
+        Path to tmux binary. If *None*, uses the system tmux.
 
     Returns
     -------
     bool
         True if version above min_version
     """
-    return get_version() > LooseVersion(min_version)
+    return get_version(tmux_bin=tmux_bin) > LooseVersion(min_version)
 
 
-def has_gte_version(min_version: str) -> bool:
+def has_gte_version(min_version: str, tmux_bin: str | None = None) -> bool:
     """Return True if tmux version greater or equal to minimum.
 
     Parameters
     ----------
     min_version : str
         tmux version, e.g. '3.2a'
+    tmux_bin : str, optional
+        Path to tmux binary. If *None*, uses the system tmux.
 
     Returns
     -------
     bool
         True if version above or equal to min_version
     """
-    return get_version() >= LooseVersion(min_version)
+    return get_version(tmux_bin=tmux_bin) >= LooseVersion(min_version)
 
 
-def has_lte_version(max_version: str) -> bool:
+def has_lte_version(max_version: str, tmux_bin: str | None = None) -> bool:
     """Return True if tmux version less or equal to minimum.
 
     Parameters
     ----------
     max_version : str
         tmux version, e.g. '3.2a'
+    tmux_bin : str, optional
+        Path to tmux binary. If *None*, uses the system tmux.
 
     Returns
     -------
     bool
          True if version below or equal to max_version
     """
-    return get_version() <= LooseVersion(max_version)
+    return get_version(tmux_bin=tmux_bin) <= LooseVersion(max_version)
 
 
-def has_lt_version(max_version: str) -> bool:
+def has_lt_version(max_version: str, tmux_bin: str | None = None) -> bool:
     """Return True if tmux version less than minimum.
 
     Parameters
     ----------
     max_version : str
         tmux version, e.g. '3.2a'
+    tmux_bin : str, optional
+        Path to tmux binary. If *None*, uses the system tmux.
 
     Returns
     -------
     bool
         True if version below max_version
     """
-    return get_version() < LooseVersion(max_version)
+    return get_version(tmux_bin=tmux_bin) < LooseVersion(max_version)
 
 
-def has_minimum_version(raises: bool = True) -> bool:
+def has_minimum_version(raises: bool = True, tmux_bin: str | None = None) -> bool:
     """Return True if tmux meets version requirement. Version >= 3.2a.
 
     Parameters
     ----------
     raises : bool
         raise exception if below minimum version requirement
+    tmux_bin : str, optional
+        Path to tmux binary. If *None*, uses the system tmux.
 
     Returns
     -------
@@ -467,12 +486,12 @@ def has_minimum_version(raises: bool = True) -> bool:
         Versions will now remove trailing letters per
         `Issue 55 <https://github.com/tmux-python/tmuxp/issues/55>`_.
     """
-    if get_version() < LooseVersion(TMUX_MIN_VERSION):
+    if get_version(tmux_bin=tmux_bin) < LooseVersion(TMUX_MIN_VERSION):
         if raises:
             msg = (
                 f"libtmux only supports tmux {TMUX_MIN_VERSION} and greater. This "
-                f"system has {get_version()} installed. Upgrade your tmux to use "
-                "libtmux, or use libtmux v0.48.x for older tmux versions."
+                f"system has {get_version(tmux_bin=tmux_bin)} installed. Upgrade your "
+                "tmux to use libtmux, or use libtmux v0.48.x for older tmux versions."
             )
             raise exc.VersionTooLow(msg)
         return False

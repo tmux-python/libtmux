@@ -135,7 +135,7 @@ def test_ignores_letter_versions(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_error_version_less_1_7(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test raises if tmux version less than 1.7."""
 
-    def mock_get_version() -> LooseVersion:
+    def mock_get_version(tmux_bin: str | None = None) -> LooseVersion:
         return LooseVersion("1.7")
 
     monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)
