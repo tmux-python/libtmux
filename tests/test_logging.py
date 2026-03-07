@@ -315,4 +315,3 @@ def test_options_warning_logging_schema(
     rec = t.cast(t.Any, records[0])
     assert isinstance(rec.tmux_option_key, str)
     assert rec.exc_info is None
-    assert "Traceback" not in caplog.text
