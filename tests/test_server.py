@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
+import shutil
 import subprocess
 import time
 import typing as t
@@ -414,3 +415,24 @@ def test_new_session_start_directory_pathlib(
     actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
     expected_path = str(user_path.resolve())
     assert actual_path == expected_path
+
+
+def test_tmux_bin_default(server: Server) -> None:
+    """Default tmux_bin is None, falls back to shutil.which."""
+    assert server.tmux_bin is None
+
+
+def test_tmux_bin_custom_path() -> None:
+    """Custom tmux_bin path is used for commands."""
+    tmux_path = shutil.which("tmux")
+    assert tmux_path is not None
+    s = Server(tmux_bin=tmux_path)
+    # Should work identically to default
+    assert s.tmux_bin == tmux_path
+
+
+def test_tmux_bin_invalid_path() -> None:
+    """Invalid tmux_bin raises on command execution."""
+    s = Server(tmux_bin="/nonexistent/tmux")
+    with pytest.raises(FileNotFoundError):
+        s.cmd("list-sessions")

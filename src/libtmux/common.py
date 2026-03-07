@@ -248,12 +248,12 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any) -> None:
-        tmux_bin = shutil.which("tmux")
-        if not tmux_bin:
+    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+        resolved = tmux_bin or shutil.which("tmux")
+        if not resolved:
             raise exc.TmuxCommandNotFound
 
-        cmd = [tmux_bin]
+        cmd = [resolved]
         cmd += args  # add the command arguments to cmd
         cmd = [str(c) for c in cmd]
 
