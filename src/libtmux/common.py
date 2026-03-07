@@ -302,6 +302,7 @@ class tmux_cmd:
                     "tmux_stdout": self.stdout[:100],
                     "tmux_stderr": self.stderr[:100],
                     "tmux_stdout_len": len(self.stdout),
+                    "tmux_stderr_len": len(self.stderr),
                 },
             )
 

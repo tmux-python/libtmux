@@ -251,14 +251,14 @@ def session(
         server.switch_client(target_session=session_id)
 
     for old_test_session in old_test_sessions:
+        server.kill_session(old_test_session)
         logger.debug(
-            "old test session found, killing",
+            "old test session killed",
             extra={
                 "tmux_session": old_test_session,
                 "tmux_subcommand": "kill-session",
             },
         )
-        server.kill_session(old_test_session)
     assert session.session_name == TEST_SESSION_NAME
     assert TEST_SESSION_NAME != "tmuxp"
 
