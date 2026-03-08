@@ -36,6 +36,13 @@ def _resolve_option_target(
     server = _get_server(socket_name=socket_name)
     opt_scope = _SCOPE_MAP.get(scope) if scope is not None else None
 
+    if scope is not None and opt_scope is None:
+        from fastmcp.exceptions import ToolError
+
+        valid = ", ".join(sorted(_SCOPE_MAP))
+        msg = f"Invalid scope: {scope!r}. Valid: {valid}"
+        raise ToolError(msg)
+
     if target is not None and opt_scope is not None:
         if opt_scope == OptionScope.Session:
             return _resolve_session(server, session_name=target), opt_scope
