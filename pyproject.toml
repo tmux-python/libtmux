@@ -112,6 +112,14 @@ lint = [
   "mypy",
 ]
 
+[project.optional-dependencies]
+mcp = [
+    "fastmcp>=2.3.0; python_version >= '3.10'",
+]
+
+[project.scripts]
+libtmux-mcp = "libtmux.mcp:main"
+
 [project.entry-points.pytest11]
 libtmux = "libtmux.pytest_plugin"
 
