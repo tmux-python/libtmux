@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import typing as t
 
 from libtmux.mcp._utils import (
@@ -15,8 +14,6 @@ from libtmux.mcp._utils import (
 
 if t.TYPE_CHECKING:
     from fastmcp import FastMCP
-
-logger = logging.getLogger(__name__)
 
 
 def register(mcp: FastMCP) -> None:
@@ -31,12 +28,9 @@ def register(mcp: FastMCP) -> None:
         str
             JSON array of session objects.
         """
-        try:
-            server = _get_server()
-            sessions = [_serialize_session(s) for s in server.sessions]
-            return json.dumps(sessions, indent=2)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+        server = _get_server()
+        sessions = [_serialize_session(s) for s in server.sessions]
+        return json.dumps(sessions, indent=2)
 
     @mcp.resource("tmux://sessions/{session_name}")
     def get_session(session_name: str) -> str:
@@ -52,17 +46,15 @@ def register(mcp: FastMCP) -> None:
         str
             JSON object with session info and its windows.
         """
-        try:
-            server = _get_server()
-            session = server.sessions.get(session_name=session_name, default=None)
-            if session is None:
-                return json.dumps({"error": f"Session not found: {session_name}"})
+        server = _get_server()
+        session = server.sessions.get(session_name=session_name, default=None)
+        if session is None:
+            msg = f"Session not found: {session_name}"
+            raise ValueError(msg)
 
-            result = _serialize_session(session)
-            result["windows"] = [_serialize_window(w) for w in session.windows]
-            return json.dumps(result, indent=2)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+        result = _serialize_session(session)
+        result["windows"] = [_serialize_window(w) for w in session.windows]
+        return json.dumps(result, indent=2)
 
     @mcp.resource("tmux://sessions/{session_name}/windows")
     def get_session_windows(session_name: str) -> str:
@@ -78,16 +70,14 @@ def register(mcp: FastMCP) -> None:
         str
             JSON array of window objects.
         """
-        try:
-            server = _get_server()
-            session = server.sessions.get(session_name=session_name, default=None)
-            if session is None:
-                return json.dumps({"error": f"Session not found: {session_name}"})
+        server = _get_server()
+        session = server.sessions.get(session_name=session_name, default=None)
+        if session is None:
+            msg = f"Session not found: {session_name}"
+            raise ValueError(msg)
 
-            windows = [_serialize_window(w) for w in session.windows]
-            return json.dumps(windows, indent=2)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+        windows = [_serialize_window(w) for w in session.windows]
+        return json.dumps(windows, indent=2)
 
     @mcp.resource("tmux://sessions/{session_name}/windows/{window_index}")
     def get_window(session_name: str, window_index: str) -> str:
@@ -105,21 +95,20 @@ def register(mcp: FastMCP) -> None:
         str
             JSON object with window info and its panes.
         """
-        try:
-            server = _get_server()
-            session = server.sessions.get(session_name=session_name, default=None)
-            if session is None:
-                return json.dumps({"error": f"Session not found: {session_name}"})
+        server = _get_server()
+        session = server.sessions.get(session_name=session_name, default=None)
+        if session is None:
+            msg = f"Session not found: {session_name}"
+            raise ValueError(msg)
 
-            window = session.windows.get(window_index=window_index, default=None)
-            if window is None:
-                return json.dumps({"error": f"Window not found: index {window_index}"})
+        window = session.windows.get(window_index=window_index, default=None)
+        if window is None:
+            msg = f"Window not found: index {window_index}"
+            raise ValueError(msg)
 
-            result = _serialize_window(window)
-            result["panes"] = [_serialize_pane(p) for p in window.panes]
-            return json.dumps(result, indent=2)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+        result = _serialize_window(window)
+        result["panes"] = [_serialize_pane(p) for p in window.panes]
+        return json.dumps(result, indent=2)
 
     @mcp.resource("tmux://panes/{pane_id}")
     def get_pane(pane_id: str) -> str:
@@ -135,15 +124,13 @@ def register(mcp: FastMCP) -> None:
         str
             JSON object of pane details.
         """
-        try:
-            server = _get_server()
-            pane = server.panes.get(pane_id=pane_id, default=None)
-            if pane is None:
-                return json.dumps({"error": f"Pane not found: {pane_id}"})
+        server = _get_server()
+        pane = server.panes.get(pane_id=pane_id, default=None)
+        if pane is None:
+            msg = f"Pane not found: {pane_id}"
+            raise ValueError(msg)
 
-            return json.dumps(_serialize_pane(pane), indent=2)
-        except Exception as e:
-            return json.dumps({"error": str(e)})
+        return json.dumps(_serialize_pane(pane), indent=2)
 
     @mcp.resource("tmux://panes/{pane_id}/content")
     def get_pane_content(pane_id: str) -> str:
@@ -159,13 +146,11 @@ def register(mcp: FastMCP) -> None:
         str
             Plain text captured pane content.
         """
-        try:
-            server = _get_server()
-            pane = server.panes.get(pane_id=pane_id, default=None)
-            if pane is None:
-                return f"Error: Pane not found: {pane_id}"
+        server = _get_server()
+        pane = server.panes.get(pane_id=pane_id, default=None)
+        if pane is None:
+            msg = f"Pane not found: {pane_id}"
+            raise ValueError(msg)
 
-            lines = pane.capture_pane()
-            return "\n".join(lines)
-        except Exception as e:
-            return f"Error: {e}"
+        lines = pane.capture_pane()
+        return "\n".join(lines)
