@@ -7,6 +7,7 @@ import typing as t
 
 from libtmux.constants import WindowDirection
 from libtmux.mcp._utils import (
+    _apply_filters,
     _get_server,
     _resolve_session,
     _serialize_session,
@@ -23,17 +24,21 @@ def list_windows(
     session_name: str | None = None,
     session_id: str | None = None,
     socket_name: str | None = None,
+    filters: dict[str, str] | None = None,
 ) -> str:
-    """List all windows in a tmux session.
+    """List windows in a tmux session, or all windows across sessions.
 
     Parameters
     ----------
     session_name : str, optional
-        Session name to look up.
+        Session name to look up. If omitted along with session_id,
+        returns windows from all sessions.
     session_id : str, optional
         Session ID (e.g. '$1') to look up.
     socket_name : str, optional
         tmux socket name. Defaults to LIBTMUX_SOCKET env var.
+    filters : dict, optional
+        Django-style filters (e.g. ``{"window_name__contains": "dev"}``).
 
     Returns
     -------
@@ -41,9 +46,14 @@ def list_windows(
         JSON array of window objects.
     """
     server = _get_server(socket_name=socket_name)
-    session = _resolve_session(server, session_name=session_name, session_id=session_id)
-    windows = session.windows
-    return json.dumps([_serialize_window(w) for w in windows])
+    if session_name is not None or session_id is not None:
+        session = _resolve_session(
+            server, session_name=session_name, session_id=session_id
+        )
+        windows = session.windows
+    else:
+        windows = server.windows
+    return json.dumps(_apply_filters(windows, filters, _serialize_window))
 
 
 @handle_tool_errors

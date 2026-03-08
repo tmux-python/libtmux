@@ -7,8 +7,10 @@ import typing as t
 
 from libtmux.constants import PaneDirection
 from libtmux.mcp._utils import (
+    _apply_filters,
     _get_server,
     _resolve_pane,
+    _resolve_session,
     _resolve_window,
     _serialize_pane,
     _serialize_window,
@@ -33,21 +35,26 @@ def list_panes(
     window_id: str | None = None,
     window_index: str | None = None,
     socket_name: str | None = None,
+    filters: dict[str, str] | None = None,
 ) -> str:
-    """List all panes in a tmux window.
+    """List panes in a tmux window, session, or across the entire server.
 
     Parameters
     ----------
     session_name : str, optional
-        Session name to resolve the window from.
+        Session name. If given without window params, lists all panes
+        in the session.
     session_id : str, optional
-        Session ID to resolve the window from.
+        Session ID. If given without window params, lists all panes
+        in the session.
     window_id : str, optional
-        Window ID (e.g. '@1').
+        Window ID (e.g. '@1'). Scopes to a single window.
     window_index : str, optional
-        Window index within the session.
+        Window index within the session. Scopes to a single window.
     socket_name : str, optional
         tmux socket name.
+    filters : dict, optional
+        Django-style filters (e.g. ``{"pane_current_command__contains": "vim"}``).
 
     Returns
     -------
@@ -55,14 +62,23 @@ def list_panes(
         JSON array of serialized pane objects.
     """
     server = _get_server(socket_name=socket_name)
-    window = _resolve_window(
-        server,
-        window_id=window_id,
-        window_index=window_index,
-        session_name=session_name,
-        session_id=session_id,
-    )
-    return json.dumps([_serialize_pane(p) for p in window.panes])
+    if window_id is not None or window_index is not None:
+        window = _resolve_window(
+            server,
+            window_id=window_id,
+            window_index=window_index,
+            session_name=session_name,
+            session_id=session_id,
+        )
+        panes = window.panes
+    elif session_name is not None or session_id is not None:
+        session = _resolve_session(
+            server, session_name=session_name, session_id=session_id
+        )
+        panes = session.panes
+    else:
+        panes = server.panes
+    return json.dumps(_apply_filters(panes, filters, _serialize_pane))
 
 
 @handle_tool_errors

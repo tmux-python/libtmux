@@ -6,6 +6,7 @@ import json
 import typing as t
 
 from libtmux.mcp._utils import (
+    _apply_filters,
     _get_server,
     _invalidate_server,
     _serialize_session,
@@ -17,13 +18,18 @@ if t.TYPE_CHECKING:
 
 
 @handle_tool_errors
-def list_sessions(socket_name: str | None = None) -> str:
+def list_sessions(
+    socket_name: str | None = None,
+    filters: dict[str, str] | None = None,
+) -> str:
     """List all tmux sessions.
 
     Parameters
     ----------
     socket_name : str, optional
         tmux socket name. Defaults to LIBTMUX_SOCKET env var.
+    filters : dict, optional
+        Django-style filters (e.g. ``{"session_name__contains": "dev"}``).
 
     Returns
     -------
@@ -32,7 +38,7 @@ def list_sessions(socket_name: str | None = None) -> str:
     """
     server = _get_server(socket_name=socket_name)
     sessions = server.sessions
-    return json.dumps([_serialize_session(s) for s in sessions])
+    return json.dumps(_apply_filters(sessions, filters, _serialize_session))
 
 
 @handle_tool_errors

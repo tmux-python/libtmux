@@ -111,6 +111,105 @@ def test_resize_window(mcp_server: Server, mcp_session: Session) -> None:
     assert data["window_id"] == window.window_id
 
 
+class ListPanesFilterFixture(t.NamedTuple):
+    """Test fixture for list_panes with filters."""
+
+    test_id: str
+    scope: str  # "window", "session", "server"
+    filters: dict[str, str] | None
+    expected_min_count: int
+    expect_error: bool
+
+
+LIST_PANES_FILTER_FIXTURES: list[ListPanesFilterFixture] = [
+    ListPanesFilterFixture(
+        test_id="window_scope_no_filter",
+        scope="window",
+        filters=None,
+        expected_min_count=1,
+        expect_error=False,
+    ),
+    ListPanesFilterFixture(
+        test_id="session_scope_no_filter",
+        scope="session",
+        filters=None,
+        expected_min_count=1,
+        expect_error=False,
+    ),
+    ListPanesFilterFixture(
+        test_id="server_scope_no_filter",
+        scope="server",
+        filters=None,
+        expected_min_count=1,
+        expect_error=False,
+    ),
+    ListPanesFilterFixture(
+        test_id="filter_active_pane",
+        scope="window",
+        filters={"pane_active": "1"},
+        expected_min_count=1,
+        expect_error=False,
+    ),
+    ListPanesFilterFixture(
+        test_id="filter_by_command_contains",
+        scope="server",
+        filters={"pane_current_command__regex": ".*"},
+        expected_min_count=1,
+        expect_error=False,
+    ),
+    ListPanesFilterFixture(
+        test_id="invalid_operator",
+        scope="window",
+        filters={"pane_id__badop": "test"},
+        expected_min_count=0,
+        expect_error=True,
+    ),
+    ListPanesFilterFixture(
+        test_id="session_scope_with_filter",
+        scope="session",
+        filters={"pane_active": "1"},
+        expected_min_count=1,
+        expect_error=False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ListPanesFilterFixture._fields,
+    LIST_PANES_FILTER_FIXTURES,
+    ids=[f.test_id for f in LIST_PANES_FILTER_FIXTURES],
+)
+def test_list_panes_with_filters(
+    mcp_server: Server,
+    mcp_session: Session,
+    test_id: str,
+    scope: str,
+    filters: dict[str, str] | None,
+    expected_min_count: int,
+    expect_error: bool,
+) -> None:
+    """list_panes supports QueryList filtering and scope broadening."""
+    window = mcp_session.active_window
+
+    kwargs: dict[str, t.Any] = {
+        "socket_name": mcp_server.socket_name,
+        "filters": filters,
+    }
+    if scope == "window":
+        kwargs["window_id"] = window.window_id
+    elif scope == "session":
+        kwargs["session_name"] = mcp_session.session_name
+
+    if expect_error:
+        with pytest.raises(ToolError, match="Invalid filter operator"):
+            list_panes(**kwargs)
+    else:
+        result = list_panes(**kwargs)
+        data = json.loads(result)
+        assert isinstance(data, list)
+        assert len(data) >= expected_min_count
+
+
 def test_kill_window(mcp_server: Server, mcp_session: Session) -> None:
     """kill_window kills a window."""
     new_window = mcp_session.new_window(window_name="mcp_kill_win")
