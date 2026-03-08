@@ -456,11 +456,12 @@ def has_minimum_version(raises: bool = True) -> bool:
         Versions will now remove trailing letters per
         `Issue 55 <https://github.com/tmux-python/tmuxp/issues/55>`_.
     """
-    if get_version() < LooseVersion(TMUX_MIN_VERSION):
+    current_version = get_version()
+    if current_version < LooseVersion(TMUX_MIN_VERSION):
         if raises:
             msg = (
                 f"libtmux only supports tmux {TMUX_MIN_VERSION} and greater. This "
-                f"system has {get_version()} installed. Upgrade your tmux to use "
+                f"system has {current_version} installed. Upgrade your tmux to use "
                 "libtmux, or use libtmux v0.48.x for older tmux versions."
             )
             raise exc.VersionTooLow(msg)
