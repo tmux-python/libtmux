@@ -121,6 +121,12 @@ def split_window(
     pane_dir: PaneDirection | None = None
     if direction is not None:
         pane_dir = _DIRECTION_MAP.get(direction.lower())
+        if pane_dir is None:
+            from fastmcp.exceptions import ToolError
+
+            valid = ", ".join(sorted(_DIRECTION_MAP))
+            msg = f"Invalid direction: {direction!r}. Valid: {valid}"
+            raise ToolError(msg)
 
     new_pane = window.split(
         direction=pane_dir,

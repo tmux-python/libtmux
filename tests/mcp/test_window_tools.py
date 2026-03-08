@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import typing as t
 
+import pytest
+from fastmcp.exceptions import ToolError
+
 from libtmux.mcp.tools.window_tools import (
     kill_window,
     list_panes,
@@ -55,6 +58,19 @@ def test_split_window_with_direction(mcp_server: Server, mcp_session: Session) -
     )
     data = json.loads(result)
     assert "pane_id" in data
+
+
+def test_split_window_invalid_direction(
+    mcp_server: Server, mcp_session: Session
+) -> None:
+    """split_window raises ToolError on invalid direction."""
+    window = mcp_session.active_window
+    with pytest.raises(ToolError, match="Invalid direction"):
+        split_window(
+            window_id=window.window_id,
+            direction="diagonal",
+            socket_name=mcp_server.socket_name,
+        )
 
 
 def test_rename_window(mcp_server: Server, mcp_session: Session) -> None:

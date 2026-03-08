@@ -93,7 +93,14 @@ def create_window(
             "before": WindowDirection.Before,
             "after": WindowDirection.After,
         }
-        kwargs["direction"] = direction_map[direction.lower()]
+        resolved = direction_map.get(direction.lower())
+        if resolved is None:
+            from fastmcp.exceptions import ToolError
+
+            valid = ", ".join(sorted(direction_map))
+            msg = f"Invalid direction: {direction!r}. Valid: {valid}"
+            raise ToolError(msg)
+        kwargs["direction"] = resolved
     window = session.new_window(**kwargs)
     return json.dumps(_serialize_window(window))
 

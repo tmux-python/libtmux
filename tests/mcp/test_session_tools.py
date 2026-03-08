@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import typing as t
 
+import pytest
+from fastmcp.exceptions import ToolError
+
 from libtmux.mcp.tools.session_tools import (
     create_window,
     kill_session,
@@ -48,6 +51,19 @@ def test_create_window(mcp_server: Server, mcp_session: Session) -> None:
     )
     data = json.loads(result)
     assert data["window_name"] == "mcp_test_win"
+
+
+def test_create_window_invalid_direction(
+    mcp_server: Server, mcp_session: Session
+) -> None:
+    """create_window raises ToolError on invalid direction."""
+    with pytest.raises(ToolError, match="Invalid direction"):
+        create_window(
+            session_name=mcp_session.session_name,
+            window_name="bad_dir",
+            direction="sideways",
+            socket_name=mcp_server.socket_name,
+        )
 
 
 def test_rename_session(mcp_server: Server, mcp_session: Session) -> None:
