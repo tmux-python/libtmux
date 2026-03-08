@@ -9,6 +9,7 @@ from libtmux.mcp.tools.window_tools import (
     kill_window,
     list_panes,
     rename_window,
+    resize_window,
     select_layout,
     split_window,
 )
@@ -79,6 +80,19 @@ def test_select_layout(mcp_server: Server, mcp_session: Session) -> None:
     )
     data = json.loads(result)
     assert "window_id" in data
+
+
+def test_resize_window(mcp_server: Server, mcp_session: Session) -> None:
+    """resize_window resizes a window."""
+    window = mcp_session.active_window
+    result = resize_window(
+        window_id=window.window_id,
+        height=20,
+        width=60,
+        socket_name=mcp_server.socket_name,
+    )
+    data = json.loads(result)
+    assert data["window_id"] == window.window_id
 
 
 def test_kill_window(mcp_server: Server, mcp_session: Session) -> None:

@@ -300,13 +300,7 @@ def resize_window(
         session_name=session_name,
         session_id=session_id,
     )
-    cmd_args: list[str] = []
-    if width is not None:
-        cmd_args.extend(["-x", str(width)])
-    if height is not None:
-        cmd_args.extend(["-y", str(height)])
-    if cmd_args:
-        window.cmd("resize-window", *cmd_args)
+    window.resize(height=height, width=width)
     return json.dumps(_serialize_window(window))
 
 
