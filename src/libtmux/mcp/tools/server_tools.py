@@ -7,6 +7,7 @@ import typing as t
 
 from libtmux.mcp._utils import (
     _get_server,
+    _invalidate_server,
     _serialize_session,
     handle_tool_errors,
 )
@@ -102,6 +103,7 @@ def kill_server(socket_name: str | None = None) -> str:
     """
     server = _get_server(socket_name=socket_name)
     server.kill()
+    _invalidate_server(socket_name=socket_name)
     return "Server killed successfully"
 
 

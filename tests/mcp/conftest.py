@@ -30,10 +30,10 @@ def mcp_server(server: Server) -> Server:
     This fixture sets up the server cache so MCP tools can find the
     test server without environment variables.
     """
-    cache_key = (server.socket_name, None)
+    cache_key = (server.socket_name, None, None)
     _server_cache[cache_key] = server
-    # Also register as default (None, None) for tools that don't specify a socket
-    _server_cache[(None, None)] = server
+    # Also register as default for tools that don't specify a socket
+    _server_cache[(None, None, None)] = server
     return server
 
 

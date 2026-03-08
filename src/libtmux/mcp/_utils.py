@@ -21,7 +21,7 @@ if t.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_server_cache: dict[tuple[str | None, str | None], Server] = {}
+_server_cache: dict[tuple[str | None, str | None, str | None], Server] = {}
 
 
 def _get_server(
@@ -49,7 +49,12 @@ def _get_server(
 
     tmux_bin = os.environ.get("LIBTMUX_TMUX_BIN")
 
-    cache_key = (socket_name, socket_path)
+    cache_key = (socket_name, socket_path, tmux_bin)
+    if cache_key in _server_cache:
+        cached = _server_cache[cache_key]
+        if not cached.is_alive():
+            del _server_cache[cache_key]
+
     if cache_key not in _server_cache:
         kwargs: dict[str, t.Any] = {}
         if socket_name is not None:
@@ -61,6 +66,26 @@ def _get_server(
         _server_cache[cache_key] = Server(**kwargs)
 
     return _server_cache[cache_key]
+
+
+def _invalidate_server(
+    socket_name: str | None = None,
+    socket_path: str | None = None,
+) -> None:
+    """Evict a server from the cache.
+
+    Parameters
+    ----------
+    socket_name : str, optional
+        tmux socket name used in the cache key.
+    socket_path : str, optional
+        tmux socket path used in the cache key.
+    """
+    keys_to_remove = [
+        key for key in _server_cache if key[0] == socket_name and key[1] == socket_path
+    ]
+    for key in keys_to_remove:
+        del _server_cache[key]
 
 
 def _resolve_session(
