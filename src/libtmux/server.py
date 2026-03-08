@@ -218,6 +218,14 @@ class Server(
     def raise_if_dead(self) -> None:
         """Raise if server not connected.
 
+        Raises
+        ------
+        :exc:`exc.TmuxCommandNotFound`
+            When the tmux binary cannot be found or executed.
+        :class:`subprocess.CalledProcessError`
+            When the tmux server is not running (non-zero exit from
+            ``list-sessions``).
+
         >>> tmux = Server(socket_name="no_exist")
         >>> try:
         ...     tmux.raise_if_dead()
