@@ -203,7 +203,7 @@ def kill_pane(
         window_id=window_id,
     )
     pid = pane.pane_id
-    pane.cmd("kill-pane")
+    pane.kill()
     return f"Pane killed: {pid}"
 
 
