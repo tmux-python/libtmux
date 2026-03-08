@@ -12,6 +12,7 @@ import os
 import typing as t
 
 from libtmux import exc
+from libtmux._internal.query_list import LOOKUP_NAME_MAP
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -271,6 +272,53 @@ def _resolve_pane(
     if not panes:
         raise exc.PaneNotFound()
     return panes[0]
+
+
+def _apply_filters(
+    items: t.Any,
+    filters: dict[str, str] | None,
+    serializer: t.Callable[..., dict[str, t.Any]],
+) -> list[dict[str, t.Any]]:
+    """Apply QueryList filters and serialize results.
+
+    Parameters
+    ----------
+    items : QueryList
+        The QueryList of tmux objects to filter.
+    filters : dict or None
+        Django-style filter kwargs (e.g. ``{"session_name__contains": "dev"}``).
+        If None or empty, all items are returned.
+    serializer : callable
+        Serializer function to convert each item to a dict.
+
+    Returns
+    -------
+    list[dict]
+        Serialized list of matching items.
+
+    Raises
+    ------
+    ToolError
+        If a filter key uses an invalid lookup operator.
+    """
+    if not filters:
+        return [serializer(item) for item in items]
+
+    from fastmcp.exceptions import ToolError
+
+    valid_ops = sorted(LOOKUP_NAME_MAP.keys())
+    for key in filters:
+        if "__" in key:
+            _field, op = key.rsplit("__", 1)
+            if op not in LOOKUP_NAME_MAP:
+                msg = (
+                    f"Invalid filter operator '{op}' in '{key}'. "
+                    f"Valid operators: {', '.join(valid_ops)}"
+                )
+                raise ToolError(msg)
+
+    filtered = items.filter(**filters)
+    return [serializer(item) for item in filtered]
 
 
 def _serialize_session(session: Session) -> dict[str, t.Any]:

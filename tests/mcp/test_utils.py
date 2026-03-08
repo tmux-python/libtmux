@@ -5,9 +5,11 @@ from __future__ import annotations
 import typing as t
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from libtmux import exc
 from libtmux.mcp._utils import (
+    _apply_filters,
     _get_server,
     _invalidate_server,
     _resolve_pane,
@@ -144,3 +146,102 @@ def test_invalidate_server() -> None:
     assert len(_server_cache) == 1
     _invalidate_server(socket_name="test_inv")
     assert len(_server_cache) == 0
+
+
+class ApplyFiltersFixture(t.NamedTuple):
+    """Test fixture for _apply_filters."""
+
+    test_id: str
+    filters: dict[str, str] | None
+    expected_count: int | None  # None = don't check exact count
+    expect_error: bool
+    error_match: str | None
+
+
+APPLY_FILTERS_FIXTURES: list[ApplyFiltersFixture] = [
+    ApplyFiltersFixture(
+        test_id="none_returns_all",
+        filters=None,
+        expected_count=None,
+        expect_error=False,
+        error_match=None,
+    ),
+    ApplyFiltersFixture(
+        test_id="empty_dict_returns_all",
+        filters={},
+        expected_count=None,
+        expect_error=False,
+        error_match=None,
+    ),
+    ApplyFiltersFixture(
+        test_id="exact_match",
+        filters={"session_name": "<session_name>"},
+        expected_count=1,
+        expect_error=False,
+        error_match=None,
+    ),
+    ApplyFiltersFixture(
+        test_id="no_match_returns_empty",
+        filters={"session_name": "nonexistent_xyz_999"},
+        expected_count=0,
+        expect_error=False,
+        error_match=None,
+    ),
+    ApplyFiltersFixture(
+        test_id="invalid_operator",
+        filters={"session_name__badop": "test"},
+        expected_count=None,
+        expect_error=True,
+        error_match="Invalid filter operator",
+    ),
+    ApplyFiltersFixture(
+        test_id="contains_operator",
+        filters={"session_name__contains": "<partial>"},
+        expected_count=1,
+        expect_error=False,
+        error_match=None,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ApplyFiltersFixture._fields,
+    APPLY_FILTERS_FIXTURES,
+    ids=[f.test_id for f in APPLY_FILTERS_FIXTURES],
+)
+def test_apply_filters(
+    mcp_server: Server,
+    mcp_session: Session,
+    test_id: str,
+    filters: dict[str, str] | None,
+    expected_count: int | None,
+    expect_error: bool,
+    error_match: str | None,
+) -> None:
+    """_apply_filters bridges dict params to QueryList.filter()."""
+    # Substitute placeholders with real session name
+    if filters is not None:
+        session_name = mcp_session.session_name
+        assert session_name is not None
+        resolved: dict[str, str] = {}
+        for k, v in filters.items():
+            if v == "<session_name>":
+                resolved[k] = session_name
+            elif v == "<partial>":
+                resolved[k] = session_name[:4]
+            else:
+                resolved[k] = v
+        filters = resolved
+
+    sessions = mcp_server.sessions
+
+    if expect_error:
+        with pytest.raises(ToolError, match=error_match):
+            _apply_filters(sessions, filters, _serialize_session)
+    else:
+        result = _apply_filters(sessions, filters, _serialize_session)
+        assert isinstance(result, list)
+        if expected_count is not None:
+            assert len(result) == expected_count
+        else:
+            assert len(result) >= 1
