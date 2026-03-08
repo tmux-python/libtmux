@@ -5,11 +5,15 @@ from __future__ import annotations
 import json
 import typing as t
 
+import pytest
+from fastmcp.exceptions import ToolError
+
 from libtmux.mcp.tools.pane_tools import (
     capture_pane,
     clear_pane,
     get_pane_info,
     kill_pane,
+    resize_pane,
     send_keys,
     set_pane_title,
 )
@@ -69,6 +73,46 @@ def test_clear_pane(mcp_server: Server, mcp_pane: Pane) -> None:
         socket_name=mcp_server.socket_name,
     )
     assert "cleared" in result.lower()
+
+
+def test_resize_pane_dimensions(mcp_server: Server, mcp_pane: Pane) -> None:
+    """resize_pane resizes a pane with height/width."""
+    result = resize_pane(
+        pane_id=mcp_pane.pane_id,
+        height=10,
+        width=40,
+        socket_name=mcp_server.socket_name,
+    )
+    data = json.loads(result)
+    assert data["pane_id"] == mcp_pane.pane_id
+
+
+def test_resize_pane_zoom(mcp_server: Server, mcp_session: Session) -> None:
+    """resize_pane zooms a pane."""
+    window = mcp_session.active_window
+    window.split()
+    pane = window.active_pane
+    assert pane is not None
+    result = resize_pane(
+        pane_id=pane.pane_id,
+        zoom=True,
+        socket_name=mcp_server.socket_name,
+    )
+    data = json.loads(result)
+    assert data["pane_id"] == pane.pane_id
+
+
+def test_resize_pane_zoom_mutual_exclusivity(
+    mcp_server: Server, mcp_pane: Pane
+) -> None:
+    """resize_pane raises ToolError when zoom combined with dimensions."""
+    with pytest.raises(ToolError, match="Cannot combine zoom"):
+        resize_pane(
+            pane_id=mcp_pane.pane_id,
+            zoom=True,
+            height=10,
+            socket_name=mcp_server.socket_name,
+        )
 
 
 def test_kill_pane(mcp_server: Server, mcp_session: Session) -> None:

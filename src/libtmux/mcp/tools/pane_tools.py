@@ -145,6 +145,12 @@ def resize_pane(
     str
         JSON of the updated pane.
     """
+    from fastmcp.exceptions import ToolError
+
+    if zoom is not None and (height is not None or width is not None):
+        msg = "Cannot combine zoom with height/width"
+        raise ToolError(msg)
+
     server = _get_server(socket_name=socket_name)
     pane = _resolve_pane(
         server,
@@ -152,12 +158,15 @@ def resize_pane(
         session_name=session_name,
         window_id=window_id,
     )
-    if zoom is True:
-        pane.resize_pane(zoom=True)
-    elif zoom is False:
-        pane.resize_pane(zoom=False)
+    if zoom is not None:
+        window = pane.window
+        is_zoomed = getattr(window, "window_zoomed_flag", "0") == "1"
+        if zoom and not is_zoomed:
+            pane.resize(zoom=True)
+        elif not zoom and is_zoomed:
+            pane.resize(zoom=True)  # toggle off
     else:
-        pane.resize_pane(height=height, width=width)
+        pane.resize(height=height, width=width)
     return json.dumps(_serialize_pane(pane))
 
 
