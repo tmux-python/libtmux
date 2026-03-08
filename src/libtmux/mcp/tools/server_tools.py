@@ -20,7 +20,7 @@ if t.TYPE_CHECKING:
 @handle_tool_errors
 def list_sessions(
     socket_name: str | None = None,
-    filters: dict[str, str] | None = None,
+    filters: dict[str, str] | str | None = None,
 ) -> str:
     """List all tmux sessions.
 
@@ -28,8 +28,9 @@ def list_sessions(
     ----------
     socket_name : str, optional
         tmux socket name. Defaults to LIBTMUX_SOCKET env var.
-    filters : dict, optional
-        Django-style filters (e.g. ``{"session_name__contains": "dev"}``).
+    filters : dict or str, optional
+        Django-style filters as a dict (e.g. ``{"session_name__contains": "dev"}``)
+        or as a JSON string. Some MCP clients require the string form.
 
     Returns
     -------

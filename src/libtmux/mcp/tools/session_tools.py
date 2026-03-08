@@ -24,7 +24,7 @@ def list_windows(
     session_name: str | None = None,
     session_id: str | None = None,
     socket_name: str | None = None,
-    filters: dict[str, str] | None = None,
+    filters: dict[str, str] | str | None = None,
 ) -> str:
     """List windows in a tmux session, or all windows across sessions.
 
@@ -37,8 +37,9 @@ def list_windows(
         Session ID (e.g. '$1') to look up.
     socket_name : str, optional
         tmux socket name. Defaults to LIBTMUX_SOCKET env var.
-    filters : dict, optional
-        Django-style filters (e.g. ``{"window_name__contains": "dev"}``).
+    filters : dict or str, optional
+        Django-style filters as a dict (e.g. ``{"window_name__contains": "dev"}``)
+        or as a JSON string. Some MCP clients require the string form.
 
     Returns
     -------

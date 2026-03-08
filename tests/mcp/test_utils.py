@@ -152,7 +152,7 @@ class ApplyFiltersFixture(t.NamedTuple):
     """Test fixture for _apply_filters."""
 
     test_id: str
-    filters: dict[str, str] | None
+    filters: dict[str, str] | str | None
     expected_count: int | None  # None = don't check exact count
     expect_error: bool
     error_match: str | None
@@ -201,6 +201,41 @@ APPLY_FILTERS_FIXTURES: list[ApplyFiltersFixture] = [
         expect_error=False,
         error_match=None,
     ),
+    ApplyFiltersFixture(
+        test_id="string_filter_exact",
+        filters='{"session_name": "<session_name>"}',
+        expected_count=1,
+        expect_error=False,
+        error_match=None,
+    ),
+    ApplyFiltersFixture(
+        test_id="string_filter_contains",
+        filters='{"session_name__contains": "<partial>"}',
+        expected_count=1,
+        expect_error=False,
+        error_match=None,
+    ),
+    ApplyFiltersFixture(
+        test_id="string_filter_invalid_json",
+        filters="{bad json",
+        expected_count=None,
+        expect_error=True,
+        error_match="Invalid filters JSON",
+    ),
+    ApplyFiltersFixture(
+        test_id="string_filter_not_object",
+        filters='"just a string"',
+        expected_count=None,
+        expect_error=True,
+        error_match="filters must be a JSON object",
+    ),
+    ApplyFiltersFixture(
+        test_id="string_filter_array",
+        filters='["not", "a", "dict"]',
+        expected_count=None,
+        expect_error=True,
+        error_match="filters must be a JSON object",
+    ),
 ]
 
 
@@ -213,14 +248,19 @@ def test_apply_filters(
     mcp_server: Server,
     mcp_session: Session,
     test_id: str,
-    filters: dict[str, str] | None,
+    filters: dict[str, str] | str | None,
     expected_count: int | None,
     expect_error: bool,
     error_match: str | None,
 ) -> None:
     """_apply_filters bridges dict params to QueryList.filter()."""
     # Substitute placeholders with real session name
-    if filters is not None:
+    if isinstance(filters, str):
+        session_name = mcp_session.session_name
+        assert session_name is not None
+        filters = filters.replace("<session_name>", session_name)
+        filters = filters.replace("<partial>", session_name[:4])
+    elif filters is not None:
         session_name = mcp_session.session_name
         assert session_name is not None
         resolved: dict[str, str] = {}

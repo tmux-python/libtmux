@@ -7,6 +7,7 @@ for all MCP tool functions.
 from __future__ import annotations
 
 import functools
+import json
 import logging
 import os
 import typing as t
@@ -276,7 +277,7 @@ def _resolve_pane(
 
 def _apply_filters(
     items: t.Any,
-    filters: dict[str, str] | None,
+    filters: dict[str, str] | str | None,
     serializer: t.Callable[..., dict[str, t.Any]],
 ) -> list[dict[str, t.Any]]:
     """Apply QueryList filters and serialize results.
@@ -285,8 +286,9 @@ def _apply_filters(
     ----------
     items : QueryList
         The QueryList of tmux objects to filter.
-    filters : dict or None
-        Django-style filter kwargs (e.g. ``{"session_name__contains": "dev"}``).
+    filters : dict or str, optional
+        Django-style filters as a dict (e.g. ``{"session_name__contains": "dev"}``)
+        or as a JSON string. Some MCP clients require the string form.
         If None or empty, all items are returned.
     serializer : callable
         Serializer function to convert each item to a dict.
@@ -305,6 +307,21 @@ def _apply_filters(
         return [serializer(item) for item in items]
 
     from fastmcp.exceptions import ToolError
+
+    # Workaround: Cursor's composer-1/composer-1.5 models and some other
+    # MCP clients serialize dict params as JSON strings instead of objects.
+    # Claude and GPT models through Cursor work fine; the bug is model-specific.
+    # See: https://forum.cursor.com/t/145807
+    #      https://github.com/anthropics/claude-code/issues/5504
+    if isinstance(filters, str):
+        try:
+            filters = json.loads(filters)
+        except (json.JSONDecodeError, ValueError) as e:
+            msg = f"Invalid filters JSON: {e}"
+            raise ToolError(msg) from e
+        if not isinstance(filters, dict):
+            msg = f"filters must be a JSON object, got {type(filters).__name__}"
+            raise ToolError(msg) from None
 
     valid_ops = sorted(LOOKUP_NAME_MAP.keys())
     for key in filters:

@@ -35,7 +35,7 @@ def list_panes(
     window_id: str | None = None,
     window_index: str | None = None,
     socket_name: str | None = None,
-    filters: dict[str, str] | None = None,
+    filters: dict[str, str] | str | None = None,
 ) -> str:
     """List panes in a tmux window, session, or across the entire server.
 
@@ -53,8 +53,10 @@ def list_panes(
         Window index within the session. Scopes to a single window.
     socket_name : str, optional
         tmux socket name.
-    filters : dict, optional
-        Django-style filters (e.g. ``{"pane_current_command__contains": "vim"}``).
+    filters : dict or str, optional
+        Django-style filters as a dict
+        (e.g. ``{"pane_current_command__contains": "vim"}``)
+        or as a JSON string. Some MCP clients require the string form.
 
     Returns
     -------
