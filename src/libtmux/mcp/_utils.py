@@ -387,6 +387,7 @@ def handle_tool_errors(
             msg = f"tmux error: {e}"
             raise ToolError(msg) from e
         except Exception as e:
+            logger.exception("unexpected error in MCP tool %s", fn.__name__)
             msg = f"Unexpected error: {type(e).__name__}: {e}"
             raise ToolError(msg) from e
 
