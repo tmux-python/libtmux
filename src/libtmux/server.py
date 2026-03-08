@@ -240,7 +240,11 @@ class Server(
         if self.config_file:
             cmd_args.insert(0, f"-f{self.config_file}")
 
-        subprocess.check_call([tmux_bin, *cmd_args])
+        subprocess.check_call(
+            [tmux_bin, *cmd_args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
     #
     # Command
