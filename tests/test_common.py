@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import sys
 import typing as t
@@ -27,6 +28,7 @@ from libtmux.common import (
 )
 
 if t.TYPE_CHECKING:
+    from libtmux.server import Server
     from libtmux.session import Session
 
 version_regex = re.compile(r"([0-9]\.[0-9])|(master)")
@@ -492,7 +494,7 @@ def test_version_validation(
 
     if mock_version is not None:
 
-        def mock_get_version() -> LooseVersion:
+        def mock_get_version(tmux_bin: str | None = None) -> LooseVersion:
             return LooseVersion(mock_version)
 
         monkeypatch.setattr(libtmux.common, "get_version", mock_get_version)
@@ -508,3 +510,19 @@ def test_version_validation(
     elif check_type == "type_check":
         assert mock_version is not None  # For type checker
         assert isinstance(has_version(mock_version), bool)
+
+
+def test_tmux_cmd_pre_execution_logging(
+    caplog: pytest.LogCaptureFixture,
+    server: Server,
+) -> None:
+    """Verify tmux_cmd logs command before execution."""
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        server.cmd("list-sessions")
+    running_records = [
+        r
+        for r in caplog.records
+        if hasattr(r, "tmux_cmd") and not hasattr(r, "tmux_exit_code")
+    ]
+    assert len(running_records) > 0
+    assert "list-sessions" in running_records[0].tmux_cmd

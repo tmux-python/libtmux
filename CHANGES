@@ -36,6 +36,58 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Pane.set_title() (#636)
+
+New {meth}`~libtmux.Pane.set_title` method wraps `select-pane -T`, and
+{attr}`~libtmux.Pane.title` provides a short alias for
+{attr}`~libtmux.Pane.pane_title`:
+
+```python
+pane.set_title("my-worker")
+pane.pane_title
+# 'my-worker'
+pane.title
+# 'my-worker'
+```
+
+The `pane_title` format variable is now included in libtmux's format queries
+(it was previously excluded).
+
+#### Configurable tmux binary path (#636)
+
+{class}`~libtmux.Server` now accepts a `tmux_bin` parameter to use an
+alternative tmux binary (e.g. wemux, byobu, or a custom build):
+
+```python
+server = Server(socket_name="myserver", tmux_bin="/usr/local/bin/tmux-next")
+```
+
+The path is threaded through {meth}`~libtmux.Server.cmd`,
+{meth}`~libtmux.Server.raise_if_dead`, {func}`~libtmux.neo.fetch_objs`,
+all version-check functions ({func}`~libtmux.common.has_version`,
+{func}`~libtmux.common.has_gte_version`, etc.), and hook scope guards in
+{class}`~libtmux.hooks.HooksMixin`. All child objects (Session, Window,
+Pane) inherit it automatically.
+Falls back to ``shutil.which("tmux")`` at execution time when not set.
+
+#### Pre-execution command logging (#636)
+
+{class}`~libtmux.common.tmux_cmd` now logs the full command line at
+`DEBUG` level *before* execution, complementing the existing post-execution
+stdout logging. This enables diagnostic output and is a prerequisite for a
+future dry-run mode.
+
+### Bug fixes
+
+#### `TmuxCommandNotFound` raised for invalid `tmux_bin` path (#636)
+
+Previously, passing a non-existent binary path raised a raw
+`FileNotFoundError` from `subprocess`. It now raises
+{exc}`~libtmux.exc.TmuxCommandNotFound` consistently, in both
+`tmux_cmd` and `raise_if_dead`.
+
 ## libtmux 0.54.0 (2026-03-07)
 
 ### What's new

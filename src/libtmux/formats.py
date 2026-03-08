@@ -3,6 +3,14 @@
 libtmux.formats
 ~~~~~~~~~~~~~~~
 
+:data:`FORMAT_SEPARATOR` is used at runtime by ``neo``, ``pane``, and
+``session``.  The ``*_FORMATS`` lists (``SESSION_FORMATS``,
+``WINDOW_FORMATS``, ``PANE_FORMATS``, etc.) are **reference documentation
+only** — they are not imported or consumed at runtime. The active format
+mechanism is :class:`libtmux.neo.Obj`, whose dataclass fields are
+introspected by :func:`libtmux.neo.get_output_format` to build tmux format
+strings dynamically.
+
 For reference: https://github.com/tmux/tmux/blob/master/format.c
 
 """
@@ -67,7 +75,7 @@ PANE_FORMATS = [
     "pane_index",
     "pane_width",
     "pane_height",
-    # "pane_title",  # removed in 3.1+
+    "pane_title",
     "pane_id",
     "pane_active",
     "pane_dead",

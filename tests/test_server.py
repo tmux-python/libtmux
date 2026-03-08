@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
+import shutil
 import subprocess
 import time
 import typing as t
@@ -414,3 +415,46 @@ def test_new_session_start_directory_pathlib(
     actual_path = str(pathlib.Path(active_pane.pane_current_path).resolve())
     expected_path = str(user_path.resolve())
     assert actual_path == expected_path
+
+
+def test_tmux_bin_default(server: Server) -> None:
+    """Default tmux_bin is None, falls back to shutil.which."""
+    assert server.tmux_bin is None
+
+
+def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
+    """Custom tmux_bin path is used for commands.
+
+    Uses a manual Server instance (not the ``server`` fixture) because this
+    test must control the tmux_bin parameter at construction time.
+    """
+    tmux_path = shutil.which("tmux")
+    assert tmux_path is not None
+    s = Server(socket_name="test_tmux_bin", tmux_bin=tmux_path)
+    try:
+        assert s.tmux_bin == tmux_path
+        with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+            s.cmd("list-sessions")
+        running_records = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
+        assert any(tmux_path in r.tmux_cmd for r in running_records)
+    finally:
+        if s.is_alive():
+            s.kill()
+
+
+def test_tmux_bin_invalid_path() -> None:
+    """Invalid tmux_bin raises TmuxCommandNotFound."""
+    from libtmux import exc
+
+    s = Server(tmux_bin="/nonexistent/tmux")
+    with pytest.raises(exc.TmuxCommandNotFound):
+        s.cmd("list-sessions")
+
+
+def test_tmux_bin_invalid_path_raise_if_dead() -> None:
+    """Invalid tmux_bin raises TmuxCommandNotFound in raise_if_dead()."""
+    from libtmux import exc
+
+    s = Server(tmux_bin="/nonexistent/tmux")
+    with pytest.raises(exc.TmuxCommandNotFound):
+        s.raise_if_dead()

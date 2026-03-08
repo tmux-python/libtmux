@@ -411,7 +411,7 @@ class Pane(
         if preserve_trailing:
             cmd.append("-N")
         if trim_trailing:
-            if has_gte_version("3.4"):
+            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
                 cmd.append("-T")
             else:
                 warnings.warn(
@@ -831,6 +831,33 @@ class Pane(
         self.resize(height=height)
         return self
 
+    def set_title(self, title: str) -> Pane:
+        """Set pane title via ``select-pane -T``.
+
+        Parameters
+        ----------
+        title : str
+            Title to set for the pane.
+
+        Returns
+        -------
+        :class:`Pane`
+            The pane instance, for method chaining.
+
+        Examples
+        --------
+        >>> pane.set_title('my-title')
+        Pane(...)
+
+        >>> pane.pane_title
+        'my-title'
+        """
+        proc = self.cmd("select-pane", "-T", title)
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+        self.refresh()
+        return self
+
     def enter(self) -> Pane:
         """Send carriage return to pane.
 
@@ -912,6 +939,18 @@ class Pane(
         True
         """
         return self.pane_width
+
+    @property
+    def title(self) -> str | None:
+        """Alias for :attr:`pane_title`.
+
+        >>> pane.set_title('test-alias')
+        Pane(...)
+
+        >>> pane.title == pane.pane_title
+        True
+        """
+        return self.pane_title
 
     @property
     def at_top(self) -> bool:

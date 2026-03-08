@@ -71,6 +71,7 @@ class Server(
     colors : str, optional
     on_init : callable, optional
     socket_name_factory : callable, optional
+    tmux_bin : str or pathlib.Path, optional
 
     Examples
     --------
@@ -127,6 +128,8 @@ class Server(
     """For option management."""
     default_hook_scope: OptionScope | None = OptionScope.Server
     """For hook management."""
+    tmux_bin: str | None = None
+    """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
 
     def __init__(
         self,
@@ -136,9 +139,11 @@ class Server(
         colors: int | None = None,
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
+        tmux_bin: str | pathlib.Path | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
+        self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
 
@@ -213,6 +218,14 @@ class Server(
     def raise_if_dead(self) -> None:
         """Raise if server not connected.
 
+        Raises
+        ------
+        :exc:`exc.TmuxCommandNotFound`
+            When the tmux binary cannot be found or executed.
+        :class:`subprocess.CalledProcessError`
+            When the tmux server is not running (non-zero exit from
+            ``list-sessions``).
+
         >>> tmux = Server(socket_name="no_exist")
         >>> try:
         ...     tmux.raise_if_dead()
@@ -220,8 +233,8 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        tmux_bin = shutil.which("tmux")
-        if tmux_bin is None:
+        resolved = self.tmux_bin or shutil.which("tmux")
+        if resolved is None:
             raise exc.TmuxCommandNotFound
 
         cmd_args: list[str] = ["list-sessions"]
@@ -232,7 +245,10 @@ class Server(
         if self.config_file:
             cmd_args.insert(0, f"-f{self.config_file}")
 
-        subprocess.check_call([tmux_bin, *cmd_args])
+        try:
+            subprocess.check_call([resolved, *cmd_args])
+        except FileNotFoundError:
+            raise exc.TmuxCommandNotFound from None
 
     #
     # Command
@@ -308,7 +324,7 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args)
+        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
 
     @property
     def attached_sessions(self) -> list[Session]:
