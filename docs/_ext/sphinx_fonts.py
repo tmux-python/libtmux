@@ -1,7 +1,7 @@
 """Sphinx extension for self-hosted fonts via Fontsource CDN.
 
-Downloads font files at build time, caches them locally, and generates
-CSS with @font-face declarations and CSS variable overrides.
+Downloads font files at build time, caches them locally, and passes
+structured font data to the template context for inline @font-face CSS.
 """
 
 from __future__ import annotations
@@ -68,37 +68,6 @@ def _download_font(url: str, dest: pathlib.Path) -> bool:
     return True
 
 
-def _generate_css(
-    fonts: list[dict[str, t.Any]],
-    variables: dict[str, str],
-) -> str:
-    lines: list[str] = []
-    for font in fonts:
-        family = font["family"]
-        font_id = font["package"].split("/")[-1]
-        subset = font.get("subset", "latin")
-        for weight in font["weights"]:
-            for style in font["styles"]:
-                filename = f"{font_id}-{subset}-{weight}-{style}.woff2"
-                lines.append("@font-face {")
-                lines.append(f'  font-family: "{family}";')
-                lines.append(f"  font-style: {style};")
-                lines.append(f"  font-weight: {weight};")
-                lines.append("  font-display: swap;")
-                lines.append(f'  src: url("../fonts/{filename}") format("woff2");')
-                lines.append("}")
-                lines.append("")
-
-    if variables:
-        lines.append("body {")
-        for var, value in variables.items():
-            lines.append(f"  {var}: {value};")
-        lines.append("}")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
 def _on_builder_inited(app: Sphinx) -> None:
     if app.builder.format != "html":
         return
@@ -111,10 +80,9 @@ def _on_builder_inited(app: Sphinx) -> None:
     cache = _cache_dir()
     static_dir = pathlib.Path(app.outdir) / "_static"
     fonts_dir = static_dir / "fonts"
-    css_dir = static_dir / "css"
     fonts_dir.mkdir(parents=True, exist_ok=True)
-    css_dir.mkdir(parents=True, exist_ok=True)
 
+    font_faces: list[dict[str, str]] = []
     for font in fonts:
         font_id = font["package"].split("/")[-1]
         version = font["version"]
@@ -127,10 +95,14 @@ def _on_builder_inited(app: Sphinx) -> None:
                 url = _cdn_url(package, version, font_id, subset, weight, style)
                 if _download_font(url, cached):
                     shutil.copy2(cached, fonts_dir / filename)
-
-    css_content = _generate_css(fonts, variables)
-    (css_dir / "fonts.css").write_text(css_content, encoding="utf-8")
-    logger.info("generated fonts.css with %d font families", len(fonts))
+                    font_faces.append(
+                        {
+                            "family": font["family"],
+                            "style": style,
+                            "weight": str(weight),
+                            "filename": filename,
+                        }
+                    )
 
     preload_hrefs: list[str] = []
     preload_specs: list[tuple[str, int, str]] = app.config.sphinx_font_preload
@@ -142,9 +114,13 @@ def _on_builder_inited(app: Sphinx) -> None:
                 filename = f"{font_id}-{subset}-{weight}-{style}.woff2"
                 preload_hrefs.append(filename)
                 break
-    app._font_preload_hrefs = preload_hrefs  # type: ignore[attr-defined]
 
-    app.add_css_file("css/fonts.css")
+    fallbacks: list[dict[str, str]] = app.config.sphinx_font_fallbacks
+
+    app._font_preload_hrefs = preload_hrefs  # type: ignore[attr-defined]
+    app._font_faces = font_faces  # type: ignore[attr-defined]
+    app._font_fallbacks = fallbacks  # type: ignore[attr-defined]
+    app._font_css_variables = variables  # type: ignore[attr-defined]
 
 
 def _on_html_page_context(
@@ -155,10 +131,14 @@ def _on_html_page_context(
     doctree: t.Any,
 ) -> None:
     context["font_preload_hrefs"] = getattr(app, "_font_preload_hrefs", [])
+    context["font_faces"] = getattr(app, "_font_faces", [])
+    context["font_fallbacks"] = getattr(app, "_font_fallbacks", [])
+    context["font_css_variables"] = getattr(app, "_font_css_variables", {})
 
 
 def setup(app: Sphinx) -> SetupDict:
     app.add_config_value("sphinx_fonts", [], "html")
+    app.add_config_value("sphinx_font_fallbacks", [], "html")
     app.add_config_value("sphinx_font_css_variables", {}, "html")
     app.add_config_value("sphinx_font_preload", [], "html")
     app.connect("builder-inited", _on_builder_inited)
