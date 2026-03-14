@@ -436,7 +436,7 @@ EOF
 
 When writing documentation (README, CHANGES, docs/), follow these rules for code blocks:
 
-**One command per code block.** This makes commands individually copyable.
+**One command per code block.** This makes commands individually copyable. For sequential commands, either use separate code blocks or chain them with `&&` or `;` and `\` continuations (keeping it one logical command).
 
 **Put explanations outside the code block**, not as comments inside.
 
@@ -462,6 +462,42 @@ $ uv run pytest
 
 # Run with coverage
 $ uv run pytest --cov
+```
+
+### Shell Command Formatting
+
+These rules apply to shell commands in documentation (README, CHANGES, docs/), **not** to Python doctests.
+
+**Use `console` language tag with `$ ` prefix.** This distinguishes interactive commands from scripts and enables prompt-aware copy in many terminals.
+
+Good:
+
+```console
+$ uv run pytest
+```
+
+Bad:
+
+```bash
+uv run pytest
+```
+
+**Split long commands with `\` for readability.** Each flag or flag+value pair gets its own continuation line, indented. Positional parameters go on the final line.
+
+Good:
+
+```console
+$ pipx install \
+    --suffix=@next \
+    --pip-args '\--pre' \
+    --force \
+    'libtmux'
+```
+
+Bad:
+
+```console
+$ pipx install --suffix=@next --pip-args '\--pre' --force 'libtmux'
 ```
 
 ## Debugging Tips
