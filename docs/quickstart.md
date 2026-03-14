@@ -44,9 +44,14 @@ the 4th beta release of `1.10.0` before general availability.
 - [pipx]\:
 
   ```console
-  $ pipx install --suffix=@next 'libtmux' --pip-args '\--pre' --force
-  // Usage: libtmux@next [command]
+  $ pipx install \
+      --suffix=@next \
+      --pip-args '\--pre' \
+      --force \
+      'libtmux'
   ```
+
+  Usage: `libtmux@next [command]`
 
 - [uv tool install][uv-tools]\:
 
@@ -77,7 +82,10 @@ via trunk (can break easily):
 - [pipx]\:
 
   ```console
-  $ pipx install --suffix=@master 'libtmux @ git+https://github.com/tmux-python/libtmux.git@master' --force
+  $ pipx install \
+      --suffix=@master \
+      --force \
+      'libtmux @ git+https://github.com/tmux-python/libtmux.git@master'
   ```
 
 - [uv]\:

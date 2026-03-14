@@ -41,27 +41,30 @@ Maintenance-only backports (no new fixes):
 
 Stable release:
 
-```bash
-pip install libtmux
+```console
+$ pip install libtmux
 ```
 
 With pipx:
 
-```bash
-pipx install libtmux
+```console
+$ pipx install libtmux
 ```
 
 With uv / uvx:
 
-```bash
-uv add libtmux
-uvx --from "libtmux" python
+```console
+$ uv add libtmux
+```
+
+```console
+$ uvx --from "libtmux" python
 ```
 
 From the main branch (bleeding edge):
 
-```bash
-pip install 'git+https://github.com/tmux-python/libtmux.git'
+```console
+$ pip install 'git+https://github.com/tmux-python/libtmux.git'
 ```
 
 Tip: libtmux is pre-1.0. Pin a range in projects to avoid surprises:
@@ -94,6 +97,9 @@ Use [ptpython], [ipython], etc. for a nice REPL with autocompletions:
 
 ```console
 $ pip install --user ptpython
+```
+
+```console
 $ ptpython
 ```
 

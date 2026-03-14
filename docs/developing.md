@@ -73,8 +73,7 @@ $ make start
 ### Manual documentation (the hard way)
 
 ```console
-$ cd docs/
-$ make html
+$ cd docs/ && make html
 ```
 
 to build.
@@ -86,8 +85,16 @@ $ make serve
 to start http server.
 
 Helpers:
+
+Build docs:
+
 ```console
 $ make build_docs
+```
+
+Serve docs:
+
+```console
 $ make serve_docs
 ```
 
@@ -278,10 +285,19 @@ building, and publishing. Therefore there is no setup.py or requirements files.
 Update `__version__` in `__about__.py` and `pyproject.toml`:
 
 ```console
-git commit -m 'build(libtmux): Tag v0.1.1'
-git tag v0.1.1
-git push
-git push --tags
+$ git commit -m 'build(libtmux): Tag v0.1.1'
+```
+
+```console
+$ git tag v0.1.1
+```
+
+```console
+$ git push
+```
+
+```console
+$ git push --tags
 ```
 
 [twine]: https://twine.readthedocs.io/
