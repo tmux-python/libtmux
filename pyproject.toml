@@ -127,6 +127,10 @@ files = [
   "tests",
 ]
 
+[[tool.mypy.overrides]]
+module = ["sphinx_fonts"]
+ignore_missing_imports = true
+
 [tool.coverage.run]
 branch = true
 parallel = true
