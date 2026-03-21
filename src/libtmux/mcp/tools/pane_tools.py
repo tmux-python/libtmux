@@ -160,7 +160,8 @@ def resize_pane(
     )
     if zoom is not None:
         window = pane.window
-        is_zoomed = getattr(window, "window_zoomed_flag", "0") == "1"
+        result = window.cmd("display-message", "-p", "#{window_zoomed_flag}")
+        is_zoomed = bool(result.stdout) and result.stdout[0] == "1"
         if zoom and not is_zoomed:
             pane.resize(zoom=True)
         elif not zoom and is_zoomed:
