@@ -6,6 +6,13 @@ import typing as t
 
 from libtmux.constants import PaneDirection
 from libtmux.mcp._utils import (
+    ANNOTATIONS_CREATE,
+    ANNOTATIONS_DESTRUCTIVE,
+    ANNOTATIONS_MUTATING,
+    ANNOTATIONS_RO,
+    TAG_DESTRUCTIVE,
+    TAG_MUTATING,
+    TAG_READONLY,
     _apply_filters,
     _get_server,
     _resolve_pane,
@@ -346,37 +353,23 @@ def resize_window(
 
 def register(mcp: FastMCP) -> None:
     """Register window-level tools with the MCP instance."""
-    _RO = {
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    }
-    _IDEM = {
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    }
-    mcp.tool(title="List Panes", annotations=_RO)(list_panes)
+    mcp.tool(title="List Panes", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        list_panes
+    )
+    mcp.tool(title="Split Window", annotations=ANNOTATIONS_CREATE, tags={TAG_MUTATING})(
+        split_window
+    )
     mcp.tool(
-        title="Split Window",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": False,
-        },
-    )(split_window)
-    mcp.tool(title="Rename Window", annotations=_IDEM)(rename_window)
+        title="Rename Window", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
+    )(rename_window)
     mcp.tool(
         title="Kill Window",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
+        annotations=ANNOTATIONS_DESTRUCTIVE,
+        tags={TAG_DESTRUCTIVE},
     )(kill_window)
-    mcp.tool(title="Select Layout", annotations=_IDEM)(select_layout)
-    mcp.tool(title="Resize Window", annotations=_IDEM)(resize_window)
+    mcp.tool(
+        title="Select Layout", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
+    )(select_layout)
+    mcp.tool(
+        title="Resize Window", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
+    )(resize_window)

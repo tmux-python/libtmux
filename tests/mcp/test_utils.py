@@ -9,6 +9,14 @@ from fastmcp.exceptions import ToolError
 
 from libtmux import exc
 from libtmux.mcp._utils import (
+    ANNOTATIONS_CREATE,
+    ANNOTATIONS_DESTRUCTIVE,
+    ANNOTATIONS_MUTATING,
+    ANNOTATIONS_RO,
+    TAG_DESTRUCTIVE,
+    TAG_MUTATING,
+    TAG_READONLY,
+    VALID_SAFETY_LEVELS,
     _apply_filters,
     _get_caller_pane_id,
     _get_server,
@@ -367,3 +375,49 @@ def test_serialize_pane_is_caller(
 
     data = _serialize_pane(mcp_pane)
     assert data.is_caller is expected_is_caller
+
+
+# ---------------------------------------------------------------------------
+# Annotation and tag constants tests
+# ---------------------------------------------------------------------------
+
+_ANNOTATION_KEYS = {
+    "readOnlyHint",
+    "destructiveHint",
+    "idempotentHint",
+    "openWorldHint",
+}
+
+
+def test_annotation_presets_have_correct_keys() -> None:
+    """All annotation presets contain exactly the four MCP annotation keys."""
+    for preset in (
+        ANNOTATIONS_RO,
+        ANNOTATIONS_MUTATING,
+        ANNOTATIONS_CREATE,
+        ANNOTATIONS_DESTRUCTIVE,
+    ):
+        assert set(preset.keys()) == _ANNOTATION_KEYS
+
+
+def test_annotations_ro_is_readonly() -> None:
+    """ANNOTATIONS_RO marks tools as read-only."""
+    assert ANNOTATIONS_RO["readOnlyHint"] is True
+    assert ANNOTATIONS_RO["destructiveHint"] is False
+
+
+def test_annotations_destructive_is_destructive() -> None:
+    """ANNOTATIONS_DESTRUCTIVE marks tools as destructive."""
+    assert ANNOTATIONS_DESTRUCTIVE["destructiveHint"] is True
+    assert ANNOTATIONS_DESTRUCTIVE["readOnlyHint"] is False
+
+
+def test_tag_constants() -> None:
+    """Safety tier tag constants are distinct strings."""
+    tags = {TAG_READONLY, TAG_MUTATING, TAG_DESTRUCTIVE}
+    assert len(tags) == 3
+
+
+def test_valid_safety_levels_matches_tags() -> None:
+    """VALID_SAFETY_LEVELS contains all tag constants."""
+    assert {TAG_READONLY, TAG_MUTATING, TAG_DESTRUCTIVE} == VALID_SAFETY_LEVELS

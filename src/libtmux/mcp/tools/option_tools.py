@@ -6,6 +6,10 @@ import typing as t
 
 from libtmux.constants import OptionScope
 from libtmux.mcp._utils import (
+    ANNOTATIONS_MUTATING,
+    ANNOTATIONS_RO,
+    TAG_MUTATING,
+    TAG_READONLY,
     _get_server,
     _resolve_pane,
     _resolve_session,
@@ -134,19 +138,9 @@ def set_option(
 
 def register(mcp: FastMCP) -> None:
     """Register option tools with the MCP instance."""
-    _RO = {
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    }
-    mcp.tool(title="Show Option", annotations=_RO)(show_option)
-    mcp.tool(
-        title="Set Option",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
-    )(set_option)
+    mcp.tool(title="Show Option", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        show_option
+    )
+    mcp.tool(title="Set Option", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING})(
+        set_option
+    )

@@ -6,6 +6,10 @@ import json
 import typing as t
 
 from libtmux.mcp._utils import (
+    ANNOTATIONS_MUTATING,
+    ANNOTATIONS_RO,
+    TAG_MUTATING,
+    TAG_READONLY,
     _get_server,
     _resolve_session,
     handle_tool_errors,
@@ -98,19 +102,9 @@ def set_environment(
 
 def register(mcp: FastMCP) -> None:
     """Register environment tools with the MCP instance."""
-    _RO = {
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    }
-    mcp.tool(title="Show Environment", annotations=_RO)(show_environment)
+    mcp.tool(title="Show Environment", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        show_environment
+    )
     mcp.tool(
-        title="Set Environment",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
+        title="Set Environment", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
     )(set_environment)

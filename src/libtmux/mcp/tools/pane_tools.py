@@ -6,6 +6,13 @@ import re
 import typing as t
 
 from libtmux.mcp._utils import (
+    ANNOTATIONS_CREATE,
+    ANNOTATIONS_DESTRUCTIVE,
+    ANNOTATIONS_MUTATING,
+    ANNOTATIONS_RO,
+    TAG_DESTRUCTIVE,
+    TAG_MUTATING,
+    TAG_READONLY,
     _get_caller_pane_id,
     _get_server,
     _resolve_pane,
@@ -480,39 +487,29 @@ def search_panes(
 
 def register(mcp: FastMCP) -> None:
     """Register pane-level tools with the MCP instance."""
-    _RO = {
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    }
-    _IDEM = {
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    }
+    mcp.tool(title="Send Keys", annotations=ANNOTATIONS_CREATE, tags={TAG_MUTATING})(
+        send_keys
+    )
+    mcp.tool(title="Capture Pane", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        capture_pane
+    )
     mcp.tool(
-        title="Send Keys",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": False,
-        },
-    )(send_keys)
-    mcp.tool(title="Capture Pane", annotations=_RO)(capture_pane)
-    mcp.tool(title="Resize Pane", annotations=_IDEM)(resize_pane)
+        title="Resize Pane", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
+    )(resize_pane)
     mcp.tool(
         title="Kill Pane",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
+        annotations=ANNOTATIONS_DESTRUCTIVE,
+        tags={TAG_DESTRUCTIVE},
     )(kill_pane)
-    mcp.tool(title="Set Pane Title", annotations=_IDEM)(set_pane_title)
-    mcp.tool(title="Get Pane Info", annotations=_RO)(get_pane_info)
-    mcp.tool(title="Clear Pane", annotations=_IDEM)(clear_pane)
-    mcp.tool(title="Search Panes", annotations=_RO)(search_panes)
+    mcp.tool(
+        title="Set Pane Title", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
+    )(set_pane_title)
+    mcp.tool(title="Get Pane Info", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        get_pane_info
+    )
+    mcp.tool(title="Clear Pane", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING})(
+        clear_pane
+    )
+    mcp.tool(title="Search Panes", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        search_panes
+    )

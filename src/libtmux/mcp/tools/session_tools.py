@@ -6,6 +6,13 @@ import typing as t
 
 from libtmux.constants import WindowDirection
 from libtmux.mcp._utils import (
+    ANNOTATIONS_CREATE,
+    ANNOTATIONS_DESTRUCTIVE,
+    ANNOTATIONS_MUTATING,
+    ANNOTATIONS_RO,
+    TAG_DESTRUCTIVE,
+    TAG_MUTATING,
+    TAG_READONLY,
     _apply_filters,
     _get_server,
     _resolve_session,
@@ -181,35 +188,17 @@ def kill_session(
 
 def register(mcp: FastMCP) -> None:
     """Register session-level tools with the MCP instance."""
-    _RO = {
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    }
-    _IDEM = {
-        "readOnlyHint": False,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    }
-    mcp.tool(title="List Windows", annotations=_RO)(list_windows)
+    mcp.tool(title="List Windows", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        list_windows
+    )
     mcp.tool(
-        title="Create Window",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": False,
-        },
+        title="Create Window", annotations=ANNOTATIONS_CREATE, tags={TAG_MUTATING}
     )(create_window)
-    mcp.tool(title="Rename Session", annotations=_IDEM)(rename_session)
+    mcp.tool(
+        title="Rename Session", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
+    )(rename_session)
     mcp.tool(
         title="Kill Session",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
+        annotations=ANNOTATIONS_DESTRUCTIVE,
+        tags={TAG_DESTRUCTIVE},
     )(kill_session)

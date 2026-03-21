@@ -5,6 +5,12 @@ from __future__ import annotations
 import typing as t
 
 from libtmux.mcp._utils import (
+    ANNOTATIONS_CREATE,
+    ANNOTATIONS_DESTRUCTIVE,
+    ANNOTATIONS_RO,
+    TAG_DESTRUCTIVE,
+    TAG_MUTATING,
+    TAG_READONLY,
     _apply_filters,
     _get_server,
     _invalidate_server,
@@ -147,29 +153,15 @@ def get_server_info(socket_name: str | None = None) -> ServerInfo:
 
 def register(mcp: FastMCP) -> None:
     """Register server-level tools with the MCP instance."""
-    _RO = {
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": False,
-    }
-    mcp.tool(title="List Sessions", annotations=_RO)(list_sessions)
+    mcp.tool(title="List Sessions", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        list_sessions
+    )
     mcp.tool(
-        title="Create Session",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": False,
-            "idempotentHint": False,
-            "openWorldHint": False,
-        },
+        title="Create Session", annotations=ANNOTATIONS_CREATE, tags={TAG_MUTATING}
     )(create_session)
     mcp.tool(
-        title="Kill Server",
-        annotations={
-            "readOnlyHint": False,
-            "destructiveHint": True,
-            "idempotentHint": True,
-            "openWorldHint": False,
-        },
+        title="Kill Server", annotations=ANNOTATIONS_DESTRUCTIVE, tags={TAG_DESTRUCTIVE}
     )(kill_server)
-    mcp.tool(title="Get Server Info", annotations=_RO)(get_server_info)
+    mcp.tool(title="Get Server Info", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        get_server_info
+    )

@@ -31,6 +31,46 @@ def _get_caller_pane_id() -> str | None:
     return os.environ.get("TMUX_PANE")
 
 
+# ---------------------------------------------------------------------------
+# Safety tier tags
+# ---------------------------------------------------------------------------
+
+TAG_READONLY = "readonly"
+TAG_MUTATING = "mutating"
+TAG_DESTRUCTIVE = "destructive"
+
+VALID_SAFETY_LEVELS = frozenset({TAG_READONLY, TAG_MUTATING, TAG_DESTRUCTIVE})
+
+# ---------------------------------------------------------------------------
+# Reusable annotation presets for tool registration
+# ---------------------------------------------------------------------------
+
+ANNOTATIONS_RO: dict[str, bool] = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+ANNOTATIONS_MUTATING: dict[str, bool] = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+ANNOTATIONS_CREATE: dict[str, bool] = {
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": False,
+}
+ANNOTATIONS_DESTRUCTIVE: dict[str, bool] = {
+    "readOnlyHint": False,
+    "destructiveHint": True,
+    "idempotentHint": True,
+    "openWorldHint": False,
+}
+
+
 _server_cache: dict[tuple[str | None, str | None, str | None], Server] = {}
 _server_cache_lock = threading.Lock()
 
