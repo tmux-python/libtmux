@@ -21,34 +21,47 @@ if t.TYPE_CHECKING:
 def register(mcp: FastMCP) -> None:
     """Register hierarchy resources with the FastMCP instance."""
 
-    @mcp.resource("tmux://sessions", title="All Sessions")
-    def get_sessions() -> str:
+    @mcp.resource("tmux://sessions{?socket_name}", title="All Sessions")
+    def get_sessions(socket_name: str | None = None) -> str:
         """List all tmux sessions.
+
+        Parameters
+        ----------
+        socket_name : str, optional
+            tmux socket name. Defaults to LIBTMUX_SOCKET env var.
 
         Returns
         -------
         str
             JSON array of session objects.
         """
-        server = _get_server()
+        server = _get_server(socket_name=socket_name)
         sessions = [_serialize_session(s).model_dump() for s in server.sessions]
         return json.dumps(sessions, indent=2)
 
-    @mcp.resource("tmux://sessions/{session_name}", title="Session Detail")
-    def get_session(session_name: str) -> str:
+    @mcp.resource(
+        "tmux://sessions/{session_name}{?socket_name}",
+        title="Session Detail",
+    )
+    def get_session(
+        session_name: str,
+        socket_name: str | None = None,
+    ) -> str:
         """Get details of a specific tmux session.
 
         Parameters
         ----------
         session_name : str
             The session name.
+        socket_name : str, optional
+            tmux socket name. Defaults to LIBTMUX_SOCKET env var.
 
         Returns
         -------
         str
             JSON object with session info and its windows.
         """
-        server = _get_server()
+        server = _get_server(socket_name=socket_name)
         session = server.sessions.get(session_name=session_name, default=None)
         if session is None:
             msg = f"Session not found: {session_name}"
@@ -58,21 +71,29 @@ def register(mcp: FastMCP) -> None:
         result["windows"] = [_serialize_window(w).model_dump() for w in session.windows]
         return json.dumps(result, indent=2)
 
-    @mcp.resource("tmux://sessions/{session_name}/windows", title="Session Windows")
-    def get_session_windows(session_name: str) -> str:
+    @mcp.resource(
+        "tmux://sessions/{session_name}/windows{?socket_name}",
+        title="Session Windows",
+    )
+    def get_session_windows(
+        session_name: str,
+        socket_name: str | None = None,
+    ) -> str:
         """List all windows in a tmux session.
 
         Parameters
         ----------
         session_name : str
             The session name.
+        socket_name : str, optional
+            tmux socket name. Defaults to LIBTMUX_SOCKET env var.
 
         Returns
         -------
         str
             JSON array of window objects.
         """
-        server = _get_server()
+        server = _get_server(socket_name=socket_name)
         session = server.sessions.get(session_name=session_name, default=None)
         if session is None:
             msg = f"Session not found: {session_name}"
@@ -82,10 +103,14 @@ def register(mcp: FastMCP) -> None:
         return json.dumps(windows, indent=2)
 
     @mcp.resource(
-        "tmux://sessions/{session_name}/windows/{window_index}",
+        "tmux://sessions/{session_name}/windows/{window_index}{?socket_name}",
         title="Window Detail",
     )
-    def get_window(session_name: str, window_index: str) -> str:
+    def get_window(
+        session_name: str,
+        window_index: str,
+        socket_name: str | None = None,
+    ) -> str:
         """Get details of a specific window in a session.
 
         Parameters
@@ -94,13 +119,15 @@ def register(mcp: FastMCP) -> None:
             The session name.
         window_index : str
             The window index within the session.
+        socket_name : str, optional
+            tmux socket name. Defaults to LIBTMUX_SOCKET env var.
 
         Returns
         -------
         str
             JSON object with window info and its panes.
         """
-        server = _get_server()
+        server = _get_server(socket_name=socket_name)
         session = server.sessions.get(session_name=session_name, default=None)
         if session is None:
             msg = f"Session not found: {session_name}"
@@ -115,21 +142,23 @@ def register(mcp: FastMCP) -> None:
         result["panes"] = [_serialize_pane(p).model_dump() for p in window.panes]
         return json.dumps(result, indent=2)
 
-    @mcp.resource("tmux://panes/{pane_id}", title="Pane Detail")
-    def get_pane(pane_id: str) -> str:
+    @mcp.resource("tmux://panes/{pane_id}{?socket_name}", title="Pane Detail")
+    def get_pane(pane_id: str, socket_name: str | None = None) -> str:
         """Get details of a specific pane.
 
         Parameters
         ----------
         pane_id : str
             The pane ID (e.g. '%1').
+        socket_name : str, optional
+            tmux socket name. Defaults to LIBTMUX_SOCKET env var.
 
         Returns
         -------
         str
             JSON object of pane details.
         """
-        server = _get_server()
+        server = _get_server(socket_name=socket_name)
         pane = server.panes.get(pane_id=pane_id, default=None)
         if pane is None:
             msg = f"Pane not found: {pane_id}"
@@ -137,21 +166,26 @@ def register(mcp: FastMCP) -> None:
 
         return json.dumps(_serialize_pane(pane).model_dump(), indent=2)
 
-    @mcp.resource("tmux://panes/{pane_id}/content", title="Pane Content")
-    def get_pane_content(pane_id: str) -> str:
+    @mcp.resource(
+        "tmux://panes/{pane_id}/content{?socket_name}",
+        title="Pane Content",
+    )
+    def get_pane_content(pane_id: str, socket_name: str | None = None) -> str:
         """Capture and return the content of a pane.
 
         Parameters
         ----------
         pane_id : str
             The pane ID (e.g. '%1').
+        socket_name : str, optional
+            tmux socket name. Defaults to LIBTMUX_SOCKET env var.
 
         Returns
         -------
         str
             Plain text captured pane content.
         """
-        server = _get_server()
+        server = _get_server(socket_name=socket_name)
         pane = server.panes.get(pane_id=pane_id, default=None)
         if pane is None:
             msg = f"Pane not found: {pane_id}"

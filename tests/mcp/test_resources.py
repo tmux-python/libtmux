@@ -41,7 +41,7 @@ def test_sessions_resource(
     resource_functions: dict[str, t.Any], mcp_session: Session
 ) -> None:
     """tmux://sessions returns session list."""
-    fn = resource_functions["tmux://sessions"]
+    fn = resource_functions["tmux://sessions{?socket_name}"]
     result = fn()
     data = json.loads(result)
     assert isinstance(data, list)
@@ -52,7 +52,7 @@ def test_session_detail_resource(
     resource_functions: dict[str, t.Any], mcp_session: Session
 ) -> None:
     """tmux://sessions/{name} returns session with windows."""
-    fn = resource_functions["tmux://sessions/{session_name}"]
+    fn = resource_functions["tmux://sessions/{session_name}{?socket_name}"]
     result = fn(mcp_session.session_name)
     data = json.loads(result)
     assert "session_id" in data
@@ -63,7 +63,7 @@ def test_session_windows_resource(
     resource_functions: dict[str, t.Any], mcp_session: Session
 ) -> None:
     """tmux://sessions/{name}/windows returns window list."""
-    fn = resource_functions["tmux://sessions/{session_name}/windows"]
+    fn = resource_functions["tmux://sessions/{session_name}/windows{?socket_name}"]
     result = fn(mcp_session.session_name)
     data = json.loads(result)
     assert isinstance(data, list)
@@ -75,7 +75,9 @@ def test_window_detail_resource(
     mcp_window: Window,
 ) -> None:
     """tmux://sessions/{name}/windows/{index} returns window with panes."""
-    fn = resource_functions["tmux://sessions/{session_name}/windows/{window_index}"]
+    fn = resource_functions[
+        "tmux://sessions/{session_name}/windows/{window_index}{?socket_name}"
+    ]
     result = fn(mcp_session.session_name, mcp_window.window_index)
     data = json.loads(result)
     assert "window_id" in data
@@ -86,7 +88,7 @@ def test_pane_detail_resource(
     resource_functions: dict[str, t.Any], mcp_pane: Pane
 ) -> None:
     """tmux://panes/{pane_id} returns pane details."""
-    fn = resource_functions["tmux://panes/{pane_id}"]
+    fn = resource_functions["tmux://panes/{pane_id}{?socket_name}"]
     result = fn(mcp_pane.pane_id)
     data = json.loads(result)
     assert data["pane_id"] == mcp_pane.pane_id
@@ -96,6 +98,6 @@ def test_pane_content_resource(
     resource_functions: dict[str, t.Any], mcp_pane: Pane
 ) -> None:
     """tmux://panes/{pane_id}/content returns captured text."""
-    fn = resource_functions["tmux://panes/{pane_id}/content"]
+    fn = resource_functions["tmux://panes/{pane_id}/content{?socket_name}"]
     result = fn(mcp_pane.pane_id)
     assert isinstance(result, str)
