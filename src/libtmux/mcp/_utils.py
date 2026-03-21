@@ -228,7 +228,7 @@ def _resolve_pane(
     server : Server
         The tmux server.
     pane_id : str, optional
-        Pane ID (e.g. '%%1'). Globally unique within a server.
+        Pane ID (e.g. '%1'). Globally unique within a server.
     session_name : str, optional
         Session name for hierarchical resolution.
     session_id : str, optional

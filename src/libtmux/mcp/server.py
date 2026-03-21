@@ -11,7 +11,7 @@ mcp = FastMCP(
     name="libtmux",
     instructions=(
         "libtmux MCP server for programmatic tmux control. "
-        "Use pane_id (e.g. '%%1') as the preferred targeting method - "
+        "Use pane_id (e.g. '%1') as the preferred targeting method - "
         "it is globally unique within a tmux server. "
         "Use send_keys to execute commands and capture_pane to read output. "
         "All tools accept an optional socket_name parameter for multi-server support."

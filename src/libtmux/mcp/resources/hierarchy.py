@@ -117,7 +117,7 @@ def register(mcp: FastMCP) -> None:
         Parameters
         ----------
         pane_id : str
-            The pane ID (e.g. '%%1').
+            The pane ID (e.g. '%1').
 
         Returns
         -------
@@ -139,7 +139,7 @@ def register(mcp: FastMCP) -> None:
         Parameters
         ----------
         pane_id : str
-            The pane ID (e.g. '%%1').
+            The pane ID (e.g. '%1').
 
         Returns
         -------

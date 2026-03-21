@@ -34,7 +34,7 @@ def send_keys(
     keys : str
         The keys or text to send.
     pane_id : str, optional
-        Pane ID (e.g. '%%1').
+        Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
     window_id : str, optional
@@ -83,7 +83,7 @@ def capture_pane(
     Parameters
     ----------
     pane_id : str, optional
-        Pane ID (e.g. '%%1').
+        Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
     window_id : str, optional
@@ -126,7 +126,7 @@ def resize_pane(
     Parameters
     ----------
     pane_id : str, optional
-        Pane ID (e.g. '%%1').
+        Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
     window_id : str, optional
@@ -183,7 +183,7 @@ def kill_pane(
     Parameters
     ----------
     pane_id : str, optional
-        Pane ID (e.g. '%%1').
+        Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
     window_id : str, optional
@@ -223,7 +223,7 @@ def set_pane_title(
     title : str
         The new pane title.
     pane_id : str, optional
-        Pane ID (e.g. '%%1').
+        Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
     window_id : str, optional
@@ -259,7 +259,7 @@ def get_pane_info(
     Parameters
     ----------
     pane_id : str, optional
-        Pane ID (e.g. '%%1').
+        Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
     window_id : str, optional
@@ -294,7 +294,7 @@ def clear_pane(
     Parameters
     ----------
     pane_id : str, optional
-        Pane ID (e.g. '%%1').
+        Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
     window_id : str, optional
