@@ -86,6 +86,9 @@ def capture_pane(
 ) -> str:
     """Capture the visible contents of a tmux pane.
 
+    This is the tool for reading what is displayed in a terminal. Use
+    search_panes to search for text across multiple panes at once.
+
     Parameters
     ----------
     pane_id : str, optional

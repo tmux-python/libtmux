@@ -39,6 +39,10 @@ def list_panes(
 ) -> list[PaneInfo]:
     """List panes in a tmux window, session, or across the entire server.
 
+    Only searches pane metadata (current command, title, working directory).
+    To search the actual text visible in terminal panes, use search_panes
+    instead.
+
     Parameters
     ----------
     session_name : str, optional
