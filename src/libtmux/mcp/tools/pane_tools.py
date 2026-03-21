@@ -21,6 +21,7 @@ def send_keys(
     keys: str,
     pane_id: str | None = None,
     session_name: str | None = None,
+    session_id: str | None = None,
     window_id: str | None = None,
     enter: bool = True,
     literal: bool = False,
@@ -37,6 +38,8 @@ def send_keys(
         Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
+    session_id : str, optional
+        Session ID (e.g. '$1') for pane resolution.
     window_id : str, optional
         Window ID for pane resolution.
     enter : bool
@@ -44,7 +47,8 @@ def send_keys(
     literal : bool
         Whether to send keys literally (no tmux interpretation). Default False.
     suppress_history : bool
-        Whether to suppress shell history. Default False.
+        Whether to suppress shell history by prepending a space.
+        Only works in shells that support HISTCONTROL. Default False.
     socket_name : str, optional
         tmux socket name.
 
@@ -58,6 +62,7 @@ def send_keys(
         server,
         pane_id=pane_id,
         session_name=session_name,
+        session_id=session_id,
         window_id=window_id,
     )
     pane.send_keys(
@@ -73,6 +78,7 @@ def send_keys(
 def capture_pane(
     pane_id: str | None = None,
     session_name: str | None = None,
+    session_id: str | None = None,
     window_id: str | None = None,
     start: int | None = None,
     end: int | None = None,
@@ -86,10 +92,13 @@ def capture_pane(
         Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
+    session_id : str, optional
+        Session ID (e.g. '$1') for pane resolution.
     window_id : str, optional
         Window ID for pane resolution.
     start : int, optional
-        Start line number (negative for scrollback history).
+        Start line number. 0 is the first visible line. Negative values
+        reach into scrollback history (e.g. -100 for last 100 lines).
     end : int, optional
         End line number.
     socket_name : str, optional
@@ -105,6 +114,7 @@ def capture_pane(
         server,
         pane_id=pane_id,
         session_name=session_name,
+        session_id=session_id,
         window_id=window_id,
     )
     lines = pane.capture_pane(start=start, end=end)
@@ -115,6 +125,7 @@ def capture_pane(
 def resize_pane(
     pane_id: str | None = None,
     session_name: str | None = None,
+    session_id: str | None = None,
     window_id: str | None = None,
     height: int | None = None,
     width: int | None = None,
@@ -129,6 +140,8 @@ def resize_pane(
         Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
+    session_id : str, optional
+        Session ID (e.g. '$1') for pane resolution.
     window_id : str, optional
         Window ID for pane resolution.
     height : int, optional
@@ -156,6 +169,7 @@ def resize_pane(
         server,
         pane_id=pane_id,
         session_name=session_name,
+        session_id=session_id,
         window_id=window_id,
     )
     if zoom is not None:
@@ -175,6 +189,7 @@ def resize_pane(
 def kill_pane(
     pane_id: str | None = None,
     session_name: str | None = None,
+    session_id: str | None = None,
     window_id: str | None = None,
     socket_name: str | None = None,
 ) -> str:
@@ -186,6 +201,8 @@ def kill_pane(
         Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
+    session_id : str, optional
+        Session ID (e.g. '$1') for pane resolution.
     window_id : str, optional
         Window ID for pane resolution.
     socket_name : str, optional
@@ -201,6 +218,7 @@ def kill_pane(
         server,
         pane_id=pane_id,
         session_name=session_name,
+        session_id=session_id,
         window_id=window_id,
     )
     pid = pane.pane_id
@@ -213,6 +231,7 @@ def set_pane_title(
     title: str,
     pane_id: str | None = None,
     session_name: str | None = None,
+    session_id: str | None = None,
     window_id: str | None = None,
     socket_name: str | None = None,
 ) -> str:
@@ -226,6 +245,8 @@ def set_pane_title(
         Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
+    session_id : str, optional
+        Session ID (e.g. '$1') for pane resolution.
     window_id : str, optional
         Window ID for pane resolution.
     socket_name : str, optional
@@ -241,6 +262,7 @@ def set_pane_title(
         server,
         pane_id=pane_id,
         session_name=session_name,
+        session_id=session_id,
         window_id=window_id,
     )
     pane.set_title(title)
@@ -251,6 +273,7 @@ def set_pane_title(
 def get_pane_info(
     pane_id: str | None = None,
     session_name: str | None = None,
+    session_id: str | None = None,
     window_id: str | None = None,
     socket_name: str | None = None,
 ) -> str:
@@ -262,6 +285,8 @@ def get_pane_info(
         Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
+    session_id : str, optional
+        Session ID (e.g. '$1') for pane resolution.
     window_id : str, optional
         Window ID for pane resolution.
     socket_name : str, optional
@@ -277,6 +302,7 @@ def get_pane_info(
         server,
         pane_id=pane_id,
         session_name=session_name,
+        session_id=session_id,
         window_id=window_id,
     )
     return json.dumps(_serialize_pane(pane))
@@ -286,6 +312,7 @@ def get_pane_info(
 def clear_pane(
     pane_id: str | None = None,
     session_name: str | None = None,
+    session_id: str | None = None,
     window_id: str | None = None,
     socket_name: str | None = None,
 ) -> str:
@@ -297,6 +324,8 @@ def clear_pane(
         Pane ID (e.g. '%1').
     session_name : str, optional
         Session name for pane resolution.
+    session_id : str, optional
+        Session ID (e.g. '$1') for pane resolution.
     window_id : str, optional
         Window ID for pane resolution.
     socket_name : str, optional
@@ -312,6 +341,7 @@ def clear_pane(
         server,
         pane_id=pane_id,
         session_name=session_name,
+        session_id=session_id,
         window_id=window_id,
     )
     pane.reset()

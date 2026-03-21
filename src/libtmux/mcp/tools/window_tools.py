@@ -87,6 +87,7 @@ def list_panes(
 def split_window(
     pane_id: str | None = None,
     session_name: str | None = None,
+    session_id: str | None = None,
     window_id: str | None = None,
     window_index: str | None = None,
     direction: str | None = None,
@@ -100,9 +101,11 @@ def split_window(
     Parameters
     ----------
     pane_id : str, optional
-        Pane ID to split from. If given, the pane's window is used.
+        Pane ID to split from. If given, splits adjacent to this pane.
     session_name : str, optional
         Session name.
+    session_id : str, optional
+        Session ID (e.g. '$1').
     window_id : str, optional
         Window ID (e.g. '@1').
     window_index : str, optional
@@ -110,7 +113,8 @@ def split_window(
     direction : str, optional
         Split direction: 'above', 'below', 'left', or 'right'.
     size : str or int, optional
-        Size of the new pane (percentage or line count).
+        Size of the new pane. Use a string with '%%' suffix for
+        percentage (e.g. '50%%') or an integer for lines/columns.
     start_directory : str, optional
         Working directory for the new pane.
     shell : str, optional
@@ -149,6 +153,7 @@ def split_window(
             window_id=window_id,
             window_index=window_index,
             session_name=session_name,
+            session_id=session_id,
         )
         new_pane = window.split(
             direction=pane_dir,
@@ -257,7 +262,10 @@ def select_layout(
     Parameters
     ----------
     layout : str
-        Layout name (e.g. 'even-horizontal', 'tiled') or custom layout string.
+        Layout name or custom layout string. Built-in layouts:
+        'even-horizontal', 'even-vertical', 'main-horizontal',
+        'main-horizontal-mirrored', 'main-vertical',
+        'main-vertical-mirrored', 'tiled'.
     window_id : str, optional
         Window ID (e.g. '@1').
     window_index : str, optional
