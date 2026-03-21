@@ -76,7 +76,9 @@ def show_option(
     scope : str, optional
         Option scope: "server", "session", "window", or "pane".
     target : str, optional
-        Target session, window, or pane identifier.
+        Target identifier. For session scope: session name
+        (e.g. 'mysession'). For window scope: window ID (e.g. '@1').
+        For pane scope: pane ID (e.g. '%1'). Requires scope.
     global_ : bool
         Whether to query the global option.
     socket_name : str, optional
@@ -112,7 +114,9 @@ def set_option(
     scope : str, optional
         Option scope: "server", "session", "window", or "pane".
     target : str, optional
-        Target session, window, or pane identifier.
+        Target identifier. For session scope: session name
+        (e.g. 'mysession'). For window scope: window ID (e.g. '@1').
+        For pane scope: pane ID (e.g. '%1'). Requires scope.
     global_ : bool
         Whether to set the global option.
     socket_name : str, optional
