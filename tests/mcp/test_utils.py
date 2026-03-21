@@ -104,29 +104,37 @@ def test_resolve_pane_not_found(mcp_server: Server, mcp_session: Session) -> Non
 
 
 def test_serialize_session(mcp_session: Session) -> None:
-    """_serialize_session produces expected keys."""
+    """_serialize_session produces a SessionInfo model."""
+    from libtmux.mcp.models import SessionInfo
+
     data = _serialize_session(mcp_session)
-    assert "session_id" in data
-    assert "session_name" in data
-    assert "window_count" in data
-    assert data["session_id"] == mcp_session.session_id
+    assert isinstance(data, SessionInfo)
+    assert data.session_id == mcp_session.session_id
+    assert data.session_name is not None
+    assert data.window_count >= 0
 
 
 def test_serialize_window(mcp_window: Window) -> None:
-    """_serialize_window produces expected keys."""
+    """_serialize_window produces a WindowInfo model."""
+    from libtmux.mcp.models import WindowInfo
+
     data = _serialize_window(mcp_window)
-    assert "window_id" in data
-    assert "window_name" in data
-    assert "window_index" in data
-    assert "pane_count" in data
+    assert isinstance(data, WindowInfo)
+    assert data.window_id is not None
+    assert data.window_name is not None
+    assert data.window_index is not None
+    assert data.pane_count >= 0
 
 
 def test_serialize_pane(mcp_pane: Pane) -> None:
-    """_serialize_pane produces expected keys."""
+    """_serialize_pane produces a PaneInfo model."""
+    from libtmux.mcp.models import PaneInfo
+
     data = _serialize_pane(mcp_pane)
-    assert "pane_id" in data
-    assert "window_id" in data
-    assert "session_id" in data
+    assert isinstance(data, PaneInfo)
+    assert data.pane_id is not None
+    assert data.window_id is not None
+    assert data.session_id is not None
 
 
 def test_get_server_evicts_dead(monkeypatch: pytest.MonkeyPatch) -> None:

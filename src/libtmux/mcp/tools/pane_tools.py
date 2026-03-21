@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 from libtmux.mcp._utils import (
@@ -11,6 +10,7 @@ from libtmux.mcp._utils import (
     _serialize_pane,
     handle_tool_errors,
 )
+from libtmux.mcp.models import PaneInfo
 
 if t.TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -131,7 +131,7 @@ def resize_pane(
     width: int | None = None,
     zoom: bool | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> PaneInfo:
     """Resize a tmux pane.
 
     Parameters
@@ -155,8 +155,8 @@ def resize_pane(
 
     Returns
     -------
-    str
-        JSON of the updated pane.
+    PaneInfo
+        Serialized pane object.
     """
     from fastmcp.exceptions import ToolError
 
@@ -182,7 +182,7 @@ def resize_pane(
             pane.resize(zoom=True)  # toggle off
     else:
         pane.resize(height=height, width=width)
-    return json.dumps(_serialize_pane(pane))
+    return _serialize_pane(pane)
 
 
 @handle_tool_errors
@@ -234,7 +234,7 @@ def set_pane_title(
     session_id: str | None = None,
     window_id: str | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> PaneInfo:
     """Set the title of a tmux pane.
 
     Parameters
@@ -254,8 +254,8 @@ def set_pane_title(
 
     Returns
     -------
-    str
-        JSON of the updated pane.
+    PaneInfo
+        Serialized pane object.
     """
     server = _get_server(socket_name=socket_name)
     pane = _resolve_pane(
@@ -266,7 +266,7 @@ def set_pane_title(
         window_id=window_id,
     )
     pane.set_title(title)
-    return json.dumps(_serialize_pane(pane))
+    return _serialize_pane(pane)
 
 
 @handle_tool_errors
@@ -276,7 +276,7 @@ def get_pane_info(
     session_id: str | None = None,
     window_id: str | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> PaneInfo:
     """Get detailed information about a tmux pane.
 
     Parameters
@@ -294,8 +294,8 @@ def get_pane_info(
 
     Returns
     -------
-    str
-        JSON of pane details.
+    PaneInfo
+        Serialized pane details.
     """
     server = _get_server(socket_name=socket_name)
     pane = _resolve_pane(
@@ -305,7 +305,7 @@ def get_pane_info(
         session_id=session_id,
         window_id=window_id,
     )
-    return json.dumps(_serialize_pane(pane))
+    return _serialize_pane(pane)
 
 
 @handle_tool_errors

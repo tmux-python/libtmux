@@ -10,6 +10,7 @@ from libtmux.mcp._utils import (
     _resolve_session,
     handle_tool_errors,
 )
+from libtmux.mcp.models import EnvironmentSetResult
 
 if t.TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -59,7 +60,7 @@ def set_environment(
     session_name: str | None = None,
     session_id: str | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> EnvironmentSetResult:
     """Set a tmux environment variable.
 
     Parameters
@@ -77,8 +78,8 @@ def set_environment(
 
     Returns
     -------
-    str
-        JSON confirming the variable was set.
+    EnvironmentSetResult
+        Confirmation with variable name, value, and status.
     """
     server = _get_server(socket_name=socket_name)
 
@@ -92,7 +93,7 @@ def set_environment(
     else:
         server.set_environment(name, value)
 
-    return json.dumps({"name": name, "value": value, "status": "set"})
+    return EnvironmentSetResult(name=name, value=value, status="set")
 
 
 def register(mcp: FastMCP) -> None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 from libtmux.constants import OptionScope
@@ -13,6 +12,7 @@ from libtmux.mcp._utils import (
     _resolve_window,
     handle_tool_errors,
 )
+from libtmux.mcp.models import OptionResult, OptionSetResult
 
 if t.TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -66,7 +66,7 @@ def show_option(
     target: str | None = None,
     global_: bool = False,
     socket_name: str | None = None,
-) -> str:
+) -> OptionResult:
     """Show a tmux option value.
 
     Parameters
@@ -86,12 +86,12 @@ def show_option(
 
     Returns
     -------
-    str
-        JSON with the option name and its value.
+    OptionResult
+        Option name and its value.
     """
     obj, opt_scope = _resolve_option_target(socket_name, scope, target)
     value = obj.show_option(option, global_=global_, scope=opt_scope)
-    return json.dumps({"option": option, "value": value})
+    return OptionResult(option=option, value=value)
 
 
 @handle_tool_errors
@@ -102,7 +102,7 @@ def set_option(
     target: str | None = None,
     global_: bool = False,
     socket_name: str | None = None,
-) -> str:
+) -> OptionSetResult:
     """Set a tmux option value.
 
     Parameters
@@ -124,12 +124,12 @@ def set_option(
 
     Returns
     -------
-    str
-        JSON confirming the option was set.
+    OptionSetResult
+        Confirmation with option name, value, and status.
     """
     obj, opt_scope = _resolve_option_target(socket_name, scope, target)
     obj.set_option(option, value, global_=global_, scope=opt_scope)
-    return json.dumps({"option": option, "value": value, "status": "set"})
+    return OptionSetResult(option=option, value=value, status="set")
 
 
 def register(mcp: FastMCP) -> None:

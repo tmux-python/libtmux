@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 import pytest
@@ -21,15 +20,14 @@ if t.TYPE_CHECKING:
 
 
 def test_list_windows(mcp_server: Server, mcp_session: Session) -> None:
-    """list_windows returns JSON array of windows."""
+    """list_windows returns a list of WindowInfo models."""
     result = list_windows(
         session_name=mcp_session.session_name,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert isinstance(data, list)
-    assert len(data) >= 1
-    assert "window_id" in data[0]
+    assert isinstance(result, list)
+    assert len(result) >= 1
+    assert result[0].window_id is not None
 
 
 def test_list_windows_by_id(mcp_server: Server, mcp_session: Session) -> None:
@@ -38,8 +36,7 @@ def test_list_windows_by_id(mcp_server: Server, mcp_session: Session) -> None:
         session_id=mcp_session.session_id,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert len(data) >= 1
+    assert len(result) >= 1
 
 
 def test_create_window(mcp_server: Server, mcp_session: Session) -> None:
@@ -49,8 +46,7 @@ def test_create_window(mcp_server: Server, mcp_session: Session) -> None:
         window_name="mcp_test_win",
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["window_name"] == "mcp_test_win"
+    assert result.window_name == "mcp_test_win"
 
 
 def test_create_window_invalid_direction(
@@ -74,8 +70,7 @@ def test_rename_session(mcp_server: Server, mcp_session: Session) -> None:
         session_name=original_name,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["session_name"] == "mcp_renamed"
+    assert result.session_name == "mcp_renamed"
 
 
 class ListWindowsFilterFixture(t.NamedTuple):
@@ -189,9 +184,8 @@ def test_list_windows_with_filters(
             list_windows(**kwargs)
     else:
         result = list_windows(**kwargs)
-        data = json.loads(result)
-        assert isinstance(data, list)
-        assert len(data) >= expected_min_count
+        assert isinstance(result, list)
+        assert len(result) >= expected_min_count
 
     # Cleanup
     cross_win.kill()

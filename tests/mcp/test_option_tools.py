@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 import pytest
@@ -16,16 +15,15 @@ if t.TYPE_CHECKING:
 
 
 def test_show_option(mcp_server: Server, mcp_session: Session) -> None:
-    """show_option returns an option value."""
+    """show_option returns an OptionResult model."""
     result = show_option(
         option="base-index",
         scope="session",
         global_=True,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["option"] == "base-index"
-    assert "value" in data
+    assert result.option == "base-index"
+    assert result.value is not None
 
 
 def test_show_option_invalid_scope(mcp_server: Server, mcp_session: Session) -> None:
@@ -59,6 +57,5 @@ def test_set_option(mcp_server: Server, mcp_session: Session) -> None:
         global_=True,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["status"] == "set"
-    assert data["option"] == "display-time"
+    assert result.status == "set"
+    assert result.option == "display-time"

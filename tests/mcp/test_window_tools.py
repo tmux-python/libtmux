@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 import pytest
@@ -23,16 +22,15 @@ if t.TYPE_CHECKING:
 
 
 def test_list_panes(mcp_server: Server, mcp_session: Session) -> None:
-    """list_panes returns JSON array of panes."""
+    """list_panes returns a list of PaneInfo models."""
     window = mcp_session.active_window
     result = list_panes(
         window_id=window.window_id,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert isinstance(data, list)
-    assert len(data) >= 1
-    assert "pane_id" in data[0]
+    assert isinstance(result, list)
+    assert len(result) >= 1
+    assert result[0].pane_id is not None
 
 
 def test_split_window(mcp_server: Server, mcp_session: Session) -> None:
@@ -43,8 +41,7 @@ def test_split_window(mcp_server: Server, mcp_session: Session) -> None:
         window_id=window.window_id,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert "pane_id" in data
+    assert result.pane_id is not None
     assert len(window.panes) == initial_pane_count + 1
 
 
@@ -56,8 +53,7 @@ def test_split_window_with_direction(mcp_server: Server, mcp_session: Session) -
         direction="right",
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert "pane_id" in data
+    assert result.pane_id is not None
 
 
 def test_split_window_invalid_direction(
@@ -81,8 +77,7 @@ def test_rename_window(mcp_server: Server, mcp_session: Session) -> None:
         window_id=window.window_id,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["window_name"] == "mcp_renamed_win"
+    assert result.window_name == "mcp_renamed_win"
 
 
 def test_select_layout(mcp_server: Server, mcp_session: Session) -> None:
@@ -94,8 +89,7 @@ def test_select_layout(mcp_server: Server, mcp_session: Session) -> None:
         window_id=window.window_id,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert "window_id" in data
+    assert result.window_id is not None
 
 
 def test_resize_window(mcp_server: Server, mcp_session: Session) -> None:
@@ -107,8 +101,7 @@ def test_resize_window(mcp_server: Server, mcp_session: Session) -> None:
         width=60,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["window_id"] == window.window_id
+    assert result.window_id == window.window_id
 
 
 class ListPanesFilterFixture(t.NamedTuple):
@@ -205,9 +198,8 @@ def test_list_panes_with_filters(
             list_panes(**kwargs)
     else:
         result = list_panes(**kwargs)
-        data = json.loads(result)
-        assert isinstance(data, list)
-        assert len(data) >= expected_min_count
+        assert isinstance(result, list)
+        assert len(result) >= expected_min_count
 
 
 def test_kill_window(mcp_server: Server, mcp_session: Session) -> None:

@@ -31,7 +31,7 @@ def register(mcp: FastMCP) -> None:
             JSON array of session objects.
         """
         server = _get_server()
-        sessions = [_serialize_session(s) for s in server.sessions]
+        sessions = [_serialize_session(s).model_dump() for s in server.sessions]
         return json.dumps(sessions, indent=2)
 
     @mcp.resource("tmux://sessions/{session_name}", title="Session Detail")
@@ -54,8 +54,8 @@ def register(mcp: FastMCP) -> None:
             msg = f"Session not found: {session_name}"
             raise ResourceError(msg)
 
-        result = _serialize_session(session)
-        result["windows"] = [_serialize_window(w) for w in session.windows]
+        result = _serialize_session(session).model_dump()
+        result["windows"] = [_serialize_window(w).model_dump() for w in session.windows]
         return json.dumps(result, indent=2)
 
     @mcp.resource("tmux://sessions/{session_name}/windows", title="Session Windows")
@@ -78,7 +78,7 @@ def register(mcp: FastMCP) -> None:
             msg = f"Session not found: {session_name}"
             raise ResourceError(msg)
 
-        windows = [_serialize_window(w) for w in session.windows]
+        windows = [_serialize_window(w).model_dump() for w in session.windows]
         return json.dumps(windows, indent=2)
 
     @mcp.resource(
@@ -111,8 +111,8 @@ def register(mcp: FastMCP) -> None:
             msg = f"Window not found: index {window_index}"
             raise ResourceError(msg)
 
-        result = _serialize_window(window)
-        result["panes"] = [_serialize_pane(p) for p in window.panes]
+        result = _serialize_window(window).model_dump()
+        result["panes"] = [_serialize_pane(p).model_dump() for p in window.panes]
         return json.dumps(result, indent=2)
 
     @mcp.resource("tmux://panes/{pane_id}", title="Pane Detail")
@@ -135,7 +135,7 @@ def register(mcp: FastMCP) -> None:
             msg = f"Pane not found: {pane_id}"
             raise ResourceError(msg)
 
-        return json.dumps(_serialize_pane(pane), indent=2)
+        return json.dumps(_serialize_pane(pane).model_dump(), indent=2)
 
     @mcp.resource("tmux://panes/{pane_id}/content", title="Pane Content")
     def get_pane_content(pane_id: str) -> str:

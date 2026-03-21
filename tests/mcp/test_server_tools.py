@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 import pytest
@@ -20,23 +19,21 @@ if t.TYPE_CHECKING:
 
 
 def test_list_sessions(mcp_server: Server, mcp_session: Session) -> None:
-    """list_sessions returns JSON array of sessions."""
+    """list_sessions returns a list of SessionInfo models."""
     result = list_sessions(socket_name=mcp_server.socket_name)
-    data = json.loads(result)
-    assert isinstance(data, list)
-    assert len(data) >= 1
-    session_ids = [s["session_id"] for s in data]
+    assert isinstance(result, list)
+    assert len(result) >= 1
+    session_ids = [s.session_id for s in result]
     assert mcp_session.session_id in session_ids
 
 
 def test_list_sessions_empty_server(mcp_server: Server) -> None:
-    """list_sessions returns empty array when no sessions."""
+    """list_sessions returns empty list when no sessions."""
     # Kill all sessions first
     for s in mcp_server.sessions:
         s.kill()
     result = list_sessions(socket_name=mcp_server.socket_name)
-    data = json.loads(result)
-    assert data == []
+    assert result == []
 
 
 def test_create_session(mcp_server: Server) -> None:
@@ -45,9 +42,8 @@ def test_create_session(mcp_server: Server) -> None:
         session_name="mcp_test_new",
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["session_name"] == "mcp_test_new"
-    assert data["session_id"] is not None
+    assert result.session_name == "mcp_test_new"
+    assert result.session_id is not None
 
 
 def test_create_session_duplicate(mcp_server: Server, mcp_session: Session) -> None:
@@ -64,9 +60,8 @@ def test_create_session_duplicate(mcp_server: Server, mcp_session: Session) -> N
 def test_get_server_info(mcp_server: Server, mcp_session: Session) -> None:
     """get_server_info returns server status."""
     result = get_server_info(socket_name=mcp_server.socket_name)
-    data = json.loads(result)
-    assert data["is_alive"] is True
-    assert data["session_count"] >= 1
+    assert result.is_alive is True
+    assert result.session_count >= 1
 
 
 class ListSessionsFilterFixture(t.NamedTuple):
@@ -189,12 +184,11 @@ def test_list_sessions_with_filters(
             socket_name=mcp_server.socket_name,
             filters=filters,
         )
-        data = json.loads(result)
-        assert isinstance(data, list)
+        assert isinstance(result, list)
         if expected_count is not None:
-            assert len(data) == expected_count
+            assert len(result) == expected_count
         else:
-            assert len(data) >= 1
+            assert len(result) >= 1
 
 
 def test_kill_server(mcp_server: Server, mcp_session: Session) -> None:

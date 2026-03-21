@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 from libtmux.mcp._utils import (
@@ -12,6 +11,7 @@ from libtmux.mcp._utils import (
     _serialize_session,
     handle_tool_errors,
 )
+from libtmux.mcp.models import ServerInfo, SessionInfo
 
 if t.TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -21,7 +21,7 @@ if t.TYPE_CHECKING:
 def list_sessions(
     socket_name: str | None = None,
     filters: dict[str, str] | str | None = None,
-) -> str:
+) -> list[SessionInfo]:
     """List all tmux sessions.
 
     Parameters
@@ -34,12 +34,12 @@ def list_sessions(
 
     Returns
     -------
-    str
-        JSON array of session objects.
+    list[SessionInfo]
+        List of session objects.
     """
     server = _get_server(socket_name=socket_name)
     sessions = server.sessions
-    return json.dumps(_apply_filters(sessions, filters, _serialize_session))
+    return _apply_filters(sessions, filters, _serialize_session)
 
 
 @handle_tool_errors
@@ -51,7 +51,7 @@ def create_session(
     y: int | None = None,
     environment: dict[str, str] | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> SessionInfo:
     """Create a new tmux session.
 
     Parameters
@@ -73,8 +73,8 @@ def create_session(
 
     Returns
     -------
-    str
-        JSON object of the created session.
+    SessionInfo
+        The created session.
     """
     server = _get_server(socket_name=socket_name)
     kwargs: dict[str, t.Any] = {}
@@ -91,7 +91,7 @@ def create_session(
     if environment is not None:
         kwargs["environment"] = environment
     session = server.new_session(**kwargs)
-    return json.dumps(_serialize_session(session))
+    return _serialize_session(session)
 
 
 @handle_tool_errors
@@ -115,7 +115,7 @@ def kill_server(socket_name: str | None = None) -> str:
 
 
 @handle_tool_errors
-def get_server_info(socket_name: str | None = None) -> str:
+def get_server_info(socket_name: str | None = None) -> ServerInfo:
     """Get information about the tmux server.
 
     Parameters
@@ -125,23 +125,24 @@ def get_server_info(socket_name: str | None = None) -> str:
 
     Returns
     -------
-    str
-        JSON object with server info.
+    ServerInfo
+        Server information.
     """
     server = _get_server(socket_name=socket_name)
     alive = server.is_alive()
-    info: dict[str, t.Any] = {
-        "is_alive": alive,
-        "socket_name": server.socket_name,
-        "socket_path": str(server.socket_path) if server.socket_path else None,
-        "session_count": len(server.sessions) if alive else 0,
-    }
+    version: str | None = None
     try:
         result = server.cmd("display-message", "-p", "#{version}")
-        info["version"] = result.stdout[0] if result.stdout else None
+        version = result.stdout[0] if result.stdout else None
     except Exception:
-        info["version"] = None
-    return json.dumps(info)
+        pass
+    return ServerInfo(
+        is_alive=alive,
+        socket_name=server.socket_name,
+        socket_path=str(server.socket_path) if server.socket_path else None,
+        session_count=len(server.sessions) if alive else 0,
+        version=version,
+    )
 
 
 def register(mcp: FastMCP) -> None:

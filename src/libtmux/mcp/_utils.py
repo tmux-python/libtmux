@@ -18,6 +18,7 @@ from libtmux._internal.query_list import LOOKUP_NAME_MAP
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
+    from libtmux.mcp.models import PaneInfo, SessionInfo, WindowInfo
     from libtmux.pane import Pane
     from libtmux.session import Session
     from libtmux.window import Window
@@ -286,11 +287,14 @@ def _resolve_pane(
     return panes[0]
 
 
+M = t.TypeVar("M")
+
+
 def _apply_filters(
     items: t.Any,
     filters: dict[str, str] | str | None,
-    serializer: t.Callable[..., dict[str, t.Any]],
-) -> list[dict[str, t.Any]]:
+    serializer: t.Callable[..., M],
+) -> list[M]:
     """Apply QueryList filters and serialize results.
 
     Parameters
@@ -302,11 +306,11 @@ def _apply_filters(
         or as a JSON string. Some MCP clients require the string form.
         If None or empty, all items are returned.
     serializer : callable
-        Serializer function to convert each item to a dict.
+        Serializer function to convert each item to a model.
 
     Returns
     -------
-    list[dict]
+    list
         Serialized list of matching items.
 
     Raises
@@ -349,8 +353,8 @@ def _apply_filters(
     return [serializer(item) for item in filtered]
 
 
-def _serialize_session(session: Session) -> dict[str, t.Any]:
-    """Serialize a Session to a JSON-compatible dict.
+def _serialize_session(session: Session) -> SessionInfo:
+    """Serialize a Session to a Pydantic model.
 
     Parameters
     ----------
@@ -359,20 +363,23 @@ def _serialize_session(session: Session) -> dict[str, t.Any]:
 
     Returns
     -------
-    dict
-        Session data including id, name, window count, dimensions.
+    SessionInfo
+        Session data including id, name, window count.
     """
-    return {
-        "session_id": session.session_id,
-        "session_name": session.session_name,
-        "window_count": len(session.windows),
-        "session_attached": getattr(session, "session_attached", None),
-        "session_created": getattr(session, "session_created", None),
-    }
+    from libtmux.mcp.models import SessionInfo
+
+    assert session.session_id is not None
+    return SessionInfo(
+        session_id=session.session_id,
+        session_name=session.session_name,
+        window_count=len(session.windows),
+        session_attached=getattr(session, "session_attached", None),
+        session_created=getattr(session, "session_created", None),
+    )
 
 
-def _serialize_window(window: Window) -> dict[str, t.Any]:
-    """Serialize a Window to a JSON-compatible dict.
+def _serialize_window(window: Window) -> WindowInfo:
+    """Serialize a Window to a Pydantic model.
 
     Parameters
     ----------
@@ -381,25 +388,28 @@ def _serialize_window(window: Window) -> dict[str, t.Any]:
 
     Returns
     -------
-    dict
+    WindowInfo
         Window data including id, name, index, pane count, layout.
     """
-    return {
-        "window_id": window.window_id,
-        "window_name": window.window_name,
-        "window_index": window.window_index,
-        "session_id": window.session_id,
-        "session_name": getattr(window, "session_name", None),
-        "pane_count": len(window.panes),
-        "window_layout": getattr(window, "window_layout", None),
-        "window_active": getattr(window, "window_active", None),
-        "window_width": getattr(window, "window_width", None),
-        "window_height": getattr(window, "window_height", None),
-    }
+    from libtmux.mcp.models import WindowInfo
+
+    assert window.window_id is not None
+    return WindowInfo(
+        window_id=window.window_id,
+        window_name=window.window_name,
+        window_index=window.window_index,
+        session_id=window.session_id,
+        session_name=getattr(window, "session_name", None),
+        pane_count=len(window.panes),
+        window_layout=getattr(window, "window_layout", None),
+        window_active=getattr(window, "window_active", None),
+        window_width=getattr(window, "window_width", None),
+        window_height=getattr(window, "window_height", None),
+    )
 
 
-def _serialize_pane(pane: Pane) -> dict[str, t.Any]:
-    """Serialize a Pane to a JSON-compatible dict.
+def _serialize_pane(pane: Pane) -> PaneInfo:
+    """Serialize a Pane to a Pydantic model.
 
     Parameters
     ----------
@@ -408,22 +418,25 @@ def _serialize_pane(pane: Pane) -> dict[str, t.Any]:
 
     Returns
     -------
-    dict
+    PaneInfo
         Pane data including id, dimensions, current command, title.
     """
-    return {
-        "pane_id": pane.pane_id,
-        "pane_index": getattr(pane, "pane_index", None),
-        "pane_width": getattr(pane, "pane_width", None),
-        "pane_height": getattr(pane, "pane_height", None),
-        "pane_current_command": getattr(pane, "pane_current_command", None),
-        "pane_current_path": getattr(pane, "pane_current_path", None),
-        "pane_pid": getattr(pane, "pane_pid", None),
-        "pane_title": getattr(pane, "pane_title", None),
-        "pane_active": getattr(pane, "pane_active", None),
-        "window_id": pane.window_id,
-        "session_id": pane.session_id,
-    }
+    from libtmux.mcp.models import PaneInfo
+
+    assert pane.pane_id is not None
+    return PaneInfo(
+        pane_id=pane.pane_id,
+        pane_index=getattr(pane, "pane_index", None),
+        pane_width=getattr(pane, "pane_width", None),
+        pane_height=getattr(pane, "pane_height", None),
+        pane_current_command=getattr(pane, "pane_current_command", None),
+        pane_current_path=getattr(pane, "pane_current_path", None),
+        pane_pid=getattr(pane, "pane_pid", None),
+        pane_title=getattr(pane, "pane_title", None),
+        pane_active=getattr(pane, "pane_active", None),
+        window_id=pane.window_id,
+        session_id=pane.session_id,
+    )
 
 
 P = t.ParamSpec("P")

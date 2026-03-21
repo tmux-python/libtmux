@@ -26,9 +26,8 @@ def test_set_environment(mcp_server: Server, mcp_session: Session) -> None:
         value="test_value",
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["status"] == "set"
-    assert data["name"] == "MCP_TEST_VAR"
+    assert result.status == "set"
+    assert result.name == "MCP_TEST_VAR"
 
 
 def test_set_and_show_environment(mcp_server: Server, mcp_session: Session) -> None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 import pytest
@@ -49,10 +48,9 @@ def test_get_pane_info(mcp_server: Server, mcp_pane: Pane) -> None:
         pane_id=mcp_pane.pane_id,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["pane_id"] == mcp_pane.pane_id
-    assert "pane_width" in data
-    assert "pane_height" in data
+    assert result.pane_id == mcp_pane.pane_id
+    assert result.pane_width is not None
+    assert result.pane_height is not None
 
 
 def test_set_pane_title(mcp_server: Server, mcp_pane: Pane) -> None:
@@ -62,8 +60,7 @@ def test_set_pane_title(mcp_server: Server, mcp_pane: Pane) -> None:
         pane_id=mcp_pane.pane_id,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["pane_id"] == mcp_pane.pane_id
+    assert result.pane_id == mcp_pane.pane_id
 
 
 def test_clear_pane(mcp_server: Server, mcp_pane: Pane) -> None:
@@ -83,8 +80,7 @@ def test_resize_pane_dimensions(mcp_server: Server, mcp_pane: Pane) -> None:
         width=40,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["pane_id"] == mcp_pane.pane_id
+    assert result.pane_id == mcp_pane.pane_id
 
 
 def test_resize_pane_zoom(mcp_server: Server, mcp_session: Session) -> None:
@@ -98,8 +94,7 @@ def test_resize_pane_zoom(mcp_server: Server, mcp_session: Session) -> None:
         zoom=True,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert data["pane_id"] == pane.pane_id
+    assert result.pane_id == pane.pane_id
 
 
 def test_resize_pane_zoom_mutual_exclusivity(

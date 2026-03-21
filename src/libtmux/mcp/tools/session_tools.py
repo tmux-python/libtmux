@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 from libtmux.constants import WindowDirection
@@ -14,6 +13,7 @@ from libtmux.mcp._utils import (
     _serialize_window,
     handle_tool_errors,
 )
+from libtmux.mcp.models import SessionInfo, WindowInfo
 
 if t.TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -25,7 +25,7 @@ def list_windows(
     session_id: str | None = None,
     socket_name: str | None = None,
     filters: dict[str, str] | str | None = None,
-) -> str:
+) -> list[WindowInfo]:
     """List windows in a tmux session, or all windows across sessions.
 
     Parameters
@@ -43,8 +43,8 @@ def list_windows(
 
     Returns
     -------
-    str
-        JSON array of window objects.
+    list[WindowInfo]
+        List of serialized window objects.
     """
     server = _get_server(socket_name=socket_name)
     if session_name is not None or session_id is not None:
@@ -54,7 +54,7 @@ def list_windows(
         windows = session.windows
     else:
         windows = server.windows
-    return json.dumps(_apply_filters(windows, filters, _serialize_window))
+    return _apply_filters(windows, filters, _serialize_window)
 
 
 @handle_tool_errors
@@ -66,7 +66,7 @@ def create_window(
     attach: bool = False,
     direction: t.Literal["before", "after"] | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> WindowInfo:
     """Create a new window in a tmux session.
 
     Parameters
@@ -88,8 +88,8 @@ def create_window(
 
     Returns
     -------
-    str
-        JSON object of the created window.
+    WindowInfo
+        Serialized window object.
     """
     server = _get_server(socket_name=socket_name)
     session = _resolve_session(server, session_name=session_name, session_id=session_id)
@@ -113,7 +113,7 @@ def create_window(
             raise ToolError(msg)
         kwargs["direction"] = resolved
     window = session.new_window(**kwargs)
-    return json.dumps(_serialize_window(window))
+    return _serialize_window(window)
 
 
 @handle_tool_errors
@@ -122,7 +122,7 @@ def rename_session(
     session_name: str | None = None,
     session_id: str | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> SessionInfo:
     """Rename a tmux session.
 
     Parameters
@@ -138,13 +138,13 @@ def rename_session(
 
     Returns
     -------
-    str
-        JSON object of the renamed session.
+    SessionInfo
+        Serialized session object.
     """
     server = _get_server(socket_name=socket_name)
     session = _resolve_session(server, session_name=session_name, session_id=session_id)
     session = session.rename_session(new_name)
-    return json.dumps(_serialize_session(session))
+    return _serialize_session(session)
 
 
 @handle_tool_errors

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 from libtmux.constants import PaneDirection
@@ -16,6 +15,7 @@ from libtmux.mcp._utils import (
     _serialize_window,
     handle_tool_errors,
 )
+from libtmux.mcp.models import PaneInfo, WindowInfo
 
 if t.TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -36,7 +36,7 @@ def list_panes(
     window_index: str | None = None,
     socket_name: str | None = None,
     filters: dict[str, str] | str | None = None,
-) -> str:
+) -> list[PaneInfo]:
     """List panes in a tmux window, session, or across the entire server.
 
     Parameters
@@ -60,8 +60,8 @@ def list_panes(
 
     Returns
     -------
-    str
-        JSON array of serialized pane objects.
+    list[PaneInfo]
+        List of serialized pane objects.
     """
     server = _get_server(socket_name=socket_name)
     if window_id is not None or window_index is not None:
@@ -80,7 +80,7 @@ def list_panes(
         panes = session.panes
     else:
         panes = server.panes
-    return json.dumps(_apply_filters(panes, filters, _serialize_pane))
+    return _apply_filters(panes, filters, _serialize_pane)
 
 
 @handle_tool_errors
@@ -95,7 +95,7 @@ def split_window(
     start_directory: str | None = None,
     shell: str | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> PaneInfo:
     """Split a tmux window to create a new pane.
 
     Parameters
@@ -124,8 +124,8 @@ def split_window(
 
     Returns
     -------
-    str
-        JSON of the newly created pane.
+    PaneInfo
+        Serialized pane object.
     """
     server = _get_server(socket_name=socket_name)
 
@@ -161,7 +161,7 @@ def split_window(
             start_directory=start_directory,
             shell=shell,
         )
-    return json.dumps(_serialize_pane(new_pane))
+    return _serialize_pane(new_pane)
 
 
 @handle_tool_errors
@@ -172,7 +172,7 @@ def rename_window(
     session_name: str | None = None,
     session_id: str | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> WindowInfo:
     """Rename a tmux window.
 
     Parameters
@@ -192,8 +192,8 @@ def rename_window(
 
     Returns
     -------
-    str
-        JSON of the updated window.
+    WindowInfo
+        Serialized window object.
     """
     server = _get_server(socket_name=socket_name)
     window = _resolve_window(
@@ -204,7 +204,7 @@ def rename_window(
         session_id=session_id,
     )
     window.rename_window(new_name)
-    return json.dumps(_serialize_window(window))
+    return _serialize_window(window)
 
 
 @handle_tool_errors
@@ -256,7 +256,7 @@ def select_layout(
     session_name: str | None = None,
     session_id: str | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> WindowInfo:
     """Set the layout of a tmux window.
 
     Parameters
@@ -279,8 +279,8 @@ def select_layout(
 
     Returns
     -------
-    str
-        JSON of the updated window.
+    WindowInfo
+        Serialized window object.
     """
     server = _get_server(socket_name=socket_name)
     window = _resolve_window(
@@ -291,7 +291,7 @@ def select_layout(
         session_id=session_id,
     )
     window.select_layout(layout)
-    return json.dumps(_serialize_window(window))
+    return _serialize_window(window)
 
 
 @handle_tool_errors
@@ -303,7 +303,7 @@ def resize_window(
     height: int | None = None,
     width: int | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> WindowInfo:
     """Resize a tmux window.
 
     Parameters
@@ -325,8 +325,8 @@ def resize_window(
 
     Returns
     -------
-    str
-        JSON of the updated window.
+    WindowInfo
+        Serialized window object.
     """
     server = _get_server(socket_name=socket_name)
     window = _resolve_window(
@@ -337,7 +337,7 @@ def resize_window(
         session_id=session_id,
     )
     window.resize(height=height, width=width)
-    return json.dumps(_serialize_window(window))
+    return _serialize_window(window)
 
 
 def register(mcp: FastMCP) -> None:
