@@ -19,7 +19,13 @@ mcp = FastMCP(
         "it is globally unique within a tmux server. "
         "Use send_keys to execute commands and capture_pane to read output. "
         "All tools accept an optional socket_name parameter for multi-server "
-        "support (defaults to LIBTMUX_SOCKET env var)."
+        "support (defaults to LIBTMUX_SOCKET env var).\n\n"
+        "IMPORTANT — metadata vs content: list_windows, list_panes, and "
+        "list_sessions only search metadata (names, IDs, current command). "
+        "To find text that is actually visible in terminals — when users ask "
+        "what panes 'contain', 'mention', 'show', or 'have' — use "
+        "search_panes to search across all pane contents, or list_panes + "
+        "capture_pane on each pane for manual inspection."
     ),
 )
 
