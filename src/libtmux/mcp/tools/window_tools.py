@@ -246,6 +246,15 @@ def kill_window(
     str
         Confirmation message.
     """
+    from fastmcp.exceptions import ToolError
+
+    if all(v is None for v in (window_id, window_index, session_name, session_id)):
+        msg = (
+            "Refusing to kill without an explicit target. "
+            "Provide window_id, or window_index with a session identifier."
+        )
+        raise ToolError(msg)
+
     server = _get_server(socket_name=socket_name)
     window = _resolve_window(
         server,

@@ -113,6 +113,12 @@ def test_resize_pane_zoom_mutual_exclusivity(
         )
 
 
+def test_kill_pane_requires_target(mcp_server: Server) -> None:
+    """kill_pane refuses to kill without an explicit target."""
+    with pytest.raises(ToolError, match="Refusing to kill"):
+        kill_pane(socket_name=mcp_server.socket_name)
+
+
 def test_kill_pane(mcp_server: Server, mcp_session: Session) -> None:
     """kill_pane kills a pane."""
     window = mcp_session.active_window

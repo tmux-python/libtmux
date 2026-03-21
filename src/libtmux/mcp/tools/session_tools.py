@@ -179,6 +179,15 @@ def kill_session(
     str
         Confirmation message.
     """
+    from fastmcp.exceptions import ToolError
+
+    if session_name is None and session_id is None:
+        msg = (
+            "Refusing to kill without an explicit target. "
+            "Provide session_name or session_id."
+        )
+        raise ToolError(msg)
+
     server = _get_server(socket_name=socket_name)
     session = _resolve_session(server, session_name=session_name, session_id=session_id)
     name = session.session_name or session.session_id

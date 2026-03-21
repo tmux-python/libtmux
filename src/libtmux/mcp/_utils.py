@@ -66,7 +66,7 @@ ANNOTATIONS_CREATE: dict[str, bool] = {
 ANNOTATIONS_DESTRUCTIVE: dict[str, bool] = {
     "readOnlyHint": False,
     "destructiveHint": True,
-    "idempotentHint": True,
+    "idempotentHint": False,
     "openWorldHint": False,
 }
 

@@ -192,6 +192,12 @@ def test_list_windows_with_filters(
     second_session.kill()
 
 
+def test_kill_session_requires_target(mcp_server: Server) -> None:
+    """kill_session refuses to kill without an explicit target."""
+    with pytest.raises(ToolError, match="Refusing to kill"):
+        kill_session(socket_name=mcp_server.socket_name)
+
+
 def test_kill_session(mcp_server: Server) -> None:
     """kill_session kills a session."""
     mcp_server.new_session(session_name="mcp_kill_me")

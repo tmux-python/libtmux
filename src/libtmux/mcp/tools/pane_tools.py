@@ -226,6 +226,15 @@ def kill_pane(
     str
         Confirmation message.
     """
+    from fastmcp.exceptions import ToolError
+
+    if all(v is None for v in (pane_id, session_name, session_id, window_id)):
+        msg = (
+            "Refusing to kill without an explicit target. "
+            "Provide pane_id, or a window/session identifier."
+        )
+        raise ToolError(msg)
+
     server = _get_server(socket_name=socket_name)
     pane = _resolve_pane(
         server,
