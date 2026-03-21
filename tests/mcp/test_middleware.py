@@ -77,12 +77,12 @@ SAFETY_ALLOWED_FIXTURES: list[SafetyAllowedFixture] = [
         tool_tags={TAG_DESTRUCTIVE},
         expected_allowed=True,
     ),
-    # untagged tools are always allowed
+    # untagged tools are denied (fail-closed)
     SafetyAllowedFixture(
-        test_id="untagged_allowed_at_readonly",
+        test_id="untagged_denied_at_readonly",
         max_tier=TAG_READONLY,
         tool_tags=set(),
-        expected_allowed=True,
+        expected_allowed=False,
     ),
 ]
 

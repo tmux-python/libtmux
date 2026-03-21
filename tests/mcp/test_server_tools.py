@@ -191,7 +191,22 @@ def test_list_sessions_with_filters(
             assert len(result) >= 1
 
 
-def test_kill_server(mcp_server: Server, mcp_session: Session) -> None:
+def test_kill_server(
+    mcp_server: Server, mcp_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """kill_server kills the tmux server."""
+    # Remove TMUX_PANE to bypass self-kill guard (test server is separate)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
     result = kill_server(socket_name=mcp_server.socket_name)
     assert "killed" in result.lower()
+
+
+def test_kill_server_self_kill_guard(
+    mcp_server: Server, mcp_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """kill_server refuses when running inside tmux."""
+    from fastmcp.exceptions import ToolError
+
+    monkeypatch.setenv("TMUX_PANE", "%99")
+    with pytest.raises(ToolError, match="Refusing to kill"):
+        kill_server(socket_name=mcp_server.socket_name)

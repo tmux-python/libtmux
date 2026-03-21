@@ -5,13 +5,21 @@ Creates and configures the MCP server with all tools and resources.
 
 from __future__ import annotations
 
+import logging
 import os
 
 from fastmcp import FastMCP
 
 from libtmux.__about__ import __version__
-from libtmux.mcp._utils import TAG_MUTATING, VALID_SAFETY_LEVELS
+from libtmux.mcp._utils import (
+    TAG_DESTRUCTIVE,
+    TAG_MUTATING,
+    TAG_READONLY,
+    VALID_SAFETY_LEVELS,
+)
 from libtmux.mcp.middleware import SafetyMiddleware
+
+logger = logging.getLogger(__name__)
 
 _BASE_INSTRUCTIONS = (
     "libtmux MCP server for programmatic tmux control. "
@@ -84,6 +92,11 @@ def _build_instructions(safety_level: str = TAG_MUTATING) -> str:
 
 _safety_level = os.environ.get("LIBTMUX_SAFETY", TAG_MUTATING)
 if _safety_level not in VALID_SAFETY_LEVELS:
+    logger.warning(
+        "invalid LIBTMUX_SAFETY=%r, falling back to %s",
+        _safety_level,
+        TAG_MUTATING,
+    )
     _safety_level = TAG_MUTATING
 
 mcp = FastMCP(
@@ -91,6 +104,7 @@ mcp = FastMCP(
     version=__version__,
     instructions=_build_instructions(safety_level=_safety_level),
     middleware=[SafetyMiddleware(max_tier=_safety_level)],
+    on_duplicate="error",
 )
 
 
@@ -106,4 +120,14 @@ def _register_all() -> None:
 def run_server() -> None:
     """Run the MCP server."""
     _register_all()
+
+    # Use FastMCP's native visibility system as primary gate,
+    # with the SafetyMiddleware as a secondary layer for clear error messages.
+    allowed_tags = {TAG_READONLY}
+    if _safety_level in {TAG_MUTATING, TAG_DESTRUCTIVE}:
+        allowed_tags.add(TAG_MUTATING)
+    if _safety_level == TAG_DESTRUCTIVE:
+        allowed_tags.add(TAG_DESTRUCTIVE)
+    mcp.enable(tags=allowed_tags, only=True)
+
     mcp.run()

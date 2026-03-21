@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
 from libtmux.mcp._utils import (
@@ -14,7 +13,7 @@ from libtmux.mcp._utils import (
     _resolve_session,
     handle_tool_errors,
 )
-from libtmux.mcp.models import EnvironmentSetResult
+from libtmux.mcp.models import EnvironmentResult, EnvironmentSetResult
 
 if t.TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -25,7 +24,7 @@ def show_environment(
     session_name: str | None = None,
     session_id: str | None = None,
     socket_name: str | None = None,
-) -> str:
+) -> EnvironmentResult:
     """Show tmux environment variables.
 
     Parameters
@@ -39,8 +38,8 @@ def show_environment(
 
     Returns
     -------
-    str
-        JSON dict of environment variables.
+    EnvironmentResult
+        Environment variable mapping.
     """
     server = _get_server(socket_name=socket_name)
 
@@ -54,7 +53,7 @@ def show_environment(
     else:
         env_dict = server.show_environment()
 
-    return json.dumps(env_dict)
+    return EnvironmentResult(variables=env_dict)
 
 
 @handle_tool_errors

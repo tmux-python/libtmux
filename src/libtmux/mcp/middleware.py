@@ -35,11 +35,17 @@ class SafetyMiddleware(Middleware):
         self.max_level = _TIER_LEVELS.get(max_tier, 1)
 
     def _is_allowed(self, tags: set[str]) -> bool:
-        """Return True if the tool's tags fall within the allowed tier."""
+        """Return True if the tool's tags fall within the allowed tier.
+
+        Fail-closed: tools without a recognized tier tag are denied.
+        """
+        found_tier = False
         for tier, level in _TIER_LEVELS.items():
-            if tier in tags and level > self.max_level:
-                return False
-        return True
+            if tier in tags:
+                found_tier = True
+                if level > self.max_level:
+                    return False
+        return found_tier
 
     async def on_list_tools(
         self,

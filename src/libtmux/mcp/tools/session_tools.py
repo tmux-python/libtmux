@@ -14,6 +14,7 @@ from libtmux.mcp._utils import (
     TAG_MUTATING,
     TAG_READONLY,
     _apply_filters,
+    _get_caller_pane_id,
     _get_server,
     _resolve_session,
     _serialize_session,
@@ -190,6 +191,19 @@ def kill_session(
 
     server = _get_server(socket_name=socket_name)
     session = _resolve_session(server, session_name=session_name, session_id=session_id)
+
+    caller = _get_caller_pane_id()
+    if caller is not None:
+        caller_pane = server.panes.get(pane_id=caller, default=None)
+        if caller_pane is not None and caller_pane.session_id == session.session_id:
+            from fastmcp.exceptions import ToolError
+
+            msg = (
+                "Refusing to kill the session containing this MCP server's pane. "
+                "Use a manual tmux command if intended."
+            )
+            raise ToolError(msg)
+
     name = session.session_name or session.session_id
     session.kill()
     return f"Session killed: {name}"

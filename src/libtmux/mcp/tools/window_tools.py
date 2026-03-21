@@ -14,6 +14,7 @@ from libtmux.mcp._utils import (
     TAG_MUTATING,
     TAG_READONLY,
     _apply_filters,
+    _get_caller_pane_id,
     _get_server,
     _resolve_pane,
     _resolve_session,
@@ -220,24 +221,15 @@ def rename_window(
 
 @handle_tool_errors
 def kill_window(
-    window_id: str | None = None,
-    window_index: str | None = None,
-    session_name: str | None = None,
-    session_id: str | None = None,
+    window_id: str,
     socket_name: str | None = None,
 ) -> str:
-    """Kill (close) a tmux window.
+    """Kill (close) a tmux window. Requires exact window_id (e.g. '@3').
 
     Parameters
     ----------
-    window_id : str, optional
-        Window ID (e.g. '@1').
-    window_index : str, optional
-        Window index within the session.
-    session_name : str, optional
-        Session name.
-    session_id : str, optional
-        Session ID.
+    window_id : str
+        Window ID (e.g. '@1'). Required — no fallback resolution.
     socket_name : str, optional
         tmux socket name.
 
@@ -248,21 +240,21 @@ def kill_window(
     """
     from fastmcp.exceptions import ToolError
 
-    if all(v is None for v in (window_id, window_index, session_name, session_id)):
-        msg = (
-            "Refusing to kill without an explicit target. "
-            "Provide window_id, or window_index with a session identifier."
-        )
-        raise ToolError(msg)
+    caller = _get_caller_pane_id()
+    if caller is not None:
+        server = _get_server(socket_name=socket_name)
+        window = _resolve_window(server, window_id=window_id)
+        caller_pane = server.panes.get(pane_id=caller, default=None)
+        if caller_pane is not None and caller_pane.window_id == window_id:
+            msg = (
+                "Refusing to kill the window containing this MCP server's pane. "
+                "Use a manual tmux command if intended."
+            )
+            raise ToolError(msg)
+    else:
+        server = _get_server(socket_name=socket_name)
+        window = _resolve_window(server, window_id=window_id)
 
-    server = _get_server(socket_name=socket_name)
-    window = _resolve_window(
-        server,
-        window_id=window_id,
-        window_index=window_index,
-        session_name=session_name,
-        session_id=session_id,
-    )
     wid = window.window_id
     window.kill()
     return f"Window killed: {wid}"

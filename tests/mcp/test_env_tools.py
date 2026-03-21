@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import typing as t
 
+from libtmux.mcp.models import EnvironmentResult
 from libtmux.mcp.tools.env_tools import set_environment, show_environment
 
 if t.TYPE_CHECKING:
@@ -13,10 +13,10 @@ if t.TYPE_CHECKING:
 
 
 def test_show_environment(mcp_server: Server, mcp_session: Session) -> None:
-    """show_environment returns environment variables."""
+    """show_environment returns EnvironmentResult model."""
     result = show_environment(socket_name=mcp_server.socket_name)
-    data = json.loads(result)
-    assert isinstance(data, dict)
+    assert isinstance(result, EnvironmentResult)
+    assert isinstance(result.variables, dict)
 
 
 def test_set_environment(mcp_server: Server, mcp_session: Session) -> None:
@@ -38,8 +38,7 @@ def test_set_and_show_environment(mcp_server: Server, mcp_session: Session) -> N
         socket_name=mcp_server.socket_name,
     )
     result = show_environment(socket_name=mcp_server.socket_name)
-    data = json.loads(result)
-    assert data.get("MCP_ROUND_TRIP") == "hello"
+    assert result.variables.get("MCP_ROUND_TRIP") == "hello"
 
 
 def test_show_environment_session(mcp_server: Server, mcp_session: Session) -> None:
@@ -48,5 +47,5 @@ def test_show_environment_session(mcp_server: Server, mcp_session: Session) -> N
         session_name=mcp_session.session_name,
         socket_name=mcp_server.socket_name,
     )
-    data = json.loads(result)
-    assert isinstance(data, dict)
+    assert isinstance(result, EnvironmentResult)
+    assert isinstance(result.variables, dict)

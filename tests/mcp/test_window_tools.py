@@ -202,16 +202,17 @@ def test_list_panes_with_filters(
         assert len(result) >= expected_min_count
 
 
-def test_kill_window_requires_target(mcp_server: Server) -> None:
-    """kill_window refuses to kill without an explicit target."""
-    with pytest.raises(ToolError, match="Refusing to kill"):
-        kill_window(socket_name=mcp_server.socket_name)
+def test_kill_window_requires_window_id(mcp_server: Server) -> None:
+    """kill_window requires window_id as a positional argument."""
+    with pytest.raises(ToolError, match="missing 1 required positional argument"):
+        kill_window(socket_name=mcp_server.socket_name)  # type: ignore[call-arg]
 
 
 def test_kill_window(mcp_server: Server, mcp_session: Session) -> None:
     """kill_window kills a window."""
     new_window = mcp_session.new_window(window_name="mcp_kill_win")
     window_id = new_window.window_id
+    assert window_id is not None
     result = kill_window(
         window_id=window_id,
         socket_name=mcp_server.socket_name,

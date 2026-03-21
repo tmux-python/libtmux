@@ -200,24 +200,15 @@ def resize_pane(
 
 @handle_tool_errors
 def kill_pane(
-    pane_id: str | None = None,
-    session_name: str | None = None,
-    session_id: str | None = None,
-    window_id: str | None = None,
+    pane_id: str,
     socket_name: str | None = None,
 ) -> str:
-    """Kill (close) a tmux pane.
+    """Kill (close) a tmux pane. Requires exact pane_id (e.g. '%5').
 
     Parameters
     ----------
-    pane_id : str, optional
-        Pane ID (e.g. '%1').
-    session_name : str, optional
-        Session name for pane resolution.
-    session_id : str, optional
-        Session ID (e.g. '$1') for pane resolution.
-    window_id : str, optional
-        Window ID for pane resolution.
+    pane_id : str
+        Pane ID (e.g. '%1'). Required — no fallback resolution.
     socket_name : str, optional
         tmux socket name.
 
@@ -228,21 +219,16 @@ def kill_pane(
     """
     from fastmcp.exceptions import ToolError
 
-    if all(v is None for v in (pane_id, session_name, session_id, window_id)):
+    caller = _get_caller_pane_id()
+    if caller is not None and pane_id == caller:
         msg = (
-            "Refusing to kill without an explicit target. "
-            "Provide pane_id, or a window/session identifier."
+            "Refusing to kill the pane running this MCP server. "
+            "Use a manual tmux command if intended."
         )
         raise ToolError(msg)
 
     server = _get_server(socket_name=socket_name)
-    pane = _resolve_pane(
-        server,
-        pane_id=pane_id,
-        session_name=session_name,
-        session_id=session_id,
-        window_id=window_id,
-    )
+    pane = _resolve_pane(server, pane_id=pane_id)
     pid = pane.pane_id
     pane.kill()
     return f"Pane killed: {pid}"
@@ -373,6 +359,7 @@ def clear_pane(
 @handle_tool_errors
 def search_panes(
     pattern: str,
+    regex: bool = False,
     session_name: str | None = None,
     session_id: str | None = None,
     match_case: bool = False,
@@ -389,7 +376,11 @@ def search_panes(
     Parameters
     ----------
     pattern : str
-        Text or regex pattern to search for in pane contents.
+        Text to search for in pane contents. Treated as literal text by
+        default. Set ``regex=True`` to interpret as a regular expression.
+    regex : bool
+        Whether to interpret pattern as a regular expression. Default False
+        (literal text matching).
     session_name : str, optional
         Limit search to panes in this session.
     session_id : str, optional
@@ -410,9 +401,10 @@ def search_panes(
     """
     from fastmcp.exceptions import ToolError
 
+    search_pattern = pattern if regex else re.escape(pattern)
     flags = 0 if match_case else re.IGNORECASE
     try:
-        compiled = re.compile(pattern, flags)
+        compiled = re.compile(search_pattern, flags)
     except re.error as e:
         msg = f"Invalid regex pattern: {e}"
         raise ToolError(msg) from e
@@ -421,11 +413,11 @@ def search_panes(
 
     uses_scrollback = content_start is not None or content_end is not None
 
-    # Detect if pattern contains regex metacharacters that would break
-    # tmux's glob-based #{C:} filter. When regex is needed, skip the tmux
-    # fast path and capture all panes for Python-side matching.
+    # Detect if the effective pattern contains regex metacharacters that
+    # would break tmux's glob-based #{C:} filter. When regex is needed,
+    # skip the tmux fast path and capture all panes for Python-side matching.
     _REGEX_META = re.compile(r"[\\.*+?{}()\[\]|^$]")
-    is_plain_text = not _REGEX_META.search(pattern)
+    is_plain_text = not _REGEX_META.search(search_pattern)
 
     if not uses_scrollback and is_plain_text:
         # Phase 1: Fast filter via tmux's C-level window_pane_search().
@@ -500,6 +492,7 @@ def search_panes(
 @handle_tool_errors
 def wait_for_text(
     pattern: str,
+    regex: bool = False,
     pane_id: str | None = None,
     session_name: str | None = None,
     session_id: str | None = None,
@@ -520,7 +513,11 @@ def wait_for_text(
     Parameters
     ----------
     pattern : str
-        Text or regex pattern to wait for.
+        Text to wait for. Treated as literal text by default. Set
+        ``regex=True`` to interpret as a regular expression.
+    regex : bool
+        Whether to interpret pattern as a regular expression. Default False
+        (literal text matching).
     pane_id : str, optional
         Pane ID (e.g. '%1').
     session_name : str, optional
@@ -553,9 +550,10 @@ def wait_for_text(
 
     from libtmux.test.retry import retry_until
 
+    search_pattern = pattern if regex else re.escape(pattern)
     flags = 0 if match_case else re.IGNORECASE
     try:
-        compiled = re.compile(pattern, flags)
+        compiled = re.compile(search_pattern, flags)
     except re.error as e:
         msg = f"Invalid regex pattern: {e}"
         raise ToolError(msg) from e

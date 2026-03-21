@@ -126,10 +126,10 @@ def test_resize_pane_zoom_mutual_exclusivity(
         )
 
 
-def test_kill_pane_requires_target(mcp_server: Server) -> None:
-    """kill_pane refuses to kill without an explicit target."""
-    with pytest.raises(ToolError, match="Refusing to kill"):
-        kill_pane(socket_name=mcp_server.socket_name)
+def test_kill_pane_requires_pane_id(mcp_server: Server) -> None:
+    """kill_pane requires pane_id as a positional argument."""
+    with pytest.raises(ToolError, match="missing 1 required positional argument"):
+        kill_pane(socket_name=mcp_server.socket_name)  # type: ignore[call-arg]
 
 
 def test_kill_pane(mcp_server: Server, mcp_session: Session) -> None:
@@ -137,6 +137,7 @@ def test_kill_pane(mcp_server: Server, mcp_session: Session) -> None:
     window = mcp_session.active_window
     new_pane = window.split()
     pane_id = new_pane.pane_id
+    assert pane_id is not None
     result = kill_pane(
         pane_id=pane_id,
         socket_name=mcp_server.socket_name,
@@ -155,6 +156,7 @@ class SearchPanesFixture(t.NamedTuple):
     test_id: str
     command: str
     pattern: str
+    regex: bool
     match_case: bool
     scope_to_session: bool
     expected_match: bool
@@ -166,6 +168,7 @@ SEARCH_PANES_FIXTURES: list[SearchPanesFixture] = [
         test_id="simple_match",
         command="echo FINDME_unique_string_12345",
         pattern="FINDME_unique_string_12345",
+        regex=False,
         match_case=False,
         scope_to_session=False,
         expected_match=True,
@@ -175,6 +178,7 @@ SEARCH_PANES_FIXTURES: list[SearchPanesFixture] = [
         test_id="case_insensitive_match",
         command="echo UPPERCASE_findme_test",
         pattern="uppercase_findme_test",
+        regex=False,
         match_case=False,
         scope_to_session=False,
         expected_match=True,
@@ -184,6 +188,7 @@ SEARCH_PANES_FIXTURES: list[SearchPanesFixture] = [
         test_id="case_sensitive_no_match",
         command="echo CaseSensitiveTest",
         pattern="casesensitivetest",
+        regex=False,
         match_case=True,
         scope_to_session=False,
         expected_match=False,
@@ -193,6 +198,7 @@ SEARCH_PANES_FIXTURES: list[SearchPanesFixture] = [
         test_id="case_sensitive_match",
         command="echo CaseSensitiveExact",
         pattern="CaseSensitiveExact",
+        regex=False,
         match_case=True,
         scope_to_session=False,
         expected_match=True,
@@ -202,6 +208,7 @@ SEARCH_PANES_FIXTURES: list[SearchPanesFixture] = [
         test_id="regex_pattern",
         command="echo error_code_42_found",
         pattern=r"error_code_\d+_found",
+        regex=True,
         match_case=False,
         scope_to_session=False,
         expected_match=True,
@@ -211,6 +218,7 @@ SEARCH_PANES_FIXTURES: list[SearchPanesFixture] = [
         test_id="no_match",
         command="echo nothing_special",
         pattern="XYZZY_nonexistent_pattern_99999",
+        regex=False,
         match_case=False,
         scope_to_session=False,
         expected_match=False,
@@ -220,6 +228,7 @@ SEARCH_PANES_FIXTURES: list[SearchPanesFixture] = [
         test_id="scoped_to_session",
         command="echo session_scoped_marker",
         pattern="session_scoped_marker",
+        regex=False,
         match_case=False,
         scope_to_session=True,
         expected_match=True,
@@ -240,6 +249,7 @@ def test_search_panes(
     test_id: str,
     command: str,
     pattern: str,
+    regex: bool,
     match_case: bool,
     scope_to_session: bool,
     expected_match: bool,
@@ -257,6 +267,7 @@ def test_search_panes(
 
     kwargs: dict[str, t.Any] = {
         "pattern": pattern,
+        "regex": regex,
         "match_case": match_case,
         "socket_name": mcp_server.socket_name,
     }
@@ -338,11 +349,12 @@ def test_search_panes_includes_window_and_session_names(
     assert match.session_name == mcp_session.session_name
 
 
-def test_search_panes_invalid_regex(mcp_server: Server) -> None:
-    """search_panes raises ToolError on invalid regex."""
+def test_search_panes_invalid_regex(mcp_server: Server, mcp_session: Session) -> None:
+    """search_panes raises ToolError on invalid regex when regex=True."""
     with pytest.raises(ToolError, match="Invalid regex pattern"):
         search_panes(
             pattern="[invalid",
+            regex=True,
             socket_name=mcp_server.socket_name,
         )
 
@@ -484,10 +496,11 @@ def test_wait_for_text(
 
 
 def test_wait_for_text_invalid_regex(mcp_server: Server, mcp_pane: Pane) -> None:
-    """wait_for_text raises ToolError on invalid regex."""
+    """wait_for_text raises ToolError on invalid regex when regex=True."""
     with pytest.raises(ToolError, match="Invalid regex pattern"):
         wait_for_text(
             pattern="[invalid",
+            regex=True,
             pane_id=mcp_pane.pane_id,
             socket_name=mcp_server.socket_name,
         )

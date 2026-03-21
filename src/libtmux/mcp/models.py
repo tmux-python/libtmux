@@ -114,6 +114,12 @@ class OptionSetResult(BaseModel):
     status: str = Field(description="Operation status")
 
 
+class EnvironmentResult(BaseModel):
+    """Result of a show_environment call."""
+
+    variables: dict[str, str | bool] = Field(description="Environment variable mapping")
+
+
 class EnvironmentSetResult(BaseModel):
     """Result of a set_environment call."""
 

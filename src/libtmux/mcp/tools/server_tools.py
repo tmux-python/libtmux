@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import typing as t
 
 from libtmux.mcp._utils import (
@@ -114,6 +115,15 @@ def kill_server(socket_name: str | None = None) -> str:
     str
         Confirmation message.
     """
+    if os.environ.get("TMUX_PANE"):
+        from fastmcp.exceptions import ToolError
+
+        msg = (
+            "Refusing to kill the tmux server while this MCP server is running "
+            "inside it. Use a manual tmux command if intended."
+        )
+        raise ToolError(msg)
+
     server = _get_server(socket_name=socket_name)
     server.kill()
     _invalidate_server(socket_name=socket_name)
