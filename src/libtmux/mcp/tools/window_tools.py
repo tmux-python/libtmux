@@ -90,7 +90,7 @@ def split_window(
     session_id: str | None = None,
     window_id: str | None = None,
     window_index: str | None = None,
-    direction: str | None = None,
+    direction: t.Literal["above", "below", "left", "right"] | None = None,
     size: str | int | None = None,
     start_directory: str | None = None,
     shell: str | None = None,
@@ -111,7 +111,7 @@ def split_window(
     window_index : str, optional
         Window index within the session.
     direction : str, optional
-        Split direction: 'above', 'below', 'left', or 'right'.
+        Split direction.
     size : str or int, optional
         Size of the new pane. Use a string with '%%' suffix for
         percentage (e.g. '50%%') or an integer for lines/columns.
@@ -131,7 +131,7 @@ def split_window(
 
     pane_dir: PaneDirection | None = None
     if direction is not None:
-        pane_dir = _DIRECTION_MAP.get(direction.lower())
+        pane_dir = _DIRECTION_MAP.get(direction)
         if pane_dir is None:
             from fastmcp.exceptions import ToolError
 

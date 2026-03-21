@@ -61,7 +61,7 @@ def test_create_window_invalid_direction(
         create_window(
             session_name=mcp_session.session_name,
             window_name="bad_dir",
-            direction="sideways",
+            direction="sideways",  # type: ignore[arg-type]
             socket_name=mcp_server.socket_name,
         )
 

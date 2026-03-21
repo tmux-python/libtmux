@@ -68,7 +68,7 @@ def test_split_window_invalid_direction(
     with pytest.raises(ToolError, match="Invalid direction"):
         split_window(
             window_id=window.window_id,
-            direction="diagonal",
+            direction="diagonal",  # type: ignore[arg-type]
             socket_name=mcp_server.socket_name,
         )
 

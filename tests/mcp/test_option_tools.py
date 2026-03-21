@@ -33,7 +33,7 @@ def test_show_option_invalid_scope(mcp_server: Server, mcp_session: Session) -> 
     with pytest.raises(ToolError, match="Invalid scope"):
         show_option(
             option="base-index",
-            scope="global",
+            scope="global",  # type: ignore[arg-type]
             socket_name=mcp_server.socket_name,
         )
 

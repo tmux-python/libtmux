@@ -29,7 +29,7 @@ _SCOPE_MAP: dict[str, OptionScope] = {
 
 def _resolve_option_target(
     socket_name: str | None,
-    scope: str | None,
+    scope: t.Literal["server", "session", "window", "pane"] | None,
     target: str | None,
 ) -> tuple[OptionsMixin, OptionScope | None]:
     """Resolve the target object and scope for option operations."""
@@ -62,7 +62,7 @@ def _resolve_option_target(
 @handle_tool_errors
 def show_option(
     option: str,
-    scope: str | None = None,
+    scope: t.Literal["server", "session", "window", "pane"] | None = None,
     target: str | None = None,
     global_: bool = False,
     socket_name: str | None = None,
@@ -74,7 +74,7 @@ def show_option(
     option : str
         The tmux option name to query.
     scope : str, optional
-        Option scope: "server", "session", "window", or "pane".
+        Option scope.
     target : str, optional
         Target identifier. For session scope: session name
         (e.g. 'mysession'). For window scope: window ID (e.g. '@1').
@@ -98,7 +98,7 @@ def show_option(
 def set_option(
     option: str,
     value: str,
-    scope: str | None = None,
+    scope: t.Literal["server", "session", "window", "pane"] | None = None,
     target: str | None = None,
     global_: bool = False,
     socket_name: str | None = None,
@@ -112,7 +112,7 @@ def set_option(
     value : str
         The value to set.
     scope : str, optional
-        Option scope: "server", "session", "window", or "pane".
+        Option scope.
     target : str, optional
         Target identifier. For session scope: session name
         (e.g. 'mysession'). For window scope: window ID (e.g. '@1').

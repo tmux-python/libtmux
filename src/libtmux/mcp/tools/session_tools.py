@@ -64,7 +64,7 @@ def create_window(
     window_name: str | None = None,
     start_directory: str | None = None,
     attach: bool = False,
-    direction: str | None = None,
+    direction: t.Literal["before", "after"] | None = None,
     socket_name: str | None = None,
 ) -> str:
     """Create a new window in a tmux session.
@@ -82,7 +82,7 @@ def create_window(
     attach : bool, optional
         Whether to make the new window active.
     direction : str, optional
-        Window placement direction: "before" or "after".
+        Window placement direction.
     socket_name : str, optional
         tmux socket name. Defaults to LIBTMUX_SOCKET env var.
 
@@ -104,7 +104,7 @@ def create_window(
             "before": WindowDirection.Before,
             "after": WindowDirection.After,
         }
-        resolved = direction_map.get(direction.lower())
+        resolved = direction_map.get(direction)
         if resolved is None:
             from fastmcp.exceptions import ToolError
 
