@@ -6,6 +6,7 @@ import re
 import typing as t
 
 from libtmux.mcp._utils import (
+    _get_caller_pane_id,
     _get_server,
     _resolve_pane,
     _resolve_session,
@@ -445,6 +446,7 @@ def search_panes(
         matching_pane_ids = {p.pane_id for p in all_panes if p.pane_id is not None}
 
     # Phase 2: Capture matching panes and extract matched lines.
+    caller_pane_id = _get_caller_pane_id()
     matches: list[PaneContentMatch] = []
     for pane_id_str in matching_pane_ids:
         pane = server.panes.get(pane_id=pane_id_str, default=None)
@@ -469,6 +471,7 @@ def search_panes(
                 session_id=pane.session_id,
                 session_name=getattr(session_obj, "session_name", None),
                 matched_lines=matched_lines,
+                is_caller=(pane_id_str == caller_pane_id if caller_pane_id else None),
             )
         )
 

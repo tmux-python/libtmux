@@ -25,6 +25,12 @@ if t.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _get_caller_pane_id() -> str | None:
+    """Return the TMUX_PANE of the calling process, or None if not in tmux."""
+    return os.environ.get("TMUX_PANE")
+
+
 _server_cache: dict[tuple[str | None, str | None, str | None], Server] = {}
 _server_cache_lock = threading.Lock()
 
@@ -424,6 +430,7 @@ def _serialize_pane(pane: Pane) -> PaneInfo:
     from libtmux.mcp.models import PaneInfo
 
     assert pane.pane_id is not None
+    caller_pane_id = _get_caller_pane_id()
     return PaneInfo(
         pane_id=pane.pane_id,
         pane_index=getattr(pane, "pane_index", None),
@@ -436,6 +443,7 @@ def _serialize_pane(pane: Pane) -> PaneInfo:
         pane_active=getattr(pane, "pane_active", None),
         window_id=pane.window_id,
         session_id=pane.session_id,
+        is_caller=pane.pane_id == caller_pane_id if caller_pane_id else None,
     )
 
 

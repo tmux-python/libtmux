@@ -326,3 +326,72 @@ def test_search_panes_invalid_regex(mcp_server: Server) -> None:
             pattern="[invalid",
             socket_name=mcp_server.socket_name,
         )
+
+
+# ---------------------------------------------------------------------------
+# search_panes is_caller annotation tests
+# ---------------------------------------------------------------------------
+
+
+class SearchPanesCallerFixture(t.NamedTuple):
+    """Test fixture for search_panes is_caller annotation."""
+
+    test_id: str
+    tmux_pane_env: str | None
+    use_real_pane_id: bool
+    expected_is_caller: bool | None
+
+
+SEARCH_PANES_CALLER_FIXTURES: list[SearchPanesCallerFixture] = [
+    SearchPanesCallerFixture(
+        test_id="caller_pane_annotated",
+        tmux_pane_env=None,
+        use_real_pane_id=True,
+        expected_is_caller=True,
+    ),
+    SearchPanesCallerFixture(
+        test_id="outside_tmux_no_annotation",
+        tmux_pane_env=None,
+        use_real_pane_id=False,
+        expected_is_caller=None,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    SearchPanesCallerFixture._fields,
+    SEARCH_PANES_CALLER_FIXTURES,
+    ids=[f.test_id for f in SEARCH_PANES_CALLER_FIXTURES],
+)
+def test_search_panes_is_caller(
+    mcp_server: Server,
+    mcp_pane: Pane,
+    monkeypatch: pytest.MonkeyPatch,
+    test_id: str,
+    tmux_pane_env: str | None,
+    use_real_pane_id: bool,
+    expected_is_caller: bool | None,
+) -> None:
+    """search_panes annotates results with is_caller based on TMUX_PANE."""
+    marker = f"IS_CALLER_TEST_{test_id}_{id(mcp_pane)}"
+    mcp_pane.send_keys(f"echo {marker}", enter=True)
+    retry_until(
+        lambda: marker in "\n".join(mcp_pane.capture_pane()),
+        2,
+        raises=True,
+    )
+
+    if use_real_pane_id:
+        monkeypatch.setenv("TMUX_PANE", mcp_pane.pane_id or "")
+    elif tmux_pane_env is not None:
+        monkeypatch.setenv("TMUX_PANE", tmux_pane_env)
+    else:
+        monkeypatch.delenv("TMUX_PANE", raising=False)
+
+    result = search_panes(
+        pattern=marker,
+        socket_name=mcp_server.socket_name,
+    )
+    match = next((r for r in result if r.pane_id == mcp_pane.pane_id), None)
+    assert match is not None
+    assert match.is_caller is expected_is_caller

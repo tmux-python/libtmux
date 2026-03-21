@@ -56,6 +56,13 @@ class PaneInfo(BaseModel):
     )
     window_id: str | None = Field(default=None, description="Parent window ID")
     session_id: str | None = Field(default=None, description="Parent session ID")
+    is_caller: bool | None = Field(
+        default=None,
+        description=(
+            "True if this pane is the MCP caller's own pane "
+            "(detected via TMUX_PANE env var)"
+        ),
+    )
 
 
 class PaneContentMatch(BaseModel):
@@ -73,6 +80,13 @@ class PaneContentMatch(BaseModel):
     session_id: str | None = Field(default=None, description="Parent session ID")
     session_name: str | None = Field(default=None, description="Parent session name")
     matched_lines: list[str] = Field(description="Lines containing the match")
+    is_caller: bool | None = Field(
+        default=None,
+        description=(
+            "True if this pane is the MCP caller's own pane "
+            "(detected via TMUX_PANE env var)"
+        ),
+    )
 
 
 class ServerInfo(BaseModel):

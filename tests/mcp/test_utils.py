@@ -10,6 +10,7 @@ from fastmcp.exceptions import ToolError
 from libtmux import exc
 from libtmux.mcp._utils import (
     _apply_filters,
+    _get_caller_pane_id,
     _get_server,
     _invalidate_server,
     _resolve_pane,
@@ -293,3 +294,76 @@ def test_apply_filters(
             assert len(result) == expected_count
         else:
             assert len(result) >= 1
+
+
+# ---------------------------------------------------------------------------
+# _get_caller_pane_id / _serialize_pane is_caller tests
+# ---------------------------------------------------------------------------
+
+
+def test_get_caller_pane_id_returns_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_get_caller_pane_id returns TMUX_PANE when set."""
+    monkeypatch.setenv("TMUX_PANE", "%42")
+    assert _get_caller_pane_id() == "%42"
+
+
+def test_get_caller_pane_id_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_get_caller_pane_id returns None outside tmux."""
+    monkeypatch.delenv("TMUX_PANE", raising=False)
+    assert _get_caller_pane_id() is None
+
+
+class SerializePaneCallerFixture(t.NamedTuple):
+    """Test fixture for _serialize_pane is_caller annotation."""
+
+    test_id: str
+    tmux_pane_env: str | None
+    use_real_pane_id: bool
+    expected_is_caller: bool | None
+
+
+SERIALIZE_PANE_CALLER_FIXTURES: list[SerializePaneCallerFixture] = [
+    SerializePaneCallerFixture(
+        test_id="matching_pane_id",
+        tmux_pane_env=None,
+        use_real_pane_id=True,
+        expected_is_caller=True,
+    ),
+    SerializePaneCallerFixture(
+        test_id="non_matching_pane_id",
+        tmux_pane_env="%99999",
+        use_real_pane_id=False,
+        expected_is_caller=False,
+    ),
+    SerializePaneCallerFixture(
+        test_id="unset_outside_tmux",
+        tmux_pane_env=None,
+        use_real_pane_id=False,
+        expected_is_caller=None,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    SerializePaneCallerFixture._fields,
+    SERIALIZE_PANE_CALLER_FIXTURES,
+    ids=[f.test_id for f in SERIALIZE_PANE_CALLER_FIXTURES],
+)
+def test_serialize_pane_is_caller(
+    mcp_pane: Pane,
+    monkeypatch: pytest.MonkeyPatch,
+    test_id: str,
+    tmux_pane_env: str | None,
+    use_real_pane_id: bool,
+    expected_is_caller: bool | None,
+) -> None:
+    """_serialize_pane sets is_caller based on TMUX_PANE env var."""
+    if use_real_pane_id:
+        monkeypatch.setenv("TMUX_PANE", mcp_pane.pane_id or "")
+    elif tmux_pane_env is not None:
+        monkeypatch.setenv("TMUX_PANE", tmux_pane_env)
+    else:
+        monkeypatch.delenv("TMUX_PANE", raising=False)
+
+    data = _serialize_pane(mcp_pane)
+    assert data.is_caller is expected_is_caller
