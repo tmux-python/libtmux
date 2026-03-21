@@ -125,17 +125,6 @@ def split_window(
     """
     server = _get_server(socket_name=socket_name)
 
-    if pane_id is not None:
-        pane = _resolve_pane(server, pane_id=pane_id)
-        window = pane.window
-    else:
-        window = _resolve_window(
-            server,
-            window_id=window_id,
-            window_index=window_index,
-            session_name=session_name,
-        )
-
     pane_dir: PaneDirection | None = None
     if direction is not None:
         pane_dir = _DIRECTION_MAP.get(direction.lower())
@@ -146,12 +135,27 @@ def split_window(
             msg = f"Invalid direction: {direction!r}. Valid: {valid}"
             raise ToolError(msg)
 
-    new_pane = window.split(
-        direction=pane_dir,
-        size=size,
-        start_directory=start_directory,
-        shell=shell,
-    )
+    if pane_id is not None:
+        pane = _resolve_pane(server, pane_id=pane_id)
+        new_pane = pane.split(
+            direction=pane_dir,
+            size=size,
+            start_directory=start_directory,
+            shell=shell,
+        )
+    else:
+        window = _resolve_window(
+            server,
+            window_id=window_id,
+            window_index=window_index,
+            session_name=session_name,
+        )
+        new_pane = window.split(
+            direction=pane_dir,
+            size=size,
+            start_directory=start_directory,
+            shell=shell,
+        )
     return json.dumps(_serialize_pane(new_pane))
 
 
