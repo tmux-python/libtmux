@@ -10,6 +10,8 @@ import os
 from fastmcp import FastMCP
 
 from libtmux.__about__ import __version__
+from libtmux.mcp._utils import TAG_MUTATING, VALID_SAFETY_LEVELS
+from libtmux.mcp.middleware import SafetyMiddleware
 
 _BASE_INSTRUCTIONS = (
     "libtmux MCP server for programmatic tmux control. "
@@ -62,10 +64,15 @@ def _build_instructions() -> str:
     return _BASE_INSTRUCTIONS + context
 
 
+_safety_level = os.environ.get("LIBTMUX_SAFETY", TAG_MUTATING)
+if _safety_level not in VALID_SAFETY_LEVELS:
+    _safety_level = TAG_MUTATING
+
 mcp = FastMCP(
     name="libtmux",
     version=__version__,
     instructions=_build_instructions(),
+    middleware=[SafetyMiddleware(max_tier=_safety_level)],
 )
 
 
