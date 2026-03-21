@@ -10,6 +10,7 @@ import functools
 import json
 import logging
 import os
+import threading
 import typing as t
 
 from libtmux import exc
@@ -24,6 +25,7 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _server_cache: dict[tuple[str | None, str | None, str | None], Server] = {}
+_server_cache_lock = threading.Lock()
 
 
 def _get_server(
@@ -52,22 +54,23 @@ def _get_server(
     tmux_bin = os.environ.get("LIBTMUX_TMUX_BIN")
 
     cache_key = (socket_name, socket_path, tmux_bin)
-    if cache_key in _server_cache:
-        cached = _server_cache[cache_key]
-        if not cached.is_alive():
-            del _server_cache[cache_key]
+    with _server_cache_lock:
+        if cache_key in _server_cache:
+            cached = _server_cache[cache_key]
+            if not cached.is_alive():
+                del _server_cache[cache_key]
 
-    if cache_key not in _server_cache:
-        kwargs: dict[str, t.Any] = {}
-        if socket_name is not None:
-            kwargs["socket_name"] = socket_name
-        if socket_path is not None:
-            kwargs["socket_path"] = socket_path
-        if tmux_bin is not None:
-            kwargs["tmux_bin"] = tmux_bin
-        _server_cache[cache_key] = Server(**kwargs)
+        if cache_key not in _server_cache:
+            kwargs: dict[str, t.Any] = {}
+            if socket_name is not None:
+                kwargs["socket_name"] = socket_name
+            if socket_path is not None:
+                kwargs["socket_path"] = socket_path
+            if tmux_bin is not None:
+                kwargs["tmux_bin"] = tmux_bin
+            _server_cache[cache_key] = Server(**kwargs)
 
-    return _server_cache[cache_key]
+        return _server_cache[cache_key]
 
 
 def _invalidate_server(
@@ -83,11 +86,19 @@ def _invalidate_server(
     socket_path : str, optional
         tmux socket path used in the cache key.
     """
-    keys_to_remove = [
-        key for key in _server_cache if key[0] == socket_name and key[1] == socket_path
-    ]
-    for key in keys_to_remove:
-        del _server_cache[key]
+    if socket_name is None:
+        socket_name = os.environ.get("LIBTMUX_SOCKET")
+    if socket_path is None:
+        socket_path = os.environ.get("LIBTMUX_SOCKET_PATH")
+
+    with _server_cache_lock:
+        keys_to_remove = [
+            key
+            for key in _server_cache
+            if key[0] == socket_name and key[1] == socket_path
+        ]
+        for key in keys_to_remove:
+            del _server_cache[key]
 
 
 def _resolve_session(
