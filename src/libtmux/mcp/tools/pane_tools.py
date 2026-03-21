@@ -496,7 +496,7 @@ def register(mcp: FastMCP) -> None:
         title="Send Keys",
         annotations={
             "readOnlyHint": False,
-            "destructiveHint": True,
+            "destructiveHint": False,
             "idempotentHint": False,
             "openWorldHint": False,
         },
