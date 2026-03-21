@@ -7,14 +7,19 @@ from __future__ import annotations
 
 from fastmcp import FastMCP
 
+from libtmux.__about__ import __version__
+
 mcp = FastMCP(
     name="libtmux",
+    version=__version__,
     instructions=(
         "libtmux MCP server for programmatic tmux control. "
+        "tmux hierarchy: Server > Session > Window > Pane. "
         "Use pane_id (e.g. '%1') as the preferred targeting method - "
         "it is globally unique within a tmux server. "
         "Use send_keys to execute commands and capture_pane to read output. "
-        "All tools accept an optional socket_name parameter for multi-server support."
+        "All tools accept an optional socket_name parameter for multi-server "
+        "support (defaults to LIBTMUX_SOCKET env var)."
     ),
 )
 
