@@ -129,11 +129,12 @@ def get_server_info(socket_name: str | None = None) -> str:
         JSON object with server info.
     """
     server = _get_server(socket_name=socket_name)
+    alive = server.is_alive()
     info: dict[str, t.Any] = {
-        "is_alive": server.is_alive(),
+        "is_alive": alive,
         "socket_name": server.socket_name,
         "socket_path": str(server.socket_path) if server.socket_path else None,
-        "session_count": len(server.sessions) if server.is_alive() else 0,
+        "session_count": len(server.sessions) if alive else 0,
     }
     try:
         result = server.cmd("display-message", "-p", "#{version}")
