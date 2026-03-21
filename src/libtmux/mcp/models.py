@@ -58,6 +58,23 @@ class PaneInfo(BaseModel):
     session_id: str | None = Field(default=None, description="Parent session ID")
 
 
+class PaneContentMatch(BaseModel):
+    """A pane whose captured content matched a search pattern."""
+
+    pane_id: str = Field(description="Pane ID (e.g. '%1')")
+    pane_current_command: str | None = Field(
+        default=None, description="Running command"
+    )
+    pane_current_path: str | None = Field(
+        default=None, description="Current working directory"
+    )
+    window_id: str | None = Field(default=None, description="Parent window ID")
+    window_name: str | None = Field(default=None, description="Parent window name")
+    session_id: str | None = Field(default=None, description="Parent session ID")
+    session_name: str | None = Field(default=None, description="Parent session name")
+    matched_lines: list[str] = Field(description="Lines containing the match")
+
+
 class ServerInfo(BaseModel):
     """Serialized tmux server info."""
 
