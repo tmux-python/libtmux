@@ -67,12 +67,24 @@ def test_set_pane_title(mcp_server: Server, mcp_pane: Pane) -> None:
 
 
 def test_clear_pane(mcp_server: Server, mcp_pane: Pane) -> None:
-    """clear_pane clears pane content."""
+    """clear_pane resets terminal and clears scrollback history."""
+    marker = "CLEAR_PANE_MARKER_xyz789"
+    mcp_pane.send_keys(f"echo {marker}", enter=True)
+    retry_until(
+        lambda: marker in "\n".join(mcp_pane.capture_pane()),
+        2,
+        raises=True,
+    )
+
     result = clear_pane(
         pane_id=mcp_pane.pane_id,
         socket_name=mcp_server.socket_name,
     )
     assert "cleared" in result.lower()
+
+    # After reset + clear-history, the marker should be gone from scrollback
+    scrollback = "\n".join(mcp_pane.capture_pane(start=-200, end=-1))
+    assert marker not in scrollback
 
 
 def test_resize_pane_dimensions(mcp_server: Server, mcp_pane: Pane) -> None:
