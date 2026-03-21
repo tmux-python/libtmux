@@ -20,7 +20,7 @@ from libtmux.mcp._utils import (
     _serialize_pane,
     handle_tool_errors,
 )
-from libtmux.mcp.models import PaneContentMatch, PaneInfo
+from libtmux.mcp.models import PaneContentMatch, PaneInfo, WaitForTextResult
 
 if t.TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -497,6 +497,107 @@ def search_panes(
     return matches
 
 
+@handle_tool_errors
+def wait_for_text(
+    pattern: str,
+    pane_id: str | None = None,
+    session_name: str | None = None,
+    session_id: str | None = None,
+    window_id: str | None = None,
+    timeout: float = 8.0,
+    interval: float = 0.05,
+    match_case: bool = False,
+    content_start: int | None = None,
+    content_end: int | None = None,
+    socket_name: str | None = None,
+) -> WaitForTextResult:
+    """Wait for text to appear in a tmux pane.
+
+    Polls the pane content at regular intervals until the pattern is found
+    or the timeout is reached. Use this instead of polling capture_pane
+    manually — it saves agent tokens and turns.
+
+    Parameters
+    ----------
+    pattern : str
+        Text or regex pattern to wait for.
+    pane_id : str, optional
+        Pane ID (e.g. '%1').
+    session_name : str, optional
+        Session name for pane resolution.
+    session_id : str, optional
+        Session ID (e.g. '$1') for pane resolution.
+    window_id : str, optional
+        Window ID for pane resolution.
+    timeout : float
+        Maximum seconds to wait. Default 8.0.
+    interval : float
+        Seconds between polls. Default 0.05 (50ms).
+    match_case : bool
+        Whether to match case. Default False (case-insensitive).
+    content_start : int, optional
+        Start line for capture. Negative values reach into scrollback.
+    content_end : int, optional
+        End line for capture.
+    socket_name : str, optional
+        tmux socket name.
+
+    Returns
+    -------
+    WaitForTextResult
+        Result with found status, matched lines, and timing info.
+    """
+    import time
+
+    from fastmcp.exceptions import ToolError
+
+    from libtmux.test.retry import retry_until
+
+    flags = 0 if match_case else re.IGNORECASE
+    try:
+        compiled = re.compile(pattern, flags)
+    except re.error as e:
+        msg = f"Invalid regex pattern: {e}"
+        raise ToolError(msg) from e
+
+    server = _get_server(socket_name=socket_name)
+    pane = _resolve_pane(
+        server,
+        pane_id=pane_id,
+        session_name=session_name,
+        session_id=session_id,
+        window_id=window_id,
+    )
+
+    assert pane.pane_id is not None
+    matched_lines: list[str] = []
+    start_time = time.monotonic()
+
+    def _check() -> bool:
+        lines = pane.capture_pane(start=content_start, end=content_end)
+        hits = [line for line in lines if compiled.search(line)]
+        if hits:
+            matched_lines.extend(hits)
+            return True
+        return False
+
+    found = retry_until(
+        _check,
+        seconds=timeout,
+        interval=interval,
+        raises=False,
+    )
+
+    elapsed = time.monotonic() - start_time
+    return WaitForTextResult(
+        found=found,
+        matched_lines=matched_lines,
+        pane_id=pane.pane_id,
+        elapsed_seconds=round(elapsed, 3),
+        timed_out=not found,
+    )
+
+
 def register(mcp: FastMCP) -> None:
     """Register pane-level tools with the MCP instance."""
     mcp.tool(title="Send Keys", annotations=ANNOTATIONS_CREATE, tags={TAG_MUTATING})(
@@ -524,4 +625,7 @@ def register(mcp: FastMCP) -> None:
     )
     mcp.tool(title="Search Panes", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
         search_panes
+    )
+    mcp.tool(title="Wait For Text", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        wait_for_text
     )

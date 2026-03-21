@@ -120,3 +120,16 @@ class EnvironmentSetResult(BaseModel):
     name: str = Field(description="Variable name")
     value: str = Field(description="Value that was set")
     status: str = Field(description="Operation status")
+
+
+class WaitForTextResult(BaseModel):
+    """Result of waiting for text to appear in a pane."""
+
+    found: bool = Field(description="Whether the pattern was found before timeout")
+    matched_lines: list[str] = Field(
+        default_factory=list,
+        description="Lines matching the pattern (empty if not found)",
+    )
+    pane_id: str = Field(description="Pane ID that was polled")
+    elapsed_seconds: float = Field(description="Time spent waiting in seconds")
+    timed_out: bool = Field(description="Whether the timeout was reached")

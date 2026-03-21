@@ -7,7 +7,7 @@ import typing as t
 import pytest
 from fastmcp.exceptions import ToolError
 
-from libtmux.mcp.models import PaneContentMatch
+from libtmux.mcp.models import PaneContentMatch, WaitForTextResult
 from libtmux.mcp.tools.pane_tools import (
     capture_pane,
     clear_pane,
@@ -17,6 +17,7 @@ from libtmux.mcp.tools.pane_tools import (
     search_panes,
     send_keys,
     set_pane_title,
+    wait_for_text,
 )
 from libtmux.test.retry import retry_until
 
@@ -413,3 +414,80 @@ def test_search_panes_is_caller(
     match = next((r for r in result if r.pane_id == mcp_pane.pane_id), None)
     assert match is not None
     assert match.is_caller is expected_is_caller
+
+
+# ---------------------------------------------------------------------------
+# wait_for_text tests
+# ---------------------------------------------------------------------------
+
+
+class WaitForTextFixture(t.NamedTuple):
+    """Test fixture for wait_for_text."""
+
+    test_id: str
+    command: str | None
+    pattern: str
+    timeout: float
+    expected_found: bool
+
+
+WAIT_FOR_TEXT_FIXTURES: list[WaitForTextFixture] = [
+    WaitForTextFixture(
+        test_id="text_found",
+        command="echo WAIT_MARKER_abc123",
+        pattern="WAIT_MARKER_abc123",
+        timeout=2.0,
+        expected_found=True,
+    ),
+    WaitForTextFixture(
+        test_id="timeout_not_found",
+        command=None,
+        pattern="NEVER_EXISTS_xyz999",
+        timeout=0.3,
+        expected_found=False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    WaitForTextFixture._fields,
+    WAIT_FOR_TEXT_FIXTURES,
+    ids=[f.test_id for f in WAIT_FOR_TEXT_FIXTURES],
+)
+def test_wait_for_text(
+    mcp_server: Server,
+    mcp_pane: Pane,
+    test_id: str,
+    command: str | None,
+    pattern: str,
+    timeout: float,
+    expected_found: bool,
+) -> None:
+    """wait_for_text polls pane content for a pattern."""
+    if command is not None:
+        mcp_pane.send_keys(command, enter=True)
+
+    result = wait_for_text(
+        pattern=pattern,
+        pane_id=mcp_pane.pane_id,
+        timeout=timeout,
+        socket_name=mcp_server.socket_name,
+    )
+    assert isinstance(result, WaitForTextResult)
+    assert result.found is expected_found
+    assert result.timed_out is (not expected_found)
+    assert result.pane_id == mcp_pane.pane_id
+    assert result.elapsed_seconds >= 0
+
+    if expected_found:
+        assert len(result.matched_lines) >= 1
+
+
+def test_wait_for_text_invalid_regex(mcp_server: Server, mcp_pane: Pane) -> None:
+    """wait_for_text raises ToolError on invalid regex."""
+    with pytest.raises(ToolError, match="Invalid regex pattern"):
+        wait_for_text(
+            pattern="[invalid",
+            pane_id=mcp_pane.pane_id,
+            socket_name=mcp_server.socket_name,
+        )
