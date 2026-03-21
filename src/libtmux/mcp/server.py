@@ -30,38 +30,56 @@ _BASE_INSTRUCTIONS = (
 )
 
 
-def _build_instructions() -> str:
-    """Build server instructions, appending agent context if inside tmux.
+def _build_instructions(safety_level: str = TAG_MUTATING) -> str:
+    """Build server instructions with agent context and safety level.
 
     When the MCP server process runs inside a tmux pane, ``TMUX_PANE`` and
     ``TMUX`` environment variables are available. This function appends that
     context so the LLM knows which pane is its own without extra tool calls.
+
+    Parameters
+    ----------
+    safety_level : str
+        Active safety tier (readonly, mutating, or destructive).
 
     Returns
     -------
     str
         Server instructions string, optionally with agent tmux context.
     """
+    parts: list[str] = [_BASE_INSTRUCTIONS]
+
+    # Safety tier context
+    parts.append(
+        f"\n\nSafety level: {safety_level}. "
+        "Available tiers: 'readonly' (read operations only), "
+        "'mutating' (default, read + write + send_keys), "
+        "'destructive' (all operations including kill commands). "
+        "Set via LIBTMUX_SAFETY env var."
+    )
+
+    # Agent tmux context
     tmux_pane = os.environ.get("TMUX_PANE")
-    if not tmux_pane:
-        return _BASE_INSTRUCTIONS
+    if tmux_pane:
+        # Parse TMUX env: "/tmp/tmux-1000/default,48188,10"
+        tmux_env = os.environ.get("TMUX", "")
+        env_parts = tmux_env.split(",") if tmux_env else []
+        socket_path = env_parts[0] if env_parts else None
+        socket_name = socket_path.rsplit("/", 1)[-1] if socket_path else None
 
-    # Parse TMUX env: "/tmp/tmux-1000/default,48188,10"
-    tmux_env = os.environ.get("TMUX", "")
-    parts = tmux_env.split(",") if tmux_env else []
-    socket_path = parts[0] if parts else None
-    socket_name = socket_path.rsplit("/", 1)[-1] if socket_path else None
+        context = (
+            f"\n\nAgent context: This MCP server is running inside "
+            f"tmux pane {tmux_pane}"
+        )
+        if socket_name:
+            context += f" (socket: {socket_name})"
+        context += (
+            ". Tool results annotate the caller's own pane with "
+            "is_caller=true. Use this to distinguish your own pane from others."
+        )
+        parts.append(context)
 
-    context = (
-        f"\n\nAgent context: This MCP server is running inside tmux pane {tmux_pane}"
-    )
-    if socket_name:
-        context += f" (socket: {socket_name})"
-    context += (
-        ". Tool results annotate the caller's own pane with "
-        "is_caller=true. Use this to distinguish your own pane from others."
-    )
-    return _BASE_INSTRUCTIONS + context
+    return "".join(parts)
 
 
 _safety_level = os.environ.get("LIBTMUX_SAFETY", TAG_MUTATING)
@@ -71,7 +89,7 @@ if _safety_level not in VALID_SAFETY_LEVELS:
 mcp = FastMCP(
     name="libtmux",
     version=__version__,
-    instructions=_build_instructions(),
+    instructions=_build_instructions(safety_level=_safety_level),
     middleware=[SafetyMiddleware(max_tier=_safety_level)],
 )
 
