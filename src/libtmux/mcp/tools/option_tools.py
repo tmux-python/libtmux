@@ -43,6 +43,12 @@ def _resolve_option_target(
         msg = f"Invalid scope: {scope!r}. Valid: {valid}"
         raise ToolError(msg)
 
+    if target is not None and opt_scope is None:
+        from fastmcp.exceptions import ToolError
+
+        msg = "scope is required when target is specified"
+        raise ToolError(msg)
+
     if target is not None and opt_scope is not None:
         if opt_scope == OptionScope.Session:
             return _resolve_session(server, session_name=target), opt_scope

@@ -38,6 +38,18 @@ def test_show_option_invalid_scope(mcp_server: Server, mcp_session: Session) -> 
         )
 
 
+def test_show_option_target_without_scope(
+    mcp_server: Server, mcp_session: Session
+) -> None:
+    """show_option raises ToolError when target is given without scope."""
+    with pytest.raises(ToolError, match="scope is required"):
+        show_option(
+            option="base-index",
+            target="some_session",
+            socket_name=mcp_server.socket_name,
+        )
+
+
 def test_set_option(mcp_server: Server, mcp_session: Session) -> None:
     """set_option sets a tmux option."""
     result = set_option(
