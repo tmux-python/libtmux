@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import typing as t
 
+from fastmcp.exceptions import ResourceError
+
 from libtmux.mcp._utils import (
     _get_server,
     _serialize_pane,
@@ -50,7 +52,7 @@ def register(mcp: FastMCP) -> None:
         session = server.sessions.get(session_name=session_name, default=None)
         if session is None:
             msg = f"Session not found: {session_name}"
-            raise ValueError(msg)
+            raise ResourceError(msg)
 
         result = _serialize_session(session)
         result["windows"] = [_serialize_window(w) for w in session.windows]
@@ -74,7 +76,7 @@ def register(mcp: FastMCP) -> None:
         session = server.sessions.get(session_name=session_name, default=None)
         if session is None:
             msg = f"Session not found: {session_name}"
-            raise ValueError(msg)
+            raise ResourceError(msg)
 
         windows = [_serialize_window(w) for w in session.windows]
         return json.dumps(windows, indent=2)
@@ -99,12 +101,12 @@ def register(mcp: FastMCP) -> None:
         session = server.sessions.get(session_name=session_name, default=None)
         if session is None:
             msg = f"Session not found: {session_name}"
-            raise ValueError(msg)
+            raise ResourceError(msg)
 
         window = session.windows.get(window_index=window_index, default=None)
         if window is None:
             msg = f"Window not found: index {window_index}"
-            raise ValueError(msg)
+            raise ResourceError(msg)
 
         result = _serialize_window(window)
         result["panes"] = [_serialize_pane(p) for p in window.panes]
@@ -128,7 +130,7 @@ def register(mcp: FastMCP) -> None:
         pane = server.panes.get(pane_id=pane_id, default=None)
         if pane is None:
             msg = f"Pane not found: {pane_id}"
-            raise ValueError(msg)
+            raise ResourceError(msg)
 
         return json.dumps(_serialize_pane(pane), indent=2)
 
@@ -150,7 +152,7 @@ def register(mcp: FastMCP) -> None:
         pane = server.panes.get(pane_id=pane_id, default=None)
         if pane is None:
             msg = f"Pane not found: {pane_id}"
-            raise ValueError(msg)
+            raise ResourceError(msg)
 
         lines = pane.capture_pane()
         return "\n".join(lines)
