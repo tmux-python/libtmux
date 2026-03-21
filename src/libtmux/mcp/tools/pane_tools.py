@@ -448,7 +448,7 @@ def search_panes(
         cmd_args.extend(["-f", tmux_filter, "-F", "#{pane_id}"])
 
         result = server.cmd(*cmd_args)
-        matching_pane_ids = set(result.stdout) if result.stdout else set()
+        matching_pane_ids = list(dict.fromkeys(result.stdout)) if result.stdout else []
     else:
         # Regex pattern or scrollback requested — fall back to capturing
         # all panes and matching in Python.
@@ -459,7 +459,9 @@ def search_panes(
             all_panes = session.panes
         else:
             all_panes = server.panes
-        matching_pane_ids = {p.pane_id for p in all_panes if p.pane_id is not None}
+        matching_pane_ids = list(
+            dict.fromkeys(p.pane_id for p in all_panes if p.pane_id is not None)
+        )
 
     # Phase 2: Capture matching panes and extract matched lines.
     caller_pane_id = _get_caller_pane_id()
@@ -491,6 +493,7 @@ def search_panes(
             )
         )
 
+    matches.sort(key=lambda m: m.pane_id)
     return matches
 
 
