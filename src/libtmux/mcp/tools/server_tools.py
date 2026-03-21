@@ -146,9 +146,29 @@ def get_server_info(socket_name: str | None = None) -> str:
 
 def register(mcp: FastMCP) -> None:
     """Register server-level tools with the MCP instance."""
-    mcp.tool(annotations={"readOnlyHint": True})(list_sessions)
-    mcp.tool(annotations={"destructiveHint": False, "idempotentHint": False})(
-        create_session
-    )
-    mcp.tool(annotations={"destructiveHint": True})(kill_server)
-    mcp.tool(annotations={"readOnlyHint": True})(get_server_info)
+    _RO = {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    mcp.tool(title="List Sessions", annotations=_RO)(list_sessions)
+    mcp.tool(
+        title="Create Session",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": False,
+        },
+    )(create_session)
+    mcp.tool(
+        title="Kill Server",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )(kill_server)
+    mcp.tool(title="Get Server Info", annotations=_RO)(get_server_info)

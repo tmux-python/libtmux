@@ -178,7 +178,35 @@ def kill_session(
 
 def register(mcp: FastMCP) -> None:
     """Register session-level tools with the MCP instance."""
-    mcp.tool(annotations={"readOnlyHint": True})(list_windows)
-    mcp.tool(annotations={"destructiveHint": False})(create_window)
-    mcp.tool(annotations={"destructiveHint": False})(rename_session)
-    mcp.tool(annotations={"destructiveHint": True})(kill_session)
+    _RO = {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    _IDEM = {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    mcp.tool(title="List Windows", annotations=_RO)(list_windows)
+    mcp.tool(
+        title="Create Window",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": False,
+        },
+    )(create_window)
+    mcp.tool(title="Rename Session", annotations=_IDEM)(rename_session)
+    mcp.tool(
+        title="Kill Session",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )(kill_session)

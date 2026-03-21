@@ -97,5 +97,19 @@ def set_environment(
 
 def register(mcp: FastMCP) -> None:
     """Register environment tools with the MCP instance."""
-    mcp.tool(annotations={"readOnlyHint": True})(show_environment)
-    mcp.tool(annotations={"destructiveHint": False})(set_environment)
+    _RO = {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    mcp.tool(title="Show Environment", annotations=_RO)(show_environment)
+    mcp.tool(
+        title="Set Environment",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )(set_environment)

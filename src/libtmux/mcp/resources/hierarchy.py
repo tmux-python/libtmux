@@ -21,7 +21,7 @@ if t.TYPE_CHECKING:
 def register(mcp: FastMCP) -> None:
     """Register hierarchy resources with the FastMCP instance."""
 
-    @mcp.resource("tmux://sessions")
+    @mcp.resource("tmux://sessions", title="All Sessions")
     def get_sessions() -> str:
         """List all tmux sessions.
 
@@ -34,7 +34,7 @@ def register(mcp: FastMCP) -> None:
         sessions = [_serialize_session(s) for s in server.sessions]
         return json.dumps(sessions, indent=2)
 
-    @mcp.resource("tmux://sessions/{session_name}")
+    @mcp.resource("tmux://sessions/{session_name}", title="Session Detail")
     def get_session(session_name: str) -> str:
         """Get details of a specific tmux session.
 
@@ -58,7 +58,7 @@ def register(mcp: FastMCP) -> None:
         result["windows"] = [_serialize_window(w) for w in session.windows]
         return json.dumps(result, indent=2)
 
-    @mcp.resource("tmux://sessions/{session_name}/windows")
+    @mcp.resource("tmux://sessions/{session_name}/windows", title="Session Windows")
     def get_session_windows(session_name: str) -> str:
         """List all windows in a tmux session.
 
@@ -81,7 +81,10 @@ def register(mcp: FastMCP) -> None:
         windows = [_serialize_window(w) for w in session.windows]
         return json.dumps(windows, indent=2)
 
-    @mcp.resource("tmux://sessions/{session_name}/windows/{window_index}")
+    @mcp.resource(
+        "tmux://sessions/{session_name}/windows/{window_index}",
+        title="Window Detail",
+    )
     def get_window(session_name: str, window_index: str) -> str:
         """Get details of a specific window in a session.
 
@@ -112,7 +115,7 @@ def register(mcp: FastMCP) -> None:
         result["panes"] = [_serialize_pane(p) for p in window.panes]
         return json.dumps(result, indent=2)
 
-    @mcp.resource("tmux://panes/{pane_id}")
+    @mcp.resource("tmux://panes/{pane_id}", title="Pane Detail")
     def get_pane(pane_id: str) -> str:
         """Get details of a specific pane.
 
@@ -134,7 +137,7 @@ def register(mcp: FastMCP) -> None:
 
         return json.dumps(_serialize_pane(pane), indent=2)
 
-    @mcp.resource("tmux://panes/{pane_id}/content")
+    @mcp.resource("tmux://panes/{pane_id}/content", title="Pane Content")
     def get_pane_content(pane_id: str) -> str:
         """Capture and return the content of a pane.
 

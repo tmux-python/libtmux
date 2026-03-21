@@ -320,10 +320,38 @@ def clear_pane(
 
 def register(mcp: FastMCP) -> None:
     """Register pane-level tools with the MCP instance."""
-    mcp.tool(annotations={"destructiveHint": True, "idempotentHint": False})(send_keys)
-    mcp.tool(annotations={"readOnlyHint": True})(capture_pane)
-    mcp.tool(annotations={"destructiveHint": False})(resize_pane)
-    mcp.tool(annotations={"destructiveHint": True})(kill_pane)
-    mcp.tool(annotations={"destructiveHint": False})(set_pane_title)
-    mcp.tool(annotations={"readOnlyHint": True})(get_pane_info)
-    mcp.tool(annotations={"destructiveHint": False})(clear_pane)
+    _RO = {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    _IDEM = {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    mcp.tool(
+        title="Send Keys",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": False,
+        },
+    )(send_keys)
+    mcp.tool(title="Capture Pane", annotations=_RO)(capture_pane)
+    mcp.tool(title="Resize Pane", annotations=_IDEM)(resize_pane)
+    mcp.tool(
+        title="Kill Pane",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )(kill_pane)
+    mcp.tool(title="Set Pane Title", annotations=_IDEM)(set_pane_title)
+    mcp.tool(title="Get Pane Info", annotations=_RO)(get_pane_info)
+    mcp.tool(title="Clear Pane", annotations=_IDEM)(clear_pane)

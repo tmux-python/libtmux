@@ -334,9 +334,37 @@ def resize_window(
 
 def register(mcp: FastMCP) -> None:
     """Register window-level tools with the MCP instance."""
-    mcp.tool(annotations={"readOnlyHint": True})(list_panes)
-    mcp.tool(annotations={"destructiveHint": False})(split_window)
-    mcp.tool(annotations={"destructiveHint": False})(rename_window)
-    mcp.tool(annotations={"destructiveHint": True})(kill_window)
-    mcp.tool(annotations={"destructiveHint": False})(select_layout)
-    mcp.tool(annotations={"destructiveHint": False})(resize_window)
+    _RO = {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    _IDEM = {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    mcp.tool(title="List Panes", annotations=_RO)(list_panes)
+    mcp.tool(
+        title="Split Window",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": False,
+        },
+    )(split_window)
+    mcp.tool(title="Rename Window", annotations=_IDEM)(rename_window)
+    mcp.tool(
+        title="Kill Window",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )(kill_window)
+    mcp.tool(title="Select Layout", annotations=_IDEM)(select_layout)
+    mcp.tool(title="Resize Window", annotations=_IDEM)(resize_window)

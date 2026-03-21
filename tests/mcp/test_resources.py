@@ -26,7 +26,7 @@ def resource_functions(mcp_server: Server) -> dict[str, t.Any]:
     functions: dict[str, t.Any] = {}
 
     class MockMCP:
-        def resource(self, uri: str) -> t.Any:
+        def resource(self, uri: str, **kwargs: t.Any) -> t.Any:
             def decorator(fn: t.Any) -> t.Any:
                 functions[uri] = fn
                 return fn

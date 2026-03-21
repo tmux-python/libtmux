@@ -130,5 +130,19 @@ def set_option(
 
 def register(mcp: FastMCP) -> None:
     """Register option tools with the MCP instance."""
-    mcp.tool(annotations={"readOnlyHint": True})(show_option)
-    mcp.tool(annotations={"destructiveHint": False})(set_option)
+    _RO = {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+    mcp.tool(title="Show Option", annotations=_RO)(show_option)
+    mcp.tool(
+        title="Set Option",
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )(set_option)
