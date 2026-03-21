@@ -314,7 +314,7 @@ def clear_pane(
         session_name=session_name,
         window_id=window_id,
     )
-    pane.clear()
+    pane.reset()
     return f"Pane cleared: {pane.pane_id}"
 
 
