@@ -2,17 +2,19 @@
 
 # Internals
 
-:::{warning}
-Be careful with these! Internal APIs are **not** covered by version policies. They can break or be removed between minor versions!
+:::{danger}
+**No stability guarantee.** Internal APIs are **not** covered by version
+policies. They can break or be removed between any minor versions without
+notice.
 
 If you need an internal API stabilized please [file an issue](https://github.com/tmux-python/libtmux/issues).
 :::
 
 ```{toctree}
-dataclasses
-query_list
-constants
-sparse_array
+api/libtmux._internal.dataclasses
+api/libtmux._internal.query_list
+api/libtmux._internal.constants
+api/libtmux._internal.sparse_array
 ```
 
 ## Environmental variables
