@@ -52,17 +52,18 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 [dependency-groups]
 dev = [
   # Docs
-  "sphinx<9",
-  "furo",
-  "gp-libs",
-  "sphinx-autobuild",
-  "sphinx-autodoc-typehints",
-  "sphinx-inline-tabs",
-  "sphinxext-opengraph",
-  "sphinx-copybutton",
-  "sphinxext-rediraffe",
-  "myst-parser",
-  "linkify-it-py",
+  "sphinx<9",  # https://www.sphinx-doc.org/
+  "furo",  # https://pradyunsg.me/furo/
+  "gp-libs",  # https://gp-libs.git-pull.com/
+  "sphinx-autobuild",  # https://sphinx-extensions.readthedocs.io/en/latest/sphinx-autobuild.html
+  "sphinx-autodoc-typehints",  # https://sphinx-autodoc-typehints.readthedocs.io/
+  "sphinx-inline-tabs",  # https://sphinx-inline-tabs.readthedocs.io/
+  "sphinxext-opengraph",  # https://sphinxext-opengraph.readthedocs.io/
+  "sphinx-copybutton",  # https://sphinx-copybutton.readthedocs.io/
+  "sphinxext-rediraffe",  # https://sphinxext-rediraffe.readthedocs.io/
+  "sphinx-design",  # https://sphinx-design.readthedocs.io/
+  "myst-parser",  # https://myst-parser.readthedocs.io/
+  "linkify-it-py",  # https://github.com/tsutsu3/linkify-it-py
   # Testing
   "typing-extensions; python_version < '3.11'",
   "gp-libs",
@@ -81,17 +82,18 @@ dev = [
 ]
 
 docs = [
-  "sphinx<9",
-  "furo",
-  "gp-libs",
-  "sphinx-autobuild",
-  "sphinx-autodoc-typehints",
-  "sphinx-inline-tabs",
-  "sphinxext-opengraph",
-  "sphinx-copybutton",
-  "sphinxext-rediraffe",
-  "myst-parser",
-  "linkify-it-py",
+  "sphinx<9",  # https://www.sphinx-doc.org/
+  "furo",  # https://pradyunsg.me/furo/
+  "gp-libs",  # https://gp-libs.git-pull.com/
+  "sphinx-autobuild",  # https://sphinx-extensions.readthedocs.io/en/latest/sphinx-autobuild.html
+  "sphinx-autodoc-typehints",  # https://sphinx-autodoc-typehints.readthedocs.io/
+  "sphinx-inline-tabs",  # https://sphinx-inline-tabs.readthedocs.io/
+  "sphinxext-opengraph",  # https://sphinxext-opengraph.readthedocs.io/
+  "sphinx-copybutton",  # https://sphinx-copybutton.readthedocs.io/
+  "sphinxext-rediraffe",  # https://sphinxext-rediraffe.readthedocs.io/
+  "sphinx-design",  # https://sphinx-design.readthedocs.io/
+  "myst-parser",  # https://myst-parser.readthedocs.io/
+  "linkify-it-py",  # https://github.com/tsutsu3/linkify-it-py
 ]
 testing = [
   "typing-extensions; python_version < '3.11'",
