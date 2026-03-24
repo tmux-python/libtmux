@@ -1,0 +1,14 @@
+{
+  "name": "tmux-parity",
+  "version": "0.1.0",
+  "description": "Analyze and close feature parity gaps between tmux C source and libtmux Python wrappers",
+  "author": {
+    "name": "libtmux contributors"
+  },
+  "repository": "https://github.com/tmux-python/libtmux",
+  "license": "MIT",
+  "keywords": ["tmux", "parity", "analysis", "code-generation"],
+  "commands": "./.claude-plugin/commands",
+  "agents": "./.claude-plugin/agents",
+  "skills": "./.claude-plugin/skills"
+}
