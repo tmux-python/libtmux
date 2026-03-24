@@ -5,8 +5,8 @@
 Typed Python API for [tmux](https://github.com/tmux/tmux). Control
 servers, sessions, windows, and panes as Python objects.
 
-::::{grid} 2
-:gutter: 3
+::::{grid} 1 1 2 2
+:gutter: 2 2 3 3
 
 :::{grid-item-card} Quickstart
 :link: quickstart

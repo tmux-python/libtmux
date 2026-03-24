@@ -12,8 +12,8 @@ Server -> Session -> Window -> Pane
 
 ## Core Objects
 
-::::{grid} 2
-:gutter: 3
+::::{grid} 1 1 2 2
+:gutter: 2 2 3 3
 
 :::{grid-item-card} Server
 :link: libtmux.server
@@ -43,8 +43,8 @@ Terminal instance. Send keys and capture output.
 
 ## Supporting Modules
 
-::::{grid} 3
-:gutter: 3
+::::{grid} 1 2 3 3
+:gutter: 2 2 3 3
 
 :::{grid-item-card} Common
 :link: libtmux.common

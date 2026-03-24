@@ -2,8 +2,8 @@
 
 Explore libtmux's core functionalities and underlying principles at a high level, while providing essential context and detailed explanations to help you understand its design and usage.
 
-::::{grid} 2
-:gutter: 3
+::::{grid} 1 1 2 2
+:gutter: 2 2 3 3
 
 :::{grid-item-card} Architecture
 :link: architecture
