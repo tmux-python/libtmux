@@ -4,8 +4,8 @@
 "windows.md" "reference/windows.md"
 "traversal.md" "topics/traversal.md"
 "sessions.md" "reference/sessions.md"
-"api.md" "reference/index.md"
-"pytest-plugin.md" "pytest-plugin/index.md"
+# "api.md" → api/index.md: not needed with dirhtml (same output path)
+# "pytest-plugin.md" → api/pytest-plugin/index.md: conflicts with pytest-plugin/index.md redirect in dirhtml
 "reference/common.md" "api/common.md"
 "reference/constants.md" "api/constants.md"
 "reference/exceptions.md" "api/exceptions.md"
