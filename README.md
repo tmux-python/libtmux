@@ -20,11 +20,11 @@ libtmux is a typed Python API over [tmux], the terminal multiplexer. Stop shelli
 ### ✨ Features
 
 - Typed, object-oriented control of tmux state
-- Query and [traverse](https://libtmux.git-pull.com/topics/traversal.html) live sessions, windows, and panes
+- Query and [traverse](https://libtmux.git-pull.com/topics/traversal/) live sessions, windows, and panes
 - Raw escape hatch via `.cmd(...)` on any object
 - Works with multiple tmux sockets and servers
-- [Context managers](https://libtmux.git-pull.com/topics/context_managers.html) for automatic cleanup
-- [pytest plugin](https://libtmux.git-pull.com/pytest-plugin/index.html) for isolated tmux fixtures
+- [Context managers](https://libtmux.git-pull.com/topics/context_managers/) for automatic cleanup
+- [pytest plugin](https://libtmux.git-pull.com/api/pytest-plugin/) for isolated tmux fixtures
 - Proven in production via tmuxp and other tooling
 
 ## Requirements & support
@@ -117,7 +117,7 @@ current tmux server / session / window / pane.
 
 [ptpython]: https://github.com/prompt-toolkit/ptpython
 [ipython]: https://ipython.org/
-[`tmuxp shell`]: https://tmuxp.git-pull.com/cli/shell.html
+[`tmuxp shell`]: https://tmuxp.git-pull.com/cli/shell/
 
 ### Run any tmux command
 
@@ -138,7 +138,7 @@ Create a new session:
 
 ### List and filter sessions
 
-[**Learn more about Filtering**](https://libtmux.git-pull.com/topics/filtering.html)
+[**Learn more about Filtering**](https://libtmux.git-pull.com/topics/filtering/)
 
 ```python
 >>> server.sessions
@@ -161,7 +161,7 @@ Session($... ...)
 
 ### Control sessions and windows
 
-[**Learn more about Workspace Setup**](https://libtmux.git-pull.com/topics/workspace_setup.html)
+[**Learn more about Workspace Setup**](https://libtmux.git-pull.com/topics/workspace_setup/)
 
 ```python
 >>> session.rename_session('my-session')
@@ -186,7 +186,7 @@ Window(@... ...:bg-work, Session($... ...))
 
 ### Split windows and send keys
 
-[**Learn more about Pane Interaction**](https://libtmux.git-pull.com/topics/pane_interaction.html)
+[**Learn more about Pane Interaction**](https://libtmux.git-pull.com/topics/pane_interaction/)
 
 ```python
 >>> pane = window.split(attach=False)
@@ -215,7 +215,7 @@ Pane(%... ...)
 
 ### Traverse the hierarchy
 
-[**Learn more about Traversal**](https://libtmux.git-pull.com/topics/traversal.html)
+[**Learn more about Traversal**](https://libtmux.git-pull.com/topics/traversal/)
 
 Navigate from pane up to window to session:
 
@@ -230,12 +230,12 @@ Session($... ...)
 
 | libtmux object | tmux concept                | Notes                          |
 |----------------|-----------------------------|--------------------------------|
-| [`Server`](https://libtmux.git-pull.com/api/libtmux.server.html) | tmux server / socket | Entry point; owns sessions |
-| [`Session`](https://libtmux.git-pull.com/api/libtmux.session.html) | tmux session (`$0`, `$1`,...) | Owns windows |
-| [`Window`](https://libtmux.git-pull.com/api/libtmux.window.html) | tmux window (`@1`, `@2`,...) | Owns panes |
-| [`Pane`](https://libtmux.git-pull.com/api/libtmux.pane.html) | tmux pane (`%1`, `%2`,...) | Where commands run |
+| [`Server`](https://libtmux.git-pull.com/api/libtmux.server/) | tmux server / socket | Entry point; owns sessions |
+| [`Session`](https://libtmux.git-pull.com/api/libtmux.session/) | tmux session (`$0`, `$1`,...) | Owns windows |
+| [`Window`](https://libtmux.git-pull.com/api/libtmux.window/) | tmux window (`@1`, `@2`,...) | Owns panes |
+| [`Pane`](https://libtmux.git-pull.com/api/libtmux.pane/) | tmux pane (`%1`, `%2`,...) | Where commands run |
 
-Also available: [`Options`](https://libtmux.git-pull.com/api/libtmux.options.html) and [`Hooks`](https://libtmux.git-pull.com/api/libtmux.hooks.html) abstractions for tmux configuration.
+Also available: [`Options`](https://libtmux.git-pull.com/api/libtmux.options/) and [`Hooks`](https://libtmux.git-pull.com/api/libtmux.hooks/) abstractions for tmux configuration.
 
 Collections are live and queryable:
 
@@ -257,7 +257,7 @@ pane.send_keys("echo 'hello from libtmux'", enter=True)
 
 ## Testing & fixtures
 
-[**Learn more about the pytest plugin**](https://libtmux.git-pull.com/pytest-plugin/index.html)
+[**Learn more about the pytest plugin**](https://libtmux.git-pull.com/api/pytest-plugin/)
 
 Writing a tool that interacts with tmux? Use our fixtures to keep your tests clean and isolated.
 
@@ -285,18 +285,18 @@ def test_my_tmux_tool(session):
 ## Project links
 
 **Topics:**
-[Traversal](https://libtmux.git-pull.com/topics/traversal.html) ·
-[Filtering](https://libtmux.git-pull.com/topics/filtering.html) ·
-[Pane Interaction](https://libtmux.git-pull.com/topics/pane_interaction.html) ·
-[Workspace Setup](https://libtmux.git-pull.com/topics/workspace_setup.html) ·
-[Automation Patterns](https://libtmux.git-pull.com/topics/automation_patterns.html) ·
-[Context Managers](https://libtmux.git-pull.com/topics/context_managers.html) ·
-[Options & Hooks](https://libtmux.git-pull.com/topics/options_and_hooks.html)
+[Traversal](https://libtmux.git-pull.com/topics/traversal/) ·
+[Filtering](https://libtmux.git-pull.com/topics/filtering/) ·
+[Pane Interaction](https://libtmux.git-pull.com/topics/pane_interaction/) ·
+[Workspace Setup](https://libtmux.git-pull.com/topics/workspace_setup/) ·
+[Automation Patterns](https://libtmux.git-pull.com/topics/automation_patterns/) ·
+[Context Managers](https://libtmux.git-pull.com/topics/context_managers/) ·
+[Options & Hooks](https://libtmux.git-pull.com/topics/options_and_hooks/)
 
 **Reference:**
 [Docs][docs] ·
 [API][api] ·
-[pytest plugin](https://libtmux.git-pull.com/pytest-plugin/index.html) ·
+[pytest plugin](https://libtmux.git-pull.com/api/pytest-plugin/) ·
 [Architecture][architecture] ·
 [Changelog][history] ·
 [Migration][migration]
@@ -315,10 +315,10 @@ def test_my_tmux_tool(session):
 Contributions are welcome. Please open an issue or PR if you find a bug or want to improve the API or docs. If libtmux helps you ship, consider sponsoring development via [support].
 
 [docs]: https://libtmux.git-pull.com
-[api]: https://libtmux.git-pull.com/api.html
-[architecture]: https://libtmux.git-pull.com/about.html
-[history]: https://libtmux.git-pull.com/history.html
-[migration]: https://libtmux.git-pull.com/migration.html
+[api]: https://libtmux.git-pull.com/api/
+[architecture]: https://libtmux.git-pull.com/topics/architecture/
+[history]: https://libtmux.git-pull.com/history/
+[migration]: https://libtmux.git-pull.com/migration/
 [issues]: https://github.com/tmux-python/libtmux/issues
 [coverage]: https://codecov.io/gh/tmux-python/libtmux
 [releases]: https://pypi.org/project/libtmux/
