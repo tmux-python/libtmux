@@ -533,7 +533,7 @@ libtmux uses tmux's format system extensively:
 ## References
 
 - Documentation: https://libtmux.git-pull.com/
-- API Reference: https://libtmux.git-pull.com/api.html
-- Architecture: https://libtmux.git-pull.com/about.html
+- API Reference: https://libtmux.git-pull.com/api/
+- Architecture: https://libtmux.git-pull.com/topics/architecture/
 - tmux man page: http://man.openbsd.org/OpenBSD-current/man1/tmux.1
 - tmuxp (workspace manager): https://tmuxp.git-pull.com/
