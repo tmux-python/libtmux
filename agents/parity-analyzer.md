@@ -129,4 +129,4 @@ Output a structured report:
 
 ## Reference Data
 
-The baseline command mapping is at `.claude-plugin/skills/tmux-parity/references/command-mapping.md`. Use this as a starting point, but always run the extraction scripts for the most current data.
+The baseline command mapping is at `skills/tmux-parity/references/command-mapping.md`. Use this as a starting point, but always run the extraction scripts for the most current data.
