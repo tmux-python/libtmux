@@ -245,6 +245,43 @@ class Session(
     Commands (tmux-like)
     """
 
+    def detach_client(
+        self,
+        *,
+        target_client: str | None = None,
+        all_clients: bool | None = None,
+    ) -> None:
+        """Detach clients from this session via ``$ tmux detach-client``.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client to detach (``-t`` flag). If omitted, detaches
+            the most recently active client.
+        all_clients : bool, optional
+            Detach all clients attached to this session (``-a`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     session.detach_client()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if all_clients:
+            tmux_args += ("-a",)
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        # Use -s for session targeting (not -t, which targets clients)
+        tmux_args += ("-s", str(self.session_id))
+
+        proc = self.server.cmd("detach-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def last_window(self) -> Window:
         """Select the last (previously selected) window.
 
