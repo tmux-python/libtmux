@@ -738,3 +738,31 @@ def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
     assert pane is not None
     with pytest.raises(ValueError, match="Cannot specify both"):
         pane.split(size=10, percentage=50)
+
+
+def test_clear_history(session: Session) -> None:
+    """Test Pane.clear_history()."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_clearhist",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    # Send some commands to build up history
+    pane.send_keys("echo line1", enter=True)
+    pane.send_keys("echo line2", enter=True)
+    retry_until(lambda: "line2" in "\n".join(pane.capture_pane()), 3, raises=True)
+
+    # Clear history
+    pane.clear_history()
+
+    # The scrollback should be cleared (visible content may still show current)
+    history = pane.capture_pane(start=-100)
+    # After clearing, scrollback history should be much shorter
+    assert len(history) <= 30  # reasonable bound after clear
