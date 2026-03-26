@@ -601,6 +601,28 @@ def test_list_buffers(server: Server) -> None:
     assert len(result) >= 2
 
 
+def test_source_file(server: Server, tmp_path: pathlib.Path) -> None:
+    """Test Server.source_file() sources a config file."""
+    server.new_session(session_name="source_test")
+
+    conf = tmp_path / "source_test.conf"
+    conf.write_text("set -g @source_test_opt yes\n")
+
+    server.source_file(conf)
+
+    # Verify the option was set
+    result = server.cmd("show-options", "-gv", "@source_test_opt")
+    assert result.stdout[0] == "yes"
+
+
+def test_source_file_quiet(server: Server) -> None:
+    """Test Server.source_file() with quiet flag ignores missing files."""
+    server.new_session(session_name="source_quiet")
+
+    # Non-existent file with quiet should not raise
+    server.source_file("/nonexistent/path.conf", quiet=True)
+
+
 def test_list_clients(server: Server) -> None:
     """Test Server.list_clients() returns list without error."""
     server.new_session(session_name="list_clients_test")
