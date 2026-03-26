@@ -876,6 +876,7 @@ class Pane(
         zoom: bool | None = None,
         shell: str | None = None,
         size: str | int | None = None,
+        percentage: int | None = None,
         environment: dict[str, str] | None = None,
     ) -> Pane:
         """Split window and return :class:`Pane`, by default beneath current pane.
@@ -903,7 +904,12 @@ class Pane(
             is useful for long-running processes where the closing of the
             window upon completion is desired.
         size: int, optional
-            Cell/row or percentage to occupy with respect to current window.
+            Cell/row count to occupy with respect to current window.
+        percentage: int, optional
+            Percentage (0-100) of the window to occupy (``-p`` flag).
+            Mutually exclusive with *size*.
+
+            .. versionadded:: 0.45
         environment: dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
 
@@ -969,8 +975,15 @@ class Pane(
         else:
             tmux_args += tuple(PANE_DIRECTION_FLAG_MAP[PaneDirection.Below])
 
+        if size is not None and percentage is not None:
+            msg = "Cannot specify both size and percentage"
+            raise ValueError(msg)
+
         if size is not None:
             tmux_args += (f"-l{size}",)
+
+        if percentage is not None:
+            tmux_args += (f"-p{percentage}",)
 
         if full_window_split:
             tmux_args += ("-f",)
