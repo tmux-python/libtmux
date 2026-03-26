@@ -740,6 +740,46 @@ def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
         pane.split(size=10, percentage=50)
 
 
+def test_join_pane(session: Session) -> None:
+    """Test Pane.join() roundtrip with break_pane."""
+    window = session.new_window(window_name="test_join")
+    pane = window.active_pane
+    assert pane is not None
+
+    # Create a second pane and break it out
+    new_pane = pane.split(shell="sleep 1m")
+    assert len(window.panes) == 2
+
+    new_window = new_pane.break_pane()
+    window.refresh()
+    assert len(window.panes) == 1
+
+    # Join the pane back
+    new_pane.join(window)
+    window.refresh()
+    assert len(window.panes) == 2
+
+    # The new window should be gone (only had one pane)
+    session.refresh()
+    window_ids = [w.window_id for w in session.windows]
+    assert new_window.window_id not in window_ids
+
+
+def test_join_pane_horizontal(session: Session) -> None:
+    """Test Pane.join() with horizontal split."""
+    window = session.new_window(window_name="test_join_h")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(shell="sleep 1m")
+    new_pane.break_pane()
+
+    new_pane.join(window, vertical=False)
+    window.refresh()
+    assert len(window.panes) == 2
+
+
 def test_break_pane_basic(session: Session) -> None:
     """Test Pane.break_pane() creates a new window."""
     window = session.new_window(window_name="test_break")
