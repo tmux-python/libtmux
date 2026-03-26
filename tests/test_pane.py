@@ -9,6 +9,7 @@ import typing as t
 
 import pytest
 
+from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
 
@@ -443,3 +444,103 @@ def test_split_start_directory_pathlib(
     actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
     expected_path = str(user_path.resolve())
     assert actual_path == expected_path
+
+
+class SendKeysCase(t.NamedTuple):
+    """Test case for send_keys() flag variations."""
+
+    test_id: str
+    key: str
+    kwargs: dict[str, t.Any]
+    expected_in_capture: str | None
+    not_expected_in_capture: str | None
+    min_tmux_version: str | None
+
+
+SEND_KEYS_CASES: list[SendKeysCase] = [
+    SendKeysCase(
+        test_id="reset_terminal",
+        key="",
+        kwargs={"reset": True, "enter": False},
+        expected_in_capture=None,
+        not_expected_in_capture=None,
+        min_tmux_version=None,
+    ),
+    SendKeysCase(
+        test_id="repeat_count",
+        key="a",
+        kwargs={"repeat": 3, "literal": True, "enter": False},
+        expected_in_capture="aaa",
+        not_expected_in_capture=None,
+        min_tmux_version=None,
+    ),
+    SendKeysCase(
+        test_id="hex_key_A",
+        key="41",
+        kwargs={"hex_keys": True, "enter": False},
+        expected_in_capture="A",
+        not_expected_in_capture=None,
+        min_tmux_version=None,
+    ),
+    SendKeysCase(
+        test_id="expand_formats",
+        key="a",
+        kwargs={"expand_formats": True, "repeat": 2, "enter": False},
+        expected_in_capture="aa",
+        not_expected_in_capture=None,
+        min_tmux_version=None,
+    ),
+    SendKeysCase(
+        test_id="key_name_flag",
+        key="a",
+        kwargs={"key_name": True, "enter": False},
+        expected_in_capture=None,
+        not_expected_in_capture=None,
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(SendKeysCase._fields),
+    SEND_KEYS_CASES,
+    ids=[c.test_id for c in SEND_KEYS_CASES],
+)
+def test_send_keys_flags(
+    test_id: str,
+    key: str,
+    kwargs: dict[str, t.Any],
+    expected_in_capture: str | None,
+    not_expected_in_capture: str | None,
+    min_tmux_version: str | None,
+    session: Session,
+) -> None:
+    """Test send_keys() with various flag combinations."""
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    window = session.new_window(
+        window_name=f"sk_{test_id[:15]}",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    pane.send_keys(key, **kwargs)
+
+    if expected_in_capture is not None:
+        retry_until(
+            lambda: expected_in_capture in "\n".join(pane.capture_pane()),
+            3,
+            raises=True,
+        )
+
+    if not_expected_in_capture is not None:
+        # Give a brief moment then verify absence
+        contents = "\n".join(pane.capture_pane())
+        assert not_expected_in_capture not in contents

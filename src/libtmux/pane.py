@@ -426,6 +426,13 @@ class Pane(
         enter: bool | None = True,
         suppress_history: bool | None = False,
         literal: bool | None = False,
+        reset: bool | None = None,
+        copy_mode_cmd: str | None = None,
+        repeat: int | None = None,
+        expand_formats: bool | None = None,
+        hex_keys: bool | None = None,
+        target_client: str | None = None,
+        key_name: bool | None = None,
     ) -> None:
         r"""``$ tmux send-keys`` to the pane.
 
@@ -446,6 +453,29 @@ class Pane(
                Default changed from True to False.
         literal : bool, optional
             Send keys literally, default False.
+        reset : bool, optional
+            Reset terminal state before sending keys (``-R`` flag).
+        copy_mode_cmd : str, optional
+            Send a command to copy mode instead of keys (``-X`` flag).
+            When set, *cmd* is ignored.
+        repeat : int, optional
+            Repeat count for the key (``-N`` flag).
+        expand_formats : bool, optional
+            Expand tmux format strings in keys (``-F`` flag).
+
+            .. versionadded:: 0.45
+        hex_keys : bool, optional
+            Send keys as hex values (``-H`` flag).
+
+            .. versionadded:: 0.45
+        target_client : str, optional
+            Specify a target client (``-c`` flag). Requires tmux 3.4+.
+
+            .. versionadded:: 0.45
+        key_name : bool, optional
+            Handle keys as key names (``-K`` flag). Requires tmux 3.4+.
+
+            .. versionadded:: 0.45
 
         Examples
         --------
@@ -463,14 +493,54 @@ class Pane(
         Hello world
         $
         """
+        import warnings
+
+        from libtmux.common import has_gte_version
+
         prefix = " " if suppress_history else ""
 
-        if literal:
-            self.cmd("send-keys", "-l", prefix + cmd)
-        else:
-            self.cmd("send-keys", prefix + cmd)
+        tmux_args: tuple[str, ...] = ()
 
-        if enter:
+        if reset:
+            tmux_args += ("-R",)
+
+        if expand_formats:
+            tmux_args += ("-F",)
+
+        if hex_keys:
+            tmux_args += ("-H",)
+
+        if key_name:
+            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-K",)
+            else:
+                warnings.warn(
+                    "key_name requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if literal:
+            tmux_args += ("-l",)
+
+        if repeat is not None:
+            tmux_args += ("-N", str(repeat))
+
+        if target_client is not None:
+            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-c", target_client)
+            else:
+                warnings.warn(
+                    "target_client requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if copy_mode_cmd is not None:
+            tmux_args += ("-X",)
+            self.cmd("send-keys", *tmux_args, copy_mode_cmd)
+        else:
+            self.cmd("send-keys", *tmux_args, prefix + cmd)
+
+        if enter and copy_mode_cmd is None:
             self.enter()
 
     @t.overload
