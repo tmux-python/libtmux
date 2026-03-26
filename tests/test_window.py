@@ -819,3 +819,55 @@ def test_select_layout_mutual_exclusion(session: Session) -> None:
     window = session.new_window(window_name="test_layout_mutex")
     with pytest.raises(ValueError, match="Cannot specify both"):
         window.select_layout("tiled", spread=True)
+
+
+def test_move_window_kill_target(session: Session) -> None:
+    """Test Window.move_window() with kill_target flag."""
+    session.new_window(window_name="move_w1")
+    w2 = session.new_window(window_name="move_w2")
+    assert w2.window_index is not None
+    w2_index = w2.window_index
+    initial_count = len(session.windows)
+
+    # Move first extra window to w2's index, killing w2
+    extra_windows = [w for w in session.windows if w.window_name == "move_w1"]
+    assert len(extra_windows) == 1
+    extra_windows[0].move_window(destination=w2_index, kill_target=True)
+    session.refresh()
+    assert len(session.windows) == initial_count - 1
+
+
+def test_move_window_renumber(session: Session) -> None:
+    """Test Window.move_window() with renumber flag."""
+    session.new_window(window_name="ren_w1")
+    w2 = session.new_window(window_name="ren_w2")
+    w3 = session.new_window(window_name="ren_w3")
+
+    # Kill middle window to create gap
+    w2.kill()
+
+    # Move w3 with renumber
+    w3.move_window(renumber=True)
+    session.refresh()
+
+    # Verify indices are contiguous
+    indices = sorted(
+        int(w.window_index) for w in session.windows if w.window_index is not None
+    )
+    for i in range(len(indices) - 1):
+        assert indices[i + 1] - indices[i] == 1
+
+
+def test_move_window_no_select(session: Session) -> None:
+    """Test Window.move_window() with no_select flag."""
+    w1 = session.new_window(window_name="nosel_w1", attach=True)
+    w2 = session.new_window(window_name="nosel_w2", attach=False)
+
+    # w1 is active
+    session.refresh()
+    assert session.active_window.window_id == w1.window_id
+
+    # Move w2 with no_select — active window should not change
+    w2.move_window(destination="99", no_select=True)
+    session.refresh()
+    assert session.active_window.window_id == w1.window_id

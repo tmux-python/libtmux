@@ -602,6 +602,12 @@ class Window(
         self,
         destination: str = "",
         session: str | None = None,
+        *,
+        after: bool | None = None,
+        before: bool | None = None,
+        no_select: bool | None = None,
+        kill_target: bool | None = None,
+        renumber: bool | None = None,
     ) -> Window:
         """Move current :class:`Window` object ``$ tmux move-window``.
 
@@ -613,6 +619,26 @@ class Window(
         session : str, optional
             The ``target session`` or index to move the window to, default:
             current session.
+        after : bool, optional
+            Insert after the target window (``-a`` flag).
+
+            .. versionadded:: 0.45
+        before : bool, optional
+            Insert before the target window (``-b`` flag).
+
+            .. versionadded:: 0.45
+        no_select : bool, optional
+            Do not make the moved window the current window (``-d`` flag).
+
+            .. versionadded:: 0.45
+        kill_target : bool, optional
+            Kill the target window if it exists (``-k`` flag).
+
+            .. versionadded:: 0.45
+        renumber : bool, optional
+            Renumber all windows after moving (``-r`` flag).
+
+            .. versionadded:: 0.45
 
         Returns
         -------
@@ -624,9 +650,27 @@ class Window(
         :exc:`libtmux.exc.LibTmuxException`
             If tmux returns an error.
         """
+        tmux_args: tuple[str, ...] = ()
+
+        if after:
+            tmux_args += ("-a",)
+
+        if before:
+            tmux_args += ("-b",)
+
+        if no_select:
+            tmux_args += ("-d",)
+
+        if kill_target:
+            tmux_args += ("-k",)
+
+        if renumber:
+            tmux_args += ("-r",)
+
         session = session or self.session_id
         proc = self.cmd(
             "move-window",
+            *tmux_args,
             f"-s{self.session_id}:{self.window_index}",
             target=f"{session}:{destination}",
         )
