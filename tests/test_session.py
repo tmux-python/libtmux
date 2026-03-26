@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import pathlib
 import shutil
@@ -11,12 +12,16 @@ from contextlib import nullcontext as does_not_raise
 import pytest
 
 from libtmux import exc
+from libtmux._internal.control_mode import ControlMode
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import namer
 from libtmux.window import Window
+
+if t.TYPE_CHECKING:
+    from libtmux.server import Server
 
 if t.TYPE_CHECKING:
     from typing import TypeAlias
@@ -574,6 +579,95 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
     )
     with raises_ctx:
         test_session.attach()
+
+
+def test_detach_client(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    server: Server,
+) -> None:
+    """Test Session.detach_client() detaches all session clients when no target given.
+
+    Without target_client, -s session_id scopes the operation to this session.
+    """
+    with control_mode():
+        before = len(server.list_clients())
+        assert before > 0
+        session.detach_client()
+        after = len(server.list_clients())
+        assert after == 0
+
+
+def test_detach_client_no_target_detaches_all_session_clients(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    server: Server,
+) -> None:
+    """Test Session.detach_client() without a target detaches all session clients.
+
+    Without a target_client, the method uses ``-s session_id`` to scope the
+    operation to this session, detaching all attached clients.
+    """
+    with control_mode(), control_mode():
+        before = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(before) == 2
+
+        session.detach_client()
+
+        after = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(after) == 0
+
+
+def test_detach_client_target_client(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    server: Server,
+) -> None:
+    """Test Session.detach_client() detaches only the requested client."""
+    with control_mode(), control_mode():
+        clients = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(clients) == 2
+
+        target_client = clients[-1]
+        session.detach_client(target_client=target_client)
+
+        remaining_clients = server.cmd(
+            "list-clients",
+            "-F",
+            "#{client_name}",
+        ).stdout
+        assert remaining_clients == [
+            client for client in clients if client != target_client
+        ]
+
+
+def test_detach_client_all_clients_session_scoped(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    server: Server,
+) -> None:
+    """``detach_client(all_clients=True, target_client=...)`` is session-scoped.
+
+    tmux's ``detach-client -a`` is server-wide; clients attached to
+    *other* sessions must remain attached after the call.
+    """
+    other_session = server.new_session(session_name="detach_other")
+    OtherControlMode = functools.partial(
+        ControlMode, server=server, session=other_session
+    )
+
+    with control_mode() as keep, control_mode(), OtherControlMode() as elsewhere:
+        clients_before = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(clients_before) == 3
+
+        session.detach_client(all_clients=True, target_client=keep.client_name)
+
+        clients_after = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        # `keep` stays (target), `elsewhere` stays (other session); the
+        # third client (extra control_mode in this session) is gone.
+        assert sorted(clients_after) == sorted(
+            [keep.client_name, elsewhere.client_name],
+        )
 
 
 def test_last_window(session: Session) -> None:
