@@ -718,6 +718,26 @@ class Server(
 
         return proc.stdout
 
+    def list_clients(self) -> list[str]:
+        """List connected clients via ``$ tmux list-clients``.
+
+        Returns
+        -------
+        list[str]
+            Raw output lines from list-clients.
+
+        Examples
+        --------
+        >>> isinstance(server.list_clients(), list)
+        True
+        """
+        proc = self.cmd("list-clients")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
     def switch_client(self, target_session: str) -> None:
         """Switch tmux client.
 
