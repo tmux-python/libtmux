@@ -1139,6 +1139,54 @@ class Pane(
         self.cmd("send-keys", "Enter")
         return self
 
+    def pipe(
+        self,
+        command: str | None = None,
+        *,
+        output_only: bool | None = None,
+        input_only: bool | None = None,
+        toggle: bool | None = None,
+    ) -> None:
+        """Pipe pane output to a shell command via ``$ tmux pipe-pane``.
+
+        Parameters
+        ----------
+        command : str, optional
+            Shell command to pipe to. If None, stops piping.
+        output_only : bool, optional
+            Only pipe output from the pane (``-O`` flag).
+        input_only : bool, optional
+            Only pipe input to the pane (``-I`` flag).
+        toggle : bool, optional
+            Toggle piping on/off (``-o`` flag).
+
+        Examples
+        --------
+        >>> pane.pipe('cat >> /tmp/output.txt')
+
+        Stop piping:
+
+        >>> pane.pipe()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if output_only:
+            tmux_args += ("-O",)
+
+        if input_only:
+            tmux_args += ("-I",)
+
+        if toggle:
+            tmux_args += ("-o",)
+
+        if command is not None:
+            tmux_args += (command,)
+
+        proc = self.cmd("pipe-pane", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def respawn(
         self,
         *,
