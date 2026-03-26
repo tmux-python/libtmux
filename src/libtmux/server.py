@@ -825,6 +825,123 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def confirm_before(
+        self,
+        command: str,
+        *,
+        prompt: str | None = None,
+        confirm_key: str | None = None,
+        default_yes: bool | None = None,
+        target_client: str | None = None,
+    ) -> None:
+        """Run a command after confirmation via ``$ tmux confirm-before``.
+
+        Always uses ``-b`` (background) to avoid blocking the command queue.
+        Use ``send-keys -K -c <client>`` to provide the confirmation key.
+
+        Requires tmux 3.4+ for ``-b`` flag support.
+
+        Parameters
+        ----------
+        command : str
+            Tmux command to run after confirmation.
+        prompt : str, optional
+            Custom prompt text (``-p`` flag).
+        confirm_key : str, optional
+            Key to accept as confirmation (``-c`` flag). Default is ``y``.
+        default_yes : bool, optional
+            Make Enter default to yes (``-y`` flag).
+        target_client : str, optional
+            Target client (``-t`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.confirm_before(
+        ...         'set -g @cf_test yes',
+        ...         target_client=ctl.client_name,
+        ...     )
+        ...     _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, 'y')
+        ...     server.cmd('show-options', '-gv', '@cf_test').stdout[0]
+        'yes'
+        """
+        tmux_args: tuple[str, ...] = ("-b",)
+
+        if prompt is not None:
+            tmux_args += ("-p", prompt)
+
+        if confirm_key is not None:
+            tmux_args += ("-c", confirm_key)
+
+        if default_yes:
+            tmux_args += ("-y",)
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        tmux_args += (command,)
+
+        proc = self.cmd("confirm-before", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def command_prompt(
+        self,
+        template: str,
+        *,
+        prompt: str | None = None,
+        inputs: str | None = None,
+        target_client: str | None = None,
+    ) -> None:
+        """Open a command prompt via ``$ tmux command-prompt``.
+
+        Always uses ``-b`` (background) to avoid blocking the command queue.
+        Use ``send-keys -K -c <client>`` to type into the prompt and submit.
+
+        Requires tmux 3.4+ for ``-b`` flag support.
+
+        Parameters
+        ----------
+        template : str
+            Tmux command template. Use ``%1``, ``%2`` for prompt values.
+        prompt : str, optional
+            Custom prompt text (``-p`` flag). Commas separate multiple prompts.
+        inputs : str, optional
+            Pre-fill prompt input (``-I`` flag). Commas separate multiple.
+        target_client : str, optional
+            Target client (``-t`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.command_prompt(
+        ...         "set -g @cp_test '%1'",
+        ...         target_client=ctl.client_name,
+        ...     )
+        ...     for key in ['h', 'i', 'Enter']:
+        ...         _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, key)
+        ...     server.cmd('show-options', '-gv', '@cp_test').stdout[0]
+        'hi'
+        """
+        tmux_args: tuple[str, ...] = ("-b",)
+
+        if prompt is not None:
+            tmux_args += ("-p", prompt)
+
+        if inputs is not None:
+            tmux_args += ("-I", inputs)
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        tmux_args += (template,)
+
+        proc = self.cmd("command-prompt", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def start_server(self) -> None:
         """Start the tmux server if not already running.
 
