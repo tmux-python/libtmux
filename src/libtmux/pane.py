@@ -548,15 +548,49 @@ class Pane(
         self,
         cmd: str,
         get_text: t.Literal[True],
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+        list_formats: bool | None = ...,
+        no_style: bool | None = ...,
     ) -> list[str]: ...
 
     @t.overload
-    def display_message(self, cmd: str, get_text: t.Literal[False]) -> None: ...
+    def display_message(
+        self,
+        cmd: str,
+        get_text: t.Literal[False] = ...,
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+        list_formats: bool | None = ...,
+        no_style: bool | None = ...,
+    ) -> None: ...
 
     def display_message(
         self,
         cmd: str,
         get_text: bool = False,
+        *,
+        format_string: str | None = None,
+        all_formats: bool | None = None,
+        verbose: bool | None = None,
+        no_expand: bool | None = None,
+        target_client: str | None = None,
+        delay: int | None = None,
+        notify: bool | None = None,
+        list_formats: bool | None = None,
+        no_style: bool | None = None,
     ) -> list[str] | None:
         """Display message to pane.
 
@@ -569,16 +603,90 @@ class Pane(
         get_text : bool, optional
             Returns only text without displaying a message in
             target-client status line.
+        format_string : str, optional
+            Format string for output (``-F`` flag).
+        all_formats : bool, optional
+            List all format variables (``-a`` flag).
+        verbose : bool, optional
+            Show format variable types (``-v`` flag).
+        no_expand : bool, optional
+            Suppress format expansion (``-I`` flag).
+        target_client : str, optional
+            Target client (``-c`` flag).
+        delay : int, optional
+            Display time in milliseconds (``-d`` flag).
+        notify : bool, optional
+            Do not wait for input (``-N`` flag).
+        list_formats : bool, optional
+            List format variables (``-l`` flag). Requires tmux 3.4+.
+
+            .. versionadded:: 0.45
+        no_style : bool, optional
+            Suppress style output (``-C`` flag). Requires tmux 3.6+.
+
+            .. versionadded:: 0.45
 
         Returns
         -------
         list[str] | None
             Message output if get_text is True, otherwise None.
         """
-        if get_text:
-            return self.cmd("display-message", "-p", cmd).stdout
+        import warnings
 
-        self.cmd("display-message", cmd)
+        from libtmux.common import has_gte_version
+
+        tmux_args: tuple[str, ...] = ()
+
+        if get_text:
+            tmux_args += ("-p",)
+
+        if all_formats:
+            tmux_args += ("-a",)
+
+        if verbose:
+            tmux_args += ("-v",)
+
+        if no_expand:
+            tmux_args += ("-I",)
+
+        if notify:
+            tmux_args += ("-N",)
+
+        if list_formats:
+            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "list_formats requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if no_style:
+            if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-C",)
+            else:
+                warnings.warn(
+                    "no_style requires tmux 3.6+, ignoring",
+                    stacklevel=2,
+                )
+
+        if target_client is not None:
+            tmux_args += ("-c", target_client)
+
+        if delay is not None:
+            tmux_args += ("-d", str(delay))
+
+        if format_string is not None:
+            tmux_args += ("-F", format_string)
+
+        if cmd:
+            tmux_args += (cmd,)
+
+        proc = self.cmd("display-message", *tmux_args)
+
+        if get_text:
+            return proc.stdout
+
         return None
 
     def kill(

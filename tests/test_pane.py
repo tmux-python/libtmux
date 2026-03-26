@@ -642,3 +642,73 @@ def test_select_pane_disable_enable_input(session: Session) -> None:
         3,
         raises=True,
     )
+
+
+class DisplayMessageCase(t.NamedTuple):
+    """Test case for display_message() flag variations."""
+
+    test_id: str
+    cmd: str
+    kwargs: dict[str, t.Any]
+    expected_in_output: str | None
+    min_tmux_version: str | None
+
+
+DISPLAY_MESSAGE_CASES: list[DisplayMessageCase] = [
+    DisplayMessageCase(
+        test_id="format_string",
+        cmd="",
+        kwargs={"get_text": True, "format_string": "#{pane_id}"},
+        expected_in_output="%",
+        min_tmux_version=None,
+    ),
+    DisplayMessageCase(
+        test_id="all_formats",
+        cmd="",
+        kwargs={"get_text": True, "all_formats": True},
+        expected_in_output="session_name",
+        min_tmux_version=None,
+    ),
+    DisplayMessageCase(
+        test_id="verbose",
+        cmd="",
+        kwargs={"get_text": True, "verbose": True, "all_formats": True},
+        expected_in_output="session_name",
+        min_tmux_version=None,
+    ),
+    DisplayMessageCase(
+        test_id="list_formats",
+        cmd="",
+        kwargs={"get_text": True, "list_formats": True},
+        expected_in_output=None,
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(DisplayMessageCase._fields),
+    DISPLAY_MESSAGE_CASES,
+    ids=[c.test_id for c in DISPLAY_MESSAGE_CASES],
+)
+def test_display_message_flags(
+    test_id: str,
+    cmd: str,
+    kwargs: dict[str, t.Any],
+    expected_in_output: str | None,
+    min_tmux_version: str | None,
+    session: Session,
+) -> None:
+    """Test display_message() with various flag combinations."""
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    result = pane.display_message(cmd, **kwargs)
+
+    if expected_in_output is not None:
+        assert result is not None
+        output = "\n".join(result)
+        assert expected_in_output in output
