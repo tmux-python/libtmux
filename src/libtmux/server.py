@@ -718,6 +718,54 @@ class Server(
 
         return proc.stdout
 
+    def if_shell(
+        self,
+        shell_command: str,
+        tmux_command: str,
+        *,
+        else_command: str | None = None,
+        background: bool | None = None,
+        target_pane: str | None = None,
+    ) -> None:
+        """Execute a tmux command conditionally via ``$ tmux if-shell``.
+
+        Parameters
+        ----------
+        shell_command : str
+            Shell command whose exit status determines which tmux command runs.
+        tmux_command : str
+            Tmux command to run if *shell_command* succeeds (exit 0).
+        else_command : str, optional
+            Tmux command to run if *shell_command* fails (non-zero exit).
+        background : bool, optional
+            Run the shell command in the background (``-b`` flag).
+        target_pane : str, optional
+            Target pane for format expansion (``-t`` flag).
+
+        Examples
+        --------
+        >>> server.if_shell('true', 'set -g @if_test yes')
+        >>> server.cmd('show-options', '-gv', '@if_test').stdout[0]
+        'yes'
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if background:
+            tmux_args += ("-b",)
+
+        if target_pane is not None:
+            tmux_args += ("-t", target_pane)
+
+        tmux_args += (shell_command, tmux_command)
+
+        if else_command is not None:
+            tmux_args += (else_command,)
+
+        proc = self.cmd("if-shell", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def source_file(
         self,
         path: StrPath,
