@@ -821,6 +821,19 @@ def test_select_layout_mutual_exclusion(session: Session) -> None:
         window.select_layout("tiled", spread=True)
 
 
+def test_respawn_window(session: Session) -> None:
+    """Test Window.respawn() with kill flag."""
+    window = session.new_window(window_name="test_respawn_w")
+
+    # Respawn the window with kill
+    window.respawn(kill=True, shell="sh")
+
+    # Window should still exist
+    window.refresh()
+    session.refresh()
+    assert window.window_id in [w.window_id for w in session.windows]
+
+
 def test_swap_window(session: Session) -> None:
     """Test Window.swap() swaps two windows."""
     w1 = session.new_window(window_name="swap_w1")
