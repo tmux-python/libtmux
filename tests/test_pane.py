@@ -740,6 +740,36 @@ def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
         pane.split(size=10, percentage=50)
 
 
+def test_break_pane_basic(session: Session) -> None:
+    """Test Pane.break_pane() creates a new window."""
+    window = session.new_window(window_name="test_break")
+    initial_window_count = len(session.windows)
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(shell="sleep 1m")
+    assert len(window.panes) == 2
+
+    new_window = new_pane.break_pane()
+    session.refresh()
+
+    assert len(session.windows) == initial_window_count + 1
+    window.refresh()
+    assert len(window.panes) == 1
+    assert new_window.window_id is not None
+
+
+def test_break_pane_with_name(session: Session) -> None:
+    """Test Pane.break_pane() with window_name."""
+    window = session.new_window(window_name="test_break_name")
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(shell="sleep 1m")
+    new_window = new_pane.break_pane(window_name="my_broken")
+    assert new_window.window_name == "my_broken"
+
+
 def test_swap_pane(session: Session) -> None:
     """Test Pane.swap() swaps two panes."""
     window = session.new_window(window_name="test_swap_pane")
