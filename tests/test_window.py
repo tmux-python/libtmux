@@ -821,6 +821,22 @@ def test_select_layout_mutual_exclusion(session: Session) -> None:
         window.select_layout("tiled", spread=True)
 
 
+def test_swap_window(session: Session) -> None:
+    """Test Window.swap() swaps two windows."""
+    w1 = session.new_window(window_name="swap_w1")
+    w2 = session.new_window(window_name="swap_w2")
+
+    w1_idx = w1.window_index
+    w2_idx = w2.window_index
+
+    w1.swap(w2)
+
+    w1.refresh()
+    w2.refresh()
+    assert w1.window_index == w2_idx
+    assert w2.window_index == w1_idx
+
+
 def test_move_window_kill_target(session: Session) -> None:
     """Test Window.move_window() with kill_target flag."""
     session.new_window(window_name="move_w1")

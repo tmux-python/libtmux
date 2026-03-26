@@ -1139,6 +1139,61 @@ class Pane(
         self.cmd("send-keys", "Enter")
         return self
 
+    def swap(
+        self,
+        target: str | Pane,
+        *,
+        detach: bool | None = None,
+        move_up: bool | None = None,
+        move_down: bool | None = None,
+        keep_zoom: bool | None = None,
+    ) -> None:
+        """Swap this pane with another via ``$ tmux swap-pane``.
+
+        Parameters
+        ----------
+        target : str or Pane
+            Target pane to swap with. Can be a pane ID string or Pane object.
+        detach : bool, optional
+            Do not change the active pane (``-d`` flag).
+        move_up : bool, optional
+            Swap with the pane above (``-U`` flag). Overrides *target*.
+        move_down : bool, optional
+            Swap with the pane below (``-D`` flag). Overrides *target*.
+        keep_zoom : bool, optional
+            Keep the window zoomed if it was zoomed (``-Z`` flag).
+
+        Examples
+        --------
+        >>> pane1 = window.active_pane
+        >>> pane2 = window.split()
+        >>> pane1_id, pane2_id = pane1.pane_id, pane2.pane_id
+        >>> pane1.swap(pane2)
+        >>> pane1.refresh()
+        >>> pane2.refresh()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if detach:
+            tmux_args += ("-d",)
+
+        if move_up:
+            tmux_args += ("-U",)
+
+        if move_down:
+            tmux_args += ("-D",)
+
+        if keep_zoom:
+            tmux_args += ("-Z",)
+
+        target_id = target.pane_id if isinstance(target, Pane) else target
+        tmux_args += ("-s", str(target_id))
+
+        proc = self.cmd("swap-pane", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def clear_history(self, *, clear_pane: bool | None = None) -> None:
         """Clear pane history buffer via ``$ tmux clear-history``.
 

@@ -740,6 +740,35 @@ def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
         pane.split(size=10, percentage=50)
 
 
+def test_swap_pane(session: Session) -> None:
+    """Test Pane.swap() swaps two panes."""
+    window = session.new_window(window_name="test_swap_pane")
+    window.resize(height=40, width=80)
+    pane1 = window.active_pane
+    assert pane1 is not None
+    pane2 = pane1.split()
+
+    pane1_id = pane1.pane_id
+    pane2_id = pane2.pane_id
+
+    # Record initial indices
+    pane1.refresh()
+    pane2.refresh()
+    pane1_idx = pane1.pane_index
+    pane2_idx = pane2.pane_index
+
+    # Swap
+    pane1.swap(pane2)
+
+    # Verify indices swapped
+    pane1.refresh()
+    pane2.refresh()
+    assert pane1.pane_index == pane2_idx
+    assert pane2.pane_index == pane1_idx
+    assert pane1.pane_id == pane1_id
+    assert pane2.pane_id == pane2_id
+
+
 def test_clear_history(session: Session) -> None:
     """Test Pane.clear_history()."""
     env = shutil.which("env")
