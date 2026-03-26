@@ -593,7 +593,8 @@ class Pane(
         target_client: str | None = ...,
         delay: int | None = ...,
         notify: bool | None = ...,
-        update_pane: bool | None = ...,
+        list_formats: bool | None = ...,
+        no_style: bool | None = ...,
     ) -> list[str]: ...
 
     @t.overload
@@ -609,7 +610,8 @@ class Pane(
         target_client: str | None = ...,
         delay: int | None = ...,
         notify: bool | None = ...,
-        update_pane: bool | None = ...,
+        list_formats: bool | None = ...,
+        no_style: bool | None = ...,
     ) -> None: ...
 
     def display_message(
@@ -624,7 +626,8 @@ class Pane(
         target_client: str | None = None,
         delay: int | None = None,
         notify: bool | None = None,
-        update_pane: bool | None = None,
+        list_formats: bool | None = None,
+        no_style: bool | None = None,
     ) -> list[str] | None:
         """Display message to pane.
 
@@ -652,8 +655,7 @@ class Pane(
 
             .. versionadded:: 0.45
         no_expand : bool, optional
-            Suppress format expansion; output is returned as a literal string
-            (``-l`` flag). Requires tmux 3.4+.
+            Suppress format expansion (``-I`` flag).
 
             .. versionadded:: 0.45
         target_client : str, optional
@@ -668,11 +670,12 @@ class Pane(
             Do not wait for input (``-N`` flag).
 
             .. versionadded:: 0.45
-        update_pane : bool, optional
-            Allow the pane to keep updating while the message is displayed
-            (``-C`` flag). By default tmux freezes the pane while a status
-            message is shown. Requires tmux 3.6+ (introduced upstream by
-            commit ``80eb460f``).
+        list_formats : bool, optional
+            List format variables (``-l`` flag). Requires tmux 3.4+.
+
+            .. versionadded:: 0.45
+        no_style : bool, optional
+            Suppress style output (``-C`` flag). Requires tmux 3.6+.
 
             .. versionadded:: 0.45
 
@@ -697,23 +700,26 @@ class Pane(
             tmux_args += ("-v",)
 
         if no_expand:
-            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-l",)
-            else:
-                warnings.warn(
-                    "no_expand requires tmux 3.4+, ignoring",
-                    stacklevel=2,
-                )
+            tmux_args += ("-I",)
 
         if notify:
             tmux_args += ("-N",)
 
-        if update_pane:
+        if list_formats:
+            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "list_formats requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if no_style:
             if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
                 tmux_args += ("-C",)
             else:
                 warnings.warn(
-                    "update_pane requires tmux 3.6+, ignoring",
+                    "no_style requires tmux 3.6+, ignoring",
                     stacklevel=2,
                 )
 
@@ -1180,7 +1186,6 @@ class Pane(
         *,
         close_on_exit: bool | None = None,
         close_on_success: bool | None = None,
-        close_existing: bool | None = None,
         width: int | str | None = None,
         height: int | str | None = None,
         x: int | str | None = None,
@@ -1195,7 +1200,7 @@ class Pane(
         """Display a popup overlay via ``$ tmux display-popup``.
 
         Requires tmux 3.2+ and an attached client. Use
-        :class:`~libtmux._internal.control_mode.ControlMode` in tests to provide
+        :class:`~libtmux.test.control_mode.ControlMode` in tests to provide
         a client.
 
         Parameters
@@ -1205,10 +1210,7 @@ class Pane(
         close_on_exit : bool, optional
             Close popup when command exits (``-E`` flag).
         close_on_success : bool, optional
-            Close popup only on success exit code (``-EE`` flag, passing ``-E``
-            twice).
-        close_existing : bool, optional
-            Close any existing popup on the client (``-C`` flag).
+            Close popup only on success exit code (``-C`` flag).
         width : int or str, optional
             Popup width (``-w`` flag).
         height : int or str, optional
@@ -1247,22 +1249,11 @@ class Pane(
 
         tmux_args: tuple[str, ...] = ()
 
-        if close_existing:
-            tmux_args += ("-C",)
-
-        if close_on_exit and close_on_success:
-            msg = (
-                "close_on_exit and close_on_success are mutually exclusive: "
-                "use close_on_exit=True for -E (close on any exit) "
-                "or close_on_success=True for -EE (close on zero exit code only)"
-            )
-            raise ValueError(msg)
-
         if close_on_exit:
             tmux_args += ("-E",)
 
         if close_on_success:
-            tmux_args += ("-E", "-E")
+            tmux_args += ("-C",)
 
         if width is not None:
             tmux_args += ("-w", str(width))
@@ -1339,7 +1330,7 @@ class Pane(
         *,
         buffer_name: str | None = None,
         delete_after: bool | None = None,
-        linefeed_separator: bool | None = None,
+        no_trailing_newline: bool | None = None,
         bracket: bool | None = None,
         separator: str | None = None,
     ) -> None:
@@ -1351,9 +1342,8 @@ class Pane(
             Name of the buffer to paste (``-b`` flag).
         delete_after : bool, optional
             Delete the buffer after pasting (``-d`` flag).
-        linefeed_separator : bool, optional
-            Use newline as the line separator instead of carriage return
-            (``-r`` flag).
+        no_trailing_newline : bool, optional
+            Do not add a trailing newline (``-r`` flag).
         bracket : bool, optional
             Use bracketed paste mode (``-p`` flag).
         separator : str, optional
@@ -1369,7 +1359,7 @@ class Pane(
         if delete_after:
             tmux_args += ("-d",)
 
-        if linefeed_separator:
+        if no_trailing_newline:
             tmux_args += ("-r",)
 
         if bracket:
@@ -1438,9 +1428,9 @@ class Pane(
         self,
         *,
         scroll_up: bool | None = None,
-        exit_on_bottom: bool | None = None,
+        exit_on_copy: bool | None = None,
         mouse_drag: bool | None = None,
-        cancel: bool | None = None,
+        quiet: bool | None = None,
     ) -> None:
         """Enter copy mode via ``$ tmux copy-mode``.
 
@@ -1448,13 +1438,12 @@ class Pane(
         ----------
         scroll_up : bool, optional
             Start scrolled up one page (``-u`` flag).
-        exit_on_bottom : bool, optional
-            Exit copy mode when scrolling reaches the bottom of the
-            history (``-e`` flag).
+        exit_on_copy : bool, optional
+            Exit copy mode after copying (``-e`` flag).
         mouse_drag : bool, optional
             Start mouse drag (``-M`` flag).
-        cancel : bool, optional
-            Cancel copy mode and any other modes (``-q`` flag).
+        quiet : bool, optional
+            Quiet mode (``-q`` flag).
 
         Examples
         --------
@@ -1465,13 +1454,13 @@ class Pane(
         if scroll_up:
             tmux_args += ("-u",)
 
-        if exit_on_bottom:
+        if exit_on_copy:
             tmux_args += ("-e",)
 
         if mouse_drag:
             tmux_args += ("-M",)
 
-        if cancel:
+        if quiet:
             tmux_args += ("-q",)
 
         proc = self.cmd("copy-mode", *tmux_args)
@@ -1547,17 +1536,17 @@ class Pane(
     def choose_tree(
         self,
         *,
-        sessions_collapsed: bool | None = None,
-        windows_collapsed: bool | None = None,
+        sessions_only: bool | None = None,
+        windows_only: bool | None = None,
     ) -> None:
         """Enter tree chooser via ``$ tmux choose-tree``.
 
         Parameters
         ----------
-        sessions_collapsed : bool, optional
-            Start with sessions collapsed (``-s`` flag).
-        windows_collapsed : bool, optional
-            Start with windows collapsed (``-w`` flag).
+        sessions_only : bool, optional
+            Only show sessions, not windows (``-s`` flag).
+        windows_only : bool, optional
+            Only show windows, not sessions (``-w`` flag).
 
         Examples
         --------
@@ -1565,10 +1554,10 @@ class Pane(
         """
         tmux_args: tuple[str, ...] = ()
 
-        if sessions_collapsed:
+        if sessions_only:
             tmux_args += ("-s",)
 
-        if windows_collapsed:
+        if windows_only:
             tmux_args += ("-w",)
 
         proc = self.cmd("choose-tree", *tmux_args)
@@ -1961,13 +1950,14 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def clear_history(self, *, reset_hyperlinks: bool | None = None) -> None:
+    def clear_history(self, *, clear_pane: bool | None = None) -> None:
         """Clear pane history buffer via ``$ tmux clear-history``.
 
         Parameters
         ----------
-        reset_hyperlinks : bool, optional
-            Also reset hyperlinks (``-H`` flag). Requires tmux 3.4+.
+        clear_pane : bool, optional
+            Also clear the visible pane content (``-H`` flag).
+            Requires tmux 3.4+.
 
             .. versionadded:: 0.45
 
@@ -1981,12 +1971,12 @@ class Pane(
 
         tmux_args: tuple[str, ...] = ()
 
-        if reset_hyperlinks:
+        if clear_pane:
             if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
                 tmux_args += ("-H",)
             else:
                 warnings.warn(
-                    "reset_hyperlinks requires tmux 3.4+, ignoring",
+                    "clear_pane requires tmux 3.4+, ignoring",
                     stacklevel=2,
                 )
 
