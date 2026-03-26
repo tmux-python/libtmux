@@ -472,6 +472,9 @@ class Server(
         y: int | DashLiteral | None = None,
         environment: dict[str, str] | None = None,
         *args: t.Any,
+        detach_others: bool | None = None,
+        no_size: bool | None = None,
+        config_file: StrPath | None = None,
         **kwargs: t.Any,
     ) -> Session:
         """Create new session, returns new :class:`Session`.
@@ -518,6 +521,18 @@ class Server(
         y : int | str, optional
             Force the specified height instead of the tmux default for a
             detached session
+        detach_others : bool, optional
+            Detach other clients from the session (``-D`` flag).
+
+            .. versionadded:: 0.45
+        no_size : bool, optional
+            Do not set the initial window size (``-X`` flag).
+
+            .. versionadded:: 0.45
+        config_file : str or PathLike, optional
+            Specify an alternative configuration file (``-f`` flag).
+
+            .. versionadded:: 0.45
 
         Returns
         -------
@@ -584,6 +599,15 @@ class Server(
                 "-P",
                 f"-F{format_string}",
             )
+
+            if detach_others:
+                tmux_args += ("-D",)
+
+            if no_size:
+                tmux_args += ("-X",)
+
+            if config_file is not None:
+                tmux_args += ("-f", str(pathlib.Path(config_file).expanduser()))
 
             if session_name is not None:
                 tmux_args += (f"-s{session_name}",)

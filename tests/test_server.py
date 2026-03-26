@@ -458,3 +458,18 @@ def test_tmux_bin_invalid_path_raise_if_dead() -> None:
     s = Server(tmux_bin="/nonexistent/tmux")
     with pytest.raises(exc.TmuxCommandNotFound):
         s.raise_if_dead()
+
+
+def test_new_session_config_file(
+    server: Server,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Test Server.new_session() with config_file flag."""
+    conf = tmp_path / "test.conf"
+    conf.write_text("set -g status off\n")
+
+    session = server.new_session(
+        session_name="conf_test",
+        config_file=str(conf),
+    )
+    assert session.session_name == "conf_test"
