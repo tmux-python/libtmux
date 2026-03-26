@@ -712,3 +712,29 @@ def test_display_message_flags(
         assert result is not None
         output = "\n".join(result)
         assert expected_in_output in output
+
+
+def test_split_percentage(session: Session) -> None:
+    """Test Pane.split() with percentage parameter."""
+    window = session.new_window(window_name="test_split_pct")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(percentage=25)
+    assert new_pane in window.panes
+    assert len(window.panes) == 2
+
+    # The new pane should be roughly 25% of the window height
+    new_pane.refresh()
+    assert new_pane.pane_height is not None
+    assert int(new_pane.pane_height) <= 15  # ~25% of 40
+
+
+def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
+    """Test that size and percentage are mutually exclusive."""
+    window = session.new_window(window_name="test_split_mutex")
+    pane = window.active_pane
+    assert pane is not None
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        pane.split(size=10, percentage=50)
