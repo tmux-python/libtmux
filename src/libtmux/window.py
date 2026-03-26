@@ -495,6 +495,48 @@ class Window(
 
         return self
 
+    def swap(
+        self,
+        target: str | Window,
+        *,
+        detach: bool | None = None,
+    ) -> None:
+        """Swap this window with another via ``$ tmux swap-window``.
+
+        Parameters
+        ----------
+        target : str or Window
+            Target window to swap with. Can be a window ID string or Window.
+        detach : bool, optional
+            Do not change the active window (``-d`` flag).
+
+        Examples
+        --------
+        >>> w1 = session.new_window(window_name='swap_a')
+        >>> w2 = session.new_window(window_name='swap_b')
+        >>> w1_idx = w1.window_index
+        >>> w2_idx = w2.window_index
+        >>> w1.swap(w2)
+        >>> w1.refresh()
+        >>> w2.refresh()
+        >>> w1.window_index == w2_idx
+        True
+        >>> w2.window_index == w1_idx
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if detach:
+            tmux_args += ("-d",)
+
+        target_id = target.window_id if isinstance(target, Window) else target
+        tmux_args += ("-s", str(target_id))
+
+        proc = self.cmd("swap-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def rename_window(self, new_name: str) -> Window:
         """Rename window.
 
