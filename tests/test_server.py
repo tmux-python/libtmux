@@ -457,6 +457,49 @@ def test_tmux_bin_invalid_path_raise_if_dead() -> None:
         s.raise_if_dead()
 
 
+def test_lock_server(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.lock_server() runs without error."""
+    with control_mode():
+        server.lock_server()
+
+
+def test_lock_client(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.lock_client() runs without error."""
+    with control_mode():
+        server.lock_client()
+
+
+def test_refresh_client(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.refresh_client() runs without error."""
+    with control_mode():
+        server.refresh_client()
+
+
+def test_suspend_client(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.suspend_client() runs without error."""
+    with control_mode():
+        server.suspend_client()
+
+
+def test_server_access_list(server: Server) -> None:
+    """Test Server.server_access() list mode."""
+    server.new_session(session_name="access_test")
+    result = server.server_access(list_access=True)
+    assert isinstance(result, list)
+
+
 def test_start_server(server: Server) -> None:
     """Test Server.start_server() runs without error."""
     server.new_session(session_name="startsvr_test")
