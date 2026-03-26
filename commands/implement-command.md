@@ -18,7 +18,7 @@ Guide wrapping a tmux command in libtmux, following project coding standards fro
 
 Load the `tmux-parity` skill first for reference data and implementation patterns.
 
-If `$ARGUMENTS` is empty, ask the user which tmux command to wrap. Consult `.claude-plugin/skills/tmux-parity/references/command-mapping.md` for the "Not Wrapped" list to suggest candidates.
+If `$ARGUMENTS` is empty, ask the user which tmux command to wrap. Consult `skills/tmux-parity/references/command-mapping.md` for the "Not Wrapped" list to suggest candidates.
 
 ## Phase 1: Analyze the tmux Command
 
@@ -62,7 +62,7 @@ Search libtmux for a wrapped command with similar characteristics:
 - Similar flag pattern (boolean flags, value flags, creates objects, etc.)
 - Read that method as a template
 
-Consult `.claude-plugin/skills/tmux-parity/references/libtmux-patterns.md` for the five implementation patterns.
+Consult `skills/tmux-parity/references/libtmux-patterns.md` for the five implementation patterns.
 
 ## Phase 4: Design the Method Signature
 
