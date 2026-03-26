@@ -1139,6 +1139,58 @@ class Pane(
         self.cmd("send-keys", "Enter")
         return self
 
+    def paste_buffer(
+        self,
+        *,
+        buffer_name: str | None = None,
+        delete_after: bool | None = None,
+        linefeed_separator: bool | None = None,
+        bracket: bool | None = None,
+        separator: str | None = None,
+    ) -> None:
+        """Paste a buffer into the pane via ``$ tmux paste-buffer``.
+
+        Parameters
+        ----------
+        buffer_name : str, optional
+            Name of the buffer to paste (``-b`` flag).
+        delete_after : bool, optional
+            Delete the buffer after pasting (``-d`` flag).
+        linefeed_separator : bool, optional
+            Use newline as the line separator instead of carriage return
+            (``-r`` flag).
+        bracket : bool, optional
+            Use bracketed paste mode (``-p`` flag).
+        separator : str, optional
+            Separator between lines (``-s`` flag).
+
+        Examples
+        --------
+        >>> server.set_buffer('pasted_text')
+        >>> pane.paste_buffer()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if delete_after:
+            tmux_args += ("-d",)
+
+        if linefeed_separator:
+            tmux_args += ("-r",)
+
+        if bracket:
+            tmux_args += ("-p",)
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        if separator is not None:
+            tmux_args += ("-s", separator)
+
+        proc = self.cmd("paste-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def pipe(
         self,
         command: str | None = None,
