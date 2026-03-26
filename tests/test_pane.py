@@ -747,6 +747,70 @@ def test_send_prefix(session: Session) -> None:
     pane.send_prefix()
 
 
+def test_copy_mode(session: Session) -> None:
+    """Test Pane.copy_mode() enters copy mode."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.copy_mode()
+    # Exit copy mode
+    pane.send_keys("q", enter=False)
+
+
+def test_clock_mode(session: Session) -> None:
+    """Test Pane.clock_mode() enters clock mode."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.clock_mode()
+    # Exit clock mode
+    pane.send_keys("q", enter=False)
+
+
+def test_choose_buffer(session: Session) -> None:
+    """Test Pane.choose_buffer() opens buffer chooser."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.choose_buffer()
+
+
+def test_choose_client(session: Session) -> None:
+    """Test Pane.choose_client() opens client chooser."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.choose_client()
+
+
+def test_choose_tree(session: Session) -> None:
+    """Test Pane.choose_tree() opens tree chooser."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.choose_tree()
+
+
+def test_customize_mode(session: Session) -> None:
+    """Test Pane.customize_mode() enters customize mode."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.customize_mode()
+
+
+def test_find_window(session: Session) -> None:
+    """Test Pane.find_window() opens filtered tree."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.find_window("sh")
+
+
+def test_display_panes(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+) -> None:
+    """Test Pane.display_panes() shows pane numbers."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with control_mode():
+        pane.display_panes()
+
+
 def test_display_popup_runs_command(
     control_mode: t.Callable[..., t.Any],
     session: Session,

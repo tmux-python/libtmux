@@ -1355,6 +1355,138 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def copy_mode(self, *, bottom: bool | None = None) -> None:
+        """Enter copy mode via ``$ tmux copy-mode``.
+
+        Parameters
+        ----------
+        bottom : bool, optional
+            Start at the bottom of the history (``-u`` flag inverted — default
+            starts at bottom, ``-u`` starts at top/scrollback).
+
+        Examples
+        --------
+        >>> pane.copy_mode()
+
+        Exit copy mode:
+
+        >>> pane.send_keys('q')
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        proc = self.cmd("copy-mode", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def clock_mode(self) -> None:
+        """Enter clock mode via ``$ tmux clock-mode``.
+
+        Examples
+        --------
+        >>> pane.clock_mode()
+
+        Exit clock mode:
+
+        >>> pane.send_keys('q')
+        """
+        proc = self.cmd("clock-mode")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def display_panes(self) -> None:
+        """Show pane numbers via ``$ tmux display-panes``.
+
+        Requires an attached client.
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     window.active_pane.display_panes()
+        """
+        proc = self.server.cmd("display-panes")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def choose_buffer(self) -> None:
+        """Enter buffer chooser via ``$ tmux choose-buffer``.
+
+        Examples
+        --------
+        >>> pane.choose_buffer()
+        """
+        proc = self.cmd("choose-buffer")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def choose_client(self) -> None:
+        """Enter client chooser via ``$ tmux choose-client``.
+
+        Examples
+        --------
+        >>> pane.choose_client()
+        """
+        proc = self.cmd("choose-client")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def choose_tree(self, *, sessions_only: bool | None = None) -> None:
+        """Enter tree chooser via ``$ tmux choose-tree``.
+
+        Parameters
+        ----------
+        sessions_only : bool, optional
+            Only show sessions, not windows (``-s`` flag).
+
+        Examples
+        --------
+        >>> pane.choose_tree()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if sessions_only:
+            tmux_args += ("-s",)
+
+        proc = self.cmd("choose-tree", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def customize_mode(self) -> None:
+        """Enter customize mode via ``$ tmux customize-mode``.
+
+        Examples
+        --------
+        >>> pane.customize_mode()
+        """
+        proc = self.cmd("customize-mode")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def find_window(self, match_string: str) -> None:
+        """Search for a window matching a string via ``$ tmux find-window``.
+
+        Opens a choose-tree filtered to matching windows.
+
+        Parameters
+        ----------
+        match_string : str
+            String to search for in window names, titles, and content.
+
+        Examples
+        --------
+        >>> pane.find_window('sh')
+        """
+        proc = self.cmd("find-window", match_string)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def send_prefix(self, *, secondary: bool | None = None) -> None:
         """Send the prefix key to the pane via ``$ tmux send-prefix``.
 
