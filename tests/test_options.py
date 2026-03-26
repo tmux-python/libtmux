@@ -1494,3 +1494,38 @@ def test_explode_arrays_preserves_inherited_marker(
         assert array_value[idx] == expected_val, (
             f"Value at index {idx}: expected '{expected_val}', got '{array_value[idx]}'"
         )
+
+
+def test_show_options_quiet(server: Server) -> None:
+    """Test _show_options_raw with quiet flag suppresses errors."""
+    from libtmux.constants import OptionScope
+
+    # Query with quiet — should not raise even with unusual options
+    result = server._show_options_raw(
+        scope=OptionScope.Server,
+        quiet=True,
+    )
+    assert isinstance(result.stdout, list)
+
+
+def test_set_environment_hidden(session: Session) -> None:
+    """Test set_environment with hidden flag."""
+    session.set_environment("HIDDEN_TEST_VAR", "secret", hidden=True)
+
+    # Normal show_environment should NOT show hidden vars
+    env = session.show_environment()
+    assert "HIDDEN_TEST_VAR" not in env
+
+
+def test_set_environment_expand_format(session: Session) -> None:
+    """Test set_environment with expand_format flag."""
+    session.set_environment(
+        "FORMAT_TEST_VAR",
+        "#{session_name}",
+        expand_format=True,
+    )
+
+    env = session.show_environment()
+    # The value should have been expanded (not the raw format string)
+    assert "FORMAT_TEST_VAR" in env
+    assert env["FORMAT_TEST_VAR"] != "#{session_name}"
