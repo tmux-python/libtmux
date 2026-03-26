@@ -574,3 +574,36 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
     )
     with raises_ctx:
         test_session.attach()
+
+
+def test_new_window_kill_existing(session: Session) -> None:
+    """Test Session.new_window() with kill_existing flag."""
+    # Create a window at a specific index
+    w1 = session.new_window(window_name="kill_orig", window_index="5")
+    assert w1.window_name == "kill_orig"
+    assert w1.window_index == "5"
+
+    # Create another window at the same index with kill_existing
+    w2 = session.new_window(
+        window_name="kill_replace",
+        window_index="5",
+        kill_existing=True,
+    )
+    assert w2.window_name == "kill_replace"
+    assert w2.window_index == "5"
+
+    # Original window should be gone
+    session.refresh()
+    names = [w.window_name for w in session.windows]
+    assert "kill_orig" not in names
+    assert "kill_replace" in names
+
+
+def test_new_window_select_existing(session: Session) -> None:
+    """Test Session.new_window() with select_existing flag — new name."""
+    # With a unique name and select_existing, a new window is created normally
+    w = session.new_window(
+        window_name="selexist_new",
+        select_existing=True,
+    )
+    assert w.window_name == "selexist_new"
