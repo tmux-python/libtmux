@@ -528,6 +528,100 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def set_buffer(
+        self,
+        data: str,
+        *,
+        buffer_name: str | None = None,
+        append: bool | None = None,
+    ) -> None:
+        """Set a paste buffer via ``$ tmux set-buffer``.
+
+        Parameters
+        ----------
+        data : str
+            Data to store in the buffer.
+        buffer_name : str, optional
+            Name of the buffer (``-b`` flag).
+        append : bool, optional
+            Append to the buffer instead of replacing (``-a`` flag).
+
+        Examples
+        --------
+        >>> server.set_buffer('hello')
+        >>> server.show_buffer()
+        'hello'
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if append:
+            tmux_args += ("-a",)
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        tmux_args += (data,)
+
+        proc = self.cmd("set-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def show_buffer(self, *, buffer_name: str | None = None) -> str:
+        """Show content of a paste buffer via ``$ tmux show-buffer``.
+
+        Parameters
+        ----------
+        buffer_name : str, optional
+            Name of the buffer (``-b`` flag). Defaults to the most recent.
+
+        Returns
+        -------
+        str
+            Buffer content.
+
+        Examples
+        --------
+        >>> server.set_buffer('test_data')
+        >>> server.show_buffer()
+        'test_data'
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        proc = self.cmd("show-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return "\n".join(proc.stdout)
+
+    def delete_buffer(self, *, buffer_name: str | None = None) -> None:
+        """Delete a paste buffer via ``$ tmux delete-buffer``.
+
+        Parameters
+        ----------
+        buffer_name : str, optional
+            Name of the buffer to delete (``-b`` flag). Defaults to the most
+            recent.
+
+        Examples
+        --------
+        >>> server.set_buffer('to_delete', buffer_name='del_buf')
+        >>> server.delete_buffer(buffer_name='del_buf')
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        proc = self.cmd("delete-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def switch_client(self, target_session: str) -> None:
         """Switch tmux client.
 
