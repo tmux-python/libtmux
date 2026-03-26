@@ -1139,6 +1139,41 @@ class Pane(
         self.cmd("send-keys", "Enter")
         return self
 
+    def clear_history(self, *, clear_pane: bool | None = None) -> None:
+        """Clear pane history buffer via ``$ tmux clear-history``.
+
+        Parameters
+        ----------
+        clear_pane : bool, optional
+            Also clear the visible pane content (``-H`` flag).
+            Requires tmux 3.4+.
+
+            .. versionadded:: 0.45
+
+        Examples
+        --------
+        >>> pane.clear_history()
+        """
+        import warnings
+
+        from libtmux.common import has_gte_version
+
+        tmux_args: tuple[str, ...] = ()
+
+        if clear_pane:
+            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-H",)
+            else:
+                warnings.warn(
+                    "clear_pane requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        proc = self.cmd("clear-history", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def clear(self) -> Pane:
         """Clear pane."""
         self.send_keys("reset")
