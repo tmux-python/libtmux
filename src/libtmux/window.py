@@ -406,7 +406,14 @@ class Window(
         """Return last pane."""
         return self.select_pane("-l")
 
-    def select_layout(self, layout: str | None = None) -> Window:
+    def select_layout(
+        self,
+        layout: str | None = None,
+        *,
+        spread: bool | None = None,
+        next_layout: bool | None = None,
+        previous_layout: bool | None = None,
+    ) -> Window:
         """Select layout for window.
 
         Wrapper for ``$ tmux select-layout <layout>``.
@@ -436,6 +443,18 @@ class Window(
                 both rows and columns.
             'custom'
                 Custom dimensions (see :term:`tmux(1)` manpages).
+        spread : bool, optional
+            Spread panes out evenly (``-E`` flag).
+
+            .. versionadded:: 0.45
+        next_layout : bool, optional
+            Move to the next layout (``-n`` flag).
+
+            .. versionadded:: 0.45
+        previous_layout : bool, optional
+            Move to the previous layout (``-o`` flag).
+
+            .. versionadded:: 0.45
 
         Returns
         -------
@@ -446,8 +465,25 @@ class Window(
         ------
         :exc:`libtmux.exc.LibTmuxException`
             If tmux returns an error.
+        ValueError
+            If both *layout* and a flag (*spread*, *next_layout*,
+            *previous_layout*) are specified.
         """
+        flags = (spread, next_layout, previous_layout)
+        if layout and any(flags):
+            msg = "Cannot specify both layout and spread/next_layout/previous_layout"
+            raise ValueError(msg)
+
         cmd = ["select-layout"]
+
+        if spread:
+            cmd.append("-E")
+
+        if next_layout:
+            cmd.append("-n")
+
+        if previous_layout:
+            cmd.append("-o")
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)

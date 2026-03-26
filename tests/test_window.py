@@ -770,3 +770,52 @@ def test_deprecated_window_methods_emit_warning(
 
     with pytest.warns(DeprecationWarning, match=test_case.expected_error_match):
         method(*test_case.args, **test_case.kwargs)
+
+
+def test_select_layout_spread(session: Session) -> None:
+    """Test Window.select_layout() with spread flag."""
+    window = session.new_window(window_name="test_layout_spread")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+    pane.split()
+    assert len(window.panes) == 3
+
+    # Spread panes evenly — verify no error
+    window.select_layout(spread=True)
+
+
+def test_select_layout_next_previous(session: Session) -> None:
+    """Test Window.select_layout() with next/previous flags."""
+    window = session.new_window(window_name="test_layout_cycle")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+
+    # Set a known layout
+    window.select_layout("even-horizontal")
+    window.refresh()
+    layout_before = window.window_layout
+
+    # Cycle to next layout
+    window.select_layout(next_layout=True)
+    window.refresh()
+    layout_after_next = window.window_layout
+
+    assert layout_before != layout_after_next
+
+    # Cycle back to previous
+    window.select_layout(previous_layout=True)
+    window.refresh()
+    layout_after_prev = window.window_layout
+
+    assert layout_after_prev == layout_before
+
+
+def test_select_layout_mutual_exclusion(session: Session) -> None:
+    """Test that layout string and flags are mutually exclusive."""
+    window = session.new_window(window_name="test_layout_mutex")
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        window.select_layout("tiled", spread=True)
