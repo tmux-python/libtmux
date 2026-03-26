@@ -81,4 +81,4 @@ Load the `tmux-parity` skill first to access reference data and domain knowledge
    | Command | libtmux Method | Missing Flags |
    ```
 
-Consult `.claude-plugin/skills/tmux-parity/references/command-mapping.md` for the baseline mapping data. Run the extraction scripts for the most current data.
+Consult `skills/tmux-parity/references/command-mapping.md` for the baseline mapping data. Run the extraction scripts for the most current data.
