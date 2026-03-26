@@ -576,6 +576,11 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
         test_session.attach()
 
 
+def test_lock_session(session: Session) -> None:
+    """Test Session.lock_session() runs without error."""
+    session.lock_session()
+
+
 def test_detach_client(
     control_mode: t.Callable[..., t.Any],
     session: Session,
