@@ -821,6 +821,35 @@ def test_select_layout_mutual_exclusion(session: Session) -> None:
         window.select_layout("tiled", spread=True)
 
 
+def test_link_unlink_window(server: Server, session: Session) -> None:
+    """Test Window.link() and Window.unlink()."""
+    # Create a second session
+    s2 = server.new_session(session_name="link_target")
+
+    # Create a window in the first session
+    w = session.new_window(window_name="link_test")
+
+    # Link it to s2
+    w.link(s2, detach=True)
+
+    # Verify window appears in s2
+    s2.refresh()
+    s2_window_names = [win.window_name for win in s2.windows]
+    assert "link_test" in s2_window_names
+
+    # Unlink from s2 — select a different window first
+    linked_windows = [win for win in s2.windows if win.window_name == "link_test"]
+    assert len(linked_windows) > 0
+
+    # We need another window in s2 before unlinking the last one
+    linked_windows[0].unlink()
+
+    # Verify it's gone from s2
+    s2.refresh()
+    s2_window_names = [win.window_name for win in s2.windows]
+    assert "link_test" not in s2_window_names
+
+
 def test_rotate_window(session: Session) -> None:
     """Test Window.rotate() rotates pane positions."""
     window = session.new_window(window_name="test_rotate")

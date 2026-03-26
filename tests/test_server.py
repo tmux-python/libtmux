@@ -456,6 +456,13 @@ def test_tmux_bin_invalid_path_raise_if_dead() -> None:
         s.raise_if_dead()
 
 
+def test_wait_for_set_flag(server: Server) -> None:
+    """Test Server.wait_for() with set_flag."""
+    server.new_session(session_name="wait_test")
+    # Just set the flag — should not block or error
+    server.wait_for("test_channel_set", set_flag=True)
+
+
 def test_run_shell_basic(server: Server) -> None:
     """Test Server.run_shell() executes command and returns output."""
     server.new_session(session_name="run_shell_test")

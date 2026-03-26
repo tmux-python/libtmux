@@ -483,6 +483,51 @@ class Server(
             return None
         return proc.stdout
 
+    def wait_for(
+        self,
+        channel: str,
+        *,
+        lock: bool | None = None,
+        unlock: bool | None = None,
+        set_flag: bool | None = None,
+    ) -> None:
+        """Wait for, signal, or lock a channel via ``$ tmux wait-for``.
+
+        Parameters
+        ----------
+        channel : str
+            Channel name.
+        lock : bool, optional
+            Lock the channel (``-L`` flag).
+        unlock : bool, optional
+            Unlock the channel (``-U`` flag).
+        set_flag : bool, optional
+            Set the channel flag and wake waiters (``-S`` flag).
+
+        Examples
+        --------
+        >>> server.new_session(session_name='wait_test')
+        Session(...)
+        >>> server.wait_for('test_channel', set_flag=True)
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if lock:
+            tmux_args += ("-L",)
+
+        if unlock:
+            tmux_args += ("-U",)
+
+        if set_flag:
+            tmux_args += ("-S",)
+
+        tmux_args += (channel,)
+
+        proc = self.cmd("wait-for", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def switch_client(self, target_session: str) -> None:
         """Switch tmux client.
 
