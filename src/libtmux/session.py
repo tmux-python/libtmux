@@ -245,6 +245,18 @@ class Session(
     Commands (tmux-like)
     """
 
+    def lock_session(self) -> None:
+        """Lock this session via ``$ tmux lock-session``.
+
+        Examples
+        --------
+        >>> session.lock_session()
+        """
+        proc = self.cmd("lock-session")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def detach_client(
         self,
         *,
