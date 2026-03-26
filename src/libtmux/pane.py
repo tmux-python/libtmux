@@ -653,8 +653,41 @@ class Pane(
     additional scoped window info.
     """
 
-    def select(self) -> Pane:
+    def select(
+        self,
+        *,
+        direction: ResizeAdjustmentDirection | None = None,
+        last: bool | None = None,
+        keep_zoom: bool | None = None,
+        mark: bool | None = None,
+        clear_mark: bool | None = None,
+        disable_input: bool | None = None,
+        enable_input: bool | None = None,
+    ) -> Pane:
         """Select pane.
+
+        Parameters
+        ----------
+        direction : ResizeAdjustmentDirection, optional
+            Select the pane in the given direction (``-U``, ``-D``, ``-L``,
+            ``-R``).
+        last : bool, optional
+            Select the last (previously selected) pane (``-l`` flag).
+        keep_zoom : bool, optional
+            Keep the window zoomed if it was zoomed (``-Z`` flag).
+        mark : bool, optional
+            Set the marked pane (``-m`` flag).
+        clear_mark : bool, optional
+            Clear the marked pane (``-M`` flag).
+        disable_input : bool, optional
+            Disable input to the pane (``-d`` flag).
+        enable_input : bool, optional
+            Enable input to the pane (``-e`` flag).
+
+        Returns
+        -------
+        :class:`Pane`
+            Self, for method chaining.
 
         Examples
         --------
@@ -677,7 +710,30 @@ class Pane(
         >>> new_pane.pane_active == '1'
         True
         """
-        proc = self.cmd("select-pane")
+        tmux_args: tuple[str, ...] = ()
+
+        if direction is not None:
+            tmux_args += (RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP[direction],)
+
+        if last:
+            tmux_args += ("-l",)
+
+        if keep_zoom:
+            tmux_args += ("-Z",)
+
+        if mark:
+            tmux_args += ("-m",)
+
+        if clear_mark:
+            tmux_args += ("-M",)
+
+        if disable_input:
+            tmux_args += ("-d",)
+
+        if enable_input:
+            tmux_args += ("-e",)
+
+        proc = self.cmd("select-pane", *tmux_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
