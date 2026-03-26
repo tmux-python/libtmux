@@ -1139,6 +1139,55 @@ class Pane(
         self.cmd("send-keys", "Enter")
         return self
 
+    def break_pane(
+        self,
+        *,
+        detach: bool = True,
+        window_name: str | None = None,
+    ) -> Window:
+        """Break this pane out into a new window via ``$ tmux break-pane``.
+
+        Parameters
+        ----------
+        detach : bool, optional
+            Do not switch to the new window (``-d`` flag), default True.
+        window_name : str, optional
+            Name for the new window (``-n`` flag).
+
+        Returns
+        -------
+        :class:`Window`
+            The newly created window containing the pane.
+
+        Examples
+        --------
+        >>> pane_to_break = window.split(shell='sleep 1m')
+        >>> new_window = pane_to_break.break_pane(window_name='broken')
+        >>> new_window.window_name
+        'broken'
+        """
+        tmux_args: tuple[str, ...] = ("-P", "-F#{window_id}")
+
+        if detach:
+            tmux_args += ("-d",)
+
+        if window_name is not None:
+            tmux_args += ("-n", window_name)
+
+        tmux_args += ("-s", str(self.pane_id))
+
+        # Use server.cmd to avoid auto-adding -t from self.cmd
+        proc = self.server.cmd("break-pane", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        window_id = proc.stdout[0].strip()
+
+        from libtmux.window import Window
+
+        return Window.from_window_id(server=self.server, window_id=window_id)
+
     def swap(
         self,
         target: str | Pane,
