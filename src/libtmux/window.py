@@ -496,6 +496,50 @@ class Window(
 
         return self
 
+    def rotate(
+        self,
+        *,
+        direction_up: bool | None = None,
+        keep_zoom: bool | None = None,
+    ) -> Window:
+        """Rotate pane positions in the window via ``$ tmux rotate-window``.
+
+        Parameters
+        ----------
+        direction_up : bool, optional
+            Rotate upward (``-U`` flag). Default is downward (``-D``).
+        keep_zoom : bool, optional
+            Keep the window zoomed if zoomed (``-Z`` flag).
+
+        Returns
+        -------
+        :class:`Window`
+            Self, for method chaining.
+
+        Examples
+        --------
+        >>> pane1 = window.active_pane
+        >>> pane2 = window.split()
+        >>> window.rotate()
+        Window(...)
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if direction_up:
+            tmux_args += ("-U",)
+        else:
+            tmux_args += ("-D",)
+
+        if keep_zoom:
+            tmux_args += ("-Z",)
+
+        proc = self.cmd("rotate-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self
+
     def respawn(
         self,
         *,

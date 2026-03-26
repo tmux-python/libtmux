@@ -245,6 +245,76 @@ class Session(
     Commands (tmux-like)
     """
 
+    def last_window(self) -> Window:
+        """Select the last (previously selected) window.
+
+        Wraps ``$ tmux last-window``.
+
+        Returns
+        -------
+        :class:`Window`
+            The newly active window.
+
+        Examples
+        --------
+        >>> w1 = session.new_window(window_name='lw_a')
+        >>> w2 = session.new_window(window_name='lw_b', attach=True)
+        >>> session.last_window()
+        Window(...)
+        """
+        proc = self.cmd("last-window")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self.active_window
+
+    def next_window(self) -> Window:
+        """Select the next window.
+
+        Wraps ``$ tmux next-window``.
+
+        Returns
+        -------
+        :class:`Window`
+            The newly active window.
+
+        Examples
+        --------
+        >>> w = session.new_window(window_name='nw_test')
+        >>> session.next_window()
+        Window(...)
+        """
+        proc = self.cmd("next-window")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self.active_window
+
+    def previous_window(self) -> Window:
+        """Select the previous window.
+
+        Wraps ``$ tmux previous-window``.
+
+        Returns
+        -------
+        :class:`Window`
+            The newly active window.
+
+        Examples
+        --------
+        >>> w = session.new_window(window_name='pw_test')
+        >>> session.previous_window()
+        Window(...)
+        """
+        proc = self.cmd("previous-window")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self.active_window
+
     def select_window(self, target_window: str | int) -> Window:
         """Select window and return the selected window.
 
