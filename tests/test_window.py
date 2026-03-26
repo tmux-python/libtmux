@@ -821,6 +821,30 @@ def test_select_layout_mutual_exclusion(session: Session) -> None:
         window.select_layout("tiled", spread=True)
 
 
+def test_rotate_window(session: Session) -> None:
+    """Test Window.rotate() rotates pane positions."""
+    window = session.new_window(window_name="test_rotate")
+    window.resize(height=40, width=80)
+    pane1 = window.active_pane
+    assert pane1 is not None
+    pane2 = pane1.split()
+    pane3 = pane2.split()
+
+    pane1.refresh()
+    pane2.refresh()
+    pane3.refresh()
+    idx_before = (pane1.pane_index, pane2.pane_index, pane3.pane_index)
+
+    window.rotate()
+
+    pane1.refresh()
+    pane2.refresh()
+    pane3.refresh()
+    idx_after = (pane1.pane_index, pane2.pane_index, pane3.pane_index)
+
+    assert idx_before != idx_after
+
+
 def test_respawn_window(session: Session) -> None:
     """Test Window.respawn() with kill flag."""
     window = session.new_window(window_name="test_respawn_w")
