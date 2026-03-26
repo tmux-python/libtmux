@@ -740,6 +740,32 @@ def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
         pane.split(size=10, percentage=50)
 
 
+def test_paste_buffer(session: Session) -> None:
+    """Test Pane.paste_buffer() pastes buffer content into pane."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_paste",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    # Set buffer and paste it
+    session.server.set_buffer("pasted_content", buffer_name="paste_test")
+    pane.paste_buffer(buffer_name="paste_test")
+
+    # Verify content appeared in pane
+    retry_until(
+        lambda: "pasted_content" in "\n".join(pane.capture_pane()),
+        3,
+        raises=True,
+    )
+
+
 def test_pipe_pane(session: Session, tmp_path: pathlib.Path) -> None:
     """Test Pane.pipe() pipes output to a file."""
     env = shutil.which("env")
