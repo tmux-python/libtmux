@@ -460,6 +460,21 @@ def test_tmux_bin_invalid_path_raise_if_dead() -> None:
         s.raise_if_dead()
 
 
+def test_run_shell_basic(server: Server) -> None:
+    """Test Server.run_shell() executes command and returns output."""
+    server.new_session(session_name="run_shell_test")
+    result = server.run_shell("echo hello_from_run_shell")
+    assert result is not None
+    assert any("hello_from_run_shell" in line for line in result)
+
+
+def test_run_shell_background(server: Server) -> None:
+    """Test Server.run_shell() in background mode."""
+    server.new_session(session_name="run_shell_bg_test")
+    result = server.run_shell("echo bg_test", background=True)
+    assert result is None
+
+
 def test_new_session_config_file(
     server: Server,
     tmp_path: pathlib.Path,
