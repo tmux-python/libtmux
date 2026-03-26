@@ -1139,6 +1139,123 @@ class Pane(
         self.cmd("send-keys", "Enter")
         return self
 
+    def display_popup(
+        self,
+        command: str | None = None,
+        *,
+        close_on_exit: bool | None = None,
+        close_on_success: bool | None = None,
+        width: int | str | None = None,
+        height: int | str | None = None,
+        start_directory: StrPath | None = None,
+        title: str | None = None,
+        border_lines: str | None = None,
+        border_style: str | None = None,
+        environment: dict[str, str] | None = None,
+    ) -> None:
+        """Display a popup overlay via ``$ tmux display-popup``.
+
+        Requires tmux 3.2+ and an attached client. Use
+        :class:`~libtmux.test.control_mode.ControlMode` in tests to provide
+        a client.
+
+        Parameters
+        ----------
+        command : str, optional
+            Shell command to run in the popup.
+        close_on_exit : bool, optional
+            Close popup when command exits (``-E`` flag).
+        close_on_success : bool, optional
+            Close popup only on success exit code (``-C`` flag).
+        width : int or str, optional
+            Popup width (``-w`` flag).
+        height : int or str, optional
+            Popup height (``-h`` flag).
+        start_directory : str or PathLike, optional
+            Working directory (``-d`` flag).
+        title : str, optional
+            Popup title (``-T`` flag). Requires tmux 3.3+.
+        border_lines : str, optional
+            Border line style (``-b`` flag). Requires tmux 3.3+.
+        border_style : str, optional
+            Border style (``-s`` flag). Requires tmux 3.3+.
+        environment : dict, optional
+            Environment variables (``-e`` flag). Requires tmux 3.3+.
+
+        .. versionadded:: 0.45
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     pane.display_popup(command='true', close_on_exit=True)
+        """
+        import warnings
+
+        from libtmux.common import has_gte_version
+
+        tmux_args: tuple[str, ...] = ()
+
+        if close_on_exit:
+            tmux_args += ("-E",)
+
+        if close_on_success:
+            tmux_args += ("-C",)
+
+        if width is not None:
+            tmux_args += ("-w", str(width))
+
+        if height is not None:
+            tmux_args += ("-h", str(height))
+
+        if start_directory is not None:
+            start_path = pathlib.Path(start_directory).expanduser()
+            tmux_args += ("-d", str(start_path))
+
+        if title is not None:
+            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-T", title)
+            else:
+                warnings.warn(
+                    "title requires tmux 3.3+, ignoring",
+                    stacklevel=2,
+                )
+
+        if border_lines is not None:
+            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-b", border_lines)
+            else:
+                warnings.warn(
+                    "border_lines requires tmux 3.3+, ignoring",
+                    stacklevel=2,
+                )
+
+        if border_style is not None:
+            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-s", border_style)
+            else:
+                warnings.warn(
+                    "border_style requires tmux 3.3+, ignoring",
+                    stacklevel=2,
+                )
+
+        if environment:
+            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
+                for k, v in environment.items():
+                    tmux_args += ("-e", f"{k}={v}")
+            else:
+                warnings.warn(
+                    "environment requires tmux 3.3+, ignoring",
+                    stacklevel=2,
+                )
+
+        if command is not None:
+            tmux_args += (command,)
+
+        proc = self.cmd("display-popup", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def paste_buffer(
         self,
         *,

@@ -740,6 +740,43 @@ def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
         pane.split(size=10, percentage=50)
 
 
+def test_display_popup_runs_command(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Test Pane.display_popup() runs a command — verified by file side-effect."""
+    marker = tmp_path / "popup_ran.marker"
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with control_mode():
+        pane.display_popup(command=f"touch {marker}", close_on_exit=True)
+
+    retry_until(lambda: marker.exists(), 3, raises=True)
+
+
+def test_display_popup_with_dimensions(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Test Pane.display_popup() with width and height."""
+    marker = tmp_path / "popup_sized.marker"
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with control_mode():
+        pane.display_popup(
+            command=f"touch {marker}",
+            close_on_exit=True,
+            width=40,
+            height=10,
+        )
+
+    retry_until(lambda: marker.exists(), 3, raises=True)
+
+
 def test_paste_buffer(session: Session) -> None:
     """Test Pane.paste_buffer() pastes buffer content into pane."""
     env = shutil.which("env")
