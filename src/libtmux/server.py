@@ -622,6 +622,102 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def save_buffer(
+        self,
+        path: StrPath,
+        *,
+        buffer_name: str | None = None,
+        append: bool | None = None,
+    ) -> None:
+        """Save a paste buffer to a file via ``$ tmux save-buffer``.
+
+        Parameters
+        ----------
+        path : str or PathLike
+            File path to save the buffer to.
+        buffer_name : str, optional
+            Name of the buffer (``-b`` flag). Defaults to the most recent.
+        append : bool, optional
+            Append to the file instead of overwriting (``-a`` flag).
+
+        Examples
+        --------
+        >>> import pathlib
+        >>> server.set_buffer('save_me')
+        >>> path = pathlib.Path(request.config.rootdir) / '..' / 'tmp_save.txt'
+        >>> server.save_buffer(str(path))
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if append:
+            tmux_args += ("-a",)
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        tmux_args += (str(pathlib.Path(path).expanduser()),)
+
+        proc = self.cmd("save-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def load_buffer(
+        self,
+        path: StrPath,
+        *,
+        buffer_name: str | None = None,
+    ) -> None:
+        """Load a file into a paste buffer via ``$ tmux load-buffer``.
+
+        Parameters
+        ----------
+        path : str or PathLike
+            File path to load into the buffer.
+        buffer_name : str, optional
+            Name of the buffer (``-b`` flag).
+
+        Examples
+        --------
+        >>> import pathlib
+        >>> path = pathlib.Path(request.config.rootdir) / '..' / 'tmp_load.txt'
+        >>> _ = path.write_text('loaded')
+        >>> server.load_buffer(str(path), buffer_name='loaded_buf')
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        tmux_args += (str(pathlib.Path(path).expanduser()),)
+
+        proc = self.cmd("load-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def list_buffers(self) -> list[str]:
+        """List paste buffers via ``$ tmux list-buffers``.
+
+        Returns
+        -------
+        list[str]
+            Raw output lines from list-buffers.
+
+        Examples
+        --------
+        >>> server.set_buffer('buf_data')
+        >>> result = server.list_buffers()
+        >>> len(result) >= 1
+        True
+        """
+        proc = self.cmd("list-buffers")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
     def switch_client(self, target_session: str) -> None:
         """Switch tmux client.
 
