@@ -328,7 +328,7 @@ class Pane(
         trim_trailing: bool = False,
         alternate_screen: bool = False,
         quiet: bool = False,
-        mode_screen: bool = False,
+        escape_markup: bool = False,
     ) -> list[str]:
         r"""Capture text from pane.
 
@@ -377,16 +377,11 @@ class Pane(
         alternate_screen : bool, optional
             Capture from the alternate screen (``-a`` flag).
             Default: False
-
-            .. versionadded:: 0.45
         quiet : bool, optional
             Suppress errors silently (``-q`` flag).
             Default: False
-
-            .. versionadded:: 0.45
-        mode_screen : bool, optional
-            Capture from the mode screen (e.g. copy mode) instead of the
-            pane (``-M`` flag). Requires tmux 3.6+.
+        escape_markup : bool, optional
+            Escape markup in the output (``-M`` flag). Requires tmux 3.6+.
             Default: False
 
             .. versionadded:: 0.45
@@ -441,12 +436,12 @@ class Pane(
             cmd.append("-a")
         if quiet:
             cmd.append("-q")
-        if mode_screen:
+        if escape_markup:
             if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
                 cmd.append("-M")
             else:
                 warnings.warn(
-                    "mode_screen requires tmux 3.6+, ignoring",
+                    "escape_markup requires tmux 3.6+, ignoring",
                     stacklevel=2,
                 )
         return self.cmd(*cmd).stdout
@@ -486,17 +481,11 @@ class Pane(
             Send keys literally, default False.
         reset : bool, optional
             Reset terminal state before sending keys (``-R`` flag).
-
-            .. versionadded:: 0.45
         copy_mode_cmd : str, optional
             Send a command to copy mode instead of keys (``-X`` flag).
             When set, *cmd* is ignored.
-
-            .. versionadded:: 0.45
         repeat : int, optional
             Repeat count for the key (``-N`` flag).
-
-            .. versionadded:: 0.45
         expand_formats : bool, optional
             Expand tmux format strings in keys (``-F`` flag).
 
@@ -632,8 +621,6 @@ class Pane(
         """Display message to pane.
 
         Displays a message in target-client status line.
-        The ``get_text=False`` path renders in the status line and is not
-        programmatically verifiable; only ``get_text=True`` returns output.
 
         Parameters
         ----------
@@ -644,32 +631,18 @@ class Pane(
             target-client status line.
         format_string : str, optional
             Format string for output (``-F`` flag).
-
-            .. versionadded:: 0.45
         all_formats : bool, optional
             List all format variables (``-a`` flag).
-
-            .. versionadded:: 0.45
         verbose : bool, optional
             Show format variable types (``-v`` flag).
-
-            .. versionadded:: 0.45
         no_expand : bool, optional
             Suppress format expansion (``-I`` flag).
-
-            .. versionadded:: 0.45
         target_client : str, optional
             Target client (``-c`` flag).
-
-            .. versionadded:: 0.45
         delay : int, optional
             Display time in milliseconds (``-d`` flag).
-
-            .. versionadded:: 0.45
         notify : bool, optional
             Do not wait for input (``-N`` flag).
-
-            .. versionadded:: 0.45
         list_formats : bool, optional
             List format variables (``-l`` flag). Requires tmux 3.4+.
 
@@ -832,32 +805,18 @@ class Pane(
         direction : ResizeAdjustmentDirection, optional
             Select the pane in the given direction (``-U``, ``-D``, ``-L``,
             ``-R``).
-
-            .. versionadded:: 0.45
         last : bool, optional
             Select the last (previously selected) pane (``-l`` flag).
-
-            .. versionadded:: 0.45
         keep_zoom : bool, optional
             Keep the window zoomed if it was zoomed (``-Z`` flag).
-
-            .. versionadded:: 0.45
         mark : bool, optional
             Set the marked pane (``-m`` flag).
-
-            .. versionadded:: 0.45
         clear_mark : bool, optional
             Clear the marked pane (``-M`` flag).
-
-            .. versionadded:: 0.45
         disable_input : bool, optional
             Disable input to the pane (``-d`` flag).
-
-            .. versionadded:: 0.45
         enable_input : bool, optional
             Enable input to the pane (``-e`` flag).
-
-            .. versionadded:: 0.45
 
         Returns
         -------
@@ -1180,721 +1139,6 @@ class Pane(
         self.cmd("send-keys", "Enter")
         return self
 
-    def display_popup(
-        self,
-        command: str | None = None,
-        *,
-        close_on_exit: bool | None = None,
-        close_on_success: bool | None = None,
-        width: int | str | None = None,
-        height: int | str | None = None,
-        x: int | str | None = None,
-        y: int | str | None = None,
-        start_directory: StrPath | None = None,
-        title: str | None = None,
-        border_lines: str | None = None,
-        style: str | None = None,
-        border_style: str | None = None,
-        environment: dict[str, str] | None = None,
-    ) -> None:
-        """Display a popup overlay via ``$ tmux display-popup``.
-
-        Requires tmux 3.2+ and an attached client. Use
-        :class:`~libtmux.test.control_mode.ControlMode` in tests to provide
-        a client.
-
-        Parameters
-        ----------
-        command : str, optional
-            Shell command to run in the popup.
-        close_on_exit : bool, optional
-            Close popup when command exits (``-E`` flag).
-        close_on_success : bool, optional
-            Close popup only on success exit code (``-C`` flag).
-        width : int or str, optional
-            Popup width (``-w`` flag).
-        height : int or str, optional
-            Popup height (``-h`` flag).
-        x : int or str, optional
-            Popup x position (``-x`` flag).
-        y : int or str, optional
-            Popup y position (``-y`` flag).
-        start_directory : str or PathLike, optional
-            Working directory (``-d`` flag).
-        title : str, optional
-            Popup title (``-T`` flag). Requires tmux 3.3+.
-        border_lines : str, optional
-            Border line style (``-b`` flag). Requires tmux 3.3+.
-        style : str, optional
-            Popup style (``-s`` flag). Requires tmux 3.3+.
-        border_style : str, optional
-            Border style (``-S`` flag). Requires tmux 3.3+.
-        environment : dict, optional
-            Environment variables (``-e`` flag). Requires tmux 3.3+.
-
-        .. versionadded:: 0.45
-
-        Examples
-        --------
-        Not directly testable — popup rendering requires a TTY-backed client.
-        Control-mode provides an attached client for invocation but the popup
-        itself is not visible or verifiable.
-
-        >>> with control_mode() as ctl:
-        ...     pane.display_popup(command='true', close_on_exit=True)
-        """
-        import warnings
-
-        from libtmux.common import has_gte_version
-
-        tmux_args: tuple[str, ...] = ()
-
-        if close_on_exit:
-            tmux_args += ("-E",)
-
-        if close_on_success:
-            tmux_args += ("-C",)
-
-        if width is not None:
-            tmux_args += ("-w", str(width))
-
-        if height is not None:
-            tmux_args += ("-h", str(height))
-
-        if x is not None:
-            tmux_args += ("-x", str(x))
-
-        if y is not None:
-            tmux_args += ("-y", str(y))
-
-        if start_directory is not None:
-            start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += ("-d", str(start_path))
-
-        if title is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-T", title)
-            else:
-                warnings.warn(
-                    "title requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
-
-        if border_lines is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-b", border_lines)
-            else:
-                warnings.warn(
-                    "border_lines requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
-
-        if style is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-s", style)
-            else:
-                warnings.warn(
-                    "style requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
-
-        if border_style is not None:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-S", border_style)
-            else:
-                warnings.warn(
-                    "border_style requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
-
-        if environment:
-            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                for k, v in environment.items():
-                    tmux_args += (f"-e{k}={v}",)
-            else:
-                warnings.warn(
-                    "environment requires tmux 3.3+, ignoring",
-                    stacklevel=2,
-                )
-
-        if command is not None:
-            tmux_args += (command,)
-
-        proc = self.cmd("display-popup", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def paste_buffer(
-        self,
-        *,
-        buffer_name: str | None = None,
-        delete_after: bool | None = None,
-        no_trailing_newline: bool | None = None,
-        bracket: bool | None = None,
-        separator: str | None = None,
-    ) -> None:
-        """Paste a buffer into the pane via ``$ tmux paste-buffer``.
-
-        Parameters
-        ----------
-        buffer_name : str, optional
-            Name of the buffer to paste (``-b`` flag).
-        delete_after : bool, optional
-            Delete the buffer after pasting (``-d`` flag).
-        no_trailing_newline : bool, optional
-            Do not add a trailing newline (``-r`` flag).
-        bracket : bool, optional
-            Use bracketed paste mode (``-p`` flag).
-        separator : str, optional
-            Separator between lines (``-s`` flag).
-
-        Examples
-        --------
-        >>> server.set_buffer('pasted_text')
-        >>> pane.paste_buffer()
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if delete_after:
-            tmux_args += ("-d",)
-
-        if no_trailing_newline:
-            tmux_args += ("-r",)
-
-        if bracket:
-            tmux_args += ("-p",)
-
-        if buffer_name is not None:
-            tmux_args += ("-b", buffer_name)
-
-        if separator is not None:
-            tmux_args += ("-s", separator)
-
-        proc = self.cmd("paste-buffer", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def pipe(
-        self,
-        command: str | None = None,
-        *,
-        output_only: bool | None = None,
-        input_only: bool | None = None,
-        toggle: bool | None = None,
-    ) -> None:
-        """Pipe pane output to a shell command via ``$ tmux pipe-pane``.
-
-        Parameters
-        ----------
-        command : str, optional
-            Shell command to pipe to. If None, stops piping.
-        output_only : bool, optional
-            Only pipe output from the pane (``-O`` flag).
-        input_only : bool, optional
-            Only pipe input to the pane (``-I`` flag).
-        toggle : bool, optional
-            Toggle piping on/off (``-o`` flag).
-
-        Examples
-        --------
-        >>> pane.pipe('cat >> /tmp/output.txt')
-
-        Stop piping:
-
-        >>> pane.pipe()
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if output_only:
-            tmux_args += ("-O",)
-
-        if input_only:
-            tmux_args += ("-I",)
-
-        if toggle:
-            tmux_args += ("-o",)
-
-        if command is not None:
-            tmux_args += (command,)
-
-        proc = self.cmd("pipe-pane", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def copy_mode(
-        self,
-        *,
-        scroll_up: bool | None = None,
-        exit_on_copy: bool | None = None,
-        mouse_drag: bool | None = None,
-        quiet: bool | None = None,
-    ) -> None:
-        """Enter copy mode via ``$ tmux copy-mode``.
-
-        Parameters
-        ----------
-        scroll_up : bool, optional
-            Start scrolled up one page (``-u`` flag).
-        exit_on_copy : bool, optional
-            Exit copy mode after copying (``-e`` flag).
-        mouse_drag : bool, optional
-            Start mouse drag (``-M`` flag).
-        quiet : bool, optional
-            Quiet mode (``-q`` flag).
-
-        Examples
-        --------
-        >>> pane.copy_mode()
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if scroll_up:
-            tmux_args += ("-u",)
-
-        if exit_on_copy:
-            tmux_args += ("-e",)
-
-        if mouse_drag:
-            tmux_args += ("-M",)
-
-        if quiet:
-            tmux_args += ("-q",)
-
-        proc = self.cmd("copy-mode", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def clock_mode(self) -> None:
-        """Enter clock mode via ``$ tmux clock-mode``.
-
-        >>> pane.clock_mode()
-        """
-        proc = self.cmd("clock-mode")
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def display_panes(
-        self,
-        *,
-        duration: int | None = None,
-        no_select: bool | None = None,
-    ) -> None:
-        """Show pane numbers via ``$ tmux display-panes``.
-
-        Requires an attached client.
-
-        Parameters
-        ----------
-        duration : int, optional
-            Duration in milliseconds to display pane numbers (``-d`` flag).
-        no_select : bool, optional
-            Do not select a pane on keypress (``-N`` flag).
-
-        Examples
-        --------
-        >>> with control_mode() as ctl:
-        ...     window.active_pane.display_panes()
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if duration is not None:
-            tmux_args += ("-d", str(duration))
-
-        if no_select:
-            tmux_args += ("-N",)
-
-        proc = self.server.cmd("display-panes", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def choose_buffer(self) -> None:
-        """Enter buffer chooser via ``$ tmux choose-buffer``.
-
-        >>> pane.choose_buffer()
-        """
-        proc = self.cmd("choose-buffer")
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def choose_client(self) -> None:
-        """Enter client chooser via ``$ tmux choose-client``.
-
-        >>> pane.choose_client()
-        """
-        proc = self.cmd("choose-client")
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def choose_tree(
-        self,
-        *,
-        sessions_only: bool | None = None,
-        windows_only: bool | None = None,
-    ) -> None:
-        """Enter tree chooser via ``$ tmux choose-tree``.
-
-        Parameters
-        ----------
-        sessions_only : bool, optional
-            Only show sessions, not windows (``-s`` flag).
-        windows_only : bool, optional
-            Only show windows, not sessions (``-w`` flag).
-
-        Examples
-        --------
-        >>> pane.choose_tree()
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if sessions_only:
-            tmux_args += ("-s",)
-
-        if windows_only:
-            tmux_args += ("-w",)
-
-        proc = self.cmd("choose-tree", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def customize_mode(self) -> None:
-        """Enter customize mode via ``$ tmux customize-mode``.
-
-        >>> pane.customize_mode()
-        """
-        proc = self.cmd("customize-mode")
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def find_window(
-        self,
-        match_string: str,
-        *,
-        match_content: bool | None = None,
-        case_insensitive: bool | None = None,
-        match_name: bool | None = None,
-        regex: bool | None = None,
-        match_title: bool | None = None,
-    ) -> None:
-        """Search for a window matching a string via ``$ tmux find-window``.
-
-        Opens a choose-tree filtered to matching windows.
-
-        Parameters
-        ----------
-        match_string : str
-            String to search for in window names, titles, and content.
-        match_content : bool, optional
-            Match visible pane content (``-C`` flag).
-        case_insensitive : bool, optional
-            Case-insensitive matching (``-i`` flag).
-        match_name : bool, optional
-            Match window name only (``-N`` flag).
-        regex : bool, optional
-            Treat match string as a regex (``-r`` flag).
-        match_title : bool, optional
-            Match pane title (``-T`` flag).
-
-        Examples
-        --------
-        >>> pane.find_window('sh')
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if match_content:
-            tmux_args += ("-C",)
-
-        if case_insensitive:
-            tmux_args += ("-i",)
-
-        if match_name:
-            tmux_args += ("-N",)
-
-        if regex:
-            tmux_args += ("-r",)
-
-        if match_title:
-            tmux_args += ("-T",)
-
-        tmux_args += (match_string,)
-
-        proc = self.cmd("find-window", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def send_prefix(self, *, secondary: bool | None = None) -> None:
-        """Send the prefix key to the pane via ``$ tmux send-prefix``.
-
-        Parameters
-        ----------
-        secondary : bool, optional
-            Send the secondary prefix key (``-2`` flag).
-
-        Examples
-        --------
-        >>> pane.send_prefix()
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if secondary:
-            tmux_args += ("-2",)
-
-        proc = self.cmd("send-prefix", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def respawn(
-        self,
-        *,
-        shell: str | None = None,
-        start_directory: StrPath | None = None,
-        environment: dict[str, str] | None = None,
-        kill: bool | None = None,
-    ) -> None:
-        """Respawn the pane process via ``$ tmux respawn-pane``.
-
-        Parameters
-        ----------
-        shell : str, optional
-            Shell command to run in the respawned pane.
-        start_directory : str or PathLike, optional
-            Working directory for the respawned pane (``-c`` flag).
-        environment : dict, optional
-            Environment variables (``-e`` flag).
-        kill : bool, optional
-            Kill the current process before respawning (``-k`` flag).
-            Required if the pane is still active.
-
-        Examples
-        --------
-        >>> pane = window.split(shell='sleep 1m')
-        >>> pane.respawn(kill=True, shell='sh')
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if kill:
-            tmux_args += ("-k",)
-
-        if start_directory is not None:
-            start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += (f"-c{start_path}",)
-
-        if environment:
-            for k, v in environment.items():
-                tmux_args += (f"-e{k}={v}",)
-
-        if shell:
-            tmux_args += (shell,)
-
-        proc = self.cmd("respawn-pane", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def move(
-        self,
-        target: str | Pane | Window,
-        *,
-        vertical: bool = True,
-        detach: bool = True,
-        full_window: bool | None = None,
-        size: str | int | None = None,
-        before: bool | None = None,
-    ) -> None:
-        """Move this pane to another window via ``$ tmux move-pane``.
-
-        Similar to :meth:`join` but invokes the ``move-pane`` command directly.
-
-        Parameters
-        ----------
-        target : str, Pane, or Window
-            Target pane or window to move into.
-        vertical : bool, optional
-            Split vertically (``-v`` flag), default True. False for
-            horizontal (``-h``).
-        detach : bool, optional
-            Do not switch to the target window (``-d`` flag), default True.
-        full_window : bool, optional
-            Use the full window width/height (``-f`` flag).
-        size : str or int, optional
-            Size for the moved pane (``-l`` flag).
-        before : bool, optional
-            Place the pane before the target (``-b`` flag).
-
-        Examples
-        --------
-        >>> pane_to_move = window.split(shell='sleep 1m')
-        >>> w2 = session.new_window(window_name='move_target')
-        >>> pane_to_move.move(w2)
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if vertical:
-            tmux_args += ("-v",)
-        else:
-            tmux_args += ("-h",)
-
-        if detach:
-            tmux_args += ("-d",)
-
-        if full_window:
-            tmux_args += ("-f",)
-
-        if size is not None:
-            tmux_args += (f"-l{size}",)
-
-        if before:
-            tmux_args += ("-b",)
-
-        from libtmux.window import Window
-
-        if isinstance(target, Pane):
-            target_id = str(target.pane_id)
-        elif isinstance(target, Window):
-            target_id = str(target.window_id)
-        else:
-            target_id = target
-
-        tmux_args += ("-s", str(self.pane_id), "-t", target_id)
-
-        # Use server.cmd to avoid auto-adding -t from self.cmd
-        proc = self.server.cmd("move-pane", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def join(
-        self,
-        target: str | Pane | Window,
-        *,
-        vertical: bool = True,
-        detach: bool = True,
-        full_window: bool | None = None,
-        size: str | int | None = None,
-        before: bool | None = None,
-    ) -> None:
-        """Join this pane into another window/pane via ``$ tmux join-pane``.
-
-        This is the inverse of :meth:`break_pane`.
-
-        Parameters
-        ----------
-        target : str, Pane, or Window
-            Target pane or window to join into.
-        vertical : bool, optional
-            Join vertically (``-v`` flag), default True. Set to False for
-            horizontal (``-h``).
-        detach : bool, optional
-            Do not switch to the target window (``-d`` flag), default True.
-        full_window : bool, optional
-            Join spanning the full window width/height (``-f`` flag).
-        size : str or int, optional
-            Size for the joined pane (``-l`` flag).
-        before : bool, optional
-            Place the pane before the target (``-b`` flag).
-
-        Examples
-        --------
-        >>> pane_to_join = window.split(shell='sleep 1m')
-        >>> new_window = pane_to_join.break_pane()
-        >>> pane_to_join.join(window)
-        """
-        tmux_args: tuple[str, ...] = ()
-
-        if vertical:
-            tmux_args += ("-v",)
-        else:
-            tmux_args += ("-h",)
-
-        if detach:
-            tmux_args += ("-d",)
-
-        if full_window:
-            tmux_args += ("-f",)
-
-        if size is not None:
-            tmux_args += (f"-l{size}",)
-
-        if before:
-            tmux_args += ("-b",)
-
-        from libtmux.window import Window
-
-        if isinstance(target, Pane):
-            target_id = str(target.pane_id)
-        elif isinstance(target, Window):
-            target_id = str(target.window_id)
-        else:
-            target_id = target
-
-        tmux_args += ("-s", str(self.pane_id), "-t", target_id)
-
-        # Use server.cmd to avoid auto-adding -t from self.cmd
-        proc = self.server.cmd("join-pane", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-    def break_pane(
-        self,
-        *,
-        detach: bool = True,
-        window_name: str | None = None,
-    ) -> Window:
-        """Break this pane out into a new window via ``$ tmux break-pane``.
-
-        Parameters
-        ----------
-        detach : bool, optional
-            Do not switch to the new window (``-d`` flag), default True.
-        window_name : str, optional
-            Name for the new window (``-n`` flag).
-
-        Returns
-        -------
-        :class:`Window`
-            The newly created window containing the pane.
-
-        Examples
-        --------
-        >>> pane_to_break = window.split(shell='sleep 1m')
-        >>> new_window = pane_to_break.break_pane(window_name='broken')
-        >>> new_window.window_name
-        'broken'
-        """
-        tmux_args: tuple[str, ...] = ("-P", "-F#{window_id}")
-
-        if detach:
-            tmux_args += ("-d",)
-
-        if window_name is not None:
-            tmux_args += ("-n", window_name)
-
-        tmux_args += ("-s", str(self.pane_id))
-
-        # Use server.cmd to avoid auto-adding -t from self.cmd
-        proc = self.server.cmd("break-pane", *tmux_args)
-
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
-
-        window_id = proc.stdout[0].strip()
-
-        from libtmux.window import Window
-
-        return Window.from_window_id(server=self.server, window_id=window_id)
-
     def swap(
         self,
         target: str | Pane,
@@ -1950,13 +1194,14 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def clear_history(self, *, reset_hyperlinks: bool | None = None) -> None:
+    def clear_history(self, *, clear_pane: bool | None = None) -> None:
         """Clear pane history buffer via ``$ tmux clear-history``.
 
         Parameters
         ----------
-        reset_hyperlinks : bool, optional
-            Also reset hyperlinks (``-H`` flag). Requires tmux 3.4+.
+        clear_pane : bool, optional
+            Also clear the visible pane content (``-H`` flag).
+            Requires tmux 3.4+.
 
             .. versionadded:: 0.45
 
@@ -1970,12 +1215,12 @@ class Pane(
 
         tmux_args: tuple[str, ...] = ()
 
-        if reset_hyperlinks:
+        if clear_pane:
             if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
                 tmux_args += ("-H",)
             else:
                 warnings.warn(
-                    "reset_hyperlinks requires tmux 3.4+, ignoring",
+                    "clear_pane requires tmux 3.4+, ignoring",
                     stacklevel=2,
                 )
 
