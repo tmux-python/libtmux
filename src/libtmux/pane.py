@@ -1147,6 +1147,8 @@ class Pane(
         close_on_success: bool | None = None,
         width: int | str | None = None,
         height: int | str | None = None,
+        x: int | str | None = None,
+        y: int | str | None = None,
         start_directory: StrPath | None = None,
         title: str | None = None,
         border_lines: str | None = None,
@@ -1171,6 +1173,10 @@ class Pane(
             Popup width (``-w`` flag).
         height : int or str, optional
             Popup height (``-h`` flag).
+        x : int or str, optional
+            Popup x position (``-x`` flag).
+        y : int or str, optional
+            Popup y position (``-y`` flag).
         start_directory : str or PathLike, optional
             Working directory (``-d`` flag).
         title : str, optional
@@ -1206,6 +1212,12 @@ class Pane(
 
         if height is not None:
             tmux_args += ("-h", str(height))
+
+        if x is not None:
+            tmux_args += ("-x", str(x))
+
+        if y is not None:
+            tmux_args += ("-y", str(y))
 
         if start_directory is not None:
             start_path = pathlib.Path(start_directory).expanduser()
