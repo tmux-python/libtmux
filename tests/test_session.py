@@ -576,6 +576,42 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
         test_session.attach()
 
 
+def test_last_window(session: Session) -> None:
+    """Test Session.last_window() selects previous window."""
+    w1 = session.new_window(window_name="last_a", attach=True)
+    w2 = session.new_window(window_name="last_b", attach=True)
+    session.refresh()
+    assert session.active_window.window_id == w2.window_id
+
+    result = session.last_window()
+    assert result.window_id == w1.window_id
+
+
+def test_next_window(session: Session) -> None:
+    """Test Session.next_window() selects next window."""
+    w1 = session.new_window(window_name="next_a", attach=True)
+    session.new_window(window_name="next_b", attach=False)
+
+    # Active is w1, next should go to next_b
+    session.refresh()
+    assert session.active_window.window_id == w1.window_id
+
+    result = session.next_window()
+    # Should have moved to a different window
+    assert result.window_id != w1.window_id
+
+
+def test_previous_window(session: Session) -> None:
+    """Test Session.previous_window() selects previous window."""
+    w1 = session.new_window(window_name="prev_a", attach=True)
+    w2 = session.new_window(window_name="prev_b", attach=True)
+    session.refresh()
+    assert session.active_window.window_id == w2.window_id
+
+    result = session.previous_window()
+    assert result.window_id == w1.window_id
+
+
 def test_new_window_kill_existing(session: Session) -> None:
     """Test Session.new_window() with kill_existing flag."""
     # Create a window at a specific index
