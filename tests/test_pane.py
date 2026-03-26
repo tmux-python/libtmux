@@ -747,6 +747,66 @@ def test_send_prefix(session: Session) -> None:
     pane.send_prefix()
 
 
+def test_copy_mode(session: Session) -> None:
+    """Test Pane.copy_mode() enters copy mode."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.copy_mode()
+    # Exit copy mode
+    pane.send_keys("q", enter=False)
+
+
+def test_clock_mode(session: Session) -> None:
+    """Test Pane.clock_mode() enters clock mode."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.clock_mode()
+    # Exit clock mode
+    pane.send_keys("q", enter=False)
+
+
+@pytest.mark.parametrize(
+    "method",
+    ["choose_buffer", "choose_client", "choose_tree", "customize_mode"],
+)
+def test_chooser_smoke(method: str, session: Session) -> None:
+    """Smoke test: chooser/customize methods invoke without error."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    getattr(pane, method)()
+
+
+def test_choose_tree_with_flags(session: Session) -> None:
+    """Test Pane.choose_tree() with format, filter, sort, reverse, zoom."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.choose_tree(
+        format_string="#{session_name}",
+        filter_expression="#{?session_attached,1,0}",
+        sort_order="name",
+        reverse=True,
+        zoom=True,
+    )
+
+
+def test_find_window(session: Session) -> None:
+    """Test Pane.find_window() opens filtered tree."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.find_window("sh")
+
+
+def test_display_panes(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+) -> None:
+    """Test Pane.display_panes() shows pane numbers."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with control_mode():
+        pane.display_panes()
+
+
 def test_display_popup_runs_command(
     control_mode: t.Callable[..., t.Any],
     session: Session,
