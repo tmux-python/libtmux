@@ -718,6 +718,40 @@ class Server(
 
         return proc.stdout
 
+    def source_file(
+        self,
+        path: StrPath,
+        *,
+        quiet: bool | None = None,
+    ) -> None:
+        """Source a tmux configuration file via ``$ tmux source-file``.
+
+        Parameters
+        ----------
+        path : str or PathLike
+            Path to the configuration file.
+        quiet : bool, optional
+            Suppress errors for missing files (``-q`` flag).
+
+        Examples
+        --------
+        >>> import pathlib
+        >>> conf = pathlib.Path(request.config.rootdir) / '..' / 'tmp_src.conf'
+        >>> _ = conf.write_text('set -g @test_source yes')
+        >>> server.source_file(str(conf))
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if quiet:
+            tmux_args += ("-q",)
+
+        tmux_args += (str(pathlib.Path(path).expanduser()),)
+
+        proc = self.cmd("source-file", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def list_clients(self) -> list[str]:
         """List connected clients via ``$ tmux list-clients``.
 
