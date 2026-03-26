@@ -461,6 +461,8 @@ class Session(
         environment: dict[str, str] | None = None,
         direction: WindowDirection | None = None,
         target_window: str | None = None,
+        kill_existing: bool | None = None,
+        select_existing: bool | None = None,
     ) -> Window:
         """Create new window, returns new :class:`Window`.
 
@@ -491,6 +493,16 @@ class Session(
 
         target_window : str, optional
             Used by :meth:`Window.new_window` to specify the target window.
+        kill_existing : bool, optional
+            Destroy the window at the target index if it already exists
+            (``-k`` flag).
+
+            .. versionadded:: 0.45
+        select_existing : bool, optional
+            If a window with the given name already exists, select it instead
+            of creating a new one (``-S`` flag).
+
+            .. versionadded:: 0.45
 
         .. versionchanged:: 0.28.0
 
@@ -554,6 +566,12 @@ class Session(
 
         if direction is not None:
             window_args += (WINDOW_DIRECTION_FLAG_MAP[direction],)
+
+        if kill_existing:
+            window_args += ("-k",)
+
+        if select_existing:
+            window_args += ("-S",)
 
         target: str | None = None
         if window_index is not None:
