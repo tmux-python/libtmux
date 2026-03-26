@@ -601,6 +601,28 @@ def test_list_buffers(server: Server) -> None:
     assert len(result) >= 2
 
 
+def test_if_shell_true(server: Server) -> None:
+    """Test Server.if_shell() with true condition."""
+    server.new_session(session_name="ifshell_test")
+    server.if_shell("true", "set -g @if_test_true yes")
+
+    result = server.cmd("show-options", "-gv", "@if_test_true")
+    assert result.stdout[0] == "yes"
+
+
+def test_if_shell_false_with_else(server: Server) -> None:
+    """Test Server.if_shell() with false condition and else branch."""
+    server.new_session(session_name="ifshell_else")
+    server.if_shell(
+        "false",
+        "set -g @if_else_test yes",
+        else_command="set -g @if_else_test no",
+    )
+
+    result = server.cmd("show-options", "-gv", "@if_else_test")
+    assert result.stdout[0] == "no"
+
+
 def test_source_file(server: Server, tmp_path: pathlib.Path) -> None:
     """Test Server.source_file() sources a config file."""
     server.new_session(session_name="source_test")
