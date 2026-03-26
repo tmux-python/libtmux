@@ -544,3 +544,101 @@ def test_send_keys_flags(
         # Give a brief moment then verify absence
         contents = "\n".join(pane.capture_pane())
         assert not_expected_in_capture not in contents
+
+
+def test_select_pane_direction(session: Session) -> None:
+    """Test Pane.select() with direction flags."""
+    window = session.new_window(window_name="test_select_dir")
+    window.resize(height=40, width=80)
+    pane_top = window.active_pane
+    assert pane_top is not None
+    pane_bottom = pane_top.split(direction=PaneDirection.Below)
+
+    # Top pane should be active (it was active before split with -d default)
+    pane_bottom.select()
+    pane_bottom.refresh()
+    assert pane_bottom.pane_active == "1"
+
+    # Select up → should go to top pane
+    pane_bottom.select(direction=ResizeAdjustmentDirection.Up)
+    pane_top.refresh()
+    assert pane_top.pane_active == "1"
+
+    # Select down → should go back to bottom
+    pane_top.select(direction=ResizeAdjustmentDirection.Down)
+    pane_bottom.refresh()
+    assert pane_bottom.pane_active == "1"
+
+
+def test_select_pane_last(session: Session) -> None:
+    """Test Pane.select() with last flag."""
+    window = session.new_window(window_name="test_select_last")
+    pane1 = window.active_pane
+    assert pane1 is not None
+    pane2 = pane1.split()
+
+    # pane2 is now active (attach=True by default... wait, default is False)
+    # After split, pane2 is NOT active since attach=False by default
+    # Select pane2 explicitly
+    pane2.select()
+    pane2.refresh()
+    assert pane2.pane_active == "1"
+
+    # Now select pane1
+    pane1.select()
+    pane1.refresh()
+    assert pane1.pane_active == "1"
+
+    # Use -l to go back to last (pane2)
+    pane1.select(last=True)
+    pane2.refresh()
+    assert pane2.pane_active == "1"
+
+
+def test_select_pane_mark(session: Session) -> None:
+    """Test Pane.select() with mark/clear_mark flags."""
+    window = session.new_window(window_name="test_select_mark")
+    pane = window.active_pane
+    assert pane is not None
+
+    # Mark the pane — verify no error
+    pane.select(mark=True)
+
+    # Clear the mark — verify no error
+    pane.select(clear_mark=True)
+
+
+def test_select_pane_disable_enable_input(session: Session) -> None:
+    """Test Pane.select() with disable/enable input flags."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_input_toggle",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    # Disable input
+    pane.select(disable_input=True)
+
+    # Send keys — they should not appear since input is disabled
+    pane.send_keys("echo disabled_test", enter=False)
+
+    # Verify "disabled_test" does NOT appear
+    contents = "\n".join(pane.capture_pane())
+    assert "disabled_test" not in contents
+
+    # Re-enable input
+    pane.select(enable_input=True)
+
+    # Now send keys — they should appear
+    pane.send_keys("echo enabled_ok", enter=True)
+    retry_until(
+        lambda: "enabled_ok" in "\n".join(pane.capture_pane()),
+        3,
+        raises=True,
+    )
