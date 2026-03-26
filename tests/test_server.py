@@ -12,6 +12,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -476,6 +477,84 @@ def test_run_shell_background(server: Server) -> None:
     server.new_session(session_name="run_shell_bg_test")
     result = server.run_shell("echo bg_test", background=True)
     assert result is None
+
+
+class BufferCase(t.NamedTuple):
+    """Test case for buffer operations."""
+
+    test_id: str
+    data: str
+    buffer_name: str | None
+    append: bool | None
+    expected_content: str
+
+
+BUFFER_CASES: list[BufferCase] = [
+    BufferCase(
+        test_id="set_show_default",
+        data="hello_buf",
+        buffer_name=None,
+        append=None,
+        expected_content="hello_buf",
+    ),
+    BufferCase(
+        test_id="set_show_named",
+        data="named_data",
+        buffer_name="mybuf",
+        append=None,
+        expected_content="named_data",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(BufferCase._fields),
+    BUFFER_CASES,
+    ids=[c.test_id for c in BUFFER_CASES],
+)
+def test_buffer_set_show(
+    test_id: str,
+    data: str,
+    buffer_name: str | None,
+    append: bool | None,
+    expected_content: str,
+    server: Server,
+) -> None:
+    """Test Server.set_buffer() and show_buffer() cycle."""
+    server.new_session(session_name=f"buf_{test_id}")
+    kwargs: dict[str, t.Any] = {}
+    if buffer_name is not None:
+        kwargs["buffer_name"] = buffer_name
+    if append is not None:
+        kwargs["append"] = append
+
+    server.set_buffer(data, **kwargs)
+    result = server.show_buffer(buffer_name=buffer_name)
+    assert result == expected_content
+
+
+def test_buffer_append(server: Server) -> None:
+    """Test Server.set_buffer() with append flag."""
+    server.new_session(session_name="buf_append")
+    server.set_buffer("first", buffer_name="append_test")
+    server.set_buffer("_second", buffer_name="append_test", append=True)
+    result = server.show_buffer(buffer_name="append_test")
+    assert result == "first_second"
+
+
+def test_buffer_delete(server: Server) -> None:
+    """Test Server.delete_buffer()."""
+    server.new_session(session_name="buf_delete")
+    server.set_buffer("to_delete", buffer_name="del_buf")
+    # Verify it exists
+    assert server.show_buffer(buffer_name="del_buf") == "to_delete"
+
+    # Delete it
+    server.delete_buffer(buffer_name="del_buf")
+
+    # Verify it's gone — show-buffer should raise
+    with pytest.raises(exc.LibTmuxException):
+        server.show_buffer(buffer_name="del_buf")
 
 
 def test_new_session_config_file(
