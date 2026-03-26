@@ -673,6 +673,21 @@ class Server(
 
         return proc.stdout
 
+    def start_server(self) -> None:
+        """Start the tmux server if not already running.
+
+        Wraps ``$ tmux start-server``. Usually not needed since the server
+        starts automatically on first session creation.
+
+        Examples
+        --------
+        >>> server.start_server()
+        """
+        proc = self.cmd("start-server")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def show_messages(self) -> list[str]:
         """Show server message log via ``$ tmux show-messages``.
 

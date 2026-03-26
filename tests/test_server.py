@@ -461,6 +461,12 @@ def test_tmux_bin_invalid_path_raise_if_dead() -> None:
         s.raise_if_dead()
 
 
+def test_start_server(server: Server) -> None:
+    """Test Server.start_server() runs without error."""
+    server.new_session(session_name="startsvr_test")
+    server.start_server()  # idempotent — already running
+
+
 def test_bind_unbind_key(server: Server) -> None:
     """Test Server.bind_key() and unbind_key() cycle."""
     server.new_session(session_name="bind_test")
