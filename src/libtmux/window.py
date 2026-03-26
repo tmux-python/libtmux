@@ -496,6 +496,98 @@ class Window(
 
         return self
 
+    def link(
+        self,
+        target_session: str | Session,
+        *,
+        target_index: str | None = None,
+        kill_existing: bool | None = None,
+        after: bool | None = None,
+        before: bool | None = None,
+        detach: bool | None = None,
+    ) -> None:
+        """Link this window to another session via ``$ tmux link-window``.
+
+        Parameters
+        ----------
+        target_session : str or Session
+            Target session to link the window to.
+        target_index : str, optional
+            Target window index in the destination session.
+        kill_existing : bool, optional
+            Kill target window if it exists (``-k`` flag).
+        after : bool, optional
+            Insert after the target window (``-a`` flag).
+        before : bool, optional
+            Insert before the target window (``-b`` flag).
+        detach : bool, optional
+            Do not make the linked window active (``-d`` flag).
+
+        Examples
+        --------
+        >>> w = session.new_window(window_name='link_test')
+        >>> s2 = server.new_session(session_name='link_target')
+        >>> w.link(s2)
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if kill_existing:
+            tmux_args += ("-k",)
+
+        if after:
+            tmux_args += ("-a",)
+
+        if before:
+            tmux_args += ("-b",)
+
+        if detach:
+            tmux_args += ("-d",)
+
+        # Source: this window
+        tmux_args += ("-s", f"{self.session_id}:{self.window_index}")
+
+        # Target: destination session[:index]
+        from libtmux.session import Session
+
+        session_id = (
+            target_session.session_id
+            if isinstance(target_session, Session)
+            else target_session
+        )
+        target = f"{session_id}:{target_index}" if target_index else str(session_id)
+        tmux_args += ("-t", target)
+
+        proc = self.server.cmd("link-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def unlink(self, *, kill_if_last: bool | None = None) -> None:
+        """Unlink this window from the current session via ``$ tmux unlink-window``.
+
+        Parameters
+        ----------
+        kill_if_last : bool, optional
+            Kill the window if it is the last window in the session (``-k``).
+
+        Examples
+        --------
+        >>> w = session.new_window(window_name='unlink_test')
+        >>> s2 = server.new_session(session_name='unlink_s2')
+        >>> w.link(s2)
+        >>> linked = [x for x in s2.windows if x.window_name == 'unlink_test']
+        >>> linked[0].unlink()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if kill_if_last:
+            tmux_args += ("-k",)
+
+        proc = self.cmd("unlink-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def rotate(
         self,
         *,
