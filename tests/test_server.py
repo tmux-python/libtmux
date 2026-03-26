@@ -457,6 +457,29 @@ def test_tmux_bin_invalid_path_raise_if_dead() -> None:
         s.raise_if_dead()
 
 
+def test_show_messages(server: Server) -> None:
+    """Test Server.show_messages() returns message log."""
+    server.new_session(session_name="showmsg_test")
+    result = server.show_messages()
+    assert isinstance(result, list)
+    assert len(result) > 0  # at least the new-session command log
+
+
+def test_show_prompt_history(server: Server) -> None:
+    """Test Server.show_prompt_history() returns history."""
+    server.new_session(session_name="showph_test")
+    result = server.show_prompt_history()
+    assert isinstance(result, list)
+
+
+def test_clear_prompt_history(server: Server) -> None:
+    """Test Server.clear_prompt_history() clears history."""
+    server.new_session(session_name="clearph_test")
+    server.clear_prompt_history()
+    # Verify specific type can be cleared
+    server.clear_prompt_history(prompt_type="command")
+
+
 def test_wait_for_set_flag(server: Server) -> None:
     """Test Server.wait_for() with set_flag."""
     server.new_session(session_name="wait_test")

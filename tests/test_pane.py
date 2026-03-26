@@ -740,6 +740,13 @@ def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
         pane.split(size=10, percentage=50)
 
 
+def test_send_prefix(session: Session) -> None:
+    """Test Pane.send_prefix() sends prefix key without error."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.send_prefix()
+
+
 def test_display_popup_runs_command(
     control_mode: t.Callable[..., t.Any],
     session: Session,

@@ -528,6 +528,90 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def show_messages(self) -> list[str]:
+        """Show server message log via ``$ tmux show-messages``.
+
+        Returns
+        -------
+        list[str]
+            Server message log lines.
+
+        Examples
+        --------
+        >>> result = server.show_messages()
+        >>> isinstance(result, list)
+        True
+        """
+        proc = self.cmd("show-messages")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
+    def show_prompt_history(
+        self,
+        *,
+        prompt_type: str | None = None,
+    ) -> list[str]:
+        """Show prompt history via ``$ tmux show-prompt-history``.
+
+        Parameters
+        ----------
+        prompt_type : str, optional
+            Prompt type to show (``-T`` flag). One of: ``command``,
+            ``search``, ``target``, ``window-target``.
+
+        Returns
+        -------
+        list[str]
+            Prompt history lines.
+
+        Examples
+        --------
+        >>> result = server.show_prompt_history()
+        >>> isinstance(result, list)
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if prompt_type is not None:
+            tmux_args += ("-T", prompt_type)
+
+        proc = self.cmd("show-prompt-history", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
+    def clear_prompt_history(
+        self,
+        *,
+        prompt_type: str | None = None,
+    ) -> None:
+        """Clear prompt history via ``$ tmux clear-prompt-history``.
+
+        Parameters
+        ----------
+        prompt_type : str, optional
+            Prompt type to clear (``-T`` flag). One of: ``command``,
+            ``search``, ``target``, ``window-target``.
+
+        Examples
+        --------
+        >>> server.clear_prompt_history()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if prompt_type is not None:
+            tmux_args += ("-T", prompt_type)
+
+        proc = self.cmd("clear-prompt-history", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def set_buffer(
         self,
         data: str,

@@ -1355,6 +1355,28 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def send_prefix(self, *, secondary: bool | None = None) -> None:
+        """Send the prefix key to the pane via ``$ tmux send-prefix``.
+
+        Parameters
+        ----------
+        secondary : bool, optional
+            Send the secondary prefix key (``-2`` flag).
+
+        Examples
+        --------
+        >>> pane.send_prefix()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if secondary:
+            tmux_args += ("-2",)
+
+        proc = self.cmd("send-prefix", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def respawn(
         self,
         *,
