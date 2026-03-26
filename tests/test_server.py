@@ -457,6 +457,46 @@ def test_tmux_bin_invalid_path_raise_if_dead() -> None:
         s.raise_if_dead()
 
 
+def test_bind_unbind_key(server: Server) -> None:
+    """Test Server.bind_key() and unbind_key() cycle."""
+    server.new_session(session_name="bind_test")
+
+    server.bind_key("F12", "display-message bound", key_table="root")
+
+    # Verify binding exists
+    keys = server.list_keys(key_table="root")
+    assert any("F12" in line for line in keys)
+
+    # Unbind
+    server.unbind_key("F12", key_table="root")
+
+    # Verify binding gone
+    keys = server.list_keys(key_table="root")
+    assert not any("F12" in line and "display-message" in line for line in keys)
+
+
+def test_list_keys(server: Server) -> None:
+    """Test Server.list_keys() returns key bindings."""
+    server.new_session(session_name="listkeys_test")
+    result = server.list_keys()
+    assert isinstance(result, list)
+    assert len(result) > 0  # default bindings exist
+
+
+def test_list_commands(server: Server) -> None:
+    """Test Server.list_commands() returns command listing."""
+    server.new_session(session_name="listcmds_test")
+
+    # All commands
+    result = server.list_commands()
+    assert len(result) > 50  # tmux has many commands
+
+    # Filtered
+    result = server.list_commands(command_name="send-keys")
+    assert len(result) >= 1
+    assert "send-keys" in result[0]
+
+
 def test_show_messages(server: Server) -> None:
     """Test Server.show_messages() returns message log."""
     server.new_session(session_name="showmsg_test")
