@@ -576,6 +576,20 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
         test_session.attach()
 
 
+def test_detach_client(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    server: Server,
+) -> None:
+    """Test Session.detach_client() detaches the control-mode client."""
+    with control_mode():
+        before = len(server.list_clients())
+        assert before > 0
+        session.detach_client()
+        after = len(server.list_clients())
+        assert after == before - 1
+
+
 def test_last_window(session: Session) -> None:
     """Test Session.last_window() selects previous window."""
     w1 = session.new_window(window_name="last_a", attach=True)
