@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import pathlib
 import shlex
 import typing as t
 import warnings
@@ -494,6 +495,54 @@ class Window(
             raise exc.LibTmuxException(proc.stderr)
 
         return self
+
+    def respawn(
+        self,
+        *,
+        shell: str | None = None,
+        start_directory: StrPath | None = None,
+        environment: dict[str, str] | None = None,
+        kill: bool | None = None,
+    ) -> None:
+        """Respawn the window process via ``$ tmux respawn-window``.
+
+        Parameters
+        ----------
+        shell : str, optional
+            Shell command to run in the respawned window.
+        start_directory : str or PathLike, optional
+            Working directory for the respawned window (``-c`` flag).
+        environment : dict, optional
+            Environment variables (``-e`` flag).
+        kill : bool, optional
+            Kill the current process before respawning (``-k`` flag).
+            Required if the window is still active.
+
+        Examples
+        --------
+        >>> window = session.new_window(window_name='respawn_test')
+        >>> window.respawn(kill=True, shell='sh')
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if kill:
+            tmux_args += ("-k",)
+
+        if start_directory is not None:
+            start_path = pathlib.Path(start_directory).expanduser()
+            tmux_args += ("-c", str(start_path))
+
+        if environment:
+            for k, v in environment.items():
+                tmux_args += (f"-e{k}={v}",)
+
+        if shell:
+            tmux_args += (shell,)
+
+        proc = self.cmd("respawn-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
 
     def swap(
         self,
