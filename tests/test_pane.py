@@ -740,6 +740,20 @@ def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
         pane.split(size=10, percentage=50)
 
 
+def test_respawn_pane_kill(session: Session) -> None:
+    """Test Pane.respawn() with kill flag on active pane."""
+    window = session.new_window(window_name="test_respawn")
+    pane = window.active_pane
+    assert pane is not None
+
+    # Respawn the active pane with kill
+    pane.respawn(kill=True, shell="sh")
+
+    # Pane should still exist and be alive
+    pane.refresh()
+    assert pane in window.panes
+
+
 def test_join_pane(session: Session) -> None:
     """Test Pane.join() roundtrip with break_pane."""
     window = session.new_window(window_name="test_join")

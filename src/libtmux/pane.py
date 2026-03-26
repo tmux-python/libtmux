@@ -1139,6 +1139,54 @@ class Pane(
         self.cmd("send-keys", "Enter")
         return self
 
+    def respawn(
+        self,
+        *,
+        shell: str | None = None,
+        start_directory: StrPath | None = None,
+        environment: dict[str, str] | None = None,
+        kill: bool | None = None,
+    ) -> None:
+        """Respawn the pane process via ``$ tmux respawn-pane``.
+
+        Parameters
+        ----------
+        shell : str, optional
+            Shell command to run in the respawned pane.
+        start_directory : str or PathLike, optional
+            Working directory for the respawned pane (``-c`` flag).
+        environment : dict, optional
+            Environment variables (``-e`` flag).
+        kill : bool, optional
+            Kill the current process before respawning (``-k`` flag).
+            Required if the pane is still active.
+
+        Examples
+        --------
+        >>> pane = window.split(shell='sleep 1m')
+        >>> pane.respawn(kill=True, shell='sh')
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if kill:
+            tmux_args += ("-k",)
+
+        if start_directory is not None:
+            start_path = pathlib.Path(start_directory).expanduser()
+            tmux_args += ("-c", str(start_path))
+
+        if environment:
+            for k, v in environment.items():
+                tmux_args += (f"-e{k}={v}",)
+
+        if shell:
+            tmux_args += (shell,)
+
+        proc = self.cmd("respawn-pane", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def join(
         self,
         target: str | Pane | Window,
