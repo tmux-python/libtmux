@@ -423,6 +423,66 @@ class Server(
 
         return self
 
+    def run_shell(
+        self,
+        command: str,
+        *,
+        background: bool | None = None,
+        delay: str | None = None,
+        capture: bool | None = None,
+        target_pane: str | None = None,
+    ) -> list[str] | None:
+        """Execute a shell command via ``$ tmux run-shell``.
+
+        Parameters
+        ----------
+        command : str
+            Shell command to execute.
+        background : bool, optional
+            Run in background (``-b`` flag).
+        delay : str, optional
+            Delay before execution (``-d`` flag).
+        capture : bool, optional
+            Capture output to the target pane (``-C`` flag).
+        target_pane : str, optional
+            Target pane for output (``-t`` flag).
+
+        Returns
+        -------
+        list[str] | None
+            Command stdout if not running in background, None otherwise.
+
+        Examples
+        --------
+        >>> result = server.run_shell('echo hello')
+        >>> 'hello' in (result or [])
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if background:
+            tmux_args += ("-b",)
+
+        if delay is not None:
+            tmux_args += ("-d", delay)
+
+        if capture:
+            tmux_args += ("-C",)
+
+        if target_pane is not None:
+            tmux_args += ("-t", target_pane)
+
+        tmux_args += (command,)
+
+        proc = self.cmd("run-shell", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        if background:
+            return None
+        return proc.stdout
+
     def switch_client(self, target_session: str) -> None:
         """Switch tmux client.
 
