@@ -807,6 +807,8 @@ class OptionsMixin(CmdMixin):
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
+        quiet: bool | None = None,
+        values_only: bool | None = None,
     ) -> tmux_cmd:
         """Return a dict of options for the target.
 
@@ -866,6 +868,12 @@ class OptionsMixin(CmdMixin):
 
         if include_hooks is not None and include_hooks:
             flags += ("-H",)
+
+        if quiet is not None and quiet:
+            flags += ("-q",)
+
+        if values_only is not None and values_only:
+            flags += ("-v",)
 
         return self.cmd("show-options", *flags)
 
