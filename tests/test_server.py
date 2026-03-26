@@ -561,6 +561,50 @@ def test_buffer_delete(server: Server) -> None:
         server.show_buffer(buffer_name="del_buf")
 
 
+def test_buffer_save_load(server: Server, tmp_path: pathlib.Path) -> None:
+    """Test Server.save_buffer() and load_buffer() cycle."""
+    server.new_session(session_name="buf_saveload")
+
+    # Set and save
+    server.set_buffer("save_test_data")
+    buf_file = tmp_path / "saved_buf.txt"
+    server.save_buffer(buf_file)
+
+    # Verify file content
+    assert buf_file.read_text() == "save_test_data"
+
+    # Load into a named buffer
+    server.load_buffer(buf_file, buffer_name="loaded_buf")
+    assert server.show_buffer(buffer_name="loaded_buf") == "save_test_data"
+
+
+def test_buffer_save_append(server: Server, tmp_path: pathlib.Path) -> None:
+    """Test Server.save_buffer() with append flag."""
+    server.new_session(session_name="buf_saveappend")
+
+    buf_file = tmp_path / "append_buf.txt"
+
+    server.set_buffer("first_line", buffer_name="app1")
+    server.save_buffer(buf_file, buffer_name="app1")
+
+    server.set_buffer("second_line", buffer_name="app2")
+    server.save_buffer(buf_file, buffer_name="app2", append=True)
+
+    content = buf_file.read_text()
+    assert "first_line" in content
+    assert "second_line" in content
+
+
+def test_list_buffers(server: Server) -> None:
+    """Test Server.list_buffers()."""
+    server.new_session(session_name="buf_list")
+    server.set_buffer("buf_a", buffer_name="list_a")
+    server.set_buffer("buf_b", buffer_name="list_b")
+
+    result = server.list_buffers()
+    assert len(result) >= 2
+
+
 def test_new_session_config_file(
     server: Server,
     tmp_path: pathlib.Path,
