@@ -461,6 +461,146 @@ def test_tmux_bin_invalid_path_raise_if_dead() -> None:
         s.raise_if_dead()
 
 
+class ConfirmBeforeCase(t.NamedTuple):
+    """Test case for confirm_before()."""
+
+    test_id: str
+    confirm_key: str
+    use_default_yes: bool
+    custom_confirm_key: str | None
+    option_name: str
+    expected_value: str
+    min_tmux_version: str | None
+
+
+CONFIRM_BEFORE_CASES: list[ConfirmBeforeCase] = [
+    ConfirmBeforeCase(
+        test_id="confirm_y",
+        confirm_key="y",
+        use_default_yes=False,
+        custom_confirm_key=None,
+        option_name="@cf_test_y",
+        expected_value="yes",
+        min_tmux_version="3.4",
+    ),
+    ConfirmBeforeCase(
+        test_id="default_yes_enter",
+        confirm_key="Enter",
+        use_default_yes=True,
+        custom_confirm_key=None,
+        option_name="@cf_test_enter",
+        expected_value="yes",
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(ConfirmBeforeCase._fields),
+    CONFIRM_BEFORE_CASES,
+    ids=[c.test_id for c in CONFIRM_BEFORE_CASES],
+)
+def test_confirm_before(
+    test_id: str,
+    confirm_key: str,
+    use_default_yes: bool,
+    custom_confirm_key: str | None,
+    option_name: str,
+    expected_value: str,
+    min_tmux_version: str | None,
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.confirm_before() with send-keys -K confirmation."""
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    with control_mode() as ctl:
+        kwargs: dict[str, t.Any] = {"target_client": ctl.client_name}
+        if use_default_yes:
+            kwargs["default_yes"] = True
+        if custom_confirm_key is not None:
+            kwargs["confirm_key"] = custom_confirm_key
+
+        server.confirm_before(f"set -g {option_name} {expected_value}", **kwargs)
+        server.cmd("send-keys", "-K", "-c", ctl.client_name, confirm_key)
+
+    result = server.cmd("show-options", "-gv", option_name)
+    assert result.stdout[0] == expected_value
+
+
+class CommandPromptCase(t.NamedTuple):
+    """Test case for command_prompt()."""
+
+    test_id: str
+    template: str
+    keys: list[str]
+    inputs: str | None
+    option_name: str
+    expected_value: str
+    min_tmux_version: str | None
+
+
+COMMAND_PROMPT_CASES: list[CommandPromptCase] = [
+    CommandPromptCase(
+        test_id="type_and_submit",
+        template="set -g @cp_typed '%1'",
+        keys=["h", "e", "l", "l", "o", "Enter"],
+        inputs=None,
+        option_name="@cp_typed",
+        expected_value="hello",
+        min_tmux_version="3.4",
+    ),
+    CommandPromptCase(
+        test_id="prefill_and_submit",
+        template="set -g @cp_prefill '%1'",
+        keys=["Enter"],
+        inputs="prefilled",
+        option_name="@cp_prefill",
+        expected_value="prefilled",
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(CommandPromptCase._fields),
+    COMMAND_PROMPT_CASES,
+    ids=[c.test_id for c in COMMAND_PROMPT_CASES],
+)
+def test_command_prompt(
+    test_id: str,
+    template: str,
+    keys: list[str],
+    inputs: str | None,
+    option_name: str,
+    expected_value: str,
+    min_tmux_version: str | None,
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.command_prompt() with send-keys -K input."""
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    with control_mode() as ctl:
+        kwargs: dict[str, t.Any] = {"target_client": ctl.client_name}
+        if inputs is not None:
+            kwargs["inputs"] = inputs
+
+        server.command_prompt(template, **kwargs)
+
+        for key in keys:
+            server.cmd("send-keys", "-K", "-c", ctl.client_name, key)
+
+    result = server.cmd("show-options", "-gv", option_name)
+    assert result.stdout[0] == expected_value
+
+
 def test_lock_server(
     control_mode: t.Callable[..., t.Any],
     server: Server,
