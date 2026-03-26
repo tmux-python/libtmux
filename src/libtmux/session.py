@@ -262,6 +262,7 @@ class Session(
         *,
         target_client: str | None = None,
         all_clients: bool | None = None,
+        shell_command: str | None = None,
     ) -> None:
         """Detach clients from this session via ``$ tmux detach-client``.
 
@@ -272,6 +273,8 @@ class Session(
             the most recently active client.
         all_clients : bool, optional
             Detach all clients attached to this session (``-a`` flag).
+        shell_command : str, optional
+            Run a shell command after detaching (``-E`` flag).
 
         Examples
         --------
@@ -282,6 +285,9 @@ class Session(
 
         if all_clients:
             tmux_args += ("-a",)
+
+        if shell_command is not None:
+            tmux_args += ("-E", shell_command)
 
         if target_client is not None:
             tmux_args += ("-t", target_client)

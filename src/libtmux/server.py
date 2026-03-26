@@ -577,18 +577,24 @@ class Server(
 
     def unbind_key(
         self,
-        key: str,
+        key: str | None = None,
         *,
         key_table: str | None = None,
+        all_keys: bool | None = None,
+        quiet: bool | None = None,
     ) -> None:
         """Unbind a key via ``$ tmux unbind-key``.
 
         Parameters
         ----------
-        key : str
-            Key to unbind.
+        key : str, optional
+            Key to unbind. Required unless *all_keys* is True.
         key_table : str, optional
             Key table (``-T`` flag). Defaults to ``prefix``.
+        all_keys : bool, optional
+            Unbind all keys (``-a`` flag).
+        quiet : bool, optional
+            Suppress errors for missing bindings (``-q`` flag).
 
         Examples
         --------
@@ -597,10 +603,17 @@ class Server(
         """
         tmux_args: tuple[str, ...] = ()
 
+        if all_keys:
+            tmux_args += ("-a",)
+
+        if quiet:
+            tmux_args += ("-q",)
+
         if key_table is not None:
             tmux_args += ("-T", key_table)
 
-        tmux_args += (key,)
+        if key is not None:
+            tmux_args += (key,)
 
         proc = self.cmd("unbind-key", *tmux_args)
 
@@ -1154,6 +1167,8 @@ class Server(
         path: StrPath,
         *,
         quiet: bool | None = None,
+        parse_only: bool | None = None,
+        verbose: bool | None = None,
     ) -> None:
         """Source a tmux configuration file via ``$ tmux source-file``.
 
@@ -1163,6 +1178,10 @@ class Server(
             Path to the configuration file.
         quiet : bool, optional
             Suppress errors for missing files (``-q`` flag).
+        parse_only : bool, optional
+            Check syntax only, do not execute (``-n`` flag).
+        verbose : bool, optional
+            Show parsed commands (``-v`` flag).
 
         Examples
         --------
@@ -1175,6 +1194,12 @@ class Server(
 
         if quiet:
             tmux_args += ("-q",)
+
+        if parse_only:
+            tmux_args += ("-n",)
+
+        if verbose:
+            tmux_args += ("-v",)
 
         tmux_args += (str(pathlib.Path(path).expanduser()),)
 
