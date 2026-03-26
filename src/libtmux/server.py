@@ -528,6 +528,151 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def bind_key(
+        self,
+        key: str,
+        command: str,
+        *,
+        key_table: str | None = None,
+        note: str | None = None,
+        repeat: bool | None = None,
+    ) -> None:
+        """Bind a key to a command via ``$ tmux bind-key``.
+
+        Parameters
+        ----------
+        key : str
+            Key to bind (e.g. ``C-a``, ``F12``, ``M-x``).
+        command : str
+            Tmux command to run when key is pressed.
+        key_table : str, optional
+            Key table to bind in (``-T`` flag). Defaults to ``prefix``.
+        note : str, optional
+            Note for the binding (``-N`` flag).
+        repeat : bool, optional
+            Allow the key to repeat (``-r`` flag).
+
+        Examples
+        --------
+        >>> server.bind_key('F12', 'display-message test', key_table='root')
+        >>> server.unbind_key('F12', key_table='root')
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if repeat:
+            tmux_args += ("-r",)
+
+        if note is not None:
+            tmux_args += ("-N", note)
+
+        if key_table is not None:
+            tmux_args += ("-T", key_table)
+
+        tmux_args += (key, command)
+
+        proc = self.cmd("bind-key", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def unbind_key(
+        self,
+        key: str,
+        *,
+        key_table: str | None = None,
+    ) -> None:
+        """Unbind a key via ``$ tmux unbind-key``.
+
+        Parameters
+        ----------
+        key : str
+            Key to unbind.
+        key_table : str, optional
+            Key table (``-T`` flag). Defaults to ``prefix``.
+
+        Examples
+        --------
+        >>> server.bind_key('F11', 'display-message test', key_table='root')
+        >>> server.unbind_key('F11', key_table='root')
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if key_table is not None:
+            tmux_args += ("-T", key_table)
+
+        tmux_args += (key,)
+
+        proc = self.cmd("unbind-key", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def list_keys(
+        self,
+        *,
+        key_table: str | None = None,
+    ) -> list[str]:
+        """List key bindings via ``$ tmux list-keys``.
+
+        Parameters
+        ----------
+        key_table : str, optional
+            Filter by key table (``-T`` flag).
+
+        Returns
+        -------
+        list[str]
+            Key binding lines.
+
+        Examples
+        --------
+        >>> result = server.list_keys()
+        >>> isinstance(result, list)
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if key_table is not None:
+            tmux_args += ("-T", key_table)
+
+        proc = self.cmd("list-keys", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
+    def list_commands(self, *, command_name: str | None = None) -> list[str]:
+        """List tmux commands via ``$ tmux list-commands``.
+
+        Parameters
+        ----------
+        command_name : str, optional
+            Filter to a specific command.
+
+        Returns
+        -------
+        list[str]
+            Command listing lines.
+
+        Examples
+        --------
+        >>> result = server.list_commands(command_name='send-keys')
+        >>> len(result) >= 1
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if command_name is not None:
+            tmux_args += (command_name,)
+
+        proc = self.cmd("list-commands", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
     def show_messages(self) -> list[str]:
         """Show server message log via ``$ tmux show-messages``.
 
