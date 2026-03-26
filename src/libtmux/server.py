@@ -673,6 +673,145 @@ class Server(
 
         return proc.stdout
 
+    def lock_server(self) -> None:
+        """Lock the tmux server via ``$ tmux lock-server``.
+
+        Requires an attached client.
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.lock_server()
+        """
+        proc = self.cmd("lock-server")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def server_access(
+        self,
+        *,
+        allow: str | None = None,
+        deny: str | None = None,
+        list_access: bool | None = None,
+    ) -> list[str] | None:
+        """Manage server access control via ``$ tmux server-access``.
+
+        Parameters
+        ----------
+        allow : str, optional
+            Allow a user (``-a`` flag).
+        deny : str, optional
+            Deny a user (``-d`` flag).
+        list_access : bool, optional
+            List access rules (``-l`` flag).
+
+        Returns
+        -------
+        list[str] | None
+            Access list when *list_access* is True, None otherwise.
+
+        Examples
+        --------
+        >>> result = server.server_access(list_access=True)
+        >>> isinstance(result, list)
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if allow is not None:
+            tmux_args += ("-a", allow)
+
+        if deny is not None:
+            tmux_args += ("-d", deny)
+
+        if list_access:
+            tmux_args += ("-l",)
+
+        proc = self.cmd("server-access", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        if list_access:
+            return proc.stdout
+        return None
+
+    def refresh_client(self, *, target_client: str | None = None) -> None:
+        """Refresh a client's display via ``$ tmux refresh-client``.
+
+        Requires an attached client.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client (``-t`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.refresh_client()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        proc = self.cmd("refresh-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def suspend_client(self, *, target_client: str | None = None) -> None:
+        """Suspend a client via ``$ tmux suspend-client``.
+
+        Requires an attached client.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client (``-t`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.suspend_client()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        proc = self.cmd("suspend-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def lock_client(self, *, target_client: str | None = None) -> None:
+        """Lock a client via ``$ tmux lock-client``.
+
+        Requires an attached client.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client (``-t`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.lock_client()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        proc = self.cmd("lock-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def start_server(self) -> None:
         """Start the tmux server if not already running.
 
