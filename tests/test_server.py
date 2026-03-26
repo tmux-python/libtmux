@@ -605,6 +605,13 @@ def test_list_buffers(server: Server) -> None:
     assert len(result) >= 2
 
 
+def test_list_clients(server: Server) -> None:
+    """Test Server.list_clients() returns list without error."""
+    server.new_session(session_name="list_clients_test")
+    result = server.list_clients()
+    assert isinstance(result, list)
+
+
 def test_new_session_config_file(
     server: Server,
     tmp_path: pathlib.Path,
