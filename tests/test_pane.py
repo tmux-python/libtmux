@@ -740,6 +740,42 @@ def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
         pane.split(size=10, percentage=50)
 
 
+def test_pipe_pane(session: Session, tmp_path: pathlib.Path) -> None:
+    """Test Pane.pipe() pipes output to a file."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_pipe",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    pipe_file = tmp_path / "pipe_output.txt"
+
+    # Start piping
+    pane.pipe(f"cat >> {pipe_file}")
+
+    # Send some text
+    pane.send_keys("echo pipe_test_ok", enter=True)
+    retry_until(
+        lambda: "pipe_test_ok" in "\n".join(pane.capture_pane()), 3, raises=True
+    )
+
+    # Stop piping
+    pane.pipe()
+
+    # Verify file has content
+    retry_until(
+        lambda: pipe_file.exists() and pipe_file.stat().st_size > 0, 3, raises=True
+    )
+    content = pipe_file.read_text()
+    assert "pipe_test_ok" in content
+
+
 def test_respawn_pane_kill(session: Session) -> None:
     """Test Pane.respawn() with kill flag on active pane."""
     window = session.new_window(window_name="test_respawn")
