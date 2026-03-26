@@ -400,6 +400,54 @@ def test_move_window_to_other_session(server: Server, session: Session) -> None:
     assert new_session.windows.get(window_id=window_id) == window
 
 
+@pytest.mark.parametrize(
+    ("flag_name", "destination_offset"), [("after", 0), ("before", 1)]
+)
+def test_move_window_relative_returns_fresh_window(
+    flag_name: str,
+    destination_offset: int,
+    session: Session,
+) -> None:
+    """Window.move_window() returns fresh state for relative moves."""
+    destination_window = session.active_window
+    session.new_window(window_name="move_middle")
+    moving_window = session.new_window(window_name="move_relative")
+    assert destination_window.window_index is not None
+    assert moving_window.window_id is not None
+
+    destination = str(int(destination_window.window_index) + destination_offset)
+    if flag_name == "after":
+        moving_window.move_window(destination, after=True)
+    else:
+        moving_window.move_window(destination, before=True)
+
+    fresh_window = Window.from_window_id(
+        server=session.server,
+        window_id=moving_window.window_id,
+    )
+    assert moving_window.window_index == fresh_window.window_index
+    assert moving_window.session_id == fresh_window.session_id
+
+
+def test_move_window_to_other_session_with_destination(
+    server: Server,
+    session: Session,
+) -> None:
+    """Window.move_window() returns fresh state for cross-session moves."""
+    window = session.new_window(window_name="move_cross_session")
+    assert window.window_id is not None
+    new_session = server.new_session("test_move_window_destination")
+    destination = "99"
+
+    window.move_window(destination=destination, session=new_session.session_id)
+
+    fresh_window = Window.from_window_id(server=server, window_id=window.window_id)
+    assert fresh_window.session_id == new_session.session_id
+    assert fresh_window.window_index == destination
+    assert window.session_id == fresh_window.session_id
+    assert window.window_index == fresh_window.window_index
+
+
 def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
     """Tmux allows select-layout with no arguments, so let's allow it here."""
     window = session.new_window(window_name="test_window")
@@ -819,3 +867,55 @@ def test_select_layout_mutual_exclusion(session: Session) -> None:
     window = session.new_window(window_name="test_layout_mutex")
     with pytest.raises(ValueError, match="Cannot specify both"):
         window.select_layout("tiled", spread=True)
+
+
+def test_move_window_kill_target(session: Session) -> None:
+    """Test Window.move_window() with kill_target flag."""
+    session.new_window(window_name="move_w1")
+    w2 = session.new_window(window_name="move_w2")
+    assert w2.window_index is not None
+    w2_index = w2.window_index
+    initial_count = len(session.windows)
+
+    # Move first extra window to w2's index, killing w2
+    extra_windows = [w for w in session.windows if w.window_name == "move_w1"]
+    assert len(extra_windows) == 1
+    extra_windows[0].move_window(destination=w2_index, kill_target=True)
+    session.refresh()
+    assert len(session.windows) == initial_count - 1
+
+
+def test_move_window_renumber(session: Session) -> None:
+    """Test Window.move_window() with renumber flag."""
+    session.new_window(window_name="ren_w1")
+    w2 = session.new_window(window_name="ren_w2")
+    w3 = session.new_window(window_name="ren_w3")
+
+    # Kill middle window to create gap
+    w2.kill()
+
+    # Move w3 with renumber
+    w3.move_window(renumber=True)
+    session.refresh()
+
+    # Verify indices are contiguous
+    indices = sorted(
+        int(w.window_index) for w in session.windows if w.window_index is not None
+    )
+    for i in range(len(indices) - 1):
+        assert indices[i + 1] - indices[i] == 1
+
+
+def test_move_window_no_select(session: Session) -> None:
+    """Test Window.move_window() with no_select flag."""
+    w1 = session.new_window(window_name="nosel_w1", attach=True)
+    w2 = session.new_window(window_name="nosel_w2", attach=False)
+
+    # w1 is active
+    session.refresh()
+    assert session.active_window.window_id == w1.window_id
+
+    # Move w2 with no_select — active window should not change
+    w2.move_window(destination="99", no_select=True)
+    session.refresh()
+    assert session.active_window.window_id == w1.window_id
