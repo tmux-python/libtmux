@@ -903,6 +903,11 @@ class Server(
         prompt: str | None = None,
         inputs: str | None = None,
         target_client: str | None = None,
+        one_key: bool | None = None,
+        key_only: bool | None = None,
+        on_input_change: bool | None = None,
+        numeric: bool | None = None,
+        prompt_type: str | None = None,
     ) -> None:
         """Open a command prompt via ``$ tmux command-prompt``.
 
@@ -921,6 +926,17 @@ class Server(
             Pre-fill prompt input (``-I`` flag). Commas separate multiple.
         target_client : str, optional
             Target client (``-t`` flag).
+        one_key : bool, optional
+            Accept only one key press (``-1`` flag).
+        key_only : bool, optional
+            Only accept key presses, not text (``-k`` flag).
+        on_input_change : bool, optional
+            Run template on each keystroke (``-i`` flag).
+        numeric : bool, optional
+            Accept only numeric input (``-N`` flag).
+        prompt_type : str, optional
+            Prompt type (``-T`` flag). One of: ``command``, ``search``,
+            ``target``, ``window-target``.
 
         Examples
         --------
@@ -948,11 +964,26 @@ class Server(
                 stacklevel=2,
             )
 
+        if one_key:
+            tmux_args += ("-1",)
+
+        if key_only:
+            tmux_args += ("-k",)
+
+        if on_input_change:
+            tmux_args += ("-i",)
+
+        if numeric:
+            tmux_args += ("-N",)
+
         if prompt is not None:
             tmux_args += ("-p", prompt)
 
         if inputs is not None:
             tmux_args += ("-I", inputs)
+
+        if prompt_type is not None:
+            tmux_args += ("-T", prompt_type)
 
         if target_client is not None:
             tmux_args += ("-t", target_client)
