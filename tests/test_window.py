@@ -814,6 +814,45 @@ def test_select_layout_next_previous(session: Session) -> None:
     assert layout_after_prev == layout_before
 
 
+def test_next_layout(session: Session) -> None:
+    """Test Window.next_layout() cycles to the next layout."""
+    window = session.new_window(window_name="test_next_layout")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    layout_before = window.window_layout
+
+    window.next_layout()
+    window.refresh()
+    layout_after = window.window_layout
+
+    assert layout_before != layout_after
+
+
+def test_previous_layout(session: Session) -> None:
+    """Test Window.previous_layout() cycles back."""
+    window = session.new_window(window_name="test_prev_layout")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    layout_before = window.window_layout
+
+    window.next_layout()
+    window.previous_layout()
+    window.refresh()
+    layout_after = window.window_layout
+
+    assert layout_before == layout_after
+
+
 def test_select_layout_mutual_exclusion(session: Session) -> None:
     """Test that layout string and flags are mutually exclusive."""
     window = session.new_window(window_name="test_layout_mutex")
