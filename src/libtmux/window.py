@@ -403,9 +403,54 @@ class Window(
         self.refresh()
         return self
 
-    def last_pane(self) -> Pane | None:
-        """Return last pane."""
-        return self.select_pane("-l")
+    def last_pane(
+        self,
+        *,
+        detach: bool | None = None,
+        keep_zoom: bool | None = None,
+        disable_input: bool | None = None,
+    ) -> Pane | None:
+        """Select the last (previously active) pane via ``$ tmux last-pane``.
+
+        Parameters
+        ----------
+        detach : bool, optional
+            Do not make the pane active (``-d`` flag).
+        keep_zoom : bool, optional
+            Keep the window zoomed if zoomed (``-Z`` flag).
+        disable_input : bool, optional
+            Disable input to the pane (``-e`` flag).
+
+        Returns
+        -------
+        :class:`Pane` or None
+            The selected pane, or None if no last pane exists.
+
+        Examples
+        --------
+        >>> pane1 = window.active_pane
+        >>> pane2 = window.split()
+        >>> pane2.select()
+        Pane(...)
+        >>> result = window.last_pane()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if detach:
+            tmux_args += ("-d",)
+
+        if keep_zoom:
+            tmux_args += ("-Z",)
+
+        if disable_input:
+            tmux_args += ("-e",)
+
+        proc = self.cmd("last-pane", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self.active_pane
 
     def select_layout(
         self,
