@@ -973,6 +973,91 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def display_menu(
+        self,
+        *items: str,
+        title: str | None = None,
+        target_pane: str | None = None,
+        target_client: str | None = None,
+        x: int | str | None = None,
+        y: int | str | None = None,
+        starting_choice: int | str | None = None,
+        border_lines: str | None = None,
+        style: str | None = None,
+        border_style: str | None = None,
+    ) -> None:
+        """Display a popup menu via ``$ tmux display-menu``.
+
+        Requires a TTY-backed attached client. Control-mode clients have
+        ``tty.sy=0``, which causes ``menu_prepare()`` to return NULL.
+        This method cannot be tested with
+        :class:`~libtmux._internal.control_mode.ControlMode`.
+
+        Parameters
+        ----------
+        *items : str
+            Menu items as positional args in tmux's ``name key command``
+            triple format. Use empty strings for separators.
+        title : str, optional
+            Menu title (``-T`` flag).
+        target_pane : str, optional
+            Target pane for format expansion (``-t`` flag).
+        target_client : str, optional
+            Target client (``-c`` flag).
+        x : int or str, optional
+            Menu x position (``-x`` flag).
+        y : int or str, optional
+            Menu y position (``-y`` flag).
+        starting_choice : int or str, optional
+            Pre-selected item index (``-C`` flag). Use ``-`` for none.
+        border_lines : str, optional
+            Border line style (``-b`` flag).
+        style : str, optional
+            Menu style (``-s`` flag).
+        border_style : str, optional
+            Border style (``-S`` flag).
+
+        Examples
+        --------
+        >>> server.display_menu  # doctest: +ELLIPSIS
+        <bound method ...>
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if title is not None:
+            tmux_args += ("-T", title)
+
+        if target_client is not None:
+            tmux_args += ("-c", target_client)
+
+        if target_pane is not None:
+            tmux_args += ("-t", target_pane)
+
+        if x is not None:
+            tmux_args += ("-x", str(x))
+
+        if y is not None:
+            tmux_args += ("-y", str(y))
+
+        if starting_choice is not None:
+            tmux_args += ("-C", str(starting_choice))
+
+        if border_lines is not None:
+            tmux_args += ("-b", border_lines)
+
+        if style is not None:
+            tmux_args += ("-s", style)
+
+        if border_style is not None:
+            tmux_args += ("-S", border_style)
+
+        tmux_args += items
+
+        proc = self.cmd("display-menu", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def start_server(self) -> None:
         """Start the tmux server if not already running.
 
