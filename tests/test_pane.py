@@ -924,6 +924,25 @@ def test_respawn_pane_kill(session: Session) -> None:
     assert pane in window.panes
 
 
+def test_move_pane(session: Session) -> None:
+    """Test Pane.move() moves pane to another window."""
+    w1 = session.new_window(window_name="move_src")
+    pane = w1.active_pane
+    assert pane is not None
+    pane_to_move = pane.split(shell="sleep 1m")
+    assert len(w1.panes) == 2
+
+    w2 = session.new_window(window_name="move_dst")
+    initial_w2_panes = len(w2.panes)
+
+    pane_to_move.move(w2)
+
+    w1.refresh()
+    w2.refresh()
+    assert len(w1.panes) == 1
+    assert len(w2.panes) == initial_w2_panes + 1
+
+
 def test_join_pane(session: Session) -> None:
     """Test Pane.join() roundtrip with break_pane."""
     window = session.new_window(window_name="test_join")

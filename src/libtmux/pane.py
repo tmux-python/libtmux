@@ -1661,6 +1661,78 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def move(
+        self,
+        target: str | Pane | Window,
+        *,
+        vertical: bool = True,
+        detach: bool = True,
+        full_window: bool | None = None,
+        size: str | int | None = None,
+        before: bool | None = None,
+    ) -> None:
+        """Move this pane to another window via ``$ tmux move-pane``.
+
+        Similar to :meth:`join` but invokes the ``move-pane`` command directly.
+
+        Parameters
+        ----------
+        target : str, Pane, or Window
+            Target pane or window to move into.
+        vertical : bool, optional
+            Split vertically (``-v`` flag), default True. False for
+            horizontal (``-h``).
+        detach : bool, optional
+            Do not switch to the target window (``-d`` flag), default True.
+        full_window : bool, optional
+            Use the full window width/height (``-f`` flag).
+        size : str or int, optional
+            Size for the moved pane (``-l`` flag).
+        before : bool, optional
+            Place the pane before the target (``-b`` flag).
+
+        Examples
+        --------
+        >>> pane_to_move = window.split(shell='sleep 1m')
+        >>> w2 = session.new_window(window_name='move_target')
+        >>> pane_to_move.move(w2)
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if vertical:
+            tmux_args += ("-v",)
+        else:
+            tmux_args += ("-h",)
+
+        if detach:
+            tmux_args += ("-d",)
+
+        if full_window:
+            tmux_args += ("-f",)
+
+        if size is not None:
+            tmux_args += (f"-l{size}",)
+
+        if before:
+            tmux_args += ("-b",)
+
+        # Determine target ID
+        from libtmux.window import Window
+
+        if isinstance(target, Pane):
+            target_id = str(target.pane_id)
+        elif isinstance(target, Window):
+            target_id = str(target.window_id)
+        else:
+            target_id = target
+
+        tmux_args += ("-s", str(self.pane_id), "-t", target_id)
+
+        proc = self.server.cmd("move-pane", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def join(
         self,
         target: str | Pane | Window,
