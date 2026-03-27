@@ -814,6 +814,24 @@ def test_select_layout_next_previous(session: Session) -> None:
     assert layout_after_prev == layout_before
 
 
+def test_last_pane(session: Session) -> None:
+    """Test Window.last_pane() selects the previously active pane."""
+    window = session.new_window(window_name="test_last_pane")
+    pane1 = window.active_pane
+    assert pane1 is not None
+    pane2 = pane1.split()
+
+    # Select pane2 then pane1 to establish history
+    pane2.select()
+    pane1.select()
+
+    # last_pane should go back to pane2
+    result = window.last_pane()
+    assert result is not None
+    pane2.refresh()
+    assert pane2.pane_active == "1"
+
+
 def test_next_layout(session: Session) -> None:
     """Test Window.next_layout() cycles to the next layout."""
     window = session.new_window(window_name="test_next_layout")
