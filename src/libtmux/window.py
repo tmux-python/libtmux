@@ -496,6 +496,36 @@ class Window(
 
         return self
 
+    def next_layout(self) -> Window:
+        """Cycle to the next layout via ``$ tmux next-layout``.
+
+        >>> pane1 = window.active_pane
+        >>> pane2 = window.split()
+        >>> window.next_layout()
+        Window(...)
+        """
+        proc = self.cmd("next-layout")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self
+
+    def previous_layout(self) -> Window:
+        """Cycle to the previous layout via ``$ tmux previous-layout``.
+
+        >>> pane1 = window.active_pane
+        >>> pane2 = window.split()
+        >>> window.previous_layout()
+        Window(...)
+        """
+        proc = self.cmd("previous-layout")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self
+
     def link(
         self,
         target_session: str | Session,
