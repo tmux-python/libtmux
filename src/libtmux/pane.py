@@ -1367,14 +1367,26 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def copy_mode(self, *, bottom: bool | None = None) -> None:
+    def copy_mode(
+        self,
+        *,
+        scroll_up: bool | None = None,
+        exit_on_copy: bool | None = None,
+        mouse_drag: bool | None = None,
+        quiet: bool | None = None,
+    ) -> None:
         """Enter copy mode via ``$ tmux copy-mode``.
 
         Parameters
         ----------
-        bottom : bool, optional
-            Start at the bottom of the history (``-u`` flag inverted — default
-            starts at bottom, ``-u`` starts at top/scrollback).
+        scroll_up : bool, optional
+            Start scrolled up one page (``-u`` flag).
+        exit_on_copy : bool, optional
+            Exit copy mode after copying (``-e`` flag).
+        mouse_drag : bool, optional
+            Start mouse drag (``-M`` flag).
+        quiet : bool, optional
+            Quiet mode (``-q`` flag).
 
         Examples
         --------
@@ -1385,6 +1397,18 @@ class Pane(
         >>> pane.send_keys('q')
         """
         tmux_args: tuple[str, ...] = ()
+
+        if scroll_up:
+            tmux_args += ("-u",)
+
+        if exit_on_copy:
+            tmux_args += ("-e",)
+
+        if mouse_drag:
+            tmux_args += ("-M",)
+
+        if quiet:
+            tmux_args += ("-q",)
 
         proc = self.cmd("copy-mode", *tmux_args)
 
@@ -1407,17 +1431,37 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def display_panes(self) -> None:
+    def display_panes(
+        self,
+        *,
+        duration: int | None = None,
+        no_select: bool | None = None,
+    ) -> None:
         """Show pane numbers via ``$ tmux display-panes``.
 
         Requires an attached client.
+
+        Parameters
+        ----------
+        duration : int, optional
+            Duration in milliseconds to display pane numbers (``-d`` flag).
+        no_select : bool, optional
+            Do not select a pane on keypress (``-N`` flag).
 
         Examples
         --------
         >>> with control_mode() as ctl:
         ...     window.active_pane.display_panes()
         """
-        proc = self.server.cmd("display-panes")
+        tmux_args: tuple[str, ...] = ()
+
+        if duration is not None:
+            tmux_args += ("-d", str(duration))
+
+        if no_select:
+            tmux_args += ("-N",)
+
+        proc = self.server.cmd("display-panes", *tmux_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -1446,13 +1490,20 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def choose_tree(self, *, sessions_only: bool | None = None) -> None:
+    def choose_tree(
+        self,
+        *,
+        sessions_only: bool | None = None,
+        windows_only: bool | None = None,
+    ) -> None:
         """Enter tree chooser via ``$ tmux choose-tree``.
 
         Parameters
         ----------
         sessions_only : bool, optional
             Only show sessions, not windows (``-s`` flag).
+        windows_only : bool, optional
+            Only show windows, not sessions (``-w`` flag).
 
         Examples
         --------
@@ -1462,6 +1513,9 @@ class Pane(
 
         if sessions_only:
             tmux_args += ("-s",)
+
+        if windows_only:
+            tmux_args += ("-w",)
 
         proc = self.cmd("choose-tree", *tmux_args)
 
@@ -1480,7 +1534,16 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def find_window(self, match_string: str) -> None:
+    def find_window(
+        self,
+        match_string: str,
+        *,
+        match_content: bool | None = None,
+        case_insensitive: bool | None = None,
+        match_name: bool | None = None,
+        regex: bool | None = None,
+        match_title: bool | None = None,
+    ) -> None:
         """Search for a window matching a string via ``$ tmux find-window``.
 
         Opens a choose-tree filtered to matching windows.
@@ -1489,12 +1552,41 @@ class Pane(
         ----------
         match_string : str
             String to search for in window names, titles, and content.
+        match_content : bool, optional
+            Match visible pane content (``-C`` flag).
+        case_insensitive : bool, optional
+            Case-insensitive matching (``-i`` flag).
+        match_name : bool, optional
+            Match window name only (``-N`` flag).
+        regex : bool, optional
+            Treat match string as a regex (``-r`` flag).
+        match_title : bool, optional
+            Match pane title (``-T`` flag).
 
         Examples
         --------
         >>> pane.find_window('sh')
         """
-        proc = self.cmd("find-window", match_string)
+        tmux_args: tuple[str, ...] = ()
+
+        if match_content:
+            tmux_args += ("-C",)
+
+        if case_insensitive:
+            tmux_args += ("-i",)
+
+        if match_name:
+            tmux_args += ("-N",)
+
+        if regex:
+            tmux_args += ("-r",)
+
+        if match_title:
+            tmux_args += ("-T",)
+
+        tmux_args += (match_string,)
+
+        proc = self.cmd("find-window", *tmux_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
