@@ -8,10 +8,9 @@ bash .claude-plugin/scripts/extract-libtmux-methods.sh
 
 ## Summary
 
-- **Directly wrapped**: 79/90 commands (87%)
+- **Directly wrapped**: 82/90 commands (91%)
 - **Covered by alias/flag**: 8 additional commands
-- **Truly unwrappable**: 3 commands (block waiting for interactive input)
-- **Total effective coverage**: 87/90 (96%)
+- **Total effective coverage**: 90/90 (100%)
 
 ## Covered by Alias/Flag (8 commands)
 
@@ -28,12 +27,17 @@ These commands are not called directly but their functionality is available:
 | `set-window-option` | `OptionsMixin.set_option(scope=OptionScope.Window)` | Alias for `set-option -w` |
 | `show-window-options` | `OptionsMixin.show_options(scope=OptionScope.Window)` | Alias for `show-options -w` |
 
-## Not Wrappable (3 commands)
+## Test Gaps (1 command)
 
-These block forever waiting for interactive user input:
+| tmux Command | Method | Why |
+|---|---|---|
+| `display-menu` | `Server.display_menu()` | Requires TTY-backed client. Control-mode clients have `tty.sy=0`, causing `menu_prepare()` to return NULL. Method exists but cannot be tested hermetically. |
 
-| tmux Command | Why |
+## Notable Test Innovations
+
+| Command | Testing Approach |
 |---|---|
-| `command-prompt` | Opens interactive prompt, blocks until user types |
-| `confirm-before` | Blocks waiting for y/n confirmation (even `-y` blocks in control mode) |
-| `display-menu` | Opens interactive menu, blocks until selection |
+| `confirm-before` | `send-keys -K -c <client>` injects 'y' into status prompt handler (tmux 3.4+) |
+| `command-prompt` | `send-keys -K -c <client>` types text + Enter into status prompt (tmux 3.4+) |
+| `display-popup` | ControlMode client + marker file side-effect verification |
+| `detach-client` | ControlMode client + `list-clients` count assertion |
