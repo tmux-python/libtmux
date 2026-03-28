@@ -511,7 +511,7 @@ class Window(
 
             .. versionadded:: 0.45
         previous_layout : bool, optional
-            Move to the previous layout (``-o`` flag).
+            Move to the previous layout (``-p`` flag).
 
             .. versionadded:: 0.45
 
@@ -542,7 +542,7 @@ class Window(
             cmd.append("-n")
 
         if previous_layout:
-            cmd.append("-o")
+            cmd.append("-p")
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
