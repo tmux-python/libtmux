@@ -1271,7 +1271,7 @@ class Pane(
         if environment:
             if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
                 for k, v in environment.items():
-                    tmux_args += ("-e", f"{k}={v}")
+                    tmux_args += (f"-e{k}={v}",)
             else:
                 warnings.warn(
                     "environment requires tmux 3.3+, ignoring",
