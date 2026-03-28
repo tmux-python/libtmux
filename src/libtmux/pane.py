@@ -1186,6 +1186,7 @@ class Pane(
         *,
         close_on_exit: bool | None = None,
         close_on_success: bool | None = None,
+        close_existing: bool | None = None,
         width: int | str | None = None,
         height: int | str | None = None,
         x: int | str | None = None,
@@ -1210,7 +1211,10 @@ class Pane(
         close_on_exit : bool, optional
             Close popup when command exits (``-E`` flag).
         close_on_success : bool, optional
-            Close popup only on success exit code (``-C`` flag).
+            Close popup only on success exit code (``-EE`` flag, passing ``-E``
+            twice).
+        close_existing : bool, optional
+            Close any existing popup on the client (``-C`` flag).
         width : int or str, optional
             Popup width (``-w`` flag).
         height : int or str, optional
@@ -1249,11 +1253,14 @@ class Pane(
 
         tmux_args: tuple[str, ...] = ()
 
+        if close_existing:
+            tmux_args += ("-C",)
+
         if close_on_exit:
             tmux_args += ("-E",)
 
         if close_on_success:
-            tmux_args += ("-C",)
+            tmux_args += ("-E", "-E")
 
         if width is not None:
             tmux_args += ("-w", str(width))
