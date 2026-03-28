@@ -1330,7 +1330,7 @@ class Pane(
         *,
         buffer_name: str | None = None,
         delete_after: bool | None = None,
-        no_trailing_newline: bool | None = None,
+        linefeed_separator: bool | None = None,
         bracket: bool | None = None,
         separator: str | None = None,
     ) -> None:
@@ -1342,8 +1342,9 @@ class Pane(
             Name of the buffer to paste (``-b`` flag).
         delete_after : bool, optional
             Delete the buffer after pasting (``-d`` flag).
-        no_trailing_newline : bool, optional
-            Do not add a trailing newline (``-r`` flag).
+        linefeed_separator : bool, optional
+            Use newline as the line separator instead of carriage return
+            (``-r`` flag).
         bracket : bool, optional
             Use bracketed paste mode (``-p`` flag).
         separator : str, optional
@@ -1359,7 +1360,7 @@ class Pane(
         if delete_after:
             tmux_args += ("-d",)
 
-        if no_trailing_newline:
+        if linefeed_separator:
             tmux_args += ("-r",)
 
         if bracket:
