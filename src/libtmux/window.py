@@ -416,10 +416,16 @@ class Window(
         ----------
         detach : bool, optional
             Do not make the pane active (``-d`` flag).
+
+            .. versionadded:: 0.45
         keep_zoom : bool, optional
             Keep the window zoomed if zoomed (``-Z`` flag).
+
+            .. versionadded:: 0.45
         disable_input : bool, optional
             Disable input to the pane (``-e`` flag).
+
+            .. versionadded:: 0.45
 
         Returns
         -------

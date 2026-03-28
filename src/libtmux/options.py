@@ -817,6 +817,14 @@ class OptionsMixin(CmdMixin):
         g : bool, optional
             .. deprecated:: 0.50.0
                Use ``global_`` instead.
+        quiet : bool, optional
+            Suppress errors silently (``-q`` flag).
+
+            .. versionadded:: 0.45
+        values_only : bool, optional
+            Return only option values without names (``-v`` flag).
+
+            .. versionadded:: 0.45
 
         Examples
         --------
