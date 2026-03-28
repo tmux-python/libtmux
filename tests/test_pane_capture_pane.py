@@ -492,8 +492,8 @@ def test_capture_pane_alternate_screen(session: Session) -> None:
     assert isinstance(result, list)
 
 
-def test_capture_pane_escape_markup(session: Session) -> None:
-    """Test capture_pane with escape_markup flag (3.6+)."""
+def test_capture_pane_mode_screen(session: Session) -> None:
+    """Test capture_pane with mode_screen flag (3.6+)."""
     from libtmux.common import has_gte_version
 
     if not has_gte_version("3.6"):
@@ -502,5 +502,5 @@ def test_capture_pane_escape_markup(session: Session) -> None:
     pane = session.active_window.active_pane
     assert pane is not None
 
-    result = pane.capture_pane(escape_markup=True)
+    result = pane.capture_pane(mode_screen=True)
     assert isinstance(result, list)
