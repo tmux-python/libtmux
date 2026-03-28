@@ -278,6 +278,7 @@ class Window(
         zoom: bool | None = None,
         shell: str | None = None,
         size: str | int | None = None,
+        percentage: int | None = None,
         environment: dict[str, str] | None = None,
     ) -> Pane:
         """Split window on active pane and return the created :class:`Pane`.
@@ -303,7 +304,12 @@ class Window(
             is useful for long-running processes where the closing of the
             window upon completion is desired.
         size : int, optional
-            Cell/row or percentage to occupy with respect to current window.
+            Cell/row count to occupy with respect to current window.
+        percentage : int, optional
+            Percentage (0-100) of the window to occupy (``-p`` flag).
+            Mutually exclusive with *size*.
+
+            .. versionadded:: 0.45
         environment : dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
 
@@ -322,6 +328,7 @@ class Window(
             zoom=zoom,
             shell=shell,
             size=size,
+            percentage=percentage,
             environment=environment,
         )
 
