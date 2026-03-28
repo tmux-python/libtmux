@@ -406,24 +406,24 @@ class Window(
     def last_pane(
         self,
         *,
-        detach: bool | None = None,
-        keep_zoom: bool | None = None,
         disable_input: bool | None = None,
+        enable_input: bool | None = None,
+        keep_zoom: bool | None = None,
     ) -> Pane | None:
         """Select the last (previously active) pane via ``$ tmux last-pane``.
 
         Parameters
         ----------
-        detach : bool, optional
-            Do not make the pane active (``-d`` flag).
+        disable_input : bool, optional
+            Disable input to the pane (``-d`` flag).
+
+            .. versionadded:: 0.45
+        enable_input : bool, optional
+            Enable input to the pane (``-e`` flag).
 
             .. versionadded:: 0.45
         keep_zoom : bool, optional
             Keep the window zoomed if zoomed (``-Z`` flag).
-
-            .. versionadded:: 0.45
-        disable_input : bool, optional
-            Disable input to the pane (``-e`` flag).
 
             .. versionadded:: 0.45
 
@@ -442,14 +442,14 @@ class Window(
         """
         tmux_args: tuple[str, ...] = ()
 
-        if detach:
+        if disable_input:
             tmux_args += ("-d",)
+
+        if enable_input:
+            tmux_args += ("-e",)
 
         if keep_zoom:
             tmux_args += ("-Z",)
-
-        if disable_input:
-            tmux_args += ("-e",)
 
         proc = self.cmd("last-pane", *tmux_args)
 
