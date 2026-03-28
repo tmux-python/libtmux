@@ -1516,7 +1516,7 @@ class Server(
         *args: t.Any,
         detach_others: bool | None = None,
         no_size: bool | None = None,
-        config_file: StrPath | None = None,
+        client_flags: str | None = None,
         **kwargs: t.Any,
     ) -> Session:
         """Create new session, returns new :class:`Session`.
@@ -1571,8 +1571,9 @@ class Server(
             Do not set the initial window size (``-X`` flag).
 
             .. versionadded:: 0.45
-        config_file : str or PathLike, optional
-            Specify an alternative configuration file (``-f`` flag).
+        client_flags : str, optional
+            Set client flags (``-f`` flag), e.g. ``no-output``,
+            ``read-only``. Requires tmux 3.2+.
 
             .. versionadded:: 0.45
 
@@ -1648,8 +1649,8 @@ class Server(
             if no_size:
                 tmux_args += ("-X",)
 
-            if config_file is not None:
-                tmux_args += ("-f", str(pathlib.Path(config_file).expanduser()))
+            if client_flags is not None:
+                tmux_args += ("-f", client_flags)
 
             if session_name is not None:
                 tmux_args += (f"-s{session_name}",)
