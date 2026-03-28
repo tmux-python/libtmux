@@ -16,7 +16,7 @@ import typing as t
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.common import tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -429,7 +429,7 @@ class Server(
         *,
         background: bool | None = None,
         delay: str | None = None,
-        as_tmux_command: bool | None = None,
+        capture: bool | None = None,
         target_pane: str | None = None,
     ) -> list[str] | None:
         """Execute a shell command via ``$ tmux run-shell``.
@@ -442,22 +442,20 @@ class Server(
             Run in background (``-b`` flag).
         delay : str, optional
             Delay before execution (``-d`` flag).
-        as_tmux_command : bool, optional
-            Parse argument as a tmux command instead of a shell command
-            (``-C`` flag).
+        capture : bool, optional
+            Capture output to the target pane (``-C`` flag).
         target_pane : str, optional
             Target pane for output (``-t`` flag).
 
         Returns
         -------
         list[str] | None
-            Stdout lines, or None when *background* is True. Empty list on
-            tmux 3.3a/3.4 (upstream stdout passthrough was broken until 3.5).
+            Command stdout if not running in background, None otherwise.
 
         Examples
         --------
-        >>> result = server.run_shell('true')
-        >>> isinstance(result, list)
+        >>> result = server.run_shell('echo hello')
+        >>> 'hello' in (result or [])
         True
         """
         tmux_args: tuple[str, ...] = ()
@@ -468,7 +466,7 @@ class Server(
         if delay is not None:
             tmux_args += ("-d", delay)
 
-        if as_tmux_command:
+        if capture:
             tmux_args += ("-C",)
 
         if target_pane is not None:
@@ -710,8 +708,6 @@ class Server(
     ) -> list[str] | None:
         """Manage server access control via ``$ tmux server-access``.
 
-        Requires tmux 3.3+ (introduced in 3.3).
-
         Parameters
         ----------
         allow : str, optional
@@ -728,15 +724,10 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.3"):
-        ...     result = server.server_access(list_access=True)
-        ...     assert isinstance(result, list)
+        >>> result = server.server_access(list_access=True)
+        >>> isinstance(result, list)
+        True
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "server_access requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ()
 
         if allow is not None:
@@ -846,7 +837,7 @@ class Server(
         Always uses ``-b`` (background) to avoid blocking the command queue.
         Use ``send-keys -K -c <client>`` to provide the confirmation key.
 
-        Requires tmux 3.3+ for ``-b`` flag support.
+        Requires tmux 3.4+ for ``-b`` flag support.
 
         Parameters
         ----------
@@ -863,28 +854,15 @@ class Server(
 
         Examples
         --------
-        Interactive confirmation requires tmux 3.4+; the wrapper itself
-        works on 3.3+ but the ``send-keys -K -c <client>`` round-trip
-        used here is unreliable on 3.3a:
-
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.4"):
-        ...     with control_mode() as ctl:
-        ...         server.confirm_before(
-        ...             'set -g @cf_test yes',
-        ...             target_client=ctl.client_name,
-        ...         )
-        ...         _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, 'y')
-        ...         result = server.cmd('show-options', '-gv', '@cf_test').stdout[0]
-        ... else:
-        ...     result = 'yes'
-        >>> result
+        >>> with control_mode() as ctl:
+        ...     server.confirm_before(
+        ...         'set -g @cf_test yes',
+        ...         target_client=ctl.client_name,
+        ...     )
+        ...     _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, 'y')
+        ...     server.cmd('show-options', '-gv', '@cf_test').stdout[0]
         'yes'
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "confirm_before requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ("-b",)
 
         if prompt is not None:
@@ -916,7 +894,7 @@ class Server(
         one_key: bool | None = None,
         key_only: bool | None = None,
         on_input_change: bool | None = None,
-        numeric: bool | None = None,
+        no_execute: bool | None = None,
         prompt_type: str | None = None,
     ) -> None:
         """Open a command prompt via ``$ tmux command-prompt``.
@@ -924,7 +902,7 @@ class Server(
         Always uses ``-b`` (background) to avoid blocking the command queue.
         Use ``send-keys -K -c <client>`` to type into the prompt and submit.
 
-        Requires tmux 3.3+ for ``-b`` flag support.
+        Requires tmux 3.4+ for ``-b`` flag support.
 
         Parameters
         ----------
@@ -942,37 +920,24 @@ class Server(
             Only accept key presses, not text (``-k`` flag).
         on_input_change : bool, optional
             Run template on each keystroke (``-i`` flag).
-        numeric : bool, optional
-            Accept only numeric input (``-N`` flag).
+        no_execute : bool, optional
+            Do not execute the command, just insert into prompt (``-N`` flag).
         prompt_type : str, optional
             Prompt type (``-T`` flag). One of: ``command``, ``search``,
             ``target``, ``window-target``.
 
         Examples
         --------
-        Interactive prompts require tmux 3.4+; the wrapper itself works
-        on 3.3+ but the ``send-keys -K -c <client>`` round-trip used
-        here is unreliable on 3.3a:
-
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.4"):
-        ...     with control_mode() as ctl:
-        ...         server.command_prompt(
-        ...             "set -g @cp_test '%1'",
-        ...             target_client=ctl.client_name,
-        ...         )
-        ...         for key in ['h', 'i', 'Enter']:
-        ...             _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, key)
-        ...         result = server.cmd('show-options', '-gv', '@cp_test').stdout[0]
-        ... else:
-        ...     result = 'hi'
-        >>> result
+        >>> with control_mode() as ctl:
+        ...     server.command_prompt(
+        ...         "set -g @cp_test '%1'",
+        ...         target_client=ctl.client_name,
+        ...     )
+        ...     for key in ['h', 'i', 'Enter']:
+        ...         _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, key)
+        ...     server.cmd('show-options', '-gv', '@cp_test').stdout[0]
         'hi'
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "command_prompt requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ("-b",)
 
         if one_key:
@@ -984,7 +949,7 @@ class Server(
         if on_input_change:
             tmux_args += ("-i",)
 
-        if numeric:
+        if no_execute:
             tmux_args += ("-N",)
 
         if prompt is not None:
@@ -1114,19 +1079,8 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def show_messages(self, *, target_client: str | None = None) -> list[str]:
+    def show_messages(self) -> list[str]:
         """Show server message log via ``$ tmux show-messages``.
-
-        Without ``-T``/``-J``, tmux resolves the message log against a
-        target client; if no client is attached and *target_client* is
-        omitted, tmux raises ``no current client``. Provide
-        *target_client* (e.g. via :class:`~libtmux._internal.control_mode.ControlMode`)
-        when running headless.
-
-        Parameters
-        ----------
-        target_client : str, optional
-            Target client (``-t`` flag).
 
         Returns
         -------
@@ -1135,17 +1089,11 @@ class Server(
 
         Examples
         --------
-        >>> with control_mode() as ctl:
-        ...     result = server.show_messages(target_client=ctl.client_name)
+        >>> result = server.show_messages()
         >>> isinstance(result, list)
         True
         """
-        tmux_args: tuple[str, ...] = ()
-
-        if target_client is not None:
-            tmux_args += ("-t", target_client)
-
-        proc = self.cmd("show-messages", *tmux_args)
+        proc = self.cmd("show-messages")
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -1172,18 +1120,10 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.3"):
-        ...     result = server.show_prompt_history()
-        ... else:
-        ...     result = []
+        >>> result = server.show_prompt_history()
         >>> isinstance(result, list)
         True
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "show_prompt_history requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ()
 
         if prompt_type is not None:
@@ -1211,14 +1151,8 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.common import has_gte_version
-        >>> if has_gte_version("3.3"):
-        ...     server.clear_prompt_history()
+        >>> server.clear_prompt_history()
         """
-        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            msg = "clear_prompt_history requires tmux 3.3+"
-            raise exc.LibTmuxException(msg)
-
         tmux_args: tuple[str, ...] = ()
 
         if prompt_type is not None:
@@ -1584,7 +1518,7 @@ class Server(
         *args: t.Any,
         detach_others: bool | None = None,
         no_size: bool | None = None,
-        client_flags: str | None = None,
+        config_file: StrPath | None = None,
         **kwargs: t.Any,
     ) -> Session:
         """Create new session, returns new :class:`Session`.
@@ -1639,9 +1573,8 @@ class Server(
             Do not set the initial window size (``-X`` flag).
 
             .. versionadded:: 0.45
-        client_flags : str, optional
-            Set client flags (``-f`` flag), e.g. ``no-output``,
-            ``read-only``. Requires tmux 3.2+.
+        config_file : str or PathLike, optional
+            Specify an alternative configuration file (``-f`` flag).
 
             .. versionadded:: 0.45
 
@@ -1717,8 +1650,8 @@ class Server(
             if no_size:
                 tmux_args += ("-X",)
 
-            if client_flags is not None:
-                tmux_args += ("-f", client_flags)
+            if config_file is not None:
+                tmux_args += ("-f", str(pathlib.Path(config_file).expanduser()))
 
             if session_name is not None:
                 tmux_args += (f"-s{session_name}",)

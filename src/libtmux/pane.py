@@ -621,6 +621,8 @@ class Pane(
         """Display message to pane.
 
         Displays a message in target-client status line.
+        The ``get_text=False`` path renders in the status line and is not
+        programmatically verifiable; only ``get_text=True`` returns output.
 
         Parameters
         ----------
@@ -1192,6 +1194,10 @@ class Pane(
 
         Examples
         --------
+        Not directly testable — popup rendering requires a TTY-backed client.
+        Control-mode provides an attached client for invocation but the popup
+        itself is not visible or verifiable.
+
         >>> with control_mode() as ctl:
         ...     pane.display_popup(command='true', close_on_exit=True)
         """
