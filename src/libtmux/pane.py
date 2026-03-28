@@ -1967,14 +1967,13 @@ class Pane(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def clear_history(self, *, clear_pane: bool | None = None) -> None:
+    def clear_history(self, *, reset_hyperlinks: bool | None = None) -> None:
         """Clear pane history buffer via ``$ tmux clear-history``.
 
         Parameters
         ----------
-        clear_pane : bool, optional
-            Also clear the visible pane content (``-H`` flag).
-            Requires tmux 3.4+.
+        reset_hyperlinks : bool, optional
+            Also reset hyperlinks (``-H`` flag). Requires tmux 3.4+.
 
             .. versionadded:: 0.45
 
@@ -1988,12 +1987,12 @@ class Pane(
 
         tmux_args: tuple[str, ...] = ()
 
-        if clear_pane:
+        if reset_hyperlinks:
             if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
                 tmux_args += ("-H",)
             else:
                 warnings.warn(
-                    "clear_pane requires tmux 3.4+, ignoring",
+                    "reset_hyperlinks requires tmux 3.4+, ignoring",
                     stacklevel=2,
                 )
 
