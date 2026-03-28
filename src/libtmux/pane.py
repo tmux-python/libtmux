@@ -377,9 +377,13 @@ class Pane(
         alternate_screen : bool, optional
             Capture from the alternate screen (``-a`` flag).
             Default: False
+
+            .. versionadded:: 0.45
         quiet : bool, optional
             Suppress errors silently (``-q`` flag).
             Default: False
+
+            .. versionadded:: 0.45
         escape_markup : bool, optional
             Escape markup in the output (``-M`` flag). Requires tmux 3.6+.
             Default: False
@@ -481,11 +485,17 @@ class Pane(
             Send keys literally, default False.
         reset : bool, optional
             Reset terminal state before sending keys (``-R`` flag).
+
+            .. versionadded:: 0.45
         copy_mode_cmd : str, optional
             Send a command to copy mode instead of keys (``-X`` flag).
             When set, *cmd* is ignored.
+
+            .. versionadded:: 0.45
         repeat : int, optional
             Repeat count for the key (``-N`` flag).
+
+            .. versionadded:: 0.45
         expand_formats : bool, optional
             Expand tmux format strings in keys (``-F`` flag).
 
@@ -633,18 +643,32 @@ class Pane(
             target-client status line.
         format_string : str, optional
             Format string for output (``-F`` flag).
+
+            .. versionadded:: 0.45
         all_formats : bool, optional
             List all format variables (``-a`` flag).
+
+            .. versionadded:: 0.45
         verbose : bool, optional
             Show format variable types (``-v`` flag).
+
+            .. versionadded:: 0.45
         no_expand : bool, optional
             Suppress format expansion (``-I`` flag).
+
+            .. versionadded:: 0.45
         target_client : str, optional
             Target client (``-c`` flag).
+
+            .. versionadded:: 0.45
         delay : int, optional
             Display time in milliseconds (``-d`` flag).
+
+            .. versionadded:: 0.45
         notify : bool, optional
             Do not wait for input (``-N`` flag).
+
+            .. versionadded:: 0.45
         list_formats : bool, optional
             List format variables (``-l`` flag). Requires tmux 3.4+.
 
@@ -807,18 +831,32 @@ class Pane(
         direction : ResizeAdjustmentDirection, optional
             Select the pane in the given direction (``-U``, ``-D``, ``-L``,
             ``-R``).
+
+            .. versionadded:: 0.45
         last : bool, optional
             Select the last (previously selected) pane (``-l`` flag).
+
+            .. versionadded:: 0.45
         keep_zoom : bool, optional
             Keep the window zoomed if it was zoomed (``-Z`` flag).
+
+            .. versionadded:: 0.45
         mark : bool, optional
             Set the marked pane (``-m`` flag).
+
+            .. versionadded:: 0.45
         clear_mark : bool, optional
             Clear the marked pane (``-M`` flag).
+
+            .. versionadded:: 0.45
         disable_input : bool, optional
             Disable input to the pane (``-d`` flag).
+
+            .. versionadded:: 0.45
         enable_input : bool, optional
             Enable input to the pane (``-e`` flag).
+
+            .. versionadded:: 0.45
 
         Returns
         -------
