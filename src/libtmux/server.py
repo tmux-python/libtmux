@@ -897,7 +897,7 @@ class Server(
         one_key: bool | None = None,
         key_only: bool | None = None,
         on_input_change: bool | None = None,
-        no_execute: bool | None = None,
+        numeric: bool | None = None,
         prompt_type: str | None = None,
     ) -> None:
         """Open a command prompt via ``$ tmux command-prompt``.
@@ -923,8 +923,8 @@ class Server(
             Only accept key presses, not text (``-k`` flag).
         on_input_change : bool, optional
             Run template on each keystroke (``-i`` flag).
-        no_execute : bool, optional
-            Do not execute the command, just insert into prompt (``-N`` flag).
+        numeric : bool, optional
+            Accept only numeric input (``-N`` flag).
         prompt_type : str, optional
             Prompt type (``-T`` flag). One of: ``command``, ``search``,
             ``target``, ``window-target``.
@@ -952,7 +952,7 @@ class Server(
         if on_input_change:
             tmux_args += ("-i",)
 
-        if no_execute:
+        if numeric:
             tmux_args += ("-N",)
 
         if prompt is not None:
