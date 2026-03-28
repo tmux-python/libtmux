@@ -1154,6 +1154,7 @@ class Pane(
         start_directory: StrPath | None = None,
         title: str | None = None,
         border_lines: str | None = None,
+        style: str | None = None,
         border_style: str | None = None,
         environment: dict[str, str] | None = None,
     ) -> None:
@@ -1185,8 +1186,10 @@ class Pane(
             Popup title (``-T`` flag). Requires tmux 3.3+.
         border_lines : str, optional
             Border line style (``-b`` flag). Requires tmux 3.3+.
+        style : str, optional
+            Popup style (``-s`` flag). Requires tmux 3.3+.
         border_style : str, optional
-            Border style (``-s`` flag). Requires tmux 3.3+.
+            Border style (``-S`` flag). Requires tmux 3.3+.
         environment : dict, optional
             Environment variables (``-e`` flag). Requires tmux 3.3+.
 
@@ -1247,9 +1250,18 @@ class Pane(
                     stacklevel=2,
                 )
 
+        if style is not None:
+            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-s", style)
+            else:
+                warnings.warn(
+                    "style requires tmux 3.3+, ignoring",
+                    stacklevel=2,
+                )
+
         if border_style is not None:
             if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
-                tmux_args += ("-s", border_style)
+                tmux_args += ("-S", border_style)
             else:
                 warnings.warn(
                     "border_style requires tmux 3.3+, ignoring",
