@@ -328,7 +328,7 @@ class Pane(
         trim_trailing: bool = False,
         alternate_screen: bool = False,
         quiet: bool = False,
-        escape_markup: bool = False,
+        mode_screen: bool = False,
     ) -> list[str]:
         r"""Capture text from pane.
 
@@ -384,8 +384,9 @@ class Pane(
             Default: False
 
             .. versionadded:: 0.45
-        escape_markup : bool, optional
-            Escape markup in the output (``-M`` flag). Requires tmux 3.6+.
+        mode_screen : bool, optional
+            Capture from the mode screen (e.g. copy mode) instead of the
+            pane (``-M`` flag). Requires tmux 3.6+.
             Default: False
 
             .. versionadded:: 0.45
@@ -440,12 +441,12 @@ class Pane(
             cmd.append("-a")
         if quiet:
             cmd.append("-q")
-        if escape_markup:
+        if mode_screen:
             if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
                 cmd.append("-M")
             else:
                 warnings.warn(
-                    "escape_markup requires tmux 3.6+, ignoring",
+                    "mode_screen requires tmux 3.6+, ignoring",
                     stacklevel=2,
                 )
         return self.cmd(*cmd).stdout
