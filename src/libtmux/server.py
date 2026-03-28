@@ -840,7 +840,7 @@ class Server(
         Always uses ``-b`` (background) to avoid blocking the command queue.
         Use ``send-keys -K -c <client>`` to provide the confirmation key.
 
-        Requires tmux 3.4+ for ``-b`` flag support.
+        Requires tmux 3.3+ for ``-b`` flag support.
 
         Parameters
         ----------
@@ -905,7 +905,7 @@ class Server(
         Always uses ``-b`` (background) to avoid blocking the command queue.
         Use ``send-keys -K -c <client>`` to type into the prompt and submit.
 
-        Requires tmux 3.4+ for ``-b`` flag support.
+        Requires tmux 3.3+ for ``-b`` flag support.
 
         Parameters
         ----------
