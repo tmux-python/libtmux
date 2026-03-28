@@ -1017,6 +1017,10 @@ class Server(
 
         Examples
         --------
+        Not directly testable — requires a TTY-backed client.
+        Control-mode clients set ``tty.sy=0``, causing ``menu_prepare()``
+        to return NULL inside tmux.
+
         >>> server.display_menu  # doctest: +ELLIPSIS
         <bound method ...>
         """
