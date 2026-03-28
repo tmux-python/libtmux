@@ -1703,7 +1703,7 @@ class Pane(
 
         if start_directory is not None:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += ("-c", str(start_path))
+            tmux_args += (f"-c{start_path}",)
 
         if environment:
             for k, v in environment.items():
