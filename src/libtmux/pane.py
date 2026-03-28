@@ -1428,9 +1428,9 @@ class Pane(
         self,
         *,
         scroll_up: bool | None = None,
-        exit_on_copy: bool | None = None,
+        exit_on_bottom: bool | None = None,
         mouse_drag: bool | None = None,
-        quiet: bool | None = None,
+        cancel: bool | None = None,
     ) -> None:
         """Enter copy mode via ``$ tmux copy-mode``.
 
@@ -1438,12 +1438,13 @@ class Pane(
         ----------
         scroll_up : bool, optional
             Start scrolled up one page (``-u`` flag).
-        exit_on_copy : bool, optional
-            Exit copy mode after copying (``-e`` flag).
+        exit_on_bottom : bool, optional
+            Exit copy mode when scrolling reaches the bottom of the
+            history (``-e`` flag).
         mouse_drag : bool, optional
             Start mouse drag (``-M`` flag).
-        quiet : bool, optional
-            Quiet mode (``-q`` flag).
+        cancel : bool, optional
+            Cancel copy mode and any other modes (``-q`` flag).
 
         Examples
         --------
@@ -1458,13 +1459,13 @@ class Pane(
         if scroll_up:
             tmux_args += ("-u",)
 
-        if exit_on_copy:
+        if exit_on_bottom:
             tmux_args += ("-e",)
 
         if mouse_drag:
             tmux_args += ("-M",)
 
-        if quiet:
+        if cancel:
             tmux_args += ("-q",)
 
         proc = self.cmd("copy-mode", *tmux_args)
