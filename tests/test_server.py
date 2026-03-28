@@ -908,16 +908,12 @@ def test_list_clients(server: Server) -> None:
     assert isinstance(result, list)
 
 
-def test_new_session_config_file(
+def test_new_session_client_flags(
     server: Server,
-    tmp_path: pathlib.Path,
 ) -> None:
-    """Test Server.new_session() with config_file flag."""
-    conf = tmp_path / "test.conf"
-    conf.write_text("set -g status off\n")
-
+    """Test Server.new_session() with client_flags flag."""
     session = server.new_session(
-        session_name="conf_test",
-        config_file=str(conf),
+        session_name="flags_test",
+        client_flags="no-output",
     )
-    assert session.session_name == "conf_test"
+    assert session.session_name == "flags_test"
