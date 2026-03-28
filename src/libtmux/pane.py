@@ -1552,17 +1552,17 @@ class Pane(
     def choose_tree(
         self,
         *,
-        sessions_only: bool | None = None,
-        windows_only: bool | None = None,
+        sessions_collapsed: bool | None = None,
+        windows_collapsed: bool | None = None,
     ) -> None:
         """Enter tree chooser via ``$ tmux choose-tree``.
 
         Parameters
         ----------
-        sessions_only : bool, optional
-            Only show sessions, not windows (``-s`` flag).
-        windows_only : bool, optional
-            Only show windows, not sessions (``-w`` flag).
+        sessions_collapsed : bool, optional
+            Start with sessions collapsed (``-s`` flag).
+        windows_collapsed : bool, optional
+            Start with windows collapsed (``-w`` flag).
 
         Examples
         --------
@@ -1570,10 +1570,10 @@ class Pane(
         """
         tmux_args: tuple[str, ...] = ()
 
-        if sessions_only:
+        if sessions_collapsed:
             tmux_args += ("-s",)
 
-        if windows_only:
+        if windows_collapsed:
             tmux_args += ("-w",)
 
         proc = self.cmd("choose-tree", *tmux_args)
