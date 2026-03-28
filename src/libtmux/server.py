@@ -429,7 +429,7 @@ class Server(
         *,
         background: bool | None = None,
         delay: str | None = None,
-        capture: bool | None = None,
+        as_tmux_command: bool | None = None,
         target_pane: str | None = None,
     ) -> list[str] | None:
         """Execute a shell command via ``$ tmux run-shell``.
@@ -442,8 +442,9 @@ class Server(
             Run in background (``-b`` flag).
         delay : str, optional
             Delay before execution (``-d`` flag).
-        capture : bool, optional
-            Capture output to the target pane (``-C`` flag).
+        as_tmux_command : bool, optional
+            Parse argument as a tmux command instead of a shell command
+            (``-C`` flag).
         target_pane : str, optional
             Target pane for output (``-t`` flag).
 
@@ -466,7 +467,7 @@ class Server(
         if delay is not None:
             tmux_args += ("-d", delay)
 
-        if capture:
+        if as_tmux_command:
             tmux_args += ("-C",)
 
         if target_pane is not None:
