@@ -693,15 +693,18 @@ class Window(
     def rotate(
         self,
         *,
-        direction_up: bool | None = None,
+        upward: bool | None = None,
+        downward: bool | None = None,
         keep_zoom: bool | None = None,
     ) -> Window:
         """Rotate pane positions in the window via ``$ tmux rotate-window``.
 
         Parameters
         ----------
-        direction_up : bool, optional
-            Rotate upward (``-U`` flag). Default is downward (``-D``).
+        upward : bool, optional
+            Rotate upward (``-U`` flag).
+        downward : bool, optional
+            Rotate downward (``-D`` flag).
         keep_zoom : bool, optional
             Keep the window zoomed if zoomed (``-Z`` flag).
 
@@ -719,9 +722,10 @@ class Window(
         """
         tmux_args: tuple[str, ...] = ()
 
-        if direction_up:
+        if upward:
             tmux_args += ("-U",)
-        else:
+
+        if downward:
             tmux_args += ("-D",)
 
         if keep_zoom:
