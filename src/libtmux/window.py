@@ -969,7 +969,9 @@ class Window(
 
             .. versionadded:: 0.45
         renumber : bool, optional
-            Renumber all windows after moving (``-r`` flag).
+            Renumber all windows in sequential order (``-r`` flag). This is a
+            standalone operation — when used, no move is performed and other
+            parameters are ignored.
 
             .. versionadded:: 0.45
 
