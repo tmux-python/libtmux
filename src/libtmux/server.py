@@ -1141,6 +1141,12 @@ class Server(
         >>> isinstance(result, list)
         True
         """
+        from libtmux.common import has_gte_version
+
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = "show_prompt_history requires tmux 3.3+"
+            raise exc.LibTmuxException(msg)
+
         tmux_args: tuple[str, ...] = ()
 
         if prompt_type is not None:
@@ -1170,6 +1176,12 @@ class Server(
         --------
         >>> server.clear_prompt_history()
         """
+        from libtmux.common import has_gte_version
+
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = "clear_prompt_history requires tmux 3.3+"
+            raise exc.LibTmuxException(msg)
+
         tmux_args: tuple[str, ...] = ()
 
         if prompt_type is not None:
