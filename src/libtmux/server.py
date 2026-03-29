@@ -864,19 +864,13 @@ class Server(
         ...     server.cmd('show-options', '-gv', '@cf_test').stdout[0]
         'yes'
         """
-        import warnings
-
         from libtmux.common import has_gte_version
 
-        tmux_args: tuple[str, ...] = ()
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = "confirm_before requires tmux 3.3+"
+            raise exc.LibTmuxException(msg)
 
-        if has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            tmux_args += ("-b",)
-        else:
-            warnings.warn(
-                "confirm_before -b requires tmux 3.3+, ignoring",
-                stacklevel=2,
-            )
+        tmux_args: tuple[str, ...] = ("-b",)
 
         if prompt is not None:
             tmux_args += ("-p", prompt)
@@ -951,19 +945,13 @@ class Server(
         ...     server.cmd('show-options', '-gv', '@cp_test').stdout[0]
         'hi'
         """
-        import warnings
-
         from libtmux.common import has_gte_version
 
-        tmux_args: tuple[str, ...] = ()
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = "command_prompt requires tmux 3.3+"
+            raise exc.LibTmuxException(msg)
 
-        if has_gte_version("3.3", tmux_bin=self.tmux_bin):
-            tmux_args += ("-b",)
-        else:
-            warnings.warn(
-                "command_prompt -b requires tmux 3.3+, ignoring",
-                stacklevel=2,
-            )
+        tmux_args: tuple[str, ...] = ("-b",)
 
         if one_key:
             tmux_args += ("-1",)

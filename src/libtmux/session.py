@@ -267,13 +267,22 @@ class Session(
         Parameters
         ----------
         target_client : str, optional
-            Target client to detach (``-t`` flag). If omitted, detaches
-            the most recently active client.
+            Target client to detach (``-t`` flag). If omitted, all clients
+            attached to this session are detached (``-s`` session scoping).
         all_clients : bool, optional
-            Detach all clients attached to this session (``-a`` flag). If
-            combined with ``target_client``, tmux keeps that client attached.
+            When combined with ``target_client``, detach every client
+            attached to this session **except** *target_client*. Has no
+            additional effect when ``target_client`` is omitted.
         shell_command : str, optional
             Run a shell command after detaching (``-E`` flag).
+
+        Notes
+        -----
+        ``all_clients=True`` differs from tmux's ``detach-client -a``,
+        which is server-wide (see ``cmd-detach-client.c`` — the ``-a``
+        branch loops over the global client list). This wrapper enumerates
+        clients attached to ``self.session_id`` and issues one
+        ``detach-client`` per non-target client to preserve session scope.
 
         Examples
         --------
@@ -282,14 +291,18 @@ class Session(
         """
         tmux_args: tuple[str, ...] = ()
 
-        if all_clients:
-            tmux_args += ("-a",)
-
         if shell_command is not None:
             tmux_args += ("-E", shell_command)
 
-        if target_client is not None:
+        if all_clients and target_client is not None:
+            # Keep target_client attached; detach all others from session
+            tmux_args += ("-a", "-t", target_client)
+        elif target_client is not None:
             tmux_args += ("-t", target_client)
+        else:
+            # No target specified: scope to this session so behavior is
+            # deterministic regardless of how many sessions exist on the server
+            tmux_args += ("-s", str(self.session_id))
 
         proc = self.server.cmd("detach-client", *tmux_args)
 
