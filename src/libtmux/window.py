@@ -1013,10 +1013,7 @@ class Window(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        if destination != "" and session is not None:
-            self.window_index = destination
-        else:
-            self.refresh()
+        self.refresh()
 
         return self
 
