@@ -91,21 +91,23 @@ class ControlMode:
         self._write_fd = os.open(self._fifo_path, os.O_WRONLY)
 
         self.stdout = self._proc.stdout  # type: ignore[assignment]
+        client_pid = str(self._proc.pid)
 
         # Wait for client to register
         def client_registered() -> bool:
-            clients = self.server.list_clients()
-            return len(clients) > 0
+            result = self.server.cmd(
+                "list-clients",
+                "-F",
+                "#{client_pid}\t#{client_name}",
+            )
+            for line in result.stdout:
+                pid, _, client_name = line.partition("\t")
+                if pid == client_pid and client_name:
+                    self.client_name = client_name.strip()
+                    return True
+            return False
 
         retry_until(client_registered, 3, raises=True)
-
-        # Capture client name
-        result = self.server.cmd(
-            "list-clients",
-            "-F",
-            "#{client_name}",
-        )
-        self.client_name = result.stdout[0].strip() if result.stdout else ""
 
         return self
 
