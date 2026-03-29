@@ -400,6 +400,54 @@ def test_move_window_to_other_session(server: Server, session: Session) -> None:
     assert new_session.windows.get(window_id=window_id) == window
 
 
+@pytest.mark.parametrize(
+    ("flag_name", "destination_offset"), [("after", 0), ("before", 1)]
+)
+def test_move_window_relative_returns_fresh_window(
+    flag_name: str,
+    destination_offset: int,
+    session: Session,
+) -> None:
+    """Window.move_window() returns fresh state for relative moves."""
+    destination_window = session.active_window
+    session.new_window(window_name="move_middle")
+    moving_window = session.new_window(window_name="move_relative")
+    assert destination_window.window_index is not None
+    assert moving_window.window_id is not None
+
+    destination = str(int(destination_window.window_index) + destination_offset)
+    if flag_name == "after":
+        moving_window.move_window(destination, after=True)
+    else:
+        moving_window.move_window(destination, before=True)
+
+    fresh_window = Window.from_window_id(
+        server=session.server,
+        window_id=moving_window.window_id,
+    )
+    assert moving_window.window_index == fresh_window.window_index
+    assert moving_window.session_id == fresh_window.session_id
+
+
+def test_move_window_to_other_session_with_destination(
+    server: Server,
+    session: Session,
+) -> None:
+    """Window.move_window() returns fresh state for cross-session moves."""
+    window = session.new_window(window_name="move_cross_session")
+    assert window.window_id is not None
+    new_session = server.new_session("test_move_window_destination")
+    destination = "99"
+
+    window.move_window(destination=destination, session=new_session.session_id)
+
+    fresh_window = Window.from_window_id(server=server, window_id=window.window_id)
+    assert fresh_window.session_id == new_session.session_id
+    assert fresh_window.window_index == destination
+    assert window.session_id == fresh_window.session_id
+    assert window.window_index == fresh_window.window_index
+
+
 def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
     """Tmux allows select-layout with no arguments, so let's allow it here."""
     window = session.new_window(window_name="test_window")
