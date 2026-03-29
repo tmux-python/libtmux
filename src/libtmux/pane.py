@@ -593,7 +593,6 @@ class Pane(
         target_client: str | None = ...,
         delay: int | None = ...,
         notify: bool | None = ...,
-        list_formats: bool | None = ...,
         no_style: bool | None = ...,
     ) -> list[str]: ...
 
@@ -610,7 +609,6 @@ class Pane(
         target_client: str | None = ...,
         delay: int | None = ...,
         notify: bool | None = ...,
-        list_formats: bool | None = ...,
         no_style: bool | None = ...,
     ) -> None: ...
 
@@ -626,7 +624,6 @@ class Pane(
         target_client: str | None = None,
         delay: int | None = None,
         notify: bool | None = None,
-        list_formats: bool | None = None,
         no_style: bool | None = None,
     ) -> list[str] | None:
         """Display message to pane.
@@ -655,7 +652,8 @@ class Pane(
 
             .. versionadded:: 0.45
         no_expand : bool, optional
-            Suppress format expansion (``-I`` flag).
+            Suppress format expansion; output is returned as a literal string
+            (``-l`` flag). Requires tmux 3.4+.
 
             .. versionadded:: 0.45
         target_client : str, optional
@@ -668,10 +666,6 @@ class Pane(
             .. versionadded:: 0.45
         notify : bool, optional
             Do not wait for input (``-N`` flag).
-
-            .. versionadded:: 0.45
-        list_formats : bool, optional
-            List format variables (``-l`` flag). Requires tmux 3.4+.
 
             .. versionadded:: 0.45
         no_style : bool, optional
@@ -700,19 +694,16 @@ class Pane(
             tmux_args += ("-v",)
 
         if no_expand:
-            tmux_args += ("-I",)
-
-        if notify:
-            tmux_args += ("-N",)
-
-        if list_formats:
             if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
                 tmux_args += ("-l",)
             else:
                 warnings.warn(
-                    "list_formats requires tmux 3.4+, ignoring",
+                    "no_expand requires tmux 3.4+, ignoring",
                     stacklevel=2,
                 )
+
+        if notify:
+            tmux_args += ("-N",)
 
         if no_style:
             if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):

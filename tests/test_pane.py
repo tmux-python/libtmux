@@ -677,10 +677,12 @@ DISPLAY_MESSAGE_CASES: list[DisplayMessageCase] = [
         min_tmux_version=None,
     ),
     DisplayMessageCase(
-        test_id="list_formats",
-        cmd="",
-        kwargs={"get_text": True, "list_formats": True},
-        expected_in_output=None,
+        test_id="no_expand",
+        cmd="#{pane_id}",
+        # no_expand=True → -l flag: output should be the literal string, not
+        # the expanded pane id (which would start with %)
+        kwargs={"get_text": True, "no_expand": True},
+        expected_in_output="#{pane_id}",
         min_tmux_version="3.4",
     ),
 ]
