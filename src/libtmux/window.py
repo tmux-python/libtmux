@@ -808,8 +808,6 @@ class Window(
         >>> w1_idx = w1.window_index
         >>> w2_idx = w2.window_index
         >>> w1.swap(w2)
-        >>> w1.refresh()
-        >>> w2.refresh()
         >>> w1.window_index == w2_idx
         True
         >>> w2.window_index == w1_idx
@@ -827,6 +825,10 @@ class Window(
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+        if isinstance(target, Window):
+            target.refresh()
 
     def rename_window(self, new_name: str) -> Window:
         """Rename window.
