@@ -586,21 +586,28 @@ def test_detach_client(
     session: Session,
     server: Server,
 ) -> None:
-    """Test Session.detach_client() detaches the control-mode client."""
+    """Test Session.detach_client() detaches all session clients when no target given.
+
+    Without target_client, -s session_id scopes the operation to this session.
+    """
     with control_mode():
         before = len(server.list_clients())
         assert before > 0
         session.detach_client()
         after = len(server.list_clients())
-        assert after == before - 1
+        assert after == 0
 
 
-def test_detach_client_only_detaches_one_client(
+def test_detach_client_no_target_detaches_all_session_clients(
     control_mode: t.Callable[..., t.Any],
     session: Session,
     server: Server,
 ) -> None:
-    """Test Session.detach_client() without a target detaches one client."""
+    """Test Session.detach_client() without a target detaches all session clients.
+
+    Without a target_client, the method uses ``-s session_id`` to scope the
+    operation to this session, detaching all attached clients.
+    """
     with control_mode(), control_mode():
         before = server.cmd("list-clients", "-F", "#{client_name}").stdout
         assert len(before) == 2
@@ -608,8 +615,7 @@ def test_detach_client_only_detaches_one_client(
         session.detach_client()
 
         after = server.cmd("list-clients", "-F", "#{client_name}").stdout
-        assert len(after) == 1
-        assert set(after) < set(before)
+        assert len(after) == 0
 
 
 def test_detach_client_target_client(
