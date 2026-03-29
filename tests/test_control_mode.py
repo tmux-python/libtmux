@@ -40,3 +40,23 @@ def test_control_mode_client_name(
     """ControlMode.client_name contains the tmux client identifier."""
     with control_mode() as ctl:
         assert "client-" in ctl.client_name
+
+
+def test_control_mode_client_name_matches_spawned_client(
+    control_mode: t.Callable[[], ControlMode],
+    server: Server,
+) -> None:
+    """ControlMode records the client name for its own subprocess."""
+    with control_mode() as first, control_mode() as second:
+        clients = {
+            tuple(line.split("\t", 1))
+            for line in server.cmd(
+                "list-clients",
+                "-F",
+                "#{client_pid}\t#{client_name}",
+            ).stdout
+        }
+
+        assert first.client_name != second.client_name
+        assert (str(first._proc.pid), first.client_name) in clients
+        assert (str(second._proc.pid), second.client_name) in clients
