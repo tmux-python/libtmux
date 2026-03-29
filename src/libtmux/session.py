@@ -272,7 +272,8 @@ class Session(
             Target client to detach (``-t`` flag). If omitted, detaches
             the most recently active client.
         all_clients : bool, optional
-            Detach all clients attached to this session (``-a`` flag).
+            Detach all clients attached to this session (``-a`` flag). If
+            combined with ``target_client``, tmux keeps that client attached.
         shell_command : str, optional
             Run a shell command after detaching (``-E`` flag).
 
@@ -291,9 +292,6 @@ class Session(
 
         if target_client is not None:
             tmux_args += ("-t", target_client)
-
-        # Use -s for session targeting (not -t, which targets clients)
-        tmux_args += ("-s", str(self.session_id))
 
         proc = self.server.cmd("detach-client", *tmux_args)
 
