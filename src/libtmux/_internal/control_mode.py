@@ -8,9 +8,7 @@ requiring an attached client (e.g. ``display-popup``, ``detach-client``).
 from __future__ import annotations
 
 import os
-import pathlib
 import subprocess
-import tempfile
 import typing as t
 
 from libtmux.test.retry import retry_until
@@ -52,7 +50,6 @@ class ControlMode:
     stdout: t.IO[str]
 
     _proc: subprocess.Popen[str]
-    _fifo_path: str
     _write_fd: int
 
     def __init__(self, server: Server, session: Session) -> None:
@@ -61,34 +58,38 @@ class ControlMode:
 
     def __enter__(self) -> ControlMode:
         """Spawn control-mode client and wait for registration."""
-        self._fifo_path = tempfile.mktemp(prefix="libtmux_ctl_")
-        os.mkfifo(self._fifo_path)
+        read_fd, self._write_fd = os.pipe()
 
         tmux_bin = self.server.tmux_bin or "tmux"
+
+        # Build socket arguments matching Server's own logic
+        if self.server.socket_name is not None:
+            socket_args = ["-L", str(self.server.socket_name)]
+        elif self.server.socket_path is not None:
+            socket_args = ["-S", str(self.server.socket_path)]
+        else:
+            socket_args = []
+
         cmd = [
             tmux_bin,
-            "-L",
-            str(self.server.socket_name),
+            *socket_args,
             "-C",
             "attach-session",
             "-t",
             str(self.session.session_id),
         ]
 
-        # Open read end for subprocess stdin
-        read_fd = os.open(self._fifo_path, os.O_RDONLY | os.O_NONBLOCK)
-
-        self._proc = subprocess.Popen(
-            cmd,
-            stdin=read_fd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        os.close(read_fd)
-
-        # Open write end to keep FIFO alive
-        self._write_fd = os.open(self._fifo_path, os.O_WRONLY)
+        try:
+            self._proc = subprocess.Popen(
+                cmd,
+                stdin=read_fd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        finally:
+            # Close read end in parent regardless — subprocess owns it now
+            os.close(read_fd)
 
         self.stdout = self._proc.stdout  # type: ignore[assignment]
         client_pid = str(self._proc.pid)
@@ -107,7 +108,18 @@ class ControlMode:
                     return True
             return False
 
-        retry_until(client_registered, 3, raises=True)
+        try:
+            retry_until(client_registered, 3, raises=True)
+        except Exception:
+            # Clean up subprocess and write end if registration fails
+            os.close(self._write_fd)
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
+            raise
 
         return self
 
@@ -117,8 +129,8 @@ class ControlMode:
         exc_val: BaseException | None,
         exc_tb: types.TracebackType | None,
     ) -> None:
-        """Terminate control-mode client and clean up FIFO."""
-        # Close write end — causes the control-mode client to exit
+        """Terminate control-mode client."""
+        # Close write end — causes the control-mode client to exit (EOF on stdin)
         os.close(self._write_fd)
 
         # Terminate and wait for subprocess
@@ -128,8 +140,3 @@ class ControlMode:
         except subprocess.TimeoutExpired:
             self._proc.kill()
             self._proc.wait()
-
-        # Remove FIFO
-        fifo = pathlib.Path(self._fifo_path)
-        if fifo.exists():
-            fifo.unlink()
