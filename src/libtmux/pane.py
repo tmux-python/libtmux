@@ -1256,6 +1256,14 @@ class Pane(
         if close_existing:
             tmux_args += ("-C",)
 
+        if close_on_exit and close_on_success:
+            msg = (
+                "close_on_exit and close_on_success are mutually exclusive: "
+                "use close_on_exit=True for -E (close on any exit) "
+                "or close_on_success=True for -EE (close on zero exit code only)"
+            )
+            raise ValueError(msg)
+
         if close_on_exit:
             tmux_args += ("-E",)
 
