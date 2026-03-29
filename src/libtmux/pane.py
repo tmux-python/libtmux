@@ -1201,7 +1201,7 @@ class Pane(
         """Display a popup overlay via ``$ tmux display-popup``.
 
         Requires tmux 3.2+ and an attached client. Use
-        :class:`~libtmux.test.control_mode.ControlMode` in tests to provide
+        :class:`~libtmux._internal.control_mode.ControlMode` in tests to provide
         a client.
 
         Parameters
