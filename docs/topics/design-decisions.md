@@ -18,7 +18,7 @@ libtmux uses this instead of parsing human-readable `tmux ls` output because:
 
 Format constants are defined in {mod}`libtmux.formats`.
 
-## Why Dataclasses in neo.py
+## Why Dataclasses in `neo.py`
 
 {mod}`libtmux.neo` provides a modern dataclass-based interface alongside the legacy dict-style objects. The motivation:
 
