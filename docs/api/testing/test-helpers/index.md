@@ -7,11 +7,6 @@ Utilities for writing reliable tests against libtmux and downstream code that us
 ::::{grid} 1 2 3 3
 :gutter: 2 2 3 3
 
-:::{grid-item-card} libtmux.test
-:link: libtmux.test
-:link-type: doc
-Base test module with common setup utilities.
-:::
 :::{grid-item-card} Constants
 :link: constants
 :link-type: doc
@@ -44,7 +39,6 @@ Context managers for ephemeral tmux resources.
 :hidden:
 :maxdepth: 1
 
-libtmux.test
 constants
 environment
 random

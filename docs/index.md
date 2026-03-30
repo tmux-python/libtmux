@@ -5,7 +5,7 @@
 Typed Python API for [tmux](https://github.com/tmux/tmux). Control
 servers, sessions, windows, and panes as Python objects.
 
-::::{grid} 1 1 2 2
+::::{grid} 1 1 3 3
 :gutter: 2 2 3 3
 
 :::{grid-item-card} Quickstart
@@ -24,6 +24,12 @@ Architecture, traversal, filtering, and automation patterns.
 :link: api/index
 :link-type: doc
 Every public class, function, and exception.
+:::
+
+:::{grid-item-card} Testing
+:link: api/testing/index
+:link-type: doc
+pytest plugin and test helpers for isolated tmux environments.
 :::
 
 :::{grid-item-card} Contributing
@@ -93,6 +99,7 @@ def test_my_tool(session):
 quickstart
 topics/index
 api/index
+api/testing/index
 internals/index
 project/index
 history
