@@ -1,6 +1,6 @@
-(pytest_plugin)=
+(pytest_plugin_usage)=
 
-# tmux `pytest` plugin
+# Usage Guide
 
 libtmux provides pytest fixtures for tmux. The plugin automatically manages setup and teardown of an
 independent tmux server.
@@ -11,9 +11,6 @@ Do you want more flexibility? Correctness? Power? Defaults changed? [Connect wit
 your case, we won't stabilize APIs until we're sure everything is by the book.
 
 [connect with us]: https://github.com/tmux-python/libtmux/discussions
-
-```{module} libtmux.pytest_plugin
-:no-index:
 ```
 
 ## Usage
@@ -103,7 +100,7 @@ If you need multiple independent tmux servers in your tests, the {func}`TestServ
 def test_something(TestServer):
     Server = TestServer()  # Get unique partial'd Server
     server = Server()      # Create server instance
-    
+
     session = server.new_session()
     assert server.is_alive()
 ```
@@ -114,7 +111,7 @@ You can also use it with custom configurations, similar to the {ref}`server fixt
 def test_with_config(TestServer, tmp_path):
     config_file = tmp_path / "tmux.conf"
     config_file.write_text("set -g status off")
-    
+
     Server = TestServer()
     server = Server(config_file=str(config_file))
 ```
@@ -135,15 +132,4 @@ def set_home(
     user_path: pathlib.Path,
 ):
     monkeypatch.setenv("HOME", str(user_path))
-```
-
-## Fixtures
-
-```{eval-rst}
-.. automodule:: libtmux.pytest_plugin
-    :members:
-    :inherited-members:
-    :private-members:
-    :show-inheritance:
-    :member-order: bysource
 ```

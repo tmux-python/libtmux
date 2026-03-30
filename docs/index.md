@@ -76,7 +76,7 @@ Python object with traversal, filtering, and command execution.
 
 ## Testing
 
-libtmux ships a [pytest plugin](api/pytest-plugin/index.md) with
+libtmux ships a [pytest plugin](api/testing/pytest-plugin/index.md) with
 isolated tmux fixtures:
 
 ```python

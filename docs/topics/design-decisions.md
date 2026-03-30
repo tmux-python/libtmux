@@ -36,7 +36,7 @@ libtmux is pre-1.0. This is a deliberate choice — the API is still maturing. W
 
 Breaking changes always get:
 1. A deprecation warning for at least one minor release
-2. Documentation in the [changelog](../history.md) and [deprecations](../api/deprecations.md)
+2. Documentation in the [changelog](../history.md) and [deprecations](../project/deprecations.md)
 3. Migration guidance
 
-See [Public API](../api/public-api.md) for the stability contract.
+See [Public API](../project/public-api.md) for the stability contract.

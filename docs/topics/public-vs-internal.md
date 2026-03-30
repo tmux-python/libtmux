@@ -6,7 +6,7 @@ libtmux draws a clear line between public and internal code:
 
 | Import path | Status | Stability |
 |-------------|--------|-----------|
-| `libtmux.*` | Public | Covered by [deprecation policy](../api/public-api.md) |
+| `libtmux.*` | Public | Covered by [deprecation policy](../project/public-api.md) |
 | `libtmux._internal.*` | Internal | No guarantee — may break between any release |
 | `libtmux._vendor.*` | Vendored | Not part of the API at all |
 
@@ -43,6 +43,6 @@ Promotion happens when an internal API proves stable across multiple releases an
 
 ## Reference
 
-- [Public API](../api/public-api.md) — the authoritative list of what's stable
-- [Compatibility](../api/compatibility.md) — platform and version support
-- [Deprecations](../api/deprecations.md) — what's changing
+- [Public API](../project/public-api.md) — the authoritative list of what's stable
+- [Compatibility](../project/compatibility.md) — platform and version support
+- [Deprecations](../project/deprecations.md) — what's changing
