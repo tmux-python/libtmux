@@ -166,5 +166,4 @@ Options <libtmux.options>
 Hooks <libtmux.hooks>
 Constants <libtmux.constants>
 Exceptions <libtmux.exc>
-Testing Utilities <testing/index>
 ```
