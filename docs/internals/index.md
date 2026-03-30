@@ -10,7 +10,39 @@ notice.
 If you need an internal API stabilized please [file an issue](https://github.com/tmux-python/libtmux/issues).
 :::
 
+::::{grid} 1 2 2 2
+:gutter: 2 2 3 3
+
+:::{grid-item-card} Dataclass helpers
+:link: api/libtmux._internal.dataclasses
+:link-type: doc
+Typed dataclass utilities used across internal modules.
+:::
+
+:::{grid-item-card} Query List
+:link: api/libtmux._internal.query_list
+:link-type: doc
+List filtering and attribute-based querying.
+:::
+
+:::{grid-item-card} Constants
+:link: api/libtmux._internal.constants
+:link-type: doc
+Internal format strings and tmux constants.
+:::
+
+:::{grid-item-card} Sparse Array
+:link: api/libtmux._internal.sparse_array
+:link-type: doc
+Sparse array data structure for tmux format parsing.
+:::
+
+::::
+
 ```{toctree}
+:hidden:
+:maxdepth: 1
+
 api/libtmux._internal.dataclasses
 api/libtmux._internal.query_list
 api/libtmux._internal.constants
