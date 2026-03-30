@@ -84,6 +84,22 @@ Exception hierarchy.
 
 ::::
 
+```{toctree}
+:hidden:
+:maxdepth: 1
+
+libtmux.server
+libtmux.session
+libtmux.window
+libtmux.pane
+libtmux.common
+libtmux.neo
+libtmux.options
+libtmux.hooks
+libtmux.constants
+libtmux.exc
+```
+
 ## Test Utilities
 
 If you're testing code that uses libtmux, see the test helpers and pytest plugin:
