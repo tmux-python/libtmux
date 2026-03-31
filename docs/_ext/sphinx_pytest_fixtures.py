@@ -23,6 +23,7 @@ from sphinx.domains.python import PyFunction, PythonDomain, PyXRefRole
 from sphinx.ext.autodoc import FunctionDocumenter
 from sphinx.util import logging as sphinx_logging
 from sphinx.util.docfields import Field, GroupedField
+from sphinx.util.nodes import make_refnode
 from sphinx.util.typing import stringify_annotation
 
 if t.TYPE_CHECKING:
@@ -1302,7 +1303,13 @@ class PyFixtureDirective(PyFunction):
         ``name() (in module X)`` index entry — wrong for fixtures. Calls
         ``PyObject.add_target_and_index`` directly so only the fixture-style
         ``get_index_text`` entry is produced.
+
+        Stores ``spf_canonical_name`` on *signode* for metadata-driven
+        rendering in :func:`_on_doctree_resolved`.
         """
+        modname = self.env.ref_context.get("py:module", "")
+        name = name_cls[0]
+        signode["spf_canonical_name"] = f"{modname}.{name}" if modname else name
         super(PyFunction, self).add_target_and_index(name_cls, sig, signode)
 
 
@@ -1579,11 +1586,30 @@ def _on_missing_reference(
     """
     if node.get("refdomain") != "py":
         return None
-    if node.get("reftype") not in ("func", "obj", "any"):
-        return None
 
+    reftype = node.get("reftype")
     target = node.get("reftarget", "")
     py_domain: PythonDomain = env.get_domain("py")
+
+    # Short-name :fixture: lookup via public_to_canon.
+    if reftype == "fixture":
+        store = _get_spf_store(env)
+        canon = store["public_to_canon"].get(target)
+        if canon:  # None means ambiguous — let Sphinx emit standard warning
+            return py_domain.resolve_xref(
+                env,
+                node.get("refdoc", ""),
+                app.builder,
+                "fixture",
+                canon,
+                node,
+                contnode,
+            )
+        return None
+
+    # Existing func/obj/any fallback for legacy :func: references.
+    if reftype not in ("func", "obj", "any"):
+        return None
 
     matches = py_domain.find_obj(
         env,
@@ -1689,19 +1715,17 @@ def _on_doctree_resolved(
     doctree: nodes.document,
     docname: str,
 ) -> None:
-    """Append a badge group to every ``py:fixture`` signature.
+    """Inject badges and metadata fields into ``py:fixture`` descriptions.
 
-    Uses portable ``nodes.inline`` badge nodes (via :func:`_build_badge_group_node`)
-    so badges render correctly in all Sphinx builders, not just HTML.
+    **Badges** — portable ``nodes.inline`` badge nodes appended to each
+    ``desc_signature`` (scope, kind, FIXTURE).
 
-    Runs after ``ViewcodeAnchorTransform`` has already converted
-    ``viewcode_anchor`` nodes to resolved ``[source]`` reference nodes, so the
-    badge group is always the last real child of each ``desc_signature`` —
-    appearing after the ``[source]`` link.
+    **Metadata fields** — "Used by" and "Parametrized" field lists appended
+    to ``desc_content`` using resolved cross-reference nodes.
 
-    The ``¶`` headerlink is **not** a doctree node (it is injected by the HTML
-    writer's ``depart_desc_signature()`` at write time), so it does not need to
-    be accounted for here.
+    Uses :func:`make_refnode` for "Used by" links because ``pending_xref``
+    nodes added during ``doctree-resolved`` are too late for normal reference
+    resolution (the resolution pass has already run).
 
     Parameters
     ----------
@@ -1712,11 +1736,15 @@ def _on_doctree_resolved(
     docname : str
         The name of the document being resolved.
     """
+    store = _get_spf_store(app.env)
+    py_domain: PythonDomain = app.env.get_domain("py")  # type: ignore[assignment]
+
     for desc_node in doctree.findall(addnodes.desc):
         if desc_node.get("objtype") != "fixture":
             continue
+
+        # --- Badge injection (per signature) ---
         for sig_node in desc_node.findall(addnodes.desc_signature):
-            # Idempotent sentinel — replaces the fragile string-search check.
             if sig_node.get("spf_badges_injected"):
                 continue
             sig_node["spf_badges_injected"] = True
@@ -1727,6 +1755,71 @@ def _on_doctree_resolved(
 
             badge_group = _build_badge_group_node(scope, kind, autouse)
             sig_node += badge_group
+
+        # --- Metadata injection (once per desc_node) ---
+        if desc_node.get("spf_metadata_injected"):
+            continue
+        desc_node["spf_metadata_injected"] = True
+
+        first_sig = next(desc_node.findall(addnodes.desc_signature), None)
+        if first_sig is None:
+            continue
+        canon = first_sig.get("spf_canonical_name", "")
+        if not canon:
+            continue
+
+        meta = store["fixtures"].get(canon)
+        content_node = None
+        for child in desc_node.children:
+            if isinstance(child, addnodes.desc_content):
+                content_node = child
+                break
+        if content_node is None:
+            continue
+
+        extra_fields = nodes.field_list()
+
+        # "Used by" field — resolved links via make_refnode
+        consumers = store.get("reverse_deps", {}).get(canon, [])
+        if consumers:
+            body_para = nodes.paragraph()
+            for i, consumer_canon in enumerate(sorted(consumers)):
+                short = consumer_canon.rsplit(".", 1)[-1]
+                obj_entry = py_domain.objects.get(consumer_canon)
+                if obj_entry is not None:
+                    ref_node: nodes.Node = make_refnode(
+                        app.builder,
+                        docname,
+                        obj_entry.docname,
+                        obj_entry.node_id,
+                        nodes.literal(short, short),
+                    )
+                else:
+                    ref_node = nodes.literal(short, short)
+                body_para += ref_node
+                if i < len(consumers) - 1:
+                    body_para += nodes.Text(", ")
+            extra_fields += nodes.field(
+                "",
+                nodes.field_name("", "Used by"),
+                nodes.field_body("", body_para),
+            )
+
+        # "Parametrized" field — render from FixtureMeta.param_reprs tuple
+        if meta and meta.param_reprs:
+            body_para = nodes.paragraph()
+            for i, param_repr in enumerate(meta.param_reprs):
+                body_para += nodes.literal(param_repr, param_repr)
+                if i < len(meta.param_reprs) - 1:
+                    body_para += nodes.Text(", ")
+            extra_fields += nodes.field(
+                "",
+                nodes.field_name("", "Parametrized"),
+                nodes.field_body("", body_para),
+            )
+
+        if extra_fields.children:
+            content_node += extra_fields
 
 
 # ---------------------------------------------------------------------------

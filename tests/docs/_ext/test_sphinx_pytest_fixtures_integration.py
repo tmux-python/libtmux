@@ -687,3 +687,83 @@ def test_name_alias_registered_in_domain(tmp_path: pathlib.Path) -> None:
         "Internal function name '_internal_name' should not appear in domain — "
         "only the 'renamed_fixture' alias should be registered"
     )
+
+
+# ---------------------------------------------------------------------------
+# "Used by" and "Parametrized" metadata rendering (Commit 3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_used_by_links_rendered(tmp_path: pathlib.Path) -> None:
+    """Fixtures with consumers show a "Used by" field with links."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # my_server is used by my_client and yield_server
+    assert "Used by" in index_html
+    assert "my_client" in index_html
+
+
+@pytest.mark.integration
+def test_used_by_not_shown_when_no_consumers(tmp_path: pathlib.Path) -> None:
+    """Fixtures with no consumers do not show "Used by"."""
+    result = _build_sphinx_app(tmp_path)
+    store = result.app.env.domaindata.get("sphinx_pytest_fixtures", {})
+    reverse_deps = store.get("reverse_deps", {})
+    assert "fixture_mod.auto_cleanup" not in reverse_deps
+
+
+@pytest.mark.integration
+def test_parametrized_values_rendered(tmp_path: pathlib.Path) -> None:
+    """Parametrized fixtures show their parameter values."""
+    extra_fixture = textwrap.dedent(
+        """\
+
+    @pytest.fixture(params=["bash", "zsh"])
+    def shell(request) -> str:
+        \"\"\"Fixture parametrized over shell interpreters.\"\"\"
+        return request.param
+    """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        fixture_source=FIXTURE_MOD_SOURCE + extra_fixture,
+        index_rst=INDEX_RST + "\n.. autofixture:: fixture_mod.shell\n",
+    )
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "Parametrized" in index_html
+    assert "'bash'" in index_html
+    assert "'zsh'" in index_html
+
+
+# ---------------------------------------------------------------------------
+# Short-name :fixture: xref resolution (Commit 3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_short_name_fixture_xref_resolves(tmp_path: pathlib.Path) -> None:
+    """:fixture:`my_server` short-name reference resolves to a hyperlink."""
+    index_with_xref = INDEX_RST + textwrap.dedent(
+        """\
+
+    Usage
+    -----
+
+    See :fixture:`my_server` for the server fixture.
+    """,
+    )
+    result = _build_sphinx_app(tmp_path, index_rst=index_with_xref)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # Should resolve to a real link, not a <span class="xref"> (broken ref)
+    assert (
+        '<a class="reference internal"' in index_html
+        or "fixture_mod.my_server" in index_html
+    )
+    # And no fixture-related warnings
+    fixture_warnings = [
+        line
+        for line in result.warnings.splitlines()
+        if "fixture" in line.lower() and "my_server" in line
+    ]
+    assert fixture_warnings == [], f"Unexpected warnings: {fixture_warnings}"
