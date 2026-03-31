@@ -27,6 +27,7 @@ import pytest
 FIXTURE_MOD_SOURCE = textwrap.dedent(
     """\
     from __future__ import annotations
+    import typing as t
     import pytest
 
     class Server:
@@ -49,6 +50,25 @@ FIXTURE_MOD_SOURCE = textwrap.dedent(
     def home_user() -> str:
         \"\"\"Override to customise the home directory username.\"\"\"
         return "testuser"
+
+    @pytest.fixture
+    def yield_server(my_server: Server) -> t.Generator[Server, None, None]:
+        \"\"\"Yield the server and tear down after the test.\"\"\"
+        yield my_server
+
+    @pytest.fixture(autouse=True)
+    def auto_cleanup() -> None:
+        \"\"\"Runs automatically before every test — no request needed.\"\"\"
+
+    @pytest.fixture
+    def TestServer() -> type[Server]:
+        \"\"\"Return the Server class for direct instantiation (factory fixture).\"\"\"
+        return Server
+
+    @pytest.fixture(name="renamed_fixture")
+    def _internal_name() -> str:
+        \"\"\"Fixture with a name alias — injected as 'renamed_fixture'.\"\"\"
+        return "renamed"
     """,
 )
 
@@ -78,6 +98,14 @@ INDEX_RST = textwrap.dedent(
     .. autofixture:: fixture_mod.my_client
 
     .. autofixture:: fixture_mod.home_user
+
+    .. autofixture:: fixture_mod.yield_server
+
+    .. autofixture:: fixture_mod.auto_cleanup
+
+    .. autofixture:: fixture_mod.TestServer
+
+    .. autofixture:: fixture_mod._internal_name
     """,
 )
 
@@ -120,8 +148,24 @@ def _build_sphinx_app(
     tmp_path: pathlib.Path,
     *,
     confoverrides: dict[str, t.Any] | None = None,
+    fixture_source: str | None = None,
+    index_rst: str | None = None,
 ) -> _SphinxResult:
-    """Write project files and run a full Sphinx HTML build; return results."""
+    """Write project files and run a full Sphinx HTML build; return results.
+
+    Parameters
+    ----------
+    tmp_path :
+        Per-test temporary directory provided by pytest.
+    confoverrides :
+        Optional Sphinx confoverrides dict (passed to Sphinx constructor).
+    fixture_source :
+        Override the fixture module source written to ``fixture_mod.py``.
+        Defaults to :data:`FIXTURE_MOD_SOURCE`.
+    index_rst :
+        Override the RST index written to ``index.rst``.
+        Defaults to :data:`INDEX_RST`.
+    """
     from sphinx.application import Sphinx
 
     srcdir = tmp_path / "src"
@@ -132,12 +176,18 @@ def _build_sphinx_app(
     outdir.mkdir()
     doctreedir.mkdir()
 
-    (srcdir / "fixture_mod.py").write_text(FIXTURE_MOD_SOURCE, encoding="utf-8")
+    (srcdir / "fixture_mod.py").write_text(
+        fixture_source if fixture_source is not None else FIXTURE_MOD_SOURCE,
+        encoding="utf-8",
+    )
     (srcdir / "conf.py").write_text(
         CONF_PY_TEMPLATE.format(srcdir=str(srcdir)),
         encoding="utf-8",
     )
-    (srcdir / "index.rst").write_text(INDEX_RST, encoding="utf-8")
+    (srcdir / "index.rst").write_text(
+        index_rst if index_rst is not None else INDEX_RST,
+        encoding="utf-8",
+    )
 
     status_buf = io.StringIO()
     warning_buf = io.StringIO()
@@ -591,4 +641,49 @@ def test_no_build_warnings(tmp_path: pathlib.Path) -> None:
     warning_lines = [ansi_escape.sub("", line) for line in warning_lines]
     assert not warning_lines, "Unexpected WARNING lines in build output:\n" + "\n".join(
         warning_lines
+    )
+
+
+@pytest.mark.integration
+def test_factory_snippet_shows_instantiation(tmp_path: pathlib.Path) -> None:
+    """Factory fixtures are classified as factory and render a FACTORY badge."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # TestServer is a factory fixture — it must have the FACTORY badge and
+    # the Kind field value "factory" rendered as plain text.
+    assert 'data-kind="factory"' in index_html, (
+        'Expected data-kind="factory" badge for TestServer factory fixture'
+    )
+    # The Kind: factory field renders the text "factory" as plain HTML.
+    assert "<p>factory</p>" in index_html, (
+        "Expected 'Kind: factory' field in factory fixture documentation"
+    )
+
+
+@pytest.mark.integration
+def test_autouse_note_present(tmp_path: pathlib.Path) -> None:
+    """Autouse fixtures show a 'No request needed' note instead of a test snippet."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "No request needed" in index_html, (
+        "Expected 'No request needed' note for auto_cleanup (autouse=True)"
+    )
+
+
+@pytest.mark.integration
+def test_name_alias_registered_in_domain(tmp_path: pathlib.Path) -> None:
+    """Fixtures with name= alias are registered under the alias, not internal name."""
+    from sphinx.domains.python import PythonDomain
+
+    result = _build_sphinx_app(tmp_path)
+    domain = t.cast("PythonDomain", result.app.env.get_domain("py"))
+    objects = domain.data["objects"]
+    fixture_keys = {k for k, v in objects.items() if v.objtype == "fixture"}
+    assert "fixture_mod.renamed_fixture" in fixture_keys, (
+        f"Expected 'fixture_mod.renamed_fixture' in domain objects. "
+        f"Fixture keys: {fixture_keys}"
+    )
+    assert "fixture_mod._internal_name" not in fixture_keys, (
+        "Internal function name '_internal_name' should not appear in domain — "
+        "only the 'renamed_fixture' alias should be registered"
     )
