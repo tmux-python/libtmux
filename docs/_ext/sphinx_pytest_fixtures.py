@@ -45,6 +45,14 @@ class SetupDict(t.TypedDict):
 
 FixtureKind = t.Literal["resource", "factory", "override_hook"]
 
+_STORE_VERSION = 3
+"""Bump whenever ``FixtureMeta`` or the store schema changes.
+
+Used both as the Sphinx ``env_version`` (triggers full cache invalidation) and
+as a runtime sentinel inside the store dict (guards against stale pickles on
+incremental builds when ``env_version`` was not bumped).
+"""
+
 
 @dataclass(frozen=True)
 class FixtureDep:
@@ -242,14 +250,27 @@ def _get_spf_store(env: t.Any) -> dict[str, t.Any]:
     dict
         The mutable store dict.
     """
-    return env.domaindata.setdefault(  # type: ignore[no-any-return]
+    store = env.domaindata.setdefault(
         "sphinx_pytest_fixtures",
         {
             "fixtures": {},
             "public_to_canon": {},
             "reverse_deps": {},
+            "_store_version": _STORE_VERSION,
         },
     )
+    if store.get("_store_version") != _STORE_VERSION:
+        # Stale pickle — mutate in-place to preserve existing references.
+        store.clear()
+        store.update(
+            {
+                "fixtures": {},
+                "public_to_canon": {},
+                "reverse_deps": {},
+                "_store_version": _STORE_VERSION,
+            }
+        )
+    return store  # type: ignore[no-any-return]
 
 
 def _on_env_purge_doc(app: Sphinx, env: t.Any, docname: str) -> None:
@@ -411,12 +432,11 @@ def _register_fixture_meta(
     store = _get_spf_store(env)
     store["fixtures"][canonical_name] = meta
 
-    # Update public_to_canon mapping.
-    existing = store["public_to_canon"].get(public_name)
-    if existing is not None and existing != canonical_name:
-        store["public_to_canon"][public_name] = None  # ambiguous
-    elif existing is None and public_name not in store["public_to_canon"]:
+    # Update public_to_canon mapping (fast-path; _finalize_store is backstop).
+    if public_name not in store["public_to_canon"]:
         store["public_to_canon"][public_name] = canonical_name
+    elif store["public_to_canon"][public_name] != canonical_name:
+        store["public_to_canon"][public_name] = None  # ambiguous
 
     # Build reverse_deps for each project dep.
     for dep in dep_list:
@@ -1452,49 +1472,6 @@ class FixtureDocumenter(FunctionDocumenter):
 
 
 # ---------------------------------------------------------------------------
-# autodoc-process-docstring handler
-# ---------------------------------------------------------------------------
-
-
-def _on_process_fixture_docstring(
-    app: t.Any,
-    what: str,
-    name: str,
-    obj: t.Any,
-    options: dict[str, t.Any],
-    lines: list[str],
-) -> None:
-    """Inject a canonical Usage snippet and Depends-on block before the docstring.
-
-    Parameters
-    ----------
-    app : Any
-        The Sphinx application.
-    what : str
-        The autodoc object type string.
-    name : str
-        Fully-qualified name of the object being documented.
-    obj : Any
-        The object being documented.
-    options : dict
-        Autodoc options dict.
-    lines : list[str]
-        Mutable docstring lines — injected content is prepended in-place.
-
-    Notes
-    -----
-    Checks ``_is_pytest_fixture(obj)`` rather than ``what == 'fixture'`` for
-    robustness: handles fixtures documented via ``automodule`` using the default
-    ``FunctionDocumenter`` before this extension is fully active.
-    """
-    if not _is_pytest_fixture(obj):
-        return
-    # Metadata rendering (scope, depends, usage snippet) is now handled by
-    # PyFixtureDirective.transform_content via the py:fixture directive path.
-    # This handler remains as a hook for future extensions.
-
-
-# ---------------------------------------------------------------------------
 # missing-reference compatibility shim
 # ---------------------------------------------------------------------------
 
@@ -1563,80 +1540,6 @@ def _on_missing_reference(
 # ---------------------------------------------------------------------------
 # Badge group helpers + doctree-resolved badge injector
 # ---------------------------------------------------------------------------
-
-
-def _build_badge_html(
-    scope: str,
-    kind: str,
-    autouse: bool,
-    ret_type: str = "",
-) -> str:
-    """Return the inner HTML for the badge group ``<span>``.
-
-    Badge slots (at most 3 total, DOM order reversed for float-right stacking):
-
-    * Slot 3 — ``FIXTURE`` (always, rightmost)
-    * Slot 2 — kind badge when ``kind in ("factory", "override_hook")``
-               OR state badge when ``autouse=True``
-    * Slot 1 — scope badge when ``scope != "function"`` (leftmost)
-
-    Parameters
-    ----------
-    scope : str
-        Fixture scope string (``"session"``, ``"module"``, ``"class"``,
-        ``"function"``).
-    kind : str
-        Fixture kind (``"resource"``, ``"factory"``, ``"override_hook"``).
-    autouse : bool
-        When True, renders AUTO state badge in slot 2 instead of a kind badge.
-    ret_type : str
-        Optional return-type string for the FIXTURE badge tooltip.
-
-    Returns
-    -------
-    str
-        Concatenated ``<span>`` HTML for all active badge slots.
-
-    .. deprecated::
-        Use :func:`_build_badge_group_node` instead — it returns portable
-        ``nodes.inline`` nodes that work in all Sphinx builders.
-    """
-    badges: list[str] = []
-
-    # Slot 3 — FIXTURE (always, rightmost)
-    title_parts = [f"scope: {scope}"]
-    if ret_type:
-        title_parts.append(f"returns: {ret_type}")
-    fixture_title = " | ".join(title_parts)
-    badges.append(
-        f'<span class="spf-badge spf-badge--fixture"'
-        f' title="{fixture_title}">FIXTURE</span>',
-    )
-
-    # Slot 2 — kind or state (centre)
-    if autouse:
-        badges.append(
-            '<span class="spf-badge spf-badge--state" data-state="autouse">AUTO</span>',
-        )
-    elif kind == "factory":
-        badges.append(
-            '<span class="spf-badge spf-badge--kind"'
-            ' data-kind="factory">FACTORY</span>',
-        )
-    elif kind == "override_hook":
-        badges.append(
-            '<span class="spf-badge spf-badge--kind"'
-            ' data-kind="override_hook">OVERRIDE</span>',
-        )
-
-    # Slot 1 — scope (leftmost, only when non-function)
-    if scope and scope != "function":
-        badges.append(
-            f'<span class="spf-badge spf-badge--scope" data-scope="{scope}">'
-            f"{scope.upper()}</span>",
-        )
-
-    return "".join(badges)
 
 
 def _build_badge_group_node(
@@ -1919,7 +1822,6 @@ def setup(app: Sphinx) -> SetupDict:
     app.add_autodocumenter(FixtureDocumenter)
     app.add_directive("autofixtures", AutofixturesDirective)
 
-    app.connect("autodoc-process-docstring", _on_process_fixture_docstring)
     app.connect("missing-reference", _on_missing_reference)
     app.connect("doctree-resolved", _on_doctree_resolved)
     app.connect("env-purge-doc", _on_env_purge_doc)
@@ -1927,7 +1829,7 @@ def setup(app: Sphinx) -> SetupDict:
 
     return {
         "version": "1.0",
-        "env_version": 2,
+        "env_version": _STORE_VERSION,
         "parallel_read_safe": True,
         "parallel_write_safe": True,
     }

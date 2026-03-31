@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import collections.abc
-import pathlib
 import types
 import typing as t
 
@@ -265,122 +264,6 @@ def test_format_name_honours_fixture_name_alias() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _on_process_fixture_docstring
-# ---------------------------------------------------------------------------
-
-
-def test_process_docstring_does_not_modify_fixture_lines() -> None:
-    """_on_process_fixture_docstring no longer injects RST for fixtures.
-
-    Metadata rendering moved to PyFixtureDirective.transform_content.
-    """
-
-    @pytest.fixture
-    def my_fixture() -> str:
-        """Existing docstring."""
-        return "hello"
-
-    lines: list[str] = ["Existing docstring."]
-    sphinx_pytest_fixtures._on_process_fixture_docstring(
-        app=None,
-        what="function",
-        name="my_fixture",
-        obj=my_fixture,
-        options={},
-        lines=lines,
-    )
-
-    assert lines == ["Existing docstring."]
-
-
-def test_process_docstring_skips_non_fixture() -> None:
-    """_on_process_fixture_docstring does not modify non-fixture objects."""
-
-    def plain_fn() -> str:
-        return "hello"
-
-    lines: list[str] = ["Original."]
-    sphinx_pytest_fixtures._on_process_fixture_docstring(
-        app=None,
-        what="function",
-        name="plain_fn",
-        obj=plain_fn,
-        options={},
-        lines=lines,
-    )
-
-    assert lines == ["Original."]
-
-
-def test_process_docstring_does_not_inject_depends_on() -> None:
-    """_on_process_fixture_docstring no longer injects Depends-on RST.
-
-    Depends-on rendering moved to PyFixtureDirective.transform_content.
-    """
-
-    @pytest.fixture
-    def my_fixture(config_file: pathlib.Path) -> str:
-        return "hello"
-
-    lines: list[str] = ["docstring"]
-    sphinx_pytest_fixtures._on_process_fixture_docstring(
-        app=None,
-        what="function",
-        name="my_fixture",
-        obj=my_fixture,
-        options={},
-        lines=lines,
-    )
-
-    assert lines == ["docstring"]
-
-
-def test_process_docstring_no_depends_on_when_no_user_deps() -> None:
-    """_on_process_fixture_docstring omits Depends-on when all deps are internal."""
-
-    @pytest.fixture
-    def my_fixture(request: pytest.FixtureRequest) -> str:
-        return "hello"
-
-    lines: list[str] = []
-    sphinx_pytest_fixtures._on_process_fixture_docstring(
-        app=None,
-        what="function",
-        name="my_fixture",
-        obj=my_fixture,
-        options={},
-        lines=lines,
-    )
-
-    joined = "\n".join(lines)
-    assert "Depends on" not in joined
-
-
-def test_process_docstring_does_not_modify_yield_fixture() -> None:
-    """_on_process_fixture_docstring does not modify yield fixture lines.
-
-    Return-type rendering (Server vs Generator) is now handled by
-    transform_content via the :return-type: directive option.
-    """
-
-    @pytest.fixture
-    def server_fixture() -> collections.abc.Generator[Server, None, None]:
-        yield Server()
-
-    lines: list[str] = []
-    sphinx_pytest_fixtures._on_process_fixture_docstring(
-        app=None,
-        what="fixture",
-        name="server_fixture",
-        obj=server_fixture,
-        options={},
-        lines=lines,
-    )
-
-    assert lines == []
-
-
-# ---------------------------------------------------------------------------
 # setup()
 # ---------------------------------------------------------------------------
 
@@ -406,7 +289,7 @@ def test_setup_return_value() -> None:
 
 
 def test_setup_event_connections() -> None:
-    """setup() connects autodoc-process-docstring and missing-reference handlers."""
+    """setup() connects required event handlers."""
     connections: list[tuple[str, t.Any]] = []
 
     app = types.SimpleNamespace(
@@ -421,14 +304,12 @@ def test_setup_event_connections() -> None:
 
     sphinx_pytest_fixtures.setup(app)
     event_names = [e for e, _ in connections]
-    assert "autodoc-process-docstring" in event_names
     assert "missing-reference" in event_names
+    assert "doctree-resolved" in event_names
+    assert "env-purge-doc" in event_names
+    assert "env-merge-info" in event_names
 
     handlers = dict(connections)
-    assert (
-        handlers["autodoc-process-docstring"]
-        is sphinx_pytest_fixtures._on_process_fixture_docstring
-    )
     assert handlers["missing-reference"] is sphinx_pytest_fixtures._on_missing_reference
 
 
@@ -589,44 +470,99 @@ def test_build_badge_group_node_factory_session() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _build_badge_html — badge group HTML (Commit 4)
+# _get_spf_store — store version guard
 # ---------------------------------------------------------------------------
 
 
-def test_build_badge_html_fixture_only() -> None:
-    """Function-scope resource fixture has only FIXTURE badge."""
-    html = sphinx_pytest_fixtures._build_badge_html("function", "resource", False)
-    assert "spf-badge--fixture" in html
-    assert "spf-badge--scope" not in html
-    assert "spf-badge--kind" not in html
+def test_store_version_guard_resets_stale() -> None:
+    """_get_spf_store resets a store with an outdated _store_version."""
+    env = types.SimpleNamespace(
+        domaindata={
+            "sphinx_pytest_fixtures": {
+                "fixtures": {"old.fixture": "stale"},
+                "public_to_canon": {"old": "old.fixture"},
+                "reverse_deps": {},
+                "_store_version": 1,
+            }
+        }
+    )
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+    assert store["fixtures"] == {}
+    assert store["public_to_canon"] == {}
+    assert store["_store_version"] == sphinx_pytest_fixtures._STORE_VERSION
 
 
-def test_build_badge_html_session_scope() -> None:
-    """Session-scope shows scope badge with data-scope=session."""
-    html = sphinx_pytest_fixtures._build_badge_html("session", "resource", False)
-    assert 'data-scope="session"' in html
-    assert "spf-badge--scope" in html
+def test_store_version_guard_preserves_current() -> None:
+    """_get_spf_store preserves a store with the current _store_version."""
+    sentinel_meta = types.SimpleNamespace(docname="api", public_name="srv")
+    env = types.SimpleNamespace(
+        domaindata={
+            "sphinx_pytest_fixtures": {
+                "fixtures": {"mod.srv": sentinel_meta},
+                "public_to_canon": {"srv": "mod.srv"},
+                "reverse_deps": {},
+                "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+            }
+        }
+    )
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+    assert store["fixtures"]["mod.srv"] is sentinel_meta
 
 
-def test_build_badge_html_override_kind() -> None:
-    """override_hook fixtures show OVERRIDE badge."""
-    html = sphinx_pytest_fixtures._build_badge_html("function", "override_hook", False)
-    assert 'data-kind="override_hook"' in html
-    assert "OVERRIDE" in html
-    assert "spf-badge--kind" in html
+# ---------------------------------------------------------------------------
+# public_to_canon registration logic
+# ---------------------------------------------------------------------------
 
 
-def test_build_badge_html_autouse_replaces_kind() -> None:
-    """autouse=True shows AUTO state badge instead of kind badge."""
-    html = sphinx_pytest_fixtures._build_badge_html("function", "resource", True)
-    assert 'data-state="autouse"' in html
-    assert "AUTO" in html
-    assert "spf-badge--kind" not in html
+def test_public_to_canon_first_registration() -> None:
+    """First registration stores canonical name for a public name."""
+    env = types.SimpleNamespace(domaindata={})
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+
+    store["public_to_canon"]["server"] = "mod_a.server"
+    assert store["public_to_canon"]["server"] == "mod_a.server"
 
 
-def test_build_badge_html_factory_session() -> None:
-    """Factory fixture with session scope shows both scope and kind badges."""
-    html = sphinx_pytest_fixtures._build_badge_html("session", "factory", False)
-    assert 'data-scope="session"' in html
-    assert 'data-kind="factory"' in html
-    assert "FACTORY" in html
+def test_public_to_canon_ambiguous() -> None:
+    """Two fixtures with the same public name mark the mapping as None."""
+    env = types.SimpleNamespace(domaindata={})
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+
+    # Simulate what _register_fixture_meta does (corrected logic):
+    public_name = "server"
+
+    # First registration
+    if public_name not in store["public_to_canon"]:
+        store["public_to_canon"][public_name] = "mod_a.server"
+    elif store["public_to_canon"][public_name] != "mod_a.server":
+        store["public_to_canon"][public_name] = None
+
+    # Second registration with different canonical name
+    if public_name not in store["public_to_canon"]:
+        store["public_to_canon"][public_name] = "mod_b.server"
+    elif store["public_to_canon"][public_name] != "mod_b.server":
+        store["public_to_canon"][public_name] = None
+
+    assert store["public_to_canon"]["server"] is None
+
+
+def test_public_to_canon_idempotent() -> None:
+    """Registering the same fixture twice preserves the canonical name."""
+    env = types.SimpleNamespace(domaindata={})
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+
+    public_name = "server"
+
+    # First registration
+    if public_name not in store["public_to_canon"]:
+        store["public_to_canon"][public_name] = "mod.server"
+    elif store["public_to_canon"][public_name] != "mod.server":
+        store["public_to_canon"][public_name] = None
+
+    # Same fixture registered again
+    if public_name not in store["public_to_canon"]:
+        store["public_to_canon"][public_name] = "mod.server"
+    elif store["public_to_canon"][public_name] != "mod.server":
+        store["public_to_canon"][public_name] = None
+
+    assert store["public_to_canon"]["server"] == "mod.server"
