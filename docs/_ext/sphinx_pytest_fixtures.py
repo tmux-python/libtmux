@@ -870,6 +870,59 @@ def _on_missing_reference(
 
 
 # ---------------------------------------------------------------------------
+# doctree-resolved badge injector
+# ---------------------------------------------------------------------------
+
+
+def _on_doctree_resolved(
+    app: Sphinx,
+    doctree: nodes.document,
+    docname: str,
+) -> None:
+    """Append a ``spf-badge`` inline node to every ``py:fixture`` signature.
+
+    Runs after ``ViewcodeAnchorTransform`` has already converted
+    ``viewcode_anchor`` nodes to resolved ``[source]`` reference nodes, so the
+    badge is always the last real child of each ``desc_signature`` — appearing
+    after the ``[source]`` link.
+
+    The ``¶`` headerlink is **not** a doctree node (it is injected by the HTML
+    writer's ``depart_desc_signature()`` at write time), so it does not need to
+    be accounted for here.
+
+    Parameters
+    ----------
+    app : Sphinx
+        The Sphinx application instance.
+    doctree : nodes.document
+        The resolved document tree.
+    docname : str
+        The name of the document being resolved.
+    """
+    for desc_node in doctree.findall(addnodes.desc):
+        if desc_node.get("objtype") != "fixture":
+            continue
+        for sig_node in desc_node.findall(addnodes.desc_signature):
+            # Idempotent: skip if already injected (e.g. incremental builds).
+            if any(
+                isinstance(c, nodes.raw) and "spf-badge" in c.astext()
+                for c in sig_node.children
+            ):
+                continue
+            # Use nodes.raw so the badge HTML is emitted verbatim by the HTML
+            # writer — bypassing visit_desc_signature's protect_literal_text
+            # counter, which would otherwise wrap every text token in a
+            # <span class="pre"> and cause Furo's block-display styling on
+            # that element to collapse the badge to one character width.
+            badge = nodes.raw(
+                "",
+                '<span class="spf-badge">fixture</span>',
+                format="html",
+            )
+            sig_node += badge
+
+
+# ---------------------------------------------------------------------------
 # setup()
 # ---------------------------------------------------------------------------
 
@@ -932,6 +985,7 @@ def setup(app: Sphinx) -> SetupDict:
 
     app.connect("autodoc-process-docstring", _on_process_fixture_docstring)
     app.connect("missing-reference", _on_missing_reference)
+    app.connect("doctree-resolved", _on_doctree_resolved)
 
     return {
         "version": "1.0",

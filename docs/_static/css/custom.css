@@ -234,48 +234,89 @@ img[src*="codecov.io"] {
 }
 
 /* ── sphinx_pytest_fixtures ────────────────────────────────
- * pytest-green 'fixture' badge and signature styling for
- * the py:fixture domain directive.
+ * pytest fixture badge and signature styling.
+ * Badge palette matches libtmux-mcp's matte sd-badge colours:
+ * dark-green field · 1px border · squarish 0.22rem radius.
+ *
+ * Design: span.spf-badge injected by _on_doctree_resolved as a
+ * real DOM node — last child of desc_signature. float: right
+ * mirrors the [source] mechanism Furo uses for viewcode links.
+ * Vertical centering via CSS calc; every coefficient is
+ * derived from documented Furo/_api.sass values (see below).
  * ────────────────────────────────────────────────────────── */
 
 :root {
-  --spf-badge-bg: #4e9a06;
-  --spf-badge-fg: #ffffff;
+  --spf-badge-bg:     #1f7a3f;
+  --spf-badge-fg:     #f3fff7;
+  --spf-badge-border: #2d9154;
+
+  /* Badge metric variables — feed the vertical-centering calc.
+   * Changing these automatically updates margin-top. */
+  --spf-badge-font-size: 0.67rem;
+  --spf-badge-padding-v: 0.16rem;   /* top/bottom padding, each side */
+  --spf-badge-border-w:  1px;       /* border-width, each side */
 }
 
 /* Furo sets data-theme on <body>; match Furo's own selector pattern. */
 body[data-theme="dark"] {
-  --spf-badge-bg: #6ab023;
+  --spf-badge-bg:     #2d9a55;
+  --spf-badge-border: #3aad65;
 }
 
 /* OS-level dark mode without explicit Furo toggle. */
 @media (prefers-color-scheme: dark) {
   body:not([data-theme="light"]) {
-    --spf-badge-bg: #6ab023;
+    --spf-badge-bg:     #2d9a55;
+    --spf-badge-border: #3aad65;
   }
 }
 
-/* 'fixture' badge floated to the right of the signature line. */
-dl.py.fixture > dt::after {
-  content: "fixture";
-  float: right;
-  font-family: var(--font-stack--monospace);
-  font-size: 0.72rem;
-  background-color: var(--spf-badge-bg);
-  color: var(--spf-badge-fg);
-  padding: 2px 8px;
-  border-radius: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 600;
-  margin-top: 2px;
+/* "fixture" keyword prefix — keep Furo's default keyword colour; no badge. */
+dl.py.fixture > dt em.property {
+  color: var(--color-api-keyword);
+  font-style: normal;
 }
 
-/* 'fixture' keyword prefix in the signature rendered as a keyword token. */
-dl.py.fixture > dt em.property {
-  color: var(--color-brand-primary);
-  font-style: normal;
-  font-weight: 600;
+/* Badge: real DOM node injected by _on_doctree_resolved into desc_signature.
+ * float: right mirrors Furo's own [source] mechanism (.viewcode-link floats right).
+ * The badge stacks just left of [source] in DOM source order.
+ *
+ * Vertical centering via CSS calc — no magic pixels.
+ * A float's margin-top is relative to the content-area top (after padding-top),
+ * so centering is done within the dt content height, not the full border-box:
+ *
+ *   dt content height = api-font-size (0.875rem) × article line-height (1.6)
+ *                     = 1.4rem ≈ 22.4px  [Furo _api.sass + our article rule]
+ *   badge height      = font-size + 2×padding-v + 2×border-w
+ *                     = 0.67rem + 0.32rem + 2px ≈ 17.8px
+ *   margin-top        = (1.4rem − badge-height) / 2 ≈ 2.28px ✓
+ *
+ * text-indent: floated blocks inherit dt's text-indent: -2.5em (Furo hanging
+ * indent). Without reset the "FIXTURE" text shifts 35px left and only "URE"
+ * is visible. */
+dl.py.fixture > dt span.spf-badge {
+  float: right;
+  margin-top: calc(
+    (1.4rem
+     - var(--spf-badge-font-size)
+     - 2 * var(--spf-badge-padding-v)
+     - 2 * var(--spf-badge-border-w))
+    / 2
+  );
+  text-indent: 0;
+  white-space: nowrap;
+  font-size: var(--spf-badge-font-size);
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  padding: var(--spf-badge-padding-v) 0.5rem;
+  border-radius: 0.22rem;
+  background-color: var(--spf-badge-bg);
+  color: var(--spf-badge-fg);
+  border: var(--spf-badge-border-w) solid var(--spf-badge-border);
+  text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Suppress the fully-qualified module prefix (show 'server', not
