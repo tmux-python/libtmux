@@ -445,3 +445,50 @@ def test_setup_registers_autodocumenter() -> None:
 
     sphinx_pytest_fixtures.setup(app)
     assert sphinx_pytest_fixtures.FixtureDocumenter in registered
+
+
+# ---------------------------------------------------------------------------
+# _get_fixture_marker — scope normalisation (Commit 1)
+# ---------------------------------------------------------------------------
+
+
+def test_get_fixture_marker_scope_is_str_for_session() -> None:
+    """_get_fixture_marker always returns str scope, never enum or None."""
+
+    @pytest.fixture(scope="session")
+    def my_fixture() -> str:
+        return "hello"
+
+    marker = sphinx_pytest_fixtures._get_fixture_marker(my_fixture)
+    assert isinstance(marker.scope, str)
+    assert marker.scope == "session"
+
+
+def test_get_fixture_marker_function_scope_is_str() -> None:
+    """Function-scope (default) fixture returns 'function', not None."""
+
+    @pytest.fixture
+    def fn_fixture() -> str:
+        return "x"
+
+    marker = sphinx_pytest_fixtures._get_fixture_marker(fn_fixture)
+    assert isinstance(marker.scope, str)
+    assert marker.scope == "function"
+
+
+# ---------------------------------------------------------------------------
+# _iter_injectable_params — variadic filter (Commit 1)
+# ---------------------------------------------------------------------------
+
+
+def test_iter_injectable_params_skips_kwargs() -> None:
+    """_iter_injectable_params skips *args and **kwargs."""
+
+    @pytest.fixture
+    def fx(server: t.Any, *args: t.Any, **kwargs: t.Any) -> None:
+        pass
+
+    names = [n for n, _ in sphinx_pytest_fixtures._iter_injectable_params(fx)]
+    assert names == ["server"]
+    assert "args" not in names
+    assert "kwargs" not in names

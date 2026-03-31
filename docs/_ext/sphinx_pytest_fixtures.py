@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import collections.abc
 import inspect
-import logging
 import typing as t
 
 from docutils import nodes
@@ -19,13 +18,14 @@ from sphinx import addnodes
 from sphinx.domains import ObjType
 from sphinx.domains.python import PyFunction, PythonDomain, PyXRefRole
 from sphinx.ext.autodoc import FunctionDocumenter
+from sphinx.util import logging as sphinx_logging
 from sphinx.util.docfields import Field, GroupedField
 from sphinx.util.typing import stringify_annotation
 
 if t.TYPE_CHECKING:
     from sphinx.application import Sphinx
 
-logger = logging.getLogger(__name__)
+logger = sphinx_logging.getLogger(__name__)
 
 
 class SetupDict(t.TypedDict):
@@ -42,12 +42,51 @@ class SetupDict(t.TypedDict):
 
 
 class _FixtureMarker(t.Protocol):
-    """Structural type for the pytest ``FixtureFunctionMarker`` object."""
+    """Normalised fixture metadata — scope is ALWAYS a plain str."""
 
-    scope: str | None
-    autouse: bool
-    params: t.Sequence[t.Any] | None
-    name: str | None
+    @property
+    def scope(self) -> str: ...  # never None, never Scope enum
+
+    @property
+    def autouse(self) -> bool: ...
+
+    @property
+    def params(self) -> t.Sequence[t.Any] | None: ...
+
+    @property
+    def name(self) -> str | None: ...
+
+
+class _FixtureFunctionDefinitionAdapter:
+    """Adapter: normalises pytest 9+ FixtureFunctionDefinition to _FixtureMarker.
+
+    pytest 9+: .scope is a _pytest.scope.Scope enum — .value is the lowercase str.
+    pytest <9: .scope may be str or None (None means function-scope).
+    """
+
+    __slots__ = ("_obj",)
+
+    def __init__(self, obj: t.Any) -> None:
+        self._obj = obj
+
+    @property
+    def scope(self) -> str:
+        raw = self._obj.scope
+        if hasattr(raw, "value"):  # pytest 9+: _pytest.scope.Scope enum
+            return str(raw.value)
+        return str(raw) if raw else "function"
+
+    @property
+    def autouse(self) -> bool:
+        return bool(self._obj.autouse)
+
+    @property
+    def params(self) -> t.Sequence[t.Any] | None:
+        return self._obj.params  # type: ignore[no-any-return]
+
+    @property
+    def name(self) -> str | None:
+        return self._obj.name  # type: ignore[no-any-return]
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +183,10 @@ def _get_fixture_fn(obj: t.Any) -> t.Callable[..., t.Any]:
 
 
 def _get_fixture_marker(obj: t.Any) -> _FixtureMarker:
-    """Return the ``FixtureFunctionMarker`` attached to *obj*.
+    """Return normalised fixture metadata for *obj*.
+
+    Handles pytest 9+ FixtureFunctionDefinition (scope is Scope enum) and
+    older pytest fixtures (_fixture_function_marker attribute).
 
     Parameters
     ----------
@@ -154,9 +196,53 @@ def _get_fixture_marker(obj: t.Any) -> _FixtureMarker:
     Returns
     -------
     _FixtureMarker
-        The marker object exposing ``scope``, ``autouse``, ``params``, etc.
+        Normalised marker object exposing ``scope`` (always a str),
+        ``autouse``, ``params``, and ``name``.
     """
-    return obj._fixture_function_marker  # type: ignore[no-any-return]
+    try:
+        from _pytest.fixtures import FixtureFunctionDefinition
+
+        if isinstance(obj, FixtureFunctionDefinition):
+            # FixtureFunctionDefinition wraps a FixtureFunctionMarker;
+            # access the marker to get scope/autouse/params/name.
+            marker = obj._fixture_function_marker
+            return _FixtureFunctionDefinitionAdapter(marker)
+    except ImportError:
+        pass
+    marker = getattr(obj, "_fixture_function_marker", None)
+    if marker is not None:
+        return _FixtureFunctionDefinitionAdapter(marker)
+    msg = f"pytest fixture marker metadata not found on {type(obj).__name__!r}"
+    raise AttributeError(msg)
+
+
+def _iter_injectable_params(
+    obj: t.Any,
+) -> t.Iterator[tuple[str, inspect.Parameter]]:
+    """Yield (name, param) for injectable (non-variadic) fixture parameters.
+
+    Skips VAR_POSITIONAL (*args), VAR_KEYWORD (**kwargs), and KEYWORD_ONLY
+    parameters — none of these are pytest fixture injections.
+
+    Parameters
+    ----------
+    obj : Any
+        A pytest fixture wrapper object.
+
+    Yields
+    ------
+    tuple[str, inspect.Parameter]
+        ``(name, param)`` pairs for injectable fixture parameters only.
+    """
+    sig = inspect.signature(_get_fixture_fn(obj))
+    for name, param in sig.parameters.items():
+        if param.kind in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        ):
+            continue
+        yield name, param
 
 
 def _get_user_deps(
@@ -182,11 +268,9 @@ def _get_user_deps(
     """
     if hidden is None:
         hidden = PYTEST_HIDDEN
-    fn = _get_fixture_fn(obj)
-    sig = inspect.signature(fn)
     return [
         (name, param.annotation)
-        for name, param in sig.parameters.items()
+        for name, param in _iter_injectable_params(obj)
         if name not in hidden
     ]
 
@@ -242,14 +326,11 @@ def _classify_deps(
         hidden = PYTEST_HIDDEN
         all_links = PYTEST_BUILTIN_LINKS
 
-    fn = _get_fixture_fn(obj)
-    sig = inspect.signature(fn)
-
     project: list[str] = []
     builtin: dict[str, str] = {}
     hidden_list: list[str] = []
 
-    for name in sig.parameters:
+    for name, _param in _iter_injectable_params(obj):
         if name in hidden:
             hidden_list.append(name)
         elif name in all_links:
@@ -291,12 +372,14 @@ def _get_return_annotation(obj: t.Any) -> t.Any:
     ret = hints.get("return", inspect.Parameter.empty)
     if ret is inspect.Parameter.empty:
         return ret
-    # Unwrap Generator[YieldType, SendType, ReturnType] and Iterator[YieldType]
-    # so that yield-based fixtures show the injected type, not the generator type.
+    # Unwrap Generator/Iterator and their async counterparts so that
+    # yield-based fixtures show the injected type, not the generator type.
     origin = t.get_origin(ret)
     if origin in (
         collections.abc.Generator,
         collections.abc.Iterator,
+        collections.abc.AsyncGenerator,
+        collections.abc.AsyncIterator,
     ):
         args = t.get_args(ret)
         return args[0] if args else inspect.Parameter.empty
@@ -450,6 +533,8 @@ class PyFixtureDirective(PyFunction):
             "kind": directives.unchanged,  # explicit kind override
             "return-type": directives.unchanged,
             "usage": directives.unchanged,  # "auto" (default) or "none"
+            "params": directives.unchanged,  # e.g. ":params: val1, val2"
+            "teardown": directives.flag,  # ":teardown:" flag for yield fixtures
         },
     )
 
@@ -545,15 +630,28 @@ class PyFixtureDirective(PyFunction):
         ret_type = self.options.get("return-type", "")
         show_usage = self.options.get("usage", "auto") != "none"
         kind = self.options.get("kind", "")
+        autouse = "autouse" in self.options
 
         field_list = nodes.field_list()
 
-        # --- Scope field ---
-        field_list += nodes.field(
-            "",
-            nodes.field_name("", "Scope"),
-            nodes.field_body("", nodes.paragraph("", scope)),
-        )
+        # --- Scope field (suppressed for function-scope — absence = function) ---
+        if scope and scope != "function":
+            field_list += nodes.field(
+                "",
+                nodes.field_name("", "Scope"),
+                nodes.field_body("", nodes.paragraph("", scope)),
+            )
+
+        # --- Autouse field ---
+        if autouse:
+            field_list += nodes.field(
+                "",
+                nodes.field_name("", "Autouse"),
+                nodes.field_body(
+                    "",
+                    nodes.paragraph("", "yes \u2014 runs automatically for every test"),
+                ),
+            )
 
         # --- Kind field (only when explicitly set or non-default) ---
         if kind and kind != "resource":
@@ -733,7 +831,7 @@ class FixtureDocumenter(FunctionDocumenter):
         sourcename = self.get_sourcename()
         marker = _get_fixture_marker(self.object)
 
-        scope = marker.scope or "function"
+        scope = marker.scope
         self.add_line(f"   :scope: {scope}", sourcename)
 
         if marker.autouse:
