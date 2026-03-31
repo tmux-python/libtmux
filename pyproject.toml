@@ -79,6 +79,7 @@ dev = [
   # Lint
   "ruff",
   "mypy",
+  "types-docutils",  # stubs for docutils used by sphinx_pytest_fixtures
 ]
 
 docs = [

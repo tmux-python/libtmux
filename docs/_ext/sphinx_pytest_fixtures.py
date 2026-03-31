@@ -139,7 +139,7 @@ def _get_fixture_fn(obj: t.Any) -> t.Callable[..., t.Any]:
         return obj._fixture_function  # type: ignore[no-any-return]
     if hasattr(obj, "__wrapped__"):
         return obj.__wrapped__  # type: ignore[no-any-return]
-    return obj  # type: ignore[return-value]
+    return t.cast("t.Callable[..., t.Any]", obj)
 
 
 def _get_fixture_marker(obj: t.Any) -> _FixtureMarker:
@@ -340,7 +340,7 @@ class PyFixtureDirective(PyFunction):
         },
     )
 
-    doc_field_types: t.ClassVar[list[t.Any]] = [
+    doc_field_types = [  # noqa: RUF012
         Field(
             "scope",
             label="Scope",
