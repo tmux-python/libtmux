@@ -232,3 +232,54 @@ img[src*="codecov.io"] {
 ::view-transition-new(root) {
   animation-duration: 150ms;
 }
+
+/* ── sphinx_pytest_fixtures ────────────────────────────────
+ * pytest-green 'fixture' badge and signature styling for
+ * the py:fixture domain directive.
+ * ────────────────────────────────────────────────────────── */
+
+:root {
+  --spf-badge-bg: #4e9a06;
+  --spf-badge-fg: #ffffff;
+}
+
+/* Furo sets data-theme on <body>; match Furo's own selector pattern. */
+body[data-theme="dark"] {
+  --spf-badge-bg: #6ab023;
+}
+
+/* OS-level dark mode without explicit Furo toggle. */
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) {
+    --spf-badge-bg: #6ab023;
+  }
+}
+
+/* 'fixture' badge floated to the right of the signature line. */
+dl.py.fixture > dt::after {
+  content: "fixture";
+  float: right;
+  font-family: var(--font-stack--monospace);
+  font-size: 0.72rem;
+  background-color: var(--spf-badge-bg);
+  color: var(--spf-badge-fg);
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+/* 'fixture' keyword prefix in the signature rendered as a keyword token. */
+dl.py.fixture > dt em.property {
+  color: var(--color-brand-primary);
+  font-style: normal;
+  font-weight: 600;
+}
+
+/* Suppress the fully-qualified module prefix (show 'server', not
+   'libtmux.pytest_plugin.server'). */
+dl.py.fixture > dt .sig-prename.descclassname {
+  display: none;
+}
