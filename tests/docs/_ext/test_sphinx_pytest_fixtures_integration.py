@@ -525,6 +525,16 @@ def test_function_scope_field_suppressed(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.mark.integration
+def test_session_scope_lifecycle_note_present(tmp_path: pathlib.Path) -> None:
+    """Session-scope fixtures have a lifecycle callout note in HTML."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "once per test session" in index_html, (
+        "Expected session-scope lifecycle note for my_server (scope=session)"
+    )
+
+
+@pytest.mark.integration
 def test_no_build_warnings(tmp_path: pathlib.Path) -> None:
     """A full build of the synthetic fixture module produces zero WARNING lines."""
     result = _build_sphinx_app(tmp_path)

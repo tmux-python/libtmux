@@ -798,6 +798,27 @@ class PyFixtureDirective(PyFunction):
                     nodes.field_body("", body_para),
                 )
 
+        # --- Lifecycle callouts (session note + override hook tip) ---
+        callout_nodes: list[nodes.Node] = []
+
+        if scope == "session":
+            note = nodes.note()
+            note += nodes.paragraph(
+                "",
+                "Created once per test session and shared across all tests. "
+                "Requesting this fixture does not create a new instance per test.",
+            )
+            callout_nodes.append(note)
+
+        if kind == "override_hook":
+            tip = nodes.tip()
+            tip += nodes.paragraph(
+                "",
+                "This is an override hook. Override it in your project\u2019s "
+                "conftest.py to customise behaviour for your test suite.",
+            )
+            callout_nodes.append(tip)
+
         # --- Usage snippet (five-zone insertion after first paragraph) ---
         raw_arg = self.arguments[0] if self.arguments else ""
         fixture_name = raw_arg.split("(")[0].strip()
@@ -812,8 +833,9 @@ class PyFixtureDirective(PyFunction):
                 autouse,
             )
 
-        # Collect generated nodes and insert in five-zone order after summary
-        generated: list[nodes.Node] = []
+        # Collect generated nodes and insert in five-zone order after summary.
+        # Insertion uses reversed() so nodes end up in forward order.
+        generated: list[nodes.Node] = [*callout_nodes]
         if field_list.children:
             generated.append(field_list)
         if snippet is not None:
