@@ -41,12 +41,17 @@ def test_is_pytest_fixture_negative() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_user_deps_filters_pytest_internals() -> None:
-    """_get_user_deps excludes pytest built-in fixtures."""
+def test_user_deps_filters_pytest_hidden() -> None:
+    """_get_user_deps excludes fixtures in PYTEST_HIDDEN (low-value noise).
+
+    Fixtures in PYTEST_BUILTIN_LINKS (request, monkeypatch, etc.) are NOT
+    filtered by _get_user_deps — they are rendered with external hyperlinks
+    by transform_content instead.
+    """
 
     @pytest.fixture
     def my_fixture(
-        request: pytest.FixtureRequest,
+        pytestconfig: pytest.Config,
         monkeypatch: pytest.MonkeyPatch,
         server: t.Any,
     ) -> str:
@@ -54,16 +59,19 @@ def test_user_deps_filters_pytest_internals() -> None:
 
     deps = sphinx_pytest_fixtures._get_user_deps(my_fixture)
     names = [name for name, _ in deps]
-    assert names == ["server"]
-    assert "request" not in names
-    assert "monkeypatch" not in names
+    # pytestconfig is in PYTEST_HIDDEN → filtered
+    assert "pytestconfig" not in names
+    # monkeypatch is in PYTEST_BUILTIN_LINKS (not PYTEST_HIDDEN) → appears
+    assert "monkeypatch" in names
+    # project fixture → appears
+    assert "server" in names
 
 
-def test_user_deps_empty_for_no_user_params() -> None:
-    """_get_user_deps returns empty list when all params are pytest internals."""
+def test_user_deps_empty_for_only_hidden_params() -> None:
+    """_get_user_deps returns empty list when all params are in PYTEST_HIDDEN."""
 
     @pytest.fixture
-    def my_fixture(request: pytest.FixtureRequest) -> str:
+    def my_fixture(pytestconfig: pytest.Config) -> str:
         return "hello"
 
     assert sphinx_pytest_fixtures._get_user_deps(my_fixture) == []

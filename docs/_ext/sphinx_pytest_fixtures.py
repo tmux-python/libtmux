@@ -54,20 +54,17 @@ class _FixtureMarker(t.Protocol):
 # Constants
 # ---------------------------------------------------------------------------
 
-PYTEST_INTERNAL_FIXTURES: frozenset[str] = frozenset(
+# Fixtures hidden from "Depends on" entirely (low-value noise for readers).
+# Does NOT include fixtures that have entries in PYTEST_BUILTIN_LINKS —
+# those are shown with external hyperlinks instead of being hidden.
+PYTEST_HIDDEN: frozenset[str] = frozenset(
     {
-        "request",
         "pytestconfig",
-        "capsys",
         "capfd",
         "capsysbinary",
         "capfdbinary",
-        "caplog",
-        "monkeypatch",
         "recwarn",
         "tmpdir",
-        "tmp_path",
-        "tmp_path_factory",
         "pytester",
         "testdir",
         "record_property",
@@ -76,6 +73,9 @@ PYTEST_INTERNAL_FIXTURES: frozenset[str] = frozenset(
         "cache",
     },
 )
+
+# Backward-compatible alias; deprecated in favour of pytest_fixture_hidden_dependencies.
+PYTEST_INTERNAL_FIXTURES: frozenset[str] = PYTEST_HIDDEN
 
 # External links for pytest built-in fixtures shown in "Depends on" blocks.
 PYTEST_BUILTIN_LINKS: dict[str, str] = {
@@ -181,7 +181,7 @@ def _get_user_deps(
         by other project fixtures).
     """
     if hidden is None:
-        hidden = PYTEST_INTERNAL_FIXTURES
+        hidden = PYTEST_HIDDEN
     fn = _get_fixture_fn(obj)
     sig = inspect.signature(fn)
     return [
@@ -189,6 +189,75 @@ def _get_user_deps(
         for name, param in sig.parameters.items()
         if name not in hidden
     ]
+
+
+def _classify_deps(
+    obj: t.Any,
+    app: t.Any,
+) -> tuple[list[str], dict[str, str], list[str]]:
+    """Classify fixture dependencies into three buckets.
+
+    Parameters
+    ----------
+    obj : Any
+        A pytest fixture wrapper object.
+    app : Any
+        The Sphinx application (may be ``None`` in unit-test contexts).
+
+    Returns
+    -------
+    tuple[list[str], dict[str, str], list[str]]
+        ``(project_deps, builtin_deps, hidden_deps)`` where:
+
+        * *project_deps* — dep names to render as ``:fixture:`` cross-refs
+        * *builtin_deps* — dict mapping dep name → external URL
+        * *hidden_deps* — dep names suppressed entirely
+    """
+    if app is not None:
+        hidden: frozenset[str] = getattr(
+            app.config,
+            "pytest_fixture_hidden_dependencies",
+            PYTEST_HIDDEN,
+        )
+        # Backward-compat: merge deprecated pytest_internal_fixtures if set
+        old_hidden = getattr(app.config, "pytest_internal_fixtures", None)
+        if old_hidden is not None:
+            logger.warning(
+                "pytest_internal_fixtures is deprecated; "
+                "use pytest_fixture_hidden_dependencies instead",
+            )
+            hidden = hidden | old_hidden
+        builtin_links: dict[str, str] = getattr(
+            app.config,
+            "pytest_fixture_builtin_links",
+            PYTEST_BUILTIN_LINKS,
+        )
+        external_links: dict[str, str] = getattr(
+            app.config,
+            "pytest_external_fixture_links",
+            {},
+        )
+        all_links = {**builtin_links, **external_links}
+    else:
+        hidden = PYTEST_HIDDEN
+        all_links = PYTEST_BUILTIN_LINKS
+
+    fn = _get_fixture_fn(obj)
+    sig = inspect.signature(fn)
+
+    project: list[str] = []
+    builtin: dict[str, str] = {}
+    hidden_list: list[str] = []
+
+    for name in sig.parameters:
+        if name in hidden:
+            hidden_list.append(name)
+        elif name in all_links:
+            builtin[name] = all_links[name]
+        else:
+            project.append(name)
+
+    return project, builtin, hidden_list
 
 
 def _get_return_annotation(obj: t.Any) -> t.Any:
@@ -452,17 +521,42 @@ class PyFixtureDirective(PyFunction):
             nodes.field_body("", nodes.paragraph("", scope)),
         )
 
-        # --- Depends-on fields — each dep as a separate :fixture: xref ---
+        # --- Depends-on fields — project deps as :fixture: xrefs,
+        #     builtin/external deps as external hyperlinks ---
         if depends_str:
-            for dep in (d.strip() for d in depends_str.split(",") if d.strip()):
-                ref_nodes, _ = self.state.inline_text(
-                    f":fixture:`{dep}`",
-                    self.lineno,
+            # Resolve builtin/external link mapping from config
+            app_obj = getattr(getattr(self, "env", None), "app", None)
+            builtin_links: dict[str, str] = (
+                getattr(
+                    app_obj.config,
+                    "pytest_fixture_builtin_links",
+                    PYTEST_BUILTIN_LINKS,
                 )
+                if app_obj is not None
+                else PYTEST_BUILTIN_LINKS
+            )
+            external_links: dict[str, str] = (
+                getattr(app_obj.config, "pytest_external_fixture_links", {})
+                if app_obj is not None
+                else {}
+            )
+            all_links = {**builtin_links, **external_links}
+
+            for dep in (d.strip() for d in depends_str.split(",") if d.strip()):
+                if dep in all_links:
+                    url = all_links[dep]
+                    link_node = nodes.reference(dep, dep, refuri=url)
+                    body_para = nodes.paragraph("", "", link_node)
+                else:
+                    ref_nodes, _ = self.state.inline_text(
+                        f":fixture:`{dep}`",
+                        self.lineno,
+                    )
+                    body_para = nodes.paragraph("", "", *ref_nodes)
                 field_list += nodes.field(
                     "",
                     nodes.field_name("", "Depends on"),
-                    nodes.field_body("", nodes.paragraph("", "", *ref_nodes)),
+                    nodes.field_body("", body_para),
                 )
 
         if field_list.children:
@@ -603,7 +697,14 @@ class FixtureDocumenter(FunctionDocumenter):
         if marker.autouse:
             self.add_line("   :autouse:", sourcename)
 
-        user_deps = _get_user_deps(self.object)
+        # Use the config-driven hidden set so pytest_fixture_hidden_dependencies
+        # in conf.py suppresses deps from the directive header too.
+        hidden_cfg: frozenset[str] = getattr(
+            self.env.app.config,
+            "pytest_fixture_hidden_dependencies",
+            PYTEST_HIDDEN,
+        )
+        user_deps = _get_user_deps(self.object, hidden=hidden_cfg)
         if user_deps:
             dep_names = ", ".join(name for name, _ in user_deps)
             self.add_line(f"   :depends: {dep_names}", sourcename)
@@ -747,16 +848,32 @@ def setup(app: Sphinx) -> SetupDict:
     """
     app.setup_extension("sphinx.ext.autodoc")
 
-    # Configurable internal-fixture exclusion list.
-    # Projects using pytest-mock can add 'mocker' here in conf.py:
-    #   pytest_internal_fixtures = {
-    #       *sphinx_pytest_fixtures.PYTEST_INTERNAL_FIXTURES, 'mocker'
-    #   }
+    # --- New config values (v1.1) ---
     app.add_config_value(
-        "pytest_internal_fixtures",
-        default=PYTEST_INTERNAL_FIXTURES,
+        "pytest_fixture_hidden_dependencies",
+        default=PYTEST_HIDDEN,
         rebuild="env",
         types=[frozenset],
+    )
+    app.add_config_value(
+        "pytest_fixture_builtin_links",
+        default=PYTEST_BUILTIN_LINKS,
+        rebuild="env",
+        types=[dict],
+    )
+    app.add_config_value(
+        "pytest_external_fixture_links",
+        default={},
+        rebuild="env",
+        types=[dict],
+    )
+
+    # Deprecated alias — kept for backward compat; emits a warning when set.
+    # Set default=None so we can detect whether the user explicitly configured it.
+    app.add_config_value(
+        "pytest_internal_fixtures",
+        default=None,
+        rebuild="env",
     )
 
     # Guard against re-registration when setup() is called multiple times.

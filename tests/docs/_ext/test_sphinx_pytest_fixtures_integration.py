@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import pathlib
+import sys
 import textwrap
 import typing as t
 
@@ -82,6 +83,24 @@ INDEX_RST = textwrap.dedent(
 
 
 # ---------------------------------------------------------------------------
+# Module isolation helper
+# ---------------------------------------------------------------------------
+
+
+def _purge_fixture_module(name: str = "fixture_mod") -> None:
+    """Remove *name* and its sub-modules from sys.modules.
+
+    Multiple Sphinx builds in the same process cache imported modules.
+    Without this cleanup, the second test to use ``fixture_mod`` gets the
+    first test's cached version — new attributes written to a fresh
+    ``fixture_mod.py`` in a different ``tmp_path`` are never visible.
+    """
+    for key in list(sys.modules):
+        if key == name or key.startswith(f"{name}."):
+            del sys.modules[key]
+
+
+# ---------------------------------------------------------------------------
 # Shared fixture: build the Sphinx app once per test (no caching — each test
 # gets an isolated tmp_path)
 # ---------------------------------------------------------------------------
@@ -123,6 +142,7 @@ def _build_sphinx_app(
     status_buf = io.StringIO()
     warning_buf = io.StringIO()
 
+    _purge_fixture_module()
     app = Sphinx(
         srcdir=str(srcdir),
         confdir=str(srcdir),
@@ -225,6 +245,7 @@ def test_manual_directive_without_module(tmp_path: pathlib.Path) -> None:
         encoding="utf-8",
     )
 
+    _purge_fixture_module()
     app = Sphinx(
         srcdir=str(srcdir),
         confdir=str(srcdir),
@@ -304,6 +325,7 @@ def test_xref_resolves(tmp_path: pathlib.Path) -> None:
     )
 
     warning_buf = io.StringIO()
+    _purge_fixture_module()
     app = Sphinx(
         srcdir=str(srcdir),
         confdir=str(srcdir),
@@ -403,6 +425,7 @@ def test_builtin_dep_external_link(tmp_path: pathlib.Path) -> None:
 
     from sphinx.application import Sphinx
 
+    _purge_fixture_module()
     sphinx_app = Sphinx(
         srcdir=str(srcdir),
         confdir=str(srcdir),
@@ -456,6 +479,7 @@ def test_kind_override_hook_option(tmp_path: pathlib.Path) -> None:
 
     from sphinx.application import Sphinx
 
+    _purge_fixture_module()
     app = Sphinx(
         srcdir=str(srcdir),
         confdir=str(srcdir),
