@@ -221,8 +221,9 @@ def _iter_injectable_params(
 ) -> t.Iterator[tuple[str, inspect.Parameter]]:
     """Yield (name, param) for injectable (non-variadic) fixture parameters.
 
-    Skips VAR_POSITIONAL (*args), VAR_KEYWORD (**kwargs), and KEYWORD_ONLY
-    parameters — none of these are pytest fixture injections.
+    Pytest injects all POSITIONAL_OR_KEYWORD and KEYWORD_ONLY params by name.
+    POSITIONAL_ONLY parameters (before ``/``) cannot be injected by name — skip.
+    VAR_POSITIONAL (*args) and VAR_KEYWORD (**kwargs) are also skipped.
 
     Parameters
     ----------
@@ -237,9 +238,9 @@ def _iter_injectable_params(
     sig = inspect.signature(_get_fixture_fn(obj))
     for name, param in sig.parameters.items():
         if param.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
             inspect.Parameter.VAR_POSITIONAL,
             inspect.Parameter.VAR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
         ):
             continue
         yield name, param
@@ -907,6 +908,9 @@ class FixtureDocumenter(FunctionDocumenter):
     directivetype = "fixture"
     priority = FunctionDocumenter.priority + 10
 
+    # Resolved during import_object(); None until then.
+    _fixture_public_name: str | None = None
+
     @classmethod
     def can_document_member(
         cls,
@@ -918,6 +922,90 @@ class FixtureDocumenter(FunctionDocumenter):
         """Return True if *member* is a pytest fixture."""
         return _is_pytest_fixture(member)
 
+    def import_object(self, raiseerror: bool = False) -> bool:
+        """Import the fixture object, with alias-aware fallback.
+
+        When ``@pytest.fixture(name='alias')`` is used, the module attribute
+        name differs from the public fixture name.  ``autofixture::`` directives
+        may be written with either the attribute name or the public alias.  The
+        standard ``super().import_object()`` path finds the attribute name; if
+        that fails we scan the module members looking for a fixture whose public
+        name matches the requested name.
+
+        Parameters
+        ----------
+        raiseerror : bool
+            When True, raise ``ImportError`` on failure instead of returning
+            False.
+
+        Returns
+        -------
+        bool
+            True when the fixture object was resolved successfully.
+        """
+        import importlib
+
+        # --- Standard path: resolve by module attribute name ---
+        if super().import_object(raiseerror=False):
+            try:
+                marker = _get_fixture_marker(self.object)
+                self._fixture_public_name = (
+                    marker.name or _get_fixture_fn(self.object).__name__
+                )
+            except AttributeError:
+                pass
+            return True
+
+        # --- Alias fallback: scan module members ---
+        modname, _, wanted_public = self.fullname.rpartition(".")
+        if not modname:
+            if raiseerror:
+                msg = f"fixture {self.fullname!r} not found"
+                raise ImportError(msg)
+            return False
+
+        try:
+            module = importlib.import_module(modname)
+        except ImportError:
+            if raiseerror:
+                raise
+            return False
+
+        found: list[tuple[str, t.Any, str]] = []
+        for attr_name, value in vars(module).items():
+            if not _is_pytest_fixture(value):
+                continue
+            try:
+                marker = _get_fixture_marker(value)
+            except AttributeError:
+                continue
+            public = marker.name or _get_fixture_fn(value).__name__
+            if public == wanted_public:
+                found.append((attr_name, value, public))
+
+        if len(found) > 1:
+            logger.warning(
+                "autofixture: multiple fixtures with public name %r in %s; "
+                "using first match. Use the attribute name to disambiguate.",
+                wanted_public,
+                modname,
+            )
+
+        if found:
+            attr_name, value, public_name = found[0]
+            self.object = value
+            self.modname = modname
+            self.objpath = [attr_name]  # real attr path for source lookup
+            self.fullname = f"{modname}.{public_name}"
+            self._fixture_public_name = public_name
+            self.parent = module
+            return True
+
+        if raiseerror:
+            msg = f"fixture alias {self.fullname!r} not found"
+            raise ImportError(msg)
+        return False
+
     def format_name(self) -> str:
         """Return the effective fixture name, honouring ``@pytest.fixture(name=...)``.
 
@@ -928,6 +1016,8 @@ class FixtureDocumenter(FunctionDocumenter):
             When ``@pytest.fixture(name='alias')`` is used, returns ``'alias'``
             rather than the underlying function name.
         """
+        if self._fixture_public_name:
+            return self._fixture_public_name
         return (
             getattr(self.object, "name", None) or _get_fixture_fn(self.object).__name__
         )

@@ -494,6 +494,40 @@ def test_iter_injectable_params_skips_kwargs() -> None:
     assert "kwargs" not in names
 
 
+def test_iter_injectable_params_keeps_keyword_only() -> None:
+    """_iter_injectable_params includes KEYWORD_ONLY params — pytest can inject them."""
+
+    @pytest.fixture
+    def fx(*, server: t.Any) -> None:
+        pass
+
+    names = [n for n, _ in sphinx_pytest_fixtures._iter_injectable_params(fx)]
+    assert "server" in names
+
+
+def test_iter_injectable_params_skips_positional_only() -> None:
+    """_iter_injectable_params skips POSITIONAL_ONLY params (before /).
+
+    Positional-only parameters cannot be injected by name, so they are
+    correctly excluded from the fixture dependency list.
+    """
+    import textwrap
+
+    code = textwrap.dedent("""
+        import pytest
+        import typing as t
+
+        @pytest.fixture
+        def fx(server: t.Any, /, *, session: t.Any) -> None:
+            pass
+    """)
+    ns: dict[str, t.Any] = {}
+    exec(compile(code, "<test>", "exec"), ns)
+    names = [n for n, _ in sphinx_pytest_fixtures._iter_injectable_params(ns["fx"])]
+    assert names == ["session"]
+    assert "server" not in names
+
+
 # ---------------------------------------------------------------------------
 # _build_badge_html — badge group HTML (Commit 4)
 # ---------------------------------------------------------------------------
