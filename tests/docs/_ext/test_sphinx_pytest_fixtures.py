@@ -428,14 +428,24 @@ def test_build_badge_group_node_fixture_always_present() -> None:
 def test_build_badge_group_node_no_scope_for_function() -> None:
     """Function-scope produces no scope badge (absence = function-scope)."""
     node = sphinx_pytest_fixtures._build_badge_group_node("function", "resource", False)
-    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    classes_all = [
+        c
+        for child in node.children
+        if hasattr(child, "get")
+        for c in child.get("classes", [])
+    ]
     assert "spf-badge--scope" not in classes_all
 
 
 def test_build_badge_group_node_session_scope_badge() -> None:
     """Session-scope produces a scope badge with class spf-scope-session."""
     node = sphinx_pytest_fixtures._build_badge_group_node("session", "resource", False)
-    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    classes_all = [
+        c
+        for child in node.children
+        if hasattr(child, "get")
+        for c in child.get("classes", [])
+    ]
     assert "spf-scope-session" in classes_all
 
 
@@ -445,7 +455,12 @@ def test_build_badge_group_node_override_kind() -> None:
         "function", "override_hook", False
     )
     texts = [child.astext() for child in node.children]
-    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    classes_all = [
+        c
+        for child in node.children
+        if hasattr(child, "get")
+        for c in child.get("classes", [])
+    ]
     assert "OVERRIDE" in texts
     assert "spf-override" in classes_all
 
@@ -454,7 +469,12 @@ def test_build_badge_group_node_autouse_replaces_kind() -> None:
     """autouse=True shows AUTO badge with spf-autouse class, no kind badge."""
     node = sphinx_pytest_fixtures._build_badge_group_node("function", "resource", True)
     texts = [child.astext() for child in node.children]
-    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    classes_all = [
+        c
+        for child in node.children
+        if hasattr(child, "get")
+        for c in child.get("classes", [])
+    ]
     assert "AUTO" in texts
     assert "spf-autouse" in classes_all
     assert "spf-badge--kind" not in classes_all
@@ -464,7 +484,12 @@ def test_build_badge_group_node_factory_session() -> None:
     """Factory + session scope produces both scope and factory badges."""
     node = sphinx_pytest_fixtures._build_badge_group_node("session", "factory", False)
     texts = [child.astext() for child in node.children]
-    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    classes_all = [
+        c
+        for child in node.children
+        if hasattr(child, "get")
+        for c in child.get("classes", [])
+    ]
     assert "FACTORY" in texts
     assert "spf-factory" in classes_all
     assert "spf-scope-session" in classes_all
@@ -729,3 +754,60 @@ def test_finalize_store_stale_target_after_purge() -> None:
     resolved_dep = store["fixtures"]["mod.consumer"].deps[0]
     assert resolved_dep.target is None
     assert "mod.provider" not in store["reverse_deps"]
+
+
+# ---------------------------------------------------------------------------
+# Badge group text separators (Commit 4)
+# ---------------------------------------------------------------------------
+
+
+def test_badge_group_node_has_text_separators() -> None:
+    """Badge group nodes have Text(' ') separators between badge children."""
+    from docutils import nodes as docnodes
+
+    node = sphinx_pytest_fixtures._build_badge_group_node("session", "factory", False)
+    # Should have: scope badge, Text(" "), factory badge, Text(" "), FIXTURE badge
+    text_nodes = [child for child in node.children if isinstance(child, docnodes.Text)]
+    assert len(text_nodes) >= 2, f"Expected >=2 Text separators, got {len(text_nodes)}"
+    for t_node in text_nodes:
+        assert t_node.astext() == " "
+
+
+# ---------------------------------------------------------------------------
+# FixtureKind validation (Commit 4)
+# ---------------------------------------------------------------------------
+
+
+def test_infer_kind_custom_warning(caplog: pytest.LogCaptureFixture) -> None:
+    """Unknown :kind: values produce a warning during registration."""
+    import logging
+
+    env = types.SimpleNamespace(
+        domaindata={},
+        app=types.SimpleNamespace(
+            config=types.SimpleNamespace(
+                pytest_fixture_hidden_dependencies=frozenset(),
+                pytest_fixture_builtin_links={},
+                pytest_external_fixture_links={},
+            ),
+        ),
+    )
+
+    @pytest.fixture
+    def my_fixture() -> str:
+        """Return a test value."""
+        return "hello"
+
+    with caplog.at_level(logging.WARNING, logger="sphinx_pytest_fixtures"):
+        sphinx_pytest_fixtures._register_fixture_meta(
+            env=env,
+            docname="api",
+            obj=my_fixture,
+            public_name="my_fixture",
+            source_name="my_fixture",
+            modname="mod",
+            kind="custom_weird_kind",
+            app=env.app,
+        )
+
+    assert any("custom_weird_kind" in r.message for r in caplog.records)

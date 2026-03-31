@@ -46,6 +46,7 @@ class SetupDict(t.TypedDict):
 # ---------------------------------------------------------------------------
 
 FixtureKind = t.Literal["resource", "factory", "override_hook"]
+_KNOWN_KINDS: frozenset[str] = frozenset(t.get_args(FixtureKind))
 
 _STORE_VERSION = 3
 """Bump whenever ``FixtureMeta`` or the store schema changes.
@@ -105,8 +106,8 @@ class FixtureMeta:
     autouse: bool
     """Whether the fixture runs automatically for every test."""
 
-    kind: FixtureKind
-    """Fixture kind: ``"resource"``, ``"factory"``, or ``"override_hook"``."""
+    kind: str
+    """Fixture kind: one of :data:`FixtureKind` values, or a custom string."""
 
     return_display: str
     """Short type label, e.g. ``"Server"``."""
@@ -468,6 +469,13 @@ def _register_fixture_meta(
         return_xref_target = return_display
 
     inferred_kind = _infer_kind(obj, kind or None)
+    if inferred_kind not in _KNOWN_KINDS:
+        logger.warning(
+            "unknown fixture kind %r for %r; expected one of %r",
+            inferred_kind,
+            canonical_name,
+            sorted(_KNOWN_KINDS),
+        )
 
     # Build classified deps.
     project_deps, builtin_deps, _hidden = _classify_deps(obj, app)
@@ -492,7 +500,7 @@ def _register_fixture_meta(
         source_name=source_name,
         scope=scope,
         autouse=autouse,
-        kind=inferred_kind,  # type: ignore[arg-type]
+        kind=inferred_kind,
         return_display=return_display,
         return_xref_target=return_xref_target,
         deps=tuple(dep_list),
@@ -891,6 +899,11 @@ def _infer_kind(obj: t.Any, explicit_kind: str | None = None) -> str:
     if _is_factory(obj):
         return "factory"
     if _is_overridable(obj):
+        logger.debug(
+            "autofixture: %r inferred as override_hook via heuristic; "
+            "set :kind: explicitly to suppress",
+            getattr(_get_fixture_fn(obj), "__qualname__", "unknown"),
+        )
         return "override_hook"
     return "resource"
 
@@ -1309,8 +1322,38 @@ class PyFixtureDirective(PyFunction):
         """
         modname = self.env.ref_context.get("py:module", "")
         name = name_cls[0]
-        signode["spf_canonical_name"] = f"{modname}.{name}" if modname else name
+        canonical = f"{modname}.{name}" if modname else name
+        signode["spf_canonical_name"] = canonical
         super(PyFunction, self).add_target_and_index(name_cls, sig, signode)
+
+        # Register minimal FixtureMeta for manual directives so they
+        # participate in short-name xrefs, "Used by", and reverse_deps.
+        # Guard: don't overwrite richer autodoc-generated metadata.
+        store = _get_spf_store(self.env)
+        if canonical not in store["fixtures"]:
+            public = canonical.rsplit(".", 1)[-1]
+            deps: list[FixtureDep] = []
+            if depends_str := self.options.get("depends"):
+                deps.extend(
+                    FixtureDep(display_name=d.strip(), kind="fixture")
+                    for d in depends_str.split(",")
+                    if d.strip()
+                )
+            store["fixtures"][canonical] = FixtureMeta(
+                docname=self.env.docname,
+                canonical_name=canonical,
+                public_name=public,
+                source_name=public,
+                scope=self.options.get("scope", "function"),
+                autouse="autouse" in self.options,
+                kind=self.options.get("kind", "resource"),
+                return_display=self.options.get("return-type", ""),
+                return_xref_target=None,
+                deps=tuple(deps),
+                param_reprs=(),
+                has_teardown="teardown" in self.options,
+                is_async="async" in self.options,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1525,10 +1568,10 @@ class FixtureDocumenter(FunctionDocumenter):
             self.add_line(f"   :return-type: {_format_type_short(ret)}", sourcename)
 
         kind = _infer_kind(self.object)
-        if kind != "resource":
-            self.add_line(f"   :kind: {kind}", sourcename)
+        self.add_line(f"   :kind: {kind}", sourcename)
 
         # Register fixture metadata in the env store for reverse-dep tracking.
+        # Pass already-resolved kind to avoid a second _infer_kind call.
         public_name = self.format_name()
         source_name = self.objpath[-1] if self.objpath else public_name
         meta = _register_fixture_meta(
@@ -1538,7 +1581,7 @@ class FixtureDocumenter(FunctionDocumenter):
             public_name=public_name,
             source_name=source_name,
             modname=self.modname,
-            kind=kind if kind != "resource" else "",
+            kind=kind,
             app=self.env.app,
         )
 
@@ -1671,41 +1714,59 @@ def _build_badge_group_node(
         Badge group container with inline badge children.
     """
     group = nodes.inline(classes=["spf-badge-group"])
+    badges: list[nodes.inline] = []
 
     # Slot 1 — scope badge (leftmost, only non-function scope)
     if scope and scope != "function":
-        group += nodes.inline(
-            scope,
-            scope,
-            classes=["spf-badge", "spf-badge--scope", f"spf-scope-{scope}"],
+        badges.append(
+            nodes.inline(
+                scope,
+                scope,
+                classes=["spf-badge", "spf-badge--scope", f"spf-scope-{scope}"],
+            )
         )
 
     # Slot 2 — kind or autouse badge
     if autouse:
-        group += nodes.inline(
-            "AUTO",
-            "AUTO",
-            classes=["spf-badge", "spf-badge--state", "spf-autouse"],
+        badges.append(
+            nodes.inline(
+                "AUTO",
+                "AUTO",
+                classes=["spf-badge", "spf-badge--state", "spf-autouse"],
+            )
         )
     elif kind == "factory":
-        group += nodes.inline(
-            "FACTORY",
-            "FACTORY",
-            classes=["spf-badge", "spf-badge--kind", "spf-factory"],
+        badges.append(
+            nodes.inline(
+                "FACTORY",
+                "FACTORY",
+                classes=["spf-badge", "spf-badge--kind", "spf-factory"],
+            )
         )
     elif kind == "override_hook":
-        group += nodes.inline(
-            "OVERRIDE",
-            "OVERRIDE",
-            classes=["spf-badge", "spf-badge--kind", "spf-override"],
+        badges.append(
+            nodes.inline(
+                "OVERRIDE",
+                "OVERRIDE",
+                classes=["spf-badge", "spf-badge--kind", "spf-override"],
+            )
         )
 
     # Slot 3 — FIXTURE (always, rightmost)
-    group += nodes.inline(
-        "FIXTURE",
-        "FIXTURE",
-        classes=["spf-badge", "spf-badge--fixture"],
+    badges.append(
+        nodes.inline(
+            "FIXTURE",
+            "FIXTURE",
+            classes=["spf-badge", "spf-badge--fixture"],
+        )
     )
+
+    # Interleave with text separators for non-HTML builders (CSS gap
+    # handles spacing in HTML; text/LaTeX/man builders need explicit spaces).
+    for i, badge in enumerate(badges):
+        group += badge
+        if i < len(badges) - 1:
+            group += nodes.Text(" ")
 
     return group
 

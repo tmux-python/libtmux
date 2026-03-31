@@ -767,3 +767,37 @@ def test_short_name_fixture_xref_resolves(tmp_path: pathlib.Path) -> None:
         if "fixture" in line.lower() and "my_server" in line
     ]
     assert fixture_warnings == [], f"Unexpected warnings: {fixture_warnings}"
+
+
+# ---------------------------------------------------------------------------
+# Manual py:fixture:: directive store participation (Commit 4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_manual_directive_in_store(tmp_path: pathlib.Path) -> None:
+    """Manual .. py:fixture:: directives register in the env store."""
+    manual_rst = textwrap.dedent(
+        """\
+    Test fixtures
+    =============
+
+    .. py:module:: fixture_mod
+
+    .. autofixture:: fixture_mod.my_server
+
+    .. py:fixture:: manual_helper
+       :scope: session
+       :depends: my_server
+
+       A manually documented fixture.
+    """,
+    )
+    result = _build_sphinx_app(tmp_path, index_rst=manual_rst)
+    store = result.app.env.domaindata.get("sphinx_pytest_fixtures", {})
+    fixtures = store.get("fixtures", {})
+    assert "fixture_mod.manual_helper" in fixtures
+    meta = fixtures["fixture_mod.manual_helper"]
+    assert meta.scope == "session"
+    assert len(meta.deps) == 1
+    assert meta.deps[0].display_name == "my_server"
