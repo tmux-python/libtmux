@@ -11,6 +11,7 @@ from __future__ import annotations
 import collections.abc
 import inspect
 import typing as t
+from dataclasses import dataclass
 
 from docutils import nodes
 from docutils.parsers.rst import directives
@@ -32,8 +33,87 @@ class SetupDict(t.TypedDict):
     """Return type for Sphinx extension setup()."""
 
     version: str
+    env_version: int
     parallel_read_safe: bool
     parallel_write_safe: bool
+
+
+# ---------------------------------------------------------------------------
+# Fixture metadata models — env-safe (all fields are pickle-safe primitives)
+# ---------------------------------------------------------------------------
+
+FixtureKind = t.Literal["resource", "factory", "override_hook"]
+
+
+@dataclass(frozen=True)
+class FixtureDep:
+    """A classified fixture dependency.
+
+    All fields are primitive types so that ``FixtureDep`` can be pickled
+    safely when stored in the Sphinx build environment.
+    """
+
+    display_name: str
+    """Short display name, e.g. ``"config_file"``."""
+
+    kind: t.Literal["fixture", "builtin", "external", "unresolved"]
+    """Classification of the dependency."""
+
+    target: str | None = None
+    """Canonical name for project fixtures (used for reverse deps)."""
+
+    url: str | None = None
+    """External URL for builtin/external deps."""
+
+
+@dataclass(frozen=True)
+class FixtureMeta:
+    """Env-safe fixture metadata stored per fixture in the build environment.
+
+    All fields must be pickle-safe primitives — never store raw annotation
+    objects (``type``, generics) here as they are not reliably picklable.
+
+    Stored at ``env.domaindata["sphinx_pytest_fixtures"]["fixtures"][canonical_name]``.
+    """
+
+    docname: str
+    """Sphinx docname of the page where this fixture is documented."""
+
+    canonical_name: str
+    """Fully-qualified name, e.g. ``"libtmux.pytest_plugin.server"``."""
+
+    public_name: str
+    """Pytest injection name, e.g. ``"server"`` (alias or function name)."""
+
+    source_name: str
+    """Real module attribute name, e.g. ``"_server"``."""
+
+    scope: str
+    """Fixture scope: ``"function"``, ``"session"``, ``"module"``, or ``"class"``."""
+
+    autouse: bool
+    """Whether the fixture runs automatically for every test."""
+
+    kind: FixtureKind
+    """Fixture kind: ``"resource"``, ``"factory"``, or ``"override_hook"``."""
+
+    return_display: str
+    """Short type label, e.g. ``"Server"``."""
+
+    return_xref_target: str | None
+    """Simple class name for cross-referencing, or ``None`` for complex types."""
+
+    deps: tuple[FixtureDep, ...]
+    """Classified fixture dependencies."""
+
+    param_reprs: tuple[str, ...]
+    """``repr()`` of each parametrize value from the fixture marker."""
+
+    has_teardown: bool
+    """True when the fixture is a generator (yield-based) fixture."""
+
+    is_async: bool
+    """True when the fixture is an async function or async generator."""
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +209,222 @@ PYTEST_BUILTIN_LINKS: dict[str, str] = {
     "capsys": "https://docs.pytest.org/en/stable/reference/fixtures.html#capsys",
     "caplog": "https://docs.pytest.org/en/stable/reference/fixtures.html#caplog",
 }
+
+
+# ---------------------------------------------------------------------------
+# Env store — extension-owned domaindata namespace
+# ---------------------------------------------------------------------------
+
+
+def _get_spf_store(env: t.Any) -> dict[str, t.Any]:
+    """Return the extension-owned env domaindata namespace.
+
+    Creates the namespace with empty collections on first access.
+
+    Structure
+    ---------
+    ``fixtures``
+        ``dict[canonical_name, FixtureMeta]``
+    ``public_to_canon``
+        ``dict[public_name, canonical_name | None]`` — ``None`` when ambiguous
+        (same public name exported by multiple modules).
+    ``reverse_deps``
+        ``dict[canonical_name, list[canonical_name]]`` — who uses this fixture.
+
+    Parameters
+    ----------
+    env : Any
+        The Sphinx build environment.
+
+    Returns
+    -------
+    dict
+        The mutable store dict.
+    """
+    return env.domaindata.setdefault(  # type: ignore[no-any-return]
+        "sphinx_pytest_fixtures",
+        {
+            "fixtures": {},
+            "public_to_canon": {},
+            "reverse_deps": {},
+        },
+    )
+
+
+def _on_env_purge_doc(app: Sphinx, env: t.Any, docname: str) -> None:
+    """Remove all fixture records for a doc being re-processed.
+
+    Called by Sphinx before re-reading a source file during incremental builds.
+    Ensures stale fixture metadata is not carried over.
+
+    Parameters
+    ----------
+    app : Sphinx
+        The Sphinx application (unused; required by the hook signature).
+    env : Any
+        The Sphinx build environment.
+    docname : str
+        The document being purged.
+    """
+    store = _get_spf_store(env)
+    to_remove = [k for k, v in store["fixtures"].items() if v.docname == docname]
+    for k in to_remove:
+        del store["fixtures"][k]
+    # Rebuild public_to_canon from the surviving fixtures.
+    pub_map: dict[str, str | None] = {}
+    for canon, meta in store["fixtures"].items():
+        pub = meta.public_name
+        if pub in pub_map and pub_map[pub] != canon:
+            pub_map[pub] = None  # ambiguous
+        else:
+            pub_map[pub] = canon
+    store["public_to_canon"] = pub_map
+
+
+def _on_env_merge_info(
+    app: Sphinx,
+    env: t.Any,
+    docnames: list[str],
+    other: t.Any,
+) -> None:
+    """Merge fixture metadata from parallel-build sub-environments.
+
+    Called by Sphinx when parallel readers finish to merge their env stores
+    into the primary env.  Uses last-write-wins per canonical_name.
+
+    Parameters
+    ----------
+    app : Sphinx
+        The Sphinx application (unused; required by the hook signature).
+    env : Any
+        The primary (receiving) build environment.
+    docnames : list[str]
+        Docnames processed by the sub-environment (unused).
+    other : Any
+        The sub-environment whose store is merged into *env*.
+    """
+    store = _get_spf_store(env)
+    other_store = _get_spf_store(other)
+    store["fixtures"].update(other_store["fixtures"])
+    # Rebuild public_to_canon from the merged fixture set.
+    pub_map: dict[str, str | None] = {}
+    for canon, meta in store["fixtures"].items():
+        pub = meta.public_name
+        if pub in pub_map and pub_map[pub] != canon:
+            pub_map[pub] = None  # ambiguous
+        else:
+            pub_map[pub] = canon
+    store["public_to_canon"] = pub_map
+
+
+def _register_fixture_meta(
+    env: t.Any,
+    docname: str,
+    obj: t.Any,
+    public_name: str,
+    source_name: str,
+    modname: str,
+    kind: str,
+    app: t.Any,
+) -> FixtureMeta:
+    """Build and register a FixtureMeta for *obj* in the env store.
+
+    Parameters
+    ----------
+    env : Any
+        The Sphinx build environment.
+    docname : str
+        The current document name.
+    obj : Any
+        The pytest fixture wrapper object.
+    public_name : str
+        The injection name (alias or function name).
+    source_name : str
+        The real module attribute name.
+    modname : str
+        The module name.
+    kind : str
+        Explicit kind override, or empty to auto-infer.
+    app : Any
+        The Sphinx application.
+
+    Returns
+    -------
+    FixtureMeta
+        The newly created and registered fixture metadata.
+    """
+    canonical_name = f"{modname}.{public_name}"
+    marker = _get_fixture_marker(obj)
+    scope = marker.scope
+    autouse = marker.autouse
+    params_seq = marker.params or ()
+    param_reprs = tuple(repr(p) for p in params_seq)
+
+    fn = _get_fixture_fn(obj)
+    has_teardown = inspect.isgeneratorfunction(fn) or inspect.isasyncgenfunction(fn)
+    is_async = inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn)
+
+    ret_ann = _get_return_annotation(obj)
+    return_display = (
+        _format_type_short(ret_ann) if ret_ann is not inspect.Parameter.empty else ""
+    )
+    # Simple class name for xref: only for bare names without special chars.
+    return_xref_target: str | None = None
+    if return_display and return_display.isidentifier():
+        return_xref_target = return_display
+
+    inferred_kind = _infer_kind(obj, kind or None)
+
+    # Build classified deps.
+    project_deps, builtin_deps, _hidden = _classify_deps(obj, app)
+    dep_list: list[FixtureDep] = []
+    for dep_name in project_deps:
+        dep_store = _get_spf_store(env)
+        target_canon = dep_store["public_to_canon"].get(dep_name)
+        dep_list.append(
+            FixtureDep(
+                display_name=dep_name,
+                kind="fixture",
+                target=target_canon,
+            )
+        )
+    for dep_name, url in builtin_deps.items():
+        dep_list.append(FixtureDep(display_name=dep_name, kind="builtin", url=url))
+
+    meta = FixtureMeta(
+        docname=docname,
+        canonical_name=canonical_name,
+        public_name=public_name,
+        source_name=source_name,
+        scope=scope,
+        autouse=autouse,
+        kind=inferred_kind,  # type: ignore[arg-type]
+        return_display=return_display,
+        return_xref_target=return_xref_target,
+        deps=tuple(dep_list),
+        param_reprs=param_reprs,
+        has_teardown=has_teardown,
+        is_async=is_async,
+    )
+
+    store = _get_spf_store(env)
+    store["fixtures"][canonical_name] = meta
+
+    # Update public_to_canon mapping.
+    existing = store["public_to_canon"].get(public_name)
+    if existing is not None and existing != canonical_name:
+        store["public_to_canon"][public_name] = None  # ambiguous
+    elif existing is None and public_name not in store["public_to_canon"]:
+        store["public_to_canon"][public_name] = canonical_name
+
+    # Build reverse_deps for each project dep.
+    for dep in dep_list:
+        if dep.kind == "fixture" and dep.target:
+            store["reverse_deps"].setdefault(dep.target, [])
+            if canonical_name not in store["reverse_deps"][dep.target]:
+                store["reverse_deps"][dep.target].append(canonical_name)
+
+    return meta
 
 
 # ---------------------------------------------------------------------------
@@ -1068,6 +1364,9 @@ class FixtureDocumenter(FunctionDocumenter):
     def add_directive_header(self, sig: str) -> None:
         """Emit the directive header with fixture-specific options.
 
+        Also registers ``FixtureMeta`` in the env store for reverse dep
+        tracking and incremental-build correctness.
+
         Parameters
         ----------
         sig : str
@@ -1102,6 +1401,20 @@ class FixtureDocumenter(FunctionDocumenter):
         kind = _infer_kind(self.object)
         if kind != "resource":
             self.add_line(f"   :kind: {kind}", sourcename)
+
+        # Register fixture metadata in the env store for reverse-dep tracking.
+        public_name = self.format_name()
+        source_name = self.objpath[-1] if self.objpath else public_name
+        _register_fixture_meta(
+            env=self.env,
+            docname=self.env.docname,
+            obj=self.object,
+            public_name=public_name,
+            source_name=source_name,
+            modname=self.modname,
+            kind=kind if kind != "resource" else "",
+            app=self.env.app,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1405,9 +1718,12 @@ def setup(app: Sphinx) -> SetupDict:
     app.connect("autodoc-process-docstring", _on_process_fixture_docstring)
     app.connect("missing-reference", _on_missing_reference)
     app.connect("doctree-resolved", _on_doctree_resolved)
+    app.connect("env-purge-doc", _on_env_purge_doc)
+    app.connect("env-merge-info", _on_env_merge_info)
 
     return {
         "version": "1.0",
+        "env_version": 2,
         "parallel_read_safe": True,
         "parallel_write_safe": True,
     }
