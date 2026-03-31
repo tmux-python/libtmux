@@ -234,68 +234,133 @@ img[src*="codecov.io"] {
 }
 
 /* ── sphinx_pytest_fixtures ────────────────────────────────
- * pytest fixture badge and signature styling.
- * Badge palette matches libtmux-mcp's matte sd-badge colours:
- * dark-green field · 1px border · squarish 0.22rem radius.
+ * Multi-badge group: scope + kind/state + FIXTURE
+ * Three slots, hard ceiling: at most 3 badges per fixture.
  *
- * Design: span.spf-badge injected by _on_doctree_resolved as a
- * real DOM node — last child of desc_signature. float: right
- * mirrors the [source] mechanism Furo uses for viewcode links.
- * Vertical centering via CSS calc; every coefficient is
- * derived from documented Furo/_api.sass values (see below).
+ * Slot 1 (scope):  session=amber, module=teal, class=slate
+ *                  function → suppressed (absence = function-scope)
+ * Slot 2 (kind):   factory=amber/brown, override_hook=violet
+ *                  resource → suppressed (default, no badge needed)
+ *   OR state:      autouse=rose (replaces kind when autouse=True)
+ * Slot 3 (base):   FIXTURE — always shown, green
+ *
+ * DOM insertion order (reverse of visual left-to-right):
+ *   FIXTURE (rightmost) → kind/state (centre) → scope (leftmost)
+ * All use float: right via container; stacked via reverse insertion.
  * ────────────────────────────────────────────────────────── */
 
+/* Token system */
 :root {
-  --spf-badge-bg:     #1f7a3f;
-  --spf-badge-fg:     #f3fff7;
-  --spf-badge-border: #2d9154;
+  /* Base FIXTURE badge */
+  --spf-fixture-bg:     #1f7a3f;
+  --spf-fixture-fg:     #f3fff7;
+  --spf-fixture-border: #2d9154;
 
-  /* Badge metric variables — feed the vertical-centering calc.
-   * Changing these automatically updates margin-top. */
+  /* Scope: session — amber/gold */
+  --spf-scope-session-bg:     #fff3cd;
+  --spf-scope-session-fg:     #7a5200;
+  --spf-scope-session-border: #d4a017;
+
+  /* Scope: module — teal */
+  --spf-scope-module-bg:     #e0f4f4;
+  --spf-scope-module-fg:     #1a5c5c;
+  --spf-scope-module-border: #3aabab;
+
+  /* Scope: class — slate */
+  --spf-scope-class-bg:     #eeedf6;
+  --spf-scope-class-fg:     #3c3670;
+  --spf-scope-class-border: #7b76c0;
+
+  /* Kind: factory — amber/brown (outlined) */
+  --spf-kind-factory-bg:     transparent;
+  --spf-kind-factory-fg:     #7a4200;
+  --spf-kind-factory-border: #c87f35;
+
+  /* Kind: override_hook — violet (outlined) */
+  --spf-kind-override-bg:     transparent;
+  --spf-kind-override-fg:     #5a1a7a;
+  --spf-kind-override-border: #9b59c8;
+
+  /* State: autouse — rose */
+  --spf-state-autouse-bg:     transparent;
+  --spf-state-autouse-fg:     #7a1a2a;
+  --spf-state-autouse-border: #c85070;
+
+  /* Shared badge metrics */
   --spf-badge-font-size: 0.67rem;
-  --spf-badge-padding-v: 0.16rem;   /* top/bottom padding, each side */
-  --spf-badge-border-w:  1px;       /* border-width, each side */
+  --spf-badge-padding-v: 0.16rem;
+  --spf-badge-border-w:  1px;
 }
 
-/* Furo sets data-theme on <body>; match Furo's own selector pattern. */
-body[data-theme="dark"] {
-  --spf-badge-bg:     #2d9a55;
-  --spf-badge-border: #3aad65;
-}
-
-/* OS-level dark mode without explicit Furo toggle. */
+/* Dark mode — OS-level */
 @media (prefers-color-scheme: dark) {
   body:not([data-theme="light"]) {
-    --spf-badge-bg:     #2d9a55;
-    --spf-badge-border: #3aad65;
+    --spf-fixture-bg:     #2d9a55;
+    --spf-fixture-border: #3aad65;
+
+    --spf-scope-session-bg:     #3a2800;
+    --spf-scope-session-fg:     #f5d580;
+    --spf-scope-session-border: #c89030;
+
+    --spf-scope-module-bg:     #0d2a2a;
+    --spf-scope-module-fg:     #70dddd;
+    --spf-scope-module-border: #309090;
+
+    --spf-scope-class-bg:     #1a1838;
+    --spf-scope-class-fg:     #b0acee;
+    --spf-scope-class-border: #6060b0;
+
+    --spf-kind-factory-fg:     #f0b060;
+    --spf-kind-factory-border: #d08040;
+
+    --spf-kind-override-fg:     #d090f0;
+    --spf-kind-override-border: #a060d0;
+
+    --spf-state-autouse-fg:     #f080a0;
+    --spf-state-autouse-border: #d05070;
   }
 }
 
-/* "fixture" keyword prefix — keep Furo's default keyword colour; no badge. */
+/* Furo explicit dark toggle */
+body[data-theme="dark"] {
+  --spf-fixture-bg:     #2d9a55;
+  --spf-fixture-border: #3aad65;
+
+  --spf-scope-session-bg:     #3a2800;
+  --spf-scope-session-fg:     #f5d580;
+  --spf-scope-session-border: #c89030;
+
+  --spf-scope-module-bg:     #0d2a2a;
+  --spf-scope-module-fg:     #70dddd;
+  --spf-scope-module-border: #309090;
+
+  --spf-scope-class-bg:     #1a1838;
+  --spf-scope-class-fg:     #b0acee;
+  --spf-scope-class-border: #6060b0;
+
+  --spf-kind-factory-fg:     #f0b060;
+  --spf-kind-factory-border: #d08040;
+
+  --spf-kind-override-fg:     #d090f0;
+  --spf-kind-override-border: #a060d0;
+
+  --spf-state-autouse-fg:     #f080a0;
+  --spf-state-autouse-border: #d05070;
+}
+
+/* "fixture" keyword prefix — keep Furo's default keyword colour */
 dl.py.fixture > dt em.property {
   color: var(--color-api-keyword);
   font-style: normal;
 }
 
-/* Badge: real DOM node injected by _on_doctree_resolved into desc_signature.
- * float: right mirrors Furo's own [source] mechanism (.viewcode-link floats right).
- * The badge stacks just left of [source] in DOM source order.
- *
- * Vertical centering via CSS calc — no magic pixels.
- * A float's margin-top is relative to the content-area top (after padding-top),
- * so centering is done within the dt content height, not the full border-box:
- *
- *   dt content height = api-font-size (0.875rem) × article line-height (1.6)
- *                     = 1.4rem ≈ 22.4px  [Furo _api.sass + our article rule]
- *   badge height      = font-size + 2×padding-v + 2×border-w
- *                     = 0.67rem + 0.32rem + 2px ≈ 17.8px
- *   margin-top        = (1.4rem − badge-height) / 2 ≈ 2.28px ✓
- *
- * text-indent: floated blocks inherit dt's text-indent: -2.5em (Furo hanging
- * indent). Without reset the "FIXTURE" text shifts 35px left and only "URE"
- * is visible. */
-dl.py.fixture > dt span.spf-badge {
+/* Badge group container — float right, display:block prevents Safari flex bug.
+ * text-indent: 0 resets Furo's hanging-indent on dt (-2.5em) so badge text
+ * doesn't shift left. margin-top centers the group vertically in the dt line. */
+dl.py.fixture > dt span.spf-badge-group {
   float: right;
+  display: block;
+  text-indent: 0;
   margin-top: calc(
     (1.4rem
      - var(--spf-badge-font-size)
@@ -303,24 +368,78 @@ dl.py.fixture > dt span.spf-badge {
      - 2 * var(--spf-badge-border-w))
     / 2
   );
-  text-indent: 0;
   white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Shared badge base */
+dl.py.fixture > dt span.spf-badge {
+  display: inline-block;
   font-size: var(--spf-badge-font-size);
   font-weight: 650;
   line-height: 1;
   letter-spacing: 0.01em;
   padding: var(--spf-badge-padding-v) 0.5rem;
   border-radius: 0.22rem;
-  background-color: var(--spf-badge-bg);
-  color: var(--spf-badge-fg);
-  border: var(--spf-badge-border-w) solid var(--spf-badge-border);
+  border: var(--spf-badge-border-w) solid;
   text-transform: uppercase;
-  user-select: none;
-  -webkit-user-select: none;
+  vertical-align: middle;
 }
 
-/* Suppress the fully-qualified module prefix (show 'server', not
-   'libtmux.pytest_plugin.server'). */
+/* Gap between sibling badges */
+dl.py.fixture > dt span.spf-badge + span.spf-badge {
+  margin-left: 0.3rem;
+}
+
+/* FIXTURE badge (always shown, green) */
+dl.py.fixture > dt span.spf-badge--fixture {
+  background-color: var(--spf-fixture-bg);
+  color: var(--spf-fixture-fg);
+  border-color: var(--spf-fixture-border);
+}
+
+/* Scope badges */
+dl.py.fixture > dt span.spf-badge--scope[data-scope="session"] {
+  background-color: var(--spf-scope-session-bg);
+  color: var(--spf-scope-session-fg);
+  border-color: var(--spf-scope-session-border);
+  text-transform: lowercase;
+  letter-spacing: 0.03em;
+}
+dl.py.fixture > dt span.spf-badge--scope[data-scope="module"] {
+  background-color: var(--spf-scope-module-bg);
+  color: var(--spf-scope-module-fg);
+  border-color: var(--spf-scope-module-border);
+  text-transform: lowercase;
+}
+dl.py.fixture > dt span.spf-badge--scope[data-scope="class"] {
+  background-color: var(--spf-scope-class-bg);
+  color: var(--spf-scope-class-fg);
+  border-color: var(--spf-scope-class-border);
+  text-transform: lowercase;
+}
+
+/* Kind badges (outlined — behaviour, not lifecycle) */
+dl.py.fixture > dt span.spf-badge--kind[data-kind="factory"] {
+  background-color: var(--spf-kind-factory-bg);
+  color: var(--spf-kind-factory-fg);
+  border-color: var(--spf-kind-factory-border);
+}
+dl.py.fixture > dt span.spf-badge--kind[data-kind="override_hook"] {
+  background-color: var(--spf-kind-override-bg);
+  color: var(--spf-kind-override-fg);
+  border-color: var(--spf-kind-override-border);
+}
+
+/* State badge (autouse) */
+dl.py.fixture > dt span.spf-badge--state[data-state="autouse"] {
+  background-color: var(--spf-state-autouse-bg);
+  color: var(--spf-state-autouse-fg);
+  border-color: var(--spf-state-autouse-border);
+}
+
+/* Suppress module prefix (libtmux.pytest_plugin.) */
 dl.py.fixture > dt .sig-prename.descclassname {
   display: none;
 }

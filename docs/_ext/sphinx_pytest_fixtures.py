@@ -690,6 +690,32 @@ class PyFixtureDirective(PyFunction):
             addnodes.desc_sig_space(),
         ]
 
+    def handle_signature(
+        self,
+        sig: str,
+        signode: addnodes.desc_signature,
+    ) -> tuple[str, str]:
+        """Store fixture metadata on signode for badge injection.
+
+        Parameters
+        ----------
+        sig : str
+            The raw signature string from the directive.
+        signode : addnodes.desc_signature
+            The signature node to annotate.
+
+        Returns
+        -------
+        tuple[str, str]
+            ``(fullname, prefix)`` from the parent implementation.
+        """
+        result = super().handle_signature(sig, signode)
+        signode["spf_scope"] = self.options.get("scope", "function")
+        signode["spf_kind"] = self.options.get("kind", "resource")
+        signode["spf_autouse"] = "autouse" in self.options
+        signode["spf_ret_type"] = self.options.get("return-type", "")
+        return result
+
     def get_index_text(self, modname: str, name_cls: tuple[str, str]) -> str:
         """Return index entry text for the fixture.
 
@@ -1098,8 +1124,78 @@ def _on_missing_reference(
 
 
 # ---------------------------------------------------------------------------
-# doctree-resolved badge injector
+# Badge group helpers + doctree-resolved badge injector
 # ---------------------------------------------------------------------------
+
+
+def _build_badge_html(
+    scope: str,
+    kind: str,
+    autouse: bool,
+    ret_type: str = "",
+) -> str:
+    """Return the inner HTML for the badge group ``<span>``.
+
+    Badge slots (at most 3 total, DOM order reversed for float-right stacking):
+
+    * Slot 3 — ``FIXTURE`` (always, rightmost)
+    * Slot 2 — kind badge when ``kind in ("factory", "override_hook")``
+               OR state badge when ``autouse=True``
+    * Slot 1 — scope badge when ``scope != "function"`` (leftmost)
+
+    Parameters
+    ----------
+    scope : str
+        Fixture scope string (``"session"``, ``"module"``, ``"class"``,
+        ``"function"``).
+    kind : str
+        Fixture kind (``"resource"``, ``"factory"``, ``"override_hook"``).
+    autouse : bool
+        When True, renders AUTO state badge in slot 2 instead of a kind badge.
+    ret_type : str
+        Optional return-type string for the FIXTURE badge tooltip.
+
+    Returns
+    -------
+    str
+        Concatenated ``<span>`` HTML for all active badge slots.
+    """
+    badges: list[str] = []
+
+    # Slot 3 — FIXTURE (always, rightmost)
+    title_parts = [f"scope: {scope}"]
+    if ret_type:
+        title_parts.append(f"returns: {ret_type}")
+    fixture_title = " | ".join(title_parts)
+    badges.append(
+        f'<span class="spf-badge spf-badge--fixture"'
+        f' title="{fixture_title}">FIXTURE</span>',
+    )
+
+    # Slot 2 — kind or state (centre)
+    if autouse:
+        badges.append(
+            '<span class="spf-badge spf-badge--state" data-state="autouse">AUTO</span>',
+        )
+    elif kind == "factory":
+        badges.append(
+            '<span class="spf-badge spf-badge--kind"'
+            ' data-kind="factory">FACTORY</span>',
+        )
+    elif kind == "override_hook":
+        badges.append(
+            '<span class="spf-badge spf-badge--kind"'
+            ' data-kind="override_hook">OVERRIDE</span>',
+        )
+
+    # Slot 1 — scope (leftmost, only when non-function)
+    if scope and scope != "function":
+        badges.append(
+            f'<span class="spf-badge spf-badge--scope" data-scope="{scope}">'
+            f"{scope.upper()}</span>",
+        )
+
+    return "".join(badges)
 
 
 def _on_doctree_resolved(
@@ -1107,12 +1203,12 @@ def _on_doctree_resolved(
     doctree: nodes.document,
     docname: str,
 ) -> None:
-    """Append a ``spf-badge`` inline node to every ``py:fixture`` signature.
+    """Append a ``spf-badge-group`` span to every ``py:fixture`` signature.
 
     Runs after ``ViewcodeAnchorTransform`` has already converted
     ``viewcode_anchor`` nodes to resolved ``[source]`` reference nodes, so the
-    badge is always the last real child of each ``desc_signature`` — appearing
-    after the ``[source]`` link.
+    badge group is always the last real child of each ``desc_signature`` —
+    appearing after the ``[source]`` link.
 
     The ``¶`` headerlink is **not** a doctree node (it is injected by the HTML
     writer's ``depart_desc_signature()`` at write time), so it does not need to
@@ -1131,23 +1227,28 @@ def _on_doctree_resolved(
         if desc_node.get("objtype") != "fixture":
             continue
         for sig_node in desc_node.findall(addnodes.desc_signature):
-            # Idempotent: skip if already injected (e.g. incremental builds).
-            if any(
-                isinstance(c, nodes.raw) and "spf-badge" in c.astext()
-                for c in sig_node.children
-            ):
+            # Idempotent sentinel — replaces the fragile string-search check.
+            if sig_node.get("spf_badges_injected"):
                 continue
+            sig_node["spf_badges_injected"] = True
+
+            scope = sig_node.get("spf_scope", "function")
+            kind = sig_node.get("spf_kind", "resource")
+            autouse = sig_node.get("spf_autouse", False)
+            ret_type = sig_node.get("spf_ret_type", "")
+
+            inner = _build_badge_html(scope, kind, autouse, ret_type)
             # Use nodes.raw so the badge HTML is emitted verbatim by the HTML
             # writer — bypassing visit_desc_signature's protect_literal_text
             # counter, which would otherwise wrap every text token in a
             # <span class="pre"> and cause Furo's block-display styling on
             # that element to collapse the badge to one character width.
-            badge = nodes.raw(
+            badge_group = nodes.raw(
                 "",
-                '<span class="spf-badge">fixture</span>',
+                f'<span class="spf-badge-group">{inner}</span>',
                 format="html",
             )
-            sig_node += badge
+            sig_node += badge_group
 
 
 # ---------------------------------------------------------------------------

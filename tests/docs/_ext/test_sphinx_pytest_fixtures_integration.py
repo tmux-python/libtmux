@@ -525,6 +525,39 @@ def test_function_scope_field_suppressed(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.mark.integration
+def test_badge_group_present_in_html(tmp_path: pathlib.Path) -> None:
+    """Every fixture signature contains a spf-badge-group span."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "spf-badge-group" in index_html, (
+        "Expected spf-badge-group to be present in rendered HTML"
+    )
+    assert "spf-badge--fixture" in index_html, (
+        "Expected FIXTURE badge (spf-badge--fixture) to be present in rendered HTML"
+    )
+
+
+@pytest.mark.integration
+def test_scope_badge_session_present(tmp_path: pathlib.Path) -> None:
+    """Session-scope fixtures have a scope badge with data-scope=session."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert 'data-scope="session"' in index_html, (
+        "Expected data-scope=session badge for my_server (scope=session)"
+    )
+
+
+@pytest.mark.integration
+def test_no_scope_badge_for_function_scope(tmp_path: pathlib.Path) -> None:
+    """Function-scope fixtures do not have a scope badge in the HTML."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert 'data-scope="function"' not in index_html, (
+        "Function-scope fixtures should not render a scope badge"
+    )
+
+
+@pytest.mark.integration
 def test_session_scope_lifecycle_note_present(tmp_path: pathlib.Path) -> None:
     """Session-scope fixtures have a lifecycle callout note in HTML."""
     result = _build_sphinx_app(tmp_path)

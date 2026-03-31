@@ -492,3 +492,47 @@ def test_iter_injectable_params_skips_kwargs() -> None:
     assert names == ["server"]
     assert "args" not in names
     assert "kwargs" not in names
+
+
+# ---------------------------------------------------------------------------
+# _build_badge_html — badge group HTML (Commit 4)
+# ---------------------------------------------------------------------------
+
+
+def test_build_badge_html_fixture_only() -> None:
+    """Function-scope resource fixture has only FIXTURE badge."""
+    html = sphinx_pytest_fixtures._build_badge_html("function", "resource", False)
+    assert "spf-badge--fixture" in html
+    assert "spf-badge--scope" not in html
+    assert "spf-badge--kind" not in html
+
+
+def test_build_badge_html_session_scope() -> None:
+    """Session-scope shows scope badge with data-scope=session."""
+    html = sphinx_pytest_fixtures._build_badge_html("session", "resource", False)
+    assert 'data-scope="session"' in html
+    assert "spf-badge--scope" in html
+
+
+def test_build_badge_html_override_kind() -> None:
+    """override_hook fixtures show OVERRIDE badge."""
+    html = sphinx_pytest_fixtures._build_badge_html("function", "override_hook", False)
+    assert 'data-kind="override_hook"' in html
+    assert "OVERRIDE" in html
+    assert "spf-badge--kind" in html
+
+
+def test_build_badge_html_autouse_replaces_kind() -> None:
+    """autouse=True shows AUTO state badge instead of kind badge."""
+    html = sphinx_pytest_fixtures._build_badge_html("function", "resource", True)
+    assert 'data-state="autouse"' in html
+    assert "AUTO" in html
+    assert "spf-badge--kind" not in html
+
+
+def test_build_badge_html_factory_session() -> None:
+    """Factory fixture with session scope shows both scope and kind badges."""
+    html = sphinx_pytest_fixtures._build_badge_html("session", "factory", False)
+    assert 'data-scope="session"' in html
+    assert 'data-kind="factory"' in html
+    assert "FACTORY" in html
