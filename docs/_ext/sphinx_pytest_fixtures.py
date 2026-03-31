@@ -262,7 +262,9 @@ def _is_factory(obj: t.Any) -> bool:
         ``TestServer``) when no annotation is present.
     """
     ret = _get_return_annotation(obj)
-    if ret is inspect.Parameter.empty:
+    # t.Any means the annotation carries no type information — fall through
+    # to the name convention heuristic, same as unannotated.
+    if ret is inspect.Parameter.empty or ret is t.Any:
         fn = _get_fixture_fn(obj)
         return fn.__name__[:1].isupper()
     origin = t.get_origin(ret)
