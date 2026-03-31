@@ -9,6 +9,7 @@ callable signatures.
 from __future__ import annotations
 
 import collections.abc
+import dataclasses
 import inspect
 import typing as t
 from dataclasses import dataclass
@@ -273,11 +274,100 @@ def _get_spf_store(env: t.Any) -> dict[str, t.Any]:
     return store  # type: ignore[no-any-return]
 
 
-def _on_env_purge_doc(app: Sphinx, env: t.Any, docname: str) -> None:
-    """Remove all fixture records for a doc being re-processed.
+# ---------------------------------------------------------------------------
+# Store finalization — one-shot index rebuild after all docs are read
+# ---------------------------------------------------------------------------
 
-    Called by Sphinx before re-reading a source file during incremental builds.
-    Ensures stale fixture metadata is not carried over.
+
+def _rebuild_public_to_canon(store: dict[str, t.Any]) -> None:
+    """Rebuild ``public_to_canon`` from the ``fixtures`` registry.
+
+    Marks public names that map to multiple canonical names as ``None``
+    (ambiguous).
+    """
+    pub_map: dict[str, str | None] = {}
+    for canon, meta in store["fixtures"].items():
+        pub = meta.public_name
+        if pub in pub_map and pub_map[pub] != canon:
+            pub_map[pub] = None  # ambiguous
+        else:
+            pub_map[pub] = canon
+    store["public_to_canon"] = pub_map
+
+
+def _rebind_dep_targets(store: dict[str, t.Any]) -> None:
+    """Rebind ALL ``FixtureDep.target`` values from the current ``public_to_canon``.
+
+    Handles forward references (``None`` → resolved), stale references
+    (old canonical → updated/``None``), and purged providers (resolved →
+    ``None``).  Uses ``dataclasses.replace`` on the frozen dataclasses.
+    """
+    p2c = store["public_to_canon"]
+    updated: dict[str, FixtureMeta] = {}
+    for canon, meta in store["fixtures"].items():
+        new_deps: list[FixtureDep] = []
+        changed = False
+        for dep in meta.deps:
+            if dep.kind == "fixture":
+                correct_target = p2c.get(dep.display_name)
+                if correct_target != dep.target:
+                    new_deps.append(dataclasses.replace(dep, target=correct_target))
+                    changed = True
+                    continue
+            new_deps.append(dep)
+        if changed:
+            updated[canon] = dataclasses.replace(meta, deps=tuple(new_deps))
+    store["fixtures"].update(updated)
+
+
+def _rebuild_reverse_deps(store: dict[str, t.Any]) -> None:
+    """Rebuild ``reverse_deps`` from the finalized ``fixtures`` registry.
+
+    Skips self-edges (a fixture depending on itself).
+    """
+    rev: dict[str, list[str]] = {}
+    for canon, meta in store["fixtures"].items():
+        for dep in meta.deps:
+            if dep.kind == "fixture" and dep.target and dep.target != canon:
+                rev.setdefault(dep.target, [])
+                if canon not in rev[dep.target]:
+                    rev[dep.target].append(canon)
+    store["reverse_deps"] = {k: sorted(v) for k, v in rev.items()}
+
+
+def _finalize_store(store: dict[str, t.Any]) -> None:
+    """One-shot finalization: rebuild all derived indices from ``fixtures``.
+
+    Called via the ``env-updated`` event, which fires once after all
+    parallel merges are complete and before ``doctree-resolved``.
+    """
+    _rebuild_public_to_canon(store)
+    _rebind_dep_targets(store)
+    _rebuild_reverse_deps(store)
+
+
+def _on_env_updated(app: Sphinx, env: t.Any) -> None:
+    """Finalize the fixture store after all documents are read and merged.
+
+    Parameters
+    ----------
+    app : Sphinx
+        The Sphinx application.
+    env : Any
+        The Sphinx build environment.
+    """
+    _finalize_store(_get_spf_store(env))
+
+
+# ---------------------------------------------------------------------------
+# Incremental / parallel build env hooks
+# ---------------------------------------------------------------------------
+
+
+def _on_env_purge_doc(app: Sphinx, env: t.Any, docname: str) -> None:
+    """Remove fixture records for a doc being re-processed.
+
+    Index rebuilds are deferred to :func:`_finalize_store` via ``env-updated``.
 
     Parameters
     ----------
@@ -292,15 +382,6 @@ def _on_env_purge_doc(app: Sphinx, env: t.Any, docname: str) -> None:
     to_remove = [k for k, v in store["fixtures"].items() if v.docname == docname]
     for k in to_remove:
         del store["fixtures"][k]
-    # Rebuild public_to_canon from the surviving fixtures.
-    pub_map: dict[str, str | None] = {}
-    for canon, meta in store["fixtures"].items():
-        pub = meta.public_name
-        if pub in pub_map and pub_map[pub] != canon:
-            pub_map[pub] = None  # ambiguous
-        else:
-            pub_map[pub] = canon
-    store["public_to_canon"] = pub_map
 
 
 def _on_env_merge_info(
@@ -311,8 +392,7 @@ def _on_env_merge_info(
 ) -> None:
     """Merge fixture metadata from parallel-build sub-environments.
 
-    Called by Sphinx when parallel readers finish to merge their env stores
-    into the primary env.  Uses last-write-wins per canonical_name.
+    Index rebuilds are deferred to :func:`_finalize_store` via ``env-updated``.
 
     Parameters
     ----------
@@ -328,15 +408,6 @@ def _on_env_merge_info(
     store = _get_spf_store(env)
     other_store = _get_spf_store(other)
     store["fixtures"].update(other_store["fixtures"])
-    # Rebuild public_to_canon from the merged fixture set.
-    pub_map: dict[str, str | None] = {}
-    for canon, meta in store["fixtures"].items():
-        pub = meta.public_name
-        if pub in pub_map and pub_map[pub] != canon:
-            pub_map[pub] = None  # ambiguous
-        else:
-            pub_map[pub] = canon
-    store["public_to_canon"] = pub_map
 
 
 def _register_fixture_meta(
@@ -1826,6 +1897,7 @@ def setup(app: Sphinx) -> SetupDict:
     app.connect("doctree-resolved", _on_doctree_resolved)
     app.connect("env-purge-doc", _on_env_purge_doc)
     app.connect("env-merge-info", _on_env_merge_info)
+    app.connect("env-updated", _on_env_updated)
 
     return {
         "version": "1.0",

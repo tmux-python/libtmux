@@ -308,6 +308,7 @@ def test_setup_event_connections() -> None:
     assert "doctree-resolved" in event_names
     assert "env-purge-doc" in event_names
     assert "env-merge-info" in event_names
+    assert "env-updated" in event_names
 
     handlers = dict(connections)
     assert handlers["missing-reference"] is sphinx_pytest_fixtures._on_missing_reference
@@ -566,3 +567,165 @@ def test_public_to_canon_idempotent() -> None:
         store["public_to_canon"][public_name] = None
 
     assert store["public_to_canon"]["server"] == "mod.server"
+
+
+# ---------------------------------------------------------------------------
+# _finalize_store — store finalization
+# ---------------------------------------------------------------------------
+
+
+def _make_meta(
+    canonical: str,
+    public: str,
+    deps: tuple[sphinx_pytest_fixtures.FixtureDep, ...] = (),
+    docname: str = "api",
+) -> sphinx_pytest_fixtures.FixtureMeta:
+    """Build a minimal FixtureMeta for unit tests."""
+    return sphinx_pytest_fixtures.FixtureMeta(
+        docname=docname,
+        canonical_name=canonical,
+        public_name=public,
+        source_name=public,
+        scope="function",
+        autouse=False,
+        kind="resource",
+        return_display="str",
+        return_xref_target=None,
+        deps=deps,
+        param_reprs=(),
+        has_teardown=False,
+        is_async=False,
+    )
+
+
+def test_finalize_store_forward_reference() -> None:
+    """_finalize_store resolves forward-reference dep targets."""
+    env = types.SimpleNamespace(domaindata={})
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+
+    # consumer registered before provider → dep.target is None
+    consumer_dep = sphinx_pytest_fixtures.FixtureDep(
+        display_name="provider", kind="fixture", target=None
+    )
+    store["fixtures"]["mod.consumer"] = _make_meta(
+        "mod.consumer", "consumer", deps=(consumer_dep,)
+    )
+    store["fixtures"]["mod.provider"] = _make_meta("mod.provider", "provider")
+
+    sphinx_pytest_fixtures._finalize_store(store)
+
+    resolved_dep = store["fixtures"]["mod.consumer"].deps[0]
+    assert resolved_dep.target == "mod.provider"
+
+
+def test_finalize_store_empty_store() -> None:
+    """_finalize_store on an empty store completes without error."""
+    env = types.SimpleNamespace(domaindata={})
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+    sphinx_pytest_fixtures._finalize_store(store)
+    assert store["fixtures"] == {}
+    assert store["public_to_canon"] == {}
+    assert store["reverse_deps"] == {}
+
+
+def test_finalize_store_self_dependency() -> None:
+    """_finalize_store skips self-edges in reverse_deps."""
+    env = types.SimpleNamespace(domaindata={})
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+
+    self_dep = sphinx_pytest_fixtures.FixtureDep(
+        display_name="self_ref", kind="fixture", target=None
+    )
+    store["fixtures"]["mod.self_ref"] = _make_meta(
+        "mod.self_ref", "self_ref", deps=(self_dep,)
+    )
+
+    sphinx_pytest_fixtures._finalize_store(store)
+
+    # dep.target resolves to itself, but reverse_deps should not contain self-edge
+    assert "mod.self_ref" not in store["reverse_deps"].get("mod.self_ref", [])
+
+
+def test_finalize_store_ambiguous_public_name() -> None:
+    """_finalize_store marks ambiguous public names as None in public_to_canon."""
+    env = types.SimpleNamespace(domaindata={})
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+
+    store["fixtures"]["mod_a.server"] = _make_meta("mod_a.server", "server")
+    store["fixtures"]["mod_b.server"] = _make_meta("mod_b.server", "server")
+
+    sphinx_pytest_fixtures._finalize_store(store)
+
+    assert store["public_to_canon"]["server"] is None
+
+
+def test_finalize_store_reverse_deps() -> None:
+    """_finalize_store populates reverse_deps from fixture deps."""
+    env = types.SimpleNamespace(domaindata={})
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+
+    dep_on_server = sphinx_pytest_fixtures.FixtureDep(
+        display_name="server", kind="fixture", target="mod.server"
+    )
+    store["fixtures"]["mod.server"] = _make_meta("mod.server", "server")
+    store["fixtures"]["mod.client"] = _make_meta(
+        "mod.client", "client", deps=(dep_on_server,)
+    )
+
+    sphinx_pytest_fixtures._finalize_store(store)
+
+    assert "mod.client" in store["reverse_deps"]["mod.server"]
+
+
+def test_finalize_store_parallel_merge() -> None:
+    """_finalize_store resolves deps after parallel worker merge."""
+    # Simulate primary env with consumer, sub-env with provider
+    primary_env = types.SimpleNamespace(domaindata={})
+    primary_store = sphinx_pytest_fixtures._get_spf_store(primary_env)
+
+    consumer_dep = sphinx_pytest_fixtures.FixtureDep(
+        display_name="provider", kind="fixture", target=None
+    )
+    primary_store["fixtures"]["mod.consumer"] = _make_meta(
+        "mod.consumer", "consumer", deps=(consumer_dep,)
+    )
+
+    # Simulate sub-env merge
+    sub_env = types.SimpleNamespace(domaindata={})
+    sub_store = sphinx_pytest_fixtures._get_spf_store(sub_env)
+    sub_store["fixtures"]["mod.provider"] = _make_meta(
+        "mod.provider", "provider", docname="other"
+    )
+
+    # Merge (what _on_env_merge_info does)
+    primary_store["fixtures"].update(sub_store["fixtures"])
+
+    # Finalize
+    sphinx_pytest_fixtures._finalize_store(primary_store)
+
+    resolved_dep = primary_store["fixtures"]["mod.consumer"].deps[0]
+    assert resolved_dep.target == "mod.provider"
+    assert "mod.consumer" in primary_store["reverse_deps"]["mod.provider"]
+
+
+def test_finalize_store_stale_target_after_purge() -> None:
+    """_finalize_store clears stale dep targets after provider is purged."""
+    env = types.SimpleNamespace(domaindata={})
+    store = sphinx_pytest_fixtures._get_spf_store(env)
+
+    dep_on_provider = sphinx_pytest_fixtures.FixtureDep(
+        display_name="provider", kind="fixture", target="mod.provider"
+    )
+    store["fixtures"]["mod.consumer"] = _make_meta(
+        "mod.consumer", "consumer", deps=(dep_on_provider,)
+    )
+    store["fixtures"]["mod.provider"] = _make_meta("mod.provider", "provider")
+
+    # Simulate purge of provider
+    del store["fixtures"]["mod.provider"]
+
+    sphinx_pytest_fixtures._finalize_store(store)
+
+    resolved_dep = store["fixtures"]["mod.consumer"].deps[0]
+    assert resolved_dep.target is None
+    assert "mod.provider" not in store["reverse_deps"]
