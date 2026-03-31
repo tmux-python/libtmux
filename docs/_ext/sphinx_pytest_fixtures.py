@@ -158,13 +158,19 @@ def _get_fixture_marker(obj: t.Any) -> _FixtureMarker:
     return obj._fixture_function_marker  # type: ignore[no-any-return]
 
 
-def _get_user_deps(obj: t.Any) -> list[tuple[str, t.Any]]:
+def _get_user_deps(
+    obj: t.Any,
+    hidden: frozenset[str] | None = None,
+) -> list[tuple[str, t.Any]]:
     """Return ``(name, annotation)`` pairs for user-visible fixture dependencies.
 
     Parameters
     ----------
     obj : Any
         A pytest fixture wrapper object.
+    hidden : frozenset[str] | None
+        Names to exclude from the dependency list.  When ``None``, falls back
+        to the module-level :data:`PYTEST_INTERNAL_FIXTURES` constant.
 
     Returns
     -------
@@ -173,12 +179,14 @@ def _get_user_deps(obj: t.Any) -> list[tuple[str, t.Any]]:
         These are the fixtures users need to provide (or that are auto-provided
         by other project fixtures).
     """
+    if hidden is None:
+        hidden = PYTEST_INTERNAL_FIXTURES
     fn = _get_fixture_fn(obj)
     sig = inspect.signature(fn)
     return [
         (name, param.annotation)
         for name, param in sig.parameters.items()
-        if name not in PYTEST_INTERNAL_FIXTURES
+        if name not in hidden
     ]
 
 
@@ -580,7 +588,12 @@ def _on_process_fixture_docstring(
     fixture_name = getattr(obj, "name", None) or fn.__name__
     ret = _get_return_annotation(obj)
     ret_str = _format_type_short(ret)
-    user_deps = _get_user_deps(obj)
+    hidden: frozenset[str] = (
+        getattr(app.config, "pytest_internal_fixtures", PYTEST_INTERNAL_FIXTURES)
+        if app is not None
+        else PYTEST_INTERNAL_FIXTURES
+    )
+    user_deps = _get_user_deps(obj, hidden=hidden)
 
     injected: list[str] = []
 
@@ -706,6 +719,7 @@ def setup(app: Sphinx) -> SetupDict:
         "pytest_internal_fixtures",
         default=PYTEST_INTERNAL_FIXTURES,
         rebuild="env",
+        types=[frozenset],
     )
 
     # Guard against re-registration when setup() is called multiple times.

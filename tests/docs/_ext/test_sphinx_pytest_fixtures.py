@@ -381,7 +381,7 @@ def test_setup_return_value() -> None:
 
     app = types.SimpleNamespace(
         setup_extension=lambda ext: None,
-        add_config_value=lambda name, default, rebuild: None,
+        add_config_value=lambda name, default, rebuild, **kw: None,
         add_directive_to_domain=lambda d, n, cls: None,
         add_role_to_domain=lambda d, n, role: None,
         add_autodocumenter=lambda cls: None,
@@ -400,7 +400,7 @@ def test_setup_event_connections() -> None:
 
     app = types.SimpleNamespace(
         setup_extension=lambda ext: None,
-        add_config_value=lambda name, default, rebuild: None,
+        add_config_value=lambda name, default, rebuild, **kw: None,
         add_directive_to_domain=lambda d, n, cls: None,
         add_role_to_domain=lambda d, n, role: None,
         add_autodocumenter=lambda cls: None,
@@ -426,7 +426,7 @@ def test_setup_registers_autodocumenter() -> None:
 
     app = types.SimpleNamespace(
         setup_extension=lambda ext: None,
-        add_config_value=lambda name, default, rebuild: None,
+        add_config_value=lambda name, default, rebuild, **kw: None,
         add_directive_to_domain=lambda d, n, cls: None,
         add_role_to_domain=lambda d, n, role: None,
         add_autodocumenter=lambda cls: registered.append(cls),
