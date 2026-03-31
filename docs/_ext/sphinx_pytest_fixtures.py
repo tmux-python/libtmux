@@ -390,6 +390,38 @@ def _is_overridable(obj: t.Any) -> bool:
     return "override" in doc.lower() or "conftest" in doc.lower()
 
 
+def _infer_kind(obj: t.Any, explicit_kind: str | None = None) -> str:
+    """Return the fixture kind, honouring an explicit override.
+
+    Priority chain:
+
+    1. *explicit_kind* — set via ``:kind:`` directive option by the author.
+    2. Type annotation — ``type[X]`` / ``Callable`` → ``"factory"``.
+    3. Heuristic overridable detection → ``"override_hook"``.
+    4. Default → ``"resource"``.
+
+    Parameters
+    ----------
+    obj : Any
+        A pytest fixture wrapper object.
+    explicit_kind : str | None
+        Value from the ``:kind:`` directive option, if provided.
+
+    Returns
+    -------
+    str
+        One of ``"resource"``, ``"factory"``, or ``"override_hook"`` (or any
+        custom string passed via ``:kind:``).
+    """
+    if explicit_kind:
+        return explicit_kind
+    if _is_factory(obj):
+        return "factory"
+    if _is_overridable(obj):
+        return "override_hook"
+    return "resource"
+
+
 # ---------------------------------------------------------------------------
 # PyFixtureDirective — py:fixture domain directive
 # ---------------------------------------------------------------------------
@@ -415,6 +447,7 @@ class PyFixtureDirective(PyFunction):
             "depends": directives.unchanged,
             "factory": directives.flag,
             "overridable": directives.flag,
+            "kind": directives.unchanged,  # explicit kind override
             "return-type": directives.unchanged,
             "usage": directives.unchanged,  # "auto" (default) or "none"
         },
@@ -511,6 +544,7 @@ class PyFixtureDirective(PyFunction):
         depends_str = self.options.get("depends", "")
         ret_type = self.options.get("return-type", "")
         show_usage = self.options.get("usage", "auto") != "none"
+        kind = self.options.get("kind", "")
 
         field_list = nodes.field_list()
 
@@ -520,6 +554,14 @@ class PyFixtureDirective(PyFunction):
             nodes.field_name("", "Scope"),
             nodes.field_body("", nodes.paragraph("", scope)),
         )
+
+        # --- Kind field (only when explicitly set or non-default) ---
+        if kind and kind != "resource":
+            field_list += nodes.field(
+                "",
+                nodes.field_name("", "Kind"),
+                nodes.field_body("", nodes.paragraph("", kind)),
+            )
 
         # --- Depends-on fields — project deps as :fixture: xrefs,
         #     builtin/external deps as external hyperlinks ---
@@ -713,10 +755,9 @@ class FixtureDocumenter(FunctionDocumenter):
         if ret is not inspect.Parameter.empty:
             self.add_line(f"   :return-type: {_format_type_short(ret)}", sourcename)
 
-        if _is_factory(self.object):
-            self.add_line("   :factory:", sourcename)
-        elif _is_overridable(self.object):
-            self.add_line("   :overridable:", sourcename)
+        kind = _infer_kind(self.object)
+        if kind != "resource":
+            self.add_line(f"   :kind: {kind}", sourcename)
 
 
 # ---------------------------------------------------------------------------
