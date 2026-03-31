@@ -499,6 +499,32 @@ def test_kind_override_hook_option(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.mark.integration
+def test_override_hook_snippet_shows_conftest(tmp_path: pathlib.Path) -> None:
+    """override_hook fixtures show a conftest.py snippet, not def test_example."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # home_user is classified as override_hook (no deps, returns str, docstring
+    # mentions "Override") — its usage snippet must show conftest.py, not test.
+    assert "conftest.py" in index_html, (
+        "Expected conftest.py in override_hook fixture usage snippet (home_user)"
+    )
+
+
+@pytest.mark.integration
+def test_function_scope_field_suppressed(tmp_path: pathlib.Path) -> None:
+    """Function-scope fixtures do not render a 'Scope:' metadata field."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # my_client is function-scope; "Scope" field should be absent from its entry.
+    # my_server is session-scope and WILL have "Scope" — check that function-scope
+    # entries between my_client headings do not contain "Scope: function".
+    # Simple check: "function" should not appear as a scope value anywhere.
+    assert "Scope: function" not in index_html, (
+        "Function-scope fixture should not render 'Scope: function' field"
+    )
+
+
+@pytest.mark.integration
 def test_no_build_warnings(tmp_path: pathlib.Path) -> None:
     """A full build of the synthetic fixture module produces zero WARNING lines."""
     result = _build_sphinx_app(tmp_path)

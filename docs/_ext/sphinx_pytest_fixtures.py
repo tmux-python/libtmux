@@ -209,9 +209,9 @@ def _get_fixture_marker(obj: t.Any) -> _FixtureMarker:
             return _FixtureFunctionDefinitionAdapter(marker)
     except ImportError:
         pass
-    marker = getattr(obj, "_fixture_function_marker", None)
-    if marker is not None:
-        return _FixtureFunctionDefinitionAdapter(marker)
+    old_marker = getattr(obj, "_fixture_function_marker", None)
+    if old_marker is not None:
+        return _FixtureFunctionDefinitionAdapter(old_marker)
     msg = f"pytest fixture marker metadata not found on {type(obj).__name__!r}"
     raise AttributeError(msg)
 
@@ -506,6 +506,105 @@ def _infer_kind(obj: t.Any, explicit_kind: str | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Usage snippet and layout helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_usage_snippet(
+    fixture_name: str,
+    ret_type: str | None,
+    kind: str,
+    scope: str,
+    autouse: bool,
+) -> nodes.Node | None:
+    """Return a doctree node for the kind-appropriate usage example.
+
+    Parameters
+    ----------
+    fixture_name : str
+        The fixture's injection name.
+    ret_type : str | None
+        The fixture's return type string, or empty/None when absent.
+    kind : str
+        One of ``"resource"``, ``"factory"``, or ``"override_hook"``.
+    scope : str
+        The fixture scope (used in the conftest decorator for override hooks).
+    autouse : bool
+        When True, returns a note admonition instead of a test snippet.
+
+    Returns
+    -------
+    nodes.Node | None
+        A ``literal_block`` or ``note`` node, or ``None`` for autouse fixtures.
+
+    Notes
+    -----
+    * ``resource``   → ``def test_example(name: Type) -> None: ...``
+    * ``factory``    → ``def test_example(Name) -> None: obj = Name(); ...``
+    * ``override_hook`` → ``conftest.py`` snippet with ``@pytest.fixture`` override
+    * ``autouse``    → ``nodes.note`` (no test snippet needed)
+    """
+    if autouse:
+        note = nodes.note()
+        note += nodes.paragraph(
+            "",
+            "No request needed \u2014 this fixture runs automatically for every test.",
+        )
+        return note
+
+    if kind == "override_hook":
+        scope_decorator = (
+            f'@pytest.fixture(scope="{scope}")\n'
+            if scope != "function"
+            else "@pytest.fixture\n"
+        )
+        ret_ann = f" -> {ret_type}" if ret_type else ""
+        code = (
+            "# conftest.py\n"
+            "import pytest\n\n\n"
+            f"{scope_decorator}"
+            f"def {fixture_name}(){ret_ann}:\n"
+            "    return ...  # your value here\n"
+        )
+    elif kind == "factory":
+        type_ann = f": {ret_type}" if ret_type else ""
+        code = (
+            f"def test_example({fixture_name}{type_ann}) -> None:\n"
+            f"    obj = {fixture_name}()\n"
+            "    assert obj is not None\n"
+        )
+    else:
+        sig_str = f"{fixture_name}: {ret_type}" if ret_type else fixture_name
+        code = f"def test_example({sig_str}) -> None:\n    ...\n"
+
+    return nodes.literal_block(code, code, language="python")
+
+
+def _summary_insert_index(content_node: addnodes.desc_content) -> int:
+    """Return insertion index just after the first paragraph in content_node.
+
+    The first paragraph is the docstring summary sentence. Metadata and
+    snippets should follow it (five-zone layout: sig → summary → metadata
+    → usage → body).
+
+    Parameters
+    ----------
+    content_node : addnodes.desc_content
+        The directive's content node.
+
+    Returns
+    -------
+    int
+        Index of the node slot immediately after the first paragraph child,
+        or ``0`` when no paragraph is found.
+    """
+    for i, child in enumerate(content_node.children):
+        if isinstance(child, nodes.paragraph):
+            return i + 1
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # PyFixtureDirective — py:fixture domain directive
 # ---------------------------------------------------------------------------
 
@@ -699,22 +798,31 @@ class PyFixtureDirective(PyFunction):
                     nodes.field_body("", body_para),
                 )
 
-        if field_list.children:
-            content_node.insert(0, field_list)
+        # --- Usage snippet (five-zone insertion after first paragraph) ---
+        raw_arg = self.arguments[0] if self.arguments else ""
+        fixture_name = raw_arg.split("(")[0].strip()
 
-        # --- Usage snippet (literal_block, not a field — passes unchanged) ---
-        if show_usage and self.arguments:
-            # Extract fixture name from directive argument "name() -> RetType"
-            raw_arg = self.arguments[0]
-            fixture_name = raw_arg.split("(")[0].strip()
-            if not fixture_name:
-                return
-            sig_str = f"{fixture_name}: {ret_type}" if ret_type else fixture_name
-            code = f"def test_example({sig_str}) -> None:\n    ...\n"
-            usage_node = nodes.literal_block(code, code, language="python")
-            # Insert AFTER the field_list (or at start if no fields)
-            insert_idx = 1 if field_list.children else 0
-            content_node.insert(insert_idx, usage_node)
+        snippet: nodes.Node | None = None
+        if show_usage and fixture_name:
+            snippet = _build_usage_snippet(
+                fixture_name,
+                ret_type or None,
+                kind or "resource",
+                scope,
+                autouse,
+            )
+
+        # Collect generated nodes and insert in five-zone order after summary
+        generated: list[nodes.Node] = []
+        if field_list.children:
+            generated.append(field_list)
+        if snippet is not None:
+            generated.append(snippet)
+
+        if generated:
+            insert_idx = _summary_insert_index(content_node)
+            for node in reversed(generated):
+                content_node.insert(insert_idx, node)
 
     def add_target_and_index(
         self,
