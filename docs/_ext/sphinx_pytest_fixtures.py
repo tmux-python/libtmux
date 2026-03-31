@@ -14,7 +14,8 @@ import typing as t
 from dataclasses import dataclass
 
 from docutils import nodes
-from docutils.parsers.rst import directives
+from docutils.parsers.rst import Directive, directives
+from docutils.statemachine import ViewList
 from sphinx import addnodes
 from sphinx.domains import ObjType
 from sphinx.domains.python import PyFunction, PythonDomain, PyXRefRole
@@ -1755,6 +1756,108 @@ def _on_doctree_resolved(
 
 
 # ---------------------------------------------------------------------------
+# AutofixturesDirective — bulk fixture discovery
+# ---------------------------------------------------------------------------
+
+
+class AutofixturesDirective(Directive):
+    """Bulk fixture autodoc directive: ``.. autofixtures:: module.name``.
+
+    Scans *module.name* for all pytest fixtures and emits one
+    ``.. autofixture::`` directive per fixture found.  This eliminates
+    the need to list every fixture manually in docs.
+
+    Usage::
+
+        .. autofixtures:: libtmux.pytest_plugin
+           :order: source
+           :exclude: clear_env
+
+    Options
+    -------
+    order : str, optional
+        ``"source"`` (default) preserves module attribute order.
+        ``"alpha"`` sorts fixtures alphabetically by public name.
+    exclude : str, optional
+        Comma-separated list of fixture public names to skip.
+    """
+
+    required_arguments = 1
+    optional_arguments = 0
+    has_content = False
+    option_spec: t.ClassVar[dict[str, t.Any]] = {
+        "order": directives.unchanged,
+        "exclude": directives.unchanged,
+    }
+
+    def run(self) -> list[nodes.Node]:
+        """Scan the module and emit autofixture directives."""
+        import importlib
+
+        modname = self.arguments[0].strip()
+        order = self.options.get("order", "source")
+        exclude_str = self.options.get("exclude", "")
+        excluded: set[str] = {
+            name.strip() for name in exclude_str.split(",") if name.strip()
+        }
+
+        try:
+            module = importlib.import_module(modname)
+        except ImportError:
+            logger.warning(
+                "autofixtures: cannot import module %r — skipping.",
+                modname,
+            )
+            return []
+
+        # Collect all (attr_name, public_name, fixture_obj) triples.
+        entries: list[tuple[str, str, t.Any]] = []
+        seen_public: set[str] = set()
+        for attr_name, value in vars(module).items():
+            if not _is_pytest_fixture(value):
+                continue
+            try:
+                marker = _get_fixture_marker(value)
+            except AttributeError:
+                continue
+            public_name = marker.name or _get_fixture_fn(value).__name__
+            if public_name in excluded:
+                continue
+            if public_name in seen_public:
+                logger.warning(
+                    "autofixtures: duplicate public name %r in %s; skipping duplicate.",
+                    public_name,
+                    modname,
+                )
+                continue
+            seen_public.add(public_name)
+            entries.append((attr_name, public_name, value))
+
+        if order == "alpha":
+            entries.sort(key=lambda e: e[1])
+
+        # Build RST content: one ``autofixture::`` directive per fixture.
+        source = f"<autofixtures:{modname}>"
+        lines: list[str] = []
+        for _attr_name, public_name, _value in entries:
+            lines.append(f".. autofixture:: {modname}.{public_name}")
+            lines.append("")
+        rst_lines = ViewList(lines, source=source)
+
+        # Parse the generated RST into a container node.
+        # ViewList is compatible with nested_parse at runtime even though
+        # docutils stubs declare StringList — suppress the type mismatch.
+        container = nodes.section()
+        container.document = self.state.document
+        self.state.nested_parse(
+            rst_lines,  # type: ignore[arg-type]
+            self.content_offset,
+            container,
+        )
+        return container.children
+
+
+# ---------------------------------------------------------------------------
 # setup()
 # ---------------------------------------------------------------------------
 
@@ -1814,6 +1917,7 @@ def setup(app: Sphinx) -> SetupDict:
     app.add_role_to_domain("py", "fixture", PyXRefRole())
 
     app.add_autodocumenter(FixtureDocumenter)
+    app.add_directive("autofixtures", AutofixturesDirective)
 
     app.connect("autodoc-process-docstring", _on_process_fixture_docstring)
     app.connect("missing-reference", _on_missing_reference)

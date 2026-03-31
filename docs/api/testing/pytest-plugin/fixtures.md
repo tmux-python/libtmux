@@ -80,3 +80,17 @@ Override these in your project's `conftest.py` to customise the test environment
 ```{eval-rst}
 .. autofixture:: libtmux.pytest_plugin.clear_env
 ```
+
+---
+
+```{note}
+All fixtures above are also auto-discoverable via:
+
+```{eval-rst}
+.. autofixtures:: libtmux.pytest_plugin
+   :order: source
+```
+
+Use ``autofixtures::`` in your own plugin docs to document all fixtures from a
+module without listing each one manually.
+```
