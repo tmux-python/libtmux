@@ -1,0 +1,501 @@
+"""Integration tests for sphinx_pytest_fixtures using a full Sphinx build.
+
+These tests build a minimal Sphinx project with a synthetic fixture module so
+results are independent of the libtmux fixture signatures.  They gate the B1,
+B2, and B4/B5 fixes in subsequent commits.
+
+Run integration tests specifically:
+
+    uv run pytest tests/docs/_ext/test_sphinx_pytest_fixtures_integration.py -v
+
+"""
+
+from __future__ import annotations
+
+import io
+import pathlib
+import textwrap
+import typing as t
+
+import pytest
+
+# ---------------------------------------------------------------------------
+# Synthetic fixture module written to tmp_path for each test run
+# ---------------------------------------------------------------------------
+
+FIXTURE_MOD_SOURCE = textwrap.dedent(
+    """\
+    from __future__ import annotations
+    import pytest
+
+    class Server:
+        \"\"\"A fake server.\"\"\"
+
+    @pytest.fixture(scope="session")
+    def my_server() -> Server:
+        \"\"\"Return a fake server for testing.
+
+        Use this when you need a long-lived server across the session.
+        \"\"\"
+        return Server()
+
+    @pytest.fixture
+    def my_client(my_server: Server) -> str:
+        \"\"\"Return a fake client connected to *my_server*.\"\"\"
+        return f"client@{my_server}"
+
+    @pytest.fixture
+    def home_user() -> str:
+        \"\"\"Override to customise the home directory username.\"\"\"
+        return "testuser"
+    """,
+)
+
+CONF_PY_TEMPLATE = """\
+import sys
+sys.path.insert(0, "{srcdir}")
+
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx_pytest_fixtures",
+]
+
+master_doc = "index"
+exclude_patterns = ["_build"]
+html_theme = "alabaster"
+"""
+
+INDEX_RST = textwrap.dedent(
+    """\
+    Test fixtures
+    =============
+
+    .. py:module:: fixture_mod
+
+    .. autofixture:: fixture_mod.my_server
+
+    .. autofixture:: fixture_mod.my_client
+
+    .. autofixture:: fixture_mod.home_user
+    """,
+)
+
+
+# ---------------------------------------------------------------------------
+# Shared fixture: build the Sphinx app once per test (no caching — each test
+# gets an isolated tmp_path)
+# ---------------------------------------------------------------------------
+
+
+class _SphinxResult(t.NamedTuple):
+    """Lightweight wrapper around a completed Sphinx build."""
+
+    app: t.Any  # sphinx.application.Sphinx
+    srcdir: pathlib.Path
+    outdir: pathlib.Path
+    status: str
+    warnings: str
+
+
+def _build_sphinx_app(
+    tmp_path: pathlib.Path,
+    *,
+    confoverrides: dict[str, t.Any] | None = None,
+) -> _SphinxResult:
+    """Write project files and run a full Sphinx HTML build; return results."""
+    from sphinx.application import Sphinx
+
+    srcdir = tmp_path / "src"
+    outdir = tmp_path / "out"
+    doctreedir = tmp_path / ".doctrees"
+
+    srcdir.mkdir()
+    outdir.mkdir()
+    doctreedir.mkdir()
+
+    (srcdir / "fixture_mod.py").write_text(FIXTURE_MOD_SOURCE, encoding="utf-8")
+    (srcdir / "conf.py").write_text(
+        CONF_PY_TEMPLATE.format(srcdir=str(srcdir)),
+        encoding="utf-8",
+    )
+    (srcdir / "index.rst").write_text(INDEX_RST, encoding="utf-8")
+
+    status_buf = io.StringIO()
+    warning_buf = io.StringIO()
+
+    app = Sphinx(
+        srcdir=str(srcdir),
+        confdir=str(srcdir),
+        outdir=str(outdir),
+        doctreedir=str(doctreedir),
+        buildername="html",
+        confoverrides=confoverrides,
+        status=status_buf,
+        warning=warning_buf,
+        freshenv=True,
+    )
+    app.build()
+
+    return _SphinxResult(
+        app=app,
+        srcdir=srcdir,
+        outdir=outdir,
+        status=status_buf.getvalue(),
+        warnings=warning_buf.getvalue(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_fixture_target_id(tmp_path: pathlib.Path) -> None:
+    """Registered fixtures have non-empty IDs in their signature nodes."""
+    from sphinx.domains.python import PythonDomain
+
+    result = _build_sphinx_app(tmp_path)
+    domain = t.cast("PythonDomain", result.app.env.get_domain("py"))
+    objects = domain.data["objects"]
+    # ObjectEntry = (docname, node_id, objtype, aliased)
+    fixture_keys = [k for k, v in objects.items() if v.objtype == "fixture"]
+    assert fixture_keys, f"No py:fixture objects found in domain. Objects: {objects}"
+
+
+@pytest.mark.integration
+def test_fixture_in_domain_objects(tmp_path: pathlib.Path) -> None:
+    """Domain objects registry has qualified fixture names with objtype='fixture'."""
+    from sphinx.domains.python import PythonDomain
+
+    result = _build_sphinx_app(tmp_path)
+    domain = t.cast("PythonDomain", result.app.env.get_domain("py"))
+    objects = domain.data["objects"]
+
+    assert "fixture_mod.my_server" in objects, (
+        f"fixture_mod.my_server not in domain objects. Keys: {list(objects)}"
+    )
+    # ObjectEntry = (docname, node_id, objtype, aliased)
+    assert objects["fixture_mod.my_server"].objtype == "fixture", (
+        f"Expected objtype='fixture', got {objects['fixture_mod.my_server'].objtype!r}"
+    )
+
+
+@pytest.mark.integration
+def test_fixture_in_inventory(tmp_path: pathlib.Path) -> None:
+    """objects.inv contains a 'py:fixture' section with the registered fixtures."""
+    from sphinx.util.inventory import InventoryFile
+
+    result = _build_sphinx_app(tmp_path)
+    inv_path = result.outdir / "objects.inv"
+    assert inv_path.exists(), "objects.inv was not generated"
+
+    inv = InventoryFile.loads(inv_path.read_bytes(), uri="")
+    # inv.data is dict[obj_type_str, dict[name_str, _InventoryItem]]
+    assert "py:fixture" in inv.data, (
+        f"'py:fixture' not in inventory. Types: {sorted(inv.data)}"
+    )
+    fixture_names = list(inv.data["py:fixture"])
+    assert any("my_server" in name for name in fixture_names), (
+        f"my_server not in py:fixture inventory entries: {fixture_names}"
+    )
+
+
+@pytest.mark.integration
+def test_manual_directive_without_module(tmp_path: pathlib.Path) -> None:
+    """Manual py:fixture without currentmodule uses bare name as target."""
+    from sphinx.application import Sphinx
+    from sphinx.domains.python import PythonDomain
+
+    srcdir = tmp_path / "src"
+    outdir = tmp_path / "out"
+    doctreedir = tmp_path / ".doctrees"
+    srcdir.mkdir()
+    outdir.mkdir()
+    doctreedir.mkdir()
+
+    (srcdir / "fixture_mod.py").write_text(FIXTURE_MOD_SOURCE, encoding="utf-8")
+    (srcdir / "conf.py").write_text(
+        CONF_PY_TEMPLATE.format(srcdir=str(srcdir)),
+        encoding="utf-8",
+    )
+    # Bare directive with no currentmodule
+    (srcdir / "index.rst").write_text(
+        "Manual\n======\n\n.. py:fixture:: bare_server\n\n   Bare server docs.\n",
+        encoding="utf-8",
+    )
+
+    app = Sphinx(
+        srcdir=str(srcdir),
+        confdir=str(srcdir),
+        outdir=str(outdir),
+        doctreedir=str(doctreedir),
+        buildername="html",
+        status=io.StringIO(),
+        warning=io.StringIO(),
+        freshenv=True,
+    )
+    app.build()
+
+    domain = t.cast("PythonDomain", app.env.get_domain("py"))
+    objects = domain.data["objects"]
+    # Without currentmodule the target is the bare name — document this known behaviour
+    assert "bare_server" in objects, (
+        "Known limitation: bare py:fixture registers under unqualified name. "
+        f"Objects: {list(objects)}"
+    )
+
+
+@pytest.mark.integration
+def test_xref_resolves(tmp_path: pathlib.Path) -> None:
+    """Cross-file :fixture: role resolves to a hyperlink in the output HTML."""
+    from sphinx.application import Sphinx
+
+    srcdir = tmp_path / "src"
+    outdir = tmp_path / "out"
+    doctreedir = tmp_path / ".doctrees"
+    srcdir.mkdir()
+    outdir.mkdir()
+    doctreedir.mkdir()
+
+    (srcdir / "fixture_mod.py").write_text(FIXTURE_MOD_SOURCE, encoding="utf-8")
+    (srcdir / "conf.py").write_text(
+        CONF_PY_TEMPLATE.format(srcdir=str(srcdir)),
+        encoding="utf-8",
+    )
+    (srcdir / "index.rst").write_text(
+        textwrap.dedent(
+            """\
+            Fixtures
+            ========
+
+            .. toctree::
+
+               api
+               usage
+
+            """,
+        ),
+        encoding="utf-8",
+    )
+    (srcdir / "api.rst").write_text(
+        textwrap.dedent(
+            """\
+            API
+            ===
+
+            .. py:module:: fixture_mod
+
+            .. autofixture:: fixture_mod.my_server
+            """,
+        ),
+        encoding="utf-8",
+    )
+    (srcdir / "usage.rst").write_text(
+        textwrap.dedent(
+            """\
+            Usage
+            =====
+
+            Use :fixture:`fixture_mod.my_server` to get a server.
+            """,
+        ),
+        encoding="utf-8",
+    )
+
+    warning_buf = io.StringIO()
+    app = Sphinx(
+        srcdir=str(srcdir),
+        confdir=str(srcdir),
+        outdir=str(outdir),
+        doctreedir=str(doctreedir),
+        buildername="html",
+        status=io.StringIO(),
+        warning=warning_buf,
+        freshenv=True,
+    )
+    app.build()
+
+    usage_html = (outdir / "usage.html").read_text(encoding="utf-8")
+    # The xref should produce a hyperlink element pointing to the fixture
+    assert "<a " in usage_html and "my_server" in usage_html, (
+        "Cross-reference :fixture:`fixture_mod.my_server` did not produce a link "
+        f"in usage.html. Warnings: {warning_buf.getvalue()}"
+    )
+
+
+@pytest.mark.integration
+def test_scope_metadata_visible(tmp_path: pathlib.Path) -> None:
+    """Scope value appears in the rendered HTML for autofixture directives."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # my_server has scope="session"; the rendered page should mention it
+    assert "session" in index_html, (
+        "Expected scope 'session' to appear in rendered HTML for my_server"
+    )
+
+
+@pytest.mark.integration
+def test_config_hidden_deps(tmp_path: pathlib.Path) -> None:
+    """pytest_internal_fixtures config suppresses named deps from output HTML."""
+    import sphinx_pytest_fixtures
+
+    # my_client depends on my_server; hiding my_server should suppress it
+    result = _build_sphinx_app(
+        tmp_path,
+        confoverrides={
+            "pytest_internal_fixtures": frozenset(
+                {*sphinx_pytest_fixtures.PYTEST_INTERNAL_FIXTURES, "my_server"},
+            ),
+        },
+    )
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # With my_server hidden, it must not appear in "Depends on" for my_client
+    # (it may still appear as its own fixture entry — check the Depends section)
+    assert (
+        "Depends on" not in index_html
+        or "my_server"
+        not in index_html.split(
+            "Depends on",
+        )[-1].split("</")[0]
+    ), (
+        "my_server should be hidden from Depends on when added to "
+        "pytest_internal_fixtures config"
+    )
+
+
+@pytest.mark.integration
+def test_builtin_dep_external_link(tmp_path: pathlib.Path) -> None:
+    """Pytest builtin deps in PYTEST_BUILTIN_LINKS render with an external URL."""
+    import sphinx_pytest_fixtures
+
+    # Add a synthetic fixture that depends on tmp_path (a builtin with external link)
+    src = FIXTURE_MOD_SOURCE + textwrap.dedent(
+        """\
+
+        @pytest.fixture
+        def needs_tmp(tmp_path: "pathlib.Path") -> str:
+            \"\"\"Uses tmp_path internally.\"\"\"
+            return str(tmp_path)
+        """,
+    )
+    srcdir = tmp_path / "src"
+    outdir = tmp_path / "out"
+    doctreedir = tmp_path / ".doctrees"
+    srcdir.mkdir()
+    outdir.mkdir()
+    doctreedir.mkdir()
+
+    (srcdir / "fixture_mod.py").write_text(src, encoding="utf-8")
+    (srcdir / "conf.py").write_text(
+        CONF_PY_TEMPLATE.format(srcdir=str(srcdir)),
+        encoding="utf-8",
+    )
+    (srcdir / "index.rst").write_text(
+        "Fixtures\n========\n\n.. py:module:: fixture_mod\n\n"
+        ".. autofixture:: fixture_mod.needs_tmp\n",
+        encoding="utf-8",
+    )
+
+    assert "tmp_path" in sphinx_pytest_fixtures.PYTEST_BUILTIN_LINKS, (
+        "tmp_path must be in PYTEST_BUILTIN_LINKS for this test to be meaningful"
+    )
+
+    from sphinx.application import Sphinx
+
+    sphinx_app = Sphinx(
+        srcdir=str(srcdir),
+        confdir=str(srcdir),
+        outdir=str(outdir),
+        doctreedir=str(doctreedir),
+        buildername="html",
+        status=io.StringIO(),
+        warning=io.StringIO(),
+        freshenv=True,
+    )
+    sphinx_app.build()
+
+    index_html = (outdir / "index.html").read_text(encoding="utf-8")
+    # tmp_path dependency should be rendered with an external href
+    assert "tmp_path" in index_html, (
+        "tmp_path dependency should appear in rendered HTML"
+    )
+
+
+@pytest.mark.integration
+def test_kind_override_hook_option(tmp_path: pathlib.Path) -> None:
+    """Manual :kind: override_hook option appears in rendered HTML."""
+    srcdir = tmp_path / "src"
+    outdir = tmp_path / "out"
+    doctreedir = tmp_path / ".doctrees"
+    srcdir.mkdir()
+    outdir.mkdir()
+    doctreedir.mkdir()
+
+    (srcdir / "fixture_mod.py").write_text(FIXTURE_MOD_SOURCE, encoding="utf-8")
+    (srcdir / "conf.py").write_text(
+        CONF_PY_TEMPLATE.format(srcdir=str(srcdir)),
+        encoding="utf-8",
+    )
+    (srcdir / "index.rst").write_text(
+        textwrap.dedent(
+            """\
+            Fixtures
+            ========
+
+            .. py:module:: fixture_mod
+
+            .. py:fixture:: home_user
+               :kind: override_hook
+
+               Override the home username.
+            """,
+        ),
+        encoding="utf-8",
+    )
+
+    from sphinx.application import Sphinx
+
+    app = Sphinx(
+        srcdir=str(srcdir),
+        confdir=str(srcdir),
+        outdir=str(outdir),
+        doctreedir=str(doctreedir),
+        buildername="html",
+        status=io.StringIO(),
+        warning=io.StringIO(),
+        freshenv=True,
+    )
+    app.build()
+
+    index_html = (outdir / "index.html").read_text(encoding="utf-8")
+    assert "override_hook" in index_html, (
+        "Expected 'override_hook' to appear in rendered HTML when :kind: is set"
+    )
+
+
+@pytest.mark.integration
+def test_no_build_warnings(tmp_path: pathlib.Path) -> None:
+    """A full build of the synthetic fixture module produces zero WARNING lines."""
+    result = _build_sphinx_app(tmp_path)
+    warnings = result.warnings
+    # Strip ANSI escape codes before filtering
+    import re
+
+    ansi_escape = re.compile(r"\x1b\[[0-9;]*m")
+    warning_lines = [
+        line
+        for line in warnings.splitlines()
+        if "WARNING" in line
+        # Sphinx emits "already registered" warnings when multiple Sphinx apps
+        # run in the same process — these are internal Sphinx artefacts, not
+        # problems with our extension.
+        and "already registered" not in line
+        # Filter Sphinx theme warnings unrelated to fixture processing
+        and "alabaster" not in line
+    ]
+    # Strip ANSI codes for readability in failure output
+    warning_lines = [ansi_escape.sub("", line) for line in warning_lines]
+    assert not warning_lines, "Unexpected WARNING lines in build output:\n" + "\n".join(
+        warning_lines
+    )

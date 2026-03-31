@@ -246,6 +246,9 @@ testpaths = [
   "docs",
   "README.md",
 ]
+markers = [
+  "integration: sphinx integration tests (require full sphinx build)",
+]
 filterwarnings = [
   "ignore:The frontend.Option(Parser)? class.*:DeprecationWarning::",
   "ignore::DeprecationWarning:libtmux.*:",
