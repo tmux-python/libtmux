@@ -261,8 +261,11 @@ def test_format_name_honours_fixture_name_alias() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_process_docstring_injects_usage_snippet() -> None:
-    """_on_process_fixture_docstring prepends Usage block before existing lines."""
+def test_process_docstring_does_not_modify_fixture_lines() -> None:
+    """_on_process_fixture_docstring no longer injects RST for fixtures.
+
+    Metadata rendering moved to PyFixtureDirective.transform_content.
+    """
 
     @pytest.fixture
     def my_fixture() -> str:
@@ -279,11 +282,7 @@ def test_process_docstring_injects_usage_snippet() -> None:
         lines=lines,
     )
 
-    joined = "\n".join(lines)
-    assert "Usage" in joined
-    assert "def test_example(my_fixture: str)" in joined
-    assert "Existing docstring." in joined
-    assert joined.index("Usage") < joined.index("Existing docstring.")
+    assert lines == ["Existing docstring."]
 
 
 def test_process_docstring_skips_non_fixture() -> None:
@@ -305,14 +304,17 @@ def test_process_docstring_skips_non_fixture() -> None:
     assert lines == ["Original."]
 
 
-def test_process_docstring_injects_depends_on_for_user_deps() -> None:
-    """_on_process_fixture_docstring injects Depends-on block when user deps exist."""
+def test_process_docstring_does_not_inject_depends_on() -> None:
+    """_on_process_fixture_docstring no longer injects Depends-on RST.
+
+    Depends-on rendering moved to PyFixtureDirective.transform_content.
+    """
 
     @pytest.fixture
     def my_fixture(config_file: pathlib.Path) -> str:
         return "hello"
 
-    lines: list[str] = []
+    lines: list[str] = ["docstring"]
     sphinx_pytest_fixtures._on_process_fixture_docstring(
         app=None,
         what="function",
@@ -322,9 +324,7 @@ def test_process_docstring_injects_depends_on_for_user_deps() -> None:
         lines=lines,
     )
 
-    joined = "\n".join(lines)
-    assert "Depends on" in joined
-    assert "config_file" in joined
+    assert lines == ["docstring"]
 
 
 def test_process_docstring_no_depends_on_when_no_user_deps() -> None:
@@ -348,8 +348,12 @@ def test_process_docstring_no_depends_on_when_no_user_deps() -> None:
     assert "Depends on" not in joined
 
 
-def test_process_docstring_usage_shows_yield_type_not_generator() -> None:
-    """Usage snippet shows injected type, not Generator wrapper, for yield fixtures."""
+def test_process_docstring_does_not_modify_yield_fixture() -> None:
+    """_on_process_fixture_docstring does not modify yield fixture lines.
+
+    Return-type rendering (Server vs Generator) is now handled by
+    transform_content via the :return-type: directive option.
+    """
 
     @pytest.fixture
     def server_fixture() -> collections.abc.Generator[Server, None, None]:
@@ -365,9 +369,7 @@ def test_process_docstring_usage_shows_yield_type_not_generator() -> None:
         lines=lines,
     )
 
-    joined = "\n".join(lines)
-    assert "Server" in joined
-    assert "Generator" not in joined
+    assert lines == []
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@ import inspect
 import logging
 import typing as t
 
+from docutils import nodes
 from docutils.parsers.rst import directives
 from sphinx import addnodes
 from sphinx.domains import ObjType
@@ -345,6 +346,8 @@ class PyFixtureDirective(PyFunction):
             "depends": directives.unchanged,
             "factory": directives.flag,
             "overridable": directives.flag,
+            "return-type": directives.unchanged,
+            "usage": directives.unchanged,  # "auto" (default) or "none"
         },
     )
 
@@ -419,6 +422,66 @@ class PyFixtureDirective(PyFunction):
         name, _cls = name_cls
         return f"{name} (pytest fixture in {modname})"
 
+    def transform_content(
+        self,
+        content_node: addnodes.desc_content,
+    ) -> None:
+        """Inject fixture metadata as doctree nodes before DocFieldTransformer.
+
+        ``transform_content`` runs at line 108 of ``ObjectDescription.run()``;
+        ``DocFieldTransformer.transform_all()`` runs at line 112 — so
+        ``nodes.field_list`` entries inserted here ARE processed by
+        ``DocFieldTransformer`` and receive full field styling.
+
+        Parameters
+        ----------
+        content_node : addnodes.desc_content
+            The content node to prepend metadata into.
+        """
+        scope = self.options.get("scope", "function")
+        depends_str = self.options.get("depends", "")
+        ret_type = self.options.get("return-type", "")
+        show_usage = self.options.get("usage", "auto") != "none"
+
+        field_list = nodes.field_list()
+
+        # --- Scope field ---
+        field_list += nodes.field(
+            "",
+            nodes.field_name("", "Scope"),
+            nodes.field_body("", nodes.paragraph("", scope)),
+        )
+
+        # --- Depends-on fields — each dep as a separate :fixture: xref ---
+        if depends_str:
+            for dep in (d.strip() for d in depends_str.split(",") if d.strip()):
+                ref_nodes, _ = self.state.inline_text(
+                    f":fixture:`{dep}`",
+                    self.lineno,
+                )
+                field_list += nodes.field(
+                    "",
+                    nodes.field_name("", "Depends on"),
+                    nodes.field_body("", nodes.paragraph("", "", *ref_nodes)),
+                )
+
+        if field_list.children:
+            content_node.insert(0, field_list)
+
+        # --- Usage snippet (literal_block, not a field — passes unchanged) ---
+        if show_usage and self.arguments:
+            # Extract fixture name from directive argument "name() -> RetType"
+            raw_arg = self.arguments[0]
+            fixture_name = raw_arg.split("(")[0].strip()
+            if not fixture_name:
+                return
+            sig_str = f"{fixture_name}: {ret_type}" if ret_type else fixture_name
+            code = f"def test_example({sig_str}) -> None:\n    ...\n"
+            usage_node = nodes.literal_block(code, code, language="python")
+            # Insert AFTER the field_list (or at start if no fields)
+            insert_idx = 1 if field_list.children else 0
+            content_node.insert(insert_idx, usage_node)
+
     def add_target_and_index(
         self,
         name_cls: tuple[str, str],
@@ -480,17 +543,23 @@ class FixtureDocumenter(FunctionDocumenter):
         )
 
     def format_signature(self, **kwargs: t.Any) -> str:
-        """Return only ``-> ReturnType``, suppressing the parameter list.
+        """Return ``() -> ReturnType`` so Sphinx can parse the directive argument.
+
+        The ``()`` is required for ``py_sig_re`` to match a ``->`` return
+        annotation.  ``needs_arglist()`` returns ``False``, so the ``()`` is
+        suppressed in the rendered output — the reader sees only
+        ``fixture name -> ReturnType``.
 
         Returns
         -------
         str
-            Arrow notation return type, or empty string when no annotation.
+            Signature string of the form ``() -> ReturnType``, or empty string
+            when no return annotation is present.
         """
         ret = _get_return_annotation(self.object)
         if ret is inspect.Parameter.empty:
-            return ""
-        return f" -> {_format_type_short(ret)}"
+            return "()"
+        return f"() -> {_format_type_short(ret)}"
 
     def format_args(self, **kwargs: t.Any) -> str:
         """Return empty string — no argument list is shown to users.
@@ -539,6 +608,10 @@ class FixtureDocumenter(FunctionDocumenter):
             dep_names = ", ".join(name for name, _ in user_deps)
             self.add_line(f"   :depends: {dep_names}", sourcename)
 
+        ret = _get_return_annotation(self.object)
+        if ret is not inspect.Parameter.empty:
+            self.add_line(f"   :return-type: {_format_type_short(ret)}", sourcename)
+
         if _is_factory(self.object):
             self.add_line("   :factory:", sourcename)
         elif _is_overridable(self.object):
@@ -583,45 +656,9 @@ def _on_process_fixture_docstring(
     """
     if not _is_pytest_fixture(obj):
         return
-
-    fn = _get_fixture_fn(obj)
-    fixture_name = getattr(obj, "name", None) or fn.__name__
-    ret = _get_return_annotation(obj)
-    ret_str = _format_type_short(ret)
-    hidden: frozenset[str] = (
-        getattr(app.config, "pytest_internal_fixtures", PYTEST_INTERNAL_FIXTURES)
-        if app is not None
-        else PYTEST_INTERNAL_FIXTURES
-    )
-    user_deps = _get_user_deps(obj, hidden=hidden)
-
-    injected: list[str] = []
-
-    # Auto-generated canonical usage snippet:
-    # Shows injection syntax BEFORE docstring — teaches pytest DI model first.
-    injected.append(".. rubric:: Usage")
-    injected.append("")
-    injected.append(".. code-block:: python")
-    injected.append("")
-    injected.append(f"   def test_example({fixture_name}: {ret_str}) -> None:")
-    injected.append("       ...")
-    injected.append("")
-
-    # Depends-on block: pytest built-ins link externally; project fixtures
-    # link via the :fixture: role.
-    if user_deps:
-        injected.append(".. rubric:: Depends on")
-        injected.append("")
-        for dep_name, dep_ann in user_deps:
-            dep_type = _format_type_short(dep_ann)
-            if dep_name in PYTEST_BUILTIN_LINKS:
-                url = PYTEST_BUILTIN_LINKS[dep_name]
-                injected.append(f"- `{dep_name} <{url}>`_ ({dep_type})")
-            else:
-                injected.append(f"- :fixture:`{dep_name}` ({dep_type})")
-        injected.append("")
-
-    lines[:0] = injected
+    # Metadata rendering (scope, depends, usage snippet) is now handled by
+    # PyFixtureDirective.transform_content via the py:fixture directive path.
+    # This handler remains as a hook for future extensions.
 
 
 # ---------------------------------------------------------------------------
