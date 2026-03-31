@@ -589,11 +589,11 @@ def test_badge_group_present_in_html(tmp_path: pathlib.Path) -> None:
 
 @pytest.mark.integration
 def test_scope_badge_session_present(tmp_path: pathlib.Path) -> None:
-    """Session-scope fixtures have a scope badge with data-scope=session."""
+    """Session-scope fixtures have a scope badge with class spf-scope-session."""
     result = _build_sphinx_app(tmp_path)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    assert 'data-scope="session"' in index_html, (
-        "Expected data-scope=session badge for my_server (scope=session)"
+    assert "spf-scope-session" in index_html, (
+        "Expected spf-scope-session class badge for my_server (scope=session)"
     )
 
 
@@ -602,7 +602,7 @@ def test_no_scope_badge_for_function_scope(tmp_path: pathlib.Path) -> None:
     """Function-scope fixtures do not have a scope badge in the HTML."""
     result = _build_sphinx_app(tmp_path)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    assert 'data-scope="function"' not in index_html, (
+    assert "spf-scope-function" not in index_html, (
         "Function-scope fixtures should not render a scope badge"
     )
 
@@ -651,8 +651,8 @@ def test_factory_snippet_shows_instantiation(tmp_path: pathlib.Path) -> None:
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
     # TestServer is a factory fixture — it must have the FACTORY badge and
     # the Kind field value "factory" rendered as plain text.
-    assert 'data-kind="factory"' in index_html, (
-        'Expected data-kind="factory" badge for TestServer factory fixture'
+    assert "spf-factory" in index_html, (
+        "Expected spf-factory class badge for TestServer factory fixture"
     )
     # The Kind: factory field renders the text "factory" as plain HTML.
     assert "<p>factory</p>" in index_html, (

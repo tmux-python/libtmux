@@ -244,9 +244,9 @@ img[src*="codecov.io"] {
  *   OR state:      autouse=rose (replaces kind when autouse=True)
  * Slot 3 (base):   FIXTURE — always shown, green
  *
- * DOM insertion order (reverse of visual left-to-right):
- *   FIXTURE (rightmost) → kind/state (centre) → scope (leftmost)
- * All use float: right via container; stacked via reverse insertion.
+ * Uses nodes.inline (portable across all Sphinx builders).
+ * Class-based selectors replace data-* attribute selectors.
+ * Flex layout replaces float with mobile-responsive wrapping.
  * ────────────────────────────────────────────────────────── */
 
 /* Token system */
@@ -354,42 +354,50 @@ dl.py.fixture > dt em.property {
   font-style: normal;
 }
 
-/* Badge group container — float right, display:block prevents Safari flex bug.
- * text-indent: 0 resets Furo's hanging-indent on dt (-2.5em) so badge text
- * doesn't shift left. margin-top centers the group vertically in the dt line. */
+/* Badge group container — flex layout for reliable multi-badge alignment.
+ * Flexbox replaces the float: right approach; the dt becomes a flex row
+ * (signature text + badge group side by side).
+ * On narrow viewports the badge group wraps below the signature. */
+dl.py.fixture > dt {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 dl.py.fixture > dt span.spf-badge-group {
-  float: right;
-  display: block;
-  text-indent: 0;
-  margin-top: calc(
-    (1.4rem
-     - var(--spf-badge-font-size)
-     - 2 * var(--spf-badge-padding-v)
-     - 2 * var(--spf-badge-border-w))
-    / 2
-  );
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
   white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;
+  text-indent: 0;
+}
+
+/* Mobile: badge group below signature */
+@media (max-width: 52rem) {
+  dl.py.fixture > dt span.spf-badge-group {
+    width: 100%;
+    white-space: normal;
+    flex-wrap: wrap;
+  }
 }
 
 /* Shared badge base */
 dl.py.fixture > dt span.spf-badge {
   display: inline-block;
-  font-size: var(--spf-badge-font-size);
+  font-size: var(--spf-badge-font-size, 0.67rem);
   font-weight: 650;
   line-height: 1;
   letter-spacing: 0.01em;
-  padding: var(--spf-badge-padding-v) 0.5rem;
+  padding: var(--spf-badge-padding-v, 0.16rem) 0.5rem;
   border-radius: 0.22rem;
-  border: var(--spf-badge-border-w) solid;
+  border: var(--spf-badge-border-w, 1px) solid;
   text-transform: uppercase;
   vertical-align: middle;
-}
-
-/* Gap between sibling badges */
-dl.py.fixture > dt span.spf-badge + span.spf-badge {
-  margin-left: 0.3rem;
 }
 
 /* FIXTURE badge (always shown, green) */
@@ -399,21 +407,21 @@ dl.py.fixture > dt span.spf-badge--fixture {
   border-color: var(--spf-fixture-border);
 }
 
-/* Scope badges */
-dl.py.fixture > dt span.spf-badge--scope[data-scope="session"] {
+/* Scope badges — class-based (replaces data-* attribute selectors) */
+dl.py.fixture > dt span.spf-scope-session {
   background-color: var(--spf-scope-session-bg);
   color: var(--spf-scope-session-fg);
   border-color: var(--spf-scope-session-border);
   text-transform: lowercase;
   letter-spacing: 0.03em;
 }
-dl.py.fixture > dt span.spf-badge--scope[data-scope="module"] {
+dl.py.fixture > dt span.spf-scope-module {
   background-color: var(--spf-scope-module-bg);
   color: var(--spf-scope-module-fg);
   border-color: var(--spf-scope-module-border);
   text-transform: lowercase;
 }
-dl.py.fixture > dt span.spf-badge--scope[data-scope="class"] {
+dl.py.fixture > dt span.spf-scope-class {
   background-color: var(--spf-scope-class-bg);
   color: var(--spf-scope-class-fg);
   border-color: var(--spf-scope-class-border);
@@ -421,19 +429,19 @@ dl.py.fixture > dt span.spf-badge--scope[data-scope="class"] {
 }
 
 /* Kind badges (outlined — behaviour, not lifecycle) */
-dl.py.fixture > dt span.spf-badge--kind[data-kind="factory"] {
+dl.py.fixture > dt span.spf-factory {
   background-color: var(--spf-kind-factory-bg);
   color: var(--spf-kind-factory-fg);
   border-color: var(--spf-kind-factory-border);
 }
-dl.py.fixture > dt span.spf-badge--kind[data-kind="override_hook"] {
+dl.py.fixture > dt span.spf-override {
   background-color: var(--spf-kind-override-bg);
   color: var(--spf-kind-override-fg);
   border-color: var(--spf-kind-override-border);
 }
 
 /* State badge (autouse) */
-dl.py.fixture > dt span.spf-badge--state[data-state="autouse"] {
+dl.py.fixture > dt span.spf-autouse {
   background-color: var(--spf-state-autouse-bg);
   color: var(--spf-state-autouse-fg);
   border-color: var(--spf-state-autouse-border);

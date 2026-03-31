@@ -529,6 +529,63 @@ def test_iter_injectable_params_skips_positional_only() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _build_badge_group_node — portable inline badge nodes (Commit 4)
+# ---------------------------------------------------------------------------
+
+
+def test_build_badge_group_node_fixture_always_present() -> None:
+    """_build_badge_group_node always includes a FIXTURE badge child."""
+    node = sphinx_pytest_fixtures._build_badge_group_node("function", "resource", False)
+    texts = [child.astext() for child in node.children]
+    assert "FIXTURE" in texts
+
+
+def test_build_badge_group_node_no_scope_for_function() -> None:
+    """Function-scope produces no scope badge (absence = function-scope)."""
+    node = sphinx_pytest_fixtures._build_badge_group_node("function", "resource", False)
+    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    assert "spf-badge--scope" not in classes_all
+
+
+def test_build_badge_group_node_session_scope_badge() -> None:
+    """Session-scope produces a scope badge with class spf-scope-session."""
+    node = sphinx_pytest_fixtures._build_badge_group_node("session", "resource", False)
+    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    assert "spf-scope-session" in classes_all
+
+
+def test_build_badge_group_node_override_kind() -> None:
+    """override_hook produces a badge with class spf-override."""
+    node = sphinx_pytest_fixtures._build_badge_group_node(
+        "function", "override_hook", False
+    )
+    texts = [child.astext() for child in node.children]
+    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    assert "OVERRIDE" in texts
+    assert "spf-override" in classes_all
+
+
+def test_build_badge_group_node_autouse_replaces_kind() -> None:
+    """autouse=True shows AUTO badge with spf-autouse class, no kind badge."""
+    node = sphinx_pytest_fixtures._build_badge_group_node("function", "resource", True)
+    texts = [child.astext() for child in node.children]
+    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    assert "AUTO" in texts
+    assert "spf-autouse" in classes_all
+    assert "spf-badge--kind" not in classes_all
+
+
+def test_build_badge_group_node_factory_session() -> None:
+    """Factory + session scope produces both scope and factory badges."""
+    node = sphinx_pytest_fixtures._build_badge_group_node("session", "factory", False)
+    texts = [child.astext() for child in node.children]
+    classes_all = [c for child in node.children for c in child.get("classes", [])]
+    assert "FACTORY" in texts
+    assert "spf-factory" in classes_all
+    assert "spf-scope-session" in classes_all
+
+
+# ---------------------------------------------------------------------------
 # _build_badge_html — badge group HTML (Commit 4)
 # ---------------------------------------------------------------------------
 

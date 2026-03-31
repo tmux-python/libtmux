@@ -813,6 +813,7 @@ def _build_usage_snippet(
     kind: str,
     scope: str,
     autouse: bool,
+    is_async: bool = False,
 ) -> nodes.Node | None:
     """Return a doctree node for the kind-appropriate usage example.
 
@@ -828,6 +829,9 @@ def _build_usage_snippet(
         The fixture scope (used in the conftest decorator for override hooks).
     autouse : bool
         When True, returns a note admonition instead of a test snippet.
+    is_async : bool
+        When True, generates ``async def test_example(...)`` without any
+        pytest-asyncio-specific markers (caller decides what marker to use).
 
     Returns
     -------
@@ -836,10 +840,11 @@ def _build_usage_snippet(
 
     Notes
     -----
-    * ``resource``   → ``def test_example(name: Type) -> None: ...``
-    * ``factory``    → ``def test_example(Name) -> None: obj = Name(); ...``
+    * ``resource``      → ``def test_example(name: Type) -> None: ...``
+    * ``resource async`` → ``async def test_example(name: Type) -> None: ...``
+    * ``factory``       → ``def test_example(Name) -> None: obj = Name(); ...``
     * ``override_hook`` → ``conftest.py`` snippet with ``@pytest.fixture`` override
-    * ``autouse``    → ``nodes.note`` (no test snippet needed)
+    * ``autouse``       → ``nodes.note`` (no test snippet needed)
     """
     if autouse:
         note = nodes.note()
@@ -872,7 +877,8 @@ def _build_usage_snippet(
         )
     else:
         sig_str = f"{fixture_name}: {ret_type}" if ret_type else fixture_name
-        code = f"def test_example({sig_str}) -> None:\n    ...\n"
+        fn_keyword = "async def" if is_async else "def"
+        code = f"{fn_keyword} test_example({sig_str}) -> None:\n    ...\n"
 
     return nodes.literal_block(code, code, language="python")
 
@@ -931,6 +937,7 @@ class PyFixtureDirective(PyFunction):
             "usage": directives.unchanged,  # "auto" (default) or "none"
             "params": directives.unchanged,  # e.g. ":params: val1, val2"
             "teardown": directives.flag,  # ":teardown:" flag for yield fixtures
+            "async": directives.flag,  # ":async:" flag for async fixtures
         },
     )
 
@@ -1053,6 +1060,8 @@ class PyFixtureDirective(PyFunction):
         show_usage = self.options.get("usage", "auto") != "none"
         kind = self.options.get("kind", "")
         autouse = "autouse" in self.options
+        has_teardown = "teardown" in self.options
+        is_async = "async" in self.options
 
         field_list = nodes.field_list()
 
@@ -1142,6 +1151,23 @@ class PyFixtureDirective(PyFunction):
             )
             callout_nodes.append(tip)
 
+        if has_teardown:
+            note = nodes.note()
+            note += nodes.paragraph(
+                "",
+                "This is a yield fixture — it runs setup code before yielding "
+                "the value to the test, then teardown code after the test completes.",
+            )
+            callout_nodes.append(note)
+
+        if is_async:
+            note = nodes.note()
+            note += nodes.paragraph(
+                "",
+                "This is an async fixture. Use it in async test functions.",
+            )
+            callout_nodes.append(note)
+
         # --- Usage snippet (five-zone insertion after first paragraph) ---
         raw_arg = self.arguments[0] if self.arguments else ""
         fixture_name = raw_arg.split("(")[0].strip()
@@ -1154,6 +1180,7 @@ class PyFixtureDirective(PyFunction):
                 kind or "resource",
                 scope,
                 autouse,
+                is_async=is_async,
             )
 
         # Collect generated nodes and insert in five-zone order after summary.
@@ -1405,7 +1432,7 @@ class FixtureDocumenter(FunctionDocumenter):
         # Register fixture metadata in the env store for reverse-dep tracking.
         public_name = self.format_name()
         source_name = self.objpath[-1] if self.objpath else public_name
-        _register_fixture_meta(
+        meta = _register_fixture_meta(
             env=self.env,
             docname=self.env.docname,
             obj=self.object,
@@ -1415,6 +1442,12 @@ class FixtureDocumenter(FunctionDocumenter):
             kind=kind if kind != "resource" else "",
             app=self.env.app,
         )
+
+        # Emit teardown/async flags derived from the fixture function.
+        if meta.has_teardown:
+            self.add_line("   :teardown:", sourcename)
+        if meta.is_async:
+            self.add_line("   :async:", sourcename)
 
 
 # ---------------------------------------------------------------------------
@@ -1562,6 +1595,10 @@ def _build_badge_html(
     -------
     str
         Concatenated ``<span>`` HTML for all active badge slots.
+
+    .. deprecated::
+        Use :func:`_build_badge_group_node` instead — it returns portable
+        ``nodes.inline`` nodes that work in all Sphinx builders.
     """
     badges: list[str] = []
 
@@ -1601,12 +1638,86 @@ def _build_badge_html(
     return "".join(badges)
 
 
+def _build_badge_group_node(
+    scope: str,
+    kind: str,
+    autouse: bool,
+) -> nodes.inline:
+    """Return a badge group as portable ``nodes.inline`` nodes with CSS classes.
+
+    Unlike :func:`_build_badge_html`, this function returns standard docutils
+    nodes that work in all Sphinx builders (HTML, text, LaTeX, epub).
+
+    Badge slots (left-to-right in visual order):
+
+    * Slot 1 (scope):   shown when ``scope != "function"``
+    * Slot 2 (kind):    shown for ``"factory"`` / ``"override_hook"``; or
+                        state badge (``"autouse"``) when ``autouse=True``
+    * Slot 3 (FIXTURE): always shown
+
+    Parameters
+    ----------
+    scope : str
+        Fixture scope string.
+    kind : str
+        Fixture kind string.
+    autouse : bool
+        When True, renders AUTO state badge instead of a kind badge.
+
+    Returns
+    -------
+    nodes.inline
+        Badge group container with inline badge children.
+    """
+    group = nodes.inline(classes=["spf-badge-group"])
+
+    # Slot 1 — scope badge (leftmost, only non-function scope)
+    if scope and scope != "function":
+        group += nodes.inline(
+            scope,
+            scope,
+            classes=["spf-badge", "spf-badge--scope", f"spf-scope-{scope}"],
+        )
+
+    # Slot 2 — kind or autouse badge
+    if autouse:
+        group += nodes.inline(
+            "AUTO",
+            "AUTO",
+            classes=["spf-badge", "spf-badge--state", "spf-autouse"],
+        )
+    elif kind == "factory":
+        group += nodes.inline(
+            "FACTORY",
+            "FACTORY",
+            classes=["spf-badge", "spf-badge--kind", "spf-factory"],
+        )
+    elif kind == "override_hook":
+        group += nodes.inline(
+            "OVERRIDE",
+            "OVERRIDE",
+            classes=["spf-badge", "spf-badge--kind", "spf-override"],
+        )
+
+    # Slot 3 — FIXTURE (always, rightmost)
+    group += nodes.inline(
+        "FIXTURE",
+        "FIXTURE",
+        classes=["spf-badge", "spf-badge--fixture"],
+    )
+
+    return group
+
+
 def _on_doctree_resolved(
     app: Sphinx,
     doctree: nodes.document,
     docname: str,
 ) -> None:
-    """Append a ``spf-badge-group`` span to every ``py:fixture`` signature.
+    """Append a badge group to every ``py:fixture`` signature.
+
+    Uses portable ``nodes.inline`` badge nodes (via :func:`_build_badge_group_node`)
+    so badges render correctly in all Sphinx builders, not just HTML.
 
     Runs after ``ViewcodeAnchorTransform`` has already converted
     ``viewcode_anchor`` nodes to resolved ``[source]`` reference nodes, so the
@@ -1638,19 +1749,8 @@ def _on_doctree_resolved(
             scope = sig_node.get("spf_scope", "function")
             kind = sig_node.get("spf_kind", "resource")
             autouse = sig_node.get("spf_autouse", False)
-            ret_type = sig_node.get("spf_ret_type", "")
 
-            inner = _build_badge_html(scope, kind, autouse, ret_type)
-            # Use nodes.raw so the badge HTML is emitted verbatim by the HTML
-            # writer — bypassing visit_desc_signature's protect_literal_text
-            # counter, which would otherwise wrap every text token in a
-            # <span class="pre"> and cause Furo's block-display styling on
-            # that element to collapse the badge to one character width.
-            badge_group = nodes.raw(
-                "",
-                f'<span class="spf-badge-group">{inner}</span>',
-                format="html",
-            )
+            badge_group = _build_badge_group_node(scope, kind, autouse)
             sig_node += badge_group
 
 
