@@ -360,9 +360,8 @@ dl.py.fixture > dt em.property {
  * On narrow viewports the badge group wraps below the signature. */
 dl.py.fixture > dt {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.35rem;
   flex-wrap: wrap;
   background: var(--color-background-secondary);
   border-bottom: 1px solid var(--color-background-border);
@@ -374,6 +373,7 @@ dl.py.fixture > dt span.spf-badge-group {
   align-items: center;
   gap: 0.3rem;
   flex-shrink: 0;
+  margin-left: auto;  /* push badges to the right edge */
   white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;

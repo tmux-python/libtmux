@@ -1811,7 +1811,31 @@ def _on_doctree_resolved(
             autouse = sig_node.get("spf_autouse", False)
 
             badge_group = _build_badge_group_node(scope, kind, autouse)
+
+            # Insert badges after the headerlink (¶) but before the [source]
+            # viewcode link.  Desired order:
+            #   name → return → ¶ → badges → [source]
+            # The [source] link is a ``reference`` with a ``viewcode-link``
+            # child span.  If found, move it to the end after the badge group.
+            viewcode_ref = None
+            for child in list(sig_node.children):
+                if (
+                    isinstance(child, nodes.reference)
+                    and child.get("internal") is not True
+                    and any(
+                        "viewcode-link"
+                        in getattr(gc, "get", lambda *_: "")("classes", [])
+                        for gc in child.children
+                        if isinstance(gc, nodes.inline)
+                    )
+                ):
+                    viewcode_ref = child
+                    sig_node.remove(child)
+                    break
+
             sig_node += badge_group
+            if viewcode_ref is not None:
+                sig_node += viewcode_ref
 
         # --- Metadata injection (once per desc_node) ---
         if desc_node.get("spf_metadata_injected"):
