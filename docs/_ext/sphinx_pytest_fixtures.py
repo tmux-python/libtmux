@@ -45,6 +45,37 @@ class SetupDict(t.TypedDict):
 
 
 # ---------------------------------------------------------------------------
+# CSS class constants — single source of truth for extension ↔ stylesheet
+# ---------------------------------------------------------------------------
+
+
+class _CSS:
+    """CSS class name constants used in generated HTML.
+
+    Centralises every ``spf-*`` class name so the extension and stylesheet
+    stay in sync.  Tests import this class to assert on rendered output.
+    """
+
+    PREFIX = "spf"
+    BADGE_GROUP = f"{PREFIX}-badge-group"
+    BADGE = f"{PREFIX}-badge"
+    BADGE_SCOPE = f"{PREFIX}-badge--scope"
+    BADGE_KIND = f"{PREFIX}-badge--kind"
+    BADGE_STATE = f"{PREFIX}-badge--state"
+    BADGE_FIXTURE = f"{PREFIX}-badge--fixture"
+    FACTORY = f"{PREFIX}-factory"
+    OVERRIDE = f"{PREFIX}-override"
+    AUTOUSE = f"{PREFIX}-autouse"
+    FIXTURE_INDEX = f"{PREFIX}-fixture-index"
+    TABLE_SCROLL = f"{PREFIX}-table-scroll"
+
+    @staticmethod
+    def scope(name: str) -> str:
+        """Return the scope-specific CSS class, e.g. ``spf-scope-session``."""
+        return f"{_CSS.PREFIX}-scope-{name}"
+
+
+# ---------------------------------------------------------------------------
 # Fixture metadata models — env-safe (all fields are pickle-safe primitives)
 # ---------------------------------------------------------------------------
 
@@ -1764,7 +1795,7 @@ def _build_badge_group_node(
     nodes.inline
         Badge group container with abbreviation badge children.
     """
-    group = nodes.inline(classes=["spf-badge-group"])
+    group = nodes.inline(classes=[_CSS.BADGE_GROUP])
     badges: list[nodes.abbreviation] = []
 
     # Slot 1 — scope badge (leftmost, only non-function scope)
@@ -1774,7 +1805,7 @@ def _build_badge_group_node(
                 scope,
                 scope,
                 explanation=_BADGE_TOOLTIPS.get(scope, f"Scope: {scope}"),
-                classes=["spf-badge", "spf-badge--scope", f"spf-scope-{scope}"],
+                classes=[_CSS.BADGE, _CSS.BADGE_SCOPE, _CSS.scope(scope)],
             )
         )
 
@@ -1785,7 +1816,7 @@ def _build_badge_group_node(
                 "auto",
                 "auto",
                 explanation=_BADGE_TOOLTIPS["autouse"],
-                classes=["spf-badge", "spf-badge--state", "spf-autouse"],
+                classes=[_CSS.BADGE, _CSS.BADGE_STATE, _CSS.AUTOUSE],
             )
         )
     elif kind == "factory":
@@ -1794,7 +1825,7 @@ def _build_badge_group_node(
                 "factory",
                 "factory",
                 explanation=_BADGE_TOOLTIPS["factory"],
-                classes=["spf-badge", "spf-badge--kind", "spf-factory"],
+                classes=[_CSS.BADGE, _CSS.BADGE_KIND, _CSS.FACTORY],
             )
         )
     elif kind == "override_hook":
@@ -1803,7 +1834,7 @@ def _build_badge_group_node(
                 "override",
                 "override",
                 explanation=_BADGE_TOOLTIPS["override_hook"],
-                classes=["spf-badge", "spf-badge--kind", "spf-override"],
+                classes=[_CSS.BADGE, _CSS.BADGE_KIND, _CSS.OVERRIDE],
             )
         )
 
@@ -1813,7 +1844,7 @@ def _build_badge_group_node(
             "fixture",
             "fixture",
             explanation=_BADGE_TOOLTIPS["fixture"],
-            classes=["spf-badge", "spf-badge--fixture"],
+            classes=[_CSS.BADGE, _CSS.BADGE_FIXTURE],
         )
     )
 
@@ -2334,7 +2365,7 @@ def _resolve_fixture_index(
         node.replace_self([])
         return
 
-    table = nodes.table(classes=["spf-fixture-index"])
+    table = nodes.table(classes=[_CSS.FIXTURE_INDEX])
     tgroup = nodes.tgroup(cols=5)
     table += tgroup
     for width in (20, 10, 12, 12, 46):
@@ -2396,7 +2427,7 @@ def _resolve_fixture_index(
         desc_entry += desc_para
         row += desc_entry
 
-    scroll_wrapper = nodes.container(classes=["spf-table-scroll"])
+    scroll_wrapper = nodes.container(classes=[_CSS.TABLE_SCROLL])
     scroll_wrapper += table
     node.replace_self([scroll_wrapper])
 

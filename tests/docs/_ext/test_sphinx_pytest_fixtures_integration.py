@@ -19,6 +19,8 @@ import textwrap
 import typing as t
 
 import pytest
+import sphinx_pytest_fixtures
+from sphinx_pytest_fixtures import _CSS
 
 # ---------------------------------------------------------------------------
 # Synthetic fixture module written to tmp_path for each test run
@@ -411,8 +413,6 @@ def test_scope_metadata_visible(tmp_path: pathlib.Path) -> None:
 @pytest.mark.integration
 def test_config_hidden_deps(tmp_path: pathlib.Path) -> None:
     """pytest_fixture_hidden_dependencies suppresses named deps from output HTML."""
-    import sphinx_pytest_fixtures
-
     # my_client depends on my_server; hiding my_server should suppress it
     result = _build_sphinx_app(
         tmp_path,
@@ -440,8 +440,6 @@ def test_config_hidden_deps(tmp_path: pathlib.Path) -> None:
 @pytest.mark.integration
 def test_builtin_dep_external_link(tmp_path: pathlib.Path) -> None:
     """Pytest builtin deps in PYTEST_BUILTIN_LINKS render with an external URL."""
-    import sphinx_pytest_fixtures
-
     # Add a synthetic fixture that depends on tmp_path (a builtin with external link)
     src = FIXTURE_MOD_SOURCE + textwrap.dedent(
         """\
@@ -545,7 +543,7 @@ def test_kind_override_hook_option(tmp_path: pathlib.Path) -> None:
 
     index_html = (outdir / "index.html").read_text(encoding="utf-8")
     # Standard kinds (override_hook) are communicated via badge, not Kind field.
-    assert "spf-override" in index_html, (
+    assert _CSS.OVERRIDE in index_html, (
         "Expected spf-override badge class when :kind: override_hook is set"
     )
 
@@ -581,10 +579,10 @@ def test_badge_group_present_in_html(tmp_path: pathlib.Path) -> None:
     """Every fixture signature contains a spf-badge-group span."""
     result = _build_sphinx_app(tmp_path)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    assert "spf-badge-group" in index_html, (
+    assert _CSS.BADGE_GROUP in index_html, (
         "Expected spf-badge-group to be present in rendered HTML"
     )
-    assert "spf-badge--fixture" in index_html, (
+    assert _CSS.BADGE_FIXTURE in index_html, (
         "Expected FIXTURE badge (spf-badge--fixture) to be present in rendered HTML"
     )
 
@@ -594,7 +592,7 @@ def test_scope_badge_session_present(tmp_path: pathlib.Path) -> None:
     """Session-scope fixtures have a scope badge with class spf-scope-session."""
     result = _build_sphinx_app(tmp_path)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    assert "spf-scope-session" in index_html, (
+    assert _CSS.scope("session") in index_html, (
         "Expected spf-scope-session class badge for my_server (scope=session)"
     )
 
@@ -604,7 +602,7 @@ def test_no_scope_badge_for_function_scope(tmp_path: pathlib.Path) -> None:
     """Function-scope fixtures do not have a scope badge in the HTML."""
     result = _build_sphinx_app(tmp_path)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    assert "spf-scope-function" not in index_html, (
+    assert _CSS.scope("function") not in index_html, (
         "Function-scope fixtures should not render a scope badge"
     )
 
@@ -652,7 +650,7 @@ def test_factory_snippet_shows_instantiation(tmp_path: pathlib.Path) -> None:
     result = _build_sphinx_app(tmp_path)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
     # TestServer is a factory fixture — it must have the FACTORY badge.
-    assert "spf-factory" in index_html, (
+    assert _CSS.FACTORY in index_html, (
         "Expected spf-factory class badge for TestServer factory fixture"
     )
     # Standard kinds (resource, factory, override_hook) are communicated via
@@ -819,13 +817,13 @@ def test_css_contract_badge_classes(tmp_path: pathlib.Path) -> None:
     # These classes are targeted by selectors in docs/_static/css/custom.css.
     # If the extension changes its class names, CSS silently breaks.
     css_classes = [
-        "spf-badge-group",
-        "spf-badge",
-        "spf-badge--fixture",
-        "spf-badge--scope",
-        "spf-scope-session",
-        "spf-badge--kind",
-        "spf-factory",
+        _CSS.BADGE_GROUP,
+        _CSS.BADGE,
+        _CSS.BADGE_FIXTURE,
+        _CSS.BADGE_SCOPE,
+        _CSS.scope("session"),
+        _CSS.BADGE_KIND,
+        _CSS.FACTORY,
     ]
     for cls in css_classes:
         assert cls in index_html, f"CSS class {cls!r} missing from rendered HTML"
@@ -869,7 +867,7 @@ def test_autofixture_index_renders_table(tmp_path: pathlib.Path) -> None:
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
 
     # Table should have the spf-fixture-index class
-    assert "spf-fixture-index" in index_html
+    assert _CSS.FIXTURE_INDEX in index_html
 
     # Fixture names should be cross-ref links (not plain text)
     assert 'href="#fixture_mod.my_server"' in index_html or "my_server" in index_html
@@ -902,6 +900,6 @@ def test_autofixture_index_description_renders_markup(
 
     # Description should NOT contain raw RST markup like :class: or ``
     # (the my_server docstring is plain text so just verify no RST leaks)
-    assert "spf-fixture-index" in index_html
+    assert _CSS.FIXTURE_INDEX in index_html
     # The description "Return a fake server for testing." should appear
     assert "fake server" in index_html

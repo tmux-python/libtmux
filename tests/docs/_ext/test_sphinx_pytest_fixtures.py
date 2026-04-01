@@ -391,7 +391,7 @@ def test_build_badge_group_node_no_scope_for_function() -> None:
         if hasattr(child, "get")
         for c in child.get("classes", [])
     ]
-    assert "spf-badge--scope" not in classes_all
+    assert sphinx_pytest_fixtures._CSS.BADGE_SCOPE not in classes_all
 
 
 def test_build_badge_group_node_session_scope_badge() -> None:
@@ -403,7 +403,7 @@ def test_build_badge_group_node_session_scope_badge() -> None:
         if hasattr(child, "get")
         for c in child.get("classes", [])
     ]
-    assert "spf-scope-session" in classes_all
+    assert sphinx_pytest_fixtures._CSS.scope("session") in classes_all
 
 
 def test_build_badge_group_node_override_kind() -> None:
@@ -419,7 +419,7 @@ def test_build_badge_group_node_override_kind() -> None:
         for c in child.get("classes", [])
     ]
     assert "override" in texts
-    assert "spf-override" in classes_all
+    assert sphinx_pytest_fixtures._CSS.OVERRIDE in classes_all
 
 
 def test_build_badge_group_node_autouse_replaces_kind() -> None:
@@ -433,8 +433,8 @@ def test_build_badge_group_node_autouse_replaces_kind() -> None:
         for c in child.get("classes", [])
     ]
     assert "auto" in texts
-    assert "spf-autouse" in classes_all
-    assert "spf-badge--kind" not in classes_all
+    assert sphinx_pytest_fixtures._CSS.AUTOUSE in classes_all
+    assert sphinx_pytest_fixtures._CSS.BADGE_KIND not in classes_all
 
 
 def test_build_badge_group_node_factory_session() -> None:
@@ -448,8 +448,8 @@ def test_build_badge_group_node_factory_session() -> None:
         for c in child.get("classes", [])
     ]
     assert "factory" in texts
-    assert "spf-factory" in classes_all
-    assert "spf-scope-session" in classes_all
+    assert sphinx_pytest_fixtures._CSS.FACTORY in classes_all
+    assert sphinx_pytest_fixtures._CSS.scope("session") in classes_all
 
 
 def test_build_badge_group_node_has_tabindex() -> None:
