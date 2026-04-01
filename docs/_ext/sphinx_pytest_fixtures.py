@@ -887,6 +887,25 @@ def _infer_kind(obj: t.Any, explicit_kind: str | None = None) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _has_authored_example(content_node: nodes.Element) -> bool:
+    """Return True if *content_node* already contains authored examples.
+
+    Only inspects direct children — does not recurse into nested containers.
+    This keeps the detection narrow and predictable: a ``rubric`` titled
+    "Example" buried inside an unrelated admonition will not suppress the
+    auto-generated usage snippet.
+    """
+    for child in content_node.children:
+        if isinstance(child, nodes.doctest_block):
+            return True
+        if isinstance(child, nodes.rubric) and child.astext() in {
+            "Example",
+            "Examples",
+        }:
+            return True
+    return False
+
+
 def _build_usage_snippet(
     fixture_name: str,
     ret_type: str | None,
@@ -1263,7 +1282,7 @@ class PyFixtureDirective(PyFunction):
         fixture_name = raw_arg.split("(")[0].strip()
 
         snippet: nodes.Node | None = None
-        if show_usage and fixture_name:
+        if show_usage and fixture_name and not _has_authored_example(content_node):
             snippet = _build_usage_snippet(
                 fixture_name,
                 ret_type or None,

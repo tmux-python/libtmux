@@ -798,6 +798,51 @@ def test_classify_deps_hidden_fixture() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _has_authored_example
+# ---------------------------------------------------------------------------
+
+
+def test_has_authored_example_with_rubric() -> None:
+    """Authored Example rubric suppresses auto-generated snippets."""
+    from docutils import nodes
+
+    content = nodes.container()
+    content += nodes.paragraph("", "Some intro text.")
+    content += nodes.rubric("", "Example")
+    content += nodes.literal_block("", "def test(): pass")
+    assert sphinx_pytest_fixtures._has_authored_example(content)
+
+
+def test_has_authored_example_with_doctest() -> None:
+    """Doctest blocks count as authored examples."""
+    from docutils import nodes
+
+    content = nodes.container()
+    content += nodes.doctest_block("", ">>> 1 + 1\n2")
+    assert sphinx_pytest_fixtures._has_authored_example(content)
+
+
+def test_has_authored_example_without() -> None:
+    """No authored examples — auto-snippet should still be generated."""
+    from docutils import nodes
+
+    content = nodes.container()
+    content += nodes.paragraph("", "Just a description.")
+    assert not sphinx_pytest_fixtures._has_authored_example(content)
+
+
+def test_has_authored_example_nested_not_detected() -> None:
+    """Nested rubrics inside admonitions are not detected (non-recursive)."""
+    from docutils import nodes
+
+    content = nodes.container()
+    admonition = nodes.note()
+    admonition += nodes.rubric("", "Example")
+    content += admonition
+    assert not sphinx_pytest_fixtures._has_authored_example(content)
+
+
+# ---------------------------------------------------------------------------
 # _build_usage_snippet
 # ---------------------------------------------------------------------------
 
