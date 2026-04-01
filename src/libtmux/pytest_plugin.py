@@ -152,7 +152,7 @@ def server(
 
 @pytest.fixture
 def session_params() -> dict[str, t.Any]:
-    """Return new, temporary :class:`libtmux.Session`.
+    """Return default session creation parameters.
 
     >>> import pytest
     >>> from libtmux.session import Session
