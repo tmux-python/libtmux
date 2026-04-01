@@ -76,6 +76,106 @@ class _CSS:
 
 
 # ---------------------------------------------------------------------------
+# Extension identity and version
+# ---------------------------------------------------------------------------
+
+_EXTENSION_KEY = "sphinx_pytest_fixtures"
+"""Domaindata namespace key used in ``env.domaindata``."""
+
+_EXTENSION_VERSION = "1.0"
+"""Reported in ``setup()`` return dict."""
+
+# ---------------------------------------------------------------------------
+# Default values
+# ---------------------------------------------------------------------------
+
+_DEFAULTS: dict[str, str] = {
+    "scope": "function",
+    "kind": "resource",
+    "usage": "auto",
+}
+
+# ---------------------------------------------------------------------------
+# Field labels for rendered metadata
+# ---------------------------------------------------------------------------
+
+_FIELD_LABELS: dict[str, str] = {
+    "scope": "Scope",
+    "depends": "Depends on",
+    "autouse": "Autouse",
+    "kind": "Kind",
+    "used_by": "Used by",
+    "parametrized": "Parametrized",
+}
+
+# ---------------------------------------------------------------------------
+# Callout messages for fixture cards
+# ---------------------------------------------------------------------------
+
+_CALLOUT_MESSAGES: dict[str, str] = {
+    "autouse": (
+        "No request needed \u2014 this fixture runs automatically for every test."
+    ),
+    "session_scope": (
+        "Created once per test session and shared across all tests. "
+        "Requesting this fixture does not create a new instance per test."
+    ),
+    "override_hook": (
+        "This is an override hook. Override it in your project\u2019s "
+        "conftest.py to customise behaviour for your test suite."
+    ),
+    "yield_fixture": (
+        "This is a yield fixture \u2014 it runs setup code before yielding "
+        "the value to the test, then teardown code after the test completes."
+    ),
+    "async_fixture": "This is an async fixture. Use it in async test functions.",
+}
+
+# ---------------------------------------------------------------------------
+# Fixture index table structure
+# ---------------------------------------------------------------------------
+
+_INDEX_TABLE_COLUMNS: tuple[tuple[str, int], ...] = (
+    ("Fixture", 20),
+    ("Scope", 10),
+    ("Kind", 12),
+    ("Returns", 12),
+    ("Description", 46),
+)
+
+# ---------------------------------------------------------------------------
+# Config attribute names (registered via app.add_config_value)
+# ---------------------------------------------------------------------------
+
+_CONFIG_HIDDEN_DEPS = "pytest_fixture_hidden_dependencies"
+_CONFIG_BUILTIN_LINKS = "pytest_fixture_builtin_links"
+_CONFIG_EXTERNAL_LINKS = "pytest_external_fixture_links"
+
+# ---------------------------------------------------------------------------
+# Intersphinx resolution keys
+# ---------------------------------------------------------------------------
+
+_INTERSPHINX_PROJECT = "pytest"
+_INTERSPHINX_FIXTURE_ROLE = "std:fixture"
+
+# ---------------------------------------------------------------------------
+# Scopes that suppress the scope badge (function scope = no badge)
+# ---------------------------------------------------------------------------
+
+_SUPPRESSED_SCOPES: frozenset[str] = frozenset({"function"})
+
+# ---------------------------------------------------------------------------
+# Compiled regex patterns
+# ---------------------------------------------------------------------------
+
+_RST_INLINE_PATTERN = re.compile(
+    r":(\w+):`([^`]+)`"  # :role:`content`
+    r"|``([^`]+)``"  # ``literal``
+    r"|`([^`]+)`"  # `interpreted text`
+)
+_IDENTIFIER_PATTERN = re.compile(r"(\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*\b)")
+
+# ---------------------------------------------------------------------------
 # Fixture metadata models — env-safe (all fields are pickle-safe primitives)
 # ---------------------------------------------------------------------------
 
@@ -283,7 +383,9 @@ def _resolve_builtin_url(name: str, app: t.Any) -> str | None:
     """
     try:
         inv = getattr(getattr(app, "env", None), "intersphinx_named_inventory", {})
-        fixture_inv = inv.get("pytest", {}).get("std:fixture", {})
+        fixture_inv = inv.get(_INTERSPHINX_PROJECT, {}).get(
+            _INTERSPHINX_FIXTURE_ROLE, {}
+        )
         if name in fixture_inv:
             _proj, _ver, uri, _dispname = fixture_inv[name]
             return str(uri)
@@ -332,7 +434,7 @@ def _get_spf_store(env: t.Any) -> FixtureStoreDict:
         The mutable store dict.
     """
     store: FixtureStoreDict = env.domaindata.setdefault(
-        "sphinx_pytest_fixtures",
+        _EXTENSION_KEY,
         _make_empty_store(),
     )
     if store.get("_store_version") != _STORE_VERSION:
@@ -786,17 +888,17 @@ def _classify_deps(
     if app is not None:
         hidden: frozenset[str] = getattr(
             app.config,
-            "pytest_fixture_hidden_dependencies",
+            _CONFIG_HIDDEN_DEPS,
             PYTEST_HIDDEN,
         )
         builtin_links: dict[str, str] = getattr(
             app.config,
-            "pytest_fixture_builtin_links",
+            _CONFIG_BUILTIN_LINKS,
             PYTEST_BUILTIN_LINKS,
         )
         external_links: dict[str, str] = getattr(
             app.config,
-            "pytest_external_fixture_links",
+            _CONFIG_EXTERNAL_LINKS,
             {},
         )
         all_links = {**builtin_links, **external_links}
@@ -1255,14 +1357,14 @@ class PyFixtureDirective(PyFunction):
             builtin_links: dict[str, str] = (
                 getattr(
                     app_obj.config,
-                    "pytest_fixture_builtin_links",
+                    _CONFIG_BUILTIN_LINKS,
                     PYTEST_BUILTIN_LINKS,
                 )
                 if app_obj is not None
                 else PYTEST_BUILTIN_LINKS
             )
             external_links: dict[str, str] = (
-                getattr(app_obj.config, "pytest_external_fixture_links", {})
+                getattr(app_obj.config, _CONFIG_EXTERNAL_LINKS, {})
                 if app_obj is not None
                 else {}
             )
@@ -1625,7 +1727,7 @@ class FixtureDocumenter(FunctionDocumenter):
         # in conf.py suppresses deps from the directive header too.
         hidden_cfg: frozenset[str] = getattr(
             self.env.app.config,
-            "pytest_fixture_hidden_dependencies",
+            _CONFIG_HIDDEN_DEPS,
             PYTEST_HIDDEN,
         )
         user_deps = _get_user_deps(self.object, hidden=hidden_cfg)
@@ -2208,11 +2310,7 @@ def _parse_rst_inline(
     result_nodes: list[nodes.Node] = []
 
     # Tokenise: :role:`content`, ``literal``, or plain text
-    pattern = re.compile(
-        r":(\w+):`([^`]+)`"  # :role:`content`
-        r"|``([^`]+)``"  # ``literal``
-        r"|`([^`]+)`"  # `emphasis`
-    )
+    pattern = _RST_INLINE_PATTERN
     pos = 0
     for m in pattern.finditer(text):
         # Plain text before match
@@ -2314,10 +2412,10 @@ def _build_return_type_nodes(
     # Every identifier gets wrapped in :class:`~name` so intersphinx and
     # the Python domain can resolve it.  Punctuation passes through as text.
     rst_parts: list[str] = []
-    for token in re.split(r"(\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*\b)", display):
+    for token in _IDENTIFIER_PATTERN.split(display):
         if not token:
             continue
-        if re.fullmatch(r"[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*", token):
+        if _IDENTIFIER_PATTERN.fullmatch(token):
             rst_parts.append(f":class:`~{token}`")
         else:
             rst_parts.append(token)
@@ -2366,18 +2464,18 @@ def _resolve_fixture_index(
         return
 
     table = nodes.table(classes=[_CSS.FIXTURE_INDEX])
-    tgroup = nodes.tgroup(cols=5)
+    tgroup = nodes.tgroup(cols=len(_INDEX_TABLE_COLUMNS))
     table += tgroup
-    for width in (20, 10, 12, 12, 46):
+    for _header, width in _INDEX_TABLE_COLUMNS:
         tgroup += nodes.colspec(colwidth=width)
 
     thead = nodes.thead()
     tgroup += thead
     header_row = nodes.row()
     thead += header_row
-    for title in ("Fixture", "Scope", "Kind", "Returns", "Description"):
+    for header, _width in _INDEX_TABLE_COLUMNS:
         entry = nodes.entry()
-        entry += nodes.paragraph("", title)
+        entry += nodes.paragraph("", header)
         header_row += entry
 
     tbody = nodes.tbody()
@@ -2497,19 +2595,19 @@ def setup(app: Sphinx) -> SetupDict:
 
     # --- New config values (v1.1) ---
     app.add_config_value(
-        "pytest_fixture_hidden_dependencies",
+        _CONFIG_HIDDEN_DEPS,
         default=PYTEST_HIDDEN,
         rebuild="env",
         types=[frozenset],
     )
     app.add_config_value(
-        "pytest_fixture_builtin_links",
+        _CONFIG_BUILTIN_LINKS,
         default=PYTEST_BUILTIN_LINKS,
         rebuild="env",
         types=[dict],
     )
     app.add_config_value(
-        "pytest_external_fixture_links",
+        _CONFIG_EXTERNAL_LINKS,
         default={},
         rebuild="env",
         types=[dict],
@@ -2543,7 +2641,7 @@ def setup(app: Sphinx) -> SetupDict:
     app.connect("env-updated", _on_env_updated)
 
     return {
-        "version": "1.0",
+        "version": _EXTENSION_VERSION,
         "env_version": _STORE_VERSION,
         "parallel_read_safe": True,
         "parallel_write_safe": True,
