@@ -407,7 +407,7 @@ dl.py.fixture > dt span.spf-badge {
   padding: var(--spf-badge-padding-v, 0.16rem) 0.5rem;
   border-radius: 0.22rem;
   border: var(--spf-badge-border-w, 1px) solid;
-  text-transform: uppercase;
+  text-transform: lowercase;
   vertical-align: middle;
 }
 
@@ -424,20 +424,17 @@ dl.py.fixture > dt span.spf-scope-session {
   background-color: var(--spf-scope-session-bg);
   color: var(--spf-scope-session-fg);
   border-color: var(--spf-scope-session-border);
-  text-transform: lowercase;
   letter-spacing: 0.03em;
 }
 dl.py.fixture > dt span.spf-scope-module {
   background-color: var(--spf-scope-module-bg);
   color: var(--spf-scope-module-fg);
   border-color: var(--spf-scope-module-border);
-  text-transform: lowercase;
 }
 dl.py.fixture > dt span.spf-scope-class {
   background-color: var(--spf-scope-class-bg);
   color: var(--spf-scope-class-fg);
   border-color: var(--spf-scope-class-border);
-  text-transform: lowercase;
 }
 
 /* Kind badges (outlined — behaviour, not lifecycle) */
