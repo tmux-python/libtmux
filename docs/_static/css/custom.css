@@ -384,8 +384,6 @@ dl.py.fixture > dt .spf-badge-group {
   flex-shrink: 0;
   margin-left: auto;
   white-space: nowrap;
-  user-select: none;
-  -webkit-user-select: none;
   text-indent: 0;
 }
 
@@ -408,7 +406,6 @@ dl.py.fixture > dt .spf-badge {
   padding: var(--spf-badge-padding-v, 0.16rem) 0.5rem;
   border-radius: 0.22rem;
   border: var(--spf-badge-border-w, 1px) solid;
-  text-transform: lowercase;
   vertical-align: middle;
 }
 
