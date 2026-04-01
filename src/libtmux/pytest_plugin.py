@@ -272,11 +272,6 @@ def TestServer(
     This is similar to the server pytest fixture, but can be used outside of pytest.
     The server will be killed when the test completes.
 
-    Returns
-    -------
-    type[Server]
-        A factory function that returns a Server with a unique socket_name
-
     Examples
     --------
     >>> server = Server()  # Create server instance

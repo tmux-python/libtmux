@@ -107,14 +107,6 @@ Override these in your project's `conftest.py` to customise the test environment
 
 ```{eval-rst}
 .. autofixture:: libtmux.pytest_plugin.TestServer
-
-   .. rubric:: Example
-
-   .. code-block:: python
-
-      def test_isolated_servers(TestServer) -> None:
-          s1, s2 = TestServer(), TestServer()
-          assert s1.socket_name != s2.socket_name
 ```
 
 ## Low-Level / Rarely Needed
