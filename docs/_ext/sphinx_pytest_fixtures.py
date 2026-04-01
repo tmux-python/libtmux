@@ -1689,15 +1689,26 @@ def _on_missing_reference(
 # ---------------------------------------------------------------------------
 
 
+_BADGE_TOOLTIPS: dict[str, str] = {
+    "session": "Scope: session \u2014 created once per test session",
+    "module": "Scope: module \u2014 created once per test module",
+    "class": "Scope: class \u2014 created once per test class",
+    "factory": "Factory \u2014 returns a callable that creates instances",
+    "override_hook": "Override hook \u2014 customize in conftest.py",
+    "fixture": "pytest fixture \u2014 injected by name into test functions",
+    "autouse": "Runs automatically for every test (autouse=True)",
+}
+
+
 def _build_badge_group_node(
     scope: str,
     kind: str,
     autouse: bool,
 ) -> nodes.inline:
-    """Return a badge group as portable ``nodes.inline`` nodes with CSS classes.
+    """Return a badge group as portable ``nodes.abbreviation`` nodes.
 
-    Unlike :func:`_build_badge_html`, this function returns standard docutils
-    nodes that work in all Sphinx builders (HTML, text, LaTeX, epub).
+    Each badge renders as ``<abbr title="...">`` in HTML, providing hover
+    tooltips.  Non-HTML builders fall back to plain text.
 
     Badge slots (left-to-right in visual order):
 
@@ -1718,17 +1729,18 @@ def _build_badge_group_node(
     Returns
     -------
     nodes.inline
-        Badge group container with inline badge children.
+        Badge group container with abbreviation badge children.
     """
     group = nodes.inline(classes=["spf-badge-group"])
-    badges: list[nodes.inline] = []
+    badges: list[nodes.Node] = []
 
     # Slot 1 — scope badge (leftmost, only non-function scope)
     if scope and scope != "function":
         badges.append(
-            nodes.inline(
+            nodes.abbreviation(
                 scope,
                 scope,
+                explanation=_BADGE_TOOLTIPS.get(scope, f"Scope: {scope}"),
                 classes=["spf-badge", "spf-badge--scope", f"spf-scope-{scope}"],
             )
         )
@@ -1736,34 +1748,38 @@ def _build_badge_group_node(
     # Slot 2 — kind or autouse badge
     if autouse:
         badges.append(
-            nodes.inline(
+            nodes.abbreviation(
                 "AUTO",
                 "AUTO",
+                explanation=_BADGE_TOOLTIPS["autouse"],
                 classes=["spf-badge", "spf-badge--state", "spf-autouse"],
             )
         )
     elif kind == "factory":
         badges.append(
-            nodes.inline(
+            nodes.abbreviation(
                 "FACTORY",
                 "FACTORY",
+                explanation=_BADGE_TOOLTIPS["factory"],
                 classes=["spf-badge", "spf-badge--kind", "spf-factory"],
             )
         )
     elif kind == "override_hook":
         badges.append(
-            nodes.inline(
+            nodes.abbreviation(
                 "OVERRIDE",
                 "OVERRIDE",
+                explanation=_BADGE_TOOLTIPS["override_hook"],
                 classes=["spf-badge", "spf-badge--kind", "spf-override"],
             )
         )
 
     # Slot 3 — FIXTURE (always, rightmost)
     badges.append(
-        nodes.inline(
+        nodes.abbreviation(
             "FIXTURE",
             "FIXTURE",
+            explanation=_BADGE_TOOLTIPS["fixture"],
             classes=["spf-badge", "spf-badge--fixture"],
         )
     )
