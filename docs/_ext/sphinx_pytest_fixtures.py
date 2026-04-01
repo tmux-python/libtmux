@@ -1215,19 +1215,28 @@ class PyFixtureDirective(PyFunction):
             )
             all_links = {**builtin_links, **external_links}
 
+            # Collect all dep nodes, then emit one comma-separated row
+            # (matches the "Used by" pattern in _on_doctree_resolved).
+            dep_ref_nodes: list[nodes.Node] = []
             for dep in (d.strip() for d in depends_str.split(",") if d.strip()):
                 if dep in all_links:
                     url = all_links[dep]
-                    link_node = nodes.reference(
-                        dep, "", nodes.literal(dep, dep), refuri=url
+                    dep_ref_nodes.append(
+                        nodes.reference(dep, "", nodes.literal(dep, dep), refuri=url)
                     )
-                    body_para = nodes.paragraph("", "", link_node)
                 else:
-                    ref_nodes, _ = self.state.inline_text(
+                    ref_ns, _ = self.state.inline_text(
                         f":fixture:`{dep}`",
                         self.lineno,
                     )
-                    body_para = nodes.paragraph("", "", *ref_nodes)
+                    dep_ref_nodes.extend(ref_ns)
+
+            if dep_ref_nodes:
+                body_para = nodes.paragraph()
+                for i, dn in enumerate(dep_ref_nodes):
+                    body_para += dn
+                    if i < len(dep_ref_nodes) - 1:
+                        body_para += nodes.Text(", ")
                 field_list += nodes.field(
                     "",
                     nodes.field_name("", "Depends on"),
