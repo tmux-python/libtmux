@@ -368,6 +368,13 @@ dl.py.fixture > dt {
   padding: 0.5rem 0.75rem;
 }
 
+/* Visual reorder: sig elements (0) → ¶ (1) → badges (2) → [source] (3).
+ * The ¶ headerlink is injected by Sphinx's HTML translator AFTER our
+ * doctree code runs, so CSS order is the only way to position it. */
+dl.py.fixture > dt > .headerlink          { order: 1; }
+dl.py.fixture > dt > span.spf-badge-group { order: 2; }
+dl.py.fixture > dt > a.reference.external { order: 3; }
+
 dl.py.fixture > dt span.spf-badge-group {
   display: inline-flex;
   align-items: center;
