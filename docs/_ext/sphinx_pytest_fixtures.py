@@ -1880,7 +1880,14 @@ def _on_doctree_resolved(
             )
 
         if extra_fields.children:
-            content_node += extra_fields
+            # Merge into the existing field_list from transform_content()
+            # so the CSS grid formats one unified <dl> block.
+            existing_list = next(content_node.findall(nodes.field_list), None)
+            if existing_list is not None:
+                for child in list(extra_fields.children):
+                    existing_list += child
+            else:
+                content_node += extra_fields
 
 
 # ---------------------------------------------------------------------------
