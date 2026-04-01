@@ -1749,8 +1749,8 @@ def _build_badge_group_node(
     if autouse:
         badges.append(
             nodes.abbreviation(
-                "AUTO",
-                "AUTO",
+                "auto",
+                "auto",
                 explanation=_BADGE_TOOLTIPS["autouse"],
                 classes=["spf-badge", "spf-badge--state", "spf-autouse"],
             )
@@ -1758,8 +1758,8 @@ def _build_badge_group_node(
     elif kind == "factory":
         badges.append(
             nodes.abbreviation(
-                "FACTORY",
-                "FACTORY",
+                "factory",
+                "factory",
                 explanation=_BADGE_TOOLTIPS["factory"],
                 classes=["spf-badge", "spf-badge--kind", "spf-factory"],
             )
@@ -1767,18 +1767,18 @@ def _build_badge_group_node(
     elif kind == "override_hook":
         badges.append(
             nodes.abbreviation(
-                "OVERRIDE",
-                "OVERRIDE",
+                "override",
+                "override",
                 explanation=_BADGE_TOOLTIPS["override_hook"],
                 classes=["spf-badge", "spf-badge--kind", "spf-override"],
             )
         )
 
-    # Slot 3 — FIXTURE (always, rightmost)
+    # Slot 3 — fixture badge (always, rightmost)
     badges.append(
         nodes.abbreviation(
-            "FIXTURE",
-            "FIXTURE",
+            "fixture",
+            "fixture",
             explanation=_BADGE_TOOLTIPS["fixture"],
             classes=["spf-badge", "spf-badge--fixture"],
         )

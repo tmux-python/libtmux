@@ -498,6 +498,13 @@ dl.py.fixture > dd > dl.field-list {
 dl.py.fixture > dd > dl.field-list > dt { grid-column: 1; }
 dl.py.fixture > dd > dl.field-list > dd { grid-column: 2; margin-left: 0; }
 
+/* Mobile: metadata fields stack to single column */
+@media (max-width: 52rem) {
+  dl.py.fixture > dd > dl.field-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Suppress Rtype field-list on fixtures — return type is already in the
  * signature (→ Type).  sphinx_autodoc_typehints emits a separate field-list
  * with only "Rtype:" when autodoc_typehints = "description". Hide it. */

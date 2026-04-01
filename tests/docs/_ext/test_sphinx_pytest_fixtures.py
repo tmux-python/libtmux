@@ -376,7 +376,7 @@ def test_build_badge_group_node_fixture_always_present() -> None:
     """_build_badge_group_node always includes a FIXTURE badge child."""
     node = sphinx_pytest_fixtures._build_badge_group_node("function", "resource", False)
     texts = [child.astext() for child in node.children]
-    assert "FIXTURE" in texts
+    assert "fixture" in texts
 
 
 def test_build_badge_group_node_no_scope_for_function() -> None:
@@ -415,7 +415,7 @@ def test_build_badge_group_node_override_kind() -> None:
         if hasattr(child, "get")
         for c in child.get("classes", [])
     ]
-    assert "OVERRIDE" in texts
+    assert "override" in texts
     assert "spf-override" in classes_all
 
 
@@ -429,7 +429,7 @@ def test_build_badge_group_node_autouse_replaces_kind() -> None:
         if hasattr(child, "get")
         for c in child.get("classes", [])
     ]
-    assert "AUTO" in texts
+    assert "auto" in texts
     assert "spf-autouse" in classes_all
     assert "spf-badge--kind" not in classes_all
 
@@ -444,7 +444,7 @@ def test_build_badge_group_node_factory_session() -> None:
         if hasattr(child, "get")
         for c in child.get("classes", [])
     ]
-    assert "FACTORY" in texts
+    assert "factory" in texts
     assert "spf-factory" in classes_all
     assert "spf-scope-session" in classes_all
 
