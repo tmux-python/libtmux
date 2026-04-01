@@ -50,7 +50,23 @@ The primary injection points for libtmux tests.
 ```{eval-rst}
 .. autofixture:: libtmux.pytest_plugin.server
 
+   .. rubric:: Example
+
+   .. code-block:: python
+
+      def test_server_sessions(server: Server) -> None:
+          session = server.new_session(session_name="work")
+          assert session.session_name == "work"
+
 .. autofixture:: libtmux.pytest_plugin.session
+
+   .. rubric:: Example
+
+   .. code-block:: python
+
+      def test_session_windows(session: Session) -> None:
+          window = session.new_window(window_name="editor")
+          assert window.window_name == "editor"
 ```
 
 ## Environment Fixtures
@@ -76,12 +92,29 @@ Override these in your project's `conftest.py` to customise the test environment
 .. autofixture:: libtmux.pytest_plugin.home_user_name
 
 .. autofixture:: libtmux.pytest_plugin.session_params
+
+   .. rubric:: Example
+
+   .. code-block:: python
+
+      # conftest.py
+      @pytest.fixture
+      def session_params() -> dict:
+          return {"x": 800, "y": 600}
 ```
 
 ## Factories
 
 ```{eval-rst}
 .. autofixture:: libtmux.pytest_plugin.TestServer
+
+   .. rubric:: Example
+
+   .. code-block:: python
+
+      def test_isolated_servers(TestServer) -> None:
+          s1, s2 = TestServer(), TestServer()
+          assert s1.socket_name != s2.socket_name
 ```
 
 ## Low-Level / Rarely Needed
