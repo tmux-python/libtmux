@@ -543,8 +543,9 @@ def test_kind_override_hook_option(tmp_path: pathlib.Path) -> None:
     app.build()
 
     index_html = (outdir / "index.html").read_text(encoding="utf-8")
-    assert "override_hook" in index_html, (
-        "Expected 'override_hook' to appear in rendered HTML when :kind: is set"
+    # Standard kinds (override_hook) are communicated via badge, not Kind field.
+    assert "spf-override" in index_html, (
+        "Expected spf-override badge class when :kind: override_hook is set"
     )
 
 
@@ -649,14 +650,14 @@ def test_factory_snippet_shows_instantiation(tmp_path: pathlib.Path) -> None:
     """Factory fixtures are classified as factory and render a FACTORY badge."""
     result = _build_sphinx_app(tmp_path)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    # TestServer is a factory fixture — it must have the FACTORY badge and
-    # the Kind field value "factory" rendered as plain text.
+    # TestServer is a factory fixture — it must have the FACTORY badge.
     assert "spf-factory" in index_html, (
         "Expected spf-factory class badge for TestServer factory fixture"
     )
-    # The Kind: factory field renders the text "factory" as plain HTML.
-    assert "<p>factory</p>" in index_html, (
-        "Expected 'Kind: factory' field in factory fixture documentation"
+    # Standard kinds (resource, factory, override_hook) are communicated via
+    # badges only — the Kind field is suppressed for badge-covered kinds.
+    assert "<p>factory</p>" not in index_html, (
+        "Standard Kind field should be suppressed when badge covers it"
     )
 
 

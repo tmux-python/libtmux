@@ -1185,8 +1185,8 @@ class PyFixtureDirective(PyFunction):
                 ),
             )
 
-        # --- Kind field (only when explicitly set or non-default) ---
-        if kind and kind != "resource":
+        # --- Kind field (only for custom/nonstandard kinds not covered by badges) ---
+        if kind and kind not in _KNOWN_KINDS:
             field_list += nodes.field(
                 "",
                 nodes.field_name("", "Kind"),
