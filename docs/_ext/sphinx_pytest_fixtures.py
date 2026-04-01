@@ -2064,6 +2064,11 @@ def setup(app: Sphinx) -> SetupDict:
         rebuild="env",
     )
 
+    # Register std:fixture so :external+pytest:std:fixture: intersphinx
+    # references resolve.  Pytest registers this in their own conf.py;
+    # we mirror it so the role is known locally.
+    app.add_crossref_type("fixture", "fixture")
+
     # Guard against re-registration when setup() is called multiple times.
     if "fixture" not in PythonDomain.object_types:
         PythonDomain.object_types["fixture"] = ObjType(

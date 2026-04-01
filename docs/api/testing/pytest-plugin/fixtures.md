@@ -100,15 +100,29 @@ These `conf.py` values control how fixture documentation is rendered:
 .. confval:: pytest_fixture_hidden_dependencies
 
    Fixture names to suppress from "Depends on" lists. Default: common pytest
-   builtins (``pytestconfig``, ``capfd``, ``capsysbinary``, ``capfdbinary``,
-   ``recwarn``, ``tmpdir``, ``pytester``, ``testdir``, ``record_property``,
-   ``record_xml_attribute``, ``record_testsuite_property``, ``cache``).
+   builtins (:external+pytest:std:fixture:`pytestconfig`,
+   :external+pytest:std:fixture:`capfd`,
+   :external+pytest:std:fixture:`capsysbinary`,
+   :external+pytest:std:fixture:`capfdbinary`,
+   :external+pytest:std:fixture:`recwarn`,
+   :external+pytest:std:fixture:`tmpdir`,
+   :external+pytest:std:fixture:`pytester`,
+   :external+pytest:std:fixture:`testdir`,
+   :external+pytest:std:fixture:`record_property`,
+   ``record_xml_attribute``,
+   :external+pytest:std:fixture:`record_testsuite_property`,
+   :external+pytest:std:fixture:`cache`).
 
 .. confval:: pytest_fixture_builtin_links
 
    URL mapping for builtin fixture external links in "Depends on" blocks.
-   Default: links to pytest docs for ``tmp_path_factory``, ``tmp_path``,
-   ``monkeypatch``, ``request``, ``capsys``, ``caplog``.
+   Default: links to pytest docs for
+   :external+pytest:std:fixture:`tmp_path_factory`,
+   :external+pytest:std:fixture:`tmp_path`,
+   :external+pytest:std:fixture:`monkeypatch`,
+   :external+pytest:std:fixture:`request`,
+   :external+pytest:std:fixture:`capsys`,
+   :external+pytest:std:fixture:`caplog`.
 
 .. confval:: pytest_external_fixture_links
 
