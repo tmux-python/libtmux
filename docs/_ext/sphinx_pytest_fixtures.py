@@ -256,20 +256,29 @@ def _resolve_builtin_url(name: str, app: t.Any) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _get_spf_store(env: t.Any) -> dict[str, t.Any]:
+class FixtureStoreDict(t.TypedDict):
+    """Typed shape of the extension-owned env domaindata namespace."""
+
+    fixtures: dict[str, FixtureMeta]
+    public_to_canon: dict[str, str | None]
+    reverse_deps: dict[str, list[str]]
+    _store_version: int
+
+
+def _make_empty_store() -> FixtureStoreDict:
+    """Return a fresh, empty store dict."""
+    return FixtureStoreDict(
+        fixtures={},
+        public_to_canon={},
+        reverse_deps={},
+        _store_version=_STORE_VERSION,
+    )
+
+
+def _get_spf_store(env: t.Any) -> FixtureStoreDict:
     """Return the extension-owned env domaindata namespace.
 
     Creates the namespace with empty collections on first access.
-
-    Structure
-    ---------
-    ``fixtures``
-        ``dict[canonical_name, FixtureMeta]``
-    ``public_to_canon``
-        ``dict[public_name, canonical_name | None]`` — ``None`` when ambiguous
-        (same public name exported by multiple modules).
-    ``reverse_deps``
-        ``dict[canonical_name, list[canonical_name]]`` — who uses this fixture.
 
     Parameters
     ----------
@@ -278,30 +287,18 @@ def _get_spf_store(env: t.Any) -> dict[str, t.Any]:
 
     Returns
     -------
-    dict
+    FixtureStoreDict
         The mutable store dict.
     """
-    store = env.domaindata.setdefault(
+    store: FixtureStoreDict = env.domaindata.setdefault(
         "sphinx_pytest_fixtures",
-        {
-            "fixtures": {},
-            "public_to_canon": {},
-            "reverse_deps": {},
-            "_store_version": _STORE_VERSION,
-        },
+        _make_empty_store(),
     )
     if store.get("_store_version") != _STORE_VERSION:
         # Stale pickle — mutate in-place to preserve existing references.
-        store.clear()
-        store.update(
-            {
-                "fixtures": {},
-                "public_to_canon": {},
-                "reverse_deps": {},
-                "_store_version": _STORE_VERSION,
-            }
-        )
-    return store  # type: ignore[no-any-return]
+        t.cast(dict[str, t.Any], store).clear()
+        t.cast(dict[str, t.Any], store).update(_make_empty_store())
+    return store
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +306,7 @@ def _get_spf_store(env: t.Any) -> dict[str, t.Any]:
 # ---------------------------------------------------------------------------
 
 
-def _rebuild_public_to_canon(store: dict[str, t.Any]) -> None:
+def _rebuild_public_to_canon(store: FixtureStoreDict) -> None:
     """Rebuild ``public_to_canon`` from the ``fixtures`` registry.
 
     Marks public names that map to multiple canonical names as ``None``
@@ -325,7 +322,7 @@ def _rebuild_public_to_canon(store: dict[str, t.Any]) -> None:
     store["public_to_canon"] = pub_map
 
 
-def _rebind_dep_targets(store: dict[str, t.Any]) -> None:
+def _rebind_dep_targets(store: FixtureStoreDict) -> None:
     """Rebind ALL ``FixtureDep.target`` values from the current ``public_to_canon``.
 
     Handles forward references (``None`` → resolved), stale references
@@ -350,7 +347,7 @@ def _rebind_dep_targets(store: dict[str, t.Any]) -> None:
     store["fixtures"].update(updated)
 
 
-def _rebuild_reverse_deps(store: dict[str, t.Any]) -> None:
+def _rebuild_reverse_deps(store: FixtureStoreDict) -> None:
     """Rebuild ``reverse_deps`` from the finalized ``fixtures`` registry.
 
     Skips self-edges (a fixture depending on itself).
@@ -365,7 +362,7 @@ def _rebuild_reverse_deps(store: dict[str, t.Any]) -> None:
     store["reverse_deps"] = {k: sorted(v) for k, v in rev.items()}
 
 
-def _finalize_store(store: dict[str, t.Any]) -> None:
+def _finalize_store(store: FixtureStoreDict) -> None:
     """One-shot finalization: rebuild all derived indices from ``fixtures``.
 
     Called via the ``env-updated`` event, which fires once after all
@@ -1862,7 +1859,7 @@ def _strip_rtype_fields(desc_node: addnodes.desc) -> None:
 
 def _inject_metadata_fields(
     desc_node: addnodes.desc,
-    store: dict[str, t.Any],
+    store: FixtureStoreDict,
     py_domain: PythonDomain,
     app: Sphinx,
     docname: str,
