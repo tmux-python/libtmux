@@ -96,23 +96,29 @@ Override these in your project's `conftest.py` to customise the test environment
 
 These `conf.py` values control how fixture documentation is rendered:
 
-`pytest_fixture_hidden_dependencies`
-:   Fixture names to suppress from "Depends on" lists. Default: common pytest
-    builtins (`pytestconfig`, `capfd`, `capsysbinary`, `capfdbinary`, `recwarn`,
-    `tmpdir`, `pytester`, `testdir`, `record_property`, `record_xml_attribute`,
-    `record_testsuite_property`, `cache`).
+```{eval-rst}
+.. confval:: pytest_fixture_hidden_dependencies
 
-`pytest_fixture_builtin_links`
-:   URL mapping for builtin fixture external links in "Depends on" blocks.
-    Default: links to pytest docs for `tmp_path_factory`, `tmp_path`,
-    `monkeypatch`, `request`, `capsys`, `caplog`.
+   Fixture names to suppress from "Depends on" lists. Default: common pytest
+   builtins (``pytestconfig``, ``capfd``, ``capsysbinary``, ``capfdbinary``,
+   ``recwarn``, ``tmpdir``, ``pytester``, ``testdir``, ``record_property``,
+   ``record_xml_attribute``, ``record_testsuite_property``, ``cache``).
 
-`pytest_external_fixture_links`
-:   URL mapping for external fixture cross-references. Default: `{}`.
+.. confval:: pytest_fixture_builtin_links
 
-`pytest_internal_fixtures`
-:   **Deprecated.** Use `pytest_fixture_hidden_dependencies` instead. Emits a
-    warning when set.
+   URL mapping for builtin fixture external links in "Depends on" blocks.
+   Default: links to pytest docs for ``tmp_path_factory``, ``tmp_path``,
+   ``monkeypatch``, ``request``, ``capsys``, ``caplog``.
+
+.. confval:: pytest_external_fixture_links
+
+   URL mapping for external fixture cross-references. Default: ``{}``.
+
+.. confval:: pytest_internal_fixtures
+
+   **Deprecated.** Use :confval:`pytest_fixture_hidden_dependencies` instead.
+   Emits a warning when set.
+```
 
 ---
 
