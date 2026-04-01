@@ -1171,13 +1171,8 @@ class PyFixtureDirective(PyFunction):
 
         field_list = nodes.field_list()
 
-        # --- Scope field (suppressed for function-scope — absence = function) ---
-        if scope and scope != "function":
-            field_list += nodes.field(
-                "",
-                nodes.field_name("", "Scope"),
-                nodes.field_body("", nodes.paragraph("", scope)),
-            )
+        # Scope field removed — badges communicate scope at a glance,
+        # the index table provides comparison.  See P2-2 in the enhancement spec.
 
         # --- Autouse field ---
         if autouse:
