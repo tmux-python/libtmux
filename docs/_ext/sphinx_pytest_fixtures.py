@@ -2220,8 +2220,9 @@ def _parse_rst_inline(
             # ``literal`` — inline code
             result_nodes.append(nodes.literal(m.group(3), m.group(3), classes=["code"]))
         elif m.group(4):
-            # `emphasis` — inline emphasis
-            result_nodes.append(nodes.emphasis(m.group(4), m.group(4)))
+            # `interpreted text` — render as inline code (Sphinx default role
+            # in the Python domain is :obj:, which renders as code)
+            result_nodes.append(nodes.literal(m.group(4), m.group(4)))
 
         pos = m.end()
 
@@ -2395,7 +2396,9 @@ def _resolve_fixture_index(
         desc_entry += desc_para
         row += desc_entry
 
-    node.replace_self([table])
+    scroll_wrapper = nodes.container(classes=["spf-table-scroll"])
+    scroll_wrapper += table
+    node.replace_self([scroll_wrapper])
 
 
 # ---------------------------------------------------------------------------
