@@ -814,3 +814,134 @@ def test_infer_kind_custom_warning(caplog: pytest.LogCaptureFixture) -> None:
         )
 
     assert any("custom_weird_kind" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# _classify_deps
+# ---------------------------------------------------------------------------
+
+
+def test_classify_deps_project_fixture() -> None:
+    """Non-builtin, non-hidden dep is classified as a project fixture."""
+
+    @pytest.fixture
+    def my_fixture(server: t.Any) -> str:
+        return "hello"
+
+    project, builtin, hidden = sphinx_pytest_fixtures._classify_deps(my_fixture, None)
+    assert "server" in project
+    assert "server" not in builtin
+    assert "server" not in hidden
+
+
+def test_classify_deps_hidden_fixture() -> None:
+    """Fixture depending on pytestconfig has it classified as hidden."""
+
+    @pytest.fixture
+    def my_fixture(pytestconfig: t.Any) -> str:
+        return "hello"
+
+    project, _builtin, hidden = sphinx_pytest_fixtures._classify_deps(my_fixture, None)
+    assert "pytestconfig" in hidden
+    assert "pytestconfig" not in project
+
+
+def test_classify_deps_deprecated_config_merge() -> None:
+    """Both old and new hidden config are merged (union)."""
+
+    @pytest.fixture
+    def my_fixture(pytestconfig: t.Any, capfd: t.Any, my_dep: t.Any) -> str:
+        return "hello"
+
+    # Old-style config adds "my_dep" to hidden set
+    app = types.SimpleNamespace(
+        config=types.SimpleNamespace(
+            pytest_fixture_hidden_dependencies=frozenset({"pytestconfig"}),
+            pytest_internal_fixtures=frozenset({"my_dep"}),
+            pytest_fixture_builtin_links={},
+            pytest_external_fixture_links={},
+        ),
+    )
+    _project, _builtin, hidden = sphinx_pytest_fixtures._classify_deps(my_fixture, app)
+    assert "pytestconfig" in hidden
+    assert "my_dep" in hidden
+    assert "capfd" not in hidden  # capfd not in either config set
+
+
+# ---------------------------------------------------------------------------
+# _build_usage_snippet
+# ---------------------------------------------------------------------------
+
+
+def test_build_usage_snippet_resource_returns_none() -> None:
+    """Resource fixtures return None (generic snippet suppressed)."""
+    result = sphinx_pytest_fixtures._build_usage_snippet(
+        "server", "Server", "resource", "function", autouse=False
+    )
+    assert result is None
+
+
+def test_build_usage_snippet_autouse_returns_note() -> None:
+    """Autouse fixtures return a nodes.note admonition."""
+    from docutils import nodes
+
+    result = sphinx_pytest_fixtures._build_usage_snippet(
+        "auto_cleanup", None, "resource", "function", autouse=True
+    )
+    assert isinstance(result, nodes.note)
+    assert "No request needed" in result.astext()
+
+
+# ---------------------------------------------------------------------------
+# _on_env_purge_doc
+# ---------------------------------------------------------------------------
+
+
+def test_env_purge_doc_removes_only_target() -> None:
+    """Purging a doc removes only that doc's fixtures from the store."""
+    env = types.SimpleNamespace(
+        domaindata={
+            "sphinx_pytest_fixtures": {
+                "fixtures": {
+                    "mod.fixture_a": sphinx_pytest_fixtures.FixtureMeta(
+                        docname="page_a",
+                        canonical_name="mod.fixture_a",
+                        public_name="fixture_a",
+                        source_name="fixture_a",
+                        scope="function",
+                        autouse=False,
+                        kind="resource",
+                        return_display="str",
+                        return_xref_target=None,
+                        deps=(),
+                        param_reprs=(),
+                        has_teardown=False,
+                        is_async=False,
+                    ),
+                    "mod.fixture_b": sphinx_pytest_fixtures.FixtureMeta(
+                        docname="page_b",
+                        canonical_name="mod.fixture_b",
+                        public_name="fixture_b",
+                        source_name="fixture_b",
+                        scope="function",
+                        autouse=False,
+                        kind="resource",
+                        return_display="str",
+                        return_xref_target=None,
+                        deps=(),
+                        param_reprs=(),
+                        has_teardown=False,
+                        is_async=False,
+                    ),
+                },
+                "public_to_canon": {},
+                "reverse_deps": {},
+                "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+            },
+        },
+    )
+    app = types.SimpleNamespace()
+    sphinx_pytest_fixtures._on_env_purge_doc(app, env, "page_a")
+    store = env.domaindata["sphinx_pytest_fixtures"]
+    assert "mod.fixture_a" not in store["fixtures"]
+    assert "mod.fixture_b" in store["fixtures"]
