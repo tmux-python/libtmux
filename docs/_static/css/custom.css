@@ -433,9 +433,11 @@ dl.py.fixture > dt .spf-badge[tabindex]:focus::after {
   pointer-events: none;
 }
 
-/* Remove default focus outline — the tooltip IS the focus indicator */
-dl.py.fixture > dt .spf-badge[tabindex]:focus {
-  outline: none;
+/* Restore visible focus outline for keyboard users. The tooltip still appears
+ * on any :focus, but the ring only appears for :focus-visible (keyboard nav). */
+dl.py.fixture > dt .spf-badge[tabindex]:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
 }
 
 /* FIXTURE badge (always shown, outlined green — same visual treatment

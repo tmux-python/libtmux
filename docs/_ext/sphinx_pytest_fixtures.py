@@ -4,6 +4,12 @@ Registers ``py:fixture`` as a domain directive and ``autofixture::`` as an
 autodoc documenter. Fixtures are rendered with their scope, user-visible
 dependencies, and an auto-generated usage snippet rather than as plain
 callable signatures.
+
+.. note::
+
+   This extension's visual output (badges, cards) depends on CSS rules
+   currently located in the project's ``docs/_static/css/custom.css`` file.
+   To use this extension in other projects, these styles must be included.
 """
 
 from __future__ import annotations
@@ -307,7 +313,7 @@ class _FixtureFunctionDefinitionAdapter:
         raw = self._obj.scope
         if hasattr(raw, "value"):  # pytest 9+: _pytest.scope.Scope enum
             return str(raw.value)
-        return str(raw) if raw else "function"
+        return str(raw) if raw else _DEFAULTS["scope"]
 
     @property
     def autouse(self) -> bool:
@@ -1041,7 +1047,7 @@ def _infer_kind(obj: t.Any, explicit_kind: str | None = None) -> str:
         return explicit_kind
     if _is_factory(obj):
         return "factory"
-    return "resource"
+    return _DEFAULTS["kind"]
 
 
 # ---------------------------------------------------------------------------
@@ -1111,7 +1117,7 @@ def _build_usage_snippet(
         note = nodes.note()
         note += nodes.paragraph(
             "",
-            "No request needed \u2014 this fixture runs automatically for every test.",
+            _CALLOUT_MESSAGES["autouse"],
         )
         return note
 
@@ -1206,13 +1212,13 @@ class PyFixtureDirective(PyFunction):
     doc_field_types = [  # noqa: RUF012
         Field(
             "scope",
-            label="Scope",
+            label=_FIELD_LABELS["scope"],
             has_arg=False,
             names=("scope",),
         ),
         GroupedField(
             "depends",
-            label="Depends on",
+            label=_FIELD_LABELS["depends"],
             rolename="fixture",
             names=("depends", "depend"),
             can_collapse=True,
@@ -1276,8 +1282,8 @@ class PyFixtureDirective(PyFunction):
             ``(fullname, prefix)`` from the parent implementation.
         """
         result = super().handle_signature(sig, signode)
-        signode["spf_scope"] = self.options.get("scope", "function")
-        signode["spf_kind"] = self.options.get("kind", "resource")
+        signode["spf_scope"] = self.options.get("scope", _DEFAULTS["scope"])
+        signode["spf_kind"] = self.options.get("kind", _DEFAULTS["kind"])
         signode["spf_autouse"] = "autouse" in self.options
         signode["spf_ret_type"] = self.options.get("return-type", "")
         return result
@@ -1316,10 +1322,10 @@ class PyFixtureDirective(PyFunction):
         content_node : addnodes.desc_content
             The content node to prepend metadata into.
         """
-        scope = self.options.get("scope", "function")
+        scope = self.options.get("scope", _DEFAULTS["scope"])
         depends_str = self.options.get("depends", "")
         ret_type = self.options.get("return-type", "")
-        show_usage = self.options.get("usage", "auto") != "none"
+        show_usage = self.options.get("usage", _DEFAULTS["usage"]) != "none"
         kind = self.options.get("kind", "")
         autouse = "autouse" in self.options
         has_teardown = "teardown" in self.options
@@ -1334,7 +1340,7 @@ class PyFixtureDirective(PyFunction):
         if autouse:
             field_list += nodes.field(
                 "",
-                nodes.field_name("", "Autouse"),
+                nodes.field_name("", _FIELD_LABELS["autouse"]),
                 nodes.field_body(
                     "",
                     nodes.paragraph("", "yes \u2014 runs automatically for every test"),
@@ -1345,7 +1351,7 @@ class PyFixtureDirective(PyFunction):
         if kind and kind not in _KNOWN_KINDS:
             field_list += nodes.field(
                 "",
-                nodes.field_name("", "Kind"),
+                nodes.field_name("", _FIELD_LABELS["kind"]),
                 nodes.field_body("", nodes.paragraph("", kind)),
             )
 
@@ -1397,7 +1403,7 @@ class PyFixtureDirective(PyFunction):
                         body_para += nodes.Text(", ")
                 field_list += nodes.field(
                     "",
-                    nodes.field_name("", "Depends on"),
+                    nodes.field_name("", _FIELD_LABELS["depends"]),
                     nodes.field_body("", body_para),
                 )
 
@@ -1406,37 +1412,22 @@ class PyFixtureDirective(PyFunction):
 
         if scope == "session":
             note = nodes.note()
-            note += nodes.paragraph(
-                "",
-                "Created once per test session and shared across all tests. "
-                "Requesting this fixture does not create a new instance per test.",
-            )
+            note += nodes.paragraph("", _CALLOUT_MESSAGES["session_scope"])
             callout_nodes.append(note)
 
         if kind == "override_hook":
             tip = nodes.tip()
-            tip += nodes.paragraph(
-                "",
-                "This is an override hook. Override it in your project\u2019s "
-                "conftest.py to customise behaviour for your test suite.",
-            )
+            tip += nodes.paragraph("", _CALLOUT_MESSAGES["override_hook"])
             callout_nodes.append(tip)
 
         if has_teardown:
             note = nodes.note()
-            note += nodes.paragraph(
-                "",
-                "This is a yield fixture — it runs setup code before yielding "
-                "the value to the test, then teardown code after the test completes.",
-            )
+            note += nodes.paragraph("", _CALLOUT_MESSAGES["yield_fixture"])
             callout_nodes.append(note)
 
         if is_async:
             note = nodes.note()
-            note += nodes.paragraph(
-                "",
-                "This is an async fixture. Use it in async test functions.",
-            )
+            note += nodes.paragraph("", _CALLOUT_MESSAGES["async_fixture"])
             callout_nodes.append(note)
 
         # --- Usage snippet (five-zone insertion after first paragraph) ---
@@ -1448,7 +1439,7 @@ class PyFixtureDirective(PyFunction):
             snippet = _build_usage_snippet(
                 fixture_name,
                 ret_type or None,
-                kind or "resource",
+                kind or _DEFAULTS["kind"],
                 scope,
                 autouse,
                 is_async=is_async,
@@ -1509,9 +1500,9 @@ class PyFixtureDirective(PyFunction):
                 canonical_name=canonical,
                 public_name=public,
                 source_name=public,
-                scope=self.options.get("scope", "function"),
+                scope=self.options.get("scope", _DEFAULTS["scope"]),
                 autouse="autouse" in self.options,
-                kind=self.options.get("kind", "resource"),
+                kind=self.options.get("kind", _DEFAULTS["kind"]),
                 return_display=self.options.get("return-type", ""),
                 return_xref_target=None,
                 deps=tuple(deps),
@@ -1901,7 +1892,7 @@ def _build_badge_group_node(
     badges: list[nodes.abbreviation] = []
 
     # Slot 1 — scope badge (leftmost, only non-function scope)
-    if scope and scope != "function":
+    if scope and scope not in _SUPPRESSED_SCOPES:
         badges.append(
             nodes.abbreviation(
                 scope,
@@ -2088,7 +2079,7 @@ def _inject_metadata_fields(
                 body_para += nodes.Text(", ")
         extra_fields += nodes.field(
             "",
-            nodes.field_name("", "Used by"),
+            nodes.field_name("", _FIELD_LABELS["used_by"]),
             nodes.field_body("", body_para),
         )
 
@@ -2101,7 +2092,7 @@ def _inject_metadata_fields(
                 body_para += nodes.Text(", ")
         extra_fields += nodes.field(
             "",
-            nodes.field_name("", "Parametrized"),
+            nodes.field_name("", _FIELD_LABELS["parametrized"]),
             nodes.field_body("", body_para),
         )
 
