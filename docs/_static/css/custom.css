@@ -403,11 +403,15 @@ dl.py.fixture > dt span.spf-badge {
   vertical-align: middle;
 }
 
-/* FIXTURE badge (always shown, green) */
+/* FIXTURE badge (always shown, green — demoted to reduce visual noise
+ * on pages exclusively about fixtures; meaningful badges like scope
+ * and kind remain at full weight) */
 dl.py.fixture > dt span.spf-badge--fixture {
   background-color: var(--spf-fixture-bg);
   color: var(--spf-fixture-fg);
   border-color: var(--spf-fixture-border);
+  opacity: 0.55;
+  font-size: calc(var(--spf-badge-font-size) * 0.85);
 }
 
 /* Scope badges — class-based (replaces data-* attribute selectors) */
