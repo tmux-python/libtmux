@@ -503,6 +503,10 @@ dl.py.fixture > dd > dl.field-list > dd { grid-column: 2; margin-left: 0; }
   dl.py.fixture > dd > dl.field-list {
     grid-template-columns: 1fr;
   }
+  dl.py.fixture > dd > dl.field-list > dt,
+  dl.py.fixture > dd > dl.field-list > dd {
+    grid-column: 1;
+  }
 }
 
 /* Suppress Rtype field-list on fixtures — return type is already in the
