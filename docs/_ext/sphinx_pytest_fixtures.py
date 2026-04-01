@@ -1812,27 +1812,31 @@ def _on_doctree_resolved(
 
             badge_group = _build_badge_group_node(scope, kind, autouse)
 
-            # Insert badges after the headerlink (¶) but before the [source]
-            # viewcode link.  Desired order:
-            #   name → return → ¶ → badges → [source]
-            # The [source] link is a ``reference`` with a ``viewcode-link``
-            # child span.  If found, move it to the end after the badge group.
+            # Reorder signature children to:
+            #   name → return → ¶ → badges (right-aligned) → [source]
+            # Detach [source] and ¶ links, then re-append in desired order.
             viewcode_ref = None
+            headerlink_ref = None
             for child in list(sig_node.children):
-                if (
-                    isinstance(child, nodes.reference)
-                    and child.get("internal") is not True
-                    and any(
+                if isinstance(child, nodes.reference):
+                    # [source] link: external reference with viewcode-link child
+                    if child.get("internal") is not True and any(
                         "viewcode-link"
                         in getattr(gc, "get", lambda *_: "")("classes", [])
                         for gc in child.children
                         if isinstance(gc, nodes.inline)
-                    )
-                ):
-                    viewcode_ref = child
-                    sig_node.remove(child)
-                    break
+                    ):
+                        viewcode_ref = child
+                        sig_node.remove(child)
+                    # ¶ headerlink: internal reference with "headerlink" class
+                    elif "headerlink" in child.get("classes", []):
+                        headerlink_ref = child
+                        sig_node.remove(child)
 
+            # Re-append: ¶ first (inline with signature), then badges
+            # (right-aligned via margin-left:auto), then [source] last.
+            if headerlink_ref is not None:
+                sig_node += headerlink_ref
             sig_node += badge_group
             if viewcode_ref is not None:
                 sig_node += viewcode_ref

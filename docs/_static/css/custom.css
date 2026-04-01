@@ -373,7 +373,7 @@ dl.py.fixture > dt span.spf-badge-group {
   align-items: center;
   gap: 0.3rem;
   flex-shrink: 0;
-  margin-left: auto;  /* push badges to the right edge */
+  margin-left: auto;
   white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;
@@ -410,7 +410,7 @@ dl.py.fixture > dt span.spf-badge--fixture {
   background-color: var(--spf-fixture-bg);
   color: var(--spf-fixture-fg);
   border-color: var(--spf-fixture-border);
-  opacity: 0.55;
+  opacity: 0.82;
   font-size: calc(var(--spf-badge-font-size) * 0.85);
 }
 
