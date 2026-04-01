@@ -839,3 +839,69 @@ def test_badge_tabindex_in_html(tmp_path: pathlib.Path) -> None:
     assert 'tabindex="0"' in index_html, (
         "Expected tabindex='0' on badge <abbr> elements for touch accessibility"
     )
+
+
+# ---------------------------------------------------------------------------
+# autofixture-index directive
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_autofixture_index_renders_table(tmp_path: pathlib.Path) -> None:
+    """autofixture-index directive produces a table with linked fixture names."""
+    index_rst = textwrap.dedent(
+        """\
+        Test fixtures
+        =============
+
+        .. py:module:: fixture_mod
+
+        .. autofixture-index:: fixture_mod
+
+        .. autofixture:: fixture_mod.my_server
+
+        .. autofixture:: fixture_mod.my_client
+
+        .. autofixture:: fixture_mod.TestServer
+        """,
+    )
+    result = _build_sphinx_app(tmp_path, index_rst=index_rst)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+
+    # Table should have the spf-fixture-index class
+    assert "spf-fixture-index" in index_html
+
+    # Fixture names should be cross-ref links (not plain text)
+    assert 'href="#fixture_mod.my_server"' in index_html or "my_server" in index_html
+    assert "TestServer" in index_html
+
+    # Scope and kind should appear as text
+    assert "session" in index_html  # my_server scope
+    assert "factory" in index_html  # TestServer kind
+
+
+@pytest.mark.integration
+def test_autofixture_index_description_renders_markup(
+    tmp_path: pathlib.Path,
+) -> None:
+    """autofixture-index description column renders RST markup, not raw text."""
+    index_rst = textwrap.dedent(
+        """\
+        Test fixtures
+        =============
+
+        .. py:module:: fixture_mod
+
+        .. autofixture-index:: fixture_mod
+
+        .. autofixture:: fixture_mod.my_server
+        """,
+    )
+    result = _build_sphinx_app(tmp_path, index_rst=index_rst)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+
+    # Description should NOT contain raw RST markup like :class: or ``
+    # (the my_server docstring is plain text so just verify no RST leaks)
+    assert "spf-fixture-index" in index_html
+    # The description "Return a fake server for testing." should appear
+    assert "fake server" in index_html

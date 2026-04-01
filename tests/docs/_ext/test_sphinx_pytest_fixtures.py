@@ -592,6 +592,7 @@ def _make_meta(
         param_reprs=(),
         has_teardown=False,
         is_async=False,
+        summary="Test fixture.",
     )
 
 
@@ -909,6 +910,7 @@ def test_env_purge_doc_removes_only_target() -> None:
                         param_reprs=(),
                         has_teardown=False,
                         is_async=False,
+                        summary="",
                     ),
                     "mod.fixture_b": sphinx_pytest_fixtures.FixtureMeta(
                         docname="page_b",
@@ -924,6 +926,7 @@ def test_env_purge_doc_removes_only_target() -> None:
                         param_reprs=(),
                         has_teardown=False,
                         is_async=False,
+                        summary="",
                     ),
                 },
                 "public_to_canon": {},

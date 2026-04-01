@@ -28,20 +28,9 @@ def test_with_session(session: Session) -> None:
 
 ## Fixture Index
 
-:::{div} spf-table-scroll
-| Fixture | Scope | Kind | Returns | Description |
-|---|---|---|---|---|
-| {fixture}`home_path` | session | resource | `Path` | Temporary `/home/` path |
-| {fixture}`home_user_name` | session | override\_hook | `str` | Default username for `user_path` |
-| {fixture}`user_path` | session | resource | `Path` | Temporary user home directory |
-| {fixture}`config_file` | session | resource | `Path` | Default `.tmux.conf` with `base-index 1` |
-| {fixture}`zshrc` | session | resource | `Path` | Empty `.zshrc` to suppress ZSH message |
-| {fixture}`server` | function | resource | {class}`~libtmux.Server` | Fresh tmux server per test |
-| {fixture}`session` | function | resource | {class}`~libtmux.Session` | Temporary tmux session |
-| {fixture}`session_params` | function | override\_hook | `dict` | Override to customize session creation |
-| {fixture}`TestServer` | function | factory | `type[Server]` | Factory for independent tmux servers |
-| {fixture}`clear_env` | function | resource | `None` | Strips non-essential env vars |
-:::
+```{eval-rst}
+.. autofixture-index:: libtmux.pytest_plugin
+```
 
 ---
 
