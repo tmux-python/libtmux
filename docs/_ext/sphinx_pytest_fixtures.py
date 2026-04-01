@@ -1797,6 +1797,154 @@ def _build_badge_group_node(
     return group
 
 
+def _inject_badges_and_reorder(sig_node: addnodes.desc_signature) -> None:
+    """Inject scope/kind/fixture badges and reorder signature children.
+
+    Appends a badge group to *sig_node* and reorders the ¶ headerlink and
+    [source] viewcode link so the visual layout is:
+    ``name → return → ¶ → badges (right-aligned) → [source]``.
+
+    Guarded by the ``spf_badges_injected`` flag — safe to call multiple times.
+    """
+    if sig_node.get("spf_badges_injected"):
+        return
+    sig_node["spf_badges_injected"] = True
+
+    scope = sig_node.get("spf_scope", "function")
+    kind = sig_node.get("spf_kind", "resource")
+    autouse = sig_node.get("spf_autouse", False)
+
+    badge_group = _build_badge_group_node(scope, kind, autouse)
+
+    # Detach [source] and ¶ links, then re-append in desired order.
+    viewcode_ref = None
+    headerlink_ref = None
+    for child in list(sig_node.children):
+        if isinstance(child, nodes.reference):
+            if child.get("internal") is not True and any(
+                "viewcode-link" in getattr(gc, "get", lambda *_: "")("classes", [])
+                for gc in child.children
+                if isinstance(gc, nodes.inline)
+            ):
+                viewcode_ref = child
+                sig_node.remove(child)
+            elif "headerlink" in child.get("classes", []):
+                headerlink_ref = child
+                sig_node.remove(child)
+
+    if headerlink_ref is not None:
+        sig_node += headerlink_ref
+    sig_node += badge_group
+    if viewcode_ref is not None:
+        sig_node += viewcode_ref
+
+
+def _strip_rtype_fields(desc_node: addnodes.desc) -> None:
+    """Remove redundant "Rtype" fields from fixture descriptions.
+
+    ``sphinx_autodoc_typehints`` emits these for all autodoc objects; for
+    fixtures the return type is already in the signature line (``→ Type``).
+    """
+    for content_child in desc_node.findall(addnodes.desc_content):
+        for fl in list(content_child.findall(nodes.field_list)):
+            for field in list(fl.children):
+                if not isinstance(field, nodes.field):
+                    continue
+                field_name = field.children[0] if field.children else None
+                if (
+                    isinstance(field_name, nodes.field_name)
+                    and field_name.astext().lower() == "rtype"
+                ):
+                    fl.remove(field)
+            if not fl.children:
+                content_child.remove(fl)
+
+
+def _inject_metadata_fields(
+    desc_node: addnodes.desc,
+    store: dict[str, t.Any],
+    py_domain: PythonDomain,
+    app: Sphinx,
+    docname: str,
+) -> None:
+    """Inject "Used by" and "Parametrized" fields into fixture descriptions.
+
+    Uses :func:`make_refnode` for "Used by" links because ``pending_xref``
+    nodes added during ``doctree-resolved`` are too late for normal reference
+    resolution.
+
+    Guarded by ``spf_metadata_injected`` — safe to call multiple times.
+    """
+    if desc_node.get("spf_metadata_injected"):
+        return
+    desc_node["spf_metadata_injected"] = True
+
+    first_sig = next(desc_node.findall(addnodes.desc_signature), None)
+    if first_sig is None:
+        return
+    canon = first_sig.get("spf_canonical_name", "")
+    if not canon:
+        return
+
+    meta = store["fixtures"].get(canon)
+    content_node = None
+    for child in desc_node.children:
+        if isinstance(child, addnodes.desc_content):
+            content_node = child
+            break
+    if content_node is None:
+        return
+
+    extra_fields = nodes.field_list()
+
+    # "Used by" field — resolved links via make_refnode
+    consumers = store.get("reverse_deps", {}).get(canon, [])
+    if consumers:
+        body_para = nodes.paragraph()
+        for i, consumer_canon in enumerate(sorted(consumers)):
+            short = consumer_canon.rsplit(".", 1)[-1]
+            obj_entry = py_domain.objects.get(consumer_canon)
+            if obj_entry is not None:
+                ref_node: nodes.Node = make_refnode(
+                    app.builder,
+                    docname,
+                    obj_entry.docname,
+                    obj_entry.node_id,
+                    nodes.literal(short, short),
+                )
+            else:
+                ref_node = nodes.literal(short, short)
+            body_para += ref_node
+            if i < len(consumers) - 1:
+                body_para += nodes.Text(", ")
+        extra_fields += nodes.field(
+            "",
+            nodes.field_name("", "Used by"),
+            nodes.field_body("", body_para),
+        )
+
+    # "Parametrized" field — render from FixtureMeta.param_reprs tuple
+    if meta and meta.param_reprs:
+        body_para = nodes.paragraph()
+        for i, param_repr in enumerate(meta.param_reprs):
+            body_para += nodes.literal(param_repr, param_repr)
+            if i < len(meta.param_reprs) - 1:
+                body_para += nodes.Text(", ")
+        extra_fields += nodes.field(
+            "",
+            nodes.field_name("", "Parametrized"),
+            nodes.field_body("", body_para),
+        )
+
+    if extra_fields.children:
+        existing_list = next(content_node.findall(nodes.field_list), None)
+        if existing_list is not None:
+            for child in list(extra_fields.children):
+                existing_list += child
+        else:
+            content_node += extra_fields
+
+
 def _on_doctree_resolved(
     app: Sphinx,
     doctree: nodes.document,
@@ -1804,15 +1952,8 @@ def _on_doctree_resolved(
 ) -> None:
     """Inject badges and metadata fields into ``py:fixture`` descriptions.
 
-    **Badges** — portable ``nodes.inline`` badge nodes appended to each
-    ``desc_signature`` (scope, kind, FIXTURE).
-
-    **Metadata fields** — "Used by" and "Parametrized" field lists appended
-    to ``desc_content`` using resolved cross-reference nodes.
-
-    Uses :func:`make_refnode` for "Used by" links because ``pending_xref``
-    nodes added during ``doctree-resolved`` are too late for normal reference
-    resolution (the resolution pass has already run).
+    Orchestrates three focused helpers in the correct order:
+    badges first, rtype stripping second, metadata injection third.
 
     Parameters
     ----------
@@ -1830,136 +1971,10 @@ def _on_doctree_resolved(
         if desc_node.get("objtype") != "fixture":
             continue
 
-        # --- Badge injection (per signature) ---
         for sig_node in desc_node.findall(addnodes.desc_signature):
-            if sig_node.get("spf_badges_injected"):
-                continue
-            sig_node["spf_badges_injected"] = True
-
-            scope = sig_node.get("spf_scope", "function")
-            kind = sig_node.get("spf_kind", "resource")
-            autouse = sig_node.get("spf_autouse", False)
-
-            badge_group = _build_badge_group_node(scope, kind, autouse)
-
-            # Reorder signature children to:
-            #   name → return → ¶ → badges (right-aligned) → [source]
-            # Detach [source] and ¶ links, then re-append in desired order.
-            viewcode_ref = None
-            headerlink_ref = None
-            for child in list(sig_node.children):
-                if isinstance(child, nodes.reference):
-                    # [source] link: external reference with viewcode-link child
-                    if child.get("internal") is not True and any(
-                        "viewcode-link"
-                        in getattr(gc, "get", lambda *_: "")("classes", [])
-                        for gc in child.children
-                        if isinstance(gc, nodes.inline)
-                    ):
-                        viewcode_ref = child
-                        sig_node.remove(child)
-                    # ¶ headerlink: internal reference with "headerlink" class
-                    elif "headerlink" in child.get("classes", []):
-                        headerlink_ref = child
-                        sig_node.remove(child)
-
-            # Re-append: ¶ first (inline with signature), then badges
-            # (right-aligned via margin-left:auto), then [source] last.
-            if headerlink_ref is not None:
-                sig_node += headerlink_ref
-            sig_node += badge_group
-            if viewcode_ref is not None:
-                sig_node += viewcode_ref
-
-        # --- Strip Rtype fields — return type is already in the signature.
-        #     sphinx_autodoc_typehints emits these for all autodoc objects;
-        #     for fixtures they are redundant with → Type in the sig line. ---
-        for content_child in desc_node.findall(addnodes.desc_content):
-            for fl in list(content_child.findall(nodes.field_list)):
-                for field in list(fl.children):
-                    if not isinstance(field, nodes.field):
-                        continue
-                    field_name = field.children[0] if field.children else None
-                    if (
-                        isinstance(field_name, nodes.field_name)
-                        and field_name.astext().lower() == "rtype"
-                    ):
-                        fl.remove(field)
-                # Remove empty field lists left behind
-                if not fl.children:
-                    content_child.remove(fl)
-
-        # --- Metadata injection (once per desc_node) ---
-        if desc_node.get("spf_metadata_injected"):
-            continue
-        desc_node["spf_metadata_injected"] = True
-
-        first_sig = next(desc_node.findall(addnodes.desc_signature), None)
-        if first_sig is None:
-            continue
-        canon = first_sig.get("spf_canonical_name", "")
-        if not canon:
-            continue
-
-        meta = store["fixtures"].get(canon)
-        content_node = None
-        for child in desc_node.children:
-            if isinstance(child, addnodes.desc_content):
-                content_node = child
-                break
-        if content_node is None:
-            continue
-
-        extra_fields = nodes.field_list()
-
-        # "Used by" field — resolved links via make_refnode
-        consumers = store.get("reverse_deps", {}).get(canon, [])
-        if consumers:
-            body_para = nodes.paragraph()
-            for i, consumer_canon in enumerate(sorted(consumers)):
-                short = consumer_canon.rsplit(".", 1)[-1]
-                obj_entry = py_domain.objects.get(consumer_canon)
-                if obj_entry is not None:
-                    ref_node: nodes.Node = make_refnode(
-                        app.builder,
-                        docname,
-                        obj_entry.docname,
-                        obj_entry.node_id,
-                        nodes.literal(short, short),
-                    )
-                else:
-                    ref_node = nodes.literal(short, short)
-                body_para += ref_node
-                if i < len(consumers) - 1:
-                    body_para += nodes.Text(", ")
-            extra_fields += nodes.field(
-                "",
-                nodes.field_name("", "Used by"),
-                nodes.field_body("", body_para),
-            )
-
-        # "Parametrized" field — render from FixtureMeta.param_reprs tuple
-        if meta and meta.param_reprs:
-            body_para = nodes.paragraph()
-            for i, param_repr in enumerate(meta.param_reprs):
-                body_para += nodes.literal(param_repr, param_repr)
-                if i < len(meta.param_reprs) - 1:
-                    body_para += nodes.Text(", ")
-            extra_fields += nodes.field(
-                "",
-                nodes.field_name("", "Parametrized"),
-                nodes.field_body("", body_para),
-            )
-
-        if extra_fields.children:
-            # Merge into the existing field_list from transform_content()
-            # so the CSS grid formats one unified <dl> block.
-            existing_list = next(content_node.findall(nodes.field_list), None)
-            if existing_list is not None:
-                for child in list(extra_fields.children):
-                    existing_list += child
-            else:
-                content_node += extra_fields
+            _inject_badges_and_reorder(sig_node)
+        _strip_rtype_fields(desc_node)
+        _inject_metadata_fields(desc_node, store, py_domain, app, docname)
 
 
 # ---------------------------------------------------------------------------
