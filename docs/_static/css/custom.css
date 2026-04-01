@@ -374,10 +374,10 @@ dl.py.fixture > dt {
  * The ¶ headerlink is injected by Sphinx's HTML translator AFTER our
  * doctree code runs, so CSS order is the only way to position it. */
 dl.py.fixture > dt > .headerlink          { order: 1; }
-dl.py.fixture > dt > span.spf-badge-group { order: 2; }
+dl.py.fixture > dt > .spf-badge-group { order: 2; }
 dl.py.fixture > dt > a.reference.external { order: 3; }
 
-dl.py.fixture > dt span.spf-badge-group {
+dl.py.fixture > dt .spf-badge-group {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -391,7 +391,7 @@ dl.py.fixture > dt span.spf-badge-group {
 
 /* Mobile: badge group below signature */
 @media (max-width: 52rem) {
-  dl.py.fixture > dt span.spf-badge-group {
+  dl.py.fixture > dt .spf-badge-group {
     width: 100%;
     white-space: normal;
     flex-wrap: wrap;
@@ -399,7 +399,7 @@ dl.py.fixture > dt span.spf-badge-group {
 }
 
 /* Shared badge base */
-dl.py.fixture > dt span.spf-badge {
+dl.py.fixture > dt .spf-badge {
   display: inline-block;
   font-size: var(--spf-badge-font-size, 0.67rem);
   font-weight: 650;
@@ -414,44 +414,44 @@ dl.py.fixture > dt span.spf-badge {
 
 /* FIXTURE badge (always shown, outlined green — same visual treatment
  * as scope badges: light bg, dark text, colored border) */
-dl.py.fixture > dt span.spf-badge--fixture {
+dl.py.fixture > dt .spf-badge--fixture {
   background-color: var(--spf-fixture-bg);
   color: var(--spf-fixture-fg);
   border-color: var(--spf-fixture-border);
 }
 
 /* Scope badges — class-based (replaces data-* attribute selectors) */
-dl.py.fixture > dt span.spf-scope-session {
+dl.py.fixture > dt .spf-scope-session {
   background-color: var(--spf-scope-session-bg);
   color: var(--spf-scope-session-fg);
   border-color: var(--spf-scope-session-border);
   letter-spacing: 0.03em;
 }
-dl.py.fixture > dt span.spf-scope-module {
+dl.py.fixture > dt .spf-scope-module {
   background-color: var(--spf-scope-module-bg);
   color: var(--spf-scope-module-fg);
   border-color: var(--spf-scope-module-border);
 }
-dl.py.fixture > dt span.spf-scope-class {
+dl.py.fixture > dt .spf-scope-class {
   background-color: var(--spf-scope-class-bg);
   color: var(--spf-scope-class-fg);
   border-color: var(--spf-scope-class-border);
 }
 
 /* Kind badges (outlined — behaviour, not lifecycle) */
-dl.py.fixture > dt span.spf-factory {
+dl.py.fixture > dt .spf-factory {
   background-color: var(--spf-kind-factory-bg);
   color: var(--spf-kind-factory-fg);
   border-color: var(--spf-kind-factory-border);
 }
-dl.py.fixture > dt span.spf-override {
+dl.py.fixture > dt .spf-override {
   background-color: var(--spf-kind-override-bg);
   color: var(--spf-kind-override-fg);
   border-color: var(--spf-kind-override-border);
 }
 
 /* State badge (autouse) */
-dl.py.fixture > dt span.spf-autouse {
+dl.py.fixture > dt .spf-autouse {
   background-color: var(--spf-state-autouse-bg);
   color: var(--spf-state-autouse-fg);
   border-color: var(--spf-state-autouse-border);
@@ -497,3 +497,10 @@ dl.py.fixture > dd > dl.field-list {
 }
 dl.py.fixture > dd > dl.field-list > dt { grid-column: 1; }
 dl.py.fixture > dd > dl.field-list > dd { grid-column: 2; margin-left: 0; }
+
+/* Suppress Rtype field-list on fixtures — return type is already in the
+ * signature (→ Type).  sphinx_autodoc_typehints emits a separate field-list
+ * with only "Rtype:" when autodoc_typehints = "description". Hide it. */
+dl.py.fixture > dd > dl.field-list + dl.field-list {
+  display: none;
+}
