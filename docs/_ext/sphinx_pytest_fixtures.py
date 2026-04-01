@@ -1902,6 +1902,24 @@ def _on_doctree_resolved(
             if viewcode_ref is not None:
                 sig_node += viewcode_ref
 
+        # --- Strip Rtype fields — return type is already in the signature.
+        #     sphinx_autodoc_typehints emits these for all autodoc objects;
+        #     for fixtures they are redundant with → Type in the sig line. ---
+        for content_child in desc_node.findall(addnodes.desc_content):
+            for fl in list(content_child.findall(nodes.field_list)):
+                for field in list(fl.children):
+                    if not isinstance(field, nodes.field):
+                        continue
+                    field_name = field.children[0] if field.children else None
+                    if (
+                        isinstance(field_name, nodes.field_name)
+                        and field_name.astext().lower() == "rtype"
+                    ):
+                        fl.remove(field)
+                # Remove empty field lists left behind
+                if not fl.children:
+                    content_child.remove(fl)
+
         # --- Metadata injection (once per desc_node) ---
         if desc_node.get("spf_metadata_injected"):
             continue
