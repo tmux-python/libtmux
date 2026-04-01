@@ -98,6 +98,7 @@ INDEX_RST = textwrap.dedent(
     .. autofixture:: fixture_mod.my_client
 
     .. autofixture:: fixture_mod.home_user
+       :kind: override_hook
 
     .. autofixture:: fixture_mod.yield_server
 
@@ -554,8 +555,8 @@ def test_override_hook_snippet_shows_conftest(tmp_path: pathlib.Path) -> None:
     """override_hook fixtures show a conftest.py snippet, not def test_example."""
     result = _build_sphinx_app(tmp_path)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    # home_user is classified as override_hook (no deps, returns str, docstring
-    # mentions "Override") — its usage snippet must show conftest.py, not test.
+    # home_user is classified as override_hook via explicit :kind: option —
+    # its usage snippet must show conftest.py, not test.
     assert "conftest.py" in index_html, (
         "Expected conftest.py in override_hook fixture usage snippet (home_user)"
     )

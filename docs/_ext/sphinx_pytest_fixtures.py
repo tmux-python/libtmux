@@ -864,44 +864,6 @@ def _is_factory(obj: t.Any) -> bool:
     return ret_str.startswith("type[") or "Callable" in ret_str
 
 
-def _is_overridable(obj: t.Any) -> bool:
-    """Return True if *obj* is a configuration-hook fixture.
-
-    Parameters
-    ----------
-    obj : Any
-        A pytest fixture wrapper object.
-
-    Returns
-    -------
-    bool
-        True when all three conditions hold:
-
-        1. Zero user-visible dependencies.
-        2. Return type is a plain value type (``str``, ``dict``, ``bool``, etc.)
-           or a generic thereof (``dict[str, Any]``).
-        3. Docstring mentions ``override`` or ``conftest``.
-
-        Examples: ``session_params``, ``home_user_name``.
-    """
-    user_deps = _get_user_deps(obj)
-    if user_deps:
-        return False
-    ret = _get_return_annotation(obj)
-    if ret is inspect.Parameter.empty:
-        return False
-    plain_types = {str, int, bool, float, dict, list, tuple}
-    origin = t.get_origin(ret)
-    # Allow plain primitive types (origin is None but ret IS in plain_types)
-    # and generic forms of dict/list/tuple. Domain objects like Server or
-    # pathlib.Path have origin=None but are not in plain_types → return False.
-    if ret not in plain_types and origin not in {dict, list, tuple}:
-        return False
-    fn = _get_fixture_fn(obj)
-    doc = inspect.getdoc(fn) or ""
-    return "override" in doc.lower() or "conftest" in doc.lower()
-
-
 def _infer_kind(obj: t.Any, explicit_kind: str | None = None) -> str:
     """Return the fixture kind, honouring an explicit override.
 
@@ -909,8 +871,7 @@ def _infer_kind(obj: t.Any, explicit_kind: str | None = None) -> str:
 
     1. *explicit_kind* — set via ``:kind:`` directive option by the author.
     2. Type annotation — ``type[X]`` / ``Callable`` → ``"factory"``.
-    3. Heuristic overridable detection → ``"override_hook"``.
-    4. Default → ``"resource"``.
+    3. Default → ``"resource"``.
 
     Parameters
     ----------
@@ -929,13 +890,6 @@ def _infer_kind(obj: t.Any, explicit_kind: str | None = None) -> str:
         return explicit_kind
     if _is_factory(obj):
         return "factory"
-    if _is_overridable(obj):
-        logger.debug(
-            "autofixture: %r inferred as override_hook via heuristic; "
-            "set :kind: explicitly to suppress",
-            getattr(_get_fixture_fn(obj), "__qualname__", "unknown"),
-        )
-        return "override_hook"
     return "resource"
 
 
@@ -1408,11 +1362,17 @@ class FixtureDocumenter(FunctionDocumenter):
     Registered via ``app.add_autodocumenter()``. Enables::
 
         .. autofixture:: libtmux.pytest_plugin.server
+           :kind: override_hook
     """
 
     objtype = "fixture"
     directivetype = "fixture"
     priority = FunctionDocumenter.priority + 10
+
+    option_spec: t.ClassVar[dict[str, t.Any]] = {
+        **FunctionDocumenter.option_spec,
+        "kind": directives.unchanged,
+    }
 
     # Resolved during import_object(); None until then.
     _fixture_public_name: str | None = None
@@ -1608,7 +1568,8 @@ class FixtureDocumenter(FunctionDocumenter):
         if ret is not inspect.Parameter.empty:
             self.add_line(f"   :return-type: {_format_type_short(ret)}", sourcename)
 
-        kind = _infer_kind(self.object)
+        explicit_kind = self.options.get("kind")
+        kind = _infer_kind(self.object, explicit_kind=explicit_kind)
         self.add_line(f"   :kind: {kind}", sourcename)
 
         # Register fixture metadata in the env store for reverse-dep tracking.

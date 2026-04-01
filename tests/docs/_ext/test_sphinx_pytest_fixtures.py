@@ -174,55 +174,6 @@ def test_factory_detection_negative() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _is_overridable
-# ---------------------------------------------------------------------------
-
-
-def test_overridable_detection_positive() -> None:
-    """_is_overridable returns True for zero-dep plain-return override fixtures."""
-
-    @pytest.fixture
-    def session_params() -> dict:  # type: ignore[type-arg]
-        """Override in conftest to customize session creation."""
-        return {}
-
-    assert sphinx_pytest_fixtures._is_overridable(session_params)
-
-
-def test_overridable_detection_negative_has_deps() -> None:
-    """_is_overridable returns False when fixture has user-visible dependencies."""
-
-    @pytest.fixture
-    def session_params(server: t.Any) -> dict:  # type: ignore[type-arg]
-        """Override in conftest to customize session creation."""
-        return {}
-
-    assert not sphinx_pytest_fixtures._is_overridable(session_params)
-
-
-def test_overridable_detection_negative_complex_return() -> None:
-    """_is_overridable returns False for fixtures returning domain objects."""
-
-    @pytest.fixture
-    def my_server() -> Server:
-        """Override in conftest."""
-        return Server()
-
-    assert not sphinx_pytest_fixtures._is_overridable(my_server)
-
-
-def test_overridable_detection_negative_no_docstring_keyword() -> None:
-    """_is_overridable returns False without override/conftest in docstring."""
-
-    @pytest.fixture
-    def session_params() -> dict:  # type: ignore[type-arg]
-        """Return default session parameters."""
-        return {}
-
-    assert not sphinx_pytest_fixtures._is_overridable(session_params)
-
-
-# ---------------------------------------------------------------------------
 # format_name (via getattr pattern used in FixtureDocumenter.format_name)
 # ---------------------------------------------------------------------------
 
