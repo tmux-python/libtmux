@@ -251,10 +251,10 @@ img[src*="codecov.io"] {
 
 /* Token system */
 :root {
-  /* Base FIXTURE badge */
-  --spf-fixture-bg:     #1f7a3f;
-  --spf-fixture-fg:     #f3fff7;
-  --spf-fixture-border: #2d9154;
+  /* Base FIXTURE badge — outlined green (same pattern as scope badges) */
+  --spf-fixture-bg:     #e6f7ed;
+  --spf-fixture-fg:     #1a5c2e;
+  --spf-fixture-border: #3aad65;
 
   /* Scope: session — amber/gold */
   --spf-scope-session-bg:     #fff3cd;
@@ -295,8 +295,9 @@ img[src*="codecov.io"] {
 /* Dark mode — OS-level */
 @media (prefers-color-scheme: dark) {
   body:not([data-theme="light"]) {
-    --spf-fixture-bg:     #2d9a55;
-    --spf-fixture-border: #3aad65;
+    --spf-fixture-bg:     #0d2e1a;
+    --spf-fixture-fg:     #70dd90;
+    --spf-fixture-border: #309050;
 
     --spf-scope-session-bg:     #3a2800;
     --spf-scope-session-fg:     #f5d580;
@@ -410,15 +411,12 @@ dl.py.fixture > dt span.spf-badge {
   vertical-align: middle;
 }
 
-/* FIXTURE badge (always shown, green — demoted to reduce visual noise
- * on pages exclusively about fixtures; meaningful badges like scope
- * and kind remain at full weight) */
+/* FIXTURE badge (always shown, outlined green — same visual treatment
+ * as scope badges: light bg, dark text, colored border) */
 dl.py.fixture > dt span.spf-badge--fixture {
   background-color: var(--spf-fixture-bg);
   color: var(--spf-fixture-fg);
   border-color: var(--spf-fixture-border);
-  opacity: 0.82;
-  font-size: calc(var(--spf-badge-font-size) * 0.85);
 }
 
 /* Scope badges — class-based (replaces data-* attribute selectors) */
