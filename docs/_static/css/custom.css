@@ -469,9 +469,18 @@ dl.py.fixture {
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
+/* Reset Furo's hanging-indent and negative-margin on dt so content
+ * stays within the card border.  Furo sets text-indent: -35px and
+ * margin: 0 -4px for wrapped signatures — both break our flex card. */
+dl.py.fixture > dt {
+  text-indent: 0;
+  margin: 0;
+  padding-left: 1rem;
+}
+
 dl.py.fixture > dd {
   padding: 0.75rem 1rem;
-  margin-left: 0;
+  margin-left: 0 !important;  /* override Furo's dd { margin-left: 32px } */
 }
 
 /* Metadata fields: compact grid that keeps dt/dd pairs together */
