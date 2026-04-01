@@ -356,10 +356,12 @@ def test_capture_pane_flags(
     full_command = f'{command}; echo "{marker}"'
     pane.send_keys(full_command, literal=False, suppress_history=False)
 
-    # Wait for marker to appear
+    # Wait for marker to appear as command output (not in the command echo line)
     def command_complete() -> bool:
-        output = "\n".join(pane.capture_pane())
-        return marker in output
+        lines = pane.capture_pane()
+        return any(
+            marker in line and not line.lstrip().startswith("$") for line in lines
+        )
 
     retry_until(command_complete, 5, raises=True)
 
