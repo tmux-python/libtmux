@@ -803,3 +803,39 @@ def test_manual_directive_in_store(tmp_path: pathlib.Path) -> None:
     assert meta.scope == "session"
     assert len(meta.deps) == 1
     assert meta.deps[0].display_name == "my_server"
+
+
+# ---------------------------------------------------------------------------
+# CSS contract tests — verify extension HTML matches custom.css selectors
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_css_contract_badge_classes(tmp_path: pathlib.Path) -> None:
+    """CSS class names used in custom.css are present in rendered HTML."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+
+    # These classes are targeted by selectors in docs/_static/css/custom.css.
+    # If the extension changes its class names, CSS silently breaks.
+    css_classes = [
+        "spf-badge-group",
+        "spf-badge",
+        "spf-badge--fixture",
+        "spf-badge--scope",
+        "spf-scope-session",
+        "spf-badge--kind",
+        "spf-factory",
+    ]
+    for cls in css_classes:
+        assert cls in index_html, f"CSS class {cls!r} missing from rendered HTML"
+
+
+@pytest.mark.integration
+def test_badge_tabindex_in_html(tmp_path: pathlib.Path) -> None:
+    """Badges render with tabindex='0' for touch/keyboard accessibility."""
+    result = _build_sphinx_app(tmp_path)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert 'tabindex="0"' in index_html, (
+        "Expected tabindex='0' on badge <abbr> elements for touch accessibility"
+    )
