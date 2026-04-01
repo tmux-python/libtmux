@@ -401,6 +401,7 @@ dl.py.fixture > dt .spf-badge-group {
 
 /* Shared badge base */
 dl.py.fixture > dt .spf-badge {
+  position: relative;  /* for tooltip positioning */
   display: inline-block;
   font-size: var(--spf-badge-font-size, 0.67rem);
   font-weight: 650;
@@ -410,6 +411,31 @@ dl.py.fixture > dt .spf-badge {
   border-radius: 0.22rem;
   border: var(--spf-badge-border-w, 1px) solid;
   vertical-align: middle;
+}
+
+/* Touch/keyboard tooltip — shows on focus (touch tap focuses the element).
+ * Sphinx's <abbr title> tooltips are invisible on touch devices; this CSS-only
+ * solution renders the title text as a positioned pseudo-element on :focus. */
+dl.py.fixture > dt .spf-badge[tabindex]:focus::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-background-border);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  white-space: nowrap;
+  border-radius: 0.2rem;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Remove default focus outline — the tooltip IS the focus indicator */
+dl.py.fixture > dt .spf-badge[tabindex]:focus {
+  outline: none;
 }
 
 /* FIXTURE badge (always shown, outlined green — same visual treatment
