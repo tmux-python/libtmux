@@ -231,6 +231,7 @@ def test_setup_return_value() -> None:
         add_role_to_domain=lambda d, n, role: None,
         add_autodocumenter=lambda cls: None,
         add_directive=lambda name, cls: None,
+        add_node=lambda *a, **kw: None,
         connect=lambda event, handler: connections.append((event, handler)),
     )
 
@@ -252,6 +253,7 @@ def test_setup_event_connections() -> None:
         add_role_to_domain=lambda d, n, role: None,
         add_autodocumenter=lambda cls: None,
         add_directive=lambda name, cls: None,
+        add_node=lambda *a, **kw: None,
         connect=lambda event, handler: connections.append((event, handler)),
     )
 
@@ -279,6 +281,7 @@ def test_setup_registers_autodocumenter() -> None:
         add_role_to_domain=lambda d, n, role: None,
         add_autodocumenter=lambda cls: registered.append(cls),
         add_directive=lambda name, cls: None,
+        add_node=lambda *a, **kw: None,
         connect=lambda event, handler: None,
     )
 
@@ -447,6 +450,21 @@ def test_build_badge_group_node_factory_session() -> None:
     assert "factory" in texts
     assert "spf-factory" in classes_all
     assert "spf-scope-session" in classes_all
+
+
+def test_build_badge_group_node_has_tabindex() -> None:
+    """All badge abbreviation nodes have tabindex='0' for touch accessibility."""
+    from docutils import nodes
+
+    node = sphinx_pytest_fixtures._build_badge_group_node("session", "factory", True)
+    abbreviations = [
+        child for child in node.children if isinstance(child, nodes.abbreviation)
+    ]
+    assert len(abbreviations) > 0
+    for abbr in abbreviations:
+        assert abbr.get("tabindex") == "0", (
+            f"Badge {abbr.astext()!r} missing tabindex='0'"
+        )
 
 
 # ---------------------------------------------------------------------------

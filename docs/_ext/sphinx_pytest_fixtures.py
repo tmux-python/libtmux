@@ -25,6 +25,7 @@ from sphinx.util import logging as sphinx_logging
 from sphinx.util.docfields import Field, GroupedField
 from sphinx.util.nodes import make_refnode
 from sphinx.util.typing import stringify_annotation
+from sphinx.writers.html5 import HTML5Translator
 
 if t.TYPE_CHECKING:
     from sphinx.application import Sphinx
@@ -1732,7 +1733,7 @@ def _build_badge_group_node(
         Badge group container with abbreviation badge children.
     """
     group = nodes.inline(classes=["spf-badge-group"])
-    badges: list[nodes.Node] = []
+    badges: list[nodes.abbreviation] = []
 
     # Slot 1 — scope badge (leftmost, only non-function scope)
     if scope and scope != "function":
@@ -1783,6 +1784,12 @@ def _build_badge_group_node(
             classes=["spf-badge", "spf-badge--fixture"],
         )
     )
+
+    # Make badges focusable for touch/keyboard tooltip accessibility.
+    # Sphinx's built-in visit_abbreviation does NOT emit tabindex — our
+    # custom visitor override (_visit_abbreviation_html) handles it.
+    for badge in badges:
+        badge["tabindex"] = "0"
 
     # Interleave with text separators for non-HTML builders (CSS gap
     # handles spacing in HTML; text/LaTeX/man builders need explicit spaces).
@@ -2077,6 +2084,39 @@ class AutofixturesDirective(Directive):
 
 
 # ---------------------------------------------------------------------------
+# HTML visitor override for abbreviation nodes
+# ---------------------------------------------------------------------------
+
+
+def _visit_abbreviation_html(
+    self: HTML5Translator,
+    node: nodes.abbreviation,
+) -> None:
+    """Emit ``<abbr>`` with ``tabindex`` when present.
+
+    Sphinx's built-in ``visit_abbreviation`` only passes ``explanation`` →
+    ``title``.  It silently drops all other node attributes (including
+    ``tabindex``).  This override is a strict superset: non-badge abbreviation
+    nodes produce byte-identical output because the ``tabindex`` guard only
+    fires when the attribute is explicitly set.
+    """
+    attrs: dict[str, t.Any] = {}
+    if node.get("explanation"):
+        attrs["title"] = node["explanation"]
+    if node.get("tabindex"):
+        attrs["tabindex"] = node["tabindex"]
+    self.body.append(self.starttag(node, "abbr", "", **attrs))
+
+
+def _depart_abbreviation_html(
+    self: HTML5Translator,
+    node: nodes.abbreviation,
+) -> None:
+    """Close the ``<abbr>`` tag."""
+    self.body.append("</abbr>")
+
+
+# ---------------------------------------------------------------------------
 # setup()
 # ---------------------------------------------------------------------------
 
@@ -2095,6 +2135,16 @@ def setup(app: Sphinx) -> SetupDict:
         Extension metadata dict.
     """
     app.setup_extension("sphinx.ext.autodoc")
+
+    # Override the built-in abbreviation visitor to emit tabindex when set.
+    # Sphinx's default visit_abbreviation only passes explanation → title,
+    # silently dropping all other attributes.  This override is a strict
+    # superset — non-badge abbreviation nodes produce identical output.
+    app.add_node(
+        nodes.abbreviation,
+        override=True,
+        html=(_visit_abbreviation_html, _depart_abbreviation_html),
+    )
 
     # --- New config values (v1.1) ---
     app.add_config_value(
