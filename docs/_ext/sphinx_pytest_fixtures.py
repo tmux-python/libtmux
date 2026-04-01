@@ -1316,7 +1316,7 @@ class PyFixtureDirective(PyFunction):
         Stores ``spf_canonical_name`` on *signode* for metadata-driven
         rendering in :func:`_on_doctree_resolved`.
         """
-        modname = self.env.ref_context.get("py:module", "")
+        modname = self.options.get("module", self.env.ref_context.get("py:module", ""))
         name = name_cls[0]
         canonical = f"{modname}.{name}" if modname else name
         signode["spf_canonical_name"] = canonical
