@@ -797,28 +797,6 @@ def test_classify_deps_hidden_fixture() -> None:
     assert "pytestconfig" not in project
 
 
-def test_classify_deps_deprecated_config_merge() -> None:
-    """Both old and new hidden config are merged (union)."""
-
-    @pytest.fixture
-    def my_fixture(pytestconfig: t.Any, capfd: t.Any, my_dep: t.Any) -> str:
-        return "hello"
-
-    # Old-style config adds "my_dep" to hidden set
-    app = types.SimpleNamespace(
-        config=types.SimpleNamespace(
-            pytest_fixture_hidden_dependencies=frozenset({"pytestconfig"}),
-            pytest_internal_fixtures=frozenset({"my_dep"}),
-            pytest_fixture_builtin_links={},
-            pytest_external_fixture_links={},
-        ),
-    )
-    _project, _builtin, hidden = sphinx_pytest_fixtures._classify_deps(my_fixture, app)
-    assert "pytestconfig" in hidden
-    assert "my_dep" in hidden
-    assert "capfd" not in hidden  # capfd not in either config set
-
-
 # ---------------------------------------------------------------------------
 # _build_usage_snippet
 # ---------------------------------------------------------------------------

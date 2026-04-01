@@ -205,9 +205,6 @@ PYTEST_HIDDEN: frozenset[str] = frozenset(
     },
 )
 
-# Backward-compatible alias; deprecated in favour of pytest_fixture_hidden_dependencies.
-PYTEST_INTERNAL_FIXTURES: frozenset[str] = PYTEST_HIDDEN
-
 # External links for pytest built-in fixtures shown in "Depends on" blocks.
 # Used as offline fallback when intersphinx inventory is unavailable.
 PYTEST_BUILTIN_LINKS: dict[str, str] = {
@@ -686,7 +683,7 @@ def _get_user_deps(
         A pytest fixture wrapper object.
     hidden : frozenset[str] | None
         Names to exclude from the dependency list.  When ``None``, falls back
-        to the module-level :data:`PYTEST_INTERNAL_FIXTURES` constant.
+        to the module-level :data:`PYTEST_HIDDEN` constant.
 
     Returns
     -------
@@ -732,14 +729,6 @@ def _classify_deps(
             "pytest_fixture_hidden_dependencies",
             PYTEST_HIDDEN,
         )
-        # Backward-compat: merge deprecated pytest_internal_fixtures if set
-        old_hidden = getattr(app.config, "pytest_internal_fixtures", None)
-        if old_hidden is not None:
-            logger.warning(
-                "pytest_internal_fixtures is deprecated; "
-                "use pytest_fixture_hidden_dependencies instead",
-            )
-            hidden = hidden | old_hidden
         builtin_links: dict[str, str] = getattr(
             app.config,
             "pytest_fixture_builtin_links",
@@ -2094,14 +2083,6 @@ def setup(app: Sphinx) -> SetupDict:
         default={},
         rebuild="env",
         types=[dict],
-    )
-
-    # Deprecated alias — kept for backward compat; emits a warning when set.
-    # Set default=None so we can detect whether the user explicitly configured it.
-    app.add_config_value(
-        "pytest_internal_fixtures",
-        default=None,
-        rebuild="env",
     )
 
     # Register std:fixture so :external+pytest:std:fixture: intersphinx

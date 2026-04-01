@@ -410,15 +410,15 @@ def test_scope_metadata_visible(tmp_path: pathlib.Path) -> None:
 
 @pytest.mark.integration
 def test_config_hidden_deps(tmp_path: pathlib.Path) -> None:
-    """pytest_internal_fixtures config suppresses named deps from output HTML."""
+    """pytest_fixture_hidden_dependencies suppresses named deps from output HTML."""
     import sphinx_pytest_fixtures
 
     # my_client depends on my_server; hiding my_server should suppress it
     result = _build_sphinx_app(
         tmp_path,
         confoverrides={
-            "pytest_internal_fixtures": frozenset(
-                {*sphinx_pytest_fixtures.PYTEST_INTERNAL_FIXTURES, "my_server"},
+            "pytest_fixture_hidden_dependencies": frozenset(
+                {*sphinx_pytest_fixtures.PYTEST_HIDDEN, "my_server"},
             ),
         },
     )
@@ -433,7 +433,7 @@ def test_config_hidden_deps(tmp_path: pathlib.Path) -> None:
         )[-1].split("</")[0]
     ), (
         "my_server should be hidden from Depends on when added to "
-        "pytest_internal_fixtures config"
+        "pytest_fixture_hidden_dependencies config"
     )
 
 

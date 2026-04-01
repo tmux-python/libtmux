@@ -90,8 +90,10 @@ Override these in your project's `conftest.py` to customise the test environment
 
 ```{eval-rst}
 .. autofixture:: libtmux.pytest_plugin.home_user_name
+   :kind: override_hook
 
 .. autofixture:: libtmux.pytest_plugin.session_params
+   :kind: override_hook
 
    .. rubric:: Example
 
@@ -152,11 +154,6 @@ These `conf.py` values control how fixture documentation is rendered:
 .. confval:: pytest_external_fixture_links
 
    URL mapping for external fixture cross-references. Default: ``{}``.
-
-.. confval:: pytest_internal_fixtures
-
-   **Deprecated.** Use :confval:`pytest_fixture_hidden_dependencies` instead.
-   Emits a warning when set.
 ```
 
 ---
