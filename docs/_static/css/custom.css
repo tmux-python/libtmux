@@ -251,37 +251,37 @@ img[src*="codecov.io"] {
 
 /* Token system */
 :root {
-  /* Base FIXTURE badge — outlined green (same pattern as scope badges) */
+  /* Base FIXTURE badge — outlined green.  7.2:1 fg-on-bg (WCAG AA+AAA) */
   --spf-fixture-bg:     #e6f7ed;
   --spf-fixture-fg:     #1a5c2e;
   --spf-fixture-border: #3aad65;
 
-  /* Scope: session — amber/gold */
+  /* Scope: session — amber/gold.  6.2:1 fg-on-bg (WCAG AA) */
   --spf-scope-session-bg:     #fff3cd;
   --spf-scope-session-fg:     #7a5200;
   --spf-scope-session-border: #d4a017;
 
-  /* Scope: module — teal */
+  /* Scope: module — teal.  6.7:1 fg-on-bg (WCAG AA) */
   --spf-scope-module-bg:     #e0f4f4;
   --spf-scope-module-fg:     #1a5c5c;
   --spf-scope-module-border: #3aabab;
 
-  /* Scope: class — slate */
+  /* Scope: class — slate.  9.3:1 fg-on-bg (WCAG AA+AAA) */
   --spf-scope-class-bg:     #eeedf6;
   --spf-scope-class-fg:     #3c3670;
   --spf-scope-class-border: #7b76c0;
 
-  /* Kind: factory — amber/brown (outlined) */
+  /* Kind: factory — amber/brown (outlined).  8.1:1 fg-on-white (WCAG AA+AAA) */
   --spf-kind-factory-bg:     transparent;
   --spf-kind-factory-fg:     #7a4200;
   --spf-kind-factory-border: #c87f35;
 
-  /* Kind: override_hook — violet (outlined) */
+  /* Kind: override_hook — violet (outlined).  11.3:1 fg-on-white (WCAG AA+AAA) */
   --spf-kind-override-bg:     transparent;
   --spf-kind-override-fg:     #5a1a7a;
   --spf-kind-override-border: #9b59c8;
 
-  /* State: autouse — rose */
+  /* State: autouse — rose (outlined).  10.5:1 fg-on-white (WCAG AA+AAA) */
   --spf-state-autouse-bg:     transparent;
   --spf-state-autouse-fg:     #7a1a2a;
   --spf-state-autouse-border: #c85070;
