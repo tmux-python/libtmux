@@ -322,10 +322,11 @@ img[src*="codecov.io"] {
   }
 }
 
-/* Furo explicit dark toggle */
+/* Furo explicit dark toggle — must match OS-dark block above */
 body[data-theme="dark"] {
-  --spf-fixture-bg:     #2d9a55;
-  --spf-fixture-border: #3aad65;
+  --spf-fixture-bg:     #0d2e1a;  /* 8.7:1 with fg #70dd90 */
+  --spf-fixture-fg:     #70dd90;
+  --spf-fixture-border: #309050;
 
   --spf-scope-session-bg:     #3a2800;
   --spf-scope-session-fg:     #f5d580;
