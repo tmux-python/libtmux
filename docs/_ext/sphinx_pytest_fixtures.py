@@ -2251,12 +2251,17 @@ def _build_return_type_nodes(
     app: Sphinx,
     docname: str,
 ) -> list[nodes.Node]:
-    """Build doctree nodes for the return type, with linked class names.
+    """Build doctree nodes for the return type, with linked class/builtin names.
+
+    Tokenises the ``return_display`` string and wraps every identifier in a
+    ``:class:`` cross-reference.  ``env.resolve_references()`` then resolves
+    identifiers it knows (``str`` → Python docs via intersphinx, ``Server`` →
+    local API page) and leaves unknown ones as plain code literals.
 
     Parameters
     ----------
     meta : FixtureMeta
-        Fixture metadata containing ``return_display`` and ``return_xref_target``.
+        Fixture metadata containing ``return_display``.
     py_domain : PythonDomain
         Python domain for object lookup.
     app : Sphinx
@@ -2267,42 +2272,26 @@ def _build_return_type_nodes(
     Returns
     -------
     list[nodes.Node]
-        Nodes for the return type cell — plain text for primitives,
-        cross-referenced for known classes.
+        Nodes for the return type cell with cross-referenced identifiers.
     """
     display = meta.return_display
     if not display:
         return [nodes.Text("")]
 
-    # For simple class names with a known xref target, link directly
-    if meta.return_xref_target:
-        target_name = meta.return_xref_target
-        # Look for the class in the Python domain
-        for full_name, obj_entry in py_domain.objects.items():
-            if full_name.endswith(f".{target_name}") or full_name == target_name:
-                short = target_name
-                ref = make_refnode(
-                    app.builder,
-                    docname,
-                    obj_entry.docname,
-                    obj_entry.node_id,
-                    nodes.literal(short, short),
-                )
-                return [ref]
+    # Tokenise: identifiers (including dotted) vs punctuation/whitespace.
+    # Every identifier gets wrapped in :class:`~name` so intersphinx and
+    # the Python domain can resolve it.  Punctuation passes through as text.
+    rst_parts: list[str] = []
+    for token in re.split(r"(\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*\b)", display):
+        if not token:
+            continue
+        if re.fullmatch(r"[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*", token):
+            rst_parts.append(f":class:`~{token}`")
+        else:
+            rst_parts.append(token)
 
-    # For complex types like type[Server] or dict[str, Any],
-    # parse as RST to resolve any embedded class references
-    # Convert type names to :class: roles for resolution
-    rst_text = re.sub(
-        r"([a-z_][a-z0-9_.]*\.)?([A-Z]\w*)",
-        lambda m: f":class:`~{m.group(0)}`" if m.group(1) else m.group(0),
-        display,
-    )
-    if rst_text != display:
-        return _parse_rst_inline(rst_text, app, docname)
-
-    # Fallback: plain code literal
-    return [nodes.literal(display, display)]
+    rst_text = "".join(rst_parts)
+    return _parse_rst_inline(rst_text, app, docname)
 
 
 def _resolve_fixture_index(
