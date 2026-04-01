@@ -982,9 +982,10 @@ def _build_usage_snippet(
             "    assert obj is not None\n"
         )
     else:
-        sig_str = f"{fixture_name}: {ret_type}" if ret_type else fixture_name
-        fn_keyword = "async def" if is_async else "def"
-        code = f"{fn_keyword} test_example({sig_str}) -> None:\n    ...\n"
+        # Resource fixtures — generic snippet like
+        # ``def test_example(server: Server): ...`` is trivially obvious
+        # to any pytest user and adds nothing beyond the signature.
+        return None
 
     return nodes.literal_block(code, code, language="python")
 
