@@ -40,8 +40,6 @@ def home_user_name() -> str:
 def user_path(home_path: pathlib.Path, home_user_name: str) -> pathlib.Path:
     """Ensure and return temporary user directory.
 
-    Used by: :fixture:`config_file`, :fixture:`zshrc`
-
     Note: You will need to set the home directory, see :ref:`set_home`.
     """
     p = home_path / home_user_name
