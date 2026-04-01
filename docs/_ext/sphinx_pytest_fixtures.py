@@ -1218,7 +1218,9 @@ class PyFixtureDirective(PyFunction):
             for dep in (d.strip() for d in depends_str.split(",") if d.strip()):
                 if dep in all_links:
                     url = all_links[dep]
-                    link_node = nodes.reference(dep, dep, refuri=url)
+                    link_node = nodes.reference(
+                        dep, "", nodes.literal(dep, dep), refuri=url
+                    )
                     body_para = nodes.paragraph("", "", link_node)
                 else:
                     ref_nodes, _ = self.state.inline_text(
