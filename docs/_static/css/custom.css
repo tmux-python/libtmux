@@ -387,10 +387,10 @@ dl.py.fixture > dt .spf-badge-group {
   text-indent: 0;
 }
 
-/* Mobile: badge group below signature, larger badge text */
+/* Mobile: badge group wraps below signature text, shares row with actions */
 @media (max-width: 52rem) {
   dl.py.fixture > dt .spf-badge-group {
-    width: 100%;
+    margin-left: 0;
     white-space: normal;
     flex-wrap: wrap;
   }
