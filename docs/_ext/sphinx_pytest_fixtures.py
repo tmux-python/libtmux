@@ -209,6 +209,7 @@ PYTEST_HIDDEN: frozenset[str] = frozenset(
 PYTEST_INTERNAL_FIXTURES: frozenset[str] = PYTEST_HIDDEN
 
 # External links for pytest built-in fixtures shown in "Depends on" blocks.
+# Used as offline fallback when intersphinx inventory is unavailable.
 PYTEST_BUILTIN_LINKS: dict[str, str] = {
     "tmp_path_factory": (
         "https://docs.pytest.org/en/stable/reference/fixtures.html#tmp_path_factory"
@@ -221,6 +222,36 @@ PYTEST_BUILTIN_LINKS: dict[str, str] = {
     "capsys": "https://docs.pytest.org/en/stable/reference/fixtures.html#capsys",
     "caplog": "https://docs.pytest.org/en/stable/reference/fixtures.html#caplog",
 }
+
+
+def _resolve_builtin_url(name: str, app: t.Any) -> str | None:
+    """Resolve a pytest builtin fixture URL from intersphinx inventory.
+
+    Falls back to the hardcoded ``PYTEST_BUILTIN_LINKS`` dict when
+    the intersphinx inventory is unavailable (offline builds, missing
+    extension, or inventory not yet loaded).
+
+    Parameters
+    ----------
+    name : str
+        The fixture name to look up (e.g. ``"tmp_path_factory"``).
+    app : Any
+        The Sphinx application instance (or None).
+
+    Returns
+    -------
+    str or None
+        The resolved URL, or None if the fixture is not a known builtin.
+    """
+    try:
+        inv = getattr(getattr(app, "env", None), "intersphinx_named_inventory", {})
+        fixture_inv = inv.get("pytest", {}).get("std:fixture", {})
+        if name in fixture_inv:
+            _proj, _ver, uri, _dispname = fixture_inv[name]
+            return str(uri)
+    except Exception:
+        pass
+    return PYTEST_BUILTIN_LINKS.get(name)
 
 
 # ---------------------------------------------------------------------------
@@ -1219,8 +1250,11 @@ class PyFixtureDirective(PyFunction):
             # (matches the "Used by" pattern in _on_doctree_resolved).
             dep_ref_nodes: list[nodes.Node] = []
             for dep in (d.strip() for d in depends_str.split(",") if d.strip()):
+                # Resolve URL: intersphinx → config → hardcoded fallback
+                url: str | None = None
                 if dep in all_links:
-                    url = all_links[dep]
+                    url = _resolve_builtin_url(dep, app_obj) or all_links[dep]
+                if url:
                     dep_ref_nodes.append(
                         nodes.reference(dep, "", nodes.literal(dep, dep), refuri=url)
                     )
