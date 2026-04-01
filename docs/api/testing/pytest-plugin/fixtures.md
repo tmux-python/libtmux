@@ -28,6 +28,7 @@ def test_with_session(session: Session) -> None:
 
 ## Fixture Index
 
+:::{div} spf-table-scroll
 | Fixture | Scope | Kind | Returns | Description |
 |---|---|---|---|---|
 | {fixture}`home_path` | session | resource | `Path` | Temporary `/home/` path |
@@ -40,6 +41,7 @@ def test_with_session(session: Session) -> None:
 | {fixture}`session_params` | function | override\_hook | `dict` | Override to customize session creation |
 | {fixture}`TestServer` | function | factory | `type[Server]` | Factory for independent tmux servers |
 | {fixture}`clear_env` | function | resource | `None` | Strips non-essential env vars |
+:::
 
 ---
 

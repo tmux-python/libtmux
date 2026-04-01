@@ -515,3 +515,13 @@ dl.py.fixture > dd > dl.field-list > dd { grid-column: 2; margin-left: 0; }
 dl.py.fixture > dd > dl.field-list + dl.field-list {
   display: none;
 }
+
+/* Horizontal scroll wrapper for the fixture index table on narrow viewports */
+.spf-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.spf-table-scroll table {
+  min-width: 40rem;
+  width: 100%;
+}
