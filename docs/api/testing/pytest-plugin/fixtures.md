@@ -28,7 +28,8 @@ def test_with_session(session: Session) -> None:
 
 ## Fixture Index
 
-```{autofixture-index} libtmux.pytest_plugin
+```{eval-rst}
+.. autofixture-index:: libtmux.pytest_plugin
 ```
 
 ---
@@ -64,16 +65,14 @@ The primary injection points for libtmux tests.
 Session-scoped fixtures that create an isolated filesystem environment.
 Shared across all tests in a session — created once, reused everywhere.
 
-```{autofixture} libtmux.pytest_plugin.home_path
-```
+```{eval-rst}
+.. autofixture:: libtmux.pytest_plugin.home_path
 
-```{autofixture} libtmux.pytest_plugin.user_path
-```
+.. autofixture:: libtmux.pytest_plugin.user_path
 
-```{autofixture} libtmux.pytest_plugin.config_file
-```
+.. autofixture:: libtmux.pytest_plugin.config_file
 
-```{autofixture} libtmux.pytest_plugin.zshrc
+.. autofixture:: libtmux.pytest_plugin.zshrc
 ```
 
 ## Override Hooks
@@ -99,12 +98,14 @@ Override these in your project's `conftest.py` to customise the test environment
 
 ## Factories
 
-```{autofixture} libtmux.pytest_plugin.TestServer
+```{eval-rst}
+.. autofixture:: libtmux.pytest_plugin.TestServer
 ```
 
 ## Low-Level / Rarely Needed
 
-```{autofixture} libtmux.pytest_plugin.clear_env
+```{eval-rst}
+.. autofixture:: libtmux.pytest_plugin.clear_env
 ```
 
 ---
