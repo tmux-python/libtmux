@@ -380,6 +380,23 @@ class PyFixtureDirective(PyFunction):
         signode["spf_canonical_name"] = canonical
         super(PyFunction, self).add_target_and_index(name_cls, sig, signode)
 
+        # Scope/kind-qualified pair index entries for the general index.
+        node_id = signode.get("ids", [""])[0] if signode.get("ids") else ""
+        scope = self.options.get("scope", _DEFAULTS["scope"])
+        kind = self.options.get("kind", _DEFAULTS["kind"])
+        if scope != "function" and node_id:
+            self.indexnode["entries"].append(
+                ("pair", f"{scope}-scoped fixtures; {name}", node_id, "", None)
+            )
+        if kind not in ("resource",) and node_id:
+            kind_label = {
+                "factory": "factory fixtures",
+                "override_hook": "override hooks",
+            }.get(kind, f"{kind} fixtures")
+            self.indexnode["entries"].append(
+                ("pair", f"{kind_label}; {name}", node_id, "", None)
+            )
+
         # Register minimal FixtureMeta for manual directives so they
         # participate in short-name xrefs, "Used by", and reverse_deps.
         # Guard: don't overwrite richer autodoc-generated metadata.
