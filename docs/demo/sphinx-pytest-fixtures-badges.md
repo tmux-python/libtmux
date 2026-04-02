@@ -1,7 +1,3 @@
----
-orphan: true
----
-
 # sphinx\_pytest\_fixtures — Badge Demo
 
 Visual reference for all badge permutations. Use this page to verify badge
