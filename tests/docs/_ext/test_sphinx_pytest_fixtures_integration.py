@@ -648,6 +648,20 @@ def test_no_build_warnings(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.mark.integration
+def test_lint_level_error_fails_build(tmp_path: pathlib.Path) -> None:
+    """lint_level='error' causes the build to report failure on validation issues."""
+    # auto_cleanup in FIXTURE_MOD_SOURCE has no return annotation → SPF002 fires.
+    result = _build_sphinx_app(
+        tmp_path,
+        confoverrides={"pytest_fixture_lint_level": "error"},
+    )
+    assert result.app.statuscode != 0, (
+        "Expected non-zero statuscode with lint_level='error' "
+        "and fixtures that trigger validation warnings"
+    )
+
+
+@pytest.mark.integration
 def test_factory_snippet_shows_instantiation(tmp_path: pathlib.Path) -> None:
     """Factory fixtures are classified as factory and render a FACTORY badge."""
     result = _build_sphinx_app(tmp_path)

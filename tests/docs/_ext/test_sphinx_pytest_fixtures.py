@@ -1101,6 +1101,35 @@ def test_validation_silent_when_lint_level_none(
     assert len(caplog.records) == 0
 
 
+def test_lint_level_error_uses_logger_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """lint_level='error' emits ERROR-level records and sets statuscode=1."""
+    import dataclasses
+    import logging
+
+    from sphinx_pytest_fixtures._validation import _validate_store
+
+    meta = dataclasses.replace(_make_meta("mod.bare", "bare"), summary="")
+    store: sphinx_pytest_fixtures._store.FixtureStoreDict = {
+        "fixtures": {"mod.bare": meta},
+        "public_to_canon": {"bare": "mod.bare"},
+        "reverse_deps": {},
+        "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+    }
+    app = types.SimpleNamespace(
+        config=types.SimpleNamespace(pytest_fixture_lint_level="error"),
+        statuscode=0,
+    )
+    with caplog.at_level(logging.DEBUG, logger="sphinx_pytest_fixtures._validation"):
+        _validate_store(store, app)
+
+    spf001 = [r for r in caplog.records if getattr(r, "spf_code", None) == "SPF001"]
+    assert len(spf001) == 1
+    assert spf001[0].levelno == logging.ERROR
+    assert app.statuscode == 1
+
+
 def test_spf002_missing_return_annotation(caplog: pytest.LogCaptureFixture) -> None:
     """SPF002 fires for fixtures with empty return annotation."""
     import dataclasses
