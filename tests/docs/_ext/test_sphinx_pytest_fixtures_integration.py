@@ -1055,6 +1055,108 @@ def test_deprecated_replacement_renders_hyperlink(tmp_path: pathlib.Path) -> Non
 
 
 # ---------------------------------------------------------------------------
+# AutofixturesDirective regression tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_autofixtures_directive_default_order(tmp_path: pathlib.Path) -> None:
+    """autofixtures:: without options renders all fixtures from the module."""
+    index_rst = textwrap.dedent(
+        """\
+        Test fixtures
+        =============
+
+        .. py:module:: fixture_mod
+
+        .. autofixtures:: fixture_mod
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # All public fixtures should appear
+    assert "my_server" in html
+    assert "my_client" in html
+    assert "TestServer" in html
+
+
+@pytest.mark.integration
+def test_autofixtures_directive_alpha_order(tmp_path: pathlib.Path) -> None:
+    """autofixtures:: with :order: alpha builds successfully."""
+    index_rst = textwrap.dedent(
+        """\
+        Test fixtures
+        =============
+
+        .. py:module:: fixture_mod
+
+        .. autofixtures:: fixture_mod
+           :order: alpha
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "my_server" in html
+    assert "my_client" in html
+
+
+@pytest.mark.integration
+def test_autofixtures_directive_exclude(tmp_path: pathlib.Path) -> None:
+    """autofixtures:: with :exclude: omits named fixtures."""
+    index_rst = textwrap.dedent(
+        """\
+        Test fixtures
+        =============
+
+        .. py:module:: fixture_mod
+
+        .. autofixtures:: fixture_mod
+           :exclude: my_client, auto_cleanup
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    store = result.app.env.domaindata.get("sphinx_pytest_fixtures", {})
+    fixtures = store.get("fixtures", {})
+    # Excluded fixtures should NOT be in the store
+    assert "fixture_mod.my_client" not in fixtures
+    assert "fixture_mod.auto_cleanup" not in fixtures
+    # Non-excluded fixtures should be present
+    assert "fixture_mod.my_server" in fixtures
+
+
+@pytest.mark.integration
+def test_autofixtures_directive_import_error(tmp_path: pathlib.Path) -> None:
+    """autofixtures:: with a nonexistent module completes without crash."""
+    index_rst = textwrap.dedent(
+        """\
+        Test fixtures
+        =============
+
+        .. autofixtures:: nonexistent_module_xyz_12345
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    # Build should complete, and warnings should mention the module
+    assert "nonexistent_module_xyz_12345" in result.warnings
+
+
+# ---------------------------------------------------------------------------
 # Search pair index entries
 # ---------------------------------------------------------------------------
 
