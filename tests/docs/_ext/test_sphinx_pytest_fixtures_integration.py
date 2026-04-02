@@ -1177,3 +1177,94 @@ def test_scope_pair_index_entry(tmp_path: pathlib.Path) -> None:
     # Verify the generated HTML includes the fixture index with session scope visible
     html = (result.outdir / "index.html").read_text(encoding="utf-8")
     assert "session" in html
+
+
+# ---------------------------------------------------------------------------
+# Parametrized values enumerated list rendering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_parametrized_more_than_three_renders_enumerated_list(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Parametrized fixtures with >3 values render as an enumerated list."""
+    extra_fixture = textwrap.dedent(
+        """\
+
+    @pytest.fixture(params=["bash", "zsh", "fish", "nushell"])
+    def shell(request) -> str:
+        \"\"\"Fixture parametrized over shell interpreters.\"\"\"
+        return request.param
+    """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        fixture_source=FIXTURE_MOD_SOURCE + extra_fixture,
+        index_rst=INDEX_RST + "\n.. autofixture:: fixture_mod.shell\n",
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "Parametrized" in html
+    # >3 items should render as an enumerated (ordered) list
+    assert "<ol" in html, "Expected <ol> enumerated list for >3 parametrized values"
+    assert "'bash'" in html
+    assert "'nushell'" in html
+
+
+# ---------------------------------------------------------------------------
+# Manual py:fixture directive option tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_manual_fixture_deprecated_option(tmp_path: pathlib.Path) -> None:
+    """Manual py:fixture with :deprecated: renders callout and badge."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. py:fixture:: old_thing
+           :deprecated: 1.5
+
+           An old fixture.
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "Deprecated since version 1.5" in html
+    from sphinx_pytest_fixtures import _CSS
+
+    assert _CSS.DEPRECATED in html
+
+
+@pytest.mark.integration
+def test_manual_fixture_async_option(tmp_path: pathlib.Path) -> None:
+    """Manual py:fixture with :async: renders async fixture callout."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. py:fixture:: async_thing
+           :async:
+
+           An async fixture.
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "async fixture" in html.lower()
