@@ -31,6 +31,64 @@ if t.TYPE_CHECKING:
 logger = sphinx_logging.getLogger(__name__)
 
 
+def _qualify_forward_ref(name: str, fn: t.Any) -> str | None:
+    """Try to resolve a bare forward-reference string to a qualified name.
+
+    When a fixture's return type is behind ``if TYPE_CHECKING:``, the
+    annotation is a bare string like ``"Session"`` instead of the class.
+    This helper inspects the fixture module's source AST to find the
+    ``from X import Y`` that provides the name, even when inside a
+    ``TYPE_CHECKING`` guard.
+
+    Parameters
+    ----------
+    name : str
+        The bare class name (e.g. ``"Session"``).
+    fn : Any
+        The fixture's underlying function, used to find its module.
+
+    Returns
+    -------
+    str or None
+        The fully-qualified name (e.g. ``"libtmux.session.Session"``),
+        or ``None`` if resolution fails.
+    """
+    import ast
+    import sys
+
+    module = getattr(fn, "__module__", None)
+    if not module:
+        return None
+    mod = sys.modules.get(module)
+    if mod is None:
+        return None
+
+    # Fast path: name is available at runtime (not behind TYPE_CHECKING).
+    obj = getattr(mod, name, None)
+    if obj is not None and hasattr(obj, "__module__") and hasattr(obj, "__qualname__"):
+        return f"{obj.__module__}.{obj.__qualname__}"
+
+    # Slow path: parse the module source to find TYPE_CHECKING imports.
+    try:
+        source = inspect.getsource(mod)
+    except (OSError, TypeError):
+        return None
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return None
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for alias in node.names:
+                imported_name = alias.asname if alias.asname else alias.name
+                if imported_name == name:
+                    return f"{node.module}.{alias.name}"
+
+    return None
+
+
 def _extract_summary(obj: t.Any) -> str:
     """Return the first sentence of the fixture docstring, preserving RST markup.
 
@@ -108,9 +166,17 @@ def _register_fixture_meta(
         _format_type_short(ret_ann) if ret_ann is not inspect.Parameter.empty else ""
     )
     # Simple class name for xref: only for bare names without special chars.
+    # When the annotation is a forward-reference string (from TYPE_CHECKING),
+    # try to qualify it via the module's TYPE_CHECKING imports so Sphinx can
+    # resolve cross-references (e.g. "Session" → "libtmux.session.Session").
     return_xref_target: str | None = None
     if return_display and return_display.isidentifier():
         return_xref_target = return_display
+        if isinstance(ret_ann, str):
+            qualified = _qualify_forward_ref(ret_ann, fn)
+            if qualified:
+                return_xref_target = qualified
+                return_display = qualified
 
     inferred_kind = _infer_kind(obj, kind or None)
     if inferred_kind not in _KNOWN_KINDS:
