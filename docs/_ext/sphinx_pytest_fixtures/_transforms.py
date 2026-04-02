@@ -230,17 +230,26 @@ def _inject_metadata_fields(
             nodes.field_body("", body_para),
         )
 
-    # "Parametrized" field \u2014 render from FixtureMeta.param_reprs tuple
+    # "Parametrized" field — render from FixtureMeta.param_reprs tuple
     if meta and meta.param_reprs:
-        body_para = nodes.paragraph()
-        for i, param_repr in enumerate(meta.param_reprs):
-            body_para += nodes.literal(param_repr, param_repr)
-            if i < len(meta.param_reprs) - 1:
-                body_para += nodes.Text(", ")
+        if len(meta.param_reprs) <= 3:
+            # Inline for short lists
+            body_node: nodes.Element = nodes.paragraph()
+            for i, param_repr in enumerate(meta.param_reprs):
+                body_node += nodes.literal(param_repr, param_repr)
+                if i < len(meta.param_reprs) - 1:
+                    body_node += nodes.Text(", ")
+        else:
+            # Enumerated list for longer param lists
+            body_node = nodes.enumerated_list(enumtype="arabic")
+            for param_repr in meta.param_reprs:
+                item = nodes.list_item()
+                item += nodes.paragraph("", "", nodes.literal(param_repr, param_repr))
+                body_node += item
         extra_fields += nodes.field(
             "",
             nodes.field_name("", _FIELD_LABELS["parametrized"]),
-            nodes.field_body("", body_para),
+            nodes.field_body("", body_node),
         )
 
     if extra_fields.children:
