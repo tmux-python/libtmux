@@ -135,7 +135,7 @@ module = ["sphinx_fonts"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["sphinx_pytest_fixtures"]
+module = ["sphinx_pytest_fixtures", "sphinx_pytest_fixtures.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]
