@@ -98,6 +98,19 @@ def setup(app: Sphinx) -> SetupDict:
     """
     app.setup_extension("sphinx.ext.autodoc")
 
+    # Register extension CSS so projects adopting this extension get styled
+    # output without manually copying spf-* rules into their custom.css.
+    import pathlib
+
+    _static_dir = str(pathlib.Path(__file__).parent / "_static")
+
+    def _add_static_path(app: Sphinx) -> None:
+        if _static_dir not in app.config.html_static_path:
+            app.config.html_static_path.append(_static_dir)
+
+    app.connect("builder-inited", _add_static_path)
+    app.add_css_file("css/sphinx_pytest_fixtures.css")
+
     # Override the built-in abbreviation visitor to emit tabindex when set.
     # Sphinx's default visit_abbreviation only passes explanation → title,
     # silently dropping all other attributes.  This override is a strict

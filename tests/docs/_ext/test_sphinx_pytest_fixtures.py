@@ -232,6 +232,7 @@ def test_setup_return_value() -> None:
         add_autodocumenter=lambda cls: None,
         add_directive=lambda name, cls: None,
         add_node=lambda *a, **kw: None,
+        add_css_file=lambda *a, **kw: None,
         connect=lambda event, handler: connections.append((event, handler)),
     )
 
@@ -254,6 +255,7 @@ def test_setup_event_connections() -> None:
         add_autodocumenter=lambda cls: None,
         add_directive=lambda name, cls: None,
         add_node=lambda *a, **kw: None,
+        add_css_file=lambda *a, **kw: None,
         connect=lambda event, handler: connections.append((event, handler)),
     )
 
@@ -282,6 +284,7 @@ def test_setup_registers_autodocumenter() -> None:
         add_autodocumenter=lambda cls: registered.append(cls),
         add_directive=lambda name, cls: None,
         add_node=lambda *a, **kw: None,
+        add_css_file=lambda *a, **kw: None,
         connect=lambda event, handler: None,
     )
 
