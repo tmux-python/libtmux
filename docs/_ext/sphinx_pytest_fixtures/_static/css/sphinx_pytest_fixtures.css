@@ -175,9 +175,12 @@ dl.py.fixture > dt .spf-badge-group {
   }
 }
 
-/* Shared badge base */
-dl.py.fixture > dt .spf-badge {
-  position: relative;  /* for tooltip positioning */
+/* Shared badge base — component-scoped.
+ * Applies wherever .spf-badge appears: fixture cards, index tables, or any
+ * future context.  Context-specific layout rules (flex container, tooltip
+ * positioning anchor, margin-left: auto in dt) remain on their containers. */
+.spf-badge {
+  position: relative;  /* positioning context for the CSS-only tooltip */
   display: inline-block;
   font-size: var(--spf-badge-font-size, 0.67rem);
   font-weight: 650;
@@ -191,8 +194,10 @@ dl.py.fixture > dt .spf-badge {
 
 /* Touch/keyboard tooltip — shows on focus (touch tap focuses the element).
  * Sphinx's <abbr title> tooltips are invisible on touch devices; this CSS-only
- * solution renders the title text as a positioned pseudo-element on :focus. */
-dl.py.fixture > dt .spf-badge[tabindex]:focus::after {
+ * solution renders the title text as a positioned pseudo-element on :focus.
+ * Works in both fixture cards and index table cells since .spf-badge carries
+ * position: relative as the tooltip's containing block. */
+.spf-badge[tabindex]:focus::after {
   content: attr(title);
   position: absolute;
   bottom: calc(100% + 4px);
@@ -211,64 +216,73 @@ dl.py.fixture > dt .spf-badge[tabindex]:focus::after {
 
 /* Restore visible focus outline for keyboard users. The tooltip still appears
  * on any :focus, but the ring only appears for :focus-visible (keyboard nav). */
-dl.py.fixture > dt .spf-badge[tabindex]:focus-visible {
+.spf-badge[tabindex]:focus-visible {
   outline: 2px solid var(--color-link);
   outline-offset: 2px;
 }
 
 /* FIXTURE badge (always shown, outlined green — same visual treatment
  * as scope badges: light bg, dark text, colored border) */
-dl.py.fixture > dt .spf-badge--fixture {
+.spf-badge--fixture {
   background-color: var(--spf-fixture-bg);
   color: var(--spf-fixture-fg);
   border-color: var(--spf-fixture-border);
 }
 
-/* Scope badges — class-based (replaces data-* attribute selectors) */
-dl.py.fixture > dt .spf-scope-session {
+/* Scope badges — component-scoped (replaces data-* attribute selectors) */
+.spf-scope-session {
   background-color: var(--spf-scope-session-bg);
   color: var(--spf-scope-session-fg);
   border-color: var(--spf-scope-session-border);
   letter-spacing: 0.03em;
 }
-dl.py.fixture > dt .spf-scope-module {
+.spf-scope-module {
   background-color: var(--spf-scope-module-bg);
   color: var(--spf-scope-module-fg);
   border-color: var(--spf-scope-module-border);
 }
-dl.py.fixture > dt .spf-scope-class {
+.spf-scope-class {
   background-color: var(--spf-scope-class-bg);
   color: var(--spf-scope-class-fg);
   border-color: var(--spf-scope-class-border);
 }
 
 /* Kind badges (outlined — behaviour, not lifecycle) */
-dl.py.fixture > dt .spf-factory {
+.spf-factory {
   background-color: var(--spf-kind-factory-bg);
   color: var(--spf-kind-factory-fg);
   border-color: var(--spf-kind-factory-border);
 }
-dl.py.fixture > dt .spf-override {
+.spf-override {
   background-color: var(--spf-kind-override-bg);
   color: var(--spf-kind-override-fg);
   border-color: var(--spf-kind-override-border);
 }
 
 /* State badge (autouse) */
-dl.py.fixture > dt .spf-autouse {
+.spf-autouse {
   background-color: var(--spf-state-autouse-bg);
   color: var(--spf-state-autouse-fg);
   border-color: var(--spf-state-autouse-border);
 }
 
-/* Deprecated badge and card muting */
-dl.py.fixture > dt .spf-deprecated {
+/* Deprecated badge — component-scoped; card muting stays dt-scoped */
+.spf-deprecated {
   background-color: var(--spf-deprecated-bg);
   color: var(--spf-deprecated-fg);
   border-color: var(--spf-deprecated-border);
 }
 dl.py.fixture.spf-deprecated > dt {
   opacity: 0.7;
+}
+
+/* Badge group inside fixture index table cell — keep badges inline.
+ * The card context has its own dl.py.fixture > dt .spf-badge-group rule
+ * (with margin-left: auto and flex layout tied to the dt flex row).
+ * Table cells need a simpler inline-flex without the card-specific overrides. */
+.spf-fixture-index .spf-badge-group {
+  display: inline-flex;
+  gap: 0.3rem;
 }
 
 /* Suppress module prefix (libtmux.pytest_plugin.) */
