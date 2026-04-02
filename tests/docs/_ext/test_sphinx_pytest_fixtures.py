@@ -890,6 +890,53 @@ def test_build_usage_snippet_autouse_returns_note() -> None:
     assert "No request needed" in result.astext()
 
 
+def test_build_usage_snippet_factory_returns_literal_block() -> None:
+    """Factory fixtures produce a literal_block with instantiation pattern."""
+    from docutils import nodes
+
+    result = sphinx_pytest_fixtures._build_usage_snippet(
+        "TestServer", "Server", "factory", "function", autouse=False
+    )
+    assert isinstance(result, nodes.literal_block)
+    text = result.astext()
+    assert "test_example" in text
+    assert "TestServer()" in text
+    assert ": Server" in text
+
+
+def test_build_usage_snippet_override_hook_returns_conftest() -> None:
+    """Override hook fixtures produce a conftest.py snippet."""
+    from docutils import nodes
+
+    result = sphinx_pytest_fixtures._build_usage_snippet(
+        "home_user", "str", "override_hook", "function", autouse=False
+    )
+    assert isinstance(result, nodes.literal_block)
+    text = result.astext()
+    assert "conftest.py" in text
+    assert "@pytest.fixture\n" in text
+
+
+def test_build_usage_snippet_override_hook_session_scope() -> None:
+    """Override hook with session scope includes scope in decorator."""
+    result = sphinx_pytest_fixtures._build_usage_snippet(
+        "home_user", "str", "override_hook", "session", autouse=False
+    )
+    assert result is not None
+    text = result.astext()
+    assert 'scope="session"' in text
+
+
+def test_build_usage_snippet_override_hook_no_return_type() -> None:
+    """Override hook without return type omits the arrow annotation."""
+    result = sphinx_pytest_fixtures._build_usage_snippet(
+        "home_user", None, "override_hook", "function", autouse=False
+    )
+    assert result is not None
+    text = result.astext()
+    assert " -> " not in text
+
+
 # ---------------------------------------------------------------------------
 # _on_env_purge_doc
 # ---------------------------------------------------------------------------
