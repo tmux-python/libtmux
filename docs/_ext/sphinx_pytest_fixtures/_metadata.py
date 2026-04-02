@@ -61,6 +61,10 @@ def _register_fixture_meta(
     modname: str,
     kind: str,
     app: t.Any,
+    *,
+    deprecated: str | None = None,
+    replacement: str | None = None,
+    teardown_summary: str | None = None,
 ) -> FixtureMeta:
     """Build and register a FixtureMeta for *obj* in the env store.
 
@@ -148,6 +152,9 @@ def _register_fixture_meta(
         has_teardown=has_teardown,
         is_async=is_async,
         summary=_extract_summary(obj),
+        deprecated=deprecated,
+        replacement=replacement,
+        teardown_summary=teardown_summary,
     )
 
     store = _get_spf_store(env)

@@ -120,7 +120,7 @@ _IDENTIFIER_PATTERN = re.compile(r"(\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*\b)")
 FixtureKind = t.Literal["resource", "factory", "override_hook"]
 _KNOWN_KINDS: frozenset[str] = frozenset(t.get_args(FixtureKind))
 
-_STORE_VERSION = 4
+_STORE_VERSION = 5
 """Bump whenever ``FixtureMeta`` or the store schema changes.
 
 Used both as the Sphinx ``env_version`` (triggers full cache invalidation) and

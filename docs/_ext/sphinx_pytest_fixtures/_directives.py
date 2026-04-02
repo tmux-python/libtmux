@@ -71,6 +71,9 @@ class PyFixtureDirective(PyFunction):
             "params": directives.unchanged,  # e.g. ":params: val1, val2"
             "teardown": directives.flag,  # ":teardown:" flag for yield fixtures
             "async": directives.flag,  # ":async:" flag for async fixtures
+            "deprecated": directives.unchanged,  # version string
+            "replacement": directives.unchanged,  # canonical replacement fixture
+            "teardown-summary": directives.unchanged,  # teardown description
         },
     )
 
@@ -375,6 +378,9 @@ class PyFixtureDirective(PyFunction):
                 has_teardown="teardown" in self.options,
                 is_async="async" in self.options,
                 summary="",
+                deprecated=self.options.get("deprecated"),
+                replacement=self.options.get("replacement"),
+                teardown_summary=self.options.get("teardown-summary"),
             )
 
 

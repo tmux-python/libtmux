@@ -83,6 +83,15 @@ class FixtureMeta:
     summary: str
     """First sentence of the fixture docstring (raw RST markup preserved)."""
 
+    deprecated: str | None = None
+    """Version string when the fixture is deprecated, or ``None``."""
+
+    replacement: str | None = None
+    """Canonical name of the replacement fixture, or ``None``."""
+
+    teardown_summary: str | None = None
+    """Short description of teardown/cleanup behavior, or ``None``."""
+
 
 class autofixture_index_node(nodes.General, nodes.Element):
     """Placeholder replaced during ``doctree-resolved`` with a fixture index table."""

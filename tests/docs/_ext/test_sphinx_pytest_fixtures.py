@@ -940,3 +940,42 @@ def test_env_purge_doc_removes_only_target() -> None:
     store = env.domaindata["sphinx_pytest_fixtures"]
     assert "mod.fixture_a" not in store["fixtures"]
     assert "mod.fixture_b" in store["fixtures"]
+
+
+# ---------------------------------------------------------------------------
+# FixtureMeta schema evolution — deprecated/replacement/teardown_summary
+# ---------------------------------------------------------------------------
+
+
+def test_fixture_meta_new_fields_default_to_none() -> None:
+    """New optional fields default to None when not provided."""
+    meta = _make_meta("mod.server", "server")
+    assert meta.deprecated is None
+    assert meta.replacement is None
+    assert meta.teardown_summary is None
+
+
+def test_fixture_meta_new_fields_accept_values() -> None:
+    """New optional fields accept explicit values."""
+    meta = sphinx_pytest_fixtures.FixtureMeta(
+        docname="api",
+        canonical_name="mod.old_server",
+        public_name="old_server",
+        source_name="old_server",
+        scope="function",
+        autouse=False,
+        kind="resource",
+        return_display="Server",
+        return_xref_target=None,
+        deps=(),
+        param_reprs=(),
+        has_teardown=True,
+        is_async=False,
+        summary="Deprecated server fixture.",
+        deprecated="2.0",
+        replacement="mod.new_server",
+        teardown_summary="Kills the tmux server process.",
+    )
+    assert meta.deprecated == "2.0"
+    assert meta.replacement == "mod.new_server"
+    assert meta.teardown_summary == "Kills the tmux server process."
