@@ -272,6 +272,33 @@ dl.py.fixture > dt .spf-badge-group {
   color: var(--spf-deprecated-fg);
   border-color: var(--spf-deprecated-border);
 }
+
+/* ── abbr[title] specificity fix ───────────────────────────────────────
+ * Normalize.css (bundled with Furo) sets on abbr[title]:
+ *   border-bottom: none          — removes bottom border entirely
+ *   text-decoration: underline dotted — adds unwanted dotted underline
+ * Specificity of abbr[title] is (0,1,1) which beats .spf-badge (0,1,0),
+ * so the bottom border is trimmed and the underline bleeds through.
+ *
+ * Fix: use abbr.spf-badge (0,1,1) to win on source order.
+ * The border-color reset by abbr[title] also needs per-variant overrides
+ * at the same specificity, otherwise the bottom border colour falls back
+ * to currentColor (the text fg colour) instead of the border variable.
+ * ─────────────────────────────────────────────────────────────────────── */
+abbr.spf-badge {
+  border-bottom-style: solid;
+  border-bottom-width: var(--spf-badge-border-w, 1px);
+  text-decoration: none;
+}
+abbr.spf-badge--fixture { border-color: var(--spf-fixture-border); }
+abbr.spf-scope-session  { border-color: var(--spf-scope-session-border); }
+abbr.spf-scope-module   { border-color: var(--spf-scope-module-border); }
+abbr.spf-scope-class    { border-color: var(--spf-scope-class-border); }
+abbr.spf-factory        { border-color: var(--spf-kind-factory-border); }
+abbr.spf-override       { border-color: var(--spf-kind-override-border); }
+abbr.spf-autouse        { border-color: var(--spf-state-autouse-border); }
+abbr.spf-deprecated     { border-color: var(--spf-deprecated-border); }
+
 dl.py.fixture.spf-deprecated > dt {
   opacity: 0.7;
 }
