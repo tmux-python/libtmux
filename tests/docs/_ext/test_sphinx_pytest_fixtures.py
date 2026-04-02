@@ -1099,3 +1099,30 @@ def test_validation_silent_when_lint_level_none(
         _validate_store(store, app)
 
     assert len(caplog.records) == 0
+
+
+# ---------------------------------------------------------------------------
+# _qualify_forward_ref — TYPE_CHECKING forward-reference resolution
+# ---------------------------------------------------------------------------
+
+
+def test_qualify_forward_ref_resolves_type_checking_import() -> None:
+    """_qualify_forward_ref resolves TYPE_CHECKING imports via AST parsing."""
+    from sphinx_pytest_fixtures._metadata import _qualify_forward_ref
+
+    from libtmux.pytest_plugin import session
+
+    fn = sphinx_pytest_fixtures._get_fixture_fn(session)
+    result = _qualify_forward_ref("Session", fn)
+    assert result == "libtmux.session.Session"
+
+
+def test_qualify_forward_ref_returns_none_for_unknown() -> None:
+    """_qualify_forward_ref returns None for names not found in module imports."""
+    from sphinx_pytest_fixtures._metadata import _qualify_forward_ref
+
+    from libtmux.pytest_plugin import server
+
+    fn = sphinx_pytest_fixtures._get_fixture_fn(server)
+    result = _qualify_forward_ref("NonexistentClass", fn)
+    assert result is None

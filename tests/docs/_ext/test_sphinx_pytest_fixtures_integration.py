@@ -906,3 +906,67 @@ def test_autofixture_index_description_renders_markup(
     assert _CSS.FIXTURE_INDEX in index_html
     # The description "Return a fake server for testing." should appear
     assert "fake server" in index_html
+
+
+# ---------------------------------------------------------------------------
+# TYPE_CHECKING forward-reference regression test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_type_checking_return_type_resolves_in_store(
+    tmp_path: pathlib.Path,
+) -> None:
+    """TYPE_CHECKING return type is qualified via AST so Sphinx can cross-ref.
+
+    Regression test for commit bcd9e2fe: fixtures with return types behind
+    ``if TYPE_CHECKING:`` rendered as unlinked text because the bare string
+    annotation couldn't be resolved to a fully-qualified name.
+    """
+    fixture_source = textwrap.dedent(
+        """\
+        from __future__ import annotations
+        import typing as t
+        import pytest
+
+        class Widget:
+            \"\"\"A widget.\"\"\"
+
+        if t.TYPE_CHECKING:
+            from fixture_mod import Widget as WidgetType
+
+        @pytest.fixture
+        def my_widget() -> "WidgetType":
+            \"\"\"Return a widget.\"\"\"
+            return Widget()
+        """,
+    )
+
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture-index:: fixture_mod
+
+        .. autofixture:: fixture_mod.my_widget
+        """,
+    )
+
+    result = _build_sphinx_app(
+        tmp_path,
+        fixture_source=fixture_source,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+
+    # The return type should be fully qualified via AST parsing,
+    # not left as bare "WidgetType".
+    store = result.app.env.domaindata.get("sphinx_pytest_fixtures", {})
+    meta = store["fixtures"]["fixture_mod.my_widget"]
+    assert meta.return_display == "fixture_mod.Widget", (
+        f"Expected qualified name but got {meta.return_display!r}"
+    )
+    assert meta.return_xref_target == "fixture_mod.Widget"

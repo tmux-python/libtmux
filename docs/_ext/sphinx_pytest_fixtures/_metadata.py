@@ -173,7 +173,7 @@ def _register_fixture_meta(
     if return_display and return_display.isidentifier():
         return_xref_target = return_display
         if isinstance(ret_ann, str):
-            qualified = _qualify_forward_ref(ret_ann, fn)
+            qualified = _qualify_forward_ref(return_display, fn)
             if qualified:
                 return_xref_target = qualified
                 return_display = qualified
