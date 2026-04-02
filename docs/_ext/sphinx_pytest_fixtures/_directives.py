@@ -313,6 +313,14 @@ class PyFixtureDirective(PyFunction):
         if has_teardown:
             note = nodes.note()
             note += nodes.paragraph("", _CALLOUT_MESSAGES["yield_fixture"])
+            teardown_text = self.options.get("teardown-summary", "")
+            if teardown_text:
+                note += nodes.paragraph(
+                    "",
+                    "",
+                    nodes.strong("", "Teardown: "),
+                    nodes.Text(teardown_text),
+                )
             callout_nodes.append(note)
 
         if is_async:
