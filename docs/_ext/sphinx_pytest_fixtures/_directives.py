@@ -22,6 +22,7 @@ from sphinx_pytest_fixtures._constants import (
     _KNOWN_KINDS,
     PYTEST_BUILTIN_LINKS,
 )
+from sphinx_pytest_fixtures._css import _CSS
 from sphinx_pytest_fixtures._detection import (
     _get_fixture_fn,
     _get_fixture_marker,
@@ -153,6 +154,7 @@ class PyFixtureDirective(PyFunction):
         signode["spf_scope"] = self.options.get("scope", _DEFAULTS["scope"])
         signode["spf_kind"] = self.options.get("kind", _DEFAULTS["kind"])
         signode["spf_autouse"] = "autouse" in self.options
+        signode["spf_deprecated"] = "deprecated" in self.options
         signode["spf_ret_type"] = self.options.get("return-type", "")
         return result
 
@@ -275,8 +277,28 @@ class PyFixtureDirective(PyFunction):
                     nodes.field_body("", body_para),
                 )
 
+        # --- Deprecation warning (before lifecycle callouts) ---
+        deprecated_version = self.options.get("deprecated")
+        replacement_name = self.options.get("replacement")
+
+        if deprecated_version is not None:
+            warning = nodes.warning()
+            dep_text = f"Deprecated since version {deprecated_version}."
+            if replacement_name:
+                dep_text += f" Use :fixture:`{replacement_name}` instead."
+            warning += nodes.paragraph("", dep_text)
+            # Add spf-deprecated class to the parent desc node for CSS muting
+            for parent in self.state.document.findall(addnodes.desc):
+                for sig in parent.findall(addnodes.desc_signature):
+                    if sig.get("spf_deprecated"):
+                        parent["classes"].append(_CSS.DEPRECATED)
+                        break
+
         # --- Lifecycle callouts (session note + override hook tip) ---
         callout_nodes: list[nodes.Node] = []
+
+        if deprecated_version is not None:
+            callout_nodes.append(warning)
 
         if scope == "session":
             note = nodes.note()

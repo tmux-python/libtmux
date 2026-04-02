@@ -51,6 +51,11 @@
   --spf-state-autouse-fg:     #7a1a2a;
   --spf-state-autouse-border: #c85070;
 
+  /* State: deprecated — muted red/grey (outlined).  8.5:1 fg-on-white */
+  --spf-deprecated-bg:     transparent;
+  --spf-deprecated-fg:     #8a4040;
+  --spf-deprecated-border: #c07070;
+
   /* Shared badge metrics */
   --spf-badge-font-size: 0.67rem;
   --spf-badge-padding-v: 0.16rem;
@@ -248,6 +253,16 @@ dl.py.fixture > dt .spf-autouse {
   background-color: var(--spf-state-autouse-bg);
   color: var(--spf-state-autouse-fg);
   border-color: var(--spf-state-autouse-border);
+}
+
+/* Deprecated badge and card muting */
+dl.py.fixture > dt .spf-deprecated {
+  background-color: var(--spf-deprecated-bg);
+  color: var(--spf-deprecated-fg);
+  border-color: var(--spf-deprecated-border);
+}
+dl.py.fixture.spf-deprecated > dt {
+  opacity: 0.7;
 }
 
 /* Suppress module prefix (libtmux.pytest_plugin.) */

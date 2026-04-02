@@ -8,6 +8,7 @@ import typing as t
 
 import pytest
 import sphinx_pytest_fixtures
+from docutils import nodes
 
 from libtmux.server import Server
 
@@ -982,3 +983,29 @@ def test_fixture_meta_new_fields_accept_values() -> None:
     assert meta.deprecated == "2.0"
     assert meta.replacement == "mod.new_server"
     assert meta.teardown_summary == "Kills the tmux server process."
+
+
+# ---------------------------------------------------------------------------
+# Deprecation badge rendering
+# ---------------------------------------------------------------------------
+
+
+def test_deprecated_badge_renders_at_slot_zero() -> None:
+    """Deprecated badge appears as leftmost badge (slot 0)."""
+    node = sphinx_pytest_fixtures._build_badge_group_node(
+        "session", "resource", False, deprecated=True
+    )
+    badges = [c for c in node.children if isinstance(c, nodes.abbreviation)]
+    assert len(badges) >= 2
+    # First badge should be "deprecated"
+    assert badges[0].astext() == "deprecated"
+    classes_first: list[str] = badges[0].get("classes", [])
+    assert sphinx_pytest_fixtures._CSS.DEPRECATED in classes_first
+
+
+def test_deprecated_badge_absent_when_not_deprecated() -> None:
+    """No deprecated badge when deprecated=False (default)."""
+    node = sphinx_pytest_fixtures._build_badge_group_node("session", "resource", False)
+    badges = [c for c in node.children if isinstance(c, nodes.abbreviation)]
+    texts = [b.astext() for b in badges]
+    assert "deprecated" not in texts

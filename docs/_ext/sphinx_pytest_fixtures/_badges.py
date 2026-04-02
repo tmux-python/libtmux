@@ -15,6 +15,7 @@ _BADGE_TOOLTIPS: dict[str, str] = {
     "override_hook": "Override hook \u2014 customize in conftest.py",
     "fixture": "pytest fixture \u2014 injected by name into test functions",
     "autouse": "Runs automatically for every test (autouse=True)",
+    "deprecated": "Deprecated \u2014 see docs for replacement",
 }
 
 
@@ -22,6 +23,8 @@ def _build_badge_group_node(
     scope: str,
     kind: str,
     autouse: bool,
+    *,
+    deprecated: bool = False,
 ) -> nodes.inline:
     """Return a badge group as portable ``nodes.abbreviation`` nodes.
 
@@ -30,6 +33,7 @@ def _build_badge_group_node(
 
     Badge slots (left-to-right in visual order):
 
+    * Slot 0 (deprecated): shown when fixture is deprecated
     * Slot 1 (scope):   shown when ``scope != "function"``
     * Slot 2 (kind):    shown for ``"factory"`` / ``"override_hook"``; or
                         state badge (``"autouse"``) when ``autouse=True``
@@ -43,6 +47,8 @@ def _build_badge_group_node(
         Fixture kind string.
     autouse : bool
         When True, renders AUTO state badge instead of a kind badge.
+    deprecated : bool
+        When True, renders a deprecated badge at slot 0 (leftmost).
 
     Returns
     -------
@@ -52,7 +58,18 @@ def _build_badge_group_node(
     group = nodes.inline(classes=[_CSS.BADGE_GROUP])
     badges: list[nodes.abbreviation] = []
 
-    # Slot 1 — scope badge (leftmost, only non-function scope)
+    # Slot 0 — deprecated badge (leftmost when present)
+    if deprecated:
+        badges.append(
+            nodes.abbreviation(
+                "deprecated",
+                "deprecated",
+                explanation=_BADGE_TOOLTIPS["deprecated"],
+                classes=[_CSS.BADGE, _CSS.BADGE_STATE, _CSS.DEPRECATED],
+            )
+        )
+
+    # Slot 1 — scope badge (only non-function scope)
     if scope and scope not in _SUPPRESSED_SCOPES:
         badges.append(
             nodes.abbreviation(

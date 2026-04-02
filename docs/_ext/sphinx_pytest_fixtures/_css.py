@@ -18,6 +18,7 @@ class _CSS:
     FACTORY = f"{PREFIX}-factory"
     OVERRIDE = f"{PREFIX}-override"
     AUTOUSE = f"{PREFIX}-autouse"
+    DEPRECATED = f"{PREFIX}-deprecated"
     FIXTURE_INDEX = f"{PREFIX}-fixture-index"
     TABLE_SCROLL = f"{PREFIX}-table-scroll"
 

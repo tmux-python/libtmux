@@ -119,8 +119,9 @@ def _inject_badges_and_reorder(sig_node: addnodes.desc_signature) -> None:
     scope = sig_node.get("spf_scope", "function")
     kind = sig_node.get("spf_kind", "resource")
     autouse = sig_node.get("spf_autouse", False)
+    deprecated = sig_node.get("spf_deprecated", False)
 
-    badge_group = _build_badge_group_node(scope, kind, autouse)
+    badge_group = _build_badge_group_node(scope, kind, autouse, deprecated=deprecated)
 
     # Detach [source] and \u00b6 links, then re-append in desired order.
     viewcode_ref = None
