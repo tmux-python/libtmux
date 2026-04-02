@@ -63,16 +63,6 @@ def _validate_store(store: FixtureStoreDict, app: t.Any) -> None:
                 extra={"fixture_canonical": canon, "spf_code": "SPF003"},
             )
 
-        # SPF004: Unresolved documented dependency
-        for dep in meta.deps:
-            if dep.kind == "unresolved":
-                logger.warning(
-                    "fixture %r has unresolved dependency %r",
-                    meta.public_name,
-                    dep.display_name,
-                    extra={"fixture_canonical": canon, "spf_code": "SPF004"},
-                )
-
         # SPF005: Deprecated fixture missing replacement
         if meta.deprecated and not meta.replacement:
             logger.warning(

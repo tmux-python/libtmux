@@ -1153,37 +1153,6 @@ def test_spf003_yield_missing_teardown(caplog: pytest.LogCaptureFixture) -> None
     assert len(spf003) == 1
 
 
-def test_spf004_unresolved_dependency(caplog: pytest.LogCaptureFixture) -> None:
-    """SPF004 fires for fixtures with unresolved dependencies."""
-    import dataclasses
-    import logging
-
-    from sphinx_pytest_fixtures._validation import _validate_store
-
-    unresolved_dep = sphinx_pytest_fixtures.FixtureDep(
-        display_name="unknown_fixture",
-        kind="unresolved",
-    )
-    meta = dataclasses.replace(
-        _make_meta("mod.consumer", "consumer"),
-        deps=(unresolved_dep,),
-    )
-    store: sphinx_pytest_fixtures._store.FixtureStoreDict = {
-        "fixtures": {"mod.consumer": meta},
-        "public_to_canon": {"consumer": "mod.consumer"},
-        "reverse_deps": {},
-        "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
-    }
-    app = types.SimpleNamespace(
-        config=types.SimpleNamespace(pytest_fixture_lint_level="warning")
-    )
-    with caplog.at_level(logging.WARNING, logger="sphinx_pytest_fixtures._validation"):
-        _validate_store(store, app)
-
-    spf004 = [r for r in caplog.records if getattr(r, "spf_code", None) == "SPF004"]
-    assert len(spf004) == 1
-
-
 def test_spf006_ambiguous_public_name(caplog: pytest.LogCaptureFixture) -> None:
     """SPF006 fires when a public name maps to multiple canonical names."""
     import logging
