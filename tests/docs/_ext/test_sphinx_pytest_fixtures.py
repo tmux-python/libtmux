@@ -8,6 +8,7 @@ import typing as t
 
 import pytest
 import sphinx_pytest_fixtures
+import sphinx_pytest_fixtures._store
 from docutils import nodes
 
 from libtmux.server import Server
@@ -1009,3 +1010,92 @@ def test_deprecated_badge_absent_when_not_deprecated() -> None:
     badges = [c for c in node.children if isinstance(c, nodes.abbreviation)]
     texts = [b.astext() for b in badges]
     assert "deprecated" not in texts
+
+
+# ---------------------------------------------------------------------------
+# Build-time validation (SPF001-SPF006)
+# ---------------------------------------------------------------------------
+
+
+def test_spf001_missing_docstring(caplog: pytest.LogCaptureFixture) -> None:
+    """SPF001 fires for fixtures with empty summary."""
+    import logging
+
+    from sphinx_pytest_fixtures._validation import _validate_store
+
+    store: sphinx_pytest_fixtures._store.FixtureStoreDict = {
+        "fixtures": {
+            "mod.bare": _make_meta("mod.bare", "bare"),
+        },
+        "public_to_canon": {"bare": "mod.bare"},
+        "reverse_deps": {},
+        "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+    }
+    # Override summary to empty
+    import dataclasses
+
+    store["fixtures"]["mod.bare"] = dataclasses.replace(
+        store["fixtures"]["mod.bare"], summary=""
+    )
+
+    app = types.SimpleNamespace(
+        config=types.SimpleNamespace(pytest_fixture_lint_level="warning")
+    )
+    with caplog.at_level(logging.WARNING, logger="sphinx_pytest_fixtures._validation"):
+        _validate_store(store, app)
+
+    spf001 = [r for r in caplog.records if getattr(r, "spf_code", None) == "SPF001"]
+    assert len(spf001) == 1
+
+
+def test_spf005_deprecated_without_replacement(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """SPF005 fires for deprecated fixtures without replacement."""
+    import dataclasses
+    import logging
+
+    from sphinx_pytest_fixtures._validation import _validate_store
+
+    meta = dataclasses.replace(
+        _make_meta("mod.old", "old"), deprecated="2.0", replacement=None
+    )
+    store: sphinx_pytest_fixtures._store.FixtureStoreDict = {
+        "fixtures": {"mod.old": meta},
+        "public_to_canon": {"old": "mod.old"},
+        "reverse_deps": {},
+        "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+    }
+    app = types.SimpleNamespace(
+        config=types.SimpleNamespace(pytest_fixture_lint_level="warning")
+    )
+    with caplog.at_level(logging.WARNING, logger="sphinx_pytest_fixtures._validation"):
+        _validate_store(store, app)
+
+    spf005 = [r for r in caplog.records if getattr(r, "spf_code", None) == "SPF005"]
+    assert len(spf005) == 1
+
+
+def test_validation_silent_when_lint_level_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """lint_level='none' suppresses all validation warnings."""
+    import dataclasses
+    import logging
+
+    from sphinx_pytest_fixtures._validation import _validate_store
+
+    meta = dataclasses.replace(_make_meta("mod.bare", "bare"), summary="")
+    store: sphinx_pytest_fixtures._store.FixtureStoreDict = {
+        "fixtures": {"mod.bare": meta},
+        "public_to_canon": {"bare": "mod.bare"},
+        "reverse_deps": {},
+        "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+    }
+    app = types.SimpleNamespace(
+        config=types.SimpleNamespace(pytest_fixture_lint_level="none")
+    )
+    with caplog.at_level(logging.WARNING, logger="sphinx_pytest_fixtures._validation"):
+        _validate_store(store, app)
+
+    assert len(caplog.records) == 0

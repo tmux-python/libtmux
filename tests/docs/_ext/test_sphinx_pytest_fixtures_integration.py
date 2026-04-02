@@ -620,7 +620,10 @@ def test_session_scope_lifecycle_note_present(tmp_path: pathlib.Path) -> None:
 @pytest.mark.integration
 def test_no_build_warnings(tmp_path: pathlib.Path) -> None:
     """A full build of the synthetic fixture module produces zero WARNING lines."""
-    result = _build_sphinx_app(tmp_path)
+    result = _build_sphinx_app(
+        tmp_path,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
     warnings = result.warnings
     # Strip ANSI escape codes before filtering
     import re

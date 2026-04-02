@@ -175,7 +175,12 @@ def _on_env_updated(app: Sphinx, env: t.Any) -> None:
     env : Any
         The Sphinx build environment.
     """
-    _finalize_store(_get_spf_store(env))
+    store = _get_spf_store(env)
+    _finalize_store(store)
+
+    from sphinx_pytest_fixtures._validation import _validate_store
+
+    _validate_store(store, app)
 
 
 # ---------------------------------------------------------------------------
