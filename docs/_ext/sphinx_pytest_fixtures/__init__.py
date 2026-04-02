@@ -7,9 +7,8 @@ callable signatures.
 
 .. note::
 
-   This extension's visual output (badges, cards) depends on CSS rules
-   currently located in the project's ``docs/_static/css/custom.css`` file.
-   To use this extension in other projects, these styles must be included.
+   This extension self-registers its CSS via ``add_css_file()``.  The rules
+   live in ``_static/css/sphinx_pytest_fixtures.css`` inside this package.
 """
 
 from __future__ import annotations
@@ -28,12 +27,10 @@ from sphinx_pytest_fixtures._badges import (
     _build_badge_group_node,
 )
 from sphinx_pytest_fixtures._constants import (
-    _CONFIG_BADGES,
     _CONFIG_BUILTIN_LINKS,
     _CONFIG_EXTERNAL_LINKS,
     _CONFIG_HIDDEN_DEPS,
     _CONFIG_LINT_LEVEL,
-    _DEFAULT_BADGES,
     _EXTENSION_KEY,
     _EXTENSION_VERSION,
     _STORE_VERSION,
@@ -140,12 +137,6 @@ def setup(app: Sphinx) -> SetupDict:
     app.add_config_value(
         _CONFIG_EXTERNAL_LINKS,
         default={},
-        rebuild="env",
-        types=[dict],
-    )
-    app.add_config_value(
-        _CONFIG_BADGES,
-        default=_DEFAULT_BADGES,
         rebuild="env",
         types=[dict],
     )

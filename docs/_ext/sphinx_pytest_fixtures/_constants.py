@@ -88,14 +88,7 @@ _INDEX_TABLE_COLUMNS: tuple[tuple[str, int], ...] = (
 _CONFIG_HIDDEN_DEPS = "pytest_fixture_hidden_dependencies"
 _CONFIG_BUILTIN_LINKS = "pytest_fixture_builtin_links"
 _CONFIG_EXTERNAL_LINKS = "pytest_external_fixture_links"
-_CONFIG_BADGES = "pytest_fixture_badges"
 _CONFIG_LINT_LEVEL = "pytest_fixture_lint_level"
-
-_DEFAULT_BADGES: dict[str, t.Any] = {
-    "css_prefix": "spf",
-    "suppress_scopes": ("function",),
-    "suppress_kinds": ("resource",),
-}
 
 # ---------------------------------------------------------------------------
 # Intersphinx resolution keys
