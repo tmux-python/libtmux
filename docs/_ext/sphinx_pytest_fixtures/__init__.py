@@ -28,9 +28,12 @@ from sphinx_pytest_fixtures._badges import (
     _build_badge_group_node,
 )
 from sphinx_pytest_fixtures._constants import (
+    _CONFIG_BADGES,
     _CONFIG_BUILTIN_LINKS,
     _CONFIG_EXTERNAL_LINKS,
     _CONFIG_HIDDEN_DEPS,
+    _CONFIG_LINT_LEVEL,
+    _DEFAULT_BADGES,
     _EXTENSION_KEY,
     _EXTENSION_VERSION,
     _STORE_VERSION,
@@ -139,6 +142,18 @@ def setup(app: Sphinx) -> SetupDict:
         default={},
         rebuild="env",
         types=[dict],
+    )
+    app.add_config_value(
+        _CONFIG_BADGES,
+        default=_DEFAULT_BADGES,
+        rebuild="env",
+        types=[dict],
+    )
+    app.add_config_value(
+        _CONFIG_LINT_LEVEL,
+        default="warning",
+        rebuild="env",
+        types=[str],
     )
 
     # Register std:fixture so :external+pytest:std:fixture: intersphinx
