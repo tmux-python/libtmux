@@ -184,7 +184,7 @@ dl.py.fixture > dt .spf-badge-group {
   display: inline-block;
   font-size: var(--spf-badge-font-size, 0.67rem);
   font-weight: 650;
-  line-height: 1;
+  line-height: normal;
   letter-spacing: 0.01em;
   padding: var(--spf-badge-padding-v, 0.16rem) 0.5rem;
   border-radius: 0.22rem;
@@ -302,11 +302,16 @@ dl.py.fixture {
 
 /* Reset Furo's hanging-indent and negative-margin on dt so content
  * stays within the card border.  Furo sets text-indent: -35px and
- * margin: 0 -4px for wrapped signatures — both break our flex card. */
+ * margin: 0 -4px for wrapped signatures — both break our flex card.
+ * !important on padding overrides Furo's .sig:not(.sig-inline) rule which
+ * sets padding-top/bottom: 0.25rem and wins on specificity without it. */
 dl.py.fixture > dt {
   text-indent: 0;
   margin: 0;
   padding-left: 1rem;
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+  min-height: 2rem;
 }
 
 dl.py.fixture > dd {
