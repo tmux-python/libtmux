@@ -178,8 +178,7 @@ def _resolve_fixture_index(
     """Replace a :class:`autofixture_index_node` with a docutils table.
 
     Builds a 4-column table (Fixture, Flags, Returns, Description).
-    Scope, kind, autouse, and deprecated appear as badges in the Flags column;
-    the FIXTURE badge is suppressed (redundant in a fixture-only table context).
+    Scope, kind, autouse, and deprecated appear as badges in the Flags column.
     Fixture names and return types are cross-referenced; description text
     has RST inline markup parsed and rendered.
 
@@ -256,7 +255,7 @@ def _resolve_fixture_index(
             kind=meta.kind,
             autouse=meta.autouse,
             deprecated=bool(meta.deprecated),
-            show_fixture_badge=False,
+            show_fixture_badge=True,
         )
         flags_entry += flags_para
         row += flags_entry

@@ -932,7 +932,7 @@ def test_autofixture_index_renders_table(tmp_path: pathlib.Path) -> None:
     table_html = _extract_index_table(index_html)
     assert _CSS.scope("session") in table_html  # my_server: session-scope badge
     assert _CSS.FACTORY in table_html  # TestServer: factory-kind badge
-    assert _CSS.BADGE_FIXTURE not in table_html  # FIXTURE badge suppressed in table
+    assert _CSS.BADGE_FIXTURE in table_html  # FIXTURE badge shown in every table row
 
 
 @pytest.mark.integration
@@ -969,7 +969,7 @@ def test_autofixture_index_description_renders_markup(
 
 @pytest.mark.integration
 def test_autofixture_index_flags_session_scope(tmp_path: pathlib.Path) -> None:
-    """Flags column shows session-scope badge; FIXTURE badge is suppressed."""
+    """Flags column shows session-scope badge and FIXTURE badge."""
     index_rst = textwrap.dedent(
         """\
         Test
@@ -986,7 +986,7 @@ def test_autofixture_index_flags_session_scope(tmp_path: pathlib.Path) -> None:
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
     table_html = _extract_index_table(index_html)
     assert _CSS.scope("session") in table_html
-    assert _CSS.BADGE_FIXTURE not in table_html
+    assert _CSS.BADGE_FIXTURE in table_html
 
 
 @pytest.mark.integration
@@ -1033,14 +1033,10 @@ def test_autofixture_index_flags_autouse(tmp_path: pathlib.Path) -> None:
 
 @pytest.mark.integration
 def test_autofixture_index_flags_empty_for_defaults(tmp_path: pathlib.Path) -> None:
-    """Flags cell contains no badges for a default function-scope resource fixture.
+    """Flags cell shows only FIXTURE badge for a plain function-scope fixture.
 
-    spf-badge-group container is always emitted even when empty; the meaningful
-    assertion is that no element has class spf-badge (the base badge class).
-
-    Uses _extract_index_table() to isolate the table fragment — the autofixture
-    card on the same page has spf-badge--fixture, but the Flags cell in the table
-    must have no spf-badge children at all.
+    A default fixture (function scope, resource kind, not autouse) shows FIXTURE
+    and nothing else — no scope, kind, autouse, deprecated, or override badges.
     """
     fixture_source = textwrap.dedent(
         """\
@@ -1071,16 +1067,13 @@ def test_autofixture_index_flags_empty_for_defaults(tmp_path: pathlib.Path) -> N
         index_rst=index_rst,
     )
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    # Extract only the table fragment — the autofixture card has spf-badge--fixture;
-    # the Flags cell in the table must have no spf-badge (scope+kind both suppressed).
     table_html = _extract_index_table(index_html)
-    # "spf-badge" is a prefix of "spf-badge-group"; use "spf-badge " (space-terminated)
-    # so the check only matches actual badge elements (which always have a second class)
-    # and not the always-present spf-badge-group container.
-    assert f"{_CSS.BADGE} " not in table_html, (
-        f"Expected no badges in Flags cell for default fixture, "
-        f"but found {_CSS.BADGE!r} class in table HTML"
-    )
+    # FIXTURE badge always present; no scope/kind/autouse badges for default fixture
+    assert _CSS.BADGE_FIXTURE in table_html
+    assert _CSS.BADGE_SCOPE not in table_html
+    assert _CSS.AUTOUSE not in table_html
+    assert _CSS.FACTORY not in table_html
+    assert _CSS.OVERRIDE not in table_html
 
 
 @pytest.mark.integration
