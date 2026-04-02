@@ -89,6 +89,9 @@
 
     --spf-state-autouse-fg:     #f080a0;
     --spf-state-autouse-border: #d05070;
+
+    --spf-deprecated-fg:     #e08080;
+    --spf-deprecated-border: #c06060;
   }
 }
 
@@ -118,6 +121,9 @@ body[data-theme="dark"] {
 
   --spf-state-autouse-fg:     #f080a0;
   --spf-state-autouse-border: #d05070;
+
+  --spf-deprecated-fg:     #e08080;
+  --spf-deprecated-border: #c06060;
 }
 
 /* "fixture" keyword prefix — keep Furo's default keyword colour */
