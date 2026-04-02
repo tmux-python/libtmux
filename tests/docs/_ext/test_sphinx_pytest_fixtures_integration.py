@@ -861,6 +861,40 @@ def test_badge_tabindex_in_html(tmp_path: pathlib.Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _extract_index_table(html: str) -> str:
+    """Extract the spf-fixture-index table fragment from rendered HTML.
+
+    The built page contains both the index table and fixture cards. Both emit
+    badge HTML, so whole-page assertions get false positives from card badges.
+    Always extract the table fragment before asserting on Flags badge content.
+
+    Parameters
+    ----------
+    html : str
+        Full rendered HTML of the built index page.
+
+    Returns
+    -------
+    str
+        Substring from the opening ``<table`` with class ``_CSS.FIXTURE_INDEX``
+        to the closing ``</table>`` tag.
+    """
+    marker = _CSS.FIXTURE_INDEX
+    pos = 0
+    while True:
+        start = html.find("<table", pos)
+        if start == -1:
+            msg = f"No <table with class {marker!r} found in HTML"
+            raise AssertionError(msg)
+        end_tag = html.find(">", start)
+        if marker in html[start : end_tag + 1]:
+            break
+        pos = start + 1
+    close = html.find("</table>", start)
+    assert close != -1, "Unclosed <table> in HTML"
+    return html[start : close + len("</table>")]
+
+
 @pytest.mark.integration
 def test_autofixture_index_renders_table(tmp_path: pathlib.Path) -> None:
     """autofixture-index directive produces a table with linked fixture names."""
@@ -890,9 +924,15 @@ def test_autofixture_index_renders_table(tmp_path: pathlib.Path) -> None:
     assert 'href="#fixture_mod.my_server"' in index_html or "my_server" in index_html
     assert "TestServer" in index_html
 
-    # Scope and kind should appear as text
-    assert "session" in index_html  # my_server scope
-    assert "factory" in index_html  # TestServer kind
+    # Column headers: 4-column Flags layout (Scope/Kind columns removed)
+    assert ">Flags<" in index_html
+    assert ">Scope<" not in index_html
+    assert ">Kind<" not in index_html
+    # Scope and kind appear as badge CSS classes in the Flags column table fragment
+    table_html = _extract_index_table(index_html)
+    assert _CSS.scope("session") in table_html  # my_server: session-scope badge
+    assert _CSS.FACTORY in table_html  # TestServer: factory-kind badge
+    assert _CSS.BADGE_FIXTURE not in table_html  # FIXTURE badge suppressed in table
 
 
 @pytest.mark.integration
@@ -920,6 +960,153 @@ def test_autofixture_index_description_renders_markup(
     assert _CSS.FIXTURE_INDEX in index_html
     # The description "Return a fake server for testing." should appear
     assert "fake server" in index_html
+
+
+# ---------------------------------------------------------------------------
+# Flags column badge regression tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_autofixture_index_flags_session_scope(tmp_path: pathlib.Path) -> None:
+    """Flags column shows session-scope badge; FIXTURE badge is suppressed."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture-index:: fixture_mod
+
+        .. autofixture:: fixture_mod.my_server
+        """,
+    )
+    result = _build_sphinx_app(tmp_path, index_rst=index_rst)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    table_html = _extract_index_table(index_html)
+    assert _CSS.scope("session") in table_html
+    assert _CSS.BADGE_FIXTURE not in table_html
+
+
+@pytest.mark.integration
+def test_autofixture_index_flags_factory_kind(tmp_path: pathlib.Path) -> None:
+    """Flags column shows factory-kind badge for a factory fixture."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture-index:: fixture_mod
+
+        .. autofixture:: fixture_mod.TestServer
+        """,
+    )
+    result = _build_sphinx_app(tmp_path, index_rst=index_rst)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    table_html = _extract_index_table(index_html)
+    assert _CSS.FACTORY in table_html
+
+
+@pytest.mark.integration
+def test_autofixture_index_flags_autouse(tmp_path: pathlib.Path) -> None:
+    """Flags column shows autouse badge for autouse=True fixtures."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture-index:: fixture_mod
+
+        .. autofixture:: fixture_mod.auto_cleanup
+        """,
+    )
+    result = _build_sphinx_app(tmp_path, index_rst=index_rst)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    table_html = _extract_index_table(index_html)
+    assert _CSS.AUTOUSE in table_html
+
+
+@pytest.mark.integration
+def test_autofixture_index_flags_empty_for_defaults(tmp_path: pathlib.Path) -> None:
+    """Flags cell contains no badges for a default function-scope resource fixture.
+
+    spf-badge-group container is always emitted even when empty; the meaningful
+    assertion is that no element has class spf-badge (the base badge class).
+
+    Uses _extract_index_table() to isolate the table fragment — the autofixture
+    card on the same page has spf-badge--fixture, but the Flags cell in the table
+    must have no spf-badge children at all.
+    """
+    fixture_source = textwrap.dedent(
+        """\
+        from __future__ import annotations
+        import pytest
+
+        @pytest.fixture
+        def plain_fixture() -> str:
+            \"\"\"A plain function-scope resource fixture.\"\"\"
+            return "plain"
+        """,
+    )
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture-index:: fixture_mod
+
+        .. autofixture:: fixture_mod.plain_fixture
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        fixture_source=fixture_source,
+        index_rst=index_rst,
+    )
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # Extract only the table fragment — the autofixture card has spf-badge--fixture;
+    # the Flags cell in the table must have no spf-badge (scope+kind both suppressed).
+    table_html = _extract_index_table(index_html)
+    # "spf-badge" is a prefix of "spf-badge-group"; use "spf-badge " (space-terminated)
+    # so the check only matches actual badge elements (which always have a second class)
+    # and not the always-present spf-badge-group container.
+    assert f"{_CSS.BADGE} " not in table_html, (
+        f"Expected no badges in Flags cell for default fixture, "
+        f"but found {_CSS.BADGE!r} class in table HTML"
+    )
+
+
+@pytest.mark.integration
+def test_autofixture_index_flags_deprecated(tmp_path: pathlib.Path) -> None:
+    """Flags column shows deprecated badge when :deprecated: RST option is set.
+
+    FixtureMeta.deprecated is sourced from the RST directive :deprecated: option.
+    autofixture (autodoc) does not support :deprecated:; use py:fixture instead.
+    """
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture-index:: fixture_mod
+
+        .. py:fixture:: my_client
+           :deprecated: 1.5
+        """,
+    )
+    result = _build_sphinx_app(tmp_path, index_rst=index_rst)
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    table_html = _extract_index_table(index_html)
+    assert _CSS.DEPRECATED in table_html
 
 
 # ---------------------------------------------------------------------------

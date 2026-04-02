@@ -75,8 +75,7 @@ _CALLOUT_MESSAGES: dict[str, str] = {
 
 _INDEX_TABLE_COLUMNS: tuple[tuple[str, int], ...] = (
     ("Fixture", 20),
-    ("Scope", 10),
-    ("Kind", 12),
+    ("Flags", 22),
     ("Returns", 12),
     ("Description", 46),
 )
