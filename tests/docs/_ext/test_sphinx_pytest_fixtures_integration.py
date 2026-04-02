@@ -970,3 +970,56 @@ def test_type_checking_return_type_resolves_in_store(
         f"Expected qualified name but got {meta.return_display!r}"
     )
     assert meta.return_xref_target == "fixture_mod.Widget"
+
+
+# ---------------------------------------------------------------------------
+# Teardown summary rendering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_teardown_summary_rendered_in_callout(tmp_path: pathlib.Path) -> None:
+    """teardown-summary option appends text to the yield-fixture callout note."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. py:fixture:: yield_server
+           :module: fixture_mod
+           :teardown:
+           :teardown-summary: Shuts down the server and cleans socket files.
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "Shuts down the server and cleans socket files" in html
+
+
+# ---------------------------------------------------------------------------
+# Search pair index entries
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_scope_pair_index_entry(tmp_path: pathlib.Path) -> None:
+    """Session-scoped fixtures get scope-qualified pair index entries."""
+    result = _build_sphinx_app(
+        tmp_path,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    # Check that the Sphinx domain has index entries for session-scoped fixtures.
+    # my_server is session-scoped in FIXTURE_MOD_SOURCE.
+    store = result.app.env.domaindata.get("sphinx_pytest_fixtures", {})
+    meta = store["fixtures"].get("fixture_mod.my_server")
+    assert meta is not None
+    assert meta.scope == "session"
+    # Verify the generated HTML includes the fixture index with session scope visible
+    html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "session" in html

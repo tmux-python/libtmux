@@ -1101,6 +1101,114 @@ def test_validation_silent_when_lint_level_none(
     assert len(caplog.records) == 0
 
 
+def test_spf002_missing_return_annotation(caplog: pytest.LogCaptureFixture) -> None:
+    """SPF002 fires for fixtures with empty return annotation."""
+    import dataclasses
+    import logging
+
+    from sphinx_pytest_fixtures._validation import _validate_store
+
+    meta = dataclasses.replace(_make_meta("mod.bare", "bare"), return_display="...")
+    store: sphinx_pytest_fixtures._store.FixtureStoreDict = {
+        "fixtures": {"mod.bare": meta},
+        "public_to_canon": {"bare": "mod.bare"},
+        "reverse_deps": {},
+        "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+    }
+    app = types.SimpleNamespace(
+        config=types.SimpleNamespace(pytest_fixture_lint_level="warning")
+    )
+    with caplog.at_level(logging.WARNING, logger="sphinx_pytest_fixtures._validation"):
+        _validate_store(store, app)
+
+    spf002 = [r for r in caplog.records if getattr(r, "spf_code", None) == "SPF002"]
+    assert len(spf002) == 1
+
+
+def test_spf003_yield_missing_teardown(caplog: pytest.LogCaptureFixture) -> None:
+    """SPF003 fires for yield fixtures without teardown documentation."""
+    import dataclasses
+    import logging
+
+    from sphinx_pytest_fixtures._validation import _validate_store
+
+    meta = dataclasses.replace(
+        _make_meta("mod.gen", "gen"),
+        has_teardown=True,
+        teardown_summary=None,
+    )
+    store: sphinx_pytest_fixtures._store.FixtureStoreDict = {
+        "fixtures": {"mod.gen": meta},
+        "public_to_canon": {"gen": "mod.gen"},
+        "reverse_deps": {},
+        "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+    }
+    app = types.SimpleNamespace(
+        config=types.SimpleNamespace(pytest_fixture_lint_level="warning")
+    )
+    with caplog.at_level(logging.WARNING, logger="sphinx_pytest_fixtures._validation"):
+        _validate_store(store, app)
+
+    spf003 = [r for r in caplog.records if getattr(r, "spf_code", None) == "SPF003"]
+    assert len(spf003) == 1
+
+
+def test_spf004_unresolved_dependency(caplog: pytest.LogCaptureFixture) -> None:
+    """SPF004 fires for fixtures with unresolved dependencies."""
+    import dataclasses
+    import logging
+
+    from sphinx_pytest_fixtures._validation import _validate_store
+
+    unresolved_dep = sphinx_pytest_fixtures.FixtureDep(
+        display_name="unknown_fixture",
+        kind="unresolved",
+    )
+    meta = dataclasses.replace(
+        _make_meta("mod.consumer", "consumer"),
+        deps=(unresolved_dep,),
+    )
+    store: sphinx_pytest_fixtures._store.FixtureStoreDict = {
+        "fixtures": {"mod.consumer": meta},
+        "public_to_canon": {"consumer": "mod.consumer"},
+        "reverse_deps": {},
+        "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+    }
+    app = types.SimpleNamespace(
+        config=types.SimpleNamespace(pytest_fixture_lint_level="warning")
+    )
+    with caplog.at_level(logging.WARNING, logger="sphinx_pytest_fixtures._validation"):
+        _validate_store(store, app)
+
+    spf004 = [r for r in caplog.records if getattr(r, "spf_code", None) == "SPF004"]
+    assert len(spf004) == 1
+
+
+def test_spf006_ambiguous_public_name(caplog: pytest.LogCaptureFixture) -> None:
+    """SPF006 fires when a public name maps to multiple canonical names."""
+    import logging
+
+    from sphinx_pytest_fixtures._validation import _validate_store
+
+    store: sphinx_pytest_fixtures._store.FixtureStoreDict = {
+        "fixtures": {
+            "mod_a.server": _make_meta("mod_a.server", "server"),
+            "mod_b.server": _make_meta("mod_b.server", "server"),
+        },
+        "public_to_canon": {"server": None},  # ambiguous
+        "reverse_deps": {},
+        "_store_version": sphinx_pytest_fixtures._STORE_VERSION,
+    }
+    app = types.SimpleNamespace(
+        config=types.SimpleNamespace(pytest_fixture_lint_level="warning")
+    )
+    with caplog.at_level(logging.WARNING, logger="sphinx_pytest_fixtures._validation"):
+        _validate_store(store, app)
+
+    spf006 = [r for r in caplog.records if getattr(r, "spf_code", None) == "SPF006"]
+    assert len(spf006) == 1
+
+
 # ---------------------------------------------------------------------------
 # _qualify_forward_ref — TYPE_CHECKING forward-reference resolution
 # ---------------------------------------------------------------------------
