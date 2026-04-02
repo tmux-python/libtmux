@@ -28,8 +28,7 @@ def test_with_session(session: Session) -> None:
 
 ## Fixture Index
 
-```{eval-rst}
-.. autofixture-index:: libtmux.pytest_plugin
+```{autofixture-index} libtmux.pytest_plugin
 ```
 
 ---
