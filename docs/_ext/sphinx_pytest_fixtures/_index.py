@@ -10,6 +10,7 @@ from sphinx.domains.python import PythonDomain
 from sphinx.util import logging as sphinx_logging
 from sphinx.util.nodes import make_refnode
 
+from sphinx_pytest_fixtures._badges import _build_badge_group_node
 from sphinx_pytest_fixtures._constants import (
     _IDENTIFIER_PATTERN,
     _INDEX_TABLE_COLUMNS,
@@ -176,7 +177,9 @@ def _resolve_fixture_index(
 ) -> None:
     """Replace a :class:`autofixture_index_node` with a docutils table.
 
-    Builds a 5-column table (Fixture, Scope, Kind, Returns, Description).
+    Builds a 4-column table (Fixture, Flags, Returns, Description).
+    Scope, kind, autouse, and deprecated appear as badges in the Flags column;
+    the FIXTURE badge is suppressed (redundant in a fixture-only table context).
     Fixture names and return types are cross-referenced; description text
     has RST inline markup parsed and rendered.
 
@@ -245,11 +248,18 @@ def _resolve_fixture_index(
         name_entry += name_para
         row += name_entry
 
-        # --- Scope, Kind: plain text ---
-        for text in (meta.scope, meta.kind):
-            entry = nodes.entry()
-            entry += nodes.paragraph("", text)
-            row += entry
+        # --- Flags: scope/kind/autouse/deprecated badges ---
+        flags_entry = nodes.entry()
+        flags_para = nodes.paragraph()
+        flags_para += _build_badge_group_node(
+            scope=meta.scope,
+            kind=meta.kind,
+            autouse=meta.autouse,
+            deprecated=bool(meta.deprecated),
+            show_fixture_badge=False,
+        )
+        flags_entry += flags_para
+        row += flags_entry
 
         # --- Returns: linked type name ---
         ret_entry = nodes.entry()

@@ -25,6 +25,7 @@ def _build_badge_group_node(
     autouse: bool,
     *,
     deprecated: bool = False,
+    show_fixture_badge: bool = True,
 ) -> nodes.inline:
     """Return a badge group as portable ``nodes.abbreviation`` nodes.
 
@@ -37,7 +38,7 @@ def _build_badge_group_node(
     * Slot 1 (scope):   shown when ``scope != "function"``
     * Slot 2 (kind):    shown for ``"factory"`` / ``"override_hook"``; or
                         state badge (``"autouse"``) when ``autouse=True``
-    * Slot 3 (FIXTURE): always shown
+    * Slot 3 (FIXTURE): shown when ``show_fixture_badge=True`` (default)
 
     Parameters
     ----------
@@ -49,6 +50,9 @@ def _build_badge_group_node(
         When True, renders AUTO state badge instead of a kind badge.
     deprecated : bool
         When True, renders a deprecated badge at slot 0 (leftmost).
+    show_fixture_badge : bool
+        When False, suppresses the FIXTURE badge at slot 3.  Use in contexts
+        where the fixture type is already implied (e.g. an index table).
 
     Returns
     -------
@@ -109,15 +113,16 @@ def _build_badge_group_node(
             )
         )
 
-    # Slot 3 — fixture badge (always, rightmost)
-    badges.append(
-        nodes.abbreviation(
-            "fixture",
-            "fixture",
-            explanation=_BADGE_TOOLTIPS["fixture"],
-            classes=[_CSS.BADGE, _CSS.BADGE_FIXTURE],
+    # Slot 3 — fixture badge (rightmost, suppressed in index table context)
+    if show_fixture_badge:
+        badges.append(
+            nodes.abbreviation(
+                "fixture",
+                "fixture",
+                explanation=_BADGE_TOOLTIPS["fixture"],
+                classes=[_CSS.BADGE, _CSS.BADGE_FIXTURE],
+            )
         )
-    )
 
     # Make badges focusable for touch/keyboard tooltip accessibility.
     # Sphinx's built-in visit_abbreviation does NOT emit tabindex — our
