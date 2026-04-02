@@ -340,7 +340,6 @@ class PyFixtureDirective(PyFunction):
                 kind or _DEFAULTS["kind"],
                 scope,
                 autouse,
-                is_async=is_async,
             )
 
         # Collect generated nodes and insert in five-zone order after summary.

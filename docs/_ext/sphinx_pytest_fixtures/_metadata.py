@@ -272,7 +272,6 @@ def _build_usage_snippet(
     kind: str,
     scope: str,
     autouse: bool,
-    is_async: bool = False,
 ) -> nodes.Node | None:
     """Return a doctree node for the kind-appropriate usage example.
 
@@ -288,9 +287,6 @@ def _build_usage_snippet(
         The fixture scope (used in the conftest decorator for override hooks).
     autouse : bool
         When True, returns a note admonition instead of a test snippet.
-    is_async : bool
-        When True, generates ``async def test_example(...)`` without any
-        pytest-asyncio-specific markers (caller decides what marker to use).
 
     Returns
     -------
@@ -299,11 +295,10 @@ def _build_usage_snippet(
 
     Notes
     -----
-    * ``resource``      → ``def test_example(name: Type) -> None: ...``
-    * ``resource async`` → ``async def test_example(name: Type) -> None: ...``
-    * ``factory``       → ``def test_example(Name) -> None: obj = Name(); ...``
+    * ``resource``  → ``None`` (trivially obvious to pytest users)
+    * ``factory``   → ``def test_example(Name) -> None: obj = Name(); ...``
     * ``override_hook`` → ``conftest.py`` snippet with ``@pytest.fixture`` override
-    * ``autouse``       → ``nodes.note`` (no test snippet needed)
+    * ``autouse``   → ``nodes.note`` (no test snippet needed)
     """
     if autouse:
         note = nodes.note()
