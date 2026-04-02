@@ -283,10 +283,17 @@ class PyFixtureDirective(PyFunction):
 
         if deprecated_version is not None:
             warning = nodes.warning()
-            dep_text = f"Deprecated since version {deprecated_version}."
+            dep_para = nodes.paragraph()
+            dep_para += nodes.Text(f"Deprecated since version {deprecated_version}.")
             if replacement_name:
-                dep_text += f" Use :fixture:`{replacement_name}` instead."
-            warning += nodes.paragraph("", dep_text)
+                dep_para += nodes.Text(" Use ")
+                ref_ns, _ = self.state.inline_text(
+                    f":fixture:`{replacement_name}`",
+                    self.lineno,
+                )
+                dep_para.extend(ref_ns)
+                dep_para += nodes.Text(" instead.")
+            warning += dep_para
             # Add spf-deprecated class to the parent desc node for CSS muting
             for parent in self.state.document.findall(addnodes.desc):
                 for sig in parent.findall(addnodes.desc_signature):

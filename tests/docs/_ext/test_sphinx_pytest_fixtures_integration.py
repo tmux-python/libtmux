@@ -1003,6 +1003,44 @@ def test_teardown_summary_rendered_in_callout(tmp_path: pathlib.Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Deprecated replacement cross-reference rendering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_deprecated_replacement_renders_hyperlink(tmp_path: pathlib.Path) -> None:
+    """Deprecated replacement :fixture: role renders as a hyperlink, not raw text."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture:: fixture_mod.my_server
+
+        .. py:fixture:: old_server
+           :module: fixture_mod
+           :deprecated: 2.0
+           :replacement: my_server
+
+           An old server fixture.
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # The replacement must render as a hyperlink, not literal :fixture: text
+    assert "Deprecated since version 2.0" in html
+    assert ":fixture:" not in html, (
+        "Replacement fixture rendered as literal :fixture: text instead of a link"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Search pair index entries
 # ---------------------------------------------------------------------------
 
