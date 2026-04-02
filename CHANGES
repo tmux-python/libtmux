@@ -40,6 +40,34 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### pytest plugin: fixture reference documentation with autofixture directives (#???)
+
+New Sphinx extension (`docs/_ext/sphinx_pytest_fixtures.py`) renders pytest
+fixtures as first-class API documentation with scope/kind/factory badges,
+cross-referenced dependencies, and auto-generated usage snippets.
+
+- `.. autofixture::` directive — autodoc-style documenter for individual fixtures
+- `.. autofixtures::` directive — bulk discovery and rendering from a module
+- `.. autofixture-index::` directive — auto-generated index table with linked
+  return types (via intersphinx) and parsed RST descriptions
+- `:fixture:` cross-reference role with short-name resolution
+- Scope, kind, and autouse badges with touch-accessible tooltips (`tabindex`
+  + CSS `:focus` popup)
+- Responsive layout: mobile metadata stacking, badge font scaling, table scroll
+  wrapper
+- WCAG AA contrast compliance for all badge colors (light and dark mode)
+- 109 tests (unit + integration)
+
+### Bug fixes
+
+- Fix `session_params` fixture docstring incorrectly describing return type (#???)
+
+### Development
+
+- Add `types-docutils` to dev dependencies for mypy type checking (#???)
+
 ## libtmux 0.55.0 (2026-03-07)
 
 ### What's new
