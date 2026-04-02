@@ -20,7 +20,8 @@ gives a compact overview of all permutations at once.
 
 Function scope, resource kind, not autouse. Shows only the green FIXTURE badge.
 
-```{autofixture} spf_demo_fixtures.demo_plain
+```{eval-rst}
+.. autofixture:: spf_demo_fixtures.demo_plain
 ```
 
 ---
@@ -29,17 +30,20 @@ Function scope, resource kind, not autouse. Shows only the green FIXTURE badge.
 
 ### Session scope
 
-```{autofixture} spf_demo_fixtures.demo_session
+```{eval-rst}
+.. autofixture:: spf_demo_fixtures.demo_session
 ```
 
 ### Module scope
 
-```{autofixture} spf_demo_fixtures.demo_module
+```{eval-rst}
+.. autofixture:: spf_demo_fixtures.demo_module
 ```
 
 ### Class scope
 
-```{autofixture} spf_demo_fixtures.demo_class
+```{eval-rst}
+.. autofixture:: spf_demo_fixtures.demo_class
 ```
 
 ---
@@ -50,15 +54,17 @@ Function scope, resource kind, not autouse. Shows only the green FIXTURE badge.
 
 Return type `type[str]` is auto-detected as factory — no explicit `:kind:` needed.
 
-```{autofixture} spf_demo_fixtures.demo_factory
+```{eval-rst}
+.. autofixture:: spf_demo_fixtures.demo_factory
 ```
 
 ### Override hook
 
 Requires explicit `:kind: override_hook` since it cannot be inferred from type.
 
-```{autofixture} spf_demo_fixtures.demo_override_hook
-:kind: override_hook
+```{eval-rst}
+.. autofixture:: spf_demo_fixtures.demo_override_hook
+   :kind: override_hook
 ```
 
 ---
@@ -67,20 +73,22 @@ Requires explicit `:kind: override_hook` since it cannot be inferred from type.
 
 ### Autouse
 
-```{autofixture} spf_demo_fixtures.demo_autouse
+```{eval-rst}
+.. autofixture:: spf_demo_fixtures.demo_autouse
 ```
 
 ### Deprecated
 
 The `deprecated` badge is set via the `:deprecated:` RST option on `py:fixture`.
-The `autofixture` directive does not support `:deprecated:`; use `py:fixture` instead.
+`autofixture` does not support `:deprecated:`; use `py:fixture` instead.
 
-```{py:fixture} demo_deprecated
-:deprecated: 1.0
-:replacement: demo_plain
-:return-type: str
+```{eval-rst}
+.. py:fixture:: demo_deprecated
+   :deprecated: 1.0
+   :replacement: demo_plain
+   :return-type: str
 
-Return a deprecated value. Use {fixture}`demo_plain` instead.
+   Return a deprecated value. Use :fixture:`demo_plain` instead.
 ```
 
 ---
@@ -89,10 +97,12 @@ Return a deprecated value. Use {fixture}`demo_plain` instead.
 
 ### Session + Factory
 
-```{autofixture} spf_demo_fixtures.demo_session_factory
+```{eval-rst}
+.. autofixture:: spf_demo_fixtures.demo_session_factory
 ```
 
 ### Session + Autouse
 
-```{autofixture} spf_demo_fixtures.demo_session_autouse
+```{eval-rst}
+.. autofixture:: spf_demo_fixtures.demo_session_autouse
 ```
