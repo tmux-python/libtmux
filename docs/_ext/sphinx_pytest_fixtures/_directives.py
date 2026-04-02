@@ -480,6 +480,12 @@ class AutofixturesDirective(Directive):
             )
             return []
 
+        # Register the module file as a dependency so incremental rebuilds
+        # re-process this page when the scanned module changes.
+        env = self.state.document.settings.env
+        if hasattr(module, "__file__") and module.__file__:
+            env.note_dependency(module.__file__)
+
         # Collect all (attr_name, public_name, fixture_obj) triples.
         entries: list[tuple[str, str, t.Any]] = []
         seen_public: set[str] = set()
