@@ -22,7 +22,10 @@ from sphinx_pytest_fixtures._detection import (
     _infer_kind,
     _is_pytest_fixture,
 )
-from sphinx_pytest_fixtures._metadata import _register_fixture_meta
+from sphinx_pytest_fixtures._metadata import (
+    _extract_teardown_summary,
+    _register_fixture_meta,
+)
 
 if t.TYPE_CHECKING:
     pass
@@ -250,6 +253,12 @@ class FixtureDocumenter(FunctionDocumenter):
         # Pass already-resolved kind to avoid a second _infer_kind call.
         public_name = self.format_name()
         source_name = self.objpath[-1] if self.objpath else public_name
+
+        # Extract teardown summary before registering so the store gets the
+        # correct value; PyFixtureDirective will overwrite it again later but
+        # this ensures _validate_store sees the summary.
+        teardown_text = _extract_teardown_summary(self.object)
+
         meta = _register_fixture_meta(
             env=self.env,
             docname=self.env.docname,
@@ -259,10 +268,13 @@ class FixtureDocumenter(FunctionDocumenter):
             modname=self.modname,
             kind=kind,
             app=self.env.app,
+            teardown_summary=teardown_text,
         )
 
         # Emit teardown/async flags derived from the fixture function.
         if meta.has_teardown:
             self.add_line("   :teardown:", sourcename)
+            if teardown_text:
+                self.add_line(f"   :teardown-summary: {teardown_text}", sourcename)
         if meta.is_async:
             self.add_line("   :async:", sourcename)

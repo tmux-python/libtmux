@@ -123,6 +123,44 @@ def _extract_summary(obj: t.Any) -> str:
     return match.group(1) if match else first_para
 
 
+_TEARDOWN_HEADINGS: frozenset[str] = frozenset({"teardown", "cleanup", "finalizer"})
+
+
+def _extract_teardown_summary(obj: t.Any) -> str | None:
+    """Return the first line of the Teardown section from the fixture docstring.
+
+    Parameters
+    ----------
+    obj : Any
+        A pytest fixture wrapper object.
+
+    Returns
+    -------
+    str or None
+        The first non-blank line(s) of the ``Teardown`` / ``Cleanup`` /
+        ``Finalizer`` section (NumPy-style heading), or ``None`` when absent.
+    """
+    fn = _get_fixture_fn(obj)
+    doc = inspect.getdoc(fn) or ""
+    lines = doc.splitlines()
+    for i, line in enumerate(lines):
+        if (
+            line.strip().lower() in _TEARDOWN_HEADINGS
+            and i + 1 < len(lines)
+            and set(lines[i + 1].strip()) <= {"-"}
+        ):
+            body: list[str] = []
+            for j in range(i + 2, len(lines)):
+                stripped = lines[j].strip()
+                if stripped:
+                    body.append(stripped)
+                elif body:
+                    break
+            if body:
+                return " ".join(body)
+    return None
+
+
 def _register_fixture_meta(
     env: t.Any,
     docname: str,

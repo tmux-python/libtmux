@@ -649,6 +649,49 @@ def test_spf003_fires_for_yield_fixture_via_autodoc(tmp_path: pathlib.Path) -> N
 
 
 @pytest.mark.integration
+def test_teardown_section_suppresses_spf003(tmp_path: pathlib.Path) -> None:
+    """A 'Teardown' docstring section suppresses SPF003 and shows teardown-summary."""
+    teardown_fixture_source = textwrap.dedent(
+        """\
+        from __future__ import annotations
+        import typing as t
+        import pytest
+
+        @pytest.fixture
+        def documented_yield() -> t.Generator[str, None, None]:
+            \"\"\"A yield fixture with documented teardown.
+
+            Teardown
+            --------
+            Releases the resource after the test completes.
+            \"\"\"
+            yield "value"
+        """,
+    )
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture:: fixture_mod.documented_yield
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        fixture_source=teardown_fixture_source,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "warning"},
+    )
+    # SPF003 must NOT fire when there is a Teardown section
+    assert "no teardown documentation" not in result.warnings
+    # The teardown summary text must appear in the rendered HTML
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "Releases the resource" in index_html
+
+
+@pytest.mark.integration
 def test_override_hook_snippet_shows_conftest(tmp_path: pathlib.Path) -> None:
     """override_hook fixtures show a conftest.py snippet, not def test_example."""
     result = _build_sphinx_app(tmp_path)
