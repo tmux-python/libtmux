@@ -549,6 +549,31 @@ def test_kind_override_hook_option(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.mark.integration
+def test_usage_none_suppresses_snippet(tmp_path: pathlib.Path) -> None:
+    """:usage: none suppresses the auto-generated usage snippet."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. py:fixture:: my_server
+           :usage: none
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # No usage snippet should be generated — no code-block with def test_example
+    assert "def test_example" not in index_html
+    assert "conftest.py" not in index_html
+
+
+@pytest.mark.integration
 def test_override_hook_snippet_shows_conftest(tmp_path: pathlib.Path) -> None:
     """override_hook fixtures show a conftest.py snippet, not def test_example."""
     result = _build_sphinx_app(tmp_path)
