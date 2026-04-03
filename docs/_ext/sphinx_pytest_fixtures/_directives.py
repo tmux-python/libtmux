@@ -427,7 +427,11 @@ class PyFixtureDirective(PyFunction):
                 return_display=self.options.get("return-type", ""),
                 return_xref_target=None,
                 deps=tuple(deps),
-                param_reprs=(),
+                param_reprs=tuple(
+                    p.strip()
+                    for p in self.options.get("params", "").split(",")
+                    if p.strip()
+                ),
                 has_teardown="teardown" in self.options,
                 is_async="async" in self.options,
                 summary="",

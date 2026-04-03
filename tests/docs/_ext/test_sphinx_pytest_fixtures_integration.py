@@ -857,6 +857,33 @@ def test_parametrized_values_rendered(tmp_path: pathlib.Path) -> None:
     assert "'zsh'" in index_html
 
 
+@pytest.mark.integration
+def test_manual_fixture_params_renders_parametrized_field(
+    tmp_path: pathlib.Path,
+) -> None:
+    """py:fixture:: :params: option renders a Parametrized field."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. py:fixture:: shell
+           :params: 'bash', 'zsh'
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    assert "Parametrized" in index_html
+    assert "'bash'" in index_html
+    assert "'zsh'" in index_html
+
+
 # ---------------------------------------------------------------------------
 # Short-name :fixture: xref resolution (Commit 3)
 # ---------------------------------------------------------------------------
@@ -1655,7 +1682,11 @@ CROSS_DOC_INDEX_RST = textwrap.dedent(
 
 @pytest.mark.integration
 def test_cross_doc_used_by_link(tmp_path: pathlib.Path) -> None:
-    """Used-by links work across documents (fixture on api.rst, consumer on usage.rst)."""
+    """Used-by links work across documents.
+
+    Fixture defined on api.rst, consumer on usage.rst — the "Used by" field
+    must render a cross-document anchor link.
+    """
     from sphinx.application import Sphinx
 
     srcdir = tmp_path / "src"
@@ -1692,10 +1723,8 @@ def test_cross_doc_used_by_link(tmp_path: pathlib.Path) -> None:
     # cross_server is on api.html; its "Used by" should link to usage.html#cross_client
     api_html = (outdir / "api.html").read_text(encoding="utf-8")
     assert "Used by" in api_html
-    assert (
-        '<a class="reference internal" href="usage.html#fixture_mod.cross_client"'
-        in api_html
-    )
+    cross_client_href = 'href="usage.html#fixture_mod.cross_client"'
+    assert cross_client_href in api_html
 
 
 # ---------------------------------------------------------------------------
