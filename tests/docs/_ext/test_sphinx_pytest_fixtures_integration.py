@@ -1105,6 +1105,45 @@ def test_autofixture_index_flags_deprecated(tmp_path: pathlib.Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# autofixture-index :exclude: HTML rendering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_autofixture_index_exclude_hides_row(tmp_path: pathlib.Path) -> None:
+    """autofixture-index :exclude: removes the named fixture from the table HTML."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture-index:: fixture_mod
+           :exclude: my_client, auto_cleanup
+
+        .. autofixture:: fixture_mod.my_server
+
+        .. autofixture:: fixture_mod.my_client
+
+        .. autofixture:: fixture_mod.auto_cleanup
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    table_html = _extract_index_table(index_html)
+    # Excluded fixtures must not appear in the rendered table
+    assert "my_client" not in table_html
+    assert "auto_cleanup" not in table_html
+    # Non-excluded fixtures must remain
+    assert "my_server" in table_html
+
+
+# ---------------------------------------------------------------------------
 # TYPE_CHECKING forward-reference regression test
 # ---------------------------------------------------------------------------
 
