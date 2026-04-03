@@ -46,9 +46,9 @@ passed into your test.
 These fixtures are automatically used when the plugin is enabled and `pytest` is run.
 
 - Creating temporary, test directories for:
-  - `/home/` ({func}`home_path`)
-  - `/home/${user}` ({func}`user_path`)
-- Default `.tmux.conf` configuration with these settings ({func}`config_file`):
+  - `/home/` ({fixture}`home_path`)
+  - `/home/${user}` ({fixture}`user_path`)
+- Default `.tmux.conf` configuration with these settings ({fixture}`config_file`):
 
   - `base-index -g 1`
 
@@ -58,19 +58,19 @@ These fixtures are automatically used when the plugin is enabled and `pytest` is
 
 ## Setting a tmux configuration
 
-If you would like {func}`session fixture <libtmux.pytest_plugin.session>` to automatically use a configuration, you have a few
+If you would like {fixture}`session <libtmux.pytest_plugin.session>` to automatically use a configuration, you have a few
 options:
 
 - Pass a `config_file` into {class}`~libtmux.Server`
 - Set the `HOME` directory to a local or temporary pytest path with a configuration file
 
-You could also read the code and override {func}`server fixture <libtmux.pytest_plugin.server>` in your own doctest.
+You could also read the code and override {fixture}`server <libtmux.pytest_plugin.server>` in your own doctest.
 
 (custom_session_params)=
 
 ### Custom session parameters
 
-You can override `session_params` to customize the `session` fixture. The
+You can override {fixture}`session_params` to customize the `session` fixture. The
 dictionary will directly pass into {meth}`Server.new_session` keyword arguments.
 
 ```python
@@ -94,7 +94,7 @@ The above will assure the libtmux session launches with `-x 800 -y 600`.
 
 ### Creating temporary servers
 
-If you need multiple independent tmux servers in your tests, the {func}`TestServer fixture <libtmux.pytest_plugin.TestServer>` provides a factory that creates servers with unique socket names. Each server is automatically cleaned up when the test completes.
+If you need multiple independent tmux servers in your tests, the {fixture}`TestServer <libtmux.pytest_plugin.TestServer>` provides a factory that creates servers with unique socket names. Each server is automatically cleaned up when the test completes.
 
 ```python
 def test_something(TestServer):

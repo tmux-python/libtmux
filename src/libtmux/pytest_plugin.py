@@ -32,15 +32,13 @@ def home_path(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
 
 @pytest.fixture(scope="session")
 def home_user_name() -> str:
-    """Return default username to set for :func:`user_path` fixture."""
+    """Return default username to set for :fixture:`user_path` fixture."""
     return getpass.getuser()
 
 
 @pytest.fixture(scope="session")
 def user_path(home_path: pathlib.Path, home_user_name: str) -> pathlib.Path:
     """Ensure and return temporary user directory.
-
-    Used by: :func:`config_file`, :func:`zshrc`
 
     Note: You will need to set the home directory, see :ref:`set_home`.
     """
@@ -273,11 +271,6 @@ def TestServer(
 
     This is similar to the server pytest fixture, but can be used outside of pytest.
     The server will be killed when the test completes.
-
-    Returns
-    -------
-    type[Server]
-        A factory function that returns a Server with a unique socket_name
 
     Examples
     --------

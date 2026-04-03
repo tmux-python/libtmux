@@ -30,6 +30,7 @@ with (project_src / "libtmux" / "__about__.py").open() as fp:
 
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx_pytest_fixtures",
     "sphinx_fonts",
     "sphinx.ext.intersphinx",
     "sphinx_autodoc_typehints",
