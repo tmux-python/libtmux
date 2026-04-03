@@ -3,6 +3,8 @@ from __future__ import annotations
 import dataclasses
 import typing as t
 
+from sphinx.util import logging as sphinx_logging
+
 from sphinx_pytest_fixtures._constants import (
     _EXTENSION_KEY,
     _INTERSPHINX_FIXTURE_ROLE,
@@ -14,6 +16,8 @@ from sphinx_pytest_fixtures._models import FixtureDep, FixtureMeta
 
 if t.TYPE_CHECKING:
     from sphinx.application import Sphinx
+
+logger = sphinx_logging.getLogger(__name__)
 
 
 def _resolve_builtin_url(name: str, app: t.Any) -> str | None:
@@ -231,4 +235,21 @@ def _on_env_merge_info(
     """
     store = _get_spf_store(env)
     other_store = _get_spf_store(other)
-    store["fixtures"].update(other_store["fixtures"])
+    # Explicit loop so we can emit SPF009 when the same fixture canonical name
+    # appears in both environments with different docnames (parallel build
+    # collision). Last writer wins — this is warning-only and does not
+    # participate in lint_level=error because parallel builds are rare and
+    # treating collisions as errors would break incremental builds.
+    for canon, meta in other_store["fixtures"].items():
+        if (
+            canon in store["fixtures"]
+            and store["fixtures"][canon].docname != meta.docname
+        ):
+            logger.warning(
+                "fixture %r documented from multiple pages (%r and %r); using last",
+                canon,
+                store["fixtures"][canon].docname,
+                meta.docname,
+                extra={"spf_code": "SPF009"},
+            )
+        store["fixtures"][canon] = meta
