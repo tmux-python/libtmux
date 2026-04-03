@@ -119,7 +119,7 @@ def _extract_summary(obj: t.Any) -> str:
     fn = _get_fixture_fn(obj)
     doc = inspect.getdoc(fn) or ""
     first_para = doc.split("\n\n")[0].replace("\n", " ").strip()
-    match = re.match(r"^(.*?[.!?])\s", first_para)
+    match = re.match(r"^(.*?[.!?])(?:\s|$)", first_para)
     return match.group(1) if match else first_para
 
 

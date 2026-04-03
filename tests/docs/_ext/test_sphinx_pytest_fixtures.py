@@ -1341,3 +1341,45 @@ def test_qualify_forward_ref_no_source_returns_none(
     )
     result = _qualify_forward_ref("Session", fn)
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _extract_summary
+# ---------------------------------------------------------------------------
+
+
+def test_extract_summary_single_sentence() -> None:
+    """_extract_summary returns the first sentence when it ends with a period."""
+    from sphinx_pytest_fixtures._metadata import _extract_summary
+
+    @pytest.fixture
+    def my_fix() -> str:
+        """Return a string. This second sentence should be excluded."""
+        return "x"
+
+    assert _extract_summary(my_fix) == "Return a string."
+
+
+def test_extract_summary_sentence_at_eof() -> None:
+    """_extract_summary handles first paragraph whose last sentence ends at EOF."""
+    from sphinx_pytest_fixtures._metadata import _extract_summary
+
+    @pytest.fixture
+    def my_fix() -> str:
+        """First sentence. Second sentence ends here."""
+        return "x"
+
+    # The last sentence ends at EOF with no trailing whitespace — regex must match.
+    assert _extract_summary(my_fix) == "First sentence."
+
+
+def test_extract_summary_no_sentence_terminator() -> None:
+    """_extract_summary falls back to first_para when no sentence terminator exists."""
+    from sphinx_pytest_fixtures._metadata import _extract_summary
+
+    @pytest.fixture
+    def my_fix() -> str:
+        """A fixture with no sentence terminator"""  # noqa: D400, D401
+        return "x"
+
+    assert _extract_summary(my_fix) == "A fixture with no sentence terminator"
