@@ -776,11 +776,9 @@ def test_short_name_fixture_xref_resolves(tmp_path: pathlib.Path) -> None:
     )
     result = _build_sphinx_app(tmp_path, index_rst=index_with_xref)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    # Should resolve to a real link, not a <span class="xref"> (broken ref)
-    assert (
-        '<a class="reference internal"' in index_html
-        or "fixture_mod.my_server" in index_html
-    )
+    # Must resolve to a real link — plain text or pending_xref would still
+    # contain the fixture name but would NOT produce an <a> element.
+    assert '<a class="reference internal"' in index_html
     # And no fixture-related warnings
     fixture_warnings = [
         line
