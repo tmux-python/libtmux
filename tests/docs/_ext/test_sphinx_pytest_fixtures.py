@@ -156,24 +156,23 @@ def test_factory_detection_from_callable_annotation() -> None:
 
 
 def test_factory_detection_from_name_convention() -> None:
-    """_is_factory falls back to uppercase-first name heuristic when no annotation."""
+    """_is_factory returns False for unannotated (t.Any) fixtures; no name heuristic."""
 
     @pytest.fixture
     def CapitalFactory() -> t.Any:
         return lambda: None
 
-    assert sphinx_pytest_fixtures._is_factory(CapitalFactory)
+    assert not sphinx_pytest_fixtures._is_factory(CapitalFactory)
 
 
-def test_is_factory_camelcase_unannotated_documents_wrong_behavior() -> None:
-    """CamelCase unannotated fixture is currently (wrongly) classified as factory."""
+def test_is_factory_camelcase_unannotated_defaults_to_resource() -> None:
+    """Unannotated CamelCase fixture must NOT be silently classified as factory."""
 
     @pytest.fixture
     def Session() -> t.Any:
         return "string value"
 
-    # True — current wrong behavior; this test documents it before the fix
-    assert sphinx_pytest_fixtures._is_factory(Session)
+    assert not sphinx_pytest_fixtures._is_factory(Session)
 
 
 def test_factory_detection_negative() -> None:

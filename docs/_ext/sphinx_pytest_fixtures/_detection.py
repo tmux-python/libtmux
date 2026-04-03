@@ -304,15 +304,13 @@ def _is_factory(obj: t.Any) -> bool:
     -------
     bool
         True when the return annotation is ``type[X]`` or ``Callable[..., X]``.
-        Falls back to the name convention heuristic (capital first letter, e.g.
-        ``TestServer``) when no annotation is present.
+        Returns False when no annotation (or ``t.Any``) is present — use
+        the explicit ``:kind: factory`` option to override.
     """
     ret = _get_return_annotation(obj)
-    # t.Any means the annotation carries no type information — fall through
-    # to the name convention heuristic, same as unannotated.
+    # t.Any / unannotated: no type information — default to resource.
     if ret is inspect.Parameter.empty or ret is t.Any:
-        fn = _get_fixture_fn(obj)
-        return fn.__name__[:1].isupper()
+        return False
     origin = t.get_origin(ret)
     if origin is type or origin is collections.abc.Callable:
         return True
