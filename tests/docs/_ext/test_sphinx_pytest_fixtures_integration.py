@@ -1593,3 +1593,51 @@ def test_manual_fixture_async_option(tmp_path: pathlib.Path) -> None:
     )
     html = (result.outdir / "index.html").read_text(encoding="utf-8")
     assert "async fixture" in html.lower()
+
+
+# ---------------------------------------------------------------------------
+# Text builder smoke test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_text_builder_does_not_crash(tmp_path: pathlib.Path) -> None:
+    """Extension does not crash when building with the text builder.
+
+    badge nodes use nodes.abbreviation (portable), but the text builder path
+    was never tested.
+    """
+    from sphinx.application import Sphinx
+
+    srcdir = tmp_path / "src"
+    srcdir.mkdir()
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    doctreedir = tmp_path / "doctrees"
+    doctreedir.mkdir()
+
+    (srcdir / "fixture_mod.py").write_text(FIXTURE_MOD_SOURCE, encoding="utf-8")
+    conf_py = CONF_PY_TEMPLATE.format(srcdir=str(srcdir))
+    (srcdir / "conf.py").write_text(conf_py, encoding="utf-8")
+    (srcdir / "index.rst").write_text(INDEX_RST, encoding="utf-8")
+
+    status_buf = io.StringIO()
+    warning_buf = io.StringIO()
+
+    _purge_fixture_module()
+    app = Sphinx(
+        srcdir=str(srcdir),
+        confdir=str(srcdir),
+        outdir=str(outdir),
+        doctreedir=str(doctreedir),
+        buildername="text",
+        confoverrides={"pytest_fixture_lint_level": "none"},
+        status=status_buf,
+        warning=warning_buf,
+        freshenv=True,
+    )
+    # Should not raise — the text builder must handle badge nodes gracefully
+    app.build()
+    output_text = (outdir / "index.txt").read_text(encoding="utf-8")
+    # Basic sanity: fixture names appear in the text output
+    assert "my_server" in output_text
