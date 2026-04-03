@@ -355,7 +355,14 @@ dl.py.fixture > dd > dl.field-list {
   padding-top: 0.5rem;
   margin-top: 0.5rem;
 }
-dl.py.fixture > dd > dl.field-list > dt { grid-column: 1; }
+dl.py.fixture > dd > dl.field-list > dt {
+  grid-column: 1;
+  font-weight: normal;
+  text-transform: uppercase;
+  font-size: 0.85em;
+  letter-spacing: 0.025em;
+}
+dl.py.fixture > dd > dl.field-list > dt .colon { display: none; }
 dl.py.fixture > dd > dl.field-list > dd { grid-column: 2; margin-left: 0; }
 
 /* Mobile: metadata fields stack to single column */
