@@ -1322,3 +1322,22 @@ if t.TYPE_CHECKING:
     assert result == "mod_b.Foo"
 
     del sys.modules["fake_qual_mod"]
+
+
+def test_qualify_forward_ref_no_source_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_qualify_forward_ref returns None when inspect.getsource raises OSError."""
+    from sphinx_pytest_fixtures import _metadata as spf_meta
+    from sphinx_pytest_fixtures._metadata import _qualify_forward_ref
+
+    from libtmux.pytest_plugin import session
+
+    fn = sphinx_pytest_fixtures._get_fixture_fn(session)
+    monkeypatch.setattr(
+        spf_meta.inspect,
+        "getsource",
+        lambda _: (_ for _ in ()).throw(OSError("no source")),
+    )
+    result = _qualify_forward_ref("Session", fn)
+    assert result is None
