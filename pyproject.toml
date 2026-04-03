@@ -52,8 +52,8 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 [dependency-groups]
 dev = [
   # Docs (via gp-sphinx)
-  "gp-sphinx",
-  "sphinx-autodoc-pytest-fixtures",
+  "gp-sphinx==0.0.1a0",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a0",
   "sphinx-autobuild",
   "types-docutils",
   # Testing
@@ -74,8 +74,8 @@ dev = [
 ]
 
 docs = [
-  "gp-sphinx",
-  "sphinx-autodoc-pytest-fixtures",
+  "gp-sphinx==0.0.1a0",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a0",
   "sphinx-autobuild",
 ]
 testing = [
@@ -103,12 +103,6 @@ libtmux = "libtmux.pytest_plugin"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.uv.sources]
-gp-sphinx = { git = "https://github.com/git-pull/gp-sphinx", branch = "init-3", subdirectory = "packages/gp-sphinx" }
-sphinx-fonts = { git = "https://github.com/git-pull/gp-sphinx", branch = "init-3", subdirectory = "packages/sphinx-fonts" }
-sphinx-gptheme = { git = "https://github.com/git-pull/gp-sphinx", branch = "init-3", subdirectory = "packages/sphinx-gptheme" }
-sphinx-autodoc-pytest-fixtures = { git = "https://github.com/git-pull/gp-sphinx", branch = "init-3", subdirectory = "packages/sphinx-autodoc-pytest-fixtures" }
 
 [tool.mypy]
 strict = true
