@@ -79,6 +79,7 @@ dev = [
   # Lint
   "ruff",
   "mypy",
+  "types-docutils",  # stubs for docutils used by sphinx_pytest_fixtures
 ]
 
 docs = [
@@ -131,6 +132,10 @@ files = [
 
 [[tool.mypy.overrides]]
 module = ["sphinx_fonts"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["sphinx_pytest_fixtures", "sphinx_pytest_fixtures.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]
@@ -240,6 +245,9 @@ testpaths = [
   "tests",
   "docs",
   "README.md",
+]
+markers = [
+  "integration: sphinx integration tests (require full sphinx build)",
 ]
 filterwarnings = [
   "ignore:The frontend.Option(Parser)? class.*:DeprecationWarning::",
