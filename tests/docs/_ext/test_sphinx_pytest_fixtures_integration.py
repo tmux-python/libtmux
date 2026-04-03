@@ -1596,6 +1596,109 @@ def test_manual_fixture_async_option(tmp_path: pathlib.Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Multi-document "Used by" cross-doc links
+# ---------------------------------------------------------------------------
+
+CROSS_DOC_FIXTURE_SOURCE = textwrap.dedent(
+    """\
+    from __future__ import annotations
+    import typing as t
+    import pytest
+
+    class Server:
+        \"\"\"A fake server.\"\"\"
+
+    @pytest.fixture(scope="session")
+    def cross_server() -> Server:
+        \"\"\"A session-scoped server fixture.\"\"\"
+        return Server()
+
+    @pytest.fixture
+    def cross_client(cross_server: Server) -> str:
+        \"\"\"A client that depends on cross_server.\"\"\"
+        return f"client@{cross_server}"
+    """,
+)
+
+CROSS_DOC_API_RST = textwrap.dedent(
+    """\
+    API
+    ===
+
+    .. py:module:: fixture_mod
+
+    .. autofixture:: fixture_mod.cross_server
+    """,
+)
+
+CROSS_DOC_USAGE_RST = textwrap.dedent(
+    """\
+    Usage
+    =====
+
+    .. autofixture:: fixture_mod.cross_client
+    """,
+)
+
+CROSS_DOC_INDEX_RST = textwrap.dedent(
+    """\
+    Test
+    ====
+
+    .. toctree::
+
+       api
+       usage
+    """,
+)
+
+
+@pytest.mark.integration
+def test_cross_doc_used_by_link(tmp_path: pathlib.Path) -> None:
+    """Used-by links work across documents (fixture on api.rst, consumer on usage.rst)."""
+    from sphinx.application import Sphinx
+
+    srcdir = tmp_path / "src"
+    srcdir.mkdir()
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    doctreedir = tmp_path / ".doctrees"
+    doctreedir.mkdir()
+
+    (srcdir / "fixture_mod.py").write_text(CROSS_DOC_FIXTURE_SOURCE, encoding="utf-8")
+    conf = CONF_PY_TEMPLATE.format(srcdir=str(srcdir))
+    (srcdir / "conf.py").write_text(conf, encoding="utf-8")
+    (srcdir / "index.rst").write_text(CROSS_DOC_INDEX_RST, encoding="utf-8")
+    (srcdir / "api.rst").write_text(CROSS_DOC_API_RST, encoding="utf-8")
+    (srcdir / "usage.rst").write_text(CROSS_DOC_USAGE_RST, encoding="utf-8")
+
+    status_buf = io.StringIO()
+    warning_buf = io.StringIO()
+
+    _purge_fixture_module()
+    app = Sphinx(
+        srcdir=str(srcdir),
+        confdir=str(srcdir),
+        outdir=str(outdir),
+        doctreedir=str(doctreedir),
+        buildername="html",
+        confoverrides={"pytest_fixture_lint_level": "none"},
+        status=status_buf,
+        warning=warning_buf,
+        freshenv=True,
+    )
+    app.build()
+
+    # cross_server is on api.html; its "Used by" should link to usage.html#cross_client
+    api_html = (outdir / "api.html").read_text(encoding="utf-8")
+    assert "Used by" in api_html
+    assert (
+        '<a class="reference internal" href="usage.html#fixture_mod.cross_client"'
+        in api_html
+    )
+
+
+# ---------------------------------------------------------------------------
 # Text builder smoke test
 # ---------------------------------------------------------------------------
 
