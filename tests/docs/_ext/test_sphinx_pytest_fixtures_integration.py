@@ -609,6 +609,46 @@ def test_async_fixture_callout_renders(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.mark.integration
+def test_spf003_fires_for_yield_fixture_via_autodoc(tmp_path: pathlib.Path) -> None:
+    """SPF003 fires for yield fixtures with no Teardown docstring section via autodoc.
+
+    The fixture intentionally has no "Teardown" section in its docstring so this
+    test remains stable after the teardown-extraction feature (commit C4) is added.
+    """
+    yield_fixture_source = textwrap.dedent(
+        """\
+        from __future__ import annotations
+        import typing as t
+        import pytest
+
+        @pytest.fixture
+        def simple_yield() -> t.Generator[str, None, None]:
+            \"\"\"A yield fixture with no teardown documentation.\"\"\"
+            yield "value"
+            # teardown happens here but is not documented
+        """,
+    )
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture:: fixture_mod.simple_yield
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        fixture_source=yield_fixture_source,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "warning"},
+    )
+    # SPF003 fires: yield fixture with no teardown documentation
+    assert "no teardown documentation" in result.warnings
+
+
+@pytest.mark.integration
 def test_override_hook_snippet_shows_conftest(tmp_path: pathlib.Path) -> None:
     """override_hook fixtures show a conftest.py snippet, not def test_example."""
     result = _build_sphinx_app(tmp_path)
