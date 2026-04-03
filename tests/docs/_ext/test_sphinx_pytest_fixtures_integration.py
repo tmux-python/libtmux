@@ -574,6 +574,41 @@ def test_usage_none_suppresses_snippet(tmp_path: pathlib.Path) -> None:
 
 
 @pytest.mark.integration
+def test_async_fixture_callout_renders(tmp_path: pathlib.Path) -> None:
+    """Async fixtures show the 'async fixture' callout note via autofixture::."""
+    async_fixture_source = textwrap.dedent(
+        """\
+        from __future__ import annotations
+        import pytest
+
+        @pytest.fixture
+        async def async_resource() -> str:
+            \"\"\"An async fixture.\"\"\"
+            return "async_value"
+        """,
+    )
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. autofixture:: fixture_mod.async_resource
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        fixture_source=async_fixture_source,
+        index_rst=index_rst,
+        confoverrides={"pytest_fixture_lint_level": "none"},
+    )
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # The async callout message should appear in the rendered HTML
+    assert "async fixture" in index_html.lower()
+
+
+@pytest.mark.integration
 def test_override_hook_snippet_shows_conftest(tmp_path: pathlib.Path) -> None:
     """override_hook fixtures show a conftest.py snippet, not def test_example."""
     result = _build_sphinx_app(tmp_path)
