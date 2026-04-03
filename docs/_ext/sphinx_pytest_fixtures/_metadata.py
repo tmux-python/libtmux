@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import inspect
 import re
 import typing as t
@@ -31,6 +32,15 @@ if t.TYPE_CHECKING:
 logger = sphinx_logging.getLogger(__name__)
 
 
+def _is_type_checking_guard(node: ast.If) -> bool:
+    """Return True if *node* is an ``if TYPE_CHECKING:`` guard."""
+    test = node.test
+    # Handles: TYPE_CHECKING, typing.TYPE_CHECKING, t.TYPE_CHECKING, etc.
+    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+    )
+
+
 def _qualify_forward_ref(name: str, fn: t.Any) -> str | None:
     """Try to resolve a bare forward-reference string to a qualified name.
 
@@ -53,7 +63,6 @@ def _qualify_forward_ref(name: str, fn: t.Any) -> str | None:
         The fully-qualified name (e.g. ``"libtmux.session.Session"``),
         or ``None`` if resolution fails.
     """
-    import ast
     import sys
 
     module = getattr(fn, "__module__", None)
@@ -79,12 +88,16 @@ def _qualify_forward_ref(name: str, fn: t.Any) -> str | None:
     except SyntaxError:
         return None
 
+    # Restrict to TYPE_CHECKING blocks only so a runtime import of the same
+    # name from a different module does not steal the cross-reference.
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            for alias in node.names:
-                imported_name = alias.asname if alias.asname else alias.name
-                if imported_name == name:
-                    return f"{node.module}.{alias.name}"
+        if isinstance(node, ast.If) and _is_type_checking_guard(node):
+            for child in ast.walk(node):
+                if isinstance(child, ast.ImportFrom) and child.module:
+                    for alias in child.names:
+                        imported_name = alias.asname if alias.asname else alias.name
+                        if imported_name == name:
+                            return f"{child.module}.{alias.name}"
 
     return None
 

@@ -1289,3 +1289,36 @@ def test_qualify_forward_ref_returns_none_for_unknown() -> None:
     fn = sphinx_pytest_fixtures._get_fixture_fn(server)
     result = _qualify_forward_ref("NonexistentClass", fn)
     assert result is None
+
+
+def test_qualify_forward_ref_prefers_type_checking_block_over_runtime_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TYPE_CHECKING-guarded import wins over a same-name runtime import."""
+    import sys
+
+    from sphinx_pytest_fixtures import _metadata as spf_meta
+    from sphinx_pytest_fixtures._metadata import _qualify_forward_ref
+
+    synthetic_source = """\
+from __future__ import annotations
+import typing as t
+from mod_a import Foo  # runtime import
+if t.TYPE_CHECKING:
+    from mod_b import Foo  # TYPE_CHECKING import — should win
+"""
+    fake_mod = types.ModuleType("fake_qual_mod")
+    sys.modules["fake_qual_mod"] = fake_mod
+
+    def fake_fn() -> Foo:  # type: ignore[name-defined]  # noqa: F821
+        pass
+
+    fake_fn.__module__ = "fake_qual_mod"
+    monkeypatch.setattr(spf_meta.inspect, "getsource", lambda _: synthetic_source)
+
+    result = _qualify_forward_ref("Foo", fake_fn)
+    # Pre-fix: "mod_a.Foo" (runtime import wins via first-match AST walk)
+    # Post-fix: "mod_b.Foo" (TYPE_CHECKING block wins)
+    assert result == "mod_b.Foo"
+
+    del sys.modules["fake_qual_mod"]
