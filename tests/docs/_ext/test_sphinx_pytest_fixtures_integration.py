@@ -1356,9 +1356,13 @@ def test_scope_pair_index_entry(tmp_path: pathlib.Path) -> None:
     meta = store["fixtures"].get("fixture_mod.my_server")
     assert meta is not None
     assert meta.scope == "session"
-    # Verify the generated HTML includes the fixture index with session scope visible
-    html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    assert "session" in html
+    # Verify the pair index entry structure in genindex.html:
+    # add_target_and_index emits ("pair", "session-scoped fixtures; my_server", ...)
+    genindex_html = (result.outdir / "genindex.html").read_text(encoding="utf-8")
+    assert "session-scoped fixtures" in genindex_html
+    assert "my_server" in genindex_html
+    # The pair entry links back to the fixture anchor in index.html
+    assert 'href="index.html#fixture_mod.my_server"' in genindex_html
 
 
 # ---------------------------------------------------------------------------
