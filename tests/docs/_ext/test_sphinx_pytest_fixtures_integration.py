@@ -713,12 +713,16 @@ def test_name_alias_registered_in_domain(tmp_path: pathlib.Path) -> None:
 
 @pytest.mark.integration
 def test_used_by_links_rendered(tmp_path: pathlib.Path) -> None:
-    """Fixtures with consumers show a "Used by" field with links."""
+    """Fixtures with consumers show a "Used by" field with anchor links."""
     result = _build_sphinx_app(tmp_path)
     index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
-    # my_server is used by my_client and yield_server
+    # my_server is used by my_client and yield_server — assert anchor markup,
+    # not just text presence (plain text would pass even if xref resolution failed)
     assert "Used by" in index_html
-    assert "my_client" in index_html
+    assert '<a class="reference internal" href="#fixture_mod.my_client"' in index_html
+    assert (
+        '<a class="reference internal" href="#fixture_mod.yield_server"' in index_html
+    )
 
 
 @pytest.mark.integration
