@@ -15,6 +15,7 @@ project_root = cwd.parent
 project_src = project_root / "src"
 
 sys.path.insert(0, str(project_src))
+sys.path.insert(0, str(cwd / "_ext"))  # spf_demo_fixtures for badge demo page
 
 # package data
 about: dict[str, str] = {}
