@@ -249,9 +249,10 @@ def _get_return_annotation(obj: t.Any) -> t.Any:
     fn = _get_fixture_fn(obj)
     try:
         hints = t.get_type_hints(fn)
-    except (NameError, AttributeError):
-        # Forward references (TYPE_CHECKING guards) or other resolution failures.
-        # Fall back to the raw annotation string from the signature.
+    except (NameError, AttributeError, TypeError, RecursionError):
+        # Forward references (TYPE_CHECKING guards), parameterized generics
+        # (TypeError in some Python versions), circular imports (RecursionError),
+        # or other resolution failures.  Fall back to the raw annotation string.
         ann = inspect.signature(fn).return_annotation
         return inspect.Parameter.empty if ann is inspect.Parameter.empty else ann
     ret = hints.get("return", inspect.Parameter.empty)
