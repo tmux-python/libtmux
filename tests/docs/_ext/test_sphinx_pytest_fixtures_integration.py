@@ -1699,6 +1699,41 @@ def test_cross_doc_used_by_link(tmp_path: pathlib.Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# pytest_external_fixture_links config
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_external_fixture_links_renders_url(tmp_path: pathlib.Path) -> None:
+    """pytest_external_fixture_links maps fixture dep names to external URLs."""
+    index_rst = textwrap.dedent(
+        """\
+        Test
+        ====
+
+        .. py:module:: fixture_mod
+
+        .. py:fixture:: my_widget
+           :depends: special_dep
+        """,
+    )
+    result = _build_sphinx_app(
+        tmp_path,
+        index_rst=index_rst,
+        confoverrides={
+            "pytest_fixture_lint_level": "none",
+            "pytest_external_fixture_links": {
+                "special_dep": "https://example.com/fixtures/special_dep",
+            },
+        },
+    )
+    index_html = (result.outdir / "index.html").read_text(encoding="utf-8")
+    # The external URL should appear in the rendered anchor tag
+    assert "https://example.com/fixtures/special_dep" in index_html
+    assert "special_dep" in index_html
+
+
+# ---------------------------------------------------------------------------
 # Text builder smoke test
 # ---------------------------------------------------------------------------
 
