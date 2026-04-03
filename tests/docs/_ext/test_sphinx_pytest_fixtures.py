@@ -165,6 +165,17 @@ def test_factory_detection_from_name_convention() -> None:
     assert sphinx_pytest_fixtures._is_factory(CapitalFactory)
 
 
+def test_is_factory_camelcase_unannotated_documents_wrong_behavior() -> None:
+    """CamelCase unannotated fixture is currently (wrongly) classified as factory."""
+
+    @pytest.fixture
+    def Session() -> t.Any:
+        return "string value"
+
+    # True — current wrong behavior; this test documents it before the fix
+    assert sphinx_pytest_fixtures._is_factory(Session)
+
+
 def test_factory_detection_negative() -> None:
     """_is_factory returns False for plain resource fixtures."""
 
