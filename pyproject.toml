@@ -52,8 +52,8 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 [dependency-groups]
 dev = [
   # Docs (via gp-sphinx)
-  "gp-sphinx==0.0.1a0",
-  "sphinx-autodoc-pytest-fixtures==0.0.1a0",
+  "gp-sphinx==0.0.1a1",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a1",
   "sphinx-autobuild",
   "types-docutils",
   # Testing
@@ -74,8 +74,8 @@ dev = [
 ]
 
 docs = [
-  "gp-sphinx==0.0.1a0",
-  "sphinx-autodoc-pytest-fixtures==0.0.1a0",
+  "gp-sphinx==0.0.1a1",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a1",
   "sphinx-autobuild",
 ]
 testing = [
