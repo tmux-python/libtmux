@@ -5,9 +5,9 @@ from __future__ import annotations
 import pathlib
 import sys
 
-import libtmux
-
 from gp_sphinx.config import make_linkcode_resolve, merge_sphinx_config
+
+import libtmux
 
 # Get the project root dir, which is the parent dir of this
 cwd = pathlib.Path(__file__).parent
