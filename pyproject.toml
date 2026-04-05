@@ -51,19 +51,11 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
 [dependency-groups]
 dev = [
-  # Docs
-  "sphinx<9",  # https://www.sphinx-doc.org/
-  "furo",  # https://pradyunsg.me/furo/
-  "gp-libs",  # https://gp-libs.git-pull.com/
-  "sphinx-autobuild",  # https://sphinx-extensions.readthedocs.io/en/latest/sphinx-autobuild.html
-  "sphinx-autodoc-typehints",  # https://sphinx-autodoc-typehints.readthedocs.io/
-  "sphinx-inline-tabs",  # https://sphinx-inline-tabs.readthedocs.io/
-  "sphinxext-opengraph",  # https://sphinxext-opengraph.readthedocs.io/
-  "sphinx-copybutton",  # https://sphinx-copybutton.readthedocs.io/
-  "sphinxext-rediraffe",  # https://sphinxext-rediraffe.readthedocs.io/
-  "sphinx-design",  # https://sphinx-design.readthedocs.io/
-  "myst-parser",  # https://myst-parser.readthedocs.io/
-  "linkify-it-py",  # https://github.com/tsutsu3/linkify-it-py
+  # Docs (via gp-sphinx)
+  "gp-sphinx",
+  "sphinx-pytest-fixtures",
+  "sphinx-autobuild",
+  "types-docutils",
   # Testing
   "typing-extensions; python_version < '3.11'",
   "gp-libs",
@@ -79,22 +71,12 @@ dev = [
   # Lint
   "ruff",
   "mypy",
-  "types-docutils",  # stubs for docutils used by sphinx_pytest_fixtures
 ]
 
 docs = [
-  "sphinx<9",  # https://www.sphinx-doc.org/
-  "furo",  # https://pradyunsg.me/furo/
-  "gp-libs",  # https://gp-libs.git-pull.com/
-  "sphinx-autobuild",  # https://sphinx-extensions.readthedocs.io/en/latest/sphinx-autobuild.html
-  "sphinx-autodoc-typehints",  # https://sphinx-autodoc-typehints.readthedocs.io/
-  "sphinx-inline-tabs",  # https://sphinx-inline-tabs.readthedocs.io/
-  "sphinxext-opengraph",  # https://sphinxext-opengraph.readthedocs.io/
-  "sphinx-copybutton",  # https://sphinx-copybutton.readthedocs.io/
-  "sphinxext-rediraffe",  # https://sphinxext-rediraffe.readthedocs.io/
-  "sphinx-design",  # https://sphinx-design.readthedocs.io/
-  "myst-parser",  # https://myst-parser.readthedocs.io/
-  "linkify-it-py",  # https://github.com/tsutsu3/linkify-it-py
+  "gp-sphinx",
+  "sphinx-pytest-fixtures",
+  "sphinx-autobuild",
 ]
 testing = [
   "typing-extensions; python_version < '3.11'",
@@ -121,6 +103,12 @@ libtmux = "libtmux.pytest_plugin"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv.sources]
+gp-sphinx = { path = "../gp-sphinx/packages/gp-sphinx", editable = true }
+sphinx-fonts = { path = "../gp-sphinx/packages/sphinx-fonts", editable = true }
+sphinx-gptheme = { path = "../gp-sphinx/packages/sphinx-gptheme", editable = true }
+sphinx-pytest-fixtures = { path = "../gp-sphinx/packages/sphinx-pytest-fixtures", editable = true }
 
 [tool.mypy]
 strict = true
