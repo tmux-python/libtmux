@@ -35,9 +35,7 @@ conf = merge_sphinx_config(
         "python": ("https://docs.python.org/", None),
         "pytest": ("https://docs.pytest.org/en/stable/", None),
     },
-    linkcode_resolve=make_linkcode_resolve(
-        libtmux, about["__github__"], src_dir="src"
-    ),
+    linkcode_resolve=make_linkcode_resolve(libtmux, about["__github__"], src_dir="src"),
     # Project-specific overrides
     theme_options={
         "announcement": (
