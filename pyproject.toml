@@ -51,19 +51,11 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 
 [dependency-groups]
 dev = [
-  # Docs
-  "sphinx<9",  # https://www.sphinx-doc.org/
-  "furo",  # https://pradyunsg.me/furo/
-  "gp-libs",  # https://gp-libs.git-pull.com/
-  "sphinx-autobuild",  # https://sphinx-extensions.readthedocs.io/en/latest/sphinx-autobuild.html
-  "sphinx-autodoc-typehints",  # https://sphinx-autodoc-typehints.readthedocs.io/
-  "sphinx-inline-tabs",  # https://sphinx-inline-tabs.readthedocs.io/
-  "sphinxext-opengraph",  # https://sphinxext-opengraph.readthedocs.io/
-  "sphinx-copybutton",  # https://sphinx-copybutton.readthedocs.io/
-  "sphinxext-rediraffe",  # https://sphinxext-rediraffe.readthedocs.io/
-  "sphinx-design",  # https://sphinx-design.readthedocs.io/
-  "myst-parser",  # https://myst-parser.readthedocs.io/
-  "linkify-it-py",  # https://github.com/tsutsu3/linkify-it-py
+  # Docs (via gp-sphinx)
+  "gp-sphinx==0.0.1a1",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a1",
+  "sphinx-autobuild",
+  "types-docutils",
   # Testing
   "typing-extensions; python_version < '3.11'",
   "gp-libs",
@@ -79,22 +71,12 @@ dev = [
   # Lint
   "ruff",
   "mypy",
-  "types-docutils",  # stubs for docutils used by sphinx_pytest_fixtures
 ]
 
 docs = [
-  "sphinx<9",  # https://www.sphinx-doc.org/
-  "furo",  # https://pradyunsg.me/furo/
-  "gp-libs",  # https://gp-libs.git-pull.com/
-  "sphinx-autobuild",  # https://sphinx-extensions.readthedocs.io/en/latest/sphinx-autobuild.html
-  "sphinx-autodoc-typehints",  # https://sphinx-autodoc-typehints.readthedocs.io/
-  "sphinx-inline-tabs",  # https://sphinx-inline-tabs.readthedocs.io/
-  "sphinxext-opengraph",  # https://sphinxext-opengraph.readthedocs.io/
-  "sphinx-copybutton",  # https://sphinx-copybutton.readthedocs.io/
-  "sphinxext-rediraffe",  # https://sphinxext-rediraffe.readthedocs.io/
-  "sphinx-design",  # https://sphinx-design.readthedocs.io/
-  "myst-parser",  # https://myst-parser.readthedocs.io/
-  "linkify-it-py",  # https://github.com/tsutsu3/linkify-it-py
+  "gp-sphinx==0.0.1a1",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a1",
+  "sphinx-autobuild",
 ]
 testing = [
   "typing-extensions; python_version < '3.11'",
@@ -130,13 +112,6 @@ files = [
   "tests",
 ]
 
-[[tool.mypy.overrides]]
-module = ["sphinx_fonts"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["sphinx_pytest_fixtures", "sphinx_pytest_fixtures.*"]
-ignore_missing_imports = true
 
 [tool.coverage.run]
 branch = true

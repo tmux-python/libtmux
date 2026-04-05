@@ -105,5 +105,4 @@ project/index
 history
 migration
 glossary
-demo/index
 ```
