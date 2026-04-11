@@ -30,7 +30,11 @@ conf = merge_sphinx_config(
     source_branch="master",
     light_logo="img/libtmux.svg",
     dark_logo="img/libtmux.svg",
-    extra_extensions=["sphinx_autodoc_pytest_fixtures", "sphinx.ext.todo"],
+    extra_extensions=[
+        "sphinx_autodoc_api_style",
+        "sphinx_autodoc_pytest_fixtures",
+        "sphinx.ext.todo",
+    ],
     intersphinx_mapping={
         "python": ("https://docs.python.org/", None),
         "pytest": ("https://docs.pytest.org/en/stable/", None),
