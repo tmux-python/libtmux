@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
+import pathlib
 import textwrap
 import time
 import typing as t
 
+from libtmux.pytest_plugin import _reap_test_server
+from libtmux.server import Server
+
 if t.TYPE_CHECKING:
-    import pathlib
-
     import pytest
-
-    from libtmux.server import Server
 
 
 def test_plugin(
@@ -156,3 +158,66 @@ def test_test_server_multiple(TestServer: t.Callable[..., Server]) -> None:
     assert any(s.session_name == "test2" for s in server2.sessions)
     assert not any(s.session_name == "test1" for s in server2.sessions)
     assert not any(s.session_name == "test2" for s in server1.sessions)
+
+
+def _libtmux_socket_dir() -> pathlib.Path:
+    """Resolve the tmux socket directory tmux uses for this uid."""
+    tmux_tmpdir = pathlib.Path(os.environ.get("TMUX_TMPDIR", "/tmp"))
+    return tmux_tmpdir / f"tmux-{os.geteuid()}"
+
+
+def test_reap_test_server_unlinks_socket_file() -> None:
+    """``_reap_test_server`` kills the daemon *and* unlinks the socket.
+
+    Regression for #660: tmux does not reliably ``unlink(2)`` its socket
+    on non-graceful exit. Before this fix the plugin's finalizer only
+    called ``server.kill()``, so ``/tmp/tmux-<uid>/`` accumulated stale
+    ``libtmux_test*`` socket files over time.
+
+    This test boots a real tmux daemon on a unique socket, confirms the
+    socket file exists, invokes the reaper, and asserts the file is
+    gone.
+    """
+    server = Server(socket_name="libtmux_test_reap_unlink")
+    server.new_session(session_name="reap_probe")
+    socket_path = _libtmux_socket_dir() / "libtmux_test_reap_unlink"
+    try:
+        assert socket_path.exists(), (
+            f"expected tmux to have created {socket_path}, but it is missing"
+        )
+
+        _reap_test_server("libtmux_test_reap_unlink")
+
+        assert not socket_path.exists(), (
+            f"_reap_test_server should have unlinked {socket_path}"
+        )
+    finally:
+        # Belt-and-braces: if the assertion above fired before the
+        # unlink, don't leak the socket the next run of this test.
+        with contextlib.suppress(OSError):
+            socket_path.unlink(missing_ok=True)
+
+
+def test_reap_test_server_is_noop_when_socket_missing() -> None:
+    """Reaping a non-existent socket succeeds silently.
+
+    Finalizers run even when the fixture failed before the daemon ever
+    started; the reaper must tolerate the case where the socket file
+    never existed.
+    """
+    bogus_name = "libtmux_test_reap_never_existed_xyz"
+    socket_path = _libtmux_socket_dir() / bogus_name
+    assert not socket_path.exists()
+
+    # Should not raise.
+    _reap_test_server(bogus_name)
+
+
+def test_reap_test_server_tolerates_none() -> None:
+    """``_reap_test_server(None)`` is a no-op, not a crash.
+
+    The ``server`` fixture's finalizer passes ``server.socket_name``,
+    which is typed ``str | None``. Tolerate ``None`` for symmetry with
+    other nullable paths in the API.
+    """
+    _reap_test_server(None)
