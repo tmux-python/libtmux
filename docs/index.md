@@ -105,4 +105,6 @@ project/index
 history
 migration
 glossary
+MCP <https://libtmux-mcp.git-pull.com>
+GitHub <https://github.com/tmux-python/libtmux>
 ```
