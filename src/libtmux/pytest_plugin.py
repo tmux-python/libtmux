@@ -24,6 +24,40 @@ logger = logging.getLogger(__name__)
 USING_ZSH = "zsh" in os.getenv("SHELL", "")
 
 
+def _reap_test_server(socket_name: str | None) -> None:
+    """Kill the tmux daemon on ``socket_name`` and unlink the socket file.
+
+    Invoked from the :func:`server` and :func:`TestServer` fixture
+    finalizers to guarantee teardown even when the daemon has already
+    exited (``kill`` is a no-op then) and the socket file was left on
+    disk. tmux does not reliably ``unlink(2)`` its socket on
+    non-graceful exit, so ``/tmp/tmux-<uid>/`` otherwise accumulates
+    stale entries across test runs.
+
+    Conservative: suppresses ``LibTmuxException`` / ``OSError`` on both
+    the kill and the unlink. A finalizer that raises replaces the real
+    test failure with a cleanup error, and cleanup failures are not
+    actionable (socket already gone, permissions changed, race with a
+    concurrent pytest-xdist worker).
+    """
+    if not socket_name:
+        return
+
+    with contextlib.suppress(exc.LibTmuxException, OSError):
+        srv = Server(socket_name=socket_name)
+        if srv.is_alive():
+            srv.kill()
+
+    # ``Server(socket_name=...)`` does not populate ``socket_path`` —
+    # the Server class only derives the path when neither ``socket_name``
+    # nor ``socket_path`` was supplied. Recompute the location tmux uses
+    # so we can unlink the file regardless of daemon state.
+    tmux_tmpdir = pathlib.Path(os.environ.get("TMUX_TMPDIR", "/tmp"))
+    socket_path = tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name
+    with contextlib.suppress(OSError):
+        socket_path.unlink(missing_ok=True)
+
+
 @pytest.fixture(scope="session")
 def home_path(tmp_path_factory: pytest.TempPathFactory) -> pathlib.Path:
     """Temporary `/home/` path."""
@@ -141,7 +175,7 @@ def server(
     server = Server(socket_name=f"libtmux_test{next(namer)}")
 
     def fin() -> None:
-        server.kill()
+        _reap_test_server(server.socket_name)
 
     request.addfinalizer(fin)
 
@@ -295,11 +329,9 @@ def TestServer(
         return f"libtmux_test{next(namer)}"
 
     def fin() -> None:
-        """Kill all servers created with these sockets."""
+        """Kill all servers created with these sockets and unlink their sockets."""
         for socket_name in created_sockets:
-            server = Server(socket_name=socket_name)
-            if server.is_alive():
-                server.kill()
+            _reap_test_server(socket_name)
 
     request.addfinalizer(fin)
 

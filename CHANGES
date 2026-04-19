@@ -40,6 +40,18 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+- `pytest_plugin`: the `server` and `TestServer` fixture finalizers now
+  unlink the tmux socket file from `/tmp/tmux-<uid>/` in addition to
+  calling `server.kill()`. tmux does not reliably `unlink(2)` its
+  socket on non-graceful exit, so `/tmp/tmux-<uid>/` would otherwise
+  accumulate stale `libtmux_test*` entries across test runs (10k+
+  observed on long-lived dev machines). A new internal helper
+  `_reap_test_server` centralizes the kill + unlink flow and
+  suppresses cleanup-time errors so a finalizer failure can no longer
+  mask the real test failure (#661, fixes #660).
+
 ### Documentation
 
 - Visual improvements to API docs from [gp-sphinx](https://gp-sphinx.git-pull.com)-based Sphinx packages (#658)
