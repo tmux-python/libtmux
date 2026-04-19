@@ -50,7 +50,7 @@ _Notes on the upcoming release will go here._
   observed on long-lived dev machines). A new internal helper
   `_reap_test_server` centralizes the kill + unlink flow and
   suppresses cleanup-time errors so a finalizer failure can no longer
-  mask the real test failure (#660).
+  mask the real test failure (#661, fixes #660).
 
 ### Documentation
 
