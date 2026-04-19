@@ -40,6 +40,8 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+## libtmux 0.55.1 (2026-04-19)
+
 ### Fixes
 
 - `pytest_plugin`: the `server` and `TestServer` fixture finalizers now
