@@ -540,4 +540,3 @@ def scan_paths(
     for file_path, module_name in walk_python_files(root, paths):
         modules.append(parse_module(file_path, module_name, include_private))
     return modules
-
