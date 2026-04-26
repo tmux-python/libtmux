@@ -211,9 +211,7 @@ def render_docstring(docstring: str | None) -> dict[str, str | None]:
     }
 
 
-def resolve_annotation_values(
-    obj: t.Any, annotation_format: str
-) -> dict[str, t.Any]:
+def resolve_annotation_values(obj: t.Any, annotation_format: str) -> dict[str, t.Any]:
     """Resolve evaluated annotation values for an object.
 
     Parameters
@@ -481,20 +479,26 @@ def introspect_class(
         if isinstance(value, staticmethod):
             func = value.__func__
             methods.append(
-                introspect_function(func, kind="method", annotation_format=annotation_format)
+                introspect_function(
+                    func, kind="method", annotation_format=annotation_format
+                )
             )
             continue
 
         if isinstance(value, classmethod):
             func = value.__func__
             methods.append(
-                introspect_function(func, kind="method", annotation_format=annotation_format)
+                introspect_function(
+                    func, kind="method", annotation_format=annotation_format
+                )
             )
             continue
 
         if inspect.isfunction(value):
             methods.append(
-                introspect_function(value, kind="method", annotation_format=annotation_format)
+                introspect_function(
+                    value, kind="method", annotation_format=annotation_format
+                )
             )
             continue
 
@@ -524,9 +528,7 @@ def introspect_class(
     }
 
 
-def resolve_public_names(
-    module: t.Any, include_private: bool
-) -> list[str] | None:
+def resolve_public_names(module: t.Any, include_private: bool) -> list[str] | None:
     """Resolve the public names for a module.
 
     Parameters
@@ -632,10 +634,15 @@ def introspect_module(
             continue
 
         if inspect.isfunction(value) or inspect.isbuiltin(value):
-            if getattr(value, "__module__", module_name) != module_name and exports is None:
+            if (
+                getattr(value, "__module__", module_name) != module_name
+                and exports is None
+            ):
                 continue
             functions.append(
-                introspect_function(value, kind="function", annotation_format=annotation_format)
+                introspect_function(
+                    value, kind="function", annotation_format=annotation_format
+                )
             )
             continue
 
@@ -706,7 +713,9 @@ def walk_package_modules(
     if not hasattr(package, "__path__"):
         return names
 
-    for module in pkgutil.walk_packages(package.__path__, prefix=f"{package.__name__}."):
+    for module in pkgutil.walk_packages(
+        package.__path__, prefix=f"{package.__name__}."
+    ):
         names.append(module.name)
 
     return names
