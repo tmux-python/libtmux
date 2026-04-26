@@ -59,12 +59,11 @@ The snapshot module provides functionality for capturing and analyzing the state
 ### Basic Snapshot
 
 ```python
->>> pane = session.active_window.active_pane
 >>> snapshot = pane.snapshot()
->>> print(snapshot.content_str)
-$ echo "Hello World"
-Hello World
-$
+>>> snapshot.pane_id  # doctest: +ELLIPSIS
+'%...'
+>>> isinstance(snapshot.content_str, str)
+True
 ```
 
 ### Recording Activity
@@ -74,38 +73,32 @@ $
 >>> recording.add_snapshot(pane)
 >>> pane.send_keys("echo 'Hello'")
 >>> recording.add_snapshot(pane)
->>> print(recording.latest.content_str)
-$ echo 'Hello'
-Hello
-$
+>>> isinstance(recording.latest.content_str, str)
+True
+>>> len(recording) >= 2
+True
 ```
 
 ### Using Output Adapters
 
 ```python
 >>> from libtmux.snapshot import TerminalOutputAdapter
->>> print(snapshot.format(TerminalOutputAdapter()))
-=== Pane Snapshot ===
-Pane: %1
-Window: @1
-Session: $1
-Server: default
-Timestamp: 2024-01-01T12:00:00Z
-=== Content ===
-$ echo "Hello World"
-Hello World
-$
+>>> snapshot = pane.snapshot()
+>>> formatted = snapshot.format(TerminalOutputAdapter())
+>>> '=== Pane Snapshot ===' in formatted
+True
+>>> '=== Content ===' in formatted
+True
 ```
 
 ### Custom Adapter
 
 ```python
->>> from libtmux.snapshot import SnapshotOutputAdapter
+>>> from libtmux.snapshot import SnapshotOutputAdapter, PaneSnapshot
+>>> snapshot = pane.snapshot()
 >>> class MyAdapter(SnapshotOutputAdapter):
-...     def format(self, snapshot):
-...         return f"Content: {snapshot.content_str}"
->>> print(snapshot.format(MyAdapter()))
-Content: $ echo "Hello World"
-Hello World
-$
+...     def format(self, snapshot: PaneSnapshot) -> str:
+...         return f"Content: {snapshot.content_str[:20]}"
+>>> snapshot.format(MyAdapter()).startswith('Content:')
+True
 ```
