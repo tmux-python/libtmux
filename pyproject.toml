@@ -226,6 +226,18 @@ convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
 "*/__init__.py" = ["F401"]
+# astro/python is a separate sidecar package shipped alongside the docs
+# build pipeline. Its style budget should be set independently of the
+# core libtmux rules — relax the strictest stylistic checks here so the
+# sidecar can evolve without churning the main library's lint config.
+"astro/python/**" = [
+  "E501",    # line too long
+  "EM102",   # f-string in exception message
+  "PERF203", # try-except in loop
+  "PERF401", # use list comprehension / list.extend
+  "SIM102",  # nested if statements
+  "TRY003",  # long messages outside exception class
+]
 
 [tool.pytest.ini_options]
 addopts = [
