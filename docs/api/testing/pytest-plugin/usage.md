@@ -118,6 +118,20 @@ def test_with_config(TestServer, tmp_path):
 
 This is particularly useful when testing interactions between multiple tmux servers or when you need to verify behavior across server restarts.
 
+### Selecting an engine for plugin fixtures
+
+The libtmux pytest plugin exposes an `--engine` option for fixture-managed
+servers:
+
+```console
+$ uv run py.test --engine=imsg
+```
+
+This affects the shared {fixture}`server`, {fixture}`session`, and
+{fixture}`TestServer <libtmux.pytest_plugin.TestServer>` fixtures. Direct
+`Server()` construction inside tests is unchanged and must opt into the
+binary backend manually if needed.
+
 (set_home)=
 
 ### Setting a temporary home directory

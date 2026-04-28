@@ -21,6 +21,26 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
+_PYTEST_ENGINES = ("subprocess", "imsg")
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Add libtmux-specific pytest command line options."""
+    group = parser.getgroup("libtmux")
+    group.addoption(
+        "--engine",
+        action="store",
+        choices=_PYTEST_ENGINES,
+        default="subprocess",
+        help="Select the libtmux engine for plugin-managed fixtures.",
+    )
+
+
+def _fixture_engine_from_config(
+    config: pytest.Config,
+) -> t.Literal["subprocess", "imsg"]:
+    """Return the selected engine for pytest-managed libtmux fixtures."""
+    return t.cast("t.Literal['subprocess', 'imsg']", config.getoption("engine"))
 
 
 def _reap_test_server(socket_name: str | None) -> None:
@@ -195,7 +215,17 @@ def server(
 
         >>> result.assert_outcomes(passed=1)
     """
-    server = Server(socket_name=f"libtmux_test{next(namer)}")
+    engine = _fixture_engine_from_config(request.config)
+    if engine == "imsg":
+        server = Server(
+            socket_name=f"libtmux_test{next(namer)}",
+            engine="imsg",
+        )
+    else:
+        server = Server(
+            socket_name=f"libtmux_test{next(namer)}",
+            engine="subprocess",
+        )
 
     def fin() -> None:
         _reap_test_server(server.socket_name)
@@ -358,11 +388,20 @@ def TestServer(
 
     request.addfinalizer(fin)
 
-    return t.cast(
-        "type[Server]",
-        functools.partial(
+    engine = _fixture_engine_from_config(request.config)
+    if engine == "imsg":
+        factory = functools.partial(
             Server,
             on_init=on_init,
             socket_name_factory=socket_name_factory,
-        ),
-    )
+            engine="imsg",
+        )
+    else:
+        factory = functools.partial(
+            Server,
+            on_init=on_init,
+            socket_name_factory=socket_name_factory,
+            engine="subprocess",
+        )
+
+    return t.cast("type[Server]", factory)
