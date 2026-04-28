@@ -791,7 +791,7 @@ class Server(
             version="0.16.0",
         )
 
-    def where(self, kwargs: dict[str, t.Any]) -> list[Session]:
+    def where(self, kwargs: dict[str, object]) -> list[Session]:
         """Filter through sessions, return list of :class:`Session`.
 
         .. deprecated:: 0.17
@@ -805,7 +805,7 @@ class Server(
             version="0.17.0",
         )
 
-    def find_where(self, kwargs: dict[str, t.Any]) -> Session | None:
+    def find_where(self, kwargs: dict[str, object]) -> Session | None:
         """Filter through sessions, return first :class:`Session`.
 
         .. deprecated:: 0.17

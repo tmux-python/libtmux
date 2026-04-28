@@ -11,6 +11,8 @@ from libtmux._internal.sparse_array import SparseArray
 from libtmux.common import has_gte_version
 
 if t.TYPE_CHECKING:
+    from _pytest.mark.structures import ParameterSet
+
     from libtmux.server import Server
 
 
@@ -420,11 +422,11 @@ ALL_HOOK_TEST_CASES: list[HookTestCase] = (
 )
 
 
-def _build_hook_params() -> list[t.Any]:
+def _build_hook_params() -> list[ParameterSet]:
     """Build pytest params with appropriate marks."""
     params = []
     for tc in ALL_HOOK_TEST_CASES:
-        marks: list[t.Any] = []
+        marks: list[pytest.MarkDecorator] = []
         if tc.xfail_reason:
             marks.append(pytest.mark.xfail(reason=tc.xfail_reason))
         params.append(pytest.param(tc, id=tc.test_id, marks=marks))
@@ -521,9 +523,16 @@ class SetHooksTestCase(t.NamedTuple):
     test_id: str
     hook: str  # Hook name to test
     setup_hooks: dict[int, str]  # Initial hooks to set (index -> value)
-    operation_args: dict[str, t.Any]  # Args for set_hooks
+    operation_args: SetHooksOperationArgs
     expected_indices: list[int]  # Expected indices after operation
     expected_contains: list[str] | None = None  # Strings expected in values
+
+
+class SetHooksOperationArgs(t.TypedDict, total=False):
+    """Keyword arguments for set_hooks."""
+
+    values: dict[int, str] | SparseArray[str] | list[str]
+    clear_existing: bool
 
 
 SET_HOOKS_TESTS: list[SetHooksTestCase] = [
@@ -565,7 +574,7 @@ SET_HOOKS_TESTS: list[SetHooksTestCase] = [
 ]
 
 
-def _build_set_hooks_params() -> list[t.Any]:
+def _build_set_hooks_params() -> list[ParameterSet]:
     """Build pytest params for set_hooks tests."""
     return [pytest.param(tc, id=tc.test_id) for tc in SET_HOOKS_TESTS]
 
@@ -816,7 +825,7 @@ SHOW_HOOKS_TEST_CASES: list[ShowHooksTestCase] = [
 ]
 
 
-def _build_show_hooks_params() -> list[t.Any]:
+def _build_show_hooks_params() -> list[ParameterSet]:
     """Build pytest params for show_hooks tests."""
     return [pytest.param(tc, id=tc.test_id) for tc in SHOW_HOOKS_TEST_CASES]
 
@@ -877,9 +886,17 @@ class SetHookFlagTestCase(t.NamedTuple):
     """Test case for set_hook flag combinations."""
 
     test_id: str
-    flag_kwargs: dict[str, t.Any]
+    flag_kwargs: SetHookFlagArgs
     expected_behavior: str  # "sets_hook", "runs_immediately", "appends", "global"
     min_version: str = "3.2"
+
+
+class SetHookFlagArgs(t.TypedDict, total=False):
+    """Keyword arguments for set_hook flags."""
+
+    append: bool
+    global_: bool
+    run: bool
 
 
 SET_HOOK_FLAG_TEST_CASES: list[SetHookFlagTestCase] = [
