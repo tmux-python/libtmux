@@ -574,3 +574,137 @@ def test_session_attach_does_not_fail_if_session_killed_during_attach(
     )
     with raises_ctx:
         test_session.attach()
+
+
+def test_lock_session(session: Session) -> None:
+    """Test Session.lock_session() runs without error."""
+    session.lock_session()
+
+
+def test_detach_client(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    server: Server,
+) -> None:
+    """Test Session.detach_client() detaches all session clients when no target given.
+
+    Without target_client, -s session_id scopes the operation to this session.
+    """
+    with control_mode():
+        before = len(server.list_clients())
+        assert before > 0
+        session.detach_client()
+        after = len(server.list_clients())
+        assert after == 0
+
+
+def test_detach_client_no_target_detaches_all_session_clients(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    server: Server,
+) -> None:
+    """Test Session.detach_client() without a target detaches all session clients.
+
+    Without a target_client, the method uses ``-s session_id`` to scope the
+    operation to this session, detaching all attached clients.
+    """
+    with control_mode(), control_mode():
+        before = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(before) == 2
+
+        session.detach_client()
+
+        after = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(after) == 0
+
+
+def test_detach_client_target_client(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    server: Server,
+) -> None:
+    """Test Session.detach_client() detaches only the requested client."""
+    with control_mode(), control_mode():
+        clients = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(clients) == 2
+
+        target_client = clients[-1]
+        session.detach_client(target_client=target_client)
+
+        remaining_clients = server.cmd(
+            "list-clients",
+            "-F",
+            "#{client_name}",
+        ).stdout
+        assert remaining_clients == [
+            client for client in clients if client != target_client
+        ]
+
+
+def test_last_window(session: Session) -> None:
+    """Test Session.last_window() selects previous window."""
+    w1 = session.new_window(window_name="last_a", attach=True)
+    w2 = session.new_window(window_name="last_b", attach=True)
+    session.refresh()
+    assert session.active_window.window_id == w2.window_id
+
+    result = session.last_window()
+    assert result.window_id == w1.window_id
+
+
+def test_next_window(session: Session) -> None:
+    """Test Session.next_window() selects next window."""
+    w1 = session.new_window(window_name="next_a", attach=True)
+    session.new_window(window_name="next_b", attach=False)
+
+    # Active is w1, next should go to next_b
+    session.refresh()
+    assert session.active_window.window_id == w1.window_id
+
+    result = session.next_window()
+    # Should have moved to a different window
+    assert result.window_id != w1.window_id
+
+
+def test_previous_window(session: Session) -> None:
+    """Test Session.previous_window() selects previous window."""
+    w1 = session.new_window(window_name="prev_a", attach=True)
+    w2 = session.new_window(window_name="prev_b", attach=True)
+    session.refresh()
+    assert session.active_window.window_id == w2.window_id
+
+    result = session.previous_window()
+    assert result.window_id == w1.window_id
+
+
+def test_new_window_kill_existing(session: Session) -> None:
+    """Test Session.new_window() with kill_existing flag."""
+    # Create a window at a specific index
+    w1 = session.new_window(window_name="kill_orig", window_index="5")
+    assert w1.window_name == "kill_orig"
+    assert w1.window_index == "5"
+
+    # Create another window at the same index with kill_existing
+    w2 = session.new_window(
+        window_name="kill_replace",
+        window_index="5",
+        kill_existing=True,
+    )
+    assert w2.window_name == "kill_replace"
+    assert w2.window_index == "5"
+
+    # Original window should be gone
+    session.refresh()
+    names = [w.window_name for w in session.windows]
+    assert "kill_orig" not in names
+    assert "kill_replace" in names
+
+
+def test_new_window_select_existing(session: Session) -> None:
+    """Test Session.new_window() with select_existing flag — new name."""
+    # With a unique name and select_existing, a new window is created normally
+    w = session.new_window(
+        window_name="selexist_new",
+        select_existing=True,
+    )
+    assert w.window_name == "selexist_new"

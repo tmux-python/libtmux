@@ -12,6 +12,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -458,3 +459,461 @@ def test_tmux_bin_invalid_path_raise_if_dead() -> None:
     s = Server(tmux_bin="/nonexistent/tmux")
     with pytest.raises(exc.TmuxCommandNotFound):
         s.raise_if_dead()
+
+
+class ConfirmBeforeCase(t.NamedTuple):
+    """Test case for confirm_before()."""
+
+    test_id: str
+    confirm_key: str
+    use_default_yes: bool
+    custom_confirm_key: str | None
+    option_name: str
+    expected_value: str
+    min_tmux_version: str | None
+
+
+CONFIRM_BEFORE_CASES: list[ConfirmBeforeCase] = [
+    ConfirmBeforeCase(
+        test_id="confirm_y",
+        confirm_key="y",
+        use_default_yes=False,
+        custom_confirm_key=None,
+        option_name="@cf_test_y",
+        expected_value="yes",
+        min_tmux_version="3.4",
+    ),
+    ConfirmBeforeCase(
+        test_id="default_yes_enter",
+        confirm_key="Enter",
+        use_default_yes=True,
+        custom_confirm_key=None,
+        option_name="@cf_test_enter",
+        expected_value="yes",
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(ConfirmBeforeCase._fields),
+    CONFIRM_BEFORE_CASES,
+    ids=[c.test_id for c in CONFIRM_BEFORE_CASES],
+)
+def test_confirm_before(
+    test_id: str,
+    confirm_key: str,
+    use_default_yes: bool,
+    custom_confirm_key: str | None,
+    option_name: str,
+    expected_value: str,
+    min_tmux_version: str | None,
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.confirm_before() with send-keys -K confirmation."""
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    with control_mode() as ctl:
+        kwargs: dict[str, t.Any] = {"target_client": ctl.client_name}
+        if use_default_yes:
+            kwargs["default_yes"] = True
+        if custom_confirm_key is not None:
+            kwargs["confirm_key"] = custom_confirm_key
+
+        server.confirm_before(f"set -g {option_name} {expected_value}", **kwargs)
+        server.cmd("send-keys", "-K", "-c", ctl.client_name, confirm_key)
+
+    result = server.cmd("show-options", "-gv", option_name)
+    assert result.stdout[0] == expected_value
+
+
+class CommandPromptCase(t.NamedTuple):
+    """Test case for command_prompt()."""
+
+    test_id: str
+    template: str
+    keys: list[str]
+    inputs: str | None
+    option_name: str
+    expected_value: str
+    min_tmux_version: str | None
+
+
+COMMAND_PROMPT_CASES: list[CommandPromptCase] = [
+    CommandPromptCase(
+        test_id="type_and_submit",
+        template="set -g @cp_typed '%1'",
+        keys=["h", "e", "l", "l", "o", "Enter"],
+        inputs=None,
+        option_name="@cp_typed",
+        expected_value="hello",
+        min_tmux_version="3.4",
+    ),
+    CommandPromptCase(
+        test_id="prefill_and_submit",
+        template="set -g @cp_prefill '%1'",
+        keys=["Enter"],
+        inputs="prefilled",
+        option_name="@cp_prefill",
+        expected_value="prefilled",
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(CommandPromptCase._fields),
+    COMMAND_PROMPT_CASES,
+    ids=[c.test_id for c in COMMAND_PROMPT_CASES],
+)
+def test_command_prompt(
+    test_id: str,
+    template: str,
+    keys: list[str],
+    inputs: str | None,
+    option_name: str,
+    expected_value: str,
+    min_tmux_version: str | None,
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.command_prompt() with send-keys -K input."""
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    with control_mode() as ctl:
+        kwargs: dict[str, t.Any] = {"target_client": ctl.client_name}
+        if inputs is not None:
+            kwargs["inputs"] = inputs
+
+        server.command_prompt(template, **kwargs)
+
+        for key in keys:
+            server.cmd("send-keys", "-K", "-c", ctl.client_name, key)
+
+    result = server.cmd("show-options", "-gv", option_name)
+    assert result.stdout[0] == expected_value
+
+
+def test_lock_server(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.lock_server() runs without error."""
+    with control_mode():
+        server.lock_server()
+
+
+def test_lock_client(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.lock_client() runs without error."""
+    with control_mode():
+        server.lock_client()
+
+
+def test_refresh_client(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.refresh_client() runs without error."""
+    with control_mode():
+        server.refresh_client()
+
+
+def test_suspend_client(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.suspend_client() runs without error."""
+    with control_mode():
+        server.suspend_client()
+
+
+def test_server_access_list(server: Server) -> None:
+    """Test Server.server_access() list mode."""
+    server.new_session(session_name="access_test")
+    result = server.server_access(list_access=True)
+    assert isinstance(result, list)
+
+
+def test_start_server(server: Server) -> None:
+    """Test Server.start_server() runs without error."""
+    server.new_session(session_name="startsvr_test")
+    server.start_server()  # idempotent — already running
+
+
+def test_bind_unbind_key(server: Server) -> None:
+    """Test Server.bind_key() and unbind_key() cycle."""
+    server.new_session(session_name="bind_test")
+
+    server.bind_key("F12", "display-message bound", key_table="root")
+
+    # Verify binding exists
+    keys = server.list_keys(key_table="root")
+    assert any("F12" in line for line in keys)
+
+    # Unbind
+    server.unbind_key("F12", key_table="root")
+
+    # Verify binding gone
+    keys = server.list_keys(key_table="root")
+    assert not any("F12" in line and "display-message" in line for line in keys)
+
+
+def test_list_keys(server: Server) -> None:
+    """Test Server.list_keys() returns key bindings."""
+    server.new_session(session_name="listkeys_test")
+    result = server.list_keys()
+    assert isinstance(result, list)
+    assert len(result) > 0  # default bindings exist
+
+
+def test_list_commands(server: Server) -> None:
+    """Test Server.list_commands() returns command listing."""
+    server.new_session(session_name="listcmds_test")
+
+    # All commands
+    result = server.list_commands()
+    assert len(result) > 50  # tmux has many commands
+
+    # Filtered
+    result = server.list_commands(command_name="send-keys")
+    assert len(result) >= 1
+    assert "send-keys" in result[0]
+
+
+def test_show_messages(server: Server) -> None:
+    """Test Server.show_messages() returns message log."""
+    server.new_session(session_name="showmsg_test")
+    result = server.show_messages()
+    assert isinstance(result, list)
+    assert len(result) > 0  # at least the new-session command log
+
+
+def test_show_prompt_history(server: Server) -> None:
+    """Test Server.show_prompt_history() returns history."""
+    server.new_session(session_name="showph_test")
+    result = server.show_prompt_history()
+    assert isinstance(result, list)
+
+
+def test_clear_prompt_history(server: Server) -> None:
+    """Test Server.clear_prompt_history() clears history."""
+    server.new_session(session_name="clearph_test")
+    server.clear_prompt_history()
+    # Verify specific type can be cleared
+    server.clear_prompt_history(prompt_type="command")
+
+
+def test_wait_for_set_flag(server: Server) -> None:
+    """Test Server.wait_for() with set_flag."""
+    server.new_session(session_name="wait_test")
+    # Just set the flag — should not block or error
+    server.wait_for("test_channel_set", set_flag=True)
+
+
+def test_run_shell_basic(server: Server) -> None:
+    """Test Server.run_shell() executes command and returns output."""
+    server.new_session(session_name="run_shell_test")
+    result = server.run_shell("echo hello_from_run_shell")
+    assert result is not None
+    assert any("hello_from_run_shell" in line for line in result)
+
+
+def test_run_shell_background(server: Server) -> None:
+    """Test Server.run_shell() in background mode."""
+    server.new_session(session_name="run_shell_bg_test")
+    result = server.run_shell("echo bg_test", background=True)
+    assert result is None
+
+
+class BufferCase(t.NamedTuple):
+    """Test case for buffer operations."""
+
+    test_id: str
+    data: str
+    buffer_name: str | None
+    append: bool | None
+    expected_content: str
+
+
+BUFFER_CASES: list[BufferCase] = [
+    BufferCase(
+        test_id="set_show_default",
+        data="hello_buf",
+        buffer_name=None,
+        append=None,
+        expected_content="hello_buf",
+    ),
+    BufferCase(
+        test_id="set_show_named",
+        data="named_data",
+        buffer_name="mybuf",
+        append=None,
+        expected_content="named_data",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(BufferCase._fields),
+    BUFFER_CASES,
+    ids=[c.test_id for c in BUFFER_CASES],
+)
+def test_buffer_set_show(
+    test_id: str,
+    data: str,
+    buffer_name: str | None,
+    append: bool | None,
+    expected_content: str,
+    server: Server,
+) -> None:
+    """Test Server.set_buffer() and show_buffer() cycle."""
+    server.new_session(session_name=f"buf_{test_id}")
+    kwargs: dict[str, t.Any] = {}
+    if buffer_name is not None:
+        kwargs["buffer_name"] = buffer_name
+    if append is not None:
+        kwargs["append"] = append
+
+    server.set_buffer(data, **kwargs)
+    result = server.show_buffer(buffer_name=buffer_name)
+    assert result == expected_content
+
+
+def test_buffer_append(server: Server) -> None:
+    """Test Server.set_buffer() with append flag."""
+    server.new_session(session_name="buf_append")
+    server.set_buffer("first", buffer_name="append_test")
+    server.set_buffer("_second", buffer_name="append_test", append=True)
+    result = server.show_buffer(buffer_name="append_test")
+    assert result == "first_second"
+
+
+def test_buffer_delete(server: Server) -> None:
+    """Test Server.delete_buffer()."""
+    server.new_session(session_name="buf_delete")
+    server.set_buffer("to_delete", buffer_name="del_buf")
+    # Verify it exists
+    assert server.show_buffer(buffer_name="del_buf") == "to_delete"
+
+    # Delete it
+    server.delete_buffer(buffer_name="del_buf")
+
+    # Verify it's gone — show-buffer should raise
+    with pytest.raises(exc.LibTmuxException):
+        server.show_buffer(buffer_name="del_buf")
+
+
+def test_buffer_save_load(server: Server, tmp_path: pathlib.Path) -> None:
+    """Test Server.save_buffer() and load_buffer() cycle."""
+    server.new_session(session_name="buf_saveload")
+
+    # Set and save
+    server.set_buffer("save_test_data")
+    buf_file = tmp_path / "saved_buf.txt"
+    server.save_buffer(buf_file)
+
+    # Verify file content
+    assert buf_file.read_text() == "save_test_data"
+
+    # Load into a named buffer
+    server.load_buffer(buf_file, buffer_name="loaded_buf")
+    assert server.show_buffer(buffer_name="loaded_buf") == "save_test_data"
+
+
+def test_buffer_save_append(server: Server, tmp_path: pathlib.Path) -> None:
+    """Test Server.save_buffer() with append flag."""
+    server.new_session(session_name="buf_saveappend")
+
+    buf_file = tmp_path / "append_buf.txt"
+
+    server.set_buffer("first_line", buffer_name="app1")
+    server.save_buffer(buf_file, buffer_name="app1")
+
+    server.set_buffer("second_line", buffer_name="app2")
+    server.save_buffer(buf_file, buffer_name="app2", append=True)
+
+    content = buf_file.read_text()
+    assert "first_line" in content
+    assert "second_line" in content
+
+
+def test_list_buffers(server: Server) -> None:
+    """Test Server.list_buffers()."""
+    server.new_session(session_name="buf_list")
+    server.set_buffer("buf_a", buffer_name="list_a")
+    server.set_buffer("buf_b", buffer_name="list_b")
+
+    result = server.list_buffers()
+    assert len(result) >= 2
+
+
+def test_if_shell_true(server: Server) -> None:
+    """Test Server.if_shell() with true condition."""
+    server.new_session(session_name="ifshell_test")
+    server.if_shell("true", "set -g @if_test_true yes")
+
+    result = server.cmd("show-options", "-gv", "@if_test_true")
+    assert result.stdout[0] == "yes"
+
+
+def test_if_shell_false_with_else(server: Server) -> None:
+    """Test Server.if_shell() with false condition and else branch."""
+    server.new_session(session_name="ifshell_else")
+    server.if_shell(
+        "false",
+        "set -g @if_else_test yes",
+        else_command="set -g @if_else_test no",
+    )
+
+    result = server.cmd("show-options", "-gv", "@if_else_test")
+    assert result.stdout[0] == "no"
+
+
+def test_source_file(server: Server, tmp_path: pathlib.Path) -> None:
+    """Test Server.source_file() sources a config file."""
+    server.new_session(session_name="source_test")
+
+    conf = tmp_path / "source_test.conf"
+    conf.write_text("set -g @source_test_opt yes\n")
+
+    server.source_file(conf)
+
+    # Verify the option was set
+    result = server.cmd("show-options", "-gv", "@source_test_opt")
+    assert result.stdout[0] == "yes"
+
+
+def test_source_file_quiet(server: Server) -> None:
+    """Test Server.source_file() with quiet flag ignores missing files."""
+    server.new_session(session_name="source_quiet")
+
+    # Non-existent file with quiet should not raise
+    server.source_file("/nonexistent/path.conf", quiet=True)
+
+
+def test_list_clients(server: Server) -> None:
+    """Test Server.list_clients() returns list without error."""
+    server.new_session(session_name="list_clients_test")
+    result = server.list_clients()
+    assert isinstance(result, list)
+
+
+def test_new_session_client_flags(
+    server: Server,
+) -> None:
+    """Test Server.new_session() with client_flags flag."""
+    session = server.new_session(
+        session_name="flags_test",
+        client_flags="no-output",
+    )
+    assert session.session_name == "flags_test"

@@ -470,3 +470,37 @@ def test_capture_pane_trim_trailing_warning(
         # Check warning was issued
         assert len(w) == 1
         assert "trim_trailing requires tmux 3.4+" in str(w[0].message)
+
+
+def test_capture_pane_quiet(session: Session) -> None:
+    """Test capture_pane with quiet flag suppresses errors."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    # Quiet mode should not raise, even in edge cases
+    result = pane.capture_pane(quiet=True)
+    assert isinstance(result, list)
+
+
+def test_capture_pane_alternate_screen(session: Session) -> None:
+    """Test capture_pane with alternate_screen flag."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    # Capture from alternate screen — may be empty, but should not error
+    result = pane.capture_pane(alternate_screen=True)
+    assert isinstance(result, list)
+
+
+def test_capture_pane_mode_screen(session: Session) -> None:
+    """Test capture_pane with mode_screen flag (3.6+)."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.6"):
+        pytest.skip("Requires tmux 3.6+")
+
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    result = pane.capture_pane(mode_screen=True)
+    assert isinstance(result, list)

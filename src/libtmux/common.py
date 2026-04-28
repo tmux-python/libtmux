@@ -60,7 +60,14 @@ class EnvironmentMixin:
     def __init__(self, add_option: str | None = None) -> None:
         self._add_option = add_option
 
-    def set_environment(self, name: str, value: str) -> None:
+    def set_environment(
+        self,
+        name: str,
+        value: str,
+        *,
+        expand_format: bool | None = None,
+        hidden: bool | None = None,
+    ) -> None:
         """Set environment ``$ tmux set-environment <name> <value>``.
 
         Parameters
@@ -69,6 +76,14 @@ class EnvironmentMixin:
             The environment variable name, e.g. 'PATH'.
         value : str
             Environment value.
+        expand_format : bool, optional
+            Expand tmux format strings in the value (``-F`` flag).
+
+            .. versionadded:: 0.45
+        hidden : bool, optional
+            Mark the variable as hidden (``-h`` flag).
+
+            .. versionadded:: 0.45
 
         Raises
         ------
@@ -78,6 +93,12 @@ class EnvironmentMixin:
         args = ["set-environment"]
         if self._add_option:
             args += [self._add_option]
+
+        if expand_format:
+            args += ["-F"]
+
+        if hidden:
+            args += ["-h"]
 
         args += [name, value]
 
