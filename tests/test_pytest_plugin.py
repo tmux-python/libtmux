@@ -101,6 +101,20 @@ def test_test_server(TestServer: t.Callable[..., Server]) -> None:
     assert server2.socket_name != server.socket_name
 
 
+def test_pin_test_shell_env_aligns_shell_with_default_shell() -> None:
+    """The autouse plugin fixture pins ``$SHELL`` to ``/bin/sh``.
+
+    Code that compares ``os.getenv("SHELL")`` against the tmux pane's
+    running command (notably tmuxp's ``test_automatic_rename_option``)
+    must see ``/bin/sh`` to match the ``default-shell`` pinned in
+    :func:`config_file`. Because the alignment fixture is autouse from
+    the libtmux pytest plugin, every test that loads the plugin —
+    including external consumers — gets the alignment without explicit
+    fixture opt-in.
+    """
+    assert os.environ.get("SHELL") == "/bin/sh"
+
+
 def test_config_file_pins_minimal_test_shell(config_file: pathlib.Path) -> None:
     """The shipped ``.tmux.conf`` pins ``/bin/sh`` as the default shell.
 
