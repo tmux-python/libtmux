@@ -160,6 +160,7 @@ Server <libtmux.server>
 Session <libtmux.session>
 Window <libtmux.window>
 Pane <libtmux.pane>
+Snapshot <libtmux.snapshot>
 Common <libtmux.common>
 Neo <libtmux.neo>
 Options <libtmux.options>
