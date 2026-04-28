@@ -22,6 +22,7 @@ if t.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _PYTEST_ENGINES = ("subprocess", "imsg")
+_PytestEngine = t.Literal["subprocess", "imsg"]
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -38,9 +39,15 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def _fixture_engine_from_config(
     config: pytest.Config,
-) -> t.Literal["subprocess", "imsg"]:
+) -> _PytestEngine:
     """Return the selected engine for pytest-managed libtmux fixtures."""
-    return t.cast("t.Literal['subprocess', 'imsg']", config.getoption("engine"))
+    return t.cast("_PytestEngine", config.getoption("engine"))
+
+
+@pytest.fixture(scope="session")
+def libtmux_engine(pytestconfig: pytest.Config) -> _PytestEngine:
+    """Return the engine selected for libtmux-managed pytest fixtures."""
+    return _fixture_engine_from_config(pytestconfig)
 
 
 def _reap_test_server(socket_name: str | None) -> None:
@@ -189,6 +196,7 @@ def server(
     request: pytest.FixtureRequest,
     monkeypatch: pytest.MonkeyPatch,
     config_file: pathlib.Path,
+    libtmux_engine: _PytestEngine,
 ) -> Server:
     """Return new, temporary :class:`libtmux.Server`.
 
@@ -215,8 +223,7 @@ def server(
 
         >>> result.assert_outcomes(passed=1)
     """
-    engine = _fixture_engine_from_config(request.config)
-    if engine == "imsg":
+    if libtmux_engine == "imsg":
         server = Server(
             socket_name=f"libtmux_test{next(namer)}",
             engine="imsg",
@@ -353,6 +360,7 @@ def session(
 @pytest.fixture
 def TestServer(
     request: pytest.FixtureRequest,
+    libtmux_engine: _PytestEngine,
 ) -> type[Server]:
     """Create a temporary tmux server that cleans up after itself.
 
@@ -388,8 +396,7 @@ def TestServer(
 
     request.addfinalizer(fin)
 
-    engine = _fixture_engine_from_config(request.config)
-    if engine == "imsg":
+    if libtmux_engine == "imsg":
         factory = functools.partial(
             Server,
             on_init=on_init,

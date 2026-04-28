@@ -88,7 +88,8 @@ def test_plugin_imsg_engine_option(pytester: pytest.Pytester) -> None:
         test_plugin_imsg_engine_option="""
 from libtmux.engines import ImsgEngine
 
-def test_server_uses_imsg(server) -> None:
+def test_server_uses_imsg(server, libtmux_engine) -> None:
+    assert libtmux_engine == "imsg"
     assert isinstance(server.engine, ImsgEngine)
     session = server.new_session(session_name="imsg-plugin")
     assert session.session_name == "imsg-plugin"
@@ -106,12 +107,57 @@ def test_plugin_subprocess_engine_option(pytester: pytest.Pytester) -> None:
         test_plugin_subprocess_engine_option="""
 from libtmux.engines import SubprocessEngine
 
-def test_server_uses_subprocess(server) -> None:
+def test_server_uses_subprocess(server, libtmux_engine) -> None:
+    assert libtmux_engine == "subprocess"
     assert isinstance(server.engine, SubprocessEngine)
 """,
     )
 
     result = pytester.runpytest("--engine=subprocess", "-vv")
+    result.assert_outcomes(passed=1)
+
+
+def test_plugin_ignores_libtmux_engine_env_by_default(
+    pytester: pytest.Pytester,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plugin fixtures use ``--engine``, not ``LIBTMUX_ENGINE``."""
+    monkeypatch.setenv("LIBTMUX_ENGINE", "imsg")
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_ignores_libtmux_engine_env_by_default="""
+from libtmux.engines import SubprocessEngine
+
+def test_server_uses_pytest_default(server, libtmux_engine) -> None:
+    assert libtmux_engine == "subprocess"
+    assert isinstance(server.engine, SubprocessEngine)
+""",
+    )
+
+    result = pytester.runpytest("-vv")
+    result.assert_outcomes(passed=1)
+
+
+def test_plugin_engine_option_beats_libtmux_engine_env(
+    pytester: pytest.Pytester,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pytest CLI option controls plugin fixtures even when env disagrees."""
+    monkeypatch.setenv("LIBTMUX_ENGINE", "subprocess")
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_engine_option_beats_libtmux_engine_env="""
+from libtmux.engines import ImsgEngine
+
+def test_server_uses_cli_engine(server, libtmux_engine) -> None:
+    assert libtmux_engine == "imsg"
+    assert isinstance(server.engine, ImsgEngine)
+    session = server.new_session(session_name="cli-env-imsg")
+    assert session.session_name == "cli-env-imsg"
+""",
+    )
+
+    result = pytester.runpytest("--engine=imsg", "-vv")
     result.assert_outcomes(passed=1)
 
 
