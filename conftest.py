@@ -18,6 +18,7 @@ import pytest
 from _pytest.doctest import DoctestItem
 
 from libtmux._internal.control_mode import ControlMode
+from libtmux.common import get_version
 from libtmux.pane import Pane
 from libtmux.server import Server
 from libtmux.session import Session
@@ -71,6 +72,20 @@ def setup_fn(
     clear_env: None,
 ) -> None:
     """Function-level test configuration fixtures for pytest."""
+
+
+@pytest.fixture(autouse=True)
+def _reset_get_version_cache() -> t.Generator[None, None, None]:
+    """Clear ``libtmux.common.get_version`` lru_cache around every test.
+
+    ``get_version`` is memoized per ``tmux_bin`` so production code only
+    forks ``tmux -V`` once per process. Tests that monkeypatch
+    ``tmux_cmd`` to return synthetic versions, or that exercise the real
+    binary, otherwise leak cached values across tests and produce
+    order-dependent failures.
+    """
+    yield
+    get_version.cache_clear()
 
 
 @pytest.fixture(autouse=True, scope="session")
