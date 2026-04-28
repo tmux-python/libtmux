@@ -69,9 +69,31 @@ Command execution is routed through an engine abstraction.
   It resolves versioned protocol handlers through a registry, with the
   current implementation stored in `libtmux.engines.imsg.v8` and keyed as
   protocol version `8`.
-- {class}`~libtmux.server.Server` accepts `engine=` and `protocol_version=`
-  so callers such as tmuxp can opt into newer transports without changing
-  the higher-level ORM API.
+- The recommended DX surface is the typed engine API in
+  {mod}`libtmux.engines`:
+
+  ```python
+  from libtmux import Server
+  from libtmux.engines import EngineSpec, ImsgProtocolVersion
+
+  server = Server(engine=EngineSpec.imsg(ImsgProtocolVersion.V8))
+  ```
+
+- Legacy string configuration remains available for compatibility:
+
+  ```python
+  server = Server(engine="imsg", protocol_version="8")
+  ```
+
+- This keeps tmuxp-style callers forward-compatible with newer tmux protocol
+  versions without changing the higher-level ORM API:
+
+  ```python
+  from libtmux import Server
+  from libtmux.engines import EngineSpec
+
+  server = Server(engine=EngineSpec.imsg())
+  ```
 
 ## Module Map
 
