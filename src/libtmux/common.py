@@ -23,6 +23,9 @@ from .engines import (
     EngineKind,
     EngineLike,
     EngineSpec,
+    ImsgEngineName,
+    ImsgProtocolHint,
+    SubprocessEngineName,
     TmuxEngine,
     create_engine,
 )
@@ -281,14 +284,53 @@ class tmux_cmd:
     returncode: int
     process: object | None
 
+    @t.overload
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | pathlib.Path | None = None,
+        engine: None = None,
+        protocol_version: None = None,
+    ) -> None: ...
+
+    @t.overload
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | pathlib.Path | None = None,
+        engine: SubprocessEngineName,
+        protocol_version: None = None,
+    ) -> None: ...
+
+    @t.overload
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | pathlib.Path | None = None,
+        engine: ImsgEngineName,
+        protocol_version: ImsgProtocolHint | None = None,
+    ) -> None: ...
+
+    @t.overload
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | pathlib.Path | None = None,
+        engine: EngineSpec | TmuxEngine,
+        protocol_version: None = None,
+    ) -> None: ...
+
     def __init__(
         self,
         *args: t.Any,
         tmux_bin: str | pathlib.Path | None = None,
         engine: EngineLike = None,
-        protocol_version: str | int | None = None,
+        protocol_version: ImsgProtocolHint | None = None,
     ) -> None:
-        resolved_engine = resolve_engine(engine, protocol_version=protocol_version)
+        resolved_engine = _resolve_engine_impl(
+            engine,
+            protocol_version=protocol_version,
+        )
         request = CommandRequest.from_args(*args, tmux_bin=tmux_bin)
         cmd_preview = [request.tmux_bin or "tmux", *request.args]
 
@@ -320,15 +362,58 @@ class tmux_cmd:
         return _apply_result(None, result)
 
     @classmethod
+    @t.overload
+    def from_request(
+        cls,
+        request: CommandRequest,
+        *,
+        engine: None = None,
+        protocol_version: None = None,
+    ) -> tmux_cmd: ...
+
+    @classmethod
+    @t.overload
+    def from_request(
+        cls,
+        request: CommandRequest,
+        *,
+        engine: SubprocessEngineName,
+        protocol_version: None = None,
+    ) -> tmux_cmd: ...
+
+    @classmethod
+    @t.overload
+    def from_request(
+        cls,
+        request: CommandRequest,
+        *,
+        engine: ImsgEngineName,
+        protocol_version: ImsgProtocolHint | None = None,
+    ) -> tmux_cmd: ...
+
+    @classmethod
+    @t.overload
+    def from_request(
+        cls,
+        request: CommandRequest,
+        *,
+        engine: EngineSpec | TmuxEngine,
+        protocol_version: None = None,
+    ) -> tmux_cmd: ...
+
+    @classmethod
     def from_request(
         cls,
         request: CommandRequest,
         *,
         engine: EngineLike = None,
-        protocol_version: str | int | None = None,
+        protocol_version: ImsgProtocolHint | None = None,
     ) -> tmux_cmd:
         """Create a :class:`tmux_cmd` by executing a prepared request."""
-        resolved_engine = resolve_engine(engine, protocol_version=protocol_version)
+        resolved_engine = _resolve_engine_impl(
+            engine,
+            protocol_version=protocol_version,
+        )
         return cls.from_result(resolved_engine.run(request))
 
 
@@ -343,7 +428,9 @@ def set_default_engine(engine: TmuxEngine) -> None:
     _default_engine = engine
 
 
-def _normalize_protocol_version(protocol_version: str | int | None) -> int | None:
+def _normalize_protocol_version(
+    protocol_version: ImsgProtocolHint | None,
+) -> int | None:
     """Return a numeric protocol version when one was provided."""
     return int(protocol_version) if protocol_version is not None else None
 
@@ -358,10 +445,59 @@ def _spec_from_engine_instance(engine: TmuxEngine) -> EngineSpec | None:
     return None
 
 
+@t.overload
+def resolve_engine_spec(
+    engine: None = None,
+    *,
+    protocol_version: None = None,
+) -> EngineSpec | None: ...
+
+
+@t.overload
+def resolve_engine_spec(
+    engine: SubprocessEngineName,
+    *,
+    protocol_version: None = None,
+) -> EngineSpec: ...
+
+
+@t.overload
+def resolve_engine_spec(
+    engine: ImsgEngineName,
+    *,
+    protocol_version: ImsgProtocolHint | None = None,
+) -> EngineSpec: ...
+
+
+@t.overload
+def resolve_engine_spec(
+    engine: EngineSpec,
+    *,
+    protocol_version: None = None,
+) -> EngineSpec: ...
+
+
+@t.overload
+def resolve_engine_spec(
+    engine: TmuxEngine,
+    *,
+    protocol_version: None = None,
+) -> EngineSpec | None: ...
+
+
 def resolve_engine_spec(
     engine: EngineLike = None,
     *,
-    protocol_version: str | int | None = None,
+    protocol_version: ImsgProtocolHint | None = None,
+) -> EngineSpec | None:
+    """Normalize a public engine selection into an :class:`EngineSpec`."""
+    return _resolve_engine_spec_impl(engine, protocol_version=protocol_version)
+
+
+def _resolve_engine_spec_impl(
+    engine: EngineLike = None,
+    *,
+    protocol_version: ImsgProtocolHint | None = None,
 ) -> EngineSpec | None:
     """Normalize a public engine selection into an :class:`EngineSpec`."""
     if isinstance(engine, EngineSpec):
@@ -370,6 +506,9 @@ def resolve_engine_spec(
             raise ValueError(msg)
         return engine
     if engine is None:
+        if protocol_version is not None:
+            msg = "protocol_version requires an explicit imsg engine selection"
+            raise ValueError(msg)
         return _spec_from_engine_instance(_default_engine)
     if isinstance(engine, str):
         try:
@@ -377,22 +516,73 @@ def resolve_engine_spec(
         except ValueError as error:
             msg = f"Unknown tmux engine: {engine}"
             raise exc.LibTmuxException(msg) from error
-        resolved_protocol = (
-            _normalize_protocol_version(protocol_version)
-            if kind is EngineKind.IMSG
-            else None
-        )
+        if kind is not EngineKind.IMSG and protocol_version is not None:
+            msg = "protocol_version is only valid for the imsg engine"
+            raise ValueError(msg)
+        resolved_protocol = _normalize_protocol_version(protocol_version)
         return EngineSpec(kind=kind, protocol_version=resolved_protocol)
+    if protocol_version is not None:
+        msg = "protocol_version cannot be combined with a concrete engine instance"
+        raise ValueError(msg)
     return _spec_from_engine_instance(engine)
+
+
+@t.overload
+def resolve_engine(
+    engine: None = None,
+    *,
+    protocol_version: None = None,
+) -> TmuxEngine: ...
+
+
+@t.overload
+def resolve_engine(
+    engine: SubprocessEngineName,
+    *,
+    protocol_version: None = None,
+) -> SubprocessEngine: ...
+
+
+@t.overload
+def resolve_engine(
+    engine: ImsgEngineName,
+    *,
+    protocol_version: ImsgProtocolHint | None = None,
+) -> ImsgEngine: ...
+
+
+@t.overload
+def resolve_engine(
+    engine: EngineSpec,
+    *,
+    protocol_version: None = None,
+) -> TmuxEngine: ...
+
+
+@t.overload
+def resolve_engine(
+    engine: TmuxEngine,
+    *,
+    protocol_version: None = None,
+) -> TmuxEngine: ...
 
 
 def resolve_engine(
     engine: EngineLike = None,
     *,
-    protocol_version: str | int | None = None,
+    protocol_version: ImsgProtocolHint | None = None,
 ) -> TmuxEngine:
     """Resolve a concrete engine instance from a public spec."""
-    engine_spec = resolve_engine_spec(engine, protocol_version=protocol_version)
+    return _resolve_engine_impl(engine, protocol_version=protocol_version)
+
+
+def _resolve_engine_impl(
+    engine: EngineLike = None,
+    *,
+    protocol_version: ImsgProtocolHint | None = None,
+) -> TmuxEngine:
+    """Resolve a concrete engine instance from a public spec."""
+    engine_spec = _resolve_engine_spec_impl(engine, protocol_version=protocol_version)
     if engine is None:
         return _default_engine
     if isinstance(engine, EngineSpec):

@@ -112,6 +112,14 @@ Connect to a live tmux session:
 Server(socket_path=/tmp/tmux-.../default)
 ```
 
+Use the native imsg backend with the string-first engine API:
+
+```python
+>>> from libtmux import Server
+>>> from libtmux.engines import ImsgProtocolVersion
+>>> server = Server(engine="imsg", protocol_version=ImsgProtocolVersion.V8)
+```
+
 **Tip:** You can also use [tmuxp]'s [`tmuxp shell`] to drop straight into your
 current tmux server / session / window / pane.
 
