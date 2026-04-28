@@ -19,7 +19,6 @@ from _pytest.doctest import DoctestItem
 
 from libtmux._internal.control_mode import ControlMode
 from libtmux.pane import Pane
-from libtmux.pytest_plugin import USING_ZSH
 from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.window import Window
@@ -79,6 +78,10 @@ def setup_session(
     request: pytest.FixtureRequest,
     config_file: pathlib.Path,
 ) -> None:
-    """Session-level test configuration for pytest."""
-    if USING_ZSH:
-        request.getfixturevalue("zshrc")
+    """Session-level test configuration for pytest.
+
+    Requesting ``config_file`` here forces the ``.tmux.conf`` fixture
+    to be materialized once per session even when no test requests
+    it directly.
+    """
+    del request, config_file
