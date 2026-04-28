@@ -480,6 +480,7 @@ def test_version_parsing(
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
     if mock_platform is not None:
         monkeypatch.setattr(sys, "platform", mock_platform)
+    get_version.cache_clear()
 
     if raises:
         with pytest.raises(exc.LibTmuxException) as exc_info:

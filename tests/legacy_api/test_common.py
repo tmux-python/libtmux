@@ -47,6 +47,7 @@ def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
+    get_version.cache_clear()
 
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
@@ -68,6 +69,7 @@ def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
+    get_version.cache_clear()
 
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
@@ -86,6 +88,7 @@ def test_get_version_openbsd(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
     monkeypatch.setattr(sys, "platform", "openbsd 5.2")
+    get_version.cache_clear()
     assert has_minimum_version()
     assert has_gte_version(TMUX_MIN_VERSION)
     assert has_gt_version(TMUX_MAX_VERSION), "Greater than the max-supported version"
@@ -104,6 +107,7 @@ def test_get_version_too_low(monkeypatch: pytest.MonkeyPatch) -> None:
         return Hi()
 
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
+    get_version.cache_clear()
     with pytest.raises(exc.LibTmuxException) as exc_info:
         get_version()
     exc_info.match("does not meet the minimum tmux version requirement")
