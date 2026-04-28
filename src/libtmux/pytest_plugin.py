@@ -21,7 +21,6 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
-USING_ZSH = "zsh" in os.getenv("SHELL", "")
 
 
 def _reap_test_server(socket_name: str | None) -> None:
@@ -78,18 +77,6 @@ def user_path(home_path: pathlib.Path, home_user_name: str) -> pathlib.Path:
     """
     p = home_path / home_user_name
     p.mkdir()
-    return p
-
-
-@pytest.mark.skipif(USING_ZSH, reason="Using ZSH")
-@pytest.fixture(scope="session")
-def zshrc(user_path: pathlib.Path) -> pathlib.Path:
-    """Suppress ZSH default message.
-
-    Needs a startup file .zshenv, .zprofile, .zshrc, .zlogin.
-    """
-    p = user_path / ".zshrc"
-    p.touch()
     return p
 
 
