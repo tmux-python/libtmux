@@ -873,7 +873,8 @@ class Pane(
 
     def reset(self) -> Pane:
         """Reset and clear pane history."""
-        self.cmd("send-keys", r"-R \; clear-history")
+        self.cmd("send-keys", "-R")
+        self.cmd("clear-history")
         return self
 
     #

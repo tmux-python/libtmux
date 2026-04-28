@@ -1,0 +1,376 @@
+"""MCP tools for tmux window operations."""
+
+from __future__ import annotations
+
+import typing as t
+
+from libtmux.constants import PaneDirection
+from libtmux.mcp._utils import (
+    ANNOTATIONS_CREATE,
+    ANNOTATIONS_DESTRUCTIVE,
+    ANNOTATIONS_MUTATING,
+    ANNOTATIONS_RO,
+    TAG_DESTRUCTIVE,
+    TAG_MUTATING,
+    TAG_READONLY,
+    _apply_filters,
+    _get_caller_pane_id,
+    _get_server,
+    _resolve_pane,
+    _resolve_session,
+    _resolve_window,
+    _serialize_pane,
+    _serialize_window,
+    handle_tool_errors,
+)
+from libtmux.mcp.models import PaneInfo, WindowInfo
+
+if t.TYPE_CHECKING:
+    from fastmcp import FastMCP
+
+_DIRECTION_MAP: dict[str, PaneDirection] = {
+    "above": PaneDirection.Above,
+    "below": PaneDirection.Below,
+    "right": PaneDirection.Right,
+    "left": PaneDirection.Left,
+}
+
+
+@handle_tool_errors
+def list_panes(
+    session_name: str | None = None,
+    session_id: str | None = None,
+    window_id: str | None = None,
+    window_index: str | None = None,
+    socket_name: str | None = None,
+    filters: dict[str, str] | str | None = None,
+) -> list[PaneInfo]:
+    """List panes in a tmux window, session, or across the entire server.
+
+    Only searches pane metadata (current command, title, working directory).
+    To search the actual text visible in terminal panes, use search_panes
+    instead.
+
+    Parameters
+    ----------
+    session_name : str, optional
+        Session name. If given without window params, lists all panes
+        in the session.
+    session_id : str, optional
+        Session ID. If given without window params, lists all panes
+        in the session.
+    window_id : str, optional
+        Window ID (e.g. '@1'). Scopes to a single window.
+    window_index : str, optional
+        Window index within the session. Scopes to a single window.
+    socket_name : str, optional
+        tmux socket name.
+    filters : dict or str, optional
+        Django-style filters as a dict
+        (e.g. ``{"pane_current_command__contains": "vim"}``)
+        or as a JSON string. Some MCP clients require the string form.
+
+    Returns
+    -------
+    list[PaneInfo]
+        List of serialized pane objects.
+    """
+    server = _get_server(socket_name=socket_name)
+    if window_id is not None or window_index is not None:
+        window = _resolve_window(
+            server,
+            window_id=window_id,
+            window_index=window_index,
+            session_name=session_name,
+            session_id=session_id,
+        )
+        panes = window.panes
+    elif session_name is not None or session_id is not None:
+        session = _resolve_session(
+            server, session_name=session_name, session_id=session_id
+        )
+        panes = session.panes
+    else:
+        panes = server.panes
+    return _apply_filters(panes, filters, _serialize_pane)
+
+
+@handle_tool_errors
+def split_window(
+    pane_id: str | None = None,
+    session_name: str | None = None,
+    session_id: str | None = None,
+    window_id: str | None = None,
+    window_index: str | None = None,
+    direction: t.Literal["above", "below", "left", "right"] | None = None,
+    size: str | int | None = None,
+    start_directory: str | None = None,
+    shell: str | None = None,
+    socket_name: str | None = None,
+) -> PaneInfo:
+    """Split a tmux window to create a new pane.
+
+    Parameters
+    ----------
+    pane_id : str, optional
+        Pane ID to split from. If given, splits adjacent to this pane.
+    session_name : str, optional
+        Session name.
+    session_id : str, optional
+        Session ID (e.g. '$1').
+    window_id : str, optional
+        Window ID (e.g. '@1').
+    window_index : str, optional
+        Window index within the session.
+    direction : str, optional
+        Split direction.
+    size : str or int, optional
+        Size of the new pane. Use a string with '%%' suffix for
+        percentage (e.g. '50%%') or an integer for lines/columns.
+    start_directory : str, optional
+        Working directory for the new pane.
+    shell : str, optional
+        Shell command to run in the new pane.
+    socket_name : str, optional
+        tmux socket name.
+
+    Returns
+    -------
+    PaneInfo
+        Serialized pane object.
+    """
+    server = _get_server(socket_name=socket_name)
+
+    pane_dir: PaneDirection | None = None
+    if direction is not None:
+        pane_dir = _DIRECTION_MAP.get(direction)
+        if pane_dir is None:
+            from fastmcp.exceptions import ToolError
+
+            valid = ", ".join(sorted(_DIRECTION_MAP))
+            msg = f"Invalid direction: {direction!r}. Valid: {valid}"
+            raise ToolError(msg)
+
+    if pane_id is not None:
+        pane = _resolve_pane(server, pane_id=pane_id)
+        new_pane = pane.split(
+            direction=pane_dir,
+            size=size,
+            start_directory=start_directory,
+            shell=shell,
+        )
+    else:
+        window = _resolve_window(
+            server,
+            window_id=window_id,
+            window_index=window_index,
+            session_name=session_name,
+            session_id=session_id,
+        )
+        new_pane = window.split(
+            direction=pane_dir,
+            size=size,
+            start_directory=start_directory,
+            shell=shell,
+        )
+    return _serialize_pane(new_pane)
+
+
+@handle_tool_errors
+def rename_window(
+    new_name: str,
+    window_id: str | None = None,
+    window_index: str | None = None,
+    session_name: str | None = None,
+    session_id: str | None = None,
+    socket_name: str | None = None,
+) -> WindowInfo:
+    """Rename a tmux window.
+
+    Parameters
+    ----------
+    new_name : str
+        The new name for the window.
+    window_id : str, optional
+        Window ID (e.g. '@1').
+    window_index : str, optional
+        Window index within the session.
+    session_name : str, optional
+        Session name.
+    session_id : str, optional
+        Session ID.
+    socket_name : str, optional
+        tmux socket name.
+
+    Returns
+    -------
+    WindowInfo
+        Serialized window object.
+    """
+    server = _get_server(socket_name=socket_name)
+    window = _resolve_window(
+        server,
+        window_id=window_id,
+        window_index=window_index,
+        session_name=session_name,
+        session_id=session_id,
+    )
+    window.rename_window(new_name)
+    return _serialize_window(window)
+
+
+@handle_tool_errors
+def kill_window(
+    window_id: str,
+    socket_name: str | None = None,
+) -> str:
+    """Kill (close) a tmux window. Requires exact window_id (e.g. '@3').
+
+    Parameters
+    ----------
+    window_id : str
+        Window ID (e.g. '@1'). Required — no fallback resolution.
+    socket_name : str, optional
+        tmux socket name.
+
+    Returns
+    -------
+    str
+        Confirmation message.
+    """
+    from fastmcp.exceptions import ToolError
+
+    caller = _get_caller_pane_id()
+    if caller is not None:
+        server = _get_server(socket_name=socket_name)
+        window = _resolve_window(server, window_id=window_id)
+        caller_pane = server.panes.get(pane_id=caller, default=None)
+        if caller_pane is not None and caller_pane.window_id == window_id:
+            msg = (
+                "Refusing to kill the window containing this MCP server's pane. "
+                "Use a manual tmux command if intended."
+            )
+            raise ToolError(msg)
+    else:
+        server = _get_server(socket_name=socket_name)
+        window = _resolve_window(server, window_id=window_id)
+
+    wid = window.window_id
+    window.kill()
+    return f"Window killed: {wid}"
+
+
+@handle_tool_errors
+def select_layout(
+    layout: str,
+    window_id: str | None = None,
+    window_index: str | None = None,
+    session_name: str | None = None,
+    session_id: str | None = None,
+    socket_name: str | None = None,
+) -> WindowInfo:
+    """Set the layout of a tmux window.
+
+    Parameters
+    ----------
+    layout : str
+        Layout name or custom layout string. Built-in layouts:
+        'even-horizontal', 'even-vertical', 'main-horizontal',
+        'main-horizontal-mirrored', 'main-vertical',
+        'main-vertical-mirrored', 'tiled'.
+    window_id : str, optional
+        Window ID (e.g. '@1').
+    window_index : str, optional
+        Window index within the session.
+    session_name : str, optional
+        Session name.
+    session_id : str, optional
+        Session ID.
+    socket_name : str, optional
+        tmux socket name.
+
+    Returns
+    -------
+    WindowInfo
+        Serialized window object.
+    """
+    server = _get_server(socket_name=socket_name)
+    window = _resolve_window(
+        server,
+        window_id=window_id,
+        window_index=window_index,
+        session_name=session_name,
+        session_id=session_id,
+    )
+    window.select_layout(layout)
+    return _serialize_window(window)
+
+
+@handle_tool_errors
+def resize_window(
+    window_id: str | None = None,
+    window_index: str | None = None,
+    session_name: str | None = None,
+    session_id: str | None = None,
+    height: int | None = None,
+    width: int | None = None,
+    socket_name: str | None = None,
+) -> WindowInfo:
+    """Resize a tmux window.
+
+    Parameters
+    ----------
+    window_id : str, optional
+        Window ID (e.g. '@1').
+    window_index : str, optional
+        Window index within the session.
+    session_name : str, optional
+        Session name.
+    session_id : str, optional
+        Session ID.
+    height : int, optional
+        New height in lines.
+    width : int, optional
+        New width in columns.
+    socket_name : str, optional
+        tmux socket name.
+
+    Returns
+    -------
+    WindowInfo
+        Serialized window object.
+    """
+    server = _get_server(socket_name=socket_name)
+    window = _resolve_window(
+        server,
+        window_id=window_id,
+        window_index=window_index,
+        session_name=session_name,
+        session_id=session_id,
+    )
+    window.resize(height=height, width=width)
+    return _serialize_window(window)
+
+
+def register(mcp: FastMCP) -> None:
+    """Register window-level tools with the MCP instance."""
+    mcp.tool(title="List Panes", annotations=ANNOTATIONS_RO, tags={TAG_READONLY})(
+        list_panes
+    )
+    mcp.tool(title="Split Window", annotations=ANNOTATIONS_CREATE, tags={TAG_MUTATING})(
+        split_window
+    )
+    mcp.tool(
+        title="Rename Window", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
+    )(rename_window)
+    mcp.tool(
+        title="Kill Window",
+        annotations=ANNOTATIONS_DESTRUCTIVE,
+        tags={TAG_DESTRUCTIVE},
+    )(kill_window)
+    mcp.tool(
+        title="Select Layout", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
+    )(select_layout)
+    mcp.tool(
+        title="Resize Window", annotations=ANNOTATIONS_MUTATING, tags={TAG_MUTATING}
+    )(resize_window)
