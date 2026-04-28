@@ -2,7 +2,7 @@
 # Bootstrap a per-session profile output directory.
 #
 # Usage:
-#   PROFILE_DIR=$(bash ~/work/python/libtmux/.claude/skills/libtmux-profiler/scripts/init-profile-session.sh <session_name>)
+#   PROFILE_DIR=$(bash ~/work/python/libtmux-protocol/.claude/skills/libtmux-profiler/scripts/init-profile-session.sh <session_name>)
 #
 # Creates: /tmp/py-profiling/<YYYY-MM-DD-HH-MM-SS>/<project>/<branch>/<session_name>/
 #   ├── README.md       (auto-generated session metadata)
@@ -17,7 +17,7 @@ session_name="${1:-}"
 if [ -z "${session_name}" ]; then
     echo "ERROR: session_name required" >&2
     echo "  usage: $(basename "$0") <session_name>" >&2
-    echo "  example: $(basename "$0") server-cmd-baseline" >&2
+    echo "  example: $(basename "$0") engine-ab-imsg-subprocess" >&2
     exit 1
 fi
 
