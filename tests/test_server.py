@@ -7,7 +7,6 @@ import os
 import pathlib
 import shutil
 import subprocess
-import time
 import typing as t
 
 import pytest
@@ -155,7 +154,6 @@ def test_new_session_shell_env(server: Server) -> None:
         window_command=cmd,
         environment=env,
     )
-    time.sleep(0.1)
     window = mysession.windows[0]
     pane = window.panes[0]
     assert mysession.session_name == "test_new_session_env"

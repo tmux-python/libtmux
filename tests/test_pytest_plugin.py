@@ -6,11 +6,11 @@ import contextlib
 import os
 import pathlib
 import textwrap
-import time
 import typing as t
 
 from libtmux.pytest_plugin import _reap_test_server
 from libtmux.server import Server
+from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     import pytest
@@ -162,9 +162,13 @@ def test_test_server_cleanup(TestServer: t.Callable[..., Server]) -> None:
     # Verify server is alive
     assert server.is_alive() is True
 
-    # Delete server and verify cleanup
+    # Delete server and verify cleanup. Poll the socket until tmux's
+    # async unlink completes, replacing a flaky time.sleep(0.1).
     server.kill()
-    time.sleep(0.1)  # Give time for cleanup
+    assert retry_until(
+        lambda: not server.is_alive(),
+        seconds=2,
+    )
 
     # Create new server to verify old one was cleaned up
     new_server = TestServer()
