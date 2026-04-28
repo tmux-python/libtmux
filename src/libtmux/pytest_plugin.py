@@ -97,9 +97,22 @@ def zshrc(user_path: pathlib.Path) -> pathlib.Path:
 def config_file(user_path: pathlib.Path) -> pathlib.Path:
     """Return fixture for ``.tmux.conf`` configuration.
 
-    - ``base-index -g 1``
+    Pinned settings:
 
-    These guarantee pane and windows targets can be reliably referenced and asserted.
+    - ``base-index 1`` — guarantees pane and window targets can be
+      reliably referenced and asserted starting at 1.
+    - ``default-shell /bin/sh`` — bypasses the developer's interactive
+      shell (zsh/bash) so each test pane skips ~60ms of shell init
+      and the non-deterministic prompt rendering that otherwise causes
+      flakes against ``automatic-rename`` and ``capture-pane`` assertions.
+      ``default-command`` is intentionally left at tmux's default
+      (empty string) so that consumer test workspaces — for example
+      tmuxp's ``window_options_after.yaml`` which pins
+      ``default-shell: /bin/bash`` to test Up-arrow shell history —
+      can override ``default-shell`` per-session and have it take
+      effect. Setting ``default-command`` here would short-circuit
+      that override path (per tmux's ``cmd-new-window.c``,
+      ``default-command`` always wins over ``default-shell``).
 
     Note: You will need to set the home directory, see :ref:`set_home`.
     """
@@ -107,6 +120,7 @@ def config_file(user_path: pathlib.Path) -> pathlib.Path:
     c.write_text(
         """
 set -g base-index 1
+set -g default-shell /bin/sh
     """,
         encoding="utf-8",
     )
