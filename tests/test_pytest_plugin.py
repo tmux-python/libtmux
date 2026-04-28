@@ -101,6 +101,24 @@ def test_test_server(TestServer: t.Callable[..., Server]) -> None:
     assert server2.socket_name != server.socket_name
 
 
+def test_config_file_pins_minimal_test_shell(config_file: pathlib.Path) -> None:
+    """The shipped ``.tmux.conf`` pins ``/bin/sh`` as the default shell.
+
+    Forcing ``default-shell`` to ``/bin/sh`` skips the developer's
+    interactive shell init (~60ms per pane for zsh) and eliminates the
+    non-deterministic prompt rendering that flakes ``capture-pane`` and
+    ``automatic-rename`` assertions. The ``base-index 1`` line is
+    behavioral and must remain. ``default-command`` is intentionally
+    NOT set so consumer test workspaces can override ``default-shell``
+    per-session (per tmux's ``cmd-new-window.c``, ``default-command``
+    always wins, which would short-circuit those overrides).
+    """
+    content = config_file.read_text()
+    assert "set -g base-index 1" in content
+    assert "set -g default-shell /bin/sh" in content
+    assert "set -g default-command" not in content
+
+
 def test_test_server_with_config(
     TestServer: t.Callable[..., Server],
     tmp_path: pathlib.Path,
