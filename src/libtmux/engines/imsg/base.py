@@ -217,6 +217,22 @@ class ImsgEngine:
                     returncode=1,
                     process=None,
                 )
+            except (BrokenPipeError, ConnectionResetError) as error:
+                # Server began shutdown between connect() and the first
+                # send/recv: the socket file still exists so connect succeeded,
+                # but the kernel returns EPIPE/ECONNRESET on the first I/O.
+                # Mirror tmux's CLIENT_EXIT_LOST_SERVER behavior — present a
+                # clean "no server running" CommandResult instead of leaking
+                # the transport exception.
+                if parsed.command_name in self._startserver_commands:
+                    return self._run_local_command(cmd)
+                return CommandResult(
+                    cmd=cmd,
+                    stdout=[],
+                    stderr=[self._no_server_message(socket_path, error)],
+                    returncode=1,
+                    process=None,
+                )
             except _ProtocolVersionMismatch as mismatch:
                 if retries_remaining == 0:
                     engine_name = "imsg"

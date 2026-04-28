@@ -478,3 +478,45 @@ def test_imsg_socket_command_sends_fd_backed_identify_burst() -> None:
         int(MessageType.MSG_IDENTIFY_STDIN),
         int(MessageType.MSG_IDENTIFY_STDOUT),
     ]
+
+
+def test_imsg_engine_run_translates_broken_pipe_to_no_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server that dies between connect() and the first send yields ``returncode=1``.
+
+    Regression: tmuxp tests that kill the last session (and therefore the
+    tmux server) and then call ``server.has_session(...)`` would propagate
+    ``BrokenPipeError`` from the imsg transport. The engine now translates
+    EPIPE on the first I/O into the same "no server running" ``CommandResult``
+    that the connect-time ``_NoServerError`` path produces.
+    """
+    client_sock, server_sock = socket.socketpair()
+    server_sock.shutdown(socket.SHUT_RDWR)
+    server_sock.close()
+
+    engine = ImsgEngine(protocol_version="8")
+
+    def fake_connect(*, socket_path: str) -> socket.socket:
+        del socket_path
+        return client_sock
+
+    monkeypatch.setattr(engine, "_connect", fake_connect)
+
+    try:
+        result = engine.run(
+            CommandRequest.from_args(
+                "-L",
+                "test-no-server",
+                "has-session",
+                "-t=foo",
+            ),
+        )
+    finally:
+        with contextlib.suppress(OSError):
+            client_sock.close()
+
+    assert result.returncode == 1
+    assert result.stdout == []
+    assert result.stderr
+    assert "no server running" in result.stderr[0]
