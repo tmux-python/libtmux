@@ -253,6 +253,39 @@ def _apply_result(target: tmux_cmd | None, result: CommandResult) -> tmux_cmd:
     return cmd_obj
 
 
+def _run_command(request: CommandRequest, engine: TmuxEngine) -> CommandResult:
+    """Run *request* through *engine* with surrounding debug log records.
+
+    Shared between :class:`tmux_cmd` and ``Server.cmd`` so callers that
+    already hold a resolved engine can skip ``tmux_cmd``'s constructor
+    dispatch without losing the ``tmux command dispatched`` /
+    ``tmux command completed`` log records test consumers depend on.
+    """
+    if logger.isEnabledFor(logging.DEBUG):
+        cmd_preview = [request.tmux_bin or "tmux", *request.args]
+        logger.debug(
+            "tmux command dispatched",
+            extra={"tmux_cmd": shlex.join(cmd_preview)},
+        )
+
+    result = engine.run(request)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command completed",
+            extra={
+                "tmux_cmd": shlex.join(result.cmd),
+                "tmux_exit_code": result.returncode,
+                "tmux_stdout": result.stdout[:100],
+                "tmux_stderr": result.stderr[:100],
+                "tmux_stdout_len": len(result.stdout),
+                "tmux_stderr_len": len(result.stderr),
+            },
+        )
+
+    return result
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through the configured engine.
 
@@ -336,29 +369,7 @@ class tmux_cmd:
             protocol_version=protocol_version,
         )
         request = CommandRequest.from_args(*args, tmux_bin=tmux_bin)
-        cmd_preview = [request.tmux_bin or "tmux", *request.args]
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "tmux command dispatched",
-                extra={"tmux_cmd": shlex.join(cmd_preview)},
-            )
-
-        result = resolved_engine.run(request)
-        _apply_result(self, result)
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "tmux command completed",
-                extra={
-                    "tmux_cmd": shlex.join(self.cmd),
-                    "tmux_exit_code": self.returncode,
-                    "tmux_stdout": self.stdout[:100],
-                    "tmux_stderr": self.stderr[:100],
-                    "tmux_stdout_len": len(self.stdout),
-                    "tmux_stderr_len": len(self.stderr),
-                },
-            )
+        _apply_result(self, _run_command(request, resolved_engine))
 
     @classmethod
     def from_result(cls, result: CommandResult) -> tmux_cmd:
