@@ -20,12 +20,25 @@ class SubprocessEngine:
 
     def __init__(self, tmux_bin: str | pathlib.Path | None = None) -> None:
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self._resolved_default_tmux_bin: str | None = None
+
+    def _resolve_default_tmux_bin(self) -> str:
+        """Return ``shutil.which("tmux")``, memoized for the engine instance.
+
+        Falls back to a fresh ``shutil.which`` if the cached path is
+        cleared. ``TmuxCommandNotFound`` is not cached; a transient PATH
+        misconfiguration won't poison subsequent commands.
+        """
+        if self._resolved_default_tmux_bin is None:
+            resolved = shutil.which("tmux")
+            if resolved is None:
+                raise exc.TmuxCommandNotFound
+            self._resolved_default_tmux_bin = resolved
+        return self._resolved_default_tmux_bin
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute a tmux command via subprocess and return structured output."""
-        tmux_bin = request.tmux_bin or self.tmux_bin or shutil.which("tmux")
-        if tmux_bin is None:
-            raise exc.TmuxCommandNotFound
+        tmux_bin = request.tmux_bin or self.tmux_bin or self._resolve_default_tmux_bin()
 
         cmd = [tmux_bin, *request.args]
 

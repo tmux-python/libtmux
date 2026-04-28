@@ -7,6 +7,7 @@ import os
 import socket
 import struct
 import threading
+import typing as t
 
 import pytest
 from typing_extensions import assert_type
@@ -520,3 +521,63 @@ def test_imsg_engine_run_translates_broken_pipe_to_no_server(
     assert result.stdout == []
     assert result.stderr
     assert "no server running" in result.stderr[0]
+
+
+def _counting_which(
+    monkeypatch: pytest.MonkeyPatch,
+    module_path: str,
+) -> t.Callable[[], int]:
+    """Patch ``shutil.which`` in *module_path* and return a call counter.
+
+    The shared helper keeps the assertion symmetric across both engine
+    backends without duplicating monkeypatch glue.
+    """
+    import shutil as _shutil
+
+    counter = 0
+    real_which = _shutil.which
+
+    def _which(name: str, *args: t.Any, **kwargs: t.Any) -> str | None:
+        nonlocal counter
+        if name == "tmux":
+            counter += 1
+        return real_which(name, *args, **kwargs)
+
+    monkeypatch.setattr(f"{module_path}.shutil.which", _which)
+    return lambda: counter
+
+
+def test_subprocess_engine_caches_default_tmux_bin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``SubprocessEngine`` resolves ``shutil.which("tmux")`` once per instance.
+
+    ``shutil.which`` does a $PATH walk on every call. The engine hits its
+    fallback resolver on the hot path, so caching it eliminates redundant
+    syscalls without changing the override semantics for explicit
+    ``request.tmux_bin`` or ``self.tmux_bin``.
+    """
+    count = _counting_which(monkeypatch, "libtmux.engines.subprocess")
+
+    engine = SubprocessEngine()
+    first = engine._resolve_default_tmux_bin()
+    second = engine._resolve_default_tmux_bin()
+    third = engine._resolve_default_tmux_bin()
+
+    assert first == second == third
+    assert count() == 1, f"expected 1 shutil.which lookup, got {count()}"
+
+
+def test_imsg_engine_caches_default_tmux_bin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``ImsgEngine`` resolves ``shutil.which("tmux")`` once per instance."""
+    count = _counting_which(monkeypatch, "libtmux.engines.imsg.base")
+
+    engine = ImsgEngine(protocol_version="8")
+    first = engine._resolve_tmux_bin()
+    second = engine._resolve_tmux_bin()
+    third = engine._resolve_tmux_bin()
+
+    assert first == second == third
+    assert count() == 1, f"expected 1 shutil.which lookup, got {count()}"
