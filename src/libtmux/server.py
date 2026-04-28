@@ -423,8 +423,17 @@ class Server(
         )
 
     def _engine_for_command(self, cmd: str) -> TmuxEngine:
-        """Resolve the engine for a specific tmux subcommand."""
-        if cmd in {"attach-session", "switch-client"}:
+        """Resolve the engine for a specific tmux subcommand.
+
+        ``attach-session`` is force-routed to the subprocess engine: it
+        promotes the calling tmux client into a persistent attached
+        session and the imsg engine's one-shot ``MSG_COMMAND`` →
+        ``MSG_EXIT`` loop cannot honor that lifecycle. ``switch-client``,
+        despite the surface similarity, is a one-shot redirect of an
+        already-attached client and tmux returns ``CMD_RETURN_NORMAL``
+        with a clean ``MSG_EXIT`` over imsg.
+        """
+        if cmd == "attach-session":
             return self._subprocess_engine
         return self.engine
 

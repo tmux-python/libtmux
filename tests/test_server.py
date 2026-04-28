@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pathlib
@@ -11,7 +12,7 @@ import typing as t
 
 import pytest
 
-from libtmux import common as libtmux_common
+from libtmux import common as libtmux_common, exc
 from libtmux.common import tmux_cmd
 from libtmux.engines import (
     CommandRequest,
@@ -580,20 +581,69 @@ def test_server_rejects_protocol_hint_for_subprocess_string() -> None:
         )
 
 
-def test_server_imsg_interactive_commands_fallback() -> None:
-    """Interactive commands stay on the subprocess engine for imsg servers."""
+def test_server_imsg_attach_session_falls_back_to_subprocess() -> None:
+    """Force ``attach-session`` onto subprocess for imsg-configured servers.
+
+    The imsg engine cannot honor the persistent-client TTY semantics that
+    ``attach-session`` requires.
+    """
     server = Server(
         socket_name=f"libtmux_test{next(namer)}",
         engine=EngineSpec.imsg(ImsgProtocolVersion.V8),
     )
     try:
         attach_engine = server._engine_for_command("attach-session")
-        switch_engine = server._engine_for_command("switch-client")
         assert isinstance(attach_engine, SubprocessEngine)
-        assert isinstance(switch_engine, SubprocessEngine)
     finally:
         if server.is_alive():
             server.kill()
+
+
+def test_server_imsg_routes_switch_client_through_imsg_engine() -> None:
+    """``switch-client`` rides the user-selected engine, not subprocess.
+
+    tmux's ``cmd-switch-client.c`` returns ``CMD_RETURN_NORMAL`` and emits
+    a clean ``MSG_EXIT`` for non-attached invocations, so the imsg engine
+    handles the lifecycle without the persistent-client gymnastics that
+    force ``attach-session`` to subprocess.
+    """
+    server = Server(
+        socket_name=f"libtmux_test{next(namer)}",
+        engine=EngineSpec.imsg(ImsgProtocolVersion.V8),
+    )
+    try:
+        switch_engine = server._engine_for_command("switch-client")
+        assert switch_engine is server.engine
+        assert not isinstance(switch_engine, SubprocessEngine)
+    finally:
+        if server.is_alive():
+            server.kill()
+
+
+def test_server_uses_injected_engine_for_switch_client() -> None:
+    """A user-supplied engine receives ``switch-client`` requests.
+
+    tmux replies ``no current client`` when invoked without a TTY, which
+    ``Server.switch_client`` re-raises as :exc:`LibTmuxException`. The
+    request still flows through the configured engine first — that's the
+    routing invariant we care about.
+    """
+    engine = RecordingEngine()
+    socket_name = f"libtmux_test{next(namer)}"
+
+    with Server(socket_name=socket_name, engine=engine) as server:
+        session = server.new_session()
+        engine.requests.clear()
+
+        session_id = session.session_id
+        assert session_id is not None
+        with contextlib.suppress(exc.LibTmuxException):
+            server.switch_client(target_session=session_id)
+
+        assert any("switch-client" in request.args for request in engine.requests), (
+            "switch-client must dispatch through the user-selected engine"
+        )
+        session.kill()
 
 
 def test_tmux_bin_invalid_path() -> None:
