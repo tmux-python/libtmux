@@ -127,11 +127,33 @@ set -g default-shell /bin/sh
     return c
 
 
+@pytest.fixture(autouse=True)
+def _pin_test_shell_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force ``$SHELL`` to ``/bin/sh`` for every test that loads this plugin.
+
+    The companion ``config_file`` fixture pins tmux's ``default-shell`` to
+    ``/bin/sh``; this autouse hook keeps Python-side ``os.getenv("SHELL")``
+    consumers aligned. Without it, libtmux's conftest already covers its
+    own tests via ``clear_env``, but external consumers (notably tmuxp's
+    ``test_automatic_rename_option`` which asserts
+    ``w.name in {Path(os.getenv("SHELL")).name, ...}``) see the
+    developer's interactive shell on the env side and ``/bin/sh`` on the
+    tmux side and flake on the mismatch. Running autouse from the plugin
+    ensures every consumer's tests get the alignment for free.
+    """
+    monkeypatch.setenv("SHELL", "/bin/sh")
+
+
 @pytest.fixture
 def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear out any unnecessary environment variables that could interrupt tests.
 
     tmux show-environment tests were being interrupted due to a lot of crazy env vars.
+
+    Note: ``SHELL`` alignment with tmux's ``default-shell`` is handled by
+    the ``_pin_test_shell_env`` autouse fixture in this same module, so
+    callers do not need to opt into ``clear_env`` solely to get that
+    behavior.
     """
     for k in os.environ:
         if not any(
