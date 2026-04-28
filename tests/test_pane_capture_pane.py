@@ -363,15 +363,27 @@ def test_capture_pane_flags(
 
     retry_until(command_complete, 5, raises=True)
 
-    # Capture with specified flags
-    output = pane.capture_pane(
-        escape_sequences=escape_sequences,
-        escape_non_printable=escape_non_printable,
-        join_wrapped=join_wrapped,
-        preserve_trailing=preserve_trailing,
-        trim_trailing=trim_trailing,
-    )
-    output_str = "\n".join(output)
+    def capture_output() -> str:
+        output = pane.capture_pane(
+            escape_sequences=escape_sequences,
+            escape_non_printable=escape_non_printable,
+            join_wrapped=join_wrapped,
+            preserve_trailing=preserve_trailing,
+            trim_trailing=trim_trailing,
+        )
+        return "\n".join(output)
+
+    def capture_matches() -> bool:
+        output_str = capture_output()
+        if expected_pattern and not re.search(expected_pattern, output_str, re.DOTALL):
+            return False
+        return not (
+            not_expected_pattern
+            and re.search(not_expected_pattern, output_str, re.DOTALL)
+        )
+
+    retry_until(capture_matches, 2, raises=True)
+    output_str = capture_output()
 
     # Verify expected pattern matches
     if expected_pattern:

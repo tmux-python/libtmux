@@ -59,6 +59,20 @@ Each level wraps tmux commands and format queries:
 4. Mutations dispatch tmux commands via the `cmd()` method
 5. Objects refresh state from tmux on demand
 
+## Engine Layer
+
+Command execution is routed through an engine abstraction.
+
+- `subprocess` is the default engine and preserves the traditional
+  `tmux` CLI-backed behavior.
+- `imsg` is a binary engine that talks directly to the tmux server socket.
+  It resolves versioned protocol handlers through a registry, with the
+  current implementation stored in `libtmux.engines.imsg.v8` and keyed as
+  protocol version `8`.
+- {class}`~libtmux.server.Server` accepts `engine=` and `protocol_version=`
+  so callers such as tmuxp can opt into newer transports without changing
+  the higher-level ORM API.
+
 ## Module Map
 
 | Module | Role |
@@ -68,6 +82,7 @@ Each level wraps tmux commands and format queries:
 | {mod}`libtmux.window` | Window operations and pane management |
 | {mod}`libtmux.pane` | Pane I/O and capture |
 | {mod}`libtmux.common` | Base classes, command execution |
+| {mod}`libtmux.engines` | Engine registry and backend implementations |
 | {mod}`libtmux.neo` | Modern dataclass-based query interface |
 | {mod}`libtmux.constants` | Format string constants |
 | {mod}`libtmux.options` | tmux option get/set |

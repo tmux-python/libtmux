@@ -56,6 +56,19 @@ class TmuxCommandNotFound(LibTmuxException):
     """Application binary for tmux not found."""
 
 
+class UnsupportedProtocolVersion(LibTmuxException):
+    """Raised when no registered engine handler exists for a protocol version."""
+
+    def __init__(self, engine_name: str, protocol_version: str) -> None:
+        super().__init__(
+            f"Unsupported {engine_name} protocol version: {protocol_version}",
+        )
+
+
+class TmuxProtocolError(LibTmuxException):
+    """Raised when a tmux protocol exchange is malformed or incomplete."""
+
+
 class TmuxObjectDoesNotExist(ObjectDoesNotExist):
     """The query returned multiple objects when only one was expected."""
 
