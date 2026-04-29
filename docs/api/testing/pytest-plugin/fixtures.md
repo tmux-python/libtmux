@@ -111,6 +111,10 @@ Override these in your project's `conftest.py` to customise the test environment
 
 ## Configuration
 
+The libtmux plugin supports `--engine=subprocess` and `--engine=imsg` for
+fixture-managed servers. The option applies to {fixture}`server`,
+{fixture}`session`, and {fixture}`TestServer`.
+
 These `conf.py` values control how fixture documentation is rendered:
 
 ```{eval-rst}

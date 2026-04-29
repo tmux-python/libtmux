@@ -8,6 +8,7 @@ import pathlib
 import textwrap
 import typing as t
 
+from libtmux.engines import SubprocessEngine
 from libtmux.pytest_plugin import _reap_test_server
 from libtmux.server import Server
 from libtmux.test.retry import retry_until
@@ -80,6 +81,55 @@ def test_repo_git_remote_checkout(
     result.assert_outcomes(passed=1)
 
 
+def test_plugin_imsg_engine_option(pytester: pytest.Pytester) -> None:
+    """The plugin fixtures honor ``--engine=imsg``."""
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_imsg_engine_option="""
+from libtmux.engines import ImsgEngine
+
+def test_server_uses_imsg(server) -> None:
+    assert isinstance(server.engine, ImsgEngine)
+    session = server.new_session(session_name="imsg-plugin")
+    assert session.session_name == "imsg-plugin"
+""",
+    )
+
+    result = pytester.runpytest("--engine=imsg", "-vv")
+    result.assert_outcomes(passed=1)
+
+
+def test_plugin_subprocess_engine_option(pytester: pytest.Pytester) -> None:
+    """The plugin fixtures honor ``--engine=subprocess`` explicitly."""
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_subprocess_engine_option="""
+from libtmux.engines import SubprocessEngine
+
+def test_server_uses_subprocess(server) -> None:
+    assert isinstance(server.engine, SubprocessEngine)
+""",
+    )
+
+    result = pytester.runpytest("--engine=subprocess", "-vv")
+    result.assert_outcomes(passed=1)
+
+
+def test_plugin_rejects_invalid_engine_option(pytester: pytest.Pytester) -> None:
+    """Pytest argument parsing rejects unknown libtmux engine values."""
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_rejects_invalid_engine_option="""
+def test_placeholder() -> None:
+    assert True
+""",
+    )
+
+    result = pytester.runpytest("--engine=bogus")
+    assert result.ret != 0
+    result.stderr.fnmatch_lines(["*argument --engine: invalid choice:*"])
+
+
 def test_test_server(TestServer: t.Callable[..., Server]) -> None:
     """Test TestServer creates and cleans up server."""
     server = TestServer()
@@ -133,6 +183,14 @@ def test_config_file_pins_minimal_test_shell(config_file: pathlib.Path) -> None:
     assert "set -g default-command" not in content
 
 
+def test_test_server_uses_default_subprocess_engine(
+    TestServer: t.Callable[..., Server],
+) -> None:
+    """TestServer inherits the default subprocess engine."""
+    server = TestServer()
+    assert isinstance(server.engine, SubprocessEngine)
+
+
 def test_test_server_with_config(
     TestServer: t.Callable[..., Server],
     tmp_path: pathlib.Path,
@@ -146,6 +204,25 @@ def test_test_server_with_config(
 
     # Verify config was loaded
     assert session.cmd("show-options", "-g", "status").stdout[0] == "status off"
+
+
+def test_test_server_can_use_imsg_engine(pytester: pytest.Pytester) -> None:
+    """TestServer inherits ``--engine=imsg`` from the plugin config."""
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_test_server_can_use_imsg_engine="""
+from libtmux.engines import ImsgEngine
+
+def test_test_server_factory_uses_imsg(TestServer) -> None:
+    server = TestServer()
+    assert isinstance(server.engine, ImsgEngine)
+    session = server.new_session(session_name="factory-imsg")
+    assert session.session_name == "factory-imsg"
+""",
+    )
+
+    result = pytester.runpytest("--engine=imsg", "-vv")
+    result.assert_outcomes(passed=1)
 
 
 def test_test_server_cleanup(TestServer: t.Callable[..., Server]) -> None:
