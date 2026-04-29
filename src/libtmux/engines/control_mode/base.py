@@ -14,13 +14,21 @@ The reader thread owns the read side end-to-end:
   routed to a per-engine response :class:`queue.Queue`, which the
   blocking ``run()`` call pops.
 * :class:`~libtmux.engines.control_mode.parser.Notification` events
-  are DEBUG-logged in this step; the subscription dispatcher in
-  step 5 will route them to user-facing queues.
+  are DEBUG-logged here; the subscription dispatcher in step 5 will
+  route them to user-facing queues.
 
-Cleanup wiring (explicit ``close()``, ``weakref.finalize``,
-``conftest`` hook, abrupt-exit hardening) lands in step 4 of the
-plan; this module already gives ``close()`` the minimum viable
-shape so step-3 tests can tear engines down between cases.
+Cleanup is defence-in-depth (step 4 of the plan):
+
+#. Explicit :meth:`ControlModeEngine.close` — the recommended path.
+   Sends the empty-line ``CLIENT_EXIT`` signal documented in
+   ``control.c:551``, escalating through stdin-EOF, ``SIGTERM`` and
+   ``SIGKILL``.
+#. :func:`weakref.finalize` registered when the subprocess spawns —
+   reaps the child + reader thread at GC time even when the user
+   forgets to call ``close()``.
+#. The reader thread is a free function (not a bound method); it
+   intentionally does **not** capture the engine, so dropping the
+   user's reference makes the engine collectible.
 """
 
 from __future__ import annotations
@@ -35,6 +43,8 @@ import shlex
 import shutil
 import subprocess
 import threading
+import typing as t
+import weakref
 from dataclasses import dataclass, field
 
 from libtmux import exc
@@ -70,6 +80,12 @@ _GLOBAL_FLAGS_WITH_VALUES: frozenset[str] = frozenset({"-L", "-S", "-f"})
 
 _GLOBAL_FLAGS_NOVALUE: frozenset[str] = frozenset({"-2", "-8"})
 """tmux client-level flags that take no value."""
+
+_GRACEFUL_EXIT_TIMEOUT = 0.5
+"""Seconds to wait for tmux to exit after the empty-line CLIENT_EXIT signal."""
+
+_TERMINATE_TIMEOUT = 1.0
+"""Seconds to wait after SIGTERM before escalating to SIGKILL."""
 
 
 class TmuxControlModeError(exc.LibTmuxException):
@@ -145,6 +161,7 @@ class ControlModeEngine:
         self._run_timeout = run_timeout
         self._lock = threading.Lock()
         self._state: _Subprocess | None = None
+        self._finalizer: weakref.finalize[t.Any, t.Any] | None = None
         self._resolved_default_tmux_bin: str | None = None
 
     # ------------------------------------------------------------- lookup --
@@ -256,7 +273,7 @@ class ControlModeEngine:
                 err = TmuxControlModeError(
                     f"tmux -C exited with code {self._state.proc.returncode}",
                 )
-                self._mark_broken(self._state, err)
+                _mark_broken(self._state, err)
                 raise err
             if parsed.global_args != self._state.global_args:
                 msg = (
@@ -299,19 +316,29 @@ class ControlModeEngine:
         state = _Subprocess(
             proc=proc,
             selector=selector,
-            reader=threading.Thread(
-                target=self._reader_loop,
-                name=f"libtmux-cm-reader-{proc.pid}",
-                daemon=True,
-            ),
+            # Reader is wired below so it can reference ``state`` without
+            # capturing ``self`` — the latter would defeat
+            # ``weakref.finalize`` by keeping the engine alive.
+            reader=threading.Thread(),
             stop_event=stop_event,
             parser=ControlParser(),
             global_args=parsed.global_args,
+        )
+        state.reader = threading.Thread(
+            target=_reader_loop,
+            args=(state,),
+            name=f"libtmux-cm-reader-{proc.pid}",
+            daemon=True,
         )
         self._state = state
         # The reader thread reads ``self._state`` once, then operates on its
         # local handle; safe even if we later replace ``self._state``.
         state.reader.start()
+        # Defence-in-depth: if the engine is garbage-collected without an
+        # explicit close(), this finalizer reaps the subprocess + reader
+        # thread at GC time. The closure intentionally takes no reference
+        # to ``self`` so the engine is collectible.
+        self._finalizer = weakref.finalize(self, _shutdown_subprocess, state)
         logger.debug(
             "tmux control-mode subprocess started",
             extra={
@@ -339,7 +366,7 @@ class ControlModeEngine:
             err = TmuxControlModeError(
                 f"tmux -C did not send a startup ack within {_STARTUP_TIMEOUT}s",
             )
-            self._mark_broken(state, err)
+            _mark_broken(state, err)
             return
         if isinstance(event, _ReaderError):
             return
@@ -366,7 +393,7 @@ class ControlModeEngine:
             state.proc.stdin.write(line)
             state.proc.stdin.flush()
         except (BrokenPipeError, OSError) as error:
-            self._mark_broken(state, error)
+            _mark_broken(state, error)
             assert state.broken is not None
             raise state.broken from error
 
@@ -379,7 +406,7 @@ class ControlModeEngine:
                 f"{self._run_timeout}s waiting for a response"
             )
             err = TmuxControlModeError(msg)
-            self._mark_broken(state, err)
+            _mark_broken(state, err)
             raise err from error
 
         if isinstance(event, _ReaderError):
@@ -413,156 +440,215 @@ class ControlModeEngine:
             returncode=0,
         )
 
-    # ------------------------------------------------------- reader loop --
-
-    def _reader_loop(self) -> None:
-        state = self._state
-        if state is None:
-            return
-        proc = state.proc
-        selector = state.selector
-        parser = state.parser
-        stop_event = state.stop_event
-
-        try:
-            while not stop_event.is_set():
-                try:
-                    ready = selector.select(_SELECT_TIMEOUT)
-                except (OSError, ValueError):
-                    return
-                if not ready:
-                    if proc.poll() is not None:
-                        # Subprocess gone; flush any buffered input then exit.
-                        parser.feed_eof()
-                        self._mark_broken(
-                            state,
-                            TmuxControlModeError(
-                                f"tmux -C exited with code {proc.returncode}",
-                            ),
-                        )
-                        self._drain_events(state)
-                        return
-                    continue
-                for key, _events in ready:
-                    if key.data == "stdout":
-                        if not self._reader_handle_stdout(state):
-                            return
-                    elif key.data == "stderr":
-                        self._reader_handle_stderr(state)
-                self._drain_events(state)
-        except Exception as error:  # pragma: no cover - last-ditch safety net
-            self._mark_broken(state, error)
-            logger.exception(
-                "tmux control-mode reader thread crashed",
-                extra={"tmux_cm_proc_pid": proc.pid},
-            )
-
-    def _reader_handle_stdout(self, state: _Subprocess) -> bool:
-        assert state.proc.stdout is not None
-        try:
-            chunk = os.read(state.proc.stdout.fileno(), _READ_CHUNK)
-        except BlockingIOError:
-            return True
-        except OSError as error:
-            self._mark_broken(state, error)
-            return False
-        if not chunk:
-            state.parser.feed_eof()
-            self._mark_broken(
-                state,
-                TmuxControlModeError("tmux -C closed stdout"),
-            )
-            self._drain_events(state)
-            return False
-        state.parser.feed(chunk)
-        return True
-
-    def _reader_handle_stderr(self, state: _Subprocess) -> None:
-        assert state.proc.stderr is not None
-        try:
-            chunk = os.read(state.proc.stderr.fileno(), _READ_CHUNK)
-        except (BlockingIOError, OSError):
-            return
-        if not chunk:
-            return
-        logger.debug(
-            "tmux control-mode stderr",
-            extra={
-                "tmux_cm_proc_pid": state.proc.pid,
-                "tmux_cm_stderr": chunk[:200],
-            },
-        )
-
-    def _drain_events(self, state: _Subprocess) -> None:
-        for event in state.parser.events():
-            if isinstance(event, Block):
-                state.response_queue.put(event)
-            elif isinstance(event, Notification):
-                logger.debug(
-                    "tmux control-mode notification",
-                    extra={
-                        "tmux_cm_notify": type(event).__name__,
-                        "tmux_cm_proc_pid": state.proc.pid,
-                    },
-                )
-
     # ----------------------------------------------------------- close --
 
-    def _mark_broken(
-        self,
-        state: _Subprocess,
-        cause: BaseException,
-    ) -> None:
-        """Latch the engine into a permanently-broken state.
-
-        Subsequent ``run()`` calls raise the latched error rather than
-        attempting a respawn, so the caller can decide to retry by
-        constructing a new engine.
-        """
-        if state.broken is not None:
-            return
-        if isinstance(cause, TmuxControlModeError):
-            state.broken = cause
-        else:
-            state.broken = TmuxControlModeError(
-                f"tmux control-mode connection lost: {cause}",
-            )
-        # Wake any waiter blocked on the response queue.
-        state.response_queue.put(_ReaderError(cause=cause))
-
     def _teardown_state(self) -> None:
-        """Best-effort cleanup of the prior subprocess + reader thread."""
+        """Best-effort cleanup of the prior subprocess + reader thread.
+
+        Detaches the ``weakref.finalize`` callback before tearing down
+        so the engine can be re-spawned (e.g. after :meth:`close`)
+        without a stale finalizer reaping the next subprocess.
+        """
         state = self._state
         if state is None:
             return
         self._state = None
-        state.stop_event.set()
-        with contextlib.suppress(OSError):
-            if state.proc.stdin is not None:
-                state.proc.stdin.close()
-        with contextlib.suppress(OSError):
-            state.proc.terminate()
-        try:
-            state.proc.wait(timeout=2.0)
-        except subprocess.TimeoutExpired:
-            with contextlib.suppress(OSError):
-                state.proc.kill()
-            state.proc.wait()
-        with contextlib.suppress(OSError):
-            state.selector.close()
-        if state.reader.is_alive():
-            state.reader.join(timeout=2.0)
+        if self._finalizer is not None:
+            self._finalizer.detach()
+            self._finalizer = None
+        _shutdown_subprocess(state)
 
     def close(self) -> None:
         """Shut down the persistent subprocess and reader thread.
 
         Idempotent. Safe to call from ``Server.kill_server`` paths or
-        from test teardown. The richer
-        ``weakref.finalize`` / atexit defence-in-depth lands in
-        step 4.
+        from test teardown. Uses graceful escalation:
+
+        1. Send the empty-line ``CLIENT_EXIT`` signal documented in
+           ``control.c:551``.
+        2. Wait :data:`_GRACEFUL_EXIT_TIMEOUT` for tmux to exit.
+        3. Close stdin (EOF) and wait again.
+        4. Send ``SIGTERM``, wait :data:`_TERMINATE_TIMEOUT`.
+        5. Send ``SIGKILL`` as the final fallback.
+
+        Defence-in-depth: even if the caller forgets ``close()``, the
+        :class:`weakref.finalize` registered in
+        :meth:`_ensure_started` performs the same teardown when the
+        engine is garbage-collected.
         """
         with self._lock:
             self._teardown_state()
+
+
+def _reader_loop(state: _Subprocess) -> None:
+    """Daemon loop that drains stdout into the parser and routes events.
+
+    Free-standing (not a method) so the thread does **not** capture a
+    reference to the owning :class:`ControlModeEngine`. That decoupling
+    is what lets :func:`weakref.finalize` actually fire on engine GC.
+    """
+    proc = state.proc
+    selector = state.selector
+    parser = state.parser
+    stop_event = state.stop_event
+
+    try:
+        while not stop_event.is_set():
+            try:
+                ready = selector.select(_SELECT_TIMEOUT)
+            except (OSError, ValueError):
+                return
+            if not ready:
+                if proc.poll() is not None:
+                    parser.feed_eof()
+                    _mark_broken(
+                        state,
+                        TmuxControlModeError(
+                            f"tmux -C exited with code {proc.returncode}",
+                        ),
+                    )
+                    _drain_events(state)
+                    return
+                continue
+            for key, _events in ready:
+                if key.data == "stdout":
+                    if not _reader_handle_stdout(state):
+                        return
+                elif key.data == "stderr":
+                    _reader_handle_stderr(state)
+            _drain_events(state)
+    except Exception as error:  # pragma: no cover - last-ditch safety net
+        _mark_broken(state, error)
+        logger.exception(
+            "tmux control-mode reader thread crashed",
+            extra={"tmux_cm_proc_pid": proc.pid},
+        )
+
+
+def _reader_handle_stdout(state: _Subprocess) -> bool:
+    assert state.proc.stdout is not None
+    try:
+        chunk = os.read(state.proc.stdout.fileno(), _READ_CHUNK)
+    except BlockingIOError:
+        return True
+    except OSError as error:
+        _mark_broken(state, error)
+        return False
+    if not chunk:
+        state.parser.feed_eof()
+        _mark_broken(state, TmuxControlModeError("tmux -C closed stdout"))
+        _drain_events(state)
+        return False
+    state.parser.feed(chunk)
+    return True
+
+
+def _reader_handle_stderr(state: _Subprocess) -> None:
+    assert state.proc.stderr is not None
+    try:
+        chunk = os.read(state.proc.stderr.fileno(), _READ_CHUNK)
+    except (BlockingIOError, OSError):
+        return
+    if not chunk:
+        return
+    logger.debug(
+        "tmux control-mode stderr",
+        extra={
+            "tmux_cm_proc_pid": state.proc.pid,
+            "tmux_cm_stderr": chunk[:200],
+        },
+    )
+
+
+def _drain_events(state: _Subprocess) -> None:
+    for event in state.parser.events():
+        if isinstance(event, Block):
+            state.response_queue.put(event)
+        elif isinstance(event, Notification):
+            logger.debug(
+                "tmux control-mode notification",
+                extra={
+                    "tmux_cm_notify": type(event).__name__,
+                    "tmux_cm_proc_pid": state.proc.pid,
+                },
+            )
+
+
+def _mark_broken(state: _Subprocess, cause: BaseException) -> None:
+    """Latch *state* into a permanently-broken state and wake any waiter.
+
+    Subsequent ``run()`` calls raise the latched error rather than
+    attempting a respawn, so the caller can decide to retry by
+    constructing a new engine or calling :meth:`ControlModeEngine.close`
+    first.
+    """
+    if state.broken is not None:
+        return
+    if isinstance(cause, TmuxControlModeError):
+        state.broken = cause
+    else:
+        state.broken = TmuxControlModeError(
+            f"tmux control-mode connection lost: {cause}",
+        )
+    state.response_queue.put(_ReaderError(cause=cause))
+
+
+def _shutdown_subprocess(state: _Subprocess) -> None:
+    """Tear down a control-mode subprocess + its reader thread.
+
+    Free-standing so it can be used as a :func:`weakref.finalize`
+    callback (which must not capture a strong reference to the engine
+    that owns the state).
+    """
+    state.stop_event.set()
+
+    # 1. Empty-line CLIENT_EXIT (control.c:551) — graceful path.
+    if state.proc.stdin is not None and not state.proc.stdin.closed:
+        with contextlib.suppress(OSError):
+            state.proc.stdin.write(b"\n")
+            state.proc.stdin.flush()
+
+    if not _wait_for_exit(state.proc, _GRACEFUL_EXIT_TIMEOUT):
+        # 2. EOF on stdin — secondary graceful signal.
+        if state.proc.stdin is not None and not state.proc.stdin.closed:
+            with contextlib.suppress(OSError):
+                state.proc.stdin.close()
+        if not _wait_for_exit(state.proc, _GRACEFUL_EXIT_TIMEOUT):
+            # 3. SIGTERM.
+            with contextlib.suppress(OSError):
+                state.proc.terminate()
+            if not _wait_for_exit(state.proc, _TERMINATE_TIMEOUT):
+                # 4. SIGKILL — last resort.
+                with contextlib.suppress(OSError):
+                    state.proc.kill()
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    state.proc.wait(timeout=_TERMINATE_TIMEOUT)
+
+    # Close every pipe file object we own. Without this CPython emits
+    # ``ResourceWarning: unclosed file`` at GC time for stdout/stderr,
+    # because ``Popen.terminate``/``kill`` only signal the child — the
+    # Python-side ``BufferedReader`` wrappers are independent.
+    for stream in (state.proc.stdin, state.proc.stdout, state.proc.stderr):
+        if stream is not None and not stream.closed:
+            with contextlib.suppress(OSError):
+                stream.close()
+
+    with contextlib.suppress(OSError):
+        state.selector.close()
+
+    # Joining the reader thread from itself would raise; only join when
+    # called from a different thread (e.g. explicit close() from main).
+    if state.reader.is_alive() and threading.get_ident() != state.reader.ident:
+        state.reader.join(timeout=_TERMINATE_TIMEOUT)
+
+
+def _wait_for_exit(proc: subprocess.Popen[bytes], timeout: float) -> bool:
+    """Return ``True`` if *proc* exited within *timeout* seconds."""
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False
+    return True
 
 
 register_engine("control_mode", ControlModeEngine)

@@ -8,10 +8,12 @@ in step 4.
 
 from __future__ import annotations
 
+import gc
 import os
 import threading
 import typing as t
 import uuid
+import warnings
 
 import pytest
 
@@ -265,3 +267,121 @@ def test_run_recovers_from_dead_subprocess(
                 "after-kill",
             ),
         )
+
+
+# --------------------------------------------------------------- close --
+
+
+def test_close_is_idempotent(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """``close()`` may be called repeatedly without raising or hanging."""
+    engine, socket_name = control_engine
+    engine.run(
+        CommandRequest.from_args("-L", socket_name, "display-message", "-p", "x"),
+    )
+    engine.close()
+    engine.close()
+    engine.close()
+    assert engine._state is None
+
+
+def test_close_uses_graceful_empty_line_path(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """``close()`` exits via the empty-line CLIENT_EXIT path on the happy case.
+
+    A well-behaved tmux exits cleanly when its control client sends an
+    empty line on stdin (``control.c:551``). We verify by patching
+    ``terminate`` and ``kill`` to raise — they should never be called
+    when graceful shutdown succeeds, which is the steady-state.
+    """
+    engine, socket_name = control_engine
+    engine.run(
+        CommandRequest.from_args("-L", socket_name, "display-message", "-p", "go"),
+    )
+    state = engine._state
+    assert state is not None
+    proc = state.proc
+
+    def _no_signal_call(*_args: object, **_kwargs: object) -> None:
+        msg = "graceful close should not need terminate/kill"
+        raise AssertionError(msg)
+
+    proc.terminate = _no_signal_call  # type: ignore[method-assign]
+    proc.kill = _no_signal_call  # type: ignore[method-assign]
+
+    engine.close()
+
+    assert engine._state is None
+    assert proc.poll() is not None  # tmux exited under its own steam
+
+
+def test_close_releases_subprocess_on_gc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dropping the engine reference reaps the subprocess via weakref.finalize.
+
+    The finalizer runs at GC time and tears down the same way explicit
+    ``close()`` does, so leaked engines do not leave zombie tmux
+    processes behind. We assert no ``ResourceWarning`` is raised — that
+    is the canary for a leaked ``Popen`` in CPython.
+    """
+    monkeypatch.setattr(warnings, "filters", warnings.filters[:])
+    warnings.simplefilter("error", ResourceWarning)
+
+    socket_name = f"libtmux_test_cm_gc_{uuid.uuid4().hex[:8]}"
+    engine = ControlModeEngine()
+    try:
+        engine.run(
+            CommandRequest.from_args(
+                "-L",
+                socket_name,
+                "display-message",
+                "-p",
+                "leak-check",
+            ),
+        )
+        state = engine._state
+        assert state is not None
+        proc = state.proc
+
+        # Drop the only reference and force a GC pass; the finalizer
+        # should reap the subprocess synchronously.
+        del state
+        del engine
+        gc.collect()
+
+        # Give the cleanup a brief grace period; reader join + selector
+        # close happen on the GC thread but the subprocess wait is
+        # bounded by _GRACEFUL_EXIT_TIMEOUT.
+        proc.wait(timeout=5)
+        assert proc.returncode is not None
+    finally:
+        pytest_plugin._reap_test_server(socket_name)
+
+
+def test_close_after_subprocess_already_dead_is_safe(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """``close()`` works even if the tmux subprocess already exited.
+
+    Common when the user kills the tmux server with ``kill-server``:
+    by the time ``close()`` runs, the subprocess is gone, the reader
+    thread has marked the engine broken, and the cleanup must not
+    re-raise.
+    """
+    engine, socket_name = control_engine
+    engine.run(
+        CommandRequest.from_args("-L", socket_name, "display-message", "-p", "go"),
+    )
+    state = engine._state
+    assert state is not None
+
+    os.kill(state.proc.pid, 9)
+    state.proc.wait()
+    # Give the reader thread a moment to see EOF.
+    threading.Event().wait(0.3)
+
+    engine.close()
+    assert engine._state is None
