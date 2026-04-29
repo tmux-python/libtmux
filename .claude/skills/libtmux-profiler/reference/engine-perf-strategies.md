@@ -7,13 +7,13 @@ Linux 6.6 / Python 3.14. Reproduce with:
 $ BENCH_REPEATS=3 uv run python .claude/skills/libtmux-profiler/scripts/bench-engines-workload.py
 ```
 
-## Realistic-workload wall time (5-phase build / heavy_q / light_q / mutate / teardown)
+## Realistic-workload wall time (6-phase build / heavy_q / light_q / mutate / batch / teardown)
 
-| engine         | build  | heavy_q | light_q | mutate | teardown | TOTAL  |
-|----------------|--------|---------|---------|--------|----------|--------|
-| `subprocess`   |  98 ms |   11 ms |  201 ms |  22 ms |    2 ms  | 334 ms |
-| `imsg`         |  87 ms |    8 ms |  144 ms |  14 ms |    1 ms  | 254 ms |
-| `control_mode` |  60 ms |    7 ms |   24 ms |   3 ms |    0 ms  |  94 ms |
+| engine         | build   | heavy_q | light_q | mutate | batch  | teardown | TOTAL   |
+|----------------|---------|---------|---------|--------|--------|----------|---------|
+| `subprocess`   | 103.5ms |  13.0ms | 216.0ms | 23.7ms | 38.5ms |  3.2ms   | 404.6ms |
+| `imsg`         |  88.1ms |  10.7ms | 136.3ms | 15.3ms | 32.7ms |  3.6ms   | 288.5ms |
+| `control_mode` |  62.0ms |   9.1ms |  21.7ms |  3.0ms | 10.8ms |  0.4ms   | 105.6ms |
 
 Workload composition:
 
@@ -21,10 +21,15 @@ Workload composition:
 * **heavy_q**: walk session/window/pane tree, read `name`/`id`/`index` (~14 query cmds)
 * **light_q**: 100× `display-message -p ok` (the per-call microbench shape)
 * **mutate**: 3× `rename-window`
+* **batch**: 10× `new-window` issued via `Server.cmd_batch` in one round-trip
 * **teardown**: 1× `kill-server`
 
-Aggregate result: `control_mode` is 3.6× faster than `subprocess` and
-2.7× faster than `imsg` on a representative end-to-end workload.
+Aggregate result: `control_mode` is **3.83× faster than `subprocess`**
+and **2.73× faster than `imsg`** on a representative end-to-end
+workload. The `batch` phase isolates the pipelining win — `control_mode`
+amortises the lock + flush across the whole batch and runs **3.6×
+faster than `subprocess`** and **3.0× faster than `imsg`** on the same
+10 commands.
 
 ## Per-engine hot paths (libtmux-internal frames only)
 
@@ -92,12 +97,13 @@ already small.
 
 Concrete wins shipped on this branch (`libtmux-protocol-engines`):
 
-* **`Server._svr_prefix` cache** (this commit). `Server.cmd` used to
-  rebuild the `-L socket_name` / `-S socket_path` / `-f config_file`
-  / `-2`/`-8` prefix list on every call via four `list.insert(0,
-  …)` operations. Built once at `Server.__init__` and reused as a
-  tuple. Bonus: invalid `colors=` values now raise at construction
-  rather than on every `cmd()` call (fail-fast).
+* **`Server._svr_prefix` cache** (commits `e55091b5`, `a513e79d`).
+  `Server.cmd` used to rebuild the `-L socket_name` / `-S socket_path`
+  / `-f config_file` / `-2`/`-8` prefix list on every call via four
+  `list.insert(0, …)` operations. Built once at `Server.__init__` and
+  reused as a tuple by both `Server.cmd` and `neo.fetch_objs`. Bonus:
+  invalid `colors=` values now raise at construction rather than on
+  every `cmd()` call (fail-fast).
 * **`_run_command` factored out of `tmux_cmd.__init__`** (earlier
   commit `47086007`). Skipped redundant engine dispatch when
   `Server.cmd` already had the resolved engine.
@@ -109,9 +115,13 @@ Open items still in the wrapper layer:
 
 * `neo.fetch_objs` is the bulk of query-phase cost. Worth a focused
   follow-up to see if format-string parsing can be cached.
-* `tmux_cmd.__init__` still appears in 88 samples on subprocess
-  (21 % of wall) — most callers still go through the constructor
-  rather than `tmux_cmd.from_result`. Worth auditing call sites.
+* The `tmux_cmd.__init__` audit is complete: only `get_version()`
+  (`common.py:695`, called once per `Server.__init__`) and a
+  docstring example construct `tmux_cmd` directly; every hot-path
+  call goes through `tmux_cmd.from_result` which uses
+  `cls.__new__(cls)` to skip the constructor (commit `12c41266`).
+  Remaining samples reflect the unavoidable per-call object
+  allocation, not redundant init work.
 
 ## Per-engine future strategies
 
@@ -205,22 +215,41 @@ uniform, the speedup is engine-specific.
   the connection is gone. Per-command tmux `%error` *does* surface
   as `returncode=1` per result.
 
-**Remaining future strategies:**
+**Also shipped on this branch:**
 
-* **`Event` + result slot instead of `queue.Queue`**: `Queue.get`
-  acquires the queue's internal lock and condition variable. A
-  per-call `threading.Event` paired with a result-holder is one
-  lock acquisition vs 2–3. Microsecond-scale win; worth pursuing
-  only if a workload profile shows queue overhead in the hot path.
-* **`Server.batch()` context manager**: a more fluent API for
-  callers that want to accumulate commands at runtime
-  (`with server.batch() as b: ...`). Layers over `cmd_batch`; not
-  a perf change.
-* **Mixed-engine batching via partition**: detect the carve-out
-  inside `cmd_batch` and split the input into engine-uniform sub-
-  batches automatically, preserving the pipelining benefit even
-  when one stray `attach-session` is present. Not implemented;
-  the current explicit-uniform contract keeps the path simple.
+* **`threading.Event` + result slot** (commit `3cf7f9aa`) replaces
+  the per-call `queue.Queue.get` with a single-event wait keyed on a
+  `_PendingSlot` that the reader thread fills directly. Trims the
+  per-call lock count from 2–3 (queue mutex + not-empty condvar) to
+  1 (the event's internal lock). Visible at the microsecond scale —
+  the workload bench `light_q` shifted from 24.0ms to 21.7ms
+  post-refactor.
+* **`Server.batch()` accumulator context manager** (commit
+  `b320213b`) for runtime-built command lists:
+
+  ```python
+  with server.batch() as b:
+      for name in window_names_from_config:
+          b.cmd("new-window", "-d", "-n", name)
+      results = b.results()
+  ```
+
+  Layers over `cmd_batch` — same pipelining contract, fluent API.
+* **Mixed-engine batch auto-partitioning** (commit `550accab`):
+  `Server.cmd_batch` detects per-command engine routing internally
+  and splits the input into engine-uniform contiguous runs, calling
+  `run_batch` on each. A 5-command batch
+  `[a, b, attach-session, c, d]` becomes
+  `run_batch([a, b])` + `run([attach-session])` + `run_batch([c, d])`,
+  preserving pipelining for the surrounding commands while honouring
+  the carve-out for `attach-session`.
+* **tmuxp `WorkspaceBuilder` consumes the API** (tmuxp commits
+  `d133ce68` + `11a3c830`): the four metadata `set-option` loops
+  (session `options`, `global_options`, window `options`,
+  `options_after`) now route through `Server.batch()`. On
+  `control_mode`, an options-heavy workspace collapses N round-trips
+  into one batched flush per loop. Out of libtmux's tree but the
+  user-visible payoff for the engine work.
 
 ## When to use which engine
 
