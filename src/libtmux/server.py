@@ -545,6 +545,60 @@ class Server(
             run_start = run_end
         return [tmux_cmd.from_result(r) for r in results]
 
+    def batch(
+        self,
+        *,
+        target: str | int | None = None,
+    ) -> _BatchContext:
+        """Return a context manager that accumulates commands for one ``cmd_batch``.
+
+        The accumulator is the runtime-friendly counterpart of
+        :meth:`cmd_batch`: when the command list isn't known up-front
+        (it depends on loop state, branch decisions, or earlier
+        results) build it incrementally inside a ``with`` block, then
+        flush by calling :meth:`results`.
+
+        Examples
+        --------
+        >>> with server.batch() as b:
+        ...     b.cmd("display-message", "-p", "first")
+        ...     b.cmd("display-message", "-p", "second")
+        ...     results = b.results()
+        >>> [r.stdout[0] for r in results]
+        ['first', 'second']
+
+        Empty batches are a no-op:
+
+        >>> with server.batch() as b:
+        ...     results = b.results()
+        >>> results
+        []
+
+        Parameters
+        ----------
+        target : str or int, optional
+            Forwarded to :meth:`cmd_batch` as the ``target=`` for
+            every accumulated command. Mirrors the per-batch semantic
+            from ``cmd_batch`` (one target for the whole flush).
+
+        Returns
+        -------
+        :class:`_BatchContext`
+            The accumulator. Call ``.cmd(cmd, *args)`` to add commands
+            and ``.results()`` to flush. ``.results()`` is idempotent
+            — subsequent calls return the same list. Calling
+            ``.cmd()`` after ``.results()`` raises
+            :class:`~libtmux.exc.LibTmuxException`.
+
+        Notes
+        -----
+        ``__exit__`` does **not** auto-flush. If the caller relies on
+        the batch executing they must call ``.results()`` explicitly
+        — surfacing a missed call as no-effect is cleaner than
+        masking it with implicit cleanup that hides timing bugs.
+        """
+        return _BatchContext(self, target=target)
+
     def _build_svr_prefix(self) -> tuple[str, ...]:
         """Return the fixed client-level flags this server prefixes every command with.
 
@@ -1228,3 +1282,66 @@ class Server(
             replacement="Server.sessions property",
             version="0.17.0",
         )
+
+
+class _BatchContext:
+    """Accumulator returned by :meth:`Server.batch`.
+
+    Add commands with :meth:`cmd`; flush by calling :meth:`results`.
+    The flush goes through :meth:`Server.cmd_batch` so the
+    pipelining contract (``control_mode``: one stdin write + flush;
+    ``subprocess``/``imsg``: trivial loop) is preserved exactly.
+    """
+
+    def __init__(
+        self,
+        server: Server,
+        *,
+        target: str | int | None = None,
+    ) -> None:
+        self._server = server
+        self._target = target
+        self._commands: list[tuple[str | int, ...]] = []
+        self._results: list[tmux_cmd] | None = None
+
+    def cmd(self, cmd: str, *args: str | int) -> None:
+        """Append a command to the batch.
+
+        Same shape as one positional-argument set passed to
+        :meth:`Server.cmd`. Calling this after :meth:`results` raises
+        :class:`~libtmux.exc.LibTmuxException` — the accumulator is
+        single-use, so a stray late ``cmd()`` is a programming error
+        worth surfacing rather than silently discarding.
+        """
+        if self._results is not None:
+            msg = "_BatchContext is already flushed; create a fresh batch()"
+            raise exc.LibTmuxException(msg)
+        self._commands.append((cmd, *args))
+
+    def results(self) -> list[tmux_cmd]:
+        """Flush the accumulated commands as one ``cmd_batch`` and return results.
+
+        Idempotent: subsequent calls return the same list without
+        re-running anything. Empty batches return ``[]`` without
+        touching the engine.
+        """
+        if self._results is None:
+            self._results = self._server.cmd_batch(
+                self._commands,
+                target=self._target,
+            )
+        return self._results
+
+    def __enter__(self) -> _BatchContext:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: types.TracebackType | None,
+    ) -> None:
+        del exc_type, exc_value, traceback
+        # Deliberately no auto-flush. If the caller forgets
+        # ``.results()`` they get a no-op batch instead of an
+        # implicit dispatch that masks the missed call.

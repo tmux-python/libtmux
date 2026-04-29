@@ -107,9 +107,36 @@ exception. Engine-broken errors (broken pipe / EOF on
 `control_mode`) raise as they do for single calls.
 
 `cmd_batch` keeps the {meth}`Server._engine_for_command` carve-out
-per command, so an `attach-session` mid-batch still falls through to
-the subprocess engine. Mixing engines in one batch loses the
-pipelining benefit; keep batches engine-uniform to retain the win.
+per command — an `attach-session` mid-batch falls through to the
+subprocess engine. The batch then auto-partitions into engine-uniform
+contiguous runs and dispatches each via that engine's `run_batch`,
+preserving pipelining for the surrounding commands. A 5-command
+batch `[a, b, attach-session, c, d]` becomes
+`run_batch([a, b])` + `run([attach-session])` + `run_batch([c, d])`
+under the hood.
+
+### Accumulator pattern (`Server.batch()`)
+
+When the command list is built incrementally — inside a loop, or
+branching on earlier results — use the {meth}`Server.batch` context
+manager instead of constructing a list up-front:
+
+```python
+with server.batch() as b:
+    for name in window_names_from_config:
+        b.cmd("new-window", "-d", "-n", name)
+    if attach_back:
+        b.cmd("select-window", "-t", "0")
+    results = b.results()
+```
+
+`b.cmd(cmd, *args)` accumulates; `b.results()` flushes via
+`cmd_batch` and returns the ordered `tmux_cmd` list. `results()` is
+idempotent — calling it twice returns the same list. Adding to the
+batch after `results()` raises. The context manager does **not**
+auto-flush on exit: forgetting to call `results()` is a programming
+error worth surfacing as a no-op rather than masking with implicit
+dispatch.
 
 ## Subscriptions (`control_mode` only)
 

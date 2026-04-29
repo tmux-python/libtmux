@@ -637,6 +637,79 @@ def test_server_cmd_batch_partitions_mixed_engine_into_uniform_runs() -> None:
         server._engine_for_command = original  # type: ignore[method-assign]
 
 
+def test_server_batch_context_accumulates_and_flushes(server: Server) -> None:
+    """``Server.batch()`` accumulates commands, flushes via ``cmd_batch``."""
+    server.new_session(session_name="batch-ctx")
+    with server.batch() as b:
+        b.cmd("display-message", "-p", "alpha")
+        b.cmd("display-message", "-p", "beta")
+        b.cmd("display-message", "-p", "gamma")
+        results = b.results()
+    assert [r.stdout for r in results] == [["alpha"], ["beta"], ["gamma"]]
+    assert all(r.returncode == 0 for r in results)
+
+
+def test_server_batch_context_empty_returns_empty(server: Server) -> None:
+    """An untouched batch flushes to an empty list without engine activity."""
+    with server.batch() as b:
+        results = b.results()
+    assert results == []
+
+
+def test_server_batch_context_results_are_idempotent(server: Server) -> None:
+    """``results()`` is safe to call multiple times; same list returned."""
+    server.new_session(session_name="idempotent")
+    b = server.batch()
+    b.cmd("display-message", "-p", "once")
+    first = b.results()
+    second = b.results()
+    assert first is second  # same list object — no re-dispatch
+
+
+def test_server_batch_context_cmd_after_flush_raises(server: Server) -> None:
+    """Adding to a flushed batch raises rather than silently discarding."""
+    server.new_session(session_name="post-flush")
+    b = server.batch()
+    b.cmd("display-message", "-p", "x")
+    b.results()
+    with pytest.raises(exc.LibTmuxException, match="already flushed"):
+        b.cmd("display-message", "-p", "y")
+
+
+def test_server_batch_context_no_autoflush(server: Server) -> None:
+    """``__exit__`` does not auto-flush if ``results()`` was not called.
+
+    The contract surfaces a missed ``.results()`` as a no-op rather
+    than masking it with implicit dispatch. Caller's error to spot.
+    """
+    engine = RecordingBatchEngine()
+    socket_name = f"libtmux_test{next(namer)}"
+
+    with Server(socket_name=socket_name, engine=engine) as srv:
+        srv.cmd("new-session", "-d", "-s", "s")
+        engine.batch_calls.clear()
+        with srv.batch() as b:
+            b.cmd("display-message", "-p", "x")
+            b.cmd("display-message", "-p", "y")
+            # Deliberately no .results() call.
+        assert engine.batch_calls == [], (
+            "expected zero batch dispatches when .results() not called"
+        )
+
+
+def test_server_batch_context_target_applies_to_every_command(
+    server: Server,
+) -> None:
+    """``Server.batch(target=...)`` mirrors ``cmd_batch``'s per-batch target."""
+    session = server.new_session(session_name="targeted-batch")
+    with server.batch(target=session.session_name) as b:
+        b.cmd("display-message", "-p", "#{session_name}")
+        b.cmd("display-message", "-p", "#{session_id}")
+        results = b.results()
+    assert results[0].stdout == ["targeted-batch"]
+    assert results[1].stdout[0].startswith("$")
+
+
 def test_server_cmd_batch_uniform_partitions_to_one_call() -> None:
     """An all-uniform batch still dispatches as exactly one run_batch call.
 
