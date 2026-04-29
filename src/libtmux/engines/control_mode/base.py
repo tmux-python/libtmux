@@ -75,9 +75,6 @@ Generous because tmux is local and most commands return in <100ms;
 the cap is a safety net against hangs from a wedged server.
 """
 
-_STARTUP_TIMEOUT = 5.0
-"""Wall time to wait for tmux's startup ``%begin``/``%end`` ack."""
-
 _READ_CHUNK = 65536
 """Size of each ``os.read`` from the tmux ``-C`` stdout pipe."""
 
@@ -181,6 +178,21 @@ class _Subprocess:
     dict get/set atomic, but iteration during modification is not
     safe — we never iterate the live dict (we only ever look up by
     name).
+    """
+    startup_ack_pending: bool = True
+    """Reader auto-discards one flags=0 block then clears this flag.
+
+    Pipelines the startup-ACK drain with the user's first command:
+    instead of synchronously waiting for tmux's cfg-load
+    ``%begin``/``%end`` block before sending command 1, the engine
+    spawns and returns; ``_send_command`` writes command 1 into the
+    pipe while tmux is still loading config; the reader thread sees
+    the ACK first (``flags=0`` per ``cmd-queue.c:618``), discards
+    it, then routes command 1's response (``flags=1``) to the
+    user's slot. Saves one ACK round-trip per fresh engine —
+    measured at ~700 ms cumulative across the test_server.py
+    suite's 47 fixtures (41 % of libtmux wall on the
+    control_mode profile).
     """
 
 
@@ -473,46 +485,10 @@ class ControlModeEngine:
                 "tmux_cmd": shlex.join(cmd),
             },
         )
-        self._drain_startup_ack(state)
+        # Startup ACK is drained asynchronously by the reader thread
+        # via state.startup_ack_pending — see `_Subprocess` docstring
+        # and `_drain_events` for the routing decision.
         return state
-
-    def _drain_startup_ack(self, state: _Subprocess) -> None:
-        """Discard the cfg-load ``%begin``/``%end`` tmux emits on connect.
-
-        The startup ack has ``flags=0`` (not from a control client per
-        ``cmd-queue.c:618``). Any later block our user requests has
-        ``flags=1``; that distinction lets us drain exactly one
-        startup block without consuming a real response. If the ack
-        does not arrive within :data:`_STARTUP_TIMEOUT`, we mark the
-        engine broken so the user's first ``run()`` reports a clean
-        error rather than a mysterious empty result.
-        """
-        slot = _PendingSlot()
-        with state.pending_lock:
-            state.pending_slots.append(slot)
-        if not slot.event.wait(timeout=_STARTUP_TIMEOUT):
-            with state.pending_lock, contextlib.suppress(ValueError):
-                state.pending_slots.remove(slot)
-            err = TmuxControlModeError(
-                f"tmux -C did not send a startup ack within {_STARTUP_TIMEOUT}s",
-            )
-            _mark_broken(state, err)
-            return
-        if isinstance(slot.result, _ReaderError):
-            return
-        block = slot.result
-        assert isinstance(block, Block)
-        if block.flags != 0:
-            # Unexpected: the first block was apparently a real response,
-            # which would only happen if the user's run() raced past us
-            # — log loudly so this isn't silently dropped.
-            logger.warning(
-                "tmux control-mode dropped non-startup block during init",
-                extra={
-                    "tmux_cm_block_id": block.number,
-                    "tmux_cm_proc_pid": state.proc.pid,
-                },
-            )
 
     def _send_command(
         self,
@@ -824,6 +800,29 @@ def _reader_handle_stderr(state: _Subprocess) -> None:
 def _drain_events(state: _Subprocess) -> None:
     for event in state.parser.events():
         if isinstance(event, Block):
+            if state.startup_ack_pending:
+                # tmux's cfg-load ACK is the first block on every fresh
+                # connection (``flags=0`` per ``cmd-queue.c:618``);
+                # subsequent user-command responses always carry
+                # ``flags=1``. Auto-discarding the first ACK here
+                # collapses the previously-synchronous startup wait
+                # into the same pipeline as the user's first command,
+                # so the kernel buffer absorbs the command write while
+                # tmux is still loading config.
+                state.startup_ack_pending = False
+                if event.flags == 0:
+                    continue
+                # Defensive: first block has flags=1 — race where the
+                # user's first response arrived before any startup ACK
+                # (or tmux suppressed the ACK). Route it normally.
+                logger.debug(
+                    "tmux control-mode first block was flags=1; "
+                    "treating as user-command response",
+                    extra={
+                        "tmux_cm_block_id": event.number,
+                        "tmux_cm_proc_pid": state.proc.pid,
+                    },
+                )
             with state.pending_lock:
                 slot = state.pending_slots.popleft() if state.pending_slots else None
             if slot is not None:
