@@ -268,11 +268,58 @@ class ControlModeEngine:
     ) -> list[CommandResult]:
         """Pipelined batch: one lock acquire, one stdin write, N drains.
 
-        Currently implemented as a trivial loop while the optimised
-        path lands in step 12b. The fall-back keeps the API uniform
-        and tests can target ``run_batch`` directly.
+        Writes all N command lines as a single ``stdin.write`` plus
+        one ``flush``, then drains N :class:`Block` events from the
+        response queue in send order. tmux processes the lines FIFO
+        (``cmd-queue.c:315``) so the i-th block always corresponds to
+        the i-th request.
+
+        Per-request error semantics match :meth:`run`: a tmux ``%error``
+        block becomes ``CommandResult.returncode=1`` and
+        ``stderr=[error message]`` — never an exception. The whole
+        list of N results is returned regardless of how many of them
+        errored. The single raise case is **engine-broken**: a
+        broken-pipe / EOF mid-batch raises
+        :class:`TmuxControlModeError`, since the connection is gone
+        and remaining writes were lost.
+
+        Empty ``requests`` returns ``[]`` without touching the engine.
         """
-        return [self.run(req) for req in requests]
+        if not requests:
+            return []
+
+        parsed_list: list[_ParsedRequest] = []
+        for request in requests:
+            parsed = self._parse_args(request.args)
+            if not parsed.command_argv:
+                msg = (
+                    "ControlModeEngine.run_batch requires a tmux subcommand "
+                    "in every request"
+                )
+                raise exc.LibTmuxException(msg)
+            parsed_list.append(parsed)
+
+        # Engines bind to one socket; refuse mixed-socket batches early
+        # so a typo'd batch can't silently target the wrong server.
+        first_global = parsed_list[0].global_args
+        for parsed in parsed_list[1:]:
+            if parsed.global_args != first_global:
+                msg = (
+                    "ControlModeEngine.run_batch requires uniform global args; "
+                    f"got {parsed.global_args!r} after {first_global!r}"
+                )
+                raise TmuxControlModeError(msg)
+
+        with self._lock:
+            state = self._ensure_started(requests[0], parsed_list[0])
+            if state.broken is not None:
+                raise state.broken
+            self._send_batch(state, parsed_list)
+            results: list[CommandResult] = []
+            for request, parsed in zip(requests, parsed_list, strict=True):
+                response = self._await_response(state)
+                results.append(self._build_result(request, parsed, response))
+        return results
 
     # ---------------------------------------------------------- internals --
 
@@ -416,6 +463,32 @@ class ControlModeEngine:
         try:
             assert state.proc.stdin is not None
             state.proc.stdin.write(line)
+            state.proc.stdin.flush()
+        except (BrokenPipeError, OSError) as error:
+            _mark_broken(state, error)
+            assert state.broken is not None
+            raise state.broken from error
+
+    def _send_batch(
+        self,
+        state: _Subprocess,
+        parsed_list: list[_ParsedRequest],
+    ) -> None:
+        r"""Write *parsed_list*'s command lines in one ``stdin.write`` + flush.
+
+        Linux pipes preserve write order from a single thread, so a
+        single combined write of ``b"line1\nline2\n..."`` arrives at
+        tmux's ``evbuffer_readln`` (``control.c:557``) as N successive
+        line reads. Parsed FIFO into the command queue
+        (``cmd-queue.c:315``).
+        """
+        payload = b"".join(
+            (shlex.join(parsed.command_argv) + "\n").encode("utf-8")
+            for parsed in parsed_list
+        )
+        try:
+            assert state.proc.stdin is not None
+            state.proc.stdin.write(payload)
             state.proc.stdin.flush()
         except (BrokenPipeError, OSError) as error:
             _mark_broken(state, error)

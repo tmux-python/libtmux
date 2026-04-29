@@ -267,10 +267,10 @@ class ImsgEngine:
         self,
         requests: t.Sequence[CommandRequest],
     ) -> list[CommandResult]:
-        """Trivial loop — imsg engine opens a fresh socket per call, no batching benefit.
+        """Loop over ``run`` — imsg opens a fresh socket per call.
 
-        Provided for uniform API with the control-mode engine; callers
-        can use ``run_batch`` regardless of engine and get the right
+        No batching benefit but provided for uniform API: callers can
+        use ``run_batch`` regardless of engine and get the right
         ordered list of results.
         """
         return [self.run(req) for req in requests]

@@ -18,7 +18,7 @@ import warnings
 import pytest
 
 from libtmux import pytest_plugin
-from libtmux.engines.base import CommandRequest
+from libtmux.engines.base import CommandRequest, CommandResult
 from libtmux.engines.control_mode.base import (
     ControlModeEngine,
     TmuxControlModeError,
@@ -267,6 +267,280 @@ def test_run_recovers_from_dead_subprocess(
                 "after-kill",
             ),
         )
+
+
+# --------------------------------------------------------- run_batch --
+
+
+def test_run_batch_empty_returns_empty_without_spawning(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """``run_batch([])`` is a no-op; it must not spawn the subprocess."""
+    engine, _ = control_engine
+    assert engine.run_batch([]) == []
+    assert engine._state is None
+
+
+def test_run_batch_single_request_matches_run(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """A one-element batch yields the same shape as a single ``run()``."""
+    engine, socket_name = control_engine
+    request = CommandRequest.from_args(
+        "-L",
+        socket_name,
+        "display-message",
+        "-p",
+        "solo",
+    )
+    [result] = engine.run_batch([request])
+    assert result.returncode == 0
+    assert result.stdout == ["solo"]
+
+
+def test_run_batch_preserves_send_order(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """Five commands batched return five results in send order.
+
+    Verifies the FIFO contract from tmux's command queue
+    (``cmd-queue.c:315``) — the i-th block is the i-th request's
+    response.
+    """
+    engine, socket_name = control_engine
+    requests = [
+        CommandRequest.from_args(
+            "-L",
+            socket_name,
+            "display-message",
+            "-p",
+            f"line-{i}",
+        )
+        for i in range(5)
+    ]
+    results = engine.run_batch(requests)
+    assert len(results) == 5
+    for index, result in enumerate(results):
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == [f"line-{index}"], result.stdout
+
+
+def test_run_batch_writes_in_one_stdin_write(
+    control_engine: tuple[ControlModeEngine, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pipelined path issues exactly one ``stdin.write`` for N commands.
+
+    Catches a regression that would slip back to per-command writes
+    and lose the lock + flush amortisation that motivated this work.
+    """
+    engine, socket_name = control_engine
+    # Prime the engine so ``_state`` is populated before we patch.
+    engine.run(
+        CommandRequest.from_args("-L", socket_name, "display-message", "-p", "x"),
+    )
+    state = engine._state
+    assert state is not None
+    assert state.proc.stdin is not None
+
+    write_calls: list[bytes] = []
+    real_write = state.proc.stdin.write
+
+    def counting_write(data: bytes) -> int:
+        write_calls.append(bytes(data))
+        return real_write(data)
+
+    monkeypatch.setattr(state.proc.stdin, "write", counting_write)
+
+    requests = [
+        CommandRequest.from_args(
+            "-L",
+            socket_name,
+            "display-message",
+            "-p",
+            f"batch-{i}",
+        )
+        for i in range(4)
+    ]
+    engine.run_batch(requests)
+
+    assert len(write_calls) == 1, (
+        f"expected 1 stdin.write for batch, got {len(write_calls)}: "
+        f"{[w[:40] for w in write_calls]}"
+    )
+    assert write_calls[0].count(b"\n") == 4
+
+
+def test_run_batch_mid_batch_error_returns_per_result_returncode(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """A bad command in the middle of a batch yields a returncode=1 result.
+
+    The batch as a whole completes; only that one result has
+    ``returncode=1`` and a populated ``stderr``. Mirrors single-call
+    ``run()`` semantics.
+    """
+    engine, socket_name = control_engine
+    # Provoke a server first so the second request lands in a real session.
+    engine.run(
+        CommandRequest.from_args(
+            "-L",
+            socket_name,
+            "new-session",
+            "-d",
+            "-s",
+            "alive",
+        ),
+    )
+    requests = [
+        CommandRequest.from_args(
+            "-L",
+            socket_name,
+            "display-message",
+            "-p",
+            "before",
+        ),
+        CommandRequest.from_args("-L", socket_name, "no-such-command"),
+        CommandRequest.from_args(
+            "-L",
+            socket_name,
+            "display-message",
+            "-p",
+            "after",
+        ),
+    ]
+    before, bad, after = engine.run_batch(requests)
+    assert before.returncode == 0
+    assert before.stdout == ["before"]
+    assert bad.returncode == 1
+    assert bad.stderr  # tmux echoes a parse error
+    assert after.returncode == 0
+    assert after.stdout == ["after"]
+
+
+def test_run_batch_rejects_mismatched_global_args(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """A batch mixing two different ``-L`` sockets raises before any wire I/O."""
+    engine, socket_name = control_engine
+    engine.run(
+        CommandRequest.from_args("-L", socket_name, "display-message", "-p", "go"),
+    )
+    requests = [
+        CommandRequest.from_args(
+            "-L",
+            socket_name,
+            "display-message",
+            "-p",
+            "ok",
+        ),
+        CommandRequest.from_args(
+            "-L",
+            "different-socket",
+            "display-message",
+            "-p",
+            "nope",
+        ),
+    ]
+    with pytest.raises(TmuxControlModeError, match="uniform global args"):
+        engine.run_batch(requests)
+
+
+def test_run_batch_rejects_empty_command_argv(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """A batch member without a tmux subcommand raises before spawning."""
+    engine, socket_name = control_engine
+    requests = [
+        CommandRequest.from_args(
+            "-L",
+            socket_name,
+            "display-message",
+            "-p",
+            "ok",
+        ),
+        CommandRequest.from_args("-L", socket_name),  # no subcommand
+    ]
+    from libtmux import exc as libtmux_exc
+
+    with pytest.raises(libtmux_exc.LibTmuxException, match="run_batch requires"):
+        engine.run_batch(requests)
+
+
+def test_run_batch_serialises_with_concurrent_run(
+    control_engine: tuple[ControlModeEngine, str],
+) -> None:
+    """A run_batch holds the engine lock; concurrent run() blocks until done.
+
+    Two threads: thread A issues a 5-command batch, thread B issues
+    a single ``run()``. Both must complete with no interleaved
+    %begin/%end correlation errors.
+    """
+    engine, socket_name = control_engine
+    engine.run(
+        CommandRequest.from_args(
+            "-L",
+            socket_name,
+            "new-session",
+            "-d",
+            "-s",
+            "racey",
+        ),
+    )
+
+    batch_results: list[CommandResult] = []
+    single_results: list[CommandResult] = []
+    errors: list[BaseException] = []
+
+    def run_batch_thread() -> None:
+        try:
+            batch_results.extend(
+                engine.run_batch(
+                    [
+                        CommandRequest.from_args(
+                            "-L",
+                            socket_name,
+                            "display-message",
+                            "-p",
+                            f"b{i}",
+                        )
+                        for i in range(5)
+                    ],
+                ),
+            )
+        except BaseException as error:
+            errors.append(error)
+
+    def run_single_thread() -> None:
+        try:
+            single_results.append(
+                engine.run(
+                    CommandRequest.from_args(
+                        "-L",
+                        socket_name,
+                        "display-message",
+                        "-p",
+                        "single",
+                    ),
+                ),
+            )
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [
+        threading.Thread(target=run_batch_thread),
+        threading.Thread(target=run_single_thread),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert errors == []
+    assert len(batch_results) == 5
+    assert [r.stdout for r in batch_results] == [[f"b{i}"] for i in range(5)]
+    assert len(single_results) == 1
+    assert single_results[0].stdout == ["single"]
 
 
 # --------------------------------------------------------------- close --
