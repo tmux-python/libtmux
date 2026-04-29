@@ -40,6 +40,25 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### pytest plugin: deterministic shell in test fixtures (#662)
+
+The bundled `.tmux.conf` fixture now pins `default-shell` to `/bin/sh`
+and the plugin force-aligns `$SHELL=/bin/sh` for every test. Skips
+developer-shell init per pane and eliminates the prompt-rendering
+noise that used to flake `capture-pane` and `automatic-rename`
+assertions in downstream consumers. Workspaces can still override
+`default-shell` per-session because `default-command` is intentionally
+left empty.
+
+#### `get_version()` is now cached per tmux binary (#662)
+
+Repeat calls within a process — plugin construction, version checks
+during pane capture, CLI startup — reuse the parsed version instead
+of re-running `tmux -V`. `get_version.cache_clear()` is exposed for
+test fixtures that swap the tmux binary.
+
 ## libtmux 0.55.1 (2026-04-19)
 
 ### Fixes
