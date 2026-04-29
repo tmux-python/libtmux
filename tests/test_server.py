@@ -11,6 +11,7 @@ import typing as t
 
 import pytest
 
+from libtmux import common as libtmux_common
 from libtmux.common import tmux_cmd
 from libtmux.engines import (
     CommandRequest,
@@ -481,6 +482,19 @@ def test_server_engine_spec_defaults_to_subprocess() -> None:
     """Servers expose the normalized default engine selection."""
     server = Server()
     assert server.engine_spec == EngineSpec.subprocess()
+
+
+def test_server_uses_libtmux_engine_env_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Server defaults honor ``LIBTMUX_ENGINE`` for normal runtime usage."""
+    monkeypatch.setattr(libtmux_common, "_default_engine", None)
+    monkeypatch.setenv("LIBTMUX_ENGINE", "imsg")
+
+    server = Server()
+
+    assert server.engine_spec == EngineSpec.imsg()
+    assert isinstance(server.engine, ImsgEngine)
 
 
 def test_server_engine_spec_tracks_typed_imsg_configuration() -> None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import pathlib
 import re
 import shlex
@@ -22,6 +23,7 @@ from .engines import (
     CommandResult,
     EngineKind,
     EngineLike,
+    EngineName,
     EngineSpec,
     ImsgEngineName,
     ImsgProtocolHint,
@@ -234,7 +236,9 @@ class EnvironmentMixin:
         return opts_dict.get(name)
 
 
-_default_engine: TmuxEngine = SubprocessEngine()
+LIBTMUX_ENGINE_ENV = "LIBTMUX_ENGINE"
+_builtin_default_engine: TmuxEngine = SubprocessEngine()
+_default_engine: TmuxEngine | None = None
 
 
 def _apply_result(target: tmux_cmd | None, result: CommandResult) -> tmux_cmd:
@@ -418,14 +422,61 @@ class tmux_cmd:
 
 
 def get_default_engine() -> TmuxEngine:
-    """Return the global default engine."""
-    return _default_engine
+    """Return the active default engine."""
+    return _resolve_default_engine()
 
 
 def set_default_engine(engine: TmuxEngine) -> None:
-    """Override the global default engine."""
+    """Override the global default engine.
+
+    Programmatic defaults take precedence over ``LIBTMUX_ENGINE``.
+    """
     global _default_engine
     _default_engine = engine
+
+
+def _env_engine_name() -> EngineName | None:
+    """Return the engine requested by ``LIBTMUX_ENGINE`` when present."""
+    raw_engine = os.environ.get(LIBTMUX_ENGINE_ENV)
+    if raw_engine is None:
+        return None
+
+    engine_name = raw_engine.strip().lower()
+    if not engine_name:
+        return None
+
+    try:
+        return EngineKind(engine_name).value
+    except ValueError as error:
+        msg = (
+            f"Unknown tmux engine in {LIBTMUX_ENGINE_ENV}: {raw_engine!r}. "
+            "Expected one of: subprocess, imsg"
+        )
+        raise exc.LibTmuxException(msg) from error
+
+
+def _resolve_default_engine_spec() -> EngineSpec | None:
+    """Return the active default engine spec."""
+    if _default_engine is not None:
+        return _spec_from_engine_instance(_default_engine)
+
+    env_engine_name = _env_engine_name()
+    if env_engine_name is not None:
+        return EngineSpec(kind=EngineKind(env_engine_name))
+
+    return EngineSpec.subprocess()
+
+
+def _resolve_default_engine() -> TmuxEngine:
+    """Return the active default engine instance."""
+    if _default_engine is not None:
+        return _default_engine
+
+    env_engine_name = _env_engine_name()
+    if env_engine_name is not None:
+        return create_engine(env_engine_name)
+
+    return _builtin_default_engine
 
 
 def _normalize_protocol_version(
@@ -509,7 +560,7 @@ def _resolve_engine_spec_impl(
         if protocol_version is not None:
             msg = "protocol_version requires an explicit imsg engine selection"
             raise ValueError(msg)
-        return _spec_from_engine_instance(_default_engine)
+        return _resolve_default_engine_spec()
     if isinstance(engine, str):
         try:
             kind = EngineKind(engine)
@@ -584,7 +635,7 @@ def _resolve_engine_impl(
     """Resolve a concrete engine instance from a public spec."""
     engine_spec = _resolve_engine_spec_impl(engine, protocol_version=protocol_version)
     if engine is None:
-        return _default_engine
+        return _resolve_default_engine()
     if isinstance(engine, EngineSpec):
         assert engine_spec is not None
         return create_engine(

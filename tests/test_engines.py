@@ -11,9 +11,11 @@ import threading
 import pytest
 from typing_extensions import assert_type
 
-from libtmux import exc
+from libtmux import common as libtmux_common, exc
 from libtmux.common import resolve_engine, resolve_engine_spec
 from libtmux.engines import (
+    CommandRequest,
+    CommandResult,
     EngineKind,
     EngineSpec,
     ImsgProtocolVersion,
@@ -32,6 +34,24 @@ from libtmux.engines.imsg.v8 import (
     WriteDataMessage,
 )
 from libtmux.engines.subprocess import SubprocessEngine
+
+
+class StaticEngine:
+    """Small engine test double that records executed requests."""
+
+    def __init__(self) -> None:
+        self.requests: list[CommandRequest] = []
+
+    def run(self, request: CommandRequest) -> CommandResult:
+        """Record a command request and return a stable result."""
+        self.requests.append(request)
+        return CommandResult(
+            cmd=["tmux", *request.args],
+            stdout=["env-engine"],
+            stderr=[],
+            returncode=0,
+            process=None,
+        )
 
 
 def test_engine_spec_subprocess_constructor() -> None:
@@ -88,6 +108,81 @@ def test_resolve_engine_spec_from_engine_spec() -> None:
     """Typed engine specs round-trip through normalization unchanged."""
     spec = EngineSpec.imsg(ImsgProtocolVersion.V8)
     assert resolve_engine_spec(spec) == spec
+
+
+def test_libtmux_engine_env_selects_default_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``LIBTMUX_ENGINE`` selects the runtime default engine."""
+    monkeypatch.setattr(libtmux_common, "_default_engine", None)
+    monkeypatch.setenv("LIBTMUX_ENGINE", " imsg ")
+
+    assert resolve_engine_spec() == EngineSpec.imsg()
+    assert isinstance(resolve_engine(), ImsgEngine)
+
+
+def test_libtmux_engine_env_explicit_engine_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit engine arguments beat ``LIBTMUX_ENGINE``."""
+    monkeypatch.setattr(libtmux_common, "_default_engine", None)
+    monkeypatch.setenv("LIBTMUX_ENGINE", "imsg")
+
+    assert resolve_engine_spec("subprocess") == EngineSpec.subprocess()
+    assert isinstance(resolve_engine("subprocess"), SubprocessEngine)
+
+
+def test_libtmux_engine_env_programmatic_default_wins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``set_default_engine`` overrides ``LIBTMUX_ENGINE``."""
+    default_engine = SubprocessEngine()
+    monkeypatch.setattr(libtmux_common, "_default_engine", None)
+    monkeypatch.setenv("LIBTMUX_ENGINE", "imsg")
+    libtmux_common.set_default_engine(default_engine)
+
+    assert resolve_engine_spec() == EngineSpec.subprocess()
+    assert resolve_engine() is default_engine
+
+
+def test_libtmux_engine_env_rejects_unknown_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid ``LIBTMUX_ENGINE`` values fail clearly."""
+    monkeypatch.setattr(libtmux_common, "_default_engine", None)
+    monkeypatch.setenv("LIBTMUX_ENGINE", "bogus")
+
+    with pytest.raises(exc.LibTmuxException, match="LIBTMUX_ENGINE"):
+        resolve_engine_spec()
+
+
+def test_tmux_cmd_from_request_uses_libtmux_engine_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prepared command execution uses the env-selected default engine."""
+    fake_engine = StaticEngine()
+
+    def create_fake_engine(
+        name: str | EngineKind,
+        *,
+        protocol_version: str | int | ImsgProtocolVersion | None = None,
+    ) -> StaticEngine:
+        assert name == "imsg"
+        assert protocol_version is None
+        return fake_engine
+
+    monkeypatch.setattr(libtmux_common, "_default_engine", None)
+    monkeypatch.setenv("LIBTMUX_ENGINE", "imsg")
+    monkeypatch.setattr(libtmux_common, "create_engine", create_fake_engine)
+
+    result = libtmux_common.tmux_cmd.from_request(
+        CommandRequest(args=("display-message", "hello")),
+    )
+
+    assert result.stdout == ["env-engine"]
+    assert fake_engine.requests == [
+        CommandRequest(args=("display-message", "hello")),
+    ]
 
 
 def test_resolve_engine_string_overloads() -> None:

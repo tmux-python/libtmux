@@ -84,7 +84,8 @@ class Server(
     engine : ``"subprocess"``, ``"imsg"``, \
         :class:`libtmux.engines.base.EngineSpec`, or \
         :class:`libtmux.engines.base.TmuxEngine`, optional
-        Command execution backend. Defaults to the subprocess engine.
+        Command execution backend. Defaults to ``LIBTMUX_ENGINE`` when set,
+        otherwise the subprocess engine.
     protocol_version : str or int, optional
         Binary protocol version hint for ``engine="imsg"``.
 
