@@ -323,7 +323,6 @@ def fetch_objs(
         *tmux_cmds,
         tmux_bin=server.tmux_bin,
         engine=server.engine,
-        protocol_version=server.protocol_version,
     )
 
     if proc.stderr:

@@ -484,7 +484,7 @@ def test_server_engine_spec_defaults_to_subprocess() -> None:
 
 
 def test_server_engine_spec_tracks_typed_imsg_configuration() -> None:
-    """Typed engine specs are preserved on the server object."""
+    """Advanced typed engine specs are preserved on the server object."""
     server = Server(engine=EngineSpec.imsg(ImsgProtocolVersion.V8))
     assert server.engine_spec == EngineSpec.imsg(ImsgProtocolVersion.V8)
     assert server.protocol_version == "8"
@@ -494,13 +494,36 @@ def test_server_engine_spec_tracks_typed_imsg_configuration() -> None:
 def test_server_engine_spec_rejects_legacy_protocol_hint() -> None:
     """EngineSpec and protocol_version cannot be combined."""
     with pytest.raises(ValueError, match="protocol_version"):
-        Server(engine=EngineSpec.imsg(), protocol_version="8")
+        Server(  # type: ignore[call-overload]
+            engine=EngineSpec.imsg(),
+            protocol_version="8",
+        )
 
 
 def test_tmux_cmd_engine_spec_rejects_legacy_protocol_hint() -> None:
     """tmux_cmd rejects mixed typed and legacy engine configuration."""
     with pytest.raises(ValueError, match="protocol_version"):
-        tmux_cmd("-V", engine=EngineSpec.subprocess(), protocol_version="8")
+        tmux_cmd(  # type: ignore[call-overload]
+            "-V",
+            engine=EngineSpec.subprocess(),
+            protocol_version="8",
+        )
+
+
+def test_tmux_cmd_requires_explicit_imsg_for_protocol_hint() -> None:
+    """Protocol hints require an explicit imsg selection."""
+    with pytest.raises(ValueError, match="explicit imsg"):
+        tmux_cmd("-V", protocol_version="8")  # type: ignore[call-overload]
+
+
+def test_tmux_cmd_rejects_protocol_hint_for_subprocess_string() -> None:
+    """The subprocess string path rejects protocol hints at runtime."""
+    with pytest.raises(ValueError, match="only valid for the imsg engine"):
+        tmux_cmd(  # type: ignore[call-overload]
+            "-V",
+            engine="subprocess",
+            protocol_version="8",
+        )
 
 
 def test_server_imsg_engine_spec_round_trip() -> None:
@@ -522,10 +545,25 @@ def test_server_imsg_engine_spec_round_trip() -> None:
 
 
 def test_server_legacy_imsg_string_configuration_remains_supported() -> None:
-    """Legacy string engine selection still normalizes to the typed spec."""
-    server = Server(engine="imsg", protocol_version="8")
+    """String-first imsg selection still normalizes to the typed spec."""
+    server = Server(engine="imsg", protocol_version=ImsgProtocolVersion.V8)
     assert server.engine_spec == EngineSpec.imsg(ImsgProtocolVersion.V8)
     assert isinstance(server.engine, ImsgEngine)
+
+
+def test_server_requires_explicit_imsg_for_protocol_hint() -> None:
+    """Servers reject protocol hints without an imsg engine selection."""
+    with pytest.raises(ValueError, match="explicit imsg"):
+        Server(protocol_version="8")
+
+
+def test_server_rejects_protocol_hint_for_subprocess_string() -> None:
+    """The subprocess string path rejects protocol hints on Server."""
+    with pytest.raises(ValueError, match="only valid for the imsg engine"):
+        Server(  # type: ignore[call-overload]
+            engine="subprocess",
+            protocol_version="8",
+        )
 
 
 def test_server_imsg_interactive_commands_fallback() -> None:

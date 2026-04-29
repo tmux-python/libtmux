@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+from typing_extensions import assert_type
+
 from libtmux.common import resolve_engine, resolve_engine_spec
 from libtmux.engines import (
     EngineKind,
@@ -70,3 +73,47 @@ def test_resolve_engine_spec_from_engine_spec() -> None:
     """Typed engine specs round-trip through normalization unchanged."""
     spec = EngineSpec.imsg(ImsgProtocolVersion.V8)
     assert resolve_engine_spec(spec) == spec
+
+
+def test_resolve_engine_string_overloads() -> None:
+    """Literal engine names resolve to concrete backend types."""
+    assert_type(resolve_engine("subprocess"), SubprocessEngine)
+    assert_type(resolve_engine("imsg"), ImsgEngine)
+    assert_type(
+        resolve_engine("imsg", protocol_version=ImsgProtocolVersion.V8),
+        ImsgEngine,
+    )
+
+
+def test_resolve_engine_spec_string_overloads() -> None:
+    """String-based engine specs stay type-checker friendly."""
+    assert_type(resolve_engine_spec("subprocess"), EngineSpec)
+    assert_type(resolve_engine_spec("imsg"), EngineSpec)
+    assert_type(
+        resolve_engine_spec("imsg", protocol_version=ImsgProtocolVersion.V8),
+        EngineSpec,
+    )
+
+
+def test_resolve_engine_spec_requires_explicit_imsg_for_protocol_hint() -> None:
+    """Protocol hints require the public imsg selection."""
+    with pytest.raises(ValueError, match="explicit imsg"):
+        resolve_engine_spec(protocol_version="8")  # type: ignore[call-overload]
+
+
+def test_resolve_engine_spec_rejects_protocol_hint_for_subprocess() -> None:
+    """Only the imsg engine accepts protocol hints."""
+    with pytest.raises(ValueError, match="only valid for the imsg engine"):
+        resolve_engine_spec(  # type: ignore[call-overload]
+            "subprocess",
+            protocol_version="8",
+        )
+
+
+def test_resolve_engine_spec_rejects_protocol_hint_for_engine_instance() -> None:
+    """Concrete engine instances already encode their protocol semantics."""
+    with pytest.raises(ValueError, match="concrete engine instance"):
+        resolve_engine_spec(  # type: ignore[call-overload]
+            SubprocessEngine(),
+            protocol_version="8",
+        )

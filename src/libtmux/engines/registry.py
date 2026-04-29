@@ -5,10 +5,18 @@ from __future__ import annotations
 import typing as t
 
 from libtmux import exc
-from libtmux.engines.base import EngineKind, TmuxEngine
+from libtmux.engines.base import (
+    EngineKind,
+    ImsgEngineName,
+    ImsgProtocolHint,
+    SubprocessEngineName,
+    TmuxEngine,
+)
 
 if t.TYPE_CHECKING:
+    from libtmux.engines.imsg import ImsgEngine
     from libtmux.engines.imsg.base import ImsgProtocolCodec
+    from libtmux.engines.subprocess import SubprocessEngine
 
 EngineFactory = t.Callable[..., TmuxEngine]
 ProtocolFactory = t.Callable[[], "ImsgProtocolCodec"]
@@ -27,10 +35,34 @@ def available_engines() -> tuple[str, ...]:
     return tuple(sorted(_engine_registry))
 
 
+@t.overload
+def create_engine(
+    name: SubprocessEngineName,
+    *,
+    protocol_version: None = None,
+) -> SubprocessEngine: ...
+
+
+@t.overload
+def create_engine(
+    name: ImsgEngineName,
+    *,
+    protocol_version: ImsgProtocolHint | None = None,
+) -> ImsgEngine: ...
+
+
+@t.overload
+def create_engine(
+    name: EngineKind,
+    *,
+    protocol_version: str | int | None = None,
+) -> TmuxEngine: ...
+
+
 def create_engine(
     name: str | EngineKind,
     *,
-    protocol_version: str | int | None = None,
+    protocol_version: ImsgProtocolHint | None = None,
 ) -> TmuxEngine:
     """Instantiate a named engine from the registry."""
     engine_name = name.value if isinstance(name, EngineKind) else name

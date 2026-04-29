@@ -52,6 +52,12 @@ class ImsgProtocolVersion(IntEnum):
     V8 = 8
 
 
+SubprocessEngineName: t.TypeAlias = t.Literal["subprocess"]
+ImsgEngineName: t.TypeAlias = t.Literal["imsg"]
+EngineName: t.TypeAlias = SubprocessEngineName | ImsgEngineName
+ImsgProtocolHint: t.TypeAlias = str | int | ImsgProtocolVersion
+
+
 @dataclass(frozen=True)
 class EngineSpec:
     """Typed engine configuration for libtmux callers."""
@@ -95,4 +101,4 @@ class TmuxEngine(t.Protocol):
         """Execute a tmux command and return a structured result."""
 
 
-EngineLike = TmuxEngine | EngineSpec | str | None
+EngineLike = TmuxEngine | EngineSpec | EngineName | None
