@@ -26,7 +26,12 @@ socket_name = f"libtmux_profile_{ENGINE}_{uuid.uuid4().hex[:6]}"
 boot = SubprocessEngine()
 boot.run(
     CommandRequest.from_args(
-        "-L", socket_name, "new-session", "-d", "-s", "bench",
+        "-L",
+        socket_name,
+        "new-session",
+        "-d",
+        "-s",
+        "bench",
     ),
 )
 
