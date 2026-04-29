@@ -98,6 +98,42 @@ reader thread never blocks on slow consumers. Subscriptions require
 `LibTmuxException` because they have no persistent connection on
 which to receive notifications.
 
+#### Pipelined batch dispatch via `Server.cmd_batch` / `engine.run_batch`
+
+For workloads that issue many tmux commands in sequence,
+`Server.cmd_batch` collapses N round-trips into one for the
+`control_mode` engine: all N command lines go out in one
+`stdin.write` + flush under one lock acquire; tmux's command queue
+processes them FIFO and emits N `%begin`/`%end` blocks in send order.
+
+```python
+results = server.cmd_batch(
+    [
+        ("new-window", "-d", "-n", "build"),
+        ("new-window", "-d", "-n", "test"),
+        ("new-window", "-d", "-n", "logs"),
+    ],
+)
+```
+
+The same uniform API exists on `subprocess` and `imsg` engines as a
+trivial `[engine.run(req) for req in requests]` loop — same per-call
+cost, no batching benefit, but the call site stays engine-agnostic.
+
+Microbench (3 repeats, median, 10-window `cmd_batch`):
+
+| Engine         | batch (10 windows) | per command |
+|----------------|--------------------|-------------|
+| `subprocess`   | 41.6 ms            | 4.16 ms     |
+| `imsg`         | 35.4 ms            | 3.54 ms     |
+| `control_mode` | **9.9 ms**         | **0.99 ms** |
+
+`control_mode` batched is ~4.2× faster than `subprocess` and ~3.6×
+faster than `imsg` per command on the pipelined path. Per-result
+error semantics match `Server.cmd`: a tmux `%error` becomes
+`returncode=1` plus `stderr=[message]`, never an exception. Engine-
+broken errors (broken pipe / EOF) raise as they do for single calls.
+
 #### pytest plugin: `--engine=control_mode` option
 
 `pytest --engine=control_mode` wires the `server` and `TestServer`

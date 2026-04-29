@@ -64,6 +64,53 @@ Reproduce the numbers locally:
 $ python .claude/skills/libtmux-profiler/scripts/bench-engines-ab.py
 ```
 
+## Batch dispatch (`Server.cmd_batch`)
+
+For workloads that issue many tmux commands in a row — creating N
+windows, renaming N sessions, querying N panes — `Server.cmd_batch`
+amortises per-call overhead. Each entry in the input is the same
+shape as one set of arguments to {meth}`Server.cmd`:
+
+```python
+import libtmux
+
+server = libtmux.Server(socket_name="dev", engine="control_mode")
+server.new_session(session_name="primary")
+
+results = server.cmd_batch(
+    [
+        ("new-window", "-d", "-n", "build"),
+        ("new-window", "-d", "-n", "test"),
+        ("new-window", "-d", "-n", "logs"),
+    ],
+)
+for result in results:
+    assert result.returncode == 0
+```
+
+The win is engine-specific:
+
+* On **`control_mode`**, all N command lines go out in one
+  `stdin.write` + flush; the lock is acquired once across the whole
+  batch; tmux's command queue (`cmd-queue.c:315`) processes the lines
+  FIFO and emits N `%begin`/`%end` blocks in send order. **~4×
+  speedup over single-call `Server.cmd` loops** on a 10-window batch
+  (see the bench numbers in
+  `.claude/skills/libtmux-profiler/reference/engine-perf-strategies.md`).
+* On **`subprocess`** and **`imsg`**, `cmd_batch` is a trivial loop
+  over `cmd()` — same per-call cost, uniform API. Useful for code
+  that wants to support engine-agnostic batch shapes.
+
+Per-result error semantics match {meth}`Server.cmd`: a tmux-side
+`%error` becomes `returncode=1` plus populated `stderr` — never an
+exception. Engine-broken errors (broken pipe / EOF on
+`control_mode`) raise as they do for single calls.
+
+`cmd_batch` keeps the {meth}`Server._engine_for_command` carve-out
+per command, so an `attach-session` mid-batch still falls through to
+the subprocess engine. Mixing engines in one batch loses the
+pipelining benefit; keep batches engine-uniform to retain the win.
+
 ## Subscriptions (`control_mode` only)
 
 The control-mode engine surfaces tmux's `refresh-client -B` mechanism

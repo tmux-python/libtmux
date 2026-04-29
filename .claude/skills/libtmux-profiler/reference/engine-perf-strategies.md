@@ -143,28 +143,84 @@ control_mode (which we already have). Possible micro-wins:
 Realistic ceiling: 10 % via micro-wins; significantly more is a
 protocol redesign.
 
-### `control_mode` — pipelining is the next big win
+### `control_mode` — pipelining is shipped
 
-The remaining cost is **necessary wait time** for tmux to actually
-process commands. Two structural ideas:
+**Shipped on this branch:** `engine.run_batch(requests)` and
+`Server.cmd_batch(commands)` issue N command lines in one
+`stdin.write` + `flush`, then drain N `Block` events from the
+response queue in order. tmux's command parser FIFOs the lines via
+`cmd-queue.c:315`, so the i-th block is the i-th request's response.
+Lock + flush amortise once across the whole batch instead of once per
+call.
 
-* **Pipelining**: batch multiple commands in one `;`-separated
-  send, drain the responses in order. tmux's command parser
-  accepts `cmd1 ; cmd2 ; cmd3` on a single line. For loops like
-  `for window in session.windows: window.rename(...)`, this
-  collapses N round-trips into one. Engine-level support: a
-  `ControlModeEngine.run_batch(requests)` method that issues the
-  semicolon-joined line, parses N `Block` events in order. Would
-  also need a high-level libtmux API to drive it (e.g. a context
-  manager that buffers commands).
+**Worked example:**
+
+```python
+import libtmux
+server = libtmux.Server(socket_name="dev", engine="control_mode")
+server.new_session(session_name="primary")
+
+# Create 10 windows in one round-trip:
+results = server.cmd_batch(
+    [("new-window", "-d", "-n", f"w{i}") for i in range(10)],
+)
+assert all(r.returncode == 0 for r in results)
+```
+
+**Wire path** (verified from the `_send_batch` helper):
+
+* The combined `b"new-window -d -n w0\nnew-window -d -n w1\n..."`
+  hits the kernel pipe in one `write(2)` syscall.
+* tmux's `evbuffer_readln` (`control.c:557`) splits on `\n` and
+  appends each command to its queue.
+* The reader thread receives N `%begin`/`%end` blocks, parser emits
+  N `Block` events in order, all routed to the response queue
+  before `cmd_batch` starts draining.
+
+**Measured wins** on this branch's workload bench (3 repeats,
+median, 10-window cmd_batch):
+
+| engine         | batch (10 windows) | per command |
+|----------------|--------------------|-------------|
+| `subprocess`   | 41.6 ms            | 4.16 ms     |
+| `imsg`         | 35.4 ms            | 3.54 ms     |
+| `control_mode` | **9.9 ms**         | **0.99 ms** |
+
+`control_mode` batched is **4.2× faster than `subprocess`** and
+**3.6× faster than `imsg`** per command on the pipelined path.
+Subprocess and imsg run `[self.run(req) for req in requests]` so
+they pay the same per-call cost as a single call — the API is
+uniform, the speedup is engine-specific.
+
+**Caveats:**
+
+* `attach-session` mid-batch falls through to the subprocess engine
+  (per `_engine_for_command`), which forces `Server.cmd_batch` onto
+  the slow per-command path. Keep batches engine-uniform.
+* The whole batch happens under one lock acquire, so concurrent
+  `run()` from another thread blocks until the batch finishes.
+  Same serialisation contract as today.
+* Engine-broken errors (broken pipe / EOF mid-batch) raise
+  `TmuxControlModeError` — partial results are not returned because
+  the connection is gone. Per-command tmux `%error` *does* surface
+  as `returncode=1` per result.
+
+**Remaining future strategies:**
+
 * **`Event` + result slot instead of `queue.Queue`**: `Queue.get`
   acquires the queue's internal lock and condition variable. A
   per-call `threading.Event` paired with a result-holder is one
-  lock acquisition vs 2-3. Microsecond-scale win; worth it only if
-  combined with pipelining (which would issue many `Event` waits).
-
-Realistic ceiling: 10–20 % via primitives; up to 5–10× for batch
-workloads via pipelining (when the workload allows it).
+  lock acquisition vs 2–3. Microsecond-scale win; worth pursuing
+  only if a workload profile shows queue overhead in the hot path.
+* **`Server.batch()` context manager**: a more fluent API for
+  callers that want to accumulate commands at runtime
+  (`with server.batch() as b: ...`). Layers over `cmd_batch`; not
+  a perf change.
+* **Mixed-engine batching via partition**: detect the carve-out
+  inside `cmd_batch` and split the input into engine-uniform sub-
+  batches automatically, preserving the pipelining benefit even
+  when one stray `attach-session` is present. Not implemented;
+  the current explicit-uniform contract keeps the path simple.
 
 ## When to use which engine
 
