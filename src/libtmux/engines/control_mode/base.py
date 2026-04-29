@@ -11,8 +11,11 @@ The reader thread owns the read side end-to-end:
 * It drives a :mod:`selectors` loop on the stdout fd.
 * Bytes are fed into a :class:`~libtmux.engines.control_mode.parser.ControlParser`.
 * :class:`~libtmux.engines.control_mode.parser.Block` events are
-  routed to a per-engine response :class:`queue.Queue`, which the
-  blocking ``run()`` call pops.
+  routed to a FIFO of per-call ``_PendingSlot`` (a
+  :class:`threading.Event` + result holder) appended by
+  ``run()``/``run_batch()`` before writing to stdin. The reader pops
+  the head slot, fills its result, and signals the event; the
+  caller's ``Event.wait()`` returns and reads the result.
 * :class:`~libtmux.engines.control_mode.parser.Notification` events
   are DEBUG-logged here; the subscription dispatcher in step 5 will
   route them to user-facing queues.
@@ -33,6 +36,7 @@ Cleanup is defence-in-depth (step 4 of the plan):
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import logging
 import os
@@ -110,9 +114,30 @@ class _ParsedRequest:
 
 @dataclass(slots=True)
 class _ReaderError:
-    """Sentinel placed on the response queue when the reader thread dies."""
+    """Sentinel placed in a slot when the reader thread marks the engine broken."""
 
     cause: BaseException
+
+
+@dataclass(slots=True)
+class _PendingSlot:
+    """Per-call wait primitive: result holder + Event signal.
+
+    Replaces the previous ``queue.Queue[Block | _ReaderError]``
+    response-routing channel. ``queue.Queue`` is the textbook fit
+    for multi-producer/multi-consumer flows; control mode is strict
+    SPSC (one reader thread produces, one ``run()`` caller consumes
+    in order), so the queue's mutex + condition + not_full bookkeeping
+    is overhead we can shed. A bare ``threading.Event`` plus a
+    pre-allocated result slot does the synchronisation we actually
+    need: the producer fills ``result`` and calls ``event.set()``; the
+    consumer ``event.wait(timeout)`` then reads ``result``. The
+    ``Event`` already provides the memory-fence guarantee on the
+    set/wait pair so the result write is observable to the consumer.
+    """
+
+    event: threading.Event = field(default_factory=threading.Event)
+    result: Block | _ReaderError | None = None
 
 
 @dataclass(slots=True)
@@ -128,9 +153,25 @@ class _Subprocess:
     reader: threading.Thread
     stop_event: threading.Event
     parser: ControlParser
-    response_queue: queue.Queue[Block | _ReaderError] = field(
-        default_factory=queue.Queue,
+    pending_slots: collections.deque[_PendingSlot] = field(
+        default_factory=collections.deque,
     )
+    """FIFO of slots awaiting a Block.
+
+    Producers (``_send_command`` / ``_send_batch``) append slots
+    before writing to stdin; the reader thread pops from the head as
+    Blocks arrive. Mutated under ``pending_lock``.
+    """
+    pending_lock: threading.Lock = field(default_factory=threading.Lock)
+    """Guards ``pending_slots`` and the ``broken`` field for the
+    drain-and-wake path.
+
+    CPython's GIL would make ``deque.append`` / ``popleft`` atomic in
+    isolation, but the broken-engine teardown drains *all* pending
+    slots into a snapshot list and signals each — that compound
+    sequence has to be atomic against fresh appends from
+    ``_send_command``.
+    """
     broken: TmuxControlModeError | None = None
     global_args: tuple[str, ...] = ()
     subscribers: dict[str, Subscription] = field(default_factory=dict)
@@ -257,8 +298,11 @@ class ControlModeEngine:
             state = self._ensure_started(request, parsed)
             if state.broken is not None:
                 raise state.broken
+            slot = _PendingSlot()
+            with state.pending_lock:
+                state.pending_slots.append(slot)
             self._send_command(state, parsed)
-            response = self._await_response(state)
+            response = self._await_response(state, slot)
 
         return self._build_result(request, parsed, response)
 
@@ -314,10 +358,21 @@ class ControlModeEngine:
             state = self._ensure_started(requests[0], parsed_list[0])
             if state.broken is not None:
                 raise state.broken
+            # Allocate one slot per request before any wire I/O so the
+            # reader thread sees the slots ready by the time the first
+            # %end block lands.
+            slots = [_PendingSlot() for _ in parsed_list]
+            with state.pending_lock:
+                state.pending_slots.extend(slots)
             self._send_batch(state, parsed_list)
             results: list[CommandResult] = []
-            for request, parsed in zip(requests, parsed_list, strict=True):
-                response = self._await_response(state)
+            for request, parsed, slot in zip(
+                requests,
+                parsed_list,
+                slots,
+                strict=True,
+            ):
+                response = self._await_response(state, slot)
                 results.append(self._build_result(request, parsed, response))
         return results
 
@@ -432,24 +487,29 @@ class ControlModeEngine:
         engine broken so the user's first ``run()`` reports a clean
         error rather than a mysterious empty result.
         """
-        try:
-            event = state.response_queue.get(timeout=_STARTUP_TIMEOUT)
-        except queue.Empty:
+        slot = _PendingSlot()
+        with state.pending_lock:
+            state.pending_slots.append(slot)
+        if not slot.event.wait(timeout=_STARTUP_TIMEOUT):
+            with state.pending_lock, contextlib.suppress(ValueError):
+                state.pending_slots.remove(slot)
             err = TmuxControlModeError(
                 f"tmux -C did not send a startup ack within {_STARTUP_TIMEOUT}s",
             )
             _mark_broken(state, err)
             return
-        if isinstance(event, _ReaderError):
+        if isinstance(slot.result, _ReaderError):
             return
-        if event.flags != 0:
+        block = slot.result
+        assert isinstance(block, Block)
+        if block.flags != 0:
             # Unexpected: the first block was apparently a real response,
             # which would only happen if the user's run() raced past us
             # — log loudly so this isn't silently dropped.
             logger.warning(
                 "tmux control-mode dropped non-startup block during init",
                 extra={
-                    "tmux_cm_block_id": event.number,
+                    "tmux_cm_block_id": block.number,
                     "tmux_cm_proc_pid": state.proc.pid,
                 },
             )
@@ -495,22 +555,30 @@ class ControlModeEngine:
             assert state.broken is not None
             raise state.broken from error
 
-    def _await_response(self, state: _Subprocess) -> Block:
-        try:
-            event = state.response_queue.get(timeout=self._run_timeout)
-        except queue.Empty as error:
+    def _await_response(
+        self,
+        state: _Subprocess,
+        slot: _PendingSlot,
+    ) -> Block:
+        if not slot.event.wait(timeout=self._run_timeout):
             msg = (
                 "tmux control-mode timed out after "
                 f"{self._run_timeout}s waiting for a response"
             )
             err = TmuxControlModeError(msg)
+            # Drop the dead slot so a late-arriving Block can't fill
+            # an unrelated future call's slot at the same position.
+            with state.pending_lock, contextlib.suppress(ValueError):
+                state.pending_slots.remove(slot)
             _mark_broken(state, err)
-            raise err from error
+            raise err
 
-        if isinstance(event, _ReaderError):
+        result = slot.result
+        if isinstance(result, _ReaderError):
             assert state.broken is not None
-            raise state.broken from event.cause
-        return event
+            raise state.broken from result.cause
+        assert isinstance(result, Block)
+        return result
 
     def _build_result(
         self,
@@ -756,7 +824,19 @@ def _reader_handle_stderr(state: _Subprocess) -> None:
 def _drain_events(state: _Subprocess) -> None:
     for event in state.parser.events():
         if isinstance(event, Block):
-            state.response_queue.put(event)
+            with state.pending_lock:
+                slot = state.pending_slots.popleft() if state.pending_slots else None
+            if slot is not None:
+                slot.result = event
+                slot.event.set()
+            else:
+                logger.warning(
+                    "tmux control-mode dropped block with no waiter",
+                    extra={
+                        "tmux_cm_block_id": event.number,
+                        "tmux_cm_proc_pid": state.proc.pid,
+                    },
+                )
         elif isinstance(event, SubscriptionChangedNotification):
             sub = state.subscribers.get(event.name)
             if sub is not None:
@@ -796,7 +876,17 @@ def _mark_broken(state: _Subprocess, cause: BaseException) -> None:
         state.broken = TmuxControlModeError(
             f"tmux control-mode connection lost: {cause}",
         )
-    state.response_queue.put(_ReaderError(cause=cause))
+    # Wake every pending waiter with a _ReaderError sentinel so they
+    # raise instead of timing out. Drain into a snapshot under the
+    # lock so concurrent appends from a fresh _send_command can't
+    # race past us.
+    err = _ReaderError(cause=cause)
+    with state.pending_lock:
+        slots = list(state.pending_slots)
+        state.pending_slots.clear()
+    for slot in slots:
+        slot.result = err
+        slot.event.set()
 
 
 def _shutdown_subprocess(state: _Subprocess) -> None:
