@@ -263,6 +263,18 @@ class ImsgEngine:
             self._resolved_tmux_bin = resolved
         return self._resolved_tmux_bin
 
+    def run_batch(
+        self,
+        requests: t.Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Trivial loop — imsg engine opens a fresh socket per call, no batching benefit.
+
+        Provided for uniform API with the control-mode engine; callers
+        can use ``run_batch`` regardless of engine and get the right
+        ordered list of results.
+        """
+        return [self.run(req) for req in requests]
+
     def _parse_args(self, args: tuple[str, ...]) -> _ImsgCommandArgs:
         global_args: list[str] = []
         command_argv: list[str] = []

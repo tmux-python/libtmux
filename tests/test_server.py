@@ -44,6 +44,13 @@ class RecordingEngine:
         self.requests.append(request)
         return self._delegate.run(request)
 
+    def run_batch(
+        self,
+        requests: t.Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Trivial loop — proxy engine has no batching benefit."""
+        return [self.run(req) for req in requests]
+
 
 def test_has_session(server: Server, session: Session) -> None:
     """Server.has_session() returns True if session exists."""

@@ -93,6 +93,48 @@ def test_create_control_mode_engine_returns_engine() -> None:
     assert isinstance(engine, ControlModeEngine)
 
 
+def test_run_batch_empty_returns_empty_list() -> None:
+    """``run_batch([])`` is a no-op on every engine and returns ``[]``."""
+    for engine in (SubprocessEngine(), ImsgEngine(protocol_version="8")):
+        assert engine.run_batch([]) == []
+
+
+def test_static_engine_run_batch_falls_back_to_loop() -> None:
+    """Custom engines without an override get the trivial ``run_batch`` shape.
+
+    A lightweight engine implementing only ``run`` and the trivial
+    loop returns ``len(requests)`` results in send order. This is the
+    semantic ``SubprocessEngine`` and ``ImsgEngine`` ship with.
+    """
+
+    class _LoopingEngine:
+        def run(self, request: CommandRequest) -> CommandResult:
+            return CommandResult(
+                cmd=["tmux", *request.args],
+                stdout=[" ".join(request.args)],
+                stderr=[],
+                returncode=0,
+                process=None,
+            )
+
+        def run_batch(
+            self,
+            requests: t.Sequence[CommandRequest],
+        ) -> list[CommandResult]:
+            return [self.run(req) for req in requests]
+
+    engine = _LoopingEngine()
+    requests = [
+        CommandRequest.from_args("display-message", "-p", "first"),
+        CommandRequest.from_args("display-message", "-p", "second"),
+        CommandRequest.from_args("display-message", "-p", "third"),
+    ]
+    results = engine.run_batch(requests)
+
+    assert len(results) == 3
+    assert [r.stdout[0].split()[-1] for r in results] == ["first", "second", "third"]
+
+
 def test_control_mode_engine_run_rejects_empty_command() -> None:
     """``run()`` requires a tmux subcommand and refuses bare global flags."""
     engine = ControlModeEngine()

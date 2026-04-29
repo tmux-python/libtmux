@@ -7,6 +7,7 @@ import pathlib
 import shlex
 import shutil
 import subprocess
+import typing as t
 
 from libtmux import exc
 from libtmux.engines.base import CommandRequest, CommandResult
@@ -77,6 +78,18 @@ class SubprocessEngine:
             returncode=returncode,
             process=process,
         )
+
+    def run_batch(
+        self,
+        requests: t.Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Trivial loop — subprocess engine forks per call, no batching benefit.
+
+        Provided for uniform API with the control-mode engine; callers
+        can use ``run_batch`` regardless of engine and get the right
+        ordered list of results.
+        """
+        return [self.run(req) for req in requests]
 
 
 register_engine("subprocess", SubprocessEngine)

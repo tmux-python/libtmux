@@ -107,5 +107,24 @@ class TmuxEngine(t.Protocol):
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute a tmux command and return a structured result."""
 
+    def run_batch(
+        self,
+        requests: t.Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Execute a sequence of tmux commands and return ordered results.
+
+        The returned list has the same length as *requests*, with the
+        ``i``-th result corresponding to the ``i``-th request in send
+        order. Each result mirrors the single-call ``run()`` semantics:
+        a tmux-side ``%error`` becomes ``returncode=1`` plus
+        ``stderr=[error message]``; only engine-broken errors raise.
+
+        Engines that hold a persistent connection (currently only
+        ``ControlModeEngine``) override this to pipeline writes for a
+        meaningful speedup. Stateless engines (``SubprocessEngine``,
+        ``ImsgEngine``) implement it as a trivial loop over ``run()``
+        — same behaviour, no batch benefit, uniform API.
+        """
+
 
 EngineLike = TmuxEngine | EngineSpec | EngineName | None

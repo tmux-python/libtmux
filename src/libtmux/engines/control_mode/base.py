@@ -262,6 +262,18 @@ class ControlModeEngine:
 
         return self._build_result(request, parsed, response)
 
+    def run_batch(
+        self,
+        requests: t.Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Pipelined batch: one lock acquire, one stdin write, N drains.
+
+        Currently implemented as a trivial loop while the optimised
+        path lands in step 12b. The fall-back keeps the API uniform
+        and tests can target ``run_batch`` directly.
+        """
+        return [self.run(req) for req in requests]
+
     # ---------------------------------------------------------- internals --
 
     def _ensure_started(
