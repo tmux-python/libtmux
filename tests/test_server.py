@@ -11,13 +11,28 @@ import typing as t
 
 import pytest
 
+from libtmux.engines import CommandRequest, CommandResult, ImsgEngine, SubprocessEngine
 from libtmux.server import Server
+from libtmux.test.random import namer
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
+
+
+class RecordingEngine:
+    """Proxy engine that captures executed commands for assertions."""
+
+    def __init__(self) -> None:
+        self._delegate = SubprocessEngine()
+        self.requests: list[CommandRequest] = []
+
+    def run(self, request: CommandRequest) -> CommandResult:
+        """Delegate tmux execution while recording the original request."""
+        self.requests.append(request)
+        return self._delegate.run(request)
 
 
 def test_has_session(server: Server, session: Session) -> None:
@@ -438,6 +453,47 @@ def test_tmux_bin_custom_path(caplog: pytest.LogCaptureFixture) -> None:
     finally:
         if s.is_alive():
             s.kill()
+
+
+def test_server_uses_injected_engine() -> None:
+    """Server executes commands via the supplied engine."""
+    engine = RecordingEngine()
+    socket_name = f"libtmux_test{next(namer)}"
+
+    with Server(socket_name=socket_name, engine=engine) as server:
+        session = server.new_session()
+        assert engine.requests
+        assert any("new-session" in request.args for request in engine.requests), (
+            "new-session should be recorded"
+        )
+        session.kill()
+
+
+def test_server_imsg_engine_round_trip() -> None:
+    """Server works end-to-end with the native imsg engine."""
+    socket_name = f"libtmux_test{next(namer)}"
+    with Server(socket_name=socket_name, engine="imsg") as server:
+        session = server.new_session(session_name=f"imsg-{next(namer)}")
+        assert isinstance(server.engine, ImsgEngine)
+        assert session.session_id is not None
+        assert server.has_session(session.session_name or "")
+        window = session.new_window(window_name="imsg")
+        pane = window.split()
+        assert pane.pane_id is not None
+        session.kill()
+
+
+def test_server_imsg_interactive_commands_fallback() -> None:
+    """Interactive commands stay on the subprocess engine for imsg servers."""
+    server = Server(socket_name=f"libtmux_test{next(namer)}", engine="imsg")
+    try:
+        attach_engine = server._engine_for_command("attach-session")
+        switch_engine = server._engine_for_command("switch-client")
+        assert isinstance(attach_engine, SubprocessEngine)
+        assert isinstance(switch_engine, SubprocessEngine)
+    finally:
+        if server.is_alive():
+            server.kill()
 
 
 def test_tmux_bin_invalid_path() -> None:

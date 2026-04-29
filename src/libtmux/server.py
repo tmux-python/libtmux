@@ -10,14 +10,15 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
-import shutil
 import subprocess
 import typing as t
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
+from libtmux.common import resolve_engine, tmux_cmd
 from libtmux.constants import OptionScope
+from libtmux.engines.base import TmuxEngine
+from libtmux.engines.subprocess import SubprocessEngine
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
 from libtmux.pane import Pane
@@ -72,6 +73,10 @@ class Server(
     on_init : callable, optional
     socket_name_factory : callable, optional
     tmux_bin : str or pathlib.Path, optional
+    engine : :class:`libtmux.engines.base.TmuxEngine` or str, optional
+        Command execution backend. Defaults to the subprocess engine.
+    protocol_version : str or int, optional
+        Binary protocol version hint when using the imsg engine.
 
     Examples
     --------
@@ -130,6 +135,8 @@ class Server(
     """For hook management."""
     tmux_bin: str | None = None
     """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
+    protocol_version: str | None = None
+    """Preferred protocol version for binary engines."""
 
     def __init__(
         self,
@@ -140,12 +147,19 @@ class Server(
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         tmux_bin: str | pathlib.Path | None = None,
+        engine: TmuxEngine | str | None = None,
+        protocol_version: str | int | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self.protocol_version = (
+            str(protocol_version) if protocol_version is not None else None
+        )
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
+        self.engine = resolve_engine(engine, protocol_version=self.protocol_version)
+        self._subprocess_engine: TmuxEngine = SubprocessEngine()
 
         if socket_path is not None:
             self.socket_path = socket_path
@@ -233,22 +247,14 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        resolved = self.tmux_bin or shutil.which("tmux")
-        if resolved is None:
-            raise exc.TmuxCommandNotFound
-
-        cmd_args: list[str] = ["list-sessions"]
-        if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
-        if self.config_file:
-            cmd_args.insert(0, f"-f{self.config_file}")
-
-        try:
-            subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
+        proc = self.cmd("list-sessions")
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(
+                proc.returncode,
+                proc.cmd,
+                output="\n".join(proc.stdout),
+                stderr="\n".join(proc.stderr),
+            )
 
     #
     # Command
@@ -324,7 +330,20 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        command_engine = self._engine_for_command(cmd)
+        return tmux_cmd(
+            *svr_args,
+            *cmd_args,
+            tmux_bin=self.tmux_bin,
+            engine=command_engine,
+            protocol_version=self.protocol_version,
+        )
+
+    def _engine_for_command(self, cmd: str) -> TmuxEngine:
+        """Resolve the engine for a specific tmux subcommand."""
+        if cmd in {"attach-session", "switch-client"}:
+            return self._subprocess_engine
+        return self.engine
 
     @property
     def attached_sessions(self) -> list[Session]:

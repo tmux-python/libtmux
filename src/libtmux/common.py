@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import functools
 import logging
+import pathlib
 import re
 import shlex
-import shutil
-import subprocess
 import sys
 import typing as t
 
 from . import exc
 from ._compat import LooseVersion
+from .engines import CommandRequest, CommandResult, TmuxEngine, create_engine
+from .engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -221,8 +222,23 @@ class EnvironmentMixin:
         return opts_dict.get(name)
 
 
+_default_engine: TmuxEngine = SubprocessEngine()
+
+
+def _apply_result(target: tmux_cmd | None, result: CommandResult) -> tmux_cmd:
+    cmd_obj: tmux_cmd = object.__new__(tmux_cmd) if target is None else target
+
+    cmd_obj.cmd = list(result.cmd)
+    cmd_obj.stdout = result.stdout
+    cmd_obj.stderr = result.stderr
+    cmd_obj.returncode = result.returncode
+    cmd_obj.process = result.process
+
+    return cmd_obj
+
+
 class tmux_cmd:
-    """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
+    """Run any :term:`tmux(1)` command through the configured engine.
 
     Examples
     --------
@@ -250,65 +266,37 @@ class tmux_cmd:
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
-        resolved = tmux_bin or shutil.which("tmux")
-        if not resolved:
-            raise exc.TmuxCommandNotFound
+    cmd: list[str]
+    stdout: list[str]
+    stderr: list[str]
+    returncode: int
+    process: object | None
 
-        cmd = [resolved]
-        cmd += args  # add the command arguments to cmd
-        cmd = [str(c) for c in cmd]
-
-        self.cmd = cmd
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | pathlib.Path | None = None,
+        engine: TmuxEngine | str | None = None,
+        protocol_version: str | int | None = None,
+    ) -> None:
+        resolved_engine = resolve_engine(engine, protocol_version=protocol_version)
+        request = CommandRequest.from_args(*args, tmux_bin=tmux_bin)
+        cmd_preview = [request.tmux_bin or "tmux", *request.args]
 
         if logger.isEnabledFor(logging.DEBUG):
-            cmd_str = shlex.join(cmd)
             logger.debug(
                 "tmux command dispatched",
-                extra={"tmux_cmd": cmd_str},
+                extra={"tmux_cmd": shlex.join(cmd_preview)},
             )
 
-        try:
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                errors="backslashreplace",
-            )
-            stdout, stderr = self.process.communicate()
-            returncode = self.process.returncode
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
-        except Exception:
-            logger.error(  # noqa: TRY400
-                "tmux subprocess failed",
-                extra={
-                    "tmux_cmd": shlex.join(cmd),
-                },
-            )
-            raise
-
-        self.returncode = returncode
-
-        stdout_split = stdout.split("\n")
-        # remove trailing newlines from stdout
-        while stdout_split and stdout_split[-1] == "":
-            stdout_split.pop()
-
-        stderr_split = stderr.split("\n")
-        self.stderr = list(filter(None, stderr_split))  # filter empty values
-
-        if "has-session" in cmd and len(self.stderr) and not stdout_split:
-            self.stdout = [self.stderr[0]]
-        else:
-            self.stdout = stdout_split
+        result = resolved_engine.run(request)
+        _apply_result(self, result)
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "tmux command completed",
                 extra={
-                    "tmux_cmd": shlex.join(cmd),
+                    "tmux_cmd": shlex.join(self.cmd),
                     "tmux_exit_code": self.returncode,
                     "tmux_stdout": self.stdout[:100],
                     "tmux_stderr": self.stderr[:100],
@@ -316,6 +304,47 @@ class tmux_cmd:
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    @classmethod
+    def from_result(cls, result: CommandResult) -> tmux_cmd:
+        """Create a :class:`tmux_cmd` from a raw engine result."""
+        return _apply_result(None, result)
+
+    @classmethod
+    def from_request(
+        cls,
+        request: CommandRequest,
+        *,
+        engine: TmuxEngine | str | None = None,
+        protocol_version: str | int | None = None,
+    ) -> tmux_cmd:
+        """Create a :class:`tmux_cmd` by executing a prepared request."""
+        resolved_engine = resolve_engine(engine, protocol_version=protocol_version)
+        return cls.from_result(resolved_engine.run(request))
+
+
+def get_default_engine() -> TmuxEngine:
+    """Return the global default engine."""
+    return _default_engine
+
+
+def set_default_engine(engine: TmuxEngine) -> None:
+    """Override the global default engine."""
+    global _default_engine
+    _default_engine = engine
+
+
+def resolve_engine(
+    engine: TmuxEngine | str | None = None,
+    *,
+    protocol_version: str | int | None = None,
+) -> TmuxEngine:
+    """Resolve a concrete engine instance from a public spec."""
+    if engine is None:
+        return _default_engine
+    if isinstance(engine, str):
+        return create_engine(engine, protocol_version=protocol_version)
+    return engine
 
 
 @functools.lru_cache(maxsize=8)
