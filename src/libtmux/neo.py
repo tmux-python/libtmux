@@ -10,7 +10,8 @@ import typing as t
 from collections.abc import Iterable
 
 from libtmux import exc
-from libtmux.common import tmux_cmd
+from libtmux.common import _run_command, tmux_cmd
+from libtmux.engines import CommandRequest
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -319,10 +320,16 @@ def fetch_objs(
             },
         )
 
-    proc = tmux_cmd(
-        *tmux_cmds,
-        tmux_bin=server.tmux_bin,
-        engine=server.engine,
+    # Skip the ``tmux_cmd.__init__`` dispatch path: ``_run_command`` is
+    # what ``Server.cmd`` already uses on its hot path. The constructor
+    # additionally re-resolves the engine (we already have the
+    # resolved one in ``server.engine``) and indirectly ends up here
+    # anyway.
+    proc = tmux_cmd.from_result(
+        _run_command(
+            CommandRequest.from_args(*tmux_cmds, tmux_bin=server.tmux_bin),
+            server.engine,
+        ),
     )
 
     if proc.stderr:
