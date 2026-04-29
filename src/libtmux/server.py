@@ -22,7 +22,7 @@ from libtmux.common import (
     tmux_cmd,
 )
 from libtmux.constants import OptionScope
-from libtmux.engines import CommandRequest
+from libtmux.engines import CommandRequest, CommandResult
 from libtmux.engines.base import (
     ControlModeEngineName,
     EngineKind,
@@ -526,18 +526,23 @@ class Server(
             )
             engines.append(self._engine_for_command(cmd_name))
 
-        # Fast path: every command routes to the same engine instance —
-        # use that engine's run_batch (pipelining benefit on
-        # ControlModeEngine, trivial loop on subprocess/imsg).
-        first_engine = engines[0]
-        if all(eng is first_engine for eng in engines):
-            results = first_engine.run_batch(requests)
-        else:
-            # Mixed-engine batch: each command goes to its assigned
-            # engine. Loses pipelining but preserves the per-command
-            # carve-out semantic (e.g. ``attach-session`` always
-            # subprocess).
-            results = [eng.run(req) for eng, req in zip(engines, requests, strict=True)]
+        # Auto-partition into engine-uniform contiguous runs and
+        # ``run_batch`` each run separately. Preserves the carve-out
+        # contract (``attach-session`` always subprocess) AND keeps the
+        # pipelining benefit for the surrounding commands. Common case
+        # — all commands on one engine — collapses to one ``run_batch``
+        # call against the whole list.
+        results: list[CommandResult] = []
+        run_start = 0
+        while run_start < len(engines):
+            run_end = run_start + 1
+            current_engine = engines[run_start]
+            while run_end < len(engines) and engines[run_end] is current_engine:
+                run_end += 1
+            results.extend(
+                current_engine.run_batch(requests[run_start:run_end]),
+            )
+            run_start = run_end
         return [tmux_cmd.from_result(r) for r in results]
 
     def _build_svr_prefix(self) -> tuple[str, ...]:

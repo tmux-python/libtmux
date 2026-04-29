@@ -585,23 +585,24 @@ def test_server_cmd_batch_uses_engine_run_batch_when_uniform() -> None:
     assert len(engine.batch_calls[0]) == 2
 
 
-def test_server_cmd_batch_falls_back_per_command_when_mixed_engine() -> None:
-    """``attach-session`` mid-batch routes to the subprocess engine carve-out.
+def test_server_cmd_batch_partitions_mixed_engine_into_uniform_runs() -> None:
+    """Mixed-engine batches partition into engine-uniform contiguous runs.
 
-    The fast path requires uniform routing; mixing engines drops back
-    to per-command ``engine.run`` so the carve-out remains correct
-    even at the cost of pipelining.
+    A batch of [user, user, carve-out, user, user] dispatches as three
+    sub-batches: a 2-element run_batch on the user engine, a 1-element
+    run_batch on the carve-out, then another 2-element run_batch on
+    the user engine. This preserves the carve-out routing contract
+    *and* keeps the pipelining benefit for the surrounding commands.
     """
     engine = RecordingBatchEngine()
     socket_name = f"libtmux_test{next(namer)}"
 
     with Server(socket_name=socket_name, engine=engine) as server:
-        server.cmd("new-session", "-d", "-s", "mixed")
-        # Force one command in the batch onto the subprocess carve-out
-        # engine so the batch is genuinely mixed. ``attach-session`` is
-        # the canonical carve-out but actually attaching against a
-        # non-tty errors; monkeypatching the resolver lets us simulate
-        # the routing without driving a tty.
+        server.cmd("new-session", "-d", "-s", "partitioned")
+        # Force one command onto the subprocess carve-out engine so
+        # the batch is genuinely mixed. ``attach-session`` is the
+        # canonical carve-out; monkeypatch the resolver to simulate
+        # routing without driving a real tty.
         original = server._engine_for_command
 
         def patched(cmd: str) -> TmuxEngine:
@@ -615,19 +616,51 @@ def test_server_cmd_batch_falls_back_per_command_when_mixed_engine() -> None:
 
         server.cmd_batch(
             [
-                ("display-message", "-p", "first"),
+                ("display-message", "-p", "a"),
+                ("display-message", "-p", "b"),
                 ("list-clients", "-F", "#{client_name}"),
+                ("display-message", "-p", "c"),
+                ("display-message", "-p", "d"),
             ],
         )
 
-        # Fast path was NOT taken — mixed engines force per-command run().
-        assert engine.batch_calls == []
-        # The recording engine saw exactly one request (display-message);
-        # the list-clients went to ``server._subprocess_engine``.
-        assert len(engine.requests) == 1
-        assert "display-message" in engine.requests[0].args
+        # Two run_batch calls on the user engine (lengths 2 and 2);
+        # the carve-out command went to subprocess.
+        assert len(engine.batch_calls) == 2, (
+            f"expected 2 partitioned run_batch calls on user engine, "
+            f"got {len(engine.batch_calls)}: {[len(b) for b in engine.batch_calls]}"
+        )
+        assert [len(b) for b in engine.batch_calls] == [2, 2]
+        assert len(engine.requests) == 4
+        assert all("display-message" in r.args for r in engine.requests)
 
         server._engine_for_command = original  # type: ignore[method-assign]
+
+
+def test_server_cmd_batch_uniform_partitions_to_one_call() -> None:
+    """An all-uniform batch still dispatches as exactly one run_batch call.
+
+    Regression catch: the partitioning loop must not split a uniform
+    batch into N single-element run_batch calls.
+    """
+    engine = RecordingBatchEngine()
+    socket_name = f"libtmux_test{next(namer)}"
+
+    with Server(socket_name=socket_name, engine=engine) as server:
+        server.cmd("new-session", "-d", "-s", "uniform")
+        engine.batch_calls.clear()
+
+        server.cmd_batch(
+            [
+                ("display-message", "-p", "a"),
+                ("display-message", "-p", "b"),
+                ("display-message", "-p", "c"),
+                ("display-message", "-p", "d"),
+            ],
+        )
+
+        assert len(engine.batch_calls) == 1
+        assert len(engine.batch_calls[0]) == 4
 
 
 def test_server_uses_libtmux_engine_env_by_default(
