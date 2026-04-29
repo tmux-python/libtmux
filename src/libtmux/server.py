@@ -15,8 +15,14 @@ import typing as t
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
-from libtmux.common import _resolve_engine_impl, _resolve_engine_spec_impl, tmux_cmd
+from libtmux.common import (
+    _resolve_engine_impl,
+    _resolve_engine_spec_impl,
+    _run_command,
+    tmux_cmd,
+)
 from libtmux.constants import OptionScope
+from libtmux.engines import CommandRequest
 from libtmux.engines.base import (
     EngineKind,
     EngineLike,
@@ -415,12 +421,12 @@ class Server(
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
         command_engine = self._engine_for_command(cmd)
-        return tmux_cmd(
+        request = CommandRequest.from_args(
             *svr_args,
             *cmd_args,
             tmux_bin=self.tmux_bin,
-            engine=command_engine,
         )
+        return tmux_cmd.from_result(_run_command(request, command_engine))
 
     def _engine_for_command(self, cmd: str) -> TmuxEngine:
         """Resolve the engine for a specific tmux subcommand.
