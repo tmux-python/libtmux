@@ -127,6 +127,29 @@ Open items still in the wrapper layer:
   Remaining samples reflect the unavoidable per-call object
   allocation, not redundant init work.
 
+Try-then-handle wins shipped (the same general pattern as imsg's
+optimistic IO and control_mode's pipelined startup ACK):
+
+* **`Server.new_session` drops `has-session` pre-check** (commit
+  `c692941c`). Instead of probing for a name conflict before
+  creating, we issue the new-session command and parse tmux's
+  stable ``"duplicate session: %s"`` stderr (per
+  ``cmd-new-session.c:128``) when the name collides. Saves one
+  round-trip per call in the no-conflict case (the common case in
+  fixtures and user code). Apples-to-apples bench (3 trials each,
+  ``pytest tests/test_session.py --engine=<X>``):
+
+  | engine       | baseline | post-fix | Δ |
+  |--------------|----------|----------|---|
+  | subprocess   |  1.12 s  |  1.05 s  | **−6.3 %** |
+  | imsg         |  0.77 s  |  0.77 s  |   ±0 % (round-trip too cheap) |
+  | control_mode |  0.68 s  |  0.65 s  |  −4.4 % |
+
+  Engine-uniform wrapper-layer win, surfacing in proportion to
+  per-round-trip cost. The conflict path (`kill_session=True` or
+  ``TmuxSessionExists`` on collision) is observably unchanged —
+  same exception type, same kill-then-retry flow when requested.
+
 ## Per-engine future strategies
 
 ### `subprocess` — limited room
