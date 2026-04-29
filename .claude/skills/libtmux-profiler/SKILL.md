@@ -1,6 +1,6 @@
 ---
 name: libtmux-profiler
-description: Use when the user wants to profile libtmux or tmuxp performance — investigating "where is the lag", "why is the test suite slow", flamegraphs, heatmaps, hot-spot analysis, or A/B comparing imsg vs subprocess engines. TRIGGER when phrases include "profile libtmux", "profile tmuxp", "tachyon", "flamegraph", "heatmap", "where is the bottleneck", "where is the lag", "compare engines", "imsg vs subprocess flamegraph", or "why are imsg and subprocess the same speed". Uses Python 3.15's stdlib profiling.sampling module (Tachyon). SKIP for unrelated profiling questions, micro-benchmarks (use timeit), or projects outside libtmux-protocol/tmuxp-libtmux-protocol.
+description: Use when the user wants to profile or benchmark libtmux/tmuxp performance — investigating "where is the lag", "why is the test suite slow", flamegraphs, heatmaps, hot-spot analysis, A/B comparing imsg vs subprocess engines, single-call microbenchmarks, or pstats diffs. TRIGGER when phrases include "profile libtmux", "profile tmuxp", "tachyon", "flamegraph", "heatmap", "where is the bottleneck", "where is the lag", "compare engines", "imsg vs subprocess flamegraph", "why are imsg and subprocess the same speed", "benchmark libtmux", "benchmark tmuxp", "how fast is", "microbench", "single-call speed", "per-call timing", or "diff pstats". Uses Python 3.15's stdlib profiling.sampling module (Tachyon) plus a pstats-arithmetic diff helper for structured comparisons. SKIP for unrelated profiling questions or projects outside libtmux-protocol/tmuxp-libtmux-protocol.
 ---
 
 # Profiling libtmux & tmuxp with Tachyon
@@ -56,6 +56,27 @@ $ echo "$PROFILE_DIR"
 **Always `cd` into the target repo first** — the script reads
 `git rev-parse --show-toplevel` from `$PWD`, so the project name and branch
 are auto-detected.
+
+## Which recipe should I use?
+
+| if the question is... | use |
+|---|---|
+| "tmuxp test suite is slow, why?" | **Quick recipe — tmuxp+engines** (below) |
+| "libtmux engine A/B — where imsg actually wins" | **Recipe — libtmux-direct A/B** |
+| "how fast is `server.X()` under each engine?" | **Recipe — single-call microbenchmark** |
+| "structured comparison of two profiles" | **Workflow — automated pstats diff** |
+| "pstats top-N to terminal, no browser" | **Workflow — pstats top-N** |
+| "what hot lines in this function?" | **Workflow — heatmap** |
+| "test is hanging, what's it doing?" | **Workflow — live TUI / attach** |
+
+The first three recipes form a complementary set. The tmuxp Quick
+Recipe is **shell-bound** — it shows the engine-vs-shell-wait swap
+documented in the Worked Example, but masks per-call engine deltas
+because tmuxp's `_wait_for_pane_ready` polling loop absorbs imsg's
+savings. The libtmux-direct A/B and single-call microbenchmark recipes
+are **engine-bound** — no shell-readiness polling, so imsg's per-call
+advantage shows up clearly (typically 25-55% on `has_session`-class
+operations).
 
 ## Quick recipe — A/B engine comparison (the headline use case)
 
@@ -114,6 +135,103 @@ paths agree with what tmux actually spawns. Without it,
 **Why `-p no:randomly`:** ensures both runs visit tests in identical
 order, so frame-by-frame comparison between flamegraphs makes sense.
 
+## Recipe — libtmux-direct A/B engine comparison
+
+This is the counterpart to the tmuxp Quick Recipe above. **Use this
+when you want to see imsg's per-call advantage clearly** — libtmux's
+own tests don't go through tmuxp's workspace builder, so there's no
+`_wait_for_pane_ready` poll loop to mask the tmux-command savings.
+Expect a meaningful wall delta in imsg's favor (~10-30% depending on
+test mix).
+
+**Recommended target:** `tests/test_server.py` — 47 tests, 21 use the
+engine-bound fixtures, no `time.sleep` calls, ~8-12s per engine.
+Alternatives: `tests/test_session.py` (28 tests, 79% fixture density)
+for broader API coverage; a single test like
+`tests/test_server.py::test_no_server_is_alive` for narrower scope.
+
+```console
+$ cd ~/work/python/libtmux-protocol
+$ PROFILE_DIR=$(bash ~/work/python/libtmux-protocol/.claude/skills/libtmux-profiler/scripts/init-profile-session.sh libtmux-direct-ab)
+
+# Capture both engines as binaries.
+$ for engine in subprocess imsg; do
+    SHELL=/bin/sh LIBTMUX_ENGINE=$engine ./.venv-3.15/bin/python \
+      -m profiling.sampling run --binary -r 5khz \
+      -o "$PROFILE_DIR/$engine.bin" \
+      -m pytest tests/test_server.py --no-cov -p no:randomly --engine=$engine
+  done
+
+# Replay each to flamegraph + pstats.
+$ for engine in subprocess imsg; do
+    ./.venv-3.15/bin/python -m profiling.sampling replay \
+      "$PROFILE_DIR/$engine.bin" --flamegraph -o "$PROFILE_DIR/$engine.html"
+    ./.venv-3.15/bin/python -m profiling.sampling replay \
+      "$PROFILE_DIR/$engine.bin" --pstats -o "$PROFILE_DIR/$engine.pstats"
+  done
+
+# Structured diff (see "Workflow — automated pstats diff" below).
+$ ./.venv-3.15/bin/python \
+    ~/work/python/libtmux-protocol/.claude/skills/libtmux-profiler/scripts/diff-pstats.py \
+    "$PROFILE_DIR/subprocess.pstats" "$PROFILE_DIR/imsg.pstats" --top 30
+```
+
+The diff-pstats output should show `SubprocessEngine.run`,
+`Popen.communicate`, and `selectors.poll` collapsing to 0 in the
+imsg column, with `ImsgEngine.run` and the imsg socket-transport
+methods appearing as net-new entries. That swap is the headline
+result.
+
+## Recipe — single-call microbenchmark
+
+For "how fast is `server.has_session()` under each engine?"-shaped
+questions. Skips the test framework entirely and runs a tight loop
+against a real tmux server using a pre-defined registry of bench
+targets.
+
+```console
+$ cd ~/work/python/libtmux-protocol
+$ PROFILE_DIR=$(bash ~/work/python/libtmux-protocol/.claude/skills/libtmux-profiler/scripts/init-profile-session.sh microbench-has-session)
+
+$ for engine in subprocess imsg; do
+    SHELL=/bin/sh LIBTMUX_ENGINE=$engine BENCH_TARGET=has_session BENCH_ITERS=2000 \
+      ./.venv-3.15/bin/python \
+      -m profiling.sampling run --binary -r 10khz \
+      -o "$PROFILE_DIR/$engine.bin" \
+      ~/work/python/libtmux-protocol/.claude/skills/libtmux-profiler/scripts/bench-libtmux-call.py
+  done
+
+$ for engine in subprocess imsg; do
+    ./.venv-3.15/bin/python -m profiling.sampling replay \
+      "$PROFILE_DIR/$engine.bin" --pstats -o "$PROFILE_DIR/$engine.pstats"
+  done
+
+$ ./.venv-3.15/bin/python \
+    ~/work/python/libtmux-protocol/.claude/skills/libtmux-profiler/scripts/diff-pstats.py \
+    "$PROFILE_DIR/subprocess.pstats" "$PROFILE_DIR/imsg.pstats"
+```
+
+**Bench target registry** (in `scripts/bench-libtmux-call.py`):
+
+| `BENCH_TARGET=` | call |
+|---|---|
+| `has_session` (default) | `server.has_session("bench")` |
+| `list_sessions` | `server.sessions` |
+| `list_windows` | `session.windows` |
+| `session_name` | `session.session_name` |
+| `show_options` | `session.cmd("show-options", "-g")` |
+| `list_panes` | `session.active_window.panes` |
+
+To add a new target, edit the `BENCH_TARGETS` dict in the script —
+the dict is the entire allowlist, so the script can never execute
+caller-supplied Python expressions. Higher sample rate (`-r 10khz`)
+because each call is sub-millisecond and the 1 kHz default would
+miss most of them.
+
+The default socket name embeds `os.getpid()` so back-to-back runs in
+a comparison loop don't trip on leftover sessions from a prior run
+whose `kill_server` didn't fully drain.
+
 ## Known issue — `--diff-flamegraph` is broken in 3.15.0a8
 
 The "natural" one-shot diff workflow (`run --diff-flamegraph baseline.bin`)
@@ -160,6 +278,47 @@ pstats.Stats('$PROFILE_DIR/imsg.pstats').sort_stats('cumulative').print_stats(30
 This is what surfaced `_wait_for_pane_ready` and
 `subprocess.Popen.communicate → selectors.poll()` as the dominant
 wall-time consumers in the original engine-bench investigation.
+
+## Workflow — automated pstats diff (replaces broken `--diff-flamegraph`)
+
+Until 3.15.x ships the `--diff-flamegraph` fix (see *Known issue*
+above), use the bundled `diff-pstats.py` helper for structured A/B
+comparisons. It loads two `pstats` files, computes per-function
+`cumtime` deltas, and prints a markdown table sorted by
+`abs(Δ cumtime)` — the biggest movers first, regardless of direction.
+
+```console
+$ ./.venv-3.15/bin/python \
+    ~/work/python/libtmux-protocol/.claude/skills/libtmux-profiler/scripts/diff-pstats.py \
+    "$PROFILE_DIR/subprocess.pstats" "$PROFILE_DIR/imsg.pstats" \
+    --top 30
+```
+
+Output:
+
+```markdown
+# pstats diff (top 30 by |Δ cumtime|)
+
+- baseline: `/tmp/py-profiling/.../subprocess.pstats`
+- current:  `/tmp/py-profiling/.../imsg.pstats`
+
+| function | baseline (s) | current (s) | Δ (s) | Δ% |
+|---|---:|---:|---:|---:|
+| `engines/subprocess.py:53(SubprocessEngine.run)` | 0.688 | 0.000 | -0.688 | -100.0% |
+| `subprocess.py:1274(Popen.communicate)` | 0.682 | 0.000 | -0.682 | -100.0% |
+| `selectors.py:398(_PollLikeSelector.select)` | 0.652 | 0.000 | -0.652 | -100.0% |
+| `engines/imsg/base.py:204(ImsgEngine.run)` | 0.000 | 0.317 | +0.317 | — |
+...
+```
+
+The markdown is paste-ready for PRs, issues, or chat. **Functions
+only present in one profile show "—" in Δ%** (no baseline to compare
+against). Sort order is by `abs(Δ)` so a -0.688s drop and a +0.317s
+increase both surface near the top.
+
+This is the **primary** comparison tool for the engine A/B recipes
+above (Quick Recipe, libtmux-direct, microbenchmark) until upstream
+fixes the diff-flamegraph alpha bug.
 
 ## Workflow — heatmap for line-level hot spots
 

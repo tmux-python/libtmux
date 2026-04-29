@@ -1,15 +1,16 @@
 #!/usr/bin/env python
-"""Tight-loop benchmark for a single libtmux call.
+"""Tight-loop benchmark for a single libtmux call under the chosen engine.
 
 Configurable via env vars:
 
+  LIBTMUX_ENGINE  "subprocess" or "imsg" (default: subprocess)
   BENCH_TARGET    name from BENCH_TARGETS registry (default: has_session)
   BENCH_ITERS     int (default: 1000)
   BENCH_SOCKET    socket name (default: ``microbench-<pid>`` for isolation)
   BENCH_SESSION   session name created for the run (default: bench)
 
 The default socket name embeds the process PID so back-to-back
-invocations (e.g. before/after a change in a comparison loop) get
+invocations (e.g. subprocess then imsg in a comparison loop) get
 isolated tmux servers and don't trip on leftover sessions from a prior
 run whose ``kill_server`` didn't fully drain.
 
@@ -68,8 +69,9 @@ def main() -> int:
     target = BENCH_TARGETS[target_name]
     socket_name = os.environ.get("BENCH_SOCKET", f"microbench-{os.getpid()}")
     session_name = os.environ.get("BENCH_SESSION", "bench")
+    engine = os.environ.get("LIBTMUX_ENGINE", "subprocess")
 
-    server: Server = libtmux.Server(socket_name=socket_name)
+    server: Server = libtmux.Server(socket_name=socket_name, engine=engine)
     try:
         session = server.new_session(session_name=session_name)
         for _ in range(iters):
