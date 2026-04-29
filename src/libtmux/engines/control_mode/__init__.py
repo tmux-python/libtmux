@@ -13,7 +13,10 @@ subscription wiring land in subsequent steps.
 
 from __future__ import annotations
 
-from libtmux.engines.control_mode.base import ControlModeEngine
+from libtmux.engines.control_mode.base import (
+    ControlModeEngine,
+    TmuxControlModeError,
+)
 from libtmux.engines.control_mode.parser import (
     Block,
     ClientDetachedNotification,
@@ -45,6 +48,7 @@ from libtmux.engines.control_mode.parser import (
     WindowRenamedNotification,
     unescape_octal,
 )
+from libtmux.engines.control_mode.subscription import Subscription
 
 __all__ = (
     "Block",
@@ -67,7 +71,9 @@ __all__ = (
     "SessionRenamedNotification",
     "SessionWindowChangedNotification",
     "SessionsChangedNotification",
+    "Subscription",
     "SubscriptionChangedNotification",
+    "TmuxControlModeError",
     "UnknownNotification",
     "UnlinkedWindowAddNotification",
     "UnlinkedWindowCloseNotification",

@@ -33,6 +33,8 @@ from libtmux.engines.base import (
     SubprocessEngineName,
     TmuxEngine,
 )
+from libtmux.engines.control_mode import ControlModeEngine
+from libtmux.engines.control_mode.subscription import Subscription
 from libtmux.engines.subprocess import SubprocessEngine
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -459,6 +461,66 @@ class Server(
         if cmd == "attach-session":
             return self._subprocess_engine
         return self.engine
+
+    def subscribe(
+        self,
+        name: str,
+        fmt: str,
+        *,
+        target: str | None = None,
+        maxsize: int = 128,
+    ) -> Subscription:
+        """Subscribe to a tmux format string for real-time value updates.
+
+        Forwards to :meth:`ControlModeEngine.subscribe` after primining
+        the engine with at least one command. Only the control-mode
+        engine supports subscriptions — the subprocess and imsg engines
+        raise :class:`~libtmux.exc.LibTmuxException`.
+
+        Parameters
+        ----------
+        name : str
+            Subscription identifier; cannot contain ``:``.
+        fmt : str
+            tmux format string, e.g. ``"#{pane_pwd}"``,
+            ``"#{pane_width}x#{pane_height}"``.
+        target : str or None, optional
+            Subscription target. ``None`` (session-wide), ``"%*"`` (all
+            panes), ``"%<id>"`` (one pane), ``"@*"`` (all windows),
+            ``"@<id>"`` (one window). See ``cmd-refresh-client.c:65-74``.
+        maxsize : int, optional
+            Bounded queue size; older values are dropped first under
+            backpressure. Defaults to 128.
+
+        Returns
+        -------
+        :class:`~libtmux.engines.control_mode.subscription.Subscription`
+            Handle whose ``.queue`` receives expanded format values
+            whenever they change server-side. Call
+            :meth:`Subscription.unsubscribe` when done.
+
+        Raises
+        ------
+        :class:`~libtmux.exc.LibTmuxException`
+            If the server's engine is not the control-mode engine.
+        """
+        if not isinstance(self.engine, ControlModeEngine):
+            msg = (
+                "Server.subscribe requires the control_mode engine; got "
+                f"{type(self.engine).__name__}. Construct the server with "
+                "engine='control_mode' or set LIBTMUX_ENGINE=control_mode."
+            )
+            raise exc.LibTmuxException(msg)
+
+        # The control-mode engine is lazy: it only spawns the persistent
+        # tmux -C subprocess on the first run() call. Subscribing before
+        # any command would race against an uninitialised state, so we
+        # send a cheap probe here. ``display-message -p ""`` is the
+        # canonical no-op used by Server.is_alive too.
+        if self.engine._state is None:
+            self.cmd("display-message", "-p", "")
+
+        return self.engine.subscribe(name, fmt, target=target, maxsize=maxsize)
 
     @property
     def attached_sessions(self) -> list[Session]:

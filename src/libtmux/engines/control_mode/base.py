@@ -53,6 +53,11 @@ from libtmux.engines.control_mode.parser import (
     Block,
     ControlParser,
     Notification,
+    SubscriptionChangedNotification,
+)
+from libtmux.engines.control_mode.subscription import (
+    _DEFAULT_MAXSIZE,
+    Subscription,
 )
 from libtmux.engines.registry import register_engine
 
@@ -128,6 +133,14 @@ class _Subprocess:
     )
     broken: TmuxControlModeError | None = None
     global_args: tuple[str, ...] = ()
+    subscribers: dict[str, Subscription] = field(default_factory=dict)
+    """Active subscriptions keyed by name.
+
+    Reader thread reads, engine adds/removes. CPython's GIL makes
+    dict get/set atomic, but iteration during modification is not
+    safe — we never iterate the live dict (we only ever look up by
+    name).
+    """
 
 
 class ControlModeEngine:
@@ -440,6 +453,101 @@ class ControlModeEngine:
             returncode=0,
         )
 
+    # ----------------------------------------------------------- subscribe --
+
+    def subscribe(
+        self,
+        name: str,
+        fmt: str,
+        *,
+        target: str | None = None,
+        maxsize: int = _DEFAULT_MAXSIZE,
+    ) -> Subscription:
+        """Subscribe to a tmux format and return a :class:`Subscription`.
+
+        Issues ``refresh-client -B <name>:<target>:<fmt>`` against the
+        running control client, registers a local routing entry, and
+        returns the user-facing handle. Drop-oldest semantics on the
+        queue keep the reader thread non-blocking.
+
+        Notes
+        -----
+        ``target`` is one of ``None`` (session), ``"%*"`` (all panes),
+        ``"%<id>"``, ``"@*"`` (all windows), ``"@<id>"`` (per
+        ``cmd-refresh-client.c:65-74``).
+        """
+        sub = Subscription(
+            name=name,
+            fmt=fmt,
+            target=target,
+            queue=queue.Queue(maxsize=maxsize),
+            _engine_ref=weakref.ref(self),
+        )
+
+        # Register *before* sending the wire command so any change
+        # notification the server emits as a side effect of subscribing
+        # has a destination. The reader thread routes by name; if the
+        # name isn't yet registered the value is dropped.
+        with self._lock:
+            state = self._state
+            if state is None or state.broken is not None:
+                msg = (
+                    "ControlModeEngine.subscribe requires an active "
+                    "subprocess; call run() at least once first"
+                )
+                raise TmuxControlModeError(msg)
+            state.subscribers[name] = sub
+
+        target_str = target if target is not None else ""
+        spec = f"{name}:{target_str}:{fmt}"
+        try:
+            request = CommandRequest.from_args(
+                *state.global_args,
+                "refresh-client",
+                "-B",
+                spec,
+            )
+            result = self.run(request)
+        except BaseException:
+            # Wire call failed — undo the local registration so the
+            # caller doesn't end up with a phantom subscription.
+            with self._lock:
+                state.subscribers.pop(name, None)
+            raise
+
+        if result.returncode != 0:
+            with self._lock:
+                state.subscribers.pop(name, None)
+            msg = "tmux refresh-client -B failed: " + " ".join(result.stderr)
+            raise TmuxControlModeError(msg)
+        return sub
+
+    def _unregister_subscription(self, sub: Subscription) -> None:
+        """Tear down a :class:`Subscription` initiated by :meth:`subscribe`.
+
+        Sends the unsubscribe wire command (``refresh-client -B
+        <name>`` with no colons, per ``cmd-refresh-client.c:55``)
+        and removes the local routing entry. Errors are suppressed:
+        an unsubscribe is best-effort by the time the user is asking
+        the engine to forget about it.
+        """
+        with self._lock:
+            state = self._state
+            if state is not None:
+                state.subscribers.pop(sub.name, None)
+
+        if state is None or state.broken is not None:
+            return
+        with contextlib.suppress(BaseException):
+            self.run(
+                CommandRequest.from_args(
+                    *state.global_args,
+                    "refresh-client",
+                    "-B",
+                    sub.name,
+                ),
+            )
+
     # ----------------------------------------------------------- close --
 
     def _teardown_state(self) -> None:
@@ -564,6 +672,19 @@ def _drain_events(state: _Subprocess) -> None:
     for event in state.parser.events():
         if isinstance(event, Block):
             state.response_queue.put(event)
+        elif isinstance(event, SubscriptionChangedNotification):
+            sub = state.subscribers.get(event.name)
+            if sub is not None:
+                sub._deliver(event.value)
+            else:
+                logger.debug(
+                    "tmux control-mode unrouted subscription",
+                    extra={
+                        "tmux_cm_notify": "SubscriptionChangedNotification",
+                        "tmux_cm_subscription": event.name,
+                        "tmux_cm_proc_pid": state.proc.pid,
+                    },
+                )
         elif isinstance(event, Notification):
             logger.debug(
                 "tmux control-mode notification",
