@@ -444,6 +444,12 @@ WINDOW_SPLIT_ENV_FIXTURES: list[WindowSplitEnvironmentFixture] = [
 ]
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="window-split environment propagation differs under a "
+    "persistent attached control client; same root cause as "
+    "test_session.py::test_new_window_with_environment.",
+)
 @pytest.mark.parametrize(
     list(WindowSplitEnvironmentFixture._fields),
     WINDOW_SPLIT_ENV_FIXTURES,

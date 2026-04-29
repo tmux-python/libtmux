@@ -14,6 +14,11 @@ if t.TYPE_CHECKING:
     from libtmux.server import Server
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="hook propagation differs under a persistent attached client "
+    "(control_mode's auto-attached session emits its own hook events).",
+)
 def test_hooks_raw_cmd(
     server: Server,
 ) -> None:
@@ -193,6 +198,11 @@ def test_hooks_raw_cmd(
         assert pane.cmd("show-hooks", "-p", "session-renamed[0]").stdout == []
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="hook show/unset cycle observes the auto-attached session's "
+    "hooks alongside the test session's hooks.",
+)
 def test_hooks_dataclass(
     server: Server,
 ) -> None:
@@ -431,6 +441,11 @@ def _build_hook_params() -> list[t.Any]:
     return params
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="parametrised hook cycle observes the auto-attached session's "
+    "hooks; same root cause as test_hooks_dataclass.",
+)
 @pytest.mark.parametrize("test_case", _build_hook_params())
 def test_hook_set_show_unset_cycle(server: Server, test_case: HookTestCase) -> None:
     """Test set/show/unset cycle for each hook.

@@ -8,6 +8,8 @@ import pathlib
 import textwrap
 import typing as t
 
+import pytest
+
 from libtmux.engines import SubprocessEngine
 from libtmux.pytest_plugin import _reap_test_server
 from libtmux.server import Server
@@ -178,6 +180,82 @@ def test_server_uses_control_mode(server, libtmux_engine) -> None:
     result.assert_outcomes(passed=1)
 
 
+def test_plugin_skip_engine_marker_skips_matching_engine(
+    pytester: pytest.Pytester,
+) -> None:
+    """``@pytest.mark.skip_engine(<active>)`` skips the test."""
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_skip_engine_marker_skips_matching_engine="""
+import pytest
+
+@pytest.mark.skip_engine("subprocess", reason="subprocess intentionally skipped")
+def test_should_skip(server) -> None:
+    assert False, "test body should not run"
+""",
+    )
+
+    result = pytester.runpytest("--engine=subprocess", "-vv")
+    result.assert_outcomes(skipped=1)
+
+
+def test_plugin_skip_engine_marker_runs_other_engines(
+    pytester: pytest.Pytester,
+) -> None:
+    """``@pytest.mark.skip_engine`` runs the test under non-matching engines."""
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_skip_engine_marker_runs_other_engines="""
+import pytest
+
+@pytest.mark.skip_engine("control_mode")
+def test_should_run(server) -> None:
+    assert True
+""",
+    )
+
+    result = pytester.runpytest("--engine=subprocess", "-vv")
+    result.assert_outcomes(passed=1)
+
+
+def test_plugin_engine_only_marker_skips_unlisted_engine(
+    pytester: pytest.Pytester,
+) -> None:
+    """``@pytest.mark.engine_only(<other>)`` skips when the active engine differs."""
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_engine_only_marker_skips_unlisted_engine="""
+import pytest
+
+@pytest.mark.engine_only("control_mode")
+def test_should_skip(server) -> None:
+    assert False, "test body should not run"
+""",
+    )
+
+    result = pytester.runpytest("--engine=subprocess", "-vv")
+    result.assert_outcomes(skipped=1)
+
+
+def test_plugin_engine_only_marker_runs_listed_engine(
+    pytester: pytest.Pytester,
+) -> None:
+    """``@pytest.mark.engine_only(<active>)`` runs the test."""
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_engine_only_marker_runs_listed_engine="""
+import pytest
+
+@pytest.mark.engine_only("subprocess")
+def test_should_run(server) -> None:
+    assert True
+""",
+    )
+
+    result = pytester.runpytest("--engine=subprocess", "-vv")
+    result.assert_outcomes(passed=1)
+
+
 def test_plugin_rejects_invalid_engine_option(pytester: pytest.Pytester) -> None:
     """Pytest argument parsing rejects unknown libtmux engine values."""
     pytester.plugins = ["pytest_plugin"]
@@ -193,6 +271,14 @@ def test_placeholder() -> None:
     result.stderr.fnmatch_lines(["*argument --engine: invalid choice:*"])
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason=(
+        "control_mode auto-attaches to a default session on connect; "
+        "is_alive() before any user command therefore returns True. "
+        "This test asserts subprocess/imsg lazy-spawn semantics."
+    ),
+)
 def test_test_server(TestServer: t.Callable[..., Server]) -> None:
     """Test TestServer creates and cleans up server."""
     server = TestServer()
@@ -246,6 +332,10 @@ def test_config_file_pins_minimal_test_shell(config_file: pathlib.Path) -> None:
     assert "set -g default-command" not in content
 
 
+@pytest.mark.engine_only(
+    "subprocess",
+    reason="explicitly verifies the subprocess engine is the default factory",
+)
 def test_test_server_uses_default_subprocess_engine(
     TestServer: t.Callable[..., Server],
 ) -> None:
@@ -288,6 +378,14 @@ def test_test_server_factory_uses_imsg(TestServer) -> None:
     result.assert_outcomes(passed=1)
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason=(
+        "control_mode auto-creates a default session on connect, so the "
+        "session count starts at 1 instead of 0; this test counts user-"
+        "created sessions assuming a fresh server."
+    ),
+)
 def test_test_server_cleanup(TestServer: t.Callable[..., Server]) -> None:
     """Test TestServer properly cleans up after itself."""
     server = TestServer()

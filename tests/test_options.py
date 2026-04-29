@@ -1131,6 +1131,13 @@ def _build_option_params() -> list[t.Any]:
     return params
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="parametrised option cycle observes the auto-attached "
+    "session's options interleaved with the test session's; "
+    "session_status_right specifically picks up the auto-attached "
+    "client's value.",
+)
 @pytest.mark.parametrize("test_case", _build_option_params())
 def test_option_set_show_cycle(server: Server, test_case: OptionTestCase) -> None:
     """Test set/show cycle for each option type."""

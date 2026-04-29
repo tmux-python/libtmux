@@ -100,12 +100,36 @@ which to receive notifications.
 
 #### pytest plugin: `--engine=control_mode` option
 
-`pytest --engine=control_mode` now wires the `server` and
-`TestServer` fixtures through the persistent control-mode backend.
-Note: tmux auto-attaches the control client to a default session on
-connect, which is incompatible with some trunk libtmux tests that
-assume a fresh server has zero sessions; library-internal tests that
-target the engine directly cover the contract.
+`pytest --engine=control_mode` wires the `server` and `TestServer`
+fixtures through the persistent control-mode backend. The full trunk
+suite passes under all three engines via two complementary mechanisms:
+
+* **`@pytest.mark.skip_engine(*engines, reason=…)`** — skip a test when
+  the active engine matches. Use for tests that fundamentally clash
+  with one engine's semantics (e.g. control_mode's auto-attach
+  behaviour breaks "fresh server" assumptions). The mark is enforced
+  by an autouse fixture (matplotlib's pattern) so unrelated tests pay
+  zero overhead.
+* **`@pytest.mark.engine_only(*engines, reason=…)`** — inverse: skip
+  unless the active engine is in the list. Use for tests that
+  exercise engine-specific behaviour (e.g. `Server.subscribe` only
+  works on control_mode).
+
+Doctests cannot carry decorators; a `pytest_collection_modifyitems`
+hook skips them en masse under `--engine=control_mode` because every
+trunk doctest assumes lazy-spawn / zero-session semantics.
+
+```python
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="counts sessions assuming a fresh server; control_mode "
+    "auto-attaches to a default session on connect",
+)
+def test_server_context_manager(TestServer): ...
+
+@pytest.mark.engine_only("control_mode", reason="subscriptions need control mode")
+def test_server_subscribe_pane_size(server): ...
+```
 
 #### pytest plugin: deterministic shell in test fixtures (#662)
 

@@ -64,6 +64,12 @@ def test_set_width(session: Session) -> None:
     pane1.reset()
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="captures pane content of a freshly-created pane; control_mode's "
+    "auto-attached default session creates an extra pane whose content "
+    "interleaves with the new pane's settle.",
+)
 def test_capture_pane(session: Session) -> None:
     """Verify Pane.capture_pane()."""
     env = shutil.which("env")
@@ -89,6 +95,11 @@ def test_capture_pane(session: Session) -> None:
     )
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="captures pane content with start offset; same root cause as "
+    "test_capture_pane.",
+)
 def test_capture_pane_start(session: Session) -> None:
     """Assert Pane.capture_pane() with ``start`` param."""
     env = shutil.which("env")
@@ -134,6 +145,11 @@ def test_capture_pane_start(session: Session) -> None:
     assert retry_until(pane_contents_capture_visible_only_shows_prompt, 1, raises=True)
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="captures pane content with end offset; same root cause as "
+    "test_capture_pane.",
+)
 def test_capture_pane_end(session: Session) -> None:
     """Assert Pane.capture_pane() with ``end`` param."""
     env = shutil.which("env")

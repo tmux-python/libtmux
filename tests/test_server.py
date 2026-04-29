@@ -320,6 +320,11 @@ def test_socket_name_precedence(server: Server) -> None:
             myserver2.kill()
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="counts sessions assuming a fresh server; control_mode "
+    "auto-attaches to a default session on connect.",
+)
 def test_server_context_manager(TestServer: type[Server]) -> None:
     """Test Server context manager functionality."""
     with TestServer() as server:

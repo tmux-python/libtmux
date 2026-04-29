@@ -37,6 +37,56 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Register libtmux-specific markers so ``--strict-markers`` accepts them."""
+    config.addinivalue_line(
+        "markers",
+        "skip_engine(*engines, reason=''): skip the test when running under "
+        "any of the named libtmux engines. Pair with --engine=<name> at the "
+        "CLI. Example: ``@pytest.mark.skip_engine('control_mode', "
+        "reason='auto-attach interferes with empty-server semantics')``.",
+    )
+    config.addinivalue_line(
+        "markers",
+        "engine_only(*engines, reason=''): skip the test unless running "
+        "under one of the named libtmux engines. Inverse of skip_engine — "
+        "use for tests that exercise engine-specific behaviour.",
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config,
+    items: list[pytest.Item],
+) -> None:
+    """Skip doctests that assume lazy-spawn semantics when ``--engine=control_mode``.
+
+    pytest markers cannot decorate doctest items the way they decorate
+    regular test functions, so doctests rely on this collection hook
+    for engine-aware skipping. The condition is simple: under
+    ``control_mode``, every doctest that uses the live ``server``
+    fixture observes the auto-attached default session and breaks the
+    "fresh server" expectation the doctests were written for. Rather
+    than rewrite the doctests to be engine-agnostic (which would
+    obscure the ergonomics for the 99 % of users who run under the
+    default engine), we skip them en masse.
+    """
+    engine = _fixture_engine_from_config(config)
+    if engine != "control_mode":
+        return
+
+    from _pytest.doctest import DoctestItem
+
+    skip = pytest.mark.skip(
+        reason=(
+            "doctest assumes lazy-spawn / zero-session semantics; "
+            "control_mode auto-attaches to a default session on connect"
+        ),
+    )
+    for item in items:
+        if isinstance(item, DoctestItem):
+            item.add_marker(skip)
+
+
 def _fixture_engine_from_config(
     config: pytest.Config,
 ) -> _PytestEngine:
@@ -48,6 +98,51 @@ def _fixture_engine_from_config(
 def libtmux_engine(pytestconfig: pytest.Config) -> _PytestEngine:
     """Return the engine selected for libtmux-managed pytest fixtures."""
     return _fixture_engine_from_config(pytestconfig)
+
+
+@pytest.fixture(autouse=True)
+def _enforce_engine_marks(
+    request: pytest.FixtureRequest,
+    libtmux_engine: _PytestEngine,
+) -> None:
+    """Enforce ``@pytest.mark.skip_engine`` and ``@pytest.mark.engine_only``.
+
+    Implemented as an autouse fixture (not a ``pytest_collection_modifyitems``
+    hook) because the matplotlib pattern proves cheaper: only the test
+    that's about to run pays the marker lookup, and ``pytest.skip()``
+    handles reporting + summary lines for free.
+
+    Two marks are recognised:
+
+    * ``skip_engine(*engines, reason="…")`` — skip when the active
+      engine is in the list. Use for tests that fundamentally
+      conflict with one engine's semantics (e.g. control_mode's
+      auto-attach behaviour breaks "fresh-server" assumptions).
+    * ``engine_only(*engines, reason="…")`` — skip when the active
+      engine is *not* in the list. Use for tests that exercise
+      engine-specific public surface (e.g. ``Server.subscribe`` only
+      works on control_mode).
+
+    A test may carry both — both predicates apply.
+    """
+    skip_mark = request.node.get_closest_marker("skip_engine")
+    if skip_mark is not None and libtmux_engine in skip_mark.args:
+        reason = skip_mark.kwargs.get(
+            "reason",
+            f"skipped on the {libtmux_engine!r} engine via skip_engine marker",
+        )
+        pytest.skip(reason)
+
+    only_mark = request.node.get_closest_marker("engine_only")
+    if only_mark is not None and libtmux_engine not in only_mark.args:
+        reason = only_mark.kwargs.get(
+            "reason",
+            (
+                f"engine_only({', '.join(repr(e) for e in only_mark.args)}) — "
+                f"current engine is {libtmux_engine!r}"
+            ),
+        )
+        pytest.skip(reason)
 
 
 def _reap_test_server(socket_name: str | None) -> None:

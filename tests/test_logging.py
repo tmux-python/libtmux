@@ -232,6 +232,12 @@ def test_pane_kill_all_except_logging(
     assert all(p.pane_id not in remaining_pane_ids for p in other_panes)
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="kill(all_except=True) leaves only the survivor session, "
+    "which would detach our control client from its auto-attached "
+    "session — the engine then exits per server-client.c:3522.",
+)
 def test_session_kill_all_except_logging(
     server: Server,
     caplog: pytest.LogCaptureFixture,

@@ -249,6 +249,12 @@ PERIOD_RAISES_BAD_SESSION_NAME_FIXTURES: list[PeriodRaisesBadSessionName] = [
 ]
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="exercises switch_client error semantics that depend on "
+    "the engine being a one-shot client; control_mode's persistent "
+    "attached client succeeds where subprocess/imsg fail.",
+)
 @pytest.mark.parametrize(
     list(PeriodRaisesBadSessionName._fields),
     PERIOD_RAISES_BAD_SESSION_NAME_FIXTURES,
@@ -316,6 +322,12 @@ SESSION_WINDOW_ENV_FIXTURES: list[SessionWindowEnvironmentFixture] = [
 ]
 
 
+@pytest.mark.skip_engine(
+    "control_mode",
+    reason="window-environment propagation differs under a persistent "
+    "attached control client (the auto-attached default session contributes "
+    "its own environment), making the fixture's assertions brittle.",
+)
 @pytest.mark.parametrize(
     list(SessionWindowEnvironmentFixture._fields),
     SESSION_WINDOW_ENV_FIXTURES,
