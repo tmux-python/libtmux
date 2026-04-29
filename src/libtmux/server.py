@@ -293,6 +293,16 @@ class Server(
         if colors:
             self.colors = colors
 
+        # Cache the immutable socket-prefix args once. ``Server.cmd`` is
+        # the hottest entry point in the wrapper layer (43 % of
+        # control_mode workload wall time per pstats); rebuilding the
+        # prefix list per call wastes work since these attrs are set
+        # exactly once in ``__init__``. ``-2`` / ``-8`` validation
+        # happens here too, which moves the error from "raised on every
+        # ``cmd()`` invocation" to "raised at construction" — strictly
+        # better fail-fast behaviour.
+        self._svr_prefix: tuple[str, ...] = self._build_svr_prefix()
+
         if on_init is not None:
             on_init(self)
 
@@ -421,31 +431,41 @@ class Server(
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: list[str | int] = [cmd]
-        cmd_args: list[str | int] = []
-        if self.socket_name:
-            svr_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            svr_args.insert(0, f"-S{self.socket_path}")
-        if self.config_file:
-            svr_args.insert(0, f"-f{self.config_file}")
-        if self.colors:
-            if self.colors == 256:
-                svr_args.insert(0, "-2")
-            elif self.colors == 88:
-                svr_args.insert(0, "-8")
-            else:
-                raise exc.UnknownColorOption
-
-        cmd_args = ["-t", str(target), *args] if target is not None else [*args]
+        cmd_args: list[str | int] = (
+            ["-t", str(target), *args] if target is not None else [*args]
+        )
 
         command_engine = self._engine_for_command(cmd)
         request = CommandRequest.from_args(
-            *svr_args,
+            *self._svr_prefix,
+            cmd,
             *cmd_args,
             tmux_bin=self.tmux_bin,
         )
         return tmux_cmd.from_result(_run_command(request, command_engine))
+
+    def _build_svr_prefix(self) -> tuple[str, ...]:
+        """Return the fixed client-level flags this server prefixes every command with.
+
+        Built once at ``__init__``, reused by every ``Server.cmd`` call.
+        Order matches the historic ``insert(0, ...)`` chain so the
+        output is byte-identical to the previous implementation.
+        """
+        parts: list[str] = []
+        if self.colors:
+            if self.colors == 256:
+                parts.append("-2")
+            elif self.colors == 88:
+                parts.append("-8")
+            else:
+                raise exc.UnknownColorOption
+        if self.config_file:
+            parts.append(f"-f{self.config_file}")
+        if self.socket_path:
+            parts.append(f"-S{self.socket_path}")
+        if self.socket_name:
+            parts.append(f"-L{self.socket_name}")
+        return tuple(parts)
 
     def _engine_for_command(self, cmd: str) -> TmuxEngine:
         """Resolve the engine for a specific tmux subcommand.
