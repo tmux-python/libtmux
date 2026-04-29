@@ -190,6 +190,7 @@ select = [
   "Q", # flake8-quotes
   "PTH", # flake8-use-pathlib
   "SIM", # flake8-simplify
+  "TID", # flake8-tidy-imports (TID251 bans named function calls)
   "TRY", # Trycertatops
   "PERF", # Perflint
   "RUF", # Ruff-specific rules
@@ -221,11 +222,27 @@ builtins-allowed-modules = [
   "types",
 ]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# ``time.sleep`` is banned in tests because it masks non-determinism
+# rather than proving a condition. Tests should use
+# ``libtmux.test.retry.retry_until`` (or ``pane.wait_for_text`` in
+# pane-driven cases) to poll until the desired state is observed.
+# Production retry/interval helpers that legitimately sleep are
+# exempted via ``per-file-ignores`` below.
+"time.sleep".msg = "Avoid time.sleep — use libtmux.test.retry.retry_until or pane.wait_for_text. Production retry/interval code is exempted via per-file-ignores."
+
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
 "*/__init__.py" = ["F401"]
+# retry.py implements the retry/poll-with-sleep helper itself; it is
+# the *replacement* for time.sleep in tests, so the rule does not
+# apply to its own implementation. tests/test/test_retry.py exercises
+# that helper's timing behavior, which intentionally sleeps to
+# simulate slow operations.
+"src/libtmux/test/retry.py" = ["TID251"]
+"tests/test/test_retry.py" = ["TID251"]
 
 [tool.pytest.ini_options]
 addopts = [

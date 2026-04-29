@@ -21,7 +21,6 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
-USING_ZSH = "zsh" in os.getenv("SHELL", "")
 
 
 def _reap_test_server(socket_name: str | None) -> None:
@@ -81,25 +80,26 @@ def user_path(home_path: pathlib.Path, home_user_name: str) -> pathlib.Path:
     return p
 
 
-@pytest.mark.skipif(USING_ZSH, reason="Using ZSH")
-@pytest.fixture(scope="session")
-def zshrc(user_path: pathlib.Path) -> pathlib.Path:
-    """Suppress ZSH default message.
-
-    Needs a startup file .zshenv, .zprofile, .zshrc, .zlogin.
-    """
-    p = user_path / ".zshrc"
-    p.touch()
-    return p
-
-
 @pytest.fixture(scope="session")
 def config_file(user_path: pathlib.Path) -> pathlib.Path:
     """Return fixture for ``.tmux.conf`` configuration.
 
-    - ``base-index -g 1``
+    Pinned settings:
 
-    These guarantee pane and windows targets can be reliably referenced and asserted.
+    - ``base-index 1`` — guarantees pane and window targets can be
+      reliably referenced and asserted starting at 1.
+    - ``default-shell /bin/sh`` — bypasses the developer's interactive
+      shell (zsh/bash) so each test pane skips ~60ms of shell init
+      and the non-deterministic prompt rendering that otherwise causes
+      flakes against ``automatic-rename`` and ``capture-pane`` assertions.
+      ``default-command`` is intentionally left at tmux's default
+      (empty string) so that consumer test workspaces — for example
+      tmuxp's ``window_options_after.yaml`` which pins
+      ``default-shell: /bin/bash`` to test Up-arrow shell history —
+      can override ``default-shell`` per-session and have it take
+      effect. Setting ``default-command`` here would short-circuit
+      that override path (per tmux's ``cmd-new-window.c``,
+      ``default-command`` always wins over ``default-shell``).
 
     Note: You will need to set the home directory, see :ref:`set_home`.
     """
@@ -107,10 +107,28 @@ def config_file(user_path: pathlib.Path) -> pathlib.Path:
     c.write_text(
         """
 set -g base-index 1
+set -g default-shell /bin/sh
     """,
         encoding="utf-8",
     )
     return c
+
+
+@pytest.fixture(autouse=True)
+def _pin_test_shell_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force ``$SHELL`` to ``/bin/sh`` for every test that loads this plugin.
+
+    The companion ``config_file`` fixture pins tmux's ``default-shell`` to
+    ``/bin/sh``; this autouse hook keeps Python-side ``os.getenv("SHELL")``
+    consumers aligned. Without it, libtmux's conftest already covers its
+    own tests via ``clear_env``, but external consumers (notably tmuxp's
+    ``test_automatic_rename_option`` which asserts
+    ``w.name in {Path(os.getenv("SHELL")).name, ...}``) see the
+    developer's interactive shell on the env side and ``/bin/sh`` on the
+    tmux side and flake on the mismatch. Running autouse from the plugin
+    ensures every consumer's tests get the alignment for free.
+    """
+    monkeypatch.setenv("SHELL", "/bin/sh")
 
 
 @pytest.fixture
@@ -118,6 +136,11 @@ def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear out any unnecessary environment variables that could interrupt tests.
 
     tmux show-environment tests were being interrupted due to a lot of crazy env vars.
+
+    Note: ``SHELL`` alignment with tmux's ``default-shell`` is handled by
+    the ``_pin_test_shell_env`` autouse fixture in this same module, so
+    callers do not need to opt into ``clear_env`` solely to get that
+    behavior.
     """
     for k in os.environ:
         if not any(

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
-import time
 import typing as t
 
 import pytest
@@ -20,6 +19,7 @@ from libtmux.constants import (
 )
 from libtmux.pane import Pane
 from libtmux.server import Server
+from libtmux.test.retry import retry_until
 from libtmux.window import Window
 
 if t.TYPE_CHECKING:
@@ -464,11 +464,18 @@ def test_split_with_environment(
         environment=environment,
     )
     assert pane is not None
-    # wait a bit for the prompt to be ready as the test gets flaky otherwise
-    time.sleep(0.05)
     for k, v in environment.items():
         pane.send_keys(f"echo ${k}")
-        assert pane.capture_pane()[-2] == v
+        expected = v
+
+        def output_matches(expected: str = expected) -> bool:
+            return pane.capture_pane()[-2] == expected
+
+        # Custom shell ``env PS1='$ ' sh`` startup is async and not covered
+        # by the global ``default-shell`` config, so the pane needs a real
+        # poll for echo output rather than the speculative time.sleep
+        # this test used to use.
+        assert retry_until(output_matches, seconds=2)
 
 
 def test_split_window_zoom(
