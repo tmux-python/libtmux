@@ -185,6 +185,38 @@ control_mode (which we already have).
   per-call-overhead-dominated `light_q` phase improving 16.5 %.
   See the commit message for the full per-phase breakdown.
 
+* **Gated `MSG_IDENTIFY_ENVIRON` forwarding** (commit `a9471bcd`).
+  Audited tmux source for `c->environ` reads: only `spawn.c`
+  (`spawn.c:314-324`), `cmd-new-session.c:273`, and
+  `cmd-attach-session.c` (libtmux hard-routes that to subprocess).
+  Every other command path allocates `c->environ` at
+  `server_client_new()`, accumulates ~89 frames via
+  `server-client.c:3685`, and frees the result at `MSG_EXIT`
+  without ever reading it. The fix sends the full env only when
+  the subcommand is in `ImsgEngine._spawn_commands` (new-session,
+  new-window, split-window, respawn-{pane,window}, display-popup,
+  source-file); for everything else, sends only
+  `_probe_env_keys` — currently `TMUX_PANE` for nested-tmux
+  default-target semantics (`cmd-find.c:93`).
+
+  **Per-call microbench** (`bench-engines-ab.py`, 1000 iters of
+  `display-message -p ok`, 3 trials each, median):
+
+  | metric | baseline | post-fix | Δ |
+  |--------|---------:|---------:|---:|
+  | avg | 0.90 ms | 0.55 ms | **−39 %** |
+  | p50 | 0.83 ms | 0.49 ms | **−41 %** |
+  | p99 | 3.00 ms | 1.50 ms | **−50 %** |
+
+  Tail latency moves the most because per-frame send variance was
+  the long-tail driver — fewer frames means fewer chances to
+  block on socket write. The hyperfine full-suite bench showed
+  only ~1% wall improvement because test wall is dominated by
+  fixture bootstrap (per-fixture `_run_local_command` fork+exec)
+  and shell readiness waits, not by per-command frame I/O.
+  **Workloads that issue many query/option commands per fixture
+  see the per-call gain proportionally.**
+
 Possible further micro-wins:
 
 * Cache the protocol codec instance on the engine (already memoised
@@ -193,8 +225,11 @@ Possible further micro-wins:
   bootstrap to skip Python's `subprocess.Popen` overhead (small
   one-time saving).
 
-Realistic ceiling at this point: <5 % via additional micro-wins.
-Significantly more is a protocol redesign.
+Realistic ceiling at this point: <5 % via additional micro-wins
+on the full-suite metric. The per-call hot path is well-optimised;
+remaining gains are in workload shape (fewer commands per fixture,
+batched dispatch via `Server.cmd_batch`) not in further engine
+tuning.
 
 ### `control_mode` — pipelining is shipped
 
