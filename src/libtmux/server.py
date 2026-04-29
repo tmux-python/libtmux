@@ -444,6 +444,92 @@ class Server(
         )
         return tmux_cmd.from_result(_run_command(request, command_engine))
 
+    def cmd_batch(
+        self,
+        commands: t.Sequence[t.Sequence[str | int]],
+        *,
+        target: str | int | None = None,
+    ) -> list[tmux_cmd]:
+        """Execute multiple commands as a batch; return ordered results.
+
+        Each entry in ``commands`` is a ``(cmd, *args)`` sequence,
+        identical in shape to one set of arguments to :meth:`cmd`.
+        ``target=`` applies to every command in the batch (mirrors
+        :meth:`cmd`'s parameter). The return list has length
+        ``len(commands)`` with the i-th entry being the result of the
+        i-th command, in send order.
+
+        Per-result error semantics match :meth:`cmd`: a tmux
+        ``%error`` becomes ``returncode=1`` plus populated
+        ``stderr`` — never an exception. Engine-broken errors
+        (``ControlModeEngine`` connection lost, etc.) raise as they
+        do for single calls.
+
+        Engine routing is per command: ``attach-session`` still falls
+        through to the subprocess engine even inside a batch (the
+        carve-out from :meth:`_engine_for_command` is preserved), but
+        a mixed-engine batch loses the pipelining benefit of
+        ``ControlModeEngine.run_batch``. Keep batches engine-uniform
+        — that is, avoid mixing ``attach-session`` with other
+        commands — to retain the optimised path.
+
+        Examples
+        --------
+        Create three windows in one batch:
+
+        >>> results = session.server.cmd_batch([
+        ...     ('new-window', '-d', '-n', 'one'),
+        ...     ('new-window', '-d', '-n', 'two'),
+        ...     ('new-window', '-d', '-n', 'three'),
+        ... ])
+        >>> len(results)
+        3
+        >>> all(r.returncode == 0 for r in results)
+        True
+
+        Returns
+        -------
+        list of :class:`common.tmux_cmd`
+            One per input command, in send order.
+        """
+        if not commands:
+            return []
+
+        requests: list[CommandRequest] = []
+        engines: list[TmuxEngine] = []
+        for entry in commands:
+            if not entry:
+                msg = "cmd_batch entries must be non-empty (cmd, *args) sequences"
+                raise exc.LibTmuxException(msg)
+            cmd_name = str(entry[0])
+            rest = entry[1:]
+            cmd_args: list[str | int] = (
+                ["-t", str(target), *rest] if target is not None else [*rest]
+            )
+            requests.append(
+                CommandRequest.from_args(
+                    *self._svr_prefix,
+                    cmd_name,
+                    *cmd_args,
+                    tmux_bin=self.tmux_bin,
+                ),
+            )
+            engines.append(self._engine_for_command(cmd_name))
+
+        # Fast path: every command routes to the same engine instance —
+        # use that engine's run_batch (pipelining benefit on
+        # ControlModeEngine, trivial loop on subprocess/imsg).
+        first_engine = engines[0]
+        if all(eng is first_engine for eng in engines):
+            results = first_engine.run_batch(requests)
+        else:
+            # Mixed-engine batch: each command goes to its assigned
+            # engine. Loses pipelining but preserves the per-command
+            # carve-out semantic (e.g. ``attach-session`` always
+            # subprocess).
+            results = [eng.run(req) for eng, req in zip(engines, requests, strict=True)]
+        return [tmux_cmd.from_result(r) for r in results]
+
     def _build_svr_prefix(self) -> tuple[str, ...]:
         """Return the fixed client-level flags this server prefixes every command with.
 

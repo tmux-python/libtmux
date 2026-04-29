@@ -21,6 +21,7 @@ from libtmux.engines import (
     ImsgEngine,
     ImsgProtocolVersion,
     SubprocessEngine,
+    TmuxEngine,
 )
 from libtmux.server import Server
 from libtmux.test.random import namer
@@ -49,6 +50,29 @@ class RecordingEngine:
         requests: t.Sequence[CommandRequest],
     ) -> list[CommandResult]:
         """Trivial loop — proxy engine has no batching benefit."""
+        return [self.run(req) for req in requests]
+
+
+class RecordingBatchEngine(RecordingEngine):
+    """Proxy engine that distinguishes batch dispatch from per-call dispatch.
+
+    ``Server.cmd_batch`` takes a fast path when every command in the
+    batch routes to the same engine — it calls ``engine.run_batch``
+    once. Mixed-engine batches fall back to per-command
+    ``engine.run`` calls. Tests use ``batch_calls`` to assert which
+    path was taken.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.batch_calls: list[list[CommandRequest]] = []
+
+    def run_batch(
+        self,
+        requests: t.Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Record the batch then delegate request-by-request."""
+        self.batch_calls.append(list(requests))
         return [self.run(req) for req in requests]
 
 
@@ -495,6 +519,115 @@ def test_server_engine_spec_defaults_to_subprocess() -> None:
     """Servers expose the normalized default engine selection."""
     server = Server()
     assert server.engine_spec == EngineSpec.subprocess()
+
+
+def test_server_cmd_batch_empty_returns_empty(server: Server) -> None:
+    """``cmd_batch([])`` is a no-op and returns an empty list."""
+    assert server.cmd_batch([]) == []
+
+
+def test_server_cmd_batch_returns_ordered_results(server: Server) -> None:
+    """``cmd_batch`` returns N ``tmux_cmd`` results in send order."""
+    server.new_session(session_name="batch")
+    results = server.cmd_batch(
+        [
+            ("display-message", "-p", "alpha"),
+            ("display-message", "-p", "beta"),
+            ("display-message", "-p", "gamma"),
+        ],
+    )
+    assert len(results) == 3
+    assert [r.stdout for r in results] == [["alpha"], ["beta"], ["gamma"]]
+    assert all(r.returncode == 0 for r in results)
+
+
+def test_server_cmd_batch_target_applies_to_every_command(server: Server) -> None:
+    """``target=`` is forwarded to each command identically to ``cmd``."""
+    session = server.new_session(session_name="targeted")
+    results = server.cmd_batch(
+        [
+            ("display-message", "-p", "#{session_name}"),
+            ("display-message", "-p", "#{session_id}"),
+        ],
+        target=session.session_name,
+    )
+    assert results[0].stdout == ["targeted"]
+    assert results[1].stdout[0].startswith("$")
+
+
+def test_server_cmd_batch_rejects_empty_entry(server: Server) -> None:
+    """An empty inner sequence raises before any wire I/O."""
+    with pytest.raises(exc.LibTmuxException, match="non-empty"):
+        server.cmd_batch([("display-message", "-p", "ok"), ()])
+
+
+def test_server_cmd_batch_uses_engine_run_batch_when_uniform() -> None:
+    """A uniform-engine batch dispatches via ``engine.run_batch`` once.
+
+    Catches a regression where ``cmd_batch`` falls back to the per-
+    command loop even when all commands route to the same engine.
+    """
+    engine = RecordingBatchEngine()
+    socket_name = f"libtmux_test{next(namer)}"
+
+    with Server(socket_name=socket_name, engine=engine) as server:
+        # Need a session so subsequent commands have something to target.
+        server.cmd("new-session", "-d", "-s", "uniform")
+        engine.batch_calls.clear()
+        server.cmd_batch(
+            [
+                ("display-message", "-p", "one"),
+                ("display-message", "-p", "two"),
+            ],
+        )
+
+    assert engine.batch_calls, "expected one run_batch call for the uniform batch"
+    assert len(engine.batch_calls[0]) == 2
+
+
+def test_server_cmd_batch_falls_back_per_command_when_mixed_engine() -> None:
+    """``attach-session`` mid-batch routes to the subprocess engine carve-out.
+
+    The fast path requires uniform routing; mixing engines drops back
+    to per-command ``engine.run`` so the carve-out remains correct
+    even at the cost of pipelining.
+    """
+    engine = RecordingBatchEngine()
+    socket_name = f"libtmux_test{next(namer)}"
+
+    with Server(socket_name=socket_name, engine=engine) as server:
+        server.cmd("new-session", "-d", "-s", "mixed")
+        # Force one command in the batch onto the subprocess carve-out
+        # engine so the batch is genuinely mixed. ``attach-session`` is
+        # the canonical carve-out but actually attaching against a
+        # non-tty errors; monkeypatching the resolver lets us simulate
+        # the routing without driving a tty.
+        original = server._engine_for_command
+
+        def patched(cmd: str) -> TmuxEngine:
+            if cmd == "list-clients":
+                return server._subprocess_engine
+            return original(cmd)
+
+        server._engine_for_command = patched  # type: ignore[method-assign]
+        engine.batch_calls.clear()
+        engine.requests.clear()
+
+        server.cmd_batch(
+            [
+                ("display-message", "-p", "first"),
+                ("list-clients", "-F", "#{client_name}"),
+            ],
+        )
+
+        # Fast path was NOT taken — mixed engines force per-command run().
+        assert engine.batch_calls == []
+        # The recording engine saw exactly one request (display-message);
+        # the list-clients went to ``server._subprocess_engine``.
+        assert len(engine.requests) == 1
+        assert "display-message" in engine.requests[0].args
+
+        server._engine_for_command = original  # type: ignore[method-assign]
 
 
 def test_server_uses_libtmux_engine_env_by_default(
