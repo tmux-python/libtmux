@@ -918,24 +918,6 @@ class Server(
         if session_name is not None:
             session_check_name(session_name)
 
-            if self.has_session(session_name):
-                if kill_session:
-                    proc = self.cmd("kill-session", target=session_name)
-                    if proc.stderr:
-                        raise exc.LibTmuxException(proc.stderr)
-                    logger.info(
-                        "existing session killed",
-                        extra={
-                            "tmux_session": session_name,
-                            "tmux_subcommand": "kill-session",
-                        },
-                    )
-                else:
-                    msg = f"Session named {session_name} exists"
-                    raise exc.TmuxSessionExists(
-                        msg,
-                    )
-
         extra: dict[str, str] = {
             "tmux_subcommand": "new-session",
         }
@@ -984,8 +966,35 @@ class Server(
 
             proc = self.cmd("new-session", *tmux_args)
 
+            # Try-then-handle: skip the pre-flight ``has-session`` probe
+            # and let tmux tell us when the name conflicts. Saves one
+            # round-trip per call in the common (unique-name) case;
+            # ``cmd-new-session.c:128`` emits the stable
+            # ``"duplicate session: %s"`` string we match here. Same
+            # observable behaviour: ``TmuxSessionExists`` on conflict
+            # without ``kill_session``, kill+retry on conflict with
+            # ``kill_session=True``.
             if proc.stderr:
-                raise exc.LibTmuxException(proc.stderr)
+                err_text = " ".join(str(line) for line in proc.stderr)
+                if session_name is not None and "duplicate session" in err_text:
+                    if not kill_session:
+                        msg = f"Session named {session_name} exists"
+                        raise exc.TmuxSessionExists(msg)
+                    kill_proc = self.cmd("kill-session", target=session_name)
+                    if kill_proc.stderr:
+                        raise exc.LibTmuxException(kill_proc.stderr)
+                    logger.info(
+                        "existing session killed",
+                        extra={
+                            "tmux_session": session_name,
+                            "tmux_subcommand": "kill-session",
+                        },
+                    )
+                    proc = self.cmd("new-session", *tmux_args)
+                    if proc.stderr:
+                        raise exc.LibTmuxException(proc.stderr)
+                else:
+                    raise exc.LibTmuxException(proc.stderr)
 
             session_stdout = proc.stdout[0]
 

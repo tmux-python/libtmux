@@ -279,22 +279,38 @@ def test_server_new_session_surfaces_kill_session_stderr(
     """Test kill-session stderr propagation using monkeypatch for the failure path.
 
     A real tmux fixture is not used here because this path requires forcing a
-    kill-session command failure before session creation begins.
+    kill-session command failure inside the duplicate-name retry path.
     """
     from libtmux import exc
     from libtmux.server import Server
     from libtmux.test.random import namer
 
     server = Server(socket_name=f"libtmux_log_{next(namer)}")
-    monkeypatch.setattr(server, "has_session", lambda session_name: True)
-    monkeypatch.setattr(
-        server,
-        "cmd",
-        lambda *args, **kwargs: types.SimpleNamespace(stderr=["kill failed"]),
-    )
+
+    cmd_calls: list[tuple[str, ...]] = []
+
+    def fake_cmd(*args: t.Any, **_kwargs: t.Any) -> types.SimpleNamespace:
+        cmd_calls.append(tuple(str(arg) for arg in args))
+        if args and args[0] == "kill-session":
+            return types.SimpleNamespace(stderr=["kill failed"])
+        # Initial new-session call — surface tmux's stable duplicate-name
+        # error so new_session takes the kill_session=True retry path.
+        return types.SimpleNamespace(
+            stderr=["duplicate session: existing_session"],
+            stdout=[],
+            returncode=1,
+        )
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
 
     with pytest.raises(exc.LibTmuxException, match="kill failed"):
         server.new_session(session_name="existing_session", kill_session=True)
+
+    # Validate the new_session try-then-handle ordering: new-session runs
+    # before kill-session (we only invoke kill-session because tmux told
+    # us the name was a duplicate), no wasted has-session pre-check.
+    assert cmd_calls[0][0] == "new-session"
+    assert cmd_calls[1][0] == "kill-session"
 
 
 def test_options_warning_logging_schema(
