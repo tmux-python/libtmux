@@ -634,12 +634,20 @@ class _SelectorSocketTransport:
         self._selector.select()
 
     def _send_all(self, data: bytes) -> None:
+        # Optimistic send: tmux's imsg frames are tiny (≤16 KiB) and a
+        # fresh AF_UNIX SOCK_STREAM socket has plenty of buffer
+        # capacity, so the first send almost always succeeds. Hitting
+        # the selector only on real BlockingIOError replaces two
+        # syscalls per send (selector.modify + epoll_wait) with zero
+        # in the common case — a measurable win on the imsg engine
+        # since it issues ~100 sends per command.
         offset = 0
+        sock = self.sock
         while offset < len(data):
-            self._wait_for(selectors.EVENT_WRITE)
             try:
-                sent = self.sock.send(data[offset:])
+                sent = sock.send(data[offset:])
             except BlockingIOError:
+                self._wait_for(selectors.EVENT_WRITE)
                 continue
             if sent == 0:
                 msg = "tmux socket closed during protocol write"
@@ -650,11 +658,12 @@ class _SelectorSocketTransport:
         fds = array.array("i", [fd])
         ancillary = [(socket.SOL_SOCKET, socket.SCM_RIGHTS, fds.tobytes())]
         try:
+            sock = self.sock
             while True:
-                self._wait_for(selectors.EVENT_WRITE)
                 try:
-                    sent = self.sock.sendmsg([data], ancillary)
+                    sent = sock.sendmsg([data], ancillary)
                 except BlockingIOError:
+                    self._wait_for(selectors.EVENT_WRITE)
                     continue
                 break
             if sent != len(data):
@@ -664,15 +673,23 @@ class _SelectorSocketTransport:
             _close_fd(fd)
 
     def _recv_more(self) -> None:
-        self._wait_for(selectors.EVENT_READ)
+        # Symmetric optimistic recv: the wire half of every imsg
+        # exchange is paced by tmux's reply rate, so by the time
+        # Python re-enters the read loop the kernel buffer typically
+        # already has bytes. Skip the upfront selector wait and only
+        # block on real BlockingIOError.
         fd_size = array.array("i").itemsize
-        try:
-            data, ancillary, _flags, _addr = self.sock.recvmsg(
-                65535,
-                socket.CMSG_SPACE(fd_size),
-            )
-        except BlockingIOError:
-            return
+        sock = self.sock
+        while True:
+            try:
+                data, ancillary, _flags, _addr = sock.recvmsg(
+                    65535,
+                    socket.CMSG_SPACE(fd_size),
+                )
+            except BlockingIOError:
+                self._wait_for(selectors.EVENT_READ)
+                continue
+            break
         if not data:
             msg = "tmux socket closed during protocol exchange"
             raise exc.TmuxProtocolError(msg)
