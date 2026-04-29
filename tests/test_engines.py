@@ -87,17 +87,17 @@ def test_create_imsg_engine_with_protocol_version() -> None:
     assert engine.protocol_version == "8"
 
 
-def test_create_control_mode_engine_returns_stub() -> None:
-    """Named engine creation returns the control-mode registration stub."""
+def test_create_control_mode_engine_returns_engine() -> None:
+    """Named engine creation returns a ``ControlModeEngine``."""
     engine = create_engine("control_mode")
     assert isinstance(engine, ControlModeEngine)
 
 
-def test_control_mode_engine_run_raises_not_implemented() -> None:
-    """The control-mode stub refuses to run commands until the backend lands."""
+def test_control_mode_engine_run_rejects_empty_command() -> None:
+    """``run()`` requires a tmux subcommand and refuses bare global flags."""
     engine = ControlModeEngine()
-    with pytest.raises(NotImplementedError, match=r"ControlModeEngine\.run"):
-        engine.run(CommandRequest(args=("display-message", "hello")))
+    with pytest.raises(exc.LibTmuxException, match="requires a tmux subcommand"):
+        engine.run(CommandRequest(args=("-L", "missing")))
 
 
 def test_engine_spec_control_mode_constructor() -> None:
@@ -625,6 +625,21 @@ def test_imsg_engine_caches_default_tmux_bin(
     first = engine._resolve_tmux_bin()
     second = engine._resolve_tmux_bin()
     third = engine._resolve_tmux_bin()
+
+    assert first == second == third
+    assert count() == 1, f"expected 1 shutil.which lookup, got {count()}"
+
+
+def test_control_mode_engine_caches_default_tmux_bin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``ControlModeEngine`` resolves ``shutil.which("tmux")`` once per instance."""
+    count = _counting_which(monkeypatch, "libtmux.engines.control_mode.base")
+
+    engine = ControlModeEngine()
+    first = engine._resolve_default_tmux_bin()
+    second = engine._resolve_default_tmux_bin()
+    third = engine._resolve_default_tmux_bin()
 
     assert first == second == third
     assert count() == 1, f"expected 1 shutil.which lookup, got {count()}"

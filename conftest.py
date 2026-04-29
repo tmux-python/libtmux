@@ -89,6 +89,7 @@ def _reset_engine_tmux_bin_cache() -> t.Generator[None, None, None]:
     its cache before each test or the cached lookup wins.
     """
     from libtmux import common as libtmux_common
+    from libtmux.engines.control_mode import ControlModeEngine
     from libtmux.engines.imsg import ImsgEngine
     from libtmux.engines.subprocess import SubprocessEngine
 
@@ -97,6 +98,8 @@ def _reset_engine_tmux_bin_cache() -> t.Generator[None, None, None]:
         builtin._resolved_default_tmux_bin = None
     elif isinstance(builtin, ImsgEngine):
         builtin._resolved_tmux_bin = None
+    elif isinstance(builtin, ControlModeEngine):
+        builtin._resolved_default_tmux_bin = None
     yield
 
 
