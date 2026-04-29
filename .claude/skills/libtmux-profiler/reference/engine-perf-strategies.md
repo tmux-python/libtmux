@@ -71,21 +71,25 @@ per command. **Persisting the connection is structurally blocked**
 by tmux's `MSG_COMMAND` / `MSG_EXIT` exchange, which terminates the
 client after each command — see `server-client.c` for the C side.
 
-### control_mode (177 ms total)
+### control_mode (1.43 s total on `tests/test_server.py --engine=control_mode`)
 
-| samples | frame |
+Profiled at 5 kHz on the 47-fixture suite (200 µs per sample);
+libtmux-internal frames only:
+
+| samples × 200µs | frame |
 |---------|-------|
-| 77/177 (43 %) | `common._run_command` |
-| 54 (31 %)     | `engines.control_mode.base.ControlModeEngine._await_response` |
-| 54 (31 %)     | `engines.control_mode.base.ControlModeEngine.run` |
-| 46 (26 %)     | `server.Server.cmd` |
+| 727 ms (51 %) | `common._run_command` |
+| 681 ms (48 %) | `server.Server.cmd` |
+| 538 ms (38 %) | `engines.control_mode.base.ControlModeEngine._await_response` |
+| 532 ms (37 %) | `engines.control_mode.base.ControlModeEngine.run` |
+|  53 ms (4 %)  | `engines.control_mode.base.ControlModeEngine._ensure_started` |
 
-`_await_response` is `queue.Queue.get` blocking on the reader
-thread's parsed Block — most of those 54 samples are **necessary
-wait time** while tmux processes the command, not lock overhead. The
-flame is qualitatively different from the other two engines: there's
-no structural cost dominating, just synchronisation overhead and the
-wrapper layer.
+The bulk of `_await_response` is **necessary wait time** while
+tmux processes the command, not lock overhead. The
+synchronous startup-ACK wait that previously dominated this profile
+(`_drain_startup_ack` was 41 % of wall on the same suite, ~700 ms
+cumulative across 47 fresh engines) is gone — see *Pipelined
+startup ACK* below.
 
 ## Cross-engine: the wrapper layer
 
@@ -266,6 +270,31 @@ uniform, the speedup is engine-specific.
   `control_mode`, an options-heavy workspace collapses N round-trips
   into one batched flush per loop. Out of libtmux's tree but the
   user-visible payoff for the engine work.
+* **Pipelined startup ACK** (commit `a68291ab`). The synchronous
+  `_drain_startup_ack` round-trip that bracketed every fresh
+  `ControlModeEngine` is gone — the reader thread auto-discards
+  tmux's cfg-load `%begin`/`%end` block (`flags=0` per
+  `cmd-queue.c:618`) the first time it sees one, and the user's
+  first command pipelines its `stdin.write` with config-load.
+  The kernel pipe buffer absorbs the command write while tmux is
+  still initialising; tmux processes commands in arrival order and
+  emits responses after the ACK, so the reader's FIFO routing
+  delivers the response correctly to the user's slot.
+
+  **Where the win shows up:** short-lived-engine workloads (test
+  suites, CLI invocations, anything that creates a fresh
+  `ControlModeEngine` per logical operation). Tachyon profile of
+  `tests/test_server.py --engine=control_mode` (47 fixtures,
+  5 kHz):
+
+  | metric | before | after | Δ |
+  |---|---|---|---|
+  | total wall | 1.71 s | 1.43 s | **−16 %** |
+  | `_drain_startup_ack` cumulative | 713 ms | (deleted) | — |
+  | `_ensure_started` cumulative | 707 ms | 53 ms | **−92 %** |
+
+  Workload bench (one engine, many commands) is unchanged — the
+  startup amortises across the run.
 
 ## When to use which engine
 
