@@ -11,7 +11,15 @@ import typing as t
 
 import pytest
 
-from libtmux.engines import CommandRequest, CommandResult, ImsgEngine, SubprocessEngine
+from libtmux.common import tmux_cmd
+from libtmux.engines import (
+    CommandRequest,
+    CommandResult,
+    EngineSpec,
+    ImsgEngine,
+    ImsgProtocolVersion,
+    SubprocessEngine,
+)
 from libtmux.server import Server
 from libtmux.test.random import namer
 
@@ -469,12 +477,42 @@ def test_server_uses_injected_engine() -> None:
         session.kill()
 
 
-def test_server_imsg_engine_round_trip() -> None:
-    """Server works end-to-end with the native imsg engine."""
+def test_server_engine_spec_defaults_to_subprocess() -> None:
+    """Servers expose the normalized default engine selection."""
+    server = Server()
+    assert server.engine_spec == EngineSpec.subprocess()
+
+
+def test_server_engine_spec_tracks_typed_imsg_configuration() -> None:
+    """Typed engine specs are preserved on the server object."""
+    server = Server(engine=EngineSpec.imsg(ImsgProtocolVersion.V8))
+    assert server.engine_spec == EngineSpec.imsg(ImsgProtocolVersion.V8)
+    assert server.protocol_version == "8"
+    assert isinstance(server.engine, ImsgEngine)
+
+
+def test_server_engine_spec_rejects_legacy_protocol_hint() -> None:
+    """EngineSpec and protocol_version cannot be combined."""
+    with pytest.raises(ValueError, match="protocol_version"):
+        Server(engine=EngineSpec.imsg(), protocol_version="8")
+
+
+def test_tmux_cmd_engine_spec_rejects_legacy_protocol_hint() -> None:
+    """tmux_cmd rejects mixed typed and legacy engine configuration."""
+    with pytest.raises(ValueError, match="protocol_version"):
+        tmux_cmd("-V", engine=EngineSpec.subprocess(), protocol_version="8")
+
+
+def test_server_imsg_engine_spec_round_trip() -> None:
+    """Server works end-to-end with the typed imsg engine spec."""
     socket_name = f"libtmux_test{next(namer)}"
-    with Server(socket_name=socket_name, engine="imsg") as server:
+    with Server(
+        socket_name=socket_name,
+        engine=EngineSpec.imsg(ImsgProtocolVersion.V8),
+    ) as server:
         session = server.new_session(session_name=f"imsg-{next(namer)}")
         assert isinstance(server.engine, ImsgEngine)
+        assert server.engine_spec == EngineSpec.imsg(ImsgProtocolVersion.V8)
         assert session.session_id is not None
         assert server.has_session(session.session_name or "")
         window = session.new_window(window_name="imsg")
@@ -483,9 +521,19 @@ def test_server_imsg_engine_round_trip() -> None:
         session.kill()
 
 
+def test_server_legacy_imsg_string_configuration_remains_supported() -> None:
+    """Legacy string engine selection still normalizes to the typed spec."""
+    server = Server(engine="imsg", protocol_version="8")
+    assert server.engine_spec == EngineSpec.imsg(ImsgProtocolVersion.V8)
+    assert isinstance(server.engine, ImsgEngine)
+
+
 def test_server_imsg_interactive_commands_fallback() -> None:
     """Interactive commands stay on the subprocess engine for imsg servers."""
-    server = Server(socket_name=f"libtmux_test{next(namer)}", engine="imsg")
+    server = Server(
+        socket_name=f"libtmux_test{next(namer)}",
+        engine=EngineSpec.imsg(ImsgProtocolVersion.V8),
+    )
     try:
         attach_engine = server._engine_for_command("attach-session")
         switch_engine = server._engine_for_command("switch-client")

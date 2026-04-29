@@ -15,9 +15,9 @@ import typing as t
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
-from libtmux.common import resolve_engine, tmux_cmd
+from libtmux.common import resolve_engine, resolve_engine_spec, tmux_cmd
 from libtmux.constants import OptionScope
-from libtmux.engines.base import TmuxEngine
+from libtmux.engines.base import EngineKind, EngineLike, EngineSpec, TmuxEngine
 from libtmux.engines.subprocess import SubprocessEngine
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -73,10 +73,11 @@ class Server(
     on_init : callable, optional
     socket_name_factory : callable, optional
     tmux_bin : str or pathlib.Path, optional
-    engine : :class:`libtmux.engines.base.TmuxEngine` or str, optional
+    engine : :class:`libtmux.engines.base.EngineSpec`, \
+        :class:`libtmux.engines.base.TmuxEngine`, or str, optional
         Command execution backend. Defaults to the subprocess engine.
     protocol_version : str or int, optional
-        Binary protocol version hint when using the imsg engine.
+        Binary protocol version hint for the legacy ``engine="imsg"`` path.
 
     Examples
     --------
@@ -137,6 +138,8 @@ class Server(
     """Custom path to tmux binary. Falls back to ``shutil.which("tmux")``."""
     protocol_version: str | None = None
     """Preferred protocol version for binary engines."""
+    engine_spec: EngineSpec | None = None
+    """Normalized typed engine selection when the backend is representable."""
 
     def __init__(
         self,
@@ -147,18 +150,29 @@ class Server(
         on_init: t.Callable[[Server], None] | None = None,
         socket_name_factory: t.Callable[[], str] | None = None,
         tmux_bin: str | pathlib.Path | None = None,
-        engine: TmuxEngine | str | None = None,
+        engine: EngineLike = None,
         protocol_version: str | int | None = None,
         **kwargs: t.Any,
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
+        self.engine_spec = resolve_engine_spec(
+            engine,
+            protocol_version=protocol_version,
+        )
+        resolved_protocol_version = (
+            self.engine_spec.protocol_version
+            if self.engine_spec is not None and self.engine_spec.kind is EngineKind.IMSG
+            else None
+        )
         self.protocol_version = (
-            str(protocol_version) if protocol_version is not None else None
+            str(resolved_protocol_version)
+            if resolved_protocol_version is not None
+            else None
         )
         self._windows: list[WindowDict] = []
         self._panes: list[PaneDict] = []
-        self.engine = resolve_engine(engine, protocol_version=self.protocol_version)
+        self.engine = resolve_engine(engine, protocol_version=protocol_version)
         self._subprocess_engine: TmuxEngine = SubprocessEngine()
 
         if socket_path is not None:

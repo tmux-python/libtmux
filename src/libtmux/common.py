@@ -17,7 +17,16 @@ import typing as t
 
 from . import exc
 from ._compat import LooseVersion
-from .engines import CommandRequest, CommandResult, TmuxEngine, create_engine
+from .engines import (
+    CommandRequest,
+    CommandResult,
+    EngineKind,
+    EngineLike,
+    EngineSpec,
+    TmuxEngine,
+    create_engine,
+)
+from .engines.imsg import ImsgEngine
 from .engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
@@ -276,7 +285,7 @@ class tmux_cmd:
         self,
         *args: t.Any,
         tmux_bin: str | pathlib.Path | None = None,
-        engine: TmuxEngine | str | None = None,
+        engine: EngineLike = None,
         protocol_version: str | int | None = None,
     ) -> None:
         resolved_engine = resolve_engine(engine, protocol_version=protocol_version)
@@ -315,7 +324,7 @@ class tmux_cmd:
         cls,
         request: CommandRequest,
         *,
-        engine: TmuxEngine | str | None = None,
+        engine: EngineLike = None,
         protocol_version: str | int | None = None,
     ) -> tmux_cmd:
         """Create a :class:`tmux_cmd` by executing a prepared request."""
@@ -334,16 +343,70 @@ def set_default_engine(engine: TmuxEngine) -> None:
     _default_engine = engine
 
 
+def _normalize_protocol_version(protocol_version: str | int | None) -> int | None:
+    """Return a numeric protocol version when one was provided."""
+    return int(protocol_version) if protocol_version is not None else None
+
+
+def _spec_from_engine_instance(engine: TmuxEngine) -> EngineSpec | None:
+    """Infer a typed engine spec from a concrete engine instance."""
+    if isinstance(engine, SubprocessEngine):
+        return EngineSpec.subprocess()
+    if isinstance(engine, ImsgEngine):
+        protocol = _normalize_protocol_version(engine.protocol_version)
+        return EngineSpec.imsg(protocol)
+    return None
+
+
+def resolve_engine_spec(
+    engine: EngineLike = None,
+    *,
+    protocol_version: str | int | None = None,
+) -> EngineSpec | None:
+    """Normalize a public engine selection into an :class:`EngineSpec`."""
+    if isinstance(engine, EngineSpec):
+        if protocol_version is not None:
+            msg = "protocol_version cannot be combined with EngineSpec"
+            raise ValueError(msg)
+        return engine
+    if engine is None:
+        return _spec_from_engine_instance(_default_engine)
+    if isinstance(engine, str):
+        try:
+            kind = EngineKind(engine)
+        except ValueError as error:
+            msg = f"Unknown tmux engine: {engine}"
+            raise exc.LibTmuxException(msg) from error
+        resolved_protocol = (
+            _normalize_protocol_version(protocol_version)
+            if kind is EngineKind.IMSG
+            else None
+        )
+        return EngineSpec(kind=kind, protocol_version=resolved_protocol)
+    return _spec_from_engine_instance(engine)
+
+
 def resolve_engine(
-    engine: TmuxEngine | str | None = None,
+    engine: EngineLike = None,
     *,
     protocol_version: str | int | None = None,
 ) -> TmuxEngine:
     """Resolve a concrete engine instance from a public spec."""
+    engine_spec = resolve_engine_spec(engine, protocol_version=protocol_version)
     if engine is None:
         return _default_engine
+    if isinstance(engine, EngineSpec):
+        assert engine_spec is not None
+        return create_engine(
+            engine_spec.kind,
+            protocol_version=engine_spec.protocol_version,
+        )
     if isinstance(engine, str):
-        return create_engine(engine, protocol_version=protocol_version)
+        assert engine_spec is not None
+        return create_engine(
+            engine_spec.kind,
+            protocol_version=engine_spec.protocol_version,
+        )
     return engine
 
 

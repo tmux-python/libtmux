@@ -5,7 +5,7 @@ from __future__ import annotations
 import typing as t
 
 from libtmux import exc
-from libtmux.engines.base import TmuxEngine
+from libtmux.engines.base import EngineKind, TmuxEngine
 
 if t.TYPE_CHECKING:
     from libtmux.engines.imsg.base import ImsgProtocolCodec
@@ -22,18 +22,24 @@ def register_engine(name: str, factory: EngineFactory) -> None:
     _engine_registry[name] = factory
 
 
+def available_engines() -> tuple[str, ...]:
+    """Return registered engine names sorted alphabetically."""
+    return tuple(sorted(_engine_registry))
+
+
 def create_engine(
-    name: str,
+    name: str | EngineKind,
     *,
     protocol_version: str | int | None = None,
 ) -> TmuxEngine:
     """Instantiate a named engine from the registry."""
+    engine_name = name.value if isinstance(name, EngineKind) else name
     try:
-        factory = _engine_registry[name]
+        factory = _engine_registry[engine_name]
     except KeyError as error:
-        msg = f"Unknown tmux engine: {name}"
+        msg = f"Unknown tmux engine: {engine_name}"
         raise exc.LibTmuxException(msg) from error
-    if name == "imsg":
+    if engine_name == EngineKind.IMSG.value:
         return factory(protocol_version=protocol_version)
     return factory()
 
