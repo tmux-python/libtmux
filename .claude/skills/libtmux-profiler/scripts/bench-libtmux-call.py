@@ -3,7 +3,8 @@
 
 Configurable via env vars:
 
-  LIBTMUX_ENGINE  "subprocess" or "imsg" (default: subprocess)
+  LIBTMUX_ENGINE  "subprocess", "imsg", or "control_mode"
+                  (default: subprocess)
   BENCH_TARGET    name from BENCH_TARGETS registry (default: has_session)
   BENCH_ITERS     int (default: 1000)
   BENCH_SOCKET    socket name (default: ``microbench-<pid>`` for isolation)
