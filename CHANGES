@@ -42,6 +42,71 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
+#### Persistent `tmux -C` control-mode engine
+
+A third command-execution backend. Where the existing `subprocess`
+engine forks a fresh `tmux` client per call and the `imsg` engine
+opens a fresh AF_UNIX socket per call, the new `control_mode` engine
+keeps **one** long-lived `tmux -C` child whose stdin/stdout pipes
+carry every command. Steady-state per-call cost drops to one stdin
+write plus a parser dispatch.
+
+```console
+$ LIBTMUX_ENGINE=control_mode uv run pytest
+```
+
+Or per Server:
+
+```python
+import libtmux
+
+server = libtmux.Server(socket_name="work", engine="control_mode")
+session = server.new_session(session_name="dev")
+```
+
+Microbench (200 iters of `display-message -p ok` against a pre-spawned
+tmux server, Linux 6.6 / Python 3.14):
+
+| Engine         | avg     | p50     | p99     | total wall (200) |
+|----------------|---------|---------|---------|------------------|
+| `subprocess`   | 1.56 ms | 1.50 ms | 2.44 ms | 0.313 s          |
+| `imsg`         | 1.18 ms | 1.12 ms | 2.30 ms | 0.236 s          |
+| `control_mode` | 0.20 ms | 0.17 ms | 0.50 ms | 0.040 s          |
+
+`control_mode` is ~7.8× faster than `subprocess` and ~5.9× faster than
+`imsg` per call.
+
+#### Real-time format subscriptions via `Server.subscribe`
+
+The control-mode engine surfaces tmux's `refresh-client -B` mechanism
+as a sync, queue-based subscription API. Format values are pushed to
+the subscriber whenever they change server-side — no polling.
+
+```python
+sub = server.subscribe(
+    name="active-pane-size",
+    fmt="#{pane_width}x#{pane_height}",
+    target="%*",  # all panes
+)
+new_size = sub.queue.get(timeout=1.0)  # blocks until tmux emits
+sub.unsubscribe()
+```
+
+The queue is bounded with drop-oldest semantics so the engine's
+reader thread never blocks on slow consumers. Subscriptions require
+`engine="control_mode"`; the subprocess and imsg engines raise
+`LibTmuxException` because they have no persistent connection on
+which to receive notifications.
+
+#### pytest plugin: `--engine=control_mode` option
+
+`pytest --engine=control_mode` now wires the `server` and
+`TestServer` fixtures through the persistent control-mode backend.
+Note: tmux auto-attaches the control client to a default session on
+connect, which is incompatible with some trunk libtmux tests that
+assume a fresh server has zero sessions; library-internal tests that
+target the engine directly cover the contract.
+
 #### pytest plugin: deterministic shell in test fixtures (#662)
 
 The bundled `.tmux.conf` fixture now pins `default-shell` to `/bin/sh`

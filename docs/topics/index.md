@@ -11,6 +11,12 @@ Explore libtmux's core functionalities and underlying principles at a high level
 Module hierarchy, data flow, and internal identifiers.
 :::
 
+:::{grid-item-card} Engines
+:link: engines
+:link-type: doc
+subprocess, imsg, and persistent control-mode backends.
+:::
+
 :::{grid-item-card} Traversal
 :link: traversal
 :link-type: doc
@@ -59,6 +65,7 @@ Get and set tmux options and hooks.
 :hidden:
 
 architecture
+engines
 configuration
 design-decisions
 public-vs-internal

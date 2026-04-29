@@ -1,0 +1,127 @@
+(engines)=
+# Engines
+
+libtmux executes every tmux command through an *engine* — a thin
+abstraction over the wire protocol used to talk to the tmux server.
+Three engines ship today and you can swap between them per-Server,
+per-process (via the `LIBTMUX_ENGINE` environment variable), or
+process-wide (via {func}`libtmux.common.set_default_engine`).
+
+## Choosing an engine
+
+| Engine         | When to use                                                                |
+|----------------|----------------------------------------------------------------------------|
+| `subprocess`   | Default. Maximum compatibility — works against every tmux without setup.   |
+| `imsg`         | Slightly faster than `subprocess` (~25 %), no fork. No persistent state.   |
+| `control_mode` | Best per-call performance and the only engine that supports subscriptions. |
+
+Selecting per Server:
+
+```python
+import libtmux
+
+server = libtmux.Server(socket_name="dev", engine="control_mode")
+session = server.new_session(session_name="primary")
+```
+
+Selecting via environment variable (overrides the built-in default,
+loses to explicit `engine=` arguments):
+
+```console
+$ LIBTMUX_ENGINE=control_mode uv run python my_script.py
+```
+
+Process-wide programmatic default:
+
+```python
+from libtmux.common import set_default_engine
+from libtmux.engines.control_mode import ControlModeEngine
+
+set_default_engine(ControlModeEngine())
+```
+
+Resolution precedence: `Server(engine=…)` > `set_default_engine()`
+> `LIBTMUX_ENGINE` env > `subprocess` (built-in default).
+
+## Performance
+
+Microbench against a pre-spawned tmux server, 200 iterations of
+`display-message -p ok` (Linux 6.6, Python 3.14):
+
+| Engine         | avg     | p50     | p99     |
+|----------------|---------|---------|---------|
+| `subprocess`   | 1.56 ms | 1.50 ms | 2.44 ms |
+| `imsg`         | 1.18 ms | 1.12 ms | 2.30 ms |
+| `control_mode` | 0.20 ms | 0.17 ms | 0.50 ms |
+
+`control_mode` wins because every call is just one stdin write plus a
+parser dispatch — there is no per-call connection setup. The other
+two engines re-pay process or socket setup on every command.
+
+Reproduce the numbers locally:
+
+```console
+$ python .claude/skills/libtmux-profiler/scripts/bench-engines-ab.py
+```
+
+## Subscriptions (`control_mode` only)
+
+The control-mode engine surfaces tmux's `refresh-client -B` mechanism
+as a sync, queue-based subscription API. Format values are pushed to
+the subscriber whenever they change server-side — no polling.
+
+```python
+import libtmux
+
+server = libtmux.Server(socket_name="dev", engine="control_mode")
+server.new_session(session_name="primary")
+
+sub = server.subscribe(
+    name="active-pane-pwd",
+    fmt="#{pane_pwd}",
+    target="%*",  # all panes; or "%<id>", "@<id>", "@*", None
+)
+
+# Drain values as they arrive. tmux only emits when the value changes,
+# so the queue receives one entry per actual change — not one per poll.
+new_pwd = sub.queue.get(timeout=1.0)
+
+# When done:
+sub.unsubscribe()
+```
+
+The queue is bounded (default `maxsize=128`) with drop-oldest
+semantics so the engine's reader thread never blocks on a slow
+consumer. Names cannot contain `:` because tmux's own parser splits
+the `-B` argument on colons (`name:target:fmt`).
+
+`Server.subscribe` raises `LibTmuxException` on the `subprocess` and
+`imsg` engines — those engines have no persistent connection on
+which notifications could arrive.
+
+## Engine choice and `attach-session`
+
+`attach-session` is hard-routed through the subprocess engine on
+every Server, regardless of the user's choice. The reason is
+semantic: `attach-session` promotes a tmux client into a persistent
+*attached* session, which neither `imsg`'s one-shot
+`MSG_COMMAND` → `MSG_EXIT` loop nor `control_mode`'s headless control
+client can host. Every other tmux command — including
+`switch-client`, `kill-session`, and the read-only listings — flows
+through the engine you selected.
+
+## Lifecycle
+
+`subprocess` and `imsg` are stateless — there is nothing to clean up
+between calls. `control_mode` keeps a long-lived subprocess and a
+reader thread; tear them down via:
+
+```python
+server.engine.close()  # only when engine is ControlModeEngine
+```
+
+If you forget, a {func}`weakref.finalize` registered when the
+subprocess spawns will reap the child + reader thread when the engine
+is garbage-collected. The recommended explicit path uses tmux's
+documented empty-line `CLIENT_EXIT` signal first, escalates through
+stdin-EOF, `SIGTERM`, then `SIGKILL`.

@@ -61,7 +61,14 @@ Each level wraps tmux commands and format queries:
 
 ## Engine Layer
 
-Command execution is routed through an engine abstraction.
+Command execution is routed through an engine abstraction. Three
+engines ship with libtmux today:
+
+| Engine         | Per-call cost                                    | Persistent? | Notifications |
+|----------------|--------------------------------------------------|-------------|---------------|
+| `subprocess`   | fork + exec + connect + parse                    | No          | No            |
+| `imsg`         | open AF_UNIX socket + handshake + binary message | No          | No            |
+| `control_mode` | one stdin write + parser dispatch                | **Yes**     | **Yes**       |
 
 - `subprocess` is the default engine and preserves the traditional
   `tmux` CLI-backed behavior.
@@ -69,8 +76,14 @@ Command execution is routed through an engine abstraction.
   It resolves versioned protocol handlers through a registry, with the
   current implementation stored in `libtmux.engines.imsg.v8` and keyed as
   protocol version `8`.
-- Socket protocol work stays selector-based; no asyncio runtime is required
-  for control-mode or imsg transport.
+- `control_mode` keeps one long-lived `tmux -C` subprocess and routes
+  every command through its stdin/stdout pipes. A daemon reader thread
+  drives a `selectors.DefaultSelector` loop and feeds a state-machine
+  parser. Returns `Block` events (matched `%begin`/`%end`/`%error`) to
+  the run-queue; `%subscription-changed` events are routed to user
+  subscribers. See {doc}`engines` for usage and the subscription API.
+- All socket-level transport stays selector-based; no asyncio runtime
+  is required.
 - The recommended public API is string-first, with overloads preserving
   typed validation for valid engine and protocol combinations:
 
@@ -85,6 +98,12 @@ Command execution is routed through an engine abstraction.
 
   ```python
   server = Server(engine="subprocess")
+  ```
+
+- The persistent control-mode backend is opt-in:
+
+  ```python
+  server = Server(engine="control_mode")
   ```
 
 - `EngineSpec` remains available for normalization and advanced callers, but
