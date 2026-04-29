@@ -11,9 +11,9 @@ $ BENCH_REPEATS=3 uv run python .claude/skills/libtmux-profiler/scripts/bench-en
 
 | engine         | build   | heavy_q | light_q | mutate | batch  | teardown | TOTAL   |
 |----------------|---------|---------|---------|--------|--------|----------|---------|
-| `subprocess`   | 103.5ms |  13.0ms | 216.0ms | 23.7ms | 38.5ms |  3.2ms   | 404.6ms |
-| `imsg`         |  88.1ms |  10.7ms | 136.3ms | 15.3ms | 32.7ms |  3.6ms   | 288.5ms |
-| `control_mode` |  62.0ms |   9.1ms |  21.7ms |  3.0ms | 10.8ms |  0.4ms   | 105.6ms |
+| `subprocess`   | 106.7ms |  13.3ms | 221.1ms | 25.1ms | 42.0ms |  3.9ms   | 414.0ms |
+| `imsg`         |  83.5ms |   9.4ms | 120.7ms | 11.5ms | 25.5ms |  3.8ms   | 256.6ms |
+| `control_mode` |  58.1ms |   8.4ms |  25.6ms |  3.0ms |  9.5ms |  0.6ms   | 103.0ms |
 
 Workload composition:
 
@@ -24,11 +24,11 @@ Workload composition:
 * **batch**: 10× `new-window` issued via `Server.cmd_batch` in one round-trip
 * **teardown**: 1× `kill-server`
 
-Aggregate result: `control_mode` is **3.83× faster than `subprocess`**
-and **2.73× faster than `imsg`** on a representative end-to-end
+Aggregate result: `control_mode` is **4.0× faster than `subprocess`**
+and **2.5× faster than `imsg`** on a representative end-to-end
 workload. The `batch` phase isolates the pipelining win — `control_mode`
-amortises the lock + flush across the whole batch and runs **3.6×
-faster than `subprocess`** and **3.0× faster than `imsg`** on the same
+amortises the lock + flush across the whole batch and runs **4.4×
+faster than `subprocess`** and **2.7× faster than `imsg`** on the same
 10 commands.
 
 ## Per-engine hot paths (libtmux-internal frames only)
@@ -142,7 +142,23 @@ cost is what it is.
 tmux's `MSG_COMMAND` / `MSG_EXIT` exchange forces a fresh client
 connection per command. Making imsg "persistent" would require
 adopting the control-mode protocol — at which point it would be
-control_mode (which we already have). Possible micro-wins:
+control_mode (which we already have).
+
+**Shipped on this branch:**
+
+* **Optimistic non-blocking IO** (commit `a265ccdf`).
+  `_send_all` / `_send_frame_with_fd` / `_recv_more` flipped from
+  "wait, then act" to "act, on `BlockingIOError` wait", matching
+  the pattern asyncio's transports use internally. The pre-IO
+  `selector.modify` + `epoll_wait` was paying its full cost for
+  almost zero blocking — imsg fragments each command into ~100
+  small frames, and a fresh AF_UNIX SOCK_STREAM never has its send
+  buffer full at first send. Apples-to-apples bench (5 repeats):
+  imsg total **287.8 ms → 256.6 ms (−10.8 %)**, with the
+  per-call-overhead-dominated `light_q` phase improving 16.5 %.
+  See the commit message for the full per-phase breakdown.
+
+Possible further micro-wins:
 
 * Cache the protocol codec instance on the engine (already memoised
   per call site; verify per-engine reuse).
@@ -150,8 +166,8 @@ control_mode (which we already have). Possible micro-wins:
   bootstrap to skip Python's `subprocess.Popen` overhead (small
   one-time saving).
 
-Realistic ceiling: 10 % via micro-wins; significantly more is a
-protocol redesign.
+Realistic ceiling at this point: <5 % via additional micro-wins.
+Significantly more is a protocol redesign.
 
 ### `control_mode` — pipelining is shipped
 
