@@ -82,6 +82,20 @@ def _phase_mutate(server: Server) -> None:
         window.rename_window(f"renamed_{index}")
 
 
+def _phase_batch_create(server: Server, count: int) -> None:
+    """Create *count* windows in one ``cmd_batch`` call.
+
+    Compares directly against ``_phase_build`` (which used N separate
+    ``new_window`` calls) by exercising the same shape via the
+    pipelined batch path. On ``control_mode`` the lock + flush amortise
+    over the batch; on ``subprocess``/``imsg`` it loops trivially, and
+    the column reflects raw per-call cost.
+    """
+    server.cmd_batch(
+        [("new-window", "-d", "-n", f"batched_{i}") for i in range(count)],
+    )
+
+
 def _phase_teardown(server: Server) -> None:
     """Kill the server via the public API."""
     server.kill()
@@ -91,8 +105,9 @@ def _bench_one_engine(
     label: str,
     server_factory: Callable[[], Server],
     query_iters: int,
+    batch_size: int,
 ) -> PhaseTimings:
-    """Run the full five-phase workload once and return per-phase wall in ms."""
+    """Run the full six-phase workload once and return per-phase wall in ms."""
     server = server_factory()
     timings: PhaseTimings = {}
     try:
@@ -113,6 +128,10 @@ def _bench_one_engine(
         timings["mutate_ms"] = 1000 * (time.perf_counter() - t0)
 
         t0 = time.perf_counter()
+        _phase_batch_create(server, batch_size)
+        timings["batch_create_ms"] = 1000 * (time.perf_counter() - t0)
+
+        t0 = time.perf_counter()
         _phase_teardown(server)
         timings["teardown_ms"] = 1000 * (time.perf_counter() - t0)
     finally:
@@ -129,6 +148,7 @@ def main() -> int:
     """Run the workload bench across all three engines and print the results."""
     query_iters = int(os.environ.get("BENCH_QUERY_ITERS", "100"))
     repeats = int(os.environ.get("BENCH_REPEATS", "1"))
+    batch_size = int(os.environ.get("BENCH_BATCH_SIZE", "10"))
     requested = {
         e.strip()
         for e in os.environ.get(
@@ -170,19 +190,27 @@ def main() -> int:
         return 2
 
     print(
-        f"# Workload bench: {repeats} repeat(s), "
-        f"light-query phase = {query_iters} iters of display-message",
+        f"# Workload bench: {repeats} repeat(s), light-query phase "
+        f"= {query_iters} iters of display-message; "
+        f"batch_create phase = {batch_size}-window cmd_batch",
     )
-    headers = ("engine", "build", "heavy_q", "light_q", "mutate", "teardown", "TOTAL")
-    print(f"# {'  '.join(f'{h:>11}' for h in headers)}")
+    headers = (
+        "engine",
+        "build",
+        "heavy_q",
+        "light_q",
+        "mutate",
+        "batch",
+        "teardown",
+        "TOTAL",
+    )
+    print(f"# {'  '.join(f'{h:>10}' for h in headers)}")
 
     for label, factory in factories:
-        runs: list[PhaseTimings] = []
-        for _ in range(repeats):
-            runs.append(_bench_one_engine(label, factory, query_iters))
-            # Defensive: kill any leftover socket between repeats.
-            for run in runs[-1:]:
-                _ = run
+        runs: list[PhaseTimings] = [
+            _bench_one_engine(label, factory, query_iters, batch_size)
+            for _ in range(repeats)
+        ]
         median: PhaseTimings = {
             key: statistics.median(run[key] for run in runs) for key in runs[0]
         }
@@ -192,10 +220,11 @@ def main() -> int:
             f"{median['heavy_query_ms']:.1f}ms",
             f"{median['light_query_ms']:.1f}ms",
             f"{median['mutate_ms']:.1f}ms",
+            f"{median['batch_create_ms']:.1f}ms",
             f"{median['teardown_ms']:.1f}ms",
             f"{median['total_ms']:.1f}ms",
         )
-        print(f"  {'  '.join(f'{cell:>11}' for cell in row)}")
+        print(f"  {'  '.join(f'{cell:>10}' for cell in row)}")
 
     # Best-effort socket cleanup in case kill_server failed under any engine.
     tmux_dir = pathlib.Path(f"/tmp/tmux-{os.geteuid()}")
