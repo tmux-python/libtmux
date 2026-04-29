@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
+import socket
+import struct
+import threading
+
 import pytest
 from typing_extensions import assert_type
 
+from libtmux import exc
 from libtmux.common import resolve_engine, resolve_engine_spec
 from libtmux.engines import (
     EngineKind,
@@ -16,6 +23,14 @@ from libtmux.engines import (
     create_imsg_protocol,
 )
 from libtmux.engines.imsg import ImsgEngine
+from libtmux.engines.imsg.base import _SelectorSocketTransport
+from libtmux.engines.imsg.v8 import (
+    IMSG_FD_MARK,
+    IMSG_HEADER_SIZE,
+    MessageType,
+    ProtocolV8Codec,
+    WriteDataMessage,
+)
 from libtmux.engines.subprocess import SubprocessEngine
 
 
@@ -117,3 +132,254 @@ def test_resolve_engine_spec_rejects_protocol_hint_for_engine_instance() -> None
             SubprocessEngine(),
             protocol_version="8",
         )
+
+
+def test_protocol_v8_identify_order_includes_stdio_fds() -> None:
+    """Protocol v8 identify frames match tmux client ordering."""
+    codec = ProtocolV8Codec()
+    stdin_read, stdin_write = os.pipe()
+    stdout_read, stdout_write = os.pipe()
+    try:
+        frames = codec.identify_messages(
+            cwd="/tmp",
+            term="tmux-256color",
+            tty_name="/dev/pts/99",
+            client_pid=123,
+            environ={"A": "B"},
+            flags=7,
+            features=9,
+            stdin_fd=stdin_read,
+            stdout_fd=stdout_write,
+        )
+        assert [frame.header.msg_type for frame in frames[:9]] == [
+            int(MessageType.MSG_IDENTIFY_LONGFLAGS),
+            int(MessageType.MSG_IDENTIFY_LONGFLAGS),
+            int(MessageType.MSG_IDENTIFY_TERM),
+            int(MessageType.MSG_IDENTIFY_FEATURES),
+            int(MessageType.MSG_IDENTIFY_TTYNAME),
+            int(MessageType.MSG_IDENTIFY_CWD),
+            int(MessageType.MSG_IDENTIFY_STDIN),
+            int(MessageType.MSG_IDENTIFY_STDOUT),
+            int(MessageType.MSG_IDENTIFY_CLIENTPID),
+        ]
+        assert frames[6].fd == stdin_read
+        assert frames[6].header.has_fd
+        assert frames[7].fd == stdout_write
+        assert frames[7].header.has_fd
+        assert frames[-1].header.msg_type == int(MessageType.MSG_IDENTIFY_DONE)
+    finally:
+        for fd in (stdin_read, stdin_write, stdout_read, stdout_write):
+            with contextlib.suppress(OSError):
+                os.close(fd)
+
+
+def test_protocol_v8_header_fd_marker_decodes_cleanly() -> None:
+    """The v8 codec preserves the imsg FD marker outside the length."""
+    codec = ProtocolV8Codec()
+    raw_header = struct.pack(
+        "=IIII",
+        int(MessageType.MSG_IDENTIFY_STDIN),
+        IMSG_HEADER_SIZE | IMSG_FD_MARK,
+        8,
+        99,
+    )
+
+    header = codec.unpack_header(raw_header)
+
+    assert header.length == IMSG_HEADER_SIZE
+    assert header.has_fd
+    assert header.peer_id == 8
+    assert header.pid == 99
+
+
+def test_protocol_v8_rejects_invalid_header_length() -> None:
+    """The v8 codec rejects malformed imsg frame lengths."""
+    codec = ProtocolV8Codec()
+    raw_header = struct.pack(
+        "=IIII",
+        int(MessageType.MSG_READY),
+        IMSG_HEADER_SIZE - 1,
+        8,
+        0,
+    )
+
+    with pytest.raises(exc.TmuxProtocolError, match="Invalid tmux imsg length"):
+        codec.unpack_header(raw_header)
+
+
+def test_protocol_v8_parses_write_payload() -> None:
+    """The v8 codec returns typed payload objects for known message types."""
+    codec = ProtocolV8Codec()
+    payload = struct.pack("=i", 3) + b"hello"
+
+    message = codec.parse_message(
+        int(MessageType.MSG_WRITE),
+        payload,
+        peer_id=8,
+        pid=0,
+    )
+
+    assert message == WriteDataMessage(stream=3, data=b"hello")
+
+
+def test_selector_transport_receives_partial_frame() -> None:
+    """The selector transport reassembles frames split across socket reads."""
+    codec = ProtocolV8Codec()
+    left, right = socket.socketpair()
+    transport = _SelectorSocketTransport(left)
+    frame = codec.frame_message(
+        MessageType.MSG_WRITE,
+        struct.pack("=i", 1) + b"partial",
+        peer_id=8,
+    )
+    packed = codec.pack_frame(frame)
+
+    def send_chunks() -> None:
+        right.sendall(packed[:5])
+        right.sendall(packed[5:])
+
+    sender = threading.Thread(target=send_chunks)
+    sender.start()
+    try:
+        received = transport.recv_frame(codec)
+    finally:
+        sender.join()
+        transport.close()
+        left.close()
+        right.close()
+
+    assert received.header.msg_type == int(MessageType.MSG_WRITE)
+    assert received.payload == frame.payload
+
+
+def test_selector_transport_sends_and_receives_fd() -> None:
+    """The selector transport passes one descriptor with an imsg frame."""
+    codec = ProtocolV8Codec()
+    left, right = socket.socketpair()
+    read_transport = _SelectorSocketTransport(left)
+    write_transport = _SelectorSocketTransport(right)
+    read_fd, write_fd = os.pipe()
+    received_fd: int | None = None
+
+    try:
+        frame = codec.frame_message(
+            MessageType.MSG_IDENTIFY_STDIN,
+            b"",
+            peer_id=8,
+            fd=write_fd,
+        )
+        write_fd = -1
+        write_transport.send_frame(codec, frame)
+        received = read_transport.recv_frame(codec)
+        received_fd = received.fd
+
+        assert received.header.msg_type == int(MessageType.MSG_IDENTIFY_STDIN)
+        assert received.header.has_fd
+        assert received_fd is not None
+    finally:
+        if received_fd is not None:
+            os.close(received_fd)
+        if write_fd != -1:
+            os.close(write_fd)
+        os.close(read_fd)
+        read_transport.close()
+        write_transport.close()
+        left.close()
+        right.close()
+
+
+def test_imsg_socket_command_sends_fd_backed_identify_burst() -> None:
+    """The imsg engine sends a tmux-shaped identify burst before commands."""
+    codec = ProtocolV8Codec()
+    client_sock, server_sock = socket.socketpair()
+    engine = ImsgEngine(protocol_version="8")
+    received_types: list[int] = []
+    received_fd_types: list[int] = []
+    server_errors: list[BaseException] = []
+
+    def fake_server() -> None:
+        transport = _SelectorSocketTransport(server_sock)
+        try:
+            while True:
+                frame = transport.recv_frame(codec)
+                received_types.append(frame.header.msg_type)
+                if frame.fd is not None:
+                    received_fd_types.append(frame.header.msg_type)
+                    os.close(frame.fd)
+                if frame.header.msg_type == int(MessageType.MSG_COMMAND):
+                    break
+
+            transport.send_frame(
+                codec,
+                codec.frame_message(
+                    MessageType.MSG_WRITE_OPEN,
+                    struct.pack("=iii", 1, -1, 0) + b"\0",
+                    peer_id=8,
+                ),
+            )
+            transport.send_frame(
+                codec,
+                codec.frame_message(
+                    MessageType.MSG_WRITE,
+                    struct.pack("=i", 1) + b"hello\n",
+                    peer_id=8,
+                ),
+            )
+            transport.send_frame(
+                codec,
+                codec.frame_message(
+                    MessageType.MSG_WRITE_CLOSE,
+                    struct.pack("=i", 1),
+                    peer_id=8,
+                ),
+            )
+            transport.send_frame(
+                codec,
+                codec.frame_message(
+                    MessageType.MSG_EXIT,
+                    struct.pack("=i", 0),
+                    peer_id=8,
+                ),
+            )
+            transport.send_frame(
+                codec,
+                codec.frame_message(MessageType.MSG_EXITED, b"", peer_id=8),
+            )
+        except BaseException as error:
+            server_errors.append(error)
+        finally:
+            transport.close()
+
+    server = threading.Thread(target=fake_server)
+    server.start()
+    try:
+        result = engine._run_socket_command(
+            sock=client_sock,
+            codec=codec,
+            peer_id=8,
+            command_argv=("display-message", "-p", "hello"),
+            cmd=["tmux", "display-message", "-p", "hello"],
+        )
+    finally:
+        client_sock.close()
+        server_sock.close()
+        server.join()
+
+    assert not server_errors
+    assert result.stdout == ["hello"]
+    assert received_types[:9] == [
+        int(MessageType.MSG_IDENTIFY_LONGFLAGS),
+        int(MessageType.MSG_IDENTIFY_LONGFLAGS),
+        int(MessageType.MSG_IDENTIFY_TERM),
+        int(MessageType.MSG_IDENTIFY_FEATURES),
+        int(MessageType.MSG_IDENTIFY_TTYNAME),
+        int(MessageType.MSG_IDENTIFY_CWD),
+        int(MessageType.MSG_IDENTIFY_STDIN),
+        int(MessageType.MSG_IDENTIFY_STDOUT),
+        int(MessageType.MSG_IDENTIFY_CLIENTPID),
+    ]
+    assert received_types[-1] == int(MessageType.MSG_COMMAND)
+    assert received_fd_types == [
+        int(MessageType.MSG_IDENTIFY_STDIN),
+        int(MessageType.MSG_IDENTIFY_STDOUT),
+    ]

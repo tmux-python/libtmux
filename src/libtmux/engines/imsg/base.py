@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import array
+import contextlib
 import errno
 import logging
 import os
@@ -13,6 +15,7 @@ import typing as t
 
 from libtmux import exc
 from libtmux.engines.base import CommandRequest, CommandResult
+from libtmux.engines.imsg.types import ImsgFrame, ImsgHeader
 from libtmux.engines.registry import create_imsg_protocol, register_engine
 
 from . import v8 as _v8  # noqa: F401
@@ -30,10 +33,13 @@ class ImsgProtocolCodec(t.Protocol):
 
     version: str
 
-    def pack_message(self, msg_type: int, payload: bytes, *, peer_id: int) -> bytes:
-        """Return a framed tmux imsg message."""
+    def pack_frame(self, frame: ImsgFrame) -> bytes:
+        """Return wire bytes for a typed imsg frame."""
 
-    def unpack_header(self, data: bytes) -> tuple[int, int, int, int]:
+    def pack_message(self, msg_type: int, payload: bytes, *, peer_id: int) -> bytes:
+        """Return a framed tmux imsg message without an attached FD."""
+
+    def unpack_header(self, data: bytes) -> ImsgHeader:
         """Decode a tmux imsg header."""
 
     def identify_messages(
@@ -46,11 +52,13 @@ class ImsgProtocolCodec(t.Protocol):
         environ: dict[str, str],
         flags: int = 0,
         features: int = 0,
-    ) -> list[bytes]:
+        stdin_fd: int | None = None,
+        stdout_fd: int | None = None,
+    ) -> list[ImsgFrame]:
         """Build the identify handshake messages for a tmux client."""
 
-    def command_message(self, argv: tuple[str, ...], *, peer_id: int) -> bytes:
-        """Build a ``MSG_COMMAND`` payload."""
+    def command_message(self, argv: tuple[str, ...], *, peer_id: int) -> ImsgFrame:
+        """Build a ``MSG_COMMAND`` frame."""
 
     def parse_message(
         self,
@@ -86,7 +94,7 @@ class ImsgProtocolCodec(t.Protocol):
         error_code: int,
         *,
         peer_id: int,
-    ) -> bytes:
+    ) -> ImsgFrame:
         """Build a ``MSG_WRITE_READY`` reply."""
 
     def read_done_message(
@@ -95,7 +103,7 @@ class ImsgProtocolCodec(t.Protocol):
         error_code: int,
         *,
         peer_id: int,
-    ) -> bytes:
+    ) -> ImsgFrame:
         """Build a ``MSG_READ_DONE`` reply."""
 
     @property
@@ -142,7 +150,7 @@ class ImsgProtocolCodec(t.Protocol):
     def msg_exiting(self) -> int:
         """Return the numeric ``MSG_EXITING`` message type."""
 
-    def exiting_message(self, *, peer_id: int) -> bytes:
+    def exiting_message(self, *, peer_id: int) -> ImsgFrame:
         """Build a ``MSG_EXITING`` notification."""
 
 
@@ -353,7 +361,8 @@ class ImsgEngine:
         command_argv: tuple[str, ...],
         cmd: list[str],
     ) -> CommandResult:
-        sock.settimeout(1.0)
+        stdin_fd = _duplicate_fd(0)
+        stdout_fd = _duplicate_fd(1)
         identify_frames = codec.identify_messages(
             cwd=str(pathlib.Path.cwd()),
             term=os.environ.get("TERM", "unknown") or "unknown",
@@ -362,6 +371,8 @@ class ImsgEngine:
             environ=dict(os.environ),
             flags=self._client_flags(),
             features=0,
+            stdin_fd=stdin_fd,
+            stdout_fd=stdout_fd,
         )
         logger.debug(
             "sending imsg identify burst",
@@ -371,9 +382,6 @@ class ImsgEngine:
                 "tmux_command_argv": list(command_argv),
             },
         )
-        for frame in identify_frames:
-            sock.sendall(frame)
-        sock.sendall(codec.command_message(command_argv, peer_id=peer_id))
 
         stdout_streams: set[int] = set()
         stderr_streams: set[int] = set()
@@ -383,85 +391,112 @@ class ImsgEngine:
         exit_message: str | None = None
         seen_exit = False
 
-        while True:
-            msg_type, payload, peer, pid = _recv_message(sock, codec)
-            logger.debug(
-                "received imsg message",
-                extra={
-                    "tmux_protocol_version": codec.version,
-                    "tmux_message_type": msg_type,
-                    "tmux_message_peer": peer,
-                    "tmux_message_pid": pid,
-                    "tmux_message_len": len(payload),
-                    "tmux_command_argv": list(command_argv),
-                },
-            )
-            if msg_type == codec.msg_version:
-                raise _ProtocolVersionMismatch(str(peer & 0xFF))
+        transport = _SelectorSocketTransport(sock)
+        try:
+            transport.send_frames(codec, identify_frames)
+            command_frame = codec.command_message(command_argv, peer_id=peer_id)
+            transport.send_frame(codec, command_frame)
 
-            message: object = codec.parse_message(
-                msg_type,
-                payload,
-                peer_id=peer,
-                pid=pid,
-            )
-
-            if msg_type == codec.msg_ready:
-                continue
-            if msg_type == codec.msg_flags:
-                continue
-
-            stream = codec.write_open_stream(message)
-            if stream is not None:
-                if stream == 2:
-                    stderr_streams.add(stream)
-                else:
-                    stdout_streams.add(stream)
-                sock.sendall(codec.write_ready_message(stream, 0, peer_id=peer_id))
-                continue
-
-            payload_data = codec.write_payload(message)
-            if payload_data is not None:
-                stream_id, data = payload_data
-                if stream_id in stderr_streams:
-                    stderr_buffer.extend(data)
-                else:
-                    stdout_buffer.extend(data)
-                continue
-
-            close_stream = codec.write_close_stream(message)
-            if close_stream is not None:
-                continue
-
-            read_stream = codec.read_open_stream(message)
-            if read_stream is not None:
-                sock.sendall(
-                    codec.read_done_message(
-                        read_stream,
-                        errno.EBADF,
-                        peer_id=peer_id,
-                    ),
+            while True:
+                frame = transport.recv_frame(codec)
+                msg_type = frame.header.msg_type
+                peer = frame.header.peer_id
+                pid = frame.header.pid
+                payload = frame.payload
+                logger.debug(
+                    "received imsg message",
+                    extra={
+                        "tmux_protocol_version": codec.version,
+                        "tmux_message_type": msg_type,
+                        "tmux_message_peer": peer,
+                        "tmux_message_pid": pid,
+                        "tmux_message_len": len(payload),
+                        "tmux_message_has_fd": frame.header.has_fd,
+                        "tmux_command_argv": list(command_argv),
+                    },
                 )
-                continue
+                if msg_type == codec.msg_version:
+                    _close_fd(frame.fd)
+                    raise _ProtocolVersionMismatch(str(peer & 0xFF))
 
-            exit_status = codec.exit_status_from_message(message)
-            if exit_status is not None:
-                exit_code, exit_message = exit_status
-                seen_exit = True
-                sock.sendall(codec.exiting_message(peer_id=peer_id))
-                continue
+                try:
+                    message: object = codec.parse_message(
+                        msg_type,
+                        payload,
+                        peer_id=peer,
+                        pid=pid,
+                    )
+                finally:
+                    _close_fd(frame.fd)
 
-            if msg_type == codec.msg_shutdown:
-                exit_code = 1
-                seen_exit = True
-                sock.sendall(codec.exiting_message(peer_id=peer_id))
-                continue
+                if msg_type == codec.msg_ready:
+                    continue
+                if msg_type == codec.msg_flags:
+                    continue
 
-            if msg_type == codec.msg_exited:
-                break
+                stream = codec.write_open_stream(message)
+                if stream is not None:
+                    if stream == 2:
+                        stderr_streams.add(stream)
+                    else:
+                        stdout_streams.add(stream)
+                    transport.send_frame(
+                        codec,
+                        codec.write_ready_message(stream, 0, peer_id=peer_id),
+                    )
+                    continue
 
-            if seen_exit:
-                break
+                payload_data = codec.write_payload(message)
+                if payload_data is not None:
+                    stream_id, data = payload_data
+                    if stream_id in stderr_streams:
+                        stderr_buffer.extend(data)
+                    else:
+                        stdout_buffer.extend(data)
+                    continue
+
+                close_stream = codec.write_close_stream(message)
+                if close_stream is not None:
+                    continue
+
+                read_stream = codec.read_open_stream(message)
+                if read_stream is not None:
+                    transport.send_frame(
+                        codec,
+                        codec.read_done_message(
+                            read_stream,
+                            errno.EBADF,
+                            peer_id=peer_id,
+                        ),
+                    )
+                    continue
+
+                exit_status = codec.exit_status_from_message(message)
+                if exit_status is not None:
+                    exit_code, exit_message = exit_status
+                    seen_exit = True
+                    transport.send_frame(
+                        codec,
+                        codec.exiting_message(peer_id=peer_id),
+                    )
+                    continue
+
+                if msg_type == codec.msg_shutdown:
+                    exit_code = 1
+                    seen_exit = True
+                    transport.send_frame(
+                        codec,
+                        codec.exiting_message(peer_id=peer_id),
+                    )
+                    continue
+
+                if msg_type == codec.msg_exited:
+                    break
+
+                if seen_exit:
+                    break
+        finally:
+            transport.close()
 
         stdout_lines = _split_output(bytes(stdout_buffer))
         stderr_lines = _split_output(bytes(stderr_buffer))
@@ -493,6 +528,128 @@ class _NoServerError(RuntimeError):
     def __init__(self, message: str) -> None:
         super().__init__(message)
         self.message = message
+
+
+class _SelectorSocketTransport:
+    """Selector-backed imsg transport for Unix domain sockets."""
+
+    def __init__(self, sock: socket.socket) -> None:
+        self.sock = sock
+        self.sock.setblocking(False)
+        self._selector = selectors.DefaultSelector()
+        self._selector.register(sock, selectors.EVENT_READ)
+        self._buffer = bytearray()
+        self._pending_fds: list[int] = []
+
+    def close(self) -> None:
+        """Close selector state and any unclaimed descriptors."""
+        with contextlib.suppress(KeyError, ValueError):
+            self._selector.unregister(self.sock)
+        self._selector.close()
+        for fd in self._pending_fds:
+            _close_fd(fd)
+        self._pending_fds.clear()
+
+    def send_frames(
+        self,
+        codec: ImsgProtocolCodec,
+        frames: list[ImsgFrame],
+    ) -> None:
+        """Send a sequence of frames and close unsent descriptors on failure."""
+        sent = 0
+        try:
+            for frame in frames:
+                self.send_frame(codec, frame)
+                sent += 1
+        finally:
+            for frame in frames[sent:]:
+                _close_fd(frame.fd)
+
+    def send_frame(self, codec: ImsgProtocolCodec, frame: ImsgFrame) -> None:
+        """Send one imsg frame, including an optional SCM_RIGHTS descriptor."""
+        data = codec.pack_frame(frame)
+        if frame.fd is not None:
+            self._send_frame_with_fd(data, frame.fd)
+            return
+        self._send_all(data)
+
+    def recv_frame(self, codec: ImsgProtocolCodec) -> ImsgFrame:
+        """Receive one complete imsg frame."""
+        while len(self._buffer) < _IMSG_HEADER_SIZE:
+            self._recv_more()
+
+        header = codec.unpack_header(bytes(self._buffer[:_IMSG_HEADER_SIZE]))
+        while len(self._buffer) < header.length:
+            self._recv_more()
+
+        payload = bytes(self._buffer[_IMSG_HEADER_SIZE : header.length])
+        del self._buffer[: header.length]
+
+        fd: int | None = None
+        if header.has_fd and self._pending_fds:
+            fd = self._pending_fds.pop(0)
+
+        return ImsgFrame(header=header, payload=payload, fd=fd)
+
+    def _wait_for(self, event: int) -> None:
+        self._selector.modify(self.sock, event)
+        self._selector.select()
+
+    def _send_all(self, data: bytes) -> None:
+        offset = 0
+        while offset < len(data):
+            self._wait_for(selectors.EVENT_WRITE)
+            try:
+                sent = self.sock.send(data[offset:])
+            except BlockingIOError:
+                continue
+            if sent == 0:
+                msg = "tmux socket closed during protocol write"
+                raise exc.TmuxProtocolError(msg)
+            offset += sent
+
+    def _send_frame_with_fd(self, data: bytes, fd: int) -> None:
+        fds = array.array("i", [fd])
+        ancillary = [(socket.SOL_SOCKET, socket.SCM_RIGHTS, fds.tobytes())]
+        try:
+            while True:
+                self._wait_for(selectors.EVENT_WRITE)
+                try:
+                    sent = self.sock.sendmsg([data], ancillary)
+                except BlockingIOError:
+                    continue
+                break
+            if sent != len(data):
+                msg = "tmux imsg frame with FD was partially written"
+                raise exc.TmuxProtocolError(msg)
+        finally:
+            _close_fd(fd)
+
+    def _recv_more(self) -> None:
+        self._wait_for(selectors.EVENT_READ)
+        fd_size = array.array("i").itemsize
+        try:
+            data, ancillary, _flags, _addr = self.sock.recvmsg(
+                65535,
+                socket.CMSG_SPACE(fd_size),
+            )
+        except BlockingIOError:
+            return
+        if not data:
+            msg = "tmux socket closed during protocol exchange"
+            raise exc.TmuxProtocolError(msg)
+
+        self._buffer.extend(data)
+        for level, msg_type, cmsg_data in ancillary:
+            if level != socket.SOL_SOCKET or msg_type != socket.SCM_RIGHTS:
+                continue
+            fds = array.array("i")
+            fds.frombytes(cmsg_data[: len(cmsg_data) - (len(cmsg_data) % fd_size)])
+            for index, fd in enumerate(fds):
+                if index == 0:
+                    self._pending_fds.append(fd)
+                else:
+                    _close_fd(fd)
 
 
 def _spawn_and_capture(command: list[str]) -> tuple[int, list[str], list[str]]:
@@ -567,31 +724,18 @@ def _spawn_and_capture(command: list[str]) -> tuple[int, list[str], list[str]]:
     return exit_code, stdout_lines, stderr_lines
 
 
-def _recv_exact(sock: socket.socket, size: int) -> bytes:
-    """Read an exact number of bytes from a socket."""
-    chunks = bytearray()
-    while len(chunks) < size:
-        chunk = sock.recv(size - len(chunks))
-        if not chunk:
-            msg = "tmux socket closed during protocol exchange"
-            raise exc.TmuxProtocolError(msg)
-        chunks.extend(chunk)
-    return bytes(chunks)
+def _duplicate_fd(fd: int) -> int | None:
+    """Duplicate a descriptor for SCM_RIGHTS ownership transfer."""
+    with contextlib.suppress(OSError):
+        return os.dup(fd)
+    return None
 
 
-def _recv_message(
-    sock: socket.socket,
-    codec: ImsgProtocolCodec,
-) -> tuple[int, bytes, int, int]:
-    """Read a single imsg-framed message from the socket."""
-    header_bytes = _recv_exact(sock, _IMSG_HEADER_SIZE)
-    msg_type, msg_len, peer_id, pid = codec.unpack_header(header_bytes)
-    if msg_len < _IMSG_HEADER_SIZE or msg_len > _MAX_IMSGSIZE:
-        msg = f"Invalid tmux imsg length: {msg_len}"
-        raise exc.TmuxProtocolError(msg)
-    payload_len = msg_len - _IMSG_HEADER_SIZE
-    payload = _recv_exact(sock, payload_len) if payload_len else b""
-    return msg_type, payload, peer_id, pid
+def _close_fd(fd: int | None) -> None:
+    """Close a descriptor if one is present."""
+    if fd is not None:
+        with contextlib.suppress(OSError):
+            os.close(fd)
 
 
 def _split_output(data: bytes) -> list[str]:
