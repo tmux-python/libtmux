@@ -21,8 +21,8 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
-_PYTEST_ENGINES = ("subprocess", "imsg")
-_PytestEngine = t.Literal["subprocess", "imsg"]
+_PYTEST_ENGINES = ("subprocess", "imsg", "control_mode")
+_PytestEngine = t.Literal["subprocess", "imsg", "control_mode"]
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -223,18 +223,24 @@ def server(
 
         >>> result.assert_outcomes(passed=1)
     """
+    socket_name = f"libtmux_test{next(namer)}"
     if libtmux_engine == "imsg":
-        server = Server(
-            socket_name=f"libtmux_test{next(namer)}",
-            engine="imsg",
-        )
+        server = Server(socket_name=socket_name, engine="imsg")
+    elif libtmux_engine == "control_mode":
+        server = Server(socket_name=socket_name, engine="control_mode")
     else:
-        server = Server(
-            socket_name=f"libtmux_test{next(namer)}",
-            engine="subprocess",
-        )
+        server = Server(socket_name=socket_name, engine="subprocess")
 
     def fin() -> None:
+        # Ensure the persistent control-mode subprocess is shut down
+        # before the socket reap kicks tmux in the head — otherwise the
+        # finalizer's SIGKILL races our weakref.finalize and CPython
+        # warns about an unclosed file in the engine's pipes.
+        if libtmux_engine == "control_mode":
+            from libtmux.engines.control_mode import ControlModeEngine
+
+            if isinstance(server.engine, ControlModeEngine):
+                server.engine.close()
         _reap_test_server(server.socket_name)
 
     request.addfinalizer(fin)
@@ -402,6 +408,13 @@ def TestServer(
             on_init=on_init,
             socket_name_factory=socket_name_factory,
             engine="imsg",
+        )
+    elif libtmux_engine == "control_mode":
+        factory = functools.partial(
+            Server,
+            on_init=on_init,
+            socket_name_factory=socket_name_factory,
+            engine="control_mode",
         )
     else:
         factory = functools.partial(

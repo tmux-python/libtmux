@@ -161,6 +161,23 @@ def test_server_uses_cli_engine(server, libtmux_engine) -> None:
     result.assert_outcomes(passed=1)
 
 
+def test_plugin_control_mode_engine_option(pytester: pytest.Pytester) -> None:
+    """The plugin fixtures honor ``--engine=control_mode``."""
+    pytester.plugins = ["pytest_plugin"]
+    pytester.makepyfile(
+        test_plugin_control_mode_engine_option="""
+from libtmux.engines.control_mode import ControlModeEngine
+
+def test_server_uses_control_mode(server, libtmux_engine) -> None:
+    assert libtmux_engine == "control_mode"
+    assert isinstance(server.engine, ControlModeEngine)
+""",
+    )
+
+    result = pytester.runpytest("--engine=control_mode", "-vv")
+    result.assert_outcomes(passed=1)
+
+
 def test_plugin_rejects_invalid_engine_option(pytester: pytest.Pytester) -> None:
     """Pytest argument parsing rejects unknown libtmux engine values."""
     pytester.plugins = ["pytest_plugin"]
