@@ -301,17 +301,14 @@ def fetch_objs(
     """
     _fields, format_string = get_output_format()
 
-    cmd_args: list[str | int] = []
-
-    if server.socket_name:
-        cmd_args.insert(0, f"-L{server.socket_name}")
-    if server.socket_path:
-        cmd_args.insert(0, f"-S{server.socket_path}")
-
-    tmux_cmds = [
-        *cmd_args,
-        list_cmd,
-    ]
+    # Reuse the cached client-flag prefix from ``Server._svr_prefix``
+    # (built once at ``Server.__init__``). Previously this function
+    # rebuilt ``-L`` / ``-S`` per call via ``list.insert(0, …)`` and
+    # silently dropped ``-f config_file`` and ``-2``/``-8`` colors —
+    # the prefix tuple has all four. This is fetch-objs's hottest
+    # phase (~20 % of control_mode workload wall) so the per-call
+    # rebuild is worth removing.
+    tmux_cmds: list[str | int] = [*server._svr_prefix, list_cmd]
 
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
         tmux_cmds.extend(list(list_extra_args))
