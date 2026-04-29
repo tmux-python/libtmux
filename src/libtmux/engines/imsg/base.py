@@ -174,6 +174,7 @@ class ImsgEngine:
         self.protocol_version = (
             str(protocol_version) if protocol_version is not None else None
         )
+        self._resolved_tmux_bin: str | None = None
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute a tmux command over the server socket."""
@@ -248,10 +249,19 @@ class ImsgEngine:
                     sock.close()
 
     def _resolve_tmux_bin(self) -> str:
-        tmux_bin = shutil.which("tmux")
-        if tmux_bin is None:
-            raise exc.TmuxCommandNotFound
-        return tmux_bin
+        """Return the tmux binary path, memoized per engine instance.
+
+        ``shutil.which`` walks ``$PATH`` on every call (~50µs); the engine
+        invokes it on the hot path of every command, so caching the
+        result for the lifetime of the engine instance is a free win.
+        ``TmuxCommandNotFound`` is intentionally not memoized.
+        """
+        if self._resolved_tmux_bin is None:
+            resolved = shutil.which("tmux")
+            if resolved is None:
+                raise exc.TmuxCommandNotFound
+            self._resolved_tmux_bin = resolved
+        return self._resolved_tmux_bin
 
     def _parse_args(self, args: tuple[str, ...]) -> _ImsgCommandArgs:
         global_args: list[str] = []

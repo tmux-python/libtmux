@@ -79,6 +79,27 @@ def _reset_get_version_cache() -> t.Generator[None, None, None]:
     get_version.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_engine_tmux_bin_cache() -> t.Generator[None, None, None]:
+    """Reset cached ``shutil.which("tmux")`` paths on the default engine.
+
+    Both engines memoize the resolved tmux binary per instance. The
+    module-level ``_builtin_default_engine`` survives across tests, so
+    monkeypatching PATH to simulate a missing tmux requires invalidating
+    its cache before each test or the cached lookup wins.
+    """
+    from libtmux import common as libtmux_common
+    from libtmux.engines.imsg import ImsgEngine
+    from libtmux.engines.subprocess import SubprocessEngine
+
+    builtin = libtmux_common._builtin_default_engine
+    if isinstance(builtin, SubprocessEngine):
+        builtin._resolved_default_tmux_bin = None
+    elif isinstance(builtin, ImsgEngine):
+        builtin._resolved_tmux_bin = None
+    yield
+
+
 @pytest.fixture(autouse=True, scope="session")
 def setup_session(
     request: pytest.FixtureRequest,
