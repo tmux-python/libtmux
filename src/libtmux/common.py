@@ -31,6 +31,7 @@ from .engines import (
     TmuxEngine,
     create_engine,
 )
+from .engines.control_mode import ControlModeEngine
 from .engines.imsg import ImsgEngine
 from .engines.subprocess import SubprocessEngine
 
@@ -461,7 +462,7 @@ def _env_engine_name() -> EngineName | None:
     except ValueError as error:
         msg = (
             f"Unknown tmux engine in {LIBTMUX_ENGINE_ENV}: {raw_engine!r}. "
-            "Expected one of: subprocess, imsg"
+            "Expected one of: subprocess, imsg, control_mode"
         )
         raise exc.LibTmuxException(msg) from error
 
@@ -504,6 +505,8 @@ def _spec_from_engine_instance(engine: TmuxEngine) -> EngineSpec | None:
     if isinstance(engine, ImsgEngine):
         protocol = _normalize_protocol_version(engine.protocol_version)
         return EngineSpec.imsg(protocol)
+    if isinstance(engine, ControlModeEngine):
+        return EngineSpec.control_mode()
     return None
 
 

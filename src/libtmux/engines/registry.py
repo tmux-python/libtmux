@@ -6,6 +6,7 @@ import typing as t
 
 from libtmux import exc
 from libtmux.engines.base import (
+    ControlModeEngineName,
     EngineKind,
     ImsgEngineName,
     ImsgProtocolHint,
@@ -14,6 +15,7 @@ from libtmux.engines.base import (
 )
 
 if t.TYPE_CHECKING:
+    from libtmux.engines.control_mode import ControlModeEngine
     from libtmux.engines.imsg import ImsgEngine
     from libtmux.engines.imsg.base import ImsgProtocolCodec
     from libtmux.engines.subprocess import SubprocessEngine
@@ -49,6 +51,14 @@ def create_engine(
     *,
     protocol_version: ImsgProtocolHint | None = None,
 ) -> ImsgEngine: ...
+
+
+@t.overload
+def create_engine(
+    name: ControlModeEngineName,
+    *,
+    protocol_version: None = None,
+) -> ControlModeEngine: ...
 
 
 @t.overload

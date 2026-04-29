@@ -5,6 +5,7 @@ from __future__ import annotations
 from libtmux.engines.base import (
     CommandRequest,
     CommandResult,
+    ControlModeEngineName,
     EngineKind,
     EngineLike,
     EngineName,
@@ -15,6 +16,7 @@ from libtmux.engines.base import (
     SubprocessEngineName,
     TmuxEngine,
 )
+from libtmux.engines.control_mode import ControlModeEngine
 from libtmux.engines.imsg import ImsgEngine
 from libtmux.engines.registry import (
     available_engines,
@@ -29,6 +31,8 @@ from libtmux.engines.subprocess import SubprocessEngine
 __all__ = (
     "CommandRequest",
     "CommandResult",
+    "ControlModeEngine",
+    "ControlModeEngineName",
     "EngineKind",
     "EngineLike",
     "EngineName",

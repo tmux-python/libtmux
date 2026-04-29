@@ -24,6 +24,7 @@ from libtmux.common import (
 from libtmux.constants import OptionScope
 from libtmux.engines import CommandRequest
 from libtmux.engines.base import (
+    ControlModeEngineName,
     EngineKind,
     EngineLike,
     EngineSpec,
@@ -87,11 +88,12 @@ class Server(
     on_init : callable, optional
     socket_name_factory : callable, optional
     tmux_bin : str or pathlib.Path, optional
-    engine : ``"subprocess"``, ``"imsg"``, \
+    engine : ``"subprocess"``, ``"imsg"``, ``"control_mode"``, \
         :class:`libtmux.engines.base.EngineSpec`, or \
         :class:`libtmux.engines.base.TmuxEngine`, optional
         Command execution backend. Defaults to ``LIBTMUX_ENGINE`` when set,
-        otherwise the subprocess engine.
+        otherwise the subprocess engine. ``"control_mode"`` selects the
+        persistent ``tmux -CC`` engine (currently a registration stub).
     protocol_version : str or int, optional
         Binary protocol version hint for ``engine="imsg"``.
 
@@ -199,6 +201,21 @@ class Server(
         tmux_bin: str | pathlib.Path | None = None,
         engine: ImsgEngineName = "imsg",
         protocol_version: ImsgProtocolHint | None = None,
+        **kwargs: t.Any,
+    ) -> None: ...
+
+    @t.overload
+    def __init__(
+        self,
+        socket_name: str | None = None,
+        socket_path: str | pathlib.Path | None = None,
+        config_file: str | None = None,
+        colors: int | None = None,
+        on_init: t.Callable[[Server], None] | None = None,
+        socket_name_factory: t.Callable[[], str] | None = None,
+        tmux_bin: str | pathlib.Path | None = None,
+        engine: ControlModeEngineName = "control_mode",
+        protocol_version: None = None,
         **kwargs: t.Any,
     ) -> None: ...
 

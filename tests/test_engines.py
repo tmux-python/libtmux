@@ -25,6 +25,7 @@ from libtmux.engines import (
     create_engine,
     create_imsg_protocol,
 )
+from libtmux.engines.control_mode import ControlModeEngine
 from libtmux.engines.imsg import ImsgEngine
 from libtmux.engines.imsg.base import _SelectorSocketTransport
 from libtmux.engines.imsg.v8 import (
@@ -70,7 +71,7 @@ def test_engine_spec_imsg_constructor() -> None:
 
 def test_available_engines_lists_registered_backends() -> None:
     """The engine registry exposes the installed backend names."""
-    assert available_engines() == ("imsg", "subprocess")
+    assert available_engines() == ("control_mode", "imsg", "subprocess")
 
 
 def test_create_subprocess_engine() -> None:
@@ -84,6 +85,52 @@ def test_create_imsg_engine_with_protocol_version() -> None:
     engine = create_engine("imsg", protocol_version="8")
     assert isinstance(engine, ImsgEngine)
     assert engine.protocol_version == "8"
+
+
+def test_create_control_mode_engine_returns_stub() -> None:
+    """Named engine creation returns the control-mode registration stub."""
+    engine = create_engine("control_mode")
+    assert isinstance(engine, ControlModeEngine)
+
+
+def test_control_mode_engine_run_raises_not_implemented() -> None:
+    """The control-mode stub refuses to run commands until the backend lands."""
+    engine = ControlModeEngine()
+    with pytest.raises(NotImplementedError, match=r"ControlModeEngine\.run"):
+        engine.run(CommandRequest(args=("display-message", "hello")))
+
+
+def test_engine_spec_control_mode_constructor() -> None:
+    """Typed control-mode specs have no protocol version."""
+    assert EngineSpec.control_mode() == EngineSpec(kind=EngineKind.CONTROL_MODE)
+
+
+def test_engine_spec_control_mode_rejects_protocol_version() -> None:
+    """Control mode is not parameterized by an imsg protocol version."""
+    with pytest.raises(ValueError, match="only valid for the imsg engine"):
+        EngineSpec(kind=EngineKind.CONTROL_MODE, protocol_version=8)
+
+
+def test_libtmux_engine_env_selects_control_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``LIBTMUX_ENGINE=control_mode`` resolves to the control-mode engine."""
+    monkeypatch.setattr(libtmux_common, "_default_engine", None)
+    monkeypatch.setenv("LIBTMUX_ENGINE", "control_mode")
+
+    assert resolve_engine_spec() == EngineSpec.control_mode()
+    assert isinstance(resolve_engine(), ControlModeEngine)
+
+
+def test_libtmux_engine_env_unknown_engine_message_lists_control_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The unknown-engine error mentions ``control_mode`` as a valid choice."""
+    monkeypatch.setattr(libtmux_common, "_default_engine", None)
+    monkeypatch.setenv("LIBTMUX_ENGINE", "bogus")
+
+    with pytest.raises(exc.LibTmuxException, match="control_mode"):
+        resolve_engine_spec()
 
 
 def test_imsg_protocol_registry_defaults_to_latest() -> None:

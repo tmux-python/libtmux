@@ -44,6 +44,7 @@ class EngineKind(str, Enum):
 
     SUBPROCESS = "subprocess"
     IMSG = "imsg"
+    CONTROL_MODE = "control_mode"
 
 
 class ImsgProtocolVersion(IntEnum):
@@ -54,7 +55,8 @@ class ImsgProtocolVersion(IntEnum):
 
 SubprocessEngineName: t.TypeAlias = t.Literal["subprocess"]
 ImsgEngineName: t.TypeAlias = t.Literal["imsg"]
-EngineName: t.TypeAlias = SubprocessEngineName | ImsgEngineName
+ControlModeEngineName: t.TypeAlias = t.Literal["control_mode"]
+EngineName: t.TypeAlias = SubprocessEngineName | ImsgEngineName | ControlModeEngineName
 ImsgProtocolHint: t.TypeAlias = str | int | ImsgProtocolVersion
 
 
@@ -92,6 +94,11 @@ class EngineSpec:
             kind=EngineKind.IMSG,
             protocol_version=int(protocol) if protocol is not None else None,
         )
+
+    @classmethod
+    def control_mode(cls) -> EngineSpec:
+        """Build a control-mode engine spec."""
+        return cls(kind=EngineKind.CONTROL_MODE)
 
 
 class TmuxEngine(t.Protocol):
