@@ -431,17 +431,27 @@ class Server(
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        cmd_args: list[str | int] = (
-            ["-t", str(target), *args] if target is not None else [*args]
-        )
-
+        # ``target=None`` is the common path; skip the intermediate
+        # ``cmd_args`` list and pass ``args`` straight through to the
+        # request builder. Saves one list allocation + one list copy
+        # per call, which adds up across query-heavy workloads.
         command_engine = self._engine_for_command(cmd)
-        request = CommandRequest.from_args(
-            *self._svr_prefix,
-            cmd,
-            *cmd_args,
-            tmux_bin=self.tmux_bin,
-        )
+        if target is None:
+            request = CommandRequest.from_args(
+                *self._svr_prefix,
+                cmd,
+                *args,
+                tmux_bin=self.tmux_bin,
+            )
+        else:
+            request = CommandRequest.from_args(
+                *self._svr_prefix,
+                cmd,
+                "-t",
+                str(target),
+                *args,
+                tmux_bin=self.tmux_bin,
+            )
         return tmux_cmd.from_result(_run_command(request, command_engine))
 
     def cmd_batch(
