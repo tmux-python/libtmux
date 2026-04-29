@@ -542,6 +542,7 @@ def test_imsg_socket_command_sends_fd_backed_identify_burst() -> None:
             sock=client_sock,
             codec=codec,
             peer_id=8,
+            command_name="display-message",
             command_argv=("display-message", "-p", "hello"),
             cmd=["tmux", "display-message", "-p", "hello"],
         )
@@ -568,6 +569,183 @@ def test_imsg_socket_command_sends_fd_backed_identify_burst() -> None:
         int(MessageType.MSG_IDENTIFY_STDIN),
         int(MessageType.MSG_IDENTIFY_STDOUT),
     ]
+
+
+def _drive_imsg_socket_command(
+    engine: ImsgEngine,
+    *,
+    command_name: str,
+) -> list[int]:
+    """Run a single imsg command end-to-end against a fake server.
+
+    Returns the list of ``MSG_IDENTIFY_ENVIRON`` frame counts received
+    on the wire so callers can assert how many env frames the engine
+    forwarded for the given command kind.
+    """
+    codec = ProtocolV8Codec()
+    client_sock, server_sock = socket.socketpair()
+    received_environ_count = 0
+    server_errors: list[BaseException] = []
+
+    def fake_server() -> None:
+        nonlocal received_environ_count
+        transport = _SelectorSocketTransport(server_sock)
+        try:
+            while True:
+                frame = transport.recv_frame(codec)
+                if frame.fd is not None:
+                    os.close(frame.fd)
+                if frame.header.msg_type == int(MessageType.MSG_IDENTIFY_ENVIRON):
+                    received_environ_count += 1
+                if frame.header.msg_type == int(MessageType.MSG_COMMAND):
+                    break
+            # Minimal MSG_EXIT to let the client return cleanly.
+            transport.send_frame(
+                codec,
+                codec.frame_message(
+                    MessageType.MSG_EXIT,
+                    struct.pack("=i", 0),
+                    peer_id=8,
+                ),
+            )
+            transport.send_frame(
+                codec,
+                codec.frame_message(MessageType.MSG_EXITED, b"", peer_id=8),
+            )
+        except BaseException as error:
+            server_errors.append(error)
+        finally:
+            transport.close()
+
+    server = threading.Thread(target=fake_server)
+    server.start()
+    try:
+        engine._run_socket_command(
+            sock=client_sock,
+            codec=codec,
+            peer_id=8,
+            command_name=command_name,
+            command_argv=(command_name,),
+            cmd=["tmux", command_name],
+        )
+    finally:
+        client_sock.close()
+        server_sock.close()
+        server.join()
+
+    assert not server_errors
+    return [received_environ_count]
+
+
+def test_imsg_socket_command_skips_environ_burst_for_non_spawning_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-spawning commands forward only ``_probe_env_keys``, not the full env.
+
+    Verifies the gated env-forwarding optimisation: for a query command
+    like ``display-message`` (not in ``_spawn_commands``), the imsg
+    engine should send at most ``len(_probe_env_keys ∩ os.environ)``
+    ``MSG_IDENTIFY_ENVIRON`` frames — even when the runner's
+    environment has many vars. This is the per-call-overhead win that
+    closes a chunk of the imsg→control_mode gap on query-heavy
+    workloads.
+    """
+    monkeypatch.setattr(
+        os,
+        "environ",
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/u",
+            "TERM": "xterm",
+            "LANG": "C.UTF-8",
+            "USER": "u",
+            "SHELL": "/bin/bash",
+            "EDITOR": "vi",
+            "PAGER": "less",
+            "LOGNAME": "u",
+            "PWD": "/home/u",
+        },
+    )
+    engine = ImsgEngine(protocol_version="8")
+    [received] = _drive_imsg_socket_command(engine, command_name="display-message")
+    expected = sum(1 for k in ImsgEngine._probe_env_keys if k in os.environ)
+    assert received == expected
+    assert received <= 1  # only TMUX_PANE is in _probe_env_keys today
+
+
+def test_imsg_socket_command_sends_full_environ_for_spawn_commands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Spawn commands keep the full env forwarding so shells inherit it.
+
+    Regression bar: the gated optimisation must not break new-session
+    / new-window / split-window etc. — those commands hit ``spawn.c``
+    on the tmux side, which uses ``c->environ`` to populate the
+    spawned shell's environment. If we accidentally added one of them
+    to the non-spawn path the spawned shell would lose user env.
+    """
+    monkeypatch.setattr(
+        os,
+        "environ",
+        {
+            "PATH": "/usr/bin",
+            "HOME": "/home/u",
+            "TERM": "xterm",
+            "LANG": "C.UTF-8",
+            "USER": "u",
+            "SHELL": "/bin/bash",
+            "EDITOR": "vi",
+            "PAGER": "less",
+        },
+    )
+    engine = ImsgEngine(protocol_version="8")
+    for command_name in ImsgEngine._spawn_commands:
+        [received] = _drive_imsg_socket_command(engine, command_name=command_name)
+        assert received == len(os.environ), (
+            f"{command_name!r} should forward full env "
+            f"({len(os.environ)} vars), got {received}"
+        )
+
+
+def test_imsg_engine_spawn_commands_set_matches_tmux_spawn_callers() -> None:
+    """The classification mirrors which tmux subcommands hit ``spawn.c``.
+
+    Sentinel test: if a future libtmux change accidentally adds or
+    removes a command from ``_spawn_commands``, this test fails so we
+    revisit which tmux paths actually need the full env. The set was
+    derived from grepping ``spawn.c`` callers in tmux source —
+    ``cmd-{new,split,respawn}-{session,window,pane}.c``,
+    ``cmd-display-popup.c``, plus ``source-file.c`` (conservative,
+    can run arbitrary commands inside the loaded config).
+    """
+    assert ImsgEngine._spawn_commands == frozenset(
+        {
+            "new-session",
+            "new-window",
+            "split-window",
+            "respawn-pane",
+            "respawn-window",
+            "display-popup",
+            "source-file",
+        },
+    )
+    # Common non-spawning commands stay out of the set so they take
+    # the cheap path.
+    for non_spawning in (
+        "display-message",
+        "list-sessions",
+        "list-windows",
+        "list-panes",
+        "has-session",
+        "show-options",
+        "set-option",
+        "kill-session",
+        "kill-server",
+        "send-keys",
+        "rename-session",
+        "rename-window",
+    ):
+        assert non_spawning not in ImsgEngine._spawn_commands
 
 
 def test_imsg_engine_run_translates_broken_pipe_to_no_server(

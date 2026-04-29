@@ -170,6 +170,47 @@ class ImsgEngine:
 
     _startserver_commands = frozenset({"new-session", "start-server"})
 
+    # Subcommands that ultimately invoke tmux's ``spawn.c`` to start a
+    # shell. tmux uses the client's environ (built from
+    # ``MSG_IDENTIFY_ENVIRON`` frames per ``server-client.c:3685``) only
+    # when actually launching a shell process; for queries / metadata
+    # commands the environ is allocated, populated, then freed at
+    # ``MSG_EXIT`` without ever being read. Forwarding the full
+    # ``os.environ`` (typically ~50-100 vars) per call cost ~one frame
+    # per env var on the wire — net waste outside the spawn paths.
+    # See: ``cmd-new-session.c:273``, ``spawn.c:314-324``,
+    # ``cmd-{new,split,respawn}-{window,pane}.c``,
+    # ``cmd-display-popup.c``, ``source-file.c``.
+    _spawn_commands = frozenset(
+        {
+            "new-session",
+            "new-window",
+            "split-window",
+            "respawn-pane",
+            "respawn-window",
+            "display-popup",
+            # source-file can run arbitrary commands inside the loaded
+            # config, including ones that spawn — conservative include
+            # keeps user expectations stable across engines.
+            "source-file",
+        },
+    )
+
+    # Env keys tmux looks up *by name* on the client environ outside
+    # the shell-spawning paths. Currently a single key:
+    #   * ``TMUX_PANE`` — ``cmd-find.c:93``'s
+    #     ``cmd_find_inside_pane`` fallback uses it to identify which
+    #     pane the calling client is "inside of" when no ``-t`` target
+    #     is given (nested-tmux scenarios — libtmux running from a
+    #     pane inside an existing tmux server). Forwarding it for
+    #     every command keeps the imsg engine's default-target
+    #     resolution semantically identical to subprocess engine.
+    # ``TMUX`` is also looked up (``server-client.c:240``) but only
+    # by ``attach-session`` to refuse nested-attach; libtmux hard-routes
+    # ``attach-session`` through subprocess so the imsg engine never
+    # exercises that path.
+    _probe_env_keys = ("TMUX_PANE",)
+
     def __init__(self, protocol_version: str | int | None = None) -> None:
         self.protocol_version = (
             str(protocol_version) if protocol_version is not None else None
@@ -205,6 +246,7 @@ class ImsgEngine:
                     sock=sock,
                     codec=codec,
                     peer_id=peer_id,
+                    command_name=parsed.command_name,
                     command_argv=parsed.command_argv,
                     cmd=cmd,
                 )
@@ -396,17 +438,37 @@ class ImsgEngine:
         sock: socket.socket,
         codec: ImsgProtocolCodec,
         peer_id: int,
+        command_name: str | None,
         command_argv: tuple[str, ...],
         cmd: list[str],
     ) -> CommandResult:
         stdin_fd = _duplicate_fd(0)
         stdout_fd = _duplicate_fd(1)
+        # Gated env forwarding: tmux only reads ``c->environ`` from
+        # ``spawn.c`` (and its callers) when actually launching a
+        # shell — every other command path frees ``c->environ``
+        # without reading it. Sending the full ``os.environ`` would
+        # cost one ``MSG_IDENTIFY_ENVIRON`` frame per env var (~89 on
+        # this host) per command; for non-spawning commands those
+        # frames are net waste. Forward the full env only when
+        # ``command_name`` is in :attr:`_spawn_commands`; for everything
+        # else, forward only :attr:`_probe_env_keys` so tmux's
+        # named-lookup paths (``cmd-find.c``'s ``TMUX_PANE`` fallback)
+        # keep matching subprocess-engine semantics.
+        if command_name in self._spawn_commands:
+            environ_to_send: dict[str, str] = dict(os.environ)
+        else:
+            environ_to_send = {
+                key: os.environ[key]
+                for key in self._probe_env_keys
+                if key in os.environ
+            }
         identify_frames = codec.identify_messages(
             cwd=str(pathlib.Path.cwd()),
             term=os.environ.get("TERM", "unknown") or "unknown",
             tty_name="",
             client_pid=os.getpid(),
-            environ=dict(os.environ),
+            environ=environ_to_send,
             flags=self._client_flags(),
             features=0,
             stdin_fd=stdin_fd,
