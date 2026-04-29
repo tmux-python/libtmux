@@ -5,10 +5,10 @@
 # and reports Tachyon's status.
 #
 # Usage:
-#   bash ~/work/python/libtmux/.claude/skills/libtmux-profiler/scripts/setup-tachyon-venv.sh
+#   bash ~/work/python/libtmux-protocol/.claude/skills/libtmux-profiler/scripts/setup-tachyon-venv.sh
 #
-# Run from the libtmux (or any libtmux/tmuxp) repo root, OR the script
-# will detect the repo root from $PWD.
+# Run from the libtmux-protocol or tmuxp-libtmux-protocol repo root, OR
+# the script will detect the repo root from $PWD.
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ done
 
 if [ ! -f "${repo_root}/pyproject.toml" ]; then
     echo "ERROR: no pyproject.toml found in ${PWD} or any parent."
-    echo "  fix: cd into a libtmux or tmuxp repo first."
+    echo "  fix: cd into ~/work/python/libtmux-protocol or ~/work/python/tmuxp-libtmux-protocol first."
     exit 1
 fi
 
