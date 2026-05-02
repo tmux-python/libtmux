@@ -1064,12 +1064,31 @@ class Server(
 
         Examples
         --------
-        Not directly testable — requires a TTY-backed client.
-        Control-mode clients set ``tty.sy=0``, causing ``menu_prepare()``
-        to return NULL inside tmux.
+        End-to-end execution requires a TTY-backed client; control-mode
+        clients leave the cmdq waiting for a user selection
+        (``cmd-display-menu.c`` returns ``CMD_RETURN_WAIT`` once the
+        menu is displayed). The example below stubs ``server.cmd`` so
+        the wrapper's argument construction can be exercised
+        deterministically without invoking tmux.
 
-        >>> server.display_menu  # doctest: +ELLIPSIS
-        <bound method ...>
+        >>> captured = []
+        >>> def fake_cmd(name, *args, **_kw):
+        ...     captured.append((name, args))
+        ...     class R:
+        ...         stderr = []
+        ...         stdout = []
+        ...     return R()
+        >>> monkeypatch.setattr(server, 'cmd', fake_cmd)
+        >>> server.display_menu(
+        ...     'First', '1', 'select-pane',
+        ...     title='menu',
+        ...     x='C', y='C',
+        ... )
+        >>> name, args = captured[0]
+        >>> name
+        'display-menu'
+        >>> '-T' in args and 'menu' in args
+        True
         """
         tmux_args: tuple[str, ...] = ()
 
