@@ -11,9 +11,10 @@ import dataclasses
 import logging
 import pathlib
 import typing as t
+import warnings
 
 from libtmux import exc
-from libtmux.common import tmux_cmd
+from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -411,10 +412,6 @@ class Pane(
         Hello world
         $
         """
-        import warnings
-
-        from libtmux.common import has_gte_version
-
         cmd = ["capture-pane", "-p"]
         if start is not None:
             cmd.extend(["-S", str(start)])
@@ -529,10 +526,6 @@ class Pane(
         Hello world
         $
         """
-        import warnings
-
-        from libtmux.common import has_gte_version
-
         prefix = " " if suppress_history else ""
 
         tmux_args: tuple[str, ...] = ()
@@ -683,10 +676,6 @@ class Pane(
         list[str] | None
             Message output if get_text is True, otherwise None.
         """
-        import warnings
-
-        from libtmux.common import has_gte_version
-
         tmux_args: tuple[str, ...] = ()
 
         if get_text:
@@ -1239,10 +1228,6 @@ class Pane(
         >>> with control_mode() as ctl:
         ...     pane.display_popup(command='true', close_on_exit=True)
         """
-        import warnings
-
-        from libtmux.common import has_gte_version
-
         tmux_args: tuple[str, ...] = ()
 
         if close_on_exit:
@@ -1952,10 +1937,6 @@ class Pane(
         --------
         >>> pane.clear_history()
         """
-        import warnings
-
-        from libtmux.common import has_gte_version
-
         tmux_args: tuple[str, ...] = ()
 
         if clear_pane:
