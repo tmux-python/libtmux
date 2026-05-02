@@ -890,6 +890,22 @@ def test_show_messages(
     assert isinstance(result, list)
 
 
+def test_show_messages_terminals_jobs(server: Server) -> None:
+    """Test Server.show_messages(terminals=...) and (jobs=...) work clientless.
+
+    ``-T`` and ``-J`` are early-return paths in cmd-show-messages.c that
+    don't reach ``format_create_from_target``, so they don't require a
+    client. Verify both modes return a list without raising.
+    """
+    server.new_session(session_name="showmsg_alt_test")
+
+    terminals = server.show_messages(terminals=True)
+    assert isinstance(terminals, list)
+
+    jobs = server.show_messages(jobs=True)
+    assert isinstance(jobs, list)
+
+
 def test_show_prompt_history(server: Server) -> None:
     """Test Server.show_prompt_history() returns history."""
     from libtmux.common import has_gte_version
