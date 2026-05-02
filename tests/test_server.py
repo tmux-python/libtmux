@@ -597,6 +597,119 @@ def test_command_prompt(
     assert result.stdout[0] == expected_value
 
 
+class DisplayMenuCase(t.NamedTuple):
+    """Test case for display_menu() flag variations."""
+
+    test_id: str
+    items: tuple[str, ...]
+    kwargs: dict[str, t.Any]
+    min_tmux_version: str | None
+
+
+_MENU_ITEM = ("First", "1", "select-pane")
+
+
+DISPLAY_MENU_CASES: list[DisplayMenuCase] = [
+    DisplayMenuCase(
+        test_id="basic",
+        items=_MENU_ITEM,
+        kwargs={},
+        min_tmux_version=None,
+    ),
+    DisplayMenuCase(
+        test_id="with_title",
+        items=_MENU_ITEM,
+        kwargs={"title": "menu_title"},
+        min_tmux_version=None,
+    ),
+    DisplayMenuCase(
+        test_id="with_position",
+        items=_MENU_ITEM,
+        kwargs={"x": "C", "y": "C"},
+        min_tmux_version=None,
+    ),
+    DisplayMenuCase(
+        test_id="with_starting_choice",
+        items=_MENU_ITEM,
+        kwargs={"starting_choice": "0"},
+        min_tmux_version=None,
+    ),
+    DisplayMenuCase(
+        test_id="with_border_lines_v33",
+        items=_MENU_ITEM,
+        kwargs={"border_lines": "single"},
+        min_tmux_version="3.3",
+    ),
+    DisplayMenuCase(
+        test_id="with_style_v33",
+        items=_MENU_ITEM,
+        kwargs={"style": "bg=blue"},
+        min_tmux_version="3.3",
+    ),
+    DisplayMenuCase(
+        test_id="with_border_style_v33",
+        items=_MENU_ITEM,
+        kwargs={"border_style": "fg=red"},
+        min_tmux_version="3.3",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(DisplayMenuCase._fields),
+    DISPLAY_MENU_CASES,
+    ids=[c.test_id for c in DISPLAY_MENU_CASES],
+)
+def test_display_menu_flags(
+    test_id: str,
+    items: tuple[str, ...],
+    kwargs: dict[str, t.Any],
+    min_tmux_version: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+    server: Server,
+) -> None:
+    """Test Server.display_menu() argument construction.
+
+    ``Server.display_menu``'s own docstring states it cannot be tested
+    with :class:`ControlMode` (``tty.sy=0`` makes tmux's
+    ``menu_prepare()`` return NULL and the call hangs). Without a
+    TTY-backed client there is no way to invoke ``tmux display-menu``
+    end-to-end, so this test stubs ``Server.cmd`` to capture and assert
+    the constructed argument vector instead — the only deviation from
+    the test-suite's standard "use real tmux" pattern.
+    """
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    captured: list[tuple[str, ...]] = []
+    real_cmd = server.cmd
+
+    class _StubResult:
+        stderr: t.ClassVar[list[str]] = []
+        stdout: t.ClassVar[list[str]] = []
+
+    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+        if cmd == "display-menu":
+            captured.append((cmd, *args))
+            return _StubResult()
+        return real_cmd(cmd, *args, **_kw)
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+    server.display_menu(*items, **kwargs)
+
+    assert captured, "Server.cmd was not invoked"
+    cmd, *flags = captured[0]
+    assert cmd == "display-menu"
+    # Items are appended at the end; every flag value passed in kwargs
+    # should appear somewhere in the constructed argv.
+    for value in kwargs.values():
+        assert str(value) in flags
+    for item in items:
+        assert item in flags
+
+
 def test_lock_server(
     control_mode: t.Callable[..., t.Any],
     server: Server,
