@@ -568,6 +568,8 @@ class Window(
         >>> pane2 = window.split()
         >>> window.next_layout()
         Window(...)
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("next-layout")
 
@@ -590,6 +592,8 @@ class Window(
         >>> pane2 = window.split()
         >>> window.previous_layout()
         Window(...)
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("previous-layout")
 
@@ -630,6 +634,8 @@ class Window(
         >>> w = session.new_window(window_name='link_test')
         >>> s2 = server.new_session(session_name='link_target')
         >>> w.link(s2)
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -679,6 +685,8 @@ class Window(
         >>> w.link(s2)
         >>> linked = [x for x in s2.windows if x.window_name == 'unlink_test']
         >>> linked[0].unlink()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -719,6 +727,8 @@ class Window(
         >>> pane2 = window.split()
         >>> window.rotate()
         Window(...)
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -764,6 +774,8 @@ class Window(
         --------
         >>> window = session.new_window(window_name='respawn_test')
         >>> window.respawn(kill=True, shell='sh')
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -812,6 +824,8 @@ class Window(
         True
         >>> w2.window_index == w1_idx
         True
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 

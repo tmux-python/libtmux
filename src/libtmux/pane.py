@@ -1443,6 +1443,8 @@ class Pane(
         --------
         >>> server.set_buffer('pasted_text')
         >>> pane.paste_buffer()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1494,6 +1496,8 @@ class Pane(
         Stop piping:
 
         >>> pane.pipe()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1552,6 +1556,8 @@ class Pane(
         Exit copy mode:
 
         >>> pane.send_keys('q')
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1594,6 +1600,8 @@ class Pane(
         Exit clock mode:
 
         >>> pane.send_keys('q')
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("clock-mode")
 
@@ -1621,6 +1629,8 @@ class Pane(
         --------
         >>> with control_mode() as ctl:
         ...     window.active_pane.display_panes()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1641,6 +1651,8 @@ class Pane(
         Examples
         --------
         >>> pane.choose_buffer()
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("choose-buffer")
 
@@ -1653,6 +1665,8 @@ class Pane(
         Examples
         --------
         >>> pane.choose_client()
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("choose-client")
 
@@ -1694,6 +1708,8 @@ class Pane(
         Examples
         --------
         >>> pane.choose_tree()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1729,6 +1745,8 @@ class Pane(
         Examples
         --------
         >>> pane.customize_mode()
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("customize-mode")
 
@@ -1767,6 +1785,8 @@ class Pane(
         Examples
         --------
         >>> pane.find_window('sh')
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1803,6 +1823,8 @@ class Pane(
         Examples
         --------
         >>> pane.send_prefix()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1840,6 +1862,8 @@ class Pane(
         --------
         >>> pane = window.split(shell='sleep 1m')
         >>> pane.respawn(kill=True, shell='sh')
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1897,6 +1921,8 @@ class Pane(
         >>> pane_to_move = window.split(shell='sleep 1m')
         >>> w2 = session.new_window(window_name='move_target')
         >>> pane_to_move.move(w2)
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1969,6 +1995,8 @@ class Pane(
         >>> pane_to_join = window.split(shell='sleep 1m')
         >>> new_window = pane_to_join.break_pane()
         >>> pane_to_join.join(window)
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -2033,6 +2061,8 @@ class Pane(
         >>> new_window = pane_to_break.break_pane(window_name='broken')
         >>> new_window.window_name
         'broken'
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ("-P", "-F#{window_id}")
 
@@ -2088,6 +2118,8 @@ class Pane(
         >>> pane1.swap(pane2)
         >>> pane1.refresh()
         >>> pane2.refresh()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 

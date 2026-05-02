@@ -464,6 +464,8 @@ class Server(
         >>> result = server.run_shell('true')
         >>> isinstance(result, list)
         True
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -516,6 +518,8 @@ class Server(
         >>> server.new_session(session_name='wait_test')
         Session(...)
         >>> server.wait_for('test_channel', set_flag=True)
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -563,6 +567,8 @@ class Server(
         --------
         >>> server.bind_key('F12', 'display-message test', key_table='root')
         >>> server.unbind_key('F12', key_table='root')
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -607,6 +613,8 @@ class Server(
         --------
         >>> server.bind_key('F11', 'display-message test', key_table='root')
         >>> server.unbind_key('F11', key_table='root')
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -649,6 +657,8 @@ class Server(
         >>> result = server.list_keys()
         >>> isinstance(result, list)
         True
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -680,6 +690,8 @@ class Server(
         >>> result = server.list_commands(command_name='send-keys')
         >>> len(result) >= 1
         True
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -702,6 +714,8 @@ class Server(
         --------
         >>> with control_mode() as ctl:
         ...     server.lock_server()
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("lock-server")
 
@@ -749,6 +763,8 @@ class Server(
         >>> if has_gte_version("3.3"):
         ...     result = server.server_access(list_access=True)
         ...     assert isinstance(result, list)
+
+        .. versionadded:: 0.45
         """
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = "server_access requires tmux 3.3+"
@@ -798,6 +814,8 @@ class Server(
         --------
         >>> with control_mode() as ctl:
         ...     server.refresh_client()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -823,6 +841,8 @@ class Server(
         --------
         >>> with control_mode() as ctl:
         ...     server.suspend_client()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -848,6 +868,8 @@ class Server(
         --------
         >>> with control_mode() as ctl:
         ...     server.lock_client()
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -907,6 +929,8 @@ class Server(
         ...     result = 'yes'
         >>> result
         'yes'
+
+        .. versionadded:: 0.45
         """
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = (
@@ -1012,6 +1036,8 @@ class Server(
         ...     result = 'hi'
         >>> result
         'hi'
+
+        .. versionadded:: 0.45
         """
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = (
@@ -1151,6 +1177,8 @@ class Server(
         'display-menu'
         >>> '-T' in args and 'menu' in args
         True
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1218,6 +1246,8 @@ class Server(
         Examples
         --------
         >>> server.start_server()
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("start-server")
 
@@ -1263,6 +1293,8 @@ class Server(
         ...     result = server.show_messages(target_client=ctl.client_name)
         >>> isinstance(result, list)
         True
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1309,6 +1341,8 @@ class Server(
         ...     result = []
         >>> isinstance(result, list)
         True
+
+        .. versionadded:: 0.45
         """
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = "show_prompt_history requires tmux 3.3+"
@@ -1344,6 +1378,8 @@ class Server(
         >>> from libtmux.common import has_gte_version
         >>> if has_gte_version("3.3"):
         ...     server.clear_prompt_history()
+
+        .. versionadded:: 0.45
         """
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = "clear_prompt_history requires tmux 3.3+"
@@ -1382,6 +1418,8 @@ class Server(
         >>> server.set_buffer('hello')
         >>> server.show_buffer()
         'hello'
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1416,6 +1454,8 @@ class Server(
         >>> server.set_buffer('test_data')
         >>> server.show_buffer()
         'test_data'
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1442,6 +1482,8 @@ class Server(
         --------
         >>> server.set_buffer('to_delete', buffer_name='del_buf')
         >>> server.delete_buffer(buffer_name='del_buf')
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1477,6 +1519,8 @@ class Server(
         >>> server.set_buffer('save_me')
         >>> path = pathlib.Path(request.config.rootdir) / '..' / 'tmp_save.txt'
         >>> server.save_buffer(str(path))
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1514,6 +1558,8 @@ class Server(
         >>> path = pathlib.Path(request.config.rootdir) / '..' / 'tmp_load.txt'
         >>> _ = path.write_text('loaded')
         >>> server.load_buffer(str(path), buffer_name='loaded_buf')
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1541,6 +1587,8 @@ class Server(
         >>> result = server.list_buffers()
         >>> len(result) >= 1
         True
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("list-buffers")
 
@@ -1578,6 +1626,8 @@ class Server(
         >>> server.if_shell('true', 'set -g @if_test yes')
         >>> server.cmd('show-options', '-gv', '@if_test').stdout[0]
         'yes'
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1624,6 +1674,8 @@ class Server(
         >>> conf = pathlib.Path(request.config.rootdir) / '..' / 'tmp_src.conf'
         >>> _ = conf.write_text('set -g @test_source yes')
         >>> server.source_file(str(conf))
+
+        .. versionadded:: 0.45
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -1655,6 +1707,8 @@ class Server(
         --------
         >>> isinstance(server.list_clients(), list)
         True
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("list-clients")
 

@@ -251,6 +251,8 @@ class Session(
         Examples
         --------
         >>> session.lock_session()
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("lock-session")
 
@@ -288,6 +290,8 @@ class Session(
         --------
         >>> with control_mode() as ctl:
         ...     session.detach_client()
+
+        .. versionadded:: 0.45
         """
         if all_clients and target_client is not None:
             list_proc = self.server.cmd(
@@ -343,6 +347,8 @@ class Session(
         >>> w2 = session.new_window(window_name='lw_b', attach=True)
         >>> session.last_window()
         Window(...)
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("last-window")
 
@@ -366,6 +372,8 @@ class Session(
         >>> w = session.new_window(window_name='nw_test')
         >>> session.next_window()
         Window(...)
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("next-window")
 
@@ -389,6 +397,8 @@ class Session(
         >>> w = session.new_window(window_name='pw_test')
         >>> session.previous_window()
         Window(...)
+
+        .. versionadded:: 0.45
         """
         proc = self.cmd("previous-window")
 
