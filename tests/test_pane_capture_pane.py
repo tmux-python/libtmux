@@ -474,37 +474,36 @@ def test_capture_pane_trim_trailing_warning(
         assert "trim_trailing requires tmux 3.4+" in str(w[0].message)
 
 
-def test_capture_pane_quiet(session: Session) -> None:
-    """Test capture_pane with quiet flag suppresses errors."""
+@pytest.mark.parametrize(
+    ("kwargs", "min_tmux_version"),
+    [
+        ({"quiet": True}, None),
+        ({"alternate_screen": True}, None),
+        ({"mode_screen": True}, "3.6"),
+    ],
+    ids=["quiet", "alternate_screen", "mode_screen_v36"],
+)
+def test_capture_pane_flag_smoke(
+    kwargs: dict[str, t.Any],
+    min_tmux_version: str | None,
+    session: Session,
+) -> None:
+    """Smoke-test capture_pane flags that aren't tied to output content.
+
+    These flags either suppress errors (quiet), select a screen
+    (alternate_screen), or read from a non-default source
+    (mode_screen). The runtime side-effects depend on tmux internal
+    state that's awkward to drive headless; assert that the call
+    returns a list without raising. Output-pattern assertions live in
+    CAPTURE_PANE_CASES for the flags whose behaviour is observable.
+    """
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
     pane = session.active_window.active_pane
     assert pane is not None
 
-    # Quiet mode should not raise, even in edge cases
-    result = pane.capture_pane(quiet=True)
-    assert isinstance(result, list)
-
-
-def test_capture_pane_alternate_screen(session: Session) -> None:
-    """Test capture_pane with alternate_screen flag."""
-    pane = session.active_window.active_pane
-    assert pane is not None
-
-    # Capture from alternate screen — may be empty, but should not error
-    result = pane.capture_pane(alternate_screen=True)
-    assert isinstance(result, list)
-
-
-def test_capture_pane_mode_screen(session: Session) -> None:
-    """Test capture_pane with mode_screen flag (3.6+)."""
-    from libtmux.common import has_gte_version
-
-    if not has_gte_version("3.6"):
-        pytest.skip("Requires tmux 3.6+")
-
-    pane = session.active_window.active_pane
-    assert pane is not None
-
-    result = pane.capture_pane(mode_screen=True)
+    result = pane.capture_pane(**kwargs)
     assert isinstance(result, list)
 
 
