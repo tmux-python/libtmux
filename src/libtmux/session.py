@@ -289,19 +289,37 @@ class Session(
         >>> with control_mode() as ctl:
         ...     session.detach_client()
         """
+        if all_clients and target_client is not None:
+            list_proc = self.server.cmd(
+                "list-clients",
+                "-t",
+                str(self.session_id),
+                "-F",
+                "#{client_name}",
+            )
+            if list_proc.stderr:
+                raise exc.LibTmuxException(list_proc.stderr)
+
+            for client in list_proc.stdout:
+                if not client or client == target_client:
+                    continue
+                detach_args: tuple[str, ...] = ()
+                if shell_command is not None:
+                    detach_args += ("-E", shell_command)
+                detach_args += ("-t", client)
+                proc = self.server.cmd("detach-client", *detach_args)
+                if proc.stderr:
+                    raise exc.LibTmuxException(proc.stderr)
+            return
+
         tmux_args: tuple[str, ...] = ()
 
         if shell_command is not None:
             tmux_args += ("-E", shell_command)
 
-        if all_clients and target_client is not None:
-            # Keep target_client attached; detach all others from session
-            tmux_args += ("-a", "-t", target_client)
-        elif target_client is not None:
+        if target_client is not None:
             tmux_args += ("-t", target_client)
         else:
-            # No target specified: scope to this session so behavior is
-            # deterministic regardless of how many sessions exist on the server
             tmux_args += ("-s", str(self.session_id))
 
         proc = self.server.cmd("detach-client", *tmux_args)
