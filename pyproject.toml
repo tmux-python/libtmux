@@ -52,9 +52,9 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 [dependency-groups]
 dev = [
   # Docs (via gp-sphinx)
-  "gp-sphinx==0.0.1a14",
-  "sphinx-autodoc-api-style==0.0.1a14",
-  "sphinx-autodoc-pytest-fixtures==0.0.1a14",
+  "gp-sphinx==0.0.1a15",
+  "sphinx-autodoc-api-style==0.0.1a15",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a15",
   "sphinx-autobuild",
   "types-docutils",
   # Testing
@@ -75,9 +75,9 @@ dev = [
 ]
 
 docs = [
-  "gp-sphinx==0.0.1a14",
-  "sphinx-autodoc-api-style==0.0.1a14",
-  "sphinx-autodoc-pytest-fixtures==0.0.1a14",
+  "gp-sphinx==0.0.1a15",
+  "sphinx-autodoc-api-style==0.0.1a15",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a15",
   "sphinx-autobuild",
 ]
 testing = [
@@ -114,7 +114,9 @@ build-backend = "hatchling.build"
 # committing a date that would age into the lockfile. Mirrors the
 # pattern at vcspull/pyproject.toml for libvcs.
 gp-libs = false
+gp-furo-theme = false
 gp-sphinx = false
+gp-sphinx-vite = false
 sphinx-autodoc-api-style = false
 sphinx-autodoc-argparse = false
 sphinx-autodoc-docutils = false
