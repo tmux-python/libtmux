@@ -17,16 +17,19 @@ Compare tmux features between two versions using the source worktrees at `~/stud
 Extract `version1`, `version2`, and optional `command-name` from `$ARGUMENTS`.
 
 If no arguments provided, list available versions:
-```bash
-ls -d ~/study/c/tmux-*/ | sed 's|.*/tmux-||;s|/$||' | sort -V
+
+```console
+$ ls -d ~/study/c/tmux-*/ | sed 's|.*/tmux-||;s|/$||' | sort -V
 ```
+
 Then ask the user which two versions to compare.
 
 ## Validate Worktrees
 
 Verify both worktrees exist:
-```bash
-ls -d ~/study/c/tmux-{version1}/ ~/study/c/tmux-{version2}/ 2>/dev/null
+
+```console
+$ ls -d ~/study/c/tmux-{version1}/ ~/study/c/tmux-{version2}/ 2>/dev/null
 ```
 
 ## Single Command Comparison (when command-name given)

@@ -89,13 +89,18 @@ Compare against libtmux: `src/libtmux/formats.py`
 - 2.0 through 2.9, 2.9a
 - 3.0, 3.0a, 3.1 through 3.1c, 3.2, 3.2a, 3.3, 3.3a, 3.4, 3.5, 3.5a, 3.6, 3.6a
 
-To check if a command exists in a version:
-```bash
-ls ~/study/c/tmux-3.0/cmd-display-popup.c 2>/dev/null  # Not found = added later
-ls ~/study/c/tmux-3.3/cmd-display-popup.c 2>/dev/null  # Found = exists in 3.3
+To check if a command exists in a version (not-found = added later):
+
+```console
+$ ls ~/study/c/tmux-3.0/cmd-display-popup.c 2>/dev/null
+```
+
+```console
+$ ls ~/study/c/tmux-3.3/cmd-display-popup.c 2>/dev/null
 ```
 
 To diff a command across versions:
-```bash
-diff ~/study/c/tmux-3.0/cmd-send-keys.c ~/study/c/tmux-3.6a/cmd-send-keys.c
+
+```console
+$ diff ~/study/c/tmux-3.0/cmd-send-keys.c ~/study/c/tmux-3.6a/cmd-send-keys.c
 ```
