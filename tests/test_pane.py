@@ -874,6 +874,21 @@ DISPLAY_POPUP_CASES: list[DisplayPopupCase] = [
         kwargs={"environment": {"FOO": "bar"}},
         min_tmux_version="3.3",
     ),
+    DisplayPopupCase(
+        test_id="no_border_v33",
+        kwargs={"no_border": True},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="close_on_any_key_v36",
+        kwargs={"close_on_any_key": True},
+        min_tmux_version="3.6",
+    ),
+    DisplayPopupCase(
+        test_id="no_keys_v36",
+        kwargs={"no_keys": True},
+        min_tmux_version="3.6",
+    ),
 ]
 
 
@@ -933,6 +948,14 @@ def test_display_popup_mutual_exclusion(session: Session) -> None:
     assert pane is not None
     with pytest.raises(ValueError, match="mutually exclusive"):
         pane.display_popup(close_on_exit=True, close_on_success=True)
+
+
+def test_display_popup_no_border_with_border_lines_rejects(session: Session) -> None:
+    """no_border and border_lines are mutually exclusive."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        pane.display_popup(no_border=True, border_lines="single")
 
 
 def test_display_popup_close_existing(

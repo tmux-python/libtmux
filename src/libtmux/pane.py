@@ -1180,6 +1180,9 @@ class Pane(
         style: str | None = None,
         border_style: str | None = None,
         environment: dict[str, str] | None = None,
+        no_border: bool | None = None,
+        close_on_any_key: bool | None = None,
+        no_keys: bool | None = None,
     ) -> None:
         """Display a popup overlay via ``$ tmux display-popup``.
 
@@ -1218,6 +1221,16 @@ class Pane(
             Border style (``-S`` flag). Requires tmux 3.3+.
         environment : dict, optional
             Environment variables (``-e`` flag). Requires tmux 3.3+.
+        no_border : bool, optional
+            Open the popup without a border (``-B`` flag). Mutually
+            exclusive with *border_lines* — tmux's ``-B`` overrides
+            border-lines unconditionally. Requires tmux 3.3+.
+        close_on_any_key : bool, optional
+            Dismiss the popup on any key press once the inner
+            command has exited (``-k`` flag). Requires tmux 3.6+.
+        no_keys : bool, optional
+            Do not auto-close the popup on any close-trigger keys
+            (``-N`` flag). Requires tmux 3.6+.
 
         .. versionadded:: 0.45
 
@@ -1230,11 +1243,6 @@ class Pane(
         >>> with control_mode() as ctl:
         ...     pane.display_popup(command='true', close_on_exit=True)
         """
-        tmux_args: tuple[str, ...] = ()
-
-        if close_existing:
-            tmux_args += ("-C",)
-
         if close_on_exit and close_on_success:
             msg = (
                 "close_on_exit and close_on_success are mutually exclusive: "
@@ -1242,6 +1250,18 @@ class Pane(
                 "or close_on_success=True for -EE (close on zero exit code only)"
             )
             raise ValueError(msg)
+
+        if no_border and border_lines is not None:
+            msg = (
+                "no_border and border_lines are mutually exclusive: "
+                "tmux's -B flag forces no border regardless of border_lines"
+            )
+            raise ValueError(msg)
+
+        tmux_args: tuple[str, ...] = ()
+
+        if close_existing:
+            tmux_args += ("-C",)
 
         if close_on_exit:
             tmux_args += ("-E",)
@@ -1308,6 +1328,33 @@ class Pane(
             else:
                 warnings.warn(
                     "environment requires tmux 3.3+, ignoring",
+                    stacklevel=2,
+                )
+
+        if no_border:
+            if has_gte_version("3.3", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-B",)
+            else:
+                warnings.warn(
+                    "no_border requires tmux 3.3+, ignoring",
+                    stacklevel=2,
+                )
+
+        if close_on_any_key:
+            if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-k",)
+            else:
+                warnings.warn(
+                    "close_on_any_key requires tmux 3.6+, ignoring",
+                    stacklevel=2,
+                )
+
+        if no_keys:
+            if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-N",)
+            else:
+                warnings.warn(
+                    "no_keys requires tmux 3.6+, ignoring",
                     stacklevel=2,
                 )
 
