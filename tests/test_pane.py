@@ -820,41 +820,135 @@ def test_display_panes(
         pane.display_panes()
 
 
-def test_display_popup_runs_command(
+class DisplayPopupCase(t.NamedTuple):
+    """Test case for display_popup() flag variations."""
+
+    test_id: str
+    kwargs: dict[str, t.Any]
+    min_tmux_version: str | None
+
+
+DISPLAY_POPUP_CASES: list[DisplayPopupCase] = [
+    DisplayPopupCase(
+        test_id="basic",
+        kwargs={},
+        min_tmux_version=None,
+    ),
+    DisplayPopupCase(
+        test_id="dimensions",
+        kwargs={"width": 40, "height": 10},
+        min_tmux_version=None,
+    ),
+    DisplayPopupCase(
+        test_id="position",
+        kwargs={"x": "C", "y": "C"},
+        min_tmux_version=None,
+    ),
+    DisplayPopupCase(
+        test_id="start_directory",
+        kwargs={"start_directory": pathlib.Path("/tmp")},
+        min_tmux_version=None,
+    ),
+    DisplayPopupCase(
+        test_id="title_v33",
+        kwargs={"title": "popup_title"},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="border_lines_v33",
+        kwargs={"border_lines": "single"},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="style_v33",
+        kwargs={"style": "bg=blue"},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="border_style_v33",
+        kwargs={"border_style": "fg=red"},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="environment_v33",
+        kwargs={"environment": {"FOO": "bar"}},
+        min_tmux_version="3.3",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(DisplayPopupCase._fields),
+    DISPLAY_POPUP_CASES,
+    ids=[c.test_id for c in DISPLAY_POPUP_CASES],
+)
+def test_display_popup_flags(
+    test_id: str,
+    kwargs: dict[str, t.Any],
+    min_tmux_version: str | None,
     control_mode: t.Callable[..., t.Any],
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
-    """Test Pane.display_popup() runs a command — verified by file side-effect."""
-    marker = tmp_path / "popup_ran.marker"
+    """Test Pane.display_popup() flag combinations.
+
+    Each case adds a flag and runs ``touch <marker>`` inside the popup;
+    verifying the marker file proves the popup invoked the command and
+    the wrapper's flag-building branch was exercised.
+    """
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    marker = tmp_path / f"popup_{test_id}.marker"
     pane = session.active_window.active_pane
     assert pane is not None
 
+    call_kwargs = {"command": f"touch {marker}", "close_on_exit": True, **kwargs}
+
     with control_mode():
-        pane.display_popup(command=f"touch {marker}", close_on_exit=True)
+        pane.display_popup(**call_kwargs)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
 
 
-def test_display_popup_with_dimensions(
+def test_display_popup_close_on_success(
     control_mode: t.Callable[..., t.Any],
     session: Session,
     tmp_path: pathlib.Path,
 ) -> None:
-    """Test Pane.display_popup() with width and height."""
-    marker = tmp_path / "popup_sized.marker"
+    """Test Pane.display_popup() with close_on_success (-EE) alone."""
+    marker = tmp_path / "popup_close_on_success.marker"
     pane = session.active_window.active_pane
     assert pane is not None
 
     with control_mode():
-        pane.display_popup(
-            command=f"touch {marker}",
-            close_on_exit=True,
-            width=40,
-            height=10,
-        )
+        pane.display_popup(command=f"touch {marker}", close_on_success=True)
 
     retry_until(lambda: marker.exists(), 3, raises=True)
+
+
+def test_display_popup_mutual_exclusion(session: Session) -> None:
+    """close_on_exit and close_on_success are mutually exclusive."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        pane.display_popup(close_on_exit=True, close_on_success=True)
+
+
+def test_display_popup_close_existing(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+) -> None:
+    """Test Pane.display_popup(close_existing=True) returns cleanly.
+
+    ``-C`` (close existing popup) is a no-op when there is no popup;
+    the test confirms the wrapper builds the flag without erroring.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with control_mode():
+        pane.display_popup(close_existing=True)
 
 
 def test_paste_buffer(session: Session) -> None:
