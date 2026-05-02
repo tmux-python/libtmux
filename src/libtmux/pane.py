@@ -1473,6 +1473,8 @@ class Pane(
         exit_on_bottom: bool | None = None,
         mouse_drag: bool | None = None,
         cancel: bool | None = None,
+        page_down: bool | None = None,
+        source_pane: str | None = None,
     ) -> None:
         """Enter copy mode via ``$ tmux copy-mode``.
 
@@ -1487,6 +1489,13 @@ class Pane(
             Start mouse drag (``-M`` flag).
         cancel : bool, optional
             Cancel copy mode and any other modes (``-q`` flag).
+        page_down : bool, optional
+            Scroll a page down if already in copy mode (``-d`` flag).
+            Requires tmux 3.5+.
+        source_pane : str, optional
+            Source pane whose contents should be displayed in copy
+            mode (``-s`` flag). Lets you scroll/copy from another
+            pane's history. Requires tmux 3.2+.
 
         Examples
         --------
@@ -1506,6 +1515,18 @@ class Pane(
 
         if mouse_drag:
             tmux_args += ("-M",)
+
+        if page_down:
+            if has_gte_version("3.5", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-d",)
+            else:
+                warnings.warn(
+                    "page_down requires tmux 3.5+, ignoring",
+                    stacklevel=2,
+                )
+
+        if source_pane is not None:
+            tmux_args += ("-s", source_pane)
 
         if cancel:
             tmux_args += ("-q",)
