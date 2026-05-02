@@ -820,11 +820,11 @@ class OptionsMixin(CmdMixin):
         quiet : bool, optional
             Suppress errors silently (``-q`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         values_only : bool, optional
             Return only option values without names (``-v`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Examples
         --------

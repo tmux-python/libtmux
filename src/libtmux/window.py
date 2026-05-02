@@ -278,6 +278,7 @@ class Window(
         zoom: bool | None = None,
         shell: str | None = None,
         size: str | int | None = None,
+        percentage: int | None = None,
         environment: dict[str, str] | None = None,
     ) -> Pane:
         """Split window on active pane and return the created :class:`Pane`.
@@ -303,7 +304,12 @@ class Window(
             is useful for long-running processes where the closing of the
             window upon completion is desired.
         size : int, optional
-            Cell/row or percentage to occupy with respect to current window.
+            Cell/row count to occupy with respect to current window.
+        percentage : int, optional
+            Percentage (0-100) of the window to occupy (``-p`` flag).
+            Mutually exclusive with *size*.
+
+            .. versionadded:: 0.56
         environment : dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
 
@@ -322,6 +328,7 @@ class Window(
             zoom=zoom,
             shell=shell,
             size=size,
+            percentage=percentage,
             environment=environment,
         )
 
@@ -406,26 +413,26 @@ class Window(
     def last_pane(
         self,
         *,
-        detach: bool | None = None,
-        keep_zoom: bool | None = None,
         disable_input: bool | None = None,
+        enable_input: bool | None = None,
+        keep_zoom: bool | None = None,
     ) -> Pane | None:
         """Select the last (previously active) pane via ``$ tmux last-pane``.
 
         Parameters
         ----------
-        detach : bool, optional
-            Do not make the pane active (``-d`` flag).
+        disable_input : bool, optional
+            Disable input to the pane (``-d`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
+        enable_input : bool, optional
+            Enable input to the pane (``-e`` flag).
+
+            .. versionadded:: 0.56
         keep_zoom : bool, optional
             Keep the window zoomed if zoomed (``-Z`` flag).
 
-            .. versionadded:: 0.45
-        disable_input : bool, optional
-            Disable input to the pane (``-e`` flag).
-
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -442,14 +449,14 @@ class Window(
         """
         tmux_args: tuple[str, ...] = ()
 
-        if detach:
+        if disable_input:
             tmux_args += ("-d",)
+
+        if enable_input:
+            tmux_args += ("-e",)
 
         if keep_zoom:
             tmux_args += ("-Z",)
-
-        if disable_input:
-            tmux_args += ("-e",)
 
         proc = self.cmd("last-pane", *tmux_args)
 
@@ -498,15 +505,15 @@ class Window(
         spread : bool, optional
             Spread panes out evenly (``-E`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         next_layout : bool, optional
             Move to the next layout (``-n`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         previous_layout : bool, optional
-            Move to the previous layout (``-o`` flag).
+            Move to the previous layout (``-p`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -535,7 +542,7 @@ class Window(
             cmd.append("-n")
 
         if previous_layout:
-            cmd.append("-o")
+            cmd.append("-p")
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
@@ -672,15 +679,18 @@ class Window(
     def rotate(
         self,
         *,
-        direction_up: bool | None = None,
+        upward: bool | None = None,
+        downward: bool | None = None,
         keep_zoom: bool | None = None,
     ) -> Window:
         """Rotate pane positions in the window via ``$ tmux rotate-window``.
 
         Parameters
         ----------
-        direction_up : bool, optional
-            Rotate upward (``-U`` flag). Default is downward (``-D``).
+        upward : bool, optional
+            Rotate upward (``-U`` flag).
+        downward : bool, optional
+            Rotate downward (``-D`` flag).
         keep_zoom : bool, optional
             Keep the window zoomed if zoomed (``-Z`` flag).
 
@@ -698,9 +708,10 @@ class Window(
         """
         tmux_args: tuple[str, ...] = ()
 
-        if direction_up:
+        if upward:
             tmux_args += ("-U",)
-        else:
+
+        if downward:
             tmux_args += ("-D",)
 
         if keep_zoom:
@@ -747,7 +758,7 @@ class Window(
 
         if start_directory is not None:
             start_path = pathlib.Path(start_directory).expanduser()
-            tmux_args += ("-c", str(start_path))
+            tmux_args += (f"-c{start_path}",)
 
         if environment:
             for k, v in environment.items():
@@ -783,8 +794,6 @@ class Window(
         >>> w1_idx = w1.window_index
         >>> w2_idx = w2.window_index
         >>> w1.swap(w2)
-        >>> w1.refresh()
-        >>> w2.refresh()
         >>> w1.window_index == w2_idx
         True
         >>> w2.window_index == w1_idx
@@ -802,6 +811,10 @@ class Window(
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+        if isinstance(target, Window):
+            target.refresh()
 
     def rename_window(self, new_name: str) -> Window:
         """Rename window.
@@ -930,23 +943,25 @@ class Window(
         after : bool, optional
             Insert after the target window (``-a`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         before : bool, optional
             Insert before the target window (``-b`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         no_select : bool, optional
             Do not make the moved window the current window (``-d`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         kill_target : bool, optional
             Kill the target window if it exists (``-k`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         renumber : bool, optional
-            Renumber all windows after moving (``-r`` flag).
+            Renumber all windows in sequential order (``-r`` flag). This is a
+            standalone operation — when used, no move is performed and other
+            parameters are ignored.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -986,10 +1001,7 @@ class Window(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        if destination != "" and session is not None:
-            self.window_index = destination
-        else:
-            self.refresh()
+        self.refresh()
 
         return self
 
