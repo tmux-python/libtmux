@@ -714,6 +714,8 @@ class Server(
         allow: str | None = None,
         deny: str | None = None,
         list_access: bool | None = None,
+        read_only: bool | None = None,
+        write: bool | None = None,
     ) -> list[str] | None:
         """Manage server access control via ``$ tmux server-access``.
 
@@ -727,6 +729,14 @@ class Server(
             Deny a user (``-d`` flag).
         list_access : bool, optional
             List access rules (``-l`` flag).
+        read_only : bool, optional
+            Force the user to attach read-only (``-r`` flag). Implies
+            allow if the user is not already in the ACL. Mutually
+            exclusive with *write* — tmux rejects ``-r -w``.
+        write : bool, optional
+            Allow the user to attach read-write (``-w`` flag). Implies
+            allow if the user is not already in the ACL. Mutually
+            exclusive with *read_only*.
 
         Returns
         -------
@@ -744,6 +754,10 @@ class Server(
             msg = "server_access requires tmux 3.3+"
             raise exc.LibTmuxException(msg)
 
+        if read_only and write:
+            msg = "read_only and write are mutually exclusive (tmux rejects -r -w)"
+            raise ValueError(msg)
+
         tmux_args: tuple[str, ...] = ()
 
         if allow is not None:
@@ -754,6 +768,12 @@ class Server(
 
         if list_access:
             tmux_args += ("-l",)
+
+        if read_only:
+            tmux_args += ("-r",)
+
+        if write:
+            tmux_args += ("-w",)
 
         proc = self.cmd("server-access", *tmux_args)
 
