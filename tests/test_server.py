@@ -597,6 +597,56 @@ def test_command_prompt(
     assert result.stdout[0] == expected_value
 
 
+@pytest.mark.parametrize(
+    ("kwargs", "expected_flag", "min_tmux_version"),
+    [
+        ({"expand_format": True}, "-F", "3.3"),
+        ({"literal": True}, "-l", "3.6"),
+        ({"bspace_exit": True}, "-e", None),
+    ],
+    ids=["expand_format_v33", "literal_v36", "bspace_exit"],
+)
+def test_command_prompt_extra_flags(
+    kwargs: dict[str, t.Any],
+    expected_flag: str,
+    min_tmux_version: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+    server: Server,
+) -> None:
+    """``command_prompt`` exposes -F/-l/-e flags.
+
+    End-to-end behaviour for these flags depends on tmux internals
+    that are awkward to drive from a headless test (format
+    expansion, comma-split disabling, backspace-exit). Verify the
+    constructed argv instead, matching the test_display_menu_flags
+    monkeypatch pattern.
+    """
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    captured: list[tuple[str, ...]] = []
+    real_cmd = server.cmd
+
+    class _StubResult:
+        stderr: t.ClassVar[list[str]] = []
+        stdout: t.ClassVar[list[str]] = []
+
+    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+        if cmd == "command-prompt":
+            captured.append((cmd, *args))
+            return _StubResult()
+        return real_cmd(cmd, *args, **_kw)
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+    server.command_prompt("set -g @x '%1'", **kwargs)
+
+    assert captured, "Server.cmd was not invoked"
+    _name, *flags = captured[0]
+    assert expected_flag in flags
+
+
 class DisplayMenuCase(t.NamedTuple):
     """Test case for display_menu() flag variations."""
 
