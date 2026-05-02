@@ -13,6 +13,7 @@ import pathlib
 import shutil
 import subprocess
 import typing as t
+import warnings
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
@@ -1030,6 +1031,9 @@ class Server(
         border_lines: str | None = None,
         style: str | None = None,
         border_style: str | None = None,
+        selected_style: str | None = None,
+        mouse: bool | None = None,
+        stay_open: bool | None = None,
     ) -> None:
         """Display a popup menu via ``$ tmux display-menu``.
 
@@ -1061,6 +1065,15 @@ class Server(
             Menu style (``-s`` flag).
         border_style : str, optional
             Border style (``-S`` flag).
+        selected_style : str, optional
+            Style for the currently selected menu item (``-H`` flag).
+            Requires tmux 3.4+.
+        mouse : bool, optional
+            Always enable mouse handling in the menu (``-M`` flag).
+            Requires tmux 3.5+.
+        stay_open : bool, optional
+            Keep the menu open when the mouse is released (``-O`` flag).
+            Requires tmux 3.2+.
 
         Examples
         --------
@@ -1118,6 +1131,27 @@ class Server(
 
         if border_style is not None:
             tmux_args += ("-S", border_style)
+
+        if selected_style is not None:
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-H", selected_style)
+            else:
+                warnings.warn(
+                    "selected_style requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if mouse:
+            if has_gte_version("3.5", tmux_bin=self.tmux_bin):
+                tmux_args += ("-M",)
+            else:
+                warnings.warn(
+                    "mouse requires tmux 3.5+, ignoring",
+                    stacklevel=2,
+                )
+
+        if stay_open:
+            tmux_args += ("-O",)
 
         tmux_args += items
 
