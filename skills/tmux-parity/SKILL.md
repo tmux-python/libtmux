@@ -57,18 +57,24 @@ Class hierarchy mapping from tmux target types:
 
 ## Current Coverage Summary
 
-**~28 of ~88 tmux commands wrapped** (~32% coverage, approximate — run extraction scripts for current data). High-priority unwrapped commands include: `join-pane`, `swap-pane`, `swap-window`, `respawn-pane`, `respawn-window`, `run-shell`, `break-pane`, `move-pane`, `pipe-pane`, `display-popup`.
+Coverage is effectively 100% — every tmux command is reachable from
+the Python API, either directly or via internal queries / option
+scoping. The four indirect cases are listed in
+`references/command-mapping.md`.
+
+Static numbers go stale fast. **Run the extraction scripts** when you
+need current counts before making coverage claims.
 
 ## Extraction Scripts
 
 Run these for up-to-date data:
 
-```bash
-# All tmux commands with flags and target types
-bash .claude-plugin/scripts/extract-tmux-commands.sh ~/study/c/tmux
+```console
+$ bash .claude-plugin/scripts/extract-tmux-commands.sh ~/study/c/tmux
+```
 
-# All tmux commands libtmux currently wraps
-bash .claude-plugin/scripts/extract-libtmux-methods.sh
+```console
+$ bash .claude-plugin/scripts/extract-libtmux-methods.sh
 ```
 
 ## Additional Resources
@@ -76,7 +82,7 @@ bash .claude-plugin/scripts/extract-libtmux-methods.sh
 ### Reference Files
 
 For detailed data, consult:
-- **`references/command-mapping.md`** — Complete mapping of all ~88 tmux commands to libtmux methods, with flag coverage
+- **`references/command-mapping.md`** — Mapping of every tmux command to its libtmux entrypoint, including the four reached indirectly
 - **`references/libtmux-patterns.md`** — Implementation patterns for wrapping new commands (method signatures, doctests, logging, error handling)
 - **`references/tmux-command-table.md`** — Guide to navigating tmux C source: cmd_entry fields, getopt format, target types, options-table.c, format.c
 
