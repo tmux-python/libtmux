@@ -718,6 +718,13 @@ def test_display_message_flags(
 
 def test_split_percentage(session: Session) -> None:
     """Test Pane.split() with percentage parameter."""
+    from libtmux.common import has_gte_version
+
+    # tmux 3.4 has a regression in split-window -p; fixed in 3.5.
+    # Per CHANGES FROM 3.4 TO 3.5: "Fix split-window -p."
+    if not has_gte_version("3.5"):
+        pytest.skip("split-window -p was broken in tmux 3.4 (fixed in 3.5)")
+
     window = session.new_window(window_name="test_split_pct")
     window.resize(height=40, width=80)
     pane = window.active_pane
