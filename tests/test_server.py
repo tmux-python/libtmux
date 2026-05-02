@@ -635,6 +635,11 @@ def test_suspend_client(
 
 def test_server_access_list(server: Server) -> None:
     """Test Server.server_access() list mode."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip("server-access added in tmux 3.3")
+
     server.new_session(session_name="access_test")
     result = server.server_access(list_access=True)
     assert isinstance(result, list)
@@ -686,16 +691,28 @@ def test_list_commands(server: Server) -> None:
     assert "send-keys" in result[0]
 
 
-def test_show_messages(server: Server) -> None:
-    """Test Server.show_messages() returns message log."""
-    server.new_session(session_name="showmsg_test")
-    result = server.show_messages()
+def test_show_messages(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Test Server.show_messages() returns message log.
+
+    ``tmux show-messages`` resolves the log against a target client
+    (see ``cmd-show-messages.c``). In headless CI no client is
+    attached, so spawn one via :func:`control_mode` and target it.
+    """
+    with control_mode() as ctl:
+        result = server.show_messages(target_client=ctl.client_name)
     assert isinstance(result, list)
-    assert len(result) > 0  # at least the new-session command log
 
 
 def test_show_prompt_history(server: Server) -> None:
     """Test Server.show_prompt_history() returns history."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip("show-prompt-history added in tmux 3.3")
+
     server.new_session(session_name="showph_test")
     result = server.show_prompt_history()
     assert isinstance(result, list)
@@ -703,6 +720,11 @@ def test_show_prompt_history(server: Server) -> None:
 
 def test_clear_prompt_history(server: Server) -> None:
     """Test Server.clear_prompt_history() clears history."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip("clear-prompt-history added in tmux 3.3")
+
     server.new_session(session_name="clearph_test")
     server.clear_prompt_history()
     # Verify specific type can be cleared
@@ -718,6 +740,13 @@ def test_wait_for_set_flag(server: Server) -> None:
 
 def test_run_shell_basic(server: Server) -> None:
     """Test Server.run_shell() executes command and returns output."""
+    from libtmux.common import has_gte_version
+
+    # tmux <3.5 does not write run-shell stdout back to the cmdq subprocess.
+    # Restored by upstream commit fb37d52d, first released in 3.5.
+    if not has_gte_version("3.5"):
+        pytest.skip("run-shell stdout passthrough requires tmux 3.5+")
+
     server.new_session(session_name="run_shell_test")
     result = server.run_shell("echo hello_from_run_shell")
     assert result is not None

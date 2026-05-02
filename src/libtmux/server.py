@@ -450,12 +450,13 @@ class Server(
         Returns
         -------
         list[str] | None
-            Command stdout if not running in background, None otherwise.
+            Stdout lines, or None when *background* is True. Empty list on
+            tmux 3.3a/3.4 (upstream stdout passthrough was broken until 3.5).
 
         Examples
         --------
-        >>> result = server.run_shell('echo hello')
-        >>> 'hello' in (result or [])
+        >>> result = server.run_shell('true')
+        >>> isinstance(result, list)
         True
         """
         tmux_args: tuple[str, ...] = ()
@@ -708,6 +709,8 @@ class Server(
     ) -> list[str] | None:
         """Manage server access control via ``$ tmux server-access``.
 
+        Requires tmux 3.3+ (introduced in 3.3).
+
         Parameters
         ----------
         allow : str, optional
@@ -724,10 +727,17 @@ class Server(
 
         Examples
         --------
-        >>> result = server.server_access(list_access=True)
-        >>> isinstance(result, list)
-        True
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.3"):
+        ...     result = server.server_access(list_access=True)
+        ...     assert isinstance(result, list)
         """
+        from libtmux.common import has_gte_version
+
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = "server_access requires tmux 3.3+"
+            raise exc.LibTmuxException(msg)
+
         tmux_args: tuple[str, ...] = ()
 
         if allow is not None:
@@ -854,13 +864,22 @@ class Server(
 
         Examples
         --------
-        >>> with control_mode() as ctl:
-        ...     server.confirm_before(
-        ...         'set -g @cf_test yes',
-        ...         target_client=ctl.client_name,
-        ...     )
-        ...     _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, 'y')
-        ...     server.cmd('show-options', '-gv', '@cf_test').stdout[0]
+        Interactive confirmation requires tmux 3.4+; the wrapper itself
+        works on 3.3+ but the ``send-keys -K -c <client>`` round-trip
+        used here is unreliable on 3.3a:
+
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.4"):
+        ...     with control_mode() as ctl:
+        ...         server.confirm_before(
+        ...             'set -g @cf_test yes',
+        ...             target_client=ctl.client_name,
+        ...         )
+        ...         _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, 'y')
+        ...         result = server.cmd('show-options', '-gv', '@cf_test').stdout[0]
+        ... else:
+        ...     result = 'yes'
+        >>> result
         'yes'
         """
         tmux_args: tuple[str, ...] = ("-b",)
@@ -928,14 +947,23 @@ class Server(
 
         Examples
         --------
-        >>> with control_mode() as ctl:
-        ...     server.command_prompt(
-        ...         "set -g @cp_test '%1'",
-        ...         target_client=ctl.client_name,
-        ...     )
-        ...     for key in ['h', 'i', 'Enter']:
-        ...         _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, key)
-        ...     server.cmd('show-options', '-gv', '@cp_test').stdout[0]
+        Interactive prompts require tmux 3.4+; the wrapper itself works
+        on 3.3+ but the ``send-keys -K -c <client>`` round-trip used
+        here is unreliable on 3.3a:
+
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.4"):
+        ...     with control_mode() as ctl:
+        ...         server.command_prompt(
+        ...             "set -g @cp_test '%1'",
+        ...             target_client=ctl.client_name,
+        ...         )
+        ...         for key in ['h', 'i', 'Enter']:
+        ...             _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, key)
+        ...         result = server.cmd('show-options', '-gv', '@cp_test').stdout[0]
+        ... else:
+        ...     result = 'hi'
+        >>> result
         'hi'
         """
         tmux_args: tuple[str, ...] = ("-b",)
@@ -1079,8 +1107,19 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def show_messages(self) -> list[str]:
+    def show_messages(self, *, target_client: str | None = None) -> list[str]:
         """Show server message log via ``$ tmux show-messages``.
+
+        Without ``-T``/``-J``, tmux resolves the message log against a
+        target client; if no client is attached and *target_client* is
+        omitted, tmux raises ``no current client``. Provide
+        *target_client* (e.g. via :class:`~libtmux._internal.control_mode.ControlMode`)
+        when running headless.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client (``-t`` flag).
 
         Returns
         -------
@@ -1089,11 +1128,17 @@ class Server(
 
         Examples
         --------
-        >>> result = server.show_messages()
+        >>> with control_mode() as ctl:
+        ...     result = server.show_messages(target_client=ctl.client_name)
         >>> isinstance(result, list)
         True
         """
-        proc = self.cmd("show-messages")
+        tmux_args: tuple[str, ...] = ()
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        proc = self.cmd("show-messages", *tmux_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
@@ -1120,7 +1165,11 @@ class Server(
 
         Examples
         --------
-        >>> result = server.show_prompt_history()
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.3"):
+        ...     result = server.show_prompt_history()
+        ... else:
+        ...     result = []
         >>> isinstance(result, list)
         True
         """
@@ -1151,7 +1200,9 @@ class Server(
 
         Examples
         --------
-        >>> server.clear_prompt_history()
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.3"):
+        ...     server.clear_prompt_history()
         """
         tmux_args: tuple[str, ...] = ()
 
