@@ -16,7 +16,7 @@ import typing as t
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
+from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -739,8 +739,6 @@ class Server(
         ...     result = server.server_access(list_access=True)
         ...     assert isinstance(result, list)
         """
-        from libtmux.common import has_gte_version
-
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = "server_access requires tmux 3.3+"
             raise exc.LibTmuxException(msg)
@@ -889,8 +887,6 @@ class Server(
         >>> result
         'yes'
         """
-        from libtmux.common import has_gte_version
-
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = (
                 "confirm_before requires tmux 3.3+: -b is always used to avoid "
@@ -982,8 +978,6 @@ class Server(
         >>> result
         'hi'
         """
-        from libtmux.common import has_gte_version
-
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = (
                 "command_prompt requires tmux 3.3+: -b is always used to avoid "
@@ -1194,8 +1188,6 @@ class Server(
         >>> isinstance(result, list)
         True
         """
-        from libtmux.common import has_gte_version
-
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = "show_prompt_history requires tmux 3.3+"
             raise exc.LibTmuxException(msg)
@@ -1231,8 +1223,6 @@ class Server(
         >>> if has_gte_version("3.3"):
         ...     server.clear_prompt_history()
         """
-        from libtmux.common import has_gte_version
-
         if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
             msg = "clear_prompt_history requires tmux 3.3+"
             raise exc.LibTmuxException(msg)
