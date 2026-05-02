@@ -1033,6 +1033,15 @@ BUFFER_CASES: list[BufferCase] = [
         append=None,
         expected_content="named_data",
     ),
+    BufferCase(
+        test_id="set_show_append",
+        # set_buffer() called twice in the test body for this case;
+        # the first sets "first", the second appends "_second".
+        data="_second",
+        buffer_name="append_test",
+        append=True,
+        expected_content="first_second",
+    ),
 ]
 
 
@@ -1054,21 +1063,15 @@ def test_buffer_set_show(
     kwargs: dict[str, t.Any] = {}
     if buffer_name is not None:
         kwargs["buffer_name"] = buffer_name
-    if append is not None:
-        kwargs["append"] = append
+
+    if append:
+        # Seed the buffer with "first" so the appended *data* concatenates.
+        server.set_buffer("first", buffer_name=buffer_name)
+        kwargs["append"] = True
 
     server.set_buffer(data, **kwargs)
     result = server.show_buffer(buffer_name=buffer_name)
     assert result == expected_content
-
-
-def test_buffer_append(server: Server) -> None:
-    """Test Server.set_buffer() with append flag."""
-    server.new_session(session_name="buf_append")
-    server.set_buffer("first", buffer_name="append_test")
-    server.set_buffer("_second", buffer_name="append_test", append=True)
-    result = server.show_buffer(buffer_name="append_test")
-    assert result == "first_second"
 
 
 def test_buffer_delete(server: Server) -> None:
