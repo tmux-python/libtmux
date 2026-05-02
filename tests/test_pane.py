@@ -819,6 +819,19 @@ def test_choose_tree(session: Session) -> None:
     pane.choose_tree()
 
 
+def test_choose_tree_with_flags(session: Session) -> None:
+    """Test Pane.choose_tree() with format, filter, sort, reverse, zoom."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.choose_tree(
+        format_string="#{session_name}",
+        filter_expression="#{?session_attached,1,0}",
+        sort_order="name",
+        reverse=True,
+        zoom=True,
+    )
+
+
 def test_customize_mode(session: Session) -> None:
     """Test Pane.customize_mode() enters customize mode."""
     pane = session.active_window.active_pane

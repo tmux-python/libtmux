@@ -1616,6 +1616,11 @@ class Pane(
         *,
         sessions_collapsed: bool | None = None,
         windows_collapsed: bool | None = None,
+        format_string: str | None = None,
+        filter_expression: str | None = None,
+        sort_order: str | None = None,
+        reverse: bool | None = None,
+        zoom: bool | None = None,
     ) -> None:
         """Enter tree chooser via ``$ tmux choose-tree``.
 
@@ -1625,6 +1630,18 @@ class Pane(
             Start with sessions collapsed (``-s`` flag).
         windows_collapsed : bool, optional
             Start with windows collapsed (``-w`` flag).
+        format_string : str, optional
+            Format for each item shown in the chooser (``-F`` flag).
+        filter_expression : str, optional
+            Filter expression evaluated per item; only items whose
+            filter expands non-zero are shown (``-f`` flag).
+        sort_order : str, optional
+            Sort field (``-O`` flag). One of ``index``, ``name``,
+            ``time``, ``size``.
+        reverse : bool, optional
+            Reverse the sort order (``-r`` flag).
+        zoom : bool, optional
+            Zoom the pane while the chooser is active (``-Z`` flag).
 
         Examples
         --------
@@ -1637,6 +1654,21 @@ class Pane(
 
         if windows_collapsed:
             tmux_args += ("-w",)
+
+        if zoom:
+            tmux_args += ("-Z",)
+
+        if reverse:
+            tmux_args += ("-r",)
+
+        if format_string is not None:
+            tmux_args += ("-F", format_string)
+
+        if filter_expression is not None:
+            tmux_args += ("-f", filter_expression)
+
+        if sort_order is not None:
+            tmux_args += ("-O", sort_order)
 
         proc = self.cmd("choose-tree", *tmux_args)
 
