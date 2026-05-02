@@ -765,6 +765,30 @@ def test_copy_mode(session: Session) -> None:
     pane.send_keys("q", enter=False)
 
 
+def test_copy_mode_source_pane(session: Session) -> None:
+    """Test Pane.copy_mode(source_pane=...) reads another pane's history."""
+    window = session.new_window(window_name="copy_src")
+    src = window.active_pane
+    assert src is not None
+    dest = window.split()
+    src.send_keys("echo SOURCE_TEXT", enter=True)
+
+    dest.copy_mode(source_pane=str(src.pane_id))
+    dest.send_keys("q", enter=False)
+
+
+def test_copy_mode_page_down(session: Session) -> None:
+    """Test Pane.copy_mode(page_down=True) on tmux 3.5+."""
+    if not has_gte_version("3.5"):
+        pytest.skip("page_down requires tmux 3.5+")
+
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.copy_mode()
+    pane.copy_mode(page_down=True)
+    pane.send_keys("q", enter=False)
+
+
 def test_clock_mode(session: Session) -> None:
     """Test Pane.clock_mode() enters clock mode."""
     pane = session.active_window.active_pane
