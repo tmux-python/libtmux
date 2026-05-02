@@ -309,7 +309,7 @@ class Window(
             Percentage (0-100) of the window to occupy (``-p`` flag).
             Mutually exclusive with *size*.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         environment : dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
 
@@ -424,15 +424,15 @@ class Window(
         disable_input : bool, optional
             Disable input to the pane (``-d`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         enable_input : bool, optional
             Enable input to the pane (``-e`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         keep_zoom : bool, optional
             Keep the window zoomed if zoomed (``-Z`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -505,15 +505,15 @@ class Window(
         spread : bool, optional
             Spread panes out evenly (``-E`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         next_layout : bool, optional
             Move to the next layout (``-n`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         previous_layout : bool, optional
             Move to the previous layout (``-p`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -943,25 +943,25 @@ class Window(
         after : bool, optional
             Insert after the target window (``-a`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         before : bool, optional
             Insert before the target window (``-b`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         no_select : bool, optional
             Do not make the moved window the current window (``-d`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         kill_target : bool, optional
             Kill the target window if it exists (``-k`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         renumber : bool, optional
             Renumber all windows in sequential order (``-r`` flag). This is a
             standalone operation — when used, no move is performed and other
             parameters are ignored.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------

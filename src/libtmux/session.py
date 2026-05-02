@@ -649,12 +649,12 @@ class Session(
             Destroy the window at the target index if it already exists
             (``-k`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         select_existing : bool, optional
             If a window with the given name already exists, select it instead
             of creating a new one (``-S`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         .. versionchanged:: 0.28.0
 

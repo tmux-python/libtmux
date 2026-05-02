@@ -1735,16 +1735,16 @@ class Server(
         detach_others : bool, optional
             Detach other clients from the session (``-D`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         no_size : bool, optional
             Do not set the initial window size (``-X`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         client_flags : str, optional
             Set client flags (``-f`` flag), e.g. ``no-output``,
             ``read-only``. Requires tmux 3.2+.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------

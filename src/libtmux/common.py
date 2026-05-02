@@ -79,11 +79,11 @@ class EnvironmentMixin:
         expand_format : bool, optional
             Expand tmux format strings in the value (``-F`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         hidden : bool, optional
             Mark the variable as hidden (``-h`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Raises
         ------

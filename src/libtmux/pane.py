@@ -414,24 +414,24 @@ class Pane(
             Capture from the alternate screen (``-a`` flag).
             Default: False
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         quiet : bool, optional
             Suppress errors silently (``-q`` flag).
             Default: False
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         mode_screen : bool, optional
             Capture from the mode screen (e.g. copy mode) instead of the
             pane (``-M`` flag). Requires tmux 3.6+.
             Default: False
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         to_buffer : str, optional
             Write the capture into the named tmux buffer (``-b`` flag)
             instead of returning it. When set, ``-p`` is omitted and
             the wrapper returns ``None``.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -532,32 +532,32 @@ class Pane(
         reset : bool, optional
             Reset terminal state before sending keys (``-R`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         copy_mode_cmd : str, optional
             Send a command to copy mode instead of keys (``-X`` flag).
             When set, *cmd* is ignored.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         repeat : int, optional
             Repeat count for the key (``-N`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         expand_formats : bool, optional
             Expand tmux format strings in keys (``-F`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         hex_keys : bool, optional
             Send keys as hex values (``-H`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         target_client : str, optional
             Specify a target client (``-c`` flag). Requires tmux 3.4+.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         key_name : bool, optional
             Handle keys as key names (``-K`` flag). Requires tmux 3.4+.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Examples
         --------
@@ -683,39 +683,39 @@ class Pane(
         format_string : str, optional
             Format string for output (``-F`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         all_formats : bool, optional
             List all format variables (``-a`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         verbose : bool, optional
             Show format variable types (``-v`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         no_expand : bool, optional
             Suppress format expansion; output is returned as a literal string
             (``-l`` flag). Requires tmux 3.4+.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         target_client : str, optional
             Target client (``-c`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         delay : int, optional
             Display time in milliseconds (``-d`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         notify : bool, optional
             Do not wait for input (``-N`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         update_pane : bool, optional
             Allow the pane to keep updating while the message is displayed
             (``-C`` flag). By default tmux freezes the pane while a status
             message is shown. Requires tmux 3.6+ (introduced upstream by
             commit ``80eb460f``).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -864,31 +864,31 @@ class Pane(
             Select the pane in the given direction (``-U``, ``-D``, ``-L``,
             ``-R``).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         last : bool, optional
             Select the last (previously selected) pane (``-l`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         keep_zoom : bool, optional
             Keep the window zoomed if it was zoomed (``-Z`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         mark : bool, optional
             Set the marked pane (``-m`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         clear_mark : bool, optional
             Clear the marked pane (``-M`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         disable_input : bool, optional
             Disable input to the pane (``-d`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         enable_input : bool, optional
             Enable input to the pane (``-e`` flag).
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -1007,7 +1007,7 @@ class Pane(
             Percentage (0-100) of the window to occupy (``-p`` flag).
             Mutually exclusive with *size*.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
         environment: dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
 
@@ -1278,8 +1278,6 @@ class Pane(
         no_keys : bool, optional
             Do not auto-close the popup on any close-trigger keys
             (``-N`` flag). Requires tmux 3.6+.
-
-        .. versionadded:: 0.45
 
         Examples
         --------
@@ -2093,7 +2091,7 @@ class Pane(
         reset_hyperlinks : bool, optional
             Also reset hyperlinks (``-H`` flag). Requires tmux 3.4+.
 
-            .. versionadded:: 0.45
+            .. versionadded:: 0.56
 
         Examples
         --------
