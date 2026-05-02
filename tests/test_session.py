@@ -586,23 +586,6 @@ def test_lock_session(session: Session) -> None:
     session.lock_session()
 
 
-def test_detach_client(
-    control_mode: t.Callable[..., t.Any],
-    session: Session,
-    server: Server,
-) -> None:
-    """Test Session.detach_client() detaches all session clients when no target given.
-
-    Without target_client, -s session_id scopes the operation to this session.
-    """
-    with control_mode():
-        before = len(server.list_clients())
-        assert before > 0
-        session.detach_client()
-        after = len(server.list_clients())
-        assert after == 0
-
-
 def test_detach_client_no_target_detaches_all_session_clients(
     control_mode: t.Callable[..., t.Any],
     session: Session,
