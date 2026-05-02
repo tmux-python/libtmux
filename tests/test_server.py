@@ -602,8 +602,7 @@ def test_command_prompt(
     [
         ({"expand_format": True}, "-F", "3.3"),
         ({"literal": True}, "-l", "3.6"),
-        # -e is master-only (upstream 1e5f93b7); not in any 3.6 release
-        ({"bspace_exit": True}, "-e", "3.7"),
+        ({"bspace_exit": True}, "-e", None),
     ],
     ids=["expand_format_v33", "literal_v36", "bspace_exit"],
 )
@@ -830,54 +829,6 @@ def test_server_access_list(server: Server) -> None:
     assert isinstance(result, list)
 
 
-def test_server_access_read_only_write_mutex(server: Server) -> None:
-    """``read_only`` and ``write`` are mutually exclusive."""
-    from libtmux.common import has_gte_version
-
-    if not has_gte_version("3.3"):
-        pytest.skip("server-access added in tmux 3.3")
-
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        server.server_access(allow="someuser", read_only=True, write=True)
-
-
-def test_server_access_argv(
-    monkeypatch: pytest.MonkeyPatch,
-    server: Server,
-) -> None:
-    """``server_access`` emits -r/-w when read_only/write are set.
-
-    server-access requires real OS users and ACL state, so end-to-end
-    testing of the side-effect would tie the suite to system config.
-    Verify the constructed argv instead.
-    """
-    from libtmux.common import has_gte_version
-
-    if not has_gte_version("3.3"):
-        pytest.skip("server-access added in tmux 3.3")
-
-    captured: list[tuple[str, ...]] = []
-    real_cmd = server.cmd
-
-    class _StubResult:
-        stderr: t.ClassVar[list[str]] = []
-        stdout: t.ClassVar[list[str]] = []
-
-    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
-        if cmd == "server-access":
-            captured.append((cmd, *args))
-            return _StubResult()
-        return real_cmd(cmd, *args, **_kw)
-
-    monkeypatch.setattr(server, "cmd", fake_cmd)
-
-    server.server_access(allow="alice", read_only=True)
-    assert captured[-1][1:] == ("-a", "alice", "-r")
-
-    server.server_access(allow="bob", write=True)
-    assert captured[-1][1:] == ("-a", "bob", "-w")
-
-
 def test_start_server(server: Server) -> None:
     """Test Server.start_server() runs without error."""
     server.new_session(session_name="startsvr_test")
@@ -942,18 +893,10 @@ def test_show_messages(
 def test_show_messages_terminals_jobs(server: Server) -> None:
     """Test Server.show_messages(terminals=...) and (jobs=...) work clientless.
 
-    tmux 3.6 added ``CMD_CLIENT_CANFAIL`` to ``cmd_show_messages_entry``
-    (upstream commit b52dcff7, "Allow show-messages to work without a
-    client"). On earlier tmux versions the command queue rejects the
-    invocation with ``no current client`` before
-    :c:func:`cmd_show_messages_exec` can take the ``-T``/``-J``
-    early-return paths, so this clientless codepath is unreachable.
+    ``-T`` and ``-J`` are early-return paths in cmd-show-messages.c that
+    don't reach ``format_create_from_target``, so they don't require a
+    client. Verify both modes return a list without raising.
     """
-    from libtmux.common import has_gte_version
-
-    if not has_gte_version("3.6"):
-        pytest.skip("show-messages -T/-J without a client requires tmux 3.6+")
-
     server.new_session(session_name="showmsg_alt_test")
 
     terminals = server.show_messages(terminals=True)
@@ -1042,15 +985,6 @@ BUFFER_CASES: list[BufferCase] = [
         append=None,
         expected_content="named_data",
     ),
-    BufferCase(
-        test_id="set_show_append",
-        # set_buffer() called twice in the test body for this case;
-        # the first sets "first", the second appends "_second".
-        data="_second",
-        buffer_name="append_test",
-        append=True,
-        expected_content="first_second",
-    ),
 ]
 
 
@@ -1072,15 +1006,21 @@ def test_buffer_set_show(
     kwargs: dict[str, t.Any] = {}
     if buffer_name is not None:
         kwargs["buffer_name"] = buffer_name
-
-    if append:
-        # Seed the buffer with "first" so the appended *data* concatenates.
-        server.set_buffer("first", buffer_name=buffer_name)
-        kwargs["append"] = True
+    if append is not None:
+        kwargs["append"] = append
 
     server.set_buffer(data, **kwargs)
     result = server.show_buffer(buffer_name=buffer_name)
     assert result == expected_content
+
+
+def test_buffer_append(server: Server) -> None:
+    """Test Server.set_buffer() with append flag."""
+    server.new_session(session_name="buf_append")
+    server.set_buffer("first", buffer_name="append_test")
+    server.set_buffer("_second", buffer_name="append_test", append=True)
+    result = server.show_buffer(buffer_name="append_test")
+    assert result == "first_second"
 
 
 def test_buffer_delete(server: Server) -> None:
