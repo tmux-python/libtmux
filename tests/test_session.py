@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import pathlib
 import shutil
@@ -11,12 +12,16 @@ from contextlib import nullcontext as does_not_raise
 import pytest
 
 from libtmux import exc
+from libtmux._internal.control_mode import ControlMode
 from libtmux.constants import WindowDirection
 from libtmux.pane import Pane
 from libtmux.session import Session
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import namer
 from libtmux.window import Window
+
+if t.TYPE_CHECKING:
+    from libtmux.server import Server
 
 if t.TYPE_CHECKING:
     from typing import TypeAlias
@@ -639,6 +644,35 @@ def test_detach_client_target_client(
         assert remaining_clients == [
             client for client in clients if client != target_client
         ]
+
+
+def test_detach_client_all_clients_session_scoped(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    server: Server,
+) -> None:
+    """``detach_client(all_clients=True, target_client=...)`` is session-scoped.
+
+    tmux's ``detach-client -a`` is server-wide; clients attached to
+    *other* sessions must remain attached after the call.
+    """
+    other_session = server.new_session(session_name="detach_other")
+    OtherControlMode = functools.partial(
+        ControlMode, server=server, session=other_session
+    )
+
+    with control_mode() as keep, control_mode(), OtherControlMode() as elsewhere:
+        clients_before = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(clients_before) == 3
+
+        session.detach_client(all_clients=True, target_client=keep.client_name)
+
+        clients_after = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        # `keep` stays (target), `elsewhere` stays (other session); the
+        # third client (extra control_mode in this session) is gone.
+        assert sorted(clients_after) == sorted(
+            [keep.client_name, elsewhere.client_name],
+        )
 
 
 def test_last_window(session: Session) -> None:
