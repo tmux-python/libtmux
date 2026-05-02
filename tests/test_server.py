@@ -652,6 +652,24 @@ DISPLAY_MENU_CASES: list[DisplayMenuCase] = [
         kwargs={"border_style": "fg=red"},
         min_tmux_version="3.3",
     ),
+    DisplayMenuCase(
+        test_id="with_stay_open",
+        items=_MENU_ITEM,
+        kwargs={"stay_open": True},
+        min_tmux_version="3.2",
+    ),
+    DisplayMenuCase(
+        test_id="with_selected_style_v34",
+        items=_MENU_ITEM,
+        kwargs={"selected_style": "bg=yellow"},
+        min_tmux_version="3.4",
+    ),
+    DisplayMenuCase(
+        test_id="with_mouse_v35",
+        items=_MENU_ITEM,
+        kwargs={"mouse": True},
+        min_tmux_version="3.5",
+    ),
 ]
 
 
@@ -702,9 +720,12 @@ def test_display_menu_flags(
     assert captured, "Server.cmd was not invoked"
     cmd, *flags = captured[0]
     assert cmd == "display-menu"
-    # Items are appended at the end; every flag value passed in kwargs
-    # should appear somewhere in the constructed argv.
+    # Items are appended at the end; every non-boolean flag value
+    # should appear somewhere in the constructed argv. (Boolean
+    # flags emit only the switch, not a value.)
     for value in kwargs.values():
+        if isinstance(value, bool):
+            continue
         assert str(value) in flags
     for item in items:
         assert item in flags
