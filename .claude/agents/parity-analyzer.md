@@ -52,22 +52,27 @@ You are a tmux/libtmux feature parity analysis specialist. Analyze the gap betwe
 ### Step 1: Extract tmux commands
 
 Run the extraction script for current data:
-```bash
-bash .claude-plugin/scripts/extract-tmux-commands.sh ~/study/c/tmux
+
+```console
+$ bash .claude-plugin/scripts/extract-tmux-commands.sh ~/study/c/tmux
 ```
-This outputs `command|alias|getopt|target` for all ~88 tmux commands.
+
+This outputs `command|alias|getopt|target` for every tmux command.
 
 ### Step 2: Extract libtmux coverage
 
 Run the libtmux extraction:
-```bash
-bash .claude-plugin/scripts/extract-libtmux-methods.sh
+
+```console
+$ bash .claude-plugin/scripts/extract-libtmux-methods.sh
 ```
+
 This outputs the unique tmux command strings that libtmux invokes.
 
 Additionally, check mixin files for commands invoked via `tmux_cmd()`:
-```bash
-grep -rn '"set-environment"\|"show-environment"\|"set-hook"\|"set-option"\|"show-option"\|"capture-pane"\|"move-window"\|"select-layout"\|"kill-pane"' src/libtmux/*.py | grep -oP '"([a-z]+-[a-z-]+)"' | sort -u | tr -d '"'
+
+```console
+$ grep -rn '"set-environment"\|"show-environment"\|"set-hook"\|"set-option"\|"show-option"\|"capture-pane"\|"move-window"\|"select-layout"\|"kill-pane"' src/libtmux/*.py | grep -oP '"([a-z]+-[a-z-]+)"' | sort -u | tr -d '"'
 ```
 
 ### Step 3: Cross-reference

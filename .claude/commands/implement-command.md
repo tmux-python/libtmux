@@ -104,24 +104,28 @@ Add tests in `tests/test_{class}.py` (or a new file if warranted):
 
 Run the full verification workflow:
 
-```bash
-# Format
-uv run ruff format .
+```console
+$ uv run ruff format .
+```
 
-# Lint
-uv run ruff check . --fix --show-fixes
+```console
+$ uv run ruff check . --fix --show-fixes
+```
 
-# Type check
-uv run mypy src tests
+```console
+$ uv run mypy src tests
+```
 
-# Test the specific file
-uv run pytest tests/test_{class}.py -x -v
+```console
+$ uv run pytest tests/test_{class}.py -x -v
+```
 
-# Run doctests
-uv run pytest --doctest-modules src/libtmux/{class}.py -v
+```console
+$ uv run pytest --doctest-modules src/libtmux/{class}.py -v
+```
 
-# Full test suite
-uv run pytest
+```console
+$ uv run pytest
 ```
 
 All must pass before considering the implementation complete.
