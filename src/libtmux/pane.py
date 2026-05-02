@@ -593,7 +593,7 @@ class Pane(
         target_client: str | None = ...,
         delay: int | None = ...,
         notify: bool | None = ...,
-        no_style: bool | None = ...,
+        update_pane: bool | None = ...,
     ) -> list[str]: ...
 
     @t.overload
@@ -609,7 +609,7 @@ class Pane(
         target_client: str | None = ...,
         delay: int | None = ...,
         notify: bool | None = ...,
-        no_style: bool | None = ...,
+        update_pane: bool | None = ...,
     ) -> None: ...
 
     def display_message(
@@ -624,7 +624,7 @@ class Pane(
         target_client: str | None = None,
         delay: int | None = None,
         notify: bool | None = None,
-        no_style: bool | None = None,
+        update_pane: bool | None = None,
     ) -> list[str] | None:
         """Display message to pane.
 
@@ -668,8 +668,11 @@ class Pane(
             Do not wait for input (``-N`` flag).
 
             .. versionadded:: 0.45
-        no_style : bool, optional
-            Suppress style output (``-C`` flag). Requires tmux 3.6+.
+        update_pane : bool, optional
+            Allow the pane to keep updating while the message is displayed
+            (``-C`` flag). By default tmux freezes the pane while a status
+            message is shown. Requires tmux 3.6+ (introduced upstream by
+            commit ``80eb460f``).
 
             .. versionadded:: 0.45
 
@@ -705,12 +708,12 @@ class Pane(
         if notify:
             tmux_args += ("-N",)
 
-        if no_style:
+        if update_pane:
             if has_gte_version("3.6", tmux_bin=self.server.tmux_bin):
                 tmux_args += ("-C",)
             else:
                 warnings.warn(
-                    "no_style requires tmux 3.6+, ignoring",
+                    "update_pane requires tmux 3.6+, ignoring",
                     stacklevel=2,
                 )
 
