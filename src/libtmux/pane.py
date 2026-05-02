@@ -317,6 +317,40 @@ class Pane(
         self.refresh()
         return self
 
+    @t.overload
+    def capture_pane(
+        self,
+        start: t.Literal["-"] | int | None = ...,
+        end: t.Literal["-"] | int | None = ...,
+        *,
+        escape_sequences: bool = ...,
+        escape_non_printable: bool = ...,
+        join_wrapped: bool = ...,
+        preserve_trailing: bool = ...,
+        trim_trailing: bool = ...,
+        alternate_screen: bool = ...,
+        quiet: bool = ...,
+        mode_screen: bool = ...,
+        to_buffer: str,
+    ) -> None: ...
+
+    @t.overload
+    def capture_pane(
+        self,
+        start: t.Literal["-"] | int | None = ...,
+        end: t.Literal["-"] | int | None = ...,
+        *,
+        escape_sequences: bool = ...,
+        escape_non_printable: bool = ...,
+        join_wrapped: bool = ...,
+        preserve_trailing: bool = ...,
+        trim_trailing: bool = ...,
+        alternate_screen: bool = ...,
+        quiet: bool = ...,
+        mode_screen: bool = ...,
+        to_buffer: None = ...,
+    ) -> list[str]: ...
+
     def capture_pane(
         self,
         start: t.Literal["-"] | int | None = None,
@@ -330,7 +364,8 @@ class Pane(
         alternate_screen: bool = False,
         quiet: bool = False,
         mode_screen: bool = False,
-    ) -> list[str]:
+        to_buffer: str | None = None,
+    ) -> list[str] | None:
         r"""Capture text from pane.
 
         ``$ tmux capture-pane`` to pane.
@@ -391,11 +426,17 @@ class Pane(
             Default: False
 
             .. versionadded:: 0.45
+        to_buffer : str, optional
+            Write the capture into the named tmux buffer (``-b`` flag)
+            instead of returning it. When set, ``-p`` is omitted and
+            the wrapper returns ``None``.
+
+            .. versionadded:: 0.45
 
         Returns
         -------
-        list[str]
-            Captured pane content.
+        list[str] or None
+            Captured pane content, or ``None`` when *to_buffer* is set.
 
         Examples
         --------
@@ -413,7 +454,11 @@ class Pane(
         Hello world
         $
         """
-        cmd = ["capture-pane", "-p"]
+        cmd = ["capture-pane"]
+        if to_buffer is not None:
+            cmd.extend(["-b", to_buffer])
+        else:
+            cmd.append("-p")
         if start is not None:
             cmd.extend(["-S", str(start)])
         if end is not None:
@@ -446,7 +491,10 @@ class Pane(
                     "mode_screen requires tmux 3.6+, ignoring",
                     stacklevel=2,
                 )
-        return self.cmd(*cmd).stdout
+        proc = self.cmd(*cmd)
+        if to_buffer is not None:
+            return None
+        return proc.stdout
 
     def send_keys(
         self,

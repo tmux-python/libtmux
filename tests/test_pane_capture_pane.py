@@ -506,3 +506,23 @@ def test_capture_pane_mode_screen(session: Session) -> None:
 
     result = pane.capture_pane(mode_screen=True)
     assert isinstance(result, list)
+
+
+def test_capture_pane_to_buffer(session: Session) -> None:
+    """Test capture_pane(to_buffer=...) writes to a tmux buffer."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    pane.send_keys('echo "BUFFER_CAPTURE_MARKER"', enter=True)
+    retry_until(
+        lambda: "BUFFER_CAPTURE_MARKER" in "\n".join(pane.capture_pane()),
+        2,
+        raises=True,
+    )
+
+    result = pane.capture_pane(to_buffer="cap_test_buf")
+    assert result is None
+
+    contents = session.server.cmd("show-buffer", "-b", "cap_test_buf").stdout
+    assert any("BUFFER_CAPTURE_MARKER" in line for line in contents)
+    session.server.cmd("delete-buffer", "-b", "cap_test_buf")
