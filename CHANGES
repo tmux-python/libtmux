@@ -40,6 +40,14 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Tests
+
+- `test_no_server_*` and `test_raise_if_dead_no_server_raises` now
+  reuse the `server` fixture for a unique socket name and finalizer
+  cleanup, instead of hardcoded socket names with no finalizer that
+  broke whenever a stale tmux daemon survived at the same path
+  (#665, fixes #664).
+
 ## libtmux 0.55.1 (2026-04-19)
 
 ### Fixes
