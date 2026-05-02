@@ -928,6 +928,9 @@ class Server(
         on_input_change: bool | None = None,
         numeric: bool | None = None,
         prompt_type: str | None = None,
+        expand_format: bool | None = None,
+        literal: bool | None = None,
+        bspace_exit: bool | None = None,
     ) -> None:
         """Open a command prompt via ``$ tmux command-prompt``.
 
@@ -957,6 +960,17 @@ class Server(
         prompt_type : str, optional
             Prompt type (``-T`` flag). One of: ``command``, ``search``,
             ``target``, ``window-target``.
+        expand_format : bool, optional
+            Pass the template through ``args_make_commands_prepare``
+            (``-F`` flag) so format strings expand. Requires tmux 3.3+.
+        literal : bool, optional
+            Disable splitting *prompt* on commas — treat it as a single
+            prompt (``-l`` flag). Requires tmux 3.6+.
+        bspace_exit : bool, optional
+            Close the prompt when the user empties it with backspace
+            (``-e`` flag, ``PROMPT_BSPACE_EXIT``). Requires tmux >3.6
+            (introduced upstream by commit ``1e5f93b7``, not in any
+            tagged release at the time of writing).
 
         Examples
         --------
@@ -999,6 +1013,21 @@ class Server(
 
         if numeric:
             tmux_args += ("-N",)
+
+        if expand_format:
+            tmux_args += ("-F",)
+
+        if literal:
+            if has_gte_version("3.6", tmux_bin=self.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "literal requires tmux 3.6+, ignoring",
+                    stacklevel=2,
+                )
+
+        if bspace_exit:
+            tmux_args += ("-e",)
 
         if prompt is not None:
             tmux_args += ("-p", prompt)
