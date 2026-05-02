@@ -1052,12 +1052,18 @@ class Server(
 
         Examples
         --------
-        Not directly testable — requires a TTY-backed client.
-        Control-mode clients set ``tty.sy=0``, causing ``menu_prepare()``
-        to return NULL inside tmux.
+        Cannot run end-to-end (requires a TTY-backed client; see the
+        ``tty.sy=0`` note above). For broader coverage, see
+        ``tests/test_server.py::test_display_menu_flags``.
 
-        >>> server.display_menu  # doctest: +ELLIPSIS
-        <bound method ...>
+        >>> captured = []
+        >>> def fake_cmd(name, *args, **_kw):
+        ...     captured.append((name, args))
+        ...     return type('R', (), {'stderr': [], 'stdout': []})()
+        >>> monkeypatch.setattr(server, 'cmd', fake_cmd)
+        >>> server.display_menu('First', '1', 'select-pane', title='menu')
+        >>> captured[0][0]
+        'display-menu'
         """
         tmux_args: tuple[str, ...] = ()
 
