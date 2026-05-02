@@ -192,22 +192,19 @@ def test_new_session_environmental_variables(
     assert my_session.show_environment()["FOO"] == "HI"
 
 
-def test_no_server_sessions() -> None:
+def test_no_server_sessions(server: Server) -> None:
     """Verify ``Server.sessions`` returns empty list without tmux server."""
-    server = Server(socket_name="test_attached_session_no_server")
     assert server.sessions == []
 
 
-def test_no_server_attached_sessions() -> None:
+def test_no_server_attached_sessions(server: Server) -> None:
     """Verify ``Server.attached_sessions`` returns empty list without tmux server."""
-    server = Server(socket_name="test_no_server_attached_sessions")
     assert server.attached_sessions == []
 
 
-def test_no_server_is_alive() -> None:
+def test_no_server_is_alive(server: Server) -> None:
     """Verify is_alive() returns False without tmux server."""
-    dead_server = Server(socket_name="test_no_server_is_alive")
-    assert not dead_server.is_alive()
+    assert not server.is_alive()
 
 
 def test_with_server_is_alive(server: Server) -> None:
@@ -216,11 +213,10 @@ def test_with_server_is_alive(server: Server) -> None:
     assert server.is_alive()
 
 
-def test_raise_if_dead_no_server_raises() -> None:
-    """Verify new_session() raises if tmux server is dead."""
-    dead_server = Server(socket_name="test_attached_session_no_server")
+def test_raise_if_dead_no_server_raises(server: Server) -> None:
+    """Verify ``Server.raise_if_dead`` raises if tmux server is dead."""
     with pytest.raises(subprocess.CalledProcessError):
-        dead_server.raise_if_dead()
+        server.raise_if_dead()
 
 
 def test_raise_if_dead_does_not_raise_if_alive(server: Server) -> None:
