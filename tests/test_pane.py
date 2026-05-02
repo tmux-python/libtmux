@@ -870,6 +870,21 @@ DISPLAY_POPUP_CASES: list[DisplayPopupCase] = [
         kwargs={"environment": {"FOO": "bar"}},
         min_tmux_version="3.3",
     ),
+    DisplayPopupCase(
+        test_id="no_border_v33",
+        kwargs={"no_border": True},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="close_on_any_key_v36",
+        kwargs={"close_on_any_key": True},
+        min_tmux_version="3.6",
+    ),
+    DisplayPopupCase(
+        test_id="no_keys_v36",
+        kwargs={"no_keys": True},
+        min_tmux_version="3.6",
+    ),
 ]
 
 
