@@ -1204,24 +1204,38 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def show_messages(self, *, target_client: str | None = None) -> list[str]:
+    def show_messages(
+        self,
+        *,
+        target_client: str | None = None,
+        terminals: bool | None = None,
+        jobs: bool | None = None,
+    ) -> list[str]:
         """Show server message log via ``$ tmux show-messages``.
 
         Without ``-T``/``-J``, tmux resolves the message log against a
         target client; if no client is attached and *target_client* is
         omitted, tmux raises ``no current client``. Provide
         *target_client* (e.g. via :class:`~libtmux._internal.control_mode.ControlMode`)
-        when running headless.
+        when running headless, or use *terminals*/*jobs* — those modes
+        don't require a client.
 
         Parameters
         ----------
         target_client : str, optional
             Target client (``-t`` flag).
+        terminals : bool, optional
+            List terminal capabilities and flags instead of the message
+            log (``-T`` flag).
+        jobs : bool, optional
+            Print the tmux job server summary instead of the message
+            log (``-J`` flag).
 
         Returns
         -------
         list[str]
-            Server message log lines.
+            Server message log lines (or terminal/job summary when
+            *terminals*/*jobs* is set).
 
         Examples
         --------
@@ -1231,6 +1245,12 @@ class Server(
         True
         """
         tmux_args: tuple[str, ...] = ()
+
+        if terminals:
+            tmux_args += ("-T",)
+
+        if jobs:
+            tmux_args += ("-J",)
 
         if target_client is not None:
             tmux_args += ("-t", target_client)
