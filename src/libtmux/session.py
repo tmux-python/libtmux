@@ -245,6 +245,168 @@ class Session(
     Commands (tmux-like)
     """
 
+    def lock_session(self) -> None:
+        """Lock this session via ``$ tmux lock-session``.
+
+        Examples
+        --------
+        >>> session.lock_session()
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("lock-session")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def detach_client(
+        self,
+        *,
+        target_client: str | None = None,
+        all_clients: bool | None = None,
+        shell_command: str | None = None,
+    ) -> None:
+        """Detach clients from this session via ``$ tmux detach-client``.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client to detach (``-t`` flag). If omitted, all clients
+            attached to this session are detached (``-s`` session scoping).
+        all_clients : bool, optional
+            When combined with ``target_client``, detach every client
+            attached to this session **except** *target_client*. Has no
+            additional effect when ``target_client`` is omitted.
+
+            tmux's ``detach-client -a`` is server-wide, not session-scoped
+            (see ``cmd-detach-client.c`` — the ``-a`` branch loops over
+            the global client list). To preserve session scope this
+            wrapper enumerates clients attached to ``self.session_id``
+            and issues one ``detach-client`` per non-target client.
+        shell_command : str, optional
+            Run a shell command after detaching (``-E`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     session.detach_client()
+
+        .. versionadded:: 0.45
+        """
+        if all_clients and target_client is not None:
+            list_proc = self.server.cmd(
+                "list-clients",
+                "-t",
+                str(self.session_id),
+                "-F",
+                "#{client_name}",
+            )
+            if list_proc.stderr:
+                raise exc.LibTmuxException(list_proc.stderr)
+
+            for client in list_proc.stdout:
+                if not client or client == target_client:
+                    continue
+                detach_args: tuple[str, ...] = ()
+                if shell_command is not None:
+                    detach_args += ("-E", shell_command)
+                detach_args += ("-t", client)
+                proc = self.server.cmd("detach-client", *detach_args)
+                if proc.stderr:
+                    raise exc.LibTmuxException(proc.stderr)
+            return
+
+        tmux_args: tuple[str, ...] = ()
+
+        if shell_command is not None:
+            tmux_args += ("-E", shell_command)
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+        else:
+            tmux_args += ("-s", str(self.session_id))
+
+        proc = self.server.cmd("detach-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def last_window(self) -> Window:
+        """Select the last (previously selected) window.
+
+        Wraps ``$ tmux last-window``.
+
+        Returns
+        -------
+        :class:`Window`
+            The newly active window.
+
+        Examples
+        --------
+        >>> w1 = session.new_window(window_name='lw_a')
+        >>> w2 = session.new_window(window_name='lw_b', attach=True)
+        >>> session.last_window()
+        Window(...)
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("last-window")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self.active_window
+
+    def next_window(self) -> Window:
+        """Select the next window.
+
+        Wraps ``$ tmux next-window``.
+
+        Returns
+        -------
+        :class:`Window`
+            The newly active window.
+
+        Examples
+        --------
+        >>> w = session.new_window(window_name='nw_test')
+        >>> session.next_window()
+        Window(...)
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("next-window")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self.active_window
+
+    def previous_window(self) -> Window:
+        """Select the previous window.
+
+        Wraps ``$ tmux previous-window``.
+
+        Returns
+        -------
+        :class:`Window`
+            The newly active window.
+
+        Examples
+        --------
+        >>> w = session.new_window(window_name='pw_test')
+        >>> session.previous_window()
+        Window(...)
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("previous-window")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self.active_window
+
     def select_window(self, target_window: str | int) -> Window:
         """Select window and return the selected window.
 
@@ -461,6 +623,8 @@ class Session(
         environment: dict[str, str] | None = None,
         direction: WindowDirection | None = None,
         target_window: str | None = None,
+        kill_existing: bool | None = None,
+        select_existing: bool | None = None,
     ) -> Window:
         """Create new window, returns new :class:`Window`.
 
@@ -491,6 +655,16 @@ class Session(
 
         target_window : str, optional
             Used by :meth:`Window.new_window` to specify the target window.
+        kill_existing : bool, optional
+            Destroy the window at the target index if it already exists
+            (``-k`` flag).
+
+            .. versionadded:: 0.45
+        select_existing : bool, optional
+            If a window with the given name already exists, select it instead
+            of creating a new one (``-S`` flag).
+
+            .. versionadded:: 0.45
 
         .. versionchanged:: 0.28.0
 
@@ -554,6 +728,12 @@ class Session(
 
         if direction is not None:
             window_args += (WINDOW_DIRECTION_FLAG_MAP[direction],)
+
+        if kill_existing:
+            window_args += ("-k",)
+
+        if select_existing:
+            window_args += ("-S",)
 
         target: str | None = None
         if window_index is not None:

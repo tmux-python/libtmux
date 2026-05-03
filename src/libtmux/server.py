@@ -13,10 +13,11 @@ import pathlib
 import shutil
 import subprocess
 import typing as t
+import warnings
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
+from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -423,6 +424,1305 @@ class Server(
 
         return self
 
+    def run_shell(
+        self,
+        command: str,
+        *,
+        background: bool | None = None,
+        delay: str | None = None,
+        as_tmux_command: bool | None = None,
+        target_pane: str | None = None,
+    ) -> list[str] | None:
+        """Execute a shell command via ``$ tmux run-shell``.
+
+        Parameters
+        ----------
+        command : str
+            Shell command to execute.
+        background : bool, optional
+            Run in background (``-b`` flag).
+        delay : str, optional
+            Delay before execution (``-d`` flag).
+        as_tmux_command : bool, optional
+            Parse argument as a tmux command instead of a shell command
+            (``-C`` flag).
+        target_pane : str, optional
+            Target pane for output (``-t`` flag).
+
+        Returns
+        -------
+        list[str] | None
+            Command stdout if not running in background, None otherwise.
+
+            On tmux 3.3a/3.4 the upstream stdout passthrough was broken
+            (restored in tmux 3.5 by upstream commit ``fb37d52d``);
+            on those versions the returned list will be empty even on
+            successful execution.
+
+        Examples
+        --------
+        >>> result = server.run_shell('true')
+        >>> isinstance(result, list)
+        True
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if background:
+            tmux_args += ("-b",)
+
+        if delay is not None:
+            tmux_args += ("-d", delay)
+
+        if as_tmux_command:
+            tmux_args += ("-C",)
+
+        if target_pane is not None:
+            tmux_args += ("-t", target_pane)
+
+        tmux_args += (command,)
+
+        proc = self.cmd("run-shell", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        if background:
+            return None
+        return proc.stdout
+
+    def wait_for(
+        self,
+        channel: str,
+        *,
+        lock: bool | None = None,
+        unlock: bool | None = None,
+        set_flag: bool | None = None,
+    ) -> None:
+        """Wait for, signal, or lock a channel via ``$ tmux wait-for``.
+
+        Parameters
+        ----------
+        channel : str
+            Channel name.
+        lock : bool, optional
+            Lock the channel (``-L`` flag).
+        unlock : bool, optional
+            Unlock the channel (``-U`` flag).
+        set_flag : bool, optional
+            Set the channel flag and wake waiters (``-S`` flag).
+
+        Examples
+        --------
+        >>> server.new_session(session_name='wait_test')
+        Session(...)
+        >>> server.wait_for('test_channel', set_flag=True)
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if lock:
+            tmux_args += ("-L",)
+
+        if unlock:
+            tmux_args += ("-U",)
+
+        if set_flag:
+            tmux_args += ("-S",)
+
+        tmux_args += (channel,)
+
+        proc = self.cmd("wait-for", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def bind_key(
+        self,
+        key: str,
+        command: str,
+        *,
+        key_table: str | None = None,
+        note: str | None = None,
+        repeat: bool | None = None,
+    ) -> None:
+        """Bind a key to a command via ``$ tmux bind-key``.
+
+        Parameters
+        ----------
+        key : str
+            Key to bind (e.g. ``C-a``, ``F12``, ``M-x``).
+        command : str
+            Tmux command to run when key is pressed.
+        key_table : str, optional
+            Key table to bind in (``-T`` flag). Defaults to ``prefix``.
+        note : str, optional
+            Note for the binding (``-N`` flag).
+        repeat : bool, optional
+            Allow the key to repeat (``-r`` flag).
+
+        Examples
+        --------
+        >>> server.bind_key('F12', 'display-message test', key_table='root')
+        >>> server.unbind_key('F12', key_table='root')
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if repeat:
+            tmux_args += ("-r",)
+
+        if note is not None:
+            tmux_args += ("-N", note)
+
+        if key_table is not None:
+            tmux_args += ("-T", key_table)
+
+        tmux_args += (key, command)
+
+        proc = self.cmd("bind-key", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def unbind_key(
+        self,
+        key: str | None = None,
+        *,
+        key_table: str | None = None,
+        all_keys: bool | None = None,
+        quiet: bool | None = None,
+    ) -> None:
+        """Unbind a key via ``$ tmux unbind-key``.
+
+        Parameters
+        ----------
+        key : str, optional
+            Key to unbind. Required unless *all_keys* is True.
+        key_table : str, optional
+            Key table (``-T`` flag). Defaults to ``prefix``.
+        all_keys : bool, optional
+            Unbind all keys (``-a`` flag).
+        quiet : bool, optional
+            Suppress errors for missing bindings (``-q`` flag).
+
+        Examples
+        --------
+        >>> server.bind_key('F11', 'display-message test', key_table='root')
+        >>> server.unbind_key('F11', key_table='root')
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if all_keys:
+            tmux_args += ("-a",)
+
+        if quiet:
+            tmux_args += ("-q",)
+
+        if key_table is not None:
+            tmux_args += ("-T", key_table)
+
+        if key is not None:
+            tmux_args += (key,)
+
+        proc = self.cmd("unbind-key", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def list_keys(
+        self,
+        *,
+        key_table: str | None = None,
+    ) -> list[str]:
+        """List key bindings via ``$ tmux list-keys``.
+
+        Parameters
+        ----------
+        key_table : str, optional
+            Filter by key table (``-T`` flag).
+
+        Returns
+        -------
+        list[str]
+            Key binding lines.
+
+        Examples
+        --------
+        >>> result = server.list_keys()
+        >>> isinstance(result, list)
+        True
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if key_table is not None:
+            tmux_args += ("-T", key_table)
+
+        proc = self.cmd("list-keys", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
+    def list_commands(self, *, command_name: str | None = None) -> list[str]:
+        """List tmux commands via ``$ tmux list-commands``.
+
+        Parameters
+        ----------
+        command_name : str, optional
+            Filter to a specific command.
+
+        Returns
+        -------
+        list[str]
+            Command listing lines.
+
+        Examples
+        --------
+        >>> result = server.list_commands(command_name='send-keys')
+        >>> len(result) >= 1
+        True
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if command_name is not None:
+            tmux_args += (command_name,)
+
+        proc = self.cmd("list-commands", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
+    def lock_server(self) -> None:
+        """Lock the tmux server via ``$ tmux lock-server``.
+
+        Requires an attached client.
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.lock_server()
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("lock-server")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def server_access(
+        self,
+        *,
+        allow: str | None = None,
+        deny: str | None = None,
+        list_access: bool | None = None,
+        read_only: bool | None = None,
+        write: bool | None = None,
+    ) -> list[str] | None:
+        """Manage server access control via ``$ tmux server-access``.
+
+        Requires tmux 3.3+ (introduced in 3.3).
+
+        Parameters
+        ----------
+        allow : str, optional
+            Allow a user (``-a`` flag).
+        deny : str, optional
+            Deny a user (``-d`` flag).
+        list_access : bool, optional
+            List access rules (``-l`` flag).
+        read_only : bool, optional
+            Force the user to attach read-only (``-r`` flag). Implies
+            allow if the user is not already in the ACL. Mutually
+            exclusive with *write* — tmux rejects ``-r -w``.
+        write : bool, optional
+            Allow the user to attach read-write (``-w`` flag). Implies
+            allow if the user is not already in the ACL. Mutually
+            exclusive with *read_only*.
+
+        Returns
+        -------
+        list[str] | None
+            Access list when *list_access* is True, None otherwise.
+
+        Examples
+        --------
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.3"):
+        ...     result = server.server_access(list_access=True)
+        ...     assert isinstance(result, list)
+
+        .. versionadded:: 0.45
+        """
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = "server_access requires tmux 3.3+"
+            raise exc.LibTmuxException(msg)
+
+        if read_only and write:
+            msg = "read_only and write are mutually exclusive (tmux rejects -r -w)"
+            raise ValueError(msg)
+
+        tmux_args: tuple[str, ...] = ()
+
+        if allow is not None:
+            tmux_args += ("-a", allow)
+
+        if deny is not None:
+            tmux_args += ("-d", deny)
+
+        if list_access:
+            tmux_args += ("-l",)
+
+        if read_only:
+            tmux_args += ("-r",)
+
+        if write:
+            tmux_args += ("-w",)
+
+        proc = self.cmd("server-access", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        if list_access:
+            return proc.stdout
+        return None
+
+    def refresh_client(self, *, target_client: str | None = None) -> None:
+        """Refresh a client's display via ``$ tmux refresh-client``.
+
+        Requires an attached client.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client (``-t`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.refresh_client()
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        proc = self.cmd("refresh-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def suspend_client(self, *, target_client: str | None = None) -> None:
+        """Suspend a client via ``$ tmux suspend-client``.
+
+        Requires an attached client.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client (``-t`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.suspend_client()
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        proc = self.cmd("suspend-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def lock_client(self, *, target_client: str | None = None) -> None:
+        """Lock a client via ``$ tmux lock-client``.
+
+        Requires an attached client.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client (``-t`` flag).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.lock_client()
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        proc = self.cmd("lock-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def confirm_before(
+        self,
+        command: str,
+        *,
+        prompt: str | None = None,
+        confirm_key: str | None = None,
+        default_yes: bool | None = None,
+        target_client: str | None = None,
+    ) -> None:
+        """Run a command after confirmation via ``$ tmux confirm-before``.
+
+        Always uses ``-b`` (background) to avoid blocking the command queue.
+        Use ``send-keys -K -c <client>`` to provide the confirmation key.
+
+        Requires tmux 3.3+ for ``-b`` flag support.
+
+        Parameters
+        ----------
+        command : str
+            Tmux command to run after confirmation.
+        prompt : str, optional
+            Custom prompt text (``-p`` flag).
+        confirm_key : str, optional
+            Key to accept as confirmation (``-c`` flag). Default is ``y``.
+        default_yes : bool, optional
+            Make Enter default to yes (``-y`` flag).
+        target_client : str, optional
+            Target client (``-t`` flag).
+
+        Examples
+        --------
+        Interactive confirmation requires tmux 3.4+; the wrapper itself
+        works on 3.3+ but the ``send-keys -K -c <client>`` round-trip
+        used here is unreliable on 3.3a:
+
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.4"):
+        ...     with control_mode() as ctl:
+        ...         server.confirm_before(
+        ...             'set -g @cf_test yes',
+        ...             target_client=ctl.client_name,
+        ...         )
+        ...         _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, 'y')
+        ...         result = server.cmd('show-options', '-gv', '@cf_test').stdout[0]
+        ... else:
+        ...     result = 'yes'
+        >>> result
+        'yes'
+
+        .. versionadded:: 0.45
+        """
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = (
+                "confirm_before requires tmux 3.3+: -b is always used to avoid "
+                "blocking the command queue and is not available on this tmux version"
+            )
+            raise exc.LibTmuxException(msg)
+
+        tmux_args: tuple[str, ...] = ("-b",)
+
+        if prompt is not None:
+            tmux_args += ("-p", prompt)
+
+        if confirm_key is not None:
+            tmux_args += ("-c", confirm_key)
+
+        if default_yes:
+            tmux_args += ("-y",)
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        tmux_args += (command,)
+
+        proc = self.cmd("confirm-before", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def command_prompt(
+        self,
+        template: str,
+        *,
+        prompt: str | None = None,
+        inputs: str | None = None,
+        target_client: str | None = None,
+        one_key: bool | None = None,
+        key_only: bool | None = None,
+        on_input_change: bool | None = None,
+        numeric: bool | None = None,
+        prompt_type: str | None = None,
+        expand_format: bool | None = None,
+        literal: bool | None = None,
+        bspace_exit: bool | None = None,
+    ) -> None:
+        """Open a command prompt via ``$ tmux command-prompt``.
+
+        Always uses ``-b`` (background) to avoid blocking the command queue.
+        Use ``send-keys -K -c <client>`` to type into the prompt and submit.
+
+        Requires tmux 3.3+ for ``-b`` flag support.
+
+        Parameters
+        ----------
+        template : str
+            Tmux command template. Use ``%1``, ``%2`` for prompt values.
+        prompt : str, optional
+            Custom prompt text (``-p`` flag). Commas separate multiple prompts.
+        inputs : str, optional
+            Pre-fill prompt input (``-I`` flag). Commas separate multiple.
+        target_client : str, optional
+            Target client (``-t`` flag).
+        one_key : bool, optional
+            Accept only one key press (``-1`` flag).
+        key_only : bool, optional
+            Only accept key presses, not text (``-k`` flag).
+        on_input_change : bool, optional
+            Run template on each keystroke (``-i`` flag).
+        numeric : bool, optional
+            Accept only numeric input (``-N`` flag).
+        prompt_type : str, optional
+            Prompt type (``-T`` flag). One of: ``command``, ``search``,
+            ``target``, ``window-target``.
+        expand_format : bool, optional
+            Pass the template through ``args_make_commands_prepare``
+            (``-F`` flag) so format strings expand. Requires tmux 3.3+.
+        literal : bool, optional
+            Disable splitting *prompt* on commas — treat it as a single
+            prompt (``-l`` flag). Requires tmux 3.6+.
+        bspace_exit : bool, optional
+            Close the prompt when the user empties it with backspace
+            (``-e`` flag, ``PROMPT_BSPACE_EXIT``). Requires tmux >3.6
+            (introduced upstream by commit ``1e5f93b7``, not in any
+            tagged release at the time of writing).
+
+        Examples
+        --------
+        Interactive prompts require tmux 3.4+; the wrapper itself works
+        on 3.3+ but the ``send-keys -K -c <client>`` round-trip used
+        here is unreliable on 3.3a:
+
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.4"):
+        ...     with control_mode() as ctl:
+        ...         server.command_prompt(
+        ...             "set -g @cp_test '%1'",
+        ...             target_client=ctl.client_name,
+        ...         )
+        ...         for key in ['h', 'i', 'Enter']:
+        ...             _ = server.cmd('send-keys', '-K', '-c', ctl.client_name, key)
+        ...         result = server.cmd('show-options', '-gv', '@cp_test').stdout[0]
+        ... else:
+        ...     result = 'hi'
+        >>> result
+        'hi'
+
+        .. versionadded:: 0.45
+        """
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = (
+                "command_prompt requires tmux 3.3+: -b is always used to avoid "
+                "blocking the command queue and is not available on this tmux version"
+            )
+            raise exc.LibTmuxException(msg)
+
+        tmux_args: tuple[str, ...] = ("-b",)
+
+        if one_key:
+            tmux_args += ("-1",)
+
+        if key_only:
+            tmux_args += ("-k",)
+
+        if on_input_change:
+            tmux_args += ("-i",)
+
+        if numeric:
+            tmux_args += ("-N",)
+
+        if expand_format:
+            tmux_args += ("-F",)
+
+        if literal:
+            if has_gte_version("3.6", tmux_bin=self.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "literal requires tmux 3.6+, ignoring",
+                    stacklevel=2,
+                )
+
+        if bspace_exit:
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += ("-e",)
+            else:
+                warnings.warn(
+                    "bspace_exit requires tmux 3.7+ (upstream master), ignoring",
+                    stacklevel=2,
+                )
+
+        if prompt is not None:
+            tmux_args += ("-p", prompt)
+
+        if inputs is not None:
+            tmux_args += ("-I", inputs)
+
+        if prompt_type is not None:
+            tmux_args += ("-T", prompt_type)
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        tmux_args += (template,)
+
+        proc = self.cmd("command-prompt", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def display_menu(
+        self,
+        *items: str,
+        title: str | None = None,
+        target_pane: str | None = None,
+        target_client: str | None = None,
+        x: int | str | None = None,
+        y: int | str | None = None,
+        starting_choice: int | str | None = None,
+        border_lines: str | None = None,
+        style: str | None = None,
+        border_style: str | None = None,
+        selected_style: str | None = None,
+        mouse: bool | None = None,
+        stay_open: bool | None = None,
+    ) -> None:
+        """Display a popup menu via ``$ tmux display-menu``.
+
+        Requires a TTY-backed attached client. Control-mode clients have
+        ``tty.sy=0``, which causes ``menu_prepare()`` to return NULL.
+        This method cannot be tested with
+        :class:`~libtmux._internal.control_mode.ControlMode`.
+
+        Parameters
+        ----------
+        *items : str
+            Menu items as positional args in tmux's ``name key command``
+            triple format. Use empty strings for separators.
+        title : str, optional
+            Menu title (``-T`` flag).
+        target_pane : str, optional
+            Target pane for format expansion (``-t`` flag).
+        target_client : str, optional
+            Target client (``-c`` flag).
+        x : int or str, optional
+            Menu x position (``-x`` flag).
+        y : int or str, optional
+            Menu y position (``-y`` flag).
+        starting_choice : int or str, optional
+            Pre-selected item index (``-C`` flag). Use ``-`` for none.
+        border_lines : str, optional
+            Border line style (``-b`` flag).
+        style : str, optional
+            Menu style (``-s`` flag).
+        border_style : str, optional
+            Border style (``-S`` flag).
+        selected_style : str, optional
+            Style for the currently selected menu item (``-H`` flag).
+            Requires tmux 3.4+.
+        mouse : bool, optional
+            Always enable mouse handling in the menu (``-M`` flag).
+            Requires tmux 3.5+.
+        stay_open : bool, optional
+            Keep the menu open when the mouse is released (``-O`` flag).
+            Requires tmux 3.2+.
+
+        Examples
+        --------
+        End-to-end execution requires a TTY-backed client; control-mode
+        clients leave the cmdq waiting for a user selection
+        (``cmd-display-menu.c`` returns ``CMD_RETURN_WAIT`` once the
+        menu is displayed). The example below stubs ``server.cmd`` so
+        the wrapper's argument construction can be exercised
+        deterministically without invoking tmux.
+
+        >>> captured = []
+        >>> def fake_cmd(name, *args, **_kw):
+        ...     captured.append((name, args))
+        ...     class R:
+        ...         stderr = []
+        ...         stdout = []
+        ...     return R()
+        >>> monkeypatch.setattr(server, 'cmd', fake_cmd)
+        >>> server.display_menu(
+        ...     'First', '1', 'select-pane',
+        ...     title='menu',
+        ...     x='C', y='C',
+        ... )
+        >>> name, args = captured[0]
+        >>> name
+        'display-menu'
+        >>> '-T' in args and 'menu' in args
+        True
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if title is not None:
+            tmux_args += ("-T", title)
+
+        if target_client is not None:
+            tmux_args += ("-c", target_client)
+
+        if target_pane is not None:
+            tmux_args += ("-t", target_pane)
+
+        if x is not None:
+            tmux_args += ("-x", str(x))
+
+        if y is not None:
+            tmux_args += ("-y", str(y))
+
+        if starting_choice is not None:
+            tmux_args += ("-C", str(starting_choice))
+
+        if border_lines is not None:
+            tmux_args += ("-b", border_lines)
+
+        if style is not None:
+            tmux_args += ("-s", style)
+
+        if border_style is not None:
+            tmux_args += ("-S", border_style)
+
+        if selected_style is not None:
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-H", selected_style)
+            else:
+                warnings.warn(
+                    "selected_style requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if mouse:
+            if has_gte_version("3.5", tmux_bin=self.tmux_bin):
+                tmux_args += ("-M",)
+            else:
+                warnings.warn(
+                    "mouse requires tmux 3.5+, ignoring",
+                    stacklevel=2,
+                )
+
+        if stay_open:
+            tmux_args += ("-O",)
+
+        tmux_args += items
+
+        proc = self.cmd("display-menu", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def start_server(self) -> None:
+        """Start the tmux server if not already running.
+
+        Wraps ``$ tmux start-server``. Usually not needed since the server
+        starts automatically on first session creation.
+
+        Examples
+        --------
+        >>> server.start_server()
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("start-server")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def show_messages(
+        self,
+        *,
+        target_client: str | None = None,
+        terminals: bool | None = None,
+        jobs: bool | None = None,
+    ) -> list[str]:
+        """Show server message log via ``$ tmux show-messages``.
+
+        Without ``-T``/``-J``, tmux resolves the message log against a
+        target client; if no client is attached and *target_client* is
+        omitted, tmux raises ``no current client``. Provide
+        *target_client* (e.g. via :class:`~libtmux._internal.control_mode.ControlMode`)
+        when running headless, or use *terminals*/*jobs* — those modes
+        don't require a client.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Target client (``-t`` flag).
+        terminals : bool, optional
+            List terminal capabilities and flags instead of the message
+            log (``-T`` flag).
+        jobs : bool, optional
+            Print the tmux job server summary instead of the message
+            log (``-J`` flag).
+
+        Returns
+        -------
+        list[str]
+            Server message log lines (or terminal/job summary when
+            *terminals*/*jobs* is set).
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     result = server.show_messages(target_client=ctl.client_name)
+        >>> isinstance(result, list)
+        True
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if terminals:
+            tmux_args += ("-T",)
+
+        if jobs:
+            tmux_args += ("-J",)
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        proc = self.cmd("show-messages", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
+    def show_prompt_history(
+        self,
+        *,
+        prompt_type: str | None = None,
+    ) -> list[str]:
+        """Show prompt history via ``$ tmux show-prompt-history``.
+
+        Parameters
+        ----------
+        prompt_type : str, optional
+            Prompt type to show (``-T`` flag). One of: ``command``,
+            ``search``, ``target``, ``window-target``.
+
+        Returns
+        -------
+        list[str]
+            Prompt history lines.
+
+        Examples
+        --------
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.3"):
+        ...     result = server.show_prompt_history()
+        ... else:
+        ...     result = []
+        >>> isinstance(result, list)
+        True
+
+        .. versionadded:: 0.45
+        """
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = "show_prompt_history requires tmux 3.3+"
+            raise exc.LibTmuxException(msg)
+
+        tmux_args: tuple[str, ...] = ()
+
+        if prompt_type is not None:
+            tmux_args += ("-T", prompt_type)
+
+        proc = self.cmd("show-prompt-history", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
+    def clear_prompt_history(
+        self,
+        *,
+        prompt_type: str | None = None,
+    ) -> None:
+        """Clear prompt history via ``$ tmux clear-prompt-history``.
+
+        Parameters
+        ----------
+        prompt_type : str, optional
+            Prompt type to clear (``-T`` flag). One of: ``command``,
+            ``search``, ``target``, ``window-target``.
+
+        Examples
+        --------
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.3"):
+        ...     server.clear_prompt_history()
+
+        .. versionadded:: 0.45
+        """
+        if not has_gte_version("3.3", tmux_bin=self.tmux_bin):
+            msg = "clear_prompt_history requires tmux 3.3+"
+            raise exc.LibTmuxException(msg)
+
+        tmux_args: tuple[str, ...] = ()
+
+        if prompt_type is not None:
+            tmux_args += ("-T", prompt_type)
+
+        proc = self.cmd("clear-prompt-history", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def set_buffer(
+        self,
+        data: str,
+        *,
+        buffer_name: str | None = None,
+        append: bool | None = None,
+    ) -> None:
+        """Set a paste buffer via ``$ tmux set-buffer``.
+
+        Parameters
+        ----------
+        data : str
+            Data to store in the buffer.
+        buffer_name : str, optional
+            Name of the buffer (``-b`` flag).
+        append : bool, optional
+            Append to the buffer instead of replacing (``-a`` flag).
+
+        Examples
+        --------
+        >>> server.set_buffer('hello')
+        >>> server.show_buffer()
+        'hello'
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if append:
+            tmux_args += ("-a",)
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        tmux_args += (data,)
+
+        proc = self.cmd("set-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def show_buffer(self, *, buffer_name: str | None = None) -> str:
+        """Show content of a paste buffer via ``$ tmux show-buffer``.
+
+        Parameters
+        ----------
+        buffer_name : str, optional
+            Name of the buffer (``-b`` flag). Defaults to the most recent.
+
+        Returns
+        -------
+        str
+            Buffer content.
+
+        Examples
+        --------
+        >>> server.set_buffer('test_data')
+        >>> server.show_buffer()
+        'test_data'
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        proc = self.cmd("show-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return "\n".join(proc.stdout)
+
+    def delete_buffer(self, *, buffer_name: str | None = None) -> None:
+        """Delete a paste buffer via ``$ tmux delete-buffer``.
+
+        Parameters
+        ----------
+        buffer_name : str, optional
+            Name of the buffer to delete (``-b`` flag). Defaults to the most
+            recent.
+
+        Examples
+        --------
+        >>> server.set_buffer('to_delete', buffer_name='del_buf')
+        >>> server.delete_buffer(buffer_name='del_buf')
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        proc = self.cmd("delete-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def save_buffer(
+        self,
+        path: StrPath,
+        *,
+        buffer_name: str | None = None,
+        append: bool | None = None,
+    ) -> None:
+        """Save a paste buffer to a file via ``$ tmux save-buffer``.
+
+        Parameters
+        ----------
+        path : str or PathLike
+            File path to save the buffer to.
+        buffer_name : str, optional
+            Name of the buffer (``-b`` flag). Defaults to the most recent.
+        append : bool, optional
+            Append to the file instead of overwriting (``-a`` flag).
+
+        Examples
+        --------
+        >>> import pathlib
+        >>> server.set_buffer('save_me')
+        >>> path = pathlib.Path(request.config.rootdir) / '..' / 'tmp_save.txt'
+        >>> server.save_buffer(str(path))
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if append:
+            tmux_args += ("-a",)
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        tmux_args += (str(pathlib.Path(path).expanduser()),)
+
+        proc = self.cmd("save-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def load_buffer(
+        self,
+        path: StrPath,
+        *,
+        buffer_name: str | None = None,
+    ) -> None:
+        """Load a file into a paste buffer via ``$ tmux load-buffer``.
+
+        Parameters
+        ----------
+        path : str or PathLike
+            File path to load into the buffer.
+        buffer_name : str, optional
+            Name of the buffer (``-b`` flag).
+
+        Examples
+        --------
+        >>> import pathlib
+        >>> path = pathlib.Path(request.config.rootdir) / '..' / 'tmp_load.txt'
+        >>> _ = path.write_text('loaded')
+        >>> server.load_buffer(str(path), buffer_name='loaded_buf')
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if buffer_name is not None:
+            tmux_args += ("-b", buffer_name)
+
+        tmux_args += (str(pathlib.Path(path).expanduser()),)
+
+        proc = self.cmd("load-buffer", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def list_buffers(self) -> list[str]:
+        """List paste buffers via ``$ tmux list-buffers``.
+
+        Returns
+        -------
+        list[str]
+            Raw output lines from list-buffers.
+
+        Examples
+        --------
+        >>> server.set_buffer('buf_data')
+        >>> result = server.list_buffers()
+        >>> len(result) >= 1
+        True
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("list-buffers")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
+    def if_shell(
+        self,
+        shell_command: str,
+        tmux_command: str,
+        *,
+        else_command: str | None = None,
+        background: bool | None = None,
+        target_pane: str | None = None,
+    ) -> None:
+        """Execute a tmux command conditionally via ``$ tmux if-shell``.
+
+        Parameters
+        ----------
+        shell_command : str
+            Shell command whose exit status determines which tmux command runs.
+        tmux_command : str
+            Tmux command to run if *shell_command* succeeds (exit 0).
+        else_command : str, optional
+            Tmux command to run if *shell_command* fails (non-zero exit).
+        background : bool, optional
+            Run the shell command in the background (``-b`` flag).
+        target_pane : str, optional
+            Target pane for format expansion (``-t`` flag).
+
+        Examples
+        --------
+        >>> server.if_shell('true', 'set -g @if_test yes')
+        >>> server.cmd('show-options', '-gv', '@if_test').stdout[0]
+        'yes'
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if background:
+            tmux_args += ("-b",)
+
+        if target_pane is not None:
+            tmux_args += ("-t", target_pane)
+
+        tmux_args += (shell_command, tmux_command)
+
+        if else_command is not None:
+            tmux_args += (else_command,)
+
+        proc = self.cmd("if-shell", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def source_file(
+        self,
+        path: StrPath,
+        *,
+        quiet: bool | None = None,
+        parse_only: bool | None = None,
+        verbose: bool | None = None,
+    ) -> None:
+        """Source a tmux configuration file via ``$ tmux source-file``.
+
+        Parameters
+        ----------
+        path : str or PathLike
+            Path to the configuration file.
+        quiet : bool, optional
+            Suppress errors for missing files (``-q`` flag).
+        parse_only : bool, optional
+            Check syntax only, do not execute (``-n`` flag).
+        verbose : bool, optional
+            Show parsed commands (``-v`` flag).
+
+        Examples
+        --------
+        >>> import pathlib
+        >>> conf = pathlib.Path(request.config.rootdir) / '..' / 'tmp_src.conf'
+        >>> _ = conf.write_text('set -g @test_source yes')
+        >>> server.source_file(str(conf))
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if quiet:
+            tmux_args += ("-q",)
+
+        if parse_only:
+            tmux_args += ("-n",)
+
+        if verbose:
+            tmux_args += ("-v",)
+
+        tmux_args += (str(pathlib.Path(path).expanduser()),)
+
+        proc = self.cmd("source-file", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def list_clients(self) -> list[str]:
+        """List connected clients via ``$ tmux list-clients``.
+
+        Returns
+        -------
+        list[str]
+            Raw output lines from list-clients.
+
+        Examples
+        --------
+        >>> isinstance(server.list_clients(), list)
+        True
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("list-clients")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return proc.stdout
+
     def switch_client(self, target_session: str) -> None:
         """Switch tmux client.
 
@@ -472,6 +1772,9 @@ class Server(
         y: int | DashLiteral | None = None,
         environment: dict[str, str] | None = None,
         *args: t.Any,
+        detach_others: bool | None = None,
+        no_size: bool | None = None,
+        client_flags: str | None = None,
         **kwargs: t.Any,
     ) -> Session:
         """Create new session, returns new :class:`Session`.
@@ -518,6 +1821,19 @@ class Server(
         y : int | str, optional
             Force the specified height instead of the tmux default for a
             detached session
+        detach_others : bool, optional
+            Detach other clients from the session (``-D`` flag).
+
+            .. versionadded:: 0.45
+        no_size : bool, optional
+            Do not set the initial window size (``-X`` flag).
+
+            .. versionadded:: 0.45
+        client_flags : str, optional
+            Set client flags (``-f`` flag), e.g. ``no-output``,
+            ``read-only``. Requires tmux 3.2+.
+
+            .. versionadded:: 0.45
 
         Returns
         -------
@@ -584,6 +1900,15 @@ class Server(
                 "-P",
                 f"-F{format_string}",
             )
+
+            if detach_others:
+                tmux_args += ("-D",)
+
+            if no_size:
+                tmux_args += ("-X",)
+
+            if client_flags is not None:
+                tmux_args += ("-f", client_flags)
 
             if session_name is not None:
                 tmux_args += (f"-s{session_name}",)

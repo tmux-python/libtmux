@@ -13,6 +13,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._internal.control_mode import ControlMode
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
@@ -295,6 +296,30 @@ def session(
     assert TEST_SESSION_NAME != "tmuxp"
 
     return session
+
+
+@pytest.fixture
+def control_mode(
+    server: Server,
+    session: Session,
+) -> t.Callable[[], ControlMode]:
+    """Return :class:`ControlMode` context manager factory.
+
+    Returns a callable that creates :class:`ControlMode` context managers
+    bound to the test's server and session. Use as a context manager to
+    spawn a control-mode tmux client.
+
+    While the control-mode client is active, ``Server.list_clients()``
+    will include it.
+
+    Examples
+    --------
+    >>> from libtmux._internal.control_mode import ControlMode
+    >>> def test_example(control_mode):
+    ...     with control_mode() as ctl:
+    ...         assert ctl.client_name != ''
+    """
+    return functools.partial(ControlMode, server=server, session=session)
 
 
 @pytest.fixture

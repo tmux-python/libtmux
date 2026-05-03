@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import pathlib
 import shlex
 import typing as t
 import warnings
@@ -277,6 +278,7 @@ class Window(
         zoom: bool | None = None,
         shell: str | None = None,
         size: str | int | None = None,
+        percentage: int | None = None,
         environment: dict[str, str] | None = None,
     ) -> Pane:
         """Split window on active pane and return the created :class:`Pane`.
@@ -302,7 +304,12 @@ class Window(
             is useful for long-running processes where the closing of the
             window upon completion is desired.
         size : int, optional
-            Cell/row or percentage to occupy with respect to current window.
+            Cell/row count to occupy with respect to current window.
+        percentage : int, optional
+            Percentage (0-100) of the window to occupy (``-p`` flag).
+            Mutually exclusive with *size*.
+
+            .. versionadded:: 0.45
         environment : dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
 
@@ -321,6 +328,7 @@ class Window(
             zoom=zoom,
             shell=shell,
             size=size,
+            percentage=percentage,
             environment=environment,
         )
 
@@ -402,11 +410,69 @@ class Window(
         self.refresh()
         return self
 
-    def last_pane(self) -> Pane | None:
-        """Return last pane."""
-        return self.select_pane("-l")
+    def last_pane(
+        self,
+        *,
+        disable_input: bool | None = None,
+        enable_input: bool | None = None,
+        keep_zoom: bool | None = None,
+    ) -> Pane | None:
+        """Select the last (previously active) pane via ``$ tmux last-pane``.
 
-    def select_layout(self, layout: str | None = None) -> Window:
+        Parameters
+        ----------
+        disable_input : bool, optional
+            Disable input to the pane (``-d`` flag).
+
+            .. versionadded:: 0.45
+        enable_input : bool, optional
+            Enable input to the pane (``-e`` flag).
+
+            .. versionadded:: 0.45
+        keep_zoom : bool, optional
+            Keep the window zoomed if zoomed (``-Z`` flag).
+
+            .. versionadded:: 0.45
+
+        Returns
+        -------
+        :class:`Pane` or None
+            The selected pane, or None if no last pane exists.
+
+        Examples
+        --------
+        >>> pane1 = window.active_pane
+        >>> pane2 = window.split()
+        >>> pane2.select()
+        Pane(...)
+        >>> result = window.last_pane()
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if disable_input:
+            tmux_args += ("-d",)
+
+        if enable_input:
+            tmux_args += ("-e",)
+
+        if keep_zoom:
+            tmux_args += ("-Z",)
+
+        proc = self.cmd("last-pane", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self.active_pane
+
+    def select_layout(
+        self,
+        layout: str | None = None,
+        *,
+        spread: bool | None = None,
+        next_layout: bool | None = None,
+        previous_layout: bool | None = None,
+    ) -> Window:
         """Select layout for window.
 
         Wrapper for ``$ tmux select-layout <layout>``.
@@ -436,6 +502,18 @@ class Window(
                 both rows and columns.
             'custom'
                 Custom dimensions (see :term:`tmux(1)` manpages).
+        spread : bool, optional
+            Spread panes out evenly (``-E`` flag).
+
+            .. versionadded:: 0.45
+        next_layout : bool, optional
+            Move to the next layout (``-n`` flag).
+
+            .. versionadded:: 0.45
+        previous_layout : bool, optional
+            Move to the previous layout (``-p`` flag).
+
+            .. versionadded:: 0.45
 
         Returns
         -------
@@ -446,8 +524,25 @@ class Window(
         ------
         :exc:`libtmux.exc.LibTmuxException`
             If tmux returns an error.
+        ValueError
+            If both *layout* and a flag (*spread*, *next_layout*,
+            *previous_layout*) are specified.
         """
+        flags = (spread, next_layout, previous_layout)
+        if layout and any(flags):
+            msg = "Cannot specify both layout and spread/next_layout/previous_layout"
+            raise ValueError(msg)
+
         cmd = ["select-layout"]
+
+        if spread:
+            cmd.append("-E")
+
+        if next_layout:
+            cmd.append("-n")
+
+        if previous_layout:
+            cmd.append("-p")
 
         if layout:  # tmux allows select-layout without args
             cmd.append(layout)
@@ -458,6 +553,296 @@ class Window(
             raise exc.LibTmuxException(proc.stderr)
 
         return self
+
+    def next_layout(self) -> Window:
+        """Cycle to the next layout via ``$ tmux next-layout``.
+
+        Returns
+        -------
+        :class:`Window`
+            Self, for method chaining.
+
+        Examples
+        --------
+        >>> pane1 = window.active_pane
+        >>> pane2 = window.split()
+        >>> window.next_layout()
+        Window(...)
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("next-layout")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self
+
+    def previous_layout(self) -> Window:
+        """Cycle to the previous layout via ``$ tmux previous-layout``.
+
+        Returns
+        -------
+        :class:`Window`
+            Self, for method chaining.
+
+        Examples
+        --------
+        >>> pane1 = window.active_pane
+        >>> pane2 = window.split()
+        >>> window.previous_layout()
+        Window(...)
+
+        .. versionadded:: 0.45
+        """
+        proc = self.cmd("previous-layout")
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self
+
+    def link(
+        self,
+        target_session: str | Session,
+        *,
+        target_index: str | None = None,
+        kill_existing: bool | None = None,
+        after: bool | None = None,
+        before: bool | None = None,
+        detach: bool | None = None,
+    ) -> None:
+        """Link this window to another session via ``$ tmux link-window``.
+
+        Parameters
+        ----------
+        target_session : str or Session
+            Target session to link the window to.
+        target_index : str, optional
+            Target window index in the destination session.
+        kill_existing : bool, optional
+            Kill target window if it exists (``-k`` flag).
+        after : bool, optional
+            Insert after the target window (``-a`` flag).
+        before : bool, optional
+            Insert before the target window (``-b`` flag).
+        detach : bool, optional
+            Do not make the linked window active (``-d`` flag).
+
+        Examples
+        --------
+        >>> w = session.new_window(window_name='link_test')
+        >>> s2 = server.new_session(session_name='link_target')
+        >>> w.link(s2)
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if kill_existing:
+            tmux_args += ("-k",)
+
+        if after:
+            tmux_args += ("-a",)
+
+        if before:
+            tmux_args += ("-b",)
+
+        if detach:
+            tmux_args += ("-d",)
+
+        # Source: this window
+        tmux_args += ("-s", f"{self.session_id}:{self.window_index}")
+
+        # Target: destination session[:index]
+        from libtmux.session import Session
+
+        session_id = (
+            target_session.session_id
+            if isinstance(target_session, Session)
+            else target_session
+        )
+        target = f"{session_id}:{target_index}" if target_index else str(session_id)
+        tmux_args += ("-t", target)
+
+        proc = self.server.cmd("link-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def unlink(self, *, kill_if_last: bool | None = None) -> None:
+        """Unlink this window from the current session via ``$ tmux unlink-window``.
+
+        Parameters
+        ----------
+        kill_if_last : bool, optional
+            Kill the window if it is the last window in the session (``-k``).
+
+        Examples
+        --------
+        >>> w = session.new_window(window_name='unlink_test')
+        >>> s2 = server.new_session(session_name='unlink_s2')
+        >>> w.link(s2)
+        >>> linked = [x for x in s2.windows if x.window_name == 'unlink_test']
+        >>> linked[0].unlink()
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if kill_if_last:
+            tmux_args += ("-k",)
+
+        proc = self.cmd("unlink-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def rotate(
+        self,
+        *,
+        upward: bool | None = None,
+        downward: bool | None = None,
+        keep_zoom: bool | None = None,
+    ) -> Window:
+        """Rotate pane positions in the window via ``$ tmux rotate-window``.
+
+        Parameters
+        ----------
+        upward : bool, optional
+            Rotate upward (``-U`` flag).
+        downward : bool, optional
+            Rotate downward (``-D`` flag).
+        keep_zoom : bool, optional
+            Keep the window zoomed if zoomed (``-Z`` flag).
+
+        Returns
+        -------
+        :class:`Window`
+            Self, for method chaining.
+
+        Examples
+        --------
+        >>> pane1 = window.active_pane
+        >>> pane2 = window.split()
+        >>> window.rotate()
+        Window(...)
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if upward:
+            tmux_args += ("-U",)
+
+        if downward:
+            tmux_args += ("-D",)
+
+        if keep_zoom:
+            tmux_args += ("-Z",)
+
+        proc = self.cmd("rotate-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        return self
+
+    def respawn(
+        self,
+        *,
+        shell: str | None = None,
+        start_directory: StrPath | None = None,
+        environment: dict[str, str] | None = None,
+        kill: bool | None = None,
+    ) -> None:
+        """Respawn the window process via ``$ tmux respawn-window``.
+
+        Parameters
+        ----------
+        shell : str, optional
+            Shell command to run in the respawned window.
+        start_directory : str or PathLike, optional
+            Working directory for the respawned window (``-c`` flag).
+        environment : dict, optional
+            Environment variables (``-e`` flag).
+        kill : bool, optional
+            Kill the current process before respawning (``-k`` flag).
+            Required if the window is still active.
+
+        Examples
+        --------
+        >>> window = session.new_window(window_name='respawn_test')
+        >>> window.respawn(kill=True, shell='sh')
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if kill:
+            tmux_args += ("-k",)
+
+        if start_directory is not None:
+            start_path = pathlib.Path(start_directory).expanduser()
+            tmux_args += (f"-c{start_path}",)
+
+        if environment:
+            for k, v in environment.items():
+                tmux_args += (f"-e{k}={v}",)
+
+        if shell:
+            tmux_args += (shell,)
+
+        proc = self.cmd("respawn-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+    def swap(
+        self,
+        target: str | Window,
+        *,
+        detach: bool | None = None,
+    ) -> None:
+        """Swap this window with another via ``$ tmux swap-window``.
+
+        Parameters
+        ----------
+        target : str or Window
+            Target window to swap with. Can be a window ID string or Window.
+        detach : bool, optional
+            Do not change the active window (``-d`` flag).
+
+        Examples
+        --------
+        >>> w1 = session.new_window(window_name='swap_a')
+        >>> w2 = session.new_window(window_name='swap_b')
+        >>> w1_idx = w1.window_index
+        >>> w2_idx = w2.window_index
+        >>> w1.swap(w2)
+        >>> w1.window_index == w2_idx
+        True
+        >>> w2.window_index == w1_idx
+        True
+
+        .. versionadded:: 0.45
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if detach:
+            tmux_args += ("-d",)
+
+        target_id = target.window_id if isinstance(target, Window) else target
+        tmux_args += ("-s", str(target_id))
+
+        proc = self.cmd("swap-window", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
+        self.refresh()
+        if isinstance(target, Window):
+            target.refresh()
 
     def rename_window(self, new_name: str) -> Window:
         """Rename window.
@@ -566,6 +951,12 @@ class Window(
         self,
         destination: str = "",
         session: str | None = None,
+        *,
+        after: bool | None = None,
+        before: bool | None = None,
+        no_select: bool | None = None,
+        kill_target: bool | None = None,
+        renumber: bool | None = None,
     ) -> Window:
         """Move current :class:`Window` object ``$ tmux move-window``.
 
@@ -577,6 +968,28 @@ class Window(
         session : str, optional
             The ``target session`` or index to move the window to, default:
             current session.
+        after : bool, optional
+            Insert after the target window (``-a`` flag).
+
+            .. versionadded:: 0.45
+        before : bool, optional
+            Insert before the target window (``-b`` flag).
+
+            .. versionadded:: 0.45
+        no_select : bool, optional
+            Do not make the moved window the current window (``-d`` flag).
+
+            .. versionadded:: 0.45
+        kill_target : bool, optional
+            Kill the target window if it exists (``-k`` flag).
+
+            .. versionadded:: 0.45
+        renumber : bool, optional
+            Renumber all windows in sequential order (``-r`` flag). This is a
+            standalone operation — when used, no move is performed and other
+            parameters are ignored.
+
+            .. versionadded:: 0.45
 
         Returns
         -------
@@ -588,9 +1001,27 @@ class Window(
         :exc:`libtmux.exc.LibTmuxException`
             If tmux returns an error.
         """
+        tmux_args: tuple[str, ...] = ()
+
+        if after:
+            tmux_args += ("-a",)
+
+        if before:
+            tmux_args += ("-b",)
+
+        if no_select:
+            tmux_args += ("-d",)
+
+        if kill_target:
+            tmux_args += ("-k",)
+
+        if renumber:
+            tmux_args += ("-r",)
+
         session = session or self.session_id
         proc = self.cmd(
             "move-window",
+            *tmux_args,
             f"-s{self.session_id}:{self.window_index}",
             target=f"{session}:{destination}",
         )
@@ -598,10 +1029,7 @@ class Window(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-        if destination != "" and session is not None:
-            self.window_index = destination
-        else:
-            self.refresh()
+        self.refresh()
 
         return self
 

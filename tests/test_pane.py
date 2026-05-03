@@ -9,6 +9,7 @@ import typing as t
 
 import pytest
 
+from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
 
@@ -443,3 +444,790 @@ def test_split_start_directory_pathlib(
     actual_path = str(pathlib.Path(new_pane.pane_current_path).resolve())
     expected_path = str(user_path.resolve())
     assert actual_path == expected_path
+
+
+class SendKeysCase(t.NamedTuple):
+    """Test case for send_keys() flag variations."""
+
+    test_id: str
+    key: str
+    kwargs: dict[str, t.Any]
+    expected_in_capture: str | None
+    not_expected_in_capture: str | None
+    min_tmux_version: str | None
+
+
+SEND_KEYS_CASES: list[SendKeysCase] = [
+    SendKeysCase(
+        test_id="reset_terminal",
+        key="",
+        kwargs={"reset": True, "enter": False},
+        expected_in_capture=None,
+        not_expected_in_capture=None,
+        min_tmux_version=None,
+    ),
+    SendKeysCase(
+        test_id="repeat_count",
+        key="a",
+        kwargs={"repeat": 3, "literal": True, "enter": False},
+        expected_in_capture="aaa",
+        not_expected_in_capture=None,
+        min_tmux_version=None,
+    ),
+    SendKeysCase(
+        test_id="hex_key_A",
+        key="41",
+        kwargs={"hex_keys": True, "enter": False},
+        expected_in_capture="A",
+        not_expected_in_capture=None,
+        min_tmux_version=None,
+    ),
+    SendKeysCase(
+        test_id="expand_formats",
+        key="a",
+        kwargs={"expand_formats": True, "repeat": 2, "enter": False},
+        expected_in_capture="aa",
+        not_expected_in_capture=None,
+        min_tmux_version=None,
+    ),
+    SendKeysCase(
+        test_id="key_name_flag",
+        key="a",
+        kwargs={"key_name": True, "enter": False},
+        expected_in_capture=None,
+        not_expected_in_capture=None,
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(SendKeysCase._fields),
+    SEND_KEYS_CASES,
+    ids=[c.test_id for c in SEND_KEYS_CASES],
+)
+def test_send_keys_flags(
+    test_id: str,
+    key: str,
+    kwargs: dict[str, t.Any],
+    expected_in_capture: str | None,
+    not_expected_in_capture: str | None,
+    min_tmux_version: str | None,
+    session: Session,
+) -> None:
+    """Test send_keys() with various flag combinations."""
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    env = shutil.which("env")
+    assert env is not None, "Cannot find usable `env` in PATH."
+
+    window = session.new_window(
+        window_name=f"sk_{test_id[:15]}",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    pane.send_keys(key, **kwargs)
+
+    if expected_in_capture is not None:
+        retry_until(
+            lambda: expected_in_capture in "\n".join(pane.capture_pane()),
+            3,
+            raises=True,
+        )
+
+    if not_expected_in_capture is not None:
+        # Give a brief moment then verify absence
+        contents = "\n".join(pane.capture_pane())
+        assert not_expected_in_capture not in contents
+
+
+def test_select_pane_direction(session: Session) -> None:
+    """Test Pane.select() with direction flags."""
+    window = session.new_window(window_name="test_select_dir")
+    window.resize(height=40, width=80)
+    pane_top = window.active_pane
+    assert pane_top is not None
+    pane_bottom = pane_top.split(direction=PaneDirection.Below)
+
+    # Top pane should be active (it was active before split with -d default)
+    pane_bottom.select()
+    pane_bottom.refresh()
+    assert pane_bottom.pane_active == "1"
+
+    # Select up → should go to top pane
+    pane_bottom.select(direction=ResizeAdjustmentDirection.Up)
+    pane_top.refresh()
+    assert pane_top.pane_active == "1"
+
+    # Select down → should go back to bottom
+    pane_top.select(direction=ResizeAdjustmentDirection.Down)
+    pane_bottom.refresh()
+    assert pane_bottom.pane_active == "1"
+
+
+def test_select_pane_last(session: Session) -> None:
+    """Test Pane.select() with last flag."""
+    window = session.new_window(window_name="test_select_last")
+    pane1 = window.active_pane
+    assert pane1 is not None
+    pane2 = pane1.split()
+
+    # pane2 is now active (attach=True by default... wait, default is False)
+    # After split, pane2 is NOT active since attach=False by default
+    # Select pane2 explicitly
+    pane2.select()
+    pane2.refresh()
+    assert pane2.pane_active == "1"
+
+    # Now select pane1
+    pane1.select()
+    pane1.refresh()
+    assert pane1.pane_active == "1"
+
+    # Use -l to go back to last (pane2)
+    pane1.select(last=True)
+    pane2.refresh()
+    assert pane2.pane_active == "1"
+
+
+def test_select_pane_mark(session: Session) -> None:
+    """Test Pane.select() with mark/clear_mark flags."""
+    window = session.new_window(window_name="test_select_mark")
+    pane = window.active_pane
+    assert pane is not None
+
+    # Mark the pane — verify no error
+    pane.select(mark=True)
+
+    # Clear the mark — verify no error
+    pane.select(clear_mark=True)
+
+
+def test_select_pane_disable_enable_input(session: Session) -> None:
+    """Test Pane.select() with disable/enable input flags."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_input_toggle",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    # Disable input
+    pane.select(disable_input=True)
+
+    # Send keys — they should not appear since input is disabled
+    pane.send_keys("echo disabled_test", enter=False)
+
+    # Verify "disabled_test" does NOT appear
+    contents = "\n".join(pane.capture_pane())
+    assert "disabled_test" not in contents
+
+    # Re-enable input
+    pane.select(enable_input=True)
+
+    # Now send keys — they should appear
+    pane.send_keys("echo enabled_ok", enter=True)
+    retry_until(
+        lambda: "enabled_ok" in "\n".join(pane.capture_pane()),
+        3,
+        raises=True,
+    )
+
+
+class DisplayMessageCase(t.NamedTuple):
+    """Test case for display_message() flag variations."""
+
+    test_id: str
+    cmd: str
+    kwargs: dict[str, t.Any]
+    expected_in_output: str | None
+    min_tmux_version: str | None
+
+
+DISPLAY_MESSAGE_CASES: list[DisplayMessageCase] = [
+    DisplayMessageCase(
+        test_id="format_string",
+        cmd="",
+        kwargs={"get_text": True, "format_string": "#{pane_id}"},
+        expected_in_output="%",
+        min_tmux_version=None,
+    ),
+    DisplayMessageCase(
+        test_id="all_formats",
+        cmd="",
+        kwargs={"get_text": True, "all_formats": True},
+        expected_in_output="session_name",
+        min_tmux_version=None,
+    ),
+    DisplayMessageCase(
+        test_id="verbose",
+        cmd="",
+        kwargs={"get_text": True, "verbose": True, "all_formats": True},
+        expected_in_output="session_name",
+        min_tmux_version=None,
+    ),
+    DisplayMessageCase(
+        test_id="no_expand",
+        cmd="#{pane_id}",
+        # no_expand=True → -l flag: output should be the literal string, not
+        # the expanded pane id (which would start with %)
+        kwargs={"get_text": True, "no_expand": True},
+        expected_in_output="#{pane_id}",
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(DisplayMessageCase._fields),
+    DISPLAY_MESSAGE_CASES,
+    ids=[c.test_id for c in DISPLAY_MESSAGE_CASES],
+)
+def test_display_message_flags(
+    test_id: str,
+    cmd: str,
+    kwargs: dict[str, t.Any],
+    expected_in_output: str | None,
+    min_tmux_version: str | None,
+    session: Session,
+) -> None:
+    """Test display_message() with various flag combinations."""
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    result = pane.display_message(cmd, **kwargs)
+
+    if expected_in_output is not None:
+        assert result is not None
+        output = "\n".join(result)
+        assert expected_in_output in output
+
+
+def test_split_percentage(session: Session) -> None:
+    """Test Pane.split() with percentage parameter."""
+    from libtmux.common import has_gte_version
+
+    # tmux 3.4 has a regression in split-window -p; fixed in 3.5.
+    # Per CHANGES FROM 3.4 TO 3.5: "Fix split-window -p."
+    if not has_gte_version("3.5"):
+        pytest.skip("split-window -p was broken in tmux 3.4 (fixed in 3.5)")
+
+    window = session.new_window(window_name="test_split_pct")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(percentage=25)
+    assert new_pane in window.panes
+    assert len(window.panes) == 2
+
+    # The new pane should be roughly 25% of the window height
+    new_pane.refresh()
+    assert new_pane.pane_height is not None
+    assert int(new_pane.pane_height) <= 15  # ~25% of 40
+
+
+def test_split_percentage_size_mutual_exclusion(session: Session) -> None:
+    """Test that size and percentage are mutually exclusive."""
+    window = session.new_window(window_name="test_split_mutex")
+    pane = window.active_pane
+    assert pane is not None
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        pane.split(size=10, percentage=50)
+
+
+def test_send_prefix(session: Session) -> None:
+    """Test Pane.send_prefix() sends prefix key without error."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.send_prefix()
+
+
+def test_copy_mode(session: Session) -> None:
+    """Test Pane.copy_mode() enters copy mode."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.copy_mode()
+    # Exit copy mode
+    pane.send_keys("q", enter=False)
+
+
+def test_copy_mode_source_pane(session: Session) -> None:
+    """Test Pane.copy_mode(source_pane=...) reads another pane's history."""
+    window = session.new_window(window_name="copy_src")
+    src = window.active_pane
+    assert src is not None
+    dest = window.split()
+    src.send_keys("echo SOURCE_TEXT", enter=True)
+
+    dest.copy_mode(source_pane=str(src.pane_id))
+    dest.send_keys("q", enter=False)
+
+
+def test_copy_mode_page_down(session: Session) -> None:
+    """Test Pane.copy_mode(page_down=True) on tmux 3.5+."""
+    if not has_gte_version("3.5"):
+        pytest.skip("page_down requires tmux 3.5+")
+
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.copy_mode()
+    pane.copy_mode(page_down=True)
+    pane.send_keys("q", enter=False)
+
+
+def test_clock_mode(session: Session) -> None:
+    """Test Pane.clock_mode() enters clock mode."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.clock_mode()
+    # Exit clock mode
+    pane.send_keys("q", enter=False)
+
+
+def test_choose_buffer(session: Session) -> None:
+    """Test Pane.choose_buffer() opens buffer chooser."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.choose_buffer()
+
+
+def test_choose_client(session: Session) -> None:
+    """Test Pane.choose_client() opens client chooser."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.choose_client()
+
+
+def test_choose_tree(session: Session) -> None:
+    """Test Pane.choose_tree() opens tree chooser."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.choose_tree()
+
+
+def test_choose_tree_with_flags(session: Session) -> None:
+    """Test Pane.choose_tree() with format, filter, sort, reverse, zoom."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.choose_tree(
+        format_string="#{session_name}",
+        filter_expression="#{?session_attached,1,0}",
+        sort_order="name",
+        reverse=True,
+        zoom=True,
+    )
+
+
+def test_customize_mode(session: Session) -> None:
+    """Test Pane.customize_mode() enters customize mode."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.customize_mode()
+
+
+def test_find_window(session: Session) -> None:
+    """Test Pane.find_window() opens filtered tree."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.find_window("sh")
+
+
+def test_display_panes(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+) -> None:
+    """Test Pane.display_panes() shows pane numbers."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with control_mode():
+        pane.display_panes()
+
+
+class DisplayPopupCase(t.NamedTuple):
+    """Test case for display_popup() flag variations."""
+
+    test_id: str
+    kwargs: dict[str, t.Any]
+    min_tmux_version: str | None
+
+
+DISPLAY_POPUP_CASES: list[DisplayPopupCase] = [
+    DisplayPopupCase(
+        test_id="basic",
+        kwargs={},
+        min_tmux_version=None,
+    ),
+    DisplayPopupCase(
+        test_id="dimensions",
+        kwargs={"width": 40, "height": 10},
+        min_tmux_version=None,
+    ),
+    DisplayPopupCase(
+        test_id="position",
+        kwargs={"x": "C", "y": "C"},
+        min_tmux_version=None,
+    ),
+    DisplayPopupCase(
+        test_id="start_directory",
+        kwargs={"start_directory": pathlib.Path("/tmp")},
+        min_tmux_version=None,
+    ),
+    DisplayPopupCase(
+        test_id="title_v33",
+        kwargs={"title": "popup_title"},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="border_lines_v33",
+        kwargs={"border_lines": "single"},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="style_v33",
+        kwargs={"style": "bg=blue"},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="border_style_v33",
+        kwargs={"border_style": "fg=red"},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="environment_v33",
+        kwargs={"environment": {"FOO": "bar"}},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="no_border_v33",
+        kwargs={"no_border": True},
+        min_tmux_version="3.3",
+    ),
+    DisplayPopupCase(
+        test_id="close_on_any_key_v36",
+        kwargs={"close_on_any_key": True},
+        min_tmux_version="3.6",
+    ),
+    DisplayPopupCase(
+        test_id="no_keys_v36",
+        kwargs={"no_keys": True},
+        min_tmux_version="3.6",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(DisplayPopupCase._fields),
+    DISPLAY_POPUP_CASES,
+    ids=[c.test_id for c in DISPLAY_POPUP_CASES],
+)
+def test_display_popup_flags(
+    test_id: str,
+    kwargs: dict[str, t.Any],
+    min_tmux_version: str | None,
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Test Pane.display_popup() flag combinations.
+
+    Each case adds a flag and runs ``touch <marker>`` inside the popup;
+    verifying the marker file proves the popup invoked the command and
+    the wrapper's flag-building branch was exercised.
+    """
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    marker = tmp_path / f"popup_{test_id}.marker"
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    call_kwargs = {"command": f"touch {marker}", "close_on_exit": True, **kwargs}
+
+    with control_mode():
+        pane.display_popup(**call_kwargs)
+
+    retry_until(lambda: marker.exists(), 3, raises=True)
+
+
+def test_display_popup_close_on_success(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Test Pane.display_popup() with close_on_success (-EE) alone."""
+    marker = tmp_path / "popup_close_on_success.marker"
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with control_mode():
+        pane.display_popup(command=f"touch {marker}", close_on_success=True)
+
+    retry_until(lambda: marker.exists(), 3, raises=True)
+
+
+def test_display_popup_mutual_exclusion(session: Session) -> None:
+    """close_on_exit and close_on_success are mutually exclusive."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        pane.display_popup(close_on_exit=True, close_on_success=True)
+
+
+def test_display_popup_no_border_with_border_lines_rejects(session: Session) -> None:
+    """no_border and border_lines are mutually exclusive."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        pane.display_popup(no_border=True, border_lines="single")
+
+
+def test_display_popup_close_existing(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+) -> None:
+    """Test Pane.display_popup(close_existing=True) returns cleanly.
+
+    ``-C`` (close existing popup) is a no-op when there is no popup;
+    the test confirms the wrapper builds the flag without erroring.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with control_mode():
+        pane.display_popup(close_existing=True)
+
+
+def test_paste_buffer(session: Session) -> None:
+    """Test Pane.paste_buffer() pastes buffer content into pane."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_paste",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    # Set buffer and paste it
+    session.server.set_buffer("pasted_content", buffer_name="paste_test")
+    pane.paste_buffer(buffer_name="paste_test")
+
+    # Verify content appeared in pane
+    retry_until(
+        lambda: "pasted_content" in "\n".join(pane.capture_pane()),
+        3,
+        raises=True,
+    )
+
+
+def test_pipe_pane(session: Session, tmp_path: pathlib.Path) -> None:
+    """Test Pane.pipe() pipes output to a file."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_pipe",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    pipe_file = tmp_path / "pipe_output.txt"
+
+    # Start piping
+    pane.pipe(f"cat >> {pipe_file}")
+
+    # Send some text
+    pane.send_keys("echo pipe_test_ok", enter=True)
+    retry_until(
+        lambda: "pipe_test_ok" in "\n".join(pane.capture_pane()), 3, raises=True
+    )
+
+    # Stop piping
+    pane.pipe()
+
+    # Verify file has content
+    retry_until(
+        lambda: pipe_file.exists() and pipe_file.stat().st_size > 0, 3, raises=True
+    )
+    content = pipe_file.read_text()
+    assert "pipe_test_ok" in content
+
+
+def test_respawn_pane_kill(session: Session) -> None:
+    """Test Pane.respawn() with kill flag on active pane."""
+    window = session.new_window(window_name="test_respawn")
+    pane = window.active_pane
+    assert pane is not None
+
+    # Respawn the active pane with kill
+    pane.respawn(kill=True, shell="sh")
+
+    # Pane should still exist and be alive
+    pane.refresh()
+    assert pane in window.panes
+
+
+def test_move_pane(session: Session) -> None:
+    """Test Pane.move() moves pane to another window."""
+    w1 = session.new_window(window_name="move_src")
+    pane = w1.active_pane
+    assert pane is not None
+    pane_to_move = pane.split(shell="sleep 1m")
+    assert len(w1.panes) == 2
+
+    w2 = session.new_window(window_name="move_dst")
+    initial_w2_panes = len(w2.panes)
+
+    pane_to_move.move(w2)
+
+    w1.refresh()
+    w2.refresh()
+    assert len(w1.panes) == 1
+    assert len(w2.panes) == initial_w2_panes + 1
+
+
+def test_join_pane(session: Session) -> None:
+    """Test Pane.join() roundtrip with break_pane."""
+    window = session.new_window(window_name="test_join")
+    pane = window.active_pane
+    assert pane is not None
+
+    # Create a second pane and break it out
+    new_pane = pane.split(shell="sleep 1m")
+    assert len(window.panes) == 2
+
+    new_window = new_pane.break_pane()
+    window.refresh()
+    assert len(window.panes) == 1
+
+    # Join the pane back
+    new_pane.join(window)
+    window.refresh()
+    assert len(window.panes) == 2
+
+    # The new window should be gone (only had one pane)
+    session.refresh()
+    window_ids = [w.window_id for w in session.windows]
+    assert new_window.window_id not in window_ids
+
+
+def test_join_pane_horizontal(session: Session) -> None:
+    """Test Pane.join() with horizontal split."""
+    window = session.new_window(window_name="test_join_h")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(shell="sleep 1m")
+    new_pane.break_pane()
+
+    new_pane.join(window, vertical=False)
+    window.refresh()
+    assert len(window.panes) == 2
+
+
+def test_break_pane_basic(session: Session) -> None:
+    """Test Pane.break_pane() creates a new window."""
+    window = session.new_window(window_name="test_break")
+    initial_window_count = len(session.windows)
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(shell="sleep 1m")
+    assert len(window.panes) == 2
+
+    new_window = new_pane.break_pane()
+    session.refresh()
+
+    assert len(session.windows) == initial_window_count + 1
+    window.refresh()
+    assert len(window.panes) == 1
+    assert new_window.window_id is not None
+
+
+def test_break_pane_with_name(session: Session) -> None:
+    """Test Pane.break_pane() with window_name."""
+    window = session.new_window(window_name="test_break_name")
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(shell="sleep 1m")
+    new_window = new_pane.break_pane(window_name="my_broken")
+    assert new_window.window_name == "my_broken"
+
+
+def test_swap_pane(session: Session) -> None:
+    """Test Pane.swap() swaps two panes."""
+    window = session.new_window(window_name="test_swap_pane")
+    window.resize(height=40, width=80)
+    pane1 = window.active_pane
+    assert pane1 is not None
+    pane2 = pane1.split()
+
+    pane1_id = pane1.pane_id
+    pane2_id = pane2.pane_id
+
+    # Record initial indices
+    pane1.refresh()
+    pane2.refresh()
+    pane1_idx = pane1.pane_index
+    pane2_idx = pane2.pane_index
+
+    # Swap
+    pane1.swap(pane2)
+
+    # Verify indices swapped
+    pane1.refresh()
+    pane2.refresh()
+    assert pane1.pane_index == pane2_idx
+    assert pane2.pane_index == pane1_idx
+    assert pane1.pane_id == pane1_id
+    assert pane2.pane_id == pane2_id
+
+
+def test_clear_history(session: Session) -> None:
+    """Test Pane.clear_history()."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_clearhist",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    # Send some commands to build up history
+    pane.send_keys("echo line1", enter=True)
+    pane.send_keys("echo line2", enter=True)
+    retry_until(lambda: "line2" in "\n".join(pane.capture_pane()), 3, raises=True)
+
+    # Clear history
+    pane.clear_history()
+
+    # The scrollback should be cleared (visible content may still show current)
+    history = pane.capture_pane(start=-100)
+    # After clearing, scrollback history should be much shorter
+    assert len(history) <= 30  # reasonable bound after clear

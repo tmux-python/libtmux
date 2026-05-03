@@ -10,12 +10,14 @@ https://docs.pytest.org/en/stable/deprecations.html
 
 from __future__ import annotations
 
+import functools
 import shutil
 import typing as t
 
 import pytest
 from _pytest.doctest import DoctestItem
 
+from libtmux._internal.control_mode import ControlMode
 from libtmux.pane import Pane
 from libtmux.pytest_plugin import USING_ZSH
 from libtmux.server import Server
@@ -47,6 +49,13 @@ def add_doctest_fixtures(
         doctest_namespace["window"] = session.active_window
         doctest_namespace["pane"] = session.active_pane
         doctest_namespace["request"] = request
+        doctest_namespace["ControlMode"] = ControlMode
+        doctest_namespace["control_mode"] = functools.partial(
+            ControlMode,
+            server=session.server,
+            session=session,
+        )
+        doctest_namespace["monkeypatch"] = request.getfixturevalue("monkeypatch")
 
 
 @pytest.fixture(autouse=True)
