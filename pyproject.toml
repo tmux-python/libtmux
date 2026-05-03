@@ -52,9 +52,9 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 [dependency-groups]
 dev = [
   # Docs (via gp-sphinx)
-  "gp-sphinx==0.0.1a16.dev4",
-  "sphinx-autodoc-api-style==0.0.1a16.dev4",
-  "sphinx-autodoc-pytest-fixtures==0.0.1a16.dev4",
+  "gp-sphinx==0.0.1a16",
+  "sphinx-autodoc-api-style==0.0.1a16",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a16",
   "sphinx-autobuild",
   "types-docutils",
   # Testing
@@ -75,9 +75,9 @@ dev = [
 ]
 
 docs = [
-  "gp-sphinx==0.0.1a16.dev4",
-  "sphinx-autodoc-api-style==0.0.1a16.dev4",
-  "sphinx-autodoc-pytest-fixtures==0.0.1a16.dev4",
+  "gp-sphinx==0.0.1a16",
+  "sphinx-autodoc-api-style==0.0.1a16",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a16",
   "sphinx-autobuild",
 ]
 testing = [
@@ -105,13 +105,6 @@ libtmux = "libtmux.pytest_plugin"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.uv]
-# `[DO NOT MERGE]`: gp-sphinx workspace ships on the 0.0.1a16.devN
-# pre-release track until the sphinx-vite-builder integration is
-# proven end-to-end. uv otherwise refuses to resolve `*.dev4`
-# markers without this allow.
-prerelease = "allow"
 
 [tool.uv.exclude-newer-package]
 # git-pull packages release in lockstep with their workspaces, so a
