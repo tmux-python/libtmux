@@ -52,9 +52,9 @@ Changes = "https://github.com/tmux-python/libtmux/blob/master/CHANGES"
 [dependency-groups]
 dev = [
   # Docs (via gp-sphinx)
-  "gp-sphinx==0.0.1a13",
-  "sphinx-autodoc-api-style==0.0.1a13",
-  "sphinx-autodoc-pytest-fixtures==0.0.1a13",
+  "gp-sphinx==0.0.1a16",
+  "sphinx-autodoc-api-style==0.0.1a16",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a16",
   "sphinx-autobuild",
   "types-docutils",
   # Testing
@@ -75,9 +75,9 @@ dev = [
 ]
 
 docs = [
-  "gp-sphinx==0.0.1a13",
-  "sphinx-autodoc-api-style==0.0.1a13",
-  "sphinx-autodoc-pytest-fixtures==0.0.1a13",
+  "gp-sphinx==0.0.1a16",
+  "sphinx-autodoc-api-style==0.0.1a16",
+  "sphinx-autodoc-pytest-fixtures==0.0.1a16",
   "sphinx-autobuild",
 ]
 testing = [
@@ -116,7 +116,6 @@ build-backend = "hatchling.build"
 gp-libs = false
 gp-furo-theme = false
 gp-sphinx = false
-gp-sphinx-vite = false
 sphinx-autodoc-api-style = false
 sphinx-autodoc-argparse = false
 sphinx-autodoc-docutils = false

@@ -38,8 +38,11 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Notes on the upcoming release will go here._
-<!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
+<!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->### Documentation
 
+- Bump gp-sphinx docs stack to v0.0.1a16 — docs site now renders
+  via `gp-furo-theme`, a Tailwind v4 respin of Furo, with
+  `sphinx-vite-builder` handling theme-asset builds (#666)
 ### Tests
 
 - `test_no_server_*` and `test_raise_if_dead_no_server_raises` now
