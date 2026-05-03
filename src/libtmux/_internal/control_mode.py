@@ -80,16 +80,23 @@ class ControlMode:
         ]
 
         try:
-            self._proc = subprocess.Popen(
-                cmd,
-                stdin=read_fd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-        finally:
-            # Close read end in parent regardless — subprocess owns it now
-            os.close(read_fd)
+            try:
+                self._proc = subprocess.Popen(
+                    cmd,
+                    stdin=read_fd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            finally:
+                # Close read end in parent regardless — subprocess owns it now
+                os.close(read_fd)
+        except BaseException:
+            # Popen failed before we could spawn the subprocess; close the
+            # write end too so the pipe doesn't leak. __exit__ won't run
+            # because __enter__ never returned.
+            os.close(self._write_fd)
+            raise
 
         self.stdout = self._proc.stdout  # type: ignore[assignment]
         client_pid = str(self._proc.pid)
