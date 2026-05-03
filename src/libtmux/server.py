@@ -1073,7 +1073,13 @@ class Server(
                 )
 
         if bspace_exit:
-            tmux_args += ("-e",)
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += ("-e",)
+            else:
+                warnings.warn(
+                    "bspace_exit requires tmux 3.7+ (upstream master), ignoring",
+                    stacklevel=2,
+                )
 
         if prompt is not None:
             tmux_args += ("-p", prompt)

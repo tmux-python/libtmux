@@ -602,8 +602,8 @@ def test_command_prompt(
     [
         ({"expand_format": True}, "-F", "3.3"),
         ({"literal": True}, "-l", "3.6"),
-        # command_prompt always passes -b, which requires tmux 3.3+
-        ({"bspace_exit": True}, "-e", "3.3"),
+        # -e is master-only (upstream 1e5f93b7); not in any 3.6 release
+        ({"bspace_exit": True}, "-e", "3.7"),
     ],
     ids=["expand_format_v33", "literal_v36", "bspace_exit"],
 )
