@@ -79,16 +79,21 @@ class ControlMode:
         ]
 
         try:
-            self._proc = subprocess.Popen(
-                cmd,
-                stdin=read_fd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-        finally:
-            # Close read end in parent regardless — subprocess owns it now
-            os.close(read_fd)
+            try:
+                self._proc = subprocess.Popen(
+                    cmd,
+                    stdin=read_fd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            finally:
+                # subprocess owns read_fd now
+                os.close(read_fd)
+        except BaseException:
+            # __exit__ will not run if __enter__ fails
+            os.close(self._write_fd)
+            raise
 
         self.stdout = self._proc.stdout  # type: ignore[assignment]
         client_pid = str(self._proc.pid)
