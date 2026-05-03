@@ -58,7 +58,7 @@ def test_allows_master_version(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_allows_next_version(monkeypatch: pytest.MonkeyPatch) -> None:
     """Assert get_version() supports next version."""
-    TMUX_NEXT_VERSION = "3.7"
+    TMUX_NEXT_VERSION = "3.8"
 
     class Hi:
         stdout: t.ClassVar = [f"tmux next-{TMUX_NEXT_VERSION}"]
