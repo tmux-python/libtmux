@@ -941,10 +941,18 @@ def test_show_messages(
 def test_show_messages_terminals_jobs(server: Server) -> None:
     """Test Server.show_messages(terminals=...) and (jobs=...) work clientless.
 
-    ``-T`` and ``-J`` are early-return paths in cmd-show-messages.c that
-    don't reach ``format_create_from_target``, so they don't require a
-    client. Verify both modes return a list without raising.
+    tmux 3.6 added ``CMD_CLIENT_CANFAIL`` to ``cmd_show_messages_entry``
+    (upstream commit b52dcff7, "Allow show-messages to work without a
+    client"). On earlier tmux versions the command queue rejects the
+    invocation with ``no current client`` before
+    :c:func:`cmd_show_messages_exec` can take the ``-T``/``-J``
+    early-return paths, so this clientless codepath is unreachable.
     """
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.6"):
+        pytest.skip("show-messages -T/-J without a client requires tmux 3.6+")
+
     server.new_session(session_name="showmsg_alt_test")
 
     terminals = server.show_messages(terminals=True)
