@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+      # [DO NOT MERGE] preview branch for gp-sphinx PR #36 — revert before merge.
+      - improved-defaults-reprs
 
 permissions:
   contents: read
