@@ -40,6 +40,112 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Interactive tmux commands now scriptable (#653)
+
+New wrappers for the interactive commands that require an attached
+client: {meth}`~libtmux.Pane.display_popup`,
+{meth}`~libtmux.Server.display_menu`,
+{meth}`~libtmux.Server.command_prompt`,
+{meth}`~libtmux.Server.confirm_before`,
+{meth}`~libtmux.Session.detach_client`,
+{meth}`~libtmux.Pane.display_panes`, and the choose family —
+{meth}`~libtmux.Pane.choose_buffer`,
+{meth}`~libtmux.Pane.choose_client`,
+{meth}`~libtmux.Pane.choose_tree`. These previously required
+hand-rolled {meth}`~libtmux.Server.cmd` calls.
+
+#### tmux buffer I/O suite (#653)
+
+{meth}`~libtmux.Server.set_buffer`,
+{meth}`~libtmux.Server.show_buffer`,
+{meth}`~libtmux.Server.delete_buffer`,
+{meth}`~libtmux.Server.save_buffer`,
+{meth}`~libtmux.Server.load_buffer`,
+{meth}`~libtmux.Server.list_buffers`, and
+{meth}`~libtmux.Pane.paste_buffer` round-trip pane content through
+named tmux buffers. Useful for clipboard interop and inter-process
+data hand-off.
+
+#### Key bindings and shell execution (#653)
+
+{class}`~libtmux.Server` gains {meth}`~libtmux.Server.bind_key`,
+{meth}`~libtmux.Server.unbind_key`,
+{meth}`~libtmux.Server.list_keys`,
+{meth}`~libtmux.Server.list_commands`,
+{meth}`~libtmux.Server.run_shell`,
+{meth}`~libtmux.Server.if_shell`,
+{meth}`~libtmux.Server.source_file`,
+{meth}`~libtmux.Server.list_clients`,
+{meth}`~libtmux.Server.start_server`,
+{meth}`~libtmux.Server.lock_server`,
+{meth}`~libtmux.Server.lock_client`,
+{meth}`~libtmux.Server.refresh_client`,
+{meth}`~libtmux.Server.suspend_client`,
+{meth}`~libtmux.Server.server_access`,
+{meth}`~libtmux.Server.show_messages`,
+{meth}`~libtmux.Server.show_prompt_history`, and
+{meth}`~libtmux.Server.clear_prompt_history`;
+{class}`~libtmux.Session` gains
+{meth}`~libtmux.Session.lock_session`;
+{class}`~libtmux.Pane` gains {meth}`~libtmux.Pane.send_prefix`.
+
+#### Window and pane manipulation parity (#653)
+
+New {meth}`~libtmux.Window.swap`, {meth}`~libtmux.Window.link`,
+{meth}`~libtmux.Window.unlink`, {meth}`~libtmux.Window.respawn`,
+{meth}`~libtmux.Window.last_pane`,
+{meth}`~libtmux.Window.next_layout`,
+{meth}`~libtmux.Window.previous_layout`,
+{meth}`~libtmux.Window.rotate`; new {meth}`~libtmux.Pane.swap`,
+{meth}`~libtmux.Pane.join`, {meth}`~libtmux.Pane.break_pane`,
+{meth}`~libtmux.Pane.move`, {meth}`~libtmux.Pane.pipe`,
+{meth}`~libtmux.Pane.clear_history`, {meth}`~libtmux.Pane.respawn`,
+{meth}`~libtmux.Pane.copy_mode`, {meth}`~libtmux.Pane.clock_mode`,
+{meth}`~libtmux.Pane.customize_mode`,
+{meth}`~libtmux.Pane.find_window`; new
+{meth}`~libtmux.Server.wait_for`,
+{meth}`~libtmux.Session.last_window`,
+{meth}`~libtmux.Session.next_window`,
+{meth}`~libtmux.Session.previous_window`.
+
+#### Filled-in flag coverage on existing methods (#653)
+
+Most pre-existing wrappers now expose the remaining tmux flags.
+Notable additions: {meth}`~libtmux.Pane.send_keys` (literal, hex,
+key-name, format, client), {meth}`~libtmux.Pane.split`
+(`percentage=`), {meth}`~libtmux.Pane.capture_pane`
+(alternate-screen, quiet, write-to-buffer),
+{meth}`~libtmux.Pane.display_message` (format, verbose, delay,
+notify, list, style), {meth}`~libtmux.Window.move_window` (after,
+before, kill, renumber), {meth}`~libtmux.Window.select_layout`
+(spread, next, previous), {meth}`~libtmux.Server.new_session`
+(detach-others, no-size, config), {meth}`~libtmux.Session.new_window`
+(kill-existing, select-existing),
+{meth}`~libtmux.Server.set_environment` (`expand_format=`,
+`hidden=`), and {meth}`~libtmux.Server.show_options` (`quiet=`).
+
+#### `control_mode` pytest fixture (#653)
+
+New {fixture}`control_mode` fixture spawns a real `tmux -C` client
+attached to the session so commands that require an attached client
+({meth}`~libtmux.Pane.display_popup`,
+{meth}`~libtmux.Session.detach_client`,
+{meth}`~libtmux.Server.command_prompt`,
+{meth}`~libtmux.Server.confirm_before`) are testable without a TTY.
+Exposed to downstream test suites via {mod}`libtmux.pytest_plugin`.
+
+### Bug fixes
+
+#### `Window.move_window()` returns up-to-date state after the move (#653)
+
+{meth}`~libtmux.Window.move_window` previously left the
+{class}`~libtmux.Window` object pointing at its pre-move index, so
+attribute reads after a move could appear stale until a manual
+{meth}`~libtmux.Window.refresh` call. The moved window now refreshes
+automatically.
+
 ### Documentation
 
 - Bump gp-sphinx docs stack to v0.0.1a16 — docs site now renders
@@ -52,6 +158,16 @@ _Notes on the upcoming release will go here._
   cleanup, instead of hardcoded socket names with no finalizer that
   broke whenever a stale tmux daemon survived at the same path
   (#665, fixes #664).
+
+### Development
+
+#### `TMUX_MAX_VERSION` bumped to 3.7 (#653)
+
+{data}`~libtmux.common.TMUX_MAX_VERSION` is now `"3.7"`, unlocking
+method coverage already version-gated for tmux 3.7 — notably
+{meth}`~libtmux.Server.command_prompt` (`bspace_exit=`) and
+{meth}`~libtmux.Server.show_messages` (`terminals=`, `jobs=`). No
+effect on installations running tmux 3.6 or earlier.
 
 ## libtmux 0.55.1 (2026-04-19)
 

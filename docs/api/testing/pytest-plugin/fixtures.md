@@ -99,6 +99,17 @@ Override these in your project's `conftest.py` to customise the test environment
 
 ```{eval-rst}
 .. autofixture:: libtmux.pytest_plugin.TestServer
+
+.. autofixture:: libtmux.pytest_plugin.control_mode
+
+   .. rubric:: Example
+
+   .. code-block:: python
+
+      def test_display_popup(control_mode) -> None:
+          with control_mode() as ctl:
+              # commands needing an attached client now work
+              assert ctl.client_name != ""
 ```
 
 ## Low-Level / Rarely Needed
