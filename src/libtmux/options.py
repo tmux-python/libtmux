@@ -892,6 +892,7 @@ class OptionsMixin(CmdMixin):
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
+        quiet: bool | None = None,
     ) -> UntypedOptionsDict:
         """Return dict of options for the target.
 
@@ -929,6 +930,7 @@ class OptionsMixin(CmdMixin):
             scope=scope,
             include_hooks=include_hooks,
             include_inherited=include_inherited,
+            quiet=quiet,
         )
 
         return parse_options_to_dict(
@@ -942,6 +944,7 @@ class OptionsMixin(CmdMixin):
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
+        quiet: bool | None = None,
     ) -> ExplodedComplexUntypedOptionsDict:
         """Return a dict of options for the target.
 
@@ -976,6 +979,7 @@ class OptionsMixin(CmdMixin):
             scope=scope,
             include_hooks=include_hooks,
             include_inherited=include_inherited,
+            quiet=quiet,
         )
 
         output_exploded = convert_values(
@@ -992,6 +996,7 @@ class OptionsMixin(CmdMixin):
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
+        quiet: bool | None = None,
     ) -> ExplodedComplexUntypedOptionsDict:
         """Return all options for the target.
 
@@ -1005,6 +1010,10 @@ class OptionsMixin(CmdMixin):
             Include hook options (``-H`` flag).
         include_inherited : bool, optional
             Include inherited options (``-A`` flag).
+        quiet : bool, optional
+            Suppress errors silently (``-q`` flag).
+
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -1030,6 +1039,7 @@ class OptionsMixin(CmdMixin):
             scope=scope,
             include_hooks=include_hooks,
             include_inherited=include_inherited,
+            quiet=quiet,
         )
 
     def _show_option_raw(

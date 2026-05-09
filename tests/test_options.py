@@ -1508,6 +1508,12 @@ def test_show_options_quiet(server: Server) -> None:
     assert isinstance(result.stdout, list)
 
 
+def test_show_options_quiet_public(server: Server) -> None:
+    """Public show_options() forwards quiet= to _show_options_raw()."""
+    options = server.show_options(quiet=True)
+    assert isinstance(options, dict)
+
+
 def test_set_environment_hidden(session: Session) -> None:
     """Test set_environment with hidden flag."""
     session.set_environment("HIDDEN_TEST_VAR", "secret", hidden=True)
