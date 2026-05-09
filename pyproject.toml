@@ -106,6 +106,16 @@ libtmux = "libtmux.pytest_plugin"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv.sources]
+# TEMPORARY: pull gp-sphinx-family deps from the improved-defaults-reprs
+# branch on git-pull/gp-sphinx so this PR previews the curated-default
+# rendering work before a release bump propagates the changes via PyPI.
+# Revert this block when gp-sphinx>=0.0.1a18 lands.
+gp-sphinx = { git = "https://github.com/git-pull/gp-sphinx.git", branch = "improved-defaults-reprs", subdirectory = "packages/gp-sphinx" }
+sphinx-autodoc-typehints-gp = { git = "https://github.com/git-pull/gp-sphinx.git", branch = "improved-defaults-reprs", subdirectory = "packages/sphinx-autodoc-typehints-gp" }
+sphinx-autodoc-api-style = { git = "https://github.com/git-pull/gp-sphinx.git", branch = "improved-defaults-reprs", subdirectory = "packages/sphinx-autodoc-api-style" }
+sphinx-autodoc-pytest-fixtures = { git = "https://github.com/git-pull/gp-sphinx.git", branch = "improved-defaults-reprs", subdirectory = "packages/sphinx-autodoc-pytest-fixtures" }
+
 [tool.uv.exclude-newer-package]
 # git-pull packages release in lockstep with their workspaces, so a
 # fresh release blocking on the 3-day cooldown blocks every
