@@ -124,8 +124,7 @@ before, kill, renumber), {meth}`~libtmux.Window.select_layout`
 (detach-others, no-size, config), {meth}`~libtmux.Session.new_window`
 (kill-existing, select-existing),
 {meth}`~libtmux.Server.set_environment` (`expand_format=`,
-`hidden=`), and {meth}`~libtmux.Server.show_options` (`quiet=`,
-`values_only=`).
+`hidden=`), and {meth}`~libtmux.Server.show_options` (`quiet=`).
 
 #### `control_mode` pytest fixture (#653)
 
