@@ -38,7 +38,69 @@ $ uvx --from 'libtmux' --prerelease allow python
 
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Notes on the upcoming release will go here._
-<!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->### Documentation
+<!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
+
+### What's new
+
+#### Interactive tmux commands now scriptable (#653)
+
+New wrappers for `display-popup`, `display-menu`, `command-prompt`,
+`confirm-before`, `detach-client`, `display-panes`, and the `choose-*`
+family. These commands previously required hand-rolled `Server.cmd()`
+calls because they depend on an attached client.
+
+#### tmux buffer I/O suite (#653)
+
+`Server.set_buffer`, `show_buffer`, `delete_buffer`, `save_buffer`,
+`load_buffer`, `list_buffers`, and `Pane.paste_buffer` round-trip pane
+content through named tmux buffers. Useful for clipboard interop and
+inter-process data hand-off.
+
+#### Key bindings and shell execution (#653)
+
+`Server` gains `bind_key`, `unbind_key`, `list_keys`, `list_commands`,
+`run_shell`, `if_shell`, `source_file`, `list_clients`, `start_server`,
+`lock_server`/`lock_client`/`lock_session`, `refresh_client`,
+`suspend_client`, `server_access`, `show_messages`, `send_prefix`, and
+the `{show,clear}_prompt_history` pair.
+
+#### Window and pane manipulation parity (#653)
+
+New `Window.swap`, `link`, `unlink`, `respawn`, `last_pane`,
+`{next,previous}_layout`, `rotate`, `wait_for`; new `Pane.swap`, `join`,
+`break_pane`, `move`, `pipe`, `clear_history`, `respawn`, `copy_mode`,
+`clock_mode`, `customize_mode`, `find_window`. New `Session.last_window`,
+`next_window`, `previous_window`, `rotate`.
+
+#### Filled-in flag coverage on existing methods (#653)
+
+Most pre-existing wrappers now expose the remaining tmux flags. Notable
+additions: `Pane.send_keys` (literal, hex, key-name, format, client),
+`Pane.split(percentage=)`, `Pane.capture_pane` (alternate-screen, quiet,
+write-to-buffer), `Pane.display_message` (format, verbose, delay, notify,
+list, style), `Window.move_window` (after, before, kill, renumber),
+`Window.select_layout` (spread, next, previous),
+`Server.new_session` (detach-others, no-size, config),
+`Session.new_window` (kill-existing, select-existing),
+`set_environment(expand_format=, hidden=)`, and
+`show_options(quiet=, values_only=)`.
+
+#### `control_mode` pytest fixture (#653)
+
+Spawns a real `tmux -C` client attached to the session so commands that
+require an attached client (`display-popup`, `detach-client`,
+`command-prompt`, `confirm-before`) are testable without a TTY. Exposed
+to downstream test suites via `libtmux.pytest_plugin`.
+
+### Bug fixes
+
+#### `Window.move_window()` returns up-to-date state after the move (#653)
+
+The `Window` object previously kept its pre-move index and could appear
+stale until a manual `refresh()`. The moved window now refreshes
+automatically.
+
+### Documentation
 
 - Bump gp-sphinx docs stack to v0.0.1a16 — docs site now renders
   via `gp-furo-theme`, a Tailwind v4 respin of Furo, with
@@ -50,6 +112,15 @@ _Notes on the upcoming release will go here._
   cleanup, instead of hardcoded socket names with no finalizer that
   broke whenever a stale tmux daemon survived at the same path
   (#665, fixes #664).
+
+### Development
+
+#### `TMUX_MAX_VERSION` bumped to 3.7 (#653)
+
+Unlocks method coverage already version-gated for tmux 3.7 — notably
+`Server.command_prompt(bspace_exit=...)` and
+`Server.show_messages(terminals=, jobs=)`. No effect on installations
+running tmux 3.6 or earlier.
 
 ## libtmux 0.55.1 (2026-04-19)
 
