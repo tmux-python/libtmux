@@ -5,10 +5,9 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import json
+import sys
 import typing as t
 from abc import ABC, abstractmethod
-
-from typing_extensions import Self
 
 from libtmux.formats import PANE_FORMATS
 
@@ -16,6 +15,11 @@ if t.TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from libtmux.pane import Pane
+
+    if sys.version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
 
 
 class SnapshotOutputAdapter(ABC):
