@@ -15,7 +15,7 @@ import subprocess
 import typing as t
 import warnings
 
-from libtmux import exc
+from libtmux import exc, formats
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
