@@ -50,6 +50,7 @@ client: {meth}`~libtmux.Pane.display_popup`,
 {meth}`~libtmux.Server.command_prompt`,
 {meth}`~libtmux.Server.confirm_before`,
 {meth}`~libtmux.Session.detach_client`,
+{meth}`~libtmux.Server.detach_client`,
 {meth}`~libtmux.Server.detach_all_clients`,
 {meth}`~libtmux.Pane.display_panes`, and the choose family —
 {meth}`~libtmux.Pane.choose_buffer`,
@@ -57,10 +58,16 @@ client: {meth}`~libtmux.Pane.display_popup`,
 {meth}`~libtmux.Pane.choose_tree`. These previously required
 hand-rolled {meth}`~libtmux.Server.cmd` calls.
 
-{meth}`~libtmux.Session.detach_client` is session-scoped and maps to
-``tmux detach-client -s/-t``; {meth}`~libtmux.Server.detach_all_clients`
-is server-wide and maps to ``tmux detach-client -a [-t]``. Each method
-issues a single tmux call and mirrors one tmux flag group exactly.
+The three ``detach-client`` wrappers each map to one tmux flag group
+exactly, with a single subprocess call:
+{meth}`~libtmux.Session.detach_client` →
+``tmux detach-client -s <session_id>`` (session-scoped, every client
+in this session); {meth}`~libtmux.Server.detach_client` →
+``tmux detach-client [-t <client>]`` (server-wide single-client
+lookup, since tmux's ``-t`` flag resolves clients over the global
+client list); {meth}`~libtmux.Server.detach_all_clients` →
+``tmux detach-client -a [-t <keep>]`` (server-wide, optionally
+preserving one client).
 
 #### tmux buffer I/O suite (#653)
 

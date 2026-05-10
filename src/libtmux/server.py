@@ -853,6 +853,56 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def detach_client(
+        self,
+        *,
+        target_client: str | None = None,
+        shell_command: str | None = None,
+    ) -> None:
+        """Detach a specific client via ``$ tmux detach-client``.
+
+        Maps to ``$ tmux detach-client [-t <target_client>]``. tmux
+        resolves ``-t`` over the global client list (see
+        ``cmd-find.c``); the named client may be attached to any
+        session, so this method lives on :class:`Server` rather than
+        :class:`Session`.
+
+        Parameters
+        ----------
+        target_client : str, optional
+            Client name (``-t`` flag). When omitted, tmux falls back to
+            the most-recently-active client.
+        shell_command : str, optional
+            Run a shell command on the detached client after detach
+            (``-E`` flag).
+
+        See Also
+        --------
+        :meth:`Session.detach_client` : detach every client attached to
+            a session (``-s`` flag).
+        :meth:`detach_all_clients` : detach every client on the server
+            (``-a`` flag).
+
+        .. versionadded:: 0.56
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.detach_client(target_client=ctl.client_name)
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if shell_command is not None:
+            tmux_args += ("-E", shell_command)
+
+        if target_client is not None:
+            tmux_args += ("-t", target_client)
+
+        proc = self.cmd("detach-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def detach_all_clients(
         self,
         *,
@@ -876,9 +926,10 @@ class Server(
 
         See Also
         --------
-        :meth:`Session.detach_client` : detach client(s) attached to a
-            specific session (``-s`` / ``-t`` flag) — session-scoped
-            rather than server-wide.
+        :meth:`Session.detach_client` : detach every client attached to
+            a session (``-s`` flag).
+        :meth:`detach_client` : detach a single named client (``-t``
+            flag).
 
         .. versionadded:: 0.56
 

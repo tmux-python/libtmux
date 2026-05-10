@@ -1195,6 +1195,52 @@ def test_list_clients(server: Server) -> None:
     assert isinstance(result, list)
 
 
+def test_detach_client_target_client_spans_sessions(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    session: Session,
+) -> None:
+    """``Server.detach_client(target_client=...)`` resolves names server-wide.
+
+    tmux's ``detach-client -t`` resolves the client over the global client
+    list (``cmd-find.c``), not within any session scope. The named client
+    can therefore be attached to any session — that is the reason this
+    method lives on ``Server`` rather than ``Session``.
+    """
+    other_session = server.new_session(session_name="detach_other_t")
+    OtherControlMode = functools.partial(
+        ControlMode,
+        server=server,
+        session=other_session,
+    )
+
+    with control_mode(), OtherControlMode() as elsewhere:
+        before = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(before) == 2
+        assert elsewhere.client_name in before
+
+        server.detach_client(target_client=elsewhere.client_name)
+
+        after = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert elsewhere.client_name not in after
+        assert len(after) == 1
+
+
+def test_detach_client_no_target_uses_active(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """``Server.detach_client()`` without ``-t`` falls back to active client."""
+    with control_mode(), control_mode():
+        before = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(before) == 2
+
+        server.detach_client()
+
+        after = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(after) == 1
+
+
 def test_detach_all_clients_keep_client_spans_sessions(
     control_mode: t.Callable[..., t.Any],
     server: Server,

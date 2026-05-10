@@ -258,25 +258,25 @@ class Session(
     def detach_client(
         self,
         *,
-        target_client: str | None = None,
         shell_command: str | None = None,
     ) -> None:
-        """Detach client(s) attached to this session via ``$ tmux detach-client``.
+        """Detach every client attached to this session.
+
+        Maps to ``$ tmux detach-client -s <session_id>`` — the only
+        ``detach-client`` flag group that is genuinely session-scoped.
 
         Parameters
         ----------
-        target_client : str, optional
-            Detach only this specific client (``-t`` flag). When omitted,
-            every client attached to this session is detached
-            (``-s <session_id>`` flag).
         shell_command : str, optional
             Run a shell command on the detached client(s) after detach
             (``-E`` flag).
 
         See Also
         --------
+        :meth:`Server.detach_client` : detach a specific client by name
+            (``-t`` flag) — server-wide client lookup, not session-scoped.
         :meth:`Server.detach_all_clients` : detach every client on the
-            server (``-a`` flag) — server-wide rather than session-scoped.
+            server (``-a`` flag).
 
         Examples
         --------
@@ -288,10 +288,7 @@ class Session(
         if shell_command is not None:
             tmux_args += ("-E", shell_command)
 
-        if target_client is not None:
-            tmux_args += ("-t", target_client)
-        else:
-            tmux_args += ("-s", str(self.session_id))
+        tmux_args += ("-s", str(self.session_id))
 
         proc = self.server.cmd("detach-client", *tmux_args)
 

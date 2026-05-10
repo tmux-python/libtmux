@@ -604,29 +604,6 @@ def test_detach_client_no_target_detaches_all_session_clients(
         assert len(after) == 0
 
 
-def test_detach_client_target_client(
-    control_mode: t.Callable[..., t.Any],
-    session: Session,
-    server: Server,
-) -> None:
-    """Test Session.detach_client() detaches only the requested client."""
-    with control_mode(), control_mode():
-        clients = server.cmd("list-clients", "-F", "#{client_name}").stdout
-        assert len(clients) == 2
-
-        target_client = clients[-1]
-        session.detach_client(target_client=target_client)
-
-        remaining_clients = server.cmd(
-            "list-clients",
-            "-F",
-            "#{client_name}",
-        ).stdout
-        assert remaining_clients == [
-            client for client in clients if client != target_client
-        ]
-
-
 def test_last_window(session: Session) -> None:
     """Test Session.last_window() selects previous window."""
     w1 = session.new_window(window_name="last_a", attach=True)
