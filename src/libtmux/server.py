@@ -853,6 +853,53 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
+    def detach_all_clients(
+        self,
+        *,
+        keep_client: str | None = None,
+        shell_command: str | None = None,
+    ) -> None:
+        """Detach every client on this server via ``$ tmux detach-client -a``.
+
+        tmux's ``-a`` always preserves one client; when *keep_client* is
+        omitted, the most-recently-active client survives.
+
+        Parameters
+        ----------
+        keep_client : str, optional
+            Client to preserve (``-t`` flag). All other clients on the
+            server, regardless of which session they are attached to,
+            are detached.
+        shell_command : str, optional
+            Run a shell command on the detached client(s) after detach
+            (``-E`` flag).
+
+        See Also
+        --------
+        :meth:`Session.detach_client` : detach client(s) attached to a
+            specific session (``-s`` / ``-t`` flag) — session-scoped
+            rather than server-wide.
+
+        .. versionadded:: 0.56
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     server.detach_all_clients(keep_client=ctl.client_name)
+        """
+        tmux_args: tuple[str, ...] = ("-a",)
+
+        if shell_command is not None:
+            tmux_args += ("-E", shell_command)
+
+        if keep_client is not None:
+            tmux_args += ("-t", keep_client)
+
+        proc = self.cmd("detach-client", *tmux_args)
+
+        if proc.stderr:
+            raise exc.LibTmuxException(proc.stderr)
+
     def confirm_before(
         self,
         command: str,

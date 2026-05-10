@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import pathlib
@@ -13,6 +14,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
+from libtmux._internal.control_mode import ControlMode
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
@@ -1191,6 +1193,48 @@ def test_list_clients(server: Server) -> None:
     server.new_session(session_name="list_clients_test")
     result = server.list_clients()
     assert isinstance(result, list)
+
+
+def test_detach_all_clients_keep_client_spans_sessions(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    session: Session,
+) -> None:
+    """``Server.detach_all_clients(keep_client=...)`` is server-wide.
+
+    Unlike ``Session.detach_client``, ``-a`` ignores session boundaries:
+    a client attached to a different session must also be detached.
+    """
+    other_session = server.new_session(session_name="detach_all_other")
+    OtherControlMode = functools.partial(
+        ControlMode,
+        server=server,
+        session=other_session,
+    )
+
+    with control_mode() as keep, control_mode(), OtherControlMode():
+        before = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(before) == 3
+
+        server.detach_all_clients(keep_client=keep.client_name)
+
+        after = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert after == [keep.client_name]
+
+
+def test_detach_all_clients_no_keep_preserves_one(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """``-a`` without ``-t`` preserves tmux's most-recently-active client."""
+    with control_mode(), control_mode():
+        before = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(before) == 2
+
+        server.detach_all_clients()
+
+        after = server.cmd("list-clients", "-F", "#{client_name}").stdout
+        assert len(after) == 1
 
 
 def test_new_session_client_flags(

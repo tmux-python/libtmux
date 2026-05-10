@@ -50,11 +50,17 @@ client: {meth}`~libtmux.Pane.display_popup`,
 {meth}`~libtmux.Server.command_prompt`,
 {meth}`~libtmux.Server.confirm_before`,
 {meth}`~libtmux.Session.detach_client`,
+{meth}`~libtmux.Server.detach_all_clients`,
 {meth}`~libtmux.Pane.display_panes`, and the choose family —
 {meth}`~libtmux.Pane.choose_buffer`,
 {meth}`~libtmux.Pane.choose_client`,
 {meth}`~libtmux.Pane.choose_tree`. These previously required
 hand-rolled {meth}`~libtmux.Server.cmd` calls.
+
+{meth}`~libtmux.Session.detach_client` is session-scoped and maps to
+``tmux detach-client -s/-t``; {meth}`~libtmux.Server.detach_all_clients`
+is server-wide and maps to ``tmux detach-client -a [-t]``. Each method
+issues a single tmux call and mirrors one tmux flag group exactly.
 
 #### tmux buffer I/O suite (#653)
 

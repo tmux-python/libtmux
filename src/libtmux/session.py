@@ -259,59 +259,30 @@ class Session(
         self,
         *,
         target_client: str | None = None,
-        all_clients: bool | None = None,
         shell_command: str | None = None,
     ) -> None:
-        """Detach clients from this session via ``$ tmux detach-client``.
+        """Detach client(s) attached to this session via ``$ tmux detach-client``.
 
         Parameters
         ----------
         target_client : str, optional
-            Target client to detach (``-t`` flag). If omitted, all clients
-            attached to this session are detached (``-s`` session scoping).
-        all_clients : bool, optional
-            When combined with ``target_client``, detach every client
-            attached to this session **except** *target_client*. Has no
-            additional effect when ``target_client`` is omitted.
+            Detach only this specific client (``-t`` flag). When omitted,
+            every client attached to this session is detached
+            (``-s <session_id>`` flag).
         shell_command : str, optional
-            Run a shell command after detaching (``-E`` flag).
+            Run a shell command on the detached client(s) after detach
+            (``-E`` flag).
 
-        Notes
-        -----
-        ``all_clients=True`` differs from tmux's ``detach-client -a``,
-        which is server-wide (see ``cmd-detach-client.c`` — the ``-a``
-        branch loops over the global client list). This wrapper enumerates
-        clients attached to ``self.session_id`` and issues one
-        ``detach-client`` per non-target client to preserve session scope.
+        See Also
+        --------
+        :meth:`Server.detach_all_clients` : detach every client on the
+            server (``-a`` flag) — server-wide rather than session-scoped.
 
         Examples
         --------
         >>> with control_mode() as ctl:
         ...     session.detach_client()
         """
-        if all_clients and target_client is not None:
-            list_proc = self.server.cmd(
-                "list-clients",
-                "-t",
-                str(self.session_id),
-                "-F",
-                "#{client_name}",
-            )
-            if list_proc.stderr:
-                raise exc.LibTmuxException(list_proc.stderr)
-
-            for client in list_proc.stdout:
-                if not client or client == target_client:
-                    continue
-                detach_args: tuple[str, ...] = ()
-                if shell_command is not None:
-                    detach_args += ("-E", shell_command)
-                detach_args += ("-t", client)
-                proc = self.server.cmd("detach-client", *detach_args)
-                if proc.stderr:
-                    raise exc.LibTmuxException(proc.stderr)
-            return
-
         tmux_args: tuple[str, ...] = ()
 
         if shell_command is not None:
