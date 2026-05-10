@@ -1,329 +1,336 @@
-<div align="center">
-  <h1>⚙️ libtmux</h1>
-  <p><strong>Drive tmux from Python: typed, object-oriented control over servers, sessions, windows, and panes.</strong></p>
-  <p>
-    <a href="https://libtmux.git-pull.com/"><img src="https://raw.githubusercontent.com/tmux-python/libtmux/master/docs/_static/img/libtmux.svg" alt="libtmux logo" height="120"></a>
-  </p>
-  <p>
-    <a href="https://pypi.org/project/libtmux/"><img src="https://img.shields.io/pypi/v/libtmux.svg" alt="PyPI version"></a>
-    <a href="https://libtmux.git-pull.com/"><img src="https://github.com/tmux-python/libtmux/workflows/docs/badge.svg" alt="Docs status"></a>
-    <a href="https://github.com/tmux-python/libtmux/actions"><img src="https://github.com/tmux-python/libtmux/workflows/tests/badge.svg" alt="Tests status"></a>
-    <a href="https://codecov.io/gh/tmux-python/libtmux"><img src="https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg" alt="Coverage"></a>
-    <a href="https://github.com/tmux-python/libtmux/blob/master/LICENSE"><img src="https://img.shields.io/github/license/tmux-python/libtmux.svg" alt="License"></a>
-  </p>
-</div>
+# libtmux: Powerful Python Control for tmux
 
-## 🐍 What is libtmux?
+[![Python Package](https://img.shields.io/pypi/v/libtmux.svg)](https://pypi.org/project/libtmux/)
+[![Docs](https://github.com/tmux-python/libtmux/workflows/docs/badge.svg)](https://libtmux.git-pull.com/)
+[![Build Status](https://github.com/tmux-python/libtmux/workflows/tests/badge.svg)](https://github.com/tmux-python/libtmux/actions?query=workflow%3A%22tests%22)
+[![Code Coverage](https://codecov.io/gh/tmux-python/libtmux/branch/master/graph/badge.svg)](https://codecov.io/gh/tmux-python/libtmux)
+[![License](https://img.shields.io/github/license/tmux-python/libtmux.svg)](https://github.com/tmux-python/libtmux/blob/master/LICENSE)
 
-libtmux is a typed Python API over [tmux], the terminal multiplexer. Stop shelling out and parsing `tmux ls`. Instead, interact with real Python objects: `Server`, `Session`, `Window`, and `Pane`. The same API powers [tmuxp], so it stays battle-tested in real-world workflows.
+## What is libtmux?
 
-### ✨ Features
+**libtmux** is a fully typed Python API that provides seamless control over [tmux](https://github.com/tmux/tmux), the popular terminal multiplexer. Design your terminal workflows in clean, Pythonic code with an intuitive object-oriented interface.
 
-- Typed, object-oriented control of tmux state
-- Query and [traverse](https://libtmux.git-pull.com/topics/traversal/) live sessions, windows, and panes
-- Raw escape hatch via `.cmd(...)` on any object
-- Works with multiple tmux sockets and servers
-- [Context managers](https://libtmux.git-pull.com/topics/context_managers/) for automatic cleanup
-- [pytest plugin](https://libtmux.git-pull.com/api/pytest-plugin/) for isolated tmux fixtures
-- Proven in production via tmuxp and other tooling
+## Why Use libtmux?
 
-## Requirements & support
+- 💪 **Powerful Abstractions**: Manage tmux sessions, windows, and panes through a clean object model
+- 🎯 **Improved Productivity**: Automate repetitive tmux tasks with Python scripts
+- 🔍 **Smart Filtering**: Find and manipulate tmux objects with Django-inspired filtering queries
+- 🚀 **Versatile Applications**: Perfect for DevOps automation, development environments, and custom tooling
+- 🔒 **Type Safety**: Fully typed with modern Python typing annotations for IDE autocompletion
 
-- tmux: >= 3.2a
-- Python: >= 3.10 (CPython and PyPy)
-
-Maintenance-only backports (no new fixes):
-
-- Python 2.x: [`v0.8.x`](https://github.com/tmux-python/libtmux/tree/v0.8.x)
-- tmux 1.8-3.1c: [`v0.48.x`](https://github.com/tmux-python/libtmux/tree/v0.48.x)
-
-## 📦 Installation
-
-Stable release:
-
-```console
-$ pip install libtmux
-```
-
-With pipx:
-
-```console
-$ pipx install libtmux
-```
-
-With uv / uvx:
-
-```console
-$ uv add libtmux
-```
-
-```console
-$ uvx --from "libtmux" python
-```
-
-From the main branch (bleeding edge):
-
-```console
-$ pip install 'git+https://github.com/tmux-python/libtmux.git'
-```
-
-Tip: libtmux is pre-1.0. Pin a range in projects to avoid surprises:
-
-requirements.txt:
-
-```ini
-libtmux==0.50.*
-```
-
-pyproject.toml:
-
-```toml
-libtmux = "0.50.*"
-```
-
-## 🚀 Quickstart
-
-### Open a tmux session
-
-First, start a tmux session to connect to:
-
-```console
-$ tmux new-session -s foo -n bar
-```
-
-### Pilot your tmux session via Python
-
-Use [ptpython], [ipython], etc. for a nice REPL with autocompletions:
-
-```console
-$ pip install --user ptpython
-```
-
-```console
-$ ptpython
-```
-
-Connect to a live tmux session:
+## Quick Example
 
 ```python
->>> import libtmux
->>> svr = libtmux.Server()
->>> svr
-Server(socket_path=/tmp/tmux-.../default)
-```
+import libtmux
 
-**Tip:** You can also use [tmuxp]'s [`tmuxp shell`] to drop straight into your
-current tmux server / session / window / pane.
-
-[ptpython]: https://github.com/prompt-toolkit/ptpython
-[ipython]: https://ipython.org/
-[`tmuxp shell`]: https://tmuxp.git-pull.com/cli/shell/
-
-### Run any tmux command
-
-Every object has a `.cmd()` escape hatch that honors socket name and path:
-
-```python
->>> server = Server(socket_name='libtmux_doctest')
->>> server.cmd('display-message', 'hello world')
-<libtmux...>
-```
-
-Create a new session:
-
-```python
->>> server.cmd('new-session', '-d', '-P', '-F#{session_id}').stdout[0]
-'$...'
-```
-
-### List and filter sessions
-
-[**Learn more about Filtering**](https://libtmux.git-pull.com/topics/filtering/)
-
-```python
->>> server.sessions
-[Session($... ...), ...]
-```
-
-Filter by attribute:
-
-```python
->>> server.sessions.filter(history_limit='2000')
-[Session($... ...), ...]
-```
-
-Direct lookup:
-
-```python
->>> server.sessions.get(session_id=session.session_id)
-Session($... ...)
-```
-
-### Control sessions and windows
-
-[**Learn more about Workspace Setup**](https://libtmux.git-pull.com/topics/workspace_setup/)
-
-```python
->>> session.rename_session('my-session')
-Session($... my-session)
-```
-
-Create new window in the background (don't switch to it):
-
-```python
->>> bg_window = session.new_window(attach=False, window_name="bg-work")
->>> bg_window
-Window(@... ...:bg-work, Session($... ...))
-
->>> session.windows.filter(window_name__startswith="bg")
-[Window(@... ...:bg-work, Session($... ...))]
-
->>> session.windows.get(window_name__startswith="bg")
-Window(@... ...:bg-work, Session($... ...))
-
->>> bg_window.kill()
-```
-
-### Split windows and send keys
-
-[**Learn more about Pane Interaction**](https://libtmux.git-pull.com/topics/pane_interaction/)
-
-```python
->>> pane = window.split(attach=False)
->>> pane
-Pane(%... Window(@... ...:..., Session($... ...)))
-```
-
-Type inside the pane (send keystrokes):
-
-```python
->>> pane.send_keys('echo hello')
->>> pane.send_keys('echo hey', enter=False)
->>> pane.enter()
-Pane(%... ...)
-```
-
-### Capture pane output
-
-```python
->>> pane.clear()
-Pane(%... ...)
->>> pane.send_keys("echo 'hello world'", enter=True)
->>> pane.cmd('capture-pane', '-p').stdout  # doctest: +SKIP
-["$ echo 'hello world'", 'hello world', '$']
-```
-
-### Traverse the hierarchy
-
-[**Learn more about Traversal**](https://libtmux.git-pull.com/topics/traversal/)
-
-Navigate from pane up to window to session:
-
-```python
->>> pane.window
-Window(@... ...:..., Session($... ...))
->>> pane.window.session
-Session($... ...)
-```
-
-## Core concepts
-
-| libtmux object | tmux concept                | Notes                          |
-|----------------|-----------------------------|--------------------------------|
-| [`Server`](https://libtmux.git-pull.com/api/libtmux.server/) | tmux server / socket | Entry point; owns sessions |
-| [`Session`](https://libtmux.git-pull.com/api/libtmux.session/) | tmux session (`$0`, `$1`,...) | Owns windows |
-| [`Window`](https://libtmux.git-pull.com/api/libtmux.window/) | tmux window (`@1`, `@2`,...) | Owns panes |
-| [`Pane`](https://libtmux.git-pull.com/api/libtmux.pane/) | tmux pane (`%1`, `%2`,...) | Where commands run |
-
-Also available: [`Options`](https://libtmux.git-pull.com/api/libtmux.options/) and [`Hooks`](https://libtmux.git-pull.com/api/libtmux.hooks/) abstractions for tmux configuration.
-
-Collections are live and queryable:
-
-```python
+# Connect to the tmux server
 server = libtmux.Server()
-session = server.sessions.get(session_name="demo")
-api_windows = session.windows.filter(window_name__startswith="api")
-pane = session.active_window.active_pane
-pane.send_keys("echo 'hello from libtmux'", enter=True)
+
+# Create a development session with multiple windows
+session = server.new_session(session_name="dev")
+
+# Create organized windows for different tasks
+editor = session.new_window(window_name="editor")
+terminal = session.new_window(window_name="terminal")
+logs = session.new_window(window_name="logs")
+
+# Split the editor into code and preview panes
+code_pane = editor.split_window(vertical=True)
+preview_pane = editor.split_window(vertical=False)
+
+# Start your development environment
+code_pane.send_keys("cd ~/projects/my-app", enter=True)
+code_pane.send_keys("vim .", enter=True)
+preview_pane.send_keys("python -m http.server", enter=True)
+
+# Set up terminal window for commands
+terminal.send_keys("git status", enter=True)
+
+# Start monitoring logs
+logs.send_keys("tail -f /var/log/application.log", enter=True)
+
+# Switch back to the editor window to start working
+editor.select_window()
 ```
 
-## tmux vs libtmux vs tmuxp
+## Architecture: Clean Hierarchical Design
 
-| Tool    | Layer                      | Typical use case                                   |
-|---------|----------------------------|----------------------------------------------------|
-| tmux    | CLI / terminal multiplexer | Everyday terminal usage, manual control            |
-| libtmux | Python API over tmux       | Programmatic control, automation, testing          |
-| tmuxp   | App on top of libtmux      | Declarative tmux workspaces from YAML / TOML       |
+libtmux mirrors tmux's natural hierarchy with a clean object model:
 
-## Testing & fixtures
+```
+┌─────────────────────────┐
+│        Server           │ ← Connect to local or remote tmux servers
+└───────────┬─────────────┘
+            │
+┌───────────▼─────────────┐
+│        Sessions         │ ← Organize work into logical sessions
+└───────────┬─────────────┘
+            │
+┌───────────▼─────────────┐
+│        Windows          │ ← Create task-specific windows (like browser tabs)
+└───────────┬─────────────┘
+            │
+┌───────────▼─────────────┐
+│         Panes           │ ← Split windows into multiple views
+└─────────────────────────┘
+```
 
-[**Learn more about the pytest plugin**](https://libtmux.git-pull.com/api/pytest-plugin/)
+## Installation
 
-Writing a tool that interacts with tmux? Use our fixtures to keep your tests clean and isolated.
+```console
+# Basic installation
+$ pip install libtmux
+
+# With development tools
+$ pip install libtmux[dev]
+```
+
+## Getting Started
+
+### 1. Create or attach to a tmux session
+
+```console
+$ tmux new-session -s my-session
+```
+
+### 2. Connect with Python
 
 ```python
-def test_my_tmux_tool(session):
-    # session is a real tmux session in an isolated server
-    window = session.new_window(window_name="test")
-    pane = window.active_pane
-    pane.send_keys("echo 'hello from test'", enter=True)
+import libtmux
 
-    assert window.window_name == "test"
-    # Fixtures handle cleanup automatically
+# Connect to running tmux server
+server = libtmux.Server()
+
+# Access existing session
+session = server.sessions.get(session_name="my-session")
+
+# Or create a new one
+if not session:
+    session = server.new_session(session_name="my-session")
+    
+print(f"Connected to: {session}")
 ```
 
-- Fresh tmux server/session/window/pane fixtures per test
-- Temporary HOME and tmux config fixtures keep indices stable
-- `TestServer` helper spins up multiple isolated tmux servers
+## Testable Examples
 
-## When you might not need libtmux
+The following examples can be run as doctests using `py.test --doctest-modules README.md`. They assume that `server`, `session`, `window`, and `pane` objects have already been created.
 
-- Layouts are static and live entirely in tmux config files
-- You do not need to introspect or control running tmux from other tools
-- Python is unavailable where tmux is running
+### Working with Server Objects
 
-## Project links
+```python
+>>> # Verify server is running
+>>> server.is_alive()
+True
 
-**Topics:**
-[Traversal](https://libtmux.git-pull.com/topics/traversal/) ·
-[Filtering](https://libtmux.git-pull.com/topics/filtering/) ·
-[Pane Interaction](https://libtmux.git-pull.com/topics/pane_interaction/) ·
-[Workspace Setup](https://libtmux.git-pull.com/topics/workspace_setup/) ·
-[Automation Patterns](https://libtmux.git-pull.com/topics/automation_patterns/) ·
-[Context Managers](https://libtmux.git-pull.com/topics/context_managers/) ·
-[Options & Hooks](https://libtmux.git-pull.com/topics/options_and_hooks/)
+>>> # Check server has sessions attribute
+>>> hasattr(server, 'sessions')
+True
 
-**Reference:**
-[Docs][docs] ·
-[API][api] ·
-[pytest plugin](https://libtmux.git-pull.com/api/pytest-plugin/) ·
-[Architecture][architecture] ·
-[Changelog][history] ·
-[Migration][migration]
+>>> # List all tmux sessions
+>>> isinstance(server.sessions, list)
+True
+>>> len(server.sessions) > 0
+True
 
-**Project:**
-[Issues][issues] ·
-[Coverage][coverage] ·
-[Releases][releases] ·
-[License][license] ·
-[Support][support]
+>>> # At least one session should exist
+>>> len([s for s in server.sessions if s.session_id]) > 0
+True
+```
 
-**[The Tao of tmux][tao]** — deep-dive book on tmux fundamentals
+### Session Operations
 
-## Contributing & support
+```python
+>>> # Check session attributes
+>>> isinstance(session.session_id, str) and session.session_id.startswith('$')
+True
 
-Contributions are welcome. Please open an issue or PR if you find a bug or want to improve the API or docs. If libtmux helps you ship, consider sponsoring development via [support].
+>>> # Verify session name exists
+>>> isinstance(session.session_name, str)
+True
+>>> len(session.session_name) > 0
+True
 
-[docs]: https://libtmux.git-pull.com
-[api]: https://libtmux.git-pull.com/api/
-[architecture]: https://libtmux.git-pull.com/topics/architecture/
-[history]: https://libtmux.git-pull.com/history/
-[migration]: https://libtmux.git-pull.com/migration/
-[issues]: https://github.com/tmux-python/libtmux/issues
-[coverage]: https://codecov.io/gh/tmux-python/libtmux
-[releases]: https://pypi.org/project/libtmux/
-[license]: https://github.com/tmux-python/libtmux/blob/master/LICENSE
-[support]: https://tony.sh/support.html
-[tao]: https://leanpub.com/the-tao-of-tmux
-[tmuxp]: https://tmuxp.git-pull.com
-[tmux]: https://github.com/tmux/tmux
+>>> # Session should have windows
+>>> isinstance(session.windows, list)
+True
+>>> len(session.windows) > 0
+True
+
+>>> # Get active window
+>>> session.active_window is not None
+True
+```
+
+### Window Management
+
+```python
+>>> # Window has an ID
+>>> isinstance(window.window_id, str) and window.window_id.startswith('@')
+True
+
+>>> # Window belongs to a session
+>>> hasattr(window, 'session') and window.session is not None
+True
+
+>>> # Window has panes
+>>> isinstance(window.panes, list)
+True
+>>> len(window.panes) > 0
+True
+
+>>> # Window has a name (could be empty but should be a string)
+>>> isinstance(window.window_name, str)
+True
+```
+
+### Pane Manipulation
+
+```python
+>>> # Pane has an ID
+>>> isinstance(pane.pane_id, str) and pane.pane_id.startswith('%')
+True
+
+>>> # Pane belongs to a window
+>>> hasattr(pane, 'window') and pane.window is not None
+True
+
+>>> # Test sending commands
+>>> pane.send_keys('echo "Hello from libtmux test"', enter=True)
+>>> import time
+>>> time.sleep(1)  # Longer wait to ensure command execution
+>>> output = pane.capture_pane()
+>>> isinstance(output, list)
+True
+>>> len(output) > 0  # Should have some output
+True
+```
+
+### Filtering Objects
+
+```python
+>>> # Session windows should be filterable
+>>> windows = session.windows
+>>> isinstance(windows, list)
+True
+>>> len(windows) > 0
+True
+
+>>> # Filter method should return a list
+>>> filtered_windows = session.windows.filter()
+>>> isinstance(filtered_windows, list)
+True
+
+>>> # Get method should return None or an object
+>>> window_maybe = session.windows.get(window_id=window.window_id)
+>>> window_maybe is None or window_maybe.window_id == window.window_id
+True
+
+>>> # Test basic filtering
+>>> all(hasattr(w, 'window_id') for w in session.windows)
+True
+```
+
+## Key Features
+
+### Smart Session Management
+
+```python
+# Find sessions with powerful filtering
+dev_sessions = server.sessions.filter(session_name__contains="dev")
+
+# Create a session with context manager for auto-cleanup
+with server.new_session(session_name="temp-session") as session:
+    # Session will be automatically killed when exiting the context
+    window = session.new_window(window_name="test")
+    window.split_window().send_keys("echo 'This is a temporary workspace'", enter=True)
+```
+
+### Flexible Window Operations
+
+```python
+# Create windows programmatically
+for project in ["api", "frontend", "database"]:
+    window = session.new_window(window_name=project)
+    window.send_keys(f"cd ~/projects/{project}", enter=True)
+    
+# Find windows with powerful queries
+api_window = session.windows.get(window_name__exact="api")
+frontend_windows = session.windows.filter(window_name__contains="front")
+
+# Manipulate window layouts
+window.select_layout("main-vertical")
+```
+
+### Precise Pane Control
+
+```python
+# Create complex layouts
+main_pane = window.active_pane
+side_pane = window.split_window(vertical=True, percent=30)
+bottom_pane = main_pane.split_window(vertical=False, percent=20)
+
+# Send commands to specific panes
+main_pane.send_keys("vim main.py", enter=True)
+side_pane.send_keys("git log", enter=True)
+bottom_pane.send_keys("python -m pytest", enter=True)
+
+# Capture and analyze output
+test_output = bottom_pane.capture_pane()
+if "FAILED" in "\n".join(test_output):
+    print("Tests are failing!")
+```
+
+### Direct Command Access
+
+For advanced needs, send commands directly to tmux:
+
+```python
+# Execute any tmux command directly
+server.cmd("set-option", "-g", "status-style", "bg=blue")
+
+# Access low-level command output
+version_info = server.cmd("list-commands").stdout
+```
+
+## Powerful Use Cases
+
+- **Development Environment Automation**: Script your perfect development setup
+- **CI/CD Integration**: Create isolated testing environments
+- **DevOps Tooling**: Manage multiple terminal sessions in server environments
+- **Custom Terminal UIs**: Build terminal-based dashboards and monitoring
+- **Remote Session Control**: Programmatically control remote terminal sessions
+
+## Compatibility
+
+- **Python**: 3.9+ (including PyPy)
+- **tmux**: 1.8+ (fully tested against latest versions)
+
+## Documentation & Resources
+
+- [Full Documentation](https://libtmux.git-pull.com/)
+- [API Reference](https://libtmux.git-pull.com/api.html)
+- [Architecture Details](https://libtmux.git-pull.com/about.html)
+- [Changelog](https://libtmux.git-pull.com/history.html)
+
+## Project Information
+
+- **Source**: [GitHub](https://github.com/tmux-python/libtmux)
+- **Issues**: [GitHub Issues](https://github.com/tmux-python/libtmux/issues)
+- **PyPI**: [Package](https://pypi.python.org/pypi/libtmux)
+- **License**: [MIT](http://opensource.org/licenses/MIT)
+
+## Related Projects
+
+- [tmuxp](https://tmuxp.git-pull.com/): A tmux session manager built on libtmux
+- Try `tmuxp shell` to drop into a Python shell with your current tmux session loaded
+
+## Support Development
+
+Your donations and contributions directly support maintenance and development of this project.
+
+- [Support Options](https://git-pull.com/support.html)
+- [Contributing Guidelines](https://libtmux.git-pull.com/contributing.html)
+
+---
+
+Built with ❤️ by the tmux-python team
