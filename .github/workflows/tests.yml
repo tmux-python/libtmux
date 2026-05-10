@@ -45,7 +45,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
@@ -137,7 +136,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
