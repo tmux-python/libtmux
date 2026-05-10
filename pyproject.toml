@@ -61,6 +61,7 @@ dev = [
   "typing-extensions; python_version < '3.11'",
   "gp-libs",
   "pytest",
+  "pytest-asyncio",
   "pytest-rerunfailures",
   "pytest-mock",
   "pytest-watcher",
@@ -84,6 +85,7 @@ testing = [
   "typing-extensions; python_version < '3.11'",
   "gp-libs",
   "pytest",
+  "pytest-asyncio",
   "pytest-rerunfailures",
   "pytest-mock",
   "pytest-watcher",
@@ -249,9 +251,12 @@ testpaths = [
 ]
 markers = [
   "integration: sphinx integration tests (require full sphinx build)",
+  "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
 ]
 filterwarnings = [
   "ignore:The frontend.Option(Parser)? class.*:DeprecationWarning::",
   "ignore::DeprecationWarning:libtmux.*:",
   "ignore::DeprecationWarning:tests:",  # tests/
 ]
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
