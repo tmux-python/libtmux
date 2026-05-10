@@ -17,7 +17,12 @@ $ pipx install \
     --pip-args '\--pre' \
     --force \
     'libtmux'
-// Usage: libtmux@next [command]
+```
+
+Run the suffixed executable as:
+
+```console
+$ libtmux@next [command]
 ```
 
 [uv](https://docs.astral.sh/uv/):
@@ -42,57 +47,62 @@ _Notes on the upcoming release will go here._
 
 ## libtmux 0.56.0 (2026-05-10)
 
+libtmux 0.56.0 is the tmux command-parity release. It adds more than
+50 wrappers across {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane`, filling in many
+commands that previously required raw {meth}`~libtmux.Server.cmd` calls.
+It also adds attached-client test support so interactive tmux commands can be
+covered in headless test suites.
+
 ### What's new
 
-#### Interactive tmux commands now scriptable (#653)
+#### Interactive tmux commands are now scriptable (#653)
 
-New wrappers for the interactive commands that require an attached
-client: {meth}`~libtmux.Pane.display_popup`,
+libtmux now exposes Python wrappers for tmux commands that normally depend on
+an attached client: {meth}`~libtmux.Pane.display_popup`,
 {meth}`~libtmux.Server.display_menu`,
 {meth}`~libtmux.Server.command_prompt`,
 {meth}`~libtmux.Server.confirm_before`,
 {meth}`~libtmux.Session.detach_client`,
 {meth}`~libtmux.Server.detach_client`,
 {meth}`~libtmux.Server.detach_all_clients`,
-{meth}`~libtmux.Pane.display_panes`, and the choose family —
+{meth}`~libtmux.Pane.display_panes`,
 {meth}`~libtmux.Pane.choose_buffer`,
-{meth}`~libtmux.Pane.choose_client`,
-{meth}`~libtmux.Pane.choose_tree`. These previously required
-hand-rolled {meth}`~libtmux.Server.cmd` calls.
+{meth}`~libtmux.Pane.choose_client`, and
+{meth}`~libtmux.Pane.choose_tree`.
 
-The three ``detach-client`` wrappers each map to one tmux flag group
-exactly, with a single subprocess call:
-{meth}`~libtmux.Session.detach_client` →
-``tmux detach-client -s <session_id>`` (session-scoped, every client
-in this session); {meth}`~libtmux.Server.detach_client` →
-``tmux detach-client [-t <client>]`` (server-wide single-client
-lookup, since tmux's ``-t`` flag resolves clients over the global
-client list); {meth}`~libtmux.Server.detach_all_clients` →
-``tmux detach-client -a [-t <keep>]`` (server-wide, optionally
-preserving one client).
+The `detach-client` API is split by the same scopes tmux actually honors:
+{meth}`~libtmux.Session.detach_client` maps to
+`tmux detach-client -s <session_id>`,
+{meth}`~libtmux.Server.detach_client` maps to
+`tmux detach-client [-t <client>]`, and
+{meth}`~libtmux.Server.detach_all_clients` maps to
+`tmux detach-client -a [-t <keep>]`. This keeps each method to one tmux flag
+group and one subprocess call.
 
-#### tmux buffer I/O suite (#653)
+#### tmux buffer I/O has first-class wrappers (#653)
 
+Named tmux buffers can now be used from libtmux without hand-built commands.
 {meth}`~libtmux.Server.set_buffer`,
 {meth}`~libtmux.Server.show_buffer`,
 {meth}`~libtmux.Server.delete_buffer`,
 {meth}`~libtmux.Server.save_buffer`,
 {meth}`~libtmux.Server.load_buffer`,
 {meth}`~libtmux.Server.list_buffers`, and
-{meth}`~libtmux.Pane.paste_buffer` round-trip pane content through
-named tmux buffers. Useful for clipboard interop and inter-process
-data hand-off.
+{meth}`~libtmux.Pane.paste_buffer` cover the common clipboard, capture, and
+inter-process handoff workflows.
 
-#### Key bindings and shell execution (#653)
+#### Server commands cover key bindings, clients, shell execution, and access (#653)
 
-{class}`~libtmux.Server` gains {meth}`~libtmux.Server.bind_key`,
+{class}`~libtmux.Server` gains wrappers for key-binding inspection and mutation
+({meth}`~libtmux.Server.bind_key`,
 {meth}`~libtmux.Server.unbind_key`,
 {meth}`~libtmux.Server.list_keys`,
-{meth}`~libtmux.Server.list_commands`,
-{meth}`~libtmux.Server.run_shell`,
+{meth}`~libtmux.Server.list_commands`), shell/config execution
+({meth}`~libtmux.Server.run_shell`,
 {meth}`~libtmux.Server.if_shell`,
-{meth}`~libtmux.Server.source_file`,
-{meth}`~libtmux.Server.list_clients`,
+{meth}`~libtmux.Server.source_file`), and client/server control
+({meth}`~libtmux.Server.list_clients`,
 {meth}`~libtmux.Server.start_server`,
 {meth}`~libtmux.Server.lock_server`,
 {meth}`~libtmux.Server.lock_client`,
@@ -100,148 +110,154 @@ data hand-off.
 {meth}`~libtmux.Server.suspend_client`,
 {meth}`~libtmux.Server.server_access`,
 {meth}`~libtmux.Server.show_messages`,
-{meth}`~libtmux.Server.show_prompt_history`, and
-{meth}`~libtmux.Server.clear_prompt_history`;
-{class}`~libtmux.Session` gains
-{meth}`~libtmux.Session.lock_session`;
+{meth}`~libtmux.Server.show_prompt_history`,
+{meth}`~libtmux.Server.clear_prompt_history`). {class}`~libtmux.Session`
+also gains {meth}`~libtmux.Session.lock_session`, and
 {class}`~libtmux.Pane` gains {meth}`~libtmux.Pane.send_prefix`.
 
-#### Window and pane manipulation parity (#653)
+#### Windows and panes can be rearranged through the object API (#653)
 
-New {meth}`~libtmux.Window.swap`, {meth}`~libtmux.Window.link`,
-{meth}`~libtmux.Window.unlink`, {meth}`~libtmux.Window.respawn`,
-{meth}`~libtmux.Window.last_pane`,
+Window-level operations now include {meth}`~libtmux.Window.swap`,
+{meth}`~libtmux.Window.link`, {meth}`~libtmux.Window.unlink`,
+{meth}`~libtmux.Window.respawn`, {meth}`~libtmux.Window.last_pane`,
 {meth}`~libtmux.Window.next_layout`,
-{meth}`~libtmux.Window.previous_layout`,
-{meth}`~libtmux.Window.rotate`; new {meth}`~libtmux.Pane.swap`,
-{meth}`~libtmux.Pane.join`, {meth}`~libtmux.Pane.break_pane`,
-{meth}`~libtmux.Pane.move`, {meth}`~libtmux.Pane.pipe`,
-{meth}`~libtmux.Pane.clear_history`, {meth}`~libtmux.Pane.respawn`,
-{meth}`~libtmux.Pane.copy_mode`, {meth}`~libtmux.Pane.clock_mode`,
-{meth}`~libtmux.Pane.customize_mode`,
-{meth}`~libtmux.Pane.find_window`; new
+{meth}`~libtmux.Window.previous_layout`, and
+{meth}`~libtmux.Window.rotate`. Pane-level operations now include
+{meth}`~libtmux.Pane.swap`, {meth}`~libtmux.Pane.join`,
+{meth}`~libtmux.Pane.break_pane`, {meth}`~libtmux.Pane.move`,
+{meth}`~libtmux.Pane.pipe`, {meth}`~libtmux.Pane.clear_history`,
+{meth}`~libtmux.Pane.respawn`, {meth}`~libtmux.Pane.copy_mode`,
+{meth}`~libtmux.Pane.clock_mode`,
+{meth}`~libtmux.Pane.customize_mode`, and
+{meth}`~libtmux.Pane.find_window`.
+
+Navigation helpers fill in the surrounding topology:
 {meth}`~libtmux.Server.wait_for`,
 {meth}`~libtmux.Session.last_window`,
-{meth}`~libtmux.Session.next_window`,
+{meth}`~libtmux.Session.next_window`, and
 {meth}`~libtmux.Session.previous_window`.
 
-#### Filled-in flag coverage on existing methods (#653)
+#### Existing wrappers expose more tmux flags (#653)
 
-Most pre-existing wrappers now expose the remaining tmux flags.
-Notable additions: {meth}`~libtmux.Pane.send_keys` (literal, hex,
-key-name, format, client), {meth}`~libtmux.Pane.split`
-(`percentage=`), {meth}`~libtmux.Pane.capture_pane`
-(alternate-screen, quiet, write-to-buffer),
-{meth}`~libtmux.Pane.display_message` (format, verbose, delay,
-notify, list, style), {meth}`~libtmux.Pane.display_popup`
-(`target_client=`, `-c`), {meth}`~libtmux.Window.move_window`
-(after, before, kill, renumber), {meth}`~libtmux.Window.select_layout`
-(spread, next, previous), {meth}`~libtmux.Server.new_session`
-(detach-others, no-size, config), {meth}`~libtmux.Session.new_window`
-(kill-existing, select-existing),
-{meth}`~libtmux.Server.set_environment` (`expand_format=`,
-`hidden=`), and {meth}`~libtmux.Server.show_options` (`quiet=`).
+Several established methods now surface tmux flags that were previously only
+available by dropping to raw commands. Highlights include
+{meth}`~libtmux.Pane.send_keys` (`literal`, `hex_keys`, `key_name`,
+`expand_formats`, `target_client`), {meth}`~libtmux.Pane.split`
+(`percentage`), {meth}`~libtmux.Pane.capture_pane`
+(`alternate_screen`, `quiet`, buffer output), and
+{meth}`~libtmux.Pane.display_message` (formatting, delay, notify, verbose, and
+style/update controls).
 
-#### `control_mode` pytest fixture (#653)
+Window/session/server additions include extra flags on
+{meth}`~libtmux.Window.move_window`,
+{meth}`~libtmux.Window.select_layout`,
+{meth}`~libtmux.Server.new_session`,
+{meth}`~libtmux.Session.new_window`,
+{meth}`~libtmux.Server.set_environment`, and
+{meth}`~libtmux.Server.show_options`.
 
-New {fixture}`control_mode` fixture spawns a real `tmux -C` client
-attached to the session so commands that require an attached client
-({meth}`~libtmux.Pane.display_popup`,
+#### Attached-client tests are available through `control_mode` (#653)
+
+The {fixture}`control_mode` fixture starts a real `tmux -C` client attached to
+the test session. Downstream test suites can exercise commands such as
+{meth}`~libtmux.Pane.display_popup`,
 {meth}`~libtmux.Session.detach_client`,
-{meth}`~libtmux.Server.command_prompt`,
-{meth}`~libtmux.Server.confirm_before`) are testable without a TTY.
-Exposed to downstream test suites via {mod}`libtmux.pytest_plugin`.
-
-### Bug fixes
-
-#### `Window.move_window()` returns up-to-date state after the move (#653)
-
-{meth}`~libtmux.Window.move_window` previously left the
-{class}`~libtmux.Window` object pointing at its pre-move index, so
-attribute reads after a move could appear stale until a manual
-{meth}`~libtmux.Window.refresh` call. The moved window now refreshes
-automatically.
-
-### Documentation
-
-- Bump gp-sphinx docs stack to v0.0.1a16 — docs site now renders
-  via `gp-furo-theme`, a Tailwind v4 respin of Furo, with
-  `sphinx-vite-builder` handling theme-asset builds (#666)
-### Tests
-
-- `test_no_server_*` and `test_raise_if_dead_no_server_raises` now
-  reuse the `server` fixture for a unique socket name and finalizer
-  cleanup, instead of hardcoded socket names with no finalizer that
-  broke whenever a stale tmux daemon survived at the same path
-  (#665, fixes #664).
-
-### Development
-
-#### `TMUX_MAX_VERSION` bumped to 3.7 (#653)
-
-{data}`~libtmux.common.TMUX_MAX_VERSION` is now `"3.7"`, unlocking
-method coverage already version-gated for tmux 3.7 — notably
-{meth}`~libtmux.Server.command_prompt` (`bspace_exit=`) and
-{meth}`~libtmux.Server.show_messages` (`terminals=`, `jobs=`). No
-effect on installations running tmux 3.6 or earlier.
-
-## libtmux 0.55.1 (2026-04-19)
+{meth}`~libtmux.Server.command_prompt`, and
+{meth}`~libtmux.Server.confirm_before` without requiring an interactive TTY.
+The fixture is exported by {mod}`libtmux.pytest_plugin`.
 
 ### Fixes
 
-- `pytest_plugin`: the `server` and `TestServer` fixture finalizers now
-  unlink the tmux socket file from `/tmp/tmux-<uid>/` in addition to
-  calling `server.kill()`. tmux does not reliably `unlink(2)` its
-  socket on non-graceful exit, so `/tmp/tmux-<uid>/` would otherwise
-  accumulate stale `libtmux_test*` entries across test runs (10k+
-  observed on long-lived dev machines). A new internal helper
-  `_reap_test_server` centralizes the kill + unlink flow and
-  suppresses cleanup-time errors so a finalizer failure can no longer
-  mask the real test failure (#661, fixes #660).
+#### `Window.move_window()` refreshes moved windows (#653)
+
+{meth}`~libtmux.Window.move_window` now refreshes the moved
+{class}`~libtmux.Window` after tmux completes the move. Code that reads
+attributes after a relative or cross-session move no longer needs a manual
+{meth}`~libtmux.Window.refresh` call to avoid stale state.
 
 ### Documentation
 
-- Visual improvements to API docs from [gp-sphinx](https://gp-sphinx.git-pull.com)-based Sphinx packages (#658)
-- Bump gp-sphinx docs stack to v0.0.1a8 (#659)
+#### gp-sphinx docs stack moves to the Vite-backed theme path (#666)
 
+The documentation stack now uses `gp-furo-theme`, a Tailwind v4 respin of Furo,
+with `sphinx-vite-builder` owning theme asset builds. This picks up the shared
+gp-sphinx documentation surface used by sibling projects.
 
-### What's new
+### Tests
 
-#### pytest plugin: fixture reference documentation with autofixture directives (#656)
+#### "No server" tests no longer depend on hardcoded sockets (#665)
 
-New Sphinx extension (`docs/_ext/sphinx_pytest_fixtures.py`) renders pytest
-fixtures as first-class API documentation with scope/kind/factory badges,
-cross-referenced dependencies, and auto-generated usage snippets.
-
-- `.. autofixture::` directive — autodoc-style documenter for individual fixtures
-- `.. autofixtures::` directive — bulk discovery and rendering from a module
-- `.. autofixture-index::` directive — auto-generated index table with linked
-  return types (via intersphinx) and parsed RST descriptions
-- `:fixture:` cross-reference role with short-name resolution
-- Scope, kind, and autouse badges with touch-accessible tooltips (`tabindex`
-  + CSS `:focus` popup)
-- Responsive layout: mobile metadata stacking, badge font scaling, table scroll
-  wrapper
-- WCAG AA contrast compliance for all badge colors (light and dark mode)
-- 109 tests (unit + integration)
-
-### Bug fixes
-
-- Fix `session_params` fixture docstring incorrectly describing return type (#656)
+`test_no_server_*` and `test_raise_if_dead_no_server_raises` now use the
+{fixture}`server` fixture for unique socket names and finalizer cleanup. The
+tests no longer fail just because a stale tmux daemon survived at one of the
+old hardcoded socket paths. Fixes #664.
 
 ### Development
 
-- Add `types-docutils` to dev dependencies for mypy type checking (#656)
+#### tmux 3.7 is within the known-version range (#653)
 
-## libtmux 0.55.0 (2026-03-07)
+{data}`~libtmux.common.TMUX_MAX_VERSION` is now `"3.7"`, enabling wrappers and
+tests for version-gated tmux 3.7 flags such as
+{meth}`~libtmux.Server.command_prompt` `bspace_exit` and
+{meth}`~libtmux.Server.show_messages` `terminals` / `jobs`. Installations on
+tmux 3.6 and earlier keep their existing behavior.
+
+## libtmux 0.55.1 (2026-04-19)
+
+libtmux 0.55.1 is a documentation and test-isolation release. It makes the
+pytest plugin's server cleanup more robust, documents fixtures as first-class
+API objects, and brings the docs site onto the shared gp-sphinx visual stack.
 
 ### What's new
 
-#### Pane.set_title() (#636)
+#### pytest fixtures have generated API reference pages (#656)
 
-New {meth}`~libtmux.Pane.set_title` method wraps `select-pane -T`, and
-{attr}`~libtmux.Pane.title` provides a short alias for
-{attr}`~libtmux.Pane.pane_title`:
+The docs now render pytest fixtures with autodoc-style directives for
+individual fixtures, bulk fixture listings, and a fixture index. Fixture pages
+show scope, kind, factory metadata, dependencies, generated usage examples, and
+responsive badge styling through the gp-sphinx fixture extension.
+
+### Fixes
+
+#### pytest plugin server cleanup removes stale socket files (#661)
+
+The {fixture}`server` and {fixture}`TestServer` finalizers now unlink tmux
+socket files under `/tmp/tmux-<uid>/` after killing the server. This prevents
+long-lived development machines from accumulating stale `libtmux_test*`
+sockets that can break later test runs. Fixes #660.
+
+#### `session_params` fixture docs report the right return type (#656)
+
+The {fixture}`session_params` fixture docstring now describes the value pytest
+actually injects.
+
+### Documentation
+
+#### API docs adopt the gp-sphinx presentation stack (#658, #659)
+
+API pages pick up gp-sphinx card layouts, badges, MyST-aware cross references,
+argparse-label fixes, IBM Plex typography, and the 0.0.1a8 docs-stack bump.
+
+### Development
+
+#### `types-docutils` is available for type checking (#656)
+
+The dev dependency set now includes `types-docutils`, keeping the fixture-docs
+extension visible to mypy.
+
+## libtmux 0.55.0 (2026-03-07)
+
+libtmux 0.55.0 improves pane naming, custom tmux binary support, and command
+diagnostics. The release is useful for projects that run against alternate tmux
+builds or need clearer subprocess logging.
+
+### What's new
+
+#### Pane titles can be set and read through short aliases (#636)
+
+{meth}`~libtmux.Pane.set_title` wraps `select-pane -T`, and
+{attr}`~libtmux.Pane.title` is a short alias for
+{attr}`~libtmux.Pane.pane_title`.
 
 ```python
 pane.set_title("my-worker")
@@ -251,191 +267,177 @@ pane.title
 # 'my-worker'
 ```
 
-The `pane_title` format variable is now included in libtmux's format queries
-(it was previously excluded).
+The `pane_title` tmux format variable is now included in libtmux format
+queries.
 
-#### Configurable tmux binary path (#636)
+#### `Server` can use an explicit tmux binary (#636)
 
-{class}`~libtmux.Server` now accepts a `tmux_bin` parameter to use an
-alternative tmux binary (e.g. wemux, byobu, or a custom build):
+{class}`~libtmux.Server` accepts `tmux_bin` for alternate binaries such as
+wemux, byobu, or locally built tmux checkouts.
 
 ```python
 server = Server(socket_name="myserver", tmux_bin="/usr/local/bin/tmux-next")
 ```
 
-The path is threaded through {meth}`~libtmux.Server.cmd`,
+The binary path flows through {meth}`~libtmux.Server.cmd`,
 {meth}`~libtmux.Server.raise_if_dead`, {func}`~libtmux.neo.fetch_objs`,
-all version-check functions ({func}`~libtmux.common.has_version`,
-{func}`~libtmux.common.has_gte_version`, etc.), and hook scope guards in
-{class}`~libtmux.hooks.HooksMixin`. All child objects (Session, Window,
-Pane) inherit it automatically.
-Falls back to ``shutil.which("tmux")`` at execution time when not set.
+version checks such as {func}`~libtmux.common.has_version` and
+{func}`~libtmux.common.has_gte_version`, and option/hook scope guards. Child
+objects inherit it automatically. When `tmux_bin` is omitted, command execution
+falls back to `shutil.which("tmux")`.
 
-#### Pre-execution command logging (#636)
+#### tmux commands log before execution (#636)
 
-{class}`~libtmux.common.tmux_cmd` now logs the full command line at
-`DEBUG` level *before* execution, complementing the existing post-execution
-stdout logging. This enables diagnostic output and is a prerequisite for a
-future dry-run mode.
+{func}`~libtmux.common.tmux_cmd` logs the full command line at `DEBUG` before
+running it, complementing the existing post-execution output logging and giving
+operators a better diagnostic trail.
 
-### Bug fixes
+### Fixes
 
-#### `TmuxCommandNotFound` raised for invalid `tmux_bin` path (#636)
+#### Invalid `tmux_bin` paths raise `TmuxCommandNotFound` (#636)
 
-Previously, passing a non-existent binary path raised a raw
-`FileNotFoundError` from `subprocess`. It now raises
-{exc}`~libtmux.exc.TmuxCommandNotFound` consistently, in both
-`tmux_cmd` and `raise_if_dead`.
+Passing a missing binary path now raises
+{exc}`~libtmux.exc.TmuxCommandNotFound` consistently in both
+{func}`~libtmux.common.tmux_cmd` and
+{meth}`~libtmux.Server.raise_if_dead`, instead of leaking a raw
+`FileNotFoundError`.
 
 ## libtmux 0.54.0 (2026-03-07)
 
+libtmux 0.54.0 adds structured lifecycle logging and tightens failure handling
+for important object operations. Applications can now filter logs by stable
+tmux context fields instead of parsing message text.
+
 ### What's new
 
-#### Structured lifecycle logging across Server, Session, Window, and Pane (#637)
+#### Lifecycle operations emit structured log records (#637)
 
-All lifecycle operations (create, kill, rename, split) now emit INFO-level log
-records with structured `extra` context. Every log call includes scalar keys
-such as `tmux_subcommand`, `tmux_session`, `tmux_window`, `tmux_pane`, and
-`tmux_target` for filtering in log aggregators and test assertions via
-`caplog.records`.
+Create, kill, rename, split, and command-execution paths now log with stable
+`extra` keys such as `tmux_subcommand`, `tmux_session`, `tmux_window`,
+`tmux_pane`, and `tmux_target`. The library also installs a `NullHandler`,
+uses lazy `%s` logging, guards heavier debug data, and removes ad-hoc stack
+printing.
 
-- Add `NullHandler` to library `__init__.py` per Python logging best practices
-- Add DEBUG-level structured logs for `tmux_cmd` execution with `isEnabledFor` guards
-- Replace f-string log formatting with lazy `%s` formatting throughout
-- Replace `traceback.print_stack()` calls with proper `logger.debug(exc_info=True)`
-- Replace `logger.exception()` in options parsing with `logger.warning()` and `tmux_option_key` context
-- Remove unused logger definitions from modules that don't log
+### Fixes
 
-### Bug fixes
+#### `Window.rename_window()` now propagates tmux failures (#637)
 
-#### Window.rename_window() now raises on failure instead of silently swallowing (#637)
+{meth}`~libtmux.Window.rename_window` no longer catches and logs every
+exception. tmux errors now surface to callers like the rest of the command API.
 
-Previously `rename_window()` caught all exceptions and logged them, masking
-tmux errors. It now propagates the error, consistent with all other command
-methods.
+#### `Server.kill()` handles expected dead-server states (#637)
 
-#### Server.kill() captures stderr and handles "no server running" gracefully (#637)
+{meth}`~libtmux.Server.kill` now captures stderr, ignores expected "no server
+running" style states, and raises for unexpected tmux errors.
 
-`Server.kill()` previously discarded the tmux return value. It now checks
-stderr, raises on unexpected errors, and silently returns for expected
-conditions ("no server running", "error connecting to").
+#### `Server.new_session(kill_session=True)` checks failed cleanup (#637)
 
-#### Server.new_session() checks kill-session stderr (#637)
-
-When `kill_session=True` and the existing session kill fails, `new_session()`
-now raises `LibTmuxException` with the stderr instead of proceeding silently.
+If the pre-create `kill-session` step fails, {meth}`~libtmux.Server.new_session`
+now raises {exc}`~libtmux.exc.LibTmuxException` instead of continuing as though
+the old session had been removed.
 
 ## libtmux 0.53.1 (2026-02-18)
 
-### Bug fixes
+libtmux 0.53.1 fixes a session-creation race and moves the developer command
+surface from Make to Just.
 
-#### Fix race condition in new_session() (#625)
+### Fixes
 
-Fixed {exc}`~libtmux.exc.TmuxObjectDoesNotExist` raised by
-{meth}`~libtmux.Server.new_session` in some environments (e.g. PyInstaller-bundled
-binaries, Python 3.13+, Docker containers).
+#### `Server.new_session()` no longer races its own hydration query (#625)
 
-Previously, `new_session()` ran `tmux new-session -P -F#{session_id}` to create the
-session, then immediately issued a separate `list-sessions` query to hydrate the
-{class}`~libtmux.Session` object. In certain environments the session was not yet
-visible to `list-sessions`, causing a spurious failure.
-
-The fix expands the `-F` format string to include all session fields and parses the
-`new-session -P` output directly into the returned `Session`, eliminating the
-follow-up query entirely. This is also one fewer subprocess call per session
-creation.
-
-Closes: #624. Thank you @neubig!
-
-### Development
-
-#### Makefile -> Justfile (#617)
-
-- Migrate from `Makefile` to `justfile` for running development tasks
-- Update documentation to reference `just` commands
+{meth}`~libtmux.Server.new_session` now parses all required session fields from
+the `tmux new-session -P` output instead of creating the session and then
+immediately querying `list-sessions`. That removes a race that could raise
+{exc}`~libtmux.exc.TmuxObjectDoesNotExist` in PyInstaller, Python 3.13+, Docker,
+and other slower-startup environments. Fixes #624. Thanks @neubig.
 
 ### Documentation
 
-Move documentation deployment to GitHub OIDC and AWS CLI.
+#### Documentation publishing uses GitHub OIDC
+
+The docs deployment path moved to GitHub OIDC and AWS CLI credentials.
+
+### Development
+
+#### Developer tasks use `just` (#617)
+
+The project moved from `Makefile` to `justfile`, and docs now reference the
+`just` command names.
 
 ## libtmux 0.53.0 (2025-12-14)
 
+libtmux 0.53.0 narrows the semantics of interactive attachment and fixes a
+shutdown edge case around attached sessions.
+
 ### Breaking changes
 
-#### Session.attach() no longer calls refresh() (#616)
+#### `Session.attach()` no longer refreshes after returning (#616)
 
-{meth}`~libtmux.Session.attach` previously called {meth}`~libtmux.neo.Obj.refresh`
-after the `attach-session` command returned. This was semantically incorrect since
-`attach-session` is a blocking interactive command where session state can change
-arbitrarily during attachment.
+{meth}`~libtmux.Session.attach` no longer calls
+{meth}`~libtmux.neo.Obj.refresh` after `attach-session` returns. The tmux command
+is interactive and blocking, so arbitrary state may change while the user is
+attached. Code that needs fresh state after attaching should call
+{meth}`~libtmux.Session.refresh` explicitly.
 
-This was never strictly defined behavior as libtmux abstracts tmux internals away.
-Code that relied on the session object being refreshed after `attach()` should
-explicitly call `session.refresh()` if needed.
+### Fixes
 
-### Bug fixes
+#### Killing the attached session no longer breaks `Session.attach()` (#616)
 
-#### Session.attach() no longer fails if session killed during attachment (#616)
-
-Fixed an issue where {meth}`~libtmux.Session.attach` would raise
-{exc}`~libtmux.exc.TmuxObjectDoesNotExist` when a user killed the session while
-attached (e.g., closing all windows) and then detached.
+{meth}`~libtmux.Session.attach` no longer raises
+{exc}`~libtmux.exc.TmuxObjectDoesNotExist` when the attached session is killed
+before the user detaches.
 
 ## libtmux 0.52.1 (2025-12-07)
 
-### CI
+libtmux 0.52.1 hardens package publishing.
 
-#### Migrate to PyPI Trusted Publisher (#615)
+### Development
 
-PyPI publishing now uses OIDC-based Trusted Publisher instead of API tokens.
-This improves security and enables package attestations for supply chain verification.
+#### PyPI publishing uses Trusted Publisher (#615)
+
+PyPI releases now use OIDC-based Trusted Publisher instead of API tokens,
+enabling attestations and reducing long-lived secret exposure.
 
 ## libtmux 0.52.0 (2025-12-07)
 
-#### Pane.capture_pane() enhanced (#614)
+libtmux 0.52.0 expands pane capture so applications can preserve more of the
+terminal's rendered output.
 
-The {meth}`~libtmux.pane.Pane.capture_pane` method now supports 5 new parameters
-that expose additional tmux `capture-pane` flags:
+### What's new
 
-| Parameter | tmux Flag | Description |
+#### `Pane.capture_pane()` exposes more `capture-pane` flags (#614)
+
+{meth}`~libtmux.Pane.capture_pane` now supports `escape_sequences`,
+`escape_non_printable`, `join_wrapped`, `preserve_trailing`, and
+`trim_trailing`.
+
+| Parameter | tmux flag | Description |
 |-----------|-----------|-------------|
-| `escape_sequences` | `-e` | Include ANSI escape sequences (colors, attributes) |
-| `escape_non_printable` | `-C` | Escape non-printable chars as octal `\xxx` |
-| `join_wrapped` | `-J` | Join wrapped lines back together |
-| `preserve_trailing` | `-N` | Preserve trailing spaces at line ends |
-| `trim_trailing` | `-T` | Trim trailing empty positions (tmux 3.4+) |
-
-**Capturing colored output:**
+| `escape_sequences` | `-e` | Include ANSI escape sequences. |
+| `escape_non_printable` | `-C` | Escape non-printable characters as octal. |
+| `join_wrapped` | `-J` | Join wrapped lines back together. |
+| `preserve_trailing` | `-N` | Preserve trailing spaces. |
+| `trim_trailing` | `-T` | Trim trailing empty positions on tmux 3.4+. |
 
 ```python
-# Capture with ANSI escape sequences preserved
 pane.send_keys('printf "\\033[31mRED\\033[0m"', enter=True)
 output = pane.capture_pane(escape_sequences=True)
-# Output contains: '\x1b[31mRED\x1b[0m'
 ```
-
-**Joining wrapped lines:**
-
-```python
-# Long lines that wrap are joined back together
-output = pane.capture_pane(join_wrapped=True)
-```
-
-**Version compatibility:**
-
-The `trim_trailing` parameter requires tmux 3.4+. If used with an older version,
-a warning is issued and the flag is ignored. All other parameters work with
-libtmux's minimum supported version (tmux 3.2a).
 
 ## libtmux 0.51.0 (2025-12-06)
 
+libtmux 0.51.0 turns the long-running 0.16-0.33 deprecation period into hard
+errors for the oldest API spellings. The migration target is the modern object
+attribute and {class}`~libtmux.common.QueryList` interface documented in
+{doc}`migration`.
+
 ### Breaking changes
 
-#### APIs deprecated (#611)
+#### Legacy API methods now raise `DeprecatedError` (#611)
 
-Legacy API methods (deprecated in 0.16-0.33) now raise {exc}`~libtmux.exc.DeprecatedError` (hard error) instead of emitting {class}`DeprecationWarning`.
-
-See {doc}`migration` for full context and examples.
+APIs deprecated in earlier releases now raise
+{exc}`~libtmux.exc.DeprecatedError` instead of emitting
+{class}`DeprecationWarning`.
 
 | Deprecated API | Replacement | Deprecated | Raises | Note |
 |----------------|-------------|------------|--------|------|
@@ -443,406 +445,294 @@ See {doc}`migration` for full context and examples.
 | `attach_session()`, `kill_session()` | {meth}`~libtmux.Session.attach`, {meth}`~libtmux.Session.kill` | 0.30.0 | 0.51.0 | Session |
 | `select_window()`, `kill_window()`, `split_window()` | {meth}`~libtmux.Window.select`, {meth}`~libtmux.Window.kill`, {meth}`~libtmux.Window.split` | 0.30.0 / 0.33.0 | 0.51.0 | Window |
 | `resize_pane()`, `select_pane()`, `split_window()` | {meth}`~libtmux.Pane.resize`, {meth}`~libtmux.Pane.select`, {meth}`~libtmux.Pane.split` | 0.28.0 / 0.30.0 / 0.33.0 | 0.51.0 | Pane |
-| `attached_window`, `attached_pane` | {attr}`~libtmux.Session.active_window`, {attr}`~libtmux.Session.active_pane` / {attr}`~libtmux.Window.active_pane` | 0.31.0 | 0.51.0 | Session/Window |
-| `list_*()`, `_list_*()`, `_update_*()`, `children`, `where()`, `find_where()`, `get_by_id()` | {attr}`~libtmux.Server.sessions` / {attr}`~libtmux.Session.windows` / {attr}`~libtmux.Window.panes` with {meth}`~libtmux.common.QueryList.filter` / {meth}`~libtmux.common.QueryList.get` | 0.16.0 / 0.17.0 | 0.51.0 | Query/filter helpers |
-| Dict-style access (`obj["key"]`, `obj.get(...)`) | Attribute access (e.g., {attr}`~libtmux.window.Window.window_name`) | 0.17.0 | 0.51.0 | All tmux objects |
+| `attached_window`, `attached_pane` | {attr}`~libtmux.Session.active_window`, {attr}`~libtmux.Session.active_pane` / {attr}`~libtmux.Window.active_pane` | 0.31.0 | 0.51.0 | Session / Window |
+| `list_*()`, `_list_*()`, `_update_*()`, `children`, `where()`, `find_where()`, `get_by_id()` | {attr}`~libtmux.Server.sessions` / {attr}`~libtmux.Session.windows` / {attr}`~libtmux.Window.panes` with {meth}`~libtmux.common.QueryList.filter` / {meth}`~libtmux.common.QueryList.get` | 0.16.0 / 0.17.0 | 0.51.0 | Query helpers |
+| Dict-style access (`obj["key"]`, `obj.get(...)`) | Attribute access, such as {attr}`~libtmux.Window.window_name` | 0.17.0 | 0.51.0 | All tmux objects |
 
-The following deprecations from 0.50.0 continue to emit {class}`DeprecationWarning` (soft deprecation):
+The 0.50.0 option/hook deprecations remain soft warnings for now:
 
 | Deprecated API | Replacement | Deprecated | Note |
 |----------------|-------------|------------|------|
-| `set_window_option()`, `show_window_option()`, `show_window_options()` | {meth}`~libtmux.window.Window.set_option`, {meth}`~libtmux.window.Window.show_option`, {meth}`~libtmux.window.Window.show_options` | 0.50.0 | Window |
-| `g` parameter on options/hooks methods | `global_` on {meth}`~libtmux.options.OptionsMixin.set_option`, {meth}`~libtmux.options.OptionsMixin.show_option`, {meth}`~libtmux.options.OptionsMixin.show_options` | 0.50.0 | Options & hooks |
+| `set_window_option()`, `show_window_option()`, `show_window_options()` | {meth}`~libtmux.Window.set_option`, {meth}`~libtmux.Window.show_option`, {meth}`~libtmux.Window.show_options` | 0.50.0 | Window |
+| `g` option parameter | `global_` on {meth}`~libtmux.options.OptionsMixin.set_option`, {meth}`~libtmux.options.OptionsMixin.show_option`, {meth}`~libtmux.options.OptionsMixin.show_options` | 0.50.0 | Options and hooks |
 
 ## libtmux 0.50.1 (2025-12-06)
 
-### Documentation (#612)
-
-- Normalize docs headings and Sphinx module directives to fix anchor and index generation issues.
-- Tweak Sphinx type-hints configuration to avoid RST indentation conflicts and suppress forward-reference warnings.
-- Refresh docstrings and cross-references (pane/window APIs, environment helpers, pytest plugin) for clearer return types and stable anchors.
-- Fix incorrect return type annotations for `capture_pane()` and `display_message()` methods
-  (changed from `str | list[str]` to `list[str]` - the methods always return a list).
-
-## libtmux 0.50.0 (2025-11-30)
-
-### Overview
-
-libtmux 0.50 brings a major enhancement to option and hook management. The new
-{class}`~options.OptionsMixin` and {class}`~hooks.HooksMixin` classes provide a
-unified, typed API for managing tmux options and hooks across all object types.
-
-**Highlights:**
-
-- **Unified Options API**: New `show_option()`, `show_options()`, `set_option()`,
-  and `unset_option()` methods available on Server, Session, Window, and Pane.
-- **Hook Management**: Full programmatic control over tmux hooks with support for
-  indexed hook arrays and bulk operations.
-- **SparseArray**: New internal data structure for handling tmux's sparse indexed
-  arrays (e.g., `command-alias[0]`, `command-alias[99]`).
-- **tmux 3.2+ baseline**: Removed support for tmux versions below 3.2a, enabling
-  cleaner code and full hook/option feature support.
-
-### What's New
-
-### Unified Options API (#516)
-
-All tmux objects now share a consistent options interface through
-{class}`~options.OptionsMixin`:
-
-```python
-import libtmux
-
-server = libtmux.Server()
-session = server.sessions[0]
-window = session.windows[0]
-pane = window.panes[0]
-
-# Get all options as a structured dict
-session.show_options()
-# {'activity-action': 'other', 'base-index': 0, ...}
-
-# Get a single option value
-session.show_option('base-index')
-# 0
-
-# Set an option
-window.set_option('automatic-rename', True)
-
-# Unset an option (revert to default)
-window.unset_option('automatic-rename')
-```
-
-**New methods on Server, Session, Window, and Pane:**
-
-| Method | Description |
-|--------|-------------|
-| `show_options()` | Get all options as a structured dict |
-| `show_option(name)` | Get a single option value |
-| `set_option(name, value)` | Set an option |
-| `unset_option(name)` | Unset/remove an option |
-
-**New parameters for `set_option()`:**
-
-| Parameter | tmux flag | Description |
-|-----------|-----------|-------------|
-| `_format` | `-F` | Expand format strings in value |
-| `unset` | `-u` | Unset the option |
-| `global_` | `-g` | Set as global option |
-| `unset_panes` | `-U` | Also unset in child panes |
-| `prevent_overwrite` | `-o` | Don't overwrite if exists |
-| `suppress_warnings` | `-q` | Suppress warnings |
-| `append` | `-a` | Append to existing value |
-
-### Hook Management (#516)
-
-New {class}`~hooks.HooksMixin` provides programmatic control over tmux hooks:
-
-```python
-session = server.sessions[0]
-
-# Set a hook
-session.set_hook('session-renamed', 'display-message "Renamed!"')
-
-# Get hook value
-session.show_hook('session-renamed')
-# 'display-message "Renamed!"'
-
-# Get all hooks
-session.show_hooks()
-# {'session-renamed': 'display-message "Renamed!"'}
-
-# Remove a hook
-session.unset_hook('session-renamed')
-```
-
-**Indexed hooks and bulk operations:**
-
-tmux hooks support multiple values via indices (e.g., `session-renamed[0]`,
-`session-renamed[1]`). The bulk operations API makes this easy:
-
-```python
-# Set multiple hooks at once
-session.set_hooks('session-renamed', {
-    0: 'display-message "Hook 0"',
-    1: 'display-message "Hook 1"',
-    5: 'run-shell "echo hook 5"',
-})
-```
-
-**Hook methods available on Server, Session, Window, and Pane:**
-
-| Method | Description |
-|--------|-------------|
-| `set_hook(hook, value)` | Set a hook |
-| `show_hook(hook)` | Get hook value (returns SparseArray for indexed hooks) |
-| `show_hooks()` | Get all hooks |
-| `unset_hook(hook)` | Remove a hook |
-| `run_hook(hook)` | Run a hook immediately |
-| `set_hooks(hook, values)` | Set multiple indexed hooks at once |
-
-### SparseArray for Indexed Options (#516)
-
-tmux uses sparse indexed arrays for options like `command-alias[0]`,
-`command-alias[99]`, `terminal-features[0]`. Python lists can't represent
-gaps in indices, so libtmux introduces {class}`~_internal.sparse_array.SparseArray`:
-
-```python
->>> from libtmux._internal.sparse_array import SparseArray
-
->>> arr: SparseArray[str] = SparseArray()
->>> arr.add(0, "first")
->>> arr.add(99, "ninety-ninth")  # Gap in indices preserved!
->>> arr[0]
-'first'
->>> arr[99]
-'ninety-ninth'
->>> list(arr.keys())
-[0, 99]
->>> list(arr.iter_values())  # Values in index order
-['first', 'ninety-ninth']
-```
-
-### New Constants (#516)
-
-- {class}`~constants.OptionScope` enum: `Server`, `Session`, `Window`, `Pane`
-- `OPTION_SCOPE_FLAG_MAP`: Maps scope to tmux flags (`-s`, `-w`, `-p`)
-- `HOOK_SCOPE_FLAG_MAP`: Maps scope to hook flags
-
-### Breaking changes
-
-### Deprecated Window methods (#516)
-
-The following methods are deprecated and will be removed in a future release:
-
-| Deprecated | Replacement |
-|------------|-------------|
-| `Window.set_window_option()` | `Window.set_option()` |
-| `Window.show_window_option()` | `Window.show_option()` |
-| `Window.show_window_options()` | `Window.show_options()` |
-
-The old methods will emit a {class}`DeprecationWarning` when called:
-
-```python
-window.set_window_option('automatic-rename', 'on')
-# DeprecationWarning: Window.set_window_option() is deprecated
-
-# Use the new method instead:
-window.set_option('automatic-rename', True)
-```
-
-### tmux Version Compatibility
-
-| Feature | Minimum tmux |
-|---------|-------------|
-| All options/hooks features | 3.2+ |
-| Window/Pane hook scopes (`-w`, `-p`) | 3.2+ |
-| `client-active`, `window-resized` hooks | 3.3+ |
-| `pane-title-changed` hook | 3.5+ |
-
-## libtmux 0.49.0 (2025-11-29)
-
-### Breaking Changes
-
-### tmux 1.8 to 3.1c support removed (#608)
-
-Support for tmux versions below 3.2a has been removed. This completes the
-deprecation announced in v0.48.0.
-
-- Minimum tmux version is now 3.2a (`TMUX_MIN_VERSION`)
-- Removed `TMUX_SOFT_MIN_VERSION` constant and deprecation warning system
-- Removed version guards throughout the codebase
-- For users on older tmux, use libtmux v0.48.x
-
-## libtmux 0.48.0 (2025-11-28)
-
-### Breaking Changes
-
-### Minimum tmux version bumped to 3.2+ (606)
-
-tmux versions below 3.2a are now deprecated. libtmux 0.48.0 will be the last
-version to support tmux below 3.2. This is to ensure support for hooks, options,
-and newer tmux features.
-
-A `FutureWarning` will be emitted on first use. Support for these versions will be removed in a future
-release. Set `LIBTMUX_SUPPRESS_VERSION_WARNING=1` to suppress the warning.
-
-### Internal
-
-- Added `TMUX_SOFT_MIN_VERSION` constant (3.2a) for deprecation threshold (#606)
-
-### What's new
-
-### tmux 3.6 support (#607)
-
-Added tmux 3.6 to test grid and `TMUX_MAX_VERSION` 3.4 -> 3.6.
-
-## libtmux 0.47.0 (2025-11-01)
-
-### Breaking changes
-
-- Drop support for Python 3.9; the new minimum is Python 3.10 (#602). See also:
-  - [Python 3.9 EOL timeline](https://devguide.python.org/versions/#:~:text=Release%20manager-,3.9,-PEP%20596)
-  - [PEP 596](https://peps.python.org/pep-0596/)
-
-### Development
-
-- Add Python 3.14 to test matrix (#601)
-
-## libtmux 0.46.2 (2025-05-26)
-
-### Development
-
-- Add `StrPath` type support for `start_directory` parameters (#596, #597, #598):
-  - `Server.new_session`: Accept PathLike objects for session start directory
-  - `Session.new_window`: Accept PathLike objects for window start directory
-  - `Pane.split` and `Pane.split_window`: Accept PathLike objects for pane start directory
-  - `Window.split` and `Window.split_window`: Accept PathLike objects for pane start directory
-  - Enables `pathlib.Path` objects alongside strings for all start directory parameters
-  - Includes comprehensive tests for all parameter types (None, empty string, string paths, PathLike objects)
-
-  Thank you @Data5tream for the initial commit in #596!
-
-## libtmux 0.46.1 (2025-03-16)
-
-_Maintenance only, no bug fixes or new features_
-
-A version branch has been created at v0.46.x, the next release of v0.47.0 may 
-be a few months in waiting (watchers / snapshots are in development in #587). 
+libtmux 0.50.1 is a documentation repair release for the 0.50 option and hook
+API.
 
 ### Documentation
 
-- Typo fix for `Pane.send_keys` (#593), thank you @subbyte!
+#### API documentation anchors and return types were cleaned up (#612)
+
+The docs now use normalized headings and Sphinx module directives for more
+stable anchors and indexes. Type-hints configuration was adjusted to avoid RST
+indentation problems and forward-reference warnings, and
+{meth}`~libtmux.Pane.capture_pane` / {meth}`~libtmux.Pane.display_message`
+now document their list-returning behavior correctly.
+
+## libtmux 0.50.0 (2025-11-30)
+
+libtmux 0.50.0 is the options and hooks release. It adds one typed API for
+reading and writing tmux options across every object type, adds programmatic
+hook management, and introduces an indexed container for tmux's sparse option
+arrays.
+
+### Breaking changes
+
+#### Window option aliases are deprecated (#516)
+
+The window-specific option helpers remain available but now emit
+{class}`DeprecationWarning`. Use the shared option API instead.
+
+| Deprecated | Replacement |
+|------------|-------------|
+| `Window.set_window_option()` | {meth}`~libtmux.Window.set_option` |
+| `Window.show_window_option()` | {meth}`~libtmux.Window.show_option` |
+| `Window.show_window_options()` | {meth}`~libtmux.Window.show_options` |
+
+```python
+window.set_window_option("automatic-rename", "on")
+# DeprecationWarning: Window.set_window_option() is deprecated
+
+window.set_option("automatic-rename", True)
+```
+
+### What's new
+
+#### Options share one API across Server, Session, Window, and Pane (#516)
+
+{class}`~libtmux.options.OptionsMixin` gives
+{class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane` the same
+{meth}`~libtmux.options.OptionsMixin.show_options`,
+{meth}`~libtmux.options.OptionsMixin.show_option`,
+{meth}`~libtmux.options.OptionsMixin.set_option`, and
+{meth}`~libtmux.options.OptionsMixin.unset_option` methods.
+
+```python
+session.show_option("base-index")
+window.set_option("automatic-rename", True)
+window.unset_option("automatic-rename")
+```
+
+{meth}`~libtmux.options.OptionsMixin.set_option` supports tmux flags for format
+expansion, unsetting, global scope, child-pane cleanup, overwrite prevention,
+warning suppression, and append mode.
+
+#### Hooks are manageable from Python (#516)
+
+{class}`~libtmux.hooks.HooksMixin` adds hook operations across the tmux object
+hierarchy: set, show, list, unset, run, and bulk set indexed hook values.
+
+```python
+session.set_hook("session-renamed", 'display-message "Renamed!"')
+session.show_hook("session-renamed")
+session.unset_hook("session-renamed")
+```
+
+#### Sparse tmux arrays have a Python container (#516)
+
+{class}`~libtmux._internal.sparse_array.SparseArray` preserves gaps in tmux
+arrays such as `command-alias[0]`, `command-alias[99]`, and
+`terminal-features[0]`.
+
+### Development
+
+#### tmux 3.2 is the baseline for options and hooks (#516)
+
+The options and hooks work relies on tmux 3.2+ behavior. Hook scope flags for
+windows and panes require tmux 3.2+, `client-active` and `window-resized` hooks
+require tmux 3.3+, and `pane-title-changed` requires tmux 3.5+.
+
+## libtmux 0.49.0 (2025-11-29)
+
+libtmux 0.49.0 completes the tmux 3.2 baseline transition announced in 0.48.0.
+
+### Breaking changes
+
+#### tmux 1.8 through 3.1c support was removed (#608)
+
+{data}`~libtmux.common.TMUX_MIN_VERSION` is now tmux 3.2a. The
+`TMUX_SOFT_MIN_VERSION` compatibility constant, its warning path, and older
+version guards were removed. Users who need older tmux releases should stay on
+libtmux 0.48.x.
+
+## libtmux 0.48.0 (2025-11-28)
+
+libtmux 0.48.0 starts the tmux 3.2 baseline transition and adds tmux 3.6 to
+the compatibility grid.
+
+### Breaking changes
+
+#### tmux below 3.2a is deprecated (#606)
+
+tmux versions below 3.2a emit {class}`FutureWarning` on first use. Set
+`LIBTMUX_SUPPRESS_VERSION_WARNING=1` to silence the transition warning. 0.48.x
+is the final line intended to support tmux below 3.2a.
+
+### What's new
+
+#### tmux 3.6 is covered in tests (#607)
+
+The test grid now includes tmux 3.6, and {data}`~libtmux.common.TMUX_MAX_VERSION`
+was raised from 3.4 to 3.6.
+
+### Development
+
+#### `TMUX_SOFT_MIN_VERSION` marks the transition floor (#606)
+
+The temporary soft-minimum constant records tmux 3.2a as the deprecation
+threshold for the 0.48.x compatibility window.
+
+## libtmux 0.47.0 (2025-11-01)
+
+libtmux 0.47.0 moves the supported Python baseline forward.
+
+### Breaking changes
+
+#### Python 3.9 support was dropped (#602)
+
+Python 3.10 is now the minimum supported Python version. Python 3.9 reached
+end of life on October 31, 2025; see the [Python release
+status](https://devguide.python.org/versions/) and
+[PEP 596](https://peps.python.org/pep-0596/) for the upstream timeline.
+
+### Development
+
+#### Python 3.14 is in the test matrix (#601)
+
+The CI matrix now includes Python 3.14.
+
+## libtmux 0.46.2 (2025-05-26)
+
+libtmux 0.46.2 broadens path handling for start directories.
+
+### What's new
+
+#### Start-directory arguments accept path-like objects (#596, #597, #598)
+
+{meth}`~libtmux.Server.new_session`,
+{meth}`~libtmux.Session.new_window`, {meth}`~libtmux.Pane.split`,
+{meth}`~libtmux.Window.split`, and their compatibility aliases accept
+`os.PathLike` values in addition to strings. Thanks @Data5tream for the
+initial work.
+
+## libtmux 0.46.1 (2025-03-16)
+
+libtmux 0.46.1 is a maintenance release for the 0.46.x line.
+
+### Documentation
+
+#### `Pane.send_keys` typo fixed (#593)
+
+The {meth}`~libtmux.Pane.send_keys` documentation had a typo fixed. Thanks
+@subbyte.
 
 ## libtmux 0.46.0 (2025-02-25)
 
-### Breaking
+libtmux 0.46.0 finishes the `libtmux.test` helper split by removing root-level
+imports.
 
-### Imports removed from libtmux.test (#580)
+### Breaking changes
 
-Root-level of imports from `libtmux.test` are no longer possible.
+#### Root imports from `libtmux.test` were removed (#580)
+
+Import test helpers from their focused modules.
 
 ```python
 # Before 0.46.0
 from libtmux.test import namer
-```
 
-```python
 # From 0.46.0 onward
-from libtmux.test.named import namer
+from libtmux.test.random import namer
 ```
-
-Same thing with constants:
 
 ```python
 # Before 0.46.0
-from libtmux.test import (
-  RETRY_INTERVAL_SECONDS,
-  RETRY_TIMEOUT_SECONDS,
-  TEST_SESSION_PREFIX
-)
-```
+from libtmux.test import RETRY_INTERVAL_SECONDS
 
-```python
 # From 0.46.0 onward
-from libtmux.test.constants import (
-  RETRY_INTERVAL_SECONDS,
-  RETRY_TIMEOUT_SECONDS,
-  TEST_SESSION_PREFIX
-)
+from libtmux.test.constants import RETRY_INTERVAL_SECONDS
 ```
 
 ### Development
 
-### Test helpers: Increased coverage (#580)
+#### Test helpers gained more coverage (#580)
 
-Several improvements to the test helper modules:
-
-- Enhanced `EnvironmentVarGuard` in `libtmux.test.environment` to better handle variable cleanup
-- Added comprehensive test suites for test constants and environment utilities
-- Improved docstrings and examples in `libtmux.test.random` with test coverage annotations
-- Fixed potential issues with environment variable handling during tests
-- Added proper coverage markers to exclude type checking blocks from coverage reports
+The test-helper modules gained stronger coverage for environment cleanup,
+constants, random-name helpers, docstrings, and coverage markers.
 
 ## libtmux 0.45.0 (2025-02-23)
 
-### Breaking Changes
+libtmux 0.45.0 splits the historical `libtmux.test` module into focused helper
+modules.
 
-### Test helpers: Refactor
+### Breaking changes
 
-Test helper functionality has been split into focused modules (#578):
+#### Test helpers moved to focused modules (#578)
 
-- `libtmux.test` module split into:
-  - `libtmux.test.constants`: Test-related constants (`TEST_SESSION_PREFIX`, etc.)
-  - `libtmux.test.environment`: Environment variable mocking
-  - `libtmux.test.random`: Random string generation utilities
-  - `libtmux.test.temporary`: Temporary session/window management
-
-**Breaking**: Import paths have changed. Update imports:
+Import paths changed from the root `libtmux.test` module to
+`libtmux.test.constants`, `libtmux.test.environment`,
+`libtmux.test.random`, and `libtmux.test.temporary`.
 
 ```python
-# Old (0.44.x and earlier)
-from libtmux.test import (
-    TEST_SESSION_PREFIX,
-    get_test_session_name,
-    get_test_window_name,
-    namer,
-    temp_session,
-    temp_window,
-    EnvironmentVarGuard,
-)
-```
+# Old
+from libtmux.test import TEST_SESSION_PREFIX, EnvironmentVarGuard, namer
 
-```python
-# New (0.45.0+)
+# New
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.environment import EnvironmentVarGuard
-from libtmux.test.random import get_test_session_name, get_test_window_name, namer
-from libtmux.test.temporary import temp_session, temp_window
+from libtmux.test.random import namer
 ```
 
 ### Development
 
-- CI: Check for runtime dependencies (#574)
+#### CI checks runtime dependencies (#574)
 
-  Kudos @ppentchev for inspiration on the command
-  ([comment](https://github.com/tmux-python/libtmux/pull/572#issuecomment-2663642923)).
+CI now includes a runtime-dependency check, inspired by @ppentchev's review
+comments on #572.
 
 ## libtmux 0.44.2 (2025-02-17)
 
-### Bug fix
+libtmux 0.44.2 fixes typing import behavior and cleans up version tests.
 
-- Fix `typing_extensions` issue by wrapping it in `TYPE_CHECKING`, continuation of #564, via #572.
+### Fixes
+
+#### `typing_extensions` imports are guarded (#572)
+
+`typing_extensions` is now imported only when needed for type checking, fixing
+runtime dependency issues. This continues the #564 work.
 
 ### Development
 
-- Improved test organization and coverage in `test_common.py` (#570):
-  - Consolidated version-related tests into parametrized fixtures using NamedTuples
-  - Added comprehensive test cases for various version formats (master, next, OpenBSD, dev, rc)
-  - Improved test readability with clear test IDs and logical grouping
-  - Consistent use of pytest parametrize convention across test suite
-- Fix broken test for `test_window_rename` (#570)
+#### Version tests are clearer and more stable (#570)
+
+Version-related tests were consolidated into parametrized fixtures with named
+cases, and the broken `test_window_rename` test was repaired.
 
 ## libtmux 0.44.1 (2025-02-17)
 
-### Packaging
+libtmux 0.44.1 is a small packaging fix.
 
-- Types: Only import `typing_extensions` when necessary, via #563, @ppentchev!
+### Development
+
+#### `typing_extensions` is optional at runtime (#563)
+
+Runtime imports now avoid `typing_extensions` unless the running Python needs
+it. Thanks @ppentchev.
 
 ## libtmux 0.44.0 (2025-02-16)
 
-### New Features
+libtmux 0.44.0 adds context-manager support for tmux objects.
 
-### Context Managers support (#566)
+### What's new
 
-Added context manager support for all major object types:
+#### Server, Session, Window, and Pane can clean themselves up (#566)
 
-- `Server`: Automatically kills the server when exiting the context
-- `Session`: Automatically kills the session when exiting the context
-- `Window`: Automatically kills the window when exiting the context
-- `Pane`: Automatically kills the pane when exiting the context
-
-Example usage:
+{class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane` implement context manager
+protocols that kill the object on exit.
 
 ```python
 with Server() as server:
@@ -850,1445 +740,1695 @@ with Server() as server:
         with session.new_window() as window:
             with window.split() as pane:
                 pane.send_keys('echo "Hello"')
-                # Do work with the pane
-                # Everything is cleaned up automatically when exiting contexts
 ```
-
-This makes it easier to write clean, safe code that properly cleans up tmux resources.
 
 ## libtmux 0.43.0 (2025-02-15)
 
-### New Features
+libtmux 0.43.0 improves server initialization and testing ergonomics.
 
-### Server Initialization Callbacks
+### What's new
 
-Server now accepts 2 new optional params, `socket_name_factory` and `on_init` callbacks (#565):
+#### Server initialization can be customized (#565)
 
-- `socket_name_factory`: Callable that generates unique socket names for new servers
-- `on_init`: Callback that runs after server initialization
-- Useful for creating multiple servers with unique names and tracking server instances
-- Socket name factory is tried after socket_name, maintaining backward compatibility
+{class}`~libtmux.Server` accepts `socket_name_factory` and `on_init`
+callbacks, making it easier to create multiple servers with unique names and
+track initialized instances.
 
-### New test fixture: `TestServer`
+#### `TestServer` creates isolated tmux servers (#565)
 
-Add `TestServer` pytest fixture for creating temporary tmux servers (#565):
-
-- Creates servers with unique socket names that clean up after themselves
-- Useful for testing interactions between multiple tmux servers
-- Includes comprehensive test coverage and documentation
-- Available in doctest namespace
+The {fixture}`TestServer` fixture creates temporary tmux servers with unique
+socket names, cleanup, tests, documentation, and doctest namespace support.
 
 ### Documentation
 
-- Fix links to the "Topics" section
-- More docs for "Traversal" Topic (#567)
+#### Traversal links were repaired (#567)
+
+The topic docs gained fixed "Topics" links and more traversal guidance.
 
 ## libtmux 0.42.1 (2024-02-15)
 
-### Bug fixes
+libtmux 0.42.1 repairs a typing import edge case.
 
-- tests: Import `Self` in a `TYPE_CHECKING` guard to prevent dependency issues.
-  Via #562, Thank you @ppentchev!
+### Fixes
+
+#### `Self` is imported only for type checking (#562)
+
+Tests now import `Self` behind `TYPE_CHECKING`, avoiding runtime dependency
+issues. Thanks @ppentchev.
 
 ### Development
 
-- dev dependencies: Include `typing-extensions` for Python version < 3.11 via
-  the `testing` and `lint` groups, via #564.
+#### Python-version-specific typing dependencies are explicit (#564)
+
+The testing and lint groups include `typing-extensions` for Python versions
+that need it.
 
 ## libtmux 0.42.0 (2025-02-02)
 
-### Bug fixes
+libtmux 0.42.0 removes the last Python 2 console conversion helpers.
 
-- `tmux_cmd`: Migrate to to `text=True`
+### Fixes
 
-  This deprecates usage of `console_to_str()` and `str_from_console()`.
+#### `tmux_cmd` uses text-mode subprocess output (#560)
 
-  Resolves #558 via #560.
-
-- compat: Remove `console_to_str()` and `str_from_console()`
-
-  These are both deprecated artifacts of libtmux' Python 2.x compatiblity layer.
+{func}`~libtmux.common.tmux_cmd` now uses `text=True`, deprecating
+`console_to_str()` and `str_from_console()`. The compatibility helpers were
+removed as Python 2-era artifacts. Fixes #558.
 
 ## libtmux 0.41.0 (2025-02-02)
 
+libtmux 0.41.0 fixes default-socket representation and continues annotation
+modernization.
+
 ### Fixes
 
-- {meth}`Server.__repr__()`: Use {meth}`os.geteuid()` for default `socket_path`. Thank you @lazysegtree!
-  (#557, resolves #556)
+#### `Server.__repr__()` uses the effective UID (#557)
+
+{meth}`~libtmux.Server.__repr__` now uses {func}`os.geteuid` when constructing
+the default socket path. Fixes #556. Thanks @lazysegtree.
 
 ### Documentation
 
-- `Server`: Fix `colors` docstring to note it accepts `88` or `256`, Thank you
-  @TravisDart! (via #544)
+#### `Server.colors` docs list valid values (#544)
+
+The `colors` docstring now documents `88` and `256`. Thanks @TravisDart.
 
 ### Development
 
-### chore: Implement PEP 563 deferred annotation resolution (#555)
+#### Annotation evaluation is deferred (#555)
 
-- Add `from __future__ import annotations` to defer annotation resolution and reduce unnecessary runtime computations during type checking.
-- Enable Ruff checks for PEP-compliant annotations:
-  - [non-pep585-annotation (UP006)](https://docs.astral.sh/ruff/rules/non-pep585-annotation/)
-  - [non-pep604-annotation (UP007)](https://docs.astral.sh/ruff/rules/non-pep604-annotation/)
-
-For more details on PEP 563, see: https://peps.python.org/pep-0563/
+All Python files now use `from __future__ import annotations`, and Ruff rules
+UP006 / UP007 enforce modern annotation syntax.
 
 ## libtmux 0.40.1 (2024-12-24)
 
-### Bug fix
+libtmux 0.40.1 fixes environment propagation during session creation.
 
-- `Server.new_session`: Fix handling of environmental variables passed to new
-  sessions. Thank you @ppentchev! (#553)
+### Fixes
+
+#### `Server.new_session()` handles environment variables correctly (#553)
+
+{meth}`~libtmux.Server.new_session` now passes environment values to new tmux
+sessions correctly. Thanks @ppentchev.
 
 ## libtmux 0.40.0 (2024-12-20)
 
-_Maintenance only, no bug fixes or new features_
+libtmux 0.40.0 is a maintenance release with one naming break and broad lint
+cleanup.
 
-### Breaking
+### Breaking changes
 
-- `_global` renamed to `global_`
+#### `_global` was renamed to `global_`
+
+The keyword spelling now follows the Python-safe convention used elsewhere in
+the API.
 
 ### Development
 
-- Aggressive automated lint fixes via `ruff` (#550)
+#### Ruff handled a broad lint cleanup (#550)
 
-  via ruff v0.8.4, all automated lint fixes, including unsafe and previews were applied for Python 3.9:
-
-  ```sh
-  ruff check --select ALL . --fix --unsafe-fixes --preview --show-fixes; ruff format .
-  ```
-
-- Tests: Stability fixes for legacy `test_select_pane` test (#552)
+The codebase was reformatted and lint-fixed with Ruff 0.8.4, including preview
+and unsafe fixes, and legacy `test_select_pane` stability was improved (#552).
 
 ## libtmux 0.39.0 (2024-11-26)
 
-_Maintenance only, no bug fixes or new features_
+libtmux 0.39.0 moves the Python floor forward.
 
 ### Breaking changes
 
-- Drop Python 3.8. end of life was October 7th, 2024 (#548)
+#### Python 3.8 support was dropped (#548)
 
-  tmuxp 1.48.0 was the last release for Python 3.8.
-
-  The minimum python for tmuxp as of 1.49.0 is Python 3.9
+Python 3.9 became the minimum for this release line. tmuxp 1.48.0 remained the
+last tmuxp release for Python 3.8.
 
 ## libtmux 0.38.1 (2024-11-26)
 
-- Keep minimum Python version at 3.8 for now.
+libtmux 0.38.1 keeps Python 3.8 support temporarily.
+
+### Development
+
+#### Minimum Python stayed at 3.8
+
+The project held the Python floor at 3.8 for this patch release.
 
 ## libtmux 0.38.0 (2024-11-26)
 
+libtmux 0.38.0 changes the project management and build backend stack.
+
 ### Breaking changes
 
-### Project and package management: poetry to uv (#547)
+#### Package management moved from Poetry to uv (#547)
 
-[uv] is the new package and project manager for the project, replacing Poetry.
+[uv](https://github.com/astral-sh/uv) replaced Poetry for project and
+dependency management.
 
-[uv]: https://github.com/astral-sh/uv
+#### Builds moved from Poetry to hatchling (#547)
 
-### Build system: poetry to hatchling (#547)
-
-[Build system] moved from [poetry] to [hatchling].
-
-[Build system]: https://packaging.python.org/en/latest/tutorials/packaging-projects/#choosing-a-build-backend
-[poetry]: https://github.com/python-poetry/poetry
-[hatchling]: https://hatch.pypa.io/latest/
-
-### Development
-
-- Code quality: Use f-strings in more places (#540)
-
-  via [ruff 0.4.2](https://github.com/astral-sh/ruff/blob/v0.4.2/CHANGELOG.md).
+[hatchling](https://hatch.pypa.io/latest/) replaced Poetry as the build
+backend, following Python packaging guidance.
 
 ### Documentation
 
-- Fix docstrings in `query_list` for `MultipleObjectsReturned` and
-  `ObjectDoesNotExist`.
+#### Query-list docstrings were fixed
+
+The docs for `ObjectDoesNotExist` and `MultipleObjectsReturned` in the query
+list internals were corrected.
+
+### Development
+
+#### Ruff modernized more string formatting (#540)
+
+Ruff 0.4.2 applied more f-string modernization across the codebase.
 
 ## libtmux 0.37.0 (04-21-2024)
 
-_Maintenance only, no bug fixes or new features_
-
-### Testing
-
-- Add `pytest-xdist` ([PyPI](https://pypi.org/project/pytest-xdist/), [GitHub](https://github.com/pytest-dev/pytest-xdist)) for parallel testing (#522).
-
-  pytest:
-
-  ```console
-  py.test -n auto
-  ```
-
-  pytest-watcher:
-
-  ```console
-  env PYTEST_ADDOPTS='-n auto' make start
-  ```
-
-  entr(1):
-
-  ```console
-  make watch_test test="-n auto"
-  ```
-
-- Improve flakey tests:
-
-  - `retry_until()` tests: Relax clock in `assert` (#522).
-  - `tests/test_pane.py::test_capture_pane_start`: Use `retry_until()` to poll,
-    improve correctness of test (#522).
-
-### Documentation
-
-- Automatically linkify links that were previously only text.
+libtmux 0.37.0 is a test and maintenance release focused on parallel test runs
+and flaky-test cleanup.
 
 ### Development
 
-- poetry: 1.8.1 -> 1.8.2
+#### pytest can run in parallel (#522)
 
-  See also: https://github.com/python-poetry/poetry/blob/1.8.2/CHANGELOG.md
+`pytest-xdist` is available for parallel test runs.
+
+```console
+$ py.test -n auto
+```
+
+pytest-watcher can also inherit the option:
+
+```console
+$ env PYTEST_ADDOPTS='-n auto' make start
+```
+
+The release also relaxed timing-sensitive `retry_until()` assertions and made
+`test_capture_pane_start` poll for the expected state.
+
+#### Poetry and docs tooling were refreshed (#522)
+
+Poetry moved from 1.8.1 to 1.8.2, and links that had previously been plain
+text are now automatically linkified.
 
 ## libtmux 0.36.0 (2024-03-24)
 
-_Maintenance only, no bug fixes or new features_
+libtmux 0.36.0 is an automated lint-cleanup release.
 
 ### Development
 
-- Aggressive automated lint fixes via `ruff` (#539)
+#### Ruff applied aggressive automated fixes (#539)
 
-  via ruff v0.3.4, all automated lint fixes, including unsafe and previews were applied:
-
-  ```sh
-  ruff check --select ALL . --fix --unsafe-fixes --preview --show-fixes; ruff format .
-  ```
-
-  Branches were treated with:
-
-  ```sh
-  git rebase \
-      --strategy-option=theirs \
-      --exec 'poetry run ruff check --select ALL . --fix --unsafe-fixes --preview --show-fixes; poetry run ruff format .; git add src tests; git commit --amend --no-edit' \
-      origin/master
-  ```
+Ruff 0.3.4 was used to apply lint and format fixes across the codebase,
+including preview and unsafe fixes.
 
 ## libtmux 0.35.1 (2024-03-23)
 
-### Bug fix
+libtmux 0.35.1 fixes attached-session detection.
 
-- {attr}`Server.attached_sessions` fix for when multiple clients attached, thank you @patrislav1 (#537)
+### Fixes
 
-  - #538 fix to `QueryList`.
+#### `Server.attached_sessions` handles multiple clients (#537, #538)
+
+{attr}`~libtmux.Server.attached_sessions` now reports attached sessions
+correctly when multiple clients are attached. Thanks @patrislav1.
 
 ## libtmux 0.35.0 (2024-03-17)
 
+libtmux 0.35.0 removes redundant target/index handling.
+
 ### Breaking changes
 
-- Eliminate redundant targets / `window_index`'s across codebase (#536).
+#### Redundant targets and window indexes were removed (#536)
+
+Internal command construction no longer carries duplicate target and
+`window_index` values through the codebase.
 
 ## libtmux 0.34.0 (2024-03-17)
 
+libtmux 0.34.0 clarifies how custom command targets are passed.
+
 ### Breaking changes
 
-### Command target change (#535)
+#### `cmd()` target overrides are keyword-only (#535)
 
-Commands: All `cmd()` methods using custom or overridden targets must use the keyword argument
-`target`. This avoids entanglement with inner shell values that include `-t` for
-other purposes. These methods include:
+All object-level `cmd()` methods require the `target=` keyword for custom or
+overridden tmux targets. This avoids confusing tmux command targets with inner
+shell arguments that may also include `-t`.
 
-- {meth}`Server.cmd()`
-- {meth}`Session.cmd()`
-- {meth}`Window.cmd()`
-- {meth}`Pane.cmd()`
+Affected methods include {meth}`~libtmux.Server.cmd`,
+{meth}`~libtmux.Session.cmd`, {meth}`~libtmux.Window.cmd`, and
+{meth}`~libtmux.Pane.cmd`.
 
 ## libtmux 0.33.0 (2024-03-17)
 
+libtmux 0.33.0 reshapes session/window creation and pane splitting around
+clearer direction objects and keyword-only calls.
+
 ### Breaking changes
 
-### Improved new sessions (#532)
+#### Window creation and splitting use modern names (#532, #534)
 
-- `Session.new_window()`:
+{meth}`~libtmux.Session.new_window` learned `direction` via
+{class}`~libtmux.constants.WindowDirection`, and
+{meth}`~libtmux.Window.new_window` was added as a shorthand from an existing
+window's position. Arguments after the window name are keyword-only following
+[PEP 3102](https://www.python.org/dev/peps/pep-3102/).
 
-  - Learned `direction`, via {class}`~libtmux.constants.WindowDirection`).
-  - [PEP 3102] keyword-only arguments after window name (#534).
+{meth}`~libtmux.Window.split_window` is deprecated in favor of
+{meth}`~libtmux.Window.split`, and pane splitting moves from `vertical` /
+`horizontal` booleans to {class}`~libtmux.constants.PaneDirection`. The split
+API also gained `zoom`.
 
-- Added {meth}`Window.new_window()` shorthand to create window based on that
-  window's position.
+### What's new
 
-[PEP 3102]: https://www.python.org/dev/peps/pep-3102/
+#### Pane edge-position helpers were added (#532)
 
-### Improved window splitting (#532)
-
-- `Window.split_window()` to {meth}`Window.split()`
-
-  - Deprecate `Window.split_window()`
-
-- `Pane.split_window()` to {meth}`Pane.split()`
-
-  - Deprecate `Pane.split_window()`
-  - Learned `direction`, via {class}`~libtmux.constants.PaneDirection`).
-
-    - Deprecate `vertical` and `horizontal` in favor of `direction`.
-
-  - Learned `zoom`
-
-### Tweak: Pane position (#532)
-
-It's now possible to retrieve the position of a pane in a window via a
-`bool` helper::
-
-- {attr}`Pane.at_left`
-- {attr}`Pane.at_right`
-- {attr}`Pane.at_bottom`
-- {attr}`Pane.at_right`
+{class}`~libtmux.Pane` exposes boolean helpers for pane position within a
+window: {attr}`~libtmux.Pane.at_left`, {attr}`~libtmux.Pane.at_right`,
+{attr}`~libtmux.Pane.at_top`, and {attr}`~libtmux.Pane.at_bottom`.
 
 ### Development
 
-- poetry: 1.7.1 -> 1.8.1
+#### Poetry moved to 1.8.1
 
-  See also: https://github.com/python-poetry/poetry/blob/1.8.1/CHANGELOG.md
+The development dependency manager was updated to Poetry 1.8.1.
 
 ## libtmux 0.32.0 (2024-03-01)
 
-_Maintenance only, no bug fixes or new features_
-
-### Packaging
-
-- Add implicit imports to `__init__.py` (#531), thank you @ssbarnea.
+libtmux 0.32.0 is a packaging and tooling maintenance release.
 
 ### Development
 
-- ruff 0.2.2 -> 0.3.0
+#### Package imports and Ruff were refreshed (#531)
+
+Root package implicit imports were added to `__init__.py` thanks to @ssbarnea,
+and Ruff moved from 0.2.2 to 0.3.0.
 
 ## libtmux 0.31.0 (2024-02-17)
 
-### Cleanups (#527)
+libtmux 0.31.0 cleans up command method signatures and renames attached-object
+properties to active-object properties.
 
-- Streamline `{Server,Session,Window,Pane}.cmd()`, across all usages to:
-  - Use `cmd: str` as first positional
-  - Removed unused keyword arguments `**kwargs`
+### Breaking changes
 
-### Renamings (#527)
+#### `cmd()` methods were streamlined (#527)
 
-- `Session.attached_window` renamed to {meth}`Session.active_window`
+{meth}`~libtmux.Server.cmd`, {meth}`~libtmux.Session.cmd`,
+{meth}`~libtmux.Window.cmd`, and {meth}`~libtmux.Pane.cmd` now use the command
+string as the first positional argument and drop unused keyword arguments.
 
-  - `Session.attached_window` deprecated
+#### Attached-object names became active-object names (#527)
 
-- `Session.attached_pane` renamed to {meth}`Session.active_pane`
+`Session.attached_window`, `Session.attached_pane`, and `Window.attached_pane`
+were renamed to {attr}`~libtmux.Session.active_window`,
+{attr}`~libtmux.Session.active_pane`, and
+{attr}`~libtmux.Window.active_pane`. The old names were deprecated.
 
-  - `Session.attached_pane` deprecated
+### Documentation
 
-- `Window.attached_pane` renamed to {meth}`Window.active_pane`
+#### Command methods gained docs and doctests (#527)
 
-  - `Window.attached_pane` deprecated
+README and quickstart content now document `.cmd()` usage, and the command
+methods gained docstrings and doctests.
 
-### Improvements (#527)
+### Development
 
-- `Server.attached_windows` now uses `QueryList`'s `.filter()`
+#### `Server.attached_windows` uses `QueryList.filter()` (#527)
 
-### Documentation (#527)
+The implementation now relies on {meth}`~libtmux.common.QueryList.filter`.
 
-- Document `.cmd` in README and quickstart
-- Add doctests and improve docstrings to `cmd()` methods across:
-  - {meth}`Server.cmd()`
-  - {meth}`Session.cmd()`
-  - {meth}`Window.cmd()`
-  - {meth}`Pane.cmd()`
+### Post-release
 
-### Post-release: v0.31.0post0 (2024-02-17)
+#### v0.31.0post0 (2024-02-17)
 
-- Documentation updates
+Documentation-only updates followed the main release.
 
 ## libtmux 0.30.2 (2024-02-16)
 
+libtmux 0.30.2 updates known tmux version bounds.
+
 ### Development
 
-- Updated `TMUX_MAX_VERSION` from 3.3 to 3.4
+#### `TMUX_MAX_VERSION` moved to 3.4
+
+The known tmux maximum version changed from 3.3 to 3.4.
 
 ## libtmux 0.30.1 (2024-02-16)
 
+libtmux 0.30.1 aligns tests with the 0.30.0 method renames.
+
 ### Fixes
 
-- Adjusted pytest plugin and test module: Updated to use renamed methods from
-  version 0.30.0.
+#### pytest plugin tests use current method names
+
+The pytest plugin and test modules were updated to call the renamed 0.30.0
+methods.
 
 ## libtmux 0.30.0 (2024-02-16)
 
-### Additions
+libtmux 0.30.0 continues the modern object-method naming pass and adds pane
+kill support.
 
-- Introduced {meth}`Pane.kill()` method
+### What's new
 
-### Modifications
+#### Panes can be killed directly
 
-- `Window.select_window()` renamed to {meth}`Window.select()`
-  - Deprecated `Window.select_window()`
-- `Pane.select_pane()` renamed to {meth}`Pane.select()`
-  - Deprecated `Pane.pane_select()`
-- `Session.attach_session()` renamed to {meth}`Session.attach()`
-  - Deprecated `Session.attach_session()`
-- `Server.kill_server()` renamed to {meth}`Server.kill()`
-  - Deprecated `Server.kill_server()`
-- `Session.kill_session()` renamed to {meth}`Session.kill()`
-  - Deprecated `Session.kill_session()`
-- `Window.kill_window()` renamed to {meth}`Window.kill()`
-  - Deprecated `Window.kill_window()`
+{meth}`~libtmux.Pane.kill` was added.
 
-### Enhancements
+#### Creation and split methods gained useful arguments
 
-- {meth}`Server.new_session()`: Support environment variables
-- {meth}`Window.split_window()`: Support `size` via `-l`
+{meth}`~libtmux.Server.new_session` gained environment-variable support, and
+{meth}`~libtmux.Window.split_window` learned `size` for row/column counts or
+percentage values.
 
-  Supports columns/rows (`size=10`) and percentage (`size='10%'`)
+### Development
+
+#### Legacy method names were deprecated
+
+`Window.select_window`, `Pane.select_pane`, `Session.attach_session`,
+`Server.kill_server`, `Session.kill_session`, and `Window.kill_window` were
+renamed to their shorter modern methods and left behind deprecation warnings.
 
 ## libtmux 0.29.0 (2024-02-16)
 
+libtmux 0.29.0 prepares users for the method-renaming transition.
+
 ### Fixes
 
-- Use {exc}`DeprecationWarning` for APIs set to be deprecated (#526)
+#### Deprecation warnings use the standard warning class (#526)
 
-### Testing
-
-- pytest: Ignore {exc}`DeprecationWarning` by default (#526)
+APIs scheduled for deprecation now emit {class}`DeprecationWarning`, and pytest
+ignores those expected warnings by default.
 
 ## libtmux 0.28.1 (2024-02-15)
 
-_Maintenance only, no bug fixes or new features_
-
-### Testing
-
-- CI: Bump actions to node 20+ versions
+libtmux 0.28.1 is maintenance for the 0.28 transition.
 
 ### Documentation
 
-- Refine docs and add migration for v0.28.0
+#### 0.28 migration docs were refined
+
+The docs and migration guide were updated for the 0.28.0 behavior changes.
+
+### Development
+
+#### CI actions moved to Node 20
+
+GitHub Actions dependencies were bumped to Node 20-compatible versions.
 
 ## libtmux 0.28.0 (2024-02-14)
 
+libtmux 0.28.0 changes default attachment behavior and modernizes pane/window
+resizing.
+
 ### Breaking changes
 
-### Detached / unselected by default (#523)
+#### New windows and splits are detached by default (#523)
 
-To ensure consistency and principle of least surprise, keep these set to
-not use `-a` unless explicitly specified.
+{meth}`~libtmux.Session.new_window` and
+{meth}`~libtmux.Window.split_window` no longer attach/select by default.
+Pass `attach=True` to keep the older behavior.
 
-Breaking: {meth}`Session.new_window()` + {meth}`Window.split_window()` no longer attaches by default.
+#### Pane resizing moved to `Pane.resize()` (#523)
 
-- 0.28.0 and greater: Defaults to `attach=False`.
-- 0.27.1 and below: Defaults to `attach=True`.
+`Pane.resize_pane()` was renamed to {meth}`~libtmux.Pane.resize`. Directional
+flags now flow through {class}`~libtmux.constants.ResizeAdjustmentDirection`,
+and `height`, `width`, and zoom controls are supported.
 
-To keep the old behavior in 0.28.0 and beyond, pass `attach=True` explicitly.
+### What's new
 
-### Improved resizing (#523)
+#### Windows can be resized directly (#523)
 
-- Breaking: `Pane.resize_pane()` renamed to {meth}`Pane.resize()` (#523)
-
-  This convention will be more consistent with {meth}`Window.resize()`.
-
-- Breaking: {meth}`Pane.resize()`'s params changed (#523)
-
-  - No longer accepts `-U`, `-D`, `-L`, `-R` directly, instead accepts
-    {class}`~libtmux.constants.ResizeAdjustmentDirection`).
-
-- {meth}`Pane.resize()`:
-
-  - Accept adjustments via `adjustment_direction` w/
-    {class}`~libtmux.constants.ResizeAdjustmentDirection` + `adjustment`.
-
-  - Learned to accept manual `height` and / or `width` (columns/rows or percentage)
-
-  - Zoom (and unzoom)
-
-- {meth}`Window.resize()`: Newly added
-
-Tip: If {meth}`Pane.resize()` was not taking affect <= 0.27.1, try to resize with
-{meth}`Window.resize()` first.
+{meth}`~libtmux.Window.resize` was added. If pane resizing was ineffective in
+older releases, resizing the window first may be the better approach.
 
 ### Fixes
 
-- {meth}`Window.refresh()` and {meth}`Pane.refresh()`: Refresh more underlying state (#523)
-- {meth}`Obj._refresh`: Allow passing args (#523)
+#### Refresh and pane listing behavior improved (#523)
 
-  e.g. `-a` (all) to `list-panes` and `list-windows`
+{meth}`~libtmux.Window.refresh`, {meth}`~libtmux.Pane.refresh`, and the internal
+refresh path now capture more state, and `Server.panes` lists panes across the
+server instead of only the attached session.
 
-- `Server.panes`: Fix listing of panes (#523)
+### Development
 
-  Would list only panes in attached session, rather than all in a server.
+#### tmux 3.4 entered the test matrix (#909)
 
-### Improvement
-
-- Pane, Window: Improve parsing of option values that return numbers
-  (#520)
-- `Obj._refresh`: Allow passing `list_extra_args` to ensure `list-windows` and
-  `list-panes` can return more than the target (#523)
-
-### Tests
-
-- pytest: Fix `usefixture` warning (#519)
-- ci: Add tmux 3.4 to test matrix (#909)
+The test matrix gained tmux 3.4, and pytest fixture warnings were fixed (#519).
 
 ## libtmux 0.27.1 (2024-02-07)
 
-### Packaging
+libtmux 0.27.1 repairs source distribution contents.
 
-- Include `MIGRATION` in source distribution tarball (#517, for #508)
+### Development
+
+#### `MIGRATION` is included in sdists (#517)
+
+The source distribution now includes the migration guide needed by downstream
+packagers. Related to #508.
 
 ## libtmux 0.27.0 (2024-02-07)
 
-### Improvement
+libtmux 0.27.0 improves typed collection access.
 
-- QueryList typings (#515)
+### What's new
 
-  - This improves the annotations in descendant objects such as:
+#### `QueryList` annotations cover descendant collections (#515)
 
-    - `Server.sessions`
-    - `Session.windows`
-    - `Window.panes`
-
-  - Bolster tests (ported from `libvcs`): doctests and pytests
+{class}`~libtmux.common.QueryList` typing improved for
+{attr}`~libtmux.Server.sessions`, {attr}`~libtmux.Session.windows`, and
+{attr}`~libtmux.Window.panes`, with doctests and pytest coverage ported from
+libvcs.
 
 ## libtmux 0.26.0 (2024-02-06)
 
+libtmux 0.26.0 tightens a deprecated lookup signature and strengthens linting.
+
 ### Breaking changes
 
-- `get_by_id()` (already deprecated) keyword argument renamed from `id` to
-  `Server.get_by_id(session_id)`, `Session.get_by_id(window_id)`, and `Window.get_by_id(pane_id)` (#514)
+#### Deprecated `get_by_id()` keyword names became explicit (#514)
+
+The already-deprecated `get_by_id()` helpers now use object-specific keyword
+names: `session_id`, `window_id`, and `pane_id`.
 
 ### Documentation
 
-- Various docstring fixes and tweaks (#514)
+#### Docstrings were refreshed (#514)
+
+Several docstrings were corrected and clarified.
 
 ### Development
 
-- Strengthen linting (#514)
+#### Ruff lint coverage expanded (#514)
 
-  - Add flake8-commas (COM)
-
-    - https://docs.astral.sh/ruff/rules/#flake8-commas-com
-    - https://pypi.org/project/flake8-commas/
-
-  - Add flake8-builtins (A)
-
-    - https://docs.astral.sh/ruff/rules/#flake8-builtins-a
-    - https://pypi.org/project/flake8-builtins/
-
-  - Add flake8-errmsg (EM)
-
-    - https://docs.astral.sh/ruff/rules/#flake8-errmsg-em
-    - https://pypi.org/project/flake8-errmsg/
-
-### CI
-
-- Move CodeQL from advanced configuration file to GitHub's default
+The project enabled flake8-commas, flake8-builtins, and flake8-errmsg rules
+through Ruff, and CodeQL moved from an advanced configuration file to GitHub's
+default setup.
 
 ## libtmux 0.25.0 (2023-11-25)
 
-### Improvement
+libtmux 0.25.0 makes equality comparisons safer and continues docstring
+coverage work.
 
-- `Server.__eq__`, `Session.__eq__`, `Window.__eq__`, `Pane.__eq__` now returns `False` instead of raising `AssertionError` when type mismatches (#505, #510)
+### Fixes
 
-  Thank you @m1guelperez for `Window.__eq__`! (#505)
+#### Object equality returns `False` on type mismatch (#505, #510)
 
-### Development
-
-- ci: Add pydocstyle rule to ruff (#509)
+{meth}`~libtmux.Server.__eq__`, {meth}`~libtmux.Session.__eq__`,
+{meth}`~libtmux.Window.__eq__`, and {meth}`~libtmux.Pane.__eq__` now return
+`False` instead of raising {class}`AssertionError` when compared with another
+type. Thanks @m1guelperez for the window implementation.
 
 ### Documentation
 
-- Add docstrings to functions, methods, classes, and packages (#509)
+#### Docstrings were expanded (#509)
+
+Functions, methods, classes, and packages gained docstrings.
+
+### Development
+
+#### pydocstyle is enforced through Ruff (#509)
+
+CI now includes the pydocstyle rule set.
 
 ## libtmux 0.24.1 (2023-11-23)
 
-### Packaging
+libtmux 0.24.1 removes obsolete packaging files.
 
-- Remove `requirements/` folder, which was unused and deprecated by
-  pyproject.toml (#507)
-- pyproject: Add `gp-libs` to `test` dependency group
+### Development
+
+#### Legacy requirements files were removed (#507)
+
+The unused `requirements/` directory was removed in favor of `pyproject.toml`,
+and `gp-libs` was added to the test dependency group.
 
 ## libtmux 0.24.0 (2023-11-19)
 
-_Maintenance only, no bug fixes or new features_
+libtmux 0.24.0 drops Python 3.7 and moves more configuration into modern
+project files.
 
 ### Breaking changes
 
-- Python 3.7 Dropped (#497)
+#### Python 3.7 support was dropped (#497)
 
-### Packaging
-
-- Move pytest configuration to `pyproject.toml` (#499)
-- Poetry: 1.5.1 -> 1.6.1 (#497), 1.6.1 -> 1.7.0 (direct to trunk)
-
-  See also: https://github.com/python-poetry/poetry/blob/1.7.0/CHANGELOG.md
-
-- Packaging (poetry): Fix development dependencies
-
-  Per [Poetry's docs on managing dependencies] and `poetry check`, we had it wrong: Instead of using extras, we should create these:
-
-  ```toml
-  [tool.poetry.group.group-name.dependencies]
-  dev-dependency = "1.0.0"
-  ```
-
-  Which we now do.
-
-  [Poetry's docs on managing dependencies]: https://python-poetry.org/docs/master/managing-dependencies/
+Python 3.7 reached end of life on June 27, 2023. A 0.23.x branch can be kept
+for limited security maintenance if needed.
 
 ### Development
 
-- Move formatting from `black` to [`ruff format`] (#506)
+#### pytest and dependency groups moved into `pyproject.toml` (#499)
 
-  This retains the same formatting style of `black` while eliminating a
-  dev dependency by using our existing rust-based `ruff` linter.
+pytest configuration moved into `pyproject.toml`, Poetry moved through the
+1.6/1.7 line, and development dependencies now use Poetry dependency groups.
 
-  [`ruff format`]: https://docs.astral.sh/ruff/formatter/
+#### Ruff format replaced Black (#506)
 
-- CI: Update action packages to fix warnings
+Formatting moved from Black to `ruff format`, keeping the same style while
+removing a separate dependency.
 
-  - [dorny/paths-filter]: 2.7.0 -> 2.11.1
-  - [codecov/codecov-action]: 2 -> 3
+#### CI dependencies were refreshed
 
-  [dorny/paths-filter]: https://github.com/dorny/paths-filter
-  [codecov/codecov-action]: https://github.com/codecov/codecov-action
+`dorny/paths-filter` and `codecov/codecov-action` were updated.
 
 ## libtmux 0.23.2 (2023-09-09)
 
-_Maintenance only, no bug fixes or new features_
+libtmux 0.23.2 marks the final Python 3.7 cut of the 0.23.x line.
 
 ### Breaking changes
 
-- Cut last python 3.7 release (EOL was June 27th, 2023)
+#### Python 3.7 is at end of life
 
-  For security updates, a 0.23.x branch can be maintained for a limited time,
-  if necessary.
+This release exists as the final Python 3.7-compatible point before the
+project moves forward.
 
 ## libtmux 0.23.1 (2023-09-02)
 
-_Maintenance only, no bug fixes or new features_
+libtmux 0.23.1 is a typo and lint-rule maintenance release.
 
 ### Development
 
-- Automated typo fixes from [typos-cli]:
+#### typos-cli cleaned up spelling issues
 
-  ```console
-  typos --format brief --write-changes
-  ```
-
-  [typos-cli]: https://github.com/crate-ci/typos
-
-- ruff: Remove ERA / `eradicate` plugin
-
-  This rule had too many false positives to trust. Other ruff rules have been beneficial.
+Automated typo fixes were applied with [typos-cli](https://github.com/crate-ci/typos).
+The Ruff ERA / eradicate rule was removed because its false positives were too
+costly.
 
 ## libtmux 0.23.0 (2023-08-20)
 
-_Maintenance only, no bug fixes or new features_
+libtmux 0.23.0 is a Ruff-driven code-quality release.
 
 ### Development
 
-- Code quality improved via [ruff] rules (#488)
+#### More Ruff rules were applied (#488)
 
-  This includes fixes made by hand, and with ruff's automated fixes. Despite
-  selecting additional rules, which include import sorting, ruff runs nearly
-  instantaneously when checking the whole codebase.
+Additional Ruff rules, including import sorting, were applied by hand and with
+automated fixes.
 
-### Post-release: v0.23.0post0 (2023-08-20)
+### Post-release
 
-- Fixes code comments cleaned up by `ruff`, but missed in QA. In the future,
-  even when using an automated tool, we will review more thoroughly.
+#### v0.23.0post0 (2023-08-20)
 
-### Post-release: v0.23.0post1 (2023-08-26)
+Code comments missed during the initial Ruff QA pass were repaired.
 
-- Fixes for more `ERA001` issues.
+#### v0.23.0post1 (2023-08-26)
 
-### Post-release: v0.23.0post2 (2023-08-28)
+Additional ERA001 cleanups were applied.
 
-- Yet more `ERA001` fixes.
+#### v0.23.0post2 (2023-08-28)
+
+More ERA001 cleanups followed.
 
 ## libtmux 0.22.2 (2023-08-20)
 
+libtmux 0.22.2 removes an obsolete build dependency.
+
 ### Development
 
-- build system: Remove `setuptools` requirement (#495, in related to #493, #494)
+#### `setuptools` is no longer required (#495)
+
+The build system no longer requires setuptools. Related to #493 and #494.
 
 ## libtmux 0.22.1 (2023-05-28)
 
-_Maintenance only, no bug fixes or new features_
+libtmux 0.22.1 keeps Black available while Ruff formatting matures.
 
 ### Development
 
-- Add back `black` for formatting
+#### Black returned as a companion formatter
 
-  This is still necessary to accompany `ruff`, until it replaces black.
+Black was added back temporarily until Ruff fully replaced it for formatting.
 
 ## libtmux 0.22.0 (2023-05-27)
 
-_Maintenance only, no bug fixes or new features_
+libtmux 0.22.0 starts the migration to Ruff for linting, import sorting, and
+formatting.
 
-### Internal improvements
+### Development
 
-- Move formatting, import sorting, and linting to [ruff].
+#### Ruff replaces several Python quality tools
 
-  This rust-based checker has dramatically improved performance. Linting and
-  formatting can be done almost instantly.
-
-  This change replaces black, isort, flake8 and flake8 plugins.
-
-- poetry: 1.4.0 -> 1.5.0
-
-  See also: https://github.com/python-poetry/poetry/releases/tag/1.5.0
-
-[ruff]: https://ruff.rs
+[Ruff](https://ruff.rs) replaces Black, isort, flake8, and several flake8
+plugins for the main quality loop. Poetry also moved from 1.4.0 to 1.5.0.
 
 ## libtmux 0.21.1 (2023-04-07)
 
-### Development
-
-- Update mypy to 1.2.0
+libtmux 0.21.1 keeps mypy compatibility current.
 
 ### Fixes
 
-- SkipDefaultFieldsReprMixin: Fix typing for mypy 1.2.0
+#### Skip-default-fields repr typing works with mypy 1.2.0
+
+The repr mixin typing was fixed for mypy 1.2.0.
+
+### Development
+
+#### mypy moved to 1.2.0
+
+The type checker dependency was updated.
 
 ## libtmux 0.21.0 (2023-01-29)
 
-### Breaking internal change
+libtmux 0.21.0 changes the internal separator used for tmux format parsing.
 
-- Default format separator (`LIBTMUX_TMUX_FORMAT_SEPARATOR`): `|` -> `␞` (#475,
-  in re: #471, #472)
+### Breaking changes
 
-  Fixes `buffer_sample` with pipes causing `fetch_objs()`-powered listings to fail unexpectedly.
+#### The format separator changed from `|` to `␞` (#475)
+
+`LIBTMUX_TMUX_FORMAT_SEPARATOR` now defaults to the record-separator glyph,
+fixing `buffer_sample` and similar tmux format values that legitimately contain
+pipes. Related to #471 and #472.
 
 ## libtmux 0.20.0 (2023-01-15)
 
+libtmux 0.20.0 improves session sizing and test fixture customization.
+
 ### What's new
 
-- Server.new_session: Accept `x` and `y`, thanks
-  @rockandska (#469)
-- New test fixture: `session_params`. The dict is used directly in the `session`
-  pytest fixture (#470)
+#### Session creation accepts dimensions (#469)
+
+{meth}`~libtmux.Server.new_session` accepts `x` and `y` for tmux session size.
+Thanks @rockandska.
+
+#### The `session_params` fixture can override session creation (#470)
+
+{fixture}`session_params` is a dictionary consumed directly by the
+{fixture}`session` pytest fixture.
 
 ## libtmux 0.19.1 (2022-01-07)
 
+libtmux 0.19.1 removes a problematic refresh from window option setting.
+
 ### Fixes
 
-- `Window.set_window_option()`: Remove `.refresh()` (#467)
+#### `Window.set_window_option()` no longer refreshes (#467)
 
-  See also: https://github.com/tmux-python/tmuxp/issues/860
+The compatibility method stopped refreshing after setting a window option,
+matching downstream tmuxp expectations.
 
 ## libtmux 0.19.0 (2022-01-07)
 
-### New features
-
-- `pane.capture_pane()` learned to accept `start` and `end` line numbers (#465)
-
-## libtmux 0.18.3 (2023-01-07)
-
-### Improvement
-
-- `fetch_objs` now raises `ObjectDoesNotExist` with detailed information on
-  lookup that failed (#466)
-
-## libtmux 0.18.2 (2022-12-30)
-
-### Fixes
-
-- Server: Launching of new session with default socket (#857)
-
-## libtmux 0.18.1 (2022-12-28)
-
-### Fixes
-
-- Window.panes: Fix docstring
-- Remove unused code documentation
-
-## libtmux 0.18.0 (2022-12-27)
-
-### Breaking
-
-- Server: Add `__repr__` and set `socket_path` if none set.
-
-  Before (0.17 and below):
-
-  ```python
-  <libtmux.server.Server object at ...>
-  ```
-
-  New `__repr__` (0.18+):
-
-  ```python
-  Server(socket_name=test)
-  ```
-
-  ```python
-  Server(socket_path=/tmp/tmux-1000/default)
-  ```
-
-## libtmux 0.17.2 (2022-12-27)
-
-- Server: Move `_list_panes` and `_update_panes` to deprecated
-
-## libtmux 0.17.1 (2022-12-27)
-
-### Fixes
-
-- Documentation fixes
-- Add deprecation warning to `Server.children`, `Session.children`,
-  `Window.children`.
-
-## libtmux 0.17.0 (2022-12-26)
-
-### Breaking changes (#426)
-
-- Finding objects / relations
-
-  - 0.16 and below: `session._windows()`, `session.list_windows()`, etc.
-
-    0.17 and after: {attr}`session.windows <libtmux.Session.windows>`
-
-  - 0.16 and below: `session.find_where({'window_name': my_window})`
-
-    0.17 and after: {meth}`session.windows.get(window_name=my_window, default=None) <libtmux.Session.windows>`
-
-    - If not found and not `default`, raises {exc}`~libtmux._internal.query_list.ObjectDoesNotExist`
-    - If multiple objects found, raises {exc}`~libtmux._internal.query_list.MultipleObjectsReturned`
-
-  - 0.16 and below: `session.where({'window_name': my_window})`
-
-    0.17 and after: {meth}`session.windows.filter(window_name=my_window) <libtmux.Session.windows>`
-
-- Accessing attributes
-
-  - 0.16 and below: `window['id']`
-
-    0.17 and after: `window.id`
-
-  - 0.16 and below: `window.get('id')`
-
-    0.17 and after: `window.id`
-
-  - 0.16 and below: `window.get('id', None)`
-
-    0.17 and after: `getattr(window, 'id', None)`
-
-### New features
-
-### Detect if server active (#448)
-
-- `Server.is_alive()`
-- `Server.raise_if_dead()`
-
-### Internal
-
-- Remove unused `sphinx-click` development dependency
-
-## libtmux 0.16.1 (2022-12-12)
-
-### Fixes
-
-- Remove reliance on `packaging.version.Version` (#461)
-
-  This is too critical of a package to pin a dependency as it may interfere with other packages the user relies on. In addition, libtmux doesn't need strict compatibility with `packaging`.
-
-## libtmux 0.16.0 (2022-12-10)
-
-### Breaking changes
-
-- Fix `distutils` warning, vendorize `LegacyVersion` (#351)
-
-  Removal of reliancy on `distutils.version.LooseVersion`, which does not
-  support `tmux(1)` versions like `3.1a`.
-
-  Fixes warning:
-
-  > DeprecationWarning: distutils Version classes are deprecated. Use
-  > packaging.version instead.
-
-  The temporary workaround, before 0.16.0 (assuming _setup.cfg_):
-
-  ```ini
-  [tool:pytest]
-  filterwarnings =
-      ignore:.* Use packaging.version.*:DeprecationWarning::
-      ignore:The frontend.Option(Parser)? class.*:DeprecationWarning::
-  ```
-
-### Features
-
-- `Window.split_window()` and `Session.new_window()` now support an optional
-  dictionary of environmental variables, via (#453), credit @zappolowski.
-
-## libtmux 0.15.10 (2022-11-05)
-
-_There will be more improvements over the coming weeks and months to shore up
-flakiness across shells and environments._
-
-### Tests
-
-- Compatibility improvement for `test_capture_pane` and `env` (#452), credit:
-  @zappolowski!
-- Remove more BASHisms from tests (#455)
-
-## libtmux 0.15.9 (2022-10-30)
-
-### Bug fix
-
-- `tmux_cmd()`: Fix raise of TmuxCommandNotFound (#450)
-
-### CI
-
-- Use python 3.11 (#451)
-
-### Packaging
-
-- Add python 3.11 to trove classifiers (#451)
-
-### Development
-
-- Add python 3.11 to asdf and pyenv configurations (#451)
-
-## libtmux 0.15.8 (2022-10-02)
-
-### Bug fix
-
-- `Session.new_window()`: Improve support for `window_name: ''` downstream in tmuxp (#444, credit: @trankchung)
-
-## libtmux 0.15.7 (2022-09-23)
-
-- Move `.coveragerc` -> `pyproject.toml` (#443)
-
-## libtmux 0.15.6 (2022-09-23)
-
-_Maintenance only, no bug fixes or new features_
-
-### Packaging
-
-- Remove `MANIFEST.in`
-
-  This is handled by poetry's `include` in pyproject.toml.
-
-## libtmux 0.15.5 (2022-09-23)
-
-_Maintenance only, no bug fixes or new features_
-
-### Packaging
-
-- Remove `.tmuxp-before-script.sh` from `.tmuxp.yaml`
-
-## libtmux 0.15.4 (2022-09-21)
-
-### Fixes
-
-- Use stable `pytest` API imports where possible to fix issues in downstream
-  packaging on Arch (#441, via #442)
-
-### Packaging
-
-- Add `.tmuxp-before-script.sh` (used by `.tmuxp.yaml`) and `conftest.py` to
-  source distributoins (#441, via #442)
-
-## libtmux 0.15.3 (2022-09-20)
-
-### Tests / docs
-
-- Examples for pytest plugin (#439)
-- Move conftest.py to root level (#440)
-
-  - https://docs.pytest.org/en/stable/deprecations.html#pytest-plugins-in-non-top-level-conftest-files
-  - Less conftest.py files
-  - We can now run py.test for `README.md` without needing to proxy through
-    `docs/index.md`
-
-## libtmux 0.15.2 (2022-09-17)
-
-**Maintenance release, no features or fixes**
-
-### Tests
-
-- pytest plugin: Initial tests (for testing the plugin itself, #423)
-
-### Packaging
-
-- pyproject.toml: Note pytest framework in trove classifiers
-
-### Infrastructure
-
-- CI speedups (#428)
-
-  - Avoid fetching unused apt package
-  - Split out release to separate job so the PyPI Upload docker image isn't pulled on normal
-    runs
-
-## libtmux 0.15.1 (2022-09-11)
-
-### Packaging
-
-- pyproject.toml: Drop old issues package, remove anther package from grouping
-
-### Documentation
-
-- Cleanup quickstart page
-
-## libtmux 0.15.0 (2022-09-10)
-
-### New features
-
-- Added a [pytest plugin](https://libtmux.git-pull.com/pytest-plugin.html), #411.
-
-### Breaking changes
-
-- Remove `common.which()` in favor of {func}`shutil.which`, Credit:
-  @rocksandska, via #407
-- Fixes #402: {func}`common.tmux_cmd` will only strip _trailing_ empty lines. Before this change,
-  all empty lines were filtered out. This will lead to a more accurate behavior when using
-  {meth}`Pane.capture_pane`. Credit: @rockandska, via #405.
-- Source files for `libtmux` modules moved to `src/`, via #414.
-
-### Development
-
-- Add [flake8-bugbear](https://github.com/PyCQA/flake8-bugbear) (#408)
-- Add [flake8-comprehensions](https://github.com/adamchainz/flake8-comprehensions) (#409)
-
-### Tests
-
-- Test doctests in documentation via
-  [pytest-doctest-docutils](https://gp-libs.git-pull.com/doctest/pytest.html) (#410)
-
-### Documentation
-
-- Examples updated for correctness, #412 (cherry-picked from #410)
-- Render changelog in [linkify_issues](https://gp-libs.git-pull.com/linkify_issues/) (#410)
-- Fix Table of contents rendering with sphinx autodoc with
-  [sphinx_toctree_autodoc_fix](https://gp-libs.git-pull.com/sphinx_toctree_autodoc_fix/) (#410)
-
-## libtmux 0.14.2 (2022-08-17)
-
-### Fixes
-
-- {meth}`Server.new_session` _really_ works without `session_name`, #401 fixes
-  #399. Improved tests and doctests added.
-
-## libtmux 0.14.1 (2022-08-17)
-
-### Fixes
-
-- {meth}`Server.new_session` works without `session_name`, #400 fixes
-  #399
-
-  _This still passed `None` to the session name, this was fixed in v0.14.2._
-
-## libtmux 0.14.0 (2022-08-05)
-
-### Breaking changes
-
-- {meth}`Pane.send_keys`: `suppress_history` default value changed from `True` to
-  `False`, #395
-
-### Tests and docs
-
-- Initial [doctests] examples stubbed out #394
-
-  [doctests]: https://docs.python.org/3/library/doctest.html
-
-- Fix bug in `temp_window()` context manager, #394
-- Pytest configuration `conftest.py` moved to `libtmux/conftest.py`, so doctest can
-  detect the fixtures #394
-
-## libtmux 0.13.0 (2022-08-05)
+libtmux 0.19.0 adds ranged pane capture.
 
 ### What's new
 
-- **Improved typings**
+#### `Pane.capture_pane()` accepts `start` and `end` (#465)
 
-  Now [`mypy --strict`] compliant (#383)
+{meth}`~libtmux.Pane.capture_pane` can capture a specific line range.
 
-  Smaller touchups from #392
+## libtmux 0.18.3 (2023-01-07)
 
-  [`mypy --strict`]: https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-strict
+libtmux 0.18.3 improves failed-object lookup errors.
+
+### Fixes
+
+#### `fetch_objs()` reports lookup details (#466)
+
+{func}`~libtmux.neo.fetch_objs` now raises lookup errors with details about the
+failed search.
+
+## libtmux 0.18.2 (2022-12-30)
+
+libtmux 0.18.2 fixes default-socket session creation.
+
+### Fixes
+
+#### Server session launch works on the default socket (#857)
+
+Creating a new session on the default socket was repaired.
+
+## libtmux 0.18.1 (2022-12-28)
+
+libtmux 0.18.1 is a documentation cleanup release.
+
+### Fixes
+
+#### Window pane docs were corrected
+
+`Window.panes` docstrings and unused documentation were cleaned up.
+
+## libtmux 0.18.0 (2022-12-27)
+
+libtmux 0.18.0 gives servers useful representations and default socket paths.
 
 ### Breaking changes
 
-- Deprecated individual item lookups (#390)
+#### `Server.__repr__` now reports socket identity
 
-  - Removed key lookups from {meth}`libtmux.common.EnvironmentMixin.show_environment`
+{meth}`~libtmux.Server.__repr__` reports `socket_name` or `socket_path` instead
+of the default Python object repr.
 
-    Only `EnvironmentMixin.show_environment()` (without an argument) exists, and
-    it still returns a `dict`.
+## libtmux 0.17.2 (2022-12-27)
 
-  - Add key lookups via {meth}`libtmux.common.EnvironmentMixin.getenv`
-
-    ```python
-    # Before
-    server.show_environment('DISPLAY')
-
-    # After
-    server.getenv('DISPLAY')
-
-    # Before
-    session.show_environment('DISPLAY')
-
-    # After
-    session.getenv('DISPLAY')
-    ```
-
-  - Removed key lookups from {meth}`Session.show_options`
-
-    ```python
-    session.show_options()  # still returns dict, without an argument
-
-    # Old
-    session.show_options('DISPLAY')
-
-    # Now
-    session.show_option('DISPLAY')
-    ```
-
-  - Removed key lookups from {meth}`Window.show_window_options`
-
-    ```python
-    window.show_window_options()  # still returns dict, without an argument
-
-    # Old
-    window.show_window_options('DISPLAY')
-
-    # Now
-    window.show_window_option('DISPLAY')
-    ```
-
-- Remove `libtmux.test.retry()`, deprecated since 0.12.x (#393)
+libtmux 0.17.2 continues moving pane listing internals behind deprecation
+paths.
 
 ### Development
 
-- Fix incorrect function name `findWhere()` (#391)
+#### Server pane-listing internals were deprecated
+
+`Server._list_panes` and `Server._update_panes` moved to the deprecated API
+surface.
+
+## libtmux 0.17.1 (2022-12-27)
+
+libtmux 0.17.1 tightens documentation and child-collection deprecations.
+
+### Fixes
+
+#### Child collection deprecation warnings were added
+
+Documentation was fixed, and `Server.children`, `Session.children`, and
+`Window.children` now warn.
+
+## libtmux 0.17.0 (2022-12-26)
+
+libtmux 0.17.0 introduces the modern collection and attribute access model.
+
+### Breaking changes
+
+#### Relationships moved to collection attributes (#426)
+
+Use relation attributes such as {attr}`~libtmux.Session.windows` instead of
+methods such as `session.list_windows()` or `session._windows()`.
+
+```python
+# 0.16 and earlier
+session.find_where({"window_name": my_window})
+
+# 0.17 and later
+session.windows.get(window_name=my_window, default=None)
+```
+
+Missing results raise
+{exc}`~libtmux._internal.query_list.ObjectDoesNotExist`; ambiguous results raise
+{exc}`~libtmux._internal.query_list.MultipleObjectsReturned`.
+
+#### tmux data moved from mapping access to attributes (#426)
+
+Use attributes such as `window.id` instead of `window["id"]` or
+`window.get("id")`. Optional access can use Python's `getattr()`.
+
+### What's new
+
+#### Server liveness helpers were added (#448)
+
+{meth}`~libtmux.Server.is_alive` and
+{meth}`~libtmux.Server.raise_if_dead` report whether the tmux server is
+available.
+
+### Development
+
+#### `sphinx-click` was removed
+
+The unused development dependency was dropped.
+
+## libtmux 0.16.1 (2022-12-12)
+
+libtmux 0.16.1 removes an unnecessary version-parsing dependency.
+
+### Fixes
+
+#### `packaging.version.Version` is no longer required (#461)
+
+libtmux now avoids strict `packaging` version parsing so it does not pin or
+interfere with unrelated application dependencies.
+
+## libtmux 0.16.0 (2022-12-10)
+
+libtmux 0.16.0 removes `distutils` version parsing and improves environment
+support for new windows.
+
+### Breaking changes
+
+#### tmux version parsing no longer relies on `distutils` (#351)
+
+The project vendorizes legacy version handling instead of using
+`distutils.version.LooseVersion`, which cannot correctly model tmux versions
+such as `3.1a`.
+
+### What's new
+
+#### Window and session creation accept environment dictionaries (#453)
+
+{meth}`~libtmux.Window.split_window` and
+{meth}`~libtmux.Session.new_window` can pass environment variables into new tmux
+processes. Thanks @zappolowski.
+
+## libtmux 0.15.10 (2022-11-05)
+
+libtmux 0.15.10 continues shell/environment test stabilization.
+
+### Development
+
+#### Shell-specific test assumptions were reduced (#452, #455)
+
+`test_capture_pane` and environment tests were made more portable, and more
+Bash-specific assumptions were removed. Thanks @zappolowski.
+
+## libtmux 0.15.9 (2022-10-30)
+
+libtmux 0.15.9 fixes command-not-found behavior and updates Python metadata.
+
+### Fixes
+
+#### `tmux_cmd()` raises `TmuxCommandNotFound` correctly (#450)
+
+{func}`~libtmux.common.tmux_cmd` now reports missing tmux binaries through
+{exc}`~libtmux.exc.TmuxCommandNotFound`.
+
+### Development
+
+#### Python 3.11 support metadata was added (#451)
+
+CI uses Python 3.11, trove classifiers include it, and local version-tooling
+configuration was updated.
+
+## libtmux 0.15.8 (2022-10-02)
+
+libtmux 0.15.8 improves compatibility with tmuxp's empty window names.
+
+### Fixes
+
+#### Empty `window_name` is supported in `Session.new_window()` (#444)
+
+{meth}`~libtmux.Session.new_window` handles `window_name=""` more reliably for
+downstream tmuxp. Thanks @trankchung.
+
+## libtmux 0.15.7 (2022-09-23)
+
+libtmux 0.15.7 consolidates coverage configuration.
+
+### Development
+
+#### coverage config moved to `pyproject.toml` (#443)
+
+The separate `.coveragerc` file was removed.
+
+## libtmux 0.15.6 (2022-09-23)
+
+libtmux 0.15.6 removes an obsolete manifest file.
+
+### Development
+
+#### `MANIFEST.in` was removed
+
+Poetry's `pyproject.toml` include configuration now owns source distribution
+contents.
+
+## libtmux 0.15.5 (2022-09-23)
+
+libtmux 0.15.5 cleans up tmuxp workspace metadata.
+
+### Development
+
+#### `.tmuxp-before-script.sh` was removed from `.tmuxp.yaml`
+
+The tmuxp workspace config no longer references that helper.
+
+## libtmux 0.15.4 (2022-09-21)
+
+libtmux 0.15.4 fixes packaging and pytest compatibility.
+
+### Fixes
+
+#### Stable pytest imports support downstream packagers (#441, #442)
+
+pytest API imports now use stable paths where possible, helping downstream
+packages such as Arch.
+
+### Development
+
+#### source distributions include test support files (#441, #442)
+
+`.tmuxp-before-script.sh` and `conftest.py` are included in source
+distributions.
+
+## libtmux 0.15.3 (2022-09-20)
+
+libtmux 0.15.3 improves pytest plugin examples and doctest discovery.
+
+### Documentation
+
+#### pytest plugin examples were added (#439, #440)
+
+Examples for the pytest plugin were added, and `conftest.py` moved to the repo
+root so README doctests can run without proxying through `docs/index.md`.
+
+## libtmux 0.15.2 (2022-09-17)
+
+libtmux 0.15.2 is a maintenance release for test plugin coverage and CI speed.
+
+### Development
+
+#### pytest plugin tests and CI speedups landed (#423, #428)
+
+The pytest plugin gained initial self-tests, trove classifiers note pytest
+support, and CI avoids unnecessary package downloads while splitting release
+work into a separate job.
+
+## libtmux 0.15.1 (2022-09-11)
+
+libtmux 0.15.1 is a small packaging and docs cleanup.
+
+### Documentation
+
+#### Quickstart documentation was cleaned up
+
+The quickstart page was simplified.
+
+### Development
+
+#### Packaging groups were cleaned up
+
+Old issue package metadata and an extra package grouping were removed.
+
+## libtmux 0.15.0 (2022-09-10)
+
+libtmux 0.15.0 adds the pytest plugin and moves the package into the modern
+`src/` layout.
+
+### Breaking changes
+
+#### `common.which()` was replaced with `shutil.which()` (#407)
+
+The project now relies on {func}`shutil.which` for executable lookup. Thanks
+@rocksandska.
+
+#### `tmux_cmd` preserves interior empty lines (#405)
+
+{func}`~libtmux.common.tmux_cmd` now strips only trailing empty lines. This
+better matches {meth}`~libtmux.Pane.capture_pane` output. Fixes #402. Thanks
+@rockandska.
+
+#### Source files moved into `src/` (#414)
+
+The package adopted the `src/` layout.
+
+### What's new
+
+#### pytest plugin added (#411)
+
+libtmux now ships a pytest plugin for tests that need tmux fixtures.
+
+### Documentation
+
+#### Docs doctests and changelog rendering improved (#410, #412)
+
+Documentation examples were corrected, doctests are exercised through
+pytest-doctest-docutils, changelog issue references are linkified, and autodoc
+table-of-contents rendering was repaired.
+
+### Development
+
+#### flake8 plugins were added (#408, #409)
+
+flake8-bugbear and flake8-comprehensions joined the development toolchain.
+
+## libtmux 0.14.2 (2022-08-17)
+
+libtmux 0.14.2 completes the `new_session()` fix started in 0.14.1.
+
+### Fixes
+
+#### `Server.new_session()` works without `session_name` (#401)
+
+{meth}`~libtmux.Server.new_session` no longer passes `None` as the session
+name. Fixes #399.
+
+## libtmux 0.14.1 (2022-08-17)
+
+libtmux 0.14.1 starts fixing unnamed session creation.
+
+### Fixes
+
+#### `Server.new_session()` accepts omitted `session_name` (#400)
+
+{meth}`~libtmux.Server.new_session` can be called without `session_name`,
+although 0.14.2 completed the remaining `None` handling. Fixes #399.
+
+## libtmux 0.14.0 (2022-08-05)
+
+libtmux 0.14.0 changes the `send_keys` history default and sets up executable
+doctests.
+
+### Breaking changes
+
+#### `Pane.send_keys(suppress_history)` defaults to `False` (#395)
+
+{meth}`~libtmux.Pane.send_keys` no longer suppresses shell history unless asked
+to do so.
+
+### Documentation
+
+#### Doctest fixtures were introduced (#394)
+
+Initial doctest examples landed, `temp_window()` was fixed, and pytest config
+moved so doctests can discover the libtmux fixtures.
+
+## libtmux 0.13.0 (2022-08-05)
+
+libtmux 0.13.0 reaches strict mypy compliance and removes older item-lookup
+shortcuts.
+
+### Breaking changes
+
+#### Individual option/environment item lookups were removed (#390)
+
+Bulk methods such as `show_environment()` and `show_options()` now keep their
+dictionary-returning behavior, while single-key access moves to explicit
+methods such as `getenv()` and `show_option()`.
+
+```python
+# Before
+server.show_environment("DISPLAY")
+
+# After
+server.getenv("DISPLAY")
+```
+
+```python
+# Before
+session.show_options("base-index")
+
+# After
+session.show_option("base-index")
+```
+
+`libtmux.test.retry()` was removed after its 0.12 deprecation period (#393).
+
+### What's new
+
+#### Typing reached `mypy --strict` (#383, #392)
+
+Core modules now satisfy strict mypy checks.
+
+### Development
+
+#### A stray legacy name was fixed (#391)
+
+The incorrect `findWhere()` spelling was corrected.
 
 ## libtmux 0.12.0 (2022-07-13)
 
-### Compatibility
+libtmux 0.12.0 restores Python 3.7/3.8 support, expands tmux compatibility, and
+adds the retry helper that replaced the old test retry API.
 
-- Brought back python 3.7 and 3.8 support (#375)
-- Support for tmux 3.3a
+### What's new
 
-  - Add to CI
-  - Bump `TMUX_MAX_VERSION` from 2.4 -> 3.3
+#### tmux 3.3a is in the supported range
 
-    _2.4 to 3.3a already worked, this is just the constant
-    being updated._
+tmux 3.3a was added to CI, and `TMUX_MAX_VERSION` moved from 2.4 to 3.3.
 
-### Development
+#### `retry_until()` replaces the old retry helper (#368, #372)
 
-- Remove tox and tox-poetry-installer
-
-  This created issues with running poetry while inside the virtualenv.
-
-- Typings: Core relations, e.g. `Pane.window`, `Pane.session`, `Pane.server`, `Window.server` #385
+{func}`libtmux.test.retry.retry_until` polls a callback until it succeeds or
+times out, raising {exc}`~libtmux.exc.WaitTimeout` by default. Thanks
+@categulario.
 
 ### Documentation
 
-- Renewed logo
-- Try out sphinx-autoapi for its table of contents generation (#367)
-- Break up API documentations for utilities, exception, and test helpers and
-  remove duplicate docs from API page. Server, session, window, and pane docs
-  are in the Reference section now.
+#### API documentation was reorganized (#367)
 
-### Testing
+The docs gained a renewed logo, split API pages for utilities, exceptions, and
+test helpers, and new Reference sections for server, session, window, and pane
+objects.
 
-- `retry()`: Add deprecation warning. This will be removed in 0.13.x (#368, #372)
-- New function `retry_until()`: Polls a callback function for a set period of time until it returns `True` or times out. By default it will raise {exc}`libtmux.exc.WaitTimeout`, with `raises=False` it will return `False`. Thank you @categulario! (#368, #372)
-- #384 Chore: Use absolute modules rather than root-level to avoid cyclic imports.
+### Development
 
-  ```python
-  # Bad / Old
-  from libtmux import Server
+#### Python 3.7 and 3.8 returned (#375)
 
-  # Good / New
-  from libtmux.server import Server
-  ```
-
-### Internals
-
-- #382 [mypy] support added:
-
-  - Basic mypy tests now pass
+Support for Python 3.7 and 3.8 was restored, tox was removed, and core object
+relations gained type annotations (#385).
 
 ## libtmux 0.11.0 (2022-03-10)
 
+libtmux 0.11.0 adds early typing work and documents the format-separator escape
+hatch.
+
 ### Compatibility
 
-- Python 3.7 and 3.8 returns in 0.12.0
+#### Python 3.7 and 3.8 support was extended later
 
-  *Note: This was not the final Python 3.7 and 3.8 release as originally stated.
-  Python 3.7 and 3.8 support was extended in 0.12.0.*
+This release originally marked Python 3.7/3.8 as ending, but 0.12.0 restored
+support.
 
-- Internal: Use new separator to split `tmux(1)` formatting information (#289,
-  #343)
+#### tmux format splitting became configurable (#289, #343)
 
-  The separator is configurable via `LIBTMUX_TMUX_FORMAT_SEPARATOR`. If you ever
-  have compatibility issues in the future let us know which default works best
-  across versions.
-
-  Credit: @JonathanRaiman and @jagguli
-
-- Basic type annotations (#359, #361) via @otherJL0
-
-### Development
-
-- Code cleanup (#362) from @otherJL0
-- Format with black w/ string normalization. This is a one-time diff (#354)
+The internal separator used to split tmux format output is configurable through
+`LIBTMUX_TMUX_FORMAT_SEPARATOR`. Thanks @JonathanRaiman and @jagguli.
 
 ### Documentation
 
-- Sidebar reorganized into sections
-- Added documentation on fetching developmental releases of libtmux
+#### The sidebar and development-release docs were reorganized
 
-## libtmux 0.10.3 (2022-01-10)
-
-### Packaging
-
-First experimental release using `poetry build` (#347). If you are packaging and run
-across any difficulty please see #346.
-
-### Compatibility
-
-- Drop python 3.6 (#344)
-- Add python 3.10, though still `packaging.version` issues remain (#344)
-
-  A compat module and version constraints will need to be added for this
+The docs gained sectioned navigation and instructions for installing
+developmental releases.
 
 ### Development
 
-- poetry: 1.1.7 -> 1.1.12 (#344)
-- Add `.pre-commit-config.yaml` (#344)
+#### Basic type annotations were added (#359, #361)
+
+Early annotations, cleanup, and one-time Black formatting landed. Thanks
+@otherJL0.
+
+## libtmux 0.10.3 (2022-01-10)
+
+libtmux 0.10.3 is the first experimental Poetry-built release.
+
+### Compatibility
+
+#### Python 3.6 support was dropped (#344)
+
+Python 3.10 metadata was added, with a note that version constraints still
+needed more compatibility work.
+
+### Development
+
+#### Poetry build support landed (#347)
+
+The project started using `poetry build`, moved Poetry to 1.1.12, and added
+pre-commit configuration. Packagers were directed to #346 for issues.
 
 ## libtmux 0.10.2 (2021-10-30)
 
-- #324: Update poetry to 1.1
-  - CI: Use poetry 1.1.7 and `install-poetry.py` installer
-  - Relock poetry.lock at 1.1 (w/ 1.1.7's fix)
-- #339 (CI): Lock python at 3.9 to avoid poetry issue with `dataclasses`
-- ci: Fix publishing docs (similar to #339)
-- #341 #342: `Server.attached_sessions()` now supports multiple attached sessions.
+libtmux 0.10.2 updates Poetry-era CI and attached-session handling.
 
-  Remove attached sessions limitation to not detect multiple attached clients,
-  thank you @timoses
+### Fixes
+
+#### Multiple attached sessions are supported (#341, #342)
+
+`Server.attached_sessions()` no longer assumes only one attached client. Thanks
+@timoses.
+
+### Development
+
+#### Poetry 1.1 tooling was refreshed (#324, #339)
+
+CI uses Poetry 1.1.7, Python was locked at 3.9 to avoid the `dataclasses`
+issue, and docs publishing was repaired.
 
 ## libtmux 0.10.1 (2021-06-16)
 
-- Update `Window.select_window()` for #271
+libtmux 0.10.1 updates a window-selection compatibility path.
+
+### Fixes
+
+#### `Window.select_window()` was updated for #271
+
+The compatibility method picked up the session-target fix.
 
 ## libtmux 0.10.0 (2021-06-16)
 
-- #321: Convert to markdown
-- #271: Fix `select_window()` by providing the session ID as
-  argument to `-t`. Thanks @Flowdalic
-- Drop python 3.5 support
+libtmux 0.10.0 moves the changelog to Markdown, fixes window selection, and
+drops Python 3.5.
+
+### Breaking changes
+
+#### Python 3.5 support was dropped
+
+The supported Python range moved forward.
+
+### Fixes
+
+#### `select_window()` targets the session ID (#271)
+
+Window selection now passes the session ID to tmux's `-t` argument. Thanks
+@Flowdalic.
+
+### Documentation
+
+#### CHANGES was converted to Markdown (#321)
+
+The changelog moved from reStructuredText to Markdown.
 
 ## libtmux 0.9.0 (2021-06-14)
 
-Python 2.7 support dropped.
+libtmux 0.9.0 drops Python 2.7 and updates the Python 3 toolchain.
 
-- #306: chore: Remove python 2.7 support
-- #314: chore: Python 3.x syntax tweaks
-- #312: ci: Add tmux 3.2a to CI
-- chore: Update black to [21.6b0](https://github.com/psf/black/blob/21.6b0/CHANGES.md#216b0)
-- #271: Fix select_window() by providing the session ID as
-  argument to -t.
+### Breaking changes
+
+#### Python 2.7 support was dropped (#306)
+
+The codebase moved fully to Python 3 syntax. The CI matrix added tmux 3.2a, and
+Black moved to 21.6b0 (#312, #314).
+
+### Fixes
+
+#### `select_window()` targets the session ID (#271)
+
+The session-target fix also appears in this release line.
 
 ## libtmux 0.8.5 (2020-10-25)
 
-- #297: Enchance subprocess interaction std[in|out|err]. Needed
-  for interact with big buffer, fixes #251, thank you
-  @gil-obradors!
-- #303 Add `common.get_libtmux_version` which gives the tmux
-  version as a loose constraint. Fix linking to terms inside docs, and
-  duplicate description of module which sphinx warned about in api.rst.
-- #266 Fix issue on local tests where env variables would cause
-  show-environment to pause tests indefinitely.
+libtmux 0.8.5 improves subprocess interaction, version reporting, and
+environment tests.
+
+### What's new
+
+#### Subprocess pipes handle large buffers better (#297)
+
+stdin/stdout/stderr handling was improved for large buffer interaction, fixing
+#251. Thanks @gil-obradors.
+
+#### `get_libtmux_version()` reports tmux-compatible versions (#303)
+
+`common.get_libtmux_version` was added, docs links were repaired, and duplicate
+Sphinx module descriptions were removed.
+
+### Fixes
+
+#### Environment tests no longer hang on local values (#266)
+
+Local environment variables no longer cause `show-environment` tests to pause
+indefinitely.
 
 ## libtmux 0.8.4 (2020-10-25)
 
-- #234: `Window.split_window`: Allow passing `percent`, Thank
-  you @jinankjain!
-- #289: Fix warning due to invalid escape sequences, Thank you
-  @tirkarthi!
-- #295: Publish docs via our own action
-- #295: Move more packaging over to poetry, though we'll keep
-  setup.py for the moment to ensure compatibility package maintainers.
-- #295: New development instructions
-- #295: Move doc/ to docs/
-- #296: CI: Test python 2.7, cache python packages, prevent running
-  internal PRs twice
+libtmux 0.8.4 updates split-window support, packaging, docs, and CI.
+
+### What's new
+
+#### `Window.split_window` accepts percentages (#234)
+
+`Window.split_window` can pass percentage sizing. Thanks @jinankjain.
+
+### Fixes
+
+#### Invalid escape warnings were fixed (#289)
+
+Warnings from invalid escape sequences were fixed. Thanks @tirkarthi.
+
+### Documentation
+
+#### Documentation moved to `docs/` (#295)
+
+Docs publishing moved to the project's own action, development instructions
+were refreshed, and the old `doc/` tree moved to `docs/`.
+
+### Development
+
+#### Poetry and CI were expanded (#295, #296)
+
+More packaging moved to Poetry while retaining `setup.py`, and CI was updated
+for Python 2.7 caching and internal PR behavior.
 
 ## libtmux 0.8.3 (2020-08-16)
 
-- #278: Fix Python deprecation warnings, thanks @d1618033
+libtmux 0.8.3 is a Python warning, packaging, and CI cleanup release.
 
-  Also thanks Flowdalic for a similar PR at #294
+### Fixes
 
-- Add `project_urls` to setup.py
-- #293 Move from Pipfile to poetry
-- Fix show_option test in tmux 3.0
-- Clean up handle_option_error comments
-- Move CI to a GitHub action
+#### Python deprecation warnings were fixed (#278)
+
+Deprecation warnings were cleaned up. Thanks @d1618033 and Flowdalic.
+
+### Development
+
+#### Packaging and CI moved forward (#293)
+
+`project_urls` were added, the project moved from Pipfile to Poetry, tmux 3.0
+option tests were fixed, option-error comments were cleaned up, and CI moved to
+GitHub Actions.
 
 ## libtmux 0.8.2 (2019-06-02)
 
-- CHANGES updated to plain reStructuredText
-- Add `project_urls` to setup.py for pypi.
-- Looser Pipfile versions, add Pipfile.lock
+libtmux 0.8.2 is a packaging and changelog-format release.
+
+### Documentation
+
+#### CHANGES used plain reStructuredText
+
+The changelog was converted to plain reStructuredText.
+
+### Development
+
+#### PyPI metadata and Pipfile constraints were updated
+
+`project_urls` were added to `setup.py`, Pipfile constraints were loosened, and
+`Pipfile.lock` was added.
 
 ## libtmux 0.8.1 (2019-01-26)
 
-- #117 Fix issue with renaming clients with tmux 2.7 on BSD/macOS
-  machines.
-- #121 Support `literal=True` (`-l`) in `Pane.send_keys`
-  from @ritiek
-- #131 Fix for unicode commands in Python 2, thanks @myw
-- #172 Support for next-X.Y versions from @sloria
-- #120 `capture_pane` support for `Pane`
-- #119 `display_message` support for `Pane`
-- Sort imports with isort
-- Add sphinxcontrib-napoleon package for documentation
-- Move docstrings over to numpy's style
+libtmux 0.8.1 fixes several tmux compatibility gaps and moves docs toward
+NumPy-style docstrings.
+
+### What's new
+
+#### Pane capture, display, and literal key support landed (#119, #120, #121)
+
+{meth}`~libtmux.Pane.capture_pane`,
+{meth}`~libtmux.Pane.display_message`, and `literal=True` support for
+{meth}`~libtmux.Pane.send_keys` were added. Thanks @ritiek.
+
+### Fixes
+
+#### Client renaming works on tmux 2.7 BSD/macOS (#117)
+
+Renaming clients on BSD/macOS with tmux 2.7 was repaired.
+
+#### Unicode commands and next-version support improved (#131, #172)
+
+Unicode command handling was fixed for Python 2 thanks to @myw, and next-X.Y
+version parsing gained support thanks to @sloria.
+
+### Documentation
+
+#### Docs moved to NumPy-style docstrings
+
+Imports were sorted, sphinxcontrib-napoleon was added, and docstrings moved to
+NumPy style.
 
 ## libtmux 0.8.0 (2018-03-11)
 
-- #46 Change license from BSD to MIT
-- Move to new organization, tmux-python
-- Support package updates to pytest, sphinx, etc.
-- Travis/CI: Limit tests to Python 2.7 and 3.6 (removed 3.3 to 3.5)
-- Travis/CI: Update pypy veersions
-- #103 `Server.new_session` learned how to run commands in
-  window on session start, thanks @grimpy!
-- #68 Make Server.has_session() use returncode, thanks
-  @jlargentaye! This should make `has_session` more robust.
+libtmux 0.8.0 moves the project to the tmux-python organization and broadens
+session-start support.
+
+### Breaking changes
+
+#### License and organization changed (#46)
+
+The license changed from BSD to MIT, and the project moved into the
+tmux-python organization.
+
+### What's new
+
+#### `Server.new_session()` can run commands at startup (#103)
+
+{meth}`~libtmux.Server.new_session` learned how to run commands in the new
+window on session start. Thanks @grimpy.
+
+### Fixes
+
+#### `Server.has_session()` uses tmux return codes (#68)
+
+{meth}`~libtmux.Server.has_session` became more robust by checking tmux's return
+code. Thanks @jlargentaye.
+
+### Development
+
+#### Dependencies and CI were refreshed
+
+pytest, Sphinx, Travis, PyPy, and supported Python versions were updated.
 
 ## libtmux 0.7.8 (2018-03-04)
 
-- Port `retry` function from tmuxp
-  (<https://github.com/tmux-python/tmuxp/issues/354>)
+libtmux 0.7.8 ports tmuxp retry support.
+
+### What's new
+
+#### `retry` moved in from tmuxp
+
+The retry helper was ported from tmuxp for shared behavior.
 
 ## libtmux 0.7.7 (2017-11-10)
 
-- Don't add -x/-y in tmux >= 2.6 if running tmuxp from inside
-  client.
+libtmux 0.7.7 fixes tmux 2.6 session sizing from inside clients.
+
+### Fixes
+
+#### tmux 2.6 no longer receives unsupported `-x` / `-y`
+
+libtmux avoids those flags when running from inside a client on tmux 2.6+.
 
 ## libtmux 0.7.6 (2017-11-09)
 
-- Allow `Window.select_layout` with no args
-- Fix test where `bell-` was no longer ambiguous as of tmux 2.6
+libtmux 0.7.6 repairs layout selection and option ambiguity tests.
+
+### Fixes
+
+#### `Window.select_layout` can be called without arguments
+
+The layout-selection helper accepts the tmux default path again, and tests were
+updated for tmux 2.6 option ambiguity behavior.
 
 ## libtmux 0.7.5 (2017-10-07)
 
-- Hotfix to support tmux 2.6 session creation
+libtmux 0.7.5 is a tmux 2.6 hotfix.
+
+### Fixes
+
+#### tmux 2.6 session creation works
+
+Session creation was patched for tmux 2.6 compatibility.
 
 ## libtmux 0.7.4 (2017-08-19)
 
-- #65 Add session id to commands, thanks [@askedrelic]
+libtmux 0.7.4 fixes command targeting.
+
+### Fixes
+
+#### Commands include session IDs (#65)
+
+tmux commands now include the relevant session id. Thanks @askedrelic.
 
 ## libtmux 0.7.3 (2017-05-29)
 
-- Exact matches only supported on 2.1 and up
+libtmux 0.7.3 records exact-match support limits.
+
+### Compatibility
+
+#### Exact matches require tmux 2.1+
+
+Exact matching is only supported on tmux 2.1 and later.
 
 ## libtmux 0.7.2 (2017-05-29)
 
-- Support exact matching in `Server.has_session`
+libtmux 0.7.2 adds exact matching to session lookup.
+
+### What's new
+
+#### `Server.has_session` supports exact matching
+
+{meth}`~libtmux.Server.has_session` can check for exact session names.
 
 ## libtmux 0.7.1 (2017-04-28)
 
-- #37 Improve support for formatted options like
-  `pane-border-status`. Thanks @kaushalmodi.
+libtmux 0.7.1 improves formatted option handling.
+
+### Fixes
+
+#### Formatted options such as `pane-border-status` are supported (#37)
+
+Option parsing works better for formatted tmux options. Thanks @kaushalmodi.
 
 ## libtmux 0.7.0 (2017-04-27)
 
-- Support for python 2.6 dropped. New minimum version is 2.7
-- Add support for tmux 2.4, pypy and pypy3
-- Overhaul error handling when setting and showing options
+libtmux 0.7.0 drops Python 2.6, adds tmux 2.4 support, and overhauls option
+errors and version checks.
 
-  - Added `handle_option_error` for handling option errors
-  - Added {exc}`libtmux.exc.OptionError` base exception
-  - Added {exc}`libtmux.exc.InvalidOption` and `libtmux.exc.AmbiguousOption`
-  - {exc}`libtmux.exc.UnknownOption` now extends {exc}`libtmux.exc.OptionError`
+### Breaking changes
 
-- Overhaul version checking
+#### Python 2.6 support was dropped
 
-  - `has_version` has been renamed to `get_version`
-  - `get_version` will return tmux built from git master as the latest version supported by the libtmux version with `-master` at the end, e.g. `2.4-master`
-  - `get_version` will return tmux on openbsd base system as the latest version supported by the libtmux version with `-openbsd` at the end, e.g. `2.4-openbsd`
-  - `has_required_tmux_version` has been renamed to `has_minimum_version`
-  - added `has_gt_version`, `has_gte_version`, `has_lt_version`, `has_lte_version`,
+Python 2.7 became the minimum supported Python version.
 
-- Fixed up documentation in some session methods
-- Added pydoc exception info to option methods in window and sessions.
-- Added `TMUX_MIN_VERSION` and `TMUX_MAX_VERSION`
+#### Version helper names changed
+
+`has_version` was renamed to `get_version`,
+`has_required_tmux_version` was renamed to `has_minimum_version`, and
+comparison helpers such as `has_gt_version`, `has_gte_version`,
+`has_lt_version`, and `has_lte_version` were added.
+
+### What's new
+
+#### Option errors have a dedicated hierarchy
+
+{exc}`libtmux.exc.OptionError` became the base class for
+{exc}`libtmux.exc.InvalidOption`, `libtmux.exc.AmbiguousOption`, and
+{exc}`libtmux.exc.UnknownOption`.
+
+#### tmux master and OpenBSD versions are represented explicitly
+
+`get_version` reports tmux built from master with a `-master` suffix and OpenBSD
+base tmux with an `-openbsd` suffix.
+
+### Documentation
+
+#### Session method docs were improved
+
+Session documentation and option-method exception details were cleaned up.
+
+### Development
+
+#### tmux 2.4, PyPy, and version bounds were added
+
+The release added support for tmux 2.4, PyPy/PyPy3,
+`TMUX_MIN_VERSION`, and `TMUX_MAX_VERSION`.
 
 ## libtmux 0.6.5 (2017-04-02)
 
-- Fix `which` command
-- Add `TmuxCommandNotFound` exception
-- Add `tmux_search_paths` and `append_env_path` kwargs to
-  `tmux_cmd`.
+libtmux 0.6.5 improves tmux binary lookup.
+
+### What's new
+
+#### `tmux_cmd` can search custom paths
+
+`tmux_search_paths` and `append_env_path` were added, and
+{exc}`~libtmux.exc.TmuxCommandNotFound` reports missing tmux executables.
 
 ## libtmux 0.6.4 (2017-03-25)
 
-- #32 support for OpenBSD's tmux
+libtmux 0.6.4 adds OpenBSD tmux support.
+
+### Compatibility
+
+#### OpenBSD tmux is supported (#32)
+
+The version and command handling paths now account for OpenBSD tmux.
 
 ## libtmux 0.6.3 (2017-02-08)
 
-- #25 support for working with tmux `master`, thanks @sloria.
+libtmux 0.6.3 supports tmux built from master.
+
+### Compatibility
+
+#### tmux master builds are recognized (#25)
+
+Version handling supports tmux built from unreleased master. Thanks @sloria.
 
 ## libtmux 0.6.2 (2017-01-19)
 
-- #197 use `LooseVersion` instead of `StrictVersion` for version
-  checks. Thanks @minijackson.
-- Pin packages with pyup.io
-- #21 Readme fix from @huwenchao.
+libtmux 0.6.2 relaxes version parsing and updates packaging.
+
+### Fixes
+
+#### Loose version parsing handles more tmux versions (#197)
+
+`LooseVersion` replaced `StrictVersion` for tmux version checks. Thanks
+@minijackson.
+
+### Documentation
+
+#### README fixes landed (#21)
+
+The README was corrected. Thanks @huwenchao.
+
+### Development
+
+#### Package pins were maintained with pyup.io
+
+Dependency pin maintenance moved through pyup.io.
 
 ## libtmux 0.6.1 (2016-12-20)
 
-- #18 Fix logger, courtesy of @geekli
-- #19 Add support for `start_directory` in new sessions and
-  panes, courtesy of @gandelman-a.
-- Fix tests and add official support for 2.3
+libtmux 0.6.1 fixes logging, start directories, and tmux 2.3 support.
+
+### What's new
+
+#### start directories are supported for sessions and panes (#19)
+
+New sessions and panes can receive `start_directory`. Thanks @gandelman-a.
+
+### Fixes
+
+#### Logger behavior was repaired (#18)
+
+Logging was fixed thanks to @geekli.
+
+### Development
+
+#### tmux 2.3 is officially supported
+
+Tests were fixed and tmux 2.3 support was added.
 
 ## libtmux 0.6.0 (2016-09-16)
 
-- Raise exception for invalid session names. tmux does not
-  allow names that are empty, contain periods or colons.
-- Remove unused `target_session` param in
-  `Server.attach_session` and `Server.switch_client`.
+libtmux 0.6.0 validates session names and trims unused attachment parameters.
+
+### Fixes
+
+#### Invalid session names raise errors
+
+tmux session names cannot be empty or contain periods or colons; libtmux now
+raises for those invalid names.
+
+### Development
+
+#### Unused attach/switch parameters were removed
+
+Unused `target_session` parameters were removed from `Server.attach_session` and
+`Server.switch_client`.
 
 ## libtmux 0.5.1 (2016-08-18)
 
-- #12 - fix logger message when tmux doesn't exist in `PATH`
+libtmux 0.5.1 fixes missing-tmux logging.
+
+### Fixes
+
+#### Missing tmux in `PATH` logs clearly (#12)
+
+The logger message for a missing tmux executable was corrected.
 
 ## libtmux 0.5 (2016-06-15)
 
-- #8 new exception `UnknownOption`
-- #8 return `None` for options that are valid tmux options,
-  but unset at that scope.
-- #6 major documentation overhaul
+libtmux 0.5 improves option errors and documentation.
+
+### What's new
+
+#### Unknown options and unset valid options are distinct (#8)
+
+{exc}`libtmux.exc.UnknownOption` was added, and valid-but-unset options now
+return `None`.
+
+### Documentation
+
+#### Major documentation overhaul (#6)
+
+The documentation was substantially refreshed.
 
 ## libtmux 0.4.1 (2016-05-23)
 
-- update `which()` to find tmux via `os.environ['PATH']`.
-  <https://redd.it/4laeut>
+libtmux 0.4.1 fixes tmux discovery through `PATH`.
+
+### Fixes
+
+#### `which()` reads `PATH`
+
+tmux lookup now uses `os.environ["PATH"]`. See <https://redd.it/4laeut>.
 
 ## libtmux 0.4.0 (2016-05-23)
 
-- attributes for formatters are now accessible via
-  `Session`, `Window` and `Pane` objects. `session.name`
-  is equivalent to `session.get('session_name')`, you can do the
-  same with other properties in `_info`. `window.name`,
-  `pane.current_path`, `session.id`, `window.id`, `pane.id`,
-  `session.index`, `window.index`, `pane.index`, etc.
-- `attached_sessions`, `attached_window` and
-  `attached_pane` are now properties.
-- `_TMUX` metadata object changed to `_info`.
-- `.findWhere()` is now `find_where`.
-- README and usage fixes
+libtmux 0.4.0 makes tmux format metadata available as object attributes.
+
+### Breaking changes
+
+#### `_TMUX` metadata became `_info`
+
+The internal metadata object was renamed.
+
+### What's new
+
+#### Session, Window, and Pane expose format fields as attributes
+
+Format-backed properties such as `session.name`, `window.name`,
+`pane.current_path`, `session.id`, `window.id`, `pane.id`, `session.index`,
+`window.index`, and `pane.index` are available directly. Attached-session,
+window, and pane relationships also became properties.
+
+### Development
+
+#### `findWhere()` became `find_where`
+
+The old camelCase lookup helper was renamed, and README usage was updated.
 
 ## libtmux 0.3.0 (2016-05-23)
 
-- switch to pytest
+libtmux 0.3.0 switches the project test runner.
+
+### Development
+
+#### pytest became the test runner
+
+The project moved to pytest.
 
 ## libtmux 0.1.0 (2016-05-22)
 
-- libtmux forked from [tmuxp].
+libtmux 0.1.0 is the initial standalone libtmux release.
+
+### What's new
+
+#### libtmux forked from tmuxp
+
+The library began as a fork from [tmuxp].
 
 [tmuxp]: https://github.com/tmux-python/tmuxp
 [@askedrelic]: https://github.com/askedrelic
