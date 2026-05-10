@@ -162,6 +162,11 @@ attribute reads after a move could appear stale until a manual
 {meth}`~libtmux.Window.refresh` call. The moved window now refreshes
 automatically.
 
+#### Flaky `test_capture_pane_flags[join_wrapped_numbers]` (#655)
+
+Marker detection now skips the shell command echo line to avoid
+false-positive completion.
+
 ### Documentation
 
 - Bump gp-sphinx docs stack to v0.0.1a16 — docs site now renders
