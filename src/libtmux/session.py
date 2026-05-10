@@ -17,6 +17,7 @@ from libtmux._internal.query_list import QueryList
 from libtmux.common import (
     escape_trailing_separator,
     has_gte_version,
+    has_version,
     raise_if_stderr,
     tmux_cmd,
 )

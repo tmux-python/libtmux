@@ -15,7 +15,7 @@ import subprocess
 import typing as t
 import warnings
 
-from libtmux import exc
+from libtmux import exc, formats
 from libtmux._internal.env import (
     TMUX,
     TMUX_TMPDIR,
