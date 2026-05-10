@@ -300,10 +300,10 @@ VERSION_PARSING_FIXTURES: list[VersionParsingFixture] = [
     ),
     VersionParsingFixture(
         test_id="next_version",
-        mock_stdout=["tmux next-3.7"],
+        mock_stdout=["tmux next-3.8"],
         mock_stderr=None,
         mock_platform=None,
-        expected_version="3.7",
+        expected_version="3.8",
         raises=False,
         exc_msg_regex=None,
     ),

@@ -400,6 +400,54 @@ def test_move_window_to_other_session(server: Server, session: Session) -> None:
     assert new_session.windows.get(window_id=window_id) == window
 
 
+@pytest.mark.parametrize(
+    ("flag_name", "destination_offset"), [("after", 0), ("before", 1)]
+)
+def test_move_window_relative_returns_fresh_window(
+    flag_name: str,
+    destination_offset: int,
+    session: Session,
+) -> None:
+    """Window.move_window() returns fresh state for relative moves."""
+    destination_window = session.active_window
+    session.new_window(window_name="move_middle")
+    moving_window = session.new_window(window_name="move_relative")
+    assert destination_window.window_index is not None
+    assert moving_window.window_id is not None
+
+    destination = str(int(destination_window.window_index) + destination_offset)
+    if flag_name == "after":
+        moving_window.move_window(destination, after=True)
+    else:
+        moving_window.move_window(destination, before=True)
+
+    fresh_window = Window.from_window_id(
+        server=session.server,
+        window_id=moving_window.window_id,
+    )
+    assert moving_window.window_index == fresh_window.window_index
+    assert moving_window.session_id == fresh_window.session_id
+
+
+def test_move_window_to_other_session_with_destination(
+    server: Server,
+    session: Session,
+) -> None:
+    """Window.move_window() returns fresh state for cross-session moves."""
+    window = session.new_window(window_name="move_cross_session")
+    assert window.window_id is not None
+    new_session = server.new_session("test_move_window_destination")
+    destination = "99"
+
+    window.move_window(destination=destination, session=new_session.session_id)
+
+    fresh_window = Window.from_window_id(server=server, window_id=window.window_id)
+    assert fresh_window.session_id == new_session.session_id
+    assert fresh_window.window_index == destination
+    assert window.session_id == fresh_window.session_id
+    assert window.window_index == fresh_window.window_index
+
+
 def test_select_layout_accepts_no_arg(server: Server, session: Session) -> None:
     """Tmux allows select-layout with no arguments, so let's allow it here."""
     window = session.new_window(window_name="test_window")
@@ -770,3 +818,243 @@ def test_deprecated_window_methods_emit_warning(
 
     with pytest.warns(DeprecationWarning, match=test_case.expected_error_match):
         method(*test_case.args, **test_case.kwargs)
+
+
+def test_select_layout_spread(session: Session) -> None:
+    """Test Window.select_layout() with spread flag."""
+    window = session.new_window(window_name="test_layout_spread")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+    pane.split()
+    assert len(window.panes) == 3
+
+    # Spread panes evenly — verify no error
+    window.select_layout(spread=True)
+
+
+def test_select_layout_next_previous(session: Session) -> None:
+    """Test Window.select_layout() with next/previous flags."""
+    window = session.new_window(window_name="test_layout_cycle")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+
+    # Set a known layout
+    window.select_layout("even-horizontal")
+    window.refresh()
+    layout_before = window.window_layout
+
+    # Cycle to next layout
+    window.select_layout(next_layout=True)
+    window.refresh()
+    layout_after_next = window.window_layout
+
+    assert layout_before != layout_after_next
+
+    # Cycle back to previous
+    window.select_layout(previous_layout=True)
+    window.refresh()
+    layout_after_prev = window.window_layout
+
+    assert layout_after_prev == layout_before
+
+
+def test_last_pane(session: Session) -> None:
+    """Test Window.last_pane() selects the previously active pane."""
+    window = session.new_window(window_name="test_last_pane")
+    pane1 = window.active_pane
+    assert pane1 is not None
+    pane2 = pane1.split()
+
+    # Select pane2 then pane1 to establish history
+    pane2.select()
+    pane1.select()
+
+    # last_pane should go back to pane2
+    result = window.last_pane()
+    assert result is not None
+    pane2.refresh()
+    assert pane2.pane_active == "1"
+
+
+def test_next_layout(session: Session) -> None:
+    """Test Window.next_layout() cycles to the next layout."""
+    window = session.new_window(window_name="test_next_layout")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    layout_before = window.window_layout
+
+    window.next_layout()
+    window.refresh()
+    layout_after = window.window_layout
+
+    assert layout_before != layout_after
+
+
+def test_previous_layout(session: Session) -> None:
+    """Test Window.previous_layout() cycles back."""
+    window = session.new_window(window_name="test_prev_layout")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+    pane.split()
+
+    window.select_layout("even-horizontal")
+    window.refresh()
+    layout_before = window.window_layout
+
+    window.next_layout()
+    window.previous_layout()
+    window.refresh()
+    layout_after = window.window_layout
+
+    assert layout_before == layout_after
+
+
+def test_select_layout_mutual_exclusion(session: Session) -> None:
+    """Test that layout string and flags are mutually exclusive."""
+    window = session.new_window(window_name="test_layout_mutex")
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        window.select_layout("tiled", spread=True)
+
+
+def test_link_unlink_window(server: Server, session: Session) -> None:
+    """Test Window.link() and Window.unlink()."""
+    # Create a second session
+    s2 = server.new_session(session_name="link_target")
+
+    # Create a window in the first session
+    w = session.new_window(window_name="link_test")
+
+    # Link it to s2
+    w.link(s2, detach=True)
+
+    # Verify window appears in s2
+    s2.refresh()
+    s2_window_names = [win.window_name for win in s2.windows]
+    assert "link_test" in s2_window_names
+
+    # Unlink from s2 — select a different window first
+    linked_windows = [win for win in s2.windows if win.window_name == "link_test"]
+    assert len(linked_windows) > 0
+
+    # We need another window in s2 before unlinking the last one
+    linked_windows[0].unlink()
+
+    # Verify it's gone from s2
+    s2.refresh()
+    s2_window_names = [win.window_name for win in s2.windows]
+    assert "link_test" not in s2_window_names
+
+
+def test_rotate_window(session: Session) -> None:
+    """Test Window.rotate() rotates pane positions."""
+    window = session.new_window(window_name="test_rotate")
+    window.resize(height=40, width=80)
+    pane1 = window.active_pane
+    assert pane1 is not None
+    pane2 = pane1.split()
+    pane3 = pane2.split()
+
+    pane1.refresh()
+    pane2.refresh()
+    pane3.refresh()
+    idx_before = (pane1.pane_index, pane2.pane_index, pane3.pane_index)
+
+    window.rotate()
+
+    pane1.refresh()
+    pane2.refresh()
+    pane3.refresh()
+    idx_after = (pane1.pane_index, pane2.pane_index, pane3.pane_index)
+
+    assert idx_before != idx_after
+
+
+def test_respawn_window(session: Session) -> None:
+    """Test Window.respawn() with kill flag."""
+    window = session.new_window(window_name="test_respawn_w")
+
+    # Respawn the window with kill
+    window.respawn(kill=True, shell="sh")
+
+    # Window should still exist
+    window.refresh()
+    session.refresh()
+    assert window.window_id in [w.window_id for w in session.windows]
+
+
+def test_swap_window(session: Session) -> None:
+    """Test Window.swap() swaps two windows."""
+    w1 = session.new_window(window_name="swap_w1")
+    w2 = session.new_window(window_name="swap_w2")
+
+    w1_idx = w1.window_index
+    w2_idx = w2.window_index
+
+    w1.swap(w2)
+
+    w1.refresh()
+    w2.refresh()
+    assert w1.window_index == w2_idx
+    assert w2.window_index == w1_idx
+
+
+def test_move_window_kill_target(session: Session) -> None:
+    """Test Window.move_window() with kill_target flag."""
+    session.new_window(window_name="move_w1")
+    w2 = session.new_window(window_name="move_w2")
+    assert w2.window_index is not None
+    w2_index = w2.window_index
+    initial_count = len(session.windows)
+
+    # Move first extra window to w2's index, killing w2
+    extra_windows = [w for w in session.windows if w.window_name == "move_w1"]
+    assert len(extra_windows) == 1
+    extra_windows[0].move_window(destination=w2_index, kill_target=True)
+    session.refresh()
+    assert len(session.windows) == initial_count - 1
+
+
+def test_move_window_renumber(session: Session) -> None:
+    """Test Window.move_window() with renumber flag."""
+    session.new_window(window_name="ren_w1")
+    w2 = session.new_window(window_name="ren_w2")
+    w3 = session.new_window(window_name="ren_w3")
+
+    # Kill middle window to create gap
+    w2.kill()
+
+    # Move w3 with renumber
+    w3.move_window(renumber=True)
+    session.refresh()
+
+    # Verify indices are contiguous
+    indices = sorted(
+        int(w.window_index) for w in session.windows if w.window_index is not None
+    )
+    for i in range(len(indices) - 1):
+        assert indices[i + 1] - indices[i] == 1
+
+
+def test_move_window_no_select(session: Session) -> None:
+    """Test Window.move_window() with no_select flag."""
+    w1 = session.new_window(window_name="nosel_w1", attach=True)
+    w2 = session.new_window(window_name="nosel_w2", attach=False)
+
+    # w1 is active
+    session.refresh()
+    assert session.active_window.window_id == w1.window_id
+
+    # Move w2 with no_select — active window should not change
+    w2.move_window(destination="99", no_select=True)
+    session.refresh()
+    assert session.active_window.window_id == w1.window_id

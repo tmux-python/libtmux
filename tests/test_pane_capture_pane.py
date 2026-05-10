@@ -450,10 +450,12 @@ def test_capture_pane_trim_trailing_warning(
     """Test that trim_trailing issues a warning on tmux < 3.4."""
     import warnings
 
-    from libtmux import common
+    from libtmux import pane as pane_module
 
-    # Mock has_gte_version to return False for 3.4
-    monkeypatch.setattr(common, "has_gte_version", lambda v, **kw: v != "3.4")
+    # has_gte_version is imported into libtmux.pane at module import time;
+    # monkeypatching the libtmux.common attribute would not propagate, so
+    # patch the pane module's binding directly.
+    monkeypatch.setattr(pane_module, "has_gte_version", lambda v, **kw: v != "3.4")
 
     pane = session.active_window.split(shell="sh")
 
@@ -470,3 +472,56 @@ def test_capture_pane_trim_trailing_warning(
         # Check warning was issued
         assert len(w) == 1
         assert "trim_trailing requires tmux 3.4+" in str(w[0].message)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "min_tmux_version"),
+    [
+        ({"quiet": True}, None),
+        ({"alternate_screen": True}, None),
+        ({"mode_screen": True}, "3.6"),
+    ],
+    ids=["quiet", "alternate_screen", "mode_screen_v36"],
+)
+def test_capture_pane_flag_smoke(
+    kwargs: dict[str, t.Any],
+    min_tmux_version: str | None,
+    session: Session,
+) -> None:
+    """Smoke-test capture_pane flags that aren't tied to output content.
+
+    These flags either suppress errors (quiet), select a screen
+    (alternate_screen), or read from a non-default source
+    (mode_screen). The runtime side-effects depend on tmux internal
+    state that's awkward to drive headless; assert that the call
+    returns a list without raising. Output-pattern assertions live in
+    CAPTURE_PANE_CASES for the flags whose behaviour is observable.
+    """
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    result = pane.capture_pane(**kwargs)
+    assert isinstance(result, list)
+
+
+def test_capture_pane_to_buffer(session: Session) -> None:
+    """Test capture_pane(to_buffer=...) writes to a tmux buffer."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    pane.send_keys('echo "BUFFER_CAPTURE_MARKER"', enter=True)
+    retry_until(
+        lambda: "BUFFER_CAPTURE_MARKER" in "\n".join(pane.capture_pane()),
+        2,
+        raises=True,
+    )
+
+    result = pane.capture_pane(to_buffer="cap_test_buf")
+    assert result is None
+
+    contents = session.server.cmd("show-buffer", "-b", "cap_test_buf").stdout
+    assert any("BUFFER_CAPTURE_MARKER" in line for line in contents)
+    session.server.cmd("delete-buffer", "-b", "cap_test_buf")

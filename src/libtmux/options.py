@@ -807,6 +807,8 @@ class OptionsMixin(CmdMixin):
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
+        quiet: bool | None = None,
+        values_only: bool | None = None,
     ) -> tmux_cmd:
         """Return a dict of options for the target.
 
@@ -815,6 +817,14 @@ class OptionsMixin(CmdMixin):
         g : bool, optional
             .. deprecated:: 0.50.0
                Use ``global_`` instead.
+        quiet : bool, optional
+            Suppress errors silently (``-q`` flag).
+
+            .. versionadded:: 0.56
+        values_only : bool, optional
+            Return only option values without names (``-v`` flag).
+
+            .. versionadded:: 0.56
 
         Examples
         --------
@@ -867,6 +877,12 @@ class OptionsMixin(CmdMixin):
         if include_hooks is not None and include_hooks:
             flags += ("-H",)
 
+        if quiet is not None and quiet:
+            flags += ("-q",)
+
+        if values_only is not None and values_only:
+            flags += ("-v",)
+
         return self.cmd("show-options", *flags)
 
     def _show_options_dict(
@@ -876,6 +892,7 @@ class OptionsMixin(CmdMixin):
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
+        quiet: bool | None = None,
     ) -> UntypedOptionsDict:
         """Return dict of options for the target.
 
@@ -913,6 +930,7 @@ class OptionsMixin(CmdMixin):
             scope=scope,
             include_hooks=include_hooks,
             include_inherited=include_inherited,
+            quiet=quiet,
         )
 
         return parse_options_to_dict(
@@ -926,6 +944,7 @@ class OptionsMixin(CmdMixin):
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
+        quiet: bool | None = None,
     ) -> ExplodedComplexUntypedOptionsDict:
         """Return a dict of options for the target.
 
@@ -960,6 +979,7 @@ class OptionsMixin(CmdMixin):
             scope=scope,
             include_hooks=include_hooks,
             include_inherited=include_inherited,
+            quiet=quiet,
         )
 
         output_exploded = convert_values(
@@ -976,6 +996,7 @@ class OptionsMixin(CmdMixin):
         scope: OptionScope | _DefaultOptionScope | None = DEFAULT_OPTION_SCOPE,
         include_hooks: bool | None = None,
         include_inherited: bool | None = None,
+        quiet: bool | None = None,
     ) -> ExplodedComplexUntypedOptionsDict:
         """Return all options for the target.
 
@@ -989,6 +1010,10 @@ class OptionsMixin(CmdMixin):
             Include hook options (``-H`` flag).
         include_inherited : bool, optional
             Include inherited options (``-A`` flag).
+        quiet : bool, optional
+            Suppress errors silently (``-q`` flag).
+
+            .. versionadded:: 0.56
 
         Returns
         -------
@@ -1014,6 +1039,7 @@ class OptionsMixin(CmdMixin):
             scope=scope,
             include_hooks=include_hooks,
             include_inherited=include_inherited,
+            quiet=quiet,
         )
 
     def _show_option_raw(
