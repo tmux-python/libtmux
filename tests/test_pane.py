@@ -9,6 +9,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
@@ -1178,6 +1179,54 @@ def test_swap_pane(session: Session) -> None:
     assert pane2.pane_index == pane1_idx
     assert pane1.pane_id == pane1_id
     assert pane2.pane_id == pane2_id
+
+
+def test_swap_pane_move_up_down(session: Session) -> None:
+    """Pane.swap(move_up=True) / (move_down=True) work without a target."""
+    window = session.new_window(window_name="test_swap_move")
+    window.resize(height=40, width=80)
+    pane1 = window.active_pane
+    assert pane1 is not None
+    pane2 = pane1.split()
+
+    pane1.refresh()
+    pane2.refresh()
+    pane1_idx = pane1.pane_index
+    pane2_idx = pane2.pane_index
+
+    # move_down on pane1: swap with the next pane (pane2)
+    pane1.swap(move_down=True)
+    pane1.refresh()
+    pane2.refresh()
+    assert pane1.pane_index == pane2_idx
+    assert pane2.pane_index == pane1_idx
+
+    # move_up on pane1: swap back to the original layout
+    pane1.swap(move_up=True)
+    pane1.refresh()
+    pane2.refresh()
+    assert pane1.pane_index == pane1_idx
+    assert pane2.pane_index == pane2_idx
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({}, "target or move_up"),
+        ({"move_up": True, "move_down": True}, "mutually exclusive"),
+        ({"move_up": True, "target": "%0"}, "mutually exclusive"),
+    ],
+)
+def test_swap_pane_invalid_args(
+    session: Session,
+    kwargs: dict[str, t.Any],
+    match: str,
+) -> None:
+    """Pane.swap() rejects missing or conflicting arguments."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+    with pytest.raises(exc.LibTmuxException, match=match):
+        pane.swap(**kwargs)
 
 
 def test_clear_history(session: Session) -> None:

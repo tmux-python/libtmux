@@ -2030,7 +2030,7 @@ class Pane(
 
     def swap(
         self,
-        target: str | Pane,
+        target: str | Pane | None = None,
         *,
         detach: bool | None = None,
         move_up: bool | None = None,
@@ -2041,14 +2041,21 @@ class Pane(
 
         Parameters
         ----------
-        target : str or Pane
+        target : str or Pane, optional
             Target pane to swap with. Can be a pane ID string or Pane object.
+            Mutually exclusive with *move_up* / *move_down*.
+
+            .. versionchanged:: 0.56
+               Now optional; required only when *move_up* / *move_down* are
+               not set.
         detach : bool, optional
             Do not change the active pane (``-d`` flag).
         move_up : bool, optional
-            Swap with the pane above (``-U`` flag). Overrides *target*.
+            Swap with the pane above (``-U`` flag). Mutually exclusive with
+            *target* and *move_down*.
         move_down : bool, optional
-            Swap with the pane below (``-D`` flag). Overrides *target*.
+            Swap with the pane below (``-D`` flag). Mutually exclusive with
+            *target* and *move_up*.
         keep_zoom : bool, optional
             Keep the window zoomed if it was zoomed (``-Z`` flag).
 
@@ -2061,6 +2068,18 @@ class Pane(
         >>> pane1.refresh()
         >>> pane2.refresh()
         """
+        if move_up and move_down:
+            msg = "move_up and move_down are mutually exclusive"
+            raise exc.LibTmuxException(msg)
+
+        if target is not None and (move_up or move_down):
+            msg = "target is mutually exclusive with move_up/move_down"
+            raise exc.LibTmuxException(msg)
+
+        if target is None and not move_up and not move_down:
+            msg = "swap requires target or move_up=True or move_down=True"
+            raise exc.LibTmuxException(msg)
+
         tmux_args: tuple[str, ...] = ()
 
         if detach:
@@ -2075,8 +2094,9 @@ class Pane(
         if keep_zoom:
             tmux_args += ("-Z",)
 
-        target_id = target.pane_id if isinstance(target, Pane) else target
-        tmux_args += ("-s", str(target_id))
+        if target is not None:
+            target_id = target.pane_id if isinstance(target, Pane) else target
+            tmux_args += ("-s", str(target_id))
 
         proc = self.cmd("swap-pane", *tmux_args)
 
