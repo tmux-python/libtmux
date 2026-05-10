@@ -85,7 +85,7 @@ def test_immutability() -> None:
     with pytest.raises(
         AttributeError, match=r"PaneSnapshot is immutable: cannot modify field 'width'"
     ):
-        snapshot.width = 200  # type: ignore
+        snapshot.width = 200
 
     # Attempting to add a new field should raise AttributeError
     # with precise error message
@@ -93,7 +93,7 @@ def test_immutability() -> None:
         AttributeError,
         match=r"PaneSnapshot is immutable: cannot modify field 'new_field'",
     ):
-        snapshot.new_field = "value"  # type: ignore
+        snapshot.new_field = "value"  # type: ignore[attr-defined]
 
     # Attempting to delete a field should raise AttributeError
     # with precise error message
@@ -141,8 +141,8 @@ def test_internal_attributes() -> None:
     )
 
     # Should be able to set internal attributes
-    snapshot._internal_cache = {"test": "value"}  # type: ignore
-    assert snapshot._internal_cache == {"test": "value"}  # type: ignore
+    snapshot._internal_cache = {"test": "value"}  # type: ignore[attr-defined]
+    assert snapshot._internal_cache == {"test": "value"}  # type: ignore[attr-defined]
 
 
 def test_nested_mutability_leak() -> None:
@@ -154,7 +154,7 @@ def test_nested_mutability_leak() -> None:
 
     # Can't reassign the field itself
     with pytest.raises(AttributeError, match="immutable"):
-        snapshot.captured_content = ["new"]  # type: ignore
+        snapshot.captured_content = ["new"]
 
     # But we can modify its contents (limitation of Python immutability)
     snapshot.captured_content.append("mutated")
@@ -259,7 +259,7 @@ def test_snapshot_dimensions(
 
     # Verify immutability
     with pytest.raises(AttributeError, match="immutable"):
-        pane.width = 100  # type: ignore
+        pane.width = 100
 
 
 class FrozenFlagTestCase(t.NamedTuple):
@@ -311,14 +311,14 @@ def test_frozen_flag(
 
     # Attempt to unfreeze if requested
     if unfreeze_attempt:
-        pane._frozen = False  # type: ignore
+        pane._frozen = False  # type: ignore[attr-defined]
 
     # Attempt mutation and check if it fails as expected
     if expect_mutation_error:
         with pytest.raises(AttributeError, match=error_match):
-            pane.width = 200  # type: ignore
+            pane.width = 200
     else:
-        pane.width = 200  # type: ignore
+        pane.width = 200
         assert pane.width == 200
 
 
@@ -422,7 +422,7 @@ def test_inheritance_behavior(
     if mutate_derived:
         if expect_derived_error:
             with pytest.raises(AttributeError):
-                derived.width = 100  # type: ignore
+                derived.width = 100
         else:
-            derived.width = 100  # type: ignore
+            derived.width = 100
             assert derived.width == 100
