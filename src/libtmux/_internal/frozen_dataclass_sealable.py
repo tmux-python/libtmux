@@ -38,9 +38,9 @@ from __future__ import annotations
 import dataclasses
 import functools
 import typing as t
+from collections.abc import Callable
 from typing import (
     Any,
-    Callable,
     Protocol,
     TypeVar,
     runtime_checkable,
@@ -675,10 +675,10 @@ def frozen_dataclass_sealable(cls: type) -> type:
         return True
 
     # Add custom methods to the class
-    cls.__setattr__ = custom_setattr  # type: ignore
-    cls.__delattr__ = custom_delattr  # type: ignore
-    cls.__init__ = custom_init  # type: ignore
-    cls.seal = seal_method  # type: ignore
-    cls.is_sealable = classmethod(is_sealable_class_method)  # type: ignore
+    cls.__setattr__ = custom_setattr
+    cls.__delattr__ = custom_delattr
+    cls.__init__ = custom_init
+    cls.seal = seal_method  # type: ignore[attr-defined]
+    cls.is_sealable = classmethod(is_sealable_class_method)  # type: ignore[attr-defined]
 
     return cls
