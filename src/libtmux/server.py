@@ -15,7 +15,7 @@ import subprocess
 import typing as t
 import warnings
 
-from libtmux import exc
+from libtmux import exc, formats
 from libtmux._internal.query_list import QueryList
 from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import OptionScope
