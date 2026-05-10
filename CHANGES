@@ -131,8 +131,9 @@ key-name, format, client), {meth}`~libtmux.Pane.split`
 (`percentage=`), {meth}`~libtmux.Pane.capture_pane`
 (alternate-screen, quiet, write-to-buffer),
 {meth}`~libtmux.Pane.display_message` (format, verbose, delay,
-notify, list, style), {meth}`~libtmux.Window.move_window` (after,
-before, kill, renumber), {meth}`~libtmux.Window.select_layout`
+notify, list, style), {meth}`~libtmux.Pane.display_popup`
+(`target_client=`, `-c`), {meth}`~libtmux.Window.move_window`
+(after, before, kill, renumber), {meth}`~libtmux.Window.select_layout`
 (spread, next, previous), {meth}`~libtmux.Server.new_session`
 (detach-others, no-size, config), {meth}`~libtmux.Session.new_window`
 (kill-existing, select-existing),

@@ -975,8 +975,9 @@ class Server(
             Custom prompt text (``-p`` flag).
         confirm_key : str, optional
             Key to accept as confirmation (``-c`` flag). Default is ``y``.
+            Requires tmux 3.4+.
         default_yes : bool, optional
-            Make Enter default to yes (``-y`` flag).
+            Make Enter default to yes (``-y`` flag). Requires tmux 3.4+.
         target_client : str, optional
             Target client (``-t`` flag).
 
@@ -1010,10 +1011,22 @@ class Server(
             tmux_args += ("-p", prompt)
 
         if confirm_key is not None:
-            tmux_args += ("-c", confirm_key)
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-c", confirm_key)
+            else:
+                warnings.warn(
+                    "confirm_key requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
 
         if default_yes:
-            tmux_args += ("-y",)
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-y",)
+            else:
+                warnings.warn(
+                    "default_yes requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
 
         if target_client is not None:
             tmux_args += ("-t", target_client)
@@ -1198,12 +1211,13 @@ class Server(
             Menu y position (``-y`` flag).
         starting_choice : int or str, optional
             Pre-selected item index (``-C`` flag). Use ``-`` for none.
+            Requires tmux 3.4+.
         border_lines : str, optional
-            Border line style (``-b`` flag).
+            Border line style (``-b`` flag). Requires tmux 3.4+.
         style : str, optional
-            Menu style (``-s`` flag).
+            Menu style (``-s`` flag). Requires tmux 3.4+.
         border_style : str, optional
-            Border style (``-S`` flag).
+            Border style (``-S`` flag). Requires tmux 3.4+.
         selected_style : str, optional
             Style for the currently selected menu item (``-H`` flag).
             Requires tmux 3.4+.
@@ -1247,16 +1261,40 @@ class Server(
             tmux_args += ("-y", str(y))
 
         if starting_choice is not None:
-            tmux_args += ("-C", str(starting_choice))
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-C", str(starting_choice))
+            else:
+                warnings.warn(
+                    "starting_choice requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
 
         if border_lines is not None:
-            tmux_args += ("-b", border_lines)
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-b", border_lines)
+            else:
+                warnings.warn(
+                    "border_lines requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
 
         if style is not None:
-            tmux_args += ("-s", style)
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-s", style)
+            else:
+                warnings.warn(
+                    "style requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
 
         if border_style is not None:
-            tmux_args += ("-S", border_style)
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-S", border_style)
+            else:
+                warnings.warn(
+                    "border_style requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
 
         if selected_style is not None:
             if has_gte_version("3.4", tmux_bin=self.tmux_bin):

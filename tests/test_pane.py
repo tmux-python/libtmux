@@ -987,6 +987,31 @@ def test_display_popup_close_existing(
         pane.display_popup(close_existing=True)
 
 
+def test_display_popup_target_client(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+    tmp_path: pathlib.Path,
+) -> None:
+    """Test Pane.display_popup(target_client=...) emits ``-c <client>``.
+
+    ``-c`` has been on ``display-popup`` since tmux 3.2a, so no version
+    guard is needed. The popup itself is invisible without a TTY-backed
+    client; this is a smoke test for the flag-passing path.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+    marker = tmp_path / "popup_target_client.marker"
+
+    with control_mode() as ctl:
+        pane.display_popup(
+            command=f"touch {marker}",
+            close_on_exit=True,
+            target_client=ctl.client_name,
+        )
+
+    retry_until(lambda: marker.exists(), 3, raises=True)
+
+
 def test_paste_buffer(session: Session) -> None:
     """Test Pane.paste_buffer() pastes buffer content into pane."""
     env = shutil.which("env")

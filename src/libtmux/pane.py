@@ -1218,6 +1218,7 @@ class Pane(
         close_on_exit: bool | None = None,
         close_on_success: bool | None = None,
         close_existing: bool | None = None,
+        target_client: str | None = None,
         width: int | str | None = None,
         height: int | str | None = None,
         x: int | str | None = None,
@@ -1249,6 +1250,11 @@ class Pane(
             twice).
         close_existing : bool, optional
             Close any existing popup on the client (``-C`` flag).
+        target_client : str, optional
+            Display the popup on this specific client (``-c`` flag).
+            When omitted, tmux selects the client attached to this
+            pane's session. With multiple clients attached, pass
+            *target_client* to direct the popup at one of them.
         width : int or str, optional
             Popup width (``-w`` flag).
         height : int or str, optional
@@ -1300,6 +1306,9 @@ class Pane(
 
         if close_existing:
             tmux_args += ("-C",)
+
+        if target_client is not None:
+            tmux_args += ("-c", target_client)
 
         if close_on_exit:
             tmux_args += ("-E",)
