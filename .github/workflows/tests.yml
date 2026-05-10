@@ -33,6 +33,20 @@ jobs:
           print("libtmux Server:", server)
           '
 
+      # [DO NOT MERGE] pnpm + Node bootstrap for sphinx-vite-builder source build
+      # of gp-furo-theme — required while gp-sphinx-family deps resolve from the
+      # improved-defaults-reprs branch (see [tool.uv.sources]). Revert with the
+      # uv.sources block when gp-sphinx>=0.0.1a18 lands.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
@@ -110,6 +124,20 @@ jobs:
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
+
+      # [DO NOT MERGE] pnpm + Node bootstrap for sphinx-vite-builder source build
+      # of gp-furo-theme — required while gp-sphinx-family deps resolve from the
+      # improved-defaults-reprs branch (see [tool.uv.sources]). Revert with the
+      # uv.sources block when gp-sphinx>=0.0.1a18 lands.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: uv sync --all-extras --dev
