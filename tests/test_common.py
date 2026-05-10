@@ -39,6 +39,45 @@ def test_has_version() -> None:
     assert has_version(str(get_version()))
 
 
+def test_get_version_caches_per_tmux_bin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``get_version`` runs ``tmux -V`` once per distinct ``tmux_bin``.
+
+    Plugin construction and ``has_gte_version`` call sites can fire many
+    times during a single workspace build; without memoization each call
+    would fork+exec ``tmux``. Confirm one fork per distinct binary path
+    and that ``cache_clear()`` lets test fixtures reset deterministically.
+    """
+
+    class FakeProc:
+        stdout: t.ClassVar = ["tmux 3.5"]
+        stderr = None
+
+    call_count = 0
+
+    def counting_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> FakeProc:
+        nonlocal call_count
+        call_count += 1
+        return FakeProc()
+
+    monkeypatch.setattr(libtmux.common, "tmux_cmd", counting_tmux_cmd)
+    get_version.cache_clear()
+
+    # Repeated calls with the same argument signature must hit the cache.
+    first = get_version()
+    second = get_version()
+    assert first == second
+    assert call_count == 1, "expected memoized lookup for the same tmux_bin"
+
+    # A different binary path is a distinct cache key and re-probes.
+    fourth = get_version(tmux_bin="/usr/local/bin/tmux")
+    assert fourth == first
+    assert call_count == 2
+
+    get_version.cache_clear()
+    _ = get_version()
+    assert call_count == 3, "cache_clear() must force a fresh probe"
+
+
 def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify raises if tmux command not found."""
     monkeypatch.setenv("PATH", "")
@@ -355,6 +394,7 @@ def test_version_parsing(
     monkeypatch.setattr(libtmux.common, "tmux_cmd", mock_tmux_cmd)
     if mock_platform is not None:
         monkeypatch.setattr(sys, "platform", mock_platform)
+    get_version.cache_clear()
 
     if raises:
         with pytest.raises(exc.LibTmuxException) as exc_info:
