@@ -145,7 +145,7 @@ class SealableWindowBase(Window, SnapshotBase, t.Generic[PaneT]):
     @property
     def active_pane(self) -> PaneT | None:
         """Return active pane with the appropriate generic type."""
-        return t.cast(t.Optional[PaneT], super().active_pane)
+        return t.cast(PaneT | None, super().active_pane)
 
 
 class SealableSessionBase(Session, SnapshotBase, t.Generic[WindowT, PaneT]):
@@ -159,12 +159,12 @@ class SealableSessionBase(Session, SnapshotBase, t.Generic[WindowT, PaneT]):
     @property
     def active_window(self) -> WindowT | None:
         """Return active window with the appropriate generic type."""
-        return t.cast(t.Optional[WindowT], super().active_window)
+        return t.cast(WindowT | None, super().active_window)
 
     @property
     def active_pane(self) -> PaneT | None:
         """Return active pane with the appropriate generic type."""
-        return t.cast(t.Optional[PaneT], super().active_pane)
+        return t.cast(PaneT | None, super().active_pane)
 
 
 class SealableServerBase(Server, SnapshotBase, t.Generic[SessionT, WindowT, PaneT]):
