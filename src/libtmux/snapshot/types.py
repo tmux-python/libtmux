@@ -27,9 +27,9 @@ if t.TYPE_CHECKING:
     from libtmux.snapshot.models.window import WindowSnapshot
 
     # Union type for snapshot classes
-    SnapshotType = t.Union[
-        ServerSnapshot, SessionSnapshot, WindowSnapshot, PaneSnapshot
-    ]
+    SnapshotType: t.TypeAlias = (
+        "ServerSnapshot | SessionSnapshot | WindowSnapshot | PaneSnapshot"
+    )
 else:
     # Runtime placeholder - will be properly defined after imports
     SnapshotType = t.Any
