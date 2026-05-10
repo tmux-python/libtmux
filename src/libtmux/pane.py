@@ -19,7 +19,6 @@ from libtmux.common import (
     AsyncTmuxCmd,
     get_version_str,
     has_gte_version,
-    has_lt_version,
     raise_if_stderr,
     tmux_cmd,
 )
