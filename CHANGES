@@ -132,16 +132,6 @@ scope-relevant tokens from tmux's ``format_table[]`` —
 fields too; older tmux releases leave them ``None`` and the next tmux
 tag populates them automatically.
 
-### Deprecations
-
-- ``-t`` passed in ``*args`` to {meth}`~libtmux.Server.cmd` /
-  {meth}`~libtmux.Session.cmd` / {meth}`~libtmux.Window.cmd` /
-  {meth}`~libtmux.Pane.cmd` while the wrapper auto-injects a target now
-  emits {exc}`DeprecationWarning`. tmux's ``args_get`` applies
-  last-wins on repeated flags so the positional ``-t`` was already
-  silently ignored. A future release will escalate to
-  {exc}`TypeError`. See {doc}`migration` for the migration path.
-
 ### Fixes
 
 - {meth}`~libtmux.Pane.reset` now clears pane scrollback. In 0.56.0 the
@@ -150,8 +140,6 @@ tag populates them automatically.
 ### Documentation
 
 - New API page: {doc}`api/libtmux.client`.
-- Migration guide: see {doc}`migration` for the ``-t-in-args``
-  deprecation and migration path.
 
 ## libtmux 0.56.0 (2026-05-10)
 
