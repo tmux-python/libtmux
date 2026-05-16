@@ -1280,3 +1280,43 @@ def test_clear_history(session: Session) -> None:
     history = pane.capture_pane(start=-100)
     # After clearing, scrollback history should be much shorter
     assert len(history) <= 30  # reasonable bound after clear
+
+
+def test_pane_reset_clears_history_and_sends_reset(session: Session) -> None:
+    """Pane.reset() runs both ``send-keys -R`` and ``clear-history`` (#650).
+
+    Populates scrollback, calls ``reset()``, then verifies the markers are
+    gone — proving ``clear-history`` actually ran.
+    """
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_reset_650",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    # Populate scrollback.
+    for n in range(5):
+        pane.send_keys(f"echo reset_marker_{n}", enter=True)
+    retry_until(
+        lambda: "reset_marker_4" in "\n".join(pane.capture_pane()),
+        3,
+        raises=True,
+    )
+
+    # Sanity-check that the history is non-trivial pre-reset.
+    pre = pane.capture_pane(start=-100)
+    assert any("reset_marker_" in line for line in pre)
+
+    result = pane.reset()
+    assert result is pane
+
+    # After reset, scrollback should be empty — the old code left the markers
+    # behind because clear-history never executed.
+    post = pane.capture_pane(start=-100)
+    assert not any("reset_marker_" in line for line in post)
