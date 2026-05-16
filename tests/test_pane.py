@@ -547,6 +547,66 @@ def test_send_keys_flags(
         assert not_expected_in_capture not in contents
 
 
+def test_send_keys_flag_only_reset_emits_clean_argv(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    """``send_keys(reset=True)`` (no positional) emits ``send-keys -R`` only.
+
+    tmux's flag-only path (``cmd-send-keys.c:223-225``) supports ``-R`` and
+    ``-N`` without any trailing key argument; ``cmd=None`` routes through
+    that path so the emitted argv has no spurious empty string.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    captured: list[tuple[str, ...]] = []
+    real_cmd = pane.cmd
+
+    def fake_cmd(cmd_name: str, *args: t.Any, **kw: t.Any) -> t.Any:
+        captured.append((cmd_name, *(str(a) for a in args)))
+        return real_cmd(cmd_name, *args, **kw)
+
+    monkeypatch.setattr(pane, "cmd", fake_cmd)
+
+    pane.send_keys(reset=True)
+
+    send_keys_calls = [c for c in captured if c[0] == "send-keys"]
+    assert send_keys_calls == [("send-keys", "-R")]
+
+
+def test_send_keys_flag_only_repeat_emits_dash_N(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    """``send_keys(repeat=3)`` flag-only emits ``send-keys -N 3`` only."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    captured: list[tuple[str, ...]] = []
+    real_cmd = pane.cmd
+
+    def fake_cmd(cmd_name: str, *args: t.Any, **kw: t.Any) -> t.Any:
+        captured.append((cmd_name, *(str(a) for a in args)))
+        return real_cmd(cmd_name, *args, **kw)
+
+    monkeypatch.setattr(pane, "cmd", fake_cmd)
+
+    pane.send_keys(repeat=3, reset=True)
+
+    send_keys_calls = [c for c in captured if c[0] == "send-keys"]
+    assert send_keys_calls == [("send-keys", "-R", "-N", "3")]
+
+
+def test_send_keys_flag_only_requires_a_flag(session: Session) -> None:
+    """``send_keys()`` with neither ``cmd`` nor a flag raises ValueError."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with pytest.raises(ValueError, match="requires at least one of"):
+        pane.send_keys()
+
+
 def test_select_pane_direction(session: Session) -> None:
     """Test Pane.select() with direction flags."""
     window = session.new_window(window_name="test_select_dir")
