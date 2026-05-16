@@ -1799,22 +1799,76 @@ class Server(
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
 
-    def list_buffers(self) -> list[str]:
+    def list_buffers(
+        self,
+        *,
+        format_string: str | None = None,
+        filter: str | None = None,  # noqa: A002
+    ) -> list[str]:
         """List paste buffers via ``$ tmux list-buffers``.
+
+        Without arguments returns tmux's default template
+        (``name: N bytes: "sample"``) — kept for backward compatibility.
+        Pass *format_string* to project a specific tmux format, or *filter*
+        to push a format-expression predicate into tmux's C-side evaluation
+        (avoids parsing the default template in Python).
+
+        Parameters
+        ----------
+        format_string : str, optional
+            Output template (``-F`` flag). Example: ``"#{buffer_name}"`` for
+            raw names only.
+
+            .. versionadded:: 0.57
+        filter : str, optional
+            Filter expression evaluated by tmux's format engine (``-f`` flag).
+            Buffers for which the expanded expression is "false" (empty, 0)
+            are omitted. Example: ``"#{m:libtmux_mcp_*,#{buffer_name}}"``.
+
+            Note: this kwarg shadows the Python builtin ``filter`` by design —
+            it mirrors tmux's own flag name (``-f filter``) for grep-friendly
+            symmetry between the wrapper and the tmux manual.
+
+            .. versionadded:: 0.57
 
         Returns
         -------
         list[str]
-            Raw output lines from list-buffers.
+            Raw output lines.
 
         Examples
         --------
+        Default template (backward-compatible):
+
         >>> server.set_buffer('buf_data')
         >>> result = server.list_buffers()
         >>> len(result) >= 1
         True
+
+        Project just the names:
+
+        >>> server.set_buffer('hello', buffer_name='gap6_demo')
+        >>> 'gap6_demo' in server.list_buffers(format_string='#{buffer_name}')
+        True
+
+        Filter via tmux's format engine:
+
+        >>> matches = server.list_buffers(
+        ...     format_string='#{buffer_name}',
+        ...     filter='#{m:gap6_*,#{buffer_name}}',
+        ... )
+        >>> 'gap6_demo' in matches
+        True
         """
-        proc = self.cmd("list-buffers")
+        tmux_args: tuple[str, ...] = ()
+
+        if format_string is not None:
+            tmux_args += ("-F", format_string)
+
+        if filter is not None:
+            tmux_args += ("-f", filter)
+
+        proc = self.cmd("list-buffers", *tmux_args)
 
         if proc.stderr:
             raise exc.LibTmuxException(proc.stderr)
