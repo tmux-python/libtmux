@@ -17,7 +17,7 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -419,8 +419,7 @@ class Server(
         """
         proc = self.cmd("kill-session", target=target_session)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "kill-session")
 
         return self
 
@@ -479,8 +478,7 @@ class Server(
 
         proc = self.cmd("run-shell", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "run-shell")
 
         if background:
             return None
@@ -528,8 +526,7 @@ class Server(
 
         proc = self.cmd("wait-for", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "wait-for")
 
     def bind_key(
         self,
@@ -575,8 +572,7 @@ class Server(
 
         proc = self.cmd("bind-key", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "bind-key")
 
     def unbind_key(
         self,
@@ -620,8 +616,7 @@ class Server(
 
         proc = self.cmd("unbind-key", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "unbind-key")
 
     def list_keys(
         self,
@@ -653,8 +648,7 @@ class Server(
 
         proc = self.cmd("list-keys", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "list-keys")
 
         return proc.stdout
 
@@ -684,8 +678,7 @@ class Server(
 
         proc = self.cmd("list-commands", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "list-commands")
 
         return proc.stdout
 
@@ -699,8 +692,7 @@ class Server(
         """
         proc = self.cmd("lock-server")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "lock-server")
 
     def server_access(
         self,
@@ -771,8 +763,7 @@ class Server(
 
         proc = self.cmd("server-access", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "server-access")
 
         if list_access:
             return proc.stdout
@@ -800,8 +791,7 @@ class Server(
 
         proc = self.cmd("refresh-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "refresh-client")
 
     def suspend_client(self, *, target_client: str | None = None) -> None:
         """Suspend a client via ``$ tmux suspend-client``.
@@ -825,8 +815,7 @@ class Server(
 
         proc = self.cmd("suspend-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "suspend-client")
 
     def lock_client(self, *, target_client: str | None = None) -> None:
         """Lock a client via ``$ tmux lock-client``.
@@ -850,8 +839,7 @@ class Server(
 
         proc = self.cmd("lock-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "lock-client")
 
     def detach_client(
         self,
@@ -900,8 +888,7 @@ class Server(
 
         proc = self.cmd("detach-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "detach-client")
 
     def detach_all_clients(
         self,
@@ -948,8 +935,7 @@ class Server(
 
         proc = self.cmd("detach-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "detach-client")
 
     def confirm_before(
         self,
@@ -1035,8 +1021,7 @@ class Server(
 
         proc = self.cmd("confirm-before", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "confirm-before")
 
     def command_prompt(
         self,
@@ -1168,8 +1153,7 @@ class Server(
 
         proc = self.cmd("command-prompt", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "command-prompt")
 
     def display_menu(
         self,
@@ -1321,8 +1305,7 @@ class Server(
 
         proc = self.cmd("display-menu", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "display-menu")
 
     def start_server(self) -> None:
         """Start the tmux server via ``$ tmux start-server``.
@@ -1334,8 +1317,7 @@ class Server(
         """
         proc = self.cmd("start-server")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "start-server")
 
     def show_messages(
         self,
@@ -1390,8 +1372,7 @@ class Server(
 
         proc = self.cmd("show-messages", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "show-messages")
 
         return proc.stdout
 
@@ -1593,8 +1574,7 @@ class Server(
 
         proc = self.cmd("show-prompt-history", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "show-prompt-history")
 
         return proc.stdout
 
@@ -1628,8 +1608,7 @@ class Server(
 
         proc = self.cmd("clear-prompt-history", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "clear-prompt-history")
 
     def set_buffer(
         self,
@@ -1667,8 +1646,7 @@ class Server(
 
         proc = self.cmd("set-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "set-buffer")
 
     def show_buffer(self, *, buffer_name: str | None = None) -> str:
         """Show content of a paste buffer via ``$ tmux show-buffer``.
@@ -1696,8 +1674,7 @@ class Server(
 
         proc = self.cmd("show-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "show-buffer")
 
         return "\n".join(proc.stdout)
 
@@ -1722,8 +1699,7 @@ class Server(
 
         proc = self.cmd("delete-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "delete-buffer")
 
     def save_buffer(
         self,
@@ -1762,8 +1738,7 @@ class Server(
 
         proc = self.cmd("save-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "save-buffer")
 
     def load_buffer(
         self,
@@ -1796,8 +1771,7 @@ class Server(
 
         proc = self.cmd("load-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "load-buffer")
 
     def list_buffers(
         self,
@@ -1870,8 +1844,7 @@ class Server(
 
         proc = self.cmd("list-buffers", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "list-buffers")
 
         return proc.stdout
 
@@ -1920,8 +1893,7 @@ class Server(
 
         proc = self.cmd("if-shell", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "if-shell")
 
     def source_file(
         self,
@@ -1966,8 +1938,7 @@ class Server(
 
         proc = self.cmd("source-file", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "source-file")
 
     def list_clients(self) -> list[str]:
         """List connected clients via ``$ tmux list-clients``.
@@ -1984,8 +1955,7 @@ class Server(
         """
         proc = self.cmd("list-clients")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "list-clients")
 
         return proc.stdout
 
@@ -2005,8 +1975,7 @@ class Server(
 
         proc = self.cmd("switch-client", target=target_session)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "switch-client")
 
     def attach_session(self, target_session: str | None = None) -> None:
         """Attach tmux session.
@@ -2023,8 +1992,7 @@ class Server(
         session_check_name(target_session)
         proc = self.cmd("attach-session", target=target_session)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "attach-session")
 
     def new_session(
         self,
@@ -2132,8 +2100,7 @@ class Server(
             if self.has_session(session_name):
                 if kill_session:
                     proc = self.cmd("kill-session", target=session_name)
-                    if proc.stderr:
-                        raise exc.LibTmuxException(proc.stderr)
+                    raise_if_stderr(proc, "kill-session")
                     logger.info(
                         "existing session killed",
                         extra={
@@ -2204,8 +2171,7 @@ class Server(
 
             proc = self.cmd("new-session", *tmux_args)
 
-            if proc.stderr:
-                raise exc.LibTmuxException(proc.stderr)
+            raise_if_stderr(proc, "new-session")
 
             session_stdout = proc.stdout[0]
 

@@ -14,7 +14,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -311,8 +311,7 @@ class Pane(
 
         proc = self.cmd("resize-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "resize-pane")
 
         self.refresh()
         return self
@@ -859,8 +858,7 @@ class Pane(
             *flags,
         )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "kill-pane")
 
         extra: dict[str, str] = {
             "tmux_subcommand": "kill-pane",
@@ -974,8 +972,7 @@ class Pane(
 
         proc = self.cmd("select-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-pane")
 
         self.refresh()
 
@@ -1231,8 +1228,7 @@ class Pane(
         'my-title'
         """
         proc = self.cmd("select-pane", "-T", title)
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-pane")
         self.refresh()
         return self
 
@@ -1443,8 +1439,7 @@ class Pane(
 
         proc = self.cmd("display-popup", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "display-popup")
 
     def paste_buffer(
         self,
@@ -1495,8 +1490,7 @@ class Pane(
 
         proc = self.cmd("paste-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "paste-buffer")
 
     def pipe(
         self,
@@ -1543,8 +1537,7 @@ class Pane(
 
         proc = self.cmd("pipe-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "pipe-pane")
 
     def copy_mode(
         self,
@@ -1609,8 +1602,7 @@ class Pane(
 
         proc = self.cmd("copy-mode", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "copy-mode")
 
     def clock_mode(self) -> None:
         """Enter clock mode via ``$ tmux clock-mode``.
@@ -1619,8 +1611,7 @@ class Pane(
         """
         proc = self.cmd("clock-mode")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "clock-mode")
 
     def display_panes(
         self,
@@ -1654,8 +1645,7 @@ class Pane(
 
         proc = self.server.cmd("display-panes", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "display-panes")
 
     def choose_buffer(self) -> None:
         """Enter buffer chooser via ``$ tmux choose-buffer``.
@@ -1664,8 +1654,7 @@ class Pane(
         """
         proc = self.cmd("choose-buffer")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "choose-buffer")
 
     def choose_client(self) -> None:
         """Enter client chooser via ``$ tmux choose-client``.
@@ -1674,8 +1663,7 @@ class Pane(
         """
         proc = self.cmd("choose-client")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "choose-client")
 
     def choose_tree(
         self,
@@ -1737,8 +1725,7 @@ class Pane(
 
         proc = self.cmd("choose-tree", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "choose-tree")
 
     def customize_mode(self) -> None:
         """Enter customize mode via ``$ tmux customize-mode``.
@@ -1747,8 +1734,7 @@ class Pane(
         """
         proc = self.cmd("customize-mode")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "customize-mode")
 
     def find_window(
         self,
@@ -1804,8 +1790,7 @@ class Pane(
 
         proc = self.cmd("find-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "find-window")
 
     def send_prefix(self, *, secondary: bool | None = None) -> None:
         """Send the prefix key to the pane via ``$ tmux send-prefix``.
@@ -1826,8 +1811,7 @@ class Pane(
 
         proc = self.cmd("send-prefix", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "send-prefix")
 
     def respawn(
         self,
@@ -1874,8 +1858,7 @@ class Pane(
 
         proc = self.cmd("respawn-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "respawn-pane")
 
     def move(
         self,
@@ -1946,8 +1929,7 @@ class Pane(
         # Use server.cmd to avoid auto-adding -t from self.cmd
         proc = self.server.cmd("move-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "move-pane")
 
     def join(
         self,
@@ -2018,8 +2000,7 @@ class Pane(
         # Use server.cmd to avoid auto-adding -t from self.cmd
         proc = self.server.cmd("join-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "join-pane")
 
     def break_pane(
         self,
@@ -2061,8 +2042,7 @@ class Pane(
         # Use server.cmd to avoid auto-adding -t from self.cmd
         proc = self.server.cmd("break-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "break-pane")
 
         window_id = proc.stdout[0].strip()
 
@@ -2142,8 +2122,7 @@ class Pane(
 
         proc = self.cmd("swap-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "swap-pane")
 
     def clear_history(self, *, reset_hyperlinks: bool | None = None) -> None:
         """Clear pane history buffer via ``$ tmux clear-history``.
@@ -2172,8 +2151,7 @@ class Pane(
 
         proc = self.cmd("clear-history", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "clear-history")
 
     def clear(self) -> Pane:
         """Clear pane."""
