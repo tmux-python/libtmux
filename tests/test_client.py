@@ -8,6 +8,7 @@ from libtmux.client import Client
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
+    from libtmux.session import Session
 
 
 def test_server_clients_returns_querylist(
@@ -21,6 +22,29 @@ def test_server_clients_returns_querylist(
         for client in clients:
             assert isinstance(client, Client)
             assert client.client_name is not None
+
+
+def test_client_session_reports_attached_session(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    session: Session,
+) -> None:
+    """``client.client_session`` reports the session this client is attached to."""
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+        assert client.client_session == session.session_name
+
+
+def test_client_readonly_default_zero(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """A non-readonly attached client reports ``client_readonly == "0"``."""
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+        assert client.client_readonly == "0"
 
 
 def test_client_refresh_rehydrates_fields(
