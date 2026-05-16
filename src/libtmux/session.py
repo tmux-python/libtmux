@@ -308,7 +308,16 @@ class Session(
         -----
         .. versionchanged:: 0.34
 
-           Passing target by ``-t`` is ignored. Use ``target`` keyword argument instead.
+           Passing ``-t`` positionally while *target* is auto-set is the
+           legacy form. tmux's last-wins arg parsing makes the positional
+           ``-t`` override the auto-injected target silently, so the
+           call's effective target is rarely the one a reader of the code
+           would expect. Use the *target* keyword argument instead.
+
+        .. versionchanged:: 0.57
+
+           The legacy ``-t``-in-args shape now emits
+           :exc:`DeprecationWarning` from :meth:`Server.cmd`.
 
         .. versionchanged:: 0.8
 
