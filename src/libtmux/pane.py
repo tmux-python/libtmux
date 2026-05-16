@@ -429,11 +429,14 @@ class Pane(
 
             .. versionadded:: 0.56
         pending : bool, optional
-            Capture *pending input* — bytes tmux has buffered as input for
-            the pane but the running program hasn't consumed yet (``-P``
-            flag). Distinct from the default capture (the pane's screen
-            history). Useful for diagnosing hung programs or paste-buffer
-            drains.
+            Capture *pending output* — the bytes tmux has read from the
+            pane but not yet committed to the terminal (``-P`` flag).
+            These are bytes that begin an incomplete escape sequence
+            and are still pending the parser's ground state (tmux's
+            ``input_pending()`` / ``since_ground`` buffer), distinct
+            from the default capture (the pane's screen history).
+            Useful for diagnosing programs whose output stalls
+            mid-sequence.
             Default: False
 
             .. versionadded:: 0.57

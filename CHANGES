@@ -106,8 +106,10 @@ the command's stderr into the captured output.
 #### `Pane.capture_pane(pending=True)` (#670)
 
 {meth}`~libtmux.Pane.capture_pane` gains a ``pending`` kwarg. When set,
-the wrapper emits tmux's ``-P`` to return bytes tmux has buffered as
-pane input but the running program has not consumed.
+the wrapper emits tmux's ``-P`` to return the bytes tmux has read from
+the pane but not yet committed to the terminal — output that begins an
+incomplete escape sequence and is still pending the parser's ground
+state. Useful for diagnosing programs whose output stalls mid-sequence.
 
 #### Subcommand-tagged exceptions (#670)
 
