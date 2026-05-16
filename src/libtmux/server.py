@@ -451,8 +451,10 @@ class Server(
         delay: str | None = None,
         as_tmux_command: bool | None = None,
         target_pane: str | None = None,
+        cwd: StrPath | None = None,
+        show_stderr: bool | None = None,
     ) -> list[str] | None:
-        """Execute a shell command via ``$ tmux run-shell``.
+        r"""Execute a shell command via ``$ tmux run-shell``.
 
         Parameters
         ----------
@@ -467,6 +469,19 @@ class Server(
             (``-C`` flag).
         target_pane : str, optional
             Target pane for output (``-t`` flag).
+        cwd : str or PathLike, optional
+            Working directory for the shell command (``-c`` flag). When
+            omitted, tmux uses the target client's current working
+            directory. Requires tmux 3.4+; on older tmux a warning is
+            emitted and the kwarg is ignored.
+
+            .. versionadded:: 0.57
+        show_stderr : bool, optional
+            Combine the command's stderr into the captured output stream
+            (``-E`` flag, maps to ``JOB_SHOWSTDERR``). Requires tmux 3.6+;
+            on older tmux a warning is emitted and the kwarg is ignored.
+
+            .. versionadded:: 0.57
 
         Returns
         -------
@@ -493,6 +508,24 @@ class Server(
 
         if target_pane is not None:
             tmux_args += ("-t", target_pane)
+
+        if cwd is not None:
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-c", str(cwd))
+            else:
+                warnings.warn(
+                    "cwd requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if show_stderr:
+            if has_gte_version("3.6", tmux_bin=self.tmux_bin):
+                tmux_args += ("-E",)
+            else:
+                warnings.warn(
+                    "show_stderr requires tmux 3.6+, ignoring",
+                    stacklevel=2,
+                )
 
         tmux_args += (command,)
 

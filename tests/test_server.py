@@ -1019,6 +1019,73 @@ def test_run_shell_background(server: Server) -> None:
     assert result is None
 
 
+def test_run_shell_cwd(server: Server, tmp_path: pathlib.Path) -> None:
+    """``cwd=`` sets the working directory for the shell command."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.5"):
+        pytest.skip("run-shell stdout passthrough requires tmux 3.5+")
+
+    server.new_session(session_name="run_shell_cwd_test")
+    result = server.run_shell("pwd", cwd=tmp_path)
+    assert result is not None
+    assert any(str(tmp_path) in line for line in result)
+
+
+def test_run_shell_show_stderr(server: Server) -> None:
+    """``show_stderr=True`` captures the command's stderr into the output."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.6"):
+        pytest.skip("run-shell -E (JOB_SHOWSTDERR) requires tmux 3.6+")
+
+    server.new_session(session_name="run_shell_stderr_test")
+    result = server.run_shell(
+        "sh -c 'echo to_stdout; echo to_stderr >&2'",
+        show_stderr=True,
+    )
+    assert result is not None
+    joined = "\n".join(result)
+    assert "to_stdout" in joined
+    assert "to_stderr" in joined
+
+
+def test_run_shell_cwd_warns_on_old_tmux(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """``cwd=`` emits a warning and skips ``-c`` on tmux <3.4.
+
+    Simulates older tmux by patching ``has_gte_version`` in the
+    :mod:`libtmux.server` module namespace (where it's bound at
+    import time).
+    """
+    import libtmux.server
+
+    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    server.new_session(session_name="run_shell_cwd_warn_test")
+    with pytest.warns(UserWarning, match="cwd requires tmux 3.4+"):
+        server.run_shell("true", cwd=tmp_path)
+
+
+def test_run_shell_show_stderr_warns_on_old_tmux(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``show_stderr=True`` emits a warning and skips ``-E`` on tmux <3.6.
+
+    Simulates older tmux by patching ``has_gte_version`` in the
+    :mod:`libtmux.server` module namespace.
+    """
+    import libtmux.server
+
+    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    server.new_session(session_name="run_shell_stderr_warn_test")
+    with pytest.warns(UserWarning, match="show_stderr requires tmux 3.6+"):
+        server.run_shell("true", show_stderr=True)
+
+
 class BufferCase(t.NamedTuple):
     """Test case for buffer operations."""
 
