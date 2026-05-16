@@ -10,7 +10,8 @@ import typing as t
 from collections.abc import Iterable
 
 from libtmux import exc
-from libtmux.common import raise_if_stderr, tmux_cmd
+from libtmux._compat import LooseVersion
+from libtmux.common import get_version, raise_if_stderr, tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -24,6 +25,134 @@ logger = logging.getLogger(__name__)
 
 OutputRaw = dict[str, t.Any]
 OutputsRaw = list[OutputRaw]
+
+
+SCOPES_BY_LIST_CMD: dict[str, frozenset[str]] = {
+    "list-sessions": frozenset({"universal", "session"}),
+    "list-windows": frozenset({"universal", "session", "window"}),
+    "list-panes": frozenset({"universal", "session", "window", "pane"}),
+    "list-clients": frozenset({"universal", "session", "client"}),
+}
+"""Format-token scopes a given tmux ``list-*`` subcommand can resolve.
+
+A token whose scope is in the set is safe to include in that subcommand's
+``-F`` template. A token whose scope is *outside* the set may be unknown to
+the format engine in that context, or in older tmux releases trigger a
+server-side fault — exclude it from the format string.
+"""
+
+
+FIELD_VERSION: dict[str, str] = {}
+"""Minimum tmux version that registers each format token.
+
+Field names absent from this dict default to ``"3.2a"`` (always-safe within
+the supported tmux range). Entries here represent tokens added after 3.2a
+that need explicit gating to keep the ``-F`` template compatible with older
+tmux versions.
+"""
+
+
+# Field-name prefixes that map to a single format-token scope. Resolved by
+# :func:`_token_scope`. Order matters: longer prefixes win (e.g.
+# ``copy_cursor_`` is a runtime token, not a generic ``copy_`` one).
+_SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("copy_cursor_", "event"),
+    ("pane_", "pane"),
+    ("window_", "window"),
+    ("session_", "session"),
+    ("client_", "client"),
+    ("buffer_", "buffer"),
+    ("mouse_", "event"),
+    ("cursor_", "event"),
+    ("selection_", "event"),
+    ("scroll_", "event"),
+    ("popup_", "event"),
+)
+
+# Standalone tokens not captured by the prefix table.
+_UNIVERSAL_TOKENS: frozenset[str] = frozenset(
+    {
+        "active_window_index",
+        "alternate_on",
+        "alternate_saved_x",
+        "alternate_saved_y",
+        "command_list_alias",
+        "command_list_name",
+        "command_list_usage",
+        "config_files",
+        "current_file",
+        "history_bytes",
+        "history_limit",
+        "history_size",
+        "host",
+        "host_short",
+        "insert_flag",
+        "keypad_cursor_flag",
+        "keypad_flag",
+        "last_window_index",
+        "line",
+        "next_session_id",
+        "origin_flag",
+        "pid",
+        "search_match",
+        "socket_path",
+        "start_time",
+        "uid",
+        "user",
+        "version",
+        "wrap_flag",
+    }
+)
+
+
+def _token_scope(field_name: str) -> str:
+    """Resolve a format token's scope from its name.
+
+    Returns ``"universal"`` for cross-scope tokens (e.g. ``version``,
+    ``socket_path``, ``host``). Returns ``"event"`` for runtime-only tokens
+    that never appear in a ``list-*`` output (mouse, cursor, selection,
+    popup). Returns ``"pane"`` / ``"window"`` / ``"session"`` / ``"client"``
+    / ``"buffer"`` for scope-prefixed tokens.
+
+    Examples
+    --------
+    >>> from libtmux.neo import _token_scope
+    >>> _token_scope("pane_id")
+    'pane'
+    >>> _token_scope("window_zoomed_flag")
+    'window'
+    >>> _token_scope("client_name")
+    'client'
+    >>> _token_scope("version")
+    'universal'
+    >>> _token_scope("mouse_x")
+    'event'
+    """
+    for prefix, scope in _SCOPE_PREFIXES:
+        if field_name.startswith(prefix):
+            return scope
+    if field_name in _UNIVERSAL_TOKENS:
+        return "universal"
+    return "universal"
+
+
+def _normalize_tmux_version(version: str) -> LooseVersion:
+    """Convert a tmux version string into a comparable :class:`LooseVersion`.
+
+    tmux master is reported as ``"master"`` (or e.g. ``"3.6a-master"``);
+    treat it as larger than any tagged release.
+
+    Examples
+    --------
+    >>> from libtmux.neo import _normalize_tmux_version
+    >>> _normalize_tmux_version("3.6a") < _normalize_tmux_version("master")
+    True
+    >>> _normalize_tmux_version("3.2a") < _normalize_tmux_version("3.6a")
+    True
+    """
+    if "master" in version.lower():
+        return LooseVersion("99.0")
+    return LooseVersion(version)
 
 
 @dataclasses.dataclass()
@@ -211,40 +340,98 @@ class Obj:
 
 
 @functools.cache
-def get_output_format() -> tuple[tuple[str, ...], str]:
-    """Return field names and tmux format string for all Obj fields.
+def get_output_format(
+    list_cmd: str = "list-panes",
+    tmux_version: str = "3.2a",
+) -> tuple[tuple[str, ...], str]:
+    """Return field names and tmux format string filtered by scope and version.
 
-    Excludes the ``server`` field, which is a Python object reference
-    rather than a tmux format variable.
+    Only emits tokens whose scope is reachable from *list_cmd* (per
+    :data:`SCOPES_BY_LIST_CMD`) and whose minimum tmux version (per
+    :data:`FIELD_VERSION`) is at or below *tmux_version*. Runtime-only
+    tokens (``mouse_*``, ``cursor_*``, popups) are excluded from every
+    ``list-*`` template — they only resolve in event-time format contexts.
+
+    Parameters
+    ----------
+    list_cmd : str
+        The tmux list subcommand the format string is being built for.
+        Determines which token scopes are reachable.
+    tmux_version : str
+        The live tmux version. Used to gate post-3.2a tokens. Defaults to
+        ``"3.2a"`` (the project's minimum) for safe fallback when the
+        caller can't yet detect the version.
 
     Returns
     -------
     tuple[tuple[str, ...], str]
-        A tuple of (field_names, tmux_format_string).
+        A tuple of (field_names, tmux_format_string) restricted to tokens
+        the given *list_cmd* and *tmux_version* can resolve.
 
     Examples
     --------
     >>> from libtmux.neo import get_output_format
-    >>> fields, fmt = get_output_format()
+    >>> fields, fmt = get_output_format("list-sessions", "3.6a")
     >>> 'session_id' in fields
     True
+    >>> 'pane_id' in fields
+    False
     >>> 'server' in fields
     False
+
+    Pane scope picks up window and session tokens too:
+
+    >>> fields, _ = get_output_format("list-panes", "3.6a")
+    >>> all(t in fields for t in ('pane_id', 'window_id', 'session_id'))
+    True
+
+    Client scope is isolated from pane/window tokens:
+
+    >>> fields, _ = get_output_format("list-clients", "3.6a")
+    >>> 'pane_id' in fields
+    False
     """
-    # Exclude 'server' - it's a Python object, not a tmux format variable
-    formats = tuple(f for f in Obj.__dataclass_fields__ if f != "server")
-    tmux_formats = [f"#{{{f}}}{FORMAT_SEPARATOR}" for f in formats]
-    return formats, "".join(tmux_formats)
+    allowed_scopes = SCOPES_BY_LIST_CMD.get(
+        list_cmd,
+        frozenset({"universal", "session", "window", "pane"}),
+    )
+    live_ver = _normalize_tmux_version(tmux_version)
+
+    formats: list[str] = []
+    for f in Obj.__dataclass_fields__:
+        if f == "server":
+            continue
+        if _token_scope(f) not in allowed_scopes:
+            continue
+        min_v = FIELD_VERSION.get(f)
+        if min_v is not None and _normalize_tmux_version(min_v) > live_ver:
+            continue
+        formats.append(f)
+
+    tmux_format = "".join(f"#{{{n}}}{FORMAT_SEPARATOR}" for n in formats)
+    return tuple(formats), tmux_format
 
 
-def parse_output(output: str) -> OutputRaw:
-    """Parse tmux output formatted with get_output_format() into a dict.
+def parse_output(
+    output: str,
+    list_cmd: str = "list-panes",
+    tmux_version: str = "3.2a",
+) -> OutputRaw:
+    """Parse a tmux ``-F`` line into a dict keyed by Obj field name.
+
+    The (*list_cmd*, *tmux_version*) pair must match what was passed to
+    :func:`get_output_format` when the ``-F`` template was built —
+    otherwise the field order won't line up with the split values.
 
     Parameters
     ----------
     output : str
-        Raw tmux output produced with the format string from
+        Raw tmux output line produced with a template from
         :func:`get_output_format`.
+    list_cmd : str
+        Same value passed to :func:`get_output_format`.
+    tmux_version : str
+        Same value passed to :func:`get_output_format`.
 
     Returns
     -------
@@ -255,16 +442,20 @@ def parse_output(output: str) -> OutputRaw:
     --------
     >>> from libtmux.neo import get_output_format, parse_output
     >>> from libtmux.formats import FORMAT_SEPARATOR
-    >>> fields, fmt = get_output_format()
+    >>> fields, fmt = get_output_format("list-sessions", "3.6a")
     >>> values = [''] * len(fields)
     >>> values[fields.index('session_id')] = '$1'
-    >>> result = parse_output(FORMAT_SEPARATOR.join(values) + FORMAT_SEPARATOR)
+    >>> result = parse_output(
+    ...     FORMAT_SEPARATOR.join(values) + FORMAT_SEPARATOR,
+    ...     list_cmd="list-sessions",
+    ...     tmux_version="3.6a",
+    ... )
     >>> result['session_id']
     '$1'
-    >>> 'buffer_sample' in result
+    >>> 'pane_id' in result
     False
     """
-    formats, _ = get_output_format()
+    formats, _ = get_output_format(list_cmd, tmux_version)
     values = output.split(FORMAT_SEPARATOR)
 
     # Remove the trailing empty string from the split
@@ -326,7 +517,8 @@ def fetch_objs(
     >>> 'session_id' in objs[0]
     True
     """
-    _fields, format_string = get_output_format()
+    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    _fields, format_string = get_output_format(list_cmd, tmux_version)
 
     cmd_args: list[str | int] = []
 
@@ -367,7 +559,7 @@ def fetch_objs(
 
     raise_if_stderr(proc, list_cmd)
 
-    outputs = [parse_output(line) for line in proc.stdout]
+    outputs = [parse_output(line, list_cmd, tmux_version) for line in proc.stdout]
 
     if logger.isEnabledFor(logging.DEBUG):
         if cmd_str is None:
