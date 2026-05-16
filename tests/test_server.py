@@ -1509,9 +1509,17 @@ def test_server_display_message_flags(
     tmux dispatches ``display-message -p`` output through a client; the wrapper
     omits ``-t <pane-id>`` but still needs a client to receive stdout. The
     headless test environment provides one via :class:`ControlMode`.
+
+    Skipped on tmux 3.2a: ``display-message -p -c <control-mode-client>``
+    returns empty stdout on that release (output dispatch via a control-mode
+    client was unreliable until later versions).
     """
     from libtmux.common import has_gte_version
 
+    if not has_gte_version("3.3"):
+        pytest.skip(
+            "display-message -p via control-mode client unreliable on tmux 3.2a"
+        )
     if min_tmux_version and not has_gte_version(min_tmux_version):
         pytest.skip(f"Requires tmux {min_tmux_version}+")
 
@@ -1543,6 +1551,13 @@ def test_server_display_message_target_client(
     server: Server,
 ) -> None:
     """``target_client`` is plumbed through as ``-c``; get_text=True returns stdout."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip(
+            "display-message -p via control-mode client unreliable on tmux 3.2a"
+        )
+
     with control_mode() as ctl:
         result = server.display_message(
             "#{version}", get_text=True, target_client=ctl.client_name
