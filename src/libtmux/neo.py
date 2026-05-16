@@ -14,7 +14,7 @@ from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
-    ListCmd = t.Literal["list-sessions", "list-windows", "list-panes"]
+    ListCmd = t.Literal["list-sessions", "list-windows", "list-panes", "list-clients"]
     ListExtraArgs = Iterable[str] | None
 
     from libtmux.server import Server
@@ -38,18 +38,30 @@ class Obj:
     buffer_name: str | None = None
     buffer_sample: str | None = None
     buffer_size: str | None = None
+    client_activity: str | None = None
     client_cell_height: str | None = None
     client_cell_width: str | None = None
+    client_control_mode: str | None = None
+    client_created: str | None = None
     client_discarded: str | None = None
     client_flags: str | None = None
     client_height: str | None = None
     client_key_table: str | None = None
+    client_last_session: str | None = None
+    client_mode_format: str | None = None
     client_name: str | None = None
     client_pid: str | None = None
+    client_prefix: str | None = None
+    client_readonly: str | None = None
+    client_session: str | None = None
+    client_termfeatures: str | None = None
     client_termname: str | None = None
+    client_termtype: str | None = None
+    client_theme: str | None = None
     client_tty: str | None = None
     client_uid: str | None = None
     client_user: str | None = None
+    client_utf8: str | None = None
     client_width: str | None = None
     client_written: str | None = None
     command_list_alias: str | None = None
