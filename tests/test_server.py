@@ -1545,3 +1545,20 @@ def test_server_display_message_target_client(
     assert isinstance(result, list)
     assert len(result) == 1
     assert result[0].strip() != ""
+
+
+def test_server_display_message_raises_on_tmux_error(
+    server: Server,
+    session: Session,
+) -> None:
+    """Tmux stderr on ``display-message`` surfaces as ``LibTmuxException``.
+
+    Passing ``cmd`` and ``format_string`` together is rejected by tmux's
+    argument parser with stderr ``only one of -F or argument must be
+    given``. The wrapper must propagate that, not silently return ``[]``.
+    """
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        server.display_message("x", get_text=True, format_string="#{version}")
+
+    assert excinfo.value.subcommand == "display-message"
+    assert "only one of -F or argument" in str(excinfo.value)

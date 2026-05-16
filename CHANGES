@@ -146,6 +146,11 @@ end-to-end.
 
 - {meth}`~libtmux.Pane.reset` now clears pane scrollback. In 0.56.0 the
   history clear silently no-op'd, leaving the scrollback intact (#650).
+- {meth}`~libtmux.Server.display_message`,
+  {meth}`~libtmux.Window.display_message`, and
+  {meth}`~libtmux.Pane.display_message` raise
+  {exc}`~libtmux.exc.LibTmuxException` when tmux reports an error,
+  matching the rest of the typed wrappers (#670).
 
 ### Documentation
 
