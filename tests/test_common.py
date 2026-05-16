@@ -48,7 +48,7 @@ def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_tmux_cmd_unicode(session: Session) -> None:
     """Verify tmux commands with unicode."""
-    session.cmd("new-window", "-t", 3, "-n", "юникод", "-F", "Ελληνικά")
+    session.cmd("new-window", "-n", "юникод", "-F", "Ελληνικά", target=3)
 
 
 class SessionCheckName(t.NamedTuple):
@@ -560,9 +560,7 @@ def test_raise_if_stderr_raises_with_subcommand_tag(
     from libtmux.common import raise_if_stderr
 
     # Provoke a tmux stderr: ask list-clients with a non-existent target.
-    proc = session.server.cmd(
-        "list-clients", "-t", "$nonexistent_session_id_for_test"
-    )
+    proc = session.server.cmd("list-clients", "-t", "$nonexistent_session_id_for_test")
     assert proc.stderr  # sanity check the fixture
 
     with pytest.raises(exc.LibTmuxException) as excinfo:

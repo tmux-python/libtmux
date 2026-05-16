@@ -113,6 +113,30 @@ _Detailed migration steps for the next version will be posted here._
 
 <!-- To the maintainers and contributors: please add migration details for the upcoming release here -->
 
+### Passing ``-t`` to ``Object.cmd()`` is deprecated
+
+{meth}`Server.cmd`, {meth}`Session.cmd`, {meth}`Window.cmd`, and {meth}`Pane.cmd`
+auto-inject ``-t <id>`` to bind the call to the object's id. Passing ``-t``
+positionally in ``*args`` while the wrapper auto-sets the target is a
+documented no-op (tmux's ``args_get`` applies last-wins) — and now emits
+{exc}`DeprecationWarning`. A future release will escalate to {exc}`TypeError`.
+
+Migration:
+
+```python
+# Before
+session.cmd("new-window", "-t", 3, "-n", "name")
+
+# After
+session.cmd("new-window", "-n", "name", target=3)
+```
+
+For calls that need ``-t`` for a *different* target (not the object's id —
+e.g. ``-t <target-client>`` for ``display-menu``), pass it through
+``server.cmd("display-menu", "-c", client_name, ...)`` without conflict —
+the warning only fires when ``target=`` is set *and* ``-t`` appears in
+``*args``.
+
 ## libtmux 0.50.0: Unified Options and Hooks API (#516)
 
 ### New unified options API
