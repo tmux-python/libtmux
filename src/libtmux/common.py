@@ -241,6 +241,41 @@ class EnvironmentMixin:
         return opts_dict.get(name)
 
 
+def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
+    """Raise :exc:`LibTmuxException` tagged with the tmux subcommand on stderr.
+
+    Centralizes the ``if proc.stderr: raise exc.LibTmuxException(proc.stderr)``
+    pattern scattered across the wrappers. Tags the exception with the
+    originating tmux subcommand so downstream consumers (e.g. libtmux-mcp's
+    ``handle_tool_errors``) keep the "which tmux command failed" context.
+
+    Parameters
+    ----------
+    proc : :class:`tmux_cmd`
+        Result of a :meth:`Server.cmd` / :meth:`Session.cmd` / etc. call.
+    subcommand : str
+        The tmux subcommand the wrapper invoked, e.g. ``"last-window"``,
+        ``"swap-pane"``. Surfaces in ``str(exc)`` as a ``"<subcommand>: …"``
+        prefix.
+
+    Raises
+    ------
+    :exc:`LibTmuxException`
+        When ``proc.stderr`` is non-empty.
+
+    Examples
+    --------
+    >>> from libtmux.common import raise_if_stderr
+    >>> from libtmux import exc
+    >>> proc = session.cmd("display-message", "-p", "#{session_id}")
+    >>> raise_if_stderr(proc, "display-message")  # no stderr → no raise
+
+    .. versionadded:: 0.57
+    """
+    if proc.stderr:
+        raise exc.LibTmuxException(proc.stderr, subcommand=subcommand)
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
 
