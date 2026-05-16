@@ -526,3 +526,47 @@ def test_tmux_cmd_pre_execution_logging(
     ]
     assert len(running_records) > 0
     assert "list-sessions" in running_records[0].tmux_cmd
+
+
+def test_libtmux_exception_subcommand_default_none() -> None:
+    """Backward-compat: existing call sites (no kwarg) get subcommand=None."""
+    err = exc.LibTmuxException(["no last window"])
+    assert err.subcommand is None
+    # str(err) reproduces only the args, preserving pre-0.57 shape.
+    assert "no last window" in str(err)
+    assert not str(err).startswith(":")
+
+
+def test_libtmux_exception_subcommand_tags_str() -> None:
+    """When ``subcommand`` is set, str(exc) prefixes ``"<subcommand>: …"``."""
+    err = exc.LibTmuxException(["no last window"], subcommand="last-window")
+    assert err.subcommand == "last-window"
+    assert str(err).startswith("last-window:")
+    assert "no last window" in str(err)
+
+
+def test_raise_if_stderr_no_stderr_is_noop(session: libtmux.Session) -> None:
+    """``raise_if_stderr`` returns silently when proc.stderr is empty."""
+    from libtmux.common import raise_if_stderr
+
+    proc = session.cmd("display-message", "-p", "#{version}")
+    raise_if_stderr(proc, "display-message")  # must not raise
+
+
+def test_raise_if_stderr_raises_with_subcommand_tag(
+    session: libtmux.Session,
+) -> None:
+    """``raise_if_stderr`` raises ``LibTmuxException`` tagged with subcommand."""
+    from libtmux.common import raise_if_stderr
+
+    # Provoke a tmux stderr: ask list-clients with a non-existent target.
+    proc = session.server.cmd(
+        "list-clients", "-t", "$nonexistent_session_id_for_test"
+    )
+    assert proc.stderr  # sanity check the fixture
+
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        raise_if_stderr(proc, "list-clients")
+
+    assert excinfo.value.subcommand == "list-clients"
+    assert str(excinfo.value).startswith("list-clients:")

@@ -16,7 +16,34 @@ if t.TYPE_CHECKING:
 
 
 class LibTmuxException(Exception):
-    """Base Exception for libtmux Errors."""
+    """Base Exception for libtmux Errors.
+
+    Parameters
+    ----------
+    *args : object
+        Forwarded to :class:`Exception`.
+    subcommand : str, optional
+        The tmux subcommand that produced this error (e.g. ``"last-window"``).
+        When set, :meth:`__str__` formats as ``"<subcommand>: <stderr>"`` so
+        downstream consumers see which tmux command failed.
+
+        .. versionadded:: 0.57
+    """
+
+    def __init__(
+        self,
+        *args: object,
+        subcommand: str | None = None,
+    ) -> None:
+        super().__init__(*args)
+        self.subcommand = subcommand
+
+    def __str__(self) -> str:
+        """Render with optional ``"<subcommand>: …"`` prefix."""
+        base = super().__str__()
+        if self.subcommand is None:
+            return base
+        return f"{self.subcommand}: {base}"
 
 
 class DeprecatedError(LibTmuxException):
