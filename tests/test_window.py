@@ -1163,6 +1163,16 @@ def test_window_display_message_target_client(
     assert result[0].startswith("@")
 
 
+def test_window_display_message_raises_on_tmux_error(session: Session) -> None:
+    """Tmux stderr on ``display-message`` surfaces as ``LibTmuxException``."""
+    window = session.active_window
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        window.display_message("x", get_text=True, format_string="#{window_id}")
+
+    assert excinfo.value.subcommand == "display-message"
+    assert "only one of -F or argument" in str(excinfo.value)
+
+
 def test_window_zoomed_flag_field_toggle(session: Session) -> None:
     """``window.window_zoomed_flag`` reflects tmux's zoom state across refresh.
 

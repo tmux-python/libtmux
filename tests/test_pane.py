@@ -831,6 +831,18 @@ def test_display_message_flags(
         assert expected_in_output in output
 
 
+def test_display_message_raises_on_tmux_error(session: Session) -> None:
+    """Tmux stderr on ``display-message`` surfaces as ``LibTmuxException``."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        pane.display_message("x", get_text=True, format_string="#{pane_id}")
+
+    assert excinfo.value.subcommand == "display-message"
+    assert "only one of -F or argument" in str(excinfo.value)
+
+
 def test_split_percentage(session: Session) -> None:
     """Test Pane.split() with percentage parameter."""
     from libtmux.common import has_gte_version

@@ -993,6 +993,7 @@ class Window(
             tmux_args += (cmd,)
 
         proc = self.cmd("display-message", *tmux_args)
+        raise_if_stderr(proc, "display-message")
 
         if get_text:
             return proc.stdout
