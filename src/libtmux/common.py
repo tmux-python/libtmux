@@ -7,6 +7,7 @@ libtmux.common
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 import shlex
@@ -373,6 +374,7 @@ class tmux_cmd:
             )
 
 
+@functools.cache
 def get_version(tmux_bin: str | None = None) -> LooseVersion:
     """Return tmux version.
 
@@ -393,6 +395,15 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     :class:`distutils.version.LooseVersion`
         tmux version according to *tmux_bin* if provided, otherwise the
         system tmux from :func:`shutil.which`
+
+    Notes
+    -----
+    Memoized via :func:`functools.cache`, keyed on the *tmux_bin* argument
+    (``None`` is a distinct key from any explicit path). The cache is sticky
+    across ``PATH`` changes and on-disk binary swaps when *tmux_bin* is
+    ``None`` or the same path string — call ``get_version.cache_clear()`` to
+    invalidate. Tests that monkey-patch :class:`tmux_cmd` should call
+    ``cache_clear()`` before asserting parsed-version behavior.
     """
     proc = tmux_cmd("-V", tmux_bin=tmux_bin)
     if proc.stderr:
