@@ -330,6 +330,7 @@ class Pane(
         alternate_screen: bool = ...,
         quiet: bool = ...,
         mode_screen: bool = ...,
+        pending: bool = ...,
         to_buffer: str,
     ) -> None: ...
 
@@ -347,6 +348,7 @@ class Pane(
         alternate_screen: bool = ...,
         quiet: bool = ...,
         mode_screen: bool = ...,
+        pending: bool = ...,
         to_buffer: None = ...,
     ) -> list[str]: ...
 
@@ -363,6 +365,7 @@ class Pane(
         alternate_screen: bool = False,
         quiet: bool = False,
         mode_screen: bool = False,
+        pending: bool = False,
         to_buffer: str | None = None,
     ) -> list[str] | None:
         r"""Capture text from pane.
@@ -425,6 +428,15 @@ class Pane(
             Default: False
 
             .. versionadded:: 0.56
+        pending : bool, optional
+            Capture *pending input* — bytes tmux has buffered as input for
+            the pane but the running program hasn't consumed yet (``-P``
+            flag). Distinct from the default capture (the pane's screen
+            history). Useful for diagnosing hung programs or paste-buffer
+            drains.
+            Default: False
+
+            .. versionadded:: 0.57
         to_buffer : str, optional
             Write the capture into the named tmux buffer (``-b`` flag)
             instead of returning it. When set, ``-p`` is omitted and
@@ -490,6 +502,8 @@ class Pane(
                     "mode_screen requires tmux 3.6+, ignoring",
                     stacklevel=2,
                 )
+        if pending:
+            cmd.append("-P")
         proc = self.cmd(*cmd)
         if to_buffer is not None:
             return None
