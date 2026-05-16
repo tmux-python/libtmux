@@ -1146,6 +1146,13 @@ def test_window_display_message_target_client(
     session: Session,
 ) -> None:
     """``target_client`` is plumbed through as ``-c``."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip(
+            "display-message -p via control-mode client unreliable on tmux 3.2a"
+        )
+
     window = session.active_window
     with control_mode() as ctl:
         result = window.display_message(
