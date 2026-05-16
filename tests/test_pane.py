@@ -612,7 +612,6 @@ PANE_FORMAT_FIELDS = (
     "pane_format",
     "pane_in_mode",
     "pane_input_off",
-    "pane_key_mode",
     "pane_last",
     "pane_marked",
     "pane_marked_set",
@@ -620,7 +619,6 @@ PANE_FORMAT_FIELDS = (
     "pane_path",
     "pane_pipe",
     "pane_synchronized",
-    "pane_unseen_changes",
 )
 
 
