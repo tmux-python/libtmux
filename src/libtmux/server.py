@@ -451,10 +451,16 @@ class Server(
         target_pane : str, optional
             Target pane for output (``-t`` flag).
         cwd : str or PathLike, optional
-            Working directory for the shell command (``-c`` flag). When
+            Start directory for the shell command (``-c`` flag). When
             omitted, tmux uses the target client's current working
             directory. Requires tmux 3.4+; on older tmux a warning is
             emitted and the kwarg is ignored.
+
+            Note: tmux's ``-c`` is a *start directory*, not subprocess
+            semantics. If ``chdir(cwd)`` fails, tmux falls back to the
+            user's home directory, then to ``/``, rather than raising
+            — unlike Python's ``subprocess.Popen(cwd=)`` which errors
+            on a failed chdir.
 
             .. versionadded:: 0.57
         show_stderr : bool, optional
