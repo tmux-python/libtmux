@@ -250,6 +250,7 @@ def fetch_objs(
     server: Server,
     list_cmd: ListCmd,
     list_extra_args: ListExtraArgs = None,
+    filter: str | None = None,  # noqa: A002
 ) -> OutputsRaw:
     """Fetch a listing of raw data from a tmux command.
 
@@ -266,6 +267,13 @@ def fetch_objs(
     list_extra_args : ListExtraArgs, optional
         Extra arguments appended to the tmux command (e.g. ``("-a",)``
         for all windows/panes, or ``["-t", session_id]`` to filter).
+    filter : str, optional
+        Filter expression evaluated by tmux's format engine (``-f`` flag).
+        Objects for which the expanded expression is "false" (empty string,
+        "0") are omitted from the result. Pushes filtering into tmux's C
+        code instead of Python post-processing.
+
+        .. versionadded:: 0.57
 
     Returns
     -------
@@ -305,6 +313,9 @@ def fetch_objs(
 
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
         tmux_cmds.extend(list(list_extra_args))
+
+    if filter is not None:
+        tmux_cmds.extend(["-f", filter])
 
     tmux_cmds.append(f"-F{format_string}")
 

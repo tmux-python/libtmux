@@ -1178,3 +1178,24 @@ def test_window_zoomed_flag_field_toggle(session: Session) -> None:
     pane.resize(zoom=True)
     window.refresh()
     assert window.window_zoomed_flag == "0"
+
+
+def test_window_search_panes_filter_by_id(session: Session) -> None:
+    """``Window.search_panes(filter=...)`` returns only the matching pane id."""
+    window = session.active_window
+    target = window.split()
+
+    matches = window.search_panes(filter=f"#{{m:{target.pane_id},#{{pane_id}}}}")
+    assert [p.pane_id for p in matches] == [target.pane_id]
+
+
+def test_window_search_panes_no_filter_equivalent_to_property(
+    session: Session,
+) -> None:
+    """``search_panes()`` with no filter matches the existing ``panes`` property."""
+    window = session.active_window
+    window.split()
+
+    from_property = sorted(p.pane_id for p in window.panes if p.pane_id)
+    from_method = sorted(p.pane_id for p in window.search_panes() if p.pane_id)
+    assert from_property == from_method

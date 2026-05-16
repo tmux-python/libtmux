@@ -197,6 +197,45 @@ class Window(
 
         return QueryList(panes)
 
+    def search_panes(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Pane]:
+        """Panes in this window, optionally filtered by tmux's C-side predicate.
+
+        Like :attr:`Window.panes` but with a ``filter`` kwarg plumbed to
+        ``$ tmux list-panes -t <window> -f <filter>``.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag).
+
+            .. versionadded:: 0.57
+
+        Examples
+        --------
+        >>> target_pane = window.split()
+        >>> matches = window.search_panes(
+        ...     filter=f'#{{m:{target_pane.pane_id},#{{pane_id}}}}'
+        ... )
+        >>> [p.pane_id for p in matches] == [target_pane.pane_id]
+        True
+        """
+        panes: list[Pane] = [
+            Pane(server=self.server, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-panes",
+                list_extra_args=["-t", str(self.window_id)],
+                server=self.server,
+                filter=filter,
+            )
+            if obj.get("window_id") == self.window_id
+        ]
+
+        return QueryList(panes)
+
     """
     Commands (pane-scoped)
     """

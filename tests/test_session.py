@@ -671,3 +671,24 @@ def test_new_window_select_existing(session: Session) -> None:
         select_existing=True,
     )
     assert w.window_name == "selexist_new"
+
+
+def test_session_search_windows_filter(session: Session) -> None:
+    """``Session.list_windows(filter=...)`` filters via tmux's C-side -f flag."""
+    session.new_window(window_name="gap7s_keep")
+    session.new_window(window_name="other_drop")
+
+    matches = session.search_windows(filter="#{m:gap7s_*,#{window_name}}")
+    names = sorted(w.window_name for w in matches if w.window_name)
+    assert names == ["gap7s_keep"]
+
+
+def test_session_search_panes_filter_by_id(session: Session) -> None:
+    """``Session.list_panes(filter=...)`` projects only matching pane ids."""
+    window = session.active_window
+    target = window.split()
+
+    matches = session.search_panes(
+        filter=f"#{{m:{target.pane_id},#{{pane_id}}}}",
+    )
+    assert [p.pane_id for p in matches] == [target.pane_id]
