@@ -1144,6 +1144,39 @@ def test_list_buffers(server: Server) -> None:
     assert len(result) >= 2
 
 
+def test_list_buffers_format_returns_raw_names(server: Server) -> None:
+    """``format_string`` projects raw names instead of the default template."""
+    server.new_session(session_name="buf_format")
+    server.set_buffer("payload_a", buffer_name="fmt_a")
+    server.set_buffer("payload_b", buffer_name="fmt_b")
+
+    names = server.list_buffers(format_string="#{buffer_name}")
+
+    assert "fmt_a" in names
+    assert "fmt_b" in names
+    # Default template would contain "bytes:" — raw projection must not.
+    assert not any("bytes:" in line for line in names)
+
+
+def test_list_buffers_filter_pushes_predicate_into_tmux(server: Server) -> None:
+    """``filter=`` pushes the match into tmux's format engine (-f flag).
+
+    Only names matching the predicate come back from tmux; no Python-side
+    post-filter is needed.
+    """
+    server.new_session(session_name="buf_filter")
+    server.set_buffer("keep_me", buffer_name="gap6match_alpha")
+    server.set_buffer("keep_me", buffer_name="gap6match_beta")
+    server.set_buffer("drop_me", buffer_name="gap6miss_one")
+
+    matches = server.list_buffers(
+        format_string="#{buffer_name}",
+        filter="#{m:gap6match_*,#{buffer_name}}",
+    )
+
+    assert sorted(matches) == ["gap6match_alpha", "gap6match_beta"]
+
+
 def test_if_shell_true(server: Server) -> None:
     """Test Server.if_shell() with true condition."""
     server.new_session(session_name="ifshell_test")
