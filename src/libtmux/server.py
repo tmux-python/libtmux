@@ -1395,6 +1395,165 @@ class Server(
 
         return proc.stdout
 
+    @t.overload
+    def display_message(
+        self,
+        cmd: str,
+        get_text: t.Literal[True],
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+    ) -> list[str]: ...
+
+    @t.overload
+    def display_message(
+        self,
+        cmd: str,
+        get_text: t.Literal[False] = ...,
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+    ) -> None: ...
+
+    def display_message(
+        self,
+        cmd: str,
+        get_text: bool = False,
+        *,
+        format_string: str | None = None,
+        all_formats: bool | None = None,
+        verbose: bool | None = None,
+        no_expand: bool | None = None,
+        target_client: str | None = None,
+        delay: int | None = None,
+        notify: bool | None = None,
+    ) -> list[str] | None:
+        """Display message at server scope via ``$ tmux display-message``.
+
+        Like :meth:`Pane.display_message` but without ``-t <pane-id>`` injection.
+        tmux's ``cmd-display-message`` entry uses ``CMD_FIND_CANFAIL`` so the
+        target is optional; server-scoped format reads (``#{version}``,
+        ``#{socket_path}``, ``#{pid}``) resolve without a specific pane handle.
+
+        With no client attached and ``target_client`` omitted, the status-line
+        path (``get_text=False``) raises ``no current client``. Use
+        ``get_text=True`` for headless reads, or pair with
+        :class:`~libtmux._internal.control_mode.ControlMode`.
+
+        Parameters
+        ----------
+        cmd : str
+            Format string to display or evaluate (e.g. ``"#{version}"``).
+            Pass ``""`` together with ``all_formats=True`` to dump every
+            variable.
+
+            .. versionadded:: 0.57
+        get_text : bool, optional
+            Return tmux's stdout instead of rendering to the status line
+            (``-p`` flag).
+
+            .. versionadded:: 0.57
+        format_string : str, optional
+            Alternative format template (``-F`` flag).
+
+            .. versionadded:: 0.57
+        all_formats : bool, optional
+            List all format variables (``-a`` flag).
+
+            .. versionadded:: 0.57
+        verbose : bool, optional
+            Show format variable types (``-v`` flag).
+
+            .. versionadded:: 0.57
+        no_expand : bool, optional
+            Output the literal string without format expansion (``-l`` flag).
+            Requires tmux 3.4+.
+
+            .. versionadded:: 0.57
+        target_client : str, optional
+            Target client (``-c`` flag).
+
+            .. versionadded:: 0.57
+        delay : int, optional
+            Display time in milliseconds (``-d`` flag).
+
+            .. versionadded:: 0.57
+        notify : bool, optional
+            Do not wait for input (``-N`` flag).
+
+            .. versionadded:: 0.57
+
+        Returns
+        -------
+        list[str] | None
+            Message output if ``get_text`` is True, otherwise ``None``.
+
+        Examples
+        --------
+        Read tmux version without needing a pane handle:
+
+        >>> result = server.display_message("#{version}", get_text=True)
+        >>> isinstance(result, list) and len(result) == 1
+        True
+
+        Dump every format variable:
+
+        >>> result = server.display_message("", get_text=True, all_formats=True)
+        >>> any("session_name=" in line for line in result)
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if get_text:
+            tmux_args += ("-p",)
+
+        if all_formats:
+            tmux_args += ("-a",)
+
+        if verbose:
+            tmux_args += ("-v",)
+
+        if no_expand:
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "no_expand requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if notify:
+            tmux_args += ("-N",)
+
+        if target_client is not None:
+            tmux_args += ("-c", target_client)
+
+        if delay is not None:
+            tmux_args += ("-d", str(delay))
+
+        if format_string is not None:
+            tmux_args += ("-F", format_string)
+
+        if cmd:
+            tmux_args += (cmd,)
+
+        proc = self.cmd("display-message", *tmux_args)
+
+        if get_text:
+            return proc.stdout
+
+        return None
+
     def show_prompt_history(
         self,
         *,

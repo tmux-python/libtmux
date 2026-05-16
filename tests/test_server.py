@@ -1292,3 +1292,107 @@ def test_new_session_client_flags(
         client_flags="no-output",
     )
     assert session.session_name == "flags_test"
+
+
+class ServerDisplayMessageCase(t.NamedTuple):
+    """Test case for Server.display_message() flag variations."""
+
+    test_id: str
+    cmd: str
+    kwargs: dict[str, t.Any]
+    expected_in_output: str | None
+    min_tmux_version: str | None
+
+
+SERVER_DISPLAY_MESSAGE_CASES: list[ServerDisplayMessageCase] = [
+    ServerDisplayMessageCase(
+        test_id="version",
+        cmd="#{version}",
+        kwargs={"get_text": True},
+        expected_in_output=".",
+        min_tmux_version=None,
+    ),
+    ServerDisplayMessageCase(
+        test_id="socket_path_format_string",
+        cmd="",
+        kwargs={"get_text": True, "format_string": "#{socket_path}"},
+        expected_in_output="/",
+        min_tmux_version=None,
+    ),
+    ServerDisplayMessageCase(
+        test_id="all_formats",
+        cmd="",
+        kwargs={"get_text": True, "all_formats": True},
+        expected_in_output="session_name",
+        min_tmux_version=None,
+    ),
+    ServerDisplayMessageCase(
+        test_id="no_expand_literal",
+        cmd="#{version}",
+        kwargs={"get_text": True, "no_expand": True},
+        expected_in_output="#{version}",
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(ServerDisplayMessageCase._fields),
+    SERVER_DISPLAY_MESSAGE_CASES,
+    ids=[c.test_id for c in SERVER_DISPLAY_MESSAGE_CASES],
+)
+def test_server_display_message_flags(
+    test_id: str,
+    cmd: str,
+    kwargs: dict[str, t.Any],
+    expected_in_output: str | None,
+    min_tmux_version: str | None,
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Server.display_message() resolves server-scoped formats without a pane.
+
+    tmux dispatches ``display-message -p`` output through a client; the wrapper
+    omits ``-t <pane-id>`` but still needs a client to receive stdout. The
+    headless test environment provides one via :class:`ControlMode`.
+    """
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    with control_mode() as ctl:
+        call_kwargs = dict(kwargs)
+        call_kwargs.setdefault("target_client", ctl.client_name)
+        result = server.display_message(cmd, **call_kwargs)
+
+    if expected_in_output is not None:
+        assert result is not None
+        output = "\n".join(result)
+        assert expected_in_output in output
+
+
+def test_server_display_message_no_text_returns_none(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Without ``get_text=True`` the call renders to status line and returns None."""
+    with control_mode() as ctl:
+        result = server.display_message(
+            "hi from libtmux", target_client=ctl.client_name
+        )
+    assert result is None
+
+
+def test_server_display_message_target_client(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """``target_client`` is plumbed through as ``-c``; get_text=True returns stdout."""
+    with control_mode() as ctl:
+        result = server.display_message(
+            "#{version}", get_text=True, target_client=ctl.client_name
+        )
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0].strip() != ""
