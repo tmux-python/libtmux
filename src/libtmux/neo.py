@@ -54,6 +54,14 @@ FIELD_VERSION: dict[str, str] = {
     # release tag, e.g. https://github.com/tmux/tmux/blob/3.6a/format.c).
     "pane_dead_signal": "3.3",
     "pane_dead_time": "3.3",
+    "pane_unseen_changes": "3.4",
+    "pane_key_mode": "3.5",
+    "session_active": "3.6",
+    "session_activity_flag": "3.6",
+    "session_alert": "3.6",
+    "session_bell_flag": "3.6",
+    "session_silence_flag": "3.6",
+    "client_theme": "3.6",
 }
 """Minimum tmux version that registers each format token.
 
@@ -311,6 +319,7 @@ class Obj:
     client_termfeatures: str | None = None
     client_termname: str | None = None
     client_termtype: str | None = None
+    client_theme: str | None = None
     client_tty: str | None = None
     client_uid: str | None = None
     client_user: str | None = None
@@ -367,6 +376,7 @@ class Obj:
     pane_in_mode: str | None = None
     pane_index: str | None = None
     pane_input_off: str | None = None
+    pane_key_mode: str | None = None
     pane_last: str | None = None
     pane_left: str | None = None
     pane_marked: str | None = None
@@ -387,6 +397,7 @@ class Obj:
     pane_title: str | None = None
     pane_top: str | None = None
     pane_tty: str | None = None
+    pane_unseen_changes: str | None = None
     pane_width: str | None = None
     pane_zoomed_flag: str | None = None
     pid: str | None = None
@@ -398,10 +409,14 @@ class Obj:
     selection_end_y: str | None = None
     selection_start_x: str | None = None
     selection_start_y: str | None = None
+    session_active: str | None = None
     session_activity: str | None = None
+    session_activity_flag: str | None = None
+    session_alert: str | None = None
     session_alerts: str | None = None
     session_attached: str | None = None
     session_attached_list: str | None = None
+    session_bell_flag: str | None = None
     session_created: str | None = None
     session_format: str | None = None
     session_group: str | None = None
@@ -417,6 +432,7 @@ class Obj:
     session_marked: str | None = None
     session_name: str | None = None
     session_path: str | None = None
+    session_silence_flag: str | None = None
     session_stack: str | None = None
     session_windows: str | None = None
     socket_path: str | None = None
