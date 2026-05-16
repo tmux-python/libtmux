@@ -288,6 +288,7 @@ class Obj:
     active_window_index: str | None = None
     alternate_saved_x: str | None = None
     alternate_saved_y: str | None = None
+    bracket_paste_flag: str | None = None
     buffer_name: str | None = None
     buffer_sample: str | None = None
     buffer_size: str | None = None
@@ -358,6 +359,8 @@ class Obj:
     pane_dead_status: str | None = None
     pane_dead_time: str | None = None
     pane_fg: str | None = None
+    pane_flags: str | None = None
+    pane_floating_flag: str | None = None
     pane_format: str | None = None
     pane_height: str | None = None
     pane_id: str | None = None
@@ -370,8 +373,11 @@ class Obj:
     pane_marked_set: str | None = None
     pane_mode: str | None = None
     pane_path: str | None = None
+    pane_pb_progress: str | None = None
+    pane_pb_state: str | None = None
     pane_pid: str | None = None
     pane_pipe: str | None = None
+    pane_pipe_pid: str | None = None
     pane_right: str | None = None
     pane_search_string: str | None = None
     pane_start_command: str | None = None
@@ -382,6 +388,7 @@ class Obj:
     pane_top: str | None = None
     pane_tty: str | None = None
     pane_width: str | None = None
+    pane_zoomed_flag: str | None = None
     pid: str | None = None
     scroll_position: str | None = None
     scroll_region_lower: str | None = None
@@ -414,6 +421,7 @@ class Obj:
     session_windows: str | None = None
     socket_path: str | None = None
     start_time: str | None = None
+    synchronized_output_flag: str | None = None
     uid: str | None = None
     user: str | None = None
     version: str | None = None
