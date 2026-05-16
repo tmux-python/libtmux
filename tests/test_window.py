@@ -1058,3 +1058,99 @@ def test_move_window_no_select(session: Session) -> None:
     w2.move_window(destination="99", no_select=True)
     session.refresh()
     assert session.active_window.window_id == w1.window_id
+
+
+class WindowDisplayMessageCase(t.NamedTuple):
+    """Test case for Window.display_message() flag variations."""
+
+    test_id: str
+    cmd: str
+    kwargs: dict[str, t.Any]
+    expected_in_output: str | None
+    min_tmux_version: str | None
+
+
+WINDOW_DISPLAY_MESSAGE_CASES: list[WindowDisplayMessageCase] = [
+    WindowDisplayMessageCase(
+        test_id="window_id",
+        cmd="#{window_id}",
+        kwargs={"get_text": True},
+        expected_in_output="@",
+        min_tmux_version=None,
+    ),
+    WindowDisplayMessageCase(
+        test_id="window_index_via_format_string",
+        cmd="",
+        kwargs={"get_text": True, "format_string": "#{window_index}"},
+        # pytest plugin sets `base-index 1` (pytest_plugin.py:110), so the
+        # first window in a fresh session is index 1, not 0.
+        expected_in_output="1",
+        min_tmux_version=None,
+    ),
+    WindowDisplayMessageCase(
+        test_id="zoomed_flag_default_zero",
+        cmd="#{window_zoomed_flag}",
+        kwargs={"get_text": True},
+        expected_in_output="0",
+        min_tmux_version=None,
+    ),
+    WindowDisplayMessageCase(
+        test_id="no_expand_literal",
+        cmd="#{window_id}",
+        kwargs={"get_text": True, "no_expand": True},
+        expected_in_output="#{window_id}",
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(WindowDisplayMessageCase._fields),
+    WINDOW_DISPLAY_MESSAGE_CASES,
+    ids=[c.test_id for c in WINDOW_DISPLAY_MESSAGE_CASES],
+)
+def test_window_display_message_flags(
+    test_id: str,
+    cmd: str,
+    kwargs: dict[str, t.Any],
+    expected_in_output: str | None,
+    min_tmux_version: str | None,
+    session: Session,
+) -> None:
+    """Window.display_message() resolves window-scoped formats."""
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    window = session.active_window
+    result = window.display_message(cmd, **kwargs)
+
+    if expected_in_output is not None:
+        assert result is not None
+        output = "\n".join(result)
+        assert expected_in_output in output
+
+
+def test_window_display_message_no_text_returns_none(
+    session: Session,
+) -> None:
+    """Without ``get_text=True`` the call renders to status line and returns None."""
+    window = session.active_window
+    result = window.display_message("hi from libtmux")
+    assert result is None
+
+
+def test_window_display_message_target_client(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+) -> None:
+    """``target_client`` is plumbed through as ``-c``."""
+    window = session.active_window
+    with control_mode() as ctl:
+        result = window.display_message(
+            "#{window_id}", get_text=True, target_client=ctl.client_name
+        )
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0].startswith("@")
