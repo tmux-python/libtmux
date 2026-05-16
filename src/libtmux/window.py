@@ -15,7 +15,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
+from libtmux.common import has_gte_version, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     OptionScope,
@@ -815,6 +815,161 @@ class Window(
         self.refresh()
         if isinstance(target, Window):
             target.refresh()
+
+    @t.overload
+    def display_message(
+        self,
+        cmd: str,
+        get_text: t.Literal[True],
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+    ) -> list[str]: ...
+
+    @t.overload
+    def display_message(
+        self,
+        cmd: str,
+        get_text: t.Literal[False] = ...,
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+    ) -> None: ...
+
+    def display_message(
+        self,
+        cmd: str,
+        get_text: bool = False,
+        *,
+        format_string: str | None = None,
+        all_formats: bool | None = None,
+        verbose: bool | None = None,
+        no_expand: bool | None = None,
+        target_client: str | None = None,
+        delay: int | None = None,
+        notify: bool | None = None,
+    ) -> list[str] | None:
+        """Display message at window scope via ``$ tmux display-message``.
+
+        Like :meth:`Pane.display_message` but auto-injects ``-t @<window-id>``
+        instead of a pane id. Window-scoped format reads such as
+        ``#{window_zoomed_flag}`` or ``#{window_active_clients}`` no longer
+        require dropping to :meth:`Window.cmd`.
+
+        Parameters
+        ----------
+        cmd : str
+            Format string to display or evaluate (e.g.
+            ``"#{window_zoomed_flag}"``).
+
+            .. versionadded:: 0.57
+        get_text : bool, optional
+            Return tmux's stdout instead of rendering to the status line
+            (``-p`` flag).
+
+            .. versionadded:: 0.57
+        format_string : str, optional
+            Alternative format template (``-F`` flag).
+
+            .. versionadded:: 0.57
+        all_formats : bool, optional
+            List all format variables (``-a`` flag).
+
+            .. versionadded:: 0.57
+        verbose : bool, optional
+            Show format variable types (``-v`` flag).
+
+            .. versionadded:: 0.57
+        no_expand : bool, optional
+            Output the literal string without format expansion (``-l`` flag).
+            Requires tmux 3.4+.
+
+            .. versionadded:: 0.57
+        target_client : str, optional
+            Target client (``-c`` flag).
+
+            .. versionadded:: 0.57
+        delay : int, optional
+            Display time in milliseconds (``-d`` flag).
+
+            .. versionadded:: 0.57
+        notify : bool, optional
+            Do not wait for input (``-N`` flag).
+
+            .. versionadded:: 0.57
+
+        Returns
+        -------
+        list[str] | None
+            Message output if ``get_text`` is True, otherwise ``None``.
+
+        Examples
+        --------
+        Read the window's id format:
+
+        >>> result = window.display_message("#{window_id}", get_text=True)
+        >>> result[0].startswith("@")
+        True
+
+        Check zoom state (a common gap-#670 use case):
+
+        >>> result = window.display_message(
+        ...     "#{window_zoomed_flag}", get_text=True
+        ... )
+        >>> result[0] in {"0", "1"}
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if get_text:
+            tmux_args += ("-p",)
+
+        if all_formats:
+            tmux_args += ("-a",)
+
+        if verbose:
+            tmux_args += ("-v",)
+
+        if no_expand:
+            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "no_expand requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if notify:
+            tmux_args += ("-N",)
+
+        if target_client is not None:
+            tmux_args += ("-c", target_client)
+
+        if delay is not None:
+            tmux_args += ("-d", str(delay))
+
+        if format_string is not None:
+            tmux_args += ("-F", format_string)
+
+        if cmd:
+            tmux_args += (cmd,)
+
+        proc = self.cmd("display-message", *tmux_args)
+
+        if get_text:
+            return proc.stdout
+
+        return None
 
     def rename_window(self, new_name: str) -> Window:
         """Rename window.
