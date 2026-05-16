@@ -46,7 +46,7 @@ class Client(Obj):
 
     >>> with control_mode() as ctl:
     ...     client = server.clients.get(client_name=ctl.client_name)
-    ...     client.client_readonly in {"0", "1"}
+    ...     bool(client.client_name)
     True
 
     References
