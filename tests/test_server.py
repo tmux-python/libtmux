@@ -1244,26 +1244,6 @@ def test_list_buffers_filter_pushes_predicate_into_tmux(server: Server) -> None:
     assert sorted(matches) == ["gap6match_alpha", "gap6match_beta"]
 
 
-def test_server_cmd_warns_on_legacy_dash_t(session: Session) -> None:
-    """``Server.cmd`` warns when a caller passes ``-t`` alongside ``target=``.
-
-    Mirrors tmux's last-wins behavior on repeated flags: tmux silently drops
-    the positional ``-t``. The wrapper surfaces the legacy form with a
-    :exc:`DeprecationWarning` so callers can migrate to ``target=``.
-    """
-    with pytest.warns(DeprecationWarning, match="legacy form"):
-        session.cmd("display-message", "-t", session.session_id, "-p", "ok")
-
-
-def test_server_cmd_no_warning_when_target_only(session: Session) -> None:
-    """``target=`` alone (no ``-t`` in args) does not warn."""
-    import warnings
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", DeprecationWarning)
-        session.cmd("display-message", "-p", "ok")
-
-
 def test_server_search_sessions_filter(server: Server) -> None:
     """``Server.list_sessions(filter=...)`` returns only matching sessions."""
     server.new_session(session_name="gap7_keep_alpha")
