@@ -28,10 +28,10 @@ OutputsRaw = list[OutputRaw]
 
 
 SCOPES_BY_LIST_CMD: dict[str, frozenset[str]] = {
-    "list-sessions": frozenset({"universal", "session"}),
-    "list-windows": frozenset({"universal", "session", "window"}),
+    "list-sessions": frozenset({"universal", "session", "window", "pane"}),
+    "list-windows": frozenset({"universal", "session", "window", "pane"}),
     "list-panes": frozenset({"universal", "session", "window", "pane"}),
-    "list-clients": frozenset({"universal", "session", "client"}),
+    "list-clients": frozenset({"universal", "session", "window", "pane", "client"}),
 }
 """Format-token scopes a given tmux ``list-*`` subcommand can resolve.
 
@@ -39,6 +39,13 @@ A token whose scope is in the set is safe to include in that subcommand's
 ``-F`` template. A token whose scope is *outside* the set may be unknown to
 the format engine in that context, or in older tmux releases trigger a
 server-side fault — exclude it from the format string.
+
+The cascade is asymmetric: tmux's ``format_defaults`` (``format.c``) fills
+deeper context downward — ``c->session`` → ``s->curw`` → ``wl->window->active``
+— so every ``list-*`` subcommand admits its own scope plus every scope
+reachable *downward*. ``client`` scope is the exception: it appears only in
+``list-clients`` because no reverse cascade exists and emitting ``client_*``
+in a non-client context crashed tmux 3.2a CI (commit 342ff5f5).
 """
 
 
@@ -399,7 +406,9 @@ def get_output_format(
     >>> fields, fmt = get_output_format("list-sessions", "3.6a")
     >>> 'session_id' in fields
     True
-    >>> 'pane_id' in fields
+    >>> 'pane_id' in fields  # downward cascade via format_defaults
+    True
+    >>> 'client_name' in fields  # upward not allowed
     False
     >>> 'server' in fields
     False
@@ -410,11 +419,13 @@ def get_output_format(
     >>> all(t in fields for t in ('pane_id', 'window_id', 'session_id'))
     True
 
-    Client scope is isolated from pane/window tokens:
+    ``list-clients`` adds client scope on top of the downward cascade:
 
     >>> fields, _ = get_output_format("list-clients", "3.6a")
+    >>> 'client_name' in fields
+    True
     >>> 'pane_id' in fields
-    False
+    True
     """
     allowed_scopes = SCOPES_BY_LIST_CMD.get(
         list_cmd,
