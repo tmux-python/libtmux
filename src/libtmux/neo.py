@@ -62,6 +62,17 @@ FIELD_VERSION: dict[str, str] = {
     "session_bell_flag": "3.6",
     "session_silence_flag": "3.6",
     "client_theme": "3.6",
+    # Forward-looking tokens registered in tmux master post-3.6a. Gated
+    # to 3.7 so they're absent on every released tmux. Once tmux 3.7 ships,
+    # they'll hydrate automatically.
+    "bracket_paste_flag": "3.7",
+    "pane_flags": "3.7",
+    "pane_floating_flag": "3.7",
+    "pane_pb_progress": "3.7",
+    "pane_pb_state": "3.7",
+    "pane_pipe_pid": "3.7",
+    "pane_zoomed_flag": "3.7",
+    "synchronized_output_flag": "3.7",
 }
 """Minimum tmux version that registers each format token.
 
@@ -95,6 +106,8 @@ _SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
 # Entries are added by the scope-gate fix commits as misclassifications are
 # discovered.
 _SCOPE_OVERRIDES: dict[str, str] = {
+    "bracket_paste_flag": "pane",  # ft->wp->screen MODE_BRACKETPASTE
+    "synchronized_output_flag": "pane",  # ft->wp->base MODE_SYNC
     "cursor_x": "pane",  # ft->wp->base.cx
     "cursor_y": "pane",  # ft->wp->base.cy
     "cursor_flag": "pane",  # ft->wp->base.mode
@@ -214,6 +227,8 @@ def _token_scope(field_name: str) -> str:
     'pane'
     >>> _token_scope("active_window_index")
     'session'
+    >>> _token_scope("synchronized_output_flag")
+    'pane'
 
     Context-only tokens (registered outside ``format.c``'s static table)
     route to the ``"context"`` scope and are excluded from every
