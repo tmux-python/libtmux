@@ -81,7 +81,12 @@ _SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
 # ``format.c`` (which context the callback dereferences — wp, wl, s, or c).
 # Entries are added by the scope-gate fix commits as misclassifications are
 # discovered.
-_SCOPE_OVERRIDES: dict[str, str] = {}
+_SCOPE_OVERRIDES: dict[str, str] = {
+    "cursor_x": "pane",  # ft->wp->base.cx
+    "cursor_y": "pane",  # ft->wp->base.cy
+    "cursor_flag": "pane",  # ft->wp->base.mode
+    "cursor_character": "pane",  # ft->wp
+}
 
 
 # Standalone tokens not captured by the prefix table.
