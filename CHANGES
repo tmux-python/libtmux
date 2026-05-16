@@ -118,19 +118,29 @@ consumers a stable way to dispatch on which tmux command produced the
 error. {func}`~libtmux.common.raise_if_stderr` is the helper every
 wrapper uses to populate it.
 
-#### ~45 typed format-token fields (#670)
+#### Scope-aware format-token retrieval (#670)
 
-{class}`~libtmux.Pane`, {class}`~libtmux.Window`, and
-{class}`~libtmux.Session` now declare typed dataclass fields for the
-scope-relevant tokens from tmux's ``format_table[]`` —
-``window_zoomed_flag``, ``pane_dead``, ``pane_in_mode``,
-``pane_synchronized``, ``session_marked``, ``window_silence_flag``, and
-~40 more. Eight additional forward-looking tokens from tmux master
-(``pane_zoomed_flag``, ``pane_floating_flag``, ``pane_flags``,
-``pane_pb_state``, ``pane_pb_progress``, ``pane_pipe_pid``,
-``synchronized_output_flag``, ``bracket_paste_flag``) ship as declared
-fields too; older tmux releases leave them ``None`` and the next tmux
-tag populates them automatically.
+The ``-F`` template libtmux sends to each ``list-*`` subcommand is now
+**scope-aware** and **version-aware**. ``list-clients`` requests the
+``client_*`` tokens that belong to the client view; ``list-windows``,
+``list-panes``, and ``list-sessions`` request only tokens reachable from
+their respective contexts. Tokens introduced in tmux releases after
+3.2a are gated through ``FIELD_VERSION`` so the format string stays
+compatible with the project's minimum supported tmux. Tokens the running
+tmux doesn't recognize stay ``None`` on the typed surface — no crash, no
+warning.
+
+{class}`~libtmux.Pane`, {class}`~libtmux.Window`, {class}`~libtmux.Session`,
+and {class}`~libtmux.Client` declare typed dataclass fields for the
+scope-relevant tokens that ship in tmux 3.2a, including pane state
+(``pane_dead``, ``pane_in_mode``, ``pane_marked``, ``pane_synchronized``,
+``pane_path``, ``pane_pipe`` …), window state (``window_zoomed_flag``,
+``window_silence_flag``, ``window_flags`` …), session state
+(``session_marked`` …), and the client view (``client_session``,
+``client_readonly``, ``client_termtype`` …). Typed fields for tokens tmux
+added in 3.4 / 3.5 / 3.6 and the forward-looking set from tmux master
+will land in a follow-up shipment once those releases can be validated
+end-to-end.
 
 ### Fixes
 
