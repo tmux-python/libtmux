@@ -157,6 +157,7 @@ class Obj:
     window_raw_flags: str | None = None
     window_stack_index: str | None = None
     window_width: str | None = None
+    window_zoomed_flag: str | None = None
     wrap_flag: str | None = None
 
     def _refresh(

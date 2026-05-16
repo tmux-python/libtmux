@@ -1154,3 +1154,27 @@ def test_window_display_message_target_client(
     assert isinstance(result, list)
     assert len(result) == 1
     assert result[0].startswith("@")
+
+
+def test_window_zoomed_flag_field_toggle(session: Session) -> None:
+    """``window.window_zoomed_flag`` reflects tmux's zoom state across refresh.
+
+    ``refresh()`` repopulates the field after each ``resize-pane -Z`` toggle:
+    the flag reads ``"0"`` for an un-zoomed window and ``"1"`` once a pane
+    has been zoomed.
+    """
+    window = session.active_window
+    # Need at least two panes for zoom to mean anything.
+    window.split()
+    window.refresh()
+    assert window.window_zoomed_flag == "0"
+
+    pane = window.active_pane
+    assert pane is not None
+    pane.resize(zoom=True)
+    window.refresh()
+    assert window.window_zoomed_flag == "1"
+
+    pane.resize(zoom=True)
+    window.refresh()
+    assert window.window_zoomed_flag == "0"
