@@ -17,6 +17,7 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
+from libtmux.client import Client
 from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
@@ -2272,6 +2273,34 @@ class Server(
         ]
 
         return QueryList(panes)
+
+    @property
+    def clients(self) -> QueryList[Client]:
+        """Clients attached to this tmux server.
+
+        Each attached terminal is a separate :class:`Client`. ``server.clients``
+        returns the typed view; ``client.client_readonly``, ``client.client_termtype``,
+        ``client.client_session`` etc. read tmux's ``client_*`` format tokens.
+
+        Returns
+        -------
+        :class:`~libtmux._internal.query_list.QueryList` of :class:`Client`
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     names = [c.client_name for c in server.clients]
+        ...     ctl.client_name in names
+        True
+        """
+        clients: list[Client] = []
+        try:
+            for obj in fetch_objs(list_cmd="list-clients", server=self):
+                clients.append(Client(server=self, **obj))  # noqa: PERF401
+        except Exception:
+            pass
+
+        return QueryList(clients)
 
     def search_sessions(
         self,

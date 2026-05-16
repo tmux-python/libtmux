@@ -5,7 +5,8 @@
 # API Reference
 
 libtmux's public API mirrors tmux's object hierarchy:
-`Server` → `Session` → `Window` → `Pane`
+`Server` → `Session` → `Window` → `Pane`. Attached terminals show up as
+`Client` objects accessed off the server.
 
 ## What do you want to do?
 
@@ -65,6 +66,12 @@ Manages panes, layouts, and window operations.
 :link: libtmux.pane
 :link-type: doc
 Terminal instance. Send keys and capture output.
+:::
+
+:::{grid-item-card} Client
+:link: libtmux.client
+:link-type: doc
+Attached terminal. Read read-only state, theme, termtype.
 :::
 
 ::::
@@ -160,6 +167,7 @@ Server <libtmux.server>
 Session <libtmux.session>
 Window <libtmux.window>
 Pane <libtmux.pane>
+Client <libtmux.client>
 Common <libtmux.common>
 Neo <libtmux.neo>
 Options <libtmux.options>
