@@ -307,26 +307,7 @@ class Server(
         .. versionchanged:: 0.8
 
             Renamed from ``.tmux`` to ``.cmd``.
-
-        .. versionchanged:: 0.57
-
-            Passing ``-t`` positionally while *target* is also set now
-            emits :exc:`DeprecationWarning`. Use the *target* kwarg.
-            With both set, tmux's last-wins arg parsing makes the
-            positional ``-t`` override the kwarg target silently, so the
-            call's effective target is rarely the one a reader of the
-            code would expect. A future release will escalate to
-            :exc:`TypeError`.
         """
-        if target is not None and "-t" in args:
-            warnings.warn(
-                "Passing -t in *args is the legacy form and is ignored when "
-                "target= is set; pass target=<id> instead. Will become a "
-                "TypeError in a future release.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-
         svr_args: list[str | int] = [cmd]
         cmd_args: list[str | int] = []
         if self.socket_name:
