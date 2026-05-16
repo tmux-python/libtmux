@@ -1199,3 +1199,44 @@ def test_window_search_panes_no_filter_equivalent_to_property(
     from_property = sorted(p.pane_id for p in window.panes if p.pane_id)
     from_method = sorted(p.pane_id for p in window.search_panes() if p.pane_id)
     assert from_property == from_method
+
+
+WINDOW_FORMAT_FIELDS = (
+    "window_active_clients_list",
+    "window_active_sessions_list",
+    "window_activity_flag",
+    "window_bell_flag",
+    "window_bigger",
+    "window_end_flag",
+    "window_flags",
+    "window_format",
+    "window_last_flag",
+    "window_silence_flag",
+    "window_start_flag",
+    "window_visible_layout",
+)
+
+
+@pytest.mark.parametrize("field_name", WINDOW_FORMAT_FIELDS)
+def test_window_format_field_declared_and_hydrated(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Tmux's window-scope format tokens hydrate onto the typed ``Window``."""
+    window = session.active_window
+    assert field_name in window.__dataclass_fields__
+
+    window.refresh()
+    value = getattr(window, field_name)
+    assert value is None or isinstance(value, str)
+
+
+def test_window_flags_field_returns_string(session: Session) -> None:
+    """``window_flags`` summarizes window state and reads as a string.
+
+    The value is often empty for an idle window; the contract is that the
+    field hydrates as a string (never ``None``) once tmux has populated it.
+    """
+    window = session.active_window
+    window.refresh()
+    assert isinstance(window.window_flags, str)

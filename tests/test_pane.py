@@ -607,6 +607,62 @@ def test_send_keys_flag_only_requires_a_flag(session: Session) -> None:
         pane.send_keys()
 
 
+PANE_FORMAT_FIELDS = (
+    "pane_dead",
+    "pane_format",
+    "pane_in_mode",
+    "pane_input_off",
+    "pane_key_mode",
+    "pane_last",
+    "pane_marked",
+    "pane_marked_set",
+    "pane_mode",
+    "pane_path",
+    "pane_pipe",
+    "pane_synchronized",
+    "pane_unseen_changes",
+)
+
+
+@pytest.mark.parametrize("field_name", PANE_FORMAT_FIELDS)
+def test_pane_format_field_declared_and_hydrated(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Tmux's pane-scope format tokens hydrate onto the typed ``Pane`` object.
+
+    Verifies each registered ``pane_*`` token from tmux's ``format_table[]``
+    has a corresponding typed field on the ``Obj`` dataclass and that
+    ``refresh()`` populates it. Older tmux releases that don't recognize a
+    token expand it to the empty string, so the field reads as ``None``.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    # Field must be declared on the dataclass.
+    assert field_name in pane.__dataclass_fields__
+
+    pane.refresh()
+    value = getattr(pane, field_name)
+    assert value is None or isinstance(value, str)
+
+
+def test_pane_synchronized_reflects_window_state(session: Session) -> None:
+    """``pane.pane_synchronized`` flips when synchronize-panes toggles."""
+    window = session.active_window
+    window.split()
+    pane = window.active_pane
+    assert pane is not None
+
+    window.set_option("synchronize-panes", "on")
+    pane.refresh()
+    assert pane.pane_synchronized == "1"
+
+    window.set_option("synchronize-panes", "off")
+    pane.refresh()
+    assert pane.pane_synchronized == "0"
+
+
 def test_select_pane_direction(session: Session) -> None:
     """Test Pane.select() with direction flags."""
     window = session.new_window(window_name="test_select_dir")

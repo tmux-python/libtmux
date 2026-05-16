@@ -706,3 +706,31 @@ def test_session_search_panes_filter_by_id(session: Session) -> None:
         filter=f"#{{m:{target.pane_id},#{{pane_id}}}}",
     )
     assert [p.pane_id for p in matches] == [target.pane_id]
+
+
+SESSION_FORMAT_FIELDS = (
+    "session_active",
+    "session_activity_flag",
+    "session_alert",
+    "session_bell_flag",
+    "session_format",
+    "session_group_attached_list",
+    "session_group_many_attached",
+    "session_grouped",
+    "session_many_attached",
+    "session_marked",
+    "session_silence_flag",
+)
+
+
+@pytest.mark.parametrize("field_name", SESSION_FORMAT_FIELDS)
+def test_session_format_field_declared_and_hydrated(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Tmux's session-scope format tokens hydrate onto the typed ``Session``."""
+    assert field_name in session.__dataclass_fields__
+
+    session.refresh()
+    value = getattr(session, field_name)
+    assert value is None or isinstance(value, str)
