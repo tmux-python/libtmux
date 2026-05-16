@@ -61,3 +61,21 @@ def test_client_refresh_rehydrates_fields(
         client.client_pid = None
         client.refresh()
         assert client.client_pid == original_pid
+
+
+def test_clients_property_hydrates_cross_scope(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """``Server.clients`` hydrates the client's active session/window/pane.
+
+    Exercises the ``list-clients`` path. tmux's ``format_defaults`` cascades
+    via ``c->session`` → ``s->curw`` → ``wl->window->active``, so a Client
+    object must surface ``session_id``, ``window_id``, and ``pane_id``.
+    """
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+        assert client.session_id is not None
+        assert client.window_id is not None
+        assert client.pane_id is not None

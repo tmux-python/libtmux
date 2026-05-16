@@ -117,6 +117,38 @@ def test_new_session_returns_populated_session(server: Server) -> None:
     assert session.pane_id is not None
 
 
+def test_sessions_property_hydrates_cross_scope(server: Server) -> None:
+    """Server.sessions hydrates active window/pane via tmux's format_defaults cascade.
+
+    Distinct from ``test_new_session_returns_populated_session``: that test
+    exercises ``new-session -P -F`` (list-panes scope). This one exercises
+    the ``list-sessions`` path used by the ``.sessions`` property, which
+    must hydrate downward-cascade tokens (tmux ``format.c:format_defaults``
+    walks ``s->curw`` and ``wl->window->active``).
+    """
+    server.new_session(session_name="hydration_cascade_sessions")
+    fetched = server.sessions.get(session_name="hydration_cascade_sessions")
+    assert fetched is not None
+    assert fetched.window_id is not None
+    assert fetched.pane_id is not None
+    assert fetched.pane_current_command is not None
+
+
+def test_windows_property_hydrates_active_pane(
+    server: Server,
+    session: Session,
+) -> None:
+    """Server.windows hydrates each window's active pane via the cascade.
+
+    Exercises the ``list-windows -a`` path used by the ``.windows`` property.
+    """
+    session.new_window(window_name="hydration_cascade_windows")
+    fetched = server.windows.get(window_name="hydration_cascade_windows")
+    assert fetched is not None
+    assert fetched.pane_id is not None
+    assert fetched.pane_current_command is not None
+
+
 def test_new_session_no_name(server: Server) -> None:
     """Server.new_session works with no name."""
     first_session = server.new_session()
