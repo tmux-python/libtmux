@@ -1519,6 +1519,13 @@ def test_server_display_message_no_text_returns_none(
     server: Server,
 ) -> None:
     """Without ``get_text=True`` the call renders to status line and returns None."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip(
+            "display-message via control-mode client unreliable on tmux 3.2a",
+        )
+
     with control_mode() as ctl:
         result = server.display_message(
             "hi from libtmux", target_client=ctl.client_name
