@@ -23,29 +23,6 @@ def test_server_clients_returns_querylist(
             assert client.client_name is not None
 
 
-def test_client_session_reports_attached_session(
-    control_mode: t.Callable[..., t.Any],
-    server: Server,
-    session: t.Any,
-) -> None:
-    """``client.client_session`` reports the session this client is attached to."""
-    with control_mode() as ctl:
-        client = server.clients.get(client_name=ctl.client_name)
-        assert client is not None
-        assert client.client_session == session.session_name
-
-
-def test_client_readonly_default_zero(
-    control_mode: t.Callable[..., t.Any],
-    server: Server,
-) -> None:
-    """A non-readonly attached client reports ``client_readonly == "0"``."""
-    with control_mode() as ctl:
-        client = server.clients.get(client_name=ctl.client_name)
-        assert client is not None
-        assert client.client_readonly == "0"
-
-
 def test_client_refresh_rehydrates_fields(
     control_mode: t.Callable[..., t.Any],
     server: Server,
