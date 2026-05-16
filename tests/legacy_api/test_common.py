@@ -200,8 +200,15 @@ def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_tmux_cmd_unicode(session: Session) -> None:
-    """Verify tmux commands with unicode."""
-    session.cmd("new-window", "-t", 3, "-n", "юникод", "-F", "Ελληνικά")
+    """Legacy ``-t`` in *args is ignored and emits :exc:`DeprecationWarning`.
+
+    Pins the contract documented since 0.34: when ``target=`` is auto-set
+    by ``Session.cmd``, a positional ``-t`` is silently dropped by tmux
+    (last-wins via ``args_get``). The wrapper now surfaces that with a
+    :exc:`DeprecationWarning`.
+    """
+    with pytest.warns(DeprecationWarning, match="legacy form"):
+        session.cmd("new-window", "-t", 3, "-n", "юникод", "-F", "Ελληνικά")
 
 
 class SessionCheckName(t.NamedTuple):
