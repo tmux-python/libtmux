@@ -15,7 +15,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     OptionScope,
@@ -301,8 +301,7 @@ class Window(
         else:
             proc = self.cmd("select-pane", target=target_pane)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-pane")
 
         return self.active_pane
 
@@ -443,8 +442,7 @@ class Window(
 
         proc = self.cmd("resize-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "resize-window")
 
         self.refresh()
         return self
@@ -499,8 +497,7 @@ class Window(
 
         proc = self.cmd("last-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "last-pane")
 
         return self.active_pane
 
@@ -588,8 +585,7 @@ class Window(
 
         proc = self.cmd(*cmd)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-layout")
 
         return self
 
@@ -603,8 +599,7 @@ class Window(
         """
         proc = self.cmd("next-layout")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "next-layout")
 
         return self
 
@@ -618,8 +613,7 @@ class Window(
         """
         proc = self.cmd("previous-layout")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "previous-layout")
 
         return self
 
@@ -686,8 +680,7 @@ class Window(
 
         proc = self.server.cmd("link-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "link-window")
 
     def unlink(self, *, kill_if_last: bool | None = None) -> None:
         """Unlink this window from the current session via ``$ tmux unlink-window``.
@@ -712,8 +705,7 @@ class Window(
 
         proc = self.cmd("unlink-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "unlink-window")
 
     def rotate(
         self,
@@ -758,8 +750,7 @@ class Window(
 
         proc = self.cmd("rotate-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "rotate-window")
 
         return self
 
@@ -808,8 +799,7 @@ class Window(
 
         proc = self.cmd("respawn-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "respawn-window")
 
     def swap(
         self,
@@ -848,8 +838,7 @@ class Window(
 
         proc = self.cmd("swap-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "swap-window")
 
         self.refresh()
         if isinstance(target, Window):
@@ -1033,8 +1022,7 @@ class Window(
         lex.whitespace_split = False
 
         proc = self.cmd("rename-window", new_name)
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "rename-window")
 
         self.window_name = new_name
         self.refresh()
@@ -1100,8 +1088,7 @@ class Window(
             *flags,
         )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "kill-window")
 
         msg = "other windows killed" if all_except else "window killed"
         extra: dict[str, str] = {
@@ -1192,8 +1179,7 @@ class Window(
             target=f"{session}:{destination}",
         )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "move-window")
 
         self.refresh()
 
@@ -1282,8 +1268,7 @@ class Window(
         """
         proc = self.cmd("select-window")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-window")
 
         self.refresh()
 

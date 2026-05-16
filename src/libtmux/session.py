@@ -13,7 +13,7 @@ import pathlib
 import typing as t
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
@@ -329,8 +329,7 @@ class Session(
         """
         proc = self.cmd("lock-session")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "lock-session")
 
     def detach_client(
         self,
@@ -369,8 +368,7 @@ class Session(
 
         proc = self.server.cmd("detach-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "detach-client")
 
     def last_window(self) -> Window:
         """Select the last (previously selected) window.
@@ -391,8 +389,7 @@ class Session(
         """
         proc = self.cmd("last-window")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "last-window")
 
         return self.active_window
 
@@ -414,8 +411,7 @@ class Session(
         """
         proc = self.cmd("next-window")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "next-window")
 
         return self.active_window
 
@@ -437,8 +433,7 @@ class Session(
         """
         proc = self.cmd("previous-window")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "previous-window")
 
         return self.active_window
 
@@ -468,8 +463,7 @@ class Session(
 
         proc = self.cmd("select-window", target=target)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-window")
 
         return self.active_window
 
@@ -523,8 +517,7 @@ class Session(
             *flags,
         )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "attach-session")
 
         return self
 
@@ -589,8 +582,7 @@ class Session(
             *flags,
         )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "kill-session")
 
         msg = "other sessions killed" if all_except else "session killed"
         extra: dict[str, str] = {
@@ -611,8 +603,7 @@ class Session(
         """
         proc = self.cmd("switch-client")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "switch-client")
 
         return self
 
@@ -632,8 +623,7 @@ class Session(
 
         proc = self.cmd("rename-session", new_name)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "rename-session")
 
         self.refresh()
 
@@ -785,8 +775,7 @@ class Session(
 
         cmd = self.cmd("new-window", *window_args, target=target)
 
-        if cmd.stderr:
-            raise exc.LibTmuxException(cmd.stderr)
+        raise_if_stderr(cmd, "new-window")
 
         window_output = cmd.stdout[0]
 
@@ -838,8 +827,7 @@ class Session(
 
         proc = self.cmd("kill-window", target=target)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "kill-window")
 
         extra: dict[str, str] = {
             "tmux_subcommand": "kill-window",

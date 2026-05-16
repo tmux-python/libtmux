@@ -673,6 +673,20 @@ def test_new_window_select_existing(session: Session) -> None:
     assert w.window_name == "selexist_new"
 
 
+def test_session_last_window_exception_tags_subcommand(session: Session) -> None:
+    """Wrapper raises tag LibTmuxException with the originating tmux subcommand.
+
+    Calling ``last_window()`` on a session with only one window and no prior
+    selection makes tmux error. The raised exception carries
+    ``.subcommand == "last-window"`` and ``str(exc)`` prefixes the
+    subcommand so downstream consumers see which tmux command failed.
+    """
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        session.last_window()
+    assert excinfo.value.subcommand == "last-window"
+    assert str(excinfo.value).startswith("last-window:")
+
+
 def test_session_search_windows_filter(session: Session) -> None:
     """``Session.list_windows(filter=...)`` filters via tmux's C-side -f flag."""
     session.new_window(window_name="gap7s_keep")

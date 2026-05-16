@@ -10,7 +10,7 @@ import typing as t
 from collections.abc import Iterable
 
 from libtmux import exc
-from libtmux.common import tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -336,8 +336,7 @@ def fetch_objs(
         tmux_bin=server.tmux_bin,
     )
 
-    if proc.stderr:
-        raise exc.LibTmuxException(proc.stderr)
+    raise_if_stderr(proc, list_cmd)
 
     outputs = [parse_output(line) for line in proc.stdout]
 
