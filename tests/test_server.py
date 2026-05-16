@@ -1177,6 +1177,40 @@ def test_list_buffers_filter_pushes_predicate_into_tmux(server: Server) -> None:
     assert sorted(matches) == ["gap6match_alpha", "gap6match_beta"]
 
 
+def test_server_search_sessions_filter(server: Server) -> None:
+    """``Server.list_sessions(filter=...)`` returns only matching sessions."""
+    server.new_session(session_name="gap7_keep_alpha")
+    server.new_session(session_name="gap7_keep_beta")
+    server.new_session(session_name="other_drop")
+
+    matches = server.search_sessions(filter="#{m:gap7_*,#{session_name}}")
+    names = sorted(s.session_name for s in matches if s.session_name)
+    assert names == ["gap7_keep_alpha", "gap7_keep_beta"]
+
+
+def test_server_search_windows_filter(server: Server) -> None:
+    """``Server.list_windows(filter=...)`` returns only matching windows."""
+    sess = server.new_session(session_name="gap7_win_demo")
+    sess.new_window(window_name="gap7_target")
+    sess.new_window(window_name="other_window")
+
+    matches = server.search_windows(filter="#{m:gap7_*,#{window_name}}")
+    names = sorted(w.window_name for w in matches if w.window_name)
+    # Catch-all base window starts at name 'gap7_win_demo' (matches gap7_*),
+    # so we expect both the original and the new gap7_target.
+    assert "gap7_target" in names
+    assert "other_window" not in names
+
+
+def test_server_search_panes_filter_by_id(server: Server) -> None:
+    """``Server.list_panes(filter=...)`` returns only the pane id we asked for."""
+    sess = server.new_session(session_name="gap7_pane_demo")
+    target = sess.active_window.split()
+
+    matches = server.search_panes(filter=f"#{{m:{target.pane_id},#{{pane_id}}}}")
+    assert [p.pane_id for p in matches] == [target.pane_id]
+
+
 def test_if_shell_true(server: Server) -> None:
     """Test Server.if_shell() with true condition."""
     server.new_session(session_name="ifshell_test")

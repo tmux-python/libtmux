@@ -2288,6 +2288,138 @@ class Server(
 
         return QueryList(panes)
 
+    def search_sessions(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Session]:
+        """Sessions, optionally filtered by tmux's C-side format predicate.
+
+        Like :attr:`Server.sessions` but adds an optional ``filter`` kwarg
+        that is plumbed through to ``$ tmux list-sessions -f <filter>``.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag). Sessions for which the
+            expanded expression is "false" are omitted by tmux itself before
+            any Python object is built.
+
+            .. versionadded:: 0.57
+
+        Returns
+        -------
+        :class:`~libtmux._internal.query_list.QueryList` of :class:`Session`
+
+        Examples
+        --------
+        >>> server.new_session(session_name='gap7_alpha')
+        Session($... gap7_alpha)
+        >>> server.new_session(session_name='other_beta')
+        Session($... other_beta)
+        >>> matches = server.search_sessions(filter='#{m:gap7_*,#{session_name}}')
+        >>> [s.session_name for s in matches]
+        ['gap7_alpha']
+        """
+        sessions: list[Session] = []
+
+        try:
+            for obj in fetch_objs(
+                list_cmd="list-sessions",
+                server=self,
+                filter=filter,
+            ):
+                sessions.append(Session(server=self, **obj))  # noqa: PERF401
+        except Exception:
+            pass
+
+        return QueryList(sessions)
+
+    def search_windows(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Window]:
+        """All windows across sessions, optionally filtered by tmux's C-side predicate.
+
+        Like :attr:`Server.windows` but with a ``filter`` kwarg plumbed to
+        ``$ tmux list-windows -a -f <filter>``.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag).
+
+            .. versionadded:: 0.57
+
+        Examples
+        --------
+        >>> sess = server.new_session(session_name='gap7_win_demo')
+        >>> _ = sess.new_window(window_name='gap7_target')
+        >>> _ = sess.new_window(window_name='other_window')
+        >>> matches = server.search_windows(filter='#{m:gap7_*,#{window_name}}')
+        >>> any(w.window_name == 'gap7_target' for w in matches)
+        True
+        >>> any(w.window_name == 'other_window' for w in matches)
+        False
+        """
+        windows: list[Window] = [
+            Window(server=self, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-windows",
+                list_extra_args=("-a",),
+                server=self,
+                filter=filter,
+            )
+        ]
+
+        return QueryList(windows)
+
+    def search_panes(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Pane]:
+        """All panes across the server, optionally filtered by tmux's C-side predicate.
+
+        Like :attr:`Server.panes` but with a ``filter`` kwarg plumbed to
+        ``$ tmux list-panes -a -f <filter>``. This is the typed entry point
+        for the fast-path libtmux-mcp uses for ``search_panes``: tmux drops
+        non-matching panes before any Python object is constructed.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag). Example:
+            ``'#{m:%5,#{pane_id}}'`` (id match) or
+            ``'#{C/i:libtmux,#{pane_current_command}}'`` (case-insensitive
+            substring on the current command).
+
+            .. versionadded:: 0.57
+
+        Examples
+        --------
+        >>> sess = server.new_session(session_name='gap7_pane_demo')
+        >>> window = sess.active_window
+        >>> target_pane = window.split()
+        >>> matches = server.search_panes(
+        ...     filter=f'#{{m:{target_pane.pane_id},#{{pane_id}}}}'
+        ... )
+        >>> [p.pane_id for p in matches] == [target_pane.pane_id]
+        True
+        """
+        panes: list[Pane] = [
+            Pane(server=self, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-panes",
+                list_extra_args=("-a",),
+                server=self,
+                filter=filter,
+            )
+        ]
+
+        return QueryList(panes)
+
     #
     # Dunder
     #
