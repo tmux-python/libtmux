@@ -498,7 +498,7 @@ class Pane(
 
     def send_keys(
         self,
-        cmd: str,
+        cmd: str | None = None,
         enter: bool | None = True,
         suppress_history: bool | None = False,
         literal: bool | None = False,
@@ -515,10 +515,21 @@ class Pane(
         A leading space character is added to cmd to avoid polluting the
         user's history.
 
+        When ``cmd`` is omitted (``None``), the wrapper emits a flag-only
+        invocation — useful with ``reset=True`` or ``repeat=N`` to invoke
+        tmux's deliberate ``count == 0`` branch in ``cmd-send-keys.c`` that
+        runs the flag effect without sending any keys. In flag-only mode,
+        ``enter`` is forced ``False`` (no keys → no Enter).
+
         Parameters
         ----------
-        cmd : str
-            Text or input into pane
+        cmd : str | None, optional
+            Text or input into pane. ``None`` for flag-only invocation
+            (requires ``reset``, ``repeat``, or ``copy_mode_cmd`` to be set).
+
+            .. versionchanged:: 0.57
+
+               Now optional. ``None`` triggers tmux's flag-only path.
         enter : bool, optional
             Send enter after sending the input, default True.
         suppress_history : bool, optional
@@ -559,6 +570,12 @@ class Pane(
 
             .. versionadded:: 0.56
 
+        Raises
+        ------
+        ValueError
+            If ``cmd`` is ``None`` and no flag-only path is selected
+            (``reset``, ``repeat``, or ``copy_mode_cmd``).
+
         Examples
         --------
         >>> pane = window.split(shell='sh')
@@ -574,6 +591,10 @@ class Pane(
         $ echo "Hello world"
         Hello world
         $
+
+        Flag-only invocation — reset terminal state without sending any keys:
+
+        >>> pane.send_keys(reset=True)
         """
         prefix = " " if suppress_history else ""
 
@@ -615,6 +636,18 @@ class Pane(
         if copy_mode_cmd is not None:
             tmux_args += ("-X",)
             self.cmd("send-keys", *tmux_args, copy_mode_cmd)
+        elif cmd is None:
+            # Flag-only path — tmux's cmd-send-keys.c:223-225 explicitly
+            # supports count == 0 when -R or -N is set, returning
+            # CMD_RETURN_NORMAL without sending keys.
+            if not reset and repeat is None:
+                msg = (
+                    "send_keys(cmd=None) requires at least one of: "
+                    "reset=True, repeat=N, copy_mode_cmd=..."
+                )
+                raise ValueError(msg)
+            self.cmd("send-keys", *tmux_args)
+            return
         else:
             self.cmd("send-keys", *tmux_args, prefix + cmd)
 
