@@ -69,9 +69,11 @@ def test_clients_property_hydrates_cross_scope(
 ) -> None:
     """``Server.clients`` hydrates the client's active session/window/pane.
 
-    Exercises the ``list-clients`` path. tmux's ``format_defaults`` cascades
-    via ``c->session`` → ``s->curw`` → ``wl->window->active``, so a Client
-    object must surface ``session_id``, ``window_id``, and ``pane_id``.
+    Exercises the ``list-clients`` path. tmux's ``format_defaults``
+    cascades via ``c->session`` → ``s->curw`` → ``wl->window->active``,
+    so a Client object must surface ``session_id``, ``window_id``, and
+    ``pane_id``, AND those values must match the client's attached
+    session's current window's active pane — not arbitrary values.
     """
     with control_mode() as ctl:
         client = server.clients.get(client_name=ctl.client_name)
@@ -79,3 +81,10 @@ def test_clients_property_hydrates_cross_scope(
         assert client.session_id is not None
         assert client.window_id is not None
         assert client.pane_id is not None
+
+        attached_session = server.sessions.get(session_id=client.session_id)
+        assert attached_session is not None
+        active_pane = attached_session.active_window.active_pane
+        assert active_pane is not None
+        assert client.window_id == attached_session.active_window.window_id
+        assert client.pane_id == active_pane.pane_id

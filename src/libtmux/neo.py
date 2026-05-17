@@ -204,7 +204,32 @@ def _normalize_tmux_version(version: str) -> LooseVersion:
 
 @dataclasses.dataclass()
 class Obj:
-    """Dataclass of generic tmux object."""
+    """Dataclass of generic tmux object.
+
+    Notes
+    -----
+    Cross-scope fields hydrate via tmux's ``format_defaults`` downward
+    cascade (``format.c``: ``c->session`` → ``s->curw`` →
+    ``wl->window->active``), not via reverse lookup. The practical
+    consequence:
+
+    - On a :class:`~libtmux.session.Session` row (``list-sessions``),
+      every ``pane_*`` and ``window_*`` field resolves to the
+      session's current window's **active pane** — *not* "the
+      session's pane" (no such thing). ``session.active_window.window_id``
+      and ``session.active_window.active_pane.pane_id`` are the
+      canonical accessors for the same values.
+    - On a :class:`~libtmux.window.Window` row (``list-windows``),
+      every ``pane_*`` field resolves to that window's active pane.
+    - On a :class:`~libtmux.client.Client` row (``list-clients``),
+      every ``session_*``, ``window_*``, and ``pane_*`` field resolves
+      via the client's attached session's current window's active
+      pane.
+
+    A reader who treats ``session.pane_id`` as the literal session's
+    pane id (rather than "active pane of this session's current
+    window") will be surprised when the active window changes.
+    """
 
     server: Server
 
