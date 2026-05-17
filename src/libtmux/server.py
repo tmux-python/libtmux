@@ -2314,13 +2314,10 @@ class Server(
         ...     ctl.client_name in names
         True
         """
-        clients: list[Client] = []
-        try:
-            for obj in fetch_objs(list_cmd="list-clients", server=self):
-                clients.append(Client(server=self, **obj))  # noqa: PERF401
-        except Exception:
-            pass
-
+        clients: list[Client] = [
+            Client(server=self, **obj)
+            for obj in fetch_objs(list_cmd="list-clients", server=self)
+        ]
         return QueryList(clients)
 
     def search_sessions(
@@ -2356,18 +2353,14 @@ class Server(
         >>> [s.session_name for s in matches]
         ['gap7_alpha']
         """
-        sessions: list[Session] = []
-
-        try:
+        sessions: list[Session] = [
+            Session(server=self, **obj)
             for obj in fetch_objs(
                 list_cmd="list-sessions",
                 server=self,
                 filter=filter,
-            ):
-                sessions.append(Session(server=self, **obj))  # noqa: PERF401
-        except Exception:
-            pass
-
+            )
+        ]
         return QueryList(sessions)
 
     def search_windows(
