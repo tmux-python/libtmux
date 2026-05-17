@@ -92,8 +92,17 @@ class Client(Obj):
     server: Server
 
     def refresh(self) -> None:
-        """Refresh client attributes from tmux."""
-        assert isinstance(self.client_name, str)
+        """Refresh client attributes from tmux.
+
+        Raises
+        ------
+        ValueError
+            When ``client_name`` is unset. Surfaces a clear error under
+            ``python -O``, where an ``assert`` would be stripped.
+        """
+        if self.client_name is None:
+            msg = "Client must have a client_name to refresh"
+            raise ValueError(msg)
         return super()._refresh(
             obj_key="client_name",
             obj_id=self.client_name,
