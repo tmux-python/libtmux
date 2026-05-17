@@ -1844,6 +1844,16 @@ class Server(
             it mirrors tmux's own flag name (``-f filter``) for grep-friendly
             symmetry between the wrapper and the tmux manual.
 
+            .. warning::
+
+                tmux silently expands a malformed predicate (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                format engine evaluates as "false" — every row is
+                suppressed and no stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                predicate syntax against the FORMATS section of
+                ``tmux(1)``.
+
             .. versionadded:: 0.57
 
         Returns
@@ -2337,6 +2347,16 @@ class Server(
             expanded expression is "false" are omitted by tmux itself before
             any Python object is built.
 
+            .. warning::
+
+                tmux silently expands a malformed predicate (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                format engine evaluates as "false" — every row is
+                suppressed and no stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                predicate syntax against the FORMATS section of
+                ``tmux(1)``.
+
             .. versionadded:: 0.57
 
         Returns
@@ -2377,6 +2397,16 @@ class Server(
         ----------
         filter : str, optional
             tmux format expression (``-f`` flag).
+
+            .. warning::
+
+                tmux silently expands a malformed predicate (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                format engine evaluates as "false" — every row is
+                suppressed and no stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                predicate syntax against the FORMATS section of
+                ``tmux(1)``.
 
             .. versionadded:: 0.57
 
@@ -2422,6 +2452,16 @@ class Server(
             ``'#{m:%5,#{pane_id}}'`` (id match) or
             ``'#{C/i:libtmux,#{pane_current_command}}'`` (case-insensitive
             substring on the current command).
+
+            .. warning::
+
+                tmux silently expands a malformed predicate (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                format engine evaluates as "false" — every row is
+                suppressed and no stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                predicate syntax against the FORMATS section of
+                ``tmux(1)``.
 
             .. versionadded:: 0.57
 
