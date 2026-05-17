@@ -113,6 +113,53 @@ _Detailed migration steps for the next version will be posted here._
 
 <!-- To the maintainers and contributors: please add migration details for the upcoming release here -->
 
+## libtmux 0.57.0: Subcommand-tagged exceptions (#670)
+
+### `LibTmuxException` `str()` gains a subcommand prefix
+
+When {exc}`~libtmux.exc.LibTmuxException` is raised from one of the
+typed command wrappers, ``str(exc)`` now starts with the originating
+tmux subcommand name followed by ``": "``. The wrapped stderr is
+unchanged — ``exc.args[0]`` still holds the raw tmux output, and the
+new {attr}`~libtmux.exc.LibTmuxException.subcommand` attribute exposes
+the tmux subcommand name on its own.
+
+**Who is affected:** code that pattern-matches `str(exc)` exactly,
+anchors a regex with `^` against the previous shape, or hashes the
+stringified exception. Substring containment (`"can't find" in
+str(exc)`) and unanchored `re.search` patterns continue to match
+unchanged.
+
+**Before (0.56.x and earlier):**
+
+```python
+try:
+    session.last_window()
+except LibTmuxException as exc:
+    if str(exc) == "can't find window":
+        handle_missing_last_window()
+```
+
+**After (0.57.0+) — dispatch on the typed attribute:**
+
+```python
+try:
+    session.last_window()
+except LibTmuxException as exc:
+    if exc.subcommand == "last-window":
+        handle_missing_last_window()
+```
+
+**Or — match against the raw stderr in `exc.args[0]`:**
+
+```python
+try:
+    session.last_window()
+except LibTmuxException as exc:
+    if exc.args and exc.args[0] == "can't find window":
+        handle_missing_last_window()
+```
+
 ## libtmux 0.50.0: Unified Options and Hooks API (#516)
 
 ### New unified options API
