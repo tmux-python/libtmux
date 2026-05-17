@@ -770,6 +770,15 @@ class Pane(
         -------
         list[str] | None
             Message output if get_text is True, otherwise None.
+
+        Notes
+        -----
+        Stderr from tmux is reported via :func:`warnings.warn`, not raised.
+        Callers that want to escalate to an exception can wrap the call in
+        :func:`warnings.catch_warnings` with ``filterwarnings("error")``.
+
+        .. versionchanged:: 0.57
+           Reports stderr via :func:`warnings.warn` instead of raising.
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -816,7 +825,11 @@ class Pane(
             tmux_args += (cmd,)
 
         proc = self.cmd("display-message", *tmux_args)
-        raise_if_stderr(proc, "display-message")
+        if proc.stderr:
+            warnings.warn(
+                f"display-message: {'; '.join(proc.stderr)}",
+                stacklevel=2,
+            )
 
         if get_text:
             return proc.stdout

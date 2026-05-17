@@ -280,6 +280,13 @@ it inside the tmux server:
 The {meth}`~libtmux.Server.list_buffers` method also accepts a `filter=`
 kwarg with the same semantics.
 
+There is no `search_clients()` method; filter clients via the
+{attr}`~libtmux.Server.clients` accessor and Python-side
+{meth}`~libtmux._internal.query_list.QueryList.filter`. Pushing a
+client-side predicate to tmux is rarely a hot path — a server's client
+count is bounded by attached terminals, not by session/window/pane
+fan-out.
+
 ### Python-side vs. C-side
 
 | | `.filter()` | `.search_*()` |

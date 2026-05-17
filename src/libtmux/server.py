@@ -1467,9 +1467,20 @@ class Server(
         ``#{socket_path}``, ``#{pid}``) resolve without a specific pane handle.
 
         With no client attached and ``target_client`` omitted, the status-line
-        path (``get_text=False``) raises ``no current client``. Use
+        path (``get_text=False``) issues a ``no current client`` warning. Use
         ``get_text=True`` for headless reads, or pair with
         :class:`~libtmux._internal.control_mode.ControlMode`.
+
+        Notes
+        -----
+        Stderr from tmux is reported via :func:`warnings.warn`, not raised.
+        tmux uses stderr for both genuine errors and informational messages,
+        and the right escalation depends on tmux version and call shape.
+        Callers that want to escalate to an exception can wrap the call in
+        :func:`warnings.catch_warnings` with ``filterwarnings("error")``.
+
+        .. versionchanged:: 0.57
+           Reports stderr via :func:`warnings.warn` instead of raising.
 
         Parameters
         ----------
@@ -1569,7 +1580,11 @@ class Server(
             tmux_args += (cmd,)
 
         proc = self.cmd("display-message", *tmux_args)
-        raise_if_stderr(proc, "display-message")
+        if proc.stderr:
+            warnings.warn(
+                f"display-message: {'; '.join(proc.stderr)}",
+                stacklevel=2,
+            )
 
         if get_text:
             return proc.stdout

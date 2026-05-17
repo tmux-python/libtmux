@@ -1603,13 +1603,6 @@ def test_server_display_message_no_text_returns_none(
     server: Server,
 ) -> None:
     """Without ``get_text=True`` the call renders to status line and returns None."""
-    from libtmux.common import has_gte_version
-
-    if not has_gte_version("3.3"):
-        pytest.skip(
-            "display-message via control-mode client unreliable on tmux 3.2a",
-        )
-
     with control_mode() as ctl:
         result = server.display_message(
             "hi from libtmux", target_client=ctl.client_name
@@ -1638,18 +1631,16 @@ def test_server_display_message_target_client(
     assert result[0].strip() != ""
 
 
-def test_server_display_message_raises_on_tmux_error(
+def test_server_display_message_warns_on_tmux_error(
     server: Server,
     session: Session,
 ) -> None:
-    """Tmux stderr on ``display-message`` surfaces as ``LibTmuxException``.
+    """Tmux stderr on ``display-message`` surfaces as a :class:`UserWarning`.
 
     Passing ``cmd`` and ``format_string`` together is rejected by tmux's
     argument parser with stderr ``only one of -F or argument must be
-    given``. The wrapper must propagate that, not silently return ``[]``.
+    given``. The wrapper must surface that to the caller without silently
+    swallowing it.
     """
-    with pytest.raises(exc.LibTmuxException) as excinfo:
+    with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
-
-    assert excinfo.value.subcommand == "display-message"
-    assert "only one of -F or argument" in str(excinfo.value)

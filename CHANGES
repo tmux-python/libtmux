@@ -216,9 +216,12 @@ releases can be validated end-to-end.
   (#650).
 - {meth}`~libtmux.Server.display_message`,
   {meth}`~libtmux.Window.display_message`, and
-  {meth}`~libtmux.Pane.display_message` raise
-  {exc}`~libtmux.exc.LibTmuxException` when tmux reports an error,
-  matching the rest of libtmux's tmux commands (#672).
+  {meth}`~libtmux.Pane.display_message` surface tmux stderr via
+  :func:`warnings.warn` instead of silently returning ``[]``. tmux uses
+  stderr for both genuine errors and informational messages on some
+  versions, so the wrappers warn rather than raise; callers that want
+  to escalate can wrap the call in :func:`warnings.catch_warnings` with
+  ``filterwarnings("error")`` (#672).
 - {attr}`~libtmux.Server.clients` and
   {meth}`~libtmux.Server.search_sessions` propagate tmux errors
   rather than silently returning an empty
