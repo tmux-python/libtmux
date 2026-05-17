@@ -11,6 +11,7 @@ import dataclasses
 import logging
 import typing as t
 
+from libtmux import exc
 from libtmux.neo import Obj, fetch_obj
 
 if t.TYPE_CHECKING:
@@ -124,7 +125,10 @@ class Client(Obj):
         >>> attached is not None
         True
         """
-        self.refresh()
+        try:
+            self.refresh()
+        except exc.TmuxObjectDoesNotExist:
+            return None
         if self.session_id is None:
             return None
         return self.server.sessions.get(
