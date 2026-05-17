@@ -125,12 +125,20 @@ def test_sessions_property_hydrates_cross_scope(server: Server) -> None:
     the ``list-sessions`` path used by the ``.sessions`` property, which
     must hydrate downward-cascade tokens (tmux ``format.c:format_defaults``
     walks ``s->curw`` and ``wl->window->active``).
+
+    Pins the cascade *target*: ``session.window_id`` /
+    ``session.pane_id`` must equal the session's current window's
+    active pane — not any arbitrary pane in the session. A regression
+    that hydrated to the wrong window or pane would still pass a
+    "not None" check; this assertion catches that drift.
     """
-    server.new_session(session_name="hydration_cascade_sessions")
+    new_session = server.new_session(session_name="hydration_cascade_sessions")
     fetched = server.sessions.get(session_name="hydration_cascade_sessions")
     assert fetched is not None
-    assert fetched.window_id is not None
-    assert fetched.pane_id is not None
+    assert fetched.window_id == new_session.active_window.window_id
+    active_pane = new_session.active_window.active_pane
+    assert active_pane is not None
+    assert fetched.pane_id == active_pane.pane_id
     assert fetched.pane_current_command is not None
 
 
@@ -140,12 +148,16 @@ def test_windows_property_hydrates_active_pane(
 ) -> None:
     """Server.windows hydrates each window's active pane via the cascade.
 
-    Exercises the ``list-windows -a`` path used by the ``.windows`` property.
+    Exercises the ``list-windows -a`` path used by the ``.windows``
+    property. The cascade resolves to the window's active pane, so the
+    hydrated ``pane_id`` must equal ``window.active_pane.pane_id``.
     """
-    session.new_window(window_name="hydration_cascade_windows")
+    new_window = session.new_window(window_name="hydration_cascade_windows")
     fetched = server.windows.get(window_name="hydration_cascade_windows")
     assert fetched is not None
-    assert fetched.pane_id is not None
+    active_pane = new_window.active_pane
+    assert active_pane is not None
+    assert fetched.pane_id == active_pane.pane_id
     assert fetched.pane_current_command is not None
 
 
