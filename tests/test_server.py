@@ -1362,6 +1362,27 @@ def test_server_search_sessions_propagates_errors(
         server.search_sessions(filter="#{m:keep_*,#{session_name}}")
 
 
+def test_server_sessions_propagates_errors(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.sessions`` re-raises tmux errors instead of swallowing them.
+
+    Closes the gap left when the clients/search_sessions accessors moved
+    off the legacy ``except Exception: pass`` shape but ``Server.sessions``
+    stayed behind. A genuine list-sessions failure should surface the
+    same way for all three accessors.
+    """
+    sentinel = exc.LibTmuxException("simulated list-sessions failure")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.LibTmuxException, match="simulated list-sessions failure"):
+        server.sessions  # noqa: B018
+
+
 def test_if_shell_true(server: Server) -> None:
     """Test Server.if_shell() with true condition."""
     server.new_session(session_name="ifshell_test")

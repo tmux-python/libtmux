@@ -106,16 +106,16 @@ except LibTmuxException as exc:
 Substring matches (``"can't find" in str(exc)``) and unanchored
 ``re.search`` patterns continue to work unchanged.
 
-#### `Server.clients` and `Server.search_sessions` raise on tmux errors (#672)
+#### `Server.sessions`, `Server.clients`, and `Server.search_sessions` raise on tmux errors (#672)
 
 Previously, a tmux command failure under
-{attr}`~libtmux.Server.clients` or
+{attr}`~libtmux.Server.sessions`, {attr}`~libtmux.Server.clients`, or
 {meth}`~libtmux.Server.search_sessions` was swallowed by a bare
 ``except Exception: pass``, returning an empty
 {class}`~libtmux._internal.query_list.QueryList` indistinguishable
-from "no clients attached" or "filter matched nothing". The wrapper
-now lets {exc}`~libtmux.exc.LibTmuxException` propagate via
-{func}`~libtmux.common.raise_if_stderr`.
+from "no sessions / no clients attached" or "filter matched nothing".
+The wrappers now let {exc}`~libtmux.exc.LibTmuxException` propagate
+via {func}`~libtmux.common.raise_if_stderr`.
 
 Genuine empty results — a server with no attached clients, or a
 filter that matched zero sessions — still return an empty

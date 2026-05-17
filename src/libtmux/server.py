@@ -2269,18 +2269,18 @@ class Server(
         Can be accessed via
         :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            When tmux's ``list-sessions`` itself fails (subprocess crash,
+            malformed output). A server with no sessions still returns an
+            empty :class:`~libtmux._internal.query_list.QueryList`.
         """
-        sessions: list[Session] = []
-
-        try:
-            for obj in fetch_objs(
-                list_cmd="list-sessions",
-                server=self,
-            ):
-                sessions.append(Session(server=self, **obj))  # noqa: PERF401
-        except Exception:
-            pass
-
+        sessions: list[Session] = [
+            Session(server=self, **obj)
+            for obj in fetch_objs(list_cmd="list-sessions", server=self)
+        ]
         return QueryList(sessions)
 
     @property
