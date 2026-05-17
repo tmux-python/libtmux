@@ -49,7 +49,12 @@ in a non-client context crashed tmux 3.2a CI (commit 342ff5f5).
 """
 
 
-FIELD_VERSION: dict[str, str] = {}
+FIELD_VERSION: dict[str, str] = {
+    # Post-3.2a additions (verified against tmux's format.c at each gated
+    # release tag, e.g. https://github.com/tmux/tmux/blob/3.6a/format.c).
+    "pane_dead_signal": "3.3",
+    "pane_dead_time": "3.3",
+}
 """Minimum tmux version that registers each format token.
 
 Field names absent from this dict default to ``"3.2a"`` (always-safe within
