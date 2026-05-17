@@ -131,8 +131,17 @@ class Session(
             self.kill()
 
     def refresh(self) -> None:
-        """Refresh session attributes from tmux."""
-        assert isinstance(self.session_id, str)
+        """Refresh session attributes from tmux.
+
+        Raises
+        ------
+        ValueError
+            When ``session_id`` is unset. Surfaces a clear error under
+            ``python -O``, where an ``assert`` would be stripped.
+        """
+        if self.session_id is None:
+            msg = "Session must have a session_id to refresh"
+            raise ValueError(msg)
         return super()._refresh(
             obj_key="session_id",
             obj_id=self.session_id,

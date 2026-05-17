@@ -1555,3 +1555,21 @@ def test_pane_reset_targets_non_active_pane(session: Session) -> None:
     # Active sibling pane: untouched. (Under a missing-target clear-history,
     # this would have been wiped because it is the active pane.)
     assert _history_size(active_sibling) == sibling_pre
+
+
+def test_pane_refresh_raises_when_pane_id_is_none(session: Session) -> None:
+    """``Pane.refresh()`` raises ``ValueError`` when ``pane_id`` is unset.
+
+    Mirrors the Client.refresh ``-O``-safe contract: the previous
+    ``assert isinstance(...)`` stripped under ``python -O`` and let
+    ``None`` flow into ``_refresh``, surfacing as a confusing downstream
+    error. The explicit raise keeps the failure mode loud regardless of
+    optimization level.
+    """
+    from libtmux.pane import Pane
+
+    pane = Pane(server=session.server)
+    assert pane.pane_id is None
+
+    with pytest.raises(ValueError, match="pane_id"):
+        pane.refresh()

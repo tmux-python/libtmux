@@ -472,7 +472,26 @@ class Obj:
         list_cmd: ListCmd = "list-panes",
         list_extra_args: ListExtraArgs = None,
     ) -> None:
-        assert isinstance(obj_id, str)
+        """Refresh dataclass fields from a single ``list-*`` row.
+
+        Used by the public ``refresh()`` methods on :class:`~libtmux.Pane`,
+        :class:`~libtmux.Window`, :class:`~libtmux.Session`, and
+        :class:`~libtmux.Client`. Each subclass guards its identity field
+        (``pane_id``, ``window_id``, ``session_id``, ``client_name``)
+        against ``None`` before delegating here; this base method enforces
+        the same precondition explicitly so the guarantee survives
+        ``python -O``, where an ``assert`` would be stripped.
+
+        Raises
+        ------
+        ValueError
+            When ``obj_id`` is ``None``. Surfaces a clear error under
+            ``python -O``, matching the contract of the public ``refresh()``
+            methods.
+        """
+        if obj_id is None:
+            msg = "Obj._refresh requires a non-None obj_id"
+            raise ValueError(msg)
         obj = fetch_obj(
             obj_key=obj_key,
             obj_id=obj_id,

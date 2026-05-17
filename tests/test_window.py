@@ -1254,3 +1254,20 @@ def test_window_flags_field_returns_string(session: Session) -> None:
     window = session.active_window
     window.refresh()
     assert isinstance(window.window_flags, str)
+
+
+def test_window_refresh_raises_when_window_id_is_none(session: Session) -> None:
+    """``Window.refresh()`` raises ``ValueError`` when ``window_id`` is unset.
+
+    Mirrors the Client.refresh ``-O``-safe contract: the previous
+    ``assert isinstance(...)`` stripped under ``python -O`` and let
+    ``None`` flow into ``_refresh``. The explicit raise keeps the
+    failure mode loud regardless of optimization level.
+    """
+    from libtmux.window import Window
+
+    window = Window(server=session.server)
+    assert window.window_id is None
+
+    with pytest.raises(ValueError, match="window_id"):
+        window.refresh()

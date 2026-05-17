@@ -753,3 +753,18 @@ def test_session_scope_override_field_hydrates(
     value = getattr(session, field_name)
     assert value is not None, f"{field_name} should hydrate via list-sessions"
     assert isinstance(value, str)
+
+
+def test_session_refresh_raises_when_session_id_is_none(server: Server) -> None:
+    """``Session.refresh()`` raises ``ValueError`` when ``session_id`` is unset.
+
+    Mirrors the Client.refresh ``-O``-safe contract: the previous
+    ``assert isinstance(...)`` stripped under ``python -O`` and let
+    ``None`` flow into ``_refresh``. The explicit raise keeps the
+    failure mode loud regardless of optimization level.
+    """
+    session = Session(server=server)
+    assert session.session_id is None
+
+    with pytest.raises(ValueError, match="session_id"):
+        session.refresh()

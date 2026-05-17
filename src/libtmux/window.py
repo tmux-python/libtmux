@@ -148,8 +148,17 @@ class Window(
             self.kill()
 
     def refresh(self) -> None:
-        """Refresh window attributes from tmux."""
-        assert isinstance(self.window_id, str)
+        """Refresh window attributes from tmux.
+
+        Raises
+        ------
+        ValueError
+            When ``window_id`` is unset. Surfaces a clear error under
+            ``python -O``, where an ``assert`` would be stripped.
+        """
+        if self.window_id is None:
+            msg = "Window must have a window_id to refresh"
+            raise ValueError(msg)
         return super()._refresh(
             obj_key="window_id",
             obj_id=self.window_id,

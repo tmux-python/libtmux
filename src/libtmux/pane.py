@@ -135,8 +135,17 @@ class Pane(
             self.kill()
 
     def refresh(self) -> None:
-        """Refresh pane attributes from tmux."""
-        assert isinstance(self.pane_id, str)
+        """Refresh pane attributes from tmux.
+
+        Raises
+        ------
+        ValueError
+            When ``pane_id`` is unset. Surfaces a clear error under
+            ``python -O``, where an ``assert`` would be stripped.
+        """
+        if self.pane_id is None:
+            msg = "Pane must have a pane_id to refresh"
+            raise ValueError(msg)
         return super()._refresh(
             obj_key="pane_id",
             obj_id=self.pane_id,
