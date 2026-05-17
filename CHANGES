@@ -153,6 +153,22 @@ hydration time — {meth}`~libtmux.Client.refresh` re-reads them after
 the client switches focus. ``client.client_name`` is the client's
 stable identifier.
 
+For typed access to the live attachment, use
+{attr}`~libtmux.Client.attached_session`,
+{attr}`~libtmux.Client.attached_window`, and
+{attr}`~libtmux.Client.attached_pane`. Each property re-reads the
+client from ``list-clients`` before resolving, so the returned
+{class}`~libtmux.Session` / {class}`~libtmux.Window` /
+{class}`~libtmux.Pane` reflects where the client is attached *now*,
+not where it was when the {class}`~libtmux.Client` was constructed.
+Returns ``None`` when the client has detached.
+
+{attr}`~libtmux.Client.attached_pane` is session-scope: it returns
+the session's current window's active pane, not the client's
+``CLIENT_ACTIVEPANE`` focus. The two diverge once a client has used
+``select-pane -P`` to set its own active pane. See
+{attr}`~libtmux.Client.attached_pane` for the resolution detail.
+
 #### `Server.display_message` and `Window.display_message` (#670)
 
 {meth}`~libtmux.Server.display_message` and

@@ -165,6 +165,40 @@ except LibTmuxException as exc:
         handle_missing_last_window()
 ```
 
+### `Client.session_id` / `window_id` / `pane_id` are snapshots, not identity
+
+{class}`~libtmux.Client` is new in 0.57.0, so this isn't a behavior
+change — but new users of {attr}`~libtmux.Server.clients` should know
+that ``client.session_id``, ``client.window_id``, and
+``client.pane_id`` are hydrated from tmux's downward format cascade
+(``c->session`` → ``s->curw`` → ``wl->window->active``) at the moment
+the {class}`~libtmux.Client` was built. They go stale as soon as the
+client switches sessions, changes window, or detaches.
+
+For typed access that reflects the client's *live* attachment, use
+{attr}`~libtmux.Client.attached_session`,
+{attr}`~libtmux.Client.attached_window`, and
+{attr}`~libtmux.Client.attached_pane`:
+
+```python
+# Snapshot (cheap, may be stale)
+client = server.clients.get(client_name=ctl.client_name)
+session_id = client.session_id  # str captured at hydration time
+
+# Live (re-reads list-clients, returns typed object or None)
+attached = client.attached_session  # libtmux.Session | None
+window = client.attached_window     # libtmux.Window  | None
+pane = client.attached_pane         # libtmux.Pane    | None
+```
+
+The ``client.client_name`` field (typically the tty path on Unix) is
+the client's *stable* identifier and does not have this caveat.
+
+{attr}`~libtmux.Client.attached_pane` is session-scope: it returns
+the session's current window's active pane, not the client's
+``CLIENT_ACTIVEPANE`` focus. The two diverge once a client has used
+``select-pane -P`` to set its own active pane.
+
 ## libtmux 0.50.0: Unified Options and Hooks API (#516)
 
 ### New unified options API
