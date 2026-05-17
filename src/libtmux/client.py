@@ -50,7 +50,9 @@ class Client(Obj):
         client's current attachment before returning, so the
         :class:`Session` / :class:`Window` / :class:`Pane` you get
         back reflects where the client is attached *now*, not where
-        it was when this :class:`Client` was constructed.
+        it was when this :class:`Client` was constructed. If tmux no
+        longer reports this ``client_name`` through ``list-clients``,
+        these properties return ``None``.
 
     Parameters
     ----------
@@ -113,9 +115,10 @@ class Client(Obj):
         Re-reads the client from ``list-clients`` before resolving, so the
         returned :class:`Session` reflects the client's *live* attachment
         rather than the snapshot captured when this :class:`Client` was
-        hydrated. Returns ``None`` when the client has detached, when
-        it's not attached to any session, or when the snapshot
-        ``session_id`` no longer names a live session.
+        hydrated. Returns ``None`` when tmux no longer reports this
+        ``client_name`` through ``list-clients``, when the client is not
+        attached to any session, or when the snapshot ``session_id`` no
+        longer names a live session.
 
         Examples
         --------
@@ -142,7 +145,7 @@ class Client(Obj):
 
         Re-reads the client from ``list-clients``, looks up its attached
         session, and returns that session's :attr:`~libtmux.Session.active_window`.
-        Returns ``None`` when the client has no attached session.
+        Returns ``None`` when no live attached session can be resolved.
         """
         session = self.attached_session
         if session is None:
@@ -155,8 +158,8 @@ class Client(Obj):
 
         Re-reads the client from ``list-clients``, looks up its attached
         session's current window, and returns that window's
-        :attr:`~libtmux.Window.active_pane`. Returns ``None`` when the
-        client has no attached session or active pane.
+        :attr:`~libtmux.Window.active_pane`. Returns ``None`` when no
+        live attached session or active pane can be resolved.
         """
         window = self.attached_window
         if window is None:
