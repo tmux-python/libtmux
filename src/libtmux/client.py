@@ -14,7 +14,10 @@ import typing as t
 from libtmux.neo import Obj, fetch_obj
 
 if t.TYPE_CHECKING:
+    from libtmux.pane import Pane
     from libtmux.server import Server
+    from libtmux.session import Session
+    from libtmux.window import Window
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,13 @@ class Client(Obj):
         :meth:`refresh` re-reads them from ``list-clients``. The
         ``client_name`` (tty path on Unix) is the client's stable
         identity.
+
+        Prefer :meth:`attached_session`, :meth:`attached_window`, and
+        :meth:`attached_pane` for typed access — each re-reads the
+        client's current attachment before returning, so the
+        :class:`Session` / :class:`Window` / :class:`Pane` you get
+        back reflects where the client is attached *now*, not where
+        it was when this :class:`Client` was constructed.
 
     Parameters
     ----------
@@ -91,3 +101,60 @@ class Client(Obj):
             server=server,
         )
         return cls(server=server, **client)
+
+    #
+    # Computed properties
+    #
+    @property
+    def attached_session(self) -> Session | None:
+        """Return the :class:`Session` this client is currently attached to.
+
+        Re-reads the client from ``list-clients`` before resolving, so the
+        returned :class:`Session` reflects the client's *live* attachment
+        rather than the snapshot captured when this :class:`Client` was
+        hydrated. Returns ``None`` when the client has detached, when
+        it's not attached to any session, or when the snapshot
+        ``session_id`` no longer names a live session.
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     client = server.clients.get(client_name=ctl.client_name)
+        ...     attached = client.attached_session
+        >>> attached is not None
+        True
+        """
+        self.refresh()
+        if self.session_id is None:
+            return None
+        return self.server.sessions.get(
+            session_id=self.session_id,
+            default=None,
+        )
+
+    @property
+    def attached_window(self) -> Window | None:
+        """Return the :class:`Window` this client is currently viewing.
+
+        Re-reads the client from ``list-clients``, looks up its attached
+        session, and returns that session's :attr:`~libtmux.Session.active_window`.
+        Returns ``None`` when the client has no attached session.
+        """
+        session = self.attached_session
+        if session is None:
+            return None
+        return session.active_window
+
+    @property
+    def attached_pane(self) -> Pane | None:
+        """Return the :class:`Pane` this client is currently viewing.
+
+        Re-reads the client from ``list-clients``, looks up its attached
+        session's current window, and returns that window's
+        :attr:`~libtmux.Window.active_pane`. Returns ``None`` when the
+        client has no attached session or active pane.
+        """
+        window = self.attached_window
+        if window is None:
+            return None
+        return window.active_pane

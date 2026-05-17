@@ -5,10 +5,12 @@ from __future__ import annotations
 import typing as t
 
 from libtmux.client import Client
+from libtmux.pane import Pane
+from libtmux.session import Session
+from libtmux.window import Window
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
-    from libtmux.session import Session
 
 
 def test_server_clients_returns_querylist(
@@ -88,3 +90,81 @@ def test_clients_property_hydrates_cross_scope(
         assert active_pane is not None
         assert client.window_id == attached_session.active_window.window_id
         assert client.pane_id == active_pane.pane_id
+
+
+def test_client_attached_session_returns_typed_session(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    session: Session,
+) -> None:
+    """``client.attached_session`` resolves to the live :class:`Session`."""
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+
+        attached = client.attached_session
+        assert isinstance(attached, Session)
+        assert attached.session_id == session.session_id
+
+
+def test_client_attached_window_tracks_active_window(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    session: Session,
+) -> None:
+    """``client.attached_window`` reflects the live active window.
+
+    Selects a freshly created window after hydrating the client, then
+    asserts the property reports the new selection — proves the
+    property re-reads rather than returning the snapshot.
+    """
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+        snapshot_window_id = client.window_id
+
+        new_window = session.new_window(window_name="attached_window_probe")
+        assert new_window.window_index is not None
+        session.select_window(new_window.window_index)
+
+        attached = client.attached_window
+        assert isinstance(attached, Window)
+        assert attached.window_id == new_window.window_id
+        assert attached.window_id != snapshot_window_id
+
+
+def test_client_attached_pane_tracks_active_pane(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    session: Session,
+) -> None:
+    """``client.attached_pane`` reflects the active pane in the active window."""
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+
+        attached = client.attached_pane
+        assert isinstance(attached, Pane)
+        assert attached.pane_id == session.active_window.active_pane.pane_id  # type: ignore[union-attr]
+
+
+def test_client_attached_session_none_when_session_id_missing(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    monkeypatch: t.Any,
+) -> None:
+    """Property returns ``None`` when the live snapshot has no ``session_id``.
+
+    Simulates a detached/transitioning client by short-circuiting
+    :meth:`Client.refresh` so ``session_id`` stays ``None``.
+    """
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+
+        monkeypatch.setattr(client, "refresh", lambda: None)
+        client.session_id = None
+
+        assert client.attached_session is None
+        assert client.attached_window is None
+        assert client.attached_pane is None
