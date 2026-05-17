@@ -220,6 +220,14 @@ class Session(
 
             .. versionadded:: 0.57
 
+        See Also
+        --------
+        :attr:`Session.windows` : unfiltered :class:`QueryList` of every
+            window in this session (Python-side ``.filter()`` runs
+            against this).
+        :ref:`c-side-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
+
         Examples
         --------
         >>> _ = session.new_window(window_name='gap7s_target')
@@ -267,6 +275,14 @@ class Session(
                 ``tmux(1)``.
 
             .. versionadded:: 0.57
+
+        See Also
+        --------
+        :attr:`Session.panes` : unfiltered :class:`QueryList` of every
+            pane in this session (Python-side ``.filter()`` runs against
+            this).
+        :ref:`c-side-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
 
         Examples
         --------

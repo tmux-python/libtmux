@@ -224,6 +224,14 @@ class Window(
 
             .. versionadded:: 0.57
 
+        See Also
+        --------
+        :attr:`Window.panes` : unfiltered :class:`QueryList` of every
+            pane in this window (Python-side ``.filter()`` runs against
+            this).
+        :ref:`c-side-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
+
         Examples
         --------
         >>> target_pane = window.split()
