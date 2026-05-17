@@ -69,6 +69,14 @@ _SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
     ("popup_", "event"),
 )
 
+# Per-token scope overrides for fields whose name doesn't follow the prefix
+# convention. Verified against the corresponding ``format_cb_*`` in tmux's
+# ``format.c`` (which context the callback dereferences — wp, wl, s, or c).
+# Entries are added by the scope-gate fix commits as misclassifications are
+# discovered.
+_SCOPE_OVERRIDES: dict[str, str] = {}
+
+
 # Standalone tokens not captured by the prefix table.
 _UNIVERSAL_TOKENS: frozenset[str] = frozenset(
     {
@@ -127,7 +135,13 @@ def _token_scope(field_name: str) -> str:
     'universal'
     >>> _token_scope("mouse_x")
     'event'
+
+    Tokens whose name doesn't carry a scope prefix can still be scope-gated
+    via :data:`_SCOPE_OVERRIDES` (verified against tmux's ``format_cb_*``).
     """
+    override = _SCOPE_OVERRIDES.get(field_name)
+    if override is not None:
+        return override
     for prefix, scope in _SCOPE_PREFIXES:
         if field_name.startswith(prefix):
             return scope
