@@ -181,3 +181,74 @@ def test_client_refresh_raises_when_client_name_is_none(server: Server) -> None:
 
     with pytest.raises(ValueError, match="client_name"):
         client.refresh()
+
+
+def test_resolve_attached_returns_full_triple_for_live_client(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    session: Session,
+) -> None:
+    """``_resolve_attached`` returns ``(session, window, pane)`` for a live client."""
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+
+        resolved_session, resolved_window, resolved_pane = client._resolve_attached()
+
+        assert resolved_session is not None
+        assert resolved_session.session_id == session.session_id
+        assert resolved_window is not None
+        assert resolved_pane is not None
+
+
+def test_resolve_attached_returns_none_triple_after_detach(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """``_resolve_attached`` returns ``(None, None, None)`` after detach.
+
+    Once tmux no longer reports this ``client_name``, the refresh raises
+    ``TmuxObjectDoesNotExist`` internally and the helper returns the
+    none-triple — matching :attr:`attached_session` / etc.'s contract for
+    a stale client name.
+    """
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+
+    # Client has detached at this point.
+    resolved = client._resolve_attached()
+    assert resolved == (None, None, None)
+
+
+def test_resolve_attached_catches_no_active_window(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_resolve_attached`` returns ``(session, None, None)`` on NoActiveWindow.
+
+    Patches the live session's ``active_window`` to raise
+    :exc:`~libtmux.exc.NoActiveWindow` (a state tmux normally prevents
+    but the helper still has to handle gracefully), and asserts the
+    helper falls back to the no-active-window triple rather than
+    propagating.
+    """
+    from libtmux import exc as libtmux_exc
+    from libtmux.session import Session as SessionCls
+
+    with control_mode() as ctl:
+        client = server.clients.get(client_name=ctl.client_name)
+        assert client is not None
+
+        def raise_no_active_window(self: SessionCls) -> Window:
+            raise libtmux_exc.NoActiveWindow
+
+        monkeypatch.setattr(
+            SessionCls, "active_window", property(raise_no_active_window)
+        )
+
+        resolved_session, resolved_window, resolved_pane = client._resolve_attached()
+        assert resolved_session is not None
+        assert resolved_window is None
+        assert resolved_pane is None
