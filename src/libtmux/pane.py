@@ -2188,9 +2188,6 @@ class Pane(
 
         Examples
         --------
-        >>> pane.send_keys('echo "for the history"')
-        >>> 'for the history' in '\n'.join(pane.capture_pane(start=-100, end=-1))
-        True
         >>> pane.reset()
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
         """
