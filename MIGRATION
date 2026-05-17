@@ -113,7 +113,7 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
-## libtmux 0.57.0: Subcommand-tagged exceptions (#670)
+## libtmux 0.57.0: Subcommand-tagged exceptions (#672)
 
 ### `LibTmuxException` `str()` gains a subcommand prefix
 
