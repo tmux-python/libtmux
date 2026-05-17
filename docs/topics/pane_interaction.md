@@ -220,9 +220,11 @@ a warning is issued and the flag is ignored.
 
 ### Capturing the pending input buffer
 
-Use `pending=True` to dump bytes tmux has received but not yet processed,
-rather than the visible screen. This is useful for diagnosing input that
-is stuck behind a slow consumer or buffered behind a paused program.
+Use `pending=True` to dump bytes tmux has buffered in its parser but
+not yet committed to the pane's terminal — input the tmux process read
+from the pane's PTY but hasn't fed through its escape-sequence parser
+into the visible screen. Use to inspect partial control sequences
+mid-write.
 
 ```python
 >>> pending = pane.capture_pane(pending=True)

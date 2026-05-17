@@ -203,6 +203,38 @@ the session's current window's active pane, not the client's
 ``CLIENT_ACTIVEPANE`` focus. The two diverge once a client has used
 ``select-pane -P`` to set its own active pane.
 
+### `Pane.reset` now dispatches through `self.server.cmd`
+
+{meth}`~libtmux.Pane.reset` now bundles ``send-keys -R`` and
+``clear-history`` into a single tmux IPC routed through
+``self.server.cmd`` (with an explicit ``-t <pane_id>`` on both
+subcommands) rather than calling ``self.cmd`` twice. This closes a race
+where output written to the pane between the two IPCs could land in the
+scrollback that the second call then cleared.
+
+**Who is affected:** test fixtures and downstream code that intercepts
+``Pane.cmd`` (for example with ``unittest.mock.patch.object(pane,
+"cmd")``) will no longer observe ``reset()``'s tmux invocation. Patch
+``Server.cmd`` instead, or assert on the resulting pane state directly.
+
+### `Server.display_message` / `Window.display_message` / `Pane.display_message` warn instead of raise
+
+The three ``display_message`` wrappers now report tmux stderr via
+:func:`warnings.warn` rather than raising
+{exc}`~libtmux.exc.LibTmuxException`. tmux uses stderr for both genuine
+errors and informational messages, and the right escalation depends on
+tmux version and call shape; the wrappers default to warning so callers
+can decide. To escalate to an exception, wrap the call in
+:func:`warnings.catch_warnings` with ``filterwarnings("error")``:
+
+```python
+import warnings
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("error", category=UserWarning)
+    result = pane.display_message("#{pane_id}", get_text=True)
+```
+
 ## libtmux 0.50.0: Unified Options and Hooks API (#516)
 
 ### New unified options API
