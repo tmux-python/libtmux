@@ -2,13 +2,13 @@
   {%- block brand_content %}
   {%- if logo_url %}
   <div class="sidebar-logo-container">
-    <img class="sidebar-logo" src="{{ logo_url }}" width="200" height="200" decoding="async" alt="Logo"/>
+    <img class="sidebar-logo" src="{{ logo_url }}" width="200" height="200" decoding="async" fetchpriority="high" alt="Logo"/>
   </div>
   {%- endif %}
   {%- if theme_light_logo and theme_dark_logo %}
   <div class="sidebar-logo-container">
-    <img class="sidebar-logo only-light" src="{{ pathto('_static/' + theme_light_logo, 1) }}" width="200" height="200" decoding="async" alt="Light Logo"/>
-    <img class="sidebar-logo only-dark" src="{{ pathto('_static/' + theme_dark_logo, 1) }}" width="200" height="200" decoding="async" alt="Dark Logo"/>
+    <img class="sidebar-logo only-light" src="{{ pathto('_static/' + theme_light_logo, 1) }}" width="200" height="200" decoding="async" fetchpriority="high" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="{{ pathto('_static/' + theme_dark_logo, 1) }}" width="200" height="200" decoding="async" fetchpriority="high" alt="Dark Logo"/>
   </div>
   {%- endif %}
   {% if not theme_sidebar_hide_name %}
