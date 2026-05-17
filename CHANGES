@@ -157,11 +157,15 @@ For typed access to the live attachment, use
 {attr}`~libtmux.Client.attached_session`,
 {attr}`~libtmux.Client.attached_window`, and
 {attr}`~libtmux.Client.attached_pane`. Each property re-reads the
-client from ``list-clients`` before resolving, so the returned
+client from ``list-clients`` before resolving; if tmux no longer
+reports that ``client_name``, such as after the client detaches, the
+property returns ``None``. Otherwise, the returned
 {class}`~libtmux.Session` / {class}`~libtmux.Window` /
 {class}`~libtmux.Pane` reflects where the client is attached *now*,
 not where it was when the {class}`~libtmux.Client` was constructed.
-Returns ``None`` when the client has detached.
+Direct {meth}`~libtmux.Client.refresh` and
+{meth}`~libtmux.Client.from_client_name` calls still surface missing
+client lookup errors.
 
 {attr}`~libtmux.Client.attached_pane` is session-scope: it returns
 the session's current window's active pane, not the client's
