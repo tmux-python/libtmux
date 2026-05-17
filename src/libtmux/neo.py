@@ -93,33 +93,36 @@ _SCOPE_OVERRIDES: dict[str, str] = {
     "mouse_standard_flag": "pane",  # ft->wp->base.mode MODE_MOUSE_STANDARD
     "scroll_region_lower": "pane",  # ft->wp->base.rlower
     "scroll_region_upper": "pane",  # ft->wp->base.rupper
+    "alternate_saved_x": "pane",  # ft->wp->base.saved_cx
+    "alternate_saved_y": "pane",  # ft->wp->base.saved_cy
+    "history_bytes": "pane",  # ft->wp
+    "history_limit": "pane",  # ft->wp->base.grid->hlimit
+    "history_size": "pane",  # ft->wp->base.grid->hsize
+    "insert_flag": "pane",  # ft->wp->base.mode MODE_INSERT
+    "keypad_cursor_flag": "pane",  # ft->wp->base.mode MODE_KCURSOR
+    "keypad_flag": "pane",  # ft->wp->base.mode MODE_KKEYPAD
+    "origin_flag": "pane",  # ft->wp->base.mode MODE_ORIGIN
+    "wrap_flag": "pane",  # ft->wp->base.mode MODE_WRAP
+    "active_window_index": "session",  # ft->s->curw->idx
+    "last_window_index": "session",  # ft->s
 }
 
 
-# Standalone tokens not captured by the prefix table.
+# Standalone tokens not captured by the prefix table. These are genuinely
+# server-wide or parse-context tokens whose callbacks resolve without a
+# session/window/pane/client (most are ``__unused`` ft or read globals).
+# Pane- and session-scoped standalones are routed via :data:`_SCOPE_OVERRIDES`.
 _UNIVERSAL_TOKENS: frozenset[str] = frozenset(
     {
-        "active_window_index",
-        "alternate_on",
-        "alternate_saved_x",
-        "alternate_saved_y",
         "command_list_alias",
         "command_list_name",
         "command_list_usage",
         "config_files",
         "current_file",
-        "history_bytes",
-        "history_limit",
-        "history_size",
         "host",
         "host_short",
-        "insert_flag",
-        "keypad_cursor_flag",
-        "keypad_flag",
-        "last_window_index",
         "line",
         "next_session_id",
-        "origin_flag",
         "pid",
         "search_match",
         "socket_path",
@@ -127,7 +130,6 @@ _UNIVERSAL_TOKENS: frozenset[str] = frozenset(
         "uid",
         "user",
         "version",
-        "wrap_flag",
     }
 )
 
@@ -162,6 +164,8 @@ def _token_scope(field_name: str) -> str:
 
     >>> _token_scope("mouse_all_flag")
     'pane'
+    >>> _token_scope("active_window_index")
+    'session'
     """
     override = _SCOPE_OVERRIDES.get(field_name)
     if override is not None:

@@ -672,6 +672,16 @@ PANE_SCOPE_OVERRIDE_FIELDS = (
     "mouse_standard_flag",
     "scroll_region_lower",
     "scroll_region_upper",
+    "alternate_saved_x",
+    "alternate_saved_y",
+    "history_bytes",
+    "history_limit",
+    "history_size",
+    "insert_flag",
+    "keypad_cursor_flag",
+    "keypad_flag",
+    "origin_flag",
+    "wrap_flag",
 )
 
 

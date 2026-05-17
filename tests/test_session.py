@@ -729,3 +729,27 @@ def test_session_format_field_declared_and_hydrated(
     session.refresh()
     value = getattr(session, field_name)
     assert value is None or isinstance(value, str)
+
+
+SESSION_SCOPE_OVERRIDE_FIELDS = (
+    "active_window_index",
+    "last_window_index",
+)
+
+
+@pytest.mark.parametrize("field_name", SESSION_SCOPE_OVERRIDE_FIELDS)
+def test_session_scope_override_field_hydrates(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Session-scope overrides admit each token into list-sessions -F.
+
+    Callbacks dereference ``ft->s`` in tmux's ``format.c`` (verified
+    across tmux 3.2a through master). A ``None`` here indicates the
+    scope gate excluded the token from the format string, which is
+    the regression class these overrides prevent.
+    """
+    session.refresh()
+    value = getattr(session, field_name)
+    assert value is not None, f"{field_name} should hydrate via list-sessions"
+    assert isinstance(value, str)
