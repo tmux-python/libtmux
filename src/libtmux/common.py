@@ -274,7 +274,10 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
     .. versionadded:: 0.57
     """
     if proc.stderr:
-        raise exc.LibTmuxException(proc.stderr, subcommand=subcommand)
+        raise exc.LibTmuxException(
+            "\n".join(proc.stderr),
+            subcommand=subcommand,
+        )
 
 
 class tmux_cmd:

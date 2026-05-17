@@ -692,3 +692,24 @@ def test_raise_if_stderr_raises_with_subcommand_tag(
 
     assert excinfo.value.subcommand == "list-clients"
     assert str(excinfo.value).startswith("list-clients:")
+
+
+def test_raise_if_stderr_str_shape_exact(session: libtmux.Session) -> None:
+    """Lock down ``str(exc)`` and ``exc.args[0]`` against future drift.
+
+    The breaking-change documentation promises a flat string in
+    ``str(exc)`` and a flat string in ``exc.args[0]``. If a future change
+    re-introduces a list-shaped ``proc.stderr`` into ``LibTmuxException``,
+    this test catches it where ``startswith`` / substring matches won't.
+    """
+    from libtmux.common import raise_if_stderr
+
+    proc = session.cmd("last-window")
+    assert proc.stderr == ["no last window"]
+
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        raise_if_stderr(proc, "last-window")
+
+    assert str(excinfo.value) == "last-window: no last window"
+    assert excinfo.value.args == ("no last window",)
+    assert excinfo.value.subcommand == "last-window"
