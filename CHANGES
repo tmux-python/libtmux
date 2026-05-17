@@ -121,6 +121,52 @@ Blanket retry policies for {exc}`~libtmux.exc.LibTmuxException` should exclude
 {exc}`~libtmux.exc.MultipleObjectsReturned`: they report deterministic missing
 or ambiguous lookups, not transient tmux failures.
 
+### Breaking changes
+
+#### `LibTmuxException` string form gains a subcommand prefix (#670)
+
+When {exc}`~libtmux.exc.LibTmuxException` is raised from one of the
+typed command wrappers, ``str(exc)`` now begins with the originating
+tmux subcommand name followed by ``": "``. For example, an error from
+{meth}`~libtmux.Session.last_window` used to render as ``"can't find
+window"`` and now renders as ``"last-window: can't find window"``.
+
+The wrapped stderr is unchanged — ``exc.args[0]`` still holds the raw
+tmux output, and the new {attr}`~libtmux.exc.LibTmuxException.subcommand`
+attribute exposes the tmux subcommand name as a separate field.
+{func}`~libtmux.common.raise_if_stderr` is the shared helper that
+populates both.
+
+This is a serialization-format change: code that pattern-matches on
+``str(exc)`` exactly or anchors a regex with ``^`` against the old
+shape will no longer match.
+
+```python
+# Before
+try:
+    session.last_window()
+except LibTmuxException as exc:
+    if str(exc) == "can't find window":
+        ...
+
+# After — dispatch on the typed attribute
+try:
+    session.last_window()
+except LibTmuxException as exc:
+    if exc.subcommand == "last-window":
+        ...
+
+# Or — match against the raw stderr without the prefix
+try:
+    session.last_window()
+except LibTmuxException as exc:
+    if exc.args and exc.args[0] == "can't find window":
+        ...
+```
+
+Substring matches (``"can't find" in str(exc)``) and unanchored
+``re.search`` patterns continue to work unchanged.
+
 ### What's new
 
 #### Find where you are running (#714)
