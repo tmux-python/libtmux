@@ -211,7 +211,7 @@ releases can be validated end-to-end.
 ## libtmux 0.56.0 (2026-05-10)
 
 libtmux 0.56.0 is the tmux command-parity release. It adds more than
-50 wrappers across {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+50 commands across {class}`~libtmux.Server`, {class}`~libtmux.Session`,
 {class}`~libtmux.Window`, and {class}`~libtmux.Pane`, filling in many
 commands that previously required raw {meth}`~libtmux.Server.cmd` calls.
 It also adds attached-client test support so interactive tmux commands can be
@@ -221,7 +221,7 @@ covered in headless test suites.
 
 #### Interactive tmux commands are now scriptable (#653)
 
-libtmux now exposes Python wrappers for tmux commands that normally depend on
+libtmux now exposes Python commands for tmux that normally depend on
 an attached client: {meth}`~libtmux.Pane.display_popup`,
 {meth}`~libtmux.Server.display_menu`,
 {meth}`~libtmux.Server.command_prompt`,
@@ -243,7 +243,7 @@ The `detach-client` API is split by the same scopes tmux actually honors:
 `tmux detach-client -a [-t <keep>]`. This keeps each method to one tmux flag
 group and one subprocess call.
 
-#### tmux buffer I/O has first-class wrappers (#653)
+#### tmux buffer I/O has first-class support (#653)
 
 Named tmux buffers can now be used from libtmux without hand-built commands.
 {meth}`~libtmux.Server.set_buffer`,
@@ -257,7 +257,7 @@ inter-process handoff workflows.
 
 #### Server commands cover key bindings, clients, shell execution, and access (#653)
 
-{class}`~libtmux.Server` gains wrappers for key-binding inspection and mutation
+{class}`~libtmux.Server` gains support for key-binding inspection and mutation
 ({meth}`~libtmux.Server.bind_key`,
 {meth}`~libtmux.Server.unbind_key`,
 {meth}`~libtmux.Server.list_keys`,
@@ -300,7 +300,7 @@ Navigation helpers fill in the surrounding topology:
 {meth}`~libtmux.Session.next_window`, and
 {meth}`~libtmux.Session.previous_window`.
 
-#### Existing wrappers expose more tmux flags (#653)
+#### Improvements (#653)
 
 Several established methods now surface tmux flags that were previously only
 available by dropping to raw commands. Highlights include
@@ -359,7 +359,7 @@ old hardcoded socket paths. Fixes #664.
 
 #### tmux 3.7 is within the known-version range (#653)
 
-{data}`~libtmux.common.TMUX_MAX_VERSION` is now `"3.7"`, enabling wrappers and
+{data}`~libtmux.common.TMUX_MAX_VERSION` is now `"3.7"`, enabling support and
 tests for version-gated tmux 3.7 flags such as
 {meth}`~libtmux.Server.command_prompt` `bspace_exit` and
 {meth}`~libtmux.Server.show_messages` `terminals` / `jobs`. Installations on
