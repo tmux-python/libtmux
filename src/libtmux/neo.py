@@ -174,6 +174,15 @@ def _token_scope(field_name: str) -> str:
     mode context). Returns ``"pane"`` / ``"window"`` / ``"session"`` /
     ``"client"`` / ``"buffer"`` for scope-prefixed tokens.
 
+    Fields that don't match any prefix, override, or known-token table
+    fall back to ``"unknown"``. ``"unknown"`` is intentionally absent from
+    every :data:`SCOPES_BY_LIST_CMD` entry, so an unclassified field is
+    excluded from every ``list-*`` ``-F`` template — preventing a future
+    untracked field from being silently emitted under a list command
+    where it might crash older tmux. Add such a field to
+    :data:`_SCOPE_OVERRIDES` (or the appropriate prefix / known-token
+    table) to admit it.
+
     Examples
     --------
     >>> from libtmux.neo import _token_scope
@@ -206,6 +215,12 @@ def _token_scope(field_name: str) -> str:
     'context'
     >>> _token_scope("search_match")
     'context'
+
+    Unclassified tokens fall back to ``"unknown"``, also excluded from
+    every list command:
+
+    >>> _token_scope("libtmux_test_nonexistent_token")
+    'unknown'
     """
     override = _SCOPE_OVERRIDES.get(field_name)
     if override is not None:
@@ -217,7 +232,7 @@ def _token_scope(field_name: str) -> str:
         return "context"
     if field_name in _UNIVERSAL_TOKENS:
         return "universal"
-    return "universal"
+    return "unknown"
 
 
 def _normalize_tmux_version(version: str) -> LooseVersion:
