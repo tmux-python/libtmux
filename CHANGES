@@ -45,7 +45,7 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
-libtmux 0.57.0 broadens the supported surface. It introduces
+libtmux 0.57.0 broadens tmux support. It introduces
 {class}`~libtmux.Client` as a first-class object, threads tmux's
 C-side ``-f`` filter through the typed listing methods so callers can
 push predicates into the tmux server, and adds typed access to many
@@ -161,7 +161,7 @@ attribute. When set, ``str(exc)`` prefixes the originating tmux
 command name (e.g. ``"last-window: no such window"``), giving
 downstream consumers a stable way to dispatch on which tmux command
 produced the error. {func}`~libtmux.common.raise_if_stderr` is the
-shared helper used across the supported surface to populate it.
+shared helper most commands use to populate it.
 
 #### Scope-aware format-token retrieval (#670)
 
@@ -198,7 +198,7 @@ releases can be validated end-to-end.
   {meth}`~libtmux.Window.display_message`, and
   {meth}`~libtmux.Pane.display_message` raise
   {exc}`~libtmux.exc.LibTmuxException` when tmux reports an error,
-  matching the rest of the supported surface (#670).
+  matching the rest of libtmux's tmux commands (#670).
 
 ### Documentation
 
