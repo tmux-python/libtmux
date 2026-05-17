@@ -16,6 +16,7 @@ from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
+    from libtmux.pane import Pane
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -1491,3 +1492,69 @@ def test_pane_reset_clears_history_and_sends_reset(session: Session) -> None:
     # behind because clear-history never executed.
     post = pane.capture_pane(start=-100)
     assert not any("reset_marker_" in line for line in post)
+
+
+def test_pane_reset_targets_non_active_pane(session: Session) -> None:
+    """Pane.reset() clears the target pane, not tmux's cmdq default.
+
+    Regresses the bundled-IPC fix for the race-and-misroute combination:
+    the previous two-call form raced under busy pane writers, and a naïve
+    one-call form (``send-keys -R ; clear-history`` with one ``-t``) would
+    route ``clear-history`` to tmux's default pane because the ``;``
+    separator doesn't propagate ``-t`` across subcommands. The fix passes
+    ``-t`` on both subcommands, so reset() must clear the *target* pane's
+    scrollback while leaving any active sibling pane untouched.
+    """
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_reset_targets",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    # `attach=False` keeps the original pane active; the newly-split pane
+    # is the non-active one. Call reset() on the non-active pane so a
+    # missing -t on clear-history would route to the active sibling
+    # instead.
+    active_sibling = window.active_pane
+    assert active_sibling is not None
+    target = window.split(
+        shell=f"{env} PS1='$ ' sh",
+        attach=False,
+    )
+    assert target.pane_id != active_sibling.pane_id
+
+    window.refresh()
+    assert window.active_pane is not None
+    assert window.active_pane.pane_id == active_sibling.pane_id
+
+    # Push enough output through both panes to accumulate scrollback.
+    # `seq 1 200` scrolls past the default 24-row visible region.
+    def _history_size(pane: Pane) -> int:
+        line = pane.cmd("display-message", "-p", "#{history_size}").stdout[0]
+        return int(line)
+
+    retry_until(
+        lambda: "$" in "\n".join(active_sibling.capture_pane()),
+        2,
+        raises=True,
+    )
+    active_sibling.send_keys("seq 1 200", enter=True)
+    retry_until(lambda: _history_size(active_sibling) > 0, 3, raises=True)
+
+    retry_until(lambda: "$" in "\n".join(target.capture_pane()), 2, raises=True)
+    target.send_keys("seq 1 200", enter=True)
+    retry_until(lambda: _history_size(target) > 0, 3, raises=True)
+
+    target_pre = _history_size(target)
+    sibling_pre = _history_size(active_sibling)
+    assert target_pre > 0
+    assert sibling_pre > 0
+
+    target.reset()
+
+    # Target pane: history cleared.
+    assert _history_size(target) == 0
+    # Active sibling pane: untouched. (Under a missing-target clear-history,
+    # this would have been wiped because it is the active pane.)
+    assert _history_size(active_sibling) == sibling_pre

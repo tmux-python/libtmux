@@ -2179,8 +2179,12 @@ class Pane(
     def reset(self) -> Pane:
         r"""Reset terminal state and clear pane history.
 
-        Issues ``send-keys -R`` to reset the pane's terminal state, then
-        ``clear-history`` to drop its scrollback.
+        Sends ``send-keys -R`` and ``clear-history`` to the pane in a
+        single tmux IPC so no pane output can land in the freshly-cleared
+        grid (and scroll into history under ``scroll-on-clear``) between
+        the terminal-state reset and the history clear. Both subcommands
+        carry an explicit ``-t`` so the ``;`` separator can't leave
+        ``clear-history`` routed to tmux's cmdq default pane.
 
         Examples
         --------
@@ -2190,8 +2194,16 @@ class Pane(
         >>> pane.reset()
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
         """
-        self.cmd("send-keys", "-R")
-        self.cmd("clear-history")
+        self.server.cmd(
+            "send-keys",
+            "-t",
+            self.pane_id,
+            "-R",
+            ";",
+            "clear-history",
+            "-t",
+            self.pane_id,
+        )
         return self
 
     #
