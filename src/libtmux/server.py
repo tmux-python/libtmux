@@ -18,7 +18,7 @@ import warnings
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
-from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -2193,7 +2193,8 @@ class Server(
             del os.environ["TMUX"]
 
         try:
-            _fields, format_string = get_output_format()
+            tmux_version = str(get_version(tmux_bin=self.tmux_bin))
+            _fields, format_string = get_output_format("list-sessions", tmux_version)
 
             tmux_args: tuple[str | int, ...] = (
                 "-P",
@@ -2245,7 +2246,7 @@ class Server(
             if env:
                 os.environ["TMUX"] = env
 
-        session_data = parse_output(session_stdout)
+        session_data = parse_output(session_stdout, "list-sessions", tmux_version)
 
         session = Session(server=self, **session_data)
 
