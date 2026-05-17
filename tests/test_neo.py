@@ -9,9 +9,13 @@ verified against tmux's ``format.c`` (see commit messages on
 
 from __future__ import annotations
 
+import pytest
+
 from libtmux.neo import (
+    _CONTEXT_ONLY_TOKENS,
     FIELD_VERSION,
     SCOPES_BY_LIST_CMD,
+    _token_scope,
     get_output_format,
 )
 
@@ -74,3 +78,37 @@ def test_scopes_by_list_cmd_downward_cascade() -> None:
     assert "client" not in SCOPES_BY_LIST_CMD["list-sessions"]
     assert "client" not in SCOPES_BY_LIST_CMD["list-windows"]
     assert "client" not in SCOPES_BY_LIST_CMD["list-panes"]
+
+
+@pytest.mark.parametrize("token", sorted(_CONTEXT_ONLY_TOKENS))
+def test_context_only_token_scope(token: str) -> None:
+    """Tokens registered outside ``format.c`` route to the ``context`` scope.
+
+    ``command_list_*`` is only registered by ``cmd-list-commands.c``;
+    ``search_match`` by ``window-copy.c``; ``current_file`` by ``cfg.c``.
+    None resolve via ``format_defaults`` for any ``list-*``, so they
+    should not land in the universal bucket where they'd be emitted
+    in every ``-F`` template.
+    """
+    assert _token_scope(token) == "context"
+
+
+@pytest.mark.parametrize("list_cmd", sorted(SCOPES_BY_LIST_CMD))
+def test_context_scope_excluded_from_every_list_cmd(list_cmd: str) -> None:
+    """``"context"`` is excluded from every ``SCOPES_BY_LIST_CMD`` entry.
+
+    The exclusion is the structural guarantee that context-only tokens
+    don't drift into any ``-F`` template. If a future change accidentally
+    admits ``"context"`` for a list subcommand, this test catches it.
+    """
+    assert "context" not in SCOPES_BY_LIST_CMD[list_cmd]
+
+
+@pytest.mark.parametrize("token", sorted(_CONTEXT_ONLY_TOKENS))
+def test_context_tokens_absent_from_every_list_cmd_template(token: str) -> None:
+    """Context-only tokens never appear in any ``list-*`` ``-F`` template."""
+    for list_cmd in SCOPES_BY_LIST_CMD:
+        fields, _ = get_output_format(list_cmd, "3.6a")
+        assert token not in fields, (
+            f"{token!r} (context-only) leaked into {list_cmd} template"
+        )
