@@ -362,14 +362,18 @@ For typed access that reflects the client's *live* attachment, use
 client = server.clients.get(client_name=ctl.client_name)
 session_id = client.session_id  # str captured at hydration time
 
-# Live (re-reads list-clients, returns typed object or None)
+# Live (re-reads list-clients; returns None if tmux no longer reports the client)
 attached = client.attached_session  # libtmux.Session | None
 window = client.attached_window     # libtmux.Window  | None
 pane = client.attached_pane         # libtmux.Pane    | None
 ```
 
 The ``client.client_name`` field (typically the tty path on Unix) is
-the client's *stable* identifier and does not have this caveat.
+the client's *stable* identifier and does not have this caveat. The
+``attached_*`` properties translate a missing ``list-clients`` row into
+``None`` for convenience; direct {meth}`~libtmux.Client.refresh` and
+{meth}`~libtmux.Client.from_client_name` calls still raise when that
+client row is gone.
 
 ## libtmux 0.50.0: Unified Options and Hooks API (#516)
 
