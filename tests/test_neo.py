@@ -15,6 +15,7 @@ from libtmux.neo import (
     _CONTEXT_ONLY_TOKENS,
     FIELD_VERSION,
     SCOPES_BY_LIST_CMD,
+    Obj,
     _token_scope,
     get_output_format,
 )
@@ -112,3 +113,38 @@ def test_context_tokens_absent_from_every_list_cmd_template(token: str) -> None:
         assert token not in fields, (
             f"{token!r} (context-only) leaked into {list_cmd} template"
         )
+
+
+def test_token_scope_unknown_for_unclassified_field() -> None:
+    """``_token_scope`` returns ``"unknown"`` for any unrecognized field.
+
+    ``"unknown"`` must be absent from every :data:`SCOPES_BY_LIST_CMD`
+    entry, so a future field added without classification is silently
+    excluded from every ``-F`` template rather than emitted under a list
+    command where it might crash older tmux.
+    """
+    assert _token_scope("libtmux_test_nonexistent_token") == "unknown"
+    for allowed in SCOPES_BY_LIST_CMD.values():
+        assert "unknown" not in allowed
+
+
+def test_every_obj_field_classifies_to_known_scope() -> None:
+    """Every declared ``Obj`` field must classify to a known scope.
+
+    Adding a new field without a matching prefix / override /
+    known-token table entry would silently exclude it from every
+    ``list-*`` template (via the fail-closed default). This test
+    surfaces that misclassification as a deterministic failure rather
+    than a runtime hydration-as-None.
+    """
+    unclassified: list[str] = []
+    for name in Obj.__dataclass_fields__:
+        if name == "server":
+            continue
+        if _token_scope(name) == "unknown":
+            unclassified.append(name)
+    assert not unclassified, (
+        "Obj fields with no scope classification "
+        "(add them to _SCOPE_OVERRIDES, _SCOPE_PREFIXES, "
+        f"_UNIVERSAL_TOKENS, or _CONTEXT_ONLY_TOKENS): {unclassified}"
+    )
