@@ -632,6 +632,16 @@ def fetch_objs(
         "0") are omitted from the result. Pushes filtering into tmux's C
         code instead of Python post-processing.
 
+        .. warning::
+
+            tmux silently expands a malformed predicate (unclosed
+            ``#{...}``, unknown format token) to empty, which the format
+            engine evaluates as "false" — every row is suppressed and no
+            stderr is emitted. A bad filter is indistinguishable from
+            "filter matched nothing"; verify predicate syntax against the
+            FORMATS section of ``tmux(1)``. See :ref:`c-side-filtering`
+            for the typed wrappers that share this caveat.
+
         .. versionadded:: 0.57
 
     Returns
