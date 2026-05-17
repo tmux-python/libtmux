@@ -2363,6 +2363,13 @@ class Server(
         -------
         :class:`~libtmux._internal.query_list.QueryList` of :class:`Session`
 
+        See Also
+        --------
+        :attr:`Server.sessions` : unfiltered :class:`QueryList` of every
+            session (Python-side ``.filter()`` runs against this).
+        :ref:`c-side-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
+
         Examples
         --------
         >>> server.new_session(session_name='gap7_alpha')
@@ -2409,6 +2416,14 @@ class Server(
                 ``tmux(1)``.
 
             .. versionadded:: 0.57
+
+        See Also
+        --------
+        :attr:`Server.windows` : unfiltered :class:`QueryList` of every
+            window across every session (Python-side ``.filter()`` runs
+            against this).
+        :ref:`c-side-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
 
         Examples
         --------
@@ -2464,6 +2479,13 @@ class Server(
                 ``tmux(1)``.
 
             .. versionadded:: 0.57
+
+        See Also
+        --------
+        :attr:`Server.panes` : unfiltered :class:`QueryList` of every
+            pane (Python-side ``.filter()`` runs against this).
+        :ref:`c-side-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
 
         Examples
         --------
