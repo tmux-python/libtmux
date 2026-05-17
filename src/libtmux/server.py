@@ -48,6 +48,41 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+_DAEMON_NOT_UP_MARKERS: tuple[str, ...] = (
+    # Socket exists but no daemon listening.
+    "no server running",
+    # Socket file doesn't exist at all.
+    "error connecting to",
+)
+
+
+def _fetch_or_empty(
+    server: Server,
+    list_cmd: str,
+    **kwargs: t.Any,
+) -> list[dict[str, t.Any]]:
+    """Wrap :func:`fetch_objs`: treat daemon-not-up stderr as empty.
+
+    tmux signals "no daemon" in two ways depending on socket state:
+    ``no server running on <socket>`` when the socket exists but no
+    daemon is listening, or ``error connecting to <socket>`` when the
+    socket file is missing entirely. Both are bootstrap signals — a
+    fresh :class:`~libtmux.Server` can still be introspected via
+    :attr:`Server.sessions`, :attr:`Server.windows`, etc. without
+    first calling :meth:`Server.is_alive`. Real tmux errors
+    (subprocess crash, malformed output, version-incompatible flags)
+    still propagate.
+    """
+    try:
+        return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
+    except exc.LibTmuxException as e:
+        if e.args:
+            msg = str(e.args[0])
+            if any(marker in msg for marker in _DAEMON_NOT_UP_MARKERS):
+                return []
+        raise
+
+
 class Server(
     EnvironmentMixin,
     OptionsMixin,
@@ -2273,13 +2308,15 @@ class Server(
         Raises
         ------
         :exc:`~libtmux.exc.LibTmuxException`
-            When tmux's ``list-sessions`` itself fails (subprocess crash,
-            malformed output). A server with no sessions still returns an
-            empty :class:`~libtmux._internal.query_list.QueryList`.
+            When tmux's ``list-sessions`` fails for a reason other than
+            "no server running" — subprocess crash, malformed output,
+            version-incompatible flags. A server with no sessions, or a
+            server before its daemon has started, returns an empty
+            :class:`~libtmux._internal.query_list.QueryList`.
         """
         sessions: list[Session] = [
             Session(server=self, **obj)
-            for obj in fetch_objs(list_cmd="list-sessions", server=self)
+            for obj in _fetch_or_empty(server=self, list_cmd="list-sessions")
         ]
         return QueryList(sessions)
 
@@ -2293,10 +2330,10 @@ class Server(
         """
         windows: list[Window] = [
             Window(server=self, **obj)
-            for obj in fetch_objs(
+            for obj in _fetch_or_empty(
+                server=self,
                 list_cmd="list-windows",
                 list_extra_args=("-a",),
-                server=self,
             )
         ]
 
@@ -2312,10 +2349,10 @@ class Server(
         """
         panes: list[Pane] = [
             Pane(server=self, **obj)
-            for obj in fetch_objs(
+            for obj in _fetch_or_empty(
+                server=self,
                 list_cmd="list-panes",
                 list_extra_args=("-a",),
-                server=self,
             )
         ]
 
@@ -2342,7 +2379,7 @@ class Server(
         """
         clients: list[Client] = [
             Client(server=self, **obj)
-            for obj in fetch_objs(list_cmd="list-clients", server=self)
+            for obj in _fetch_or_empty(server=self, list_cmd="list-clients")
         ]
         return QueryList(clients)
 
@@ -2398,9 +2435,9 @@ class Server(
         """
         sessions: list[Session] = [
             Session(server=self, **obj)
-            for obj in fetch_objs(
-                list_cmd="list-sessions",
+            for obj in _fetch_or_empty(
                 server=self,
+                list_cmd="list-sessions",
                 filter=filter,
             )
         ]
@@ -2454,10 +2491,10 @@ class Server(
         """
         windows: list[Window] = [
             Window(server=self, **obj)
-            for obj in fetch_objs(
+            for obj in _fetch_or_empty(
+                server=self,
                 list_cmd="list-windows",
                 list_extra_args=("-a",),
-                server=self,
                 filter=filter,
             )
         ]
@@ -2516,10 +2553,10 @@ class Server(
         """
         panes: list[Pane] = [
             Pane(server=self, **obj)
-            for obj in fetch_objs(
+            for obj in _fetch_or_empty(
+                server=self,
                 list_cmd="list-panes",
                 list_extra_args=("-a",),
-                server=self,
                 filter=filter,
             )
         ]

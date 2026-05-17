@@ -119,7 +119,10 @@ via {func}`~libtmux.common.raise_if_stderr`.
 
 Genuine empty results — a server with no attached clients, or a
 filter that matched zero sessions — still return an empty
-``QueryList``. Only real tmux errors (subprocess crash, malformed
+``QueryList``. ``"no server running"`` is also still treated as
+an empty result, preserving the historic contract that a fresh
+{class}`~libtmux.Server` can be safely introspected before its
+daemon is up. Only real tmux errors (subprocess crash, malformed
 output, version-incompatible flags) now surface.
 
 ```python
