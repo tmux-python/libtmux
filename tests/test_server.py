@@ -1310,6 +1310,46 @@ def test_server_search_panes_filter_by_id(server: Server) -> None:
     assert [p.pane_id for p in matches] == [target.pane_id]
 
 
+def test_server_clients_propagates_errors(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.clients`` re-raises tmux errors instead of swallowing them.
+
+    The wrapper used to ``except Exception: pass`` and return an empty
+    QueryList on any failure, masking real tmux errors as "no clients".
+    A genuine failure should surface so callers can react.
+    """
+    sentinel = exc.LibTmuxException("simulated list-clients failure")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.LibTmuxException, match="simulated list-clients failure"):
+        server.clients  # noqa: B018
+
+
+def test_server_search_sessions_propagates_errors(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.search_sessions`` re-raises tmux errors instead of swallowing them.
+
+    Mirrors the clients-propagation contract: errors are surfaced, not
+    buried as an empty QueryList that's indistinguishable from "filter
+    matched nothing".
+    """
+    sentinel = exc.LibTmuxException("simulated list-sessions failure")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.LibTmuxException, match="simulated list-sessions failure"):
+        server.search_sessions(filter="#{m:keep_*,#{session_name}}")
+
+
 def test_if_shell_true(server: Server) -> None:
     """Test Server.if_shell() with true condition."""
     server.new_session(session_name="ifshell_test")

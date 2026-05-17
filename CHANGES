@@ -54,6 +54,37 @@ typed listing methods, threads originating subcommand context through
 additional format tokens across {class}`~libtmux.Pane`,
 {class}`~libtmux.Window`, and {class}`~libtmux.Session`.
 
+#### `Server.clients` and `Server.search_sessions` raise on tmux errors (#672)
+
+Previously, a tmux command failure under
+{attr}`~libtmux.Server.clients` or
+{meth}`~libtmux.Server.search_sessions` was swallowed by a bare
+``except Exception: pass``, returning an empty
+{class}`~libtmux._internal.query_list.QueryList` indistinguishable
+from "no clients attached" or "filter matched nothing". The wrapper
+now lets {exc}`~libtmux.exc.LibTmuxException` propagate via
+{func}`~libtmux.common.raise_if_stderr`.
+
+Genuine empty results — a server with no attached clients, or a
+filter that matched zero sessions — still return an empty
+``QueryList``. Only real tmux errors (subprocess crash, malformed
+output, version-incompatible flags) now surface.
+
+```python
+# Before — silent on tmux failure
+if not server.clients:
+    log("no clients")  # also runs when tmux itself crashed
+
+# After — distinguish the two cases
+try:
+    clients = server.clients
+except LibTmuxException as exc:
+    log(f"list-clients failed: {exc}")
+else:
+    if not clients:
+        log("no clients")
+```
+
 ### What's new
 
 #### `Client` object and `Server.clients` accessor (#670)
