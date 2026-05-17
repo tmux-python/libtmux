@@ -12,7 +12,7 @@ from inside a live tmux session.
 
 ## Requirements
 
-- [tmux] 3.2a or newer
+- [tmux]
 - [pip] - for this handbook's examples
 
 [tmux]: https://tmux.github.io/
@@ -44,14 +44,9 @@ the 4th beta release of `1.10.0` before general availability.
 - [pipx]\:
 
   ```console
-  $ pipx install \
-      --suffix=@next \
-      --pip-args '\--pre' \
-      --force \
-      'libtmux'
+  $ pipx install --suffix=@next 'libtmux' --pip-args '\--pre' --force
+  // Usage: libtmux@next [command]
   ```
-
-  Usage: `libtmux@next [command]`
 
 - [uv tool install][uv-tools]\:
 
@@ -82,10 +77,7 @@ via trunk (can break easily):
 - [pipx]\:
 
   ```console
-  $ pipx install \
-      --suffix=@master \
-      --force \
-      'libtmux @ git+https://github.com/tmux-python/libtmux.git@master'
+  $ pipx install --suffix=@master 'libtmux @ git+https://github.com/tmux-python/libtmux.git@master' --force
   ```
 
 - [uv]\:
@@ -137,7 +129,7 @@ $ ptpython
 ```
 
 ```{module} libtmux
-:no-index:
+
 ```
 
 First, we can grab a {class}`Server`.
@@ -449,37 +441,85 @@ automatically sent, the leading space character prevents adding it to the user's
 shell history. Omitting `enter=false` means the default behavior (sending the
 command) is done, without needing to use `pane.enter()` after.
 
-## Working with options
+## Async Support
 
-libtmux provides a unified API for managing tmux options across Server, Session,
-Window, and Pane objects.
+For async applications, libtmux provides async versions of key methods using the 'a' prefix naming convention.
 
-### Getting options
-
-```python
->>> server.show_option('buffer-limit')
-50
-
->>> window.show_options()  # doctest: +ELLIPSIS
-{...}
-```
-
-### Setting options
+### Basic Async Usage
 
 ```python
->>> window.set_option('automatic-rename', False)  # doctest: +ELLIPSIS
-Window(@... ...)
+import asyncio
+from libtmux import Server
 
->>> window.show_option('automatic-rename')
-False
+async def main():
+    server = Server()
 
->>> window.unset_option('automatic-rename')  # doctest: +ELLIPSIS
-Window(@... ...)
+    # Create session asynchronously
+    session = await server.anew_session(session_name="async_demo")
+
+    # Create window asynchronously
+    window = await session.anew_window(window_name="async_window")
+
+    # Check session exists
+    exists = await server.ahas_session("async_demo")
+    print(f"Session exists: {exists}")  # True
+
+asyncio.run(main())
 ```
 
-:::{seealso}
-See {ref}`options-and-hooks` for more details on options and hooks.
-:::
+### Concurrent Operations
+
+One of the key benefits of async methods is concurrent execution:
+
+```python
+import asyncio
+
+async def setup_workspace():
+    server = Server()
+
+    # Create multiple sessions concurrently
+    frontend, backend, database = await asyncio.gather(
+        server.anew_session(
+            session_name="frontend",
+            start_directory="~/project/frontend"
+        ),
+        server.anew_session(
+            session_name="backend",
+            start_directory="~/project/backend"
+        ),
+        server.anew_session(
+            session_name="database",
+            start_directory="~/project/database"
+        ),
+    )
+
+    # Set up windows in each session concurrently
+    await asyncio.gather(
+        frontend.anew_window(window_name="editor"),
+        frontend.anew_window(window_name="server"),
+        backend.anew_window(window_name="api"),
+        backend.anew_window(window_name="tests"),
+    )
+
+    return frontend, backend, database
+```
+
+### Available Async Methods
+
+- {meth}`Server.ahas_session` - Check if session exists
+- {meth}`Server.anew_session` - Create new session
+- {meth}`Session.anew_window` - Create new window
+- {meth}`Session.arename_session` - Rename session
+- {meth}`Window.akill` - Kill window
+
+### When to Use Async
+
+Use async methods when:
+- Your application uses asyncio
+- You need to perform multiple tmux operations concurrently
+- You're integrating with async frameworks (FastAPI, aiohttp, etc.)
+
+For more details, see {ref}`async`.
 
 ## Final notes
 
@@ -499,3 +539,4 @@ and our [test suite] (see {ref}`development`.)
 
 [workspacebuilder.py]: https://github.com/tmux-python/libtmux/blob/master/libtmux/workspacebuilder.py
 [test suite]: https://github.com/tmux-python/libtmux/tree/master/tests
+[ptpython]: https://github.com/prompt-toolkit/ptpython
