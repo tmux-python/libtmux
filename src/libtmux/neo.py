@@ -86,6 +86,13 @@ _SCOPE_OVERRIDES: dict[str, str] = {
     "cursor_y": "pane",  # ft->wp->base.cy
     "cursor_flag": "pane",  # ft->wp->base.mode
     "cursor_character": "pane",  # ft->wp
+    "mouse_all_flag": "pane",  # ft->wp->base.mode MODE_MOUSE_ALL
+    "mouse_any_flag": "pane",  # ft->wp->base.mode ALL_MOUSE_MODES
+    "mouse_button_flag": "pane",  # ft->wp->base.mode MODE_MOUSE_BUTTON
+    "mouse_sgr_flag": "pane",  # ft->wp->base.mode MODE_MOUSE_SGR
+    "mouse_standard_flag": "pane",  # ft->wp->base.mode MODE_MOUSE_STANDARD
+    "scroll_region_lower": "pane",  # ft->wp->base.rlower
+    "scroll_region_upper": "pane",  # ft->wp->base.rupper
 }
 
 
@@ -150,6 +157,11 @@ def _token_scope(field_name: str) -> str:
 
     Tokens whose name doesn't carry a scope prefix can still be scope-gated
     via :data:`_SCOPE_OVERRIDES` (verified against tmux's ``format_cb_*``).
+    The override also corrects prefix-misclassified tokens — e.g.
+    ``mouse_all_flag`` is a per-pane mode bit, not a runtime mouse event:
+
+    >>> _token_scope("mouse_all_flag")
+    'pane'
     """
     override = _SCOPE_OVERRIDES.get(field_name)
     if override is not None:
