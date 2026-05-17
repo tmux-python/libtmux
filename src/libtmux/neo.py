@@ -113,28 +113,52 @@ _SCOPE_OVERRIDES: dict[str, str] = {
 }
 
 
-# Standalone tokens not captured by the prefix table. These are genuinely
-# server-wide or parse-context tokens whose callbacks resolve without a
-# session/window/pane/client (most are ``__unused`` ft or read globals).
-# Pane- and session-scoped standalones are routed via :data:`_SCOPE_OVERRIDES`.
+# Standalone tokens registered in tmux's ``format.c`` static table (the
+# default tree of ``format_cb_*`` callbacks). They resolve in every
+# ``list-*`` subcommand because their callbacks read process- or server-
+# global state rather than dereferencing ``ft->c``, ``ft->s``, ``ft->wl``,
+# or ``ft->wp``. Pane- and session-scoped standalones are routed via
+# :data:`_SCOPE_OVERRIDES`; context-only tokens (registered outside
+# ``format.c`` for a specific subcommand or mode) are routed via
+# :data:`_CONTEXT_ONLY_TOKENS`.
 _UNIVERSAL_TOKENS: frozenset[str] = frozenset(
     {
-        "command_list_alias",
-        "command_list_name",
-        "command_list_usage",
         "config_files",
-        "current_file",
         "host",
         "host_short",
         "line",
         "next_session_id",
         "pid",
-        "search_match",
         "socket_path",
         "start_time",
         "uid",
         "user",
         "version",
+    }
+)
+
+# Tokens declared on :class:`Obj` whose callbacks are registered *outside*
+# ``format.c``'s static table — i.e. they only resolve in a specific
+# command context, not via ``format_defaults`` for any ``list-*``
+# subcommand:
+#
+# - ``command_list_alias`` / ``command_list_name`` / ``command_list_usage``
+#   → ``cmd-list-commands.c`` (the ``list-commands`` subcommand only).
+# - ``search_match`` → ``window-copy.c`` (copy-mode pane formats only).
+# - ``current_file`` → ``cfg.c`` (config parse context only).
+#
+# Emitting these in a ``list-sessions/windows/panes/clients/buffers`` ``-F``
+# template is harmless (tmux renders unknown tokens to empty), but it
+# misleads readers of the ``-F`` string about what the format engine will
+# resolve in that scope. Routed to the ``"context"`` scope, which is
+# explicitly excluded from every :data:`SCOPES_BY_LIST_CMD` entry.
+_CONTEXT_ONLY_TOKENS: frozenset[str] = frozenset(
+    {
+        "command_list_alias",
+        "command_list_name",
+        "command_list_usage",
+        "current_file",
+        "search_match",
     }
 )
 
@@ -145,8 +169,10 @@ def _token_scope(field_name: str) -> str:
     Returns ``"universal"`` for cross-scope tokens (e.g. ``version``,
     ``socket_path``, ``host``). Returns ``"event"`` for runtime-only tokens
     that never appear in a ``list-*`` output (mouse, cursor, selection,
-    popup). Returns ``"pane"`` / ``"window"`` / ``"session"`` / ``"client"``
-    / ``"buffer"`` for scope-prefixed tokens.
+    popup). Returns ``"context"`` for tokens registered outside
+    ``format.c``'s static table (only resolve in a specific command or
+    mode context). Returns ``"pane"`` / ``"window"`` / ``"session"`` /
+    ``"client"`` / ``"buffer"`` for scope-prefixed tokens.
 
     Examples
     --------
@@ -171,6 +197,15 @@ def _token_scope(field_name: str) -> str:
     'pane'
     >>> _token_scope("active_window_index")
     'session'
+
+    Context-only tokens (registered outside ``format.c``'s static table)
+    route to the ``"context"`` scope and are excluded from every
+    ``list-*`` ``-F`` template:
+
+    >>> _token_scope("command_list_alias")
+    'context'
+    >>> _token_scope("search_match")
+    'context'
     """
     override = _SCOPE_OVERRIDES.get(field_name)
     if override is not None:
@@ -178,6 +213,8 @@ def _token_scope(field_name: str) -> str:
     for prefix, scope in _SCOPE_PREFIXES:
         if field_name.startswith(prefix):
             return scope
+    if field_name in _CONTEXT_ONLY_TOKENS:
+        return "context"
     if field_name in _UNIVERSAL_TOKENS:
         return "universal"
     return "universal"
