@@ -54,6 +54,12 @@ class Client(Obj):
         longer reports this ``client_name`` through ``list-clients``,
         these properties return ``None``.
 
+        Each property re-reads tmux on every access. Code that needs
+        all three — session, window, and pane — should call
+        :meth:`_resolve_attached` once instead, which shares a single
+        ``list-clients`` refresh across the triple and returns
+        ``(session, window, pane)`` together.
+
     Parameters
     ----------
     server : :class:`Server`
@@ -174,3 +180,51 @@ class Client(Obj):
         if window is None:
             return None
         return window.active_pane
+
+    def _resolve_attached(
+        self,
+    ) -> tuple[Session | None, Window | None, Pane | None]:
+        """Resolve live attachment with a single ``list-clients`` refresh.
+
+        The three :attr:`attached_session` / :attr:`attached_window` /
+        :attr:`attached_pane` properties each trigger their own
+        ``list-clients`` refresh — calling them in sequence costs three
+        roundtrips for one conceptual "where is this client attached *now*"
+        read. ``_resolve_attached`` shares a single refresh across the
+        triple and returns the three values together.
+
+        Returns
+        -------
+        tuple[Session | None, Window | None, Pane | None]
+            * ``(None, None, None)`` when tmux no longer reports this
+              ``client_name`` through ``list-clients``, when the client
+              snapshot has no ``session_id``, or when the snapshot
+              ``session_id`` no longer names a live session.
+            * ``(session, None, None)`` when the attached session has no
+              active window.
+            * ``(session, window, pane)`` for a fully-resolved live
+              attachment. ``pane`` is ``None`` only when the active
+              window has no active pane.
+
+        :exc:`~libtmux.exc.MultipleActiveWindows` propagates rather than
+        collapsing to ``(session, None, None)`` — multiple active windows
+        in one session indicates a tmux invariant violation that callers
+        should surface, not absent attachment.
+        """
+        try:
+            self.refresh()
+        except exc.TmuxObjectDoesNotExist:
+            return None, None, None
+        if self.session_id is None:
+            return None, None, None
+        session = self.server.sessions.get(
+            session_id=self.session_id,
+            default=None,
+        )
+        if session is None:
+            return None, None, None
+        try:
+            window = session.active_window
+        except exc.NoActiveWindow:
+            return session, None, None
+        return session, window, window.active_pane
