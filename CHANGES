@@ -56,7 +56,7 @@ tools to dispatch on which tmux command produced an error.
 
 ### Breaking changes
 
-#### `LibTmuxException` string form gains a subcommand prefix (#670)
+#### `LibTmuxException` string form gains a subcommand prefix (#672)
 
 When {exc}`~libtmux.exc.LibTmuxException` is raised from one of the
 typed command wrappers, ``str(exc)`` now begins with the originating
@@ -102,7 +102,7 @@ Substring matches (``"can't find" in str(exc)``) and unanchored
 
 ### What's new
 
-#### `Client` object and `Server.clients` accessor (#670)
+#### `Client` object and `Server.clients` accessor (#672)
 
 New {class}`~libtmux.Client` dataclass and
 {attr}`~libtmux.Server.clients` property bring typed-ORM ergonomics
@@ -130,7 +130,7 @@ Direct {meth}`~libtmux.Client.refresh` and
 {meth}`~libtmux.Client.from_client_name` calls still surface missing
 client lookup errors.
 
-#### `Server.display_message` and `Window.display_message` (#670)
+#### `Server.display_message` and `Window.display_message` (#672)
 
 {meth}`~libtmux.Server.display_message` and
 {meth}`~libtmux.Window.display_message` join the existing
@@ -139,7 +139,7 @@ client lookup errors.
 window reads (``#{window_zoomed_flag}``, ``#{window_active_clients_list}``)
 auto-bind to the window's id.
 
-#### C-side filter on typed listing methods (#670)
+#### C-side filter on typed listing methods (#672)
 
 {meth}`~libtmux.Server.search_panes`,
 {meth}`~libtmux.Server.search_windows`,
@@ -153,14 +153,14 @@ the format engine treats as false — a typo looks identical to "no
 matches". Verify predicate syntax against the FORMATS section of
 ``tmux(1)``.
 
-#### `Pane.send_keys(cmd=None, …)` flag-only invocation (#670)
+#### `Pane.send_keys(cmd=None, …)` flag-only invocation (#672)
 
 {meth}`~libtmux.Pane.send_keys` accepts ``cmd=None`` together with
 ``reset=True`` or ``repeat=N`` to invoke tmux's flag-only
 ``send-keys -R`` / ``send-keys -N <n>`` form without any trailing
 key argument.
 
-#### `Server.list_buffers(format_string=, filter=)` (#670)
+#### `Server.list_buffers(format_string=, filter=)` (#672)
 
 {meth}`~libtmux.Server.list_buffers` gains ``format_string`` (``-F``)
 and ``filter`` (``-f``) kwargs. Callers can project a chosen template
@@ -168,7 +168,7 @@ and ``filter`` (``-f``) kwargs. Callers can project a chosen template
 into tmux's format engine — same bad-filter caveat as the
 ``search_*`` methods.
 
-#### `Server.run_shell(cwd=, show_stderr=)` (#670)
+#### `Server.run_shell(cwd=, show_stderr=)` (#672)
 
 {meth}`~libtmux.Server.run_shell` gains ``cwd`` (``-c``) to set the
 shell command's working directory and ``show_stderr`` (``-E``) to
@@ -176,14 +176,14 @@ merge the command's stderr into the captured output. Both kwargs are
 version-gated; older tmux warns and ignores the flag instead of
 erroring.
 
-#### `Pane.capture_pane(pending=True)` (#670)
+#### `Pane.capture_pane(pending=True)` (#672)
 
 {meth}`~libtmux.Pane.capture_pane` gains a ``pending`` kwarg that
 returns bytes tmux has read from the pane but not yet committed to
 the terminal — useful for diagnosing programs whose output stalls
 mid-sequence.
 
-#### Scope-aware format-token retrieval (#670)
+#### Scope-aware format-token retrieval (#672)
 
 The ``-F`` template libtmux sends to each ``list-*`` subcommand is now
 scope- and version-aware. tmux's format engine cascades context
@@ -218,7 +218,7 @@ releases can be validated end-to-end.
   {meth}`~libtmux.Window.display_message`, and
   {meth}`~libtmux.Pane.display_message` raise
   {exc}`~libtmux.exc.LibTmuxException` when tmux reports an error,
-  matching the rest of libtmux's tmux commands (#670).
+  matching the rest of libtmux's tmux commands (#672).
 - {attr}`~libtmux.Server.clients` and
   {meth}`~libtmux.Server.search_sessions` propagate tmux errors
   rather than silently returning an empty
