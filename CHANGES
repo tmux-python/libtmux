@@ -226,15 +226,6 @@ returns bytes tmux has read from the pane but not yet committed to
 the terminal — useful for diagnosing programs whose output stalls
 mid-sequence.
 
-#### Subcommand-tagged exceptions (#670)
-
-{exc}`~libtmux.exc.LibTmuxException` takes an optional ``subcommand``
-attribute. When set, ``str(exc)`` prefixes the originating tmux
-command name (e.g. ``"last-window: no such window"``), giving
-downstream consumers a stable way to dispatch on which tmux command
-produced the error. {func}`~libtmux.common.raise_if_stderr` is the
-shared helper most commands use to populate it.
-
 #### Scope-aware format-token retrieval (#670)
 
 The ``-F`` template libtmux sends to each ``list-*`` subcommand is now
