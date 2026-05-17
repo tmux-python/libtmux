@@ -29,6 +29,18 @@ class Client(Obj):
     several terminals) and each receives its own view of the active
     session, window, and pane.
 
+    .. warning::
+
+        ``client_session``, ``session_id``, ``window_id`` and
+        ``pane_id`` are snapshots of the client's *currently attached
+        view* at the moment the dataclass is hydrated — not stable
+        identity for the client. When the client switches sessions via
+        ``switch-client``, moves focus via ``select-window`` /
+        ``select-pane``, or detaches, these fields go stale until
+        :meth:`refresh` re-reads them from ``list-clients``. The
+        ``client_name`` (tty path on Unix) is the client's stable
+        identity.
+
     Parameters
     ----------
     server : :class:`Server`
