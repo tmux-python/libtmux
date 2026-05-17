@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import typing as t
 
+import pytest
+
 from libtmux.client import Client
 from libtmux.pane import Pane
 from libtmux.session import Session
@@ -164,3 +166,18 @@ def test_client_attached_properties_return_none_after_detach(
     assert client.attached_session is None
     assert client.attached_window is None
     assert client.attached_pane is None
+
+
+def test_client_refresh_raises_when_client_name_is_none(server: Server) -> None:
+    """``Client.refresh()`` raises ``ValueError`` when ``client_name`` is unset.
+
+    The previous ``assert isinstance(...)`` stripped under ``python -O`` and
+    let ``None`` flow into ``_refresh``, surfacing as a confusing downstream
+    error. The explicit raise keeps the failure mode loud regardless of
+    optimization level.
+    """
+    client = Client(server=server)
+    assert client.client_name is None
+
+    with pytest.raises(ValueError, match="client_name"):
+        client.refresh()
