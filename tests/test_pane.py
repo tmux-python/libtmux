@@ -661,6 +661,41 @@ def test_pane_synchronized_reflects_window_state(session: Session) -> None:
     assert pane.pane_synchronized == "0"
 
 
+PANE_SCOPE_OVERRIDE_FIELDS = (
+    "cursor_x",
+    "cursor_y",
+    "cursor_flag",
+    "mouse_all_flag",
+    "mouse_any_flag",
+    "mouse_button_flag",
+    "mouse_sgr_flag",
+    "mouse_standard_flag",
+    "scroll_region_lower",
+    "scroll_region_upper",
+)
+
+
+@pytest.mark.parametrize("field_name", PANE_SCOPE_OVERRIDE_FIELDS)
+def test_pane_scope_override_field_hydrates(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Per-token scope overrides admit each token into list-panes -F.
+
+    These tokens' callbacks all dereference ``ft->wp`` in tmux's
+    ``format.c`` (verified across tmux 3.2a through master), so the value
+    must hydrate to a string on every supported tmux version. A ``None``
+    here indicates the scope gate excluded the token from the format
+    string, which is the regression class these overrides prevent.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.refresh()
+    value = getattr(pane, field_name)
+    assert value is not None, f"{field_name} should hydrate via list-panes"
+    assert isinstance(value, str)
+
+
 def test_select_pane_direction(session: Session) -> None:
     """Test Pane.select() with direction flags."""
     window = session.new_window(window_name="test_select_dir")
