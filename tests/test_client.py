@@ -148,23 +148,19 @@ def test_client_attached_pane_tracks_active_pane(
         assert attached.pane_id == session.active_window.active_pane.pane_id  # type: ignore[union-attr]
 
 
-def test_client_attached_session_none_when_session_id_missing(
+def test_client_attached_properties_return_none_after_detach(
     control_mode: t.Callable[..., t.Any],
     server: Server,
-    monkeypatch: t.Any,
 ) -> None:
-    """Property returns ``None`` when the live snapshot has no ``session_id``.
-
-    Simulates a detached/transitioning client by short-circuiting
-    :meth:`Client.refresh` so ``session_id`` stays ``None``.
-    """
+    """``attached_*`` returns ``None`` after the client leaves ``list-clients``."""
     with control_mode() as ctl:
         client = server.clients.get(client_name=ctl.client_name)
         assert client is not None
 
-        monkeypatch.setattr(client, "refresh", lambda: None)
-        client.session_id = None
+        assert client.attached_session is not None
+        assert client.attached_window is not None
+        assert client.attached_pane is not None
 
-        assert client.attached_session is None
-        assert client.attached_window is None
-        assert client.attached_pane is None
+    assert client.attached_session is None
+    assert client.attached_window is None
+    assert client.attached_pane is None
