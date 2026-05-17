@@ -54,6 +54,25 @@ FIELD_VERSION: dict[str, str] = {
     # release tag, e.g. https://github.com/tmux/tmux/blob/3.6a/format.c).
     "pane_dead_signal": "3.3",
     "pane_dead_time": "3.3",
+    "pane_unseen_changes": "3.4",
+    "pane_key_mode": "3.5",
+    "session_active": "3.6",
+    "session_activity_flag": "3.6",
+    "session_alert": "3.6",
+    "session_bell_flag": "3.6",
+    "session_silence_flag": "3.6",
+    "client_theme": "3.6",
+    # Forward-looking tokens registered in tmux master post-3.6a. Gated
+    # to 3.7 so they're absent on every released tmux. Once tmux 3.7 ships,
+    # they'll hydrate automatically.
+    "bracket_paste_flag": "3.7",
+    "pane_flags": "3.7",
+    "pane_floating_flag": "3.7",
+    "pane_pb_progress": "3.7",
+    "pane_pb_state": "3.7",
+    "pane_pipe_pid": "3.7",
+    "pane_zoomed_flag": "3.7",
+    "synchronized_output_flag": "3.7",
 }
 """Minimum tmux version that registers each format token.
 
@@ -87,6 +106,8 @@ _SCOPE_PREFIXES: tuple[tuple[str, str], ...] = (
 # Entries are added by the scope-gate fix commits as misclassifications are
 # discovered.
 _SCOPE_OVERRIDES: dict[str, str] = {
+    "bracket_paste_flag": "pane",  # ft->wp->screen MODE_BRACKETPASTE
+    "synchronized_output_flag": "pane",  # ft->wp->base MODE_SYNC
     "cursor_x": "pane",  # ft->wp->base.cx
     "cursor_y": "pane",  # ft->wp->base.cy
     "cursor_flag": "pane",  # ft->wp->base.mode
@@ -206,6 +227,8 @@ def _token_scope(field_name: str) -> str:
     'pane'
     >>> _token_scope("active_window_index")
     'session'
+    >>> _token_scope("synchronized_output_flag")
+    'pane'
 
     Context-only tokens (registered outside ``format.c``'s static table)
     route to the ``"context"`` scope and are excluded from every
@@ -288,6 +311,7 @@ class Obj:
     active_window_index: str | None = None
     alternate_saved_x: str | None = None
     alternate_saved_y: str | None = None
+    bracket_paste_flag: str | None = None
     buffer_name: str | None = None
     buffer_sample: str | None = None
     buffer_size: str | None = None
@@ -310,6 +334,7 @@ class Obj:
     client_termfeatures: str | None = None
     client_termname: str | None = None
     client_termtype: str | None = None
+    client_theme: str | None = None
     client_tty: str | None = None
     client_uid: str | None = None
     client_user: str | None = None
@@ -358,20 +383,26 @@ class Obj:
     pane_dead_status: str | None = None
     pane_dead_time: str | None = None
     pane_fg: str | None = None
+    pane_flags: str | None = None
+    pane_floating_flag: str | None = None
     pane_format: str | None = None
     pane_height: str | None = None
     pane_id: str | None = None
     pane_in_mode: str | None = None
     pane_index: str | None = None
     pane_input_off: str | None = None
+    pane_key_mode: str | None = None
     pane_last: str | None = None
     pane_left: str | None = None
     pane_marked: str | None = None
     pane_marked_set: str | None = None
     pane_mode: str | None = None
     pane_path: str | None = None
+    pane_pb_progress: str | None = None
+    pane_pb_state: str | None = None
     pane_pid: str | None = None
     pane_pipe: str | None = None
+    pane_pipe_pid: str | None = None
     pane_right: str | None = None
     pane_search_string: str | None = None
     pane_start_command: str | None = None
@@ -381,7 +412,9 @@ class Obj:
     pane_title: str | None = None
     pane_top: str | None = None
     pane_tty: str | None = None
+    pane_unseen_changes: str | None = None
     pane_width: str | None = None
+    pane_zoomed_flag: str | None = None
     pid: str | None = None
     scroll_position: str | None = None
     scroll_region_lower: str | None = None
@@ -391,10 +424,14 @@ class Obj:
     selection_end_y: str | None = None
     selection_start_x: str | None = None
     selection_start_y: str | None = None
+    session_active: str | None = None
     session_activity: str | None = None
+    session_activity_flag: str | None = None
+    session_alert: str | None = None
     session_alerts: str | None = None
     session_attached: str | None = None
     session_attached_list: str | None = None
+    session_bell_flag: str | None = None
     session_created: str | None = None
     session_format: str | None = None
     session_group: str | None = None
@@ -410,10 +447,12 @@ class Obj:
     session_marked: str | None = None
     session_name: str | None = None
     session_path: str | None = None
+    session_silence_flag: str | None = None
     session_stack: str | None = None
     session_windows: str | None = None
     socket_path: str | None = None
     start_time: str | None = None
+    synchronized_output_flag: str | None = None
     uid: str | None = None
     user: str | None = None
     version: str | None = None
