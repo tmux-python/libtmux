@@ -258,9 +258,9 @@ True
 >>> w3.kill()
 ```
 
-(c-side-filtering)=
+(native-filtering)=
 
-## C-Side Filtering with `search_*()`
+## Native Filtering with `search_*()`
 
 `QueryList.filter()` runs in Python *after* tmux has returned every
 row. For large servers, or when you only need a handful of matches,
@@ -287,7 +287,7 @@ client-side predicate to tmux is rarely a hot path — a server's client
 count is bounded by attached terminals, not by session/window/pane
 fan-out.
 
-### Python-side vs. C-side
+### Python-side vs. native
 
 | | `.filter()` | `.search_*()` |
 |-|-------------|---------------|
@@ -377,5 +377,5 @@ Use `.filter()` when:
 ## API Reference
 
 See {class}`~libtmux._internal.query_list.QueryList` for the complete
-QueryList API, and each `search_*()` method for the C-side filter
+QueryList API, and each `search_*()` method for the native filter
 contract.

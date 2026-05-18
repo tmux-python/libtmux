@@ -670,7 +670,7 @@ def fetch_objs(
             engine evaluates as "false" — every row is suppressed and no
             stderr is emitted. A bad filter is indistinguishable from
             "filter matched nothing"; verify predicate syntax against the
-            FORMATS section of ``tmux(1)``. See :ref:`c-side-filtering`
+            FORMATS section of ``tmux(1)``. See :ref:`native-filtering`
             for the typed wrappers that share this caveat.
 
         .. versionadded:: 0.57

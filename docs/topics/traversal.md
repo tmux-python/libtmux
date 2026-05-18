@@ -139,7 +139,7 @@ True
 libtmux collections support Django-style filtering with `filter()` and `get()`.
 For comprehensive coverage of all lookup operators, see {ref}`querylist-filtering`.
 For tmux-server-side predicates (compiled and executed inside tmux, fewer round
-trips on large servers), see {ref}`c-side-filtering`.
+trips on large servers), see {ref}`native-filtering`.
 
 ### Basic Filtering
 

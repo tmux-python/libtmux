@@ -1875,7 +1875,7 @@ class Server(
         Without arguments returns tmux's default template
         (``name: N bytes: "sample"``) — kept for backward compatibility.
         Pass *format_string* to project a specific tmux format, or *filter*
-        to push a format-expression predicate into tmux's C-side evaluation
+        to push a format-expression predicate into tmux's native evaluation
         (avoids parsing the default template in Python).
 
         Parameters
@@ -2388,7 +2388,7 @@ class Server(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Session]:
-        """Sessions, optionally filtered by tmux's C-side format predicate.
+        """Sessions, optionally filtered by tmux's native format predicate.
 
         Like :attr:`Server.sessions` but adds an optional ``filter`` kwarg
         that is plumbed through to ``$ tmux list-sessions -f <filter>``.
@@ -2420,7 +2420,7 @@ class Server(
         --------
         :attr:`Server.sessions` : unfiltered :class:`QueryList` of every
             session (Python-side ``.filter()`` runs against this).
-        :ref:`c-side-filtering` : when to pick ``search_*`` over
+        :ref:`native-filtering` : when to pick ``search_*`` over
             ``QueryList.filter()``.
 
         Examples
@@ -2448,7 +2448,7 @@ class Server(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Window]:
-        """All windows across sessions, optionally filtered by tmux's C-side predicate.
+        """All windows across sessions, optionally filtered by tmux's native predicate.
 
         Like :attr:`Server.windows` but with a ``filter`` kwarg plumbed to
         ``$ tmux list-windows -a -f <filter>``.
@@ -2475,7 +2475,7 @@ class Server(
         :attr:`Server.windows` : unfiltered :class:`QueryList` of every
             window across every session (Python-side ``.filter()`` runs
             against this).
-        :ref:`c-side-filtering` : when to pick ``search_*`` over
+        :ref:`native-filtering` : when to pick ``search_*`` over
             ``QueryList.filter()``.
 
         Examples
@@ -2506,7 +2506,7 @@ class Server(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
-        """All panes across the server, optionally filtered by tmux's C-side predicate.
+        """All panes across the server, optionally filtered by tmux's native predicate.
 
         Like :attr:`Server.panes` but with a ``filter`` kwarg plumbed to
         ``$ tmux list-panes -a -f <filter>``. This is the typed entry point
@@ -2537,7 +2537,7 @@ class Server(
         --------
         :attr:`Server.panes` : unfiltered :class:`QueryList` of every
             pane (Python-side ``.filter()`` runs against this).
-        :ref:`c-side-filtering` : when to pick ``search_*`` over
+        :ref:`native-filtering` : when to pick ``search_*`` over
             ``QueryList.filter()``.
 
         Examples

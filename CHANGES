@@ -47,7 +47,7 @@ _Notes on the upcoming release will go here._
 
 libtmux 0.57.0 broadens tmux support. It introduces
 {class}`~libtmux.Client` as a first-class object, threads tmux's
-C-side ``-f`` filter through the typed listing methods so callers can
+native ``-f`` filter through the typed listing methods so callers can
 push predicates into the tmux server, and adds typed access to many
 more format tokens — all scope- and version-gated so they're safe on
 every supported tmux version. Subcommand context now flows through
@@ -193,7 +193,7 @@ call in :func:`warnings.catch_warnings` with
 ``filterwarnings("error")``. See {doc}`MIGRATION` for the escalation
 pattern.
 
-#### C-side filter on typed listing methods (#672)
+#### Native filter on typed listing methods (#672)
 
 {meth}`~libtmux.Server.search_panes`,
 {meth}`~libtmux.Server.search_windows`,

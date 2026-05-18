@@ -207,7 +207,7 @@ class Session(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Window]:
-        """Windows in this session, optionally filtered by tmux's C-side predicate.
+        """Windows in this session, optionally filtered by tmux's native predicate.
 
         Like :attr:`Session.windows` but with a ``filter`` kwarg plumbed to
         ``$ tmux list-windows -t <session> -f <filter>``.
@@ -234,7 +234,7 @@ class Session(
         :attr:`Session.windows` : unfiltered :class:`QueryList` of every
             window in this session (Python-side ``.filter()`` runs
             against this).
-        :ref:`c-side-filtering` : when to pick ``search_*`` over
+        :ref:`native-filtering` : when to pick ``search_*`` over
             ``QueryList.filter()``.
 
         Examples
@@ -263,7 +263,7 @@ class Session(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
-        """Panes in this session, optionally filtered by tmux's C-side predicate.
+        """Panes in this session, optionally filtered by tmux's native predicate.
 
         Like :attr:`Session.panes` but with a ``filter`` kwarg plumbed to
         ``$ tmux list-panes -s -t <session> -f <filter>``.
@@ -290,7 +290,7 @@ class Session(
         :attr:`Session.panes` : unfiltered :class:`QueryList` of every
             pane in this session (Python-side ``.filter()`` runs against
             this).
-        :ref:`c-side-filtering` : when to pick ``search_*`` over
+        :ref:`native-filtering` : when to pick ``search_*`` over
             ``QueryList.filter()``.
 
         Examples

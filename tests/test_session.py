@@ -688,7 +688,7 @@ def test_session_last_window_exception_tags_subcommand(session: Session) -> None
 
 
 def test_session_search_windows_filter(session: Session) -> None:
-    """``Session.list_windows(filter=...)`` filters via tmux's C-side -f flag."""
+    """``Session.list_windows(filter=...)`` filters via tmux's native -f flag."""
     session.new_window(window_name="gap7s_keep")
     session.new_window(window_name="other_drop")
 

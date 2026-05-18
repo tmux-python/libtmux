@@ -211,7 +211,7 @@ class Window(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
-        """Panes in this window, optionally filtered by tmux's C-side predicate.
+        """Panes in this window, optionally filtered by tmux's native predicate.
 
         Like :attr:`Window.panes` but with a ``filter`` kwarg plumbed to
         ``$ tmux list-panes -t <window> -f <filter>``.
@@ -238,7 +238,7 @@ class Window(
         :attr:`Window.panes` : unfiltered :class:`QueryList` of every
             pane in this window (Python-side ``.filter()`` runs against
             this).
-        :ref:`c-side-filtering` : when to pick ``search_*`` over
+        :ref:`native-filtering` : when to pick ``search_*`` over
             ``QueryList.filter()``.
 
         Examples

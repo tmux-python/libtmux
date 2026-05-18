@@ -90,7 +90,7 @@ For tmux-server-side filtering (no Python-side iteration), use
 {meth}`~libtmux.Server.search_sessions`-style predicate strings via
 the `-f` flag — but note that `list-clients` only accepts a single
 filter and exposes a narrower token vocabulary than sessions/windows.
-See {ref}`c-side-filtering` for the predicate syntax.
+See {ref}`native-filtering` for the predicate syntax.
 
 ## When `attached_*` returns `None`
 
@@ -111,4 +111,4 @@ can branch on truthiness without a `try`/`except`.
 
 - {doc}`/api/libtmux.client` — autodoc reference
 - {ref}`about` — where `Client` fits in the overall object model
-- {ref}`c-side-filtering` — tmux-side filtering for `Server.clients`
+- {ref}`native-filtering` — tmux-side filtering for `Server.clients`
