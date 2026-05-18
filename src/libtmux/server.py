@@ -2298,19 +2298,19 @@ class Server(
         :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
 
-        Raises
-        ------
-        :exc:`~libtmux.exc.LibTmuxException`
-            When tmux's ``list-sessions`` fails for a reason other than
-            a not-yet-started server, such as socket permission errors or
-            unsupported tmux flags. A server with no sessions, or a server
-            before its daemon has started, returns an empty
-            :class:`~libtmux._internal.query_list.QueryList`.
+        Returns an empty :class:`~libtmux._internal.query_list.QueryList` when
+        tmux's ``list-sessions`` fails for any reason — no running daemon, a
+        missing socket, a permission error, or a subprocess failure. To
+        distinguish "no sessions" from "tmux unreachable", call
+        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
         """
-        sessions: list[Session] = [
-            Session(server=self, **obj)
-            for obj in _fetch_or_empty(server=self, list_cmd="list-sessions")
-        ]
+        try:
+            sessions: list[Session] = [
+                Session(server=self, **obj)
+                for obj in fetch_objs(server=self, list_cmd="list-sessions")
+            ]
+        except exc.LibTmuxException:
+            return QueryList([])
         return QueryList(sessions)
 
     @property
@@ -2359,6 +2359,12 @@ class Server(
         returns the typed view; ``client.client_readonly``, ``client.client_termtype``,
         ``client.client_session`` etc. read tmux's ``client_*`` format tokens.
 
+        Returns an empty :class:`~libtmux._internal.query_list.QueryList` when
+        tmux's ``list-clients`` fails for any reason — no running daemon, a
+        missing socket, a permission error, or a subprocess failure. To
+        distinguish "no clients attached" from "tmux unreachable", call
+        :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+
         Returns
         -------
         :class:`~libtmux._internal.query_list.QueryList` of :class:`Client`
@@ -2370,10 +2376,13 @@ class Server(
         ...     ctl.client_name in names
         True
         """
-        clients: list[Client] = [
-            Client(server=self, **obj)
-            for obj in _fetch_or_empty(server=self, list_cmd="list-clients")
-        ]
+        try:
+            clients: list[Client] = [
+                Client(server=self, **obj)
+                for obj in fetch_objs(server=self, list_cmd="list-clients")
+            ]
+        except exc.LibTmuxException:
+            return QueryList([])
         return QueryList(clients)
 
     def search_sessions(

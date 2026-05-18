@@ -561,6 +561,23 @@ libtmux uses tmux's format system extensively:
 - Use refresh methods (e.g., `session.refresh()`) to update object state
 - Alternative: use `neo.py` query interface for fresh data
 
+### List-returning accessors: empty by default on tmux errors
+
+`Server.sessions`, `Server.clients`, and `Server.attached_sessions`
+return an empty `QueryList` when tmux's underlying list command fails
+for any reason — no running daemon, a missing socket, a permission
+error, a subprocess crash. This is a deliberate API contract:
+list-shaped accessors are lenient by default. Callers that need to
+distinguish "no rows" from "tmux unreachable" use the explicit
+`Server.is_alive()` or `Server.raise_if_dead()` primitives.
+
+When adding a new list-returning accessor, follow this convention. If
+a future feature genuinely benefits from loud-failure semantics, expose
+it as a scoped opt-in (e.g. a `Server.raise_server_errors()` context
+manager) rather than changing the default contract of an existing
+accessor or hard-coding raise-on-tmux-error into a new one.
+Empty-on-tmux-error stays the default; raise is opt-in.
+
 ## References
 
 - Documentation: https://libtmux.git-pull.com/
