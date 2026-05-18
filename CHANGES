@@ -45,6 +45,8 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+## libtmux 0.57.1 (2026-05-18)
+
 Restores the "lenient-by-default" behavior for
 {attr}`~libtmux.Server.sessions` and {attr}`~libtmux.Server.clients` that
 was changed in 0.57.0.
