@@ -1322,15 +1322,16 @@ def test_server_search_panes_filter_by_id(server: Server) -> None:
     assert [p.pane_id for p in matches] == [target.pane_id]
 
 
-def test_server_clients_propagates_errors(
+def test_server_clients_returns_empty_on_tmux_error(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``Server.clients`` re-raises tmux errors instead of swallowing them.
+    """``Server.clients`` returns an empty QueryList on tmux failure.
 
-    The wrapper used to ``except Exception: pass`` and return an empty
-    QueryList on any failure, masking real tmux errors as "no clients".
-    A genuine failure should surface so callers can react.
+    Lenient-by-default contract: ``list-clients`` failing for any reason
+    yields ``QueryList([])``, matching the historic shape of
+    :attr:`Server.sessions`. Callers needing a connectivity check should
+    use :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
     """
     sentinel = exc.LibTmuxException("simulated list-clients failure")
 
@@ -1338,8 +1339,7 @@ def test_server_clients_propagates_errors(
         raise sentinel
 
     monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
-    with pytest.raises(exc.LibTmuxException, match="simulated list-clients failure"):
-        server.clients  # noqa: B018
+    assert list(server.clients) == []
 
 
 def test_server_search_sessions_propagates_errors(
@@ -1362,16 +1362,17 @@ def test_server_search_sessions_propagates_errors(
         server.search_sessions(filter="#{m:keep_*,#{session_name}}")
 
 
-def test_server_sessions_propagates_errors(
+def test_server_sessions_returns_empty_on_tmux_error(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``Server.sessions`` re-raises tmux errors instead of swallowing them.
+    """``Server.sessions`` returns an empty QueryList on tmux failure.
 
-    Closes the gap left when the clients/search_sessions accessors moved
-    off the legacy ``except Exception: pass`` shape but ``Server.sessions``
-    stayed behind. A genuine list-sessions failure should surface the
-    same way for all three accessors.
+    Pins the lenient-by-default contract: a ``list-sessions`` failure —
+    daemon down, missing socket, permission error, subprocess crash —
+    yields ``QueryList([])`` rather than propagating. Callers that need
+    to distinguish "no sessions" from "tmux unreachable" should use
+    :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
     """
     sentinel = exc.LibTmuxException("simulated list-sessions failure")
 
@@ -1379,8 +1380,7 @@ def test_server_sessions_propagates_errors(
         raise sentinel
 
     monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
-    with pytest.raises(exc.LibTmuxException, match="simulated list-sessions failure"):
-        server.sessions  # noqa: B018
+    assert list(server.sessions) == []
 
 
 def test_server_sessions_missing_socket_returns_empty(tmp_path: pathlib.Path) -> None:
@@ -1390,11 +1390,11 @@ def test_server_sessions_missing_socket_returns_empty(tmp_path: pathlib.Path) ->
     assert list(missing_server.sessions) == []
 
 
-def test_server_sessions_permission_error_propagates(
+def test_server_sessions_permission_error_returns_empty(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Connection errors other than missing-daemon states still raise."""
+    """Connection errors are absorbed into the empty-list contract too."""
     sentinel = exc.LibTmuxException(
         "error connecting to /root/libtmux-review.sock (Permission denied)"
     )
@@ -1403,8 +1403,7 @@ def test_server_sessions_permission_error_propagates(
         raise sentinel
 
     monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
-    with pytest.raises(exc.LibTmuxException, match="Permission denied"):
-        server.sessions  # noqa: B018
+    assert list(server.sessions) == []
 
 
 def test_if_shell_true(server: Server) -> None:
