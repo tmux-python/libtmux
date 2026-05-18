@@ -48,13 +48,16 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_MISSING_SOCKET_MARKER = "No such file or directory"
-
-
 def _is_daemon_not_up_error(stderr_text: str) -> bool:
-    """Return True for tmux errors that mean the server has not started."""
+    """Return True if the error indicates the tmux server is not running.
+
+    tmux signals this in two ways:
+    1. "no server running" (socket exists but no daemon is listening)
+    2. "error connecting to ... (No such file or directory)" (socket file is missing)
+    """
     return "no server running" in stderr_text or (
-        "error connecting to" in stderr_text and _MISSING_SOCKET_MARKER in stderr_text
+        "error connecting to" in stderr_text
+        and "No such file or directory" in stderr_text
     )
 
 
@@ -63,25 +66,18 @@ def _fetch_or_empty(
     list_cmd: str,
     **kwargs: t.Any,
 ) -> list[dict[str, t.Any]]:
-    """Wrap :func:`fetch_objs`: treat daemon-not-up stderr as empty.
+    """Wrap :func:`fetch_objs`: treat a not-yet-started server as empty.
 
-    tmux signals "no daemon" in two ways depending on socket state:
-    ``no server running on <socket>`` when the socket exists but no
-    daemon is listening, or ``error connecting to <socket> (No such file
-    or directory)`` when the socket file is missing entirely. Both are
-    bootstrap signals — a fresh :class:`~libtmux.Server` can still be
-    introspected via
-    :attr:`Server.sessions`, :attr:`Server.windows`, etc. without
-    first calling :meth:`Server.is_alive`. Other tmux errors, such as a
-    permission failure on the socket, still propagate.
+    A fresh :class:`~libtmux.Server` can be introspected via
+    :attr:`Server.sessions`, :attr:`Server.windows`, etc. before the
+    daemon is up. Other tmux errors, such as socket permission
+    failures, still propagate.
     """
     try:
         return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
     except exc.LibTmuxException as e:
-        if e.args:
-            msg = str(e.args[0])
-            if _is_daemon_not_up_error(msg):
-                return []
+        if e.args and _is_daemon_not_up_error(str(e.args[0])):
+            return []
         raise
 
 
