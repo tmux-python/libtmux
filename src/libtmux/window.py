@@ -211,9 +211,9 @@ class Window(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
-        """Panes in this window, optionally filtered by tmux's native predicate.
+        """Panes in this window, optionally filtered by tmux.
 
-        Like :attr:`Window.panes` but with a ``filter`` kwarg plumbed to
+        Like :attr:`Window.panes` but with a ``filter`` kwarg passed to
         ``$ tmux list-panes -t <window> -f <filter>``.
 
         Parameters
@@ -223,13 +223,12 @@ class Window(
 
             .. warning::
 
-                tmux silently expands a malformed predicate (unclosed
+                tmux silently expands a malformed filter (unclosed
                 ``#{...}``, unknown format token) to empty, which the
-                format engine evaluates as "false" — every row is
-                suppressed and no stderr is emitted. A bad filter is
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
                 indistinguishable from "filter matched nothing"; verify
-                predicate syntax against the FORMATS section of
-                ``tmux(1)``.
+                filter syntax against the FORMATS section of ``tmux(1)``.
 
             .. versionadded:: 0.57
 

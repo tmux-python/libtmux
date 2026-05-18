@@ -1,4 +1,4 @@
-"""Tools for hydrating tmux data into python dataclass objects."""
+"""Tools for reading tmux data into Python objects."""
 
 from __future__ import annotations
 
@@ -36,16 +36,15 @@ SCOPES_BY_LIST_CMD: dict[str, frozenset[str]] = {
 """Format-token scopes a given tmux ``list-*`` subcommand can resolve.
 
 A token whose scope is in the set is safe to include in that subcommand's
-``-F`` template. A token whose scope is *outside* the set may be unknown to
-the format engine in that context, or in older tmux releases trigger a
-server-side fault — exclude it from the format string.
+``-F`` template. A token whose scope is *outside* the set may be unavailable
+for that command, so libtmux leaves it out.
 
-The cascade is asymmetric: tmux's ``format_defaults`` (``format.c``) fills
-deeper context downward — ``c->session`` → ``s->curw`` → ``wl->window->active``
-— so every ``list-*`` subcommand admits its own scope plus every scope
-reachable *downward*. ``client`` scope is the exception: it appears only in
-``list-clients`` because no reverse cascade exists and emitting ``client_*``
-in a non-client context crashed tmux 3.2a CI (commit 342ff5f5).
+The relationship is asymmetric: when tmux lists a parent object, it can also
+report fields for that parent's active child. A session row can include its
+current window and active pane fields, and a client row can include the
+attached session, current window, and active pane. ``client`` scope is the
+exception in the other direction: it appears only in ``list-clients`` because
+session/window/pane listings do not have a client attachment to report.
 """
 
 
@@ -272,10 +271,8 @@ class Obj:
 
     Notes
     -----
-    Cross-scope fields hydrate via tmux's ``format_defaults`` downward
-    cascade (``format.c``: ``c->session`` → ``s->curw`` →
-    ``wl->window->active``), not via reverse lookup. The practical
-    consequence:
+    tmux may return fields from an object's active children along with the
+    object itself. The practical consequence:
 
     - On a :class:`~libtmux.session.Session` row (``list-sessions``),
       every ``pane_*`` and ``window_*`` field resolves to the
@@ -286,9 +283,8 @@ class Obj:
     - On a :class:`~libtmux.window.Window` row (``list-windows``),
       every ``pane_*`` field resolves to that window's active pane.
     - On a :class:`~libtmux.client.Client` row (``list-clients``),
-      every ``session_*``, ``window_*``, and ``pane_*`` field resolves
-      via the client's attached session's current window's active
-      pane.
+      every ``session_*``, ``window_*``, and ``pane_*`` field reflects
+      the client's attached session, current window, and active pane.
 
     A reader who treats ``session.pane_id`` as the literal session's
     pane id (rather than "active pane of this session's current
@@ -540,7 +536,7 @@ def get_output_format(
     >>> fields, fmt = get_output_format("list-sessions", "3.6a")
     >>> 'session_id' in fields
     True
-    >>> 'pane_id' in fields  # downward cascade via format_defaults
+    >>> 'pane_id' in fields  # active pane for the listed session
     True
     >>> 'client_name' in fields  # upward not allowed
     False
@@ -553,7 +549,7 @@ def get_output_format(
     >>> all(t in fields for t in ('pane_id', 'window_id', 'session_id'))
     True
 
-    ``list-clients`` adds client scope on top of the downward cascade:
+    ``list-clients`` adds fields for the attached client:
 
     >>> fields, _ = get_output_format("list-clients", "3.6a")
     >>> 'client_name' in fields
@@ -658,20 +654,18 @@ def fetch_objs(
         Extra arguments appended to the tmux command (e.g. ``("-a",)``
         for all windows/panes, or ``["-t", session_id]`` to filter).
     filter : str, optional
-        Filter expression evaluated by tmux's format engine (``-f`` flag).
-        Objects for which the expanded expression is "false" (empty string,
-        "0") are omitted from the result. Pushes filtering into tmux's C
-        code instead of Python post-processing.
+        Filter expression evaluated by tmux (``-f`` flag). tmux omits rows
+        whose expanded expression is false before libtmux parses the result.
 
         .. warning::
 
-            tmux silently expands a malformed predicate (unclosed
-            ``#{...}``, unknown format token) to empty, which the format
-            engine evaluates as "false" — every row is suppressed and no
-            stderr is emitted. A bad filter is indistinguishable from
-            "filter matched nothing"; verify predicate syntax against the
-            FORMATS section of ``tmux(1)``. See :ref:`native-filtering`
-            for the typed wrappers that share this caveat.
+            tmux silently expands a malformed filter (unclosed ``#{...}``,
+            unknown format token) to empty, which is treated as false —
+            every row is suppressed and no stderr is emitted. A bad filter
+            is indistinguishable from "filter matched nothing"; verify the
+            expression against the FORMATS section of ``tmux(1)``. See
+            :ref:`native-filtering` for the typed wrappers that share this
+            caveat.
 
         .. versionadded:: 0.57
 

@@ -6,10 +6,9 @@ libtmux.formats
 :data:`FORMAT_SEPARATOR` is used at runtime by ``neo``, ``pane``, and
 ``session``.  The ``*_FORMATS`` lists (``SESSION_FORMATS``,
 ``WINDOW_FORMATS``, ``PANE_FORMATS``, etc.) are **reference documentation
-only** — they are not imported or consumed at runtime. The active format
-mechanism is :class:`libtmux.neo.Obj`, whose dataclass fields are
-introspected by :func:`libtmux.neo.get_output_format` to build tmux format
-strings dynamically.
+only** — they are not imported or consumed at runtime. Runtime listings use
+:func:`libtmux.neo.get_output_format` to build tmux format strings for the
+active tmux version.
 
 For reference: https://github.com/tmux/tmux/blob/master/format.c
 
@@ -30,7 +29,7 @@ SESSION_FORMATS = [
     "session_created",
     "session_created_string",
     "session_attached",
-    # "session_grouped",  Apparently unused, mistake found while adding dataclasses
+    # "session_grouped",  Apparently unused in tmux.
     "session_group",
 ]
 

@@ -48,12 +48,14 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_DAEMON_NOT_UP_MARKERS: tuple[str, ...] = (
-    # Socket exists but no daemon listening.
-    "no server running",
-    # Socket file doesn't exist at all.
-    "error connecting to",
-)
+_MISSING_SOCKET_MARKER = "No such file or directory"
+
+
+def _is_daemon_not_up_error(stderr_text: str) -> bool:
+    """Return True for tmux errors that mean the server has not started."""
+    return "no server running" in stderr_text or (
+        "error connecting to" in stderr_text and _MISSING_SOCKET_MARKER in stderr_text
+    )
 
 
 def _fetch_or_empty(
@@ -65,20 +67,20 @@ def _fetch_or_empty(
 
     tmux signals "no daemon" in two ways depending on socket state:
     ``no server running on <socket>`` when the socket exists but no
-    daemon is listening, or ``error connecting to <socket>`` when the
-    socket file is missing entirely. Both are bootstrap signals — a
-    fresh :class:`~libtmux.Server` can still be introspected via
+    daemon is listening, or ``error connecting to <socket> (No such file
+    or directory)`` when the socket file is missing entirely. Both are
+    bootstrap signals — a fresh :class:`~libtmux.Server` can still be
+    introspected via
     :attr:`Server.sessions`, :attr:`Server.windows`, etc. without
-    first calling :meth:`Server.is_alive`. Real tmux errors
-    (subprocess crash, malformed output, version-incompatible flags)
-    still propagate.
+    first calling :meth:`Server.is_alive`. Other tmux errors, such as a
+    permission failure on the socket, still propagate.
     """
     try:
         return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
     except exc.LibTmuxException as e:
         if e.args:
             msg = str(e.args[0])
-            if any(marker in msg for marker in _DAEMON_NOT_UP_MARKERS):
+            if _is_daemon_not_up_error(msg):
                 return []
         raise
 
@@ -428,10 +430,7 @@ class Server(
         proc = self.cmd("kill-server")
         if proc.stderr:
             stderr_text = " ".join(str(line) for line in proc.stderr)
-            if (
-                "no server running" in stderr_text
-                or "error connecting to" in stderr_text
-            ):
+            if _is_daemon_not_up_error(stderr_text):
                 return
             raise exc.LibTmuxException(proc.stderr)
         logger.info("server killed", extra={"tmux_subcommand": "kill-server"})
@@ -1874,9 +1873,8 @@ class Server(
 
         Without arguments returns tmux's default template
         (``name: N bytes: "sample"``) — kept for backward compatibility.
-        Pass *format_string* to project a specific tmux format, or *filter*
-        to push a format-expression predicate into tmux's native evaluation
-        (avoids parsing the default template in Python).
+        Pass *format_string* to request a specific tmux format, or *filter*
+        to have tmux return only matching buffers.
 
         Parameters
         ----------
@@ -1886,9 +1884,9 @@ class Server(
 
             .. versionadded:: 0.57
         filter : str, optional
-            Filter expression evaluated by tmux's format engine (``-f`` flag).
-            Buffers for which the expanded expression is "false" (empty, 0)
-            are omitted. Example: ``"#{m:libtmux_mcp_*,#{buffer_name}}"``.
+            Filter expression evaluated by tmux (``-f`` flag). Buffers for
+            which the expanded expression is false are omitted. Example:
+            ``"#{m:libtmux_mcp_*,#{buffer_name}}"``.
 
             Note: this kwarg shadows the Python builtin ``filter`` by design —
             it mirrors tmux's own flag name (``-f filter``) for grep-friendly
@@ -1896,13 +1894,12 @@ class Server(
 
             .. warning::
 
-                tmux silently expands a malformed predicate (unclosed
+                tmux silently expands a malformed filter (unclosed
                 ``#{...}``, unknown format token) to empty, which the
-                format engine evaluates as "false" — every row is
-                suppressed and no stderr is emitted. A bad filter is
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
                 indistinguishable from "filter matched nothing"; verify
-                predicate syntax against the FORMATS section of
-                ``tmux(1)``.
+                filter syntax against the FORMATS section of ``tmux(1)``.
 
             .. versionadded:: 0.57
 
@@ -1926,7 +1923,7 @@ class Server(
         >>> 'gap6_demo' in server.list_buffers(format_string='#{buffer_name}')
         True
 
-        Filter via tmux's format engine:
+        Filter via tmux:
 
         >>> matches = server.list_buffers(
         ...     format_string='#{buffer_name}',
@@ -2309,9 +2306,9 @@ class Server(
         ------
         :exc:`~libtmux.exc.LibTmuxException`
             When tmux's ``list-sessions`` fails for a reason other than
-            "no server running" — subprocess crash, malformed output,
-            version-incompatible flags. A server with no sessions, or a
-            server before its daemon has started, returns an empty
+            a not-yet-started server, such as socket permission errors or
+            unsupported tmux flags. A server with no sessions, or a server
+            before its daemon has started, returns an empty
             :class:`~libtmux._internal.query_list.QueryList`.
         """
         sessions: list[Session] = [
@@ -2388,27 +2385,25 @@ class Server(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Session]:
-        """Sessions, optionally filtered by tmux's native format predicate.
+        """Sessions, optionally filtered by tmux before rows are returned.
 
         Like :attr:`Server.sessions` but adds an optional ``filter`` kwarg
-        that is plumbed through to ``$ tmux list-sessions -f <filter>``.
+        passed to ``$ tmux list-sessions -f <filter>``.
 
         Parameters
         ----------
         filter : str, optional
-            tmux format expression (``-f`` flag). Sessions for which the
-            expanded expression is "false" are omitted by tmux itself before
-            any Python object is built.
+            tmux format expression (``-f`` flag). tmux omits sessions whose
+            expanded expression is false before libtmux builds objects.
 
             .. warning::
 
-                tmux silently expands a malformed predicate (unclosed
+                tmux silently expands a malformed filter (unclosed
                 ``#{...}``, unknown format token) to empty, which the
-                format engine evaluates as "false" — every row is
-                suppressed and no stderr is emitted. A bad filter is
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
                 indistinguishable from "filter matched nothing"; verify
-                predicate syntax against the FORMATS section of
-                ``tmux(1)``.
+                filter syntax against the FORMATS section of ``tmux(1)``.
 
             .. versionadded:: 0.57
 
@@ -2448,9 +2443,9 @@ class Server(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Window]:
-        """All windows across sessions, optionally filtered by tmux's native predicate.
+        """All windows across sessions, optionally filtered by tmux.
 
-        Like :attr:`Server.windows` but with a ``filter`` kwarg plumbed to
+        Like :attr:`Server.windows` but with a ``filter`` kwarg passed to
         ``$ tmux list-windows -a -f <filter>``.
 
         Parameters
@@ -2460,13 +2455,12 @@ class Server(
 
             .. warning::
 
-                tmux silently expands a malformed predicate (unclosed
+                tmux silently expands a malformed filter (unclosed
                 ``#{...}``, unknown format token) to empty, which the
-                format engine evaluates as "false" — every row is
-                suppressed and no stderr is emitted. A bad filter is
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
                 indistinguishable from "filter matched nothing"; verify
-                predicate syntax against the FORMATS section of
-                ``tmux(1)``.
+                filter syntax against the FORMATS section of ``tmux(1)``.
 
             .. versionadded:: 0.57
 
@@ -2506,12 +2500,11 @@ class Server(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
-        """All panes across the server, optionally filtered by tmux's native predicate.
+        """All panes across the server, optionally filtered by tmux.
 
-        Like :attr:`Server.panes` but with a ``filter`` kwarg plumbed to
-        ``$ tmux list-panes -a -f <filter>``. This is the typed entry point
-        for the fast-path libtmux-mcp uses for ``search_panes``: tmux drops
-        non-matching panes before any Python object is constructed.
+        Like :attr:`Server.panes` but with a ``filter`` kwarg passed to
+        ``$ tmux list-panes -a -f <filter>``. tmux drops non-matching panes
+        before libtmux builds objects.
 
         Parameters
         ----------
@@ -2523,13 +2516,12 @@ class Server(
 
             .. warning::
 
-                tmux silently expands a malformed predicate (unclosed
+                tmux silently expands a malformed filter (unclosed
                 ``#{...}``, unknown format token) to empty, which the
-                format engine evaluates as "false" — every row is
-                suppressed and no stderr is emitted. A bad filter is
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
                 indistinguishable from "filter matched nothing"; verify
-                predicate syntax against the FORMATS section of
-                ``tmux(1)``.
+                filter syntax against the FORMATS section of ``tmux(1)``.
 
             .. versionadded:: 0.57
 

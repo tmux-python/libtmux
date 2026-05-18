@@ -260,13 +260,13 @@ True
 
 (native-filtering)=
 
-## Native Filtering with `search_*()`
+## tmux-native Filtering with `search_*()`
 
 `QueryList.filter()` runs in Python *after* tmux has returned every
 row. For large servers, or when you only need a handful of matches,
-push the predicate down to tmux instead. Every level of the hierarchy
-ships a `search_*()` method that compiles a format predicate and runs
-it inside the tmux server:
+ask tmux to apply the filter before libtmux builds objects. Every level
+of the hierarchy ships a `search_*()` method that passes a format
+expression to tmux:
 
 | Caller | Method | Underlying tmux |
 |--------|--------|-----------------|
@@ -282,24 +282,24 @@ kwarg with the same semantics.
 
 There is no `search_clients()` method; filter clients via the
 {attr}`~libtmux.Server.clients` accessor and Python-side
-{meth}`~libtmux._internal.query_list.QueryList.filter`. Pushing a
-client-side predicate to tmux is rarely a hot path — a server's client
+{meth}`~libtmux._internal.query_list.QueryList.filter`. Filtering
+clients in Python is usually enough because a server's client
 count is bounded by attached terminals, not by session/window/pane
 fan-out.
 
-### Python-side vs. native
+### Python-side vs. tmux-native
 
 | | `.filter()` | `.search_*()` |
 |-|-------------|---------------|
 | Where | Python (after fetch) | tmux server (before fetch) |
-| Predicate vocabulary | libtmux's lookup operators (`__contains`, `__regex`, etc.) | tmux's [FORMATS](https://man.openbsd.org/tmux.1#FORMATS) grammar |
+| Filter language | libtmux's lookup operators (`__contains`, `__regex`, etc.) | tmux's [FORMATS](https://man.openbsd.org/tmux.1#FORMATS) grammar |
 | Round trips | one (full list, then filter in memory) | one (tmux returns only matches) |
-| Best for | rich Python predicates, set membership, post-fetch composition | exact/glob matches over many rows |
+| Best for | rich Python checks, set membership, post-fetch composition | exact/glob matches over many rows |
 | Stability | every libtmux version supports it | requires tmux ≥ 3.2 (≥ 3.4 for `list-clients -f`) |
 
-Both are valid; pick on data volume and predicate shape.
+Both are valid; pick based on data volume and the filter language you want.
 
-### Predicate syntax
+### Filter syntax
 
 tmux's filter language is the same one used in `-F` templates. Three
 shapes cover most use cases:
@@ -329,7 +329,7 @@ conditional form. See `man tmux` for the full grammar.
 
 ### The silent zero-match trap
 
-A malformed predicate is the single biggest footgun. tmux expands an
+A malformed filter expression is the single biggest footgun. tmux expands an
 unclosed `#{...}` or an unknown format token to an empty string,
 which the filter engine evaluates as "false" — every row is filtered
 out and **no stderr is emitted**. A bad filter is indistinguishable
@@ -337,10 +337,10 @@ from a filter that genuinely matched nothing.
 
 If `search_*()` returns empty unexpectedly:
 
-1. Replace the predicate with `#{m:*,#{session_name}}` (or the
+1. Replace the filter with `#{m:*,#{session_name}}` (or the
    equivalent for windows/panes). If that returns rows, the issue is
-   predicate syntax, not data.
-2. Expand the predicate standalone via
+   filter syntax, not data.
+2. Expand the expression standalone via
    {meth}`~libtmux.Server.display_message` to see what tmux actually
    produced:
 
@@ -352,7 +352,7 @@ If `search_*()` returns empty unexpectedly:
    '1'
    ```
 
-   A non-`1`, non-empty result tells you the predicate is parsing as
+   A non-`1`, non-empty result tells you the expression is parsing as
    text, not as a boolean.
 
 3. Cross-check the token name against the FORMATS section of
@@ -363,13 +363,13 @@ If `search_*()` returns empty unexpectedly:
 Use `search_*()` when:
 
 - you have hundreds or thousands of windows/panes and only want a few,
-- your predicate is a glob (`m:`) or equality check (`==:`),
+- your filter is a glob (`m:`) or equality check (`==:`),
 - you're already in tmux-format thinking (writing `#{...}` for a
   status-line template, for example).
 
 Use `.filter()` when:
 
-- your predicate needs Python types you can't express in tmux format
+- your filter needs Python types you can't express in tmux format
   (set membership, complex regex, computed values from outside tmux),
 - you're chaining multiple filters and prefer composing in Python,
 - you want predictable, version-independent semantics.
@@ -377,5 +377,5 @@ Use `.filter()` when:
 ## API Reference
 
 See {class}`~libtmux._internal.query_list.QueryList` for the complete
-QueryList API, and each `search_*()` method for the native filter
+QueryList API, and each `search_*()` method for the tmux-native filter
 contract.

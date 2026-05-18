@@ -207,9 +207,9 @@ class Session(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Window]:
-        """Windows in this session, optionally filtered by tmux's native predicate.
+        """Windows in this session, optionally filtered by tmux.
 
-        Like :attr:`Session.windows` but with a ``filter`` kwarg plumbed to
+        Like :attr:`Session.windows` but with a ``filter`` kwarg passed to
         ``$ tmux list-windows -t <session> -f <filter>``.
 
         Parameters
@@ -219,13 +219,12 @@ class Session(
 
             .. warning::
 
-                tmux silently expands a malformed predicate (unclosed
+                tmux silently expands a malformed filter (unclosed
                 ``#{...}``, unknown format token) to empty, which the
-                format engine evaluates as "false" — every row is
-                suppressed and no stderr is emitted. A bad filter is
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
                 indistinguishable from "filter matched nothing"; verify
-                predicate syntax against the FORMATS section of
-                ``tmux(1)``.
+                filter syntax against the FORMATS section of ``tmux(1)``.
 
             .. versionadded:: 0.57
 
@@ -263,9 +262,9 @@ class Session(
         *,
         filter: str | None = None,  # noqa: A002
     ) -> QueryList[Pane]:
-        """Panes in this session, optionally filtered by tmux's native predicate.
+        """Panes in this session, optionally filtered by tmux.
 
-        Like :attr:`Session.panes` but with a ``filter`` kwarg plumbed to
+        Like :attr:`Session.panes` but with a ``filter`` kwarg passed to
         ``$ tmux list-panes -s -t <session> -f <filter>``.
 
         Parameters
@@ -275,13 +274,12 @@ class Session(
 
             .. warning::
 
-                tmux silently expands a malformed predicate (unclosed
+                tmux silently expands a malformed filter (unclosed
                 ``#{...}``, unknown format token) to empty, which the
-                format engine evaluates as "false" — every row is
-                suppressed and no stderr is emitted. A bad filter is
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
                 indistinguishable from "filter matched nothing"; verify
-                predicate syntax against the FORMATS section of
-                ``tmux(1)``.
+                filter syntax against the FORMATS section of ``tmux(1)``.
 
             .. versionadded:: 0.57
 

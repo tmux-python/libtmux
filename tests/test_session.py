@@ -688,7 +688,7 @@ def test_session_last_window_exception_tags_subcommand(session: Session) -> None
 
 
 def test_session_search_windows_filter(session: Session) -> None:
-    """``Session.list_windows(filter=...)`` filters via tmux's native -f flag."""
+    """``Session.search_windows(filter=...)`` filters via tmux's native -f flag."""
     session.new_window(window_name="gap7s_keep")
     session.new_window(window_name="other_drop")
 
@@ -698,7 +698,7 @@ def test_session_search_windows_filter(session: Session) -> None:
 
 
 def test_session_search_panes_filter_by_id(session: Session) -> None:
-    """``Session.list_panes(filter=...)`` projects only matching pane ids."""
+    """``Session.search_panes(filter=...)`` returns only matching pane ids."""
     window = session.active_window
     target = window.split()
 

@@ -7,8 +7,8 @@ connection a user sees. The same tmux server can host many clients at
 once (one per `$ tmux attach` from different terminals), and each
 client has its own view of the active session, window, and pane.
 
-{class}`~libtmux.Client` is the libtmux dataclass for that attached
-terminal. It sits outside the
+{class}`~libtmux.Client` is the libtmux object for that attached terminal.
+It sits outside the
 {class}`~libtmux.server.Server` → {class}`~libtmux.session.Session` →
 {class}`~libtmux.window.Window` → {class}`~libtmux.pane.Pane`
 ownership hierarchy: a client *points at* a Session/Window/Pane it is
@@ -16,26 +16,19 @@ currently viewing, but is not owned by them.
 
 ## View, not identity
 
-The fields that look like foreign keys —
-{attr}`~libtmux.neo.Obj.client_session`,
-{attr}`~libtmux.neo.Obj.session_id`,
-{attr}`~libtmux.neo.Obj.window_id`,
-{attr}`~libtmux.neo.Obj.pane_id` — are snapshots of where the client
-was attached at the moment libtmux hydrated the dataclass. They go
-stale the instant the user runs `switch-client`, `select-window`, or
-`select-pane`. The client's *identity* is its
-{attr}`~libtmux.neo.Obj.client_name` (the tty path on Unix), which is
-stable for the lifetime of the attachment.
+The fields that look like foreign keys — `client_session`, `session_id`,
+`window_id`, and `pane_id` — are snapshots of where the client was attached
+when libtmux read it. They go stale the instant the user runs
+`switch-client`, `select-window`, or `select-pane`. The client's *identity*
+is `client_name` (the tty path on Unix), which is stable for the lifetime of
+the attachment.
 
 | Field | What it is | Stable? |
 |-------|------------|---------|
 | `client_name` | tty path tmux assigned at attach time | Yes — identity |
-| `session_id` / `window_id` / `pane_id` | the client's *attached view* at hydration time | No — snapshot |
+| `session_id` / `window_id` / `pane_id` | the client's *attached view* when read | No — snapshot |
 | `client_session` | session name of the same attached view | No — snapshot |
 | `client_pid` / `client_tty` / `client_user` | terminal-level facts | Yes — identity-adjacent |
-
-This distinction is documented in the warning block on
-{class}`~libtmux.Client` itself.
 
 ## Live attachment with `attached_*`
 
@@ -58,7 +51,7 @@ session to its
 {attr}`~libtmux.Client.attached_pane` follows that window to its
 {attr}`~libtmux.window.Window.active_pane`. The three properties chain,
 so reading {attr}`~libtmux.Client.attached_pane` does one
-`list-clients` refresh plus two cheap typed lookups.
+`list-clients` refresh plus two object lookups.
 
 ```python
 >>> with control_mode() as ctl:
@@ -86,11 +79,10 @@ reports through `list-clients`. Filter or `get()` it the same way as
 True
 ```
 
-For tmux-server-side filtering (no Python-side iteration), use
-{meth}`~libtmux.Server.search_sessions`-style predicate strings via
-the `-f` flag — but note that `list-clients` only accepts a single
-filter and exposes a narrower token vocabulary than sessions/windows.
-See {ref}`native-filtering` for the predicate syntax.
+There is no `search_clients()` method yet. Use
+`server.clients.filter(...)` for client filtering; see
+{ref}`native-filtering` for tmux-native filtering on sessions, windows, panes,
+and buffers.
 
 ## When `attached_*` returns `None`
 
@@ -99,7 +91,7 @@ The properties return `None` when:
 - the snapshot `session_id` is empty (e.g. the client is at the tmux
   command prompt rather than viewing a session),
 - the snapshot `session_id` no longer names a live session (the
-  session was killed between hydration and access), or
+  session was killed between the client read and access), or
 - the client has detached and `list-clients` no longer reports it.
 
 Calling {meth}`~libtmux.Client.refresh` directly still raises
@@ -111,4 +103,5 @@ can branch on truthiness without a `try`/`except`.
 
 - {doc}`/api/libtmux.client` — autodoc reference
 - {ref}`about` — where `Client` fits in the overall object model
-- {ref}`native-filtering` — tmux-side filtering for `Server.clients`
+- {ref}`native-filtering` — tmux-native filtering for sessions, windows, panes,
+  and buffers

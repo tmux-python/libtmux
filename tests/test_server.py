@@ -1383,6 +1383,30 @@ def test_server_sessions_propagates_errors(
         server.sessions  # noqa: B018
 
 
+def test_server_sessions_missing_socket_returns_empty(tmp_path: pathlib.Path) -> None:
+    """A not-yet-created tmux socket preserves the empty-list contract."""
+    missing_server = Server(socket_path=tmp_path / "missing.sock")
+
+    assert list(missing_server.sessions) == []
+
+
+def test_server_sessions_permission_error_propagates(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Connection errors other than missing-daemon states still raise."""
+    sentinel = exc.LibTmuxException(
+        "error connecting to /root/libtmux-review.sock (Permission denied)"
+    )
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.LibTmuxException, match="Permission denied"):
+        server.sessions  # noqa: B018
+
+
 def test_if_shell_true(server: Server) -> None:
     """Test Server.if_shell() with true condition."""
     server.new_session(session_name="ifshell_test")

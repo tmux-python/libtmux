@@ -7,17 +7,15 @@ Every libtmux object — {class}`~libtmux.Server`,
 {class}`~libtmux.Pane`, {class}`~libtmux.Client` — exposes a flat set
 of typed string attributes named after tmux's
 [FORMATS](https://man.openbsd.org/tmux.1#FORMATS) tokens
-(`pane_id`, `window_zoomed_flag`, `client_theme`, etc.). These are
-declared once on {class}`libtmux.neo.Obj`, and the same dataclass
-backs every concrete object — which is why
-`pane.pane_id`, `pane.window_id`, and `pane.session_id` all work on a
-single {class}`~libtmux.Pane` instance.
+(`pane_id`, `window_zoomed_flag`, `client_theme`, etc.). This is why a
+single {class}`~libtmux.Pane` can expose `pane.pane_id`, `pane.window_id`,
+and `pane.session_id`.
 
 Two gates decide which fields actually hold a value on a given object:
 
-1. **Scope** — which tmux struct field the token's format-callback
-   dereferences. A `pane_*` token reads `ft->wp`, a `session_*` token
-   reads `ft->s`, and so on.
+1. **Scope** — which kind of tmux object can provide the token. A `pane_*`
+   token needs pane context, a `session_*` token needs session context, and
+   so on.
 2. **Version** — which tmux release first registered the token in
    `format.c`'s static table.
 
@@ -31,9 +29,9 @@ A typed field is `None` for one of three reasons:
 - **Not yet introduced.** Older tmux doesn't know the token at all.
   {attr}`~libtmux.Pane.pane_dead_signal` is `None` on tmux 3.2a because
   the token landed in 3.3.
-- **Wrong scope for this object.** A {class}`~libtmux.Client` row only
-  emits client-scope tokens directly; cross-scope tokens reach it via
-  the cascade described below, but `buffer_*` tokens never do.
+- **Wrong scope for this object.** A {class}`~libtmux.Client` row can report
+  client tokens plus the client's current session/window/pane. `buffer_*`
+  tokens never apply to client rows.
 - **Live-only token.** Some tokens (`mouse_*`, `cursor_*`,
   `selection_*`) only resolve inside a live event context (key
   binding, copy-mode, popup) — never in a `list-*` snapshot. libtmux
@@ -47,16 +45,14 @@ following are the tokens libtmux currently gates:
 | 3.3 | `pane_dead_signal`, `pane_dead_time` |
 
 Everything not listed above is safe on every supported tmux (≥ 3.2a).
-Typed fields for tokens tmux added in 3.4 / 3.5 / 3.6 and the
-forward-looking set from tmux master will land in a follow-up
-shipment; see the {ref}`changelog` for the deferral note.
+Fields for newer tmux tokens will be added as each supported version is
+validated.
 
-## The downward cascade
+## Active Child Fields
 
-tmux fills its format context downward when a query specifies a
-parent: `c->session` then `s->curw` then `wl->window->active`. That's
-why pane-scope tokens have meaningful values on a session row —
-they resolve to the session's current window's active pane.
+When tmux lists a parent object, it can also report fields from that parent's
+active child. That's why pane fields have meaningful values on a session row:
+they describe the active pane in the session's current window.
 
 ```python
 >>> session = server.new_session()
@@ -66,37 +62,35 @@ True
 True
 ```
 
-The cascade is **one-way**. A {class}`~libtmux.Pane` carries
-`window_*` and `session_*` because the parent fills in for the child,
-but a {class}`~libtmux.Session` does not carry `client_*` — tmux has
-no reverse cascade for clients. The `client_*` tokens only hydrate on
-{class}`~libtmux.Client` rows (returned by
-{attr}`~libtmux.Server.clients`, which queries `list-clients`).
+The relationship is **one-way**. A {class}`~libtmux.Pane` carries
+`window_*` and `session_*` fields for its parents, but a
+{class}`~libtmux.Session` does not carry `client_*` fields because tmux cannot
+infer one attached client from a session row. The `client_*` tokens only
+appear on {class}`~libtmux.Client` rows returned by
+{attr}`~libtmux.Server.clients`.
 
 If you treat `session.pane_id` as "the session's pane id" (rather
 than "the active pane of the session's current window") you will be
-surprised when the active window changes. That distinction is called
-out in {class}`libtmux.neo.Obj`'s docstring.
+surprised when the active window changes.
 
 ## Inspecting which fields apply
 
 Use {func}`libtmux.neo.get_output_format` to ask, for a given
-`list-*` subcommand and tmux version, exactly which tokens libtmux
-will emit in the `-F` template:
+`list-*` subcommand and tmux version, which tokens libtmux will request:
 
 ```python
 >>> from libtmux.neo import get_output_format
 >>> fields, _ = get_output_format("list-sessions", "3.6a")
 >>> 'session_id' in fields
 True
->>> 'pane_id' in fields  # via downward cascade
+>>> 'pane_id' in fields  # active pane for the listed session
 True
->>> 'client_name' in fields  # client scope is the cascade exception
+>>> 'client_name' in fields  # client fields require list-clients
 False
 ```
 
 For `list-clients`, the gate widens to include `client_*` plus every
-downward-cascadable token:
+attached session/window/pane token:
 
 ```python
 >>> from libtmux.neo import get_output_format
@@ -105,8 +99,7 @@ downward-cascadable token:
 True
 ```
 
-The result is memoized per `(list_cmd, tmux_version)` pair, so
-repeated calls are free.
+The result is cached per `(list_cmd, tmux_version)` pair.
 
 ## Tmux version detection
 
@@ -123,7 +116,7 @@ matrix.
 
 ## See also
 
-- {class}`libtmux.neo.Obj` — the dataclass that declares every field
-- {func}`libtmux.neo.get_output_format` — the scope+version gate
-- {ref}`clients` — Client is the cascade exception
+- {doc}`/api/libtmux.neo` — API reference for format-field helpers
+- {func}`libtmux.neo.get_output_format` — the scope and version filter
+- {ref}`clients` — attached-client fields and live attachment lookups
 - {doc}`/project/compatibility` — supported tmux versions

@@ -37,8 +37,8 @@ class Client(Obj):
 
         ``client_session``, ``session_id``, ``window_id`` and
         ``pane_id`` are snapshots of the client's *currently attached
-        view* at the moment the dataclass is hydrated — not stable
-        identity for the client. When the client switches sessions via
+        view* at the moment this object was read — not stable identity
+        for the client. When the client switches sessions via
         ``switch-client``, moves focus via ``select-window`` /
         ``select-pane``, or detaches, these fields go stale until
         :meth:`refresh` re-reads them from ``list-clients``. The
@@ -46,25 +46,18 @@ class Client(Obj):
         identity.
 
         Prefer :meth:`attached_session`, :meth:`attached_window`, and
-        :meth:`attached_pane` for typed access — each re-reads the
-        client's current attachment before returning, so the
-        :class:`Session` / :class:`Window` / :class:`Pane` you get
-        back reflects where the client is attached *now*, not where
-        it was when this :class:`Client` was constructed. If tmux no
-        longer reports this ``client_name`` through ``list-clients``,
-        these properties return ``None``.
+        :meth:`attached_pane` when you need the client's current
+        attachment. Each property re-reads tmux before returning, so
+        the :class:`Session` / :class:`Window` / :class:`Pane` you get
+        back reflects where the client is attached *now*, not where it
+        was when this :class:`Client` was constructed. If tmux no longer
+        reports this ``client_name`` through ``list-clients``, these
+        properties return ``None``.
 
-        :meth:`attached_pane` is session-scope: it returns the
-        session's current window's active pane, not the client's
-        ``CLIENT_ACTIVEPANE`` focus. The two diverge once a client
-        has used ``select-pane -P`` to set its own active pane.
-        See :meth:`attached_pane` for the resolution detail.
-
-        Each property re-reads tmux on every access. Code that needs
-        all three — session, window, and pane — should call
-        :meth:`_resolve_attached` once instead, which shares a single
-        ``list-clients`` refresh across the triple and returns
-        ``(session, window, pane)`` together.
+        :meth:`attached_pane` follows the attached session's current
+        window. That can differ from the per-client active pane set by
+        ``select-pane -P``; see :meth:`attached_pane` for the exact
+        behavior. Each property re-reads tmux on every access.
 
     Parameters
     ----------
@@ -136,7 +129,7 @@ class Client(Obj):
         Re-reads the client from ``list-clients`` before resolving, so the
         returned :class:`Session` reflects the client's *live* attachment
         rather than the snapshot captured when this :class:`Client` was
-        hydrated. Returns ``None`` when tmux no longer reports this
+        read. Returns ``None`` when tmux no longer reports this
         ``client_name`` through ``list-clients``, when the client is not
         attached to any session, or when the snapshot ``session_id`` no
         longer names a live session.
@@ -182,12 +175,10 @@ class Client(Obj):
         :attr:`~libtmux.Window.active_pane`. Returns ``None`` when no
         live attached session or active pane can be resolved.
 
-        Resolution follows tmux's downward ``format_defaults`` cascade
-        (``c->session`` → ``s->curw`` → ``wl->window->active``), not
-        the per-client ``CLIENT_ACTIVEPANE`` flag. When a client has
-        used ``select-pane -P`` to set its own active pane, this
-        property returns the *session's* current active pane, not the
-        client's.
+        This follows the attached session's current window and active
+        pane. When a client has used ``select-pane -P`` to set its own
+        active pane, this property returns the *session's* current
+        active pane, not the client's per-client focus.
         """
         window = self.attached_window
         if window is None:
@@ -201,8 +192,8 @@ class Client(Obj):
 
         The three :attr:`attached_session` / :attr:`attached_window` /
         :attr:`attached_pane` properties each trigger their own
-        ``list-clients`` refresh — calling them in sequence costs three
-        roundtrips for one conceptual "where is this client attached *now*"
+        ``list-clients`` refresh — calling them in sequence performs three
+        tmux reads for one conceptual "where is this client attached *now*"
         read. ``_resolve_attached`` shares a single refresh across the
         triple and returns the three values together.
 
@@ -221,8 +212,8 @@ class Client(Obj):
 
         :exc:`~libtmux.exc.MultipleActiveWindows` propagates rather than
         collapsing to ``(session, None, None)`` — multiple active windows
-        in one session indicates a tmux invariant violation that callers
-        should surface, not absent attachment.
+        in one session indicates inconsistent tmux state that callers
+        should see, not absent attachment.
         """
         try:
             self.refresh()

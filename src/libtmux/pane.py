@@ -2201,12 +2201,10 @@ class Pane(
     def reset(self) -> Pane:
         r"""Reset terminal state and clear pane history.
 
-        Sends ``send-keys -R`` and ``clear-history`` to the pane in a
-        single tmux IPC so no pane output can land in the freshly-cleared
-        grid (and scroll into history under ``scroll-on-clear``) between
-        the terminal-state reset and the history clear. Both subcommands
-        carry an explicit ``-t`` so the ``;`` separator can't leave
-        ``clear-history`` routed to tmux's cmdq default pane.
+        Sends ``send-keys -R`` and ``clear-history`` to the pane in one
+        targeted tmux command sequence so output cannot land in the
+        freshly-cleared grid between the terminal-state reset and the
+        history clear.
 
         Examples
         --------

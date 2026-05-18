@@ -117,17 +117,16 @@ _Detailed migration steps for the next version will be posted here._
 
 ### `LibTmuxException` `str()` gains a subcommand prefix
 
-When {exc}`~libtmux.exc.LibTmuxException` is raised from one of the
-typed command wrappers, ``str(exc)`` now starts with the originating
-tmux subcommand name followed by ``": "``. ``exc.args[0]`` still
-carries the raw tmux output, and the new
+When {exc}`~libtmux.exc.LibTmuxException` is raised from a libtmux method,
+``str(exc)`` now starts with the originating tmux subcommand name followed
+by ``": "``. ``exc.args[0]`` still
+carries the original tmux error text, and the new
 {attr}`~libtmux.exc.LibTmuxException.subcommand` attribute exposes
 the tmux subcommand name on its own.
 
-The wrapped-stderr *type* changed: ``exc.args[0]`` is now ``str``,
+The error-payload *type* changed: ``exc.args[0]`` is now ``str``,
 joined with ``"\n"`` when tmux emitted multiple stderr lines.
-Previously it was ``list[str]`` — the raw ``proc.stderr`` was
-passed through to :class:`Exception` directly.
+Previously it was ``list[str]``.
 
 **Who is affected:** code that pattern-matches `str(exc)` exactly,
 anchors a regex with `^` against the previous shape, or indexes
@@ -155,7 +154,7 @@ except LibTmuxException as exc:
         handle_missing_last_window()
 ```
 
-**Or — match against the raw stderr in `exc.args[0]`:**
+**Or — match against the original tmux error text in `exc.args[0]`:**
 
 ```python
 try:
@@ -170,10 +169,9 @@ except LibTmuxException as exc:
 {class}`~libtmux.Client` is new in 0.57.0, so this isn't a behavior
 change — but new users of {attr}`~libtmux.Server.clients` should know
 that ``client.session_id``, ``client.window_id``, and
-``client.pane_id`` are hydrated from tmux's downward format cascade
-(``c->session`` → ``s->curw`` → ``wl->window->active``) at the moment
-the {class}`~libtmux.Client` was built. They go stale as soon as the
-client switches sessions, changes window, or detaches.
+``client.pane_id`` reflect the client's attached view at the moment the
+{class}`~libtmux.Client` was read. They go stale as soon as the client
+switches sessions, changes window, or detaches.
 
 For typed access that reflects the client's *live* attachment, use
 {attr}`~libtmux.Client.attached_session`,
@@ -181,9 +179,9 @@ For typed access that reflects the client's *live* attachment, use
 {attr}`~libtmux.Client.attached_pane`:
 
 ```python
-# Snapshot (cheap, may be stale)
+# Snapshot (may be stale)
 client = server.clients.get(client_name=ctl.client_name)
-session_id = client.session_id  # str captured at hydration time
+session_id = client.session_id  # str captured when the object was read
 
 # Live (re-reads list-clients; returns None if tmux no longer reports the client)
 attached = client.attached_session  # libtmux.Session | None
@@ -198,19 +196,16 @@ the client's *stable* identifier and does not have this caveat. The
 {meth}`~libtmux.Client.from_client_name` calls still raise when that
 client row is gone.
 
-{attr}`~libtmux.Client.attached_pane` is session-scope: it returns
-the session's current window's active pane, not the client's
-``CLIENT_ACTIVEPANE`` focus. The two diverge once a client has used
-``select-pane -P`` to set its own active pane.
+{attr}`~libtmux.Client.attached_pane` follows the attached session's current
+window. That can differ from the per-client active pane set by
+``select-pane -P``.
 
-### `Pane.reset` now dispatches through `self.server.cmd`
+### `Pane.reset` now uses one tmux command sequence
 
 {meth}`~libtmux.Pane.reset` now bundles ``send-keys -R`` and
-``clear-history`` into a single tmux IPC routed through
-``self.server.cmd`` (with an explicit ``-t <pane_id>`` on both
-subcommands) rather than calling ``self.cmd`` twice. This closes a race
-where output written to the pane between the two IPCs could land in the
-scrollback that the second call then cleared.
+``clear-history`` into one tmux command sequence targeted at the pane.
+This closes a race where output written between separate commands could
+land in the scrollback that the second command then cleared.
 
 **Who is affected:** test fixtures and downstream code that intercepts
 ``Pane.cmd`` (for example with ``unittest.mock.patch.object(pane,
@@ -223,7 +218,7 @@ The three ``display_message`` wrappers now report tmux stderr via
 :func:`warnings.warn` rather than raising
 {exc}`~libtmux.exc.LibTmuxException`. tmux uses stderr for both genuine
 errors and informational messages, and the right escalation depends on
-tmux version and call shape; the wrappers default to warning so callers
+tmux version and requested format; the wrappers default to warning so callers
 can decide. To escalate to an exception, wrap the call in
 :func:`warnings.catch_warnings` with ``filterwarnings("error")``:
 

@@ -45,35 +45,32 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
-libtmux 0.57.0 broadens tmux support. It introduces
-{class}`~libtmux.Client` as a first-class object, threads tmux's
-native ``-f`` filter through the typed listing methods so callers can
-push predicates into the tmux server, and adds typed access to many
-more format tokens — all scope- and version-gated so they're safe on
-every supported tmux version. Subcommand context now flows through
-{exc}`~libtmux.exc.LibTmuxException`, making it easier for downstream
-tools to dispatch on which tmux command produced an error.
+libtmux 0.57.0 broadens tmux support around attached clients, tmux-native
+filtering, and format-token fields. {class}`~libtmux.Client` gives callers a
+typed object for attached terminals, `search_*()` methods let tmux return only
+matching sessions, windows, and panes, and more tmux format tokens are exposed
+as typed attributes. {exc}`~libtmux.exc.LibTmuxException` now records which
+tmux subcommand failed, making command errors easier to handle downstream.
 
 ### Breaking changes
 
 #### `LibTmuxException` string form gains a subcommand prefix (#672)
 
-When {exc}`~libtmux.exc.LibTmuxException` is raised from one of the
-typed command wrappers, ``str(exc)`` now begins with the originating
-tmux subcommand name followed by ``": "``. For example, an error from
+When {exc}`~libtmux.exc.LibTmuxException` is raised from a libtmux method,
+``str(exc)`` now begins with the originating tmux subcommand name followed
+by ``": "``. For example, an error from
 {meth}`~libtmux.Session.last_window` used to render as ``"can't find
 window"`` and now renders as ``"last-window: can't find window"``.
 
-``exc.args[0]`` still carries the raw tmux output, and the new
+``exc.args[0]`` still carries the original tmux error text, and the new
 {attr}`~libtmux.exc.LibTmuxException.subcommand` attribute exposes
 the tmux subcommand name as a separate field.
 {func}`~libtmux.common.raise_if_stderr` is the shared helper that
 populates both.
 
-The wrapped-stderr *type* changed: ``exc.args[0]`` is now ``str``,
+The error-payload *type* changed: ``exc.args[0]`` is now ``str``,
 joined with ``"\n"`` when tmux emitted multiple stderr lines.
-Previously it was ``list[str]`` — the raw ``proc.stderr`` was
-passed through to :class:`Exception` directly.
+Previously it was ``list[str]``.
 
 This is a serialization-format change: code that pattern-matches on
 ``str(exc)`` exactly, anchors a regex with ``^`` against the old
@@ -95,7 +92,7 @@ except LibTmuxException as exc:
     if exc.subcommand == "last-window":
         ...
 
-# Or — match against the raw stderr without the prefix
+# Or — match against the original tmux error text without the prefix
 try:
     session.last_window()
 except LibTmuxException as exc:
@@ -110,20 +107,19 @@ Substring matches (``"can't find" in str(exc)``) and unanchored
 
 Previously, a tmux command failure under
 {attr}`~libtmux.Server.sessions`, {attr}`~libtmux.Server.clients`, or
-{meth}`~libtmux.Server.search_sessions` was swallowed by a bare
-``except Exception: pass``, returning an empty
+{meth}`~libtmux.Server.search_sessions` could return an empty
 {class}`~libtmux._internal.query_list.QueryList` indistinguishable
 from "no sessions / no clients attached" or "filter matched nothing".
-The wrappers now let {exc}`~libtmux.exc.LibTmuxException` propagate
-via {func}`~libtmux.common.raise_if_stderr`.
+Those accessors now let {exc}`~libtmux.exc.LibTmuxException` propagate
+for real tmux failures.
 
 Genuine empty results — a server with no attached clients, or a
 filter that matched zero sessions — still return an empty
-``QueryList``. ``"no server running"`` is also still treated as
-an empty result, preserving the historic contract that a fresh
-{class}`~libtmux.Server` can be safely introspected before its
-daemon is up. Only real tmux errors (subprocess crash, malformed
-output, version-incompatible flags) now surface.
+``QueryList``. A missing or not-yet-started tmux server is also still
+treated as an empty result, preserving the historic contract that a fresh
+{class}`~libtmux.Server` can be safely introspected before its daemon is
+up. Other tmux errors, such as socket permission failures or unsupported
+flags, now surface.
 
 ```python
 # Before — silent on tmux failure
@@ -144,17 +140,15 @@ else:
 
 #### `Client` object and `Server.clients` accessor (#672)
 
-New {class}`~libtmux.Client` dataclass and
-{attr}`~libtmux.Server.clients` property bring typed-ORM ergonomics
-to tmux's attached-client model. Reads like ``client.client_readonly``
-and ``client.client_session`` work directly on the client instead of
-forcing callers down to {meth}`~libtmux.Server.cmd`.
+New {class}`~libtmux.Client` and {attr}`~libtmux.Server.clients` support tmux's
+attached-client model directly. Reads like ``client.client_readonly`` and
+``client.client_session`` work on the client object without dropping down to
+{meth}`~libtmux.Server.cmd`.
 
-Note that ``client.session_id`` / ``client.window_id`` /
-``client.pane_id`` reflect the client's currently attached view at
-hydration time — {meth}`~libtmux.Client.refresh` re-reads them after
-the client switches focus. ``client.client_name`` is the client's
-stable identifier.
+Note that ``client.session_id`` / ``client.window_id`` / ``client.pane_id``
+reflect the client's attached view when the object was read —
+{meth}`~libtmux.Client.refresh` re-reads them after the client switches focus.
+``client.client_name`` is the client's stable identifier.
 
 For typed access to the live attachment, use
 {attr}`~libtmux.Client.attached_session`,
@@ -170,11 +164,10 @@ Direct {meth}`~libtmux.Client.refresh` and
 {meth}`~libtmux.Client.from_client_name` calls still surface missing
 client lookup errors.
 
-{attr}`~libtmux.Client.attached_pane` is session-scope: it returns
-the session's current window's active pane, not the client's
-``CLIENT_ACTIVEPANE`` focus. The two diverge once a client has used
-``select-pane -P`` to set its own active pane. See
-{attr}`~libtmux.Client.attached_pane` for the resolution detail.
+{attr}`~libtmux.Client.attached_pane` follows the attached session's current
+window. That can differ from the per-client active pane set by
+``select-pane -P``; see {attr}`~libtmux.Client.attached_pane` for the exact
+behavior.
 
 #### `Server.display_message` and `Window.display_message` (#672)
 
@@ -190,22 +183,20 @@ rather than dropping it silently. tmux uses stderr for both genuine
 errors and informational messages on some versions, so the wrappers
 warn rather than raise; callers that want to escalate can wrap the
 call in :func:`warnings.catch_warnings` with
-``filterwarnings("error")``. See {doc}`MIGRATION` for the escalation
+``filterwarnings("error")``. See {doc}`migration` for the escalation
 pattern.
 
-#### Native filter on typed listing methods (#672)
+#### tmux-native filtering with `search_*()` (#672)
 
 {meth}`~libtmux.Server.search_panes`,
 {meth}`~libtmux.Server.search_windows`,
 {meth}`~libtmux.Server.search_sessions`, and the Session/Window
 analogues take a ``filter=`` kwarg routed to tmux's ``-f`` flag. tmux
-evaluates the predicate and drops non-matching objects before any
-Python instance is constructed.
+evaluates the expression and returns only matching objects.
 
-Caveat: tmux silently expands a malformed predicate to empty, which
-the format engine treats as false — a typo looks identical to "no
-matches". Verify predicate syntax against the FORMATS section of
-``tmux(1)``.
+Caveat: tmux silently expands a malformed filter expression to empty, which
+it treats as false — a typo looks identical to "no matches". Verify filter
+syntax against the FORMATS section of ``tmux(1)``.
 
 #### `Pane.send_keys(cmd=None, …)` flag-only invocation (#672)
 
@@ -217,10 +208,9 @@ key argument.
 #### `Server.list_buffers(format_string=, filter=)` (#672)
 
 {meth}`~libtmux.Server.list_buffers` gains ``format_string`` (``-F``)
-and ``filter`` (``-f``) kwargs. Callers can project a chosen template
-(e.g. ``"#{buffer_name}"``) or push a buffer-name match expression
-into tmux's format engine — same bad-filter caveat as the
-``search_*`` methods.
+and ``filter`` (``-f``) kwargs. Callers can ask tmux to return selected
+fields (e.g. ``"#{buffer_name}"``) or only buffers matching an expression —
+same bad-filter caveat as the ``search_*`` methods.
 
 #### `Server.run_shell(cwd=, show_stderr=)` (#672)
 
@@ -237,31 +227,22 @@ returns bytes tmux has read from the pane but not yet committed to
 the terminal — useful for diagnosing programs whose output stalls
 mid-sequence.
 
-#### Scope-aware format-token retrieval (#672)
+#### More format-token fields on tmux objects (#672)
 
-The ``-F`` template libtmux sends to each ``list-*`` subcommand is now
-scope- and version-aware. tmux's format engine cascades context
-downward from client → session → current window → active pane, so a
-``Session`` row hydrates active-window and active-pane fields via that
-cascade, and a ``Client`` row likewise hydrates the client's attached
-session, window, and active pane. ``client_*`` tokens resolve only
-under ``list-clients`` because tmux has no reverse cascade. Tokens
-introduced after tmux 3.2a are gated through ``FIELD_VERSION`` so the
-format string stays compatible with the project's minimum supported
-tmux. Tokens the running tmux doesn't recognize stay ``None`` on the
-typed surface — no crash, no warning.
+libtmux now asks each ``list-*`` subcommand for the format tokens that make
+sense for that object and tmux version. Tokens the running tmux does not
+support stay ``None`` instead of making the listing fail.
 
 {class}`~libtmux.Pane`, {class}`~libtmux.Window`,
-{class}`~libtmux.Session`, and {class}`~libtmux.Client` declare typed
-dataclass fields for the scope-relevant tokens that ship in tmux 3.2a,
-including pane state (``pane_dead``, ``pane_in_mode``, ``pane_marked``,
-``pane_synchronized``, ``pane_path``, ``pane_pipe`` …), window state
-(``window_zoomed_flag``, ``window_silence_flag``, ``window_flags`` …),
-session state (``session_marked`` …), and the client view
-(``client_session``, ``client_readonly``, ``client_termtype`` …). Typed
-fields for tokens tmux added in 3.4 / 3.5 / 3.6 and the forward-looking
-set from tmux master will land in a follow-up shipment once those
-releases can be validated end-to-end.
+{class}`~libtmux.Session`, and {class}`~libtmux.Client` expose more typed
+attributes for pane state (``pane_dead``, ``pane_in_mode``, ``pane_marked``,
+``pane_synchronized``, ``pane_path``, ``pane_pipe``), window state
+(``window_zoomed_flag``, ``window_silence_flag``, ``window_flags``), session
+state (``session_marked``), and client state (``client_session``,
+``client_readonly``, ``client_termtype``). Some fields describe the active
+child object tmux reports with the row: for example, ``session.pane_id`` is
+the active pane in the session's current window, not a separate "session
+pane." See {ref}`format-tokens` for details.
 
 ### Fixes
 
@@ -272,10 +253,9 @@ releases can be validated end-to-end.
 ### Documentation
 
 - New API page: {doc}`api/libtmux.client`.
-- {class}`~libtmux.neo.Obj`'s class docstring documents the
-  downward-cascade resolution target so readers know that, for
-  example, ``session.pane_id`` is the session's *current window's
-  active* pane — not "the session's pane" (#672).
+- New {ref}`format-tokens` topic explains why some fields describe an active
+  child object, such as ``session.pane_id`` reflecting the active pane in the
+  session's current window (#672).
 
 ## libtmux 0.56.0 (2026-05-10)
 
