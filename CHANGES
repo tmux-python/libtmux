@@ -555,7 +555,7 @@ surface from Make to Just.
 
 ### Fixes
 
-#### `Server.new_session()` no longer races its own hydration query (#625)
+#### `Server.new_session()` no longer races its own initialization query (#625)
 
 {meth}`~libtmux.Server.new_session` now parses all required session fields from
 the `tmux new-session -P` output instead of creating the session and then
