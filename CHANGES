@@ -45,6 +45,37 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+Restores the "lenient-by-default" behavior for
+{attr}`~libtmux.Server.sessions` and {attr}`~libtmux.Server.clients` that
+was changed in 0.57.0.
+
+### Behavioral Changes
+
+#### Lenient `Server.sessions` and `Server.clients` accessors
+
+{attr}`~libtmux.Server.sessions` and {attr}`~libtmux.Server.clients` once
+again return an empty {class}`~libtmux._internal.query_list.QueryList`
+when tmux fails for any reason (permission errors, subprocess crashes,
+etc.).
+
+This reverts a change in 0.57.0 that made these accessors raise
+{exc}`~libtmux.exc.LibTmuxException`. The restored behavior matches the
+contract {attr}`~libtmux.Server.sessions` has followed since 0.17.0.
+
+- **Upgrade path:** Code that added ``try/except LibTmuxException`` blocks around
+  these accessors for 0.57.0 can now remove them.
+- **Connectivity checks:** If you need to distinguish between "no results" and
+  "tmux is unreachable", use the explicit {meth}`~libtmux.Server.is_alive` or
+  {meth}`~libtmux.Server.raise_if_dead` methods.
+
+#### Stricter `search_*` methods
+
+The newer {meth}`~libtmux.Server.search_sessions`,
+{meth}`~libtmux.Server.search_windows`, and
+{meth}`~libtmux.Server.search_panes` continue to raise on tmux errors.
+Since these methods take a caller-supplied filter, a tmux failure is
+considered a meaningful error signal that should not be swallowed.
+
 ## libtmux 0.57.0 (2026-05-17)
 
 libtmux 0.57.0 broadens tmux support around attached clients, tmux-native
