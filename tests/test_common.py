@@ -39,6 +39,130 @@ def test_has_version() -> None:
     assert has_version(str(get_version()))
 
 
+def test_get_version_is_memoized_for_same_tmux_bin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two calls with the same tmux_bin fork tmux -V once.
+
+    Validates the @functools.cache contract: identical-arg calls hit the
+    cache after the first miss.
+    """
+    call_count = {"n": 0}
+
+    class _MockProc:
+        stdout: t.ClassVar[list[str]] = ["tmux 3.6a"]
+        stderr: t.ClassVar[list[str]] = []
+
+    def _mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> _MockProc:
+        call_count["n"] += 1
+        return _MockProc()
+
+    monkeypatch.setattr(libtmux.common, "tmux_cmd", _mock_tmux_cmd)
+    get_version.cache_clear()
+
+    v1 = get_version()
+    v2 = get_version()
+
+    assert v1 == v2
+    assert call_count["n"] == 1
+
+
+def test_get_version_cache_keyed_by_tmux_bin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Different tmux_bin args cache independently; same arg revisits hit."""
+    call_count = {"n": 0}
+    versions = {"/path/a/tmux": "tmux 3.4", "/path/b/tmux": "tmux 3.6a"}
+
+    class _MockProc:
+        def __init__(self, line: str) -> None:
+            self.stdout = [line]
+            self.stderr: list[str] = []
+
+    def _mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> _MockProc:
+        call_count["n"] += 1
+        return _MockProc(versions[kwargs["tmux_bin"]])
+
+    monkeypatch.setattr(libtmux.common, "tmux_cmd", _mock_tmux_cmd)
+    get_version.cache_clear()
+
+    a1 = get_version(tmux_bin="/path/a/tmux")
+    b1 = get_version(tmux_bin="/path/b/tmux")
+    a2 = get_version(tmux_bin="/path/a/tmux")
+
+    assert a1 != b1
+    assert a1 == a2
+    assert call_count["n"] == 2  # /a once, /b once, /a hits cache
+
+
+def test_get_version_cache_clear_invalidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """cache_clear() forces a fresh subprocess on the next call."""
+    call_count = {"n": 0}
+
+    class _MockProc:
+        stdout: t.ClassVar[list[str]] = ["tmux 3.6a"]
+        stderr: t.ClassVar[list[str]] = []
+
+    def _mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> _MockProc:
+        call_count["n"] += 1
+        return _MockProc()
+
+    monkeypatch.setattr(libtmux.common, "tmux_cmd", _mock_tmux_cmd)
+    get_version.cache_clear()
+
+    get_version()
+    get_version()
+    assert call_count["n"] == 1
+
+    get_version.cache_clear()
+    get_version()
+    assert call_count["n"] == 2
+
+
+def test_get_version_binary_swap_requires_explicit_cache_clear(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Documents the sticky-cache trap when tmux_bin=None and PATH changes.
+
+    Simulates a user upgrading tmux mid-process: two consecutive
+    ``get_version()`` calls with ``tmux_bin=None`` see different
+    underlying binaries, but the cache pins the first answer. The
+    escape hatch is ``get_version.cache_clear()`` — this test asserts
+    the trap is real and the escape hatch works.
+    """
+    versions = ["tmux 3.2a", "tmux 3.6a"]
+    call_count = {"n": 0}
+
+    class _MockProc:
+        def __init__(self, line: str) -> None:
+            self.stdout = [line]
+            self.stderr: list[str] = []
+
+    def _mock_tmux_cmd(*args: t.Any, **kwargs: t.Any) -> _MockProc:
+        proc = _MockProc(versions[call_count["n"]])
+        call_count["n"] += 1
+        return proc
+
+    monkeypatch.setattr(libtmux.common, "tmux_cmd", _mock_tmux_cmd)
+    get_version.cache_clear()
+
+    first = get_version()
+    assert str(first) == "3.2"
+
+    # "Binary swap" — PATH changed, but cache is sticky.
+    second = get_version()
+    assert str(second) == "3.2"  # Stale: still the cached 3.2a.
+    assert call_count["n"] == 1  # No fresh subprocess.
+
+    # Escape hatch.
+    get_version.cache_clear()
+    third = get_version()
+    assert str(third) == "3.6"  # Fresh lookup.
+    assert call_count["n"] == 2
+
+
 def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify raises if tmux command not found."""
     monkeypatch.setenv("PATH", "")
@@ -48,7 +172,7 @@ def test_tmux_cmd_raises_on_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_tmux_cmd_unicode(session: Session) -> None:
     """Verify tmux commands with unicode."""
-    session.cmd("new-window", "-t", 3, "-n", "юникод", "-F", "Ελληνικά")
+    session.cmd("new-window", "-n", "юникод", "-F", "Ελληνικά", target=3)
 
 
 class SessionCheckName(t.NamedTuple):
@@ -526,3 +650,66 @@ def test_tmux_cmd_pre_execution_logging(
     ]
     assert len(running_records) > 0
     assert "list-sessions" in running_records[0].tmux_cmd
+
+
+def test_libtmux_exception_subcommand_default_none() -> None:
+    """Backward-compat: existing call sites (no kwarg) get subcommand=None."""
+    err = exc.LibTmuxException(["no last window"])
+    assert err.subcommand is None
+    # str(err) reproduces only the args, preserving pre-0.57 shape.
+    assert "no last window" in str(err)
+    assert not str(err).startswith(":")
+
+
+def test_libtmux_exception_subcommand_tags_str() -> None:
+    """When ``subcommand`` is set, str(exc) prefixes ``"<subcommand>: …"``."""
+    err = exc.LibTmuxException(["no last window"], subcommand="last-window")
+    assert err.subcommand == "last-window"
+    assert str(err).startswith("last-window:")
+    assert "no last window" in str(err)
+
+
+def test_raise_if_stderr_no_stderr_is_noop(session: libtmux.Session) -> None:
+    """``raise_if_stderr`` returns silently when proc.stderr is empty."""
+    from libtmux.common import raise_if_stderr
+
+    proc = session.cmd("display-message", "-p", "#{version}")
+    raise_if_stderr(proc, "display-message")  # must not raise
+
+
+def test_raise_if_stderr_raises_with_subcommand_tag(
+    session: libtmux.Session,
+) -> None:
+    """``raise_if_stderr`` raises ``LibTmuxException`` tagged with subcommand."""
+    from libtmux.common import raise_if_stderr
+
+    # Provoke a tmux stderr: ask list-clients with a non-existent target.
+    proc = session.server.cmd("list-clients", "-t", "$nonexistent_session_id_for_test")
+    assert proc.stderr  # sanity check the fixture
+
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        raise_if_stderr(proc, "list-clients")
+
+    assert excinfo.value.subcommand == "list-clients"
+    assert str(excinfo.value).startswith("list-clients:")
+
+
+def test_raise_if_stderr_str_shape_exact(session: libtmux.Session) -> None:
+    """Lock down ``str(exc)`` and ``exc.args[0]`` against future drift.
+
+    The breaking-change documentation promises a flat string in
+    ``str(exc)`` and a flat string in ``exc.args[0]``. If a future change
+    re-introduces a list-shaped ``proc.stderr`` into ``LibTmuxException``,
+    this test catches it where ``startswith`` / substring matches won't.
+    """
+    from libtmux.common import raise_if_stderr
+
+    proc = session.cmd("last-window")
+    assert proc.stderr == ["no last window"]
+
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        raise_if_stderr(proc, "last-window")
+
+    assert str(excinfo.value) == "last-window: no last window"
+    assert excinfo.value.args == ("no last window",)
+    assert excinfo.value.subcommand == "last-window"

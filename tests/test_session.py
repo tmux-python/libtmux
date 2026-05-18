@@ -671,3 +671,100 @@ def test_new_window_select_existing(session: Session) -> None:
         select_existing=True,
     )
     assert w.window_name == "selexist_new"
+
+
+def test_session_last_window_exception_tags_subcommand(session: Session) -> None:
+    """Wrapper raises tag LibTmuxException with the originating tmux subcommand.
+
+    Calling ``last_window()`` on a session with only one window and no prior
+    selection makes tmux error. The raised exception carries
+    ``.subcommand == "last-window"`` and ``str(exc)`` prefixes the
+    subcommand so downstream consumers see which tmux command failed.
+    """
+    with pytest.raises(exc.LibTmuxException) as excinfo:
+        session.last_window()
+    assert excinfo.value.subcommand == "last-window"
+    assert str(excinfo.value).startswith("last-window:")
+
+
+def test_session_search_windows_filter(session: Session) -> None:
+    """``Session.search_windows(filter=...)`` filters via tmux's native -f flag."""
+    session.new_window(window_name="gap7s_keep")
+    session.new_window(window_name="other_drop")
+
+    matches = session.search_windows(filter="#{m:gap7s_*,#{window_name}}")
+    names = sorted(w.window_name for w in matches if w.window_name)
+    assert names == ["gap7s_keep"]
+
+
+def test_session_search_panes_filter_by_id(session: Session) -> None:
+    """``Session.search_panes(filter=...)`` returns only matching pane ids."""
+    window = session.active_window
+    target = window.split()
+
+    matches = session.search_panes(
+        filter=f"#{{m:{target.pane_id},#{{pane_id}}}}",
+    )
+    assert [p.pane_id for p in matches] == [target.pane_id]
+
+
+SESSION_FORMAT_FIELDS = (
+    "session_format",
+    "session_group_attached_list",
+    "session_group_many_attached",
+    "session_grouped",
+    "session_many_attached",
+    "session_marked",
+)
+
+
+@pytest.mark.parametrize("field_name", SESSION_FORMAT_FIELDS)
+def test_session_format_field_declared_and_hydrated(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Tmux's session-scope format tokens hydrate onto the typed ``Session``."""
+    assert field_name in session.__dataclass_fields__
+
+    session.refresh()
+    value = getattr(session, field_name)
+    assert value is None or isinstance(value, str)
+
+
+SESSION_SCOPE_OVERRIDE_FIELDS = (
+    "active_window_index",
+    "last_window_index",
+)
+
+
+@pytest.mark.parametrize("field_name", SESSION_SCOPE_OVERRIDE_FIELDS)
+def test_session_scope_override_field_hydrates(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Session-scope overrides admit each token into list-sessions -F.
+
+    Callbacks dereference ``ft->s`` in tmux's ``format.c`` (verified
+    across tmux 3.2a through master). A ``None`` here indicates the
+    scope gate excluded the token from the format string, which is
+    the regression class these overrides prevent.
+    """
+    session.refresh()
+    value = getattr(session, field_name)
+    assert value is not None, f"{field_name} should hydrate via list-sessions"
+    assert isinstance(value, str)
+
+
+def test_session_refresh_raises_when_session_id_is_none(server: Server) -> None:
+    """``Session.refresh()`` raises ``ValueError`` when ``session_id`` is unset.
+
+    Mirrors the Client.refresh ``-O``-safe contract: the previous
+    ``assert isinstance(...)`` stripped under ``python -O`` and let
+    ``None`` flow into ``_refresh``. The explicit raise keeps the
+    failure mode loud regardless of optimization level.
+    """
+    session = Session(server=server)
+    assert session.session_id is None
+
+    with pytest.raises(ValueError, match="session_id"):
+        session.refresh()

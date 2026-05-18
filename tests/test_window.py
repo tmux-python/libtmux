@@ -1058,3 +1058,216 @@ def test_move_window_no_select(session: Session) -> None:
     w2.move_window(destination="99", no_select=True)
     session.refresh()
     assert session.active_window.window_id == w1.window_id
+
+
+class WindowDisplayMessageCase(t.NamedTuple):
+    """Test case for Window.display_message() flag variations."""
+
+    test_id: str
+    cmd: str
+    kwargs: dict[str, t.Any]
+    expected_in_output: str | None
+    min_tmux_version: str | None
+
+
+WINDOW_DISPLAY_MESSAGE_CASES: list[WindowDisplayMessageCase] = [
+    WindowDisplayMessageCase(
+        test_id="window_id",
+        cmd="#{window_id}",
+        kwargs={"get_text": True},
+        expected_in_output="@",
+        min_tmux_version=None,
+    ),
+    WindowDisplayMessageCase(
+        test_id="window_index_via_format_string",
+        cmd="",
+        kwargs={"get_text": True, "format_string": "#{window_index}"},
+        # pytest plugin sets `base-index 1` (pytest_plugin.py:110), so the
+        # first window in a fresh session is index 1, not 0.
+        expected_in_output="1",
+        min_tmux_version=None,
+    ),
+    WindowDisplayMessageCase(
+        test_id="zoomed_flag_default_zero",
+        cmd="#{window_zoomed_flag}",
+        kwargs={"get_text": True},
+        expected_in_output="0",
+        min_tmux_version=None,
+    ),
+    WindowDisplayMessageCase(
+        test_id="no_expand_literal",
+        cmd="#{window_id}",
+        kwargs={"get_text": True, "no_expand": True},
+        expected_in_output="#{window_id}",
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(WindowDisplayMessageCase._fields),
+    WINDOW_DISPLAY_MESSAGE_CASES,
+    ids=[c.test_id for c in WINDOW_DISPLAY_MESSAGE_CASES],
+)
+def test_window_display_message_flags(
+    test_id: str,
+    cmd: str,
+    kwargs: dict[str, t.Any],
+    expected_in_output: str | None,
+    min_tmux_version: str | None,
+    session: Session,
+) -> None:
+    """Window.display_message() resolves window-scoped formats."""
+    from libtmux.common import has_gte_version
+
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    window = session.active_window
+    result = window.display_message(cmd, **kwargs)
+
+    if expected_in_output is not None:
+        assert result is not None
+        output = "\n".join(result)
+        assert expected_in_output in output
+
+
+def test_window_display_message_no_text_returns_none(
+    session: Session,
+) -> None:
+    """Without ``get_text=True`` the call renders to status line and returns None."""
+    window = session.active_window
+    result = window.display_message("hi from libtmux")
+    assert result is None
+
+
+def test_window_display_message_target_client(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+) -> None:
+    """``target_client`` is plumbed through as ``-c``."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip(
+            "display-message -p via control-mode client unreliable on tmux 3.2a"
+        )
+
+    window = session.active_window
+    with control_mode() as ctl:
+        result = window.display_message(
+            "#{window_id}", get_text=True, target_client=ctl.client_name
+        )
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0].startswith("@")
+
+
+def test_window_display_message_warns_on_tmux_error(session: Session) -> None:
+    """Tmux stderr on ``display-message`` surfaces as a :class:`UserWarning`."""
+    window = session.active_window
+    with pytest.warns(UserWarning, match="only one of -F or argument"):
+        window.display_message("x", get_text=True, format_string="#{window_id}")
+
+
+def test_window_zoomed_flag_field_toggle(session: Session) -> None:
+    """``window.window_zoomed_flag`` reflects tmux's zoom state across refresh.
+
+    ``refresh()`` repopulates the field after each ``resize-pane -Z`` toggle:
+    the flag reads ``"0"`` for an un-zoomed window and ``"1"`` once a pane
+    has been zoomed.
+    """
+    window = session.active_window
+    # Need at least two panes for zoom to mean anything.
+    window.split()
+    window.refresh()
+    assert window.window_zoomed_flag == "0"
+
+    pane = window.active_pane
+    assert pane is not None
+    pane.resize(zoom=True)
+    window.refresh()
+    assert window.window_zoomed_flag == "1"
+
+    pane.resize(zoom=True)
+    window.refresh()
+    assert window.window_zoomed_flag == "0"
+
+
+def test_window_search_panes_filter_by_id(session: Session) -> None:
+    """``Window.search_panes(filter=...)`` returns only the matching pane id."""
+    window = session.active_window
+    target = window.split()
+
+    matches = window.search_panes(filter=f"#{{m:{target.pane_id},#{{pane_id}}}}")
+    assert [p.pane_id for p in matches] == [target.pane_id]
+
+
+def test_window_search_panes_no_filter_equivalent_to_property(
+    session: Session,
+) -> None:
+    """``search_panes()`` with no filter matches the existing ``panes`` property."""
+    window = session.active_window
+    window.split()
+
+    from_property = sorted(p.pane_id for p in window.panes if p.pane_id)
+    from_method = sorted(p.pane_id for p in window.search_panes() if p.pane_id)
+    assert from_property == from_method
+
+
+WINDOW_FORMAT_FIELDS = (
+    "window_active_clients_list",
+    "window_active_sessions_list",
+    "window_activity_flag",
+    "window_bell_flag",
+    "window_bigger",
+    "window_end_flag",
+    "window_flags",
+    "window_format",
+    "window_last_flag",
+    "window_silence_flag",
+    "window_start_flag",
+    "window_visible_layout",
+)
+
+
+@pytest.mark.parametrize("field_name", WINDOW_FORMAT_FIELDS)
+def test_window_format_field_declared_and_hydrated(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Tmux's window-scope format tokens hydrate onto the typed ``Window``."""
+    window = session.active_window
+    assert field_name in window.__dataclass_fields__
+
+    window.refresh()
+    value = getattr(window, field_name)
+    assert value is None or isinstance(value, str)
+
+
+def test_window_flags_field_returns_string(session: Session) -> None:
+    """``window_flags`` summarizes window state and reads as a string.
+
+    The value is often empty for an idle window; the contract is that the
+    field hydrates as a string (never ``None``) once tmux has populated it.
+    """
+    window = session.active_window
+    window.refresh()
+    assert isinstance(window.window_flags, str)
+
+
+def test_window_refresh_raises_when_window_id_is_none(session: Session) -> None:
+    """``Window.refresh()`` raises ``ValueError`` when ``window_id`` is unset.
+
+    Mirrors the Client.refresh ``-O``-safe contract: the previous
+    ``assert isinstance(...)`` stripped under ``python -O`` and let
+    ``None`` flow into ``_refresh``. The explicit raise keeps the
+    failure mode loud regardless of optimization level.
+    """
+    from libtmux.window import Window
+
+    window = Window(server=session.server)
+    assert window.window_id is None
+
+    with pytest.raises(ValueError, match="window_id"):
+        window.refresh()

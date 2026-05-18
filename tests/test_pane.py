@@ -16,6 +16,7 @@ from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
+    from libtmux.pane import Pane
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -547,6 +548,165 @@ def test_send_keys_flags(
         assert not_expected_in_capture not in contents
 
 
+def test_send_keys_flag_only_reset_emits_clean_argv(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    """``send_keys(reset=True)`` (no positional) emits ``send-keys -R`` only.
+
+    tmux's flag-only path (``cmd-send-keys.c:223-225``) supports ``-R`` and
+    ``-N`` without any trailing key argument; ``cmd=None`` routes through
+    that path so the emitted argv has no spurious empty string.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    captured: list[tuple[str, ...]] = []
+    real_cmd = pane.cmd
+
+    def fake_cmd(cmd_name: str, *args: t.Any, **kw: t.Any) -> t.Any:
+        captured.append((cmd_name, *(str(a) for a in args)))
+        return real_cmd(cmd_name, *args, **kw)
+
+    monkeypatch.setattr(pane, "cmd", fake_cmd)
+
+    pane.send_keys(reset=True)
+
+    send_keys_calls = [c for c in captured if c[0] == "send-keys"]
+    assert send_keys_calls == [("send-keys", "-R")]
+
+
+def test_send_keys_flag_only_repeat_emits_dash_N(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    """``send_keys(repeat=3)`` flag-only emits ``send-keys -N 3`` only."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    captured: list[tuple[str, ...]] = []
+    real_cmd = pane.cmd
+
+    def fake_cmd(cmd_name: str, *args: t.Any, **kw: t.Any) -> t.Any:
+        captured.append((cmd_name, *(str(a) for a in args)))
+        return real_cmd(cmd_name, *args, **kw)
+
+    monkeypatch.setattr(pane, "cmd", fake_cmd)
+
+    pane.send_keys(repeat=3, reset=True)
+
+    send_keys_calls = [c for c in captured if c[0] == "send-keys"]
+    assert send_keys_calls == [("send-keys", "-R", "-N", "3")]
+
+
+def test_send_keys_flag_only_requires_a_flag(session: Session) -> None:
+    """``send_keys()`` with neither ``cmd`` nor a flag raises ValueError."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with pytest.raises(ValueError, match="requires at least one of"):
+        pane.send_keys()
+
+
+PANE_FORMAT_FIELDS = (
+    "pane_dead",
+    "pane_format",
+    "pane_in_mode",
+    "pane_input_off",
+    "pane_last",
+    "pane_marked",
+    "pane_marked_set",
+    "pane_mode",
+    "pane_path",
+    "pane_pipe",
+    "pane_synchronized",
+)
+
+
+@pytest.mark.parametrize("field_name", PANE_FORMAT_FIELDS)
+def test_pane_format_field_declared_and_hydrated(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Tmux's pane-scope format tokens hydrate onto the typed ``Pane`` object.
+
+    Verifies each registered ``pane_*`` token from tmux's ``format_table[]``
+    has a corresponding typed field on the ``Obj`` dataclass and that
+    ``refresh()`` populates it. Older tmux releases that don't recognize a
+    token expand it to the empty string, so the field reads as ``None``.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    # Field must be declared on the dataclass.
+    assert field_name in pane.__dataclass_fields__
+
+    pane.refresh()
+    value = getattr(pane, field_name)
+    assert value is None or isinstance(value, str)
+
+
+def test_pane_synchronized_reflects_window_state(session: Session) -> None:
+    """``pane.pane_synchronized`` flips when synchronize-panes toggles."""
+    window = session.active_window
+    window.split()
+    pane = window.active_pane
+    assert pane is not None
+
+    window.set_option("synchronize-panes", "on")
+    pane.refresh()
+    assert pane.pane_synchronized == "1"
+
+    window.set_option("synchronize-panes", "off")
+    pane.refresh()
+    assert pane.pane_synchronized == "0"
+
+
+PANE_SCOPE_OVERRIDE_FIELDS = (
+    "cursor_x",
+    "cursor_y",
+    "cursor_flag",
+    "mouse_all_flag",
+    "mouse_any_flag",
+    "mouse_button_flag",
+    "mouse_sgr_flag",
+    "mouse_standard_flag",
+    "scroll_region_lower",
+    "scroll_region_upper",
+    "alternate_saved_x",
+    "alternate_saved_y",
+    "history_bytes",
+    "history_limit",
+    "history_size",
+    "insert_flag",
+    "keypad_cursor_flag",
+    "keypad_flag",
+    "origin_flag",
+    "wrap_flag",
+)
+
+
+@pytest.mark.parametrize("field_name", PANE_SCOPE_OVERRIDE_FIELDS)
+def test_pane_scope_override_field_hydrates(
+    field_name: str,
+    session: Session,
+) -> None:
+    """Per-token scope overrides admit each token into list-panes -F.
+
+    These tokens' callbacks all dereference ``ft->wp`` in tmux's
+    ``format.c`` (verified across tmux 3.2a through master), so the value
+    must hydrate to a string on every supported tmux version. A ``None``
+    here indicates the scope gate excluded the token from the format
+    string, which is the regression class these overrides prevent.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+    pane.refresh()
+    value = getattr(pane, field_name)
+    assert value is not None, f"{field_name} should hydrate via list-panes"
+    assert isinstance(value, str)
+
+
 def test_select_pane_direction(session: Session) -> None:
     """Test Pane.select() with direction flags."""
     window = session.new_window(window_name="test_select_dir")
@@ -715,6 +875,15 @@ def test_display_message_flags(
         assert result is not None
         output = "\n".join(result)
         assert expected_in_output in output
+
+
+def test_display_message_warns_on_tmux_error(session: Session) -> None:
+    """Tmux stderr on ``display-message`` surfaces as a :class:`UserWarning`."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    with pytest.warns(UserWarning, match="only one of -F or argument"):
+        pane.display_message("x", get_text=True, format_string="#{pane_id}")
 
 
 def test_split_percentage(session: Session) -> None:
@@ -1280,3 +1449,127 @@ def test_clear_history(session: Session) -> None:
     history = pane.capture_pane(start=-100)
     # After clearing, scrollback history should be much shorter
     assert len(history) <= 30  # reasonable bound after clear
+
+
+def test_pane_reset_clears_history_and_sends_reset(session: Session) -> None:
+    """Pane.reset() runs both ``send-keys -R`` and ``clear-history`` (#650).
+
+    Populates scrollback, calls ``reset()``, then verifies the markers are
+    gone — proving ``clear-history`` actually ran.
+    """
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_reset_650",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    # Populate scrollback.
+    for n in range(5):
+        pane.send_keys(f"echo reset_marker_{n}", enter=True)
+    retry_until(
+        lambda: "reset_marker_4" in "\n".join(pane.capture_pane()),
+        3,
+        raises=True,
+    )
+
+    # Sanity-check that the history is non-trivial pre-reset.
+    pre = pane.capture_pane(start=-100)
+    assert any("reset_marker_" in line for line in pre)
+
+    result = pane.reset()
+    assert result is pane
+
+    # After reset, scrollback should be empty — the old code left the markers
+    # behind because clear-history never executed.
+    post = pane.capture_pane(start=-100)
+    assert not any("reset_marker_" in line for line in post)
+
+
+def test_pane_reset_targets_non_active_pane(session: Session) -> None:
+    """Pane.reset() clears the target pane, not tmux's cmdq default.
+
+    Regresses the bundled-IPC fix for the race-and-misroute combination:
+    the previous two-call form raced under busy pane writers, and a naïve
+    one-call form (``send-keys -R ; clear-history`` with one ``-t``) would
+    route ``clear-history`` to tmux's default pane because the ``;``
+    separator doesn't propagate ``-t`` across subcommands. The fix passes
+    ``-t`` on both subcommands, so reset() must clear the *target* pane's
+    scrollback while leaving any active sibling pane untouched.
+    """
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="test_reset_targets",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    # `attach=False` keeps the original pane active; the newly-split pane
+    # is the non-active one. Call reset() on the non-active pane so a
+    # missing -t on clear-history would route to the active sibling
+    # instead.
+    active_sibling = window.active_pane
+    assert active_sibling is not None
+    target = window.split(
+        shell=f"{env} PS1='$ ' sh",
+        attach=False,
+    )
+    assert target.pane_id != active_sibling.pane_id
+
+    window.refresh()
+    assert window.active_pane is not None
+    assert window.active_pane.pane_id == active_sibling.pane_id
+
+    # Push enough output through both panes to accumulate scrollback.
+    # `seq 1 200` scrolls past the default 24-row visible region.
+    def _history_size(pane: Pane) -> int:
+        line = pane.cmd("display-message", "-p", "#{history_size}").stdout[0]
+        return int(line)
+
+    retry_until(
+        lambda: "$" in "\n".join(active_sibling.capture_pane()),
+        2,
+        raises=True,
+    )
+    active_sibling.send_keys("seq 1 200", enter=True)
+    retry_until(lambda: _history_size(active_sibling) > 0, 3, raises=True)
+
+    retry_until(lambda: "$" in "\n".join(target.capture_pane()), 2, raises=True)
+    target.send_keys("seq 1 200", enter=True)
+    retry_until(lambda: _history_size(target) > 0, 3, raises=True)
+
+    target_pre = _history_size(target)
+    sibling_pre = _history_size(active_sibling)
+    assert target_pre > 0
+    assert sibling_pre > 0
+
+    target.reset()
+
+    # Target pane: history cleared.
+    assert _history_size(target) == 0
+    # Active sibling pane: untouched. (Under a missing-target clear-history,
+    # this would have been wiped because it is the active pane.)
+    assert _history_size(active_sibling) == sibling_pre
+
+
+def test_pane_refresh_raises_when_pane_id_is_none(session: Session) -> None:
+    """``Pane.refresh()`` raises ``ValueError`` when ``pane_id`` is unset.
+
+    Mirrors the Client.refresh ``-O``-safe contract: the previous
+    ``assert isinstance(...)`` stripped under ``python -O`` and let
+    ``None`` flow into ``_refresh``, surfacing as a confusing downstream
+    error. The explicit raise keeps the failure mode loud regardless of
+    optimization level.
+    """
+    from libtmux.pane import Pane
+
+    pane = Pane(server=session.server)
+    assert pane.pane_id is None
+
+    with pytest.raises(ValueError, match="pane_id"):
+        pane.refresh()

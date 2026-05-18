@@ -15,7 +15,7 @@ import typing as t
 import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
+from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
     OptionScope,
@@ -148,8 +148,17 @@ class Window(
             self.kill()
 
     def refresh(self) -> None:
-        """Refresh window attributes from tmux."""
-        assert isinstance(self.window_id, str)
+        """Refresh window attributes from tmux.
+
+        Raises
+        ------
+        ValueError
+            When ``window_id`` is unset. Surfaces a clear error under
+            ``python -O``, where an ``assert`` would be stripped.
+        """
+        if self.window_id is None:
+            msg = "Window must have a window_id to refresh"
+            raise ValueError(msg)
         return super()._refresh(
             obj_key="window_id",
             obj_id=self.window_id,
@@ -191,6 +200,62 @@ class Window(
                 list_cmd="list-panes",
                 list_extra_args=["-t", str(self.window_id)],
                 server=self.server,
+            )
+            if obj.get("window_id") == self.window_id
+        ]
+
+        return QueryList(panes)
+
+    def search_panes(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Pane]:
+        """Panes in this window, optionally filtered by tmux.
+
+        Like :attr:`Window.panes` but with a ``filter`` kwarg passed to
+        ``$ tmux list-panes -t <window> -f <filter>``.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag).
+
+            .. warning::
+
+                tmux silently expands a malformed filter (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                filter syntax against the FORMATS section of ``tmux(1)``.
+
+            .. versionadded:: 0.57
+
+        See Also
+        --------
+        :attr:`Window.panes` : unfiltered :class:`QueryList` of every
+            pane in this window (Python-side ``.filter()`` runs against
+            this).
+        :ref:`native-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
+
+        Examples
+        --------
+        >>> target_pane = window.split()
+        >>> matches = window.search_panes(
+        ...     filter=f'#{{m:{target_pane.pane_id},#{{pane_id}}}}'
+        ... )
+        >>> [p.pane_id for p in matches] == [target_pane.pane_id]
+        True
+        """
+        panes: list[Pane] = [
+            Pane(server=self.server, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-panes",
+                list_extra_args=["-t", str(self.window_id)],
+                server=self.server,
+                filter=filter,
             )
             if obj.get("window_id") == self.window_id
         ]
@@ -262,8 +327,7 @@ class Window(
         else:
             proc = self.cmd("select-pane", target=target_pane)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-pane")
 
         return self.active_pane
 
@@ -404,8 +468,7 @@ class Window(
 
         proc = self.cmd("resize-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "resize-window")
 
         self.refresh()
         return self
@@ -460,8 +523,7 @@ class Window(
 
         proc = self.cmd("last-pane", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "last-pane")
 
         return self.active_pane
 
@@ -549,8 +611,7 @@ class Window(
 
         proc = self.cmd(*cmd)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-layout")
 
         return self
 
@@ -564,8 +625,7 @@ class Window(
         """
         proc = self.cmd("next-layout")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "next-layout")
 
         return self
 
@@ -579,8 +639,7 @@ class Window(
         """
         proc = self.cmd("previous-layout")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "previous-layout")
 
         return self
 
@@ -647,8 +706,7 @@ class Window(
 
         proc = self.server.cmd("link-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "link-window")
 
     def unlink(self, *, kill_if_last: bool | None = None) -> None:
         """Unlink this window from the current session via ``$ tmux unlink-window``.
@@ -673,8 +731,7 @@ class Window(
 
         proc = self.cmd("unlink-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "unlink-window")
 
     def rotate(
         self,
@@ -719,8 +776,7 @@ class Window(
 
         proc = self.cmd("rotate-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "rotate-window")
 
         return self
 
@@ -769,8 +825,7 @@ class Window(
 
         proc = self.cmd("respawn-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "respawn-window")
 
     def swap(
         self,
@@ -809,12 +864,180 @@ class Window(
 
         proc = self.cmd("swap-window", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "swap-window")
 
         self.refresh()
         if isinstance(target, Window):
             target.refresh()
+
+    @t.overload
+    def display_message(
+        self,
+        cmd: str,
+        get_text: t.Literal[True],
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+    ) -> list[str]: ...
+
+    @t.overload
+    def display_message(
+        self,
+        cmd: str,
+        get_text: t.Literal[False] = ...,
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+    ) -> None: ...
+
+    def display_message(
+        self,
+        cmd: str,
+        get_text: bool = False,
+        *,
+        format_string: str | None = None,
+        all_formats: bool | None = None,
+        verbose: bool | None = None,
+        no_expand: bool | None = None,
+        target_client: str | None = None,
+        delay: int | None = None,
+        notify: bool | None = None,
+    ) -> list[str] | None:
+        """Display message at window scope via ``$ tmux display-message``.
+
+        Like :meth:`Pane.display_message` but auto-injects ``-t @<window-id>``
+        instead of a pane id. Window-scoped format reads such as
+        ``#{window_zoomed_flag}`` or ``#{window_active_clients}`` no longer
+        require dropping to :meth:`Window.cmd`.
+
+        Parameters
+        ----------
+        cmd : str
+            Format string to display or evaluate (e.g.
+            ``"#{window_zoomed_flag}"``).
+
+            .. versionadded:: 0.57
+        get_text : bool, optional
+            Return tmux's stdout instead of rendering to the status line
+            (``-p`` flag).
+
+            .. versionadded:: 0.57
+        format_string : str, optional
+            Alternative format template (``-F`` flag).
+
+            .. versionadded:: 0.57
+        all_formats : bool, optional
+            List all format variables (``-a`` flag).
+
+            .. versionadded:: 0.57
+        verbose : bool, optional
+            Show format variable types (``-v`` flag).
+
+            .. versionadded:: 0.57
+        no_expand : bool, optional
+            Output the literal string without format expansion (``-l`` flag).
+            Requires tmux 3.4+.
+
+            .. versionadded:: 0.57
+        target_client : str, optional
+            Target client (``-c`` flag).
+
+            .. versionadded:: 0.57
+        delay : int, optional
+            Display time in milliseconds (``-d`` flag).
+
+            .. versionadded:: 0.57
+        notify : bool, optional
+            Do not wait for input (``-N`` flag).
+
+            .. versionadded:: 0.57
+
+        Returns
+        -------
+        list[str] | None
+            Message output if ``get_text`` is True, otherwise ``None``.
+
+        Examples
+        --------
+        Read the window's id format:
+
+        >>> result = window.display_message("#{window_id}", get_text=True)
+        >>> result[0].startswith("@")
+        True
+
+        Check zoom state (a common gap-#670 use case):
+
+        >>> result = window.display_message(
+        ...     "#{window_zoomed_flag}", get_text=True
+        ... )
+        >>> result[0] in {"0", "1"}
+        True
+
+        Notes
+        -----
+        Stderr from tmux is reported via :func:`warnings.warn`, not raised.
+        Callers that want to escalate to an exception can wrap the call in
+        :func:`warnings.catch_warnings` with ``filterwarnings("error")``.
+
+        .. versionchanged:: 0.57
+           Reports stderr via :func:`warnings.warn` instead of raising.
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if get_text:
+            tmux_args += ("-p",)
+
+        if all_formats:
+            tmux_args += ("-a",)
+
+        if verbose:
+            tmux_args += ("-v",)
+
+        if no_expand:
+            if has_gte_version("3.4", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "no_expand requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if notify:
+            tmux_args += ("-N",)
+
+        if target_client is not None:
+            tmux_args += ("-c", target_client)
+
+        if delay is not None:
+            tmux_args += ("-d", str(delay))
+
+        if format_string is not None:
+            tmux_args += ("-F", format_string)
+
+        if cmd:
+            tmux_args += (cmd,)
+
+        proc = self.cmd("display-message", *tmux_args)
+        if proc.stderr:
+            warnings.warn(
+                f"display-message: {'; '.join(proc.stderr)}",
+                stacklevel=2,
+            )
+
+        if get_text:
+            return proc.stdout
+
+        return None
 
     def rename_window(self, new_name: str) -> Window:
         """Rename window.
@@ -839,8 +1062,7 @@ class Window(
         lex.whitespace_split = False
 
         proc = self.cmd("rename-window", new_name)
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "rename-window")
 
         self.window_name = new_name
         self.refresh()
@@ -906,8 +1128,7 @@ class Window(
             *flags,
         )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "kill-window")
 
         msg = "other windows killed" if all_except else "window killed"
         extra: dict[str, str] = {
@@ -998,8 +1219,7 @@ class Window(
             target=f"{session}:{destination}",
         )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "move-window")
 
         self.refresh()
 
@@ -1088,8 +1308,7 @@ class Window(
         """
         proc = self.cmd("select-window")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-window")
 
         self.refresh()
 

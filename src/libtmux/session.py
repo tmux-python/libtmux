@@ -13,7 +13,7 @@ import pathlib
 import typing as t
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import tmux_cmd
+from libtmux.common import raise_if_stderr, tmux_cmd
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
@@ -131,8 +131,17 @@ class Session(
             self.kill()
 
     def refresh(self) -> None:
-        """Refresh session attributes from tmux."""
-        assert isinstance(self.session_id, str)
+        """Refresh session attributes from tmux.
+
+        Raises
+        ------
+        ValueError
+            When ``session_id`` is unset. Surfaces a clear error under
+            ``python -O``, where an ``assert`` would be stripped.
+        """
+        if self.session_id is None:
+            msg = "Session must have a session_id to refresh"
+            raise ValueError(msg)
         return super()._refresh(
             obj_key="session_id",
             obj_id=self.session_id,
@@ -187,6 +196,117 @@ class Session(
                 list_cmd="list-panes",
                 list_extra_args=["-s", "-t", str(self.session_id)],
                 server=self.server,
+            )
+            if obj.get("session_id") == self.session_id
+        ]
+
+        return QueryList(panes)
+
+    def search_windows(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Window]:
+        """Windows in this session, optionally filtered by tmux.
+
+        Like :attr:`Session.windows` but with a ``filter`` kwarg passed to
+        ``$ tmux list-windows -t <session> -f <filter>``.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag).
+
+            .. warning::
+
+                tmux silently expands a malformed filter (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                filter syntax against the FORMATS section of ``tmux(1)``.
+
+            .. versionadded:: 0.57
+
+        See Also
+        --------
+        :attr:`Session.windows` : unfiltered :class:`QueryList` of every
+            window in this session (Python-side ``.filter()`` runs
+            against this).
+        :ref:`native-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
+
+        Examples
+        --------
+        >>> _ = session.new_window(window_name='gap7s_target')
+        >>> _ = session.new_window(window_name='other_window')
+        >>> matches = session.search_windows(filter='#{m:gap7s_*,#{window_name}}')
+        >>> [w.window_name for w in matches]
+        ['gap7s_target']
+        """
+        windows: list[Window] = [
+            Window(server=self.server, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-windows",
+                list_extra_args=["-t", str(self.session_id)],
+                server=self.server,
+                filter=filter,
+            )
+            if obj.get("session_id") == self.session_id
+        ]
+
+        return QueryList(windows)
+
+    def search_panes(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Pane]:
+        """Panes in this session, optionally filtered by tmux.
+
+        Like :attr:`Session.panes` but with a ``filter`` kwarg passed to
+        ``$ tmux list-panes -s -t <session> -f <filter>``.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag).
+
+            .. warning::
+
+                tmux silently expands a malformed filter (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                filter syntax against the FORMATS section of ``tmux(1)``.
+
+            .. versionadded:: 0.57
+
+        See Also
+        --------
+        :attr:`Session.panes` : unfiltered :class:`QueryList` of every
+            pane in this session (Python-side ``.filter()`` runs against
+            this).
+        :ref:`native-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
+
+        Examples
+        --------
+        >>> target_pane = session.active_window.split()
+        >>> matches = session.search_panes(
+        ...     filter=f'#{{m:{target_pane.pane_id},#{{pane_id}}}}'
+        ... )
+        >>> [p.pane_id for p in matches] == [target_pane.pane_id]
+        True
+        """
+        panes: list[Pane] = [
+            Pane(server=self.server, **obj)
+            for obj in fetch_objs(
+                list_cmd="list-panes",
+                list_extra_args=["-s", "-t", str(self.session_id)],
+                server=self.server,
+                filter=filter,
             )
             if obj.get("session_id") == self.session_id
         ]
@@ -252,8 +372,7 @@ class Session(
         """
         proc = self.cmd("lock-session")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "lock-session")
 
     def detach_client(
         self,
@@ -292,8 +411,7 @@ class Session(
 
         proc = self.server.cmd("detach-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "detach-client")
 
     def last_window(self) -> Window:
         """Select the last (previously selected) window.
@@ -314,8 +432,7 @@ class Session(
         """
         proc = self.cmd("last-window")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "last-window")
 
         return self.active_window
 
@@ -337,8 +454,7 @@ class Session(
         """
         proc = self.cmd("next-window")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "next-window")
 
         return self.active_window
 
@@ -360,8 +476,7 @@ class Session(
         """
         proc = self.cmd("previous-window")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "previous-window")
 
         return self.active_window
 
@@ -391,8 +506,7 @@ class Session(
 
         proc = self.cmd("select-window", target=target)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "select-window")
 
         return self.active_window
 
@@ -446,8 +560,7 @@ class Session(
             *flags,
         )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "attach-session")
 
         return self
 
@@ -512,8 +625,7 @@ class Session(
             *flags,
         )
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "kill-session")
 
         msg = "other sessions killed" if all_except else "session killed"
         extra: dict[str, str] = {
@@ -534,8 +646,7 @@ class Session(
         """
         proc = self.cmd("switch-client")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "switch-client")
 
         return self
 
@@ -555,8 +666,7 @@ class Session(
 
         proc = self.cmd("rename-session", new_name)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "rename-session")
 
         self.refresh()
 
@@ -708,8 +818,7 @@ class Session(
 
         cmd = self.cmd("new-window", *window_args, target=target)
 
-        if cmd.stderr:
-            raise exc.LibTmuxException(cmd.stderr)
+        raise_if_stderr(cmd, "new-window")
 
         window_output = cmd.stdout[0]
 
@@ -761,8 +870,7 @@ class Session(
 
         proc = self.cmd("kill-window", target=target)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "kill-window")
 
         extra: dict[str, str] = {
             "tmux_subcommand": "kill-window",

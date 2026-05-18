@@ -17,7 +17,8 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.query_list import QueryList
-from libtmux.common import has_gte_version, tmux_cmd
+from libtmux.client import Client
+from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -45,6 +46,39 @@ if t.TYPE_CHECKING:
     DashLiteral: TypeAlias = t.Literal["-"]
 
 logger = logging.getLogger(__name__)
+
+
+def _is_daemon_not_up_error(stderr_text: str) -> bool:
+    """Return True if the error indicates the tmux server is not running.
+
+    tmux signals this in two ways:
+    1. "no server running" (socket exists but no daemon is listening)
+    2. "error connecting to ... (No such file or directory)" (socket file is missing)
+    """
+    return "no server running" in stderr_text or (
+        "error connecting to" in stderr_text
+        and "No such file or directory" in stderr_text
+    )
+
+
+def _fetch_or_empty(
+    server: Server,
+    list_cmd: str,
+    **kwargs: t.Any,
+) -> list[dict[str, t.Any]]:
+    """Wrap :func:`fetch_objs`: treat a not-yet-started server as empty.
+
+    A fresh :class:`~libtmux.Server` can be introspected via
+    :attr:`Server.sessions`, :attr:`Server.windows`, etc. before the
+    daemon is up. Other tmux errors, such as socket permission
+    failures, still propagate.
+    """
+    try:
+        return fetch_objs(server=server, list_cmd=list_cmd, **kwargs)  # type: ignore[arg-type]
+    except exc.LibTmuxException as e:
+        if e.args and _is_daemon_not_up_error(str(e.args[0])):
+            return []
+        raise
 
 
 class Server(
@@ -392,10 +426,7 @@ class Server(
         proc = self.cmd("kill-server")
         if proc.stderr:
             stderr_text = " ".join(str(line) for line in proc.stderr)
-            if (
-                "no server running" in stderr_text
-                or "error connecting to" in stderr_text
-            ):
+            if _is_daemon_not_up_error(stderr_text):
                 return
             raise exc.LibTmuxException(proc.stderr)
         logger.info("server killed", extra={"tmux_subcommand": "kill-server"})
@@ -419,8 +450,7 @@ class Server(
         """
         proc = self.cmd("kill-session", target=target_session)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "kill-session")
 
         return self
 
@@ -432,8 +462,10 @@ class Server(
         delay: str | None = None,
         as_tmux_command: bool | None = None,
         target_pane: str | None = None,
+        cwd: StrPath | None = None,
+        show_stderr: bool | None = None,
     ) -> list[str] | None:
-        """Execute a shell command via ``$ tmux run-shell``.
+        r"""Execute a shell command via ``$ tmux run-shell``.
 
         Parameters
         ----------
@@ -448,6 +480,25 @@ class Server(
             (``-C`` flag).
         target_pane : str, optional
             Target pane for output (``-t`` flag).
+        cwd : str or PathLike, optional
+            Start directory for the shell command (``-c`` flag). When
+            omitted, tmux uses the target client's current working
+            directory. Requires tmux 3.4+; on older tmux a warning is
+            emitted and the kwarg is ignored.
+
+            Note: tmux's ``-c`` is a *start directory*, not subprocess
+            semantics. If ``chdir(cwd)`` fails, tmux falls back to the
+            user's home directory, then to ``/``, rather than raising
+            — unlike Python's ``subprocess.Popen(cwd=)`` which errors
+            on a failed chdir.
+
+            .. versionadded:: 0.57
+        show_stderr : bool, optional
+            Combine the command's stderr into the captured output stream
+            (``-E`` flag, maps to ``JOB_SHOWSTDERR``). Requires tmux 3.6+;
+            on older tmux a warning is emitted and the kwarg is ignored.
+
+            .. versionadded:: 0.57
 
         Returns
         -------
@@ -475,12 +526,29 @@ class Server(
         if target_pane is not None:
             tmux_args += ("-t", target_pane)
 
+        if cwd is not None:
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-c", str(cwd))
+            else:
+                warnings.warn(
+                    "cwd requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if show_stderr:
+            if has_gte_version("3.6", tmux_bin=self.tmux_bin):
+                tmux_args += ("-E",)
+            else:
+                warnings.warn(
+                    "show_stderr requires tmux 3.6+, ignoring",
+                    stacklevel=2,
+                )
+
         tmux_args += (command,)
 
         proc = self.cmd("run-shell", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "run-shell")
 
         if background:
             return None
@@ -528,8 +596,7 @@ class Server(
 
         proc = self.cmd("wait-for", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "wait-for")
 
     def bind_key(
         self,
@@ -575,8 +642,7 @@ class Server(
 
         proc = self.cmd("bind-key", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "bind-key")
 
     def unbind_key(
         self,
@@ -620,8 +686,7 @@ class Server(
 
         proc = self.cmd("unbind-key", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "unbind-key")
 
     def list_keys(
         self,
@@ -653,8 +718,7 @@ class Server(
 
         proc = self.cmd("list-keys", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "list-keys")
 
         return proc.stdout
 
@@ -684,8 +748,7 @@ class Server(
 
         proc = self.cmd("list-commands", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "list-commands")
 
         return proc.stdout
 
@@ -699,8 +762,7 @@ class Server(
         """
         proc = self.cmd("lock-server")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "lock-server")
 
     def server_access(
         self,
@@ -771,8 +833,7 @@ class Server(
 
         proc = self.cmd("server-access", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "server-access")
 
         if list_access:
             return proc.stdout
@@ -800,8 +861,7 @@ class Server(
 
         proc = self.cmd("refresh-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "refresh-client")
 
     def suspend_client(self, *, target_client: str | None = None) -> None:
         """Suspend a client via ``$ tmux suspend-client``.
@@ -825,8 +885,7 @@ class Server(
 
         proc = self.cmd("suspend-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "suspend-client")
 
     def lock_client(self, *, target_client: str | None = None) -> None:
         """Lock a client via ``$ tmux lock-client``.
@@ -850,8 +909,7 @@ class Server(
 
         proc = self.cmd("lock-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "lock-client")
 
     def detach_client(
         self,
@@ -900,8 +958,7 @@ class Server(
 
         proc = self.cmd("detach-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "detach-client")
 
     def detach_all_clients(
         self,
@@ -948,8 +1005,7 @@ class Server(
 
         proc = self.cmd("detach-client", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "detach-client")
 
     def confirm_before(
         self,
@@ -1035,8 +1091,7 @@ class Server(
 
         proc = self.cmd("confirm-before", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "confirm-before")
 
     def command_prompt(
         self,
@@ -1168,8 +1223,7 @@ class Server(
 
         proc = self.cmd("command-prompt", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "command-prompt")
 
     def display_menu(
         self,
@@ -1321,8 +1375,7 @@ class Server(
 
         proc = self.cmd("display-menu", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "display-menu")
 
     def start_server(self) -> None:
         """Start the tmux server via ``$ tmux start-server``.
@@ -1334,8 +1387,7 @@ class Server(
         """
         proc = self.cmd("start-server")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "start-server")
 
     def show_messages(
         self,
@@ -1390,10 +1442,184 @@ class Server(
 
         proc = self.cmd("show-messages", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "show-messages")
 
         return proc.stdout
+
+    @t.overload
+    def display_message(
+        self,
+        cmd: str,
+        get_text: t.Literal[True],
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+    ) -> list[str]: ...
+
+    @t.overload
+    def display_message(
+        self,
+        cmd: str,
+        get_text: t.Literal[False] = ...,
+        *,
+        format_string: str | None = ...,
+        all_formats: bool | None = ...,
+        verbose: bool | None = ...,
+        no_expand: bool | None = ...,
+        target_client: str | None = ...,
+        delay: int | None = ...,
+        notify: bool | None = ...,
+    ) -> None: ...
+
+    def display_message(
+        self,
+        cmd: str,
+        get_text: bool = False,
+        *,
+        format_string: str | None = None,
+        all_formats: bool | None = None,
+        verbose: bool | None = None,
+        no_expand: bool | None = None,
+        target_client: str | None = None,
+        delay: int | None = None,
+        notify: bool | None = None,
+    ) -> list[str] | None:
+        """Display message at server scope via ``$ tmux display-message``.
+
+        Like :meth:`Pane.display_message` but without ``-t <pane-id>`` injection.
+        tmux's ``cmd-display-message`` entry uses ``CMD_FIND_CANFAIL`` so the
+        target is optional; server-scoped format reads (``#{version}``,
+        ``#{socket_path}``, ``#{pid}``) resolve without a specific pane handle.
+
+        With no client attached and ``target_client`` omitted, the status-line
+        path (``get_text=False``) issues a ``no current client`` warning. Use
+        ``get_text=True`` for headless reads, or pair with
+        :class:`~libtmux._internal.control_mode.ControlMode`.
+
+        Notes
+        -----
+        Stderr from tmux is reported via :func:`warnings.warn`, not raised.
+        tmux uses stderr for both genuine errors and informational messages,
+        and the right escalation depends on tmux version and call shape.
+        Callers that want to escalate to an exception can wrap the call in
+        :func:`warnings.catch_warnings` with ``filterwarnings("error")``.
+
+        .. versionchanged:: 0.57
+           Reports stderr via :func:`warnings.warn` instead of raising.
+
+        Parameters
+        ----------
+        cmd : str
+            Format string to display or evaluate (e.g. ``"#{version}"``).
+            Pass ``""`` together with ``all_formats=True`` to dump every
+            variable.
+
+            .. versionadded:: 0.57
+        get_text : bool, optional
+            Return tmux's stdout instead of rendering to the status line
+            (``-p`` flag).
+
+            .. versionadded:: 0.57
+        format_string : str, optional
+            Alternative format template (``-F`` flag).
+
+            .. versionadded:: 0.57
+        all_formats : bool, optional
+            List all format variables (``-a`` flag).
+
+            .. versionadded:: 0.57
+        verbose : bool, optional
+            Show format variable types (``-v`` flag).
+
+            .. versionadded:: 0.57
+        no_expand : bool, optional
+            Output the literal string without format expansion (``-l`` flag).
+            Requires tmux 3.4+.
+
+            .. versionadded:: 0.57
+        target_client : str, optional
+            Target client (``-c`` flag).
+
+            .. versionadded:: 0.57
+        delay : int, optional
+            Display time in milliseconds (``-d`` flag).
+
+            .. versionadded:: 0.57
+        notify : bool, optional
+            Do not wait for input (``-N`` flag).
+
+            .. versionadded:: 0.57
+
+        Returns
+        -------
+        list[str] | None
+            Message output if ``get_text`` is True, otherwise ``None``.
+
+        Examples
+        --------
+        Read tmux version without needing a pane handle:
+
+        >>> result = server.display_message("#{version}", get_text=True)
+        >>> isinstance(result, list) and len(result) == 1
+        True
+
+        Dump every format variable:
+
+        >>> result = server.display_message("", get_text=True, all_formats=True)
+        >>> any("session_name=" in line for line in result)
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if get_text:
+            tmux_args += ("-p",)
+
+        if all_formats:
+            tmux_args += ("-a",)
+
+        if verbose:
+            tmux_args += ("-v",)
+
+        if no_expand:
+            if has_gte_version("3.4", tmux_bin=self.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "no_expand requires tmux 3.4+, ignoring",
+                    stacklevel=2,
+                )
+
+        if notify:
+            tmux_args += ("-N",)
+
+        if target_client is not None:
+            tmux_args += ("-c", target_client)
+
+        if delay is not None:
+            tmux_args += ("-d", str(delay))
+
+        if format_string is not None:
+            tmux_args += ("-F", format_string)
+
+        if cmd:
+            tmux_args += (cmd,)
+
+        proc = self.cmd("display-message", *tmux_args)
+        if proc.stderr:
+            warnings.warn(
+                f"display-message: {'; '.join(proc.stderr)}",
+                stacklevel=2,
+            )
+
+        if get_text:
+            return proc.stdout
+
+        return None
 
     def show_prompt_history(
         self,
@@ -1434,8 +1660,7 @@ class Server(
 
         proc = self.cmd("show-prompt-history", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "show-prompt-history")
 
         return proc.stdout
 
@@ -1469,8 +1694,7 @@ class Server(
 
         proc = self.cmd("clear-prompt-history", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "clear-prompt-history")
 
     def set_buffer(
         self,
@@ -1508,8 +1732,7 @@ class Server(
 
         proc = self.cmd("set-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "set-buffer")
 
     def show_buffer(self, *, buffer_name: str | None = None) -> str:
         """Show content of a paste buffer via ``$ tmux show-buffer``.
@@ -1537,8 +1760,7 @@ class Server(
 
         proc = self.cmd("show-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "show-buffer")
 
         return "\n".join(proc.stdout)
 
@@ -1563,8 +1785,7 @@ class Server(
 
         proc = self.cmd("delete-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "delete-buffer")
 
     def save_buffer(
         self,
@@ -1603,8 +1824,7 @@ class Server(
 
         proc = self.cmd("save-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "save-buffer")
 
     def load_buffer(
         self,
@@ -1637,28 +1857,88 @@ class Server(
 
         proc = self.cmd("load-buffer", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "load-buffer")
 
-    def list_buffers(self) -> list[str]:
+    def list_buffers(
+        self,
+        *,
+        format_string: str | None = None,
+        filter: str | None = None,  # noqa: A002
+    ) -> list[str]:
         """List paste buffers via ``$ tmux list-buffers``.
+
+        Without arguments returns tmux's default template
+        (``name: N bytes: "sample"``) — kept for backward compatibility.
+        Pass *format_string* to request a specific tmux format, or *filter*
+        to have tmux return only matching buffers.
+
+        Parameters
+        ----------
+        format_string : str, optional
+            Output template (``-F`` flag). Example: ``"#{buffer_name}"`` for
+            raw names only.
+
+            .. versionadded:: 0.57
+        filter : str, optional
+            Filter expression evaluated by tmux (``-f`` flag). Buffers for
+            which the expanded expression is false are omitted. Example:
+            ``"#{m:libtmux_mcp_*,#{buffer_name}}"``.
+
+            Note: this kwarg shadows the Python builtin ``filter`` by design —
+            it mirrors tmux's own flag name (``-f filter``) for grep-friendly
+            symmetry between the wrapper and the tmux manual.
+
+            .. warning::
+
+                tmux silently expands a malformed filter (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                filter syntax against the FORMATS section of ``tmux(1)``.
+
+            .. versionadded:: 0.57
 
         Returns
         -------
         list[str]
-            Raw output lines from list-buffers.
+            Raw output lines.
 
         Examples
         --------
+        Default template (backward-compatible):
+
         >>> server.set_buffer('buf_data')
         >>> result = server.list_buffers()
         >>> len(result) >= 1
         True
-        """
-        proc = self.cmd("list-buffers")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        Project just the names:
+
+        >>> server.set_buffer('hello', buffer_name='gap6_demo')
+        >>> 'gap6_demo' in server.list_buffers(format_string='#{buffer_name}')
+        True
+
+        Filter via tmux:
+
+        >>> matches = server.list_buffers(
+        ...     format_string='#{buffer_name}',
+        ...     filter='#{m:gap6_*,#{buffer_name}}',
+        ... )
+        >>> 'gap6_demo' in matches
+        True
+        """
+        tmux_args: tuple[str, ...] = ()
+
+        if format_string is not None:
+            tmux_args += ("-F", format_string)
+
+        if filter is not None:
+            tmux_args += ("-f", filter)
+
+        proc = self.cmd("list-buffers", *tmux_args)
+
+        raise_if_stderr(proc, "list-buffers")
 
         return proc.stdout
 
@@ -1707,8 +1987,7 @@ class Server(
 
         proc = self.cmd("if-shell", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "if-shell")
 
     def source_file(
         self,
@@ -1753,8 +2032,7 @@ class Server(
 
         proc = self.cmd("source-file", *tmux_args)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "source-file")
 
     def list_clients(self) -> list[str]:
         """List connected clients via ``$ tmux list-clients``.
@@ -1771,8 +2049,7 @@ class Server(
         """
         proc = self.cmd("list-clients")
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "list-clients")
 
         return proc.stdout
 
@@ -1792,8 +2069,7 @@ class Server(
 
         proc = self.cmd("switch-client", target=target_session)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "switch-client")
 
     def attach_session(self, target_session: str | None = None) -> None:
         """Attach tmux session.
@@ -1810,8 +2086,7 @@ class Server(
         session_check_name(target_session)
         proc = self.cmd("attach-session", target=target_session)
 
-        if proc.stderr:
-            raise exc.LibTmuxException(proc.stderr)
+        raise_if_stderr(proc, "attach-session")
 
     def new_session(
         self,
@@ -1919,8 +2194,7 @@ class Server(
             if self.has_session(session_name):
                 if kill_session:
                     proc = self.cmd("kill-session", target=session_name)
-                    if proc.stderr:
-                        raise exc.LibTmuxException(proc.stderr)
+                    raise_if_stderr(proc, "kill-session")
                     logger.info(
                         "existing session killed",
                         extra={
@@ -1947,7 +2221,8 @@ class Server(
             del os.environ["TMUX"]
 
         try:
-            _fields, format_string = get_output_format()
+            tmux_version = str(get_version(tmux_bin=self.tmux_bin))
+            _fields, format_string = get_output_format("list-sessions", tmux_version)
 
             tmux_args: tuple[str | int, ...] = (
                 "-P",
@@ -1991,8 +2266,7 @@ class Server(
 
             proc = self.cmd("new-session", *tmux_args)
 
-            if proc.stderr:
-                raise exc.LibTmuxException(proc.stderr)
+            raise_if_stderr(proc, "new-session")
 
             session_stdout = proc.stdout[0]
 
@@ -2000,7 +2274,7 @@ class Server(
             if env:
                 os.environ["TMUX"] = env
 
-        session_data = parse_output(session_stdout)
+        session_data = parse_output(session_stdout, "list-sessions", tmux_version)
 
         session = Session(server=self, **session_data)
 
@@ -2023,18 +2297,20 @@ class Server(
         Can be accessed via
         :meth:`.sessions.get() <libtmux._internal.query_list.QueryList.get()>` and
         :meth:`.sessions.filter() <libtmux._internal.query_list.QueryList.filter()>`
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            When tmux's ``list-sessions`` fails for a reason other than
+            a not-yet-started server, such as socket permission errors or
+            unsupported tmux flags. A server with no sessions, or a server
+            before its daemon has started, returns an empty
+            :class:`~libtmux._internal.query_list.QueryList`.
         """
-        sessions: list[Session] = []
-
-        try:
-            for obj in fetch_objs(
-                list_cmd="list-sessions",
-                server=self,
-            ):
-                sessions.append(Session(server=self, **obj))  # noqa: PERF401
-        except Exception:
-            pass
-
+        sessions: list[Session] = [
+            Session(server=self, **obj)
+            for obj in _fetch_or_empty(server=self, list_cmd="list-sessions")
+        ]
         return QueryList(sessions)
 
     @property
@@ -2047,10 +2323,10 @@ class Server(
         """
         windows: list[Window] = [
             Window(server=self, **obj)
-            for obj in fetch_objs(
+            for obj in _fetch_or_empty(
+                server=self,
                 list_cmd="list-windows",
                 list_extra_args=("-a",),
-                server=self,
             )
         ]
 
@@ -2066,10 +2342,210 @@ class Server(
         """
         panes: list[Pane] = [
             Pane(server=self, **obj)
-            for obj in fetch_objs(
+            for obj in _fetch_or_empty(
+                server=self,
                 list_cmd="list-panes",
                 list_extra_args=("-a",),
+            )
+        ]
+
+        return QueryList(panes)
+
+    @property
+    def clients(self) -> QueryList[Client]:
+        """Clients attached to this tmux server.
+
+        Each attached terminal is a separate :class:`Client`. ``server.clients``
+        returns the typed view; ``client.client_readonly``, ``client.client_termtype``,
+        ``client.client_session`` etc. read tmux's ``client_*`` format tokens.
+
+        Returns
+        -------
+        :class:`~libtmux._internal.query_list.QueryList` of :class:`Client`
+
+        Examples
+        --------
+        >>> with control_mode() as ctl:
+        ...     names = [c.client_name for c in server.clients]
+        ...     ctl.client_name in names
+        True
+        """
+        clients: list[Client] = [
+            Client(server=self, **obj)
+            for obj in _fetch_or_empty(server=self, list_cmd="list-clients")
+        ]
+        return QueryList(clients)
+
+    def search_sessions(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Session]:
+        """Sessions, optionally filtered by tmux before rows are returned.
+
+        Like :attr:`Server.sessions` but adds an optional ``filter`` kwarg
+        passed to ``$ tmux list-sessions -f <filter>``.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag). tmux omits sessions whose
+            expanded expression is false before libtmux builds objects.
+
+            .. warning::
+
+                tmux silently expands a malformed filter (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                filter syntax against the FORMATS section of ``tmux(1)``.
+
+            .. versionadded:: 0.57
+
+        Returns
+        -------
+        :class:`~libtmux._internal.query_list.QueryList` of :class:`Session`
+
+        See Also
+        --------
+        :attr:`Server.sessions` : unfiltered :class:`QueryList` of every
+            session (Python-side ``.filter()`` runs against this).
+        :ref:`native-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
+
+        Examples
+        --------
+        >>> server.new_session(session_name='gap7_alpha')
+        Session($... gap7_alpha)
+        >>> server.new_session(session_name='other_beta')
+        Session($... other_beta)
+        >>> matches = server.search_sessions(filter='#{m:gap7_*,#{session_name}}')
+        >>> [s.session_name for s in matches]
+        ['gap7_alpha']
+        """
+        sessions: list[Session] = [
+            Session(server=self, **obj)
+            for obj in _fetch_or_empty(
                 server=self,
+                list_cmd="list-sessions",
+                filter=filter,
+            )
+        ]
+        return QueryList(sessions)
+
+    def search_windows(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Window]:
+        """All windows across sessions, optionally filtered by tmux.
+
+        Like :attr:`Server.windows` but with a ``filter`` kwarg passed to
+        ``$ tmux list-windows -a -f <filter>``.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag).
+
+            .. warning::
+
+                tmux silently expands a malformed filter (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                filter syntax against the FORMATS section of ``tmux(1)``.
+
+            .. versionadded:: 0.57
+
+        See Also
+        --------
+        :attr:`Server.windows` : unfiltered :class:`QueryList` of every
+            window across every session (Python-side ``.filter()`` runs
+            against this).
+        :ref:`native-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
+
+        Examples
+        --------
+        >>> sess = server.new_session(session_name='gap7_win_demo')
+        >>> _ = sess.new_window(window_name='gap7_target')
+        >>> _ = sess.new_window(window_name='other_window')
+        >>> matches = server.search_windows(filter='#{m:gap7_*,#{window_name}}')
+        >>> any(w.window_name == 'gap7_target' for w in matches)
+        True
+        >>> any(w.window_name == 'other_window' for w in matches)
+        False
+        """
+        windows: list[Window] = [
+            Window(server=self, **obj)
+            for obj in _fetch_or_empty(
+                server=self,
+                list_cmd="list-windows",
+                list_extra_args=("-a",),
+                filter=filter,
+            )
+        ]
+
+        return QueryList(windows)
+
+    def search_panes(
+        self,
+        *,
+        filter: str | None = None,  # noqa: A002
+    ) -> QueryList[Pane]:
+        """All panes across the server, optionally filtered by tmux.
+
+        Like :attr:`Server.panes` but with a ``filter`` kwarg passed to
+        ``$ tmux list-panes -a -f <filter>``. tmux drops non-matching panes
+        before libtmux builds objects.
+
+        Parameters
+        ----------
+        filter : str, optional
+            tmux format expression (``-f`` flag). Example:
+            ``'#{m:%5,#{pane_id}}'`` (id match) or
+            ``'#{C/i:libtmux,#{pane_current_command}}'`` (case-insensitive
+            substring on the current command).
+
+            .. warning::
+
+                tmux silently expands a malformed filter (unclosed
+                ``#{...}``, unknown format token) to empty, which the
+                filter treats as false — every row is suppressed and no
+                stderr is emitted. A bad filter is
+                indistinguishable from "filter matched nothing"; verify
+                filter syntax against the FORMATS section of ``tmux(1)``.
+
+            .. versionadded:: 0.57
+
+        See Also
+        --------
+        :attr:`Server.panes` : unfiltered :class:`QueryList` of every
+            pane (Python-side ``.filter()`` runs against this).
+        :ref:`native-filtering` : when to pick ``search_*`` over
+            ``QueryList.filter()``.
+
+        Examples
+        --------
+        >>> sess = server.new_session(session_name='gap7_pane_demo')
+        >>> window = sess.active_window
+        >>> target_pane = window.split()
+        >>> matches = server.search_panes(
+        ...     filter=f'#{{m:{target_pane.pane_id},#{{pane_id}}}}'
+        ... )
+        >>> [p.pane_id for p in matches] == [target_pane.pane_id]
+        True
+        """
+        panes: list[Pane] = [
+            Pane(server=self, **obj)
+            for obj in _fetch_or_empty(
+                server=self,
+                list_cmd="list-panes",
+                list_extra_args=("-a",),
+                filter=filter,
             )
         ]
 

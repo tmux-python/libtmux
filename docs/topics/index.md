@@ -53,6 +53,18 @@ Automatic cleanup with temporary sessions and windows.
 Get and set tmux options and hooks.
 :::
 
+:::{grid-item-card} Clients
+:link: clients
+:link-type: doc
+Attached terminals, live-attachment lookup, and the view-vs-identity model.
+:::
+
+:::{grid-item-card} Format-Token Fields
+:link: format-tokens
+:link-type: doc
+Scope- and version-gated typed fields on every libtmux object.
+:::
+
 ::::
 
 ```{toctree}
@@ -69,4 +81,6 @@ workspace_setup
 automation_patterns
 context_managers
 options_and_hooks
+clients
+format-tokens
 ```

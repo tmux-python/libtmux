@@ -95,6 +95,23 @@ saved in shell history):
 >>> time.sleep(0.1)
 ```
 
+### Flag-only invocation
+
+When you want to invoke `send-keys` only for its flags — resetting the
+pane or repeating a key — pass `cmd=None`:
+
+```python
+>>> # Repeat the last key 5 times (-N 5)
+>>> pane.send_keys(cmd=None, repeat=5)
+
+>>> # Reset the pane to default state (-R)
+>>> pane.send_keys(cmd=None, reset=True)
+```
+
+`cmd=None` requires at least one of `reset=True`, `repeat=N`, or
+`copy_mode_cmd=...`; calling it with no flag raises `ValueError` to
+prevent silent no-ops.
+
 ## Capturing Output
 
 The {meth}`~libtmux.Pane.capture_pane` method captures text from a pane's buffer.
@@ -194,11 +211,30 @@ True
 | `join_wrapped` | `-J` | Join wrapped lines back together |
 | `preserve_trailing` | `-N` | Preserve trailing spaces at line ends |
 | `trim_trailing` | `-T` | Trim trailing empty positions (tmux 3.4+) |
+| `pending` | `-P` | Dump the unprocessed input buffer instead of the screen |
 
 :::{note}
 The `trim_trailing` parameter requires tmux 3.4+. If used with an older version,
 a warning is issued and the flag is ignored.
 :::
+
+### Capturing the pending input buffer
+
+Use `pending=True` to dump bytes tmux has buffered in its parser but
+not yet committed to the pane's terminal — input the tmux process read
+from the pane's PTY but hasn't fed through its escape-sequence parser
+into the visible screen. Use to inspect partial control sequences
+mid-write.
+
+```python
+>>> pending = pane.capture_pane(pending=True)
+>>> isinstance(pending, list)
+True
+```
+
+`pending=True` is mutually exclusive with the line-range and screen-mode
+flags (`start`, `end`, `escape_sequences`, etc.) — tmux ignores them when
+`-P` is set.
 
 ## Waiting for Output
 

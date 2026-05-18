@@ -117,6 +117,50 @@ def test_new_session_returns_populated_session(server: Server) -> None:
     assert session.pane_id is not None
 
 
+def test_sessions_property_hydrates_cross_scope(server: Server) -> None:
+    """Server.sessions hydrates active window/pane via tmux's format_defaults cascade.
+
+    Distinct from ``test_new_session_returns_populated_session``: that test
+    exercises ``new-session -P -F`` (list-panes scope). This one exercises
+    the ``list-sessions`` path used by the ``.sessions`` property, which
+    must hydrate downward-cascade tokens (tmux ``format.c:format_defaults``
+    walks ``s->curw`` and ``wl->window->active``).
+
+    Pins the cascade *target*: ``session.window_id`` /
+    ``session.pane_id`` must equal the session's current window's
+    active pane — not any arbitrary pane in the session. A regression
+    that hydrated to the wrong window or pane would still pass a
+    "not None" check; this assertion catches that drift.
+    """
+    new_session = server.new_session(session_name="hydration_cascade_sessions")
+    fetched = server.sessions.get(session_name="hydration_cascade_sessions")
+    assert fetched is not None
+    assert fetched.window_id == new_session.active_window.window_id
+    active_pane = new_session.active_window.active_pane
+    assert active_pane is not None
+    assert fetched.pane_id == active_pane.pane_id
+    assert fetched.pane_current_command is not None
+
+
+def test_windows_property_hydrates_active_pane(
+    server: Server,
+    session: Session,
+) -> None:
+    """Server.windows hydrates each window's active pane via the cascade.
+
+    Exercises the ``list-windows -a`` path used by the ``.windows``
+    property. The cascade resolves to the window's active pane, so the
+    hydrated ``pane_id`` must equal ``window.active_pane.pane_id``.
+    """
+    new_window = session.new_window(window_name="hydration_cascade_windows")
+    fetched = server.windows.get(window_name="hydration_cascade_windows")
+    assert fetched is not None
+    active_pane = new_window.active_pane
+    assert active_pane is not None
+    assert fetched.pane_id == active_pane.pane_id
+    assert fetched.pane_current_command is not None
+
+
 def test_new_session_no_name(server: Server) -> None:
     """Server.new_session works with no name."""
     first_session = server.new_session()
@@ -1019,6 +1063,73 @@ def test_run_shell_background(server: Server) -> None:
     assert result is None
 
 
+def test_run_shell_cwd(server: Server, tmp_path: pathlib.Path) -> None:
+    """``cwd=`` sets the working directory for the shell command."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.5"):
+        pytest.skip("run-shell stdout passthrough requires tmux 3.5+")
+
+    server.new_session(session_name="run_shell_cwd_test")
+    result = server.run_shell("pwd", cwd=tmp_path)
+    assert result is not None
+    assert any(str(tmp_path) in line for line in result)
+
+
+def test_run_shell_show_stderr(server: Server) -> None:
+    """``show_stderr=True`` captures the command's stderr into the output."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.6"):
+        pytest.skip("run-shell -E (JOB_SHOWSTDERR) requires tmux 3.6+")
+
+    server.new_session(session_name="run_shell_stderr_test")
+    result = server.run_shell(
+        "sh -c 'echo to_stdout; echo to_stderr >&2'",
+        show_stderr=True,
+    )
+    assert result is not None
+    joined = "\n".join(result)
+    assert "to_stdout" in joined
+    assert "to_stderr" in joined
+
+
+def test_run_shell_cwd_warns_on_old_tmux(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    """``cwd=`` emits a warning and skips ``-c`` on tmux <3.4.
+
+    Simulates older tmux by patching ``has_gte_version`` in the
+    :mod:`libtmux.server` module namespace (where it's bound at
+    import time).
+    """
+    import libtmux.server
+
+    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    server.new_session(session_name="run_shell_cwd_warn_test")
+    with pytest.warns(UserWarning, match="cwd requires tmux 3.4+"):
+        server.run_shell("true", cwd=tmp_path)
+
+
+def test_run_shell_show_stderr_warns_on_old_tmux(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``show_stderr=True`` emits a warning and skips ``-E`` on tmux <3.6.
+
+    Simulates older tmux by patching ``has_gte_version`` in the
+    :mod:`libtmux.server` module namespace.
+    """
+    import libtmux.server
+
+    monkeypatch.setattr(libtmux.server, "has_gte_version", lambda *a, **kw: False)
+    server.new_session(session_name="run_shell_stderr_warn_test")
+    with pytest.warns(UserWarning, match="show_stderr requires tmux 3.6+"):
+        server.run_shell("true", show_stderr=True)
+
+
 class BufferCase(t.NamedTuple):
     """Test case for buffer operations."""
 
@@ -1142,6 +1253,158 @@ def test_list_buffers(server: Server) -> None:
 
     result = server.list_buffers()
     assert len(result) >= 2
+
+
+def test_list_buffers_format_returns_raw_names(server: Server) -> None:
+    """``format_string`` projects raw names instead of the default template."""
+    server.new_session(session_name="buf_format")
+    server.set_buffer("payload_a", buffer_name="fmt_a")
+    server.set_buffer("payload_b", buffer_name="fmt_b")
+
+    names = server.list_buffers(format_string="#{buffer_name}")
+
+    assert "fmt_a" in names
+    assert "fmt_b" in names
+    # Default template would contain "bytes:" — raw projection must not.
+    assert not any("bytes:" in line for line in names)
+
+
+def test_list_buffers_filter_pushes_predicate_into_tmux(server: Server) -> None:
+    """``filter=`` pushes the match into tmux's format engine (-f flag).
+
+    Only names matching the predicate come back from tmux; no Python-side
+    post-filter is needed.
+    """
+    server.new_session(session_name="buf_filter")
+    server.set_buffer("keep_me", buffer_name="gap6match_alpha")
+    server.set_buffer("keep_me", buffer_name="gap6match_beta")
+    server.set_buffer("drop_me", buffer_name="gap6miss_one")
+
+    matches = server.list_buffers(
+        format_string="#{buffer_name}",
+        filter="#{m:gap6match_*,#{buffer_name}}",
+    )
+
+    assert sorted(matches) == ["gap6match_alpha", "gap6match_beta"]
+
+
+def test_server_search_sessions_filter(server: Server) -> None:
+    """``Server.list_sessions(filter=...)`` returns only matching sessions."""
+    server.new_session(session_name="gap7_keep_alpha")
+    server.new_session(session_name="gap7_keep_beta")
+    server.new_session(session_name="other_drop")
+
+    matches = server.search_sessions(filter="#{m:gap7_*,#{session_name}}")
+    names = sorted(s.session_name for s in matches if s.session_name)
+    assert names == ["gap7_keep_alpha", "gap7_keep_beta"]
+
+
+def test_server_search_windows_filter(server: Server) -> None:
+    """``Server.list_windows(filter=...)`` returns only matching windows."""
+    sess = server.new_session(session_name="gap7_win_demo")
+    sess.new_window(window_name="gap7_target")
+    sess.new_window(window_name="other_window")
+
+    matches = server.search_windows(filter="#{m:gap7_*,#{window_name}}")
+    names = sorted(w.window_name for w in matches if w.window_name)
+    # Catch-all base window starts at name 'gap7_win_demo' (matches gap7_*),
+    # so we expect both the original and the new gap7_target.
+    assert "gap7_target" in names
+    assert "other_window" not in names
+
+
+def test_server_search_panes_filter_by_id(server: Server) -> None:
+    """``Server.list_panes(filter=...)`` returns only the pane id we asked for."""
+    sess = server.new_session(session_name="gap7_pane_demo")
+    target = sess.active_window.split()
+
+    matches = server.search_panes(filter=f"#{{m:{target.pane_id},#{{pane_id}}}}")
+    assert [p.pane_id for p in matches] == [target.pane_id]
+
+
+def test_server_clients_propagates_errors(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.clients`` re-raises tmux errors instead of swallowing them.
+
+    The wrapper used to ``except Exception: pass`` and return an empty
+    QueryList on any failure, masking real tmux errors as "no clients".
+    A genuine failure should surface so callers can react.
+    """
+    sentinel = exc.LibTmuxException("simulated list-clients failure")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.LibTmuxException, match="simulated list-clients failure"):
+        server.clients  # noqa: B018
+
+
+def test_server_search_sessions_propagates_errors(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.search_sessions`` re-raises tmux errors instead of swallowing them.
+
+    Mirrors the clients-propagation contract: errors are surfaced, not
+    buried as an empty QueryList that's indistinguishable from "filter
+    matched nothing".
+    """
+    sentinel = exc.LibTmuxException("simulated list-sessions failure")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.LibTmuxException, match="simulated list-sessions failure"):
+        server.search_sessions(filter="#{m:keep_*,#{session_name}}")
+
+
+def test_server_sessions_propagates_errors(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Server.sessions`` re-raises tmux errors instead of swallowing them.
+
+    Closes the gap left when the clients/search_sessions accessors moved
+    off the legacy ``except Exception: pass`` shape but ``Server.sessions``
+    stayed behind. A genuine list-sessions failure should surface the
+    same way for all three accessors.
+    """
+    sentinel = exc.LibTmuxException("simulated list-sessions failure")
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.LibTmuxException, match="simulated list-sessions failure"):
+        server.sessions  # noqa: B018
+
+
+def test_server_sessions_missing_socket_returns_empty(tmp_path: pathlib.Path) -> None:
+    """A not-yet-created tmux socket preserves the empty-list contract."""
+    missing_server = Server(socket_path=tmp_path / "missing.sock")
+
+    assert list(missing_server.sessions) == []
+
+
+def test_server_sessions_permission_error_propagates(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Connection errors other than missing-daemon states still raise."""
+    sentinel = exc.LibTmuxException(
+        "error connecting to /root/libtmux-review.sock (Permission denied)"
+    )
+
+    def _boom(**_: object) -> list[dict[str, str]]:
+        raise sentinel
+
+    monkeypatch.setattr("libtmux.server.fetch_objs", _boom)
+    with pytest.raises(exc.LibTmuxException, match="Permission denied"):
+        server.sessions  # noqa: B018
 
 
 def test_if_shell_true(server: Server) -> None:
@@ -1292,3 +1555,137 @@ def test_new_session_client_flags(
         client_flags="no-output",
     )
     assert session.session_name == "flags_test"
+
+
+class ServerDisplayMessageCase(t.NamedTuple):
+    """Test case for Server.display_message() flag variations."""
+
+    test_id: str
+    cmd: str
+    kwargs: dict[str, t.Any]
+    expected_in_output: str | None
+    min_tmux_version: str | None
+
+
+SERVER_DISPLAY_MESSAGE_CASES: list[ServerDisplayMessageCase] = [
+    ServerDisplayMessageCase(
+        test_id="version",
+        cmd="#{version}",
+        kwargs={"get_text": True},
+        expected_in_output=".",
+        min_tmux_version=None,
+    ),
+    ServerDisplayMessageCase(
+        test_id="socket_path_format_string",
+        cmd="",
+        kwargs={"get_text": True, "format_string": "#{socket_path}"},
+        expected_in_output="/",
+        min_tmux_version=None,
+    ),
+    ServerDisplayMessageCase(
+        test_id="all_formats",
+        cmd="",
+        kwargs={"get_text": True, "all_formats": True},
+        expected_in_output="session_name",
+        min_tmux_version=None,
+    ),
+    ServerDisplayMessageCase(
+        test_id="no_expand_literal",
+        cmd="#{version}",
+        kwargs={"get_text": True, "no_expand": True},
+        expected_in_output="#{version}",
+        min_tmux_version="3.4",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(ServerDisplayMessageCase._fields),
+    SERVER_DISPLAY_MESSAGE_CASES,
+    ids=[c.test_id for c in SERVER_DISPLAY_MESSAGE_CASES],
+)
+def test_server_display_message_flags(
+    test_id: str,
+    cmd: str,
+    kwargs: dict[str, t.Any],
+    expected_in_output: str | None,
+    min_tmux_version: str | None,
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Server.display_message() resolves server-scoped formats without a pane.
+
+    tmux dispatches ``display-message -p`` output through a client; the wrapper
+    omits ``-t <pane-id>`` but still needs a client to receive stdout. The
+    headless test environment provides one via :class:`ControlMode`.
+
+    Skipped on tmux 3.2a: ``display-message -p -c <control-mode-client>``
+    returns empty stdout on that release (output dispatch via a control-mode
+    client was unreliable until later versions).
+    """
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip(
+            "display-message -p via control-mode client unreliable on tmux 3.2a"
+        )
+    if min_tmux_version and not has_gte_version(min_tmux_version):
+        pytest.skip(f"Requires tmux {min_tmux_version}+")
+
+    with control_mode() as ctl:
+        call_kwargs = dict(kwargs)
+        call_kwargs.setdefault("target_client", ctl.client_name)
+        result = server.display_message(cmd, **call_kwargs)
+
+    if expected_in_output is not None:
+        assert result is not None
+        output = "\n".join(result)
+        assert expected_in_output in output
+
+
+def test_server_display_message_no_text_returns_none(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """Without ``get_text=True`` the call renders to status line and returns None."""
+    with control_mode() as ctl:
+        result = server.display_message(
+            "hi from libtmux", target_client=ctl.client_name
+        )
+    assert result is None
+
+
+def test_server_display_message_target_client(
+    control_mode: t.Callable[..., t.Any],
+    server: Server,
+) -> None:
+    """``target_client`` is plumbed through as ``-c``; get_text=True returns stdout."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.3"):
+        pytest.skip(
+            "display-message -p via control-mode client unreliable on tmux 3.2a"
+        )
+
+    with control_mode() as ctl:
+        result = server.display_message(
+            "#{version}", get_text=True, target_client=ctl.client_name
+        )
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0].strip() != ""
+
+
+def test_server_display_message_warns_on_tmux_error(
+    server: Server,
+    session: Session,
+) -> None:
+    """Tmux stderr on ``display-message`` surfaces as a :class:`UserWarning`.
+
+    Passing ``cmd`` and ``format_string`` together is rejected by tmux's
+    argument parser with stderr ``only one of -F or argument must be
+    given``. The wrapper must surface that to the caller without silently
+    swallowing it.
+    """
+    with pytest.warns(UserWarning, match="only one of -F or argument"):
+        server.display_message("x", get_text=True, format_string="#{version}")

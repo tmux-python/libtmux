@@ -525,3 +525,45 @@ def test_capture_pane_to_buffer(session: Session) -> None:
     contents = session.server.cmd("show-buffer", "-b", "cap_test_buf").stdout
     assert any("BUFFER_CAPTURE_MARKER" in line for line in contents)
     session.server.cmd("delete-buffer", "-b", "cap_test_buf")
+
+
+def test_capture_pane_pending_emits_dash_P(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    """``capture_pane(pending=True)`` emits the tmux ``-P`` flag.
+
+    ``-P`` captures pending input — bytes tmux has buffered for the pane
+    but the program hasn't consumed yet. The argv assertion guarantees the
+    wrapper routes the kwarg to tmux's flag; whether tmux returns bytes
+    for any given pane depends on live input pressure and isn't reliably
+    testable in isolation.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    captured: list[tuple[str, ...]] = []
+    real_cmd = pane.cmd
+
+    def fake_cmd(cmd_name: str, *args: t.Any, **kw: t.Any) -> t.Any:
+        captured.append((cmd_name, *(str(a) for a in args)))
+        return real_cmd(cmd_name, *args, **kw)
+
+    monkeypatch.setattr(pane, "cmd", fake_cmd)
+
+    pane.capture_pane(pending=True)
+
+    capture_calls = [c for c in captured if c[0] == "capture-pane"]
+    assert capture_calls
+    assert "-P" in capture_calls[0]
+    # -p (stdout) stays on because to_buffer is None.
+    assert "-p" in capture_calls[0]
+
+
+def test_capture_pane_pending_returns_list(session: Session) -> None:
+    """``capture_pane(pending=True)`` returns a list (possibly empty)."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    result = pane.capture_pane(pending=True)
+    assert isinstance(result, list)

@@ -14,20 +14,27 @@ libtmux mirrors tmux's object hierarchy as a typed Python ORM:
 
 ```
 Server
-└── Session
-    └── Window
-        └── Pane
+├── Session
+│   └── Window
+│       └── Pane
+└── Client (attached view)
 ```
 
 | Object | Child | Parent |
 |--------|-------|--------|
-| {class}`~libtmux.server.Server` | {class}`~libtmux.session.Session` | None |
+| {class}`~libtmux.server.Server` | {class}`~libtmux.session.Session`, {class}`~libtmux.client.Client` | None |
 | {class}`~libtmux.session.Session` | {class}`~libtmux.window.Window` | {class}`~libtmux.server.Server` |
 | {class}`~libtmux.window.Window` | {class}`~libtmux.pane.Pane` | {class}`~libtmux.session.Session` |
 | {class}`~libtmux.pane.Pane` | None | {class}`~libtmux.window.Window` |
+| {class}`~libtmux.client.Client` | None | {class}`~libtmux.server.Server` |
 
 {class}`~libtmux.common.TmuxRelationalObject` acts as the base container
 connecting these relationships.
+
+{class}`~libtmux.Client` is a *view*, not part of the ownership chain:
+each attached terminal points at a Session/Window/Pane it is currently
+displaying, but is not owned by them. See {ref}`clients` for the view-
+vs-identity distinction.
 
 ## Internal Identifiers
 
@@ -50,6 +57,7 @@ Each level wraps tmux commands and format queries:
 - {class}`~libtmux.session.Session` — manages windows within a session
 - {class}`~libtmux.window.Window` — manages panes, handles layouts
 - {class}`~libtmux.pane.Pane` — terminal instance, sends keys and captures output
+- {class}`~libtmux.client.Client` — attached terminal viewing a session, window, and pane
 
 ## Data Flow
 
@@ -67,6 +75,7 @@ Each level wraps tmux commands and format queries:
 | {mod}`libtmux.session` | Session operations |
 | {mod}`libtmux.window` | Window operations and pane management |
 | {mod}`libtmux.pane` | Pane I/O and capture |
+| {mod}`libtmux.client` | Attached-client view and live-attachment lookup |
 | {mod}`libtmux.common` | Base classes, command execution |
 | {mod}`libtmux.neo` | Modern dataclass-based query interface |
 | {mod}`libtmux.constants` | Format string constants |

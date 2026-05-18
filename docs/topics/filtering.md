@@ -258,6 +258,124 @@ True
 >>> w3.kill()
 ```
 
+(native-filtering)=
+
+## tmux-native Filtering with `search_*()`
+
+`QueryList.filter()` runs in Python *after* tmux has returned every
+row. For large servers, or when you only need a handful of matches,
+ask tmux to apply the filter before libtmux builds objects. Every level
+of the hierarchy ships a `search_*()` method that passes a format
+expression to tmux:
+
+| Caller | Method | Underlying tmux |
+|--------|--------|-----------------|
+| {class}`~libtmux.Server` | {meth}`~libtmux.Server.search_sessions` | `tmux list-sessions -f <filter>` |
+| {class}`~libtmux.Server` | {meth}`~libtmux.Server.search_windows` | `tmux list-windows -a -f <filter>` |
+| {class}`~libtmux.Server` | {meth}`~libtmux.Server.search_panes` | `tmux list-panes -a -f <filter>` |
+| {class}`~libtmux.Session` | {meth}`~libtmux.Session.search_windows` | `tmux list-windows -t $sess -f <filter>` |
+| {class}`~libtmux.Session` | {meth}`~libtmux.Session.search_panes` | `tmux list-panes -s -t $sess -f <filter>` |
+| {class}`~libtmux.Window` | {meth}`~libtmux.Window.search_panes` | `tmux list-panes -t @win -f <filter>` |
+
+The {meth}`~libtmux.Server.list_buffers` method also accepts a `filter=`
+kwarg with the same semantics.
+
+There is no `search_clients()` method; filter clients via the
+{attr}`~libtmux.Server.clients` accessor and Python-side
+{meth}`~libtmux._internal.query_list.QueryList.filter`. Filtering
+clients in Python is usually enough because a server's client
+count is bounded by attached terminals, not by session/window/pane
+fan-out.
+
+### Python-side vs. tmux-native
+
+| | `.filter()` | `.search_*()` |
+|-|-------------|---------------|
+| Where | Python (after fetch) | tmux server (before fetch) |
+| Filter language | libtmux's lookup operators (`__contains`, `__regex`, etc.) | tmux's [FORMATS](https://man.openbsd.org/tmux.1#FORMATS) grammar |
+| Round trips | one (full list, then filter in memory) | one (tmux returns only matches) |
+| Best for | rich Python checks, set membership, post-fetch composition | exact/glob matches over many rows |
+| Stability | every libtmux version supports it | requires tmux ≥ 3.2 (≥ 3.4 for `list-clients -f`) |
+
+Both are valid; pick based on data volume and the filter language you want.
+
+### Filter syntax
+
+tmux's filter language is the same one used in `-F` templates. Three
+shapes cover most use cases:
+
+```python
+>>> # Match by glob
+>>> s_alpha = server.new_session(session_name='alpha-1')
+>>> s_beta = server.new_session(session_name='beta-1')
+>>> alphas = server.search_sessions(filter='#{m:alpha-*,#{session_name}}')
+>>> [s.session_name for s in alphas]
+['alpha-1']
+
+>>> # Match by equality
+>>> exact = server.search_sessions(
+...     filter='#{==:#{session_name},alpha-1}'
+... )
+>>> [s.session_name for s in exact]
+['alpha-1']
+
+>>> # Clean up
+>>> s_alpha.kill()
+>>> s_beta.kill()
+```
+
+`#{e:...}` evaluates an arithmetic expression; `#{?cond,a,b}` is the
+conditional form. See `man tmux` for the full grammar.
+
+### The silent zero-match trap
+
+A malformed filter expression is the single biggest footgun. tmux expands an
+unclosed `#{...}` or an unknown format token to an empty string,
+which the filter engine evaluates as "false" — every row is filtered
+out and **no stderr is emitted**. A bad filter is indistinguishable
+from a filter that genuinely matched nothing.
+
+If `search_*()` returns empty unexpectedly:
+
+1. Replace the filter with `#{m:*,#{session_name}}` (or the
+   equivalent for windows/panes). If that returns rows, the issue is
+   filter syntax, not data.
+2. Expand the expression standalone via
+   {meth}`~libtmux.Server.display_message` to see what tmux actually
+   produced:
+
+   ```python
+   >>> result = server.display_message(
+   ...     '#{m:alpha-*,alpha-1}', get_text=True
+   ... )
+   >>> result[0]
+   '1'
+   ```
+
+   A non-`1`, non-empty result tells you the expression is parsing as
+   text, not as a boolean.
+
+3. Cross-check the token name against the FORMATS section of
+   `tmux(1)` and against the version gate (see {ref}`format-tokens`).
+
+### When to prefer which
+
+Use `search_*()` when:
+
+- you have hundreds or thousands of windows/panes and only want a few,
+- your filter is a glob (`m:`) or equality check (`==:`),
+- you're already in tmux-format thinking (writing `#{...}` for a
+  status-line template, for example).
+
+Use `.filter()` when:
+
+- your filter needs Python types you can't express in tmux format
+  (set membership, complex regex, computed values from outside tmux),
+- you're chaining multiple filters and prefer composing in Python,
+- you want predictable, version-independent semantics.
+
 ## API Reference
 
-See {class}`~libtmux._internal.query_list.QueryList` for the complete API.
+See {class}`~libtmux._internal.query_list.QueryList` for the complete
+QueryList API, and each `search_*()` method for the tmux-native filter
+contract.

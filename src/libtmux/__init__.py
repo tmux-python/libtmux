@@ -14,6 +14,7 @@ from .__about__ import (
     __title__,
     __version__,
 )
+from .client import Client
 from .pane import Pane
 from .server import Server
 from .session import Session
@@ -22,6 +23,7 @@ from .window import Window
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 __all__ = (
+    "Client",
     "Pane",
     "Server",
     "Session",
