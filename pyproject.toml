@@ -130,6 +130,9 @@ sphinx-gp-theme = false
 sphinx-ux-autodoc-layout = false
 sphinx-ux-badges = false
 
+[tool.uv.sources]
+sphinx-ux-autodoc-layout = { git = "https://github.com/git-pull/gp-sphinx.git", branch = "spa-navigation-scroll", subdirectory = "packages/sphinx-ux-autodoc-layout" }
+
 [tool.mypy]
 strict = true
 python_version = "3.10"
