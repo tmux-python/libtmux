@@ -45,6 +45,17 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### Subprocess encoding on non-UTF-8 locales (#679)
+
+{class}`~libtmux.common.tmux_cmd` and {class}`~libtmux._internal.control_mode.ControlMode`
+now pass `encoding="utf-8"` to `subprocess.Popen`, ensuring tmux output
+is decoded correctly regardless of the system locale. Previously, on
+non-UTF-8 locales, the {data}`~libtmux.formats.FORMAT_SEPARATOR` character
+(U+241E) was corrupted during decoding, causing list accessors
+({attr}`~libtmux.Server.sessions`, etc.) to return empty results.
+
 ## libtmux 0.57.1 (2026-05-18)
 
 Restores the "lenient-by-default" behavior for
