@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import locale
 import logging
 import re
 import sys
@@ -713,3 +714,59 @@ def test_raise_if_stderr_str_shape_exact(session: libtmux.Session) -> None:
     assert str(excinfo.value) == "last-window: no last window"
     assert excinfo.value.args == ("no last window",)
     assert excinfo.value.subcommand == "last-window"
+
+
+@pytest.mark.xfail(
+    reason=(
+        "tmux_cmd passes text=True without encoding='utf-8' to Popen; "
+        "on non-UTF-8 locales FORMAT_SEPARATOR is corrupted. "
+        "See: https://github.com/tmux-python/libtmux/issues/678"
+    ),
+    strict=True,
+)
+@pytest.mark.skipif(
+    sys.flags.utf8_mode != 0,
+    reason="PYTHONUTF8 mode forces UTF-8, masking the locale bug",
+)
+def test_tmux_cmd_format_separator_survives_non_utf8_locale(
+    session: Session,
+) -> None:
+    """FORMAT_SEPARATOR must survive a non-UTF-8 locale round-trip through tmux_cmd.
+
+    Regression test for the encoding bug introduced in commit 1a5e69a2
+    (``tmux_cmd: Remove console_to_str(), use text=True``). When
+    ``subprocess.Popen`` receives ``text=True`` without an explicit
+    ``encoding="utf-8"``, CPython falls back to the process locale encoding. On
+    a ``C`` locale the FORMAT_SEPARATOR character U+241E (UTF-8 bytes
+    ``e2 90 9e``) is decoded as escaped bytes, corrupting every
+    ``parse_output()`` call downstream.
+
+    The fix is to pass ``encoding="utf-8"`` to the ``subprocess.Popen``
+    call in ``tmux_cmd.__init__``.
+    """
+    from libtmux.formats import FORMAT_SEPARATOR
+    from libtmux.neo import get_output_format, parse_output
+
+    server = session.server
+
+    tmux_version = str(get_version(tmux_bin=server.tmux_bin))
+    _fields, fmt_str = get_output_format("list-sessions", tmux_version)
+
+    old_lc_ctype = locale.setlocale(locale.LC_CTYPE)
+    try:
+        locale.setlocale(locale.LC_CTYPE, "C")
+        proc = server.cmd("list-sessions", f"-F{fmt_str}")
+    finally:
+        locale.setlocale(locale.LC_CTYPE, old_lc_ctype)
+    assert proc.stdout
+
+    line = proc.stdout[0]
+
+    assert FORMAT_SEPARATOR in line, (
+        f"FORMAT_SEPARATOR U+241E not found in output; "
+        f"got {line[:80]!r}... (likely decoded with wrong encoding)"
+    )
+
+    result = parse_output(line, "list-sessions", tmux_version)
+    assert isinstance(result, dict)
+    assert "session_id" in result
