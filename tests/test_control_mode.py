@@ -69,14 +69,6 @@ def test_control_mode_client_name_matches_spawned_client(
         assert (str(second._proc.pid), second.client_name) in clients
 
 
-@pytest.mark.xfail(
-    reason=(
-        "ControlMode passes text=True without encoding='utf-8' to Popen; "
-        "on non-UTF-8 locales control protocol output is decoded with the "
-        "locale encoding. See: https://github.com/tmux-python/libtmux/issues/678"
-    ),
-    strict=True,
-)
 @pytest.mark.skipif(
     sys.flags.utf8_mode != 0,
     reason="PYTHONUTF8 mode forces UTF-8, masking the locale bug",

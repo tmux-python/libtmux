@@ -716,14 +716,6 @@ def test_raise_if_stderr_str_shape_exact(session: libtmux.Session) -> None:
     assert excinfo.value.subcommand == "last-window"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "tmux_cmd passes text=True without encoding='utf-8' to Popen; "
-        "on non-UTF-8 locales FORMAT_SEPARATOR is corrupted. "
-        "See: https://github.com/tmux-python/libtmux/issues/678"
-    ),
-    strict=True,
-)
 @pytest.mark.skipif(
     sys.flags.utf8_mode != 0,
     reason="PYTHONUTF8 mode forces UTF-8, masking the locale bug",
@@ -741,8 +733,8 @@ def test_tmux_cmd_format_separator_survives_non_utf8_locale(
     ``e2 90 9e``) is decoded as escaped bytes, corrupting every
     ``parse_output()`` call downstream.
 
-    The fix is to pass ``encoding="utf-8"`` to the ``subprocess.Popen``
-    call in ``tmux_cmd.__init__``.
+    This test guards the explicit ``encoding="utf-8"`` passed to
+    ``subprocess.Popen`` in ``tmux_cmd.__init__``.
     """
     from libtmux.formats import FORMAT_SEPARATOR
     from libtmux.neo import get_output_format, parse_output
