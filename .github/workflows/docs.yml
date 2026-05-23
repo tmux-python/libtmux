@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - spa-navigation-scroll  # [DO NOT MERGE] temporary: publish docs from feature branch
 
 permissions:
   contents: read
