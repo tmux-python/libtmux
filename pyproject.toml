@@ -185,6 +185,10 @@ invalid-argument-type = "ignore"
 # options.py) or union access patterns (Pane | None). 5 false
 # positives where mypy correctly narrows the type.
 unresolved-attribute = "ignore"
+# ty can't see through isinstance narrowing for TypeVars (subscript
+# assignment on _V in options.py) and IO[str] | None unions
+# (control_mode.py, already suppressed for mypy). 4 false positives.
+invalid-assignment = "ignore"
 
 [tool.coverage.run]
 branch = true
