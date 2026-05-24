@@ -176,6 +176,11 @@ possibly-missing-submodule = "ignore"
 # resolve element-wise comparison operators across union-typed tuples.
 # https://github.com/astral-sh/ty/issues/1202
 unsupported-operator = "ignore"
+# ty cannot verify argument types through **kwargs unpacking and
+# narrows LiteralString to str differently than mypy. 20 false
+# positives, mostly from **call_kwargs and **filter_expr patterns.
+# https://github.com/astral-sh/ty/issues/785
+invalid-argument-type = "ignore"
 
 [tool.coverage.run]
 branch = true
