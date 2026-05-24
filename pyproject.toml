@@ -193,6 +193,10 @@ invalid-assignment = "ignore"
 # subclasses add required server: Server. Python dataclass inheritance
 # handles this at runtime but ty's analysis doesn't account for it.
 dataclass-field-order = "ignore"
+# re.search(rhs, data) in query_list.py where isinstance narrows both
+# to str | bytes, but ty can't match the overload (str, str) | (bytes,
+# Buffer) against (str | bytes, str | bytes). 2 false positives.
+no-matching-overload = "ignore"
 
 [tool.coverage.run]
 branch = true
