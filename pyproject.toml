@@ -158,6 +158,10 @@ unresolved-import = "ignore"
 # ty does not yet fully support argument unpacking (*args/**kwargs).
 # https://github.com/astral-sh/ty/issues/404
 too-many-positional-arguments = "ignore"
+# Same root cause as too-many-positional-arguments: ty cannot verify
+# required params are present when calling with **kwargs unpacking.
+# https://github.com/astral-sh/ty/issues/785
+missing-argument = "ignore"
 
 [tool.coverage.run]
 branch = true
