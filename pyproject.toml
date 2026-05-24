@@ -189,6 +189,10 @@ unresolved-attribute = "ignore"
 # assignment on _V in options.py) and IO[str] | None unions
 # (control_mode.py, already suppressed for mypy). 4 false positives.
 invalid-assignment = "ignore"
+# Pane, Session, Window inherit from Obj which defines defaulted fields;
+# subclasses add required server: Server. Python dataclass inheritance
+# handles this at runtime but ty's analysis doesn't account for it.
+dataclass-field-order = "ignore"
 
 [tool.coverage.run]
 branch = true
