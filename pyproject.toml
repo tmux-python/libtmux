@@ -166,6 +166,11 @@ missing-argument = "ignore"
 # dataclass-transform decorators, flagging all kwargs as unknown.
 # https://github.com/astral-sh/ty/issues/2369
 unknown-argument = "ignore"
+# Tests use monkeypatch.setattr(libtmux.common, ...) without explicit
+# submodule import. The submodule is always available via __init__.py
+# re-exports but ty cannot detect implicit registration.
+# https://github.com/astral-sh/ty/issues/133
+possibly-missing-submodule = "ignore"
 
 [tool.coverage.run]
 branch = true
