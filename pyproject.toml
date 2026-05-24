@@ -162,6 +162,10 @@ too-many-positional-arguments = "ignore"
 # required params are present when calling with **kwargs unpacking.
 # https://github.com/astral-sh/ty/issues/785
 missing-argument = "ignore"
+# ty falls back to object.__init__ for union return types and
+# dataclass-transform decorators, flagging all kwargs as unknown.
+# https://github.com/astral-sh/ty/issues/2369
+unknown-argument = "ignore"
 
 [tool.coverage.run]
 branch = true
