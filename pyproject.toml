@@ -201,6 +201,9 @@ no-matching-overload = "ignore"
 # None expected; test_session.py returns MockTmuxCmd where tmux_cmd
 # expected (already suppressed for mypy). 2 false positives.
 invalid-return-type = "ignore"
+# query_list.py b[key] where b is typed as object from a narrowing
+# path ty can't follow (same context as unresolved-attribute).
+not-subscriptable = "ignore"
 
 [tool.coverage.run]
 branch = true
