@@ -171,6 +171,11 @@ unknown-argument = "ignore"
 # re-exports but ty cannot detect implicit registration.
 # https://github.com/astral-sh/ty/issues/133
 possibly-missing-submodule = "ignore"
+# Vendored version.py uses tuple comparison with mixed-type elements
+# (int, str, InfinityType) for PEP 440 version ordering. ty cannot
+# resolve element-wise comparison operators across union-typed tuples.
+# https://github.com/astral-sh/ty/issues/1202
+unsupported-operator = "ignore"
 
 [tool.coverage.run]
 branch = true
