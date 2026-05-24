@@ -204,6 +204,10 @@ invalid-return-type = "ignore"
 # query_list.py b[key] where b is typed as object from a narrowing
 # path ty can't follow (same context as unresolved-attribute).
 not-subscriptable = "ignore"
+# query_list.py filter_(k) where filter_ is a union including
+# T@QueryList & Top[(...) -> object] — ty's intersection type
+# resolution produces an uncallable Top type.
+call-top-callable = "ignore"
 
 [tool.coverage.run]
 branch = true
