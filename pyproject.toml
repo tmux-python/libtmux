@@ -197,6 +197,10 @@ dataclass-field-order = "ignore"
 # to str | bytes, but ty can't match the overload (str, str) | (bytes,
 # Buffer) against (str | bytes, str | bytes). 2 false positives.
 no-matching-overload = "ignore"
+# options.py returns dict subscript typed as object where str | int |
+# None expected; test_session.py returns MockTmuxCmd where tmux_cmd
+# expected (already suppressed for mypy). 2 false positives.
+invalid-return-type = "ignore"
 
 [tool.coverage.run]
 branch = true
