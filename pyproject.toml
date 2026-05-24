@@ -147,6 +147,13 @@ python-version = "3.10"
 [tool.ty.src]
 include = ["src", "tests"]
 
+[tool.ty.rules]
+# Private _pytest APIs (e.g. RaisesContext) are not publicly exported;
+# both mypy and ty flag them. ty categorizes these as unresolved-import
+# rather than attr-defined.
+# https://github.com/astral-sh/ty/issues/1276
+unresolved-import = "ignore"
+
 [tool.coverage.run]
 branch = true
 parallel = true
