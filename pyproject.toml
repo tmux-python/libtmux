@@ -72,6 +72,7 @@ dev = [
   # Lint
   "ruff>=0.17.1",
   "mypy",
+  "ty",
 ]
 
 docs = [
@@ -97,6 +98,7 @@ lint = [
   "typing-extensions; python_version < '3.11'",
   "ruff>=0.17.1",
   "mypy",
+  "ty",
 ]
 
 [project.entry-points.pytest11]
@@ -148,6 +150,11 @@ files = [
   "tests",
 ]
 
+[tool.ty.environment]
+python-version = "3.10"
+
+[tool.ty.src]
+include = ["src", "tests"]
 
 [tool.coverage.run]
 branch = true

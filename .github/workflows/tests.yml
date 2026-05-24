@@ -86,6 +86,10 @@ jobs:
           uv run mypy .
           uv run mypy --python-version 3.11 .github/scripts
 
+      - name: Lint with ty
+        continue-on-error: true
+        run: uv run ty check .
+
       - name: Print python versions
         run: |
           python -V
