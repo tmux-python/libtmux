@@ -153,6 +153,11 @@ include = ["src", "tests"]
 # rather than attr-defined.
 # https://github.com/astral-sh/ty/issues/1276
 unresolved-import = "ignore"
+# ty resolves cmd() as a union type including a (Any, Any, /) -> tmux_cmd
+# variant from CmdProtocol, causing false positives on *args methods.
+# ty does not yet fully support argument unpacking (*args/**kwargs).
+# https://github.com/astral-sh/ty/issues/404
+too-many-positional-arguments = "ignore"
 
 [tool.coverage.run]
 branch = true
