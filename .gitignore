@@ -83,6 +83,10 @@ docs/_static/fonts/
 docs/_static/css/fonts.css
 
 # Claude code
+# Override the global ~/.gitignore_global `.claude/` exclusion so this
+# repo's project-scoped skills check in cleanly. settings.local.json
+# and personal CLAUDE notes stay ignored via the explicit lines below.
+!.claude/
 **/CLAUDE.local.md
 **/CLAUDE.*.md
 **/.claude/settings.local.json
