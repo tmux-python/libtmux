@@ -472,12 +472,10 @@ class AsyncTmuxCmd:
         cmd: list[str] = [tmux_bin] + [str(c) for c in args]
 
         try:
-            process: asyncio.subprocess.Process = (
-                await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
+            process: asyncio.subprocess.Process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout_bytes, stderr_bytes = await process.communicate()
             returncode: int = (
