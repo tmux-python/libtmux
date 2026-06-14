@@ -76,7 +76,7 @@ def test_repo_git_remote_checkout(
         )
 
     # Test
-    result = pytester.runpytest(str(first_test_filename))
+    result = pytester.runpytest(str(first_test_filename), "-p", "no:asyncio")
     result.assert_outcomes(passed=1)
 
 
