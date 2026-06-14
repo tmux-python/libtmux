@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import pathlib
+import subprocess
+import sys
+import typing as t
+
 import pytest
 
 from libtmux._experimental.chain.chain import (
@@ -10,6 +16,45 @@ from libtmux._experimental.chain.chain import (
     is_chainable,
 )
 from libtmux._experimental.chain.ir import CommandCall
+
+
+class MinimalImportCase(t.NamedTuple):
+    """A module import that must work without optional dependency groups."""
+
+    test_id: str
+    module: str
+
+
+MINIMAL_IMPORT_CASES = (
+    MinimalImportCase(
+        test_id="chain-package",
+        module="libtmux._experimental.chain",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    MINIMAL_IMPORT_CASES,
+    ids=[case.test_id for case in MINIMAL_IMPORT_CASES],
+)
+def test_minimal_import_without_dev_dependency_groups(
+    case: MinimalImportCase,
+) -> None:
+    """The experimental chain package imports with only stdlib dependencies."""
+    project_root = pathlib.Path(__file__).parents[3]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(project_root / "src")
+
+    proc = subprocess.run(
+        [sys.executable, "-S", "-c", f"import {case.module}"],
+        check=False,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    assert proc.returncode == 0, proc.stderr
 
 
 def test_is_chainable_uses_static_spec() -> None:
