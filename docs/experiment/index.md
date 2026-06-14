@@ -24,6 +24,15 @@ subprocess per command. It grows in layers:
   command; a {class}`~libtmux._experimental.chain.ir.CommandChain`
   is an ordered group that renders to a single argv with standalone `;`
   separators and dispatches once.
+- **Plan** -- a typed, target-safe deferred query: a lazy
+  {class}`~libtmux._experimental.chain.plan.PaneQuery` resolves
+  against a pure {class}`~libtmux._experimental.chain.plan.TmuxSnapshot`,
+  maps each typed row to commands, and compiles to one sequence.
+- **Adapters** -- the live-tmux bridge:
+  {func}`~libtmux._experimental.chain._connection.snapshot_from_session`
+  reads real panes, and
+  {class}`~libtmux._experimental.chain._connection.SessionPlanExecutor`
+  resolves and dispatches a plan against a real server in one invocation.
 
 ::::{grid} 1 2 2 2
 :gutter: 2 2 3 3
@@ -32,6 +41,18 @@ subprocess per command. It grows in layers:
 :link: api/libtmux._experimental.chain.ir
 :link-type: doc
 Immutable argv primitives: `CommandCall`, `CommandChain`, `CommandSpec`.
+:::
+
+:::{grid-item-card} Deferred plan
+:link: api/libtmux._experimental.chain.plan
+:link-type: doc
+Typed target-safe queries that compile to one command sequence.
+:::
+
+:::{grid-item-card} Live-tmux adapters
+:link: api/libtmux._experimental.chain._connection
+:link-type: doc
+`snapshot_from_session` and `SessionPlanExecutor` for real dispatch.
 :::
 
 ::::
@@ -54,9 +75,53 @@ Compose typed calls and dispatch them as one tmux invocation:
 ['2']
 ```
 
+Resolve a typed query against a snapshot and compile it to one sequence -- pure,
+no tmux required:
+
+```python
+>>> from libtmux._experimental.chain.plan import (
+...     PaneRef,
+...     PaneTarget,
+...     SessionTarget,
+...     TmuxSnapshot,
+...     WindowTarget,
+...     panes,
+... )
+>>> snapshot = TmuxSnapshot(
+...     panes=(
+...         PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+...                 pane_index=0, active=True, title="editor"),
+...         PaneRef(PaneTarget("%2"), WindowTarget("@1"), SessionTarget("$0"),
+...                 pane_index=1, active=True, title="logs"),
+...     ),
+... )
+>>> plan = (
+...     panes()
+...     .filter(active=True)
+...     .order_by("pane_index")
+...     .commands(lambda pane: pane.cmd.resize_pane(height=20))
+... )
+>>> plan.to_chain(snapshot).argvs()
+(('resize-pane', '-t', '%1', '-y', '20'), ('resize-pane', '-t', '%2', '-y', '20'))
+```
+
+Against a live server, dispatch the same plan in one invocation with
+{class}`~libtmux._experimental.chain._connection.SessionPlanExecutor`:
+
+```python
+>>> from libtmux._experimental.chain import SessionPlanExecutor, panes
+>>> runner = SessionPlanExecutor(session)
+>>> live_plan = panes().filter(active=True).commands(
+...     lambda pane: pane.cmd.send_keys("echo libtmux", enter=True),
+... )
+>>> live_plan.run(runner)
+```
+
 ```{toctree}
 :hidden:
 :maxdepth: 1
 
 api/libtmux._experimental.chain.ir
+api/libtmux._experimental.chain.plan
+api/libtmux._experimental.chain._connection
 ```
