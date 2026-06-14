@@ -1,4 +1,4 @@
-# Live-tmux adapters - `libtmux._experimental.chain._connection`
+# Connecting to live tmux sessions - `libtmux._experimental.chain._connection`
 
 :::{warning}
 Experimental. This API is **not** covered by version policies and can break or

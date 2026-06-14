@@ -14,67 +14,72 @@ please [file an issue](https://github.com/tmux-python/libtmux/issues).
 
 ## Chainable commands
 
-The `libtmux._experimental.chain` package lets you author an ordered
-sequence of typed tmux commands that compiles to **one** native
-`tmux ... \; ...` invocation and dispatches once -- instead of issuing one
-subprocess per command. It grows in layers:
+`libtmux._experimental.chain` lets you build an ordered sequence of
+typed tmux commands that runs as **one** native `tmux ... \; ...` invocation,
+instead of one subprocess per command. The pieces layer up, so you can reach for
+as much or as little as you need:
 
-- **IR** -- the immutable argv intermediate representation: a
-  {class}`~libtmux._experimental.chain.ir.CommandCall` is one typed
-  command; a {class}`~libtmux._experimental.chain.ir.CommandChain`
-  is an ordered group that renders to a single argv with standalone `;`
-  separators and dispatches once.
-- **Plan** -- a typed, target-safe deferred query: a lazy
+- **Intermediate representation** -- the typed argv layer beneath everything: a
+  {class}`~libtmux._experimental.chain.ir.CommandCall` is a single
+  command, and a
+  {class}`~libtmux._experimental.chain.ir.CommandChain` is an
+  ordered group that renders to one argv (with standalone `;` separators) and
+  dispatches once.
+- **Expressions** -- compose commands from a lazy, target-safe pane query. A
   {class}`~libtmux._experimental.chain.plan.PaneQuery` resolves
-  against a pure {class}`~libtmux._experimental.chain.plan.TmuxSnapshot`,
-  maps each typed row to commands, and compiles to one sequence.
-- **Async facade** -- {mod}`~libtmux._experimental.chain._async` wraps
-  the same engine so snapshot resolution and dispatch are awaitable, while
-  command construction stays sync and one plan still compiles to one dispatch.
-- **Chainability contract** --
-  {mod}`~libtmux._experimental.chain.chain` decides which commands
-  may fold into one dispatch: the static
-  {attr}`~libtmux._experimental.chain.ir.CommandSpec.chainable`
-  flag plus a deferred result that refuses output read before the chain runs.
-- **Adapters** -- the live-tmux bridge:
+  against a pure
+  {class}`~libtmux._experimental.chain.plan.TmuxSnapshot`, maps each
+  typed row to commands, and compiles to one sequence -- so you can build and
+  assert the result without touching tmux.
+- **Async** -- {mod}`~libtmux._experimental.chain._async` mirrors the
+  same query and dispatch API with `await`, while command construction stays
+  synchronous and one expression still compiles to one invocation.
+- **Connecting to live tmux sessions** -- the bridge to a real server:
   {func}`~libtmux._experimental.chain._connection.snapshot_from_session`
-  reads real panes, and
+  reads live panes, and
   {class}`~libtmux._experimental.chain._connection.SessionPlanExecutor`
-  (plus its async sibling
+  (with its async counterpart
   {class}`~libtmux._experimental.chain._connection.AsyncSessionPlanExecutor`)
-  resolves and dispatches a plan against a real server in one invocation.
+  resolves and runs an expression against a live {class}`~libtmux.Session` in one
+  invocation.
+- **Chainability** --
+  {mod}`~libtmux._experimental.chain.chain` decides which commands
+  may share one invocation: the static
+  {attr}`~libtmux._experimental.chain.ir.CommandSpec.chainable`
+  flag, plus a deferred result that won't hand back output until the chain has
+  run.
 
 ::::{grid} 1 2 2 2
 :gutter: 2 2 3 3
 
-:::{grid-item-card} Command IR
+:::{grid-item-card} Intermediate representation
 :link: api/libtmux._experimental.chain.ir
 :link-type: doc
-Immutable argv primitives: `CommandCall`, `CommandChain`, `CommandSpec`.
+The typed argv layer: `CommandCall`, `CommandChain`, `CommandSpec`.
 :::
 
-:::{grid-item-card} Deferred plan
+:::{grid-item-card} Expressions
 :link: api/libtmux._experimental.chain.plan
 :link-type: doc
-Typed target-safe queries that compile to one command sequence.
+Build commands from a lazy, target-safe pane query.
 :::
 
-:::{grid-item-card} Async facade
+:::{grid-item-card} Async
 :link: api/libtmux._experimental.chain._async
 :link-type: doc
-Awaitable snapshot + dispatch over the same engine, one dispatch per plan.
+The same query and dispatch API, with `await`.
 :::
 
-:::{grid-item-card} Live-tmux adapters
+:::{grid-item-card} Connecting to live tmux sessions
 :link: api/libtmux._experimental.chain._connection
 :link-type: doc
-`snapshot_from_session`, `SessionPlanExecutor`, `AsyncSessionPlanExecutor`.
+Read live panes and run an expression against a real session.
 :::
 
-:::{grid-item-card} Chainability contract
+:::{grid-item-card} Chainability
 :link: api/libtmux._experimental.chain.chain
 :link-type: doc
-What may fold into one dispatch: `chainable` specs + deferred results.
+Which commands may share one invocation.
 :::
 
 ::::
@@ -97,8 +102,8 @@ Compose typed calls and dispatch them as one tmux invocation:
 ['2']
 ```
 
-Resolve a typed query against a snapshot and compile it to one sequence -- pure,
-no tmux required:
+Build an expression from a query and compile it to one sequence -- pure, no tmux
+required:
 
 ```python
 >>> from libtmux._experimental.chain.plan import (
@@ -127,7 +132,7 @@ no tmux required:
 (('resize-pane', '-t', '%1', '-y', '20'), ('resize-pane', '-t', '%2', '-y', '20'))
 ```
 
-Against a live server, dispatch the same plan in one invocation with
+Against a live server, run the same expression in one invocation with
 {class}`~libtmux._experimental.chain._connection.SessionPlanExecutor`:
 
 ```python
@@ -139,8 +144,8 @@ Against a live server, dispatch the same plan in one invocation with
 >>> live_plan.run(runner)
 ```
 
-The same plan can be authored and compiled asynchronously -- construction stays
-sync, only snapshot resolution and dispatch await:
+The same expression can be built and compiled asynchronously -- construction
+stays synchronous; only resolution and dispatch await:
 
 ```python
 >>> import asyncio
