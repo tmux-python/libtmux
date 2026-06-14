@@ -31,6 +31,11 @@ subprocess per command. It grows in layers:
 - **Async facade** -- {mod}`~libtmux._experimental.chain._async` wraps
   the same engine so snapshot resolution and dispatch are awaitable, while
   command construction stays sync and one plan still compiles to one dispatch.
+- **Chainability contract** --
+  {mod}`~libtmux._experimental.chain.chain` decides which commands
+  may fold into one dispatch: the static
+  {attr}`~libtmux._experimental.chain.ir.CommandSpec.chainable`
+  flag plus a deferred result that refuses output read before the chain runs.
 - **Adapters** -- the live-tmux bridge:
   {func}`~libtmux._experimental.chain._connection.snapshot_from_session`
   reads real panes, and
@@ -64,6 +69,12 @@ Awaitable snapshot + dispatch over the same engine, one dispatch per plan.
 :link: api/libtmux._experimental.chain._connection
 :link-type: doc
 `snapshot_from_session`, `SessionPlanExecutor`, `AsyncSessionPlanExecutor`.
+:::
+
+:::{grid-item-card} Chainability contract
+:link: api/libtmux._experimental.chain.chain
+:link-type: doc
+What may fold into one dispatch: `chainable` specs + deferred results.
 :::
 
 ::::
@@ -164,4 +175,5 @@ api/libtmux._experimental.chain.ir
 api/libtmux._experimental.chain.plan
 api/libtmux._experimental.chain._async
 api/libtmux._experimental.chain._connection
+api/libtmux._experimental.chain.chain
 ```
