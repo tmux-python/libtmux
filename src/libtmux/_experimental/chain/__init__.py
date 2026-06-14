@@ -17,6 +17,9 @@ The layers build on each other:
 - :mod:`~libtmux._experimental.chain._connection` -- live-tmux
   connection helpers (``snapshot_from_session``, ``SessionPlanExecutor``,
   ``AsyncSessionPlanExecutor``).
+- :mod:`~libtmux._experimental.chain.chain` -- the chainability
+  contract that decides which commands may fold into one dispatch
+  (``CommandSpec.chainable`` + ``DeferredCommandResult``).
 
 Note
 ----
@@ -31,6 +34,12 @@ from libtmux._experimental.chain._connection import (
     AsyncSessionPlanExecutor,
     SessionPlanExecutor,
     snapshot_from_session,
+)
+from libtmux._experimental.chain.chain import (
+    ChainabilityError,
+    DeferredCommandResult,
+    DeferredOutputUnavailable,
+    is_chainable,
 )
 from libtmux._experimental.chain.ir import (
     Arg,
@@ -58,6 +67,7 @@ from libtmux._experimental.chain.plan import (
 __all__ = [
     "Arg",
     "AsyncSessionPlanExecutor",
+    "ChainabilityError",
     "CommandCall",
     "CommandChain",
     "CommandPlan",
@@ -66,6 +76,8 @@ __all__ = [
     "CommandScope",
     "CommandSpec",
     "CommandValue",
+    "DeferredCommandResult",
+    "DeferredOutputUnavailable",
     "NoCommandsResolved",
     "PaneQuery",
     "PaneRef",
@@ -76,6 +88,7 @@ __all__ = [
     "TmuxSnapshot",
     "WindowTarget",
     "aio",
+    "is_chainable",
     "panes",
     "snapshot_from_session",
 ]
