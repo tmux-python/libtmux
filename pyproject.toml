@@ -63,6 +63,7 @@ dev = [
   "pytest-mock",
   "pytest-watcher",
   "pytest-xdist",
+  "pytest-asyncio",
   # Coverage
   "codecov",
   "coverage",
@@ -84,6 +85,7 @@ testing = [
   "pytest-rerunfailures",
   "pytest-mock",
   "pytest-watcher",
+  "pytest-asyncio",
 ]
 coverage =[
   "codecov",
@@ -276,6 +278,8 @@ doctest_optionflags = [
   "ELLIPSIS",
   "NORMALIZE_WHITESPACE"
 ]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = [
   "src/libtmux",
   "tests",

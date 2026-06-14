@@ -28,10 +28,15 @@ subprocess per command. It grows in layers:
   {class}`~libtmux._experimental.chain.plan.PaneQuery` resolves
   against a pure {class}`~libtmux._experimental.chain.plan.TmuxSnapshot`,
   maps each typed row to commands, and compiles to one sequence.
+- **Async facade** -- {mod}`~libtmux._experimental.chain._async` wraps
+  the same engine so snapshot resolution and dispatch are awaitable, while
+  command construction stays sync and one plan still compiles to one dispatch.
 - **Adapters** -- the live-tmux bridge:
   {func}`~libtmux._experimental.chain._connection.snapshot_from_session`
   reads real panes, and
   {class}`~libtmux._experimental.chain._connection.SessionPlanExecutor`
+  (plus its async sibling
+  {class}`~libtmux._experimental.chain._connection.AsyncSessionPlanExecutor`)
   resolves and dispatches a plan against a real server in one invocation.
 
 ::::{grid} 1 2 2 2
@@ -49,10 +54,16 @@ Immutable argv primitives: `CommandCall`, `CommandChain`, `CommandSpec`.
 Typed target-safe queries that compile to one command sequence.
 :::
 
+:::{grid-item-card} Async facade
+:link: api/libtmux._experimental.chain._async
+:link-type: doc
+Awaitable snapshot + dispatch over the same engine, one dispatch per plan.
+:::
+
 :::{grid-item-card} Live-tmux adapters
 :link: api/libtmux._experimental.chain._connection
 :link-type: doc
-`snapshot_from_session` and `SessionPlanExecutor` for real dispatch.
+`snapshot_from_session`, `SessionPlanExecutor`, `AsyncSessionPlanExecutor`.
 :::
 
 ::::
@@ -117,11 +128,40 @@ Against a live server, dispatch the same plan in one invocation with
 >>> live_plan.run(runner)
 ```
 
+The same plan can be authored and compiled asynchronously -- construction stays
+sync, only snapshot resolution and dispatch await:
+
+```python
+>>> import asyncio
+>>> from libtmux._experimental.chain import aio
+>>> from libtmux._experimental.chain.plan import (
+...     PaneRef,
+...     PaneTarget,
+...     SessionTarget,
+...     TmuxSnapshot,
+...     WindowTarget,
+... )
+>>> snapshot = TmuxSnapshot(
+...     panes=(
+...         PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+...                 pane_index=0, active=True, title="editor"),
+...     ),
+... )
+>>> async def _resize() -> tuple[tuple[str, ...], ...]:
+...     plan = aio.panes().filter(active=True).commands(
+...         lambda pane: pane.cmd.resize_pane(height=20),
+...     )
+...     return (await plan.to_chain(snapshot)).argvs()
+>>> asyncio.run(_resize())
+(('resize-pane', '-t', '%1', '-y', '20'),)
+```
+
 ```{toctree}
 :hidden:
 :maxdepth: 1
 
 api/libtmux._experimental.chain.ir
 api/libtmux._experimental.chain.plan
+api/libtmux._experimental.chain._async
 api/libtmux._experimental.chain._connection
 ```

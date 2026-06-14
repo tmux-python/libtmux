@@ -166,7 +166,9 @@ def server(
         >>> pytester.makepyfile(**{'whatever.py': source})
         PosixPath(...)
 
-        >>> result = pytester.runpytest('whatever.py', '--disable-warnings')
+        >>> result = pytester.runpytest(
+        ...     'whatever.py', '--disable-warnings', '-p', 'no:asyncio'
+        ... )
         ===...
 
         >>> result.assert_outcomes(passed=1)
@@ -211,7 +213,9 @@ def session_params() -> dict[str, t.Any]:
         >>> pytester.makepyfile(**{'whatever.py': source})
         PosixPath(...)
 
-        >>> result = pytester.runpytest('whatever.py', '--disable-warnings')
+        >>> result = pytester.runpytest(
+        ...     'whatever.py', '--disable-warnings', '-p', 'no:asyncio'
+        ... )
         ===...
 
         >>> result.assert_outcomes(passed=1)
@@ -245,7 +249,9 @@ def session(
         >>> pytester.makepyfile(**{'whatever.py': source})
         PosixPath(...)
 
-        >>> result = pytester.runpytest('whatever.py', '--disable-warnings')
+        >>> result = pytester.runpytest(
+        ...     'whatever.py', '--disable-warnings', '-p', 'no:asyncio'
+        ... )
         ===...
 
         >>> result.assert_outcomes(passed=1)

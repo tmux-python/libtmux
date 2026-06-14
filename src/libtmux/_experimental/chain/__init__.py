@@ -11,8 +11,12 @@ The layers build on each other:
   intermediate representation (``CommandCall``, ``CommandChain``).
 - :mod:`~libtmux._experimental.chain.plan` -- typed, target-safe
   deferred query-command plans (``panes()``, ``CommandPlan``).
+- :mod:`~libtmux._experimental.chain._async` -- an async facade over
+  the same engine, exposed publicly as ``aio`` (``aio.panes()``), preserving
+  one dispatch per plan.
 - :mod:`~libtmux._experimental.chain._connection` -- live-tmux
-  connection helpers (``snapshot_from_session``, ``SessionPlanExecutor``).
+  connection helpers (``snapshot_from_session``, ``SessionPlanExecutor``,
+  ``AsyncSessionPlanExecutor``).
 
 Note
 ----
@@ -22,7 +26,9 @@ It may change or be removed between any releases without notice.
 
 from __future__ import annotations
 
+from libtmux._experimental.chain import _async as aio
 from libtmux._experimental.chain._connection import (
+    AsyncSessionPlanExecutor,
     SessionPlanExecutor,
     snapshot_from_session,
 )
@@ -51,6 +57,7 @@ from libtmux._experimental.chain.plan import (
 
 __all__ = [
     "Arg",
+    "AsyncSessionPlanExecutor",
     "CommandCall",
     "CommandChain",
     "CommandPlan",
@@ -68,6 +75,7 @@ __all__ = [
     "SessionTarget",
     "TmuxSnapshot",
     "WindowTarget",
+    "aio",
     "panes",
     "snapshot_from_session",
 ]

@@ -16,6 +16,7 @@ It may change or be removed between any releases without notice.
 
 from __future__ import annotations
 
+import asyncio
 import typing as t
 
 from libtmux._experimental.chain.ir import (
@@ -115,3 +116,47 @@ class SessionPlanExecutor:
     def snapshot(self) -> TmuxSnapshot:
         """Return a fresh snapshot of the session's panes."""
         return snapshot_from_session(self.session)
+
+
+class AsyncSessionPlanExecutor:
+    """An ``AsyncPlanRunner`` backed by a live :class:`libtmux.Session`.
+
+    libtmux dispatch is synchronous, so this offloads each blocking call to a
+    worker thread with :func:`asyncio.to_thread`. The plan still compiles to one
+    native sequence and dispatches once; it simply does not block the event
+    loop, so independent plans can resolve and dispatch concurrently.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> runner = AsyncSessionPlanExecutor(session)
+    >>> async def _demo() -> bool:
+    ...     snapshot = await runner.snapshot()
+    ...     return snapshot.panes[0].pane_id.value.startswith("%")
+    >>> asyncio.run(_demo())
+    True
+
+    A plan resolves and dispatches once, without blocking the loop:
+
+    >>> from libtmux._experimental.chain import aio
+    >>> plan = aio.panes().filter(active=True).commands(
+    ...     lambda pane: pane.cmd.send_keys("echo libtmux", enter=True),
+    ... )
+    >>> asyncio.run(plan.run(runner))
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._sync = SessionPlanExecutor(session)
+
+    async def cmd(
+        self,
+        cmd: str,
+        *args: Arg,
+        target: str | int | None = None,
+    ) -> CommandResultLike:
+        """Dispatch one tmux command in a worker thread."""
+        return await asyncio.to_thread(self._sync.cmd, cmd, *args, target=target)
+
+    async def snapshot(self) -> TmuxSnapshot:
+        """Return a fresh snapshot, read in a worker thread."""
+        return await asyncio.to_thread(self._sync.snapshot)
