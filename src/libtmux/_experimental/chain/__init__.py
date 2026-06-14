@@ -9,6 +9,10 @@ The layers build on each other:
 
 - :mod:`~libtmux._experimental.chain.ir` -- the immutable argv
   intermediate representation (``CommandCall``, ``CommandChain``).
+- :mod:`~libtmux._experimental.chain.plan` -- typed, target-safe
+  deferred query-command plans (``panes()``, ``CommandPlan``).
+- :mod:`~libtmux._experimental.chain._connection` -- live-tmux
+  connection helpers (``snapshot_from_session``, ``SessionPlanExecutor``).
 
 Note
 ----
@@ -18,6 +22,10 @@ It may change or be removed between any releases without notice.
 
 from __future__ import annotations
 
+from libtmux._experimental.chain._connection import (
+    SessionPlanExecutor,
+    snapshot_from_session,
+)
 from libtmux._experimental.chain.ir import (
     Arg,
     CommandCall,
@@ -27,13 +35,39 @@ from libtmux._experimental.chain.ir import (
     CommandScope,
     CommandSpec,
 )
+from libtmux._experimental.chain.plan import (
+    CommandPlan,
+    CommandValue,
+    NoCommandsResolved,
+    PaneQuery,
+    PaneRef,
+    PaneTarget,
+    PlanRunner,
+    SessionTarget,
+    TmuxSnapshot,
+    WindowTarget,
+    panes,
+)
 
 __all__ = [
     "Arg",
     "CommandCall",
     "CommandChain",
+    "CommandPlan",
     "CommandResultLike",
     "CommandRunner",
     "CommandScope",
     "CommandSpec",
+    "CommandValue",
+    "NoCommandsResolved",
+    "PaneQuery",
+    "PaneRef",
+    "PaneTarget",
+    "PlanRunner",
+    "SessionPlanExecutor",
+    "SessionTarget",
+    "TmuxSnapshot",
+    "WindowTarget",
+    "panes",
+    "snapshot_from_session",
 ]
