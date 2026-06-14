@@ -1,4 +1,4 @@
-# Async facade - `libtmux._experimental.chain._async`
+# Async - `libtmux._experimental.chain._async`
 
 :::{warning}
 Experimental. This API is **not** covered by version policies and can break or

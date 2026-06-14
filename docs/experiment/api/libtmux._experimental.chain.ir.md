@@ -1,4 +1,4 @@
-# Command IR - `libtmux._experimental.chain.ir`
+# Intermediate representation - `libtmux._experimental.chain.ir`
 
 :::{warning}
 Experimental. This API is **not** covered by version policies and can break or
