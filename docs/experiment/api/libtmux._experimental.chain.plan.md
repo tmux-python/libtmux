@@ -1,4 +1,4 @@
-# Deferred plan - `libtmux._experimental.chain.plan`
+# Expressions - `libtmux._experimental.chain.plan`
 
 :::{warning}
 Experimental. This API is **not** covered by version policies and can break or
