@@ -39,10 +39,12 @@ class CommandResultLike(t.Protocol):
 class CommandRunner(t.Protocol):
     """Object capable of dispatching one tmux command argv.
 
-    A live :class:`libtmux.Server` (and :class:`libtmux.Session`,
-    :class:`libtmux.Window`, :class:`libtmux.Pane`) already matches this
-    protocol via its ``cmd()`` method, so sequences can be dispatched without
-    any adapter for the common case.
+    A live :class:`libtmux.Server` already matches this protocol via its
+    ``cmd()`` method, so sequences can be dispatched without an adapter for the
+    common case. Object-level ``cmd()`` wrappers such as ``Session.cmd()`` add
+    their own target context; use ``session.server`` or
+    :class:`~libtmux._experimental.chain._connection.SessionPlanExecutor` for
+    composed command sequences.
     """
 
     def cmd(
