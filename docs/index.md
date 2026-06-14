@@ -124,6 +124,7 @@ topics/index
 api/index
 api/testing/index
 internals/index
+experiment/index
 project/index
 history
 migration
