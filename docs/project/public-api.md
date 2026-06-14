@@ -29,12 +29,16 @@ This includes:
 
 ## What Is Internal
 
-Modules under `libtmux._internal` and `libtmux._vendor` are **not public**.
-They may change or be removed without notice between any release.
+Modules under `libtmux._internal`, `libtmux._vendor`, and
+`libtmux._experimental` are **not public**. They may change or be removed
+without notice between any release. `libtmux._experimental` additionally hosts
+in-progress designs that are published for feedback before any stability
+commitment (see {ref}`the experimental docs <experimental>`).
 
 Do not import from:
 - `libtmux._internal.*`
 - `libtmux._vendor.*`
+- `libtmux._experimental.*`
 
 ## Pre-1.0 Stability Policy
 
