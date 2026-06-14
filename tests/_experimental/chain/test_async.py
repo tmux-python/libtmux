@@ -116,7 +116,7 @@ async def test_async_to_chain_awaits_snapshot_without_dispatching() -> None:
 
 
 async def test_async_run_dispatches_one_native_tmux_sequence() -> None:
-    """Async execution still batches concrete commands into one tmux call."""
+    """Async execution still chains concrete commands into one tmux call."""
     runner = _AsyncFakeRunner(_snapshot())
     plan = (
         api.panes()
