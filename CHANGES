@@ -45,6 +45,13 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### Flaky `test_capture_pane_flags[join_wrapped_numbers]` (#655)
+
+Marker detection now skips the shell command echo line to avoid
+false-positive completion.
+
 ## libtmux 0.58.0 (2026-05-23)
 
 libtmux 0.58.0 fixes subprocess output decoding on non-UTF-8 locales.
