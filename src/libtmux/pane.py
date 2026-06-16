@@ -2466,6 +2466,8 @@ class Pane(
             tmux_args += ("-n", "libtmux")
 
         tmux_args += ("-s", str(self.pane_id))
+        if self.session_id is not None:
+            tmux_args += ("-t", f"{self.session_id}:")
 
         # Use server.cmd to avoid auto-adding -t from self.cmd
         proc = self.server.cmd("break-pane", *tmux_args)

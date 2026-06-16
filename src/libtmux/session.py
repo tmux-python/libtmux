@@ -960,9 +960,11 @@ class Session(
         target: str | int | None = target_window
         if target_window is not None:
             if isinstance(target_window, int):
-                target = f"{self.session_name}:{target_window}"
+                target = f"{self.session_id}:{target_window}"
+            elif target_window.startswith("@") or ":" in target_window:
+                target = target_window
             else:
-                target = f"{target_window}"
+                target = f"{self.session_id}:{target_window}"
 
         proc = self.cmd("kill-window", target=target)
 
