@@ -253,5 +253,4 @@ markers = [
 ]
 filterwarnings = [
   "ignore:The frontend.Option(Parser)? class.*:DeprecationWarning::",
-  "ignore::DeprecationWarning:tests:",  # tests/
 ]
