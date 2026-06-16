@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### pytest 9.1 compatibility for the pytest plugin (#687)
+
+libtmux's pytest plugin (see {ref}`pytest_plugin`) now imports cleanly
+under pytest 9.1, which began rejecting marks applied to fixture
+functions. Projects that use libtmux's fixtures can upgrade to pytest
+9.1+ without the plugin aborting before test collection.
+
 ## libtmux 0.58.0 (2026-05-23)
 
 libtmux 0.58.0 fixes subprocess output decoding on non-UTF-8 locales.

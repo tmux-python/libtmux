@@ -82,7 +82,6 @@ def user_path(home_path: pathlib.Path, home_user_name: str) -> pathlib.Path:
     return p
 
 
-@pytest.mark.skipif(USING_ZSH, reason="Using ZSH")
 @pytest.fixture(scope="session")
 def zshrc(user_path: pathlib.Path) -> pathlib.Path:
     """Suppress ZSH default message.
