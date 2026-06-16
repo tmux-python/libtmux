@@ -388,6 +388,11 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     If using OpenBSD's base system tmux, the version will have ``-openbsd``
     appended to the latest version, e.g. ``2.4-openbsd``.
 
+    The version is memoized per ``tmux_bin`` value: ``tmux -V`` runs once per
+    distinct binary path within a process. Use ``get_version.cache_clear()``
+    when test fixtures swap the tmux binary or stub :func:`tmux_cmd`. Errors
+    are not cached, so a transient failure does not poison the lookup.
+
     Parameters
     ----------
     tmux_bin : str, optional

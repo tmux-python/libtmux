@@ -6,11 +6,11 @@ import contextlib
 import os
 import pathlib
 import textwrap
-import time
 import typing as t
 
 from libtmux.pytest_plugin import _reap_test_server
 from libtmux.server import Server
+from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     import pytest
@@ -101,6 +101,38 @@ def test_test_server(TestServer: t.Callable[..., Server]) -> None:
     assert server2.socket_name != server.socket_name
 
 
+def test_pin_test_shell_env_aligns_shell_with_default_shell() -> None:
+    """The autouse plugin fixture pins ``$SHELL`` to ``/bin/sh``.
+
+    Code that compares ``os.getenv("SHELL")`` against the tmux pane's
+    running command (notably tmuxp's ``test_automatic_rename_option``)
+    must see ``/bin/sh`` to match the ``default-shell`` pinned in
+    :func:`config_file`. Because the alignment fixture is autouse from
+    the libtmux pytest plugin, every test that loads the plugin —
+    including external consumers — gets the alignment without explicit
+    fixture opt-in.
+    """
+    assert os.environ.get("SHELL") == "/bin/sh"
+
+
+def test_config_file_pins_minimal_test_shell(config_file: pathlib.Path) -> None:
+    """The shipped ``.tmux.conf`` pins ``/bin/sh`` as the default shell.
+
+    Forcing ``default-shell`` to ``/bin/sh`` skips the developer's
+    interactive shell init (~60ms per pane for zsh) and eliminates the
+    non-deterministic prompt rendering that flakes ``capture-pane`` and
+    ``automatic-rename`` assertions. The ``base-index 1`` line is
+    behavioral and must remain. ``default-command`` is intentionally
+    NOT set so consumer test workspaces can override ``default-shell``
+    per-session (per tmux's ``cmd-new-window.c``, ``default-command``
+    always wins, which would short-circuit those overrides).
+    """
+    content = config_file.read_text()
+    assert "set -g base-index 1" in content
+    assert "set -g default-shell /bin/sh" in content
+    assert "set -g default-command" not in content
+
+
 def test_test_server_with_config(
     TestServer: t.Callable[..., Server],
     tmp_path: pathlib.Path,
@@ -130,9 +162,13 @@ def test_test_server_cleanup(TestServer: t.Callable[..., Server]) -> None:
     # Verify server is alive
     assert server.is_alive() is True
 
-    # Delete server and verify cleanup
+    # Delete server and verify cleanup. Poll the socket until tmux's
+    # async unlink completes, replacing a flaky time.sleep(0.1).
     server.kill()
-    time.sleep(0.1)  # Give time for cleanup
+    assert retry_until(
+        lambda: not server.is_alive(),
+        seconds=2,
+    )
 
     # Create new server to verify old one was cleaned up
     new_server = TestServer()
