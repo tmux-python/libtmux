@@ -27,9 +27,8 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux._experimental.chain.chain import (
-    ChainabilityError,
     DeferredCommandResult,
-    is_chainable,
+    ensure_chainable,
 )
 from libtmux._experimental.chain.ir import (
     Arg,
@@ -279,12 +278,7 @@ class _ForwardRef:
 def _compile_lineage(calls: tuple[CommandCall, ...]) -> CommandChain:
     """Chainability-check an accumulated lineage and fold it into one chain."""
     for call in calls:
-        if not is_chainable(call.name):
-            msg = (
-                f"command {call.name!r} is not chainable and cannot be "
-                f"folded into a one-dispatch sequence"
-            )
-            raise ChainabilityError(msg)
+        ensure_chainable(call.name)
     return CommandChain(calls)
 
 
@@ -1195,12 +1189,7 @@ class CommandPlan:
             msg = "command plan resolved to no commands"
             raise NoCommandsResolved(msg)
         for call in calls:
-            if not is_chainable(call.name):
-                msg = (
-                    f"command {call.name!r} is not chainable and cannot be "
-                    f"folded into a one-dispatch sequence"
-                )
-                raise ChainabilityError(msg)
+            ensure_chainable(call.name)
         return CommandChain(tuple(calls))
 
     def run(self, runner: PlanRunner) -> None:

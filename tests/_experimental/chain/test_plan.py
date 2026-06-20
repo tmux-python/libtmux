@@ -9,7 +9,10 @@ import pytest
 from typing_extensions import assert_type
 
 from libtmux._experimental.chain import plan as api
-from libtmux._experimental.chain.chain import ChainabilityError, DeferredCommandResult
+from libtmux._experimental.chain.chain import (
+    ChainabilityError,
+    DeferredCommandResult,
+)
 from libtmux._experimental.chain.ir import CommandCall, CommandChain
 
 if t.TYPE_CHECKING:
@@ -266,6 +269,16 @@ def test_to_chain_rejects_nonchainable_command() -> None:
     )
 
     with pytest.raises(ChainabilityError, match="not chainable"):
+        plan.to_chain(_snapshot())
+
+
+def test_to_chain_rejects_unknown_raw_command() -> None:
+    """The raw escape hatch may not fold unregistered commands."""
+    plan = (
+        api.panes().limit(1).commands(lambda pane: pane.cmd.raw("some-unknown-command"))
+    )
+
+    with pytest.raises(ChainabilityError, match="unknown tmux command"):
         plan.to_chain(_snapshot())
 
 
