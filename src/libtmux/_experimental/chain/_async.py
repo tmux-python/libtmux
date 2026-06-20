@@ -23,6 +23,7 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux._experimental.chain import plan as sync_plan
+from libtmux._experimental.chain.chain import DeferredCommandResult
 from libtmux._experimental.chain.ir import (
     Arg,
     CommandChain,
@@ -245,6 +246,40 @@ class CommandPlan:
             extra={"tmux_exit_code": result.returncode},
         )
         return None
+
+    async def run_deferred(
+        self,
+        runner: AsyncPlanRunner,
+    ) -> tuple[DeferredCommandResult, ...]:
+        r"""Async: dispatch once and return a resolved deferred result per command.
+
+        Mirrors :meth:`CommandPlan.run_deferred
+        <libtmux._experimental.chain.plan.CommandPlan.run_deferred>`: one ``\\;``
+        dispatch, each handle resolved with the chain's merged result. An empty
+        plan returns an empty tuple.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> from libtmux._experimental.chain import aio, AsyncSessionPlanExecutor
+        >>> plan = aio.panes().filter(active=True).commands(
+        ...     lambda pane: pane.cmd.send_keys("echo libtmux", enter=True),
+        ... )
+        >>> results = asyncio.run(
+        ...     plan.run_deferred(AsyncSessionPlanExecutor(session))
+        ... )
+        >>> all(r.returncode == 0 for r in results)
+        True
+        """
+        try:
+            sequence = await self.to_chain(runner)
+        except NoCommandsResolved:
+            return ()
+        argv = sequence.argv()
+        result = await runner.cmd(argv[0], *argv[1:])
+        return tuple(
+            DeferredCommandResult(call).resolve(result) for call in sequence.calls
+        )
 
 
 def panes() -> PaneQuery:
