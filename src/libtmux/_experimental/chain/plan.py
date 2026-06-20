@@ -35,7 +35,6 @@ from libtmux._experimental.chain.ir import (
 OrderField: t.TypeAlias = t.Literal["pane_id", "pane_index", "title"]
 """A :class:`PaneRef` field a query may order by."""
 
-ResultT = t.TypeVar("ResultT")
 MappedT = t.TypeVar("MappedT")
 
 
@@ -410,7 +409,7 @@ class PaneQuery:
         """Return a data-only transformation query (no commands)."""
         return MappedPaneQuery(query=self, mapper=mapper)
 
-    def commands(self, mapper: CommandMapper) -> CommandPlan[None]:
+    def commands(self, mapper: CommandMapper) -> CommandPlan:
         """Return a deferred plan where each row maps to one or more commands.
 
         Examples
@@ -476,7 +475,7 @@ class _CommandPlanNode:
 
 
 @dataclass(frozen=True, slots=True)
-class CommandPlan(t.Generic[ResultT]):
+class CommandPlan:
     """A lazy command plan that resolves a query into a command sequence.
 
     Examples
@@ -526,7 +525,7 @@ class CommandPlan(t.Generic[ResultT]):
             raise NoCommandsResolved(msg)
         return CommandChain(tuple(calls))
 
-    def run(self: CommandPlan[None], runner: PlanRunner) -> None:
+    def run(self, runner: PlanRunner) -> None:
         """Resolve, compile, and dispatch the plan in one tmux invocation.
 
         An empty plan is a no-op (it does not raise), mirroring libtmux's
