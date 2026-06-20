@@ -244,7 +244,7 @@ doctest_optionflags = [
   "ELLIPSIS",
   "NORMALIZE_WHITESPACE"
 ]
-asyncio_mode = "auto"
+asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = [
   "src/libtmux",
