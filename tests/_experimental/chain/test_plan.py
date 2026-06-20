@@ -11,6 +11,7 @@ from typing_extensions import assert_type
 from libtmux._experimental.chain import plan as api
 from libtmux._experimental.chain.chain import (
     ChainabilityError,
+    CommandScopeError,
     DeferredCommandResult,
 )
 from libtmux._experimental.chain.ir import CommandCall, CommandChain
@@ -314,6 +315,44 @@ def test_raw_escape_hatch_binds_typed_targets() -> None:
         "automatic-rename",
         "on",
     )
+
+
+class ScopeRejectionCase(t.NamedTuple):
+    """A known command bound to a wrong typed target scope."""
+
+    test_id: str
+    build: t.Callable[[api.PaneRef], object]
+
+
+SCOPE_REJECTION_CASES = (
+    ScopeRejectionCase(
+        test_id="pane-target-window-command",
+        build=lambda pane: pane.cmd.raw("rename-window", "bad"),
+    ),
+    ScopeRejectionCase(
+        test_id="window-target-pane-command",
+        build=lambda pane: pane.window.raw("send-keys", "bad"),
+    ),
+    ScopeRejectionCase(
+        test_id="session-target-pane-command",
+        build=lambda pane: pane.session.raw("resize-pane", "-y", 20),
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    SCOPE_REJECTION_CASES,
+    ids=[case.test_id for case in SCOPE_REJECTION_CASES],
+)
+def test_raw_escape_hatch_rejects_wrong_known_scope(
+    case: ScopeRejectionCase,
+) -> None:
+    """Known commands cannot bind to the wrong typed target namespace."""
+    pane = _snapshot().panes[0]
+
+    with pytest.raises(CommandScopeError, match="cannot target"):
+        case.build(pane)
 
 
 def test_raw_escape_hatch_still_enforces_chainability() -> None:
