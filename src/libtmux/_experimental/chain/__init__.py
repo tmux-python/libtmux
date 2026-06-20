@@ -21,10 +21,33 @@ The layers build on each other:
   contract that decides which commands may fold into one dispatch
   (``CommandSpec.chainable`` + ``DeferredCommandResult``).
 
+Forward references come in two shapes; pick by whether the handles are
+independent:
+
+- A **linear chain** -- ``PaneRef.split().split().do(...)`` in
+  :mod:`~libtmux._experimental.chain.plan`. Each step creates the object the next
+  step builds on (split a pane, then split *that* pane). Because tmux keeps the
+  freshly-created object active, the whole chain addresses it with no ``-t`` and
+  folds into **one** ``\\;`` invocation (``to_chain()`` / ``run()``). Use it when
+  the forward objects form a single line of descent.
+- A **multi-handle plan** -- ``ForwardPlan``. Hands out
+  **independent** handles (two splits off one pane, two windows in a new
+  session) and resolves them over the minimum number of dispatches, capturing each
+  new id with ``-P -F`` and substituting it downstream. Use it when you hold more
+  than one forward object at once, or need a new id back
+  (``Resolved.bindings`` / ``Resolved.pane(...)``).
+
+A lone-pane ``ForwardPlan`` still folds to one dispatch (via the marked register),
+so the two shapes overlap only there; reach for the linear chain for a pure line
+of splits and ``ForwardPlan`` the moment the handles fan out.
+
 Note
 ----
 This is an **experimental** API, not covered by the project's versioning policy.
-It may change or be removed between any releases without notice.
+It may change or be removed between any releases without notice. A ``\\;``
+sequence returns one merged result, so per-command output is not separable; reach
+for individual typed calls (or ``run_deferred``) when you need a command's own
+output.
 """
 
 from __future__ import annotations
