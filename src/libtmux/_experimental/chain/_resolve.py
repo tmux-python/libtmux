@@ -492,6 +492,30 @@ class ForwardHandle:
             self._parent(":"), "window", "new-window", tuple(args)
         )
 
+    @property
+    def initial_pane(self) -> ForwardHandle:
+        """Return a pane handle on this session's initial (default) pane.
+
+        A detached ``new-session`` is born with one window and pane that the
+        plan otherwise can't address; this hands back a pane handle bound to the
+        session (which resolves to its active pane), so the default window can be
+        decorated or split instead of orphaned. Session handles only.
+        """
+        if self._kind != "session":
+            msg = f"initial_pane is only on a session handle, not a {self._kind} handle"
+            raise TypeError(msg)
+        return ForwardHandle(self._plan, self._ref, "pane")
+
+    @property
+    def initial_window(self) -> ForwardHandle:
+        """Return a window handle on this session's initial (default) window."""
+        if self._kind != "session":
+            msg = (
+                f"initial_window is only on a session handle, not a {self._kind} handle"
+            )
+            raise TypeError(msg)
+        return ForwardHandle(self._plan, self._ref, "window")
+
     def do(self, build: cabc.Callable[[ForwardHandle], IntoCommands]) -> ForwardHandle:
         """Decorate this handle via its namespaces (reused, no new vocabulary)."""
         self._plan._steps.extend(_Decorate(call) for call in _to_calls(build(self)))
