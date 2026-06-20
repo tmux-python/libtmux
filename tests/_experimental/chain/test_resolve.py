@@ -13,7 +13,12 @@ from libtmux._experimental.chain import (
     SessionPlanExecutor,
     panes,
 )
-from libtmux._experimental.chain._resolve import Dispatch, _marked_eligible, drive
+from libtmux._experimental.chain._resolve import (
+    Dispatch,
+    ForwardDispatchError,
+    _marked_eligible,
+    drive,
+)
 from libtmux._experimental.chain.plan import PaneTarget
 
 if t.TYPE_CHECKING:
@@ -218,6 +223,28 @@ async def test_multidispatch_session_window_async(session: Session) -> None:
         for s in list(server.sessions):
             if s.session_name == name:
                 s.kill()
+
+
+def test_forward_dispatch_error_on_failed_create() -> None:
+    """A failed creation dispatch raises ForwardDispatchError, not IndexError."""
+    plan = ForwardPlan(PaneTarget("%1"))
+    plan.split()
+
+    gen = drive(tuple(plan._steps))
+    next(gen)  # the split's capturing dispatch
+    with pytest.raises(ForwardDispatchError) as excinfo:
+        gen.send(_FakeResult(stdout=[], stderr=["no space for new pane"], returncode=1))
+
+    assert "no space for new pane" in str(excinfo.value)
+    assert excinfo.value.argv[0] == "split-window"
+
+
+def test_forward_dispatch_error_live(session: Session) -> None:
+    """Live: splitting against a bogus target fails loudly with the tmux error."""
+    plan = ForwardPlan(PaneTarget("%nonexistent999"))
+    plan.split()
+    with pytest.raises(ForwardDispatchError):
+        plan.run_resolving(SessionPlanExecutor(session))
 
 
 def test_marked_eligible_classifies_plan_shapes() -> None:

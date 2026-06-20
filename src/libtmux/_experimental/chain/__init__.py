@@ -36,6 +36,7 @@ from libtmux._experimental.chain._connection import (
     snapshot_from_session,
 )
 from libtmux._experimental.chain._resolve import (
+    ForwardDispatchError,
     ForwardHandle,
     ForwardPlan,
     Resolved,
@@ -89,6 +90,7 @@ __all__ = [
     "DeferredCommandResult",
     "DeferredOutputUnavailable",
     "ForwardDataUnavailable",
+    "ForwardDispatchError",
     "ForwardHandle",
     "ForwardPlan",
     "NoCommandsResolved",
