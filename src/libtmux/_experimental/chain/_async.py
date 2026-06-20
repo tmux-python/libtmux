@@ -79,7 +79,7 @@ class PaneQuery:
     ...     PaneRef, PaneTarget, SessionTarget, TmuxSnapshot, WindowTarget,
     ... )
     >>> snapshot = TmuxSnapshot(panes=(
-    ...     PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+    ...     PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
     ...             pane_index=0, active=True, title="editor"),
     ... ))
     >>> rows = asyncio.run(panes().filter(active=True).all(snapshot))
@@ -171,9 +171,9 @@ class CommandPlan:
     ...     PaneRef, PaneTarget, SessionTarget, TmuxSnapshot, WindowTarget,
     ... )
     >>> snapshot = TmuxSnapshot(panes=(
-    ...     PaneRef(PaneTarget("%2"), WindowTarget("@1"), SessionTarget("$0"),
+    ...     PaneRef.concrete(pane_id="%2", window_id="@1", session_id="$0",
     ...             pane_index=1, active=True, title="logs"),
-    ...     PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+    ...     PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
     ...             pane_index=0, active=True, title="editor"),
     ... ))
     >>> async def _demo():
