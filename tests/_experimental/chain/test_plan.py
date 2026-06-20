@@ -280,3 +280,34 @@ def test_to_chain_allows_chainable_command() -> None:
     )
 
     assert plan.to_chain(_snapshot()).argvs() == (("rename-window", "work"),)
+
+
+def test_raw_escape_hatch_binds_typed_targets() -> None:
+    """``raw`` issues an arbitrary command bound to each scope's typed target."""
+    pane = _snapshot().panes[0]
+
+    assert pane.cmd.raw("pipe-pane", "-o").argv() == ("pipe-pane", "-t", "%2", "-o")
+    assert pane.window.raw("set-option", "@x", "1").argv() == (
+        "set-option",
+        "-t",
+        "@1",
+        "@x",
+        "1",
+    )
+    assert pane.session.raw("set-option", "automatic-rename", "on").argv() == (
+        "set-option",
+        "-t",
+        "$0",
+        "automatic-rename",
+        "on",
+    )
+
+
+def test_raw_escape_hatch_still_enforces_chainability() -> None:
+    """A non-chainable command via the escape hatch is still rejected."""
+    plan = (
+        api.panes().limit(1).commands(lambda pane: pane.cmd.raw("capture-pane", "-p"))
+    )
+
+    with pytest.raises(ChainabilityError, match="not chainable"):
+        plan.to_chain(_snapshot())

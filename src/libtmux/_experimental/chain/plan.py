@@ -275,6 +275,20 @@ class BoundPaneCommands:
         """
         return ResizePane(target=self.target, height=height)
 
+    def raw(self, name: str, *args: Arg) -> CommandCall:
+        """Build an arbitrary pane-scoped command bound to this pane.
+
+        The typed escape hatch: any tmux command, with the pane target
+        pre-bound, for commands without a first-class builder. Still subject to
+        the chainability check when compiled in a plan.
+
+        Examples
+        --------
+        >>> BoundPaneCommands(PaneTarget("%1")).raw("pipe-pane", "-o").argv()
+        ('pipe-pane', '-t', '%1', '-o')
+        """
+        return CommandCall(name, args, target=self.target.value)
+
 
 class BoundWindowCommands:
     """Window command namespace bound to one typed window target.
@@ -297,6 +311,36 @@ class BoundWindowCommands:
         ('select-layout', '-t', '@1', 'tiled')
         """
         return SelectLayout(target=self.target, layout=layout)
+
+    def raw(self, name: str, *args: Arg) -> CommandCall:
+        """Build an arbitrary window-scoped command bound to this window.
+
+        Examples
+        --------
+        >>> BoundWindowCommands(WindowTarget("@1")).raw("set-option", "@x", "1").argv()
+        ('set-option', '-t', '@1', '@x', '1')
+        """
+        return CommandCall(name, args, target=self.target.value)
+
+
+class BoundSessionCommands:
+    """Session command namespace bound to one typed session target.
+
+    The session scope exists mainly for the ``raw`` escape hatch -- e.g. the
+    per-session ``set-option`` loops that workspace builders issue.
+
+    Examples
+    --------
+    >>> BoundSessionCommands(SessionTarget("$0")).raw("set-option", "@x", "1").argv()
+    ('set-option', '-t', '$0', '@x', '1')
+    """
+
+    def __init__(self, target: SessionTarget) -> None:
+        self.target = target
+
+    def raw(self, name: str, *args: Arg) -> CommandCall:
+        """Build an arbitrary session-scoped command bound to this session."""
+        return CommandCall(name, args, target=self.target.value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,6 +382,11 @@ class PaneRef:
     def window(self) -> BoundWindowCommands:
         """Window-scoped commands bound to this pane's window."""
         return BoundWindowCommands(self.window_id)
+
+    @property
+    def session(self) -> BoundSessionCommands:
+        """Session-scoped commands bound to this pane's session."""
+        return BoundSessionCommands(self.session_id)
 
 
 CommandMapper: t.TypeAlias = cabc.Callable[[PaneRef], IntoCommands]
