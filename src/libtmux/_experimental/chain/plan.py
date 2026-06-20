@@ -178,7 +178,13 @@ class SendKeys(CommandValue):
     enter: bool = False
 
     def to_call(self) -> CommandCall:
-        """Compile to a shared command call."""
+        """Compile to a shared command call.
+
+        Examples
+        --------
+        >>> SendKeys(PaneTarget("%1"), "clear", enter=True).to_call().argv()
+        ('send-keys', '-t', '%1', 'clear', 'Enter')
+        """
         args: list[Arg] = [self.command]
         if self.enter:
             args.append("Enter")
@@ -199,7 +205,13 @@ class ResizePane(CommandValue):
     height: int
 
     def to_call(self) -> CommandCall:
-        """Compile to a shared command call."""
+        """Compile to a shared command call.
+
+        Examples
+        --------
+        >>> ResizePane(PaneTarget("%1"), height=20).to_call().argv()
+        ('resize-pane', '-t', '%1', '-y', '20')
+        """
         return CommandCall(
             "resize-pane",
             ("-y", self.height),
@@ -221,7 +233,13 @@ class SelectLayout(CommandValue):
     layout: str
 
     def to_call(self) -> CommandCall:
-        """Compile to a shared command call."""
+        """Compile to a shared command call.
+
+        Examples
+        --------
+        >>> SelectLayout(WindowTarget("@1"), "tiled").to_call().argv()
+        ('select-layout', '-t', '@1', 'tiled')
+        """
         return CommandCall("select-layout", (self.layout,), target=self.target.value)
 
 
@@ -238,11 +256,23 @@ class BoundPaneCommands:
         self.target = target
 
     def send_keys(self, command: str, *, enter: bool = False) -> SendKeys:
-        """Build a target-bound ``send-keys`` command."""
+        """Build a target-bound ``send-keys`` command.
+
+        Examples
+        --------
+        >>> BoundPaneCommands(PaneTarget("%1")).send_keys("clear").argv()
+        ('send-keys', '-t', '%1', 'clear')
+        """
         return SendKeys(target=self.target, command=command, enter=enter)
 
     def resize_pane(self, *, height: int) -> ResizePane:
-        """Build a target-bound ``resize-pane`` command."""
+        """Build a target-bound ``resize-pane`` command.
+
+        Examples
+        --------
+        >>> BoundPaneCommands(PaneTarget("%1")).resize_pane(height=20).argv()
+        ('resize-pane', '-t', '%1', '-y', '20')
+        """
         return ResizePane(target=self.target, height=height)
 
 
@@ -259,7 +289,13 @@ class BoundWindowCommands:
         self.target = target
 
     def select_layout(self, layout: str) -> SelectLayout:
-        """Build a target-bound ``select-layout`` command."""
+        """Build a target-bound ``select-layout`` command.
+
+        Examples
+        --------
+        >>> BoundWindowCommands(WindowTarget("@1")).select_layout("tiled").argv()
+        ('select-layout', '-t', '@1', 'tiled')
+        """
         return SelectLayout(target=self.target, layout=layout)
 
 
@@ -359,15 +395,33 @@ class PaneQuery:
     limit_count: int | None = None
 
     def filter(self, *, active: bool) -> PaneQuery:
-        """Return a query filtered by active state."""
+        """Return a query filtered by active state.
+
+        Examples
+        --------
+        >>> panes().filter(active=True)
+        PaneQuery(active_filter=True, ordering=None, limit_count=None)
+        """
         return dataclasses.replace(self, active_filter=active)
 
     def order_by(self, field: OrderField) -> PaneQuery:
-        """Return a query ordered by a known pane field."""
+        """Return a query ordered by a known pane field.
+
+        Examples
+        --------
+        >>> panes().order_by("pane_index")
+        PaneQuery(active_filter=None, ordering='pane_index', limit_count=None)
+        """
         return dataclasses.replace(self, ordering=field)
 
     def limit(self, count: int) -> PaneQuery:
-        """Return a query capped to ``count`` rows."""
+        """Return a query capped to ``count`` rows.
+
+        Examples
+        --------
+        >>> panes().limit(2)
+        PaneQuery(active_filter=None, ordering=None, limit_count=2)
+        """
         return dataclasses.replace(self, limit_count=count)
 
     def all(self, source: SnapshotSource) -> list[PaneRef]:
@@ -456,11 +510,39 @@ class MappedPaneQuery(t.Generic[MappedT]):
     mapper: cabc.Callable[[PaneRef], MappedT]
 
     def all(self, source: SnapshotSource) -> list[MappedT]:
-        """Evaluate the query and transform every row."""
+        """Evaluate the query and transform every row.
+
+        Examples
+        --------
+        >>> snapshot = TmuxSnapshot(
+        ...     panes=(
+        ...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
+        ...                 pane_index=0, active=True, title="editor"),
+        ...         PaneRef.concrete(pane_id="%2", window_id="@1", session_id="$0",
+        ...                 pane_index=1, active=True, title="logs"),
+        ...     ),
+        ... )
+        >>> panes().map(lambda pane: pane.title).all(snapshot)
+        ['editor', 'logs']
+        """
         return [self.mapper(row) for row in self.query.all(source)]
 
     def first(self, source: SnapshotSource) -> MappedT | None:
-        """Evaluate the query and transform the first row, or ``None``."""
+        """Evaluate the query and transform the first row, or ``None``.
+
+        Examples
+        --------
+        >>> snapshot = TmuxSnapshot(
+        ...     panes=(
+        ...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
+        ...                 pane_index=0, active=True, title="editor"),
+        ...     ),
+        ... )
+        >>> panes().map(lambda pane: pane.title).first(snapshot)
+        'editor'
+        >>> panes().filter(active=False).map(lambda p: p.title).first(snapshot) is None
+        True
+        """
         row = self.query.first(source)
         if row is None:
             return None
@@ -522,6 +604,19 @@ class CommandPlan:
             consumed mid-chain (e.g. ``show-option``). Raw ``CommandCall``
             composition via ``>>`` is the explicit escape hatch and is not
             checked.
+
+        Examples
+        --------
+        >>> snapshot = TmuxSnapshot(
+        ...     panes=(
+        ...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
+        ...                 pane_index=0, active=True, title="editor"),
+        ...     ),
+        ... )
+        >>> panes().commands(
+        ...     lambda p: p.cmd.resize_pane(height=10)
+        ... ).to_chain(snapshot).argvs()
+        (('resize-pane', '-t', '%1', '-y', '10'),)
         """
         calls: list[CommandCall] = []
         for row in self.node.query.all(source):
