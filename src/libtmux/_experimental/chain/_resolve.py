@@ -63,6 +63,44 @@ class NoSeedResolved(RuntimeError):
     """Raised when a query-seeded forward plan matches no pane."""
 
 
+class ForwardDispatchError(RuntimeError):
+    r"""A forward creation dispatch failed -- nonzero exit or no captured id.
+
+    Raised by the resolver when a ``split``/``new-window``/``new-session`` did
+    not print the id it was asked to capture (tmux rejected the target, ran out
+    of space, etc.). It turns what was an opaque ``IndexError`` on empty stdout
+    into a clear failure carrying the offending ``argv`` and the tmux result.
+
+    Examples
+    --------
+    >>> class _Result:
+    ...     stdout: list[str] = []
+    ...     stderr = ["no space for new pane"]
+    ...     returncode = 1
+    >>> err = ForwardDispatchError(("split-window", "-t", "%1"), _Result())
+    >>> err.argv
+    ('split-window', '-t', '%1')
+    >>> print(str(err))
+    forward dispatch failed (exit 1): split-window -t %1: no space for new pane
+    """
+
+    def __init__(self, argv: tuple[str, ...], result: CommandResultLike) -> None:
+        self.argv = argv
+        self.result = result
+        stderr = " ".join(result.stderr).strip()
+        detail = f": {stderr}" if stderr else ""
+        cmd = " ".join(argv)
+        msg = f"forward dispatch failed (exit {result.returncode}): {cmd}{detail}"
+        super().__init__(msg)
+
+
+def _capture_id(argv: tuple[str, ...], result: CommandResultLike) -> str:
+    """Read the id a creation dispatch printed, or fail loudly."""
+    if result.returncode != 0 or not result.stdout:
+        raise ForwardDispatchError(argv, result)
+    return result.stdout[0].strip()
+
+
 # --- plan IR ----------------------------------------------------------------
 @dataclass(frozen=True, slots=True)
 class _Create:
@@ -215,7 +253,7 @@ def drive(
         decorates = tuple(s.call for s in steps if isinstance(s, _Decorate))
         argv = _marked_invocation(solo, decorates, bindings)
         result = yield Dispatch(argv, solo.slot)
-        bindings[solo.slot] = result.stdout[0].strip()
+        bindings[solo.slot] = _capture_id(argv, result)
         return Resolved(bindings, (result,))
 
     for step in steps:
@@ -227,7 +265,7 @@ def drive(
             argv = _with_capture(_subst(step.call, bindings), step.kind)
             result = yield Dispatch(argv, step.slot)
             results.append(result)
-            bindings[step.slot] = result.stdout[0].strip()
+            bindings[step.slot] = _capture_id(argv, result)
         else:
             tail.append(step.call)
 
