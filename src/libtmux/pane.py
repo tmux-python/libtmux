@@ -612,11 +612,6 @@ class Pane(
         >>> pane.capture_pane()
         ['$ echo "Hello world"', 'Hello world', '$']
 
-        >>> print('\n'.join(pane.capture_pane()))  # doctest: +NORMALIZE_WHITESPACE
-        $ echo "Hello world"
-        Hello world
-        $
-
         Flag-only invocation — reset terminal state without sending any keys:
 
         >>> pane.send_keys(reset=True)
@@ -2360,7 +2355,7 @@ class Pane(
         size: str | int | None = None,
         percent: int | None = None,  # deprecated
         environment: dict[str, str] | None = None,
-    ) -> Pane:  # New Pane, not self
+    ) -> Pane:
         """Split window at pane and return newly created :class:`Pane`.
 
         Parameters
