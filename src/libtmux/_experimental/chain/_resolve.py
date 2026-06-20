@@ -124,9 +124,10 @@ def _with_capture(call: CommandCall, kind: Kind) -> tuple[str, ...]:
 
 
 def _subst(call: CommandCall, bindings: dict[int, str]) -> CommandCall:
-    """Replace a SlotRef target with the captured concrete id."""
+    """Replace a SlotRef target with the captured concrete id (plus its suffix)."""
     if isinstance(call.target, SlotRef):
-        return dataclasses.replace(call, target=bindings[call.target.slot])
+        resolved = bindings[call.target.slot] + call.target.suffix
+        return dataclasses.replace(call, target=resolved)
     return call
 
 
@@ -208,17 +209,30 @@ async def run_async(
 
 
 # --- the builder + handles --------------------------------------------------
-class ForwardHandle:
-    """A reference to a forward pane (a slot) inside a :class:`ForwardPlan`.
+def _split_args(horizontal: bool, shell: str | None) -> tuple[str, ...]:
+    """Render the ``split-window`` flags shared by the plan- and handle-level split."""
+    args = ["-h" if horizontal else "-v"]
+    if shell is not None:
+        args.append(shell)
+    return tuple(args)
 
-    Reuses the existing ``.cmd``/``.window``/``.session`` namespaces -- bound to
-    this handle's :class:`~libtmux._experimental.chain.ir.SlotRef`, so each
-    command carries the slot and the resolver substitutes the captured id.
+
+class ForwardHandle:
+    """A reference to a forward object (a slot) inside a :class:`ForwardPlan`.
+
+    One type spans all three tmux scopes: the handle knows its ``kind``
+    (``pane``/``window``/``session``), so its creation verbs stay scope-correct
+    -- ``new_window()`` only on a session, ``split()`` only on a pane or window
+    -- while the ``.cmd``/``.window``/``.session`` command namespaces are reused
+    unchanged, each bound to this handle's
+    :class:`~libtmux._experimental.chain.ir.SlotRef` so the resolver substitutes
+    the captured id.
     """
 
-    def __init__(self, plan: ForwardPlan, slot: int) -> None:
+    def __init__(self, plan: ForwardPlan, slot: int, kind: Kind) -> None:
         self._plan = plan
         self._slot = slot
+        self._kind = kind
 
     @property
     def cmd(self) -> BoundPaneCommands:
@@ -238,22 +252,46 @@ class ForwardHandle:
     def split(
         self, *, horizontal: bool = False, shell: str | None = None
     ) -> ForwardHandle:
-        """Split this handle's pane; return a handle to the new pane."""
-        return self._plan._split(SlotRef(self._slot), horizontal, shell)
+        """Split this handle's active pane; return a handle to the new pane."""
+        self._require("split", "pane", "window")
+        return self._plan._create(
+            SlotRef(self._slot), "pane", "split-window", _split_args(horizontal, shell)
+        )
+
+    def new_window(self, *, name: str | None = None) -> ForwardHandle:
+        """Create a window in this session handle; return a window handle.
+
+        Targets the session as ``-t $N:`` -- the captured session id with a
+        ``:`` suffix, so a plain ``$N`` capture addresses a new window in it.
+        """
+        self._require("new_window", "session")
+        args = ("-n", name) if name is not None else ()
+        return self._plan._create(
+            SlotRef(self._slot, ":"), "window", "new-window", args
+        )
 
     def do(self, build: cabc.Callable[[ForwardHandle], IntoCommands]) -> ForwardHandle:
         """Decorate this handle via its namespaces (reused, no new vocabulary)."""
         self._plan._steps.extend(_Decorate(call) for call in _to_calls(build(self)))
         return self
 
+    def _require(self, verb: str, *kinds: Kind) -> None:
+        """Reject a creation verb used on a handle of the wrong tmux scope."""
+        if self._kind not in kinds:
+            allowed = " or ".join(kinds)
+            msg = f"{verb}() needs a {allowed} handle, not a {self._kind} handle"
+            raise TypeError(msg)
+
 
 class ForwardPlan:
     r"""A builder for a multi-handle forward plan, resolved over N dispatches.
 
-    Hand out independent handles (``split()``), decorate each through its reused
-    namespaces, then :meth:`run_resolving` (sync) or :meth:`run_resolving_async`:
-    one creation per dispatch (``-P -F`` capture), the downstream commands folded
-    into one trailing ``\;`` chain with the captured ids substituted in.
+    Hand out independent handles across every tmux scope -- :meth:`new_session`,
+    then :meth:`ForwardHandle.new_window`, then :meth:`split` -- decorate each
+    through its reused namespaces, then :meth:`run_resolving` (sync) or
+    :meth:`run_resolving_async`: one creation per dispatch (``-P -F`` capture),
+    the downstream commands folded into one trailing ``\;`` chain with the
+    captured ids substituted in.
 
     Examples
     --------
@@ -300,29 +338,30 @@ class ForwardPlan:
             return None
         return _target_arg(self._seed)
 
-    def _split(
+    def _create(
         self,
         parent: str | int | None | SlotRef,
-        horizontal: bool,
-        shell: str | None,
+        kind: Kind,
+        name: str,
+        args: tuple[str, ...],
     ) -> ForwardHandle:
         slot = self._n
         self._n += 1
-        args: list[str] = ["-h" if horizontal else "-v"]
-        if shell is not None:
-            args.append(shell)
-        self._steps.append(
-            _Create(
-                slot, "pane", CommandCall("split-window", tuple(args), target=parent)
-            )
-        )
-        return ForwardHandle(self, slot)
+        self._steps.append(_Create(slot, kind, CommandCall(name, args, target=parent)))
+        return ForwardHandle(self, slot, kind)
 
     def split(
         self, *, horizontal: bool = False, shell: str | None = None
     ) -> ForwardHandle:
         """Split the seed (root); return a handle to the new pane."""
-        return self._split(self._seed_target(), horizontal, shell)
+        return self._create(
+            self._seed_target(), "pane", "split-window", _split_args(horizontal, shell)
+        )
+
+    def new_session(self, *, name: str | None = None) -> ForwardHandle:
+        """Create a detached session; return a session handle."""
+        args = ("-d", "-s", name) if name is not None else ("-d",)
+        return self._create(None, "session", "new-session", args)
 
     def run_resolving(self, runner: PlanRunner) -> Resolved:
         """Resolve over N dispatches against a live server (sync)."""

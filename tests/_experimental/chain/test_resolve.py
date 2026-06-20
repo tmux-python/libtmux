@@ -138,3 +138,83 @@ def test_multidispatch_from_query_seed(session: Session) -> None:
 
     assert _mark_of(session, resolved.bindings[0]) == ["A"]
     assert _mark_of(session, resolved.bindings[1]) == ["B"]
+
+
+def test_handle_scope_guard() -> None:
+    """A creation verb on the wrong tmux scope fails fast at build time (pure)."""
+    plan = ForwardPlan()
+    sess = plan.new_session(name="g")
+    win = sess.new_window(name="w")
+    pane = win.split()  # window -> split is allowed
+
+    with pytest.raises(TypeError):
+        sess.split()  # a session has no single pane to split
+    with pytest.raises(TypeError):
+        win.new_window()  # only a session creates windows
+    with pytest.raises(TypeError):
+        pane.new_window()  # ditto for a pane
+
+
+def test_multidispatch_session_window_pane(session: Session) -> None:
+    """Live: one plan builds a session, two independent windows, a split in each.
+
+    Five creations resolve over five dispatches -- a session (``$N``), two
+    windows captured via ``new-window -t $N:`` (``@M``), and a split inside each
+    window (``%K``) -- proving the builder spans all three tmux scopes.
+    """
+    server = session.server
+    name = "cc_md_swp"
+    try:
+        plan = ForwardPlan()
+        sess = plan.new_session(name=name)
+        w_left = sess.new_window(name="left")
+        w_right = sess.new_window(name="right")
+        w_left.split(horizontal=True).do(_mark("WL"))
+        w_right.split().do(_mark("WR"))
+
+        resolved = plan.run_resolving(SessionPlanExecutor(session))
+
+        assert set(resolved.bindings) == {0, 1, 2, 3, 4}
+        assert resolved.bindings[0].startswith("$")  # session
+        assert resolved.bindings[1].startswith("@")  # left window
+        assert resolved.bindings[2].startswith("@")  # right window
+        assert resolved.bindings[3].startswith("%")  # pane split into left
+        assert resolved.bindings[4].startswith("%")  # pane split into right
+
+        created = next(s for s in server.sessions if s.session_name == name)
+        wins = {w.window_name: w for w in created.windows}
+        assert {"left", "right"} <= set(wins)
+        wins["left"].refresh()
+        wins["right"].refresh()
+        assert len(wins["left"].panes) == 2  # each window's pane was split
+        assert len(wins["right"].panes) == 2
+        assert _mark_of(session, resolved.bindings[3]) == ["WL"]
+        assert _mark_of(session, resolved.bindings[4]) == ["WR"]
+    finally:
+        for s in list(server.sessions):
+            if s.session_name == name:
+                s.kill()
+
+
+@pytest.mark.asyncio
+async def test_multidispatch_session_window_async(session: Session) -> None:
+    """Live async: the same session/window/pane span, driven with await."""
+    server = session.server
+    name = "cc_md_swp_async"
+    try:
+        plan = ForwardPlan()
+        sess = plan.new_session(name=name)
+        w_a = sess.new_window(name="a")
+        w_b = sess.new_window(name="b")
+        w_a.split().do(_mark("A"))
+        w_b.split().do(_mark("B"))
+
+        resolved = await plan.run_resolving_async(AsyncSessionPlanExecutor(session))
+
+        assert resolved.bindings[0].startswith("$")
+        assert _mark_of(session, resolved.bindings[3]) == ["A"]
+        assert _mark_of(session, resolved.bindings[4]) == ["B"]
+    finally:
+        for s in list(server.sessions):
+            if s.session_name == name:
+                s.kill()
