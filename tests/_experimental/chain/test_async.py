@@ -17,6 +17,9 @@ if t.TYPE_CHECKING:
     from libtmux._experimental.chain.ir import Arg
     from libtmux.session import Session
 
+# Strict asyncio_mode: mark every coroutine test in this module explicitly.
+pytestmark = pytest.mark.asyncio
+
 
 @dataclass
 class _FakeResult:
