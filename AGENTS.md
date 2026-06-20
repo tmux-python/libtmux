@@ -388,10 +388,15 @@ Format commit messages as:
 Scope(type[detail]): concise description
 
 why: Explanation of necessity or impact.
+
 what:
 - Specific technical changes made
 - Focused on a single topic
 ```
+
+Keep the subject ≤50 chars (excluding any trailing `(#NN)` PR ref); wrap
+body lines at ≤72 chars. Separate the `why:` and `what:` blocks with a
+blank line.
 
 Common commit types:
 - **feat**: New features or enhancements
@@ -412,6 +417,7 @@ Example:
 Pane(feat[send_keys]): Add support for literal flag
 
 why: Enable sending literal characters without tmux interpretation
+
 what:
 - Add literal parameter to send_keys method
 - Update send_keys to pass -l flag when literal=True
@@ -432,6 +438,7 @@ git commit -m "$(cat <<'EOF'
 feat(Component[method]) add feature description
 
 why: Explanation of the change.
+
 what:
 - First change
 - Second change
