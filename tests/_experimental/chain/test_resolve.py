@@ -329,6 +329,45 @@ def test_resolved_maps_slots_to_live_objects(session: Session) -> None:
                 s.kill()
 
 
+def test_preserve_mark_skips_marked_fold() -> None:
+    """allow_marked=False forces multi-dispatch -- the mark is untouched (pure)."""
+    plan = ForwardPlan(PaneTarget("%1"))
+    plan.split().do(lambda h: h.cmd.raw("set-option", "-p", "@m", "X"))
+
+    gen = drive(tuple(plan._steps), allow_marked=False)
+    argvs: list[tuple[str, ...]] = []
+    request = next(gen)
+    try:
+        while True:
+            assert isinstance(request, Dispatch)
+            argvs.append(request.argv)
+            request = gen.send(_FakeResult(stdout=["%9"]))
+    except StopIteration:
+        pass
+
+    flat = [tok for argv in argvs for tok in argv]
+    assert "select-pane" not in flat  # mark register untouched
+    assert len(argvs) == 2  # multi-dispatch: create + decorate
+
+
+def test_preserve_mark_keeps_user_mark(session: Session) -> None:
+    """Live: preserve_mark=True leaves a pre-existing user mark intact."""
+    window = session.new_window(window_name="cc_mark")
+    seed = window.active_pane
+    assert seed is not None
+    assert seed.pane_id is not None
+    session.server.cmd("select-pane", "-m", "-t", seed.pane_id)  # user marks a pane
+
+    plan = ForwardPlan(PaneTarget(seed.pane_id))
+    plan.split().do(_mark("M"))
+    plan.run_resolving(SessionPlanExecutor(session), preserve_mark=True)
+
+    marked = session.server.cmd(
+        "display-message", "-p", "-t", seed.pane_id, "#{pane_marked}"
+    ).stdout
+    assert marked == ["1"]  # default marked-fold would have cleared it
+
+
 def test_initial_handles_require_session() -> None:
     """initial_pane/initial_window are only available on a session handle (pure)."""
     pane = ForwardPlan(PaneTarget("%1")).split()  # a pane handle
