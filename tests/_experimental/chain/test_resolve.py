@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pathlib
 import typing as t
 from dataclasses import dataclass, field
 
@@ -223,6 +224,53 @@ async def test_multidispatch_session_window_async(session: Session) -> None:
         for s in list(server.sessions):
             if s.session_name == name:
                 s.kill()
+
+
+def test_creation_options_render() -> None:
+    """split/new_session/new_window render -c/-e/size onto the create argv."""
+    plan = ForwardPlan(PaneTarget("%1"))
+    plan.split(start_directory="/tmp", environment={"FOO": "bar"})
+    assert plan._steps[0].call.args == ("-v", "-c/tmp", "-eFOO=bar")
+
+    plan2 = ForwardPlan()
+    sess = plan2.new_session(
+        name="x", start_directory="/tmp", environment={"A": "1"}, width=200, height=50
+    )
+    sess.new_window(
+        name="w", start_directory="/srv", environment={"B": "2"}, window_shell="zsh"
+    )
+    assert plan2._steps[0].call.args == (
+        "-d",
+        "-s",
+        "x",
+        "-c/tmp",
+        "-eA=1",
+        "-x",
+        "200",
+        "-y",
+        "50",
+    )
+    assert plan2._steps[1].call.args == ("-n", "w", "-c/srv", "-eB=2", "zsh")
+
+
+def test_creation_start_directory_live(
+    session: Session, tmp_path: pathlib.Path
+) -> None:
+    """Live: a forward split honours start_directory."""
+    window = session.new_window(window_name="cc_cwd")
+    seed = window.active_pane
+    assert seed is not None
+    assert seed.pane_id is not None
+
+    plan = ForwardPlan(PaneTarget(seed.pane_id))
+    plan.split(start_directory=str(tmp_path))
+    resolved = plan.run_resolving(SessionPlanExecutor(session))
+
+    cwd = session.server.cmd(
+        "display-message", "-p", "-t", resolved.bindings[0], "#{pane_current_path}"
+    ).stdout
+    assert cwd
+    assert pathlib.Path(cwd[0]).resolve() == tmp_path.resolve()
 
 
 def test_forward_dispatch_error_on_failed_create() -> None:
