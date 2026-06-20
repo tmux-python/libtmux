@@ -31,13 +31,19 @@ from libtmux._experimental.chain.ir import (
 )
 
 COMMAND_SPECS: dict[str, CommandSpec] = {
+    "new-session": CommandSpec("new-session", "server"),
     "new-window": CommandSpec("new-window", "session"),
     "split-window": CommandSpec("split-window", "pane"),
+    "break-pane": CommandSpec("break-pane", "pane"),
     "rename-window": CommandSpec("rename-window", "window"),
+    "rename-session": CommandSpec("rename-session", "session"),
     "select-layout": CommandSpec("select-layout", "window"),
+    "select-pane": CommandSpec("select-pane", "pane"),
+    "select-window": CommandSpec("select-window", "window"),
     "send-keys": CommandSpec("send-keys", "pane"),
     "resize-pane": CommandSpec("resize-pane", "pane"),
     "set-option": CommandSpec("set-option", "server"),
+    "set-environment": CommandSpec("set-environment", "session"),
     # Output commands cannot fold into a chain -- they need stdout immediately.
     "show-option": CommandSpec("show-option", "server", chainable=False),
     "capture-pane": CommandSpec("capture-pane", "pane", chainable=False),
@@ -57,8 +63,8 @@ class ChainabilityError(RuntimeError):
 def is_chainable(name: str) -> bool:
     """Return whether a command may fold into a one-dispatch chain.
 
-    Unknown commands are treated as chainable; commands in :data:`COMMAND_SPECS`
-    use their declared ``chainable`` flag.
+    Unknown commands fail closed. Commands in :data:`COMMAND_SPECS` use their
+    declared ``chainable`` flag.
 
     Examples
     --------
@@ -67,12 +73,42 @@ def is_chainable(name: str) -> bool:
     >>> is_chainable("show-option")
     False
     >>> is_chainable("some-unknown-command")
-    True
+    False
     """
     spec = COMMAND_SPECS.get(name)
     if spec is None:
-        return True
+        return False
     return spec.chainable
+
+
+def ensure_chainable(name: str) -> None:
+    """Raise unless ``name`` is a known command that may fold into a chain.
+
+    Examples
+    --------
+    >>> ensure_chainable("rename-window")
+    >>> ensure_chainable("show-option")  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    libtmux...ChainabilityError: command 'show-option' is not chainable...
+    >>> ensure_chainable("some-unknown-command")  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    libtmux...ChainabilityError: unknown tmux command 'some-unknown-command'...
+    """
+    spec = COMMAND_SPECS.get(name)
+    if spec is None:
+        msg = (
+            f"unknown tmux command {name!r} cannot be folded into "
+            "a one-dispatch sequence"
+        )
+        raise ChainabilityError(msg)
+    if not spec.chainable:
+        msg = (
+            f"command {name!r} is not chainable and cannot be "
+            f"folded into a one-dispatch sequence"
+        )
+        raise ChainabilityError(msg)
 
 
 @dataclass(frozen=True, slots=True)

@@ -70,6 +70,7 @@ from libtmux._experimental.chain.chain import (
     ChainabilityError,
     DeferredCommandResult,
     DeferredOutputUnavailable,
+    ensure_chainable,
     is_chainable,
 )
 from libtmux._experimental.chain.ir import (
@@ -134,6 +135,7 @@ __all__ = [
     "WindowRef",
     "WindowTarget",
     "aio",
+    "ensure_chainable",
     "is_chainable",
     "new_session",
     "panes",
