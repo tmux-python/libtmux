@@ -13,7 +13,7 @@ from libtmux._experimental.chain import (
     SessionPlanExecutor,
     panes,
 )
-from libtmux._experimental.chain._resolve import Dispatch, drive
+from libtmux._experimental.chain._resolve import Dispatch, _marked_eligible, drive
 from libtmux._experimental.chain.plan import PaneTarget
 
 if t.TYPE_CHECKING:
@@ -218,3 +218,93 @@ async def test_multidispatch_session_window_async(session: Session) -> None:
         for s in list(server.sessions):
             if s.session_name == name:
                 s.kill()
+
+
+def test_marked_eligible_classifies_plan_shapes() -> None:
+    """The analyzer picks single-dispatch only for a lone pane creation."""
+    one_pane = ForwardPlan(PaneTarget("%1"))
+    one_pane.split().do(_mark("x"))
+    assert _marked_eligible(tuple(one_pane._steps)) is not None
+
+    two_panes = ForwardPlan(PaneTarget("%1"))
+    two_panes.split()
+    two_panes.split()
+    assert _marked_eligible(tuple(two_panes._steps)) is None  # one mark slot only
+
+    one_session = ForwardPlan()
+    one_session.new_session(name="x")
+    # a detached session has no active pane to mark:
+    assert _marked_eligible(tuple(one_session._steps)) is None
+
+
+def test_marked_single_dispatch_folds_one_handle() -> None:
+    """A lone pane handle resolves in ONE ``{marked}`` invocation (pure, no tmux).
+
+    The split captures its id, marks the new (active) pane, the decorate
+    addresses it via ``{marked}``, and the mark is cleared -- all one dispatch.
+    """
+    plan = ForwardPlan(PaneTarget("%1"))
+    plan.split(horizontal=True).do(_mark("L"))
+
+    gen = drive(tuple(plan._steps))
+    dispatched: list[tuple[str, ...]] = []
+    request = next(gen)
+    try:
+        while True:
+            assert isinstance(request, Dispatch)
+            dispatched.append(request.argv)
+            out = ["%7"] if request.captures is not None else []
+            request = gen.send(_FakeResult(stdout=out))
+    except StopIteration as stop:
+        resolved = stop.value
+
+    assert dispatched == [
+        (
+            "split-window",
+            "-t",
+            "%1",
+            "-h",
+            "-P",
+            "-F",
+            "#{pane_id}",
+            ";",
+            "select-pane",
+            "-m",
+            ";",
+            "set-option",
+            "-t",
+            "{marked}",
+            "-p",
+            "@m",
+            "L",
+            ";",
+            "select-pane",
+            "-M",
+        ),
+    ]
+    assert len(dispatched) == 1  # one invocation, not create + decorate
+    assert resolved.bindings == {0: "%7"}
+
+
+def test_marked_single_dispatch_live(session: Session) -> None:
+    """Live: a lone forward pane resolves in one dispatch and leaks no mark."""
+    window = session.new_window(window_name="marked_solo")
+    seed = window.active_pane
+    assert seed is not None
+    assert seed.pane_id is not None
+
+    plan = ForwardPlan(PaneTarget(seed.pane_id))
+    plan.split(horizontal=True).do(_mark("SOLO"))
+
+    resolved = plan.run_resolving(SessionPlanExecutor(session))
+
+    assert len(resolved.results) == 1  # single invocation, not create + decorate
+    new_pane_id = resolved.bindings[0]
+    window.refresh()
+    assert len(window.panes) == 2
+    assert _mark_of(session, new_pane_id) == ["SOLO"]
+    # the server-wide mark register is cleared afterward, not leaked:
+    marked = session.server.cmd(
+        "display-message", "-p", "-t", new_pane_id, "#{pane_marked}"
+    ).stdout
+    assert marked == ["0"]
