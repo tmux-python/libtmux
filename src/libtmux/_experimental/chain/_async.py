@@ -89,15 +89,33 @@ class PaneQuery:
     query: sync_plan.PaneQuery
 
     def filter(self, *, active: bool) -> PaneQuery:
-        """Return a query filtered by active state."""
+        """Return a query filtered by active state.
+
+        Examples
+        --------
+        >>> panes().filter(active=True).query.active_filter
+        True
+        """
         return dataclasses.replace(self, query=self.query.filter(active=active))
 
     def order_by(self, field: sync_plan.OrderField) -> PaneQuery:
-        """Return a query ordered by a known pane field."""
+        """Return a query ordered by a known pane field.
+
+        Examples
+        --------
+        >>> panes().order_by("pane_index").query.ordering
+        'pane_index'
+        """
         return dataclasses.replace(self, query=self.query.order_by(field))
 
     def limit(self, count: int) -> PaneQuery:
-        """Return a query capped to ``count`` rows."""
+        """Return a query capped to ``count`` rows.
+
+        Examples
+        --------
+        >>> panes().limit(3).query.limit_count
+        3
+        """
         return dataclasses.replace(self, query=self.query.limit(count))
 
     async def all(self, source: AsyncSnapshotSource) -> list[sync_plan.PaneRef]:
@@ -178,6 +196,20 @@ class CommandPlan:
 
         Reuses the sync compile path, so a plan still produces exactly one
         :class:`~libtmux._experimental.chain.ir.CommandChain`.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> from libtmux._experimental.chain.plan import PaneRef, TmuxSnapshot
+        >>> snapshot = TmuxSnapshot(panes=(
+        ...     PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
+        ...             pane_index=0, active=True, title="editor"),
+        ... ))
+        >>> async def _to_chain():
+        ...     plan = panes().commands(lambda p: p.cmd.resize_pane(height=10))
+        ...     return (await plan.to_chain(snapshot)).argvs()
+        >>> asyncio.run(_to_chain())
+        (('resize-pane', '-t', '%1', '-y', '10'),)
         """
         snapshot = await _resolve_snapshot(source)
         return self.query.query.commands(self.mapper).to_chain(snapshot)
@@ -186,6 +218,17 @@ class CommandPlan:
         """Resolve, compile, and dispatch the plan in one async invocation.
 
         An empty plan is a no-op (it does not raise).
+
+        Examples
+        --------
+        Resolve and dispatch against a live session in one async invocation:
+
+        >>> import asyncio
+        >>> from libtmux._experimental.chain import aio, AsyncSessionPlanExecutor
+        >>> plan = aio.panes().filter(active=True).commands(
+        ...     lambda pane: pane.cmd.send_keys("echo libtmux", enter=True),
+        ... )
+        >>> asyncio.run(plan.run(AsyncSessionPlanExecutor(session)))
         """
         try:
             sequence = await self.to_chain(runner)
