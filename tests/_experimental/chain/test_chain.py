@@ -69,7 +69,7 @@ def test_is_chainable_uses_static_spec() -> None:
 
 
 def test_deferred_result_rejects_output_access() -> None:
-    """A deferred result has no output until the chain runs."""
+    """An unresolved deferred result has no output until the chain runs."""
     result = DeferredCommandResult(CommandCall("rename-window", ("work",)))
 
     with pytest.raises(DeferredOutputUnavailable):
@@ -78,3 +78,26 @@ def test_deferred_result_rejects_output_access() -> None:
         _ = result.stderr
     with pytest.raises(DeferredOutputUnavailable):
         _ = result.returncode
+
+
+class _MergedResult:
+    """Minimal merged chain result for resolution tests."""
+
+    def __init__(self) -> None:
+        self.stdout = ["ok"]
+        self.stderr: list[str] = []
+        self.returncode = 0
+
+
+def test_deferred_result_resolves_to_chain_result() -> None:
+    """A resolved deferred result hands back the chain's merged result."""
+    pending = DeferredCommandResult(CommandCall("rename-window", ("work",)))
+
+    resolved = pending.resolve(_MergedResult())
+
+    assert resolved.returncode == 0
+    assert resolved.stdout == ["ok"]
+    assert resolved.stderr == []
+    # The original handle stays unresolved (immutable).
+    with pytest.raises(DeferredOutputUnavailable):
+        _ = pending.returncode

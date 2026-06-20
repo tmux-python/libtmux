@@ -25,7 +25,11 @@ import dataclasses
 import typing as t
 from dataclasses import dataclass
 
-from libtmux._experimental.chain.chain import ChainabilityError, is_chainable
+from libtmux._experimental.chain.chain import (
+    ChainabilityError,
+    DeferredCommandResult,
+    is_chainable,
+)
 from libtmux._experimental.chain.ir import (
     Arg,
     CommandCall,
@@ -705,6 +709,34 @@ class CommandPlan:
             return None
         sequence.run(runner)
         return None
+
+    def run_deferred(self, runner: PlanRunner) -> tuple[DeferredCommandResult, ...]:
+        r"""Dispatch once and return a resolved deferred result per command.
+
+        The chain dispatches a single time; each returned
+        :class:`~libtmux._experimental.chain.chain.DeferredCommandResult` is
+        resolved with the chain's merged result (a ``\\;`` dispatch is not
+        separable per command, so every handle reflects the same result). An
+        empty plan returns an empty tuple.
+
+        Examples
+        --------
+        >>> from libtmux._experimental.chain import SessionPlanExecutor
+        >>> plan = panes().filter(active=True).commands(
+        ...     lambda pane: pane.cmd.send_keys("echo libtmux", enter=True),
+        ... )
+        >>> results = plan.run_deferred(SessionPlanExecutor(session))
+        >>> all(r.returncode == 0 for r in results)
+        True
+        """
+        try:
+            sequence = self.to_chain(runner)
+        except NoCommandsResolved:
+            return ()
+        result = sequence.run(runner)
+        return tuple(
+            DeferredCommandResult(call).resolve(result) for call in sequence.calls
+        )
 
 
 def panes() -> PaneQuery:

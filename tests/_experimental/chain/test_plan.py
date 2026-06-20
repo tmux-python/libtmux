@@ -9,7 +9,7 @@ import pytest
 from typing_extensions import assert_type
 
 from libtmux._experimental.chain import plan as api
-from libtmux._experimental.chain.chain import ChainabilityError
+from libtmux._experimental.chain.chain import ChainabilityError, DeferredCommandResult
 from libtmux._experimental.chain.ir import CommandCall, CommandChain
 
 if t.TYPE_CHECKING:
@@ -311,3 +311,32 @@ def test_raw_escape_hatch_still_enforces_chainability() -> None:
 
     with pytest.raises(ChainabilityError, match="not chainable"):
         plan.to_chain(_snapshot())
+
+
+def test_run_deferred_resolves_one_handle_per_command() -> None:
+    """``run_deferred`` dispatches once and resolves a handle per command."""
+    runner = _FakeRunner(_snapshot())
+    plan = (
+        api.panes()
+        .filter(active=True)
+        .commands(
+            lambda pane: pane.cmd.send_keys("clear", enter=True),
+        )
+    )
+
+    results = plan.run_deferred(runner)
+
+    assert len(runner.calls) == 1  # the whole chain dispatched once
+    assert len(results) == 2  # one handle per active pane
+    assert all(isinstance(r, DeferredCommandResult) for r in results)
+    assert [r.returncode for r in results] == [0, 0]
+    assert results[0].stdout == ["ok"]  # the chain's merged result
+
+
+def test_run_deferred_empty_plan_returns_empty() -> None:
+    """An empty plan dispatches nothing and returns no handles."""
+    runner = _FakeRunner(api.TmuxSnapshot(panes=()))
+    plan = api.panes().commands(lambda pane: pane.cmd.resize_pane(height=10))
+
+    assert plan.run_deferred(runner) == ()
+    assert runner.calls == []

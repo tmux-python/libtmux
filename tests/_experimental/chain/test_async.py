@@ -198,3 +198,21 @@ async def test_async_session_plan_runner_dispatches_against_live_tmux(
 
     # Dispatches once through the worker thread without raising.
     await plan.run(runner)
+
+
+async def test_async_run_deferred_resolves_one_handle_per_command() -> None:
+    """Async ``run_deferred`` dispatches once and resolves a handle per command."""
+    runner = _AsyncFakeRunner(_snapshot())
+    plan = (
+        api.panes()
+        .filter(active=True)
+        .commands(
+            lambda pane: pane.cmd.send_keys("clear", enter=True),
+        )
+    )
+
+    results = await plan.run_deferred(runner)
+
+    assert len(runner.calls) == 1  # the whole chain dispatched once
+    assert [r.returncode for r in results] == [0, 0]
+    assert results[0].stdout == ["async ok"]  # the chain's merged result
