@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from libtmux._experimental.chain.chain import (
     DeferredCommandResult,
     ensure_chainable,
+    validate_command_scope,
 )
 from libtmux._experimental.chain.ir import (
     Arg,
@@ -454,6 +455,7 @@ class BoundPaneCommands:
         >>> BoundPaneCommands(PaneTarget("%1")).raw("pipe-pane", "-o").argv()
         ('pipe-pane', '-t', '%1', '-o')
         """
+        validate_command_scope(name, "pane")
         return CommandCall(name, args, target=_target_arg(self.target))
 
 
@@ -517,6 +519,7 @@ class BoundWindowCommands:
         >>> BoundWindowCommands(WindowTarget("@1")).raw("set-option", "@x", "1").argv()
         ('set-option', '-t', '@1', '@x', '1')
         """
+        validate_command_scope(name, "window")
         return CommandCall(name, args, target=_target_arg(self.target))
 
 
@@ -568,6 +571,7 @@ class BoundSessionCommands:
 
     def raw(self, name: str, *args: Arg) -> CommandCall:
         """Build an arbitrary session-scoped command bound to this session."""
+        validate_command_scope(name, "session")
         return CommandCall(name, args, target=_target_arg(self.target))
 
 

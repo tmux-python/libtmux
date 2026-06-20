@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from libtmux._experimental.chain.ir import (
     CommandCall,
     CommandResultLike,
+    CommandScope,
     CommandSpec,
 )
 
@@ -52,12 +53,25 @@ COMMAND_SPECS: dict[str, CommandSpec] = {
 """Known command metadata, including each command's ``chainable`` flag."""
 
 
+COMMAND_TARGET_SCOPES: dict[str, frozenset[CommandScope]] = {
+    "display-message": frozenset(("server", "session", "window", "pane")),
+    "set-option": frozenset(("server", "session", "window", "pane")),
+    "show-option": frozenset(("server", "session", "window", "pane")),
+    "split-window": frozenset(("window", "pane")),
+}
+"""Commands whose accepted typed target scopes differ from their primary scope."""
+
+
 class DeferredOutputUnavailable(RuntimeError):
     """Raised when a deferred command result is inspected before dispatch."""
 
 
 class ChainabilityError(RuntimeError):
     """Raised when a non-chainable command is added to a chain."""
+
+
+class CommandScopeError(RuntimeError):
+    """Raised when a known command is bound to the wrong typed target scope."""
 
 
 def is_chainable(name: str) -> bool:
@@ -109,6 +123,30 @@ def ensure_chainable(name: str) -> None:
             f"folded into a one-dispatch sequence"
         )
         raise ChainabilityError(msg)
+
+
+def validate_command_scope(name: str, target_scope: CommandScope) -> None:
+    """Raise if a known command cannot target ``target_scope``.
+
+    Unknown commands are left to :func:`ensure_chainable`; raw
+    :class:`CommandCall` targets are opaque and intentionally not parsed.
+
+    Examples
+    --------
+    >>> validate_command_scope("rename-window", "window")
+    >>> validate_command_scope("rename-window", "pane")  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    libtmux...CommandScopeError: command 'rename-window' cannot target pane...
+    >>> validate_command_scope("some-unknown-command", "pane")
+    """
+    spec = COMMAND_SPECS.get(name)
+    if spec is None:
+        return
+    allowed = COMMAND_TARGET_SCOPES.get(name, frozenset((spec.scope,)))
+    if target_scope not in allowed:
+        msg = f"command {name!r} cannot target {target_scope} scope"
+        raise CommandScopeError(msg)
 
 
 @dataclass(frozen=True, slots=True)
