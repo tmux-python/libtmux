@@ -90,6 +90,24 @@ class CommandSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class SlotRef:
+    r"""An unresolved target: "the id of forward slot N", filled at resolve time.
+
+    Carried by a :class:`CommandCall` built against a forward handle in a
+    multi-dispatch plan. The resolver replaces it with the captured concrete id
+    (``%N``/``@N``/``$N``) before the call is rendered; rendering an unresolved
+    SlotRef is a planner bug and raises.
+
+    Examples
+    --------
+    >>> SlotRef(0)
+    SlotRef(slot=0)
+    """
+
+    slot: int
+
+
+@dataclass(frozen=True, slots=True)
 class CommandCall:
     """One typed tmux command call before subprocess dispatch.
 
@@ -115,7 +133,7 @@ class CommandCall:
 
     name: str
     args: tuple[Arg, ...] = ()
-    target: str | int | None = None
+    target: str | int | None | SlotRef = None
 
     def __post_init__(self) -> None:
         """Reject an empty-string target (fail closed).
@@ -151,6 +169,9 @@ class CommandCall:
         ('kill-window', '-t', '@1')
         """
         rendered: list[str] = [self.name]
+        if isinstance(self.target, SlotRef):
+            msg = "cannot render an unresolved SlotRef; resolve the plan first"
+            raise TypeError(msg)
         if self.target is not None:
             rendered.extend(("-t", str(self.target)))
         rendered.extend(_render_arg(arg) for arg in self.args)
