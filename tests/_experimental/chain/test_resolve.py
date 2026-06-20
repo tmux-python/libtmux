@@ -274,6 +274,23 @@ def test_creation_start_directory_live(
     assert pathlib.Path(cwd[0]).resolve() == tmp_path.resolve()
 
 
+def test_typed_verbs_in_forward_plan(session: Session) -> None:
+    """Live: the new typed bound-namespace verbs work as decorates in a plan."""
+    window = session.new_window(window_name="cc_verbs")
+    seed = window.active_pane
+    assert seed is not None
+    assert seed.pane_id is not None
+
+    plan = ForwardPlan(PaneTarget(seed.pane_id))
+    plan.split().do(lambda h: h.cmd.set_option("@cc_v", "ok"))
+    resolved = plan.run_resolving(SessionPlanExecutor(session))
+
+    val = session.server.cmd(
+        "display-message", "-p", "-t", resolved.bindings[0], "#{@cc_v}"
+    ).stdout
+    assert val == ["ok"]
+
+
 def test_server_plan_runner_creates_session_from_scratch(session: Session) -> None:
     """ServerPlanRunner runs a create-from-scratch plan without a seed session."""
     server = session.server
