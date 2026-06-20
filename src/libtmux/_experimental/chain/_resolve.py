@@ -54,6 +54,7 @@ if t.TYPE_CHECKING:
     from libtmux._experimental.chain._async import AsyncPlanRunner
     from libtmux._experimental.chain.plan import IntoCommands, PlanRunner
     from libtmux.pane import Pane
+    from libtmux.server import Server
     from libtmux.session import Session
     from libtmux.window import Window
 
@@ -168,6 +169,24 @@ class Resolved:
 
     bindings: dict[int, str] = field(default_factory=dict)
     results: tuple[CommandResultLike, ...] = ()
+
+    def pane(self, slot: int, server: Server) -> Pane:
+        """Look up the live pane a forward slot resolved to (by captured id)."""
+        pane = server.panes.get(pane_id=self.bindings[slot])
+        assert pane is not None  # get() raises ObjectDoesNotExist rather than None
+        return pane
+
+    def window(self, slot: int, server: Server) -> Window:
+        """Look up the live window a forward slot resolved to (by captured id)."""
+        window = server.windows.get(window_id=self.bindings[slot])
+        assert window is not None
+        return window
+
+    def session(self, slot: int, server: Server) -> Session:
+        """Look up the live session a forward slot resolved to (by captured id)."""
+        session = server.sessions.get(session_id=self.bindings[slot])
+        assert session is not None
+        return session
 
 
 def _capturing(call: CommandCall, kind: Kind) -> CommandCall:
