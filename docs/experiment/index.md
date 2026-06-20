@@ -116,9 +116,9 @@ required:
 ... )
 >>> snapshot = TmuxSnapshot(
 ...     panes=(
-...         PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
 ...                 pane_index=0, active=True, title="editor"),
-...         PaneRef(PaneTarget("%2"), WindowTarget("@1"), SessionTarget("$0"),
+...         PaneRef.concrete(pane_id="%2", window_id="@1", session_id="$0",
 ...                 pane_index=1, active=True, title="logs"),
 ...     ),
 ... )
@@ -159,7 +159,7 @@ stays synchronous; only resolution and dispatch await:
 ... )
 >>> snapshot = TmuxSnapshot(
 ...     panes=(
-...         PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
 ...                 pane_index=0, active=True, title="editor"),
 ...     ),
 ... )
