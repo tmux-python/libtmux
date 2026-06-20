@@ -39,6 +39,11 @@ from libtmux._experimental.chain.plan import (
     BoundWindowCommands,
     PaneQuery,
     PaneRef,
+    PaneTarget,
+    SessionRef,
+    SessionTarget,
+    WindowRef,
+    WindowTarget,
     _target_arg,
     _to_calls,
 )
@@ -48,6 +53,14 @@ if t.TYPE_CHECKING:
 
     from libtmux._experimental.chain._async import AsyncPlanRunner
     from libtmux._experimental.chain.plan import IntoCommands, PlanRunner
+    from libtmux.pane import Pane
+    from libtmux.session import Session
+    from libtmux.window import Window
+
+# A live libtmux object, a chain ref, a typed target, or a bare id string.
+PaneSeed: t.TypeAlias = "Pane | PaneRef | PaneTarget | str"
+WindowSeed: t.TypeAlias = "Window | WindowRef | WindowTarget | str"
+SessionSeed: t.TypeAlias = "Session | SessionRef | SessionTarget | str"
 
 Kind = t.Literal["pane", "window", "session"]
 _CAPTURE: dict[Kind, str] = {
@@ -343,37 +356,81 @@ def _split_args(
     return tuple(args)
 
 
-class ForwardHandle:
-    """A reference to a forward object (a slot) inside a :class:`ForwardPlan`.
+def _id_of(obj: object, attr: str) -> str:
+    """Read a tmux id string from a live libtmux object, a chain ref, or a str.
 
-    One type spans all three tmux scopes: the handle knows its ``kind``
-    (``pane``/``window``/``session``), so its creation verbs stay scope-correct
-    -- ``new_window()`` only on a session, ``split()`` only on a pane or window
-    -- while the ``.cmd``/``.window``/``.session`` command namespaces are reused
-    unchanged, each bound to this handle's
-    :class:`~libtmux._experimental.chain.ir.SlotRef` so the resolver substitutes
-    the captured id.
+    Examples
+    --------
+    >>> _id_of("%1", "pane_id")
+    '%1'
+    >>> _id_of(PaneTarget("%2"), "pane_id")
+    '%2'
+    >>> _id_of(PaneRef.concrete(pane_id="%3", window_id="@1", session_id="$0",
+    ...     pane_index=0, active=True, title=""), "pane_id")
+    '%3'
+    """
+    if isinstance(obj, str):
+        return obj
+    if isinstance(obj, (PaneTarget, WindowTarget, SessionTarget)):
+        return obj.value
+    value = getattr(obj, attr)
+    if isinstance(value, (PaneTarget, WindowTarget, SessionTarget)):
+        return value.value
+    return str(value)
+
+
+def _kind_of(target: AnyTarget) -> Kind:
+    """Return the tmux scope a concrete seed target addresses."""
+    if isinstance(target, PaneTarget):
+        return "pane"
+    if isinstance(target, WindowTarget):
+        return "window"
+    if isinstance(target, SessionTarget):
+        return "session"
+    msg = f"cannot seed a forward plan from {type(target).__name__}"
+    raise TypeError(msg)
+
+
+class ForwardHandle:
+    """A reference to one object inside a :class:`ForwardPlan` -- forward or seed.
+
+    One type spans all three tmux scopes and both lifetimes: a *forward* handle
+    is bound to a :class:`~libtmux._experimental.chain.ir.SlotRef` (a not-yet-
+    created object whose id the resolver substitutes); a *seed* handle is bound
+    to a concrete id string (an object that already exists). The handle knows its
+    ``kind`` so creation verbs stay scope-correct -- ``new_window()`` only on a
+    session, ``split()`` only on a pane or window -- while the ``.cmd``/
+    ``.window``/``.session`` command namespaces are reused unchanged.
     """
 
-    def __init__(self, plan: ForwardPlan, slot: int, kind: Kind) -> None:
+    def __init__(self, plan: ForwardPlan, ref: SlotRef | str, kind: Kind) -> None:
         self._plan = plan
-        self._slot = slot
+        self._ref = ref
         self._kind = kind
 
     @property
     def cmd(self) -> BoundPaneCommands:
         """Pane-scoped commands bound to this handle."""
-        return BoundPaneCommands(SlotRef(self._slot))
+        ref = self._ref if isinstance(self._ref, SlotRef) else PaneTarget(self._ref)
+        return BoundPaneCommands(ref)
 
     @property
     def window(self) -> BoundWindowCommands:
         """Window-scoped commands (a pane id resolves up to its window)."""
-        return BoundWindowCommands(SlotRef(self._slot))
+        ref = self._ref if isinstance(self._ref, SlotRef) else WindowTarget(self._ref)
+        return BoundWindowCommands(ref)
 
     @property
     def session(self) -> BoundSessionCommands:
         """Session-scoped commands bound to this handle's session."""
-        return BoundSessionCommands(SlotRef(self._slot))
+        ref = self._ref if isinstance(self._ref, SlotRef) else SessionTarget(self._ref)
+        return BoundSessionCommands(ref)
+
+    def _parent(self, suffix: str = "") -> str | int | None | SlotRef:
+        """Return the ``-t`` parent for a creation off this handle (slot or id)."""
+        if isinstance(self._ref, SlotRef):
+            return SlotRef(self._ref.slot, suffix)
+        return f"{self._ref}{suffix}" if suffix else self._ref
 
     def split(
         self,
@@ -386,7 +443,7 @@ class ForwardHandle:
         """Split this handle's active pane; return a handle to the new pane."""
         self._require("split", "pane", "window")
         return self._plan._create(
-            SlotRef(self._slot),
+            self._parent(),
             "pane",
             "split-window",
             _split_args(horizontal, shell, start_directory, environment),
@@ -402,8 +459,8 @@ class ForwardHandle:
     ) -> ForwardHandle:
         """Create a window in this session handle; return a window handle.
 
-        Targets the session as ``-t $N:`` -- the captured session id with a
-        ``:`` suffix, so a plain ``$N`` capture addresses a new window in it.
+        Targets the session as ``-t $N:`` -- the (captured or concrete) session
+        id with a ``:`` suffix, so it addresses a new window in that session.
         """
         self._require("new_window", "session")
         args: list[str] = []
@@ -413,7 +470,7 @@ class ForwardHandle:
         if window_shell is not None:
             args.append(window_shell)
         return self._plan._create(
-            SlotRef(self._slot, ":"), "window", "new-window", tuple(args)
+            self._parent(":"), "window", "new-window", tuple(args)
         )
 
     def do(self, build: cabc.Callable[[ForwardHandle], IntoCommands]) -> ForwardHandle:
@@ -466,9 +523,19 @@ class ForwardPlan:
         self._seed_query: PaneQuery | None = None
 
     @classmethod
-    def from_pane(cls, pane: PaneRef) -> ForwardPlan:
-        """Seed the plan from a concrete pane row."""
-        return cls(seed=pane.pane_id)
+    def from_pane(cls, pane: PaneSeed) -> ForwardPlan:
+        """Seed from an existing pane (a live ``Pane``, a ref, a target, or an id)."""
+        return cls(seed=PaneTarget(_id_of(pane, "pane_id")))
+
+    @classmethod
+    def from_window(cls, window: WindowSeed) -> ForwardPlan:
+        """Seed from an existing window -- ``split`` splits its active pane."""
+        return cls(seed=WindowTarget(_id_of(window, "window_id")))
+
+    @classmethod
+    def from_session(cls, session: SessionSeed) -> ForwardPlan:
+        """Seed from an existing session -- ``new_window`` adds windows to it."""
+        return cls(seed=SessionTarget(_id_of(session, "session_id")))
 
     @classmethod
     def from_query(cls, query: PaneQuery) -> ForwardPlan:
@@ -476,6 +543,19 @@ class ForwardPlan:
         plan = cls(seed=None)
         plan._seed_query = query
         return plan
+
+    @property
+    def seed(self) -> ForwardHandle:
+        """A handle to the existing seed object -- decorate it or create off it.
+
+        Lets the pre-existing seed take part in the plan like a created handle:
+        ``plan.seed.do(...)`` decorates it, and (by scope) ``plan.seed.split()`` /
+        ``plan.seed.new_window()`` create children of it.
+        """
+        if self._seed is None:
+            msg = "plan has no concrete seed (use from_pane/from_window/from_session)"
+            raise ValueError(msg)
+        return ForwardHandle(self, str(_target_arg(self._seed)), _kind_of(self._seed))
 
     def _seed_target(self) -> str | int | None | SlotRef:
         if self._seed_query is not None:
@@ -494,7 +574,7 @@ class ForwardPlan:
         slot = self._n
         self._n += 1
         self._steps.append(_Create(slot, kind, CommandCall(name, args, target=parent)))
-        return ForwardHandle(self, slot, kind)
+        return ForwardHandle(self, SlotRef(slot), kind)
 
     def split(
         self,
@@ -531,6 +611,22 @@ class ForwardPlan:
         if height is not None:
             args += ["-y", str(height)]
         return self._create(None, "session", "new-session", tuple(args))
+
+    def new_window(
+        self,
+        *,
+        name: str | None = None,
+        start_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+        window_shell: str | None = None,
+    ) -> ForwardHandle:
+        """Create a window in the seed session (requires :meth:`from_session`)."""
+        return self.seed.new_window(
+            name=name,
+            start_directory=start_directory,
+            environment=environment,
+            window_shell=window_shell,
+        )
 
     def run_resolving(self, runner: PlanRunner) -> Resolved:
         """Resolve over N dispatches against a live server (sync)."""
