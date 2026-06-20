@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import typing as t
 from dataclasses import dataclass, field
 
@@ -143,6 +144,27 @@ def test_command_sequence_runs_as_single_runner_call() -> None:
     assert runner.calls == [
         ("new-window", ("-d", ";", "split-window"), None),
     ]
+
+
+def test_command_sequence_run_logs_structured_dispatch(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``run`` emits a debug record carrying the rendered tmux command."""
+    runner = _FakeRunner()
+    sequence = CommandCall("new-window", ("-d",)) >> CommandCall("split-window")
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux._experimental.chain.ir"):
+        sequence.run(runner)
+
+    dispatched = [r for r in caplog.records if hasattr(r, "tmux_cmd")]
+    assert dispatched
+    record = t.cast("t.Any", dispatched[0])
+    assert record.tmux_cmd == "new-window -d ; split-window"
+    assert record.tmux_subcommand == "new-window"
+
+    completed = [r for r in caplog.records if hasattr(r, "tmux_exit_code")]
+    assert completed
+    assert t.cast("t.Any", completed[0]).tmux_exit_code == 0
 
 
 def test_command_spec_defaults_to_chainable() -> None:

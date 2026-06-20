@@ -14,8 +14,11 @@ It may change or be removed between any releases without notice.
 
 from __future__ import annotations
 
+import logging
 import typing as t
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 Arg: t.TypeAlias = "str | int"
 """A single tmux argument token. Integers are rendered with :func:`str`."""
@@ -322,7 +325,16 @@ class CommandChain:
         ['2']
         """
         argv = self.argv()
-        return runner.cmd(argv[0], *argv[1:])
+        logger.debug(
+            "tmux command sequence dispatched",
+            extra={"tmux_cmd": " ".join(argv), "tmux_subcommand": argv[0]},
+        )
+        result = runner.cmd(argv[0], *argv[1:])
+        logger.debug(
+            "tmux command sequence complete",
+            extra={"tmux_exit_code": result.returncode},
+        )
+        return result
 
 
 def _render_arg(arg: Arg) -> str:
