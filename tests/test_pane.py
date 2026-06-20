@@ -17,6 +17,7 @@ from libtmux.test.retry import retry_until
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
     from libtmux.pane import Pane
+    from libtmux.server import Server
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -1333,6 +1334,27 @@ def test_break_pane_basic(session: Session) -> None:
     window.refresh()
     assert len(window.panes) == 1
     assert new_window.window_id is not None
+
+
+def test_break_pane_targets_owning_session(server: Server) -> None:
+    """``break_pane`` creates the new window in the pane's own session.
+
+    Regression for the bundled targeting fix: a bare break-pane destination
+    resolves against the server's *current* session, which can differ from the
+    pane's session. A second session created afterwards becomes the current one,
+    so the broken-out window must still land in the owning session.
+    """
+    owning = server.new_session(session_name="cc_break_owner")
+    server.new_session(session_name="cc_break_other")
+
+    window = owning.new_window(window_name="to_break")
+    pane = window.active_pane
+    assert pane is not None
+    new_pane = pane.split(shell="sleep 1m")
+
+    new_window = new_pane.break_pane()
+
+    assert new_window.session_id == owning.session_id
 
 
 def test_break_pane_with_name(session: Session) -> None:
