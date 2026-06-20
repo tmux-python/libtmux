@@ -111,7 +111,15 @@ class SessionPlanExecutor:
         *args: Arg,
         target: str | int | None = None,
     ) -> CommandResultLike:
-        """Dispatch one tmux command through the live server."""
+        """Dispatch one tmux command through the live server.
+
+        Examples
+        --------
+        >>> SessionPlanExecutor(session).cmd(
+        ...     "set-option", "-g", "@cc_conn_demo", "1"
+        ... ).returncode
+        0
+        """
         # A live Server already satisfies the CommandRunner protocol; the cast
         # keeps the variadic dispatch cleanly typed (mypy and ty both resolve
         # ``Server.cmd`` to a union otherwise).
@@ -119,7 +127,13 @@ class SessionPlanExecutor:
         return runner.cmd(cmd, *args, target=target)
 
     def snapshot(self) -> TmuxSnapshot:
-        """Return a fresh snapshot of the session's panes."""
+        """Return a fresh snapshot of the session's panes.
+
+        Examples
+        --------
+        >>> SessionPlanExecutor(session).snapshot().panes[0].pane_id.value[0]
+        '%'
+        """
         return snapshot_from_session(self.session)
 
 
