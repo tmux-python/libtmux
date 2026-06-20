@@ -310,9 +310,34 @@ async def run_async(
 
 
 # --- the builder + handles --------------------------------------------------
-def _split_args(horizontal: bool, shell: str | None) -> tuple[str, ...]:
+def _location_args(
+    start_directory: str | None, environment: dict[str, str] | None
+) -> tuple[str, ...]:
+    """Render create-time ``-c<dir>`` / ``-e<k>=<v>`` flags (as libtmux renders them).
+
+    Examples
+    --------
+    >>> _location_args("/tmp", {"FOO": "bar"})
+    ('-c/tmp', '-eFOO=bar')
+    >>> _location_args(None, None)
+    ()
+    """
+    args: list[str] = []
+    if start_directory is not None:
+        args.append(f"-c{start_directory}")
+    if environment:
+        args.extend(f"-e{key}={value}" for key, value in environment.items())
+    return tuple(args)
+
+
+def _split_args(
+    horizontal: bool,
+    shell: str | None,
+    start_directory: str | None = None,
+    environment: dict[str, str] | None = None,
+) -> tuple[str, ...]:
     """Render the ``split-window`` flags shared by the plan- and handle-level split."""
-    args = ["-h" if horizontal else "-v"]
+    args = ["-h" if horizontal else "-v", *_location_args(start_directory, environment)]
     if shell is not None:
         args.append(shell)
     return tuple(args)
@@ -351,24 +376,44 @@ class ForwardHandle:
         return BoundSessionCommands(SlotRef(self._slot))
 
     def split(
-        self, *, horizontal: bool = False, shell: str | None = None
+        self,
+        *,
+        horizontal: bool = False,
+        shell: str | None = None,
+        start_directory: str | None = None,
+        environment: dict[str, str] | None = None,
     ) -> ForwardHandle:
         """Split this handle's active pane; return a handle to the new pane."""
         self._require("split", "pane", "window")
         return self._plan._create(
-            SlotRef(self._slot), "pane", "split-window", _split_args(horizontal, shell)
+            SlotRef(self._slot),
+            "pane",
+            "split-window",
+            _split_args(horizontal, shell, start_directory, environment),
         )
 
-    def new_window(self, *, name: str | None = None) -> ForwardHandle:
+    def new_window(
+        self,
+        *,
+        name: str | None = None,
+        start_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+        window_shell: str | None = None,
+    ) -> ForwardHandle:
         """Create a window in this session handle; return a window handle.
 
         Targets the session as ``-t $N:`` -- the captured session id with a
         ``:`` suffix, so a plain ``$N`` capture addresses a new window in it.
         """
         self._require("new_window", "session")
-        args = ("-n", name) if name is not None else ()
+        args: list[str] = []
+        if name is not None:
+            args += ["-n", name]
+        args.extend(_location_args(start_directory, environment))
+        if window_shell is not None:
+            args.append(window_shell)
         return self._plan._create(
-            SlotRef(self._slot, ":"), "window", "new-window", args
+            SlotRef(self._slot, ":"), "window", "new-window", tuple(args)
         )
 
     def do(self, build: cabc.Callable[[ForwardHandle], IntoCommands]) -> ForwardHandle:
@@ -452,17 +497,40 @@ class ForwardPlan:
         return ForwardHandle(self, slot, kind)
 
     def split(
-        self, *, horizontal: bool = False, shell: str | None = None
+        self,
+        *,
+        horizontal: bool = False,
+        shell: str | None = None,
+        start_directory: str | None = None,
+        environment: dict[str, str] | None = None,
     ) -> ForwardHandle:
         """Split the seed (root); return a handle to the new pane."""
         return self._create(
-            self._seed_target(), "pane", "split-window", _split_args(horizontal, shell)
+            self._seed_target(),
+            "pane",
+            "split-window",
+            _split_args(horizontal, shell, start_directory, environment),
         )
 
-    def new_session(self, *, name: str | None = None) -> ForwardHandle:
+    def new_session(
+        self,
+        *,
+        name: str | None = None,
+        start_directory: str | None = None,
+        environment: dict[str, str] | None = None,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> ForwardHandle:
         """Create a detached session; return a session handle."""
-        args = ("-d", "-s", name) if name is not None else ("-d",)
-        return self._create(None, "session", "new-session", args)
+        args: list[str] = ["-d"]
+        if name is not None:
+            args += ["-s", name]
+        args.extend(_location_args(start_directory, environment))
+        if width is not None:
+            args += ["-x", str(width)]
+        if height is not None:
+            args += ["-y", str(height)]
+        return self._create(None, "session", "new-session", tuple(args))
 
     def run_resolving(self, runner: PlanRunner) -> Resolved:
         """Resolve over N dispatches against a live server (sync)."""
