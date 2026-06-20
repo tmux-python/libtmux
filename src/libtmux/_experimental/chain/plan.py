@@ -35,8 +35,12 @@ from libtmux._experimental.chain.ir import (
     Arg,
     CommandCall,
     CommandChain,
+    CommandResultLike,
     CommandRunner,
 )
+
+if t.TYPE_CHECKING:
+    from typing_extensions import Self
 
 OrderField: t.TypeAlias = t.Literal["pane_id", "pane_index", "title"]
 """A :class:`PaneRef` field a query may order by."""
@@ -142,6 +146,143 @@ class SessionTarget:
         return self.value
 
 
+@dataclass(frozen=True, slots=True)
+class PendingTarget:
+    """A tmux runtime token for an object that does not exist yet.
+
+    A *forward* ref -- the pane/window/session a creation verb will make -- has
+    no id until tmux runs, so it is addressed at dispatch via a runtime token:
+    ``"active"`` renders to ``None`` (no ``-t``), since a non-detached
+    split/new-window/new-session activates what it creates and the next commands
+    hit it; ``"marked"`` renders to ``"{marked}"`` (the ``select-pane -m`` pane).
+
+    Examples
+    --------
+    >>> PendingTarget().render() is None
+    True
+    >>> PendingTarget("marked").render()
+    '{marked}'
+    """
+
+    slot: t.Literal["active", "marked"] = "active"
+
+    def render(self) -> str | None:
+        """Render as the tmux runtime token (``None`` for active, else marked)."""
+        return None if self.slot == "active" else "{marked}"
+
+    @property
+    def value(self) -> str:
+        """Display form (``""`` for active) so a ``*TargetT`` union is uniform."""
+        return self.render() or ""
+
+
+PaneTargetT: t.TypeAlias = "PaneTarget | PendingTarget"
+WindowTargetT: t.TypeAlias = "WindowTarget | PendingTarget"
+SessionTargetT: t.TypeAlias = "SessionTarget | PendingTarget"
+AnyTarget: t.TypeAlias = "PaneTarget | WindowTarget | SessionTarget | PendingTarget"
+
+
+def _target_arg(target: AnyTarget) -> str | int | None:
+    """Render a target as a concrete id or a pending token (the single seam).
+
+    Examples
+    --------
+    >>> _target_arg(PaneTarget("%1"))
+    '%1'
+    >>> _target_arg(PendingTarget()) is None
+    True
+    """
+    if isinstance(target, PendingTarget):
+        return target.render()
+    return target.value
+
+
+class ForwardDataUnavailable(RuntimeError):
+    """Raised when forward-ref metadata is read before tmux creates the object."""
+
+
+def _forward_data(field: str) -> t.NoReturn:
+    """Raise: a forward ref has no metadata until tmux creates the object."""
+    msg = f"{field} is unavailable on a forward ref until tmux creates the object"
+    raise ForwardDataUnavailable(msg)
+
+
+class _ForwardRef:
+    """Shared forward-chaining surface for the typed refs.
+
+    A ref accumulates a one-dispatch ``_lineage`` of creation/decoration calls;
+    this mixin compiles and dispatches it. Defining it once keeps
+    :class:`PaneRef`/:class:`WindowRef`/:class:`SessionRef` free of repetition.
+    """
+
+    __slots__ = ()
+
+    if t.TYPE_CHECKING:
+        _lineage: tuple[CommandCall, ...]
+
+    def do(self, build: cabc.Callable[[Self], IntoCommands]) -> Self:
+        """Append commands built from this ref via its own namespaces.
+
+        The fluent way to act on a forward ref with no new vocabulary: ``build``
+        uses the existing ``.cmd``/``.window``/``.session`` namespaces; the
+        cursor (this ref) is unchanged.
+
+        Examples
+        --------
+        >>> ref = PaneRef.concrete(
+        ...     pane_id="%1", window_id="@1", session_id="$0",
+        ...     pane_index=0, active=True, title="editor",
+        ... )
+        >>> ref.do(lambda p: p.cmd.send_keys("vim", enter=True)).to_chain().argvs()
+        (('send-keys', '-t', '%1', 'vim', 'Enter'),)
+        """
+        extra = _to_calls(build(self))
+        return dataclasses.replace(self, _lineage=(*self._lineage, *extra))  # type: ignore[type-var]
+
+    def to_chain(self) -> CommandChain:
+        """Fold the accumulated lineage into one chain (chainability-checked).
+
+        Examples
+        --------
+        >>> ref = PaneRef.concrete(
+        ...     pane_id="%1", window_id="@1", session_id="$0",
+        ...     pane_index=0, active=True, title="editor",
+        ... )
+        >>> ref.split().to_chain().argvs()
+        (('split-window', '-t', '%1', '-v'),)
+        """
+        return _compile_lineage(self._lineage)
+
+    def run(self, runner: CommandRunner) -> CommandResultLike:
+        """Dispatch the accumulated lineage in one tmux invocation.
+
+        Examples
+        --------
+        Dispatch the lineage against a live server in one invocation:
+
+        >>> ref = PaneRef.concrete(
+        ...     pane_id=pane.pane_id, window_id=pane.window_id,
+        ...     session_id=pane.session_id, pane_index=0, active=True, title="",
+        ... )
+        >>> built = ref.do(lambda p: p.cmd.send_keys("echo hi", enter=True))
+        >>> built.run(pane.server).returncode
+        0
+        """
+        return self.to_chain().run(runner)
+
+
+def _compile_lineage(calls: tuple[CommandCall, ...]) -> CommandChain:
+    """Chainability-check an accumulated lineage and fold it into one chain."""
+    for call in calls:
+        if not is_chainable(call.name):
+            msg = (
+                f"command {call.name!r} is not chainable and cannot be "
+                f"folded into a one-dispatch sequence"
+            )
+            raise ChainabilityError(msg)
+    return CommandChain(calls)
+
+
 class CommandValue:
     """Base for typed command values produced by a deferred plan.
 
@@ -178,7 +319,7 @@ class SendKeys(CommandValue):
     ('send-keys', '-t', '%1', 'clear', 'Enter')
     """
 
-    target: PaneTarget
+    target: PaneTargetT
     command: str
     enter: bool = False
 
@@ -193,7 +334,7 @@ class SendKeys(CommandValue):
         args: list[Arg] = [self.command]
         if self.enter:
             args.append("Enter")
-        return CommandCall("send-keys", tuple(args), target=self.target.value)
+        return CommandCall("send-keys", tuple(args), target=_target_arg(self.target))
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,7 +347,7 @@ class ResizePane(CommandValue):
     ('resize-pane', '-t', '%1', '-y', '20')
     """
 
-    target: PaneTarget
+    target: PaneTargetT
     height: int
 
     def to_call(self) -> CommandCall:
@@ -220,7 +361,7 @@ class ResizePane(CommandValue):
         return CommandCall(
             "resize-pane",
             ("-y", self.height),
-            target=self.target.value,
+            target=_target_arg(self.target),
         )
 
 
@@ -234,7 +375,7 @@ class SelectLayout(CommandValue):
     ('select-layout', '-t', '@1', 'even-horizontal')
     """
 
-    target: WindowTarget
+    target: WindowTargetT
     layout: str
 
     def to_call(self) -> CommandCall:
@@ -245,7 +386,9 @@ class SelectLayout(CommandValue):
         >>> SelectLayout(WindowTarget("@1"), "tiled").to_call().argv()
         ('select-layout', '-t', '@1', 'tiled')
         """
-        return CommandCall("select-layout", (self.layout,), target=self.target.value)
+        return CommandCall(
+            "select-layout", (self.layout,), target=_target_arg(self.target)
+        )
 
 
 class BoundPaneCommands:
@@ -257,7 +400,7 @@ class BoundPaneCommands:
     ('send-keys', '-t', '%1', 'clear', 'Enter')
     """
 
-    def __init__(self, target: PaneTarget) -> None:
+    def __init__(self, target: PaneTargetT) -> None:
         self.target = target
 
     def send_keys(self, command: str, *, enter: bool = False) -> SendKeys:
@@ -292,7 +435,7 @@ class BoundPaneCommands:
         >>> BoundPaneCommands(PaneTarget("%1")).raw("pipe-pane", "-o").argv()
         ('pipe-pane', '-t', '%1', '-o')
         """
-        return CommandCall(name, args, target=self.target.value)
+        return CommandCall(name, args, target=_target_arg(self.target))
 
 
 class BoundWindowCommands:
@@ -304,7 +447,7 @@ class BoundWindowCommands:
     ('select-layout', '-t', '@1', 'tiled')
     """
 
-    def __init__(self, target: WindowTarget) -> None:
+    def __init__(self, target: WindowTargetT) -> None:
         self.target = target
 
     def select_layout(self, layout: str) -> SelectLayout:
@@ -325,7 +468,7 @@ class BoundWindowCommands:
         >>> BoundWindowCommands(WindowTarget("@1")).raw("set-option", "@x", "1").argv()
         ('set-option', '-t', '@1', '@x', '1')
         """
-        return CommandCall(name, args, target=self.target.value)
+        return CommandCall(name, args, target=_target_arg(self.target))
 
 
 class BoundSessionCommands:
@@ -340,47 +483,113 @@ class BoundSessionCommands:
     ('set-option', '-t', '$0', '@x', '1')
     """
 
-    def __init__(self, target: SessionTarget) -> None:
+    def __init__(self, target: SessionTargetT) -> None:
         self.target = target
 
     def raw(self, name: str, *args: Arg) -> CommandCall:
         """Build an arbitrary session-scoped command bound to this session."""
-        return CommandCall(name, args, target=self.target.value)
+        return CommandCall(name, args, target=_target_arg(self.target))
 
 
 @dataclass(frozen=True, slots=True)
-class PaneRef:
-    """A typed pane row returned by a pane query.
+class PaneRef(_ForwardRef):
+    r"""A typed pane handle -- concrete (a snapshot row) or forward, one type.
 
-    The ``cmd`` and ``window`` namespaces are pre-bound to this row's typed
-    targets, so commands built from a row cannot mis-target.
+    A *concrete* ref comes from a query/snapshot: a real ``%id`` and metadata
+    (``pane_index``/``active``/``title``). A *forward* ref is declared before the
+    pane exists (``pane.split()``); its id is a :class:`PendingTarget` resolved
+    at dispatch and reading its metadata raises until tmux creates it. The
+    ``.cmd``/``.window``/``.session`` namespaces work identically on both.
 
     Examples
     --------
-    >>> pane = PaneRef(
-    ...     pane_id=PaneTarget("%1"),
-    ...     window_id=WindowTarget("@1"),
-    ...     session_id=SessionTarget("$0"),
-    ...     pane_index=0,
-    ...     active=True,
-    ...     title="editor",
+    Concrete (from a snapshot): build a command bound to this pane's real ids.
+
+    >>> pane = PaneRef.concrete(
+    ...     pane_id="%1", window_id="@1", session_id="$0",
+    ...     pane_index=0, active=True, title="editor",
     ... )
     >>> pane.cmd.send_keys("clear", enter=True).argv()
     ('send-keys', '-t', '%1', 'clear', 'Enter')
-    >>> pane.window.select_layout("tiled").argv()
-    ('select-layout', '-t', '@1', 'tiled')
+    >>> pane.title
+    'editor'
+    >>> pane.is_forward
+    False
+
+    Forward: split it, then split the pane that split just created -- one chain.
+
+    >>> pane.split(horizontal=True).split().to_chain().argvs()
+    (('split-window', '-t', '%1', '-h'), ('split-window', '-v'))
     """
 
-    pane_id: PaneTarget
-    window_id: WindowTarget
-    session_id: SessionTarget
-    pane_index: int
-    active: bool
-    title: str
+    pane_id: PaneTargetT
+    window_id: WindowTargetT
+    session_id: SessionTargetT
+    _pane_index: int | None = None
+    _active: bool | None = None
+    _title: str | None = None
+    _lineage: tuple[CommandCall, ...] = ()
+
+    @classmethod
+    def concrete(
+        cls,
+        *,
+        pane_id: str | PaneTarget,
+        window_id: str | WindowTarget,
+        session_id: str | SessionTarget,
+        pane_index: int,
+        active: bool,
+        title: str,
+    ) -> PaneRef:
+        """Build a concrete pane row (real ids and metadata).
+
+        Examples
+        --------
+        >>> ref = PaneRef.concrete(
+        ...     pane_id="%1", window_id="@1", session_id="$0",
+        ...     pane_index=0, active=True, title="editor",
+        ... )
+        >>> (ref.is_forward, ref.title)
+        (False, 'editor')
+        """
+        return cls(
+            pane_id=PaneTarget.coerce(pane_id),
+            window_id=WindowTarget.coerce(window_id),
+            session_id=SessionTarget.coerce(session_id),
+            _pane_index=pane_index,
+            _active=active,
+            _title=title,
+        )
+
+    @property
+    def is_forward(self) -> bool:
+        """Whether this ref's id resolves at dispatch (vs. a known ``%id``)."""
+        return isinstance(self.pane_id, PendingTarget)
+
+    @property
+    def pane_index(self) -> int:
+        """Pane index (raises on a forward ref -- the pane does not exist yet)."""
+        if self._pane_index is None:
+            _forward_data("pane_index")
+        return self._pane_index
+
+    @property
+    def active(self) -> bool:
+        """Whether the pane is active (raises on a forward ref)."""
+        if self._active is None:
+            _forward_data("active")
+        return self._active
+
+    @property
+    def title(self) -> str:
+        """Pane title (raises on a forward ref)."""
+        if self._title is None:
+            _forward_data("title")
+        return self._title
 
     @property
     def cmd(self) -> BoundPaneCommands:
-        """Pane-scoped commands bound to this pane."""
+        """Pane-scoped commands bound to this pane (concrete id or pending token)."""
         return BoundPaneCommands(self.pane_id)
 
     @property
@@ -393,8 +602,229 @@ class PaneRef:
         """Session-scoped commands bound to this pane's session."""
         return BoundSessionCommands(self.session_id)
 
+    def split(self, *, horizontal: bool = False, shell: str | None = None) -> PaneRef:
+        r"""Split this pane; return a FORWARD ref to the new (active) pane.
+
+        The new pane stays in this pane's window/session; its own id is pending
+        until dispatch -- a non-detached split activates it, so later commands
+        hit it with no ``-t``.
+        """
+        args: list[Arg] = ["-h" if horizontal else "-v"]
+        if shell is not None:
+            args.append(shell)
+        call = CommandCall(
+            "split-window", tuple(args), target=_target_arg(self.pane_id)
+        )
+        return PaneRef(
+            pane_id=PendingTarget("active"),
+            window_id=self.window_id,
+            session_id=self.session_id,
+            _lineage=(*self._lineage, call),
+        )
+
+    def break_pane(self, *, name: str | None = None) -> WindowRef:
+        r"""Break this pane into a new window; return a FORWARD :class:`WindowRef`."""
+        args: list[Arg] = ["-s", _require_id(self.pane_id)]
+        args += ["-t", f"{_require_id(self.session_id)}:"]  # scope to owning session
+        if name is not None:
+            args += ["-n", name]
+        call = CommandCall("break-pane", tuple(args))
+        return WindowRef(
+            window_id=PendingTarget("active"),
+            session_id=self.session_id,
+            _lineage=(*self._lineage, call),
+        )
+
 
 CommandMapper: t.TypeAlias = cabc.Callable[[PaneRef], IntoCommands]
+
+
+def _require_id(target: AnyTarget) -> str:
+    """Return a concrete id, or raise -- creation verbs need a real source id."""
+    if isinstance(target, PendingTarget):
+        msg = "a creation verb needs a concrete source id, not a forward ref"
+        raise ForwardDataUnavailable(msg)
+    return target.value
+
+
+@dataclass(frozen=True, slots=True)
+class WindowRef(_ForwardRef):
+    r"""A typed window handle -- concrete or forward, mirroring :class:`PaneRef`.
+
+    Created by ``session.new_window()`` or ``pane.break_pane()``. Reuses the
+    ``.window``/``.session`` namespaces; ``.split()`` descends into a forward
+    :class:`PaneRef`.
+
+    Examples
+    --------
+    >>> win = WindowRef.concrete(
+    ...     window_id="@1", session_id="$0", window_index=1, window_name="editor"
+    ... )
+    >>> win.window.select_layout("tiled").argv()
+    ('select-layout', '-t', '@1', 'tiled')
+    >>> win.split().is_forward
+    True
+    """
+
+    window_id: WindowTargetT
+    session_id: SessionTargetT
+    _window_index: int | None = None
+    _window_name: str | None = None
+    _lineage: tuple[CommandCall, ...] = ()
+
+    @classmethod
+    def concrete(
+        cls,
+        *,
+        window_id: str | WindowTarget,
+        session_id: str | SessionTarget,
+        window_index: int,
+        window_name: str,
+    ) -> WindowRef:
+        """Build a concrete window row (real ids and metadata).
+
+        Examples
+        --------
+        >>> ref = WindowRef.concrete(
+        ...     window_id="@1", session_id="$0", window_index=1, window_name="editor"
+        ... )
+        >>> (ref.is_forward, ref.window_name)
+        (False, 'editor')
+        """
+        return cls(
+            window_id=WindowTarget.coerce(window_id),
+            session_id=SessionTarget.coerce(session_id),
+            _window_index=window_index,
+            _window_name=window_name,
+        )
+
+    @property
+    def is_forward(self) -> bool:
+        """Whether this window resolves at dispatch."""
+        return isinstance(self.window_id, PendingTarget)
+
+    @property
+    def window_index(self) -> int:
+        """Window index (raises on a forward ref)."""
+        if self._window_index is None:
+            _forward_data("window_index")
+        return self._window_index
+
+    @property
+    def window_name(self) -> str:
+        """Window name (raises on a forward ref)."""
+        if self._window_name is None:
+            _forward_data("window_name")
+        return self._window_name
+
+    @property
+    def window(self) -> BoundWindowCommands:
+        """Window-scoped commands bound to this window."""
+        return BoundWindowCommands(self.window_id)
+
+    @property
+    def session(self) -> BoundSessionCommands:
+        """Session-scoped commands bound to this window's session."""
+        return BoundSessionCommands(self.session_id)
+
+    def split(self, *, horizontal: bool = False, shell: str | None = None) -> PaneRef:
+        r"""Split this window's active pane; return a forward :class:`PaneRef`."""
+        args: list[Arg] = ["-h" if horizontal else "-v"]
+        if shell is not None:
+            args.append(shell)
+        call = CommandCall(
+            "split-window", tuple(args), target=_target_arg(self.window_id)
+        )
+        return PaneRef(
+            pane_id=PendingTarget("active"),
+            window_id=self.window_id,
+            session_id=self.session_id,
+            _lineage=(*self._lineage, call),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SessionRef(_ForwardRef):
+    r"""A typed session handle -- concrete or forward, mirroring :class:`PaneRef`.
+
+    Created by :func:`new_session`. Reuses the ``.session`` namespace;
+    ``.new_window()`` descends into a forward :class:`WindowRef`.
+
+    Examples
+    --------
+    >>> SessionRef.concrete(session_id="$0", session_name="ci").new_window(
+    ...     name="build"
+    ... ).is_forward
+    True
+    """
+
+    session_id: SessionTargetT
+    _session_name: str | None = None
+    _lineage: tuple[CommandCall, ...] = ()
+
+    @classmethod
+    def concrete(
+        cls, *, session_id: str | SessionTarget, session_name: str
+    ) -> SessionRef:
+        """Build a concrete session row (real id and name).
+
+        Examples
+        --------
+        >>> ref = SessionRef.concrete(session_id="$0", session_name="ci")
+        >>> (ref.is_forward, ref.session_name)
+        (False, 'ci')
+        """
+        return cls(
+            session_id=SessionTarget.coerce(session_id),
+            _session_name=session_name,
+        )
+
+    @property
+    def is_forward(self) -> bool:
+        """Whether this session resolves at dispatch."""
+        return isinstance(self.session_id, PendingTarget)
+
+    @property
+    def session_name(self) -> str:
+        """Session name (raises on a forward ref)."""
+        if self._session_name is None:
+            _forward_data("session_name")
+        return self._session_name
+
+    @property
+    def session(self) -> BoundSessionCommands:
+        """Session-scoped commands bound to this session."""
+        return BoundSessionCommands(self.session_id)
+
+    def new_window(self, *, name: str | None = None) -> WindowRef:
+        r"""Create a window in this session; return a forward :class:`WindowRef`."""
+        args: list[Arg] = []
+        target = _target_arg(self.session_id)
+        if target is not None:
+            args += ["-t", f"{target}:"]
+        if name is not None:
+            args += ["-n", name]
+        call = CommandCall("new-window", tuple(args))
+        return WindowRef(
+            window_id=PendingTarget("active"),
+            session_id=self.session_id,
+            _lineage=(*self._lineage, call),
+        )
+
+
+def new_session(*, name: str | None = None) -> SessionRef:
+    r"""Create a detached session; return a forward :class:`SessionRef`.
+
+    Examples
+    --------
+    >>> new_session(name="ci").new_window(name="build").to_chain().argvs()
+    (('new-session', '-d', '-s', 'ci'), ('new-window', '-n', 'build'))
+    """
+    args: list[Arg] = ["-d"]
+    if name is not None:
+        args += ["-s", name]
+    call = CommandCall("new-session", tuple(args))
+    return SessionRef(session_id=PendingTarget("active"), _lineage=(call,))
 
 
 @dataclass(frozen=True, slots=True)
@@ -434,9 +864,9 @@ class PaneQuery:
     --------
     >>> snapshot = TmuxSnapshot(
     ...     panes=(
-    ...         PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+    ...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
     ...                 pane_index=0, active=True, title="editor"),
-    ...         PaneRef(PaneTarget("%2"), WindowTarget("@1"), SessionTarget("$0"),
+    ...         PaneRef.concrete(pane_id="%2", window_id="@1", session_id="$0",
     ...                 pane_index=1, active=False, title="logs"),
     ...     ),
     ... )
@@ -485,9 +915,9 @@ class PaneQuery:
         --------
         >>> snapshot = TmuxSnapshot(
         ...     panes=(
-        ...         PaneRef(PaneTarget("%2"), WindowTarget("@1"), SessionTarget("$0"),
+        ...         PaneRef.concrete(pane_id="%2", window_id="@1", session_id="$0",
         ...                 pane_index=1, active=True, title="logs"),
-        ...         PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+        ...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
         ...                 pane_index=0, active=True, title="editor"),
         ...     ),
         ... )
@@ -525,7 +955,7 @@ class PaneQuery:
         --------
         >>> snapshot = TmuxSnapshot(
         ...     panes=(
-        ...         PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+        ...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
         ...                 pane_index=0, active=True, title="editor"),
         ...     ),
         ... )
@@ -552,7 +982,7 @@ class MappedPaneQuery(t.Generic[MappedT]):
     --------
     >>> snapshot = TmuxSnapshot(
     ...     panes=(
-    ...         PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+    ...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
     ...                 pane_index=0, active=True, title="editor"),
     ...     ),
     ... )
@@ -619,9 +1049,9 @@ class CommandPlan:
     --------
     >>> snapshot = TmuxSnapshot(
     ...     panes=(
-    ...         PaneRef(PaneTarget("%2"), WindowTarget("@1"), SessionTarget("$0"),
+    ...         PaneRef.concrete(pane_id="%2", window_id="@1", session_id="$0",
     ...                 pane_index=1, active=True, title="logs"),
-    ...         PaneRef(PaneTarget("%1"), WindowTarget("@1"), SessionTarget("$0"),
+    ...         PaneRef.concrete(pane_id="%1", window_id="@1", session_id="$0",
     ...                 pane_index=0, active=True, title="editor"),
     ...     ),
     ... )
