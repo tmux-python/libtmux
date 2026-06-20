@@ -103,7 +103,7 @@ def test_commands_defers_mapper_until_sequence_resolution() -> None:
 
     plan = api.panes().filter(active=True).commands(mapper)
 
-    assert_type(plan, api.CommandPlan[None])
+    assert_type(plan, api.CommandPlan)
     assert mapper_calls == []
 
     sequence = plan.to_chain(_snapshot())

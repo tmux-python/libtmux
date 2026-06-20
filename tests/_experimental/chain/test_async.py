@@ -103,7 +103,7 @@ async def test_async_to_chain_awaits_snapshot_without_dispatching() -> None:
 
     sequence = await plan.to_chain(runner)
 
-    assert_type(plan, api.CommandPlan[None])
+    assert_type(plan, api.CommandPlan)
     assert_type(sequence, CommandChain)
     assert sequence.argvs() == (
         ("send-keys", "-t", "%1", "clear", "Enter"),
