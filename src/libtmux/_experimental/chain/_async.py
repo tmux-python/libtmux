@@ -18,6 +18,7 @@ It may change or be removed between any releases without notice.
 from __future__ import annotations
 
 import dataclasses
+import logging
 import typing as t
 from dataclasses import dataclass
 
@@ -27,6 +28,8 @@ from libtmux._experimental.chain.ir import (
     CommandChain,
     CommandResultLike,
 )
+
+logger = logging.getLogger(__name__)
 
 MappedT = t.TypeVar("MappedT")
 
@@ -189,7 +192,15 @@ class CommandPlan:
         except NoCommandsResolved:
             return None
         argv = sequence.argv()
-        await runner.cmd(argv[0], *argv[1:])
+        logger.debug(
+            "tmux command sequence dispatched",
+            extra={"tmux_cmd": " ".join(argv), "tmux_subcommand": argv[0]},
+        )
+        result = await runner.cmd(argv[0], *argv[1:])
+        logger.debug(
+            "tmux command sequence complete",
+            extra={"tmux_exit_code": result.returncode},
+        )
         return None
 
 
