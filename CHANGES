@@ -45,6 +45,17 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### New: chainable tmux commands (`libtmux._experimental.chain`)
+
+Build a sequence of tmux commands and run it in a single tmux call,
+instead of one subprocess per command. References to panes, windows,
+and sessions can be lazy — point at an object a command will create
+and keep building against it — and they all resolve together when the
+chain runs. Experimental and opt-in: import from
+`libtmux._experimental.chain`, not the top-level `libtmux`. (#685)
+
 ## libtmux 0.58.1 (2026-06-16)
 
 libtmux 0.58.1 restores compatibility with pytest 9.1. The bundled
