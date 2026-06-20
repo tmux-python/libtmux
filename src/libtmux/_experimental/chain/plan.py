@@ -25,6 +25,7 @@ import dataclasses
 import typing as t
 from dataclasses import dataclass
 
+from libtmux._experimental.chain.chain import ChainabilityError, is_chainable
 from libtmux._experimental.chain.ir import (
     Arg,
     CommandCall,
@@ -516,6 +517,11 @@ class CommandPlan:
         ------
         NoCommandsResolved
             If the resolved query produced no commands.
+        ChainabilityError
+            If a mapped command is non-chainable -- its output would be
+            consumed mid-chain (e.g. ``show-option``). Raw ``CommandCall``
+            composition via ``>>`` is the explicit escape hatch and is not
+            checked.
         """
         calls: list[CommandCall] = []
         for row in self.node.query.all(source):
@@ -523,6 +529,13 @@ class CommandPlan:
         if not calls:
             msg = "command plan resolved to no commands"
             raise NoCommandsResolved(msg)
+        for call in calls:
+            if not is_chainable(call.name):
+                msg = (
+                    f"command {call.name!r} is not chainable and cannot be "
+                    f"folded into a one-dispatch sequence"
+                )
+                raise ChainabilityError(msg)
         return CommandChain(tuple(calls))
 
     def run(self, runner: PlanRunner) -> None:

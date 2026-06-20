@@ -9,7 +9,8 @@ import pytest
 from typing_extensions import assert_type
 
 from libtmux._experimental.chain import plan as api
-from libtmux._experimental.chain.ir import CommandChain
+from libtmux._experimental.chain.chain import ChainabilityError
+from libtmux._experimental.chain.ir import CommandCall, CommandChain
 
 if t.TYPE_CHECKING:
     from libtmux._experimental.chain.ir import Arg
@@ -247,3 +248,35 @@ def test_commands_rejects_string_iterable_command_results() -> None:
 
     with pytest.raises(TypeError, match="command mapper"):
         plan.to_chain(_snapshot())
+
+
+def test_to_chain_rejects_nonchainable_command() -> None:
+    """A plan mapping a row to a non-chainable command raises.
+
+    ``show-option`` returns output that would be consumed mid-chain, so folding
+    it into a one-dispatch sequence is rejected at compile time -- the
+    chainability contract is enforced, not merely advertised.
+    """
+    plan = api.panes().commands(
+        lambda pane: CommandCall(
+            "show-option",
+            ("-gv", "@x"),
+            target=pane.pane_id.value,
+        ),
+    )
+
+    with pytest.raises(ChainabilityError, match="not chainable"):
+        plan.to_chain(_snapshot())
+
+
+def test_to_chain_allows_chainable_command() -> None:
+    """A chainable raw command compiles without raising."""
+    plan = (
+        api.panes()
+        .limit(1)
+        .commands(
+            lambda pane: CommandCall("rename-window", ("work",)),
+        )
+    )
+
+    assert plan.to_chain(_snapshot()).argvs() == (("rename-window", "work"),)
