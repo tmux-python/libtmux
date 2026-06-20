@@ -273,6 +273,26 @@ def test_creation_start_directory_live(
     assert pathlib.Path(cwd[0]).resolve() == tmp_path.resolve()
 
 
+def test_resolved_maps_slots_to_live_objects(session: Session) -> None:
+    """Resolved.pane/window/session(slot, server) return the created libtmux objects."""
+    server = session.server
+    name = "cc_resolved_objs"
+    try:
+        plan = ForwardPlan()
+        sess = plan.new_session(name=name)  # slot 0 (session)
+        win = sess.new_window(name="w")  # slot 1 (window)
+        win.split()  # slot 2 (pane)
+        resolved = plan.run_resolving(SessionPlanExecutor(session))
+
+        assert resolved.session(0, server).session_id == resolved.bindings[0]
+        assert resolved.window(1, server).window_id == resolved.bindings[1]
+        assert resolved.pane(2, server).pane_id == resolved.bindings[2]
+    finally:
+        for s in list(server.sessions):
+            if s.session_name == name:
+                s.kill()
+
+
 def test_seed_from_existing_scopes_render() -> None:
     """from_session/from_window/from_pane build creates targeting the seed id."""
     splan = ForwardPlan.from_session("$0")
