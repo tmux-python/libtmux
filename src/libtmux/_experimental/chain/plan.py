@@ -428,6 +428,26 @@ class BoundPaneCommands:
         """
         return ResizePane(target=self.target, height=height)
 
+    def set_option(self, name: str, value: Arg) -> CommandCall:
+        """Build a pane-scoped ``set-option -p`` bound to this pane.
+
+        Examples
+        --------
+        >>> BoundPaneCommands(PaneTarget("%1")).set_option("@x", "1").argv()
+        ('set-option', '-t', '%1', '-p', '@x', '1')
+        """
+        return self.raw("set-option", "-p", name, value)
+
+    def select(self) -> CommandCall:
+        """Build a ``select-pane`` bound to this pane.
+
+        Examples
+        --------
+        >>> BoundPaneCommands(PaneTarget("%1")).select().argv()
+        ('select-pane', '-t', '%1')
+        """
+        return self.raw("select-pane")
+
     def raw(self, name: str, *args: Arg) -> CommandCall:
         """Build an arbitrary pane-scoped command bound to this pane.
 
@@ -465,6 +485,36 @@ class BoundWindowCommands:
         """
         return SelectLayout(target=self.target, layout=layout)
 
+    def set_option(self, name: str, value: Arg) -> CommandCall:
+        """Build a window-scoped ``set-option -w`` bound to this window.
+
+        Examples
+        --------
+        >>> BoundWindowCommands(WindowTarget("@1")).set_option("mode-keys", "vi").argv()
+        ('set-option', '-t', '@1', '-w', 'mode-keys', 'vi')
+        """
+        return self.raw("set-option", "-w", name, value)
+
+    def rename(self, name: str) -> CommandCall:
+        """Build a ``rename-window`` bound to this window.
+
+        Examples
+        --------
+        >>> BoundWindowCommands(WindowTarget("@1")).rename("editor").argv()
+        ('rename-window', '-t', '@1', 'editor')
+        """
+        return self.raw("rename-window", name)
+
+    def select(self) -> CommandCall:
+        """Build a ``select-window`` bound to this window.
+
+        Examples
+        --------
+        >>> BoundWindowCommands(WindowTarget("@1")).select().argv()
+        ('select-window', '-t', '@1')
+        """
+        return self.raw("select-window")
+
     def raw(self, name: str, *args: Arg) -> CommandCall:
         """Build an arbitrary window-scoped command bound to this window.
 
@@ -490,6 +540,37 @@ class BoundSessionCommands:
 
     def __init__(self, target: SessionTargetT | SlotRef) -> None:
         self.target = target
+
+    def set_option(self, name: str, value: Arg) -> CommandCall:
+        """Build a session-scoped ``set-option`` bound to this session.
+
+        Examples
+        --------
+        >>> BoundSessionCommands(SessionTarget("$0")).set_option("status", "on").argv()
+        ('set-option', '-t', '$0', 'status', 'on')
+        """
+        return self.raw("set-option", name, value)
+
+    def set_environment(self, name: str, value: str) -> CommandCall:
+        """Build a session-scoped ``set-environment`` bound to this session.
+
+        Examples
+        --------
+        >>> cmds = BoundSessionCommands(SessionTarget("$0"))
+        >>> cmds.set_environment("EDITOR", "vim").argv()
+        ('set-environment', '-t', '$0', 'EDITOR', 'vim')
+        """
+        return self.raw("set-environment", name, value)
+
+    def rename(self, name: str) -> CommandCall:
+        """Build a ``rename-session`` bound to this session.
+
+        Examples
+        --------
+        >>> BoundSessionCommands(SessionTarget("$0")).rename("work").argv()
+        ('rename-session', '-t', '$0', 'work')
+        """
+        return self.raw("rename-session", name)
 
     def raw(self, name: str, *args: Arg) -> CommandCall:
         """Build an arbitrary session-scoped command bound to this session."""
