@@ -68,10 +68,12 @@ from libtmux._experimental.chain._resolve import (
 )
 from libtmux._experimental.chain.chain import (
     ChainabilityError,
+    CommandScopeError,
     DeferredCommandResult,
     DeferredOutputUnavailable,
     ensure_chainable,
     is_chainable,
+    validate_command_scope,
 )
 from libtmux._experimental.chain.ir import (
     Arg,
@@ -112,6 +114,7 @@ __all__ = [
     "CommandResultLike",
     "CommandRunner",
     "CommandScope",
+    "CommandScopeError",
     "CommandSpec",
     "CommandValue",
     "DeferredCommandResult",
@@ -140,4 +143,5 @@ __all__ = [
     "new_session",
     "panes",
     "snapshot_from_session",
+    "validate_command_scope",
 ]
