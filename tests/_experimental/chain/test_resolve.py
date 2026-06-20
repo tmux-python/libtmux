@@ -329,6 +329,40 @@ def test_resolved_maps_slots_to_live_objects(session: Session) -> None:
                 s.kill()
 
 
+def test_initial_handles_require_session() -> None:
+    """initial_pane/initial_window are only available on a session handle (pure)."""
+    pane = ForwardPlan(PaneTarget("%1")).split()  # a pane handle
+    with pytest.raises(TypeError):
+        _ = pane.initial_pane
+    with pytest.raises(TypeError):
+        _ = pane.initial_window
+
+
+def test_initial_pane_builds_onto_default_window(session: Session) -> None:
+    """Live: a new session's default window is built onto, not orphaned."""
+    server = session.server
+    name = "cc_initial"
+    try:
+        plan = ForwardPlan()
+        sess = plan.new_session(name=name)
+        sess.initial_pane.do(lambda h: h.window.rename("main"))
+        sess.initial_pane.split().do(_mark("IP"))
+        resolved = plan.run_resolving(ServerPlanRunner(server))
+
+        created = resolved.session(0, server)
+        created.refresh()
+        assert len(created.windows) == 1  # no orphan window
+        main = created.windows[0]
+        assert main.window_name == "main"
+        main.refresh()
+        assert len(main.panes) == 2  # default pane was split
+        assert _mark_of(session, resolved.bindings[1]) == ["IP"]
+    finally:
+        for s in list(server.sessions):
+            if s.session_name == name:
+                s.kill()
+
+
 def test_seed_from_existing_scopes_render() -> None:
     """from_session/from_window/from_pane build creates targeting the seed id."""
     splan = ForwardPlan.from_session("$0")
