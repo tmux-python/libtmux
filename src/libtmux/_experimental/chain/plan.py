@@ -37,6 +37,7 @@ from libtmux._experimental.chain.ir import (
     CommandChain,
     CommandResultLike,
     CommandRunner,
+    SlotRef,
 )
 
 if t.TYPE_CHECKING:
@@ -179,10 +180,12 @@ class PendingTarget:
 PaneTargetT: t.TypeAlias = "PaneTarget | PendingTarget"
 WindowTargetT: t.TypeAlias = "WindowTarget | PendingTarget"
 SessionTargetT: t.TypeAlias = "SessionTarget | PendingTarget"
-AnyTarget: t.TypeAlias = "PaneTarget | WindowTarget | SessionTarget | PendingTarget"
+AnyTarget: t.TypeAlias = (
+    "PaneTarget | WindowTarget | SessionTarget | PendingTarget | SlotRef"
+)
 
 
-def _target_arg(target: AnyTarget) -> str | int | None:
+def _target_arg(target: AnyTarget) -> str | int | None | SlotRef:
     """Render a target as a concrete id or a pending token (the single seam).
 
     Examples
@@ -194,6 +197,8 @@ def _target_arg(target: AnyTarget) -> str | int | None:
     """
     if isinstance(target, PendingTarget):
         return target.render()
+    if isinstance(target, SlotRef):
+        return target  # deferred; the multi-dispatch resolver substitutes it
     return target.value
 
 
@@ -319,7 +324,7 @@ class SendKeys(CommandValue):
     ('send-keys', '-t', '%1', 'clear', 'Enter')
     """
 
-    target: PaneTargetT
+    target: PaneTargetT | SlotRef
     command: str
     enter: bool = False
 
@@ -347,7 +352,7 @@ class ResizePane(CommandValue):
     ('resize-pane', '-t', '%1', '-y', '20')
     """
 
-    target: PaneTargetT
+    target: PaneTargetT | SlotRef
     height: int
 
     def to_call(self) -> CommandCall:
@@ -375,7 +380,7 @@ class SelectLayout(CommandValue):
     ('select-layout', '-t', '@1', 'even-horizontal')
     """
 
-    target: WindowTargetT
+    target: WindowTargetT | SlotRef
     layout: str
 
     def to_call(self) -> CommandCall:
@@ -400,7 +405,7 @@ class BoundPaneCommands:
     ('send-keys', '-t', '%1', 'clear', 'Enter')
     """
 
-    def __init__(self, target: PaneTargetT) -> None:
+    def __init__(self, target: PaneTargetT | SlotRef) -> None:
         self.target = target
 
     def send_keys(self, command: str, *, enter: bool = False) -> SendKeys:
@@ -447,7 +452,7 @@ class BoundWindowCommands:
     ('select-layout', '-t', '@1', 'tiled')
     """
 
-    def __init__(self, target: WindowTargetT) -> None:
+    def __init__(self, target: WindowTargetT | SlotRef) -> None:
         self.target = target
 
     def select_layout(self, layout: str) -> SelectLayout:
@@ -483,7 +488,7 @@ class BoundSessionCommands:
     ('set-option', '-t', '$0', '@x', '1')
     """
 
-    def __init__(self, target: SessionTargetT) -> None:
+    def __init__(self, target: SessionTargetT | SlotRef) -> None:
         self.target = target
 
     def raw(self, name: str, *args: Arg) -> CommandCall:
@@ -641,7 +646,7 @@ CommandMapper: t.TypeAlias = cabc.Callable[[PaneRef], IntoCommands]
 
 def _require_id(target: AnyTarget) -> str:
     """Return a concrete id, or raise -- creation verbs need a real source id."""
-    if isinstance(target, PendingTarget):
+    if isinstance(target, (PendingTarget, SlotRef)):
         msg = "a creation verb needs a concrete source id, not a forward ref"
         raise ForwardDataUnavailable(msg)
     return target.value

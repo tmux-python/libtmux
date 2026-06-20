@@ -35,6 +35,11 @@ from libtmux._experimental.chain._connection import (
     SessionPlanExecutor,
     snapshot_from_session,
 )
+from libtmux._experimental.chain._resolve import (
+    ForwardHandle,
+    ForwardPlan,
+    Resolved,
+)
 from libtmux._experimental.chain.chain import (
     ChainabilityError,
     DeferredCommandResult,
@@ -84,12 +89,15 @@ __all__ = [
     "DeferredCommandResult",
     "DeferredOutputUnavailable",
     "ForwardDataUnavailable",
+    "ForwardHandle",
+    "ForwardPlan",
     "NoCommandsResolved",
     "PaneQuery",
     "PaneRef",
     "PaneTarget",
     "PendingTarget",
     "PlanRunner",
+    "Resolved",
     "SessionPlanExecutor",
     "SessionRef",
     "SessionTarget",
