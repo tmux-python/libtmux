@@ -33,6 +33,43 @@ MINIMAL_IMPORT_CASES = (
 )
 
 
+class ChainabilityCase(t.NamedTuple):
+    """A command name and expected chainability."""
+
+    test_id: str
+    command: str
+    expected: bool
+
+
+CHAINABILITY_CASES = (
+    ChainabilityCase(
+        test_id="known-chainable",
+        command="rename-window",
+        expected=True,
+    ),
+    ChainabilityCase(
+        test_id="layout-chainable",
+        command="select-layout",
+        expected=True,
+    ),
+    ChainabilityCase(
+        test_id="output-show-option",
+        command="show-option",
+        expected=False,
+    ),
+    ChainabilityCase(
+        test_id="output-capture-pane",
+        command="capture-pane",
+        expected=False,
+    ),
+    ChainabilityCase(
+        test_id="unknown-fail-closed",
+        command="some-unknown-command",
+        expected=False,
+    ),
+)
+
+
 @pytest.mark.parametrize(
     "case",
     MINIMAL_IMPORT_CASES,
@@ -57,15 +94,14 @@ def test_minimal_import_without_dev_dependency_groups(
     assert proc.returncode == 0, proc.stderr
 
 
-def test_is_chainable_uses_static_spec() -> None:
+@pytest.mark.parametrize(
+    "case",
+    CHAINABILITY_CASES,
+    ids=[case.test_id for case in CHAINABILITY_CASES],
+)
+def test_is_chainable_uses_static_spec(case: ChainabilityCase) -> None:
     """The static ``chainable`` flag decides what may fold into a chain."""
-    assert is_chainable("rename-window") is True
-    assert is_chainable("select-layout") is True
-    # Output commands cannot join a one-dispatch chain.
-    assert is_chainable("show-option") is False
-    assert is_chainable("capture-pane") is False
-    # Unknown commands are treated as chainable.
-    assert is_chainable("some-unknown-command") is True
+    assert is_chainable(case.command) is case.expected
 
 
 def test_deferred_result_rejects_output_access() -> None:
