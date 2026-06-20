@@ -273,6 +273,53 @@ def test_creation_start_directory_live(
     assert pathlib.Path(cwd[0]).resolve() == tmp_path.resolve()
 
 
+def test_seed_from_existing_scopes_render() -> None:
+    """from_session/from_window/from_pane build creates targeting the seed id."""
+    splan = ForwardPlan.from_session("$0")
+    splan.new_window(name="w")
+    assert splan._steps[0].call.argv() == ("new-window", "-t", "$0:", "-n", "w")
+
+    wplan = ForwardPlan.from_window("@1")
+    wplan.split(horizontal=True)
+    assert wplan._steps[0].call.argv() == ("split-window", "-t", "@1", "-h")
+
+    pplan = ForwardPlan.from_pane("%5")
+    pplan.split()
+    assert pplan._steps[0].call.argv() == ("split-window", "-t", "%5", "-v")
+
+
+def test_seed_handle_decorates_existing_object() -> None:
+    """plan.seed exposes the pre-existing seed as a decoratable handle."""
+    plan = ForwardPlan.from_pane("%1")
+    assert plan.seed.cmd.send_keys("clear", enter=True).argv() == (
+        "send-keys",
+        "-t",
+        "%1",
+        "clear",
+        "Enter",
+    )
+    # a query-seeded plan has no concrete seed to hand back:
+    qplan = ForwardPlan.from_query(panes().filter(active=True))
+    with pytest.raises(ValueError, match="no concrete seed"):
+        _ = qplan.seed
+
+
+def test_seed_from_live_session_adds_window(session: Session) -> None:
+    """Live: from_session(live) adds a window + split to the existing session."""
+    n_before = len(session.windows)
+
+    plan = ForwardPlan.from_session(session)
+    plan.new_window(name="cc_seeded").split().do(_mark("SEED"))
+    resolved = plan.run_resolving(SessionPlanExecutor(session))
+
+    session.refresh()
+    assert len(session.windows) == n_before + 1
+    new_win = next(w for w in session.windows if w.window_name == "cc_seeded")
+    new_win.refresh()
+    assert len(new_win.panes) == 2  # the window's pane was split
+    assert _mark_of(session, resolved.bindings[1]) == ["SEED"]  # slot 1 = split pane
+
+
 def test_forward_dispatch_error_on_failed_create() -> None:
     """A failed creation dispatch raises ForwardDispatchError, not IndexError."""
     plan = ForwardPlan(PaneTarget("%1"))
