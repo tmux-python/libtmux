@@ -95,16 +95,21 @@ class SlotRef:
 
     Carried by a :class:`CommandCall` built against a forward handle in a
     multi-dispatch plan. The resolver replaces it with the captured concrete id
-    (``%N``/``@N``/``$N``) before the call is rendered; rendering an unresolved
-    SlotRef is a planner bug and raises.
+    (``%N``/``@N``/``$N``) plus ``suffix`` before the call is rendered; rendering
+    an unresolved SlotRef is a planner bug and raises. ``suffix`` lets a command
+    that needs a qualified target -- e.g. ``new-window -t $N:`` -- reuse a plain
+    captured ``$N``.
 
     Examples
     --------
     >>> SlotRef(0)
-    SlotRef(slot=0)
+    SlotRef(slot=0, suffix='')
+    >>> SlotRef(0, ":")
+    SlotRef(slot=0, suffix=':')
     """
 
     slot: int
+    suffix: str = ""
 
 
 @dataclass(frozen=True, slots=True)
