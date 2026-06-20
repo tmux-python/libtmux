@@ -10,7 +10,8 @@ command.
 
 Compilation (:meth:`CommandPlan.to_chain`) is a pure function of the
 snapshot, so a plan can be inspected in memory -- no tmux required -- and only
-:meth:`CommandPlan.run` touches a live server.
+:meth:`CommandPlan.run` and :meth:`CommandPlan.run_deferred` touch a live
+server.
 
 Note
 ----
