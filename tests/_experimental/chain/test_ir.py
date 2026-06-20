@@ -78,6 +78,20 @@ def test_command_call_renders_integer_arguments() -> None:
     assert call.argv() == ("resize-pane", "-t", "%1", "-y", "20")
 
 
+def test_command_call_rejects_empty_string_target() -> None:
+    """An empty-string target is rejected; ``None`` and ints are allowed."""
+    with pytest.raises(ValueError, match="non-empty string or None"):
+        CommandCall("kill-window", target="")
+
+    # None (no target) and integer targets remain valid.
+    assert CommandCall("list-panes").argv() == ("list-panes",)
+    assert CommandCall("select-window", target=0).argv() == (
+        "select-window",
+        "-t",
+        "0",
+    )
+
+
 def test_command_sequence_renders_tmux_semicolon_sequence() -> None:
     """Composed calls render with standalone ``;`` separator tokens."""
     sequence = CommandCall("new-window", ("-d",)) >> CommandCall(

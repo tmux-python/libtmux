@@ -60,13 +60,18 @@ def snapshot_from_session(session: Session) -> TmuxSnapshot:
     rows: list[PaneRef] = []
     for pane in session.panes:
         pane_id = pane.pane_id
-        if pane_id is None:
+        window_id = pane.window_id
+        session_id = pane.session_id
+        # Fail closed: a missing id would render an empty ``-t ''`` target,
+        # which tmux resolves to the current/attached target. Skip the row
+        # rather than emit a target that silently mis-resolves.
+        if pane_id is None or window_id is None or session_id is None:
             continue
         rows.append(
             PaneRef(
                 pane_id=PaneTarget(pane_id),
-                window_id=WindowTarget(pane.window_id or ""),
-                session_id=SessionTarget(pane.session_id or ""),
+                window_id=WindowTarget(window_id),
+                session_id=SessionTarget(session_id),
                 pane_index=int(pane.pane_index) if pane.pane_index is not None else 0,
                 active=pane.pane_active == "1",
                 title=pane.pane_title or "",

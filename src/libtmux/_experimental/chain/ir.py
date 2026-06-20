@@ -114,6 +114,26 @@ class CommandCall:
     args: tuple[Arg, ...] = ()
     target: str | int | None = None
 
+    def __post_init__(self) -> None:
+        """Reject an empty-string target (fail closed).
+
+        An empty ``-t ''`` resolves to tmux's *current/attached* target, which
+        silently defeats the typed-target guarantee. ``None`` means "no target"
+        and is allowed; an integer target such as ``0`` is allowed.
+
+        Examples
+        --------
+        >>> CommandCall("kill-window", target="")
+        Traceback (most recent call last):
+        ...
+        ValueError: CommandCall target must be a non-empty string or None
+        >>> CommandCall("select-window", target=0).argv()
+        ('select-window', '-t', '0')
+        """
+        if self.target == "":
+            msg = "CommandCall target must be a non-empty string or None"
+            raise ValueError(msg)
+
     def argv(self) -> tuple[str, ...]:
         """Render this call as tmux argv tokens.
 
