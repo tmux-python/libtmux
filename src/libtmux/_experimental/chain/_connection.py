@@ -68,7 +68,7 @@ def snapshot_from_session(session: Session) -> TmuxSnapshot:
         if pane_id is None or window_id is None or session_id is None:
             continue
         rows.append(
-            PaneRef(
+            PaneRef.concrete(
                 pane_id=PaneTarget(pane_id),
                 window_id=WindowTarget(window_id),
                 session_id=SessionTarget(session_id),

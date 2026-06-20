@@ -61,7 +61,7 @@ class _AsyncFakeRunner:
 def _snapshot() -> sync_plan.TmuxSnapshot:
     return sync_plan.TmuxSnapshot(
         panes=(
-            sync_plan.PaneRef(
+            sync_plan.PaneRef.concrete(
                 pane_id=sync_plan.PaneTarget("%2"),
                 window_id=sync_plan.WindowTarget("@1"),
                 session_id=sync_plan.SessionTarget("$0"),
@@ -69,7 +69,7 @@ def _snapshot() -> sync_plan.TmuxSnapshot:
                 active=True,
                 title="shell",
             ),
-            sync_plan.PaneRef(
+            sync_plan.PaneRef.concrete(
                 pane_id=sync_plan.PaneTarget("%1"),
                 window_id=sync_plan.WindowTarget("@1"),
                 session_id=sync_plan.SessionTarget("$0"),
@@ -77,7 +77,7 @@ def _snapshot() -> sync_plan.TmuxSnapshot:
                 active=True,
                 title="editor",
             ),
-            sync_plan.PaneRef(
+            sync_plan.PaneRef.concrete(
                 pane_id=sync_plan.PaneTarget("%3"),
                 window_id=sync_plan.WindowTarget("@2"),
                 session_id=sync_plan.SessionTarget("$0"),

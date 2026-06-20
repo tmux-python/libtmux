@@ -52,7 +52,7 @@ class _FakeRunner:
 def _snapshot() -> api.TmuxSnapshot:
     return api.TmuxSnapshot(
         panes=(
-            api.PaneRef(
+            api.PaneRef.concrete(
                 pane_id=api.PaneTarget("%2"),
                 window_id=api.WindowTarget("@1"),
                 session_id=api.SessionTarget("$0"),
@@ -60,7 +60,7 @@ def _snapshot() -> api.TmuxSnapshot:
                 active=True,
                 title="shell",
             ),
-            api.PaneRef(
+            api.PaneRef.concrete(
                 pane_id=api.PaneTarget("%1"),
                 window_id=api.WindowTarget("@1"),
                 session_id=api.SessionTarget("$0"),
@@ -68,7 +68,7 @@ def _snapshot() -> api.TmuxSnapshot:
                 active=True,
                 title="editor",
             ),
-            api.PaneRef(
+            api.PaneRef.concrete(
                 pane_id=api.PaneTarget("%3"),
                 window_id=api.WindowTarget("@2"),
                 session_id=api.SessionTarget("$0"),
@@ -87,9 +87,9 @@ def test_typed_targets_and_bound_commands_render_targets() -> None:
     pane_call = pane.cmd.send_keys("clear", enter=True)
     window_call = pane.window.select_layout("even-horizontal")
 
-    assert_type(pane.pane_id, api.PaneTarget)
-    assert_type(pane.window_id, api.WindowTarget)
-    assert_type(pane.session_id, api.SessionTarget)
+    assert_type(pane.pane_id, api.PaneTargetT)
+    assert_type(pane.window_id, api.WindowTargetT)
+    assert_type(pane.session_id, api.SessionTargetT)
     assert pane_call.argv() == ("send-keys", "-t", "%2", "clear", "Enter")
     assert window_call.argv() == ("select-layout", "-t", "@1", "even-horizontal")
 
