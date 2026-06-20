@@ -29,7 +29,6 @@ from libtmux._experimental.chain.ir import (
 )
 
 MappedT = t.TypeVar("MappedT")
-ResultT = t.TypeVar("ResultT")
 
 NoCommandsResolved = sync_plan.NoCommandsResolved
 
@@ -115,7 +114,7 @@ class PaneQuery:
         """Return a data-only transformation query (no commands)."""
         return MappedPaneQuery(query=self, mapper=mapper)
 
-    def commands(self, mapper: sync_plan.CommandMapper) -> CommandPlan[None]:
+    def commands(self, mapper: sync_plan.CommandMapper) -> CommandPlan:
         """Return a deferred async multi-command side-effect plan."""
         return CommandPlan(query=self, mapper=mapper)
 
@@ -140,7 +139,7 @@ class MappedPaneQuery(t.Generic[MappedT]):
 
 
 @dataclass(frozen=True, slots=True)
-class CommandPlan(t.Generic[ResultT]):
+class CommandPlan:
     """An async command plan that resolves a query into a command sequence.
 
     Examples
@@ -180,7 +179,7 @@ class CommandPlan(t.Generic[ResultT]):
         snapshot = await _resolve_snapshot(source)
         return self.query.query.commands(self.mapper).to_chain(snapshot)
 
-    async def run(self: CommandPlan[None], runner: AsyncPlanRunner) -> None:
+    async def run(self, runner: AsyncPlanRunner) -> None:
         """Resolve, compile, and dispatch the plan in one async invocation.
 
         An empty plan is a no-op (it does not raise).
