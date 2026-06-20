@@ -11,6 +11,7 @@ import pytest
 from libtmux._experimental.chain import (
     AsyncSessionPlanExecutor,
     ForwardPlan,
+    ServerPlanRunner,
     SessionPlanExecutor,
     panes,
 )
@@ -271,6 +272,24 @@ def test_creation_start_directory_live(
     ).stdout
     assert cwd
     assert pathlib.Path(cwd[0]).resolve() == tmp_path.resolve()
+
+
+def test_server_plan_runner_creates_session_from_scratch(session: Session) -> None:
+    """ServerPlanRunner runs a create-from-scratch plan without a seed session."""
+    server = session.server
+    name = "cc_server_runner"
+    try:
+        plan = ForwardPlan()
+        sess = plan.new_session(name=name)  # slot 0
+        sess.new_window(name="w").split().do(_mark("SR"))  # slots 1, 2
+        resolved = plan.run_resolving(ServerPlanRunner(server))
+
+        assert resolved.session(0, server).session_name == name
+        assert _mark_of(session, resolved.bindings[2]) == ["SR"]
+    finally:
+        for s in list(server.sessions):
+            if s.session_name == name:
+                s.kill()
 
 
 def test_resolved_maps_slots_to_live_objects(session: Session) -> None:

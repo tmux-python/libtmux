@@ -33,6 +33,7 @@ from libtmux._experimental.chain.plan import (
 )
 
 if t.TYPE_CHECKING:
+    from libtmux.server import Server
     from libtmux.session import Session
 
 
@@ -178,4 +179,70 @@ class AsyncSessionPlanExecutor:
 
     async def snapshot(self) -> TmuxSnapshot:
         """Return a fresh snapshot, read in a worker thread."""
+        return await asyncio.to_thread(self._sync.snapshot)
+
+
+class ServerPlanRunner:
+    """A ``PlanRunner`` backed by a live :class:`libtmux.Server`.
+
+    For create-from-scratch plans (``ForwardPlan().new_session(...)``) that have
+    no -- and need no -- pre-existing session: it dispatches straight through
+    ``server.cmd`` instead of borrowing an unrelated session's executor.
+    ``snapshot()`` is empty, since a server-level runner is for creation, not
+    query seeding -- a query-seeded plan still wants a :class:`SessionPlanExecutor`.
+
+    Examples
+    --------
+    >>> runner = ServerPlanRunner(server)
+    >>> runner.snapshot().panes
+    ()
+    >>> runner.cmd("set-option", "-g", "@cc_srv_demo", "1").returncode
+    0
+    """
+
+    def __init__(self, server: Server) -> None:
+        self.server = server
+
+    def cmd(
+        self,
+        cmd: str,
+        *args: Arg,
+        target: str | int | None = None,
+    ) -> CommandResultLike:
+        """Dispatch one tmux command through the live server."""
+        runner = t.cast("CommandRunner", self.server)
+        return runner.cmd(cmd, *args, target=target)
+
+    def snapshot(self) -> TmuxSnapshot:
+        """Return an empty snapshot (a server runner is for creation, not queries)."""
+        return TmuxSnapshot(panes=())
+
+
+class AsyncServerPlanRunner:
+    """An ``AsyncPlanRunner`` backed by a live :class:`libtmux.Server`.
+
+    The async companion to :class:`ServerPlanRunner`; offloads the blocking
+    dispatch via :func:`asyncio.to_thread`.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> asyncio.run(AsyncServerPlanRunner(server).snapshot()).panes
+    ()
+    """
+
+    def __init__(self, server: Server) -> None:
+        self._sync = ServerPlanRunner(server)
+
+    async def cmd(
+        self,
+        cmd: str,
+        *args: Arg,
+        target: str | int | None = None,
+    ) -> CommandResultLike:
+        """Dispatch one tmux command in a worker thread."""
+        return await asyncio.to_thread(self._sync.cmd, cmd, *args, target=target)
+
+    async def snapshot(self) -> TmuxSnapshot:
+        """Return an empty snapshot in a worker thread."""
         return await asyncio.to_thread(self._sync.snapshot)
