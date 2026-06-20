@@ -31,7 +31,9 @@ from __future__ import annotations
 
 from libtmux._experimental.chain import _async as aio
 from libtmux._experimental.chain._connection import (
+    AsyncServerPlanRunner,
     AsyncSessionPlanExecutor,
+    ServerPlanRunner,
     SessionPlanExecutor,
     snapshot_from_session,
 )
@@ -77,6 +79,7 @@ from libtmux._experimental.chain.plan import (
 
 __all__ = [
     "Arg",
+    "AsyncServerPlanRunner",
     "AsyncSessionPlanExecutor",
     "ChainabilityError",
     "CommandCall",
@@ -100,6 +103,7 @@ __all__ = [
     "PendingTarget",
     "PlanRunner",
     "Resolved",
+    "ServerPlanRunner",
     "SessionPlanExecutor",
     "SessionRef",
     "SessionTarget",
