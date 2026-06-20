@@ -56,6 +56,7 @@ _CAPTURE: dict[Kind, str] = {
     "session": "#{session_id}",
 }
 _SEED = -1  # reserved binding key for a query-resolved seed
+_MARKED = "{marked}"  # tmux's single server-wide marked-pane target token
 
 
 class NoSeedResolved(RuntimeError):
@@ -118,9 +119,14 @@ class Resolved:
     results: tuple[CommandResultLike, ...] = ()
 
 
-def _with_capture(call: CommandCall, kind: Kind) -> tuple[str, ...]:
+def _capturing(call: CommandCall, kind: Kind) -> CommandCall:
     """Append ``-P -F '#{<kind>_id}'`` so the creation prints its stable id."""
-    return (*call.argv(), "-P", "-F", _CAPTURE[kind])
+    return dataclasses.replace(call, args=(*call.args, "-P", "-F", _CAPTURE[kind]))
+
+
+def _with_capture(call: CommandCall, kind: Kind) -> tuple[str, ...]:
+    """Render a capturing creation as argv (the multi-dispatch per-step form)."""
+    return _capturing(call, kind).argv()
 
 
 def _subst(call: CommandCall, bindings: dict[int, str]) -> CommandCall:
@@ -131,6 +137,53 @@ def _subst(call: CommandCall, bindings: dict[int, str]) -> CommandCall:
     return call
 
 
+# --- strategy: a lone pane handle folds into one {marked} dispatch ----------
+def _to_marked(call: CommandCall) -> CommandCall:
+    """Retarget a SlotRef call to tmux's ``{marked}`` register (single-dispatch)."""
+    if isinstance(call.target, SlotRef):
+        return dataclasses.replace(call, target=_MARKED)
+    return call
+
+
+def _marked_eligible(steps: tuple[_Step, ...]) -> _Create | None:
+    """Return the lone pane creation when the plan folds into one dispatch.
+
+    The marked register is a single server-wide slot, and only a non-detached
+    pane creation (``split-window``) leaves its result active to be marked. So
+    exactly one pane :class:`_Create` is the one plan shape that resolves in a
+    single ``{marked}`` invocation; any other shape (two or more creations, or a
+    detached session creation) needs the multi-dispatch path.
+    """
+    creates = [step for step in steps if isinstance(step, _Create)]
+    if len(creates) == 1 and creates[0].kind == "pane":
+        return creates[0]
+    return None
+
+
+def _marked_invocation(
+    create: _Create,
+    decorates: tuple[CommandCall, ...],
+    bindings: dict[int, str],
+) -> tuple[str, ...]:
+    r"""Fold a lone pane creation and its decorates into one ``\;`` invocation.
+
+    Emits ``<split -P -F '#{pane_id}'> \; select-pane -m \; <decorate -t
+    {marked}>... \; select-pane -M``: the split's new pane is active, ``-m``
+    marks it, every decorate addresses it through tmux's ``{marked}`` register
+    (which resolves for window- and session-scoped decorates too), and a trailing
+    ``-M`` clears the register. Should the chain fail after the mark is set,
+    :func:`drive` issues a recovery ``-M``, so no server-wide mark leaks. With no
+    decorates only the capturing creation runs -- the mark would have no reader.
+    """
+    capture = _capturing(_subst(create.call, bindings), create.kind)
+    if not decorates:
+        return capture.argv()
+    calls = [capture, CommandCall("select-pane", ("-m",))]
+    calls.extend(_to_marked(call) for call in decorates)
+    calls.append(CommandCall("select-pane", ("-M",)))
+    return CommandChain(tuple(calls)).argv()
+
+
 def drive(
     steps: tuple[_Step, ...],
     *,
@@ -138,9 +191,11 @@ def drive(
 ) -> t.Generator[Request, t.Any, Resolved]:
     r"""Sans-I/O resolution core: yield a :class:`Request`, resume via ``.send``.
 
-    Each :class:`_Create` is dispatched alone with ``-P -F`` id capture; a run of
-    :class:`_Decorate`\\s folds into one trailing ``\;`` chain with the captured
-    ids substituted. No awaits, no runner, no threads -- a pure state machine the
+    The plan shape picks the cheapest correct strategy (see :func:`_marked_eligible`):
+    a lone pane creation folds into **one** ``{marked}`` invocation; otherwise each
+    :class:`_Create` is dispatched alone with ``-P -F`` id capture and a run of
+    :class:`_Decorate`\\s folds into one trailing ``\;`` chain with the captured ids
+    substituted. No awaits, no runner, no threads -- a pure state machine the
     sync/async drivers feed results into.
     """
     bindings: dict[int, str] = {}
@@ -154,6 +209,14 @@ def drive(
             msg = "query matched no pane to seed the forward plan"
             raise NoSeedResolved(msg)
         bindings[_SEED] = str(_target_arg(seed.pane_id))
+
+    solo = _marked_eligible(steps)
+    if solo is not None:
+        decorates = tuple(s.call for s in steps if isinstance(s, _Decorate))
+        argv = _marked_invocation(solo, decorates, bindings)
+        result = yield Dispatch(argv, solo.slot)
+        bindings[solo.slot] = result.stdout[0].strip()
+        return Resolved(bindings, (result,))
 
     for step in steps:
         if isinstance(step, _Create):
