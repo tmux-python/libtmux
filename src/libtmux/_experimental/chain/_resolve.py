@@ -258,6 +258,7 @@ def drive(
     steps: tuple[_Step, ...],
     *,
     seed_query: PaneQuery | None = None,
+    allow_marked: bool = True,
 ) -> t.Generator[Request, t.Any, Resolved]:
     r"""Sans-I/O resolution core: yield a :class:`Request`, resume via ``.send``.
 
@@ -266,7 +267,9 @@ def drive(
     :class:`_Create` is dispatched alone with ``-P -F`` id capture and a run of
     :class:`_Decorate`\\s folds into one trailing ``\;`` chain with the captured ids
     substituted. No awaits, no runner, no threads -- a pure state machine the
-    sync/async drivers feed results into.
+    sync/async drivers feed results into. ``allow_marked=False`` forbids the
+    single-dispatch ``{marked}`` fold, so the resolver never touches tmux's
+    server-wide marked pane.
     """
     bindings: dict[int, str] = {}
     results: list[CommandResultLike] = []
@@ -280,7 +283,7 @@ def drive(
             raise NoSeedResolved(msg)
         bindings[_SEED] = str(_target_arg(seed.pane_id))
 
-    solo = _marked_eligible(steps)
+    solo = _marked_eligible(steps) if allow_marked else None
     if solo is not None:
         decorates = tuple(s.call for s in steps if isinstance(s, _Decorate))
         argv = _marked_invocation(solo, decorates, bindings)
@@ -671,12 +674,29 @@ class ForwardPlan:
             window_shell=window_shell,
         )
 
-    def run_resolving(self, runner: PlanRunner) -> Resolved:
-        """Resolve over N dispatches against a live server (sync)."""
-        return run_sync(drive(tuple(self._steps), seed_query=self._seed_query), runner)
+    def run_resolving(
+        self, runner: PlanRunner, *, preserve_mark: bool = False
+    ) -> Resolved:
+        """Resolve over N dispatches against a live server (sync).
 
-    async def run_resolving_async(self, runner: AsyncPlanRunner) -> Resolved:
-        """Resolve over N dispatches against a live server (async, same core)."""
-        return await run_async(
-            drive(tuple(self._steps), seed_query=self._seed_query), runner
+        ``preserve_mark=True`` skips the single-dispatch ``{marked}`` fold (which
+        transiently sets then clears tmux's server-wide marked pane), so resolving
+        against a user's live server does not clobber a mark they had set.
+        """
+        gen = drive(
+            tuple(self._steps),
+            seed_query=self._seed_query,
+            allow_marked=not preserve_mark,
         )
+        return run_sync(gen, runner)
+
+    async def run_resolving_async(
+        self, runner: AsyncPlanRunner, *, preserve_mark: bool = False
+    ) -> Resolved:
+        """Resolve over N dispatches against a live server (async, same core)."""
+        gen = drive(
+            tuple(self._steps),
+            seed_query=self._seed_query,
+            allow_marked=not preserve_mark,
+        )
+        return await run_async(gen, runner)
