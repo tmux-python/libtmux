@@ -21,7 +21,6 @@ import dataclasses
 import logging
 import os
 import selectors
-import shlex
 import shutil
 import subprocess
 import threading
@@ -29,7 +28,7 @@ import time
 import typing as t
 
 from libtmux import exc
-from libtmux.experimental.engines.base import CommandResult
+from libtmux.experimental.engines.base import CommandResult, render_control_line
 
 if t.TYPE_CHECKING:
     import types
@@ -204,7 +203,9 @@ class ControlModeEngine:
             # buffered from earlier activity, so they cannot be mis-attributed
             # to this batch's commands.
             self._drain_unsolicited()
-            payload = b"".join((shlex.join(argv) + "\n").encode() for argv in rendered)
+            payload = b"".join(
+                (render_control_line(argv) + "\n").encode() for argv in rendered
+            )
             self._write(payload)
             blocks = self._read_blocks(len(rendered))
         return [
