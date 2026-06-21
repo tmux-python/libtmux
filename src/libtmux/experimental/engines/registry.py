@@ -13,6 +13,7 @@ import typing as t
 from libtmux import exc
 from libtmux.experimental.engines.base import EngineKind
 from libtmux.experimental.engines.concrete import ConcreteEngine
+from libtmux.experimental.engines.control_mode import ControlModeEngine
 from libtmux.experimental.engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
@@ -66,3 +67,4 @@ def create_engine(name: str | EngineKind, **kwargs: t.Any) -> TmuxEngine:
 
 register_engine(EngineKind.SUBPROCESS.value, SubprocessEngine)
 register_engine(EngineKind.CONCRETE.value, ConcreteEngine)
+register_engine(EngineKind.CONTROL_MODE.value, ControlModeEngine)
