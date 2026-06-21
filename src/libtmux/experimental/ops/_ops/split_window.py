@@ -64,6 +64,7 @@ class SplitWindow(Operation[SplitWindowResult]):
     scope = "window"
     result_cls = SplitWindowResult
     safety = "mutating"
+    chainable = False  # captures a new pane id (-P -F); cannot fold into a ; chain
     effects = Effects(creates="pane")
     flag_version_map: t.ClassVar[Mapping[str, str]] = {"environment": "3.0"}
 
