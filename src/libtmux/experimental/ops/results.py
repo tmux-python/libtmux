@@ -131,6 +131,15 @@ class Result:
         """Whether the operation ran and tmux reported failure."""
         return self.status == "failed"
 
+    @property
+    def created_id(self) -> str | None:
+        """The id of an object this operation created, if any (else ``None``).
+
+        Result subclasses for creation ops override this; a lazy plan reads it to
+        bind a forward :class:`~._types.SlotRef`. The base result creates nothing.
+        """
+        return None
+
     def raise_for_status(self) -> Self:
         """Raise :class:`~.exc.TmuxCommandError` if the result is not OK.
 
@@ -192,6 +201,27 @@ class SplitWindowResult(Result):
     """
 
     new_pane_id: str | None = None
+
+    @property
+    def created_id(self) -> str | None:
+        """The new pane's id."""
+        return self.new_pane_id
+
+
+@dataclass(frozen=True)
+class CreateResult(Result):
+    """Result of an operation that creates an object and captures its id.
+
+    Shared by ``new-window`` / ``new-session`` (and other ``-P -F``-capturing
+    creators); :attr:`new_id` holds the created object's id (``@N``/``$N``).
+    """
+
+    new_id: str | None = None
+
+    @property
+    def created_id(self) -> str | None:
+        """The created object's id."""
+        return self.new_id
 
 
 @dataclass(frozen=True)
