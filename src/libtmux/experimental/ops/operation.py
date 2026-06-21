@@ -215,7 +215,9 @@ class Operation(t.Generic[ResultT]):
         stdout, stderr : Sequence[str]
             Captured output lines.
         version : str or None
-            Used only to render *argv* when it is omitted.
+            The tmux version the output was produced against. Used to render
+            *argv* when omitted, and passed to :meth:`_make_result` so payload
+            parsing can match the version-gated render (e.g. a ``-F`` template).
 
         Returns
         -------
@@ -230,6 +232,7 @@ class Operation(t.Generic[ResultT]):
             returncode,
             tuple(stdout),
             tuple(stderr),
+            version=version,
         )
 
     def _make_result(
@@ -239,8 +242,14 @@ class Operation(t.Generic[ResultT]):
         returncode: int,
         stdout: tuple[str, ...],
         stderr: tuple[str, ...],
+        version: str | None = None,
     ) -> ResultT:
-        """Construct the result instance; override to populate typed payloads."""
+        """Construct the result instance; override to populate typed payloads.
+
+        ``version`` is the tmux version the output was produced against; payload
+        parsers that depend on a version-gated render (read ops) use it. The base
+        implementation and simple overrides ignore it.
+        """
         return t.cast(
             "ResultT",
             self.result_cls(
