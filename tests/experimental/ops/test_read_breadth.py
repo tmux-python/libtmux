@@ -171,6 +171,17 @@ def test_read_result_round_trip(
     assert result_from_dict(result_to_dict(result)) == result
 
 
+def test_has_session_folds_stderr_to_stdout() -> None:
+    """A missing session's stderr is surfaced in stdout (engine-agnostic)."""
+    result = HasSession(target=SessionId("$9")).build_result(
+        returncode=1,
+        stderr=("can't find session: $9",),
+    )
+    assert result.exists is False
+    assert result.stdout == ("can't find session: $9",)
+    assert result.stderr == ("can't find session: $9",)
+
+
 def test_has_session_live(session: Session) -> None:
     """has-session answers True for the fixture session, False for a fake one."""
     from libtmux.experimental.engines import SubprocessEngine
