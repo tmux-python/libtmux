@@ -12,6 +12,7 @@ from libtmux.experimental.ops import (
     BreakPane,
     JoinPane,
     LazyPlan,
+    MarkedPlanner,
     MovePane,
     SendKeys,
     SplitWindow,
@@ -74,6 +75,39 @@ def test_plan_resolves_src_target(test_id: str, op: Operation[t.Any]) -> None:
     outcome = plan.execute(ConcreteEngine())
     assert outcome.ok
     assert outcome.results[1].argv[-2:] == ("-s", "%1")
+
+
+class MarkedSrcCase(t.NamedTuple):
+    """A {marked} decorate whose ``src_target`` references an earlier bound slot."""
+
+    test_id: str
+    op: Operation[t.Any]
+
+
+MARKED_SRC_CASES = (
+    MarkedSrcCase("swap_pane", SwapPane(target=SlotRef(1), src_target=SlotRef(0))),
+    MarkedSrcCase("join_pane", JoinPane(target=SlotRef(1), src_target=SlotRef(0))),
+    MarkedSrcCase("move_pane", MovePane(target=SlotRef(1), src_target=SlotRef(0))),
+)
+
+
+@pytest.mark.parametrize(
+    list(MarkedSrcCase._fields),
+    MARKED_SRC_CASES,
+    ids=[c.test_id for c in MARKED_SRC_CASES],
+)
+def test_marked_plan_resolves_decorate_src_target(
+    test_id: str,
+    op: Operation[t.Any],
+) -> None:
+    """A {marked} decorate's ``src_target`` SlotRef resolves to the bound id."""
+    plan = LazyPlan()
+    plan.add(SplitWindow(target=WindowId("@1")))  # slot 0 -> %1 (own dispatch)
+    plan.add(SplitWindow(target=WindowId("@1")))  # slot 1 -> the marked-fold creator
+    plan.add(op)  # slot 2 -> decorate: target {marked}, src_target -> slot 0
+    outcome = plan.execute(ConcreteEngine(), planner=MarkedPlanner())
+    assert outcome.ok
+    assert outcome.results[2].argv[-2:] == ("-s", "%1")
 
 
 def test_plan_aexecute_matches_execute() -> None:
