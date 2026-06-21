@@ -29,14 +29,15 @@ import collections
 import contextlib
 import shutil
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from libtmux import exc
 from libtmux.experimental.engines.base import render_control_line
 from libtmux.experimental.engines.control_mode import (
     ControlModeError,
     ControlModeParser,
-    _result_from_block,
+    _merge_blocks,
+    command_count,
 )
 
 if t.TYPE_CHECKING:
@@ -44,6 +45,7 @@ if t.TYPE_CHECKING:
     from collections.abc import AsyncIterator, Sequence
 
     from libtmux.experimental.engines.base import CommandRequest, CommandResult
+    from libtmux.experimental.engines.control_mode import ControlModeBlock
 
 _READ_CHUNK = 65536
 _DEFAULT_TIMEOUT = 30.0
@@ -81,6 +83,8 @@ class ControlNotification:
 class _PendingCommand:
     future: asyncio.Future[CommandResult]
     argv: tuple[str, ...]
+    expected: int
+    blocks: list[ControlModeBlock] = field(default_factory=list)
 
 
 class AsyncControlModeEngine:
@@ -209,7 +213,9 @@ class AsyncControlModeEngine:
                 raise ControlModeError(msg)
             for argv in rendered:
                 future: asyncio.Future[CommandResult] = loop.create_future()
-                self._pending.append(_PendingCommand(future, argv))
+                self._pending.append(
+                    _PendingCommand(future, argv, command_count(argv)),
+                )
                 futures.append(future)
             payload = b"".join(
                 (render_control_line(argv) + "\n").encode() for argv in rendered
@@ -305,13 +311,24 @@ class AsyncControlModeEngine:
         except Exception as error:
             self._mark_dead(ControlModeError(f"control-mode reader failed: {error}"))
 
-    def _dispatch_block(self, block: t.Any) -> None:
-        """Resolve the next pending command, or skip an unsolicited block."""
+    def _dispatch_block(self, block: ControlModeBlock) -> None:
+        """Accumulate a solicited block; resolve the command once it has them all.
+
+        A ``;``-folded command emits one block per sub-command; unsolicited blocks
+        (hook-triggered commands, the startup ACK) carry flags 0 and are skipped,
+        so FIFO correlation never desyncs.
+        """
+        if block.flags != 1:
+            return  # unsolicited (hook-triggered command or startup ACK): skip
         if not self._pending:
-            return  # startup ACK or hook-triggered command: not ours, skip
-        pending = self._pending.popleft()
+            return
+        pending = self._pending[0]
+        pending.blocks.append(block)
+        if len(pending.blocks) < pending.expected:
+            return
+        self._pending.popleft()
         if not pending.future.done():
-            pending.future.set_result(_result_from_block(block, pending.argv))
+            pending.future.set_result(_merge_blocks(pending.blocks, pending.argv))
 
     def _publish(self, line: bytes) -> None:
         """Enqueue a notification, dropping the oldest on overflow."""
