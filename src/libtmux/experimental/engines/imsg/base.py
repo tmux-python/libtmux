@@ -485,7 +485,7 @@ class ImsgEngine:
             extra={
                 "tmux_protocol_version": codec.version,
                 "tmux_identify_frames": len(identify_frames),
-                "tmux_command_argv": list(command_argv),
+                "tmux_cmd": " ".join(command_argv),
             },
         )
 
@@ -518,7 +518,7 @@ class ImsgEngine:
                         "tmux_message_pid": pid,
                         "tmux_message_len": len(payload),
                         "tmux_message_has_fd": frame.header.has_fd,
-                        "tmux_command_argv": list(command_argv),
+                        "tmux_cmd": " ".join(command_argv),
                     },
                 )
                 if msg_type == codec.msg_version:
