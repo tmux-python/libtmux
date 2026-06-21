@@ -95,6 +95,34 @@ def test_merge_blocks(
     assert result.stderr == stderr
 
 
+def test_async_control_write_failure_clears_pending() -> None:
+    """A write failure removes the queued futures so the FIFO stays aligned."""
+    import asyncio
+
+    from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
+    from libtmux.experimental.engines.base import CommandRequest
+    from libtmux.experimental.engines.control_mode import ControlModeError
+
+    class _FakeStdin:
+        def write(self, _data: bytes) -> None:
+            raise BrokenPipeError
+
+        async def drain(self) -> None: ...
+
+    class _FakeProc:
+        stdin = _FakeStdin()
+
+    async def _check() -> None:
+        engine = AsyncControlModeEngine()
+        engine._started = True
+        engine._proc = t.cast("t.Any", _FakeProc())
+        with pytest.raises(ControlModeError):
+            await engine.run_batch([CommandRequest.from_args("list-sessions")])
+        assert not engine._pending
+
+    asyncio.run(_check())
+
+
 def test_control_mode_fold_detects_failure_live(session: Session) -> None:
     """A folded chain over control mode surfaces a later sub-command's failure."""
     from libtmux.experimental.engines.control_mode import ControlModeEngine
