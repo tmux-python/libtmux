@@ -53,7 +53,6 @@ def test_list_predicate_filters() -> None:
         "list_panes",
         "list_sessions",
         "list_windows",
-        "save_buffer",
         "show_buffer",
         "show_options",
     ]
@@ -64,9 +63,15 @@ def test_list_predicate_filters() -> None:
     list(registry.select()),
     ids=[spec.kind for spec in registry.select()],
 )
-def test_readonly_safety_matches_read_only_effect(spec: OpSpec) -> None:
-    """Every op's ``safety == "readonly"`` agrees with ``effects.read_only``."""
-    assert spec.effects.read_only == (spec.safety == "readonly")
+def test_readonly_safety_implies_read_only_effect(spec: OpSpec) -> None:
+    """A ``safety == "readonly"`` op must declare ``effects.read_only``.
+
+    The converse need not hold: an op can leave tmux state unchanged
+    (``read_only``) yet still be ``mutating`` because of an external side effect
+    -- e.g. ``save-buffer`` writes a file.
+    """
+    if spec.safety == "readonly":
+        assert spec.effects.read_only
 
 
 def test_register_duplicate_fails_closed() -> None:
