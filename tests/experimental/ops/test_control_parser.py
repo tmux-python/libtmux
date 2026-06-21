@@ -41,9 +41,26 @@ def test_blocks_drains() -> None:
 
 
 def test_ignores_noise_outside_blocks() -> None:
-    """Notification lines outside a block are ignored by the command parser."""
+    """Notification lines outside a block are not command blocks."""
     parser = ControlModeParser()
     parser.feed(b"%output %1 hi\n%begin 1 1 1\nok\n%end 1 1 1\n")
     blocks = parser.blocks()
     assert len(blocks) == 1
     assert blocks[0].body == (b"ok",)
+
+
+def test_surfaces_notifications() -> None:
+    """Bare ``%`` lines outside blocks are surfaced as notifications."""
+    parser = ControlModeParser()
+    parser.feed(b"%window-add @3\n%begin 1 1 1\nok\n%end 1 1 1\n%output %1 hi\n")
+    assert parser.notifications() == [b"%window-add @3", b"%output %1 hi"]
+    # block lines are not double-counted as notifications
+    assert parser.blocks()[0].body == (b"ok",)
+
+
+def test_notifications_drain() -> None:
+    """``notifications`` returns each notification once, then is empty."""
+    parser = ControlModeParser()
+    parser.feed(b"%window-close @3\n")
+    assert parser.notifications() == [b"%window-close @3"]
+    assert parser.notifications() == []

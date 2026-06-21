@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine
+from libtmux.experimental.engines import AsyncConcreteEngine, ConcreteEngine
 from libtmux.experimental.ops import (
     LazyPlan,
     SendKeys,
@@ -15,29 +14,6 @@ from libtmux.experimental.ops import (
 )
 from libtmux.experimental.ops._types import PaneId, WindowId
 from libtmux.experimental.ops.exc import OperationError
-
-if t.TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from libtmux.experimental.engines.base import CommandRequest, CommandResult
-
-
-class _AsyncConcreteEngine:
-    """Async wrapper over :class:`ConcreteEngine` for plan.aexecute tests."""
-
-    def __init__(self) -> None:
-        self._inner = ConcreteEngine()
-
-    async def run(self, request: CommandRequest) -> CommandResult:
-        """Run synchronously under the hood; awaitable for the async driver."""
-        return self._inner.run(request)
-
-    async def run_batch(
-        self,
-        requests: Sequence[CommandRequest],
-    ) -> list[CommandResult]:
-        """Execute each request in order."""
-        return [await self.run(req) for req in requests]
 
 
 def test_plan_records_without_executing() -> None:
@@ -68,7 +44,7 @@ def test_plan_aexecute_matches_execute() -> None:
     pane = plan.add(SplitWindow(target=WindowId("@1")))
     plan.add(SendKeys(target=pane, keys="vim", enter=True))
 
-    outcome = asyncio.run(plan.aexecute(_AsyncConcreteEngine()))
+    outcome = asyncio.run(plan.aexecute(AsyncConcreteEngine()))
 
     assert outcome.bindings == {0: "%1"}
     assert outcome.results[1].argv == ("send-keys", "-t", "%1", "vim", "Enter")
