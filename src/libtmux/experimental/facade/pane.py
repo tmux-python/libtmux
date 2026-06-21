@@ -25,12 +25,13 @@ from libtmux.experimental.ops import (
     CapturePane,
     SendKeys,
     SplitWindow,
+    arun,
     run,
 )
 from libtmux.experimental.ops._types import PaneId
 
 if t.TYPE_CHECKING:
-    from libtmux.experimental.engines.base import TmuxEngine
+    from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
     from libtmux.experimental.ops._types import Target
     from libtmux.experimental.ops.plan import LazyPlan
     from libtmux.experimental.ops.results import CapturePaneResult, Result
@@ -163,3 +164,71 @@ class LazyPane:
         """Record a capture against this handle; return self for chaining."""
         self.plan.add(CapturePane(target=self.ref, start=start, end=end))
         return self
+
+
+@dataclass(frozen=True)
+class AsyncPane:
+    """An async live pane handle: the eager pane, awaited.
+
+    Identical in shape to :class:`EagerPane` -- same operations, same spine --
+    but bound to an :class:`~..engines.base.AsyncTmuxEngine` and awaited. This is
+    why async is a sibling facade, not a transformation.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> from libtmux.experimental.engines import AsyncConcreteEngine
+    >>> async def main():
+    ...     pane = AsyncPane(AsyncConcreteEngine(), "%0")
+    ...     child = await pane.split(horizontal=True)
+    ...     return child.pane_id
+    >>> asyncio.run(main())
+    '%1'
+    """
+
+    engine: AsyncTmuxEngine
+    pane_id: str
+    version: str | None = None
+
+    async def split(
+        self,
+        *,
+        horizontal: bool = False,
+        start_directory: str | None = None,
+        shell: str | None = None,
+    ) -> AsyncPane:
+        """Split this pane and return a live async handle to the new pane."""
+        result = await arun(
+            SplitWindow(
+                target=PaneId(self.pane_id),
+                horizontal=horizontal,
+                start_directory=start_directory,
+                shell=shell,
+            ),
+            self.engine,
+            version=self.version,
+        )
+        result.raise_for_status()
+        assert result.new_pane_id is not None
+        return AsyncPane(self.engine, result.new_pane_id, self.version)
+
+    async def send_keys(self, keys: str, *, enter: bool = False) -> Result:
+        """Send keys to this pane; return the typed result."""
+        return await arun(
+            SendKeys(target=PaneId(self.pane_id), keys=keys, enter=enter),
+            self.engine,
+            version=self.version,
+        )
+
+    async def capture(
+        self,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+    ) -> CapturePaneResult:
+        """Capture this pane's contents; return the typed result."""
+        return await arun(
+            CapturePane(target=PaneId(self.pane_id), start=start, end=end),
+            self.engine,
+            version=self.version,
+        )
