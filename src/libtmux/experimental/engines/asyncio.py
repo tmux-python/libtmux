@@ -11,6 +11,7 @@ so it returns the *same* typed result the classic engine does.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import shutil
 import typing as t
 
@@ -82,7 +83,10 @@ class AsyncSubprocessEngine:
         try:
             stdout_bytes, stderr_bytes = await process.communicate()
         except asyncio.CancelledError:
-            process.terminate()
+            # The child may have already exited (terminate races the reap);
+            # suppress so the cancellation propagates, not ProcessLookupError.
+            with contextlib.suppress(ProcessLookupError):
+                process.terminate()
             await process.wait()
             raise
 
