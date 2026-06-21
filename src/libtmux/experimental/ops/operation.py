@@ -27,6 +27,7 @@ from libtmux.experimental.ops.results import Result, status_for
 if t.TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from libtmux.experimental.ops._chain import OpChain
     from libtmux.experimental.ops._types import (
         Effects,
         Safety,
@@ -234,6 +235,40 @@ class Operation(t.Generic[ResultT]):
             tuple(stderr),
             version=version,
         )
+
+    def result_with_status(
+        self,
+        status: Status,
+        *,
+        version: str | None = None,
+        returncode: int = 0,
+        stdout: Sequence[str] = (),
+        stderr: Sequence[str] = (),
+    ) -> ResultT:
+        """Build a result with an explicit *status* (no status inference).
+
+        Used when the status is known out of band -- e.g. a chained operation
+        whose ``;`` group ran but whose own outcome must be marked ``skipped``
+        because an earlier member failed.
+        """
+        return self._make_result(
+            self.render(version=version),
+            status,
+            returncode,
+            tuple(stdout),
+            tuple(stderr),
+            version=version,
+        )
+
+    def then(self, other: Operation[t.Any] | OpChain) -> OpChain:
+        """Compose with another operation (or chain) into an :class:`OpChain`."""
+        from libtmux.experimental.ops._chain import OpChain
+
+        return OpChain((self,)).then(other)
+
+    def __rshift__(self, other: Operation[t.Any] | OpChain) -> OpChain:
+        """Compose operations with ``>>`` into an :class:`OpChain`."""
+        return self.then(other)
 
     def _make_result(
         self,
