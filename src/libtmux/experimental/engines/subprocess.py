@@ -1,10 +1,10 @@
 """The classic subprocess engine.
 
-Executes tmux via the CLI binary, one fork per command, reproducing today's
-:class:`libtmux.common.tmux_cmd` behaviour byte-for-byte: ``backslashreplace``
-decoding, trailing-blank stripping, and the ``has-session`` stderr-into-stdout
-fold. A tmux-side failure is returned as data (nonzero ``returncode`` plus
-``stderr``); only a missing binary raises. ``server_args`` carries the
+Executes tmux via the CLI binary, one fork per command, mirroring today's
+:class:`libtmux.common.tmux_cmd` output handling: ``backslashreplace`` decoding
+and trailing-blank stripping. A tmux-side failure is returned as data (nonzero
+``returncode`` plus ``stderr``); only a missing binary raises. ``server_args``
+carries the
 connection flags (``-L``/``-S``/``-f``/``-2``) so the engine can target a
 specific tmux server.
 """
@@ -81,9 +81,6 @@ class SubprocessEngine:
         while stdout_lines and stdout_lines[-1] == "":
             stdout_lines.pop()
         stderr_lines = [line for line in stderr.split("\n") if line]
-
-        if "has-session" in cmd and stderr_lines and not stdout_lines:
-            stdout_lines = [stderr_lines[0]]
 
         return CommandResult(
             cmd=tuple(cmd),

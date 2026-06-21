@@ -4,8 +4,8 @@ Built on :func:`asyncio.create_subprocess_exec` -- genuine async process I/O,
 not a thread wrapper around the sync engine. On cancellation it terminates the
 child process before propagating :class:`asyncio.CancelledError`, so a cancelled
 ``arun`` leaks no tmux process. It mirrors the classic engine's output handling
-(``backslashreplace`` decoding, trailing-blank stripping, ``has-session`` fold)
-so it returns the *same* typed result the classic engine does.
+(``backslashreplace`` decoding, trailing-blank stripping) so it returns the
+*same* typed result the classic engine does.
 """
 
 from __future__ import annotations
@@ -97,9 +97,6 @@ class AsyncSubprocessEngine:
         while stdout_lines and stdout_lines[-1] == "":
             stdout_lines.pop()
         stderr_lines = [line for line in stderr.split("\n") if line]
-
-        if "has-session" in cmd and stderr_lines and not stdout_lines:
-            stdout_lines = [stderr_lines[0]]
 
         return CommandResult(
             cmd=tuple(cmd),
