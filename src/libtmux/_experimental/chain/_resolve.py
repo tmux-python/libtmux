@@ -221,14 +221,20 @@ def _marked_eligible(steps: tuple[_Step, ...]) -> _Create | None:
 
     The marked register is a single server-wide slot, and only a non-detached
     pane creation (``split-window``) leaves its result active to be marked. So
-    exactly one pane :class:`_Create` is the one plan shape that resolves in a
-    single ``{marked}`` invocation; any other shape (two or more creations, or a
-    detached session creation) needs the multi-dispatch path.
+    exactly one pane :class:`_Create` with no preceding decoration is the one
+    plan shape that resolves in a single ``{marked}`` invocation; any other shape
+    needs the multi-dispatch path.
     """
     creates = [step for step in steps if isinstance(step, _Create)]
-    if len(creates) == 1 and creates[0].kind == "pane":
-        return creates[0]
-    return None
+    if len(creates) != 1 or creates[0].kind != "pane":
+        return None
+    create = creates[0]
+    for step in steps:
+        if step is create:
+            return create
+        if isinstance(step, _Decorate):
+            return None
+    return create
 
 
 def _marked_invocation(

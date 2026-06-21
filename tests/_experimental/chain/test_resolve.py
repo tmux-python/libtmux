@@ -389,6 +389,31 @@ def test_preserve_mark_skips_marked_fold() -> None:
     assert len(argvs) == 2  # multi-dispatch: create + decorate
 
 
+def test_marked_fold_preserves_pre_create_decorate_order() -> None:
+    """Seed decorations authored before a split must run before the split."""
+    plan = ForwardPlan(PaneTarget("%1"))
+    plan.seed.do(_mark("seed"))
+    plan.split().do(_mark("child"))
+
+    gen = drive(tuple(plan._steps))
+    argvs: list[tuple[str, ...]] = []
+    request = next(gen)
+    try:
+        while True:
+            assert isinstance(request, Dispatch)
+            argvs.append(request.argv)
+            stdout = ["%9"] if request.captures is not None else []
+            request = gen.send(_FakeResult(stdout=stdout))
+    except StopIteration:
+        pass
+
+    assert argvs == [
+        ("set-option", "-t", "%1", "-p", "@m", "seed"),
+        ("split-window", "-t", "%1", "-v", "-P", "-F", "#{pane_id}"),
+        ("set-option", "-t", "%9", "-p", "@m", "child"),
+    ]
+
+
 def test_preserve_mark_keeps_user_mark(session: Session) -> None:
     """Live: preserve_mark=True leaves a pre-existing user mark intact."""
     window = session.new_window(window_name="cc_mark")
