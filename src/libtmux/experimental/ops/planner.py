@@ -53,7 +53,15 @@ class SequentialPlanner:
     """Dispatch each operation on its own (one tmux call per op)."""
 
     def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
-        """One single-op step per operation."""
+        """One single-op step per operation.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.ops import SendKeys
+        >>> from libtmux.experimental.ops._types import PaneId
+        >>> SequentialPlanner().plan([SendKeys(target=PaneId("%1"), keys="a")])
+        [PlanStep(indices=(0,), marked=False)]
+        """
         return [PlanStep((index,)) for index in range(len(operations))]
 
 
@@ -79,7 +87,19 @@ class FoldingPlanner:
     """Fold maximal runs of chainable ops into one ``;`` dispatch each."""
 
     def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
-        """Chain consecutive chainable ops; dispatch the rest alone."""
+        """Chain consecutive chainable ops; dispatch the rest alone.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.ops import SendKeys
+        >>> from libtmux.experimental.ops._types import PaneId
+        >>> ops = [
+        ...     SendKeys(target=PaneId("%1"), keys="a"),
+        ...     SendKeys(target=PaneId("%1"), keys="b"),
+        ... ]
+        >>> FoldingPlanner().plan(ops)
+        [PlanStep(indices=(0, 1), marked=False)]
+        """
         return _fold_runs(operations, 0)
 
 
@@ -93,7 +113,19 @@ class MarkedPlanner:
     """
 
     def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
-        """Emit ``{marked}`` folds where possible, else fold normally."""
+        """Emit ``{marked}`` folds where possible, else fold normally.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.ops import SplitWindow, SendKeys
+        >>> from libtmux.experimental.ops._types import SlotRef, WindowId
+        >>> ops = [
+        ...     SplitWindow(target=WindowId("@1")),
+        ...     SendKeys(target=SlotRef(0), keys="vim", enter=True),
+        ... ]
+        >>> MarkedPlanner().plan(ops)
+        [PlanStep(indices=(0, 1), marked=True)]
+        """
         steps: list[PlanStep] = []
         index = 0
         total = len(operations)
