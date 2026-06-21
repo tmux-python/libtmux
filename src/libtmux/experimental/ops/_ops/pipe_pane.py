@@ -17,7 +17,7 @@ class PipePane(Operation[AckResult]):
 
     Parameters
     ----------
-    command : str or None
+    command_line : str or None
         Shell command to pipe to. Omit to stop an existing pipe.
     stdin : bool
         Connect the pane's input to the command (``-I``).
