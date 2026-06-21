@@ -24,6 +24,8 @@ class MoveWindow(Operation[AckResult]):
         Do not change the active window (``-d``).
     before, after : bool
         Insert before (``-b``) or after (``-a``) the destination index.
+    kill : bool
+        Replace (kill) any window already at the destination (``-k``).
     renumber : bool
         Renumber windows to close gaps (``-r``).
 
@@ -44,6 +46,7 @@ class MoveWindow(Operation[AckResult]):
     detach: bool = False
     before: bool = False
     after: bool = False
+    kill: bool = False
     renumber: bool = False
 
     def args(self, *, version: str | None = None) -> tuple[str, ...]:
@@ -55,6 +58,8 @@ class MoveWindow(Operation[AckResult]):
             out.append("-b")
         if self.after:
             out.append("-a")
+        if self.kill:
+            out.append("-k")
         if self.renumber:
             out.append("-r")
         out.extend(self.src_args())
