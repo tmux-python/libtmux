@@ -103,8 +103,8 @@ def operation_to_dict(operation: Operation[t.Any]) -> dict[str, t.Any]:
     data: dict[str, t.Any] = {"kind": operation.kind}
     for field in dataclasses.fields(operation):
         value = getattr(operation, field.name)
-        if field.name == "target":
-            data["target"] = target_to_dict(value)
+        if field.name in {"target", "src_target"}:
+            data[field.name] = target_to_dict(value)
         else:
             data[field.name] = _jsonify(value)
     return data
@@ -126,8 +126,8 @@ def operation_from_dict(data: Mapping[str, t.Any]) -> Operation[t.Any]:
     for field in dataclasses.fields(operation_cls):
         if field.name not in data:
             continue
-        if field.name == "target":
-            kwargs["target"] = target_from_dict(data["target"])
+        if field.name in {"target", "src_target"}:
+            kwargs[field.name] = target_from_dict(data[field.name])
         else:
             kwargs[field.name] = data[field.name]
     return operation_cls(**kwargs)
