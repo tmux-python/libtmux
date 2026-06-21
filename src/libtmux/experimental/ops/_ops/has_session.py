@@ -53,7 +53,14 @@ class HasSession(Operation[HasSessionResult]):
         stderr: tuple[str, ...],
         version: str | None = None,
     ) -> HasSessionResult:
-        """Map the exit code to existence; the query itself always completes."""
+        """Map the exit code to existence; the query itself always completes.
+
+        ``has-session`` writes its "can't find session" message to stderr; surface
+        it in stdout here (rather than in each engine) so the result is consistent
+        across engines.
+        """
+        if stderr and not stdout:
+            stdout = (stderr[0],)
         return HasSessionResult(
             operation=self,
             argv=argv,
