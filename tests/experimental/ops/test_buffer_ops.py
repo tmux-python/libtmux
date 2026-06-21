@@ -83,6 +83,11 @@ RENDER_CASES = (
         expected=("paste-buffer", "-t", "%1", "-d"),
     ),
     RenderCase(
+        test_id="paste_buffer_no_replace",
+        op=PasteBuffer(target=PaneId("%1"), no_replace=True),
+        expected=("paste-buffer", "-t", "%1", "-r"),
+    ),
+    RenderCase(
         test_id="show_buffer",
         op=ShowBuffer(buffer_name="b0"),
         expected=("show-buffer", "-b", "b0"),

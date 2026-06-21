@@ -25,8 +25,9 @@ class PasteBuffer(Operation[AckResult]):
         Delete the buffer after pasting (``-d``).
     bracket : bool
         Use bracketed paste mode (``-p``).
-    no_format : bool
-        Do not replace separators with spaces (``-r``).
+    no_replace : bool
+        Do no separator replacement: keep linefeeds (LF) instead of
+        converting them to the default carriage-return separator (``-r``).
     separator : str or None
         Separator inserted between lines (``-s``).
 
@@ -49,7 +50,7 @@ class PasteBuffer(Operation[AckResult]):
     buffer_name: str | None = None
     delete: bool = False
     bracket: bool = False
-    no_format: bool = False
+    no_replace: bool = False
     separator: str | None = None
 
     def args(self, *, version: str | None = None) -> tuple[str, ...]:
@@ -59,7 +60,7 @@ class PasteBuffer(Operation[AckResult]):
             out.append("-d")
         if self.bracket:
             out.append("-p")
-        if self.no_format:
+        if self.no_replace:
             out.append("-r")
         if self.buffer_name is not None:
             out.extend(("-b", self.buffer_name))
