@@ -213,6 +213,17 @@ def test_attribute_marked(
     assert [r.status for r in decorated] == decorate_statuses
 
 
+def test_attribute_marked_blank_stdout_is_no_id() -> None:
+    """A whitespace-only captured id is treated as no id (never bound as '')."""
+    merged = CommandResult(cmd=("tmux",), stdout=("   ",), returncode=0)
+    _created, _decorated, new_id = attribute_marked(
+        _MARK_CREATE,
+        _MARK_DECORATES,
+        merged,
+    )
+    assert new_id is None
+
+
 def test_add_chain() -> None:
     """A composed OpChain can be added to a plan in order."""
     plan = LazyPlan()
