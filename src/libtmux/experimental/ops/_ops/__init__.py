@@ -10,6 +10,7 @@ from __future__ import annotations
 from libtmux.experimental.ops._ops.break_pane import BreakPane
 from libtmux.experimental.ops._ops.capture_pane import CapturePane
 from libtmux.experimental.ops._ops.clear_history import ClearHistory
+from libtmux.experimental.ops._ops.delete_buffer import DeleteBuffer
 from libtmux.experimental.ops._ops.detach_client import DetachClient
 from libtmux.experimental.ops._ops.display_message import DisplayMessage
 from libtmux.experimental.ops._ops.has_session import HasSession
@@ -25,11 +26,13 @@ from libtmux.experimental.ops._ops.list_clients import ListClients
 from libtmux.experimental.ops._ops.list_panes import ListPanes
 from libtmux.experimental.ops._ops.list_sessions import ListSessions
 from libtmux.experimental.ops._ops.list_windows import ListWindows
+from libtmux.experimental.ops._ops.load_buffer import LoadBuffer
 from libtmux.experimental.ops._ops.move_pane import MovePane
 from libtmux.experimental.ops._ops.move_window import MoveWindow
 from libtmux.experimental.ops._ops.new_session import NewSession
 from libtmux.experimental.ops._ops.new_window import NewWindow
 from libtmux.experimental.ops._ops.next_window import NextWindow
+from libtmux.experimental.ops._ops.paste_buffer import PasteBuffer
 from libtmux.experimental.ops._ops.pipe_pane import PipePane
 from libtmux.experimental.ops._ops.previous_window import PreviousWindow
 from libtmux.experimental.ops._ops.refresh_client import RefreshClient
@@ -41,14 +44,17 @@ from libtmux.experimental.ops._ops.respawn_pane import RespawnPane
 from libtmux.experimental.ops._ops.respawn_window import RespawnWindow
 from libtmux.experimental.ops._ops.rotate_window import RotateWindow
 from libtmux.experimental.ops._ops.run_shell import RunShell
+from libtmux.experimental.ops._ops.save_buffer import SaveBuffer
 from libtmux.experimental.ops._ops.select_layout import SelectLayout
 from libtmux.experimental.ops._ops.select_pane import SelectPane
 from libtmux.experimental.ops._ops.select_window import SelectWindow
 from libtmux.experimental.ops._ops.send_keys import SendKeys
+from libtmux.experimental.ops._ops.set_buffer import SetBuffer
 from libtmux.experimental.ops._ops.set_environment import SetEnvironment
 from libtmux.experimental.ops._ops.set_hook import SetHook
 from libtmux.experimental.ops._ops.set_option import SetOption
 from libtmux.experimental.ops._ops.set_window_option import SetWindowOption
+from libtmux.experimental.ops._ops.show_buffer import ShowBuffer
 from libtmux.experimental.ops._ops.show_options import ShowOptions
 from libtmux.experimental.ops._ops.source_file import SourceFile
 from libtmux.experimental.ops._ops.split_window import SplitWindow
@@ -63,6 +69,7 @@ __all__ = (
     "BreakPane",
     "CapturePane",
     "ClearHistory",
+    "DeleteBuffer",
     "DetachClient",
     "DisplayMessage",
     "HasSession",
@@ -78,11 +85,13 @@ __all__ = (
     "ListPanes",
     "ListSessions",
     "ListWindows",
+    "LoadBuffer",
     "MovePane",
     "MoveWindow",
     "NewSession",
     "NewWindow",
     "NextWindow",
+    "PasteBuffer",
     "PipePane",
     "PreviousWindow",
     "RefreshClient",
@@ -94,14 +103,17 @@ __all__ = (
     "RespawnWindow",
     "RotateWindow",
     "RunShell",
+    "SaveBuffer",
     "SelectLayout",
     "SelectPane",
     "SelectWindow",
     "SendKeys",
+    "SetBuffer",
     "SetEnvironment",
     "SetHook",
     "SetOption",
     "SetWindowOption",
+    "ShowBuffer",
     "ShowOptions",
     "SourceFile",
     "SplitWindow",
