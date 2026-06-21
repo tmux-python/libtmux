@@ -149,11 +149,14 @@ class OperationRegistry:
         """Return the operation class registered for ``kind``."""
         return self.get(kind).operation_cls
 
-    def list(
+    def select(
         self,
         predicate: Callable[[OpSpec], bool] | None = None,
     ) -> list[OpSpec]:
         """Return registered specs (optionally filtered), sorted by ``kind``.
+
+        Named ``select`` rather than ``list`` so the ``-> list[OpSpec]`` return
+        annotation is not shadowed by the method name.
 
         Parameters
         ----------
@@ -163,7 +166,7 @@ class OperationRegistry:
         Examples
         --------
         >>> from libtmux.experimental.ops import registry
-        >>> [s.kind for s in registry.list(lambda s: s.safety == "readonly")]
+        >>> [s.kind for s in registry.select(lambda s: s.safety == "readonly")]
         ['capture_pane', 'list_panes', 'list_sessions', 'list_windows']
         """
         specs = sorted(self._specs.values(), key=lambda spec: spec.kind)
@@ -181,7 +184,7 @@ class OperationRegistry:
 
     def __iter__(self) -> Iterator[OpSpec]:
         """Iterate specs sorted by ``kind``."""
-        return iter(self.list())
+        return iter(self.select())
 
     def __len__(self) -> int:
         """Return the number of registered operations."""
