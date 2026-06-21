@@ -98,6 +98,16 @@ RENDER_CASES = (
         expected=("move-window", "-t", "$0", "-s", "@2"),
     ),
     RenderCase(
+        test_id="move_window_kill_renumber",
+        op=MoveWindow(
+            target=SessionId("$0"),
+            src_target=WindowId("@2"),
+            kill=True,
+            renumber=True,
+        ),
+        expected=("move-window", "-t", "$0", "-k", "-r", "-s", "@2"),
+    ),
+    RenderCase(
         test_id="link_window",
         op=LinkWindow(target=SessionId("$0"), src_target=WindowId("@2")),
         expected=("link-window", "-t", "$0", "-s", "@2"),
