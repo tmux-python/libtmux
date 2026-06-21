@@ -211,11 +211,12 @@ class AsyncControlModeEngine:
             if proc is None or proc.stdin is None:
                 msg = "control-mode subprocess is not connected"
                 raise ControlModeError(msg)
+            appended: list[_PendingCommand] = []
             for argv in rendered:
                 future: asyncio.Future[CommandResult] = loop.create_future()
-                self._pending.append(
-                    _PendingCommand(future, argv, command_count(argv)),
-                )
+                pending = _PendingCommand(future, argv, command_count(argv))
+                self._pending.append(pending)
+                appended.append(pending)
                 futures.append(future)
             payload = b"".join(
                 (render_control_line(argv) + "\n").encode() for argv in rendered
@@ -224,8 +225,15 @@ class AsyncControlModeEngine:
                 proc.stdin.write(payload)
                 await proc.stdin.drain()
             except (BrokenPipeError, OSError) as error:
-                msg = f"tmux control-mode write failed: {error}"
-                raise ControlModeError(msg) from error
+                # Remove the futures we just queued so a write failure cannot
+                # leave orphans that desync FIFO correlation for the next batch.
+                cm_error = ControlModeError(f"tmux control-mode write failed: {error}")
+                for queued in appended:
+                    with contextlib.suppress(ValueError):
+                        self._pending.remove(queued)
+                    if not queued.future.done():
+                        queued.future.set_exception(cm_error)
+                raise cm_error from error
 
         try:
             return await asyncio.wait_for(
