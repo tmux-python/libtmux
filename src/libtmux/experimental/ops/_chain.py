@@ -134,6 +134,14 @@ def attribute_marked(
     # target is unresolved and cannot render.
     marked = [dataclasses.replace(op, target=Special("{marked}")) for op in decorates]
     if new_id is None:
+        if merged.returncode == 0 and not merged.stderr:
+            # A non-capturing creator (capture=False) succeeded but emitted no
+            # id; every command in the fold ran.
+            create_result = create.build_result(returncode=0, version=version)
+            decorated = [
+                op.result_with_status("complete", version=version) for op in marked
+            ]
+            return create_result, decorated, None
         # The create step failed: tmux stopped, so no decorate ran -- skip them
         # all rather than blaming the first.
         create_result = create.build_result(

@@ -183,6 +183,13 @@ MARKED_ATTR_CASES = (
         decorate_statuses=["skipped", "skipped"],
     ),
     MarkedAttrCase(
+        test_id="capture_false_success",
+        merged=CommandResult(cmd=("tmux",), returncode=0),
+        new_id=None,
+        create_status="complete",
+        decorate_statuses=["complete", "complete"],
+    ),
+    MarkedAttrCase(
         test_id="decorate_fails",
         merged=CommandResult(
             cmd=("tmux",), stdout=("%2",), returncode=1, stderr=("x",)
