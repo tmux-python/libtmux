@@ -9,10 +9,14 @@ from __future__ import annotations
 
 from libtmux.experimental.ops._ops.capture_pane import CapturePane
 from libtmux.experimental.ops._ops.kill_pane import KillPane
+from libtmux.experimental.ops._ops.kill_session import KillSession
 from libtmux.experimental.ops._ops.kill_window import KillWindow
 from libtmux.experimental.ops._ops.list_panes import ListPanes
 from libtmux.experimental.ops._ops.list_sessions import ListSessions
 from libtmux.experimental.ops._ops.list_windows import ListWindows
+from libtmux.experimental.ops._ops.new_session import NewSession
+from libtmux.experimental.ops._ops.new_window import NewWindow
+from libtmux.experimental.ops._ops.rename_session import RenameSession
 from libtmux.experimental.ops._ops.rename_window import RenameWindow
 from libtmux.experimental.ops._ops.select_layout import SelectLayout
 from libtmux.experimental.ops._ops.send_keys import SendKeys
@@ -21,10 +25,14 @@ from libtmux.experimental.ops._ops.split_window import SplitWindow
 __all__ = (
     "CapturePane",
     "KillPane",
+    "KillSession",
     "KillWindow",
     "ListPanes",
     "ListSessions",
     "ListWindows",
+    "NewSession",
+    "NewWindow",
+    "RenameSession",
     "RenameWindow",
     "SelectLayout",
     "SendKeys",
