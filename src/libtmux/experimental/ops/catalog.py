@@ -65,11 +65,13 @@ def catalog(registry: OperationRegistry | None = None) -> list[CatalogEntry]:
     >>> from libtmux.experimental.ops import catalog
     >>> entries = catalog()
     >>> [entry.kind for entry in entries]
-    ['capture_pane', 'detach_client', 'display_message', 'has_session',
-    'kill_pane', 'kill_session', 'kill_window', 'list_clients', 'list_panes',
-    'list_sessions', 'list_windows', 'new_session', 'new_window',
-    'refresh_client', 'rename_session', 'rename_window', 'select_layout',
-    'send_keys', 'show_options', 'split_window', 'switch_client']
+    ['break_pane', 'capture_pane', 'clear_history', 'detach_client',
+    'display_message', 'has_session', 'join_pane', 'kill_pane', 'kill_session',
+    'kill_window', 'last_pane', 'list_clients', 'list_panes', 'list_sessions',
+    'list_windows', 'move_pane', 'new_session', 'new_window', 'pipe_pane',
+    'refresh_client', 'rename_session', 'rename_window', 'resize_pane',
+    'respawn_pane', 'select_layout', 'select_pane', 'send_keys', 'show_options',
+    'split_window', 'swap_pane', 'switch_client']
     >>> capture = next(entry for entry in entries if entry.kind == "capture_pane")
     >>> capture.scope, capture.safety, capture.result_type
     ('pane', 'readonly', 'CapturePaneResult')
