@@ -20,8 +20,8 @@ from libtmux.experimental.ops import (
 )
 from libtmux.experimental.ops._types import PaneId, WindowId
 from libtmux.experimental.ops.results import (
+    AckResult,
     CapturePaneResult,
-    Result,
     SplitWindowResult,
 )
 
@@ -56,7 +56,7 @@ def test_classic_send_keys_and_select_layout(session: Session) -> None:
     engine = SubprocessEngine.for_server(server)
 
     sent = run(SendKeys(target=PaneId(pane.pane_id), keys="echo hi"), engine)
-    assert type(sent) is Result
+    assert type(sent) is AckResult
     assert sent.ok
 
     laid_out = run(

@@ -150,6 +150,33 @@ class Result:
 
 
 @dataclass(frozen=True)
+class AckResult(Result):
+    """Result of an operation that returns no data -- only success or failure.
+
+    Many tmux commands (``rename-window``, ``kill-pane``, ``select-window``, ...)
+    print nothing. In the CLI they exit ``0`` on success or write to stderr and
+    exit nonzero on failure; in control mode tmux frames them as ``%end``
+    (success) or ``%error`` (failure) -- it never calls ``cmdq_print`` for them
+    (see tmux ``cmd-queue.c``). An :class:`AckResult` is the typed
+    acknowledgement for exactly that case: no payload, but
+    :meth:`~Result.raise_for_status` still surfaces the error path, because a
+    no-output command can still fail.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.ops import RenameWindow
+    >>> from libtmux.experimental.ops._types import WindowId
+    >>> op = RenameWindow(target=WindowId("@1"), name="build")
+    >>> ok = op.build_result(returncode=0)
+    >>> type(ok).__name__, ok.ok
+    ('AckResult', True)
+    >>> failed = op.build_result(returncode=1, stderr=("can't find window @1",))
+    >>> failed.ok
+    False
+    """
+
+
+@dataclass(frozen=True)
 class SplitWindowResult(Result):
     """Result of a ``split-window`` operation.
 
