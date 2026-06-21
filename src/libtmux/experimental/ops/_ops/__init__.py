@@ -18,26 +18,37 @@ from libtmux.experimental.ops._ops.kill_pane import KillPane
 from libtmux.experimental.ops._ops.kill_session import KillSession
 from libtmux.experimental.ops._ops.kill_window import KillWindow
 from libtmux.experimental.ops._ops.last_pane import LastPane
+from libtmux.experimental.ops._ops.last_window import LastWindow
+from libtmux.experimental.ops._ops.link_window import LinkWindow
 from libtmux.experimental.ops._ops.list_clients import ListClients
 from libtmux.experimental.ops._ops.list_panes import ListPanes
 from libtmux.experimental.ops._ops.list_sessions import ListSessions
 from libtmux.experimental.ops._ops.list_windows import ListWindows
 from libtmux.experimental.ops._ops.move_pane import MovePane
+from libtmux.experimental.ops._ops.move_window import MoveWindow
 from libtmux.experimental.ops._ops.new_session import NewSession
 from libtmux.experimental.ops._ops.new_window import NewWindow
+from libtmux.experimental.ops._ops.next_window import NextWindow
 from libtmux.experimental.ops._ops.pipe_pane import PipePane
+from libtmux.experimental.ops._ops.previous_window import PreviousWindow
 from libtmux.experimental.ops._ops.refresh_client import RefreshClient
 from libtmux.experimental.ops._ops.rename_session import RenameSession
 from libtmux.experimental.ops._ops.rename_window import RenameWindow
 from libtmux.experimental.ops._ops.resize_pane import ResizePane
+from libtmux.experimental.ops._ops.resize_window import ResizeWindow
 from libtmux.experimental.ops._ops.respawn_pane import RespawnPane
+from libtmux.experimental.ops._ops.respawn_window import RespawnWindow
+from libtmux.experimental.ops._ops.rotate_window import RotateWindow
 from libtmux.experimental.ops._ops.select_layout import SelectLayout
 from libtmux.experimental.ops._ops.select_pane import SelectPane
+from libtmux.experimental.ops._ops.select_window import SelectWindow
 from libtmux.experimental.ops._ops.send_keys import SendKeys
 from libtmux.experimental.ops._ops.show_options import ShowOptions
 from libtmux.experimental.ops._ops.split_window import SplitWindow
 from libtmux.experimental.ops._ops.swap_pane import SwapPane
+from libtmux.experimental.ops._ops.swap_window import SwapWindow
 from libtmux.experimental.ops._ops.switch_client import SwitchClient
+from libtmux.experimental.ops._ops.unlink_window import UnlinkWindow
 
 __all__ = (
     "BreakPane",
@@ -51,24 +62,35 @@ __all__ = (
     "KillSession",
     "KillWindow",
     "LastPane",
+    "LastWindow",
+    "LinkWindow",
     "ListClients",
     "ListPanes",
     "ListSessions",
     "ListWindows",
     "MovePane",
+    "MoveWindow",
     "NewSession",
     "NewWindow",
+    "NextWindow",
     "PipePane",
+    "PreviousWindow",
     "RefreshClient",
     "RenameSession",
     "RenameWindow",
     "ResizePane",
+    "ResizeWindow",
     "RespawnPane",
+    "RespawnWindow",
+    "RotateWindow",
     "SelectLayout",
     "SelectPane",
+    "SelectWindow",
     "SendKeys",
     "ShowOptions",
     "SplitWindow",
     "SwapPane",
+    "SwapWindow",
     "SwitchClient",
+    "UnlinkWindow",
 )
