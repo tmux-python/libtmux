@@ -31,6 +31,7 @@ from libtmux.experimental.engines.control_mode import (
     ControlModeError,
     ControlModeParser,
 )
+from libtmux.experimental.engines.imsg import ImsgEngine
 from libtmux.experimental.engines.registry import (
     available_engines,
     create_engine,
@@ -52,6 +53,7 @@ __all__ = (
     "ControlNotification",
     "EngineKind",
     "EngineSpec",
+    "ImsgEngine",
     "SubprocessEngine",
     "TmuxEngine",
     "available_engines",
