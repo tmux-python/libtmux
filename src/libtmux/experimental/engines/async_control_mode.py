@@ -27,12 +27,12 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
-import shlex
 import shutil
 import typing as t
 from dataclasses import dataclass
 
 from libtmux import exc
+from libtmux.experimental.engines.base import render_control_line
 from libtmux.experimental.engines.control_mode import (
     ControlModeError,
     ControlModeParser,
@@ -211,7 +211,9 @@ class AsyncControlModeEngine:
                 future: asyncio.Future[CommandResult] = loop.create_future()
                 self._pending.append(_PendingCommand(future, argv))
                 futures.append(future)
-            payload = b"".join((shlex.join(argv) + "\n").encode() for argv in rendered)
+            payload = b"".join(
+                (render_control_line(argv) + "\n").encode() for argv in rendered
+            )
             try:
                 proc.stdin.write(payload)
                 await proc.stdin.drain()
