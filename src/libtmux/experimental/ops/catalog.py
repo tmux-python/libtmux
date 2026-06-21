@@ -90,5 +90,5 @@ def catalog(registry: OperationRegistry | None = None) -> list[CatalogEntry]:
             effects=dataclasses.asdict(spec.effects),
             summary=_summary(spec.operation_cls.__doc__),
         )
-        for spec in reg.list()
+        for spec in reg.select()
     ]
