@@ -41,6 +41,7 @@ from libtmux.experimental.ops._types import (
     WindowId,
     render_target,
 )
+from libtmux.experimental.ops.catalog import CatalogEntry, catalog
 from libtmux.experimental.ops.exc import (
     DuplicateOperation,
     OperationError,
@@ -50,6 +51,7 @@ from libtmux.experimental.ops.exc import (
 )
 from libtmux.experimental.ops.execute import arun, run
 from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.plan import LazyPlan, PlanResult
 from libtmux.experimental.ops.registry import (
     OperationRegistry,
     OpSpec,
@@ -74,16 +76,19 @@ from libtmux.experimental.ops.serialize import (
 __all__ = (
     "CapturePane",
     "CapturePaneResult",
+    "CatalogEntry",
     "ClientName",
     "DuplicateOperation",
     "Effects",
     "IndexRef",
+    "LazyPlan",
     "NameRef",
     "OpSpec",
     "Operation",
     "OperationError",
     "OperationRegistry",
     "PaneId",
+    "PlanResult",
     "Result",
     "Safety",
     "Scope",
@@ -101,6 +106,7 @@ __all__ = (
     "VersionUnsupported",
     "WindowId",
     "arun",
+    "catalog",
     "operation_from_dict",
     "operation_to_dict",
     "register",
