@@ -121,10 +121,8 @@ class ControlModeParser:
 
     def _handle_line(self, line: bytes) -> None:
         if self._pending is not None:
-            if line.startswith(_END_PREFIX) or line.startswith(_ERROR_PREFIX):
+            if _matches_pending_close(line, self._pending.number):
                 self._close_block(line)
-                return
-            if any(line.startswith(prefix) for prefix in _NOTIFICATION_PREFIXES):
                 return
             self._pending.body.append(line)
             return
@@ -434,6 +432,16 @@ def _parse_guard(
     except ValueError:
         return (None, None)
     return (number, flags)
+
+
+def _matches_pending_close(line: bytes, pending_number: int) -> bool:
+    if line.startswith(_END_PREFIX):
+        number, _flags = _parse_guard(line, _END_PREFIX)
+        return number == pending_number
+    if line.startswith(_ERROR_PREFIX):
+        number, _flags = _parse_guard(line, _ERROR_PREFIX)
+        return number == pending_number
+    return False
 
 
 def _result_from_block(block: ControlModeBlock) -> ControlModeResult:
