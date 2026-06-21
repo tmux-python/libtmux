@@ -10,6 +10,7 @@ import pytest
 
 from libtmux._experimental.chain import (
     AsyncSessionPlanExecutor,
+    ChainabilityError,
     ForwardPlan,
     ServerPlanRunner,
     SessionPlanExecutor,
@@ -36,6 +37,28 @@ class _FakeResult:
 
 def _mark(value: str) -> t.Callable[[t.Any], t.Any]:
     return lambda h: h.cmd.raw("set-option", "-p", "@m", value)
+
+
+class ForwardDecorateChainabilityCase(t.NamedTuple):
+    """A forward decoration that must fail chainability validation."""
+
+    test_id: str
+    build: t.Callable[[t.Any], t.Any]
+    match: str
+
+
+FORWARD_DECORATE_CHAINABILITY_CASES = (
+    ForwardDecorateChainabilityCase(
+        test_id="output-command",
+        build=lambda h: h.cmd.raw("capture-pane", "-p"),
+        match="not chainable",
+    ),
+    ForwardDecorateChainabilityCase(
+        test_id="unknown-command",
+        build=lambda h: h.cmd.raw("some-unknown-command"),
+        match="unknown tmux command",
+    ),
+)
 
 
 def test_drive_core_is_sans_io_and_substitutes_ids() -> None:
@@ -160,6 +183,22 @@ def test_handle_scope_guard() -> None:
         win.new_window()  # only a session creates windows
     with pytest.raises(TypeError):
         pane.new_window()  # ditto for a pane
+
+
+@pytest.mark.parametrize(
+    "case",
+    FORWARD_DECORATE_CHAINABILITY_CASES,
+    ids=[case.test_id for case in FORWARD_DECORATE_CHAINABILITY_CASES],
+)
+def test_forward_handle_do_enforces_chainability(
+    case: ForwardDecorateChainabilityCase,
+) -> None:
+    """Forward decorations cannot bypass the chainability contract."""
+    plan = ForwardPlan(PaneTarget("%1"))
+    handle = plan.split()
+
+    with pytest.raises(ChainabilityError, match=case.match):
+        handle.do(case.build)
 
 
 def test_multidispatch_session_window_pane(session: Session) -> None:
