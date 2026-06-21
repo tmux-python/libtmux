@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import typing as t
 
+import pytest
+
 from libtmux.experimental.engines import AsyncSubprocessEngine, SubprocessEngine
 from libtmux.experimental.ops import SplitWindow, arun, run
 from libtmux.experimental.ops._types import WindowId
@@ -16,6 +18,37 @@ from libtmux.experimental.ops.results import SplitWindowResult
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
+
+
+def test_async_run_cancellation_suppresses_terminate_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation propagates even when terminate() races a process exit."""
+    from libtmux.experimental.engines.base import CommandRequest
+
+    class _FakeProc:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            raise asyncio.CancelledError
+
+        def terminate(self) -> None:
+            raise ProcessLookupError
+
+        async def wait(self) -> int:
+            return 0
+
+    async def _fake_exec(*_args: object, **_kwargs: object) -> _FakeProc:
+        return _FakeProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+    engine = AsyncSubprocessEngine(tmux_bin="tmux")
+
+    async def _check() -> None:
+        with pytest.raises(asyncio.CancelledError):
+            await engine.run(CommandRequest.from_args("display-message", "-p", "x"))
+
+    asyncio.run(_check())
 
 
 def test_async_split_creates_real_pane(session: Session) -> None:
