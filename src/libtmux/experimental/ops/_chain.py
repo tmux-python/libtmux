@@ -20,7 +20,7 @@ import dataclasses
 import typing as t
 from dataclasses import dataclass
 
-from libtmux.experimental.ops._types import Special
+from libtmux.experimental.ops._types import PaneId, Special
 from libtmux.experimental.ops.exc import OperationError
 
 if t.TYPE_CHECKING:
@@ -152,9 +152,12 @@ def attribute_marked(
         decorated = [op.result_with_status("skipped", version=version) for op in marked]
         return create_result, decorated, None
     create_result = create.build_result(returncode=0, stdout=(new_id,), version=version)
-    # Attribute decorates without the create's captured id in stdout, so a failed
-    # decorate is not credited with the new pane id as its output.
-    decorated = attribute(marked, dataclasses.replace(merged, stdout=()), version)
+    # Attribute over decorates retargeted to the concrete new pane (not
+    # ``{marked}``) so each result's operation serializes and replays to the real
+    # pane; drop the create's captured id from stdout so a failed decorate is not
+    # credited with it.
+    resolved = [dataclasses.replace(op, target=PaneId(new_id)) for op in decorates]
+    decorated = attribute(resolved, dataclasses.replace(merged, stdout=()), version)
     return create_result, decorated, new_id
 
 
