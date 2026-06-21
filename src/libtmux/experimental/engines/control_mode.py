@@ -85,11 +85,12 @@ class ControlModeParser:
     (True, (b'boom',))
     """
 
-    __slots__ = ("_blocks", "_buffer", "_pending")
+    __slots__ = ("_blocks", "_buffer", "_notifications", "_pending")
 
     def __init__(self) -> None:
         self._buffer = bytearray()
         self._blocks: list[ControlModeBlock] = []
+        self._notifications: list[bytes] = []
         self._pending: _PendingBlock | None = None
 
     def feed(self, data: bytes) -> None:
@@ -110,6 +111,17 @@ class ControlModeParser:
         blocks, self._blocks = self._blocks, []
         return blocks
 
+    def notifications(self) -> list[bytes]:
+        """Drain raw ``%``-notification lines seen outside command blocks.
+
+        Control mode wraps *command output* in ``%begin``/``%end`` blocks but
+        emits asynchronous notifications (``%output``, ``%window-add``, ...) as
+        bare lines. The sync engine ignores these; the async engine routes them
+        to its event stream.
+        """
+        notifications, self._notifications = self._notifications, []
+        return notifications
+
     def _handle_line(self, line: bytes) -> None:
         if self._pending is not None:
             if _matches_pending_close(line, self._pending.number):
@@ -119,6 +131,8 @@ class ControlModeParser:
             return
         if line.startswith(_BEGIN_PREFIX):
             self._open_block(line)
+        elif line.startswith(b"%"):
+            self._notifications.append(line)
 
     def _open_block(self, line: bytes) -> None:
         number, flags = _parse_guard(line, _BEGIN_PREFIX)
