@@ -60,6 +60,7 @@ class CapturePane(Operation[CapturePaneResult]):
     scope = "pane"
     result_cls = CapturePaneResult
     safety = "readonly"
+    chainable = False  # produces stdout that must not be merged into a ; chain
     effects = Effects(read_only=True, reads_output=True, idempotent=True)
     flag_version_map: t.ClassVar[Mapping[str, str]] = {
         "trim_trailing": "3.4",
