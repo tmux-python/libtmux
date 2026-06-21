@@ -19,10 +19,10 @@ import types
 import typing as t
 from dataclasses import dataclass
 
-from libtmux._compat import LooseVersion
 from libtmux.experimental.ops._types import render_target
 from libtmux.experimental.ops.exc import VersionUnsupported
 from libtmux.experimental.ops.results import Result, status_for
+from libtmux.neo import _normalize_tmux_version
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -162,7 +162,7 @@ class Operation(t.Generic[ResultT]):
         """
         if version is None or self.min_version is None:
             return
-        if LooseVersion(version) < LooseVersion(self.min_version):
+        if _normalize_tmux_version(version) < _normalize_tmux_version(self.min_version):
             raise VersionUnsupported(
                 self.kind,
                 need=self.min_version,
@@ -197,7 +197,7 @@ class Operation(t.Generic[ResultT]):
         need = self.flag_version_map.get(label)
         if need is None or version is None:
             return True
-        return LooseVersion(version) >= LooseVersion(need)
+        return _normalize_tmux_version(version) >= _normalize_tmux_version(need)
 
     def src_args(self) -> tuple[str, ...]:
         """Render the ``-s`` source target, or ``()`` when there is none.

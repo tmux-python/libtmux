@@ -29,6 +29,7 @@ class _FutureOp(Operation[Result]):
     result_cls = Result
     effects = Effects()
     min_version = "99.0"
+    flag_version_map: t.ClassVar[dict[str, str]] = {"feat": "99.0"}
 
 
 def test_render_includes_target_then_args() -> None:
@@ -63,6 +64,44 @@ def test_check_version_passes_when_satisfied() -> None:
     op = _FutureOp()
     assert op.render() == ("future-cmd",)
     assert op.render(version="99.0") == ("future-cmd",)
+
+
+class VersionCase(t.NamedTuple):
+    """A tmux version string and whether the 99.0-gated op accepts it."""
+
+    test_id: str
+    version: str | None
+    satisfied: bool
+
+
+VERSION_CASES = (
+    VersionCase("master_suffix", "3.7-master", True),
+    VersionCase("bare_master", "master", True),
+    VersionCase("none", None, True),
+    VersionCase("exact", "99.0", True),
+    VersionCase("too_old", "3.4", False),
+)
+
+
+@pytest.mark.parametrize(
+    list(VersionCase._fields),
+    VERSION_CASES,
+    ids=[c.test_id for c in VERSION_CASES],
+)
+def test_version_gates_normalize_master(
+    test_id: str,
+    version: str | None,
+    satisfied: bool,
+) -> None:
+    """A "master"/suffixed version sorts above tagged releases for both gates."""
+    op = _FutureOp()
+    if satisfied:
+        op.check_version(version)  # no raise
+        assert op.flag_available("feat", version) is True
+    else:
+        with pytest.raises(VersionUnsupported):
+            op.check_version(version)
+        assert op.flag_available("feat", version) is False
 
 
 def test_build_result_parses_payload() -> None:
