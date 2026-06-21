@@ -44,6 +44,7 @@ _END_PREFIX = b"%end "
 _ERROR_PREFIX = b"%error "
 _READ_CHUNK = 65536
 _DEFAULT_TIMEOUT = 30.0
+_STARTUP_TIMEOUT = 5.0
 _GRACEFUL_EXIT_TIMEOUT = 0.5
 _TERMINATE_TIMEOUT = 1.0
 _GUARD_MIN_PARTS = 3
@@ -187,7 +188,6 @@ class ControlModeEngine:
         self._parser = ControlModeParser()
         self._proc: subprocess.Popen[bytes] | None = None
         self._selector: selectors.DefaultSelector | None = None
-        self._startup_ack_pending = True
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command over the control connection."""
@@ -200,6 +200,10 @@ class ControlModeEngine:
         rendered = [tuple(req.args) for req in requests]
         with self._lock:
             self._ensure_started()
+            # Discard any unsolicited blocks (hook-triggered commands) left
+            # buffered from earlier activity, so they cannot be mis-attributed
+            # to this batch's commands.
+            self._drain_unsolicited()
             payload = b"".join((shlex.join(argv) + "\n").encode() for argv in rendered)
             self._write(payload)
             blocks = self._read_blocks(len(rendered))
@@ -216,7 +220,6 @@ class ControlModeEngine:
             self._proc = None
             self._selector = None
             self._parser = ControlModeParser()
-            self._startup_ack_pending = True
             if selector is not None:
                 with contextlib.suppress(Exception):
                     selector.close()
@@ -279,7 +282,48 @@ class ControlModeEngine:
         selector.register(proc.stderr, selectors.EVENT_READ, "stderr")
         self._proc = proc
         self._selector = selector
-        self._startup_ack_pending = True
+        self._consume_startup()
+
+    def _consume_startup(self) -> None:
+        """Read and discard tmux's startup ACK block before any command.
+
+        Consuming it up front (instead of skipping the first block heuristically
+        at read time) means the startup block can never be conflated with a
+        command's result block.
+        """
+        deadline = time.monotonic() + _STARTUP_TIMEOUT
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            if self._proc is not None and self._proc.poll() is not None:
+                return
+            self._pump(remaining)
+            if self._parser.blocks():  # startup ACK seen and discarded
+                self._parser.notifications()
+                return
+            self._parser.notifications()
+
+    def _drain_unsolicited(self) -> None:
+        """Discard any blocks/notifications already buffered (non-blocking)."""
+        selector = self._selector
+        if selector is None:
+            return
+        while selector.select(0):
+            self._pump(0)
+        self._parser.blocks()
+        self._parser.notifications()
+
+    def _pump(self, timeout: float) -> None:
+        """Wait up to *timeout* for output and feed it to the parser."""
+        selector = self._selector
+        if selector is None:
+            return
+        for key, _events in selector.select(timeout):
+            if key.data == "stdout":
+                self._read_stdout()
+            elif key.data == "stderr":
+                self._read_stderr()
 
     def _write(self, payload: bytes) -> None:
         proc = self._proc
@@ -321,13 +365,10 @@ class ControlModeEngine:
                 elif key.data == "stderr":
                     self._read_stderr()
             for block in self._parser.blocks():
-                if self._startup_ack_pending:
-                    self._startup_ack_pending = False
-                    if block.flags == 0:
-                        continue
                 blocks.append(block)
                 if len(blocks) == count:
                     break
+            self._parser.notifications()  # sync engine ignores notifications
         return blocks
 
     def _read_stdout(self) -> None:
