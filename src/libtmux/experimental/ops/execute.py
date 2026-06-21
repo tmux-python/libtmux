@@ -72,6 +72,7 @@ def run(
         returncode=raw.returncode,
         stdout=raw.stdout,
         stderr=raw.stderr,
+        version=version,
     )
 
 
@@ -112,4 +113,5 @@ async def arun(
         returncode=raw.returncode,
         stdout=raw.stdout,
         stderr=raw.stderr,
+        version=version,
     )

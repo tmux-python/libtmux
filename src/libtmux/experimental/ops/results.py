@@ -19,9 +19,17 @@ from __future__ import annotations
 import typing as t
 from dataclasses import dataclass, field
 
+from libtmux.experimental.models.snapshots import (
+    PaneSnapshot,
+    ServerSnapshot,
+    SessionSnapshot,
+    WindowSnapshot,
+)
 from libtmux.experimental.ops.exc import TmuxCommandError
 
 if t.TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from typing_extensions import Self
 
     from libtmux.experimental.ops._types import Status
@@ -195,3 +203,50 @@ class CapturePaneResult(Result):
     """
 
     lines: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class ListPanesResult(Result):
+    """Result of a ``list-panes`` operation.
+
+    Stores the parsed per-pane format mappings as JSON-friendly :attr:`rows`
+    (so the result serializes without snapshot objects), and derives typed
+    :class:`~..models.snapshots.PaneSnapshot` / :class:`ServerSnapshot` views on
+    demand.
+    """
+
+    rows: tuple[Mapping[str, str], ...] = ()
+
+    @property
+    def panes(self) -> tuple[PaneSnapshot, ...]:
+        """One typed pane snapshot per row."""
+        return tuple(PaneSnapshot.from_format(row) for row in self.rows)
+
+    @property
+    def server(self) -> ServerSnapshot:
+        """The full session/window/pane tree built from the rows."""
+        return ServerSnapshot.from_pane_rows(self.rows)
+
+
+@dataclass(frozen=True)
+class ListWindowsResult(Result):
+    """Result of a ``list-windows`` operation (typed :attr:`windows`)."""
+
+    rows: tuple[Mapping[str, str], ...] = ()
+
+    @property
+    def windows(self) -> tuple[WindowSnapshot, ...]:
+        """One typed window snapshot per row."""
+        return tuple(WindowSnapshot.from_format(row) for row in self.rows)
+
+
+@dataclass(frozen=True)
+class ListSessionsResult(Result):
+    """Result of a ``list-sessions`` operation (typed :attr:`sessions`)."""
+
+    rows: tuple[Mapping[str, str], ...] = ()
+
+    @property
+    def sessions(self) -> tuple[SessionSnapshot, ...]:
+        """One typed session snapshot per row."""
+        return tuple(SessionSnapshot.from_format(row) for row in self.rows)

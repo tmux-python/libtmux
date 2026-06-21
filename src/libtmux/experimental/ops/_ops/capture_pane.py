@@ -97,6 +97,7 @@ class CapturePane(Operation[CapturePaneResult]):
         returncode: int,
         stdout: tuple[str, ...],
         stderr: tuple[str, ...],
+        version: str | None = None,
     ) -> CapturePaneResult:
         """Expose captured stdout as typed :attr:`~.CapturePaneResult.lines`."""
         return CapturePaneResult(

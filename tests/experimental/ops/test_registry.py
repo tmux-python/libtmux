@@ -45,7 +45,7 @@ def test_list_predicate_filters() -> None:
     readonly = [
         spec.kind for spec in registry.list(lambda spec: spec.safety == "readonly")
     ]
-    assert readonly == ["capture_pane"]
+    assert readonly == ["capture_pane", "list_panes", "list_sessions", "list_windows"]
 
 
 def test_register_duplicate_fails_closed() -> None:
