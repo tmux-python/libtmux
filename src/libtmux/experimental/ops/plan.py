@@ -18,6 +18,8 @@ import dataclasses
 import typing as t
 from dataclasses import dataclass, field
 
+from libtmux.experimental.engines.base import CommandRequest
+from libtmux.experimental.ops._chain import attribute, render_chain
 from libtmux.experimental.ops._types import (
     PaneId,
     SessionId,
@@ -34,10 +36,29 @@ if t.TYPE_CHECKING:
 
     from typing_extensions import Self
 
-    from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
+    from libtmux.experimental.engines.base import (
+        AsyncTmuxEngine,
+        CommandResult,
+        TmuxEngine,
+    )
+    from libtmux.experimental.ops._chain import OpChain
     from libtmux.experimental.ops._types import Target
     from libtmux.experimental.ops.operation import Operation
     from libtmux.experimental.ops.results import Result
+
+
+@dataclass(frozen=True)
+class _Single:
+    """Drive request: run one resolved operation and return its typed result."""
+
+    op: Operation[t.Any]
+
+
+@dataclass(frozen=True)
+class _Chain:
+    """Drive request: dispatch a folded ``;`` chain and return the merged result."""
+
+    argv: tuple[str, ...]
 
 
 def _target_from_id(value: str) -> Target:
@@ -154,47 +175,106 @@ class LazyPlan:
         plan._operations = [operation_from_dict(item) for item in data]
         return plan
 
+    def add_chain(self, chain: OpChain) -> None:
+        """Record every operation of an :class:`~._chain.OpChain` in order."""
+        self._operations.extend(chain.ops)
+
     def _drive(
         self,
         version: str | None,
-    ) -> Generator[Operation[t.Any], Result, PlanResult]:
-        """Sans-I/O resolution core: yield a resolved op, resume with its result."""
+        fold: bool,
+    ) -> Generator[_Single | _Chain, t.Any, PlanResult]:
+        """Sans-I/O resolution core.
+
+        Yields a :class:`_Single` (driver runs one op and returns its
+        :class:`~.results.Result`) or, when ``fold`` is set, a :class:`_Chain`
+        for a maximal run of chainable ops (driver returns the merged
+        :class:`~..engines.base.CommandResult`, attributed per op here). The
+        sync and async drivers differ only in ``run`` vs ``await arun`` and
+        ``engine.run`` vs ``await engine.run``.
+        """
         bindings: dict[int, str] = {}
-        results: list[Result] = []
-        for index, operation in enumerate(self._operations):
-            result = yield _resolve(operation, bindings)
-            results.append(result)
-            created = getattr(result, "new_pane_id", None)
-            if created is not None:
-                bindings[index] = created
-        return PlanResult(tuple(results), bindings)
+        results: dict[int, Result] = {}
+        index = 0
+        total = len(self._operations)
+        while index < total:
+            operation = self._operations[index]
+            if fold and operation.chainable:
+                indices: list[int] = []
+                group: list[Operation[t.Any]] = []
+                cursor = index
+                while cursor < total and self._operations[cursor].chainable:
+                    indices.append(cursor)
+                    group.append(_resolve(self._operations[cursor], bindings))
+                    cursor += 1
+                if len(group) == 1:
+                    results[indices[0]] = yield _Single(group[0])
+                else:
+                    merged: CommandResult = yield _Chain(render_chain(group, version))
+                    results.update(
+                        zip(indices, attribute(group, merged, version), strict=True),
+                    )
+                index = cursor
+            else:
+                result = yield _Single(_resolve(operation, bindings))
+                results[index] = result
+                created = getattr(result, "new_pane_id", None)
+                if created is not None:
+                    bindings[index] = created
+                index += 1
+        ordered = tuple(results[slot] for slot in range(total))
+        return PlanResult(ordered, bindings)
 
     def execute(
         self,
         engine: TmuxEngine,
         *,
         version: str | None = None,
+        fold: bool = False,
     ) -> PlanResult:
-        """Resolve and execute the plan synchronously."""
-        gen = self._drive(version)
+        """Resolve and execute the plan synchronously.
+
+        With ``fold=True``, maximal runs of chainable operations dispatch as one
+        ``tmux a ; b`` invocation (fewer forks / one control-mode command),
+        attributing a typed result per operation. ``fold`` defaults off because
+        folding changes observable semantics (fewer dispatches; a folded
+        failure marks the first member failed and the rest skipped).
+        """
+        gen = self._drive(version, fold)
         try:
-            operation = next(gen)
+            request = next(gen)
             while True:
-                operation = gen.send(run(operation, engine, version=version))
+                request = gen.send(self._dispatch(request, engine, version))
         except StopIteration as stop:
             return t.cast("PlanResult", stop.value)
+
+    def _dispatch(
+        self,
+        request: _Single | _Chain,
+        engine: TmuxEngine,
+        version: str | None,
+    ) -> t.Any:
+        """Run one drive request synchronously."""
+        if isinstance(request, _Chain):
+            return engine.run(CommandRequest.from_args(*request.argv))
+        return run(request.op, engine, version=version)
 
     async def aexecute(
         self,
         engine: AsyncTmuxEngine,
         *,
         version: str | None = None,
+        fold: bool = False,
     ) -> PlanResult:
         """Resolve and execute the plan asynchronously (same resolution core)."""
-        gen = self._drive(version)
+        gen = self._drive(version, fold)
         try:
-            operation = next(gen)
+            request = next(gen)
             while True:
-                operation = gen.send(await arun(operation, engine, version=version))
+                if isinstance(request, _Chain):
+                    raw = await engine.run(CommandRequest.from_args(*request.argv))
+                    request = gen.send(raw)
+                else:
+                    request = gen.send(await arun(request.op, engine, version=version))
         except StopIteration as stop:
             return t.cast("PlanResult", stop.value)
