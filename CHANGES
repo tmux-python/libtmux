@@ -54,6 +54,10 @@ instead of one subprocess per command. References to panes, windows,
 and sessions can be lazy — point at an object a command will create
 and keep building against it — and they all resolve together when the
 chain runs. Experimental and opt-in: import from
+`libtmux._experimental.chain`, not the top-level `libtmux`.
+When callers need per-command output, the experimental control-mode
+runner batches command lines through one persistent `tmux -C` client
+and returns one result per command. (#685)
 `libtmux._experimental.chain`, not the top-level `libtmux`. (#685)
 ### Documentation
 
