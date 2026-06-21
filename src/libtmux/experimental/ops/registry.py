@@ -167,7 +167,8 @@ class OperationRegistry:
         --------
         >>> from libtmux.experimental.ops import registry
         >>> [s.kind for s in registry.select(lambda s: s.safety == "readonly")]
-        ['capture_pane', 'list_panes', 'list_sessions', 'list_windows']
+        ['capture_pane', 'display_message', 'has_session', 'list_clients',
+        'list_panes', 'list_sessions', 'list_windows', 'show_options']
         """
         specs = sorted(self._specs.values(), key=lambda spec: spec.kind)
         if predicate is None:

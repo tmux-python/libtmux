@@ -11,6 +11,7 @@ issue 689).
 from __future__ import annotations
 
 from libtmux.experimental.models.snapshots import (
+    ClientSnapshot,
     PaneSnapshot,
     ServerSnapshot,
     SessionSnapshot,
@@ -18,6 +19,7 @@ from libtmux.experimental.models.snapshots import (
 )
 
 __all__ = (
+    "ClientSnapshot",
     "PaneSnapshot",
     "ServerSnapshot",
     "SessionSnapshot",
