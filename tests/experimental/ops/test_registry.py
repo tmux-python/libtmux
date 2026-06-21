@@ -53,6 +53,7 @@ def test_list_predicate_filters() -> None:
         "list_panes",
         "list_sessions",
         "list_windows",
+        "show_buffer",
         "show_options",
     ]
 
