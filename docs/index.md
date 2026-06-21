@@ -102,6 +102,7 @@ api/index
 api/testing/index
 internals/index
 project/index
+experimental
 history
 migration
 glossary
