@@ -295,6 +295,8 @@ def drive(
         decorates = tuple(s.call for s in steps if isinstance(s, _Decorate))
         argv = _marked_invocation(solo, decorates, bindings)
         result = yield Dispatch(argv, solo.slot)
+        if decorates and result.returncode != 0 and result.stdout:
+            yield Dispatch(("select-pane", "-M"), None)
         bindings[solo.slot] = _capture_id(argv, result)
         return Resolved(bindings, (result,))
 
