@@ -45,6 +45,34 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Experimental operations and engines (#690)
+
+Operations describe tmux commands as data. Each renders its argv against a tmux
+version (dropping flags an older tmux cannot accept), adapts raw output into a
+typed result, and serializes to and from plain dicts -- all without a running
+tmux server. The set spans the read seam (``list-*``, ``has-session``,
+``display-message``, ``show-options``, ``show-buffer``) and the
+mutating/creating surface for panes, windows, the server, options, environment,
+hooks, and paste buffers. A registry-generated catalog on the {ref}`experimental`
+page always matches the code.
+
+Engines run those operations behind one protocol, so the same operation returns
+the same typed result whether it goes through a subprocess (the classic path
+that reproduces today's libtmux behavior), an in-memory simulator for tests and
+dry runs, a persistent ``tmux -C`` control connection, an async transport, or
+tmux's native binary peer protocol. Results never raise on construction;
+raising is opt-in via ``raise_for_status()``, and how a failed result is handled
+is each engine's policy.
+
+A {class}`~libtmux.experimental.ops.plan.LazyPlan` records operations and yields
+forward references so a later operation can target an object that does not exist
+yet, resolved against captured ids at execution time. How a plan becomes tmux
+dispatches is a pluggable {class}`~libtmux.experimental.ops.planner.Planner`
+(sequential, ``;``-folding, or ``{marked}``-folding), so dispatch strategies can
+be A/B tested against the same plan with identical results.
+
 ## libtmux 0.61.0 (2026-07-04)
 
 libtmux 0.61.0 hardens support for the tmux 3.7 patch line. It fixes
