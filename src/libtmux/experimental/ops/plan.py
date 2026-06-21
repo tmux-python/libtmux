@@ -78,23 +78,32 @@ def _target_from_id(value: str) -> Target:
     return Special(value)
 
 
+def _resolve_slot(ref: SlotRef, bindings: dict[int, str]) -> Target:
+    """Map a :class:`SlotRef` to the captured concrete target it points at."""
+    try:
+        concrete = bindings[ref.slot] + ref.suffix
+    except KeyError as error:
+        msg = (
+            f"slot {ref.slot} has no captured id yet; a plan step can only "
+            f"reference an earlier step that creates an object"
+        )
+        raise OperationError(msg) from error
+    return _target_from_id(concrete)
+
+
 def _resolve(
     operation: Operation[t.Any],
     bindings: dict[int, str],
 ) -> Operation[t.Any]:
-    """Substitute a :class:`SlotRef` target with a captured concrete id."""
-    target = operation.target
-    if not isinstance(target, SlotRef):
+    """Substitute any :class:`SlotRef` ``target``/``src_target`` with its id."""
+    changes: dict[str, Target] = {}
+    if isinstance(operation.target, SlotRef):
+        changes["target"] = _resolve_slot(operation.target, bindings)
+    if isinstance(operation.src_target, SlotRef):
+        changes["src_target"] = _resolve_slot(operation.src_target, bindings)
+    if not changes:
         return operation
-    try:
-        concrete = bindings[target.slot] + target.suffix
-    except KeyError as error:
-        msg = (
-            f"slot {target.slot} has no captured id yet; a plan step can only "
-            f"target an earlier step that creates an object"
-        )
-        raise OperationError(msg) from error
-    return dataclasses.replace(operation, target=_target_from_id(concrete))
+    return dataclasses.replace(operation, **changes)
 
 
 @dataclass(frozen=True)
