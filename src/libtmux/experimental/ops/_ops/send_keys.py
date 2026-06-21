@@ -20,7 +20,9 @@ class SendKeys(Operation[AckResult]):
     keys : str
         The key string to send.
     enter : bool
-        Append a literal ``Enter`` key after the input.
+        Append an ``Enter`` key after the input. Cannot be combined with
+        *literal* -- under ``-l`` tmux would type the text "Enter" rather than
+        pressing Return; send the keys and Enter as two operations instead.
     literal : bool
         Send keys literally without tmux key-name lookup (``-l``).
 
@@ -43,6 +45,15 @@ class SendKeys(Operation[AckResult]):
     keys: str
     enter: bool = False
     literal: bool = False
+
+    def __post_init__(self) -> None:
+        """Reject literal+enter (fail closed): tmux ``-l`` types "Enter"."""
+        if self.literal and self.enter:
+            msg = (
+                "send-keys cannot combine literal=True with enter=True; under -l "
+                "tmux types the text 'Enter' -- send the keys and Enter separately"
+            )
+            raise ValueError(msg)
 
     def args(self, *, version: str | None = None) -> tuple[str, ...]:
         """Render ``send-keys`` flags and the key string."""
