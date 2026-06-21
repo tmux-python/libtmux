@@ -20,6 +20,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 from libtmux.experimental.models.snapshots import (
+    ClientSnapshot,
     PaneSnapshot,
     ServerSnapshot,
     SessionSnapshot,
@@ -280,3 +281,41 @@ class ListSessionsResult(Result):
     def sessions(self) -> tuple[SessionSnapshot, ...]:
         """One typed session snapshot per row."""
         return tuple(SessionSnapshot.from_format(row) for row in self.rows)
+
+
+@dataclass(frozen=True)
+class ListClientsResult(Result):
+    """Result of a ``list-clients`` operation (typed :attr:`clients`)."""
+
+    rows: tuple[Mapping[str, str], ...] = ()
+
+    @property
+    def clients(self) -> tuple[ClientSnapshot, ...]:
+        """One typed client snapshot per row."""
+        return tuple(ClientSnapshot.from_format(row) for row in self.rows)
+
+
+@dataclass(frozen=True)
+class HasSessionResult(Result):
+    """Result of a ``has-session`` existence query.
+
+    ``has-session`` exits ``0`` when the session exists and nonzero otherwise --
+    a valid answer, not a failure -- so this result is always ``complete`` and
+    carries the answer in :attr:`exists`.
+    """
+
+    exists: bool = False
+
+
+@dataclass(frozen=True)
+class DisplayMessageResult(Result):
+    """Result of ``display-message -p``: the formatted :attr:`text`."""
+
+    text: str = ""
+
+
+@dataclass(frozen=True)
+class ShowOptionsResult(Result):
+    """Result of ``show-options``: parsed ``name value`` pairs in :attr:`options`."""
+
+    options: Mapping[str, str] = field(default_factory=dict)
