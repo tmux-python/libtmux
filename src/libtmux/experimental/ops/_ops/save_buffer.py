@@ -36,8 +36,8 @@ class SaveBuffer(Operation[AckResult]):
     command = "save-buffer"
     scope = "server"
     result_cls = AckResult
-    safety = "readonly"
-    effects = Effects(read_only=True, idempotent=True)
+    safety = "mutating"
+    effects = Effects(read_only=True)
 
     path: str
     buffer_name: str | None = None
