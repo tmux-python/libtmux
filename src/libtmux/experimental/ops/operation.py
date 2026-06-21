@@ -51,6 +51,9 @@ class Operation(t.Generic[ResultT]):
     ----------
     target : Target or None
         The ``-t`` target, or ``None`` for "no explicit target".
+    src_target : Target or None
+        The ``-s`` source target for dual-target commands (``swap-pane``,
+        ``join-pane``, ``link-window``, ...), or ``None`` when unused.
 
     Notes
     -----
@@ -81,6 +84,7 @@ class Operation(t.Generic[ResultT]):
     """
 
     target: Target | None = None
+    src_target: Target | None = None
 
     kind: t.ClassVar[str]
     command: t.ClassVar[str]
@@ -194,6 +198,21 @@ class Operation(t.Generic[ResultT]):
         if need is None or version is None:
             return True
         return LooseVersion(version) >= LooseVersion(need)
+
+    def src_args(self) -> tuple[str, ...]:
+        """Render the ``-s`` source target, or ``()`` when there is none.
+
+        Dual-target commands call this from :meth:`args` to emit their source.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.ops import SwapPane
+        >>> from libtmux.experimental.ops._types import PaneId
+        >>> SwapPane(target=PaneId("%1"), src_target=PaneId("%2")).src_args()
+        ('-s', '%2')
+        """
+        token = render_target(self.src_target)
+        return ("-s", token) if token is not None else ()
 
     def build_result(
         self,
