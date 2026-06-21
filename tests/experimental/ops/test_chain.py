@@ -220,6 +220,17 @@ def test_attribute_marked(
     assert [r.status for r in decorated] == decorate_statuses
 
 
+def test_attribute_marked_decorate_target_is_concrete_pane() -> None:
+    """Decorate results address the concrete new pane, not {marked} (for replay)."""
+    merged = CommandResult(cmd=("tmux",), stdout=("%2",), returncode=0)
+    _created, decorated, _new_id = attribute_marked(
+        _MARK_CREATE,
+        _MARK_DECORATES,
+        merged,
+    )
+    assert all(r.operation.target == PaneId("%2") for r in decorated)
+
+
 def test_attribute_marked_failed_decorate_drops_create_stdout() -> None:
     """A failed decorate is not credited with the create's captured pane id."""
     merged = CommandResult(
