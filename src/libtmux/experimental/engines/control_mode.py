@@ -193,10 +193,15 @@ class ControlModeEngine:
         return self.run_batch([request])[0]
 
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
-        """Pipeline a batch of commands; one result block per request."""
+        """Pipeline a batch of commands; one result per request.
+
+        A ``;``-folded request runs as several tmux commands, so its blocks are
+        grouped (by ``;``-count) and merged into one result.
+        """
         if not requests:
             return []
         rendered = [tuple(req.args) for req in requests]
+        counts = [command_count(argv) for argv in rendered]
         with self._lock:
             self._ensure_started()
             # Discard any unsolicited blocks (hook-triggered commands) left
@@ -207,11 +212,13 @@ class ControlModeEngine:
                 (render_control_line(argv) + "\n").encode() for argv in rendered
             )
             self._write(payload)
-            blocks = self._read_blocks(len(rendered))
-        return [
-            _result_from_block(block, argv)
-            for block, argv in zip(blocks, rendered, strict=True)
-        ]
+            blocks = self._read_blocks(sum(counts))
+        results: list[CommandResult] = []
+        index = 0
+        for argv, count in zip(rendered, counts, strict=True):
+            results.append(_merge_blocks(blocks[index : index + count], argv))
+            index += count
+        return results
 
     def close(self) -> None:
         """Tear down the control-mode subprocess (lock-guarded)."""
@@ -366,9 +373,10 @@ class ControlModeEngine:
                 elif key.data == "stderr":
                     self._read_stderr()
             for block in self._parser.blocks():
-                blocks.append(block)
-                if len(blocks) == count:
-                    break
+                # Skip unsolicited blocks (hook-triggered commands carry flags 0);
+                # only solicited command blocks (flags 1) belong to this batch.
+                if block.flags == 1 and len(blocks) < count:
+                    blocks.append(block)
             self._parser.notifications()  # sync engine ignores notifications
         return blocks
 
@@ -453,16 +461,38 @@ def _matches_pending_close(line: bytes, pending_number: int) -> bool:
     return False
 
 
-def _result_from_block(
-    block: ControlModeBlock,
+def command_count(argv: tuple[str, ...]) -> int:
+    """How many tmux commands a rendered argv runs (bare ``;`` separators + 1)."""
+    return sum(1 for token in argv if token == ";") + 1
+
+
+def _merge_blocks(
+    blocks: Sequence[ControlModeBlock],
     argv: tuple[str, ...],
 ) -> CommandResult:
-    """Convert a parsed control-mode block into a :class:`CommandResult`."""
-    lines = tuple(line.decode(errors="replace") for line in block.body)
+    """Merge one request's blocks (one per ``;``-folded sub-command) into a result.
+
+    A ``;``-folded line runs as several tmux commands, each emitting its own
+    block; stdout/stderr are concatenated and the result fails if any sub-command
+    errored, matching the subprocess engine's view of one ``;`` chain process.
+    """
     cmd = ("tmux", "-C", *argv)
-    if block.is_error:
-        return CommandResult(cmd=cmd, stdout=(), stderr=_trim(lines), returncode=1)
-    return CommandResult(cmd=cmd, stdout=_trim(lines), stderr=(), returncode=0)
+    stdout: list[str] = []
+    stderr: list[str] = []
+    returncode = 0
+    for block in blocks:
+        lines = tuple(line.decode(errors="replace") for line in block.body)
+        if block.is_error:
+            stderr.extend(lines)
+            returncode = returncode or 1
+        else:
+            stdout.extend(lines)
+    return CommandResult(
+        cmd=cmd,
+        stdout=_trim(tuple(stdout)),
+        stderr=_trim(tuple(stderr)),
+        returncode=returncode,
+    )
 
 
 def _trim(lines: tuple[str, ...]) -> tuple[str, ...]:
