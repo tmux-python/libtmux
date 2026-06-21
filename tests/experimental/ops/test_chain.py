@@ -220,6 +220,20 @@ def test_attribute_marked(
     assert [r.status for r in decorated] == decorate_statuses
 
 
+def test_attribute_marked_failed_decorate_drops_create_stdout() -> None:
+    """A failed decorate is not credited with the create's captured pane id."""
+    merged = CommandResult(
+        cmd=("tmux",), stdout=("%2",), returncode=1, stderr=("boom",)
+    )
+    _created, decorated, _new_id = attribute_marked(
+        _MARK_CREATE,
+        _MARK_DECORATES,
+        merged,
+    )
+    assert decorated[0].status == "failed"
+    assert "%2" not in decorated[0].stdout
+
+
 def test_attribute_marked_blank_stdout_is_no_id() -> None:
     """A whitespace-only captured id is treated as no id (never bound as '')."""
     merged = CommandResult(cmd=("tmux",), stdout=("   ",), returncode=0)
