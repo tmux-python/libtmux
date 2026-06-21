@@ -130,19 +130,20 @@ def attribute_marked(
 ) -> tuple[Result, list[Result], str | None]:
     """Split a ``{marked}`` dispatch result into the create's + decorates' results."""
     new_id = merged.stdout[0].strip() if merged.stdout else None
-    if new_id is not None:
-        create_result = create.build_result(
-            returncode=0, stdout=(new_id,), version=version
-        )
-    else:
+    # Attribute over the {marked}-retargeted decorates -- their original SlotRef
+    # target is unresolved and cannot render.
+    marked = [dataclasses.replace(op, target=Special("{marked}")) for op in decorates]
+    if new_id is None:
+        # The create step failed: tmux stopped, so no decorate ran -- skip them
+        # all rather than blaming the first.
         create_result = create.build_result(
             returncode=merged.returncode or 1,
             stderr=tuple(merged.stderr),
             version=version,
         )
-    # Attribute over the {marked}-retargeted decorates -- their original SlotRef
-    # target is unresolved and cannot render.
-    marked = [dataclasses.replace(op, target=Special("{marked}")) for op in decorates]
+        decorated = [op.result_with_status("skipped", version=version) for op in marked]
+        return create_result, decorated, None
+    create_result = create.build_result(returncode=0, stdout=(new_id,), version=version)
     return create_result, attribute(marked, merged, version), new_id
 
 
