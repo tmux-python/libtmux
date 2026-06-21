@@ -66,6 +66,13 @@ from libtmux.experimental.ops.exc import (
 from libtmux.experimental.ops.execute import arun, run
 from libtmux.experimental.ops.operation import Operation
 from libtmux.experimental.ops.plan import LazyPlan, PlanResult
+from libtmux.experimental.ops.planner import (
+    FoldingPlanner,
+    MarkedPlanner,
+    Planner,
+    PlanStep,
+    SequentialPlanner,
+)
 from libtmux.experimental.ops.registry import (
     OperationRegistry,
     OpSpec,
@@ -102,6 +109,7 @@ __all__ = (
     "DetachClient",
     "DuplicateOperation",
     "Effects",
+    "FoldingPlanner",
     "IndexRef",
     "KillPane",
     "KillSession",
@@ -113,6 +121,7 @@ __all__ = (
     "ListSessionsResult",
     "ListWindows",
     "ListWindowsResult",
+    "MarkedPlanner",
     "NameRef",
     "NewSession",
     "NewWindow",
@@ -123,6 +132,8 @@ __all__ = (
     "OperationRegistry",
     "PaneId",
     "PlanResult",
+    "PlanStep",
+    "Planner",
     "RefreshClient",
     "RenameSession",
     "RenameWindow",
@@ -131,6 +142,7 @@ __all__ = (
     "Scope",
     "SelectLayout",
     "SendKeys",
+    "SequentialPlanner",
     "SessionId",
     "SlotRef",
     "Special",
