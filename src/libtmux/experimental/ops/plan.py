@@ -19,7 +19,12 @@ import typing as t
 from dataclasses import dataclass, field
 
 from libtmux.experimental.engines.base import CommandRequest
-from libtmux.experimental.ops._chain import attribute, render_chain
+from libtmux.experimental.ops._chain import (
+    attribute,
+    attribute_marked,
+    render_chain,
+    render_marked,
+)
 from libtmux.experimental.ops._types import (
     PaneId,
     SessionId,
@@ -29,6 +34,7 @@ from libtmux.experimental.ops._types import (
 )
 from libtmux.experimental.ops.exc import OperationError
 from libtmux.experimental.ops.execute import arun, run
+from libtmux.experimental.ops.planner import Planner, SequentialPlanner
 from libtmux.experimental.ops.serialize import operation_from_dict, operation_to_dict
 
 if t.TYPE_CHECKING:
@@ -182,46 +188,49 @@ class LazyPlan:
     def _drive(
         self,
         version: str | None,
-        fold: bool,
+        planner: Planner,
     ) -> Generator[_Single | _Chain, t.Any, PlanResult]:
-        """Sans-I/O resolution core.
+        """Sans-I/O resolution core driven by a :class:`~.planner.Planner`.
 
-        Yields a :class:`_Single` (driver runs one op and returns its
-        :class:`~.results.Result`) or, when ``fold`` is set, a :class:`_Chain`
-        for a maximal run of chainable ops (driver returns the merged
-        :class:`~..engines.base.CommandResult`, attributed per op here). The
-        sync and async drivers differ only in ``run`` vs ``await arun`` and
+        Yields a :class:`_Single` (driver runs one op, returns its
+        :class:`~.results.Result`) or a :class:`_Chain` (driver returns the
+        merged :class:`~..engines.base.CommandResult`, attributed per op here).
+        The sync and async drivers differ only in ``run`` vs ``await arun`` and
         ``engine.run`` vs ``await engine.run``.
         """
         bindings: dict[int, str] = {}
         results: dict[int, Result] = {}
-        index = 0
-        total = len(self._operations)
-        while index < total:
-            operation = self._operations[index]
-            if fold and operation.chainable:
-                indices: list[int] = []
-                group: list[Operation[t.Any]] = []
-                cursor = index
-                while cursor < total and self._operations[cursor].chainable:
-                    indices.append(cursor)
-                    group.append(_resolve(self._operations[cursor], bindings))
-                    cursor += 1
-                if len(group) == 1:
-                    results[indices[0]] = yield _Single(group[0])
-                else:
-                    merged: CommandResult = yield _Chain(render_chain(group, version))
-                    results.update(
-                        zip(indices, attribute(group, merged, version), strict=True),
-                    )
-                index = cursor
-            else:
-                result = yield _Single(_resolve(operation, bindings))
+        for step in planner.plan(self._operations):
+            if step.marked:
+                create_idx, *decorate_idx = step.indices
+                create = _resolve(self._operations[create_idx], bindings)
+                decorates = [self._operations[i] for i in decorate_idx]
+                merged: CommandResult = yield _Chain(
+                    render_marked(create, decorates, version),
+                )
+                created, decorated, new_id = attribute_marked(
+                    create,
+                    decorates,
+                    merged,
+                    version,
+                )
+                results[create_idx] = created
+                results.update(zip(decorate_idx, decorated, strict=True))
+                if new_id is not None:
+                    bindings[create_idx] = new_id
+            elif len(step.indices) == 1:
+                index = step.indices[0]
+                result = yield _Single(_resolve(self._operations[index], bindings))
                 results[index] = result
                 if result.created_id is not None:
                     bindings[index] = result.created_id
-                index += 1
-        ordered = tuple(results[slot] for slot in range(total))
+            else:
+                group = [_resolve(self._operations[i], bindings) for i in step.indices]
+                merged = yield _Chain(render_chain(group, version))
+                results.update(
+                    zip(step.indices, attribute(group, merged, version), strict=True),
+                )
+        ordered = tuple(results[slot] for slot in range(len(self._operations)))
         return PlanResult(ordered, bindings)
 
     def execute(
@@ -229,17 +238,17 @@ class LazyPlan:
         engine: TmuxEngine,
         *,
         version: str | None = None,
-        fold: bool = False,
+        planner: Planner | None = None,
     ) -> PlanResult:
         """Resolve and execute the plan synchronously.
 
-        With ``fold=True``, maximal runs of chainable operations dispatch as one
-        ``tmux a ; b`` invocation (fewer forks / one control-mode command),
-        attributing a typed result per operation. ``fold`` defaults off because
-        folding changes observable semantics (fewer dispatches; a folded
-        failure marks the first member failed and the rest skipped).
+        The *planner* decides dispatch grouping; it defaults to
+        :class:`~.planner.SequentialPlanner` (one tmux call per op). Pass a
+        :class:`~.planner.FoldingPlanner` or :class:`~.planner.MarkedPlanner` to
+        fold dispatches -- the :class:`PlanResult` is identical, only the
+        dispatch count changes.
         """
-        gen = self._drive(version, fold)
+        gen = self._drive(version, planner or SequentialPlanner())
         try:
             request = next(gen)
             while True:
@@ -263,10 +272,10 @@ class LazyPlan:
         engine: AsyncTmuxEngine,
         *,
         version: str | None = None,
-        fold: bool = False,
+        planner: Planner | None = None,
     ) -> PlanResult:
         """Resolve and execute the plan asynchronously (same resolution core)."""
-        gen = self._drive(version, fold)
+        gen = self._drive(version, planner or SequentialPlanner())
         try:
             request = next(gen)
             while True:

@@ -9,6 +9,7 @@ import pytest
 from libtmux.experimental.engines import CommandResult
 from libtmux.experimental.ops import (
     CapturePane,
+    FoldingPlanner,
     KillWindow,
     LazyPlan,
     OpChain,
@@ -97,7 +98,7 @@ def test_fold_dispatches_once() -> None:
     plan.add(KillWindow(target=WindowId("@2")))
     engine = _CountingEngine()
 
-    outcome = plan.execute(engine, fold=True)
+    outcome = plan.execute(engine, planner=FoldingPlanner())
 
     assert len(engine.calls) == 1  # all three folded into one ';' dispatch
     assert ";" in engine.calls[0]
@@ -125,7 +126,7 @@ def test_fold_failure_attributes_first_failed_rest_skipped() -> None:
     plan.add(KillWindow(target=WindowId("@2")))
     engine = _CountingEngine(returncode=1, stderr=("boom",))
 
-    outcome = plan.execute(engine, fold=True)
+    outcome = plan.execute(engine, planner=FoldingPlanner())
 
     assert [r.status for r in outcome.results] == ["failed", "skipped", "skipped"]
     assert not outcome.ok
@@ -139,7 +140,7 @@ def test_fold_keeps_creation_ops_unfolded() -> None:
     plan.add(RenameWindow(target=WindowId("@1"), name="x"))  # chainable
     from libtmux.experimental.engines import ConcreteEngine
 
-    outcome = plan.execute(ConcreteEngine(), fold=True)
+    outcome = plan.execute(ConcreteEngine(), planner=FoldingPlanner())
 
     # split resolved the pane id; the send-keys folded with rename, retargeted
     assert outcome.results[1].argv[:3] == ("send-keys", "-t", "%1")
