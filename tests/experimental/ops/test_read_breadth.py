@@ -113,6 +113,13 @@ PARSE_CASES = (
         expected={"text": "%1"},
     ),
     ParseCase(
+        test_id="display_message_multiline",
+        op=DisplayMessage(message="#{pane_id}"),
+        returncode=0,
+        stdout=("line1", "line2"),
+        expected={"text": "line1\nline2"},
+    ),
+    ParseCase(
         test_id="display_message_empty",
         op=DisplayMessage(message="#{pane_id}"),
         returncode=0,
