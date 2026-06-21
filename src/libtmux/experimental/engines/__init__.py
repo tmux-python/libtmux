@@ -12,6 +12,7 @@ See the operationalization plan (``tmux-python/libtmux`` issue 689).
 
 from __future__ import annotations
 
+from libtmux.experimental.engines.asyncio import AsyncSubprocessEngine
 from libtmux.experimental.engines.base import (
     AsyncTmuxEngine,
     CommandRequest,
@@ -29,6 +30,7 @@ from libtmux.experimental.engines.registry import (
 from libtmux.experimental.engines.subprocess import SubprocessEngine
 
 __all__ = (
+    "AsyncSubprocessEngine",
     "AsyncTmuxEngine",
     "CommandRequest",
     "CommandResult",
