@@ -608,8 +608,6 @@ class ImsgEngine:
         stderr_lines = _split_output(bytes(stderr_buffer))
         if exit_message:
             stderr_lines.append(exit_message)
-        if "has-session" in cmd and stderr_lines and not stdout_lines:
-            stdout_lines = [stderr_lines[0]]
 
         return CommandResult(
             cmd=tuple(cmd),
