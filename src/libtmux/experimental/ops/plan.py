@@ -106,6 +106,25 @@ def _resolve(
     return dataclasses.replace(operation, **changes)
 
 
+def _resolve_src(
+    operation: Operation[t.Any],
+    bindings: dict[int, str],
+) -> Operation[t.Any]:
+    """Resolve only a :class:`SlotRef` ``src_target``.
+
+    A ``{marked}`` decorate's ``target`` is this same fold's create, which has no
+    captured id yet -- it is addressed through tmux's ``{marked}`` register by
+    :func:`~._chain.render_marked`, so only ``src_target`` (which references an
+    already-bound earlier step) is substituted here.
+    """
+    if isinstance(operation.src_target, SlotRef):
+        return dataclasses.replace(
+            operation,
+            src_target=_resolve_slot(operation.src_target, bindings),
+        )
+    return operation
+
+
 @dataclass(frozen=True)
 class PlanResult:
     """The outcome of executing a :class:`LazyPlan`.
@@ -213,7 +232,9 @@ class LazyPlan:
             if step.marked:
                 create_idx, *decorate_idx = step.indices
                 create = _resolve(self._operations[create_idx], bindings)
-                decorates = [self._operations[i] for i in decorate_idx]
+                decorates = [
+                    _resolve_src(self._operations[i], bindings) for i in decorate_idx
+                ]
                 merged: CommandResult = yield _Chain(
                     render_marked(create, decorates, version),
                 )
