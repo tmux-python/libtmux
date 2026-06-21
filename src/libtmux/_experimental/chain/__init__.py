@@ -75,6 +75,13 @@ from libtmux._experimental.chain.chain import (
     is_chainable,
     validate_command_scope,
 )
+from libtmux._experimental.chain.control import (
+    ControlModeBlock,
+    ControlModeError,
+    ControlModeParser,
+    ControlModeResult,
+    ControlModeRunner,
+)
 from libtmux._experimental.chain.ir import (
     Arg,
     CommandCall,
@@ -117,6 +124,11 @@ __all__ = [
     "CommandScopeError",
     "CommandSpec",
     "CommandValue",
+    "ControlModeBlock",
+    "ControlModeError",
+    "ControlModeParser",
+    "ControlModeResult",
+    "ControlModeRunner",
     "DeferredCommandResult",
     "DeferredOutputUnavailable",
     "ForwardDataUnavailable",
