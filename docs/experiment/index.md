@@ -42,6 +42,10 @@ as much or as little as you need:
   {class}`~libtmux._experimental.chain._connection.AsyncSessionPlanExecutor`)
   resolves and runs an expression against a live {class}`~libtmux.Session` in one
   invocation.
+- **Control mode** --
+  {class}`~libtmux._experimental.chain.control.ControlModeRunner`
+  batches command lines through one persistent `tmux -C` client and returns one
+  result per command when callers need per-command output.
 - **Chainability** --
   {mod}`~libtmux._experimental.chain.chain` decides which commands
   may share one invocation: the static
@@ -80,6 +84,12 @@ Read live panes and run an expression against a real session.
 :link: api/libtmux._experimental.chain.chain
 :link-type: doc
 Which commands may share one invocation.
+:::
+
+:::{grid-item-card} Control mode
+:link: api/libtmux._experimental.chain.control
+:link-type: doc
+Batch command lines with per-command results.
 :::
 
 ::::
@@ -181,4 +191,5 @@ api/libtmux._experimental.chain.plan
 api/libtmux._experimental.chain._async
 api/libtmux._experimental.chain._connection
 api/libtmux._experimental.chain.chain
+api/libtmux._experimental.chain.control
 ```
