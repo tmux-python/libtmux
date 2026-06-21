@@ -11,12 +11,30 @@ the classic case -- without inheriting a base class.
 from __future__ import annotations
 
 import enum
+import shlex
 import typing as t
 from dataclasses import dataclass, field
 
 if t.TYPE_CHECKING:
     import pathlib
     from collections.abc import Sequence
+
+
+def render_control_line(argv: Sequence[str]) -> str:
+    """Render a tmux argv as a control-mode (``tmux -C``) command line.
+
+    Each token is quoted for the control parser, but a standalone ``;`` separator
+    is left bare so a folded ``a ; b`` chain dispatches as two commands instead of
+    one command with a literal ``';'`` argument.
+
+    Examples
+    --------
+    >>> render_control_line(("rename-window", "-t", "@1", "a b"))
+    "rename-window -t @1 'a b'"
+    >>> render_control_line(("rename-window", "a", ";", "kill-window", "@2"))
+    'rename-window a ; kill-window @2'
+    """
+    return " ".join(token if token == ";" else shlex.quote(token) for token in argv)
 
 
 @dataclass(frozen=True)
