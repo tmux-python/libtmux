@@ -91,3 +91,40 @@ def test_destructive_safety_metadata() -> None:
     assert safety["kill_window"] == "destructive"
     assert safety["kill_pane"] == "destructive"
     assert safety["rename_window"] == "mutating"
+
+
+class SendKeysGuardCase(t.NamedTuple):
+    """A literal/enter combination and whether SendKeys rejects it."""
+
+    test_id: str
+    literal: bool
+    enter: bool
+    raises: bool
+
+
+SEND_KEYS_GUARD_CASES = (
+    SendKeysGuardCase("plain", literal=False, enter=False, raises=False),
+    SendKeysGuardCase("enter_only", literal=False, enter=True, raises=False),
+    SendKeysGuardCase("literal_only", literal=True, enter=False, raises=False),
+    SendKeysGuardCase("literal_and_enter", literal=True, enter=True, raises=True),
+)
+
+
+@pytest.mark.parametrize(
+    list(SendKeysGuardCase._fields),
+    SEND_KEYS_GUARD_CASES,
+    ids=[c.test_id for c in SEND_KEYS_GUARD_CASES],
+)
+def test_send_keys_literal_enter_guard(
+    test_id: str,
+    literal: bool,
+    enter: bool,
+    raises: bool,
+) -> None:
+    """literal=True with enter=True is rejected (tmux -l would type 'Enter')."""
+    if raises:
+        with pytest.raises(ValueError, match="literal"):
+            SendKeys(target=PaneId("%1"), keys="x", literal=literal, enter=enter)
+    else:
+        op = SendKeys(target=PaneId("%1"), keys="x", literal=literal, enter=enter)
+        assert op.render()[0] == "send-keys"
