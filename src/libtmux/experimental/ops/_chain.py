@@ -152,7 +152,10 @@ def attribute_marked(
         decorated = [op.result_with_status("skipped", version=version) for op in marked]
         return create_result, decorated, None
     create_result = create.build_result(returncode=0, stdout=(new_id,), version=version)
-    return create_result, attribute(marked, merged, version), new_id
+    # Attribute decorates without the create's captured id in stdout, so a failed
+    # decorate is not credited with the new pane id as its output.
+    decorated = attribute(marked, dataclasses.replace(merged, stdout=()), version)
+    return create_result, decorated, new_id
 
 
 @dataclass(frozen=True)
