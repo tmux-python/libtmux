@@ -22,6 +22,11 @@ from libtmux.experimental.engines.base import (
     TmuxEngine,
 )
 from libtmux.experimental.engines.concrete import ConcreteEngine
+from libtmux.experimental.engines.control_mode import (
+    ControlModeEngine,
+    ControlModeError,
+    ControlModeParser,
+)
 from libtmux.experimental.engines.registry import (
     available_engines,
     create_engine,
@@ -35,6 +40,9 @@ __all__ = (
     "CommandRequest",
     "CommandResult",
     "ConcreteEngine",
+    "ControlModeEngine",
+    "ControlModeError",
+    "ControlModeParser",
     "EngineKind",
     "EngineSpec",
     "SubprocessEngine",
