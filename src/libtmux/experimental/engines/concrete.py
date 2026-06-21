@@ -1,11 +1,12 @@
-"""A deterministic, in-memory engine for tests and docs (no tmux server).
+"""Deterministic, in-memory engines for tests and docs (no tmux server).
 
-The concrete engine simulates just enough tmux behaviour to exercise the
-operation contract without a live server: creation commands that ask for an id
+The concrete engines simulate just enough tmux behaviour to exercise the
+operation contract offline: creation commands that ask for an id
 (``-P -F '#{pane_id}'``) get a fabricated, monotonic id, ``capture-pane`` returns
-canned lines, and everything else succeeds with empty output. This is what backs
-doctests and the cross-engine contract suite, so examples run anywhere and the
-"same typed result regardless of engine" invariant can be asserted offline.
+canned lines, and everything else succeeds with empty output. A sync
+(:class:`ConcreteEngine`) and async (:class:`AsyncConcreteEngine`) variant share
+the same simulation, so the same operation returns the same typed result through
+either, with no tmux required.
 """
 
 from __future__ import annotations
@@ -20,8 +21,40 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.engines.base import CommandRequest
 
 
+def _fabricate(fmt: str, counters: dict[str, int]) -> str:
+    """Return the next fabricated id for a ``#{..._id}`` capture format."""
+    for key, sigil in (("pane_id", "%"), ("window_id", "@"), ("session_id", "$")):
+        if key in fmt:
+            counters[key] += 1
+            return f"{sigil}{counters[key]}"
+    return "?"
+
+
+def _simulate(
+    argv: tuple[str, ...],
+    counters: dict[str, int],
+    capture_lines: tuple[str, ...],
+) -> CommandResult:
+    """Produce a deterministic result for a rendered tmux command."""
+    if "-P" in argv and "-F" in argv:
+        fmt = argv[argv.index("-F") + 1]
+        return CommandResult(
+            cmd=("tmux", *argv),
+            stdout=(_fabricate(fmt, counters),),
+            returncode=0,
+        )
+    if argv and argv[0] == "capture-pane":
+        return CommandResult(cmd=("tmux", *argv), stdout=capture_lines, returncode=0)
+    return CommandResult(cmd=("tmux", *argv), returncode=0)
+
+
+def _new_counters() -> dict[str, int]:
+    """Return a fresh id-counter map."""
+    return {"pane_id": 0, "window_id": 0, "session_id": 0}
+
+
 class ConcreteEngine:
-    """Execute operations against an in-memory simulation.
+    """Execute operations against an in-memory simulation (synchronous).
 
     Parameters
     ----------
@@ -43,34 +76,42 @@ class ConcreteEngine:
 
     def __init__(self, *, capture_lines: Sequence[str] = ()) -> None:
         self.capture_lines = tuple(capture_lines)
-        self._counters = {"pane_id": 0, "window_id": 0, "session_id": 0}
-
-    def _fabricate(self, fmt: str) -> str:
-        """Return the next fabricated id for a ``#{..._id}`` capture format."""
-        for key, sigil in (("pane_id", "%"), ("window_id", "@"), ("session_id", "$")):
-            if key in fmt:
-                self._counters[key] += 1
-                return f"{sigil}{self._counters[key]}"
-        return "?"
+        self._counters = _new_counters()
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute one request against the in-memory simulation."""
-        argv = request.args
-        if "-P" in argv and "-F" in argv:
-            fmt = argv[argv.index("-F") + 1]
-            return CommandResult(
-                cmd=("tmux", *argv),
-                stdout=(self._fabricate(fmt),),
-                returncode=0,
-            )
-        if argv and argv[0] == "capture-pane":
-            return CommandResult(
-                cmd=("tmux", *argv),
-                stdout=self.capture_lines,
-                returncode=0,
-            )
-        return CommandResult(cmd=("tmux", *argv), returncode=0)
+        return _simulate(request.args, self._counters, self.capture_lines)
 
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
         """Execute each request in order (no batching benefit)."""
         return [self.run(req) for req in requests]
+
+
+class AsyncConcreteEngine:
+    """Async sibling of :class:`ConcreteEngine` for offline async tests/docs.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> from libtmux.experimental.ops import SplitWindow, arun
+    >>> from libtmux.experimental.ops._types import WindowId
+    >>> async def main():
+    ...     return await arun(SplitWindow(target=WindowId("@1")), AsyncConcreteEngine())
+    >>> asyncio.run(main()).new_pane_id
+    '%1'
+    """
+
+    def __init__(self, *, capture_lines: Sequence[str] = ()) -> None:
+        self.capture_lines = tuple(capture_lines)
+        self._counters = _new_counters()
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        """Execute one request against the in-memory simulation."""
+        return _simulate(request.args, self._counters, self.capture_lines)
+
+    async def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Execute each request in order (no batching benefit)."""
+        return [await self.run(req) for req in requests]

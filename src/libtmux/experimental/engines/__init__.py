@@ -12,6 +12,10 @@ See the operationalization plan (``tmux-python/libtmux`` issue 689).
 
 from __future__ import annotations
 
+from libtmux.experimental.engines.async_control_mode import (
+    AsyncControlModeEngine,
+    ControlNotification,
+)
 from libtmux.experimental.engines.asyncio import AsyncSubprocessEngine
 from libtmux.experimental.engines.base import (
     AsyncTmuxEngine,
@@ -21,7 +25,7 @@ from libtmux.experimental.engines.base import (
     EngineSpec,
     TmuxEngine,
 )
-from libtmux.experimental.engines.concrete import ConcreteEngine
+from libtmux.experimental.engines.concrete import AsyncConcreteEngine, ConcreteEngine
 from libtmux.experimental.engines.control_mode import (
     ControlModeEngine,
     ControlModeError,
@@ -35,6 +39,8 @@ from libtmux.experimental.engines.registry import (
 from libtmux.experimental.engines.subprocess import SubprocessEngine
 
 __all__ = (
+    "AsyncConcreteEngine",
+    "AsyncControlModeEngine",
     "AsyncSubprocessEngine",
     "AsyncTmuxEngine",
     "CommandRequest",
@@ -43,6 +49,7 @@ __all__ = (
     "ControlModeEngine",
     "ControlModeError",
     "ControlModeParser",
+    "ControlNotification",
     "EngineKind",
     "EngineSpec",
     "SubprocessEngine",
