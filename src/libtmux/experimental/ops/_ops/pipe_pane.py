@@ -24,7 +24,7 @@ class PipePane(Operation[AckResult]):
     stdout : bool
         Connect the pane's output to the command (``-O``).
     toggle : bool
-        Only toggle: stop if already piping the same command (``-o``).
+        Only open the pipe if no pipe is already open on the pane (``-o``).
 
     Examples
     --------
