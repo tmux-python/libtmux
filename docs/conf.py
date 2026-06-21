@@ -17,6 +17,7 @@ project_src = project_root / "src"
 
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_src))
+sys.path.insert(0, str(cwd / "_ext"))
 
 # package data
 about: dict[str, str] = {}
@@ -37,6 +38,7 @@ conf = merge_sphinx_config(
         "sphinx_autodoc_api_style",
         "sphinx_autodoc_pytest_fixtures",
         "sphinx.ext.todo",
+        "tmuxop",
     ],
     intersphinx_mapping={
         "python": ("https://docs.python.org/", None),
