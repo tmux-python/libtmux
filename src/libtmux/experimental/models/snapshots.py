@@ -119,6 +119,45 @@ class PaneSnapshot:
 
 
 @dataclass(frozen=True)
+class ClientSnapshot:
+    """An immutable snapshot of one attached tmux client.
+
+    A client is a view (a terminal attachment), not part of the ownership tree,
+    so it is a leaf snapshot.
+
+    Examples
+    --------
+    >>> client = ClientSnapshot.from_format({
+    ...     "client_name": "/dev/pts/3", "client_tty": "/dev/pts/3",
+    ...     "client_session": "$0", "client_pid": "4242",
+    ... })
+    >>> client.name, client.session, client.pid
+    ('/dev/pts/3', '$0', 4242)
+    """
+
+    name: str = ""
+    tty: str | None = None
+    session: str = ""
+    pid: int | None = None
+    width: int | None = None
+    height: int | None = None
+    fields: Mapping[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_format(cls, raw: Mapping[str, str]) -> ClientSnapshot:
+        """Build a client snapshot from a raw tmux format mapping."""
+        return cls(
+            name=raw.get("client_name", ""),
+            tty=raw.get("client_tty"),
+            session=raw.get("client_session", ""),
+            pid=_as_int(raw.get("client_pid")),
+            width=_as_int(raw.get("client_width")),
+            height=_as_int(raw.get("client_height")),
+            fields=dict(raw),
+        )
+
+
+@dataclass(frozen=True)
 class WindowSnapshot:
     """An immutable snapshot of one tmux window and its panes.
 
