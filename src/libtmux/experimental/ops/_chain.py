@@ -16,9 +16,11 @@ exactly this case).
 
 from __future__ import annotations
 
+import dataclasses
 import typing as t
 from dataclasses import dataclass
 
+from libtmux.experimental.ops._types import Special
 from libtmux.experimental.ops.exc import OperationError
 
 if t.TYPE_CHECKING:
@@ -92,13 +94,65 @@ def attribute(
     return results
 
 
+def render_marked(
+    create: Operation[t.Any],
+    decorates: Sequence[Operation[t.Any]],
+    version: str | None = None,
+) -> tuple[str, ...]:
+    r"""Render a pane creation + its decorates as one ``{marked}`` invocation.
+
+    Emits ``<create -P -F '#{pane_id}'> ; select-pane -m ; <decorate -t {marked}>
+    ... ; select-pane -M``: the new pane is marked, every decorate addresses it
+    through tmux's ``{marked}`` register, and the mark is cleared at the end.
+    """
+    parts: list[tuple[str, ...]] = [
+        create.render(version=version),
+        ("select-pane", "-m"),
+    ]
+    parts.extend(
+        dataclasses.replace(op, target=Special("{marked}")).render(version=version)
+        for op in decorates
+    )
+    parts.append(("select-pane", "-M"))
+    out: list[str] = []
+    for index, part in enumerate(parts):
+        if index:
+            out.append(";")
+        out.extend(_escape_arg(token) for token in part)
+    return tuple(out)
+
+
+def attribute_marked(
+    create: Operation[t.Any],
+    decorates: Sequence[Operation[t.Any]],
+    merged: CommandResult,
+    version: str | None = None,
+) -> tuple[Result, list[Result], str | None]:
+    """Split a ``{marked}`` dispatch result into the create's + decorates' results."""
+    new_id = merged.stdout[0].strip() if merged.stdout else None
+    if new_id is not None:
+        create_result = create.build_result(
+            returncode=0, stdout=(new_id,), version=version
+        )
+    else:
+        create_result = create.build_result(
+            returncode=merged.returncode or 1,
+            stderr=tuple(merged.stderr),
+            version=version,
+        )
+    # Attribute over the {marked}-retargeted decorates -- their original SlotRef
+    # target is unresolved and cannot render.
+    marked = [dataclasses.replace(op, target=Special("{marked}")) for op in decorates]
+    return create_result, attribute(marked, merged, version), new_id
+
+
 @dataclass(frozen=True)
 class OpChain:
     """An ordered group of operations composed with :meth:`~.Operation.then`.
 
     A power-user, inspectable handle for explicit chaining. Add it to a
-    :class:`~.plan.LazyPlan` with :meth:`~.plan.LazyPlan.add_chain`; the plan's
-    folded execution (``execute(fold=True)``) batches chainable runs anyway.
+    :class:`~.plan.LazyPlan` with :meth:`~.plan.LazyPlan.add_chain`; a folding
+    planner (``execute(planner=FoldingPlanner())``) batches chainable runs anyway.
 
     Examples
     --------
