@@ -129,7 +129,7 @@ def attribute_marked(
     version: str | None = None,
 ) -> tuple[Result, list[Result], str | None]:
     """Split a ``{marked}`` dispatch result into the create's + decorates' results."""
-    new_id = merged.stdout[0].strip() if merged.stdout else None
+    new_id = (merged.stdout[0].strip() if merged.stdout else "") or None
     # Attribute over the {marked}-retargeted decorates -- their original SlotRef
     # target is unresolved and cannot render.
     marked = [dataclasses.replace(op, target=Special("{marked}")) for op in decorates]
