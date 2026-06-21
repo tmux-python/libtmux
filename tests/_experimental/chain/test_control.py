@@ -62,6 +62,30 @@ PARSER_CASES = (
             ),
         ),
     ),
+    ParserCase(
+        test_id="event-shaped-output",
+        wire=b"%begin 1 10 1\n%output literal\n%message literal\n%end 1 10 1\n",
+        expected=(
+            ControlModeBlock(
+                number=10,
+                flags=1,
+                is_error=False,
+                body=(b"%output literal", b"%message literal"),
+            ),
+        ),
+    ),
+    ParserCase(
+        test_id="mismatched-end-shaped-output",
+        wire=b"%begin 1 11 1\n%end 1 12 1\nstill here\n%end 1 11 1\n",
+        expected=(
+            ControlModeBlock(
+                number=11,
+                flags=1,
+                is_error=False,
+                body=(b"%end 1 12 1", b"still here"),
+            ),
+        ),
+    ),
 )
 
 
