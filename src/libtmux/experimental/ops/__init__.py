@@ -21,6 +21,9 @@ from __future__ import annotations
 
 from libtmux.experimental.ops._ops import (
     CapturePane,
+    KillPane,
+    KillWindow,
+    RenameWindow,
     SelectLayout,
     SendKeys,
     SplitWindow,
@@ -59,6 +62,7 @@ from libtmux.experimental.ops.registry import (
     registry,
 )
 from libtmux.experimental.ops.results import (
+    AckResult,
     CapturePaneResult,
     Result,
     SplitWindowResult,
@@ -74,6 +78,7 @@ from libtmux.experimental.ops.serialize import (
 )
 
 __all__ = (
+    "AckResult",
     "CapturePane",
     "CapturePaneResult",
     "CatalogEntry",
@@ -81,6 +86,8 @@ __all__ = (
     "DuplicateOperation",
     "Effects",
     "IndexRef",
+    "KillPane",
+    "KillWindow",
     "LazyPlan",
     "NameRef",
     "OpSpec",
@@ -89,6 +96,7 @@ __all__ = (
     "OperationRegistry",
     "PaneId",
     "PlanResult",
+    "RenameWindow",
     "Result",
     "Safety",
     "Scope",
