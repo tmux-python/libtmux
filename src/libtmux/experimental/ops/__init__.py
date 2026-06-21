@@ -19,6 +19,7 @@ Examples
 
 from __future__ import annotations
 
+from libtmux.experimental.ops._chain import OpChain
 from libtmux.experimental.ops._ops import (
     CapturePane,
     KillPane,
@@ -102,6 +103,7 @@ __all__ = (
     "ListWindows",
     "ListWindowsResult",
     "NameRef",
+    "OpChain",
     "OpSpec",
     "Operation",
     "OperationError",
