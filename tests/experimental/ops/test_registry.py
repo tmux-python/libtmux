@@ -43,7 +43,7 @@ def test_spec_from_operation_reads_classvars() -> None:
 def test_list_predicate_filters() -> None:
     """``list`` filters by a predicate and stays sorted by kind."""
     readonly = [
-        spec.kind for spec in registry.list(lambda spec: spec.safety == "readonly")
+        spec.kind for spec in registry.select(lambda spec: spec.safety == "readonly")
     ]
     assert readonly == ["capture_pane", "list_panes", "list_sessions", "list_windows"]
 
