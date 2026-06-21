@@ -26,6 +26,7 @@ import dataclasses
 import typing as t
 from dataclasses import dataclass, field
 
+from libtmux._experimental.chain.chain import ensure_chainable
 from libtmux._experimental.chain.ir import (
     CommandCall,
     CommandChain,
@@ -521,7 +522,10 @@ class ForwardHandle:
 
     def do(self, build: cabc.Callable[[ForwardHandle], IntoCommands]) -> ForwardHandle:
         """Decorate this handle via its namespaces (reused, no new vocabulary)."""
-        self._plan._steps.extend(_Decorate(call) for call in _to_calls(build(self)))
+        calls = _to_calls(build(self))
+        for call in calls:
+            ensure_chainable(call.name)
+        self._plan._steps.extend(_Decorate(call) for call in calls)
         return self
 
     def _require(self, verb: str, *kinds: Kind) -> None:
