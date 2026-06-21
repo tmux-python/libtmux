@@ -27,6 +27,29 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 
+def test_control_sequential_commands_stay_aligned(session: Session) -> None:
+    """Many sequential commands keep result alignment (drain-between-calls path).
+
+    The first command must get the real result (not the consumed startup ACK),
+    and each subsequent call drains any unsolicited blocks before reading its own.
+    """
+    server = session.server
+    pane = session.active_pane
+    assert pane is not None
+    assert pane.pane_id is not None
+
+    with ControlModeEngine.for_server(server) as engine:
+        for index in range(5):
+            result = run(
+                SendKeys(target=PaneId(pane.pane_id), keys=f"# {index}"), engine
+            )
+            assert result.ok
+        captured = run(CapturePane(target=PaneId(pane.pane_id)), engine)
+
+    assert isinstance(captured, CapturePaneResult)
+    assert captured.ok
+
+
 def test_control_split_creates_real_pane(session: Session) -> None:
     """A control-mode split returns a typed result whose pane really exists."""
     server = session.server
