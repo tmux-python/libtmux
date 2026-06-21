@@ -319,3 +319,10 @@ class ShowOptionsResult(Result):
     """Result of ``show-options``: parsed ``name value`` pairs in :attr:`options`."""
 
     options: Mapping[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ShowBufferResult(Result):
+    """Result of ``show-buffer``: the buffer contents as :attr:`text`."""
+
+    text: str = ""
