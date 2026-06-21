@@ -7,12 +7,12 @@ from dataclasses import dataclass
 from libtmux.experimental.ops._types import Effects
 from libtmux.experimental.ops.operation import Operation
 from libtmux.experimental.ops.registry import register
-from libtmux.experimental.ops.results import Result
+from libtmux.experimental.ops.results import AckResult
 
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class SendKeys(Operation[Result]):
+class SendKeys(Operation[AckResult]):
     """Send keys (input) to a pane.
 
     Parameters
@@ -36,7 +36,7 @@ class SendKeys(Operation[Result]):
     kind = "send_keys"
     command = "send-keys"
     scope = "pane"
-    result_cls = Result
+    result_cls = AckResult
     safety = "mutating"
     effects = Effects(writes_input=True)
 

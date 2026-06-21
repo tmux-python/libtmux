@@ -7,12 +7,12 @@ from dataclasses import dataclass
 from libtmux.experimental.ops._types import Effects
 from libtmux.experimental.ops.operation import Operation
 from libtmux.experimental.ops.registry import register
-from libtmux.experimental.ops.results import Result
+from libtmux.experimental.ops.results import AckResult
 
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class SelectLayout(Operation[Result]):
+class SelectLayout(Operation[AckResult]):
     """Apply a layout to a window.
 
     Parameters
@@ -33,7 +33,7 @@ class SelectLayout(Operation[Result]):
     kind = "select_layout"
     command = "select-layout"
     scope = "window"
-    result_cls = Result
+    result_cls = AckResult
     safety = "mutating"
     effects = Effects(idempotent=True, mutates_layout=True)
 
