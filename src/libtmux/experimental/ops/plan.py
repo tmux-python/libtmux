@@ -218,9 +218,8 @@ class LazyPlan:
             else:
                 result = yield _Single(_resolve(operation, bindings))
                 results[index] = result
-                created = getattr(result, "new_pane_id", None)
-                if created is not None:
-                    bindings[index] = created
+                if result.created_id is not None:
+                    bindings[index] = result.created_id
                 index += 1
         ordered = tuple(results[slot] for slot in range(total))
         return PlanResult(ordered, bindings)
