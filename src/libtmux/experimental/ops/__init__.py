@@ -22,6 +22,7 @@ from __future__ import annotations
 from libtmux.experimental.ops._chain import OpChain
 from libtmux.experimental.ops._ops import (
     CapturePane,
+    DetachClient,
     KillPane,
     KillSession,
     KillWindow,
@@ -30,11 +31,13 @@ from libtmux.experimental.ops._ops import (
     ListWindows,
     NewSession,
     NewWindow,
+    RefreshClient,
     RenameSession,
     RenameWindow,
     SelectLayout,
     SendKeys,
     SplitWindow,
+    SwitchClient,
 )
 from libtmux.experimental.ops._types import (
     ClientName,
@@ -96,6 +99,7 @@ __all__ = (
     "CatalogEntry",
     "ClientName",
     "CreateResult",
+    "DetachClient",
     "DuplicateOperation",
     "Effects",
     "IndexRef",
@@ -119,6 +123,7 @@ __all__ = (
     "OperationRegistry",
     "PaneId",
     "PlanResult",
+    "RefreshClient",
     "RenameSession",
     "RenameWindow",
     "Result",
@@ -132,6 +137,7 @@ __all__ = (
     "SplitWindow",
     "SplitWindowResult",
     "Status",
+    "SwitchClient",
     "Target",
     "TmuxCommandError",
     "UnknownOperation",
