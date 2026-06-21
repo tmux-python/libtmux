@@ -11,7 +11,6 @@ specific tmux server.
 
 from __future__ import annotations
 
-import logging
 import shutil
 import subprocess
 import typing as t
@@ -24,8 +23,6 @@ if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
     from libtmux.experimental.engines.base import CommandRequest
-
-logger = logging.getLogger(__name__)
 
 
 class SubprocessEngine:
@@ -72,6 +69,7 @@ class SubprocessEngine:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
                 errors="backslashreplace",
             )
             stdout, stderr = process.communicate()
