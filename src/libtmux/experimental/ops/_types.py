@@ -295,8 +295,7 @@ class SlotRef:
 
 
 Target: t.TypeAlias = (
-    "PaneId | WindowId | SessionId | ClientName | NameRef | IndexRef "
-    "| Special | SlotRef"
+    PaneId | WindowId | SessionId | ClientName | NameRef | IndexRef | Special | SlotRef
 )
 """The closed sum of everything that can appear as an operation ``-t`` target."""
 
