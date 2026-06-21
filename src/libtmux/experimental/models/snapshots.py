@@ -16,8 +16,9 @@ and round-trip to plain dicts for serialization or diffing.
 
 from __future__ import annotations
 
+import dataclasses
 import typing as t
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -205,7 +206,7 @@ class WindowSnapshot:
     @classmethod
     def from_dict(cls, data: Mapping[str, t.Any]) -> WindowSnapshot:
         """Reconstruct from :meth:`to_dict` output."""
-        return replace(
+        return dataclasses.replace(
             cls.from_format(data["fields"]),
             panes=tuple(PaneSnapshot.from_dict(p) for p in data.get("panes", [])),
         )
@@ -241,7 +242,7 @@ class SessionSnapshot:
     @classmethod
     def from_dict(cls, data: Mapping[str, t.Any]) -> SessionSnapshot:
         """Reconstruct from :meth:`to_dict` output."""
-        return replace(
+        return dataclasses.replace(
             cls.from_format(data["fields"]),
             windows=tuple(WindowSnapshot.from_dict(w) for w in data.get("windows", [])),
         )
@@ -309,10 +310,10 @@ class ServerSnapshot:
             window_panes[window_id].append(PaneSnapshot.from_format(row))
 
         sessions = tuple(
-            replace(
+            dataclasses.replace(
                 SessionSnapshot.from_format(session_fields[session_id]),
                 windows=tuple(
-                    replace(
+                    dataclasses.replace(
                         WindowSnapshot.from_format(window_fields[window_id]),
                         panes=tuple(window_panes[window_id]),
                     )
