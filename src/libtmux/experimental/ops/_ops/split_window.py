@@ -93,6 +93,7 @@ class SplitWindow(Operation[SplitWindowResult]):
         returncode: int,
         stdout: tuple[str, ...],
         stderr: tuple[str, ...],
+        version: str | None = None,
     ) -> SplitWindowResult:
         """Parse the captured new-pane id into the typed result."""
         new_pane_id = stdout[0].strip() if status == "complete" and stdout else None
