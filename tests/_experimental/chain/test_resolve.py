@@ -623,3 +623,24 @@ def test_marked_single_dispatch_live(session: Session) -> None:
         "display-message", "-p", "-t", new_pane_id, "#{pane_marked}"
     ).stdout
     assert marked == ["0"]
+
+
+def test_marked_single_dispatch_failure_clears_mark(session: Session) -> None:
+    """Live: a failed marked dispatch still clears tmux's mark register."""
+    window = session.new_window(window_name="marked_fail")
+    seed = window.active_pane
+    assert seed is not None
+    assert seed.pane_id is not None
+    assert window.window_id is not None
+
+    plan = ForwardPlan(PaneTarget(seed.pane_id))
+    plan.split(horizontal=True).do(lambda h: h.window.select_layout("not-a-layout"))
+
+    with pytest.raises(ForwardDispatchError):
+        plan.run_resolving(SessionPlanExecutor(session))
+
+    marked = session.server.cmd(
+        "list-panes", "-t", window.window_id, "-F", "#{pane_id}:#{pane_marked}"
+    ).stdout
+    assert marked
+    assert all(row.endswith(":0") for row in marked)
