@@ -17,7 +17,11 @@ from libtmux.experimental.ops import (
     SendKeys,
     SplitWindow,
 )
-from libtmux.experimental.ops._chain import ensure_chainable, render_chain
+from libtmux.experimental.ops._chain import (
+    attribute_marked,
+    ensure_chainable,
+    render_chain,
+)
 from libtmux.experimental.ops._types import PaneId, WindowId
 from libtmux.experimental.ops.exc import OperationError
 
@@ -145,6 +149,68 @@ def test_fold_keeps_creation_ops_unfolded() -> None:
     # split resolved the pane id; the send-keys folded with rename, retargeted
     assert outcome.results[1].argv[:3] == ("send-keys", "-t", "%1")
     assert outcome.ok
+
+
+class MarkedAttrCase(t.NamedTuple):
+    """A merged {marked} dispatch result and the per-op statuses it yields."""
+
+    test_id: str
+    merged: CommandResult
+    new_id: str | None
+    create_status: str
+    decorate_statuses: list[str]
+
+
+_MARK_CREATE = SplitWindow(target=WindowId("@1"))
+_MARK_DECORATES = (
+    SendKeys(target=PaneId("%9"), keys="a"),
+    SendKeys(target=PaneId("%9"), keys="b"),
+)
+
+MARKED_ATTR_CASES = (
+    MarkedAttrCase(
+        test_id="all_succeed",
+        merged=CommandResult(cmd=("tmux",), stdout=("%2",), returncode=0),
+        new_id="%2",
+        create_status="complete",
+        decorate_statuses=["complete", "complete"],
+    ),
+    MarkedAttrCase(
+        test_id="create_fails",
+        merged=CommandResult(cmd=("tmux",), returncode=1, stderr=("boom",)),
+        new_id=None,
+        create_status="failed",
+        decorate_statuses=["skipped", "skipped"],
+    ),
+    MarkedAttrCase(
+        test_id="decorate_fails",
+        merged=CommandResult(
+            cmd=("tmux",), stdout=("%2",), returncode=1, stderr=("x",)
+        ),
+        new_id="%2",
+        create_status="complete",
+        decorate_statuses=["failed", "skipped"],
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    list(MarkedAttrCase._fields),
+    MARKED_ATTR_CASES,
+    ids=[c.test_id for c in MARKED_ATTR_CASES],
+)
+def test_attribute_marked(
+    test_id: str,
+    merged: CommandResult,
+    new_id: str | None,
+    create_status: str,
+    decorate_statuses: list[str],
+) -> None:
+    """A failed create skips all decorates; a failed decorate blames the first."""
+    created, decorated, got_id = attribute_marked(_MARK_CREATE, _MARK_DECORATES, merged)
+    assert got_id == new_id
+    assert created.status == create_status
+    assert [r.status for r in decorated] == decorate_statuses
 
 
 def test_add_chain() -> None:
