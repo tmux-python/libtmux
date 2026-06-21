@@ -103,7 +103,6 @@ class EngineKind(str, enum.Enum):
     SUBPROCESS = "subprocess"
     CONCRETE = "concrete"
     CONTROL_MODE = "control_mode"
-    ASYNCIO = "asyncio"
     IMSG = "imsg"
 
 
@@ -149,11 +148,6 @@ class EngineSpec:
     def control_mode(cls) -> EngineSpec:
         """Build a control-mode engine spec."""
         return cls(kind=EngineKind.CONTROL_MODE)
-
-    @classmethod
-    def asyncio(cls) -> EngineSpec:
-        """Build an asyncio engine spec."""
-        return cls(kind=EngineKind.ASYNCIO)
 
     @classmethod
     def imsg(cls, *, protocol_version: int | None = None) -> EngineSpec:
