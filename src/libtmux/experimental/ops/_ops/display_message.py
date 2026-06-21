@@ -53,7 +53,7 @@ class DisplayMessage(Operation[DisplayMessageResult]):
         stderr: tuple[str, ...],
         version: str | None = None,
     ) -> DisplayMessageResult:
-        """Expose the printed line as :attr:`~.DisplayMessageResult.text`."""
+        """Expose the printed output as :attr:`~.DisplayMessageResult.text`."""
         return DisplayMessageResult(
             operation=self,
             argv=argv,
@@ -61,5 +61,5 @@ class DisplayMessage(Operation[DisplayMessageResult]):
             returncode=returncode,
             stdout=stdout,
             stderr=stderr,
-            text=stdout[0] if stdout else "",
+            text="\n".join(stdout),
         )
