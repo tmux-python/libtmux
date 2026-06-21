@@ -18,8 +18,8 @@ from libtmux.experimental.ops import (
 )
 from libtmux.experimental.ops._types import PaneId, WindowId
 from libtmux.experimental.ops.results import (
+    AckResult,
     CapturePaneResult,
-    Result,
     SplitWindowResult,
 )
 
@@ -55,7 +55,7 @@ def test_control_batches_multiple_commands(session: Session) -> None:
         sent = run(SendKeys(target=PaneId(pane.pane_id), keys="echo hi"), engine)
         captured = run(CapturePane(target=PaneId(pane.pane_id)), engine)
 
-    assert type(sent) is Result
+    assert type(sent) is AckResult
     assert sent.ok
     assert isinstance(captured, CapturePaneResult)
     assert captured.ok
