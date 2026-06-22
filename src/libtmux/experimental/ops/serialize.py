@@ -179,3 +179,39 @@ def result_from_dict(data: Mapping[str, t.Any]) -> Result:
             continue
         kwargs[field.name] = _coerce_field(data[field.name])
     return result_cls(**kwargs)
+
+
+def bindings_to_dict(bindings: Mapping[int | tuple[int, str], str]) -> dict[str, str]:
+    """Serialize plan bindings to a JSON-friendly ``str``-keyed dict.
+
+    A plain slot key ``N`` becomes ``"N"``; a sub-ref key ``(N, part)`` becomes
+    ``"N:part"`` (e.g. ``(0, "pane")`` -> ``"0:pane"``) so a forward-ref binding
+    survives a JSON round-trip.
+
+    Examples
+    --------
+    >>> bindings_to_dict({0: "$1", (0, "pane"): "%2"})
+    {'0': '$1', '0:pane': '%2'}
+    """
+    out: dict[str, str] = {}
+    for key, value in bindings.items():
+        out[f"{key[0]}:{key[1]}" if isinstance(key, tuple) else str(key)] = value
+    return out
+
+
+def bindings_from_dict(data: Mapping[str, str]) -> dict[int | tuple[int, str], str]:
+    """Reconstruct plan bindings from :func:`bindings_to_dict` output.
+
+    Examples
+    --------
+    >>> bindings_from_dict({"0": "$1", "0:pane": "%2"}) == {0: "$1", (0, "pane"): "%2"}
+    True
+    """
+    out: dict[int | tuple[int, str], str] = {}
+    for key, value in data.items():
+        if ":" in key:
+            slot, part = key.split(":", 1)
+            out[int(slot), part] = value
+        else:
+            out[int(key)] = value
+    return out
