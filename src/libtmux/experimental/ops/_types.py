@@ -277,16 +277,34 @@ class SlotRef:
     lets a command needing a qualified target -- e.g. ``new-window -t $N:`` --
     reuse a plain captured ``$N``.
 
+    ``part`` selects which captured id to resolve: the slot's own created object
+    (``"self"``, the default), or an *implicit child* the creator captured -- a
+    new session/window's first window (``"window"``) or first pane (``"pane"``).
+    Use the :attr:`window` / :attr:`pane` convenience properties.
+
     Examples
     --------
     >>> SlotRef(0)
-    SlotRef(slot=0, suffix='')
+    SlotRef(slot=0, suffix='', part='self')
     >>> SlotRef(0, ":")
-    SlotRef(slot=0, suffix=':')
+    SlotRef(slot=0, suffix=':', part='self')
+    >>> SlotRef(0).pane
+    SlotRef(slot=0, suffix='', part='pane')
     """
 
     slot: int
     suffix: str = ""
+    part: t.Literal["self", "window", "pane"] = "self"
+
+    @property
+    def window(self) -> SlotRef:
+        """A sub-ref to the first window the slot's creator captured."""
+        return SlotRef(self.slot, self.suffix, "window")
+
+    @property
+    def pane(self) -> SlotRef:
+        """A sub-ref to the first pane the slot's creator captured."""
+        return SlotRef(self.slot, self.suffix, "pane")
 
     def render(self) -> str:
         """Raise -- an unresolved deferred ref cannot be rendered."""

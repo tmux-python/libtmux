@@ -23,15 +23,27 @@ class NewWindow(Operation[CreateResult]):
 
     ``target`` is the session the window is created in.
 
+    Parameters
+    ----------
+    capture_pane : bool
+        Also capture the new window's first pane id (into
+        :attr:`~.results.CreateResult.first_pane_id`), so a plan can target it
+        via ``slot.pane``.
+
     Examples
     --------
     >>> from libtmux.experimental.ops._types import SessionId
     >>> NewWindow(target=SessionId("$0"), name="build").render()
     ('new-window', '-t', '$0', '-d', '-n', 'build', '-P', '-F', '#{window_id}')
+    >>> NewWindow(target=SessionId("$0"), capture_pane=True).render()[-1]
+    '#{window_id} #{pane_id}'
     >>> NewWindow(target=SessionId("$0")).build_result(
     ...     returncode=0, stdout=("@5",)
     ... ).new_id
     '@5'
+    >>> r = NewWindow(capture_pane=True).build_result(returncode=0, stdout=("@5 %6",))
+    >>> (r.new_id, r.first_pane_id)
+    ('@5', '%6')
     """
 
     kind = "new_window"
@@ -48,6 +60,7 @@ class NewWindow(Operation[CreateResult]):
     environment: Mapping[str, str] | None = None
     detach: bool = True
     capture: bool = True
+    capture_pane: bool = False
     window_shell: str | None = None
 
     def args(self, *, version: str | None = None) -> tuple[str, ...]:
@@ -62,7 +75,8 @@ class NewWindow(Operation[CreateResult]):
         if self.environment and self.flag_available("environment", version):
             out.extend(f"-e{key}={value}" for key, value in self.environment.items())
         if self.capture:
-            out.extend(("-P", "-F", "#{window_id}"))
+            fmt = "#{window_id} #{pane_id}" if self.capture_pane else "#{window_id}"
+            out.extend(("-P", "-F", fmt))
         if self.window_shell is not None:
             out.append(self.window_shell)
         return tuple(out)
@@ -76,8 +90,8 @@ class NewWindow(Operation[CreateResult]):
         stderr: tuple[str, ...],
         version: str | None = None,
     ) -> CreateResult:
-        """Parse the captured new-window id."""
-        new_id = stdout[0].strip() if status == "complete" and stdout else None
+        """Parse the captured window id (and first pane id if captured)."""
+        ids = stdout[0].split() if status == "complete" and stdout else []
         return CreateResult(
             operation=self,
             argv=argv,
@@ -85,5 +99,6 @@ class NewWindow(Operation[CreateResult]):
             returncode=returncode,
             stdout=stdout,
             stderr=stderr,
-            new_id=new_id,
+            new_id=ids[0] if ids else None,
+            first_pane_id=ids[1] if len(ids) > 1 else None,
         )
