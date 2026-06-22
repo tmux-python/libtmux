@@ -78,14 +78,20 @@ def _target_from_id(value: str) -> Target:
     return Special(value)
 
 
-def _resolve_slot(ref: SlotRef, bindings: dict[int, str]) -> Target:
+def _resolve_slot(
+    ref: SlotRef,
+    bindings: dict[int | tuple[int, str], str],
+) -> Target:
     """Map a :class:`SlotRef` to the captured concrete target it points at."""
+    key: int | tuple[int, str] = (
+        ref.slot if ref.part == "self" else (ref.slot, ref.part)
+    )
     try:
-        concrete = bindings[ref.slot] + ref.suffix
+        concrete = bindings[key] + ref.suffix
     except KeyError as error:
         msg = (
-            f"slot {ref.slot} has no captured id yet; a plan step can only "
-            f"reference an earlier step that creates an object"
+            f"slot {ref.slot} (part {ref.part!r}) has no captured id yet; a plan "
+            f"step can only reference an earlier step that creates that object"
         )
         raise OperationError(msg) from error
     return _target_from_id(concrete)
@@ -93,7 +99,7 @@ def _resolve_slot(ref: SlotRef, bindings: dict[int, str]) -> Target:
 
 def _resolve(
     operation: Operation[t.Any],
-    bindings: dict[int, str],
+    bindings: dict[int | tuple[int, str], str],
 ) -> Operation[t.Any]:
     """Substitute any :class:`SlotRef` ``target``/``src_target`` with its id."""
     changes: dict[str, Target] = {}
@@ -108,7 +114,7 @@ def _resolve(
 
 def _resolve_src(
     operation: Operation[t.Any],
-    bindings: dict[int, str],
+    bindings: dict[int | tuple[int, str], str],
 ) -> Operation[t.Any]:
     """Resolve only a :class:`SlotRef` ``src_target``.
 
@@ -133,12 +139,14 @@ class PlanResult:
     ----------
     results : tuple[Result, ...]
         One result per recorded operation, in order.
-    bindings : dict[int, str]
-        Maps a creating step's index to the concrete id it produced.
+    bindings : dict[int | tuple[int, str], str]
+        Maps a creating step's index to the concrete id it produced; a
+        ``(index, part)`` key holds an implicit child's id (e.g. a new window's
+        first pane), bound when the creator opts into capturing it.
     """
 
     results: tuple[Result, ...]
-    bindings: dict[int, str] = field(default_factory=dict)
+    bindings: dict[int | tuple[int, str], str] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -226,7 +234,7 @@ class LazyPlan:
         The sync and async drivers differ only in ``run`` vs ``await arun`` and
         ``engine.run`` vs ``await engine.run``.
         """
-        bindings: dict[int, str] = {}
+        bindings: dict[int | tuple[int, str], str] = {}
         results: dict[int, Result] = {}
         for step in planner.plan(self._operations):
             if step.marked:
@@ -254,6 +262,8 @@ class LazyPlan:
                 results[index] = result
                 if result.created_id is not None:
                     bindings[index] = result.created_id
+                for sub_part, sub_id in result.created_subids.items():
+                    bindings[index, sub_part] = sub_id
             else:
                 group = [_resolve(self._operations[i], bindings) for i in step.indices]
                 merged = yield _Chain(render_chain(group, version))
