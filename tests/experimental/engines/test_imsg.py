@@ -30,6 +30,24 @@ needs_af_unix = pytest.mark.skipif(
 )
 
 
+@needs_af_unix
+def test_imsg_connect_socket_failure_raises_oserror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A socket() failure surfaces as OSError, not UnboundLocalError."""
+    import errno
+
+    def _boom(*_args: object, **_kwargs: object) -> object:
+        raise OSError(errno.EMFILE, "too many open files")
+
+    monkeypatch.setattr(
+        "libtmux.experimental.engines.imsg.base.socket.socket",
+        _boom,
+    )
+    with pytest.raises(OSError, match="too many open files"):
+        ImsgEngine()._connect(socket_path="/nonexistent")
+
+
 def test_imsg_registered() -> None:
     """The imsg engine is registered and constructible by name."""
     assert "imsg" in available_engines()

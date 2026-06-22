@@ -397,8 +397,10 @@ class ImsgEngine:
         *,
         socket_path: str,
     ) -> socket.socket:
+        # Create the socket outside the try so the except never references an
+        # unbound `sock` if socket() itself fails (e.g. fd exhaustion).
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.connect(socket_path)
         except OSError as error:
             sock.close()
