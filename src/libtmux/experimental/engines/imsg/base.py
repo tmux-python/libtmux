@@ -506,7 +506,14 @@ class ImsgEngine:
             transport.send_frame(codec, command_frame)
 
             while True:
-                frame = transport.recv_frame(codec)
+                try:
+                    frame = transport.recv_frame(codec)
+                except ImsgProtocolError:
+                    # The server may close the socket right after MSG_EXIT,
+                    # before MSG_EXITED; the exit result is already computed.
+                    if seen_exit:
+                        break
+                    raise
                 msg_type = frame.header.msg_type
                 peer = frame.header.peer_id
                 pid = frame.header.pid
