@@ -221,6 +221,32 @@ class LazyPlan:
         """Record every operation of an :class:`~._chain.OpChain` in order."""
         self._operations.extend(chain.ops)
 
+    def preview(self, *, version: str | None = None) -> list[tuple[str, ...] | None]:
+        """Render each recorded operation's argv without executing it.
+
+        A pure dry-run: an operation whose target is still an unresolved
+        :class:`~._types.SlotRef` renders as ``None`` (it needs a captured id
+        from an earlier step, supplied only at execution time).
+
+        Examples
+        --------
+        >>> from libtmux.experimental.ops import SplitWindow, SendKeys
+        >>> from libtmux.experimental.ops._types import WindowId
+        >>> plan = LazyPlan()
+        >>> pane = plan.add(SplitWindow(target=WindowId("@1")))
+        >>> _ = plan.add(SendKeys(target=pane, keys="vim", enter=True))
+        >>> plan.preview()
+        [('split-window', '-t', '@1', '-v', '-P', '-F', '#{pane_id}'), None]
+        """
+
+        def _render(op: Operation[t.Any]) -> tuple[str, ...] | None:
+            try:
+                return op.render(version=version)
+            except TypeError:  # unresolved SlotRef -- needs a captured id
+                return None
+
+        return [_render(op) for op in self._operations]
+
     def _drive(
         self,
         version: str | None,
