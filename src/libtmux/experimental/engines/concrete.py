@@ -61,6 +61,13 @@ class ConcreteEngine:
     capture_lines : Sequence[str]
         Lines that ``capture-pane`` returns.
 
+    Notes
+    -----
+    The simulation is stateless -- it fabricates ids for ``-P -F`` creators and
+    returns canned ``capture-pane`` lines, but has no notion of which objects
+    exist, so queries like ``has-session`` always succeed (``HasSession.exists``
+    is always ``True``). Use a live engine for those.
+
     Examples
     --------
     >>> from libtmux.experimental.ops import SplitWindow, CapturePane, run
