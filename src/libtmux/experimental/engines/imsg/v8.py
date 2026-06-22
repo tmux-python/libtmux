@@ -312,11 +312,6 @@ class ProtocolV8Codec:
                 peer_id=peer_id,
             ),
             self.frame_message(
-                MessageType.MSG_IDENTIFY_LONGFLAGS,
-                _UINT64.pack(flags),
-                peer_id=peer_id,
-            ),
-            self.frame_message(
                 MessageType.MSG_IDENTIFY_TERM,
                 _c_string(term),
                 peer_id=peer_id,
