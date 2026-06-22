@@ -19,7 +19,11 @@ from libtmux.experimental.engines import (
     available_engines,
     create_engine,
 )
-from libtmux.experimental.engines.imsg.v8 import IMSG_HEADER_SIZE, ProtocolV8Codec
+from libtmux.experimental.engines.imsg.v8 import (
+    IMSG_HEADER_SIZE,
+    MessageType,
+    ProtocolV8Codec,
+)
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -76,6 +80,44 @@ def test_v8_command_message_packs_argc_and_argv() -> None:
     # int32 argc=3 then three NUL-terminated args
     assert frame.payload.startswith(b"\x03\x00\x00\x00")
     assert frame.payload.endswith(b"#{session_id}\x00")
+
+
+class IdentifyFrameCase(t.NamedTuple):
+    """One expected identify-burst frame count."""
+
+    test_id: str
+    msg_type: MessageType
+    expected: int
+
+
+IDENTIFY_FRAME_CASES = (
+    IdentifyFrameCase("longflags-once", MessageType.MSG_IDENTIFY_LONGFLAGS, 1),
+    IdentifyFrameCase("stdin-once", MessageType.MSG_IDENTIFY_STDIN, 1),
+    IdentifyFrameCase("stdout-once", MessageType.MSG_IDENTIFY_STDOUT, 1),
+    IdentifyFrameCase("done-once", MessageType.MSG_IDENTIFY_DONE, 1),
+    IdentifyFrameCase("environ-one-per-var", MessageType.MSG_IDENTIFY_ENVIRON, 2),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    IDENTIFY_FRAME_CASES,
+    ids=[case.test_id for case in IDENTIFY_FRAME_CASES],
+)
+def test_identify_burst_frame_counts(case: IdentifyFrameCase) -> None:
+    """The identify burst emits each message type the expected number of times.
+
+    A real tmux client sends ``MSG_IDENTIFY_LONGFLAGS`` exactly once.
+    """
+    frames = ProtocolV8Codec().identify_messages(
+        cwd="/tmp",
+        term="xterm",
+        tty_name="",
+        client_pid=123,
+        environ={"A": "1", "B": "2"},
+    )
+    count = sum(1 for frame in frames if frame.header.msg_type == int(case.msg_type))
+    assert count == case.expected
 
 
 def _socket_prefix(server: t.Any) -> tuple[str, ...]:
