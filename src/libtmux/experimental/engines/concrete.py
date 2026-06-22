@@ -22,12 +22,24 @@ if t.TYPE_CHECKING:
 
 
 def _fabricate(fmt: str, counters: dict[str, int]) -> str:
-    """Return the next fabricated id for a ``#{..._id}`` capture format."""
-    for key, sigil in (("pane_id", "%"), ("window_id", "@"), ("session_id", "$")):
-        if key in fmt:
-            counters[key] += 1
-            return f"{sigil}{counters[key]}"
-    return "?"
+    """Fabricate one id per ``#{..._id}`` token in *fmt*, in their order.
+
+    A single-token format (e.g. ``#{pane_id}``) yields one id, preserving the
+    historical behaviour; a multi-token capture (e.g. ``new-session -F
+    '#{session_id} #{window_id} #{pane_id}'``) yields a space-joined id per token.
+    """
+    found: list[tuple[int, str, str]] = []
+    for key, sigil in (("session_id", "$"), ("window_id", "@"), ("pane_id", "%")):
+        index = fmt.find(f"#{{{key}}}")
+        if index != -1:
+            found.append((index, key, sigil))
+    if not found:
+        return "?"
+    parts: list[str] = []
+    for _index, key, sigil in sorted(found):
+        counters[key] += 1
+        parts.append(f"{sigil}{counters[key]}")
+    return " ".join(parts)
 
 
 def _simulate(
