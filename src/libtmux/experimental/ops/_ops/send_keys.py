@@ -25,6 +25,10 @@ class SendKeys(Operation[AckResult]):
         pressing Return; send the keys and Enter as two operations instead.
     literal : bool
         Send keys literally without tmux key-name lookup (``-l``).
+    suppress_history : bool
+        Prepend a single space to the command so an ``ignorespace``-configured
+        shell (``HISTCONTROL=ignorespace``) keeps it out of history -- the same
+        trick tmuxp uses. No-op when *literal* is set.
 
     Examples
     --------
@@ -33,6 +37,8 @@ class SendKeys(Operation[AckResult]):
     ('send-keys', '-t', '%1', 'echo hi', 'Enter')
     >>> SendKeys(target=PaneId("%1"), keys="q", literal=True).render()
     ('send-keys', '-t', '%1', '-l', 'q')
+    >>> SendKeys(target=PaneId("%1"), keys="vim", suppress_history=True).render()
+    ('send-keys', '-t', '%1', ' vim')
     """
 
     kind = "send_keys"
@@ -45,6 +51,7 @@ class SendKeys(Operation[AckResult]):
     keys: str
     enter: bool = False
     literal: bool = False
+    suppress_history: bool = False
 
     def __post_init__(self) -> None:
         """Reject literal+enter (fail closed): tmux ``-l`` types "Enter"."""
@@ -60,7 +67,10 @@ class SendKeys(Operation[AckResult]):
         out: list[str] = []
         if self.literal:
             out.append("-l")
-        out.append(self.keys)
+        keys = self.keys
+        if self.suppress_history and not self.literal:
+            keys = f" {keys}"
+        out.append(keys)
         if self.enter:
             out.append("Enter")
         return tuple(out)
