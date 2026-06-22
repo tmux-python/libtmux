@@ -141,6 +141,16 @@ class Result:
         """
         return None
 
+    @property
+    def created_subids(self) -> Mapping[str, str]:
+        """Ids of implicit children this op created (e.g. a window's first pane).
+
+        Keyed by part (``"window"`` / ``"pane"``); empty by default. A lazy plan
+        binds these so a :class:`~._types.SlotRef` sub-reference (``slot.pane`` /
+        ``slot.window``) can target an object created as a side effect.
+        """
+        return {}
+
     def raise_for_status(self) -> Self:
         """Raise :class:`~.exc.TmuxCommandError` if the result is not OK.
 
@@ -215,14 +225,29 @@ class CreateResult(Result):
 
     Shared by ``new-window`` / ``new-session`` (and other ``-P -F``-capturing
     creators); :attr:`new_id` holds the created object's id (``@N``/``$N``).
+    When the creator opts into capturing its implicit children (a session's first
+    window/pane, a window's first pane), those ids land in
+    :attr:`first_window_id` / :attr:`first_pane_id` and in :attr:`created_subids`.
     """
 
     new_id: str | None = None
+    first_window_id: str | None = None
+    first_pane_id: str | None = None
 
     @property
     def created_id(self) -> str | None:
         """The created object's id."""
         return self.new_id
+
+    @property
+    def created_subids(self) -> Mapping[str, str]:
+        """The captured implicit children, keyed by ``"window"`` / ``"pane"``."""
+        out: dict[str, str] = {}
+        if self.first_window_id is not None:
+            out["window"] = self.first_window_id
+        if self.first_pane_id is not None:
+            out["pane"] = self.first_pane_id
+        return out
 
 
 @dataclass(frozen=True)
