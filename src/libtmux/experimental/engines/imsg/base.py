@@ -471,17 +471,24 @@ class ImsgEngine:
                 for key in self._probe_env_keys
                 if key in os.environ
             }
-        identify_frames = codec.identify_messages(
-            cwd=str(pathlib.Path.cwd()),
-            term=os.environ.get("TERM", "unknown") or "unknown",
-            tty_name="",
-            client_pid=os.getpid(),
-            environ=environ_to_send,
-            flags=self._client_flags(),
-            features=0,
-            stdin_fd=stdin_fd,
-            stdout_fd=stdout_fd,
-        )
+        # The dup'd fds are owned by send_frames once the identify burst is sent;
+        # close them if building the frames or opening the transport fails first.
+        try:
+            identify_frames = codec.identify_messages(
+                cwd=str(pathlib.Path.cwd()),
+                term=os.environ.get("TERM", "unknown") or "unknown",
+                tty_name="",
+                client_pid=os.getpid(),
+                environ=environ_to_send,
+                flags=self._client_flags(),
+                features=0,
+                stdin_fd=stdin_fd,
+                stdout_fd=stdout_fd,
+            )
+        except BaseException:
+            _close_fd(stdin_fd)
+            _close_fd(stdout_fd)
+            raise
         logger.debug(
             "sending imsg identify burst",
             extra={
@@ -499,7 +506,12 @@ class ImsgEngine:
         exit_message: str | None = None
         seen_exit = False
 
-        transport = _SelectorSocketTransport(sock)
+        try:
+            transport = _SelectorSocketTransport(sock)
+        except BaseException:
+            _close_fd(stdin_fd)
+            _close_fd(stdout_fd)
+            raise
         try:
             transport.send_frames(codec, identify_frames)
             command_frame = codec.command_message(command_argv, peer_id=peer_id)
