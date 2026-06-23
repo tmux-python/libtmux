@@ -68,6 +68,40 @@ if t.TYPE_CHECKING:
 
     from fastmcp import FastMCP
 
+    from libtmux.experimental.mcp.vocabulary._caller import CallerContext
+
+
+def _socket_args(
+    caller: CallerContext,
+    *,
+    socket_path: str | None = None,
+    socket_name: str | None = None,
+    no_caller_socket: bool = False,
+) -> tuple[str, ...]:
+    """Resolve tmux connection flags: explicit overrides, else the caller's socket.
+
+    Precedence: ``--socket-path`` > ``--socket-name`` > ``$LIBTMUX_SOCKET_PATH`` >
+    ``$LIBTMUX_SOCKET`` > the discovered caller's socket (unless suppressed) >
+    none (ambient/default server).
+    """
+    import os
+
+    from libtmux.experimental.mcp.vocabulary._caller import caller_server_args
+
+    if socket_path:
+        return ("-S", socket_path)
+    if socket_name:
+        return ("-L", socket_name)
+    env_path = os.environ.get("LIBTMUX_SOCKET_PATH")
+    if env_path:
+        return ("-S", env_path)
+    env_name = os.environ.get("LIBTMUX_SOCKET")
+    if env_name:
+        return ("-L", env_name)
+    if no_caller_socket:
+        return ()
+    return caller_server_args(caller, explicit=False)
+
 
 def default_server(*, expose_operations: bool = False) -> FastMCP:
     """Build a synchronous FastMCP server over a :class:`~..engines.SubprocessEngine`.
@@ -79,8 +113,11 @@ def default_server(*, expose_operations: bool = False) -> FastMCP:
     """
     from libtmux.experimental.engines import SubprocessEngine
     from libtmux.experimental.mcp.fastmcp_adapter import build_server
+    from libtmux.experimental.mcp.vocabulary._caller import CallerContext
 
-    return build_server(SubprocessEngine(), expose_operations=expose_operations)
+    ctx = CallerContext.discover()
+    engine = SubprocessEngine(server_args=_socket_args(ctx))
+    return build_server(engine, expose_operations=expose_operations, caller=ctx)
 
 
 def default_async_server(
@@ -100,9 +137,13 @@ def default_async_server(
     from libtmux.experimental.engines import AsyncControlModeEngine
     from libtmux.experimental.mcp.events import EventMode, EventSource
     from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+    from libtmux.experimental.mcp.vocabulary._caller import CallerContext
 
+    ctx = CallerContext.discover()
+    engine = AsyncControlModeEngine(server_args=_socket_args(ctx))
     return build_async_server(
-        AsyncControlModeEngine(),
+        engine,
+        caller=ctx,
         expose_operations=expose_operations,
         events=t.cast("EventMode", events),
         event_source=t.cast("EventSource", event_source),
@@ -149,23 +190,53 @@ def main(argv: Sequence[str] | None = None) -> None:
         default=os.environ.get("LIBTMUX_MCP_EVENT_SOURCE", "subscription"),
         help="event substrate (async server only)",
     )
+    parser.add_argument(
+        "--socket-path",
+        help="tmux -S socket path (overrides caller-socket discovery)",
+    )
+    parser.add_argument(
+        "--socket-name",
+        help="tmux -L socket name (overrides caller-socket discovery)",
+    )
+    parser.add_argument(
+        "--no-caller-socket",
+        action="store_true",
+        help="do not auto-bind to the discovered caller's tmux socket",
+    )
     args = parser.parse_args(argv)
 
     try:
+        from libtmux.experimental.mcp.vocabulary._caller import CallerContext
+
+        ctx = CallerContext.discover()
+        srv_args = _socket_args(
+            ctx,
+            socket_path=args.socket_path,
+            socket_name=args.socket_name,
+            no_caller_socket=args.no_caller_socket,
+        )
         if args.sync:
             from libtmux.experimental.engines import SubprocessEngine
             from libtmux.experimental.mcp.fastmcp_adapter import build_server
 
             server = build_server(
-                SubprocessEngine(),
+                SubprocessEngine(server_args=srv_args),
                 name=args.name,
                 expose_operations=args.operations,
+                caller=ctx,
             )
         else:
-            server = default_async_server(
+            from libtmux.experimental.engines import AsyncControlModeEngine
+            from libtmux.experimental.mcp.events import EventMode, EventSource
+            from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+            server = build_async_server(
+                AsyncControlModeEngine(server_args=srv_args),
+                name=args.name,
                 expose_operations=args.operations,
-                events=args.events,
-                event_source=args.event_source,
+                events=t.cast("EventMode", args.events),
+                event_source=t.cast("EventSource", args.event_source),
+                caller=ctx,
             )
     except ImportError:
         sys.stderr.write(
