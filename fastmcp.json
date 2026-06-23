@@ -3,7 +3,7 @@
   "source": {
     "type": "filesystem",
     "path": "src/libtmux/experimental/mcp/__init__.py",
-    "entrypoint": "default_server"
+    "entrypoint": "default_async_server"
   },
   "deployment": {
     "transport": "stdio"
