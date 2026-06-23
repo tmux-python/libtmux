@@ -4,8 +4,8 @@ requires-python = ">=3.11, <4.0"
 resolution-markers = [
     "python_full_version >= '3.15'",
     "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform != 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "(python_full_version >= '3.11.5' and python_full_version < '3.12') or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten')",
     "python_full_version < '3.11.5'",
 ]
@@ -1233,6 +1233,7 @@ coverage = [
 dev = [
     { name = "codecov" },
     { name = "coverage" },
+    { name = "fastmcp" },
     { name = "gp-libs" },
     { name = "gp-sphinx" },
     { name = "mypy" },
@@ -1246,6 +1247,7 @@ dev = [
     { name = "sphinx-autobuild" },
     { name = "sphinx-autodoc-api-style" },
     { name = "sphinx-autodoc-pytest-fixtures" },
+    { name = "tomlkit" },
     { name = "ty" },
     { name = "types-docutils" },
 ]
@@ -1260,11 +1262,13 @@ lint = [
     { name = "ruff" },
 ]
 testing = [
+    { name = "fastmcp" },
     { name = "gp-libs" },
     { name = "pytest" },
     { name = "pytest-mock" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-watcher" },
+    { name = "tomlkit" },
 ]
 
 [package.metadata]
@@ -1280,6 +1284,7 @@ coverage = [
 dev = [
     { name = "codecov" },
     { name = "coverage" },
+    { name = "fastmcp" },
     { name = "gp-libs", specifier = ">=0.0.19" },
     { name = "gp-sphinx", specifier = "==0.1.0a39" },
     { name = "mypy" },
@@ -1293,6 +1298,7 @@ dev = [
     { name = "sphinx-autobuild" },
     { name = "sphinx-autodoc-api-style", specifier = "==0.1.0a39" },
     { name = "sphinx-autodoc-pytest-fixtures", specifier = "==0.1.0a39" },
+    { name = "tomlkit" },
     { name = "ty" },
     { name = "types-docutils" },
 ]
@@ -1307,11 +1313,13 @@ lint = [
     { name = "ruff", specifier = ">=0.17.3" },
 ]
 testing = [
+    { name = "fastmcp" },
     { name = "gp-libs", specifier = ">=0.0.19" },
     { name = "pytest" },
     { name = "pytest-mock" },
     { name = "pytest-rerunfailures" },
     { name = "pytest-watcher" },
+    { name = "tomlkit" },
 ]
 
 [[package]]
@@ -2350,8 +2358,8 @@ source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.15'",
     "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
-    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform != 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
     "(python_full_version >= '3.11.5' and python_full_version < '3.12') or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten')",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/95/48/21a393ff731b8f928fa4f8176f9a7ceba2252ee60a5149f25b45c292aa5c/soupsieve-4.1.tar.gz", hash = "sha256:ca9abf7126667010d8f6e9b39bfc1bc3b23c8aed9bcb0f54a754dde969bb8aab", size = 161955, upload-time = "2026-11-10T01:59:50.399Z" }
@@ -2669,6 +2677,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/48/bb/3d8757f21e9a53d9035c9eb039a777047139a16bfdbedfc7a58241c3d914/starlette-1.10.0.tar.gz", hash = "sha256:b8399098d4c1e3522734f7235dc79b1fc967f96cf139c81e0fa30479e0685f9b", size = 2734356, upload-time = "2026-10-24T15:04:12.342Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/2e/947cfe02def9371c07cd5bf5b6b61c829e9aecb9904db02a66cfafbc1eec/starlette-1.10.0-py3-none-any.whl", hash = "sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4", size = 80571, upload-time = "2026-10-24T15:04:10.371Z" },
+]
+
+[[package]]
+name = "tomlkit"
+version = "0.15.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/72/fc01563df95c189a9f65850096bdc205bc2fe37da6c740cd64afaf18d07e/tomlkit-0.15.2.tar.gz", hash = "sha256:83e32755ba1d20d9340bd069ee97e9f6232ba2346b63ffcba425de01f7e327a6", size = 190522, upload-time = "2026-10-16T04:07:08.166Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/46/7d84138a60a8bd796825b2d38ebe92d0d16501ca57d501b7c5d677401bbc/tomlkit-0.15.2-py3-none-any.whl", hash = "sha256:05562412163a3037b94497385fb7f9204c637bc605af7a48199e41cf2272f437", size = 52225, upload-time = "2026-10-16T04:07:09.216Z" },
 ]
 
 [[package]]
