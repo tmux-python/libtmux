@@ -270,14 +270,27 @@ def socket_matches(socket: str | None, caller: CallerContext) -> bool:
     False
     """
     if socket is None:
-        return caller.in_tmux and caller.socket_path is not None
+        # An unbound engine talks to the ambient $TMUX server, which is the
+        # caller's only when the MCP itself inherited it (process-env). A
+        # parent-walked caller's socket is NOT the ambient default.
+        return (
+            caller.in_tmux
+            and caller.socket_path is not None
+            and caller.source == "process-env"
+        )
     if caller.socket_path is None:
         return False
     if "/" in socket:
-        return os.path.realpath(socket) == os.path.realpath(caller.socket_path)
+        try:
+            return os.path.realpath(socket) == os.path.realpath(caller.socket_path)
+        except OSError:
+            return socket == caller.socket_path
     tmpdir = os.environ.get("TMUX_TMPDIR") or "/tmp"
     expected = f"{tmpdir}/tmux-{os.getuid()}/{socket}"
-    return os.path.realpath(expected) == os.path.realpath(caller.socket_path)
+    try:
+        return os.path.realpath(expected) == os.path.realpath(caller.socket_path)
+    except OSError:
+        return expected == caller.socket_path
 
 
 def socket_could_match(socket: str | None, caller: CallerContext) -> bool:
@@ -306,7 +319,9 @@ def socket_could_match(socket: str | None, caller: CallerContext) -> bool:
     if caller.socket_path is None:
         return True
     if socket is None:
-        return True
+        # Ambient default engine: the caller's server only when the MCP inherited
+        # $TMUX (process-env), not when its pane was parent-walked or overridden.
+        return caller.source == "process-env"
     if "/" in socket:
         try:
             return os.path.realpath(socket) == os.path.realpath(caller.socket_path)
