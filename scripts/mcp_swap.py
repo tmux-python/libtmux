@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["tomlkit>=0.13"]
 # ///
-"""Swap MCP server configs across Claude / Codex / Cursor / Gemini CLIs.
+"""Swap MCP server configs across Claude / Codex / Cursor / Gemini / Grok / Antigravity.
 
 Use when you want every installed agent CLI to run a local checkout of an
 MCP server (editable) instead of a pinned release. ``use-local`` rewrites
@@ -35,8 +35,13 @@ Scope
 This script is best-effort and intentionally narrow:
 
 - **Global configs only.** Writes to ``~/.cursor/mcp.json``,
-  ``~/.claude.json``, ``~/.codex/config.toml``, and
-  ``~/.gemini/settings.json``. Workspace / project-local configs
+  ``~/.claude.json``, ``~/.codex/config.toml``,
+  ``~/.gemini/settings.json``, ``~/.grok/config.toml`` (TOML
+  ``mcp_servers``, same shape as Codex), and
+  ``~/.gemini/antigravity/mcp_config.json`` (Antigravity, JSON
+  ``mcpServers``). The Antigravity desktop IDE and the ``agy`` CLI may
+  read different profiles; only the documented profile path above is
+  written. Workspace / project-local configs
   (``$PWD/.cursor/mcp.json``, ``$PWD/.gemini/settings.json``,
   per-project ``projects.<abs>.mcpServers`` entries inside
   ``~/.claude.json`` *are* recognised for Claude only) are NOT
@@ -83,8 +88,8 @@ import typing as t
 import tomlkit
 import tomlkit.items
 
-CLIName = t.Literal["claude", "codex", "cursor", "gemini"]
-ALL_CLIS: tuple[CLIName, ...] = ("claude", "codex", "cursor", "gemini")
+CLIName = t.Literal["claude", "codex", "cursor", "gemini", "grok", "agy"]
+ALL_CLIS: tuple[CLIName, ...] = ("claude", "codex", "cursor", "gemini", "grok", "agy")
 
 #: Claude config scope: ``"user"`` targets the user/system-level top-level
 #: ``mcpServers`` fallback that applies to every project without its own
@@ -219,6 +224,24 @@ CLIS: dict[CLIName, CLIInfo] = {
         config_path=pathlib.Path.home() / ".gemini" / "settings.json",
         fmt="json",
     ),
+    "grok": CLIInfo(
+        name="grok",
+        binary="grok",
+        config_path=pathlib.Path.home() / ".grok" / "config.toml",
+        fmt="toml",
+    ),
+    # Antigravity (the ``agy`` CLI). Its MCP config is the standard JSON
+    # ``mcpServers`` shape (same as Cursor / Gemini) under the
+    # Antigravity profile dir. The file may not exist until the IDE/CLI
+    # writes it and starts empty; ``load_config`` tolerates a 0-byte
+    # JSON file as ``{}``. Note: the desktop IDE and the ``agy`` CLI may
+    # read different profiles; this targets the documented profile path.
+    "agy": CLIInfo(
+        name="agy",
+        binary="agy",
+        config_path=pathlib.Path.home() / ".gemini" / "antigravity" / "mcp_config.json",
+        fmt="json",
+    ),
 }
 
 
@@ -292,10 +315,16 @@ class SwapEntry:
 
 
 def load_config(info: CLIInfo) -> t.Any:
-    """Parse a CLI's config file (JSON or TOML) into an editable structure."""
+    """Parse a CLI's config file (JSON or TOML) into an editable structure.
+
+    An empty JSON file is treated as an empty object ``{}`` rather than a
+    parse error: Antigravity's ``mcp_config.json`` is created empty until
+    a server is added, so a swap must be able to seed the first entry.
+    """
     raw = info.config_path.read_bytes()
     if info.fmt == "json":
-        return json.loads(raw)
+        text = raw.decode().strip()
+        return json.loads(text) if text else {}
     return tomlkit.parse(raw.decode())
 
 
@@ -459,9 +488,9 @@ def get_server(
             if not node:
                 return None
             entry = node.get("mcpServers", {}).get(name)
-    elif cli in ("cursor", "gemini"):
+    elif cli in ("cursor", "gemini", "agy"):
         entry = config.get("mcpServers", {}).get(name)
-    else:  # cli == "codex"
+    else:  # cli in ("codex", "grok") — TOML "mcp_servers" table
         entry = config.get("mcp_servers", {}).get(name)
     if entry is None:
         return None
@@ -496,12 +525,12 @@ def set_server(
         had = name in servers
         servers[name] = spec.to_json_dict(include_stdio_type=True)
         return "replaced" if had else "added"
-    if cli in ("cursor", "gemini"):
+    if cli in ("cursor", "gemini", "agy"):
         servers = config.setdefault("mcpServers", {})
         had = name in servers
         servers[name] = spec.to_json_dict()
         return "replaced" if had else "added"
-    if cli == "codex":
+    if cli in ("codex", "grok"):
         # tomlkit: top-level tables are accessed via dict protocol too.
         mcp_servers = config.get("mcp_servers")
         if mcp_servers is None:
@@ -547,9 +576,9 @@ def delete_server(
             return False
         servers = node.get("mcpServers", {})
         return servers.pop(name, None) is not None
-    if cli in ("cursor", "gemini"):
+    if cli in ("cursor", "gemini", "agy"):
         return config.get("mcpServers", {}).pop(name, None) is not None
-    if cli == "codex":
+    if cli in ("codex", "grok"):
         mcp_servers = config.get("mcp_servers")
         if mcp_servers is None:
             return False
