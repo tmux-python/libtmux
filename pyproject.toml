@@ -103,6 +103,11 @@ lint = [
 [project.entry-points.pytest11]
 libtmux = "libtmux.pytest_plugin"
 
+[project.scripts]
+# Experimental typed-ops MCP server (stdio). Requires the `mcp` extra;
+# `main` prints an install hint and exits non-zero when fastmcp is absent.
+libtmux-engine-mcp = "libtmux.experimental.mcp:main"
+
 [project.optional-dependencies]
 mcp = [
     "fastmcp>=3.4.2",
