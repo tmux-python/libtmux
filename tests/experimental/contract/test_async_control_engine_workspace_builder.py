@@ -27,12 +27,20 @@ from libtmux.experimental.ops import (
     FoldingPlanner,
     LazyPlan,
     MarkedPlanner,
+    NewSession,
     SequentialPlanner,
+    SetEnvironment,
+    SetOption,
+    SetWindowOption,
 )
 from libtmux.experimental.workspace import (
+    HostStep,
+    Pane,
+    Window,
     Workspace,
     WorkspaceCompileError,
     analyze,
+    compile_full,
     confirm,
 )
 from libtmux.test.retry import retry_until
@@ -307,3 +315,310 @@ def test_workspace_builder_rich_async(session: Session, tmp_path: Path) -> None:
     assert [w.window_name for w in built.windows] == ["editor", "logs", "shell"]
     assert built.active_window.window_name == "shell"
     assert str(built.show_option("history-limit")) == "5000"
+
+
+# --- Analyzer + IR normalization (offline, no tmux) ---
+
+
+def test_pane_commands_normalizes_run_forms() -> None:
+    """Pane.commands turns run (None / str / sequence) into a command tuple."""
+    assert Pane().commands == ()
+    assert Pane(run="vim").commands == ("vim",)
+    assert Pane(run=["cd src", "pytest -q"]).commands == ("cd src", "pytest -q")
+
+
+def test_analyze_dimensions_list_and_mapping() -> None:
+    """The analyzer coerces both ``[x, y]`` and ``{width, height}`` dimensions."""
+    panes = {"windows": [{"panes": ["echo a"]}]}
+    listed = analyze({"session_name": "s", "dimensions": [200, 50], **panes})
+    mapped = analyze(
+        {"session_name": "s", "dimensions": {"width": 100, "height": 40}, **panes},
+    )
+    unset = analyze({"session_name": "s", **panes})
+    assert listed.dimensions == (200, 50)
+    assert mapped.dimensions == (100, 40)
+    assert unset.dimensions is None
+
+
+def test_analyze_shell_command_shorthand_forms() -> None:
+    """shell_command shorthand expands: bare string, list, and ``{cmd}`` items."""
+    ws = analyze(
+        {
+            "session_name": "s",
+            "windows": [
+                {
+                    "panes": [
+                        {"shell_command": "echo solo"},
+                        {"shell_command": ["echo a", {"cmd": "echo b"}]},
+                        None,
+                    ],
+                },
+            ],
+        },
+    )
+    panes = ws.windows[0].panes
+    assert panes[0].commands == ("echo solo",)
+    assert panes[1].commands == ("echo a", "echo b")
+    assert panes[2].commands == ()  # a None pane is an empty (implicit) pane
+
+
+def test_analyze_passes_through_session_fields() -> None:
+    """Session-level fields (env/options/before_script/on_exists) survive analysis."""
+    ws = analyze(
+        {
+            "session_name": "s",
+            "on_exists": "replace",
+            "before_script": "echo setup",
+            "environment": {"E": "1"},
+            "options": {"history-limit": "5000"},
+            "windows": [{"panes": ["echo a"]}],
+        },
+    )
+    assert ws.on_exists == "replace"
+    assert ws.before_script == "echo setup"
+    assert dict(ws.environment) == {"E": "1"}
+    assert dict(ws.options) == {"history-limit": "5000"}
+
+
+def test_analyze_normalizes_pane_orchestration_fields() -> None:
+    """Per-pane orchestration (sleeps, start_directory, focus) lands on the Pane."""
+    ws = analyze(
+        {
+            "session_name": "s",
+            "windows": [
+                {
+                    "panes": [
+                        {
+                            "shell_command": ["echo x"],
+                            "sleep_before": 0.1,
+                            "sleep_after": 0.2,
+                            "start_directory": "/tmp",
+                            "focus": True,
+                        },
+                    ],
+                },
+            ],
+        },
+    )
+    pane = ws.windows[0].panes[0]
+    assert (pane.sleep_before, pane.sleep_after) == (0.1, 0.2)
+    assert pane.start_directory == "/tmp"
+    assert pane.focus is True
+
+
+def test_analyze_rejects_non_mapping_yaml() -> None:
+    """A YAML scalar (not a mapping) is rejected rather than silently mis-parsed."""
+    with pytest.raises(TypeError):
+        analyze("just-a-scalar")
+
+
+def test_analyze_rejects_unsupported_pane() -> None:
+    """A pane that is neither None, a string, nor a mapping fails closed."""
+    with pytest.raises(TypeError):
+        analyze({"session_name": "s", "windows": [{"panes": [123]}]})
+
+
+# --- Compiler: op emission + host-step schedule (offline, no tmux) ---
+
+
+def test_compile_threads_dimensions_into_new_session() -> None:
+    """Workspace dimensions become the new-session ``-x``/``-y`` width/height."""
+    ws = Workspace(
+        name="ws-dim",
+        dimensions=(120, 40),
+        windows=[Window("w", panes=[Pane(run="echo a")])],
+    )
+    new_session = compile_full(ws).plan.operations[0]
+    assert isinstance(new_session, NewSession)  # first op, narrowed for its fields
+    assert (new_session.width, new_session.height) == (120, 40)
+
+
+def test_compile_emits_environment_and_options() -> None:
+    """Session env/options and window options compile to their write ops, valued."""
+    ws = Workspace(
+        name="ws-opts",
+        environment={"WS_E": "1"},
+        options={"history-limit": "9000"},
+        windows=[
+            Window("w", options={"main-pane-height": "10"}, panes=[Pane(run="echo a")]),
+        ],
+    )
+    ops = compile_full(ws).plan.operations
+    set_env = next(op for op in ops if isinstance(op, SetEnvironment))
+    set_opt = next(op for op in ops if isinstance(op, SetOption))
+    set_wopt = next(op for op in ops if isinstance(op, SetWindowOption))
+    assert (set_env.name, set_env.value) == ("WS_E", "1")
+    assert (set_opt.option, set_opt.value) == ("history-limit", "9000")
+    assert (set_wopt.option, set_wopt.value) == ("main-pane-height", "10")
+
+
+def test_compile_schedules_host_steps_off_the_op_spine() -> None:
+    """before_script and pane sleeps become host steps, not recorded operations."""
+    ws = Workspace(
+        name="ws-hosts",
+        start_directory="/tmp",
+        before_script="echo hi",
+        windows=[
+            Window(
+                "w",
+                panes=[
+                    Pane(run="echo a", sleep_before=0.5),
+                    Pane(run="echo b", sleep_after=0.7),
+                ],
+            ),
+        ],
+    )
+    compiled = compile_full(ws)
+    operations = compiled.plan.operations
+
+    # no orchestration leaks into the pure op spine
+    assert {"sleep", "script"}.isdisjoint(op.kind for op in operations)
+
+    # before_script runs before any op, carrying the session cwd
+    assert compiled.pre == (HostStep("script", command="echo hi", cwd="/tmp"),)
+
+    # sleep_before is anchored just before its pane's first send-keys;
+    # sleep_after just after the last send-keys -- asserted by position, not index
+    sends = [i for i, op in enumerate(operations) if op.kind == "send_keys"]
+    assert HostStep("sleep", seconds=0.5) in compiled.host_after[min(sends) - 1]
+    assert HostStep("sleep", seconds=0.7) in compiled.host_after[max(sends)]
+
+
+def test_compile_reuses_first_window_creating_only_the_rest() -> None:
+    """Window 0 reuses the session's implicit window; only 2..N create windows."""
+    unnamed = compile_full(Workspace(name="s", windows=[Window(panes=[Pane(run="x")])]))
+    unnamed_kinds = [op.kind for op in unnamed.plan.operations]
+    assert "new_window" not in unnamed_kinds
+    assert "rename_window" not in unnamed_kinds  # nothing to rename when unnamed
+
+    named = compile_full(Workspace(name="s", windows=[Window("w", panes=[Pane("x")])]))
+    named_kinds = [op.kind for op in named.plan.operations]
+    assert "new_window" not in named_kinds
+    assert named_kinds.count("rename_window") == 1  # first window renamed in place
+
+    two = compile_full(
+        Workspace(
+            name="s",
+            windows=[Window("a", panes=[Pane("x")]), Window("b", panes=[Pane("y")])],
+        ),
+    )
+    assert [op.kind for op in two.plan.operations].count("new_window") == 1
+
+
+def test_compile_workspace_method_matches_compile_full_plan() -> None:
+    """``Workspace.compile()`` returns exactly ``compile_full().plan`` (same ops)."""
+    ws = Workspace(name="s", windows=[Window("w", panes=[Pane("echo a"), Pane("b")])])
+    via_method = [op.kind for op in ws.compile().operations]
+    via_full = [op.kind for op in compile_full(ws).plan.operations]
+    assert via_method == via_full
+
+
+# --- Runner preflight + confirm negative path (live tmux) ---
+
+
+def test_workspace_before_script_runs_as_host_step(
+    session: Session,
+    tmp_path: Path,
+) -> None:
+    """before_script executes on the host, in start_directory, before the build."""
+    server = session.server
+    sentinel = tmp_path / "before_script.ran"
+    spec = analyze(
+        {
+            "session_name": "ws-before",
+            "start_directory": str(tmp_path),
+            "on_exists": "replace",
+            # relative path -> proves the step runs with cwd == start_directory
+            "before_script": f"echo ok > {sentinel.name}",
+            "windows": [{"window_name": "w", "panes": ["echo a"]}],
+        },
+    )
+
+    result = spec.build(SubprocessEngine.for_server(server))
+    assert result.ok
+    assert sentinel.exists()
+    assert sentinel.read_text().strip() == "ok"
+
+
+def test_workspace_on_exists_reuse_skips_existing(
+    session: Session,
+    tmp_path: Path,
+) -> None:
+    """on_exists='reuse' leaves an existing session untouched and skips the build."""
+    server = session.server
+    engine = SubprocessEngine.for_server(server)
+    spec = analyze(
+        {
+            "session_name": "ws-reuse",
+            "start_directory": str(tmp_path),
+            "on_exists": "reuse",
+            "windows": [{"window_name": "only", "panes": ["echo a"]}],
+        },
+    )
+
+    assert spec.build(engine).ok
+    before = [
+        w.window_id for w in server.sessions.filter(session_name="ws-reuse")[0].windows
+    ]
+
+    # the second build sees the session and short-circuits: empty but ok
+    second = spec.build(engine)
+    assert second.ok
+    assert second.results == ()
+    after = [
+        w.window_id for w in server.sessions.filter(session_name="ws-reuse")[0].windows
+    ]
+    assert before == after  # untouched -- same windows, not rebuilt
+
+
+def test_workspace_on_exists_error_raises(
+    session: Session,
+    tmp_path: Path,
+) -> None:
+    """on_exists='error' refuses to clobber an existing session of the same name."""
+    server = session.server
+    engine = SubprocessEngine.for_server(server)
+    spec = analyze(
+        {
+            "session_name": "ws-error",
+            "start_directory": str(tmp_path),
+            "on_exists": "error",
+            "windows": [{"window_name": "w", "panes": ["echo a"]}],
+        },
+    )
+
+    assert spec.build(engine).ok
+    with pytest.raises(FileExistsError):
+        spec.build(engine)
+
+
+def test_workspace_confirm_detects_structural_mismatch(
+    session: Session,
+    tmp_path: Path,
+) -> None:
+    """Confirm flags a problem when the live session diverges from the spec."""
+    server = session.server
+    built = analyze(
+        {
+            "session_name": "ws-confirm",
+            "start_directory": str(tmp_path),
+            "on_exists": "replace",
+            "windows": [{"window_name": "only", "panes": ["echo a"]}],
+        },
+    )
+    assert built.build(SubprocessEngine.for_server(server)).ok
+    assert confirm(built, server).ok  # matches what was actually built
+
+    # a spec declaring more windows than were built must be flagged
+    divergent = analyze(
+        {
+            "session_name": "ws-confirm",
+            "windows": [
+                {"window_name": "only", "panes": ["echo a"]},
+                {"window_name": "extra", "panes": ["echo b"]},
+            ],
+        },
+    )
+    report = confirm(divergent, server)
+    assert not report.ok
+    assert any("window count" in problem for problem in report.problems)
