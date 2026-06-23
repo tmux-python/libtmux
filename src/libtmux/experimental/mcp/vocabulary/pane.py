@@ -22,9 +22,9 @@ from libtmux.experimental.engines.base import AsyncTmuxEngine
 from libtmux.experimental.mcp.target_resolver import resolve_target
 from libtmux.experimental.mcp.vocabulary._bridge import synced
 from libtmux.experimental.mcp.vocabulary._caller import (
-    CallerContext,
     engine_socket,
     is_strict_caller,
+    socket_could_match,
 )
 from libtmux.experimental.mcp.vocabulary._geometry import (
     Corner,
@@ -36,7 +36,10 @@ from libtmux.experimental.mcp.vocabulary._geometry import (
 from libtmux.experimental.mcp.vocabulary._resolve import (
     DIR_FLAG,
     active_pane_id,
+    caller_of,
+    guard_self_kill,
     opt_target,
+    pane_id,
     raise_target_hint,
     reject_relative_special,
     resolve_origin,
@@ -246,7 +249,7 @@ async def asearch_panes(
     matcher = _compile(pattern, ignore_case=ignore_case)
     listing = await arun(ListPanes(all_panes=True), engine, version=version)
     listing.raise_for_status()
-    caller = CallerContext.from_env()
+    caller = caller_of(engine)
     socket = engine_socket(engine)
     matches: list[PaneMatch] = []
     for row in listing.rows[:max_panes]:
@@ -373,6 +376,9 @@ async def arespawn_pane(
     """Restart a pane's process in place (``respawn-pane``)."""
     resolved = resolve_target(target)
     reject_relative_special(resolved)
+    await guard_self_kill(
+        engine, pane=await pane_id(engine, target, version), version=version
+    )
     (
         await arun(
             RespawnPane(
@@ -397,6 +403,11 @@ async def akill_pane(
     """Kill a pane (or all others in its window with ``others=True``)."""
     resolved = resolve_target(target)
     reject_relative_special(resolved)
+    target_pane = await pane_id(engine, target, version)
+    if others:
+        await _guard_kill_others(engine, target_pane, version)
+    else:
+        await guard_self_kill(engine, pane=target_pane, version=version)
     (
         await arun(
             KillPane(target=resolved, others=others),
@@ -404,6 +415,30 @@ async def akill_pane(
             version=version,
         )
     ).raise_for_status()
+
+
+async def _guard_kill_others(
+    engine: AsyncTmuxEngine,
+    target_pane: str,
+    version: str | None,
+) -> None:
+    """Refuse ``kill_pane(others=True)`` when the caller is a sibling of the target.
+
+    ``others=True`` keeps the target and kills every other pane in its window, so
+    the danger is the caller pane being one of those siblings (not the target).
+    """
+    caller = caller_of(engine)
+    if not caller.in_tmux or not caller.pane_id or caller.pane_id == target_pane:
+        return
+    if not socket_could_match(engine_socket(engine), caller):
+        return
+    target_window = await window_id(engine, PaneId(target_pane), version)
+    caller_window = await window_id(engine, PaneId(caller.pane_id), version)
+    if caller_window == target_window:
+        raise_target_hint(
+            f"refusing to kill the other panes of window {target_window}: one of "
+            "them runs this MCP server. Use a manual tmux command if intended.",
+        )
 
 
 async def alist_panes(
@@ -421,7 +456,7 @@ async def alist_panes(
     """
     result = await arun(ListPanes(all_panes=all_panes), engine, version=version)
     result.raise_for_status()
-    caller = CallerContext.from_env()
+    caller = caller_of(engine)
     socket = engine_socket(engine)
     rows = tuple(
         {
@@ -482,7 +517,9 @@ async def aresolve_relative_pane(
     Resolved from layout geometry (the ``pane_left/top/right/bottom`` the list
     template already carries) -- robust across tmux versions, and without moving
     the active pane. ``origin=None`` means the caller's own pane (the pane that
-    launched this MCP), falling back to the active pane outside tmux.
+    launched this MCP), resolved only when this engine targets the caller's tmux
+    server; otherwise an explicit ``origin`` is required. This never falls back to
+    tmux's active pane (the control client's cursor, not the caller).
     """
     origin_id = await resolve_origin(engine, origin, version)
     if not origin_id:
