@@ -25,14 +25,21 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
+import time
 import typing as t
+from dataclasses import dataclass
 
 from fastmcp import Context
 
 from libtmux.experimental.engines.base import CommandRequest
+from libtmux.experimental.mcp._settle import (
+    SettleReason,
+    accumulate_until_settle,
+    output_payload,
+)
 
 if t.TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Sequence
+    from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 
     from fastmcp import FastMCP
 
@@ -42,6 +49,62 @@ EventMode = t.Literal["off", "push", "pull", "both"]
 EventSource = t.Literal["subscription", "output"]
 
 _RING_SIZE = 1024
+
+# tmux format read once at settle to fill DoneMetadata (tab-joined, one round-trip).
+_DONE_FORMAT = "\t".join(
+    (
+        "#{pane_dead}",
+        "#{pane_dead_status}",
+        "#{pane_dead_signal}",
+        "#{pane_current_command}",
+        "#{cursor_y}",
+        "#{history_size}",
+        "#{pane_in_mode}",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class DoneMetadata:
+    """Needle-free done-heuristics, read once at settle for the agent to interpret.
+
+    A ``pane_dead`` pane with a ``pane_dead_status`` is a *hard* "process exited"
+    signal; ``pane_current_command`` reverting to a shell is a *soft* "command
+    finished" signal. The screen-state fields add context without claiming intent.
+    """
+
+    pane_dead: bool
+    pane_dead_status: int | None
+    pane_dead_signal: str | None
+    pane_current_command: str | None
+    cursor_y: int | None
+    history_size: int | None
+    pane_in_mode: bool
+
+
+@dataclass(frozen=True)
+class MonitorResult:
+    """What ``wait_for_output`` returns; auto-serialized to structured content.
+
+    ``reason`` is itself a signal: ``settled`` (the pane went quiet -- finished
+    *or* blocked on input; ``done`` disambiguates), ``time_cap`` (still producing
+    when the budget ran out; a partial chunk is returned), ``byte_cap`` (flooded,
+    ``truncated``), ``stream_end`` (the notification stream ended).
+    ``idle_ms_observed`` is only meaningful when ``reason == "settled"``;
+    ``snapshot_lines`` is ``None`` when the call passed ``snapshot=False``.
+    """
+
+    pane_id: str
+    reason: SettleReason
+    captured_text: str
+    byte_count: int
+    frame_count: int
+    idle_ms_observed: int
+    elapsed_ms: int
+    truncated: bool
+    dropped: int
+    done: DoneMetadata
+    snapshot_lines: tuple[str, ...] | None
 
 
 class _StreamEngine(t.Protocol):
@@ -145,6 +208,7 @@ def register_events(
         _register_push(mcp, stream, source=source)
     if mode in ("pull", "both"):
         _register_pull(mcp, stream)
+    _register_monitor(mcp, stream)
 
 
 def _register_push(
@@ -229,5 +293,167 @@ def _register_pull(mcp: FastMCP, engine: _StreamEngine) -> None:
         description="Poll buffered tmux events since a cursor",
         tags={"readonly", "events"},
         annotations=ToolAnnotations(title="poll_events", readOnlyHint=True),
+    )
+    mcp.add_tool(tool)
+
+
+async def _read_done(engine: _StreamEngine, pane_id: str) -> DoneMetadata:
+    """Fill :class:`DoneMetadata` for *pane_id* in one ``display-message`` read."""
+    from libtmux.experimental.mcp.vocabulary.server import adisplay_message
+
+    text = (await adisplay_message(engine, pane_id, _DONE_FORMAT)).text
+    fields = (text.split("\t") + [""] * 7)[:7]
+
+    def _as_int(value: str) -> int | None:
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            return int(value)
+        except ValueError:
+            return None
+
+    def _as_str(value: str) -> str | None:
+        return value.strip() or None
+
+    return DoneMetadata(
+        pane_dead=fields[0].strip() == "1",
+        pane_dead_status=_as_int(fields[1]),
+        pane_dead_signal=_as_str(fields[2]),
+        pane_current_command=_as_str(fields[3]),
+        cursor_y=_as_int(fields[4]),
+        history_size=_as_int(fields[5]),
+        pane_in_mode=fields[6].strip() == "1",
+    )
+
+
+async def _ensure_attached(engine: _StreamEngine, session_id: str) -> None:
+    """Attach the control client to *session_id* so its panes emit ``%output``.
+
+    A bare ``tmux -C`` control client receives **no** ``%output`` until it
+    attaches to a session (a server-global notification like ``%window-add``
+    arrives without attaching, but per-pane output does not). Attaching also
+    triggers a one-time screen redraw, so a *successful* attachment is tracked
+    per engine: re-watching the same session does not re-attach or redraw again.
+
+    Raises on a failed attach (stale or killed session) instead of caching, so
+    the caller gets a clear error rather than a silently empty capture and a
+    later call can retry.
+    """
+    if getattr(engine, "_attached_session", None) == session_id:
+        return
+    result = await engine.run(
+        CommandRequest.from_args("attach-session", "-t", session_id),
+    )
+    if result.returncode != 0:
+        detail = " ".join(result.stderr) or "attach-session failed"
+        msg = f"cannot watch {session_id}: {detail}"
+        raise RuntimeError(msg)
+    engine._attached_session = session_id  # type: ignore[attr-defined]
+
+
+def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
+    """Register the ``wait_for_output`` needle-free settle monitor tool."""
+    from fastmcp.tools import FunctionTool
+    from mcp.types import ToolAnnotations
+
+    async def wait_for_output(
+        ctx: Context,
+        target: str,
+        settle_ms: int = 750,
+        timeout: float = 30.0,
+        max_bytes: int = 131072,
+        stream_partials: bool = False,
+        snapshot: bool = True,
+    ) -> MonitorResult:
+        """Watch one pane's live output and return when it goes quiet (settles).
+
+        Needle-free: accumulates the bytes the pane *produces* and returns the
+        instant it stays idle for ``settle_ms`` -- or the wall-clock ``timeout``
+        (seconds) or ``max_bytes`` cap fires, or the stream ends. No regex, no
+        sentinel injection: read ``captured_text`` + ``done`` and decide what
+        happened.
+
+        ``reason='settled'`` means *stopped producing output*, NOT *succeeded* --
+        it cannot tell "finished, back to the shell" from "blocked on stdin". Use
+        ``done.pane_dead`` (+ ``done.pane_dead_status``) and
+        ``done.pane_current_command`` (a shell name) to disambiguate;
+        ``dropped``/``truncated`` warn the captured chunk may be incomplete.
+
+        Set ``stream_partials=True`` to also push each chunk live as an MCP log
+        message. ``snapshot`` defaults to ``True``: at settle the rendered grid is
+        captured into ``snapshot_lines``; pass ``snapshot=False`` to skip that
+        capture, leaving ``snapshot_lines`` ``None``. While it runs it shares
+        tmux's single ``%output`` stream with ``watch_events`` / ``poll_events``;
+        it is bounded by the caps and short-lived, and each call runs in its own
+        task so it does not block other tools. The first watch on a session
+        attaches the control client (so its panes emit ``%output``), which draws
+        the current screen once into ``captured_text`` -- the clean rendered grid,
+        when requested, is in ``snapshot_lines``.
+        """
+        from libtmux.experimental.mcp.target_resolver import resolve_target
+        from libtmux.experimental.mcp.vocabulary._resolve import (
+            pane_id as resolve_pane_id,
+            reject_relative_special,
+            session_id_of,
+        )
+        from libtmux.experimental.mcp.vocabulary.pane import acapture_pane
+
+        reject_relative_special(resolve_target(target))
+        pane = await resolve_pane_id(engine, target, None)
+        await _ensure_attached(engine, await session_id_of(engine, target, None))
+
+        dropped_before = getattr(engine, "dropped_notifications", 0)
+        started = time.monotonic()
+
+        async def _frames() -> AsyncGenerator[str, None]:
+            async for notification in engine.subscribe():
+                payload = output_payload(notification.raw, pane)
+                if payload is None:
+                    continue
+                if stream_partials:
+                    await ctx.info(payload)
+                yield payload
+
+        outcome = await accumulate_until_settle(
+            _frames(),
+            settle_ms=settle_ms,
+            timeout_ms=int(timeout * 1000),
+            max_bytes=max_bytes,
+        )
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        dropped = getattr(engine, "dropped_notifications", 0) - dropped_before
+
+        done = await _read_done(engine, pane)
+        snapshot_lines: tuple[str, ...] | None = None
+        if snapshot:
+            captured = await acapture_pane(
+                engine,
+                pane,
+                join_wrapped=True,
+                trim_trailing=True,
+            )
+            snapshot_lines = tuple(captured.lines)
+
+        return MonitorResult(
+            pane_id=pane,
+            reason=outcome.reason,
+            captured_text=outcome.text,
+            byte_count=outcome.byte_count,
+            frame_count=outcome.frame_count,
+            idle_ms_observed=outcome.idle_ms_observed,
+            elapsed_ms=elapsed_ms,
+            truncated=outcome.truncated,
+            dropped=dropped,
+            done=done,
+            snapshot_lines=snapshot_lines,
+        )
+
+    tool = FunctionTool.from_function(
+        wait_for_output,
+        name="wait_for_output",
+        description="Watch a pane's output and return when it settles (needle-free)",
+        tags={"readonly", "events", "monitor"},
+        annotations=ToolAnnotations(title="wait_for_output", readOnlyHint=True),
     )
     mcp.add_tool(tool)
