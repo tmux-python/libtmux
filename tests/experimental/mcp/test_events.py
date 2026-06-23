@@ -46,6 +46,69 @@ class FakeStreamEngine:
 
 
 _STREAM = (b"%window-add @3", b"%output %1 hi", b"%window-close @3")
+_MON_STREAM = (b"%output %1 a  b", b"%output %1 c", b"%window-add @9")
+
+
+class InstrumentedEngine:
+    """A fake stream engine that records commands and scripts a few responses.
+
+    Records every ``run`` argv in ``calls`` (so attach idempotence is assertable),
+    exposes a settable ``dropped_notifications`` counter, can inject an
+    ``attach-session`` failure, and can return a canned ``display-message`` line
+    for the done-heuristics format.
+    """
+
+    def __init__(
+        self,
+        raw: tuple[bytes, ...] = (),
+        *,
+        attach_returncode: int = 0,
+        done_line: str | None = None,
+        dropped_after: int = 0,
+    ) -> None:
+        self._raw = raw
+        self.calls: list[tuple[str, ...]] = []
+        self.dropped_notifications = 0
+        self._attached_session: str | None = None
+        self._attach_returncode = attach_returncode
+        self._done_line = done_line
+        self._dropped_after = dropped_after
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        """Record the command and return a scripted result."""
+        args = tuple(request.args)
+        self.calls.append(args)
+        if args and args[0] == "attach-session":
+            stderr = () if self._attach_returncode == 0 else ("can't find session",)
+            return CommandResult(
+                cmd=("tmux", *args),
+                returncode=self._attach_returncode,
+                stderr=stderr,
+            )
+        if args and args[0] == "display-message":
+            fmt = args[-1]
+            if "pane_dead" in fmt and self._done_line is not None:
+                return CommandResult(
+                    cmd=("tmux", *args),
+                    returncode=0,
+                    stdout=(self._done_line,),
+                )
+            if "session_id" in fmt:
+                return CommandResult(cmd=("tmux", *args), returncode=0, stdout=("$1",))
+        return CommandResult(cmd=("tmux", *args), returncode=0)
+
+    async def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Acknowledge a batch of commands."""
+        return [await self.run(r) for r in requests]
+
+    async def subscribe(self) -> AsyncIterator[ControlNotification]:
+        """Yield the fixed notification sequence, then bump the drop counter."""
+        for raw in self._raw:
+            yield ControlNotification.parse(raw)
+        self.dropped_notifications += self._dropped_after
 
 
 def _tool_names(server: t.Any) -> set[str]:
@@ -123,6 +186,166 @@ def test_both_registers_push_and_pull() -> None:
     assert {"watch_events", "poll_events"} <= names
 
 
+def test_monitor_registered_when_streaming() -> None:
+    """wait_for_output is exposed whenever the engine streams, in any event mode."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    server = build_async_server(
+        FakeStreamEngine(_STREAM),
+        events="pull",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+    assert "wait_for_output" in _tool_names(server)
+
+
+def test_monitor_settles_on_stream_end() -> None:
+    """wait_for_output folds per-pane output and returns when the stream ends.
+
+    The decoded chunks preserve internal whitespace (``a  b`` + ``c`` -> ``a  bc``),
+    locking out the ``" ".join`` reconstruction bug; the non-output frame is
+    filtered.
+    """
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    server = build_async_server(
+        FakeStreamEngine(_MON_STREAM),
+        events="push",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> t.Any:
+        async with fastmcp.Client(server) as client:
+            result = await client.call_tool("wait_for_output", {"target": "%1"})
+            return result.data
+
+    data = asyncio.run(main())
+    assert data.pane_id == "%1"
+    assert data.reason == "stream_end"
+    assert data.captured_text == "a  bc"
+    assert data.frame_count == 2
+    assert data.truncated is False
+    assert data.snapshot_lines == []
+    assert data.done.pane_dead is False
+
+
+def test_monitor_snapshot_false_omits_grid() -> None:
+    """snapshot=False leaves snapshot_lines None and skips the capture."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    server = build_async_server(
+        InstrumentedEngine(_MON_STREAM),
+        events="push",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> t.Any:
+        async with fastmcp.Client(server) as client:
+            result = await client.call_tool(
+                "wait_for_output",
+                {"target": "%1", "snapshot": False},
+            )
+            return result.data
+
+    data = asyncio.run(main())
+    assert data.snapshot_lines is None
+    assert data.reason == "stream_end"
+
+
+def test_monitor_reports_dropped_delta() -> None:
+    """The dropped field is the engine's overflow-counter delta during the watch."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    server = build_async_server(
+        InstrumentedEngine(_MON_STREAM, dropped_after=5),
+        events="push",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> t.Any:
+        async with fastmcp.Client(server) as client:
+            result = await client.call_tool("wait_for_output", {"target": "%1"})
+            return result.data
+
+    data = asyncio.run(main())
+    assert data.dropped == 5
+
+
+def test_monitor_stream_partials_pushes_each_chunk() -> None:
+    """stream_partials=True pushes each decoded chunk as an MCP log message."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    logged: list[t.Any] = []
+
+    async def log_handler(message: t.Any) -> None:
+        # ctx.info wraps the payload as {"msg": ..., "extra": ...}.
+        data = message.data
+        logged.append(data["msg"] if isinstance(data, dict) else data)
+
+    server = build_async_server(
+        InstrumentedEngine(_MON_STREAM),
+        events="push",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> None:
+        async with fastmcp.Client(server, log_handler=log_handler) as client:
+            await client.call_tool(
+                "wait_for_output",
+                {"target": "%1", "stream_partials": True},
+            )
+
+    asyncio.run(main())
+    assert "a  b" in logged
+    assert "c" in logged
+
+
+def test_ensure_attached_raises_on_failed_attach() -> None:
+    """A failed attach raises and does not poison the per-engine cache."""
+    from libtmux.experimental.mcp.events import _ensure_attached
+
+    engine = InstrumentedEngine(attach_returncode=1)
+    with pytest.raises(RuntimeError, match="cannot watch"):
+        asyncio.run(_ensure_attached(engine, "$dead"))
+    assert getattr(engine, "_attached_session", None) is None
+
+
+def test_ensure_attached_is_idempotent_per_session() -> None:
+    """Re-watching the same session attaches exactly once (no repeated redraw)."""
+    from libtmux.experimental.mcp.events import _ensure_attached
+
+    engine = InstrumentedEngine()
+
+    async def main() -> None:
+        await _ensure_attached(engine, "$1")
+        await _ensure_attached(engine, "$1")
+
+    asyncio.run(main())
+    attaches = [c for c in engine.calls if c and c[0] == "attach-session"]
+    assert len(attaches) == 1
+    assert engine._attached_session == "$1"
+
+
+def test_read_done_parses_display_message_fields() -> None:
+    """_read_done maps the tab-joined display-message into DoneMetadata."""
+    from libtmux.experimental.mcp.events import _read_done
+
+    done_line = "1\t137\tHUP\tbash\t3\t50\t1"
+    engine = InstrumentedEngine(done_line=done_line)
+    done = asyncio.run(_read_done(engine, "%1"))
+    assert done.pane_dead is True
+    assert done.pane_dead_status == 137
+    assert done.pane_dead_signal == "HUP"
+    assert done.pane_current_command == "bash"
+    assert done.cursor_y == 3
+    assert done.history_size == 50
+    assert done.pane_in_mode is True
+
+
 def test_no_event_tools_without_a_stream() -> None:
     """A non-streaming engine registers no event tools, even when asked."""
     from libtmux.experimental.engines import ConcreteEngine
@@ -138,3 +361,4 @@ def test_no_event_tools_without_a_stream() -> None:
     names = _tool_names(server)
     assert "watch_events" not in names
     assert "poll_events" not in names
+    assert "wait_for_output" not in names
