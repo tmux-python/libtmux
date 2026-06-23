@@ -166,6 +166,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="libtmux-engine-mcp",
         description="Run the experimental libtmux typed-ops MCP server (stdio).",
+        epilog=(
+            "socket precedence: --socket-path > --socket-name > "
+            "$LIBTMUX_SOCKET_PATH > $LIBTMUX_SOCKET > discovered caller socket > "
+            "default; --no-caller-socket drops the caller socket. "
+            "caller identity: $TMUX/$TMUX_PANE > $LIBTMUX_MCP_CALLER_PANE "
+            "(+$LIBTMUX_MCP_CALLER_TMUX) > /proc parent walk "
+            "($LIBTMUX_MCP_DISCOVER=0 disables)."
+        ),
     )
     parser.add_argument("--name", default="tmux", help="server name")
     parser.add_argument(
