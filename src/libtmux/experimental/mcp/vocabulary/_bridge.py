@@ -50,6 +50,16 @@ class SyncToAsyncEngine:
     def __init__(self, engine: TmuxEngine) -> None:
         self._engine = engine
 
+    def __getattr__(self, name: str) -> t.Any:
+        """Delegate unknown attributes to the wrapped engine.
+
+        Keeps the wrapper transparent for the attributes the vocabulary reads off
+        an engine -- ``server_args`` (socket scoping) and the stashed
+        ``_caller_context`` -- so the sync surface sees the same identity the
+        async surface does.
+        """
+        return getattr(self._engine, name)
+
     async def run(self, request: CommandRequest) -> CommandResult:
         """Run one command on the wrapped sync engine (resolves inline)."""
         return self._engine.run(request)
