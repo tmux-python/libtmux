@@ -14,10 +14,18 @@ import typing as t
 import pytest
 
 from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
-from libtmux.experimental.mcp.vocabulary import create_session, kill_session, list_panes
+from libtmux.experimental.mcp.vocabulary import (
+    create_session,
+    kill_pane,
+    kill_session,
+    kill_window,
+    list_panes,
+    respawn_pane,
+)
 from libtmux.experimental.mcp.vocabulary._bridge import SyncToAsyncEngine
 from libtmux.experimental.mcp.vocabulary._caller import (
     CallerContext,
+    caller_server_args,
     engine_socket,
     is_strict_caller,
 )
@@ -129,6 +137,8 @@ def test_instructions_outside_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.delenv("TMUX", raising=False)
     monkeypatch.delenv("TMUX_PANE", raising=False)
+    # Disable the /proc parent walk so a test runner inside tmux is not discovered.
+    monkeypatch.setenv("LIBTMUX_MCP_DISCOVER", "0")
     server = build_async_server(SyncToAsyncEngine(ConcreteEngine()), events="off")
     assert "not running inside a tmux pane" in (server.instructions or "")
 
@@ -143,9 +153,11 @@ def test_is_caller_row_flag_live(
     try:
         pane = created.first_pane_id
         assert pane is not None
-        socket = engine_socket(engine) or ""
+        real_socket = session.server.cmd(
+            "display-message", "-p", "#{socket_path}"
+        ).stdout[0]
         monkeypatch.setenv("TMUX_PANE", pane)
-        monkeypatch.setenv("TMUX", f"{socket},0,0")
+        monkeypatch.setenv("TMUX", f"{real_socket},0,0")
         flagged = [
             row["pane_id"]
             for row in list_panes(engine).rows
@@ -153,6 +165,10 @@ def test_is_caller_row_flag_live(
         ]
         assert pane in flagged
     finally:
+        # Clear the simulated caller env so the self-kill guard does not refuse
+        # to tear down the session we pointed it at.
+        monkeypatch.delenv("TMUX_PANE", raising=False)
+        monkeypatch.delenv("TMUX", raising=False)
         kill_session(engine, created.session_id)
 
 
@@ -191,3 +207,144 @@ def test_resolve_origin_cross_server_requires_explicit(
     # Cross-server: the env %3 is refused; the caller must name an origin.
     with pytest.raises(ToolError, match="explicit origin"):
         asyncio.run(main())
+
+
+# --------------------------------------------------------------------------- #
+# CallerContext.discover -- precedence + injectable /proc parent walk
+# --------------------------------------------------------------------------- #
+def test_discover_process_env_wins() -> None:
+    """The server's own env beats every other source."""
+    ctx = CallerContext.discover(
+        environ={"TMUX_PANE": "%1", "TMUX": "/s,1,2"}, is_linux=True
+    )
+    assert ctx.source == "process-env"
+    assert ctx.pane_id == "%1"
+
+
+def test_discover_override_beats_walk() -> None:
+    """LIBTMUX_MCP_CALLER_PANE is the trusted override (no /proc walk)."""
+    ctx = CallerContext.discover(
+        environ={"LIBTMUX_MCP_CALLER_PANE": "%5", "LIBTMUX_MCP_CALLER_TMUX": "/s,1,2"},
+        is_linux=True,
+    )
+    assert ctx.source == "explicit-override"
+    assert (ctx.pane_id, ctx.socket_path) == ("%5", "/s")
+
+
+def test_discover_parent_walk_recovers_stripped_env() -> None:
+    """A stripped child recovers TMUX from a same-uid ancestor."""
+    fake_env = {10: {}, 20: {"TMUX_PANE": "%9", "TMUX": "/tmp/sock,7,3"}}
+    fake_ppid = {10: 20, 20: 1}
+    ctx = CallerContext.discover(
+        environ={},
+        read_env=fake_env.get,
+        read_ppid=fake_ppid.get,
+        read_uid=lambda _pid: 1000,
+        self_pid=10,
+        self_uid=1000,
+        is_linux=True,
+    )
+    assert ctx.source == "parent-walk"
+    assert (ctx.pane_id, ctx.socket_path) == ("%9", "/tmp/sock")
+
+
+def test_discover_refuses_foreign_uid() -> None:
+    """The walk stops at a differently-owned ancestor (no env read)."""
+    fake_env = {10: {}, 20: {"TMUX_PANE": "%9", "TMUX": "/s,1,2"}}
+    fake_ppid = {10: 20, 20: 1}
+    ctx = CallerContext.discover(
+        environ={},
+        read_env=fake_env.get,
+        read_ppid=fake_ppid.get,
+        read_uid=lambda _pid: 99999,
+        self_pid=10,
+        self_uid=1000,
+        is_linux=True,
+    )
+    assert ctx.source == "none"
+
+
+def test_discover_off_linux() -> None:
+    """No /proc means no walk (fail closed to source='none')."""
+    assert CallerContext.discover(environ={}, is_linux=False).source == "none"
+
+
+def test_discover_disabled_by_env() -> None:
+    """LIBTMUX_MCP_DISCOVER=0 disables the parent walk."""
+    ctx = CallerContext.discover(environ={"LIBTMUX_MCP_DISCOVER": "0"}, is_linux=True)
+    assert ctx.source == "none"
+
+
+def test_discover_fails_closed_on_reader_failure() -> None:
+    """A reader returning None mid-walk degrades to source='none'."""
+    ctx = CallerContext.discover(
+        environ={},
+        read_env=lambda _pid: None,
+        read_ppid=lambda _pid: 2,
+        read_uid=lambda _pid: 1000,
+        self_pid=1,
+        self_uid=1000,
+        is_linux=True,
+    )
+    assert ctx.source == "none"
+
+
+def test_caller_server_args_binds_caller_socket() -> None:
+    """The binding decision yields -S only for a discovered, non-overridden socket."""
+    ctx = CallerContext.from_env({"TMUX_PANE": "%1", "TMUX": "/sock,1,2"})
+    assert caller_server_args(ctx, explicit=False) == ("-S", "/sock")
+    assert caller_server_args(ctx, explicit=True) == ()
+    assert caller_server_args(CallerContext.from_env({}), explicit=False) == ()
+
+
+# --------------------------------------------------------------------------- #
+# Self-kill guards
+# --------------------------------------------------------------------------- #
+def test_kill_pane_refuses_caller_pane(monkeypatch: pytest.MonkeyPatch) -> None:
+    """kill_pane refuses the pane running this MCP server."""
+    monkeypatch.setenv("TMUX_PANE", "%9")
+    monkeypatch.setenv("TMUX", "/s,1,2")
+    with pytest.raises(ToolError, match="this MCP server"):
+        kill_pane(ConcreteEngine(), "%9")
+
+
+def test_respawn_pane_refuses_caller_pane(monkeypatch: pytest.MonkeyPatch) -> None:
+    """respawn_pane (which destroys the process) refuses the caller's pane."""
+    monkeypatch.setenv("TMUX_PANE", "%9")
+    monkeypatch.setenv("TMUX", "/s,1,2")
+    with pytest.raises(ToolError, match="this MCP server"):
+        respawn_pane(ConcreteEngine(), "%9")
+
+
+def test_kill_pane_allows_other_pane(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A different pane is not the caller, so it is not refused."""
+    monkeypatch.setenv("TMUX_PANE", "%9")
+    monkeypatch.setenv("TMUX", "/s,1,2")
+    assert kill_pane(ConcreteEngine(), "%1") is None
+
+
+def test_self_kill_refusals_live(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Killing the caller's own pane/window/session is refused on a real server."""
+    engine = SubprocessEngine.for_server(session.server)
+    real_socket = session.server.cmd("display-message", "-p", "#{socket_path}").stdout[
+        0
+    ]
+    created = create_session(engine, name="selfkill")
+    try:
+        pane = created.first_pane_id
+        assert pane is not None
+        monkeypatch.setenv("TMUX_PANE", pane)
+        monkeypatch.setenv("TMUX", f"{real_socket},0,0")
+        with pytest.raises(ToolError, match="this MCP server"):
+            kill_pane(engine, pane)
+        with pytest.raises(ToolError, match="this MCP server"):
+            kill_window(engine, created.first_window_id or "")
+        with pytest.raises(ToolError, match="this MCP server"):
+            kill_session(engine, created.session_id)
+    finally:
+        monkeypatch.delenv("TMUX_PANE", raising=False)
+        monkeypatch.delenv("TMUX", raising=False)
+        kill_session(engine, created.session_id)
