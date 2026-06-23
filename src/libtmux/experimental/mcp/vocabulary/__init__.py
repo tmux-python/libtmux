@@ -1,0 +1,226 @@
+"""Curated core vocabulary -- the intuitive, named tmux tools.
+
+The Layer-1 surface: a small set of hand-written functions that mirror libtmux's
+ORM (``server.new_session`` / ``window.split_window`` / ``pane.send_keys``) but
+run over any engine and return small, typed result objects. Each tool is written
+once as an ``async def`` (the ``a``-prefixed names, the canonical async-first
+surface) and exposed as a derived synchronous twin under the plain name (see
+:mod:`._bridge`). Tools are grouped by scope in submodules
+(:mod:`.session` / :mod:`.window` / :mod:`.pane` / :mod:`.buffer` /
+:mod:`.option` / :mod:`.server`).
+
+Examples
+--------
+>>> from libtmux.experimental.engines import ConcreteEngine
+>>> engine = ConcreteEngine()
+>>> session = create_session(engine, name="dev")
+>>> session.session_id
+'$1'
+>>> pane = split_pane(engine, session.first_pane_id or "%1", horizontal=True)
+>>> pane.pane_id
+'%2'
+>>> send_input(engine, pane.pane_id, "pytest -q", enter=True) is None
+True
+"""
+
+from __future__ import annotations
+
+from libtmux.experimental.mcp.vocabulary._caller import CallerContext
+from libtmux.experimental.mcp.vocabulary._results import (
+    BufferText,
+    Listing,
+    MessageText,
+    OptionMap,
+    PaneCapture,
+    PaneMatch,
+    PaneRef,
+    PaneResult,
+    PaneSearch,
+    RawResult,
+    SessionResult,
+    WindowResult,
+)
+from libtmux.experimental.mcp.vocabulary.buffer import (
+    apaste_buffer,
+    aset_buffer,
+    ashow_buffer,
+    paste_buffer,
+    set_buffer,
+    show_buffer,
+)
+from libtmux.experimental.mcp.vocabulary.option import (
+    aset_option,
+    ashow_options,
+    set_option,
+    show_options,
+)
+from libtmux.experimental.mcp.vocabulary.pane import (
+    abreak_pane,
+    acapture_active_pane,
+    acapture_pane,
+    acapture_relative_pane,
+    afind_pane_by_position,
+    agrep_pane,
+    agrep_relative_pane,
+    ajoin_pane,
+    akill_pane,
+    alist_panes,
+    aresize_pane,
+    aresolve_relative_pane,
+    arespawn_pane,
+    asearch_panes,
+    aselect_pane,
+    asend_input,
+    asplit_pane,
+    aswap_pane,
+    break_pane,
+    capture_active_pane,
+    capture_pane,
+    capture_relative_pane,
+    find_pane_by_position,
+    grep_pane,
+    grep_relative_pane,
+    join_pane,
+    kill_pane,
+    list_panes,
+    resize_pane,
+    resolve_relative_pane,
+    respawn_pane,
+    search_panes,
+    select_pane,
+    send_input,
+    split_pane,
+    swap_pane,
+)
+from libtmux.experimental.mcp.vocabulary.server import (
+    adisplay_message,
+    alist_clients,
+    arun_tmux,
+    display_message,
+    list_clients,
+    run_tmux,
+)
+from libtmux.experimental.mcp.vocabulary.session import (
+    acreate_session,
+    ahas_session,
+    akill_session,
+    alist_sessions,
+    arename_session,
+    create_session,
+    has_session,
+    kill_session,
+    list_sessions,
+    rename_session,
+)
+from libtmux.experimental.mcp.vocabulary.window import (
+    acreate_window,
+    akill_window,
+    alist_windows,
+    amove_window,
+    arename_window,
+    aselect_layout,
+    aselect_window,
+    aswap_window,
+    create_window,
+    kill_window,
+    list_windows,
+    move_window,
+    rename_window,
+    select_layout,
+    select_window,
+    swap_window,
+)
+
+__all__ = (
+    "BufferText",
+    "CallerContext",
+    "Listing",
+    "MessageText",
+    "OptionMap",
+    "PaneCapture",
+    "PaneMatch",
+    "PaneRef",
+    "PaneResult",
+    "PaneSearch",
+    "RawResult",
+    "SessionResult",
+    "WindowResult",
+    "abreak_pane",
+    "acapture_active_pane",
+    "acapture_pane",
+    "acapture_relative_pane",
+    "acreate_session",
+    "acreate_window",
+    "adisplay_message",
+    "afind_pane_by_position",
+    "agrep_pane",
+    "agrep_relative_pane",
+    "ahas_session",
+    "ajoin_pane",
+    "akill_pane",
+    "akill_session",
+    "akill_window",
+    "alist_clients",
+    "alist_panes",
+    "alist_sessions",
+    "alist_windows",
+    "amove_window",
+    "apaste_buffer",
+    "arename_session",
+    "arename_window",
+    "aresize_pane",
+    "aresolve_relative_pane",
+    "arespawn_pane",
+    "arun_tmux",
+    "asearch_panes",
+    "aselect_layout",
+    "aselect_pane",
+    "aselect_window",
+    "asend_input",
+    "aset_buffer",
+    "aset_option",
+    "ashow_buffer",
+    "ashow_options",
+    "asplit_pane",
+    "aswap_pane",
+    "aswap_window",
+    "break_pane",
+    "capture_active_pane",
+    "capture_pane",
+    "capture_relative_pane",
+    "create_session",
+    "create_window",
+    "display_message",
+    "find_pane_by_position",
+    "grep_pane",
+    "grep_relative_pane",
+    "has_session",
+    "join_pane",
+    "kill_pane",
+    "kill_session",
+    "kill_window",
+    "list_clients",
+    "list_panes",
+    "list_sessions",
+    "list_windows",
+    "move_window",
+    "paste_buffer",
+    "rename_session",
+    "rename_window",
+    "resize_pane",
+    "resolve_relative_pane",
+    "respawn_pane",
+    "run_tmux",
+    "search_panes",
+    "select_layout",
+    "select_pane",
+    "select_window",
+    "send_input",
+    "set_buffer",
+    "set_option",
+    "show_buffer",
+    "show_options",
+    "split_pane",
+    "swap_pane",
+    "swap_window",
+)
