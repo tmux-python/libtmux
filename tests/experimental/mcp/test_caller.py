@@ -9,6 +9,7 @@ the ``is_caller`` row flag against a real tmux server. No pytest-asyncio.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import typing as t
 
 import pytest
@@ -28,6 +29,8 @@ from libtmux.experimental.mcp.vocabulary._caller import (
     caller_server_args,
     engine_socket,
     is_strict_caller,
+    socket_could_match,
+    socket_matches,
 )
 from libtmux.experimental.mcp.vocabulary._resolve import resolve_origin
 
@@ -348,3 +351,34 @@ def test_self_kill_refusals_live(
         monkeypatch.delenv("TMUX_PANE", raising=False)
         monkeypatch.delenv("TMUX", raising=False)
         kill_session(engine, created.session_id)
+
+
+# --------------------------------------------------------------------------- #
+# Review fixes: ambient-engine scoping (S1) + per-op guard (S2)
+# --------------------------------------------------------------------------- #
+def test_ambient_engine_matches_only_process_env_caller() -> None:
+    """An unbound engine is the caller's server only for a process-env caller."""
+    proc = CallerContext.from_env({"TMUX_PANE": "%1", "TMUX": "/s,1,2"})
+    walked = dataclasses.replace(proc, source="parent-walk")
+    assert socket_could_match(None, proc) is True
+    assert socket_could_match(None, walked) is False
+    assert socket_matches(None, proc) is True
+    assert socket_matches(None, walked) is False
+
+
+def test_op_kill_pane_is_guarded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The per-op kill surface is self-kill-guarded too (no bypass)."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    monkeypatch.setenv("TMUX_PANE", "%9")
+    monkeypatch.setenv("TMUX", "/s,1,2")
+    server = build_async_server(
+        SyncToAsyncEngine(ConcreteEngine()), events="off", expose_operations=True
+    )
+
+    async def main() -> None:
+        async with fastmcp.Client(server) as client:
+            await client.call_tool("op_kill_pane", {"target": "%9"})
+
+    with pytest.raises(ToolError, match="this MCP server"):
+        asyncio.run(main())
