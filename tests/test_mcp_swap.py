@@ -59,3 +59,62 @@ def test_build_local_spec_uv_directory() -> None:
     assert spec.command == "uv"
     assert spec.args == ["--directory", str(_REPO), "run", "libtmux-engine-mcp"]
     assert spec.is_local_uv_directory()
+
+
+def test_grok_and_agy_registered() -> None:
+    """The grok and agy CLIs join the registry with their config shapes."""
+    pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    assert "grok" in mcp_swap.ALL_CLIS
+    assert "agy" in mcp_swap.ALL_CLIS
+    assert mcp_swap.CLIS["grok"].fmt == "toml"
+    assert mcp_swap.CLIS["grok"].config_path.name == "config.toml"
+    assert mcp_swap.CLIS["agy"].fmt == "json"
+    assert mcp_swap.CLIS["agy"].config_path.name == "mcp_config.json"
+
+
+def test_grok_set_get_delete_roundtrip() -> None:
+    """The grok CLI reads/writes the TOML ``[mcp_servers]`` table like codex."""
+    tomlkit = pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    config = tomlkit.parse("")
+    spec = mcp_swap.McpServerSpec(
+        command="uv", args=["--directory", str(_REPO), "run", "x"]
+    )
+    assert mcp_swap.set_server("grok", config, "tmux", spec, _REPO) == "added"
+    assert "mcp_servers" in config  # TOML table, not the JSON "mcpServers"
+    got = mcp_swap.get_server("grok", config, "tmux", _REPO)
+    assert got is not None
+    assert got.is_local_uv_directory()
+    assert mcp_swap.set_server("grok", config, "tmux", spec, _REPO) == "replaced"
+    assert mcp_swap.delete_server("grok", config, "tmux", _REPO)
+    assert mcp_swap.get_server("grok", config, "tmux", _REPO) is None
+
+
+def test_agy_set_get_delete_roundtrip() -> None:
+    """The agy CLI reads/writes the JSON ``mcpServers`` map like cursor/gemini."""
+    pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    config: dict[str, t.Any] = {}
+    spec = mcp_swap.McpServerSpec(
+        command="uv", args=["--directory", str(_REPO), "run", "x"]
+    )
+    assert mcp_swap.set_server("agy", config, "tmux", spec, _REPO) == "added"
+    # JSON (non-Claude) shape: no Claude-style "type", no empty "env"
+    assert "type" not in config["mcpServers"]["tmux"]
+    assert "env" not in config["mcpServers"]["tmux"]
+    got = mcp_swap.get_server("agy", config, "tmux", _REPO)
+    assert got is not None
+    assert got.is_local_uv_directory()
+    assert mcp_swap.delete_server("agy", config, "tmux", _REPO)
+    assert mcp_swap.get_server("agy", config, "tmux", _REPO) is None
+
+
+def test_load_config_tolerates_empty_json(tmp_path: pathlib.Path) -> None:
+    """An empty JSON config (Antigravity's initial mcp_config.json) loads as {}."""
+    pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    cfg = tmp_path / "mcp_config.json"
+    cfg.write_text("")
+    info = mcp_swap.CLIInfo(name="agy", binary="agy", config_path=cfg, fmt="json")
+    assert mcp_swap.load_config(info) == {}
