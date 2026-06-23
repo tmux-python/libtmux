@@ -246,7 +246,11 @@ def register_caller_context(mcp: FastMCP, ctx: CallerContext) -> None:
     from mcp.types import ToolAnnotations
 
     def get_caller_context() -> CallerContext:
-        """Return the tmux pane/server that launched this MCP (from its env)."""
+        """Return the tmux pane/server discovered for this MCP.
+
+        From the server's own env, an explicit override, or a bounded ``/proc``
+        parent walk -- inspect the ``source`` field for which.
+        """
         return ctx
 
     tool = FunctionTool.from_function(
@@ -314,6 +318,8 @@ def register_operations(
     from mcp.types import ToolAnnotations
     from pydantic import PrivateAttr
 
+    from libtmux.experimental.mcp.vocabulary._bridge import SyncToAsyncEngine
+    from libtmux.experimental.mcp.vocabulary._resolve import guard_destructive_op
     from libtmux.experimental.ops import arun as arun_op, run as run_op
     from libtmux.experimental.ops.serialize import result_to_dict
 
@@ -326,6 +332,12 @@ def register_operations(
 
         async def run(self, arguments: dict[str, t.Any]) -> ToolResult:
             operation = self._descriptor.build(**arguments)
+            # The per-op surface dispatches around the curated guard, so apply the
+            # self-kill guard here too (a sync engine is wrapped to async for it).
+            guard_engine = (
+                self._engine if self._is_async else SyncToAsyncEngine(self._engine)
+            )
+            await guard_destructive_op(guard_engine, operation)
             if self._is_async:
                 result = await arun_op(operation, self._engine)
             else:
