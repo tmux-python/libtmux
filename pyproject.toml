@@ -65,6 +65,12 @@ dev = [
   "pytest-mock",
   "pytest-watcher",
   "pytest-xdist",
+  # MCP adapter — the optional `mcp` extra, included here so the gate
+  # type-checks (mypy) and exercises the fastmcp adapter + its tests
+  # instead of silently skipping them.
+  "fastmcp",
+  # Scripts (scripts/mcp_swap.py dev tool)
+  "tomlkit",
   # Coverage
   "codecov",
   "coverage",
@@ -88,6 +94,10 @@ testing = [
   "pytest-rerunfailures",
   "pytest-mock",
   "pytest-watcher",
+  # MCP adapter (optional `mcp` extra) so the adapter tests run here too
+  "fastmcp",
+  # Scripts (scripts/mcp_swap.py dev tool)
+  "tomlkit",
 ]
 coverage =[
   "codecov",
@@ -315,7 +325,10 @@ addopts = [
   "--showlocals",
   "--doctest-docutils-modules",
   "-p no:doctest",
-  "--reruns=2"
+  "--reruns=2",
+  # Built HTML lives under docs/_build and `docs` is a testpath; never
+  # collect generated artifacts (their relative directives fail to parse).
+  "--ignore=docs/_build",
 ]
 doctest_optionflags = [
   "ELLIPSIS",
