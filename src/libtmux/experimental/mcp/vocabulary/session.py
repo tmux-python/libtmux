@@ -12,6 +12,7 @@ import typing as t
 from libtmux.experimental.engines.base import AsyncTmuxEngine
 from libtmux.experimental.mcp.target_resolver import resolve_target
 from libtmux.experimental.mcp.vocabulary._bridge import synced
+from libtmux.experimental.mcp.vocabulary._resolve import guard_self_kill, session_id_of
 from libtmux.experimental.mcp.vocabulary._results import Listing, SessionResult
 from libtmux.experimental.ops import (
     HasSession,
@@ -88,6 +89,8 @@ async def akill_session(
     version: str | None = None,
 ) -> None:
     """Kill a session (mirrors ``session.kill``)."""
+    target_session = await session_id_of(engine, target, version)
+    await guard_self_kill(engine, session=target_session, version=version)
     (
         await arun(KillSession(target=resolve_target(target)), engine, version=version)
     ).raise_for_status()
