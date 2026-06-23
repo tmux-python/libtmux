@@ -11,6 +11,8 @@ from libtmux.experimental.mcp.vocabulary._caller import (
 )
 from libtmux.experimental.mcp.vocabulary._resolve import (
     caller_of,
+    caller_session_or_none,
+    caller_window_or_none,
     guard_self_kill,
     raise_target_hint,
     session_id_of,
@@ -28,7 +30,7 @@ from libtmux.experimental.ops import (
     SwapWindow,
     arun,
 )
-from libtmux.experimental.ops._types import PaneId, Target
+from libtmux.experimental.ops._types import Target
 
 
 async def acreate_window(
@@ -168,16 +170,18 @@ async def _guard_kill_other_windows(
         return
     if not socket_could_match(engine_socket(engine), caller):
         return
-    caller_window = await window_id(engine, PaneId(caller.pane_id), version)
-    if caller_window == target_window:
-        return  # the kept target window
+    caller_window = await caller_window_or_none(engine, caller.pane_id, version)
+    if caller_window is None or caller_window == target_window:
+        return  # caller not on this server, or it is the kept target window
     target_session = await session_id_of(engine, target, version)
-    caller_session = await session_id_of(engine, PaneId(caller.pane_id), version)
-    if caller_session == target_session:
-        raise_target_hint(
-            f"refusing to kill the other windows of session {caller_session}: one "
-            "holds this MCP server's pane. Use a manual tmux command if intended.",
-        )
+    caller_session = await caller_session_or_none(engine, caller.pane_id, version)
+    if caller_session is None or caller_session != target_session:
+        return
+    raise_target_hint(
+        f"refusing to kill the other windows of session {caller_session}: window "
+        f"{caller_window} holds this MCP server's pane {caller.pane_id}. Exclude "
+        "it, or run the tmux command manually.",
+    )
 
 
 async def alist_windows(

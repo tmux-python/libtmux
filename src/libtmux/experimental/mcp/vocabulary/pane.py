@@ -37,6 +37,7 @@ from libtmux.experimental.mcp.vocabulary._resolve import (
     DIR_FLAG,
     active_pane_id,
     caller_of,
+    caller_window_or_none,
     guard_self_kill,
     opt_target,
     pane_id,
@@ -432,12 +433,15 @@ async def _guard_kill_others(
         return
     if not socket_could_match(engine_socket(engine), caller):
         return
+    caller_window = await caller_window_or_none(engine, caller.pane_id, version)
+    if caller_window is None:
+        return
     target_window = await window_id(engine, PaneId(target_pane), version)
-    caller_window = await window_id(engine, PaneId(caller.pane_id), version)
     if caller_window == target_window:
         raise_target_hint(
-            f"refusing to kill the other panes of window {target_window}: one of "
-            "them runs this MCP server. Use a manual tmux command if intended.",
+            f"refusing to kill the other panes of window {target_window}: pane "
+            f"{caller.pane_id} runs this MCP server. Kill panes individually "
+            f"(excluding {caller.pane_id}), or run the tmux command manually.",
         )
 
 
