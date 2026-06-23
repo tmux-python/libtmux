@@ -103,6 +103,11 @@ lint = [
 [project.entry-points.pytest11]
 libtmux = "libtmux.pytest_plugin"
 
+[project.optional-dependencies]
+mcp = [
+    "fastmcp>=3.4.2",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
