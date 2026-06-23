@@ -509,6 +509,16 @@ def register_plan_tools(
         mcp.add_tool(tool)
 
 
+def _stash_caller(engine: t.Any, ctx: CallerContext) -> None:
+    """Stash the discovered caller on the engine so the tool bodies can read it.
+
+    The curated tool bodies bind only ``engine``; stashing the once-discovered
+    context here (read by :func:`~.vocabulary._resolve.caller_of`) threads caller
+    identity to them without changing every tool signature.
+    """
+    engine._caller_context = ctx
+
+
 def build_server(
     engine: TmuxEngine,
     *,
@@ -517,16 +527,19 @@ def build_server(
     include_operations: bool = True,
     expose_operations: bool = False,
     include_plan_tools: bool = True,
+    caller: CallerContext | None = None,
 ) -> FastMCP:
     """Build a synchronous FastMCP server over a sync *engine*.
 
     The sync wrapper: the curated tools are the derived sync twins, which FastMCP
     offloads to a worker thread. Prefer :func:`build_async_server` for the
-    async-first surface and the event stream.
+    async-first surface and the event stream. *caller* defaults to
+    :meth:`CallerContext.discover`.
     """
     from fastmcp import FastMCP
 
-    ctx = CallerContext.from_env()
+    ctx = caller if caller is not None else CallerContext.discover()
+    _stash_caller(engine, ctx)
     mcp: FastMCP = FastMCP(name=name, instructions=instructions or _instructions(ctx))
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=False)
@@ -554,6 +567,7 @@ def build_async_server(
     include_plan_tools: bool = True,
     events: EventMode = "push",
     event_source: EventSource = "subscription",
+    caller: CallerContext | None = None,
 ) -> FastMCP:
     """Build the async-first FastMCP server over an async *engine*.
 
@@ -561,12 +575,14 @@ def build_async_server(
     awaited directly on FastMCP's event loop. When *engine* supports a
     notification stream (a control-mode engine), the live event tools are
     registered per *events* (``"push"``/``"pull"``/``"both"``/``"off"``).
+    *caller* defaults to :meth:`CallerContext.discover`.
     """
     from fastmcp import FastMCP
 
     from libtmux.experimental.mcp.events import register_events
 
-    ctx = CallerContext.from_env()
+    ctx = caller if caller is not None else CallerContext.discover()
+    _stash_caller(engine, ctx)
     mcp: FastMCP = FastMCP(name=name, instructions=instructions or _instructions(ctx))
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=True)
