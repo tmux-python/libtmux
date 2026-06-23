@@ -15,6 +15,7 @@ from libtmux.experimental.mcp.target_resolver import resolve_target
 from libtmux.experimental.mcp.vocabulary._caller import (
     CallerContext,
     engine_socket,
+    socket_could_match,
     socket_matches,
 )
 from libtmux.experimental.ops import DisplayMessage, ListPanes, SelectPane, arun
@@ -145,16 +146,17 @@ async def resolve_origin(
     """Resolve a caller-relative origin to a concrete pane id.
 
     An explicit *origin* is resolved as a target; ``origin=None`` means the
-    caller's own pane (from the server's environment), socket-scoped exactly
-    like :func:`~._caller.is_strict_caller` because a ``%N`` is unique only
-    within one server. When there is no trustworthy caller pane -- the server is
-    not inside tmux, or its pane belongs to a different server than this engine
-    targets -- this raises rather than guessing the active pane, so the caller
-    must pass an explicit origin.
+    caller's own pane (from the discovered caller context -- own env, an explicit
+    override, or a ``/proc`` parent walk), socket-scoped exactly like
+    :func:`~._caller.is_strict_caller` because a ``%N`` is unique only within one
+    server. When there is no trustworthy caller pane -- the server is not inside
+    tmux, or its pane belongs to a different server than this engine targets --
+    this raises rather than guessing the active pane, so the caller must pass an
+    explicit origin.
     """
     if origin is not None:
         return await pane_id(engine, origin, version)
-    caller = CallerContext.from_env()
+    caller = caller_of(engine)
     if caller.pane_id and socket_matches(engine_socket(engine), caller):
         return caller.pane_id
     raise_target_hint(
@@ -196,3 +198,73 @@ def reject_relative_special(resolved: Target | None) -> None:
             "composed capture_relative_pane / grep_relative_pane (origin defaults to "
             "your pane)",
         )
+
+
+def caller_of(engine: AsyncTmuxEngine) -> CallerContext:
+    """Return the caller context discovered at build time (stashed on the engine).
+
+    Falls back to a fresh :meth:`~._caller.CallerContext.from_env` read when no
+    context was stashed (the engine was built outside the adapter).
+    """
+    stashed = getattr(engine, "_caller_context", None)
+    if isinstance(stashed, CallerContext):
+        return stashed
+    return CallerContext.from_env()
+
+
+async def session_id_of(
+    engine: AsyncTmuxEngine,
+    target: str | Target,
+    version: str | None,
+) -> str:
+    """Return the session id (``$N``) containing *target* (a pane/window/session)."""
+    result = await arun(
+        DisplayMessage(target=resolve_target(target), message="#{session_id}"),
+        engine,
+        version=version,
+    )
+    result.raise_for_status()
+    return result.text.strip()
+
+
+async def guard_self_kill(
+    engine: AsyncTmuxEngine,
+    *,
+    pane: str | None = None,
+    window: str | None = None,
+    session: str | None = None,
+    version: str | None = None,
+) -> None:
+    """Refuse a destructive op aimed at the caller's own pane/window/session.
+
+    Socket-scoped first (``%N``/``@N``/``$N`` are per-server counters that
+    collide across servers), then the caller's pane is mapped to its window /
+    session *via the engine* (``$TMUX`` carries no window id). Uses the
+    conservative comparator so a self-kill fails safe under socket uncertainty.
+    Raises a refusal hint; a different pane/window/session, or a cross-socket
+    target with the same id, is not refused.
+    """
+    caller = caller_of(engine)
+    if not caller.in_tmux or caller.pane_id is None:
+        return
+    if not socket_could_match(engine_socket(engine), caller):
+        return
+    if pane is not None and caller.pane_id == pane:
+        raise_target_hint(
+            f"refusing to kill pane {pane}: it runs this MCP server. Target a "
+            "different pane, or run the tmux command manually if intended.",
+        )
+    if window is not None:
+        caller_window = await window_id(engine, PaneId(caller.pane_id), version)
+        if caller_window == window:
+            raise_target_hint(
+                f"refusing to kill window {window}: it holds this MCP server's "
+                "pane. Use a manual tmux command if intended.",
+            )
+    if session is not None:
+        caller_session = await session_id_of(engine, PaneId(caller.pane_id), version)
+        if caller_session == session:
+            raise_target_hint(
+                f"refusing to kill session {session}: it holds this MCP server's "
+                "pane. Use a manual tmux command if intended.",
+            )
