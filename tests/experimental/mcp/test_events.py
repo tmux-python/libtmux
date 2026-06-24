@@ -346,6 +346,81 @@ def test_read_done_parses_display_message_fields() -> None:
     assert done.pane_in_mode is True
 
 
+def test_instructions_surface_wait_for_output() -> None:
+    """The server instructions name the run-a-command-and-wait workflow.
+
+    If this fails, the discoverable wording drifted -- update BOTH the instruction
+    text in fastmcp_adapter.py AND these assertions intentionally.
+    """
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    server = build_async_server(
+        FakeStreamEngine(_STREAM),
+        events="push",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+    text = server.instructions or ""
+    assert "wait_for_output" in text  # the tool by name
+    assert "send_input" in text  # the workflow pair
+    assert "completion" in text  # the run-a-command-and-wait intent
+    assert "pytest" in text  # the long-running / test use case
+    assert "sleep + capture_pane" in text  # the anti-polling steer
+    assert "Settled" in text  # settled-is-not-success caveat
+
+
+def test_instructions_omit_wait_for_output_without_streaming() -> None:
+    """events='off' (no wait_for_output tool) drops the live-output guidance.
+
+    The instructions must not name a tool the server did not register.
+    """
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    server = build_async_server(
+        FakeStreamEngine(_STREAM),
+        events="off",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+    text = server.instructions or ""
+    assert "wait_for_output" not in text
+    assert "watch_events" not in text
+
+
+def test_wait_for_output_metadata_is_discoverable() -> None:
+    """wait_for_output's description + per-param schema carry the search vocabulary.
+
+    If this fails, the discoverable wording drifted -- update BOTH the description /
+    docstring in events.py AND these assertions intentionally. The per-param
+    descriptions also prove FastMCP parsed the NumPy ``Parameters`` section.
+    """
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    server = build_async_server(
+        FakeStreamEngine(_STREAM),
+        events="push",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> t.Any:
+        async with fastmcp.Client(server) as client:
+            return {tool.name: tool for tool in await client.list_tools()}
+
+    by_name = asyncio.run(main())
+    tool = by_name["wait_for_output"]
+    description = tool.description or ""
+    assert "wait" in description
+    assert "finish" in description
+    assert "completion" in description
+    assert "sleep + capture_pane" in description
+
+    props = tool.inputSchema["properties"]
+    for param in ("target", "settle_ms", "timeout", "max_bytes", "stream_partials"):
+        assert props[param].get("description"), f"{param} missing param description"
+    assert "idle" in props["settle_ms"]["description"].lower()
+
+
 def test_no_event_tools_without_a_stream() -> None:
     """A non-streaming engine registers no event tools, even when asked."""
     from libtmux.experimental.engines import ConcreteEngine
