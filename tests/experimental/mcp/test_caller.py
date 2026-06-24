@@ -22,6 +22,7 @@ from libtmux.experimental.mcp.vocabulary import (
     kill_window,
     list_panes,
     respawn_pane,
+    split_pane,
 )
 from libtmux.experimental.mcp.vocabulary._bridge import SyncToAsyncEngine
 from libtmux.experimental.mcp.vocabulary._caller import (
@@ -382,3 +383,82 @@ def test_op_kill_pane_is_guarded(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ToolError, match="this MCP server"):
         asyncio.run(main())
+
+
+# --------------------------------------------------------------------------- #
+# Deferrals: authoritative socket (1) + others=True per-op guard (2)
+# --------------------------------------------------------------------------- #
+def test_conservative_socket_prefers_explicit_path() -> None:
+    """An explicit -S path is authoritative as-is; no tmux query is issued."""
+    from libtmux.experimental.mcp.vocabulary._resolve import conservative_socket
+
+    class Pathed(SyncToAsyncEngine):
+        server_args = ("-S", "/tmp/explicit-socket")
+
+    async def main() -> str | None:
+        return await conservative_socket(Pathed(ConcreteEngine()), None)
+
+    assert asyncio.run(main()) == "/tmp/explicit-socket"
+
+
+def test_kill_pane_others_refuses_caller_sibling_live(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """kill_pane(others=True) refuses when the caller is a sibling of the target."""
+    engine = SubprocessEngine.for_server(session.server)
+    real_socket = session.server.cmd("display-message", "-p", "#{socket_path}").stdout[
+        0
+    ]
+    created = create_session(engine, name="killothers")
+    try:
+        pane_a = created.first_pane_id
+        assert pane_a is not None
+        pane_b = split_pane(engine, pane_a, horizontal=True).pane_id
+        monkeypatch.setenv("TMUX_PANE", pane_b)  # caller is sibling B
+        monkeypatch.setenv("TMUX", f"{real_socket},0,0")
+        with pytest.raises(ToolError, match="other panes"):
+            kill_pane(engine, pane_a, others=True)
+    finally:
+        monkeypatch.delenv("TMUX_PANE", raising=False)
+        monkeypatch.delenv("TMUX", raising=False)
+        kill_session(engine, created.session_id)
+
+
+def test_op_kill_pane_others_is_guarded_live(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The per-op kill surface routes others=True to the sibling guard too."""
+    from libtmux.experimental.engines import AsyncSubprocessEngine
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    sync_engine = SubprocessEngine.for_server(session.server)
+    real_socket = session.server.cmd("display-message", "-p", "#{socket_path}").stdout[
+        0
+    ]
+    created = create_session(sync_engine, name="opkillothers")
+    try:
+        pane_a = created.first_pane_id
+        assert pane_a is not None
+        pane_b = split_pane(sync_engine, pane_a, horizontal=True).pane_id
+        monkeypatch.setenv("TMUX_PANE", pane_b)
+        monkeypatch.setenv("TMUX", f"{real_socket},0,0")
+        server = build_async_server(
+            AsyncSubprocessEngine.for_server(session.server),
+            events="off",
+            expose_operations=True,
+        )
+
+        async def main() -> None:
+            async with fastmcp.Client(server) as client:
+                await client.call_tool(
+                    "op_kill_pane", {"target": pane_a, "others": True}
+                )
+
+        with pytest.raises(ToolError, match="other panes"):
+            asyncio.run(main())
+    finally:
+        monkeypatch.delenv("TMUX_PANE", raising=False)
+        monkeypatch.delenv("TMUX", raising=False)
+        kill_session(sync_engine, created.session_id)

@@ -262,6 +262,32 @@ async def caller_session_or_none(
         return None
 
 
+async def conservative_socket(
+    engine: AsyncTmuxEngine,
+    version: str | None,
+) -> str | None:
+    """Resolve the engine's socket for a conservative caller comparison.
+
+    An explicit ``-S`` path is authoritative as-is. For a ``-L`` name or the
+    ambient socket, asks tmux for ``#{socket_path}`` -- the path tmux actually
+    uses -- so a macOS ``$TMUX_TMPDIR`` divergence under launchd cannot fool the
+    reconstruction; falls back to the static selector when the query fails.
+    """
+    static = engine_socket(engine)
+    if static is not None and "/" in static:
+        return static
+    try:
+        result = await arun(
+            DisplayMessage(message="#{socket_path}"),
+            engine,
+            version=version,
+        )
+        result.raise_for_status()
+    except TmuxCommandError:
+        return static
+    return result.text.strip() or static
+
+
 async def guard_self_kill(
     engine: AsyncTmuxEngine,
     *,
@@ -283,7 +309,7 @@ async def guard_self_kill(
     caller = caller_of(engine)
     if not caller.in_tmux or caller.pane_id is None:
         return
-    if not socket_could_match(engine_socket(engine), caller):
+    if not socket_could_match(await conservative_socket(engine, version), caller):
         return
     if pane is not None and caller.pane_id == pane:
         raise_target_hint(
@@ -306,20 +332,87 @@ async def guard_self_kill(
             )
 
 
+async def guard_kill_other_panes(
+    engine: AsyncTmuxEngine,
+    target_pane: str,
+    version: str | None,
+) -> None:
+    """Refuse ``kill_pane(others=True)`` when the caller is a sibling of the target.
+
+    ``others=True`` keeps the target and kills every other pane in its window, so
+    the danger is the caller pane being one of those siblings (not the target).
+    """
+    caller = caller_of(engine)
+    if not caller.in_tmux or not caller.pane_id or caller.pane_id == target_pane:
+        return
+    if not socket_could_match(await conservative_socket(engine, version), caller):
+        return
+    caller_window = await caller_window_or_none(engine, caller.pane_id, version)
+    if caller_window is None:
+        return
+    target_window = await window_id(engine, PaneId(target_pane), version)
+    if caller_window == target_window:
+        raise_target_hint(
+            f"refusing to kill the other panes of window {target_window}: pane "
+            f"{caller.pane_id} runs this MCP server. Kill panes individually "
+            f"(excluding {caller.pane_id}), or run the tmux command manually.",
+        )
+
+
+async def guard_kill_other_windows(
+    engine: AsyncTmuxEngine,
+    target: str | Target,
+    target_window: str,
+    version: str | None,
+) -> None:
+    """Refuse ``kill_window(others=True)`` when the caller is a same-session sibling.
+
+    ``others=True`` keeps the target window and kills every other window in its
+    session, so the danger is the caller's window being one of those siblings.
+    """
+    caller = caller_of(engine)
+    if not caller.in_tmux or not caller.pane_id:
+        return
+    if not socket_could_match(await conservative_socket(engine, version), caller):
+        return
+    caller_window = await caller_window_or_none(engine, caller.pane_id, version)
+    if caller_window is None or caller_window == target_window:
+        return  # caller not on this server, or it is the kept target window
+    target_session = await session_id_of(engine, target, version)
+    caller_session = await caller_session_or_none(engine, caller.pane_id, version)
+    if caller_session is None or caller_session != target_session:
+        return
+    raise_target_hint(
+        f"refusing to kill the other windows of session {caller_session}: window "
+        f"{caller_window} holds this MCP server's pane {caller.pane_id}. Exclude "
+        "it, or run the tmux command manually.",
+    )
+
+
 async def guard_destructive_op(engine: AsyncTmuxEngine, operation: t.Any) -> None:
     """Apply the self-kill guard to a per-op kill/respawn operation, by kind.
 
-    Closes the gap where the ``op_*`` per-operation surface dispatches around the
-    curated guard. The ``others=True`` sibling case is not fully covered here --
-    prefer the curated kill tools when killing "all others".
+    Covers the ``op_*`` per-operation surface, including the ``others=True``
+    sibling case (which keeps the target and kills its neighbours).
     """
     target = operation.target
     if target is None:
         return
     kind = operation.kind
-    if kind in ("kill_pane", "respawn_pane"):
+    others = bool(getattr(operation, "others", False))
+    if kind == "respawn_pane":
         await guard_self_kill(engine, pane=await pane_id(engine, target, None))
+    elif kind == "kill_pane":
+        target_pane = await pane_id(engine, target, None)
+        if others:
+            await guard_kill_other_panes(engine, target_pane, None)
+        else:
+            await guard_self_kill(engine, pane=target_pane)
     elif kind == "kill_window":
-        await guard_self_kill(engine, window=await window_id(engine, target, None))
+        target_window = await window_id(engine, target, None)
+        if others:
+            await guard_kill_other_windows(engine, target, target_window, None)
+        else:
+            await guard_self_kill(engine, window=target_window)
     elif kind == "kill_session":
         await guard_self_kill(engine, session=await session_id_of(engine, target, None))
