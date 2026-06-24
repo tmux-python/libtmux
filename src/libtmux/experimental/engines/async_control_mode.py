@@ -87,6 +87,26 @@ class _PendingCommand:
     blocks: list[ControlModeBlock] = field(default_factory=list)
 
 
+def _offer(
+    queue: asyncio.Queue[ControlNotification],
+    notification: ControlNotification,
+) -> int:
+    """Put *notification* on *queue*, dropping the oldest on overflow.
+
+    Returns ``1`` when a notification was dropped, else ``0`` (so a broadcast can
+    tally drops without a ``try``/``except`` in its hot loop).
+    """
+    try:
+        queue.put_nowait(notification)
+    except asyncio.QueueFull:
+        with contextlib.suppress(asyncio.QueueEmpty):
+            queue.get_nowait()
+        with contextlib.suppress(asyncio.QueueFull):
+            queue.put_nowait(notification)
+        return 1
+    return 0
+
+
 class AsyncControlModeEngine:
     """Execute tmux commands over one persistent async ``tmux -C`` connection.
 
@@ -120,9 +140,8 @@ class AsyncControlModeEngine:
         self.timeout = timeout
         self._parser = ControlModeParser()
         self._pending: collections.deque[_PendingCommand] = collections.deque()
-        self._events: asyncio.Queue[ControlNotification] = asyncio.Queue(
-            maxsize=event_queue_size,
-        )
+        self._event_queue_size = event_queue_size
+        self._subscribers: set[asyncio.Queue[ControlNotification]] = set()
         self._dropped_notifications = 0
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task[None] | None = None
@@ -249,10 +268,21 @@ class AsyncControlModeEngine:
     async def subscribe(self) -> AsyncIterator[ControlNotification]:
         """Yield asynchronous tmux notifications as they arrive.
 
-        The iterator runs until the engine is closed or cancelled by the caller.
+        Each subscriber gets its own queue, so concurrent subscribers (the event
+        push tool, the pull ring, the output monitor) each see *every*
+        notification rather than competing for one shared stream. The iterator
+        runs until the engine is closed or the caller stops iterating; its queue
+        is unregistered on exit.
         """
-        while True:
-            yield await self._events.get()
+        queue: asyncio.Queue[ControlNotification] = asyncio.Queue(
+            maxsize=self._event_queue_size,
+        )
+        self._subscribers.add(queue)
+        try:
+            while True:
+                yield await queue.get()
+        finally:
+            self._subscribers.discard(queue)
 
     @property
     def dropped_notifications(self) -> int:
@@ -339,16 +369,14 @@ class AsyncControlModeEngine:
             pending.future.set_result(_merge_blocks(pending.blocks, pending.argv))
 
     def _publish(self, line: bytes) -> None:
-        """Enqueue a notification, dropping the oldest on overflow."""
+        """Broadcast a notification to every subscriber (drop-oldest per queue).
+
+        Runs synchronously from the single reader task, so the subscriber set is
+        never mutated mid-iteration.
+        """
         notification = ControlNotification.parse(line)
-        try:
-            self._events.put_nowait(notification)
-        except asyncio.QueueFull:
-            self._dropped_notifications += 1
-            with contextlib.suppress(asyncio.QueueEmpty):
-                self._events.get_nowait()
-            with contextlib.suppress(asyncio.QueueFull):
-                self._events.put_nowait(notification)
+        for queue in self._subscribers:
+            self._dropped_notifications += _offer(queue, notification)
 
     def _mark_dead(self, error: BaseException) -> None:
         """Record the engine as dead and fail all pending commands."""
