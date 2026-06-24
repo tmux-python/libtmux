@@ -227,7 +227,8 @@ def test_monitor_settles_on_stream_end() -> None:
     assert data.frame_count == 2
     assert data.truncated is False
     assert data.snapshot_lines == []
-    assert data.done.pane_dead is False
+    # The fake's pane id is unverifiable post-settle, so liveness reads unknown.
+    assert data.done.pane_dead is None
 
 
 def test_monitor_snapshot_false_omits_grid() -> None:
@@ -334,7 +335,7 @@ def test_read_done_parses_display_message_fields() -> None:
     """_read_done maps the tab-joined display-message into DoneMetadata."""
     from libtmux.experimental.mcp.events import _read_done
 
-    done_line = "1\t137\tHUP\tbash\t3\t50\t1"
+    done_line = "%1\t1\t137\tHUP\tbash\t3\t50\t1"  # pane_id first
     engine = InstrumentedEngine(done_line=done_line)
     done = asyncio.run(_read_done(engine, "%1"))
     assert done.pane_dead is True
@@ -344,6 +345,33 @@ def test_read_done_parses_display_message_fields() -> None:
     assert done.cursor_y == 3
     assert done.history_size == 50
     assert done.pane_in_mode is True
+
+
+def test_subscribe_broadcasts_to_every_consumer() -> None:
+    """Concurrent subscribers each receive every notification (no frame stealing).
+
+    A regression for the competing-consumer bug: a single shared queue handed each
+    item to exactly one waiter, so wait_for_output and watch_events/poll_events
+    stole each other's %output and the monitor could falsely report 'settled'.
+    """
+    from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
+
+    engine = AsyncControlModeEngine()
+
+    async def main() -> tuple[str, str]:
+        stream_a, stream_b = engine.subscribe(), engine.subscribe()
+        first = asyncio.ensure_future(stream_a.__anext__())
+        second = asyncio.ensure_future(stream_b.__anext__())
+        await asyncio.sleep(0)  # let both register their queues at the first await
+        await asyncio.sleep(0)
+        engine._publish(b"%window-add @3")
+        notif_a, notif_b = await first, await second
+        # asyncio.run finalizes the suspended generators via shutdown_asyncgens.
+        return notif_a.raw, notif_b.raw
+
+    raw_a, raw_b = asyncio.run(main())
+    assert raw_a == "%window-add @3"
+    assert raw_b == "%window-add @3"  # both, not split across consumers
 
 
 def test_instructions_surface_wait_for_output() -> None:
