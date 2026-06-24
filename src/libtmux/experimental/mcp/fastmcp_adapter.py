@@ -129,39 +129,68 @@ def _agent_context_segment(ctx: CallerContext) -> str:
     )
 
 
-def _instructions(ctx: CallerContext) -> str:
-    """Compose the server instructions, woven with the live caller context."""
-    return "\n\n".join(
-        (
-            "This MCP drives a real tmux server through typed tools: sessions, "
-            "windows, panes, terminal scrollback, send-keys, copy-mode buffers. "
-            "Targets accept tmux ids (%pane, @window, $session), names, or "
-            "'session:window.pane'.",
-            "When to invoke: managing tmux panes/windows/sessions; reading "
-            "terminal scrollback (capture_pane/grep_pane/search_panes); sending "
-            "keystrokes to a running shell or REPL (send_input); copy-mode and "
-            "paste-buffer work; operating on a pane relative to another or to you "
-            "(capture_relative_pane/grep_relative_pane).",
-            "Do NOT invoke for: editor panes you edit via file tools; browser tabs "
-            "or web content; GUI application windows; notebook cells; any non-tmux "
-            "terminal surface. tmux only sees terminal panes -- it cannot read a "
-            "browser or GUI app.",
-            "Prefer a concrete %N pane id; resolve relative or caller-relative "
-            "targets to a concrete %N before capture/send. Never hand a directional "
-            "special target ({up-of}/{down-of}/{left-of}/{right-of}) to "
-            "capture_pane/grep_pane/send_input -- those resolve against THIS MCP's "
-            "control client, not your pane; use capture_relative_pane / "
-            "grep_relative_pane / resolve_relative_pane instead.",
-            _agent_context_segment(ctx),
-            "list_panes/list_windows/show_options query tmux metadata (format "
-            "fields); grep_pane (one pane) and search_panes (across panes) search "
-            "terminal text (scrollback). Pick the right one for 'which pane shows X'.",
-            "The curated tools cover most needs; the per-operation surface (op_*) "
-            "and the plan tools (preview_plan/execute_plan/result_schema/"
-            "build_workspace) are power-use; watch_events streams live notifications "
-            "on a control-mode engine.",
-        ),
+def _instructions(ctx: CallerContext, *, events_enabled: bool = False) -> str:
+    """Compose the server instructions, woven with the live caller context.
+
+    *events_enabled* gates the live-output guidance (``wait_for_output`` /
+    ``watch_events``), which is registered only on a streaming control-mode
+    server -- the sync server omits it so it never names a tool it lacks.
+    """
+    closer = (
+        "The curated tools cover most needs; the per-operation surface (op_*) "
+        "and the plan tools (preview_plan/execute_plan/result_schema/"
+        "build_workspace) are power-use."
     )
+    if events_enabled:
+        closer += (
+            " For live output: wait_for_output waits for one pane to settle "
+            "(run-a-command-and-wait); watch_events/poll_events stream/buffer raw "
+            "control-mode notifications across the server."
+        )
+    segments = [
+        "This MCP drives a real tmux server through typed tools: sessions, "
+        "windows, panes, terminal scrollback, send-keys, copy-mode buffers. "
+        "Targets accept tmux ids (%pane, @window, $session), names, or "
+        "'session:window.pane'.",
+        "When to invoke: managing tmux panes/windows/sessions; reading "
+        "terminal scrollback (capture_pane/grep_pane/search_panes); sending "
+        "keystrokes to a running shell or REPL (send_input); copy-mode and "
+        "paste-buffer work; operating on a pane relative to another or to you "
+        "(capture_relative_pane/grep_relative_pane).",
+        "Do NOT invoke for: editor panes you edit via file tools; browser tabs "
+        "or web content; GUI application windows; notebook cells; any non-tmux "
+        "terminal surface. tmux only sees terminal panes -- it cannot read a "
+        "browser or GUI app.",
+        "Prefer a concrete %N pane id; resolve relative or caller-relative "
+        "targets to a concrete %N before capture/send. Never hand a directional "
+        "special target ({up-of}/{down-of}/{left-of}/{right-of}) to "
+        "capture_pane/grep_pane/send_input -- those resolve against THIS MCP's "
+        "control client, not your pane; use capture_relative_pane / "
+        "grep_relative_pane / resolve_relative_pane instead.",
+        _agent_context_segment(ctx),
+    ]
+    if events_enabled:
+        segments.append(
+            "Run a command and wait for it to finish / for completion "
+            "(long-running builds, test runs like `uv run pytest`, installs, a "
+            "server reaching ready): split_pane or pick a pane, send_input the "
+            "command (enter=True), then call wait_for_output on that same pane -- "
+            "it folds the live output and returns when the pane goes quiet "
+            "(settles), needle-free (no regex, no sentinel). Prefer this over "
+            "polling with sleep + capture_pane: wait_for_output is event-backed, "
+            "returns the captured_text, and reports done.pane_dead / "
+            "done.pane_dead_status (process exit / return code) plus "
+            "done.pane_current_command so you can tell finished from "
+            "blocked-on-input. Settled means output stopped, not that the command "
+            "succeeded or failed -- read the done metadata to confirm exit status.",
+        )
+    segments.append(
+        "list_panes/list_windows/show_options query tmux metadata (format "
+        "fields); grep_pane (one pane) and search_panes (across panes) search "
+        "terminal text (scrollback). Pick the right one for 'which pane shows X'.",
+    )
+    segments.append(closer)
+    return "\n\n".join(segments)
 
 
 def _summary(doc: str | None) -> str | None:
@@ -591,11 +620,15 @@ def build_async_server(
     """
     from fastmcp import FastMCP
 
-    from libtmux.experimental.mcp.events import register_events
+    from libtmux.experimental.mcp.events import _supports_stream, register_events
 
     ctx = caller if caller is not None else CallerContext.discover()
     _stash_caller(engine, ctx)
-    mcp: FastMCP = FastMCP(name=name, instructions=instructions or _instructions(ctx))
+    events_enabled = events != "off" and _supports_stream(engine)
+    mcp: FastMCP = FastMCP(
+        name=name,
+        instructions=instructions or _instructions(ctx, events_enabled=events_enabled),
+    )
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=True)
     register_caller_context(mcp, ctx)
