@@ -366,30 +366,54 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
         stream_partials: bool = False,
         snapshot: bool = True,
     ) -> MonitorResult:
-        """Watch one pane's live output and return when it goes quiet (settles).
+        """Run a command and wait for it to finish; watch a pane until it settles.
 
-        Needle-free: accumulates the bytes the pane *produces* and returns the
-        instant it stays idle for ``settle_ms`` -- or the wall-clock ``timeout``
-        (seconds) or ``max_bytes`` cap fires, or the stream ends. No regex, no
-        sentinel injection: read ``captured_text`` + ``done`` and decide what
-        happened.
+        Use this to run a long-running command -- a test run (``uv run pytest``), a
+        build, an install, a server coming up -- and wait for the result instead of
+        polling with sleep + capture_pane. Typical flow: ``send_input`` the command
+        to a pane (``enter=True``), then call ``wait_for_output`` on that same pane.
+        It folds the bytes the pane *produces* and returns the instant it stays idle
+        for ``settle_ms`` -- or ``timeout`` / ``max_bytes`` fires, or the stream
+        ends. Needle-free: no regex, no sentinel injection.
 
-        ``reason='settled'`` means *stopped producing output*, NOT *succeeded* --
-        it cannot tell "finished, back to the shell" from "blocked on stdin". Use
-        ``done.pane_dead`` (+ ``done.pane_dead_status``) and
-        ``done.pane_current_command`` (a shell name) to disambiguate;
-        ``dropped``/``truncated`` warn the captured chunk may be incomplete.
+        **Settled is not success.** ``reason='settled'`` means the pane stopped
+        producing output -- it cannot, on its own, tell "finished, back to the
+        shell" from "blocked waiting on stdin". To confirm the command exited, read
+        ``done.pane_dead`` with ``done.pane_dead_status`` (the process exit code; 0
+        is success) and ``done.pane_current_command`` (a shell name means idle).
+        ``dropped`` / ``truncated`` warn the captured chunk may be incomplete.
 
-        Set ``stream_partials=True`` to also push each chunk live as an MCP log
-        message. ``snapshot`` defaults to ``True``: at settle the rendered grid is
-        captured into ``snapshot_lines``; pass ``snapshot=False`` to skip that
-        capture, leaving ``snapshot_lines`` ``None``. While it runs it shares
-        tmux's single ``%output`` stream with ``watch_events`` / ``poll_events``;
-        it is bounded by the caps and short-lived, and each call runs in its own
-        task so it does not block other tools. The first watch on a session
-        attaches the control client (so its panes emit ``%output``), which draws
-        the current screen once into ``captured_text`` -- the clean rendered grid,
-        when requested, is in ``snapshot_lines``.
+        While it runs it shares tmux's single ``%output`` stream with
+        ``watch_events`` / ``poll_events``; it is bounded by the caps and
+        short-lived, and each call runs in its own task so it does not block other
+        tools. The first watch on a session attaches the control client (so its
+        panes emit ``%output``), which draws the current screen once into
+        ``captured_text`` -- the clean rendered grid, when requested, is in
+        ``snapshot_lines``.
+
+        Parameters
+        ----------
+        target : str
+            The pane to watch: a tmux id (``%pane``, ``@window``, ``$session``), a
+            name, or ``session:window.pane``. Resolve directional specials to a
+            concrete ``%N`` first.
+        settle_ms : int
+            Idle time in milliseconds with no new output before the pane is treated
+            as done (default 750). Lower returns sooner but risks a false settle
+            while a command pauses; raise it for chatty or bursty commands.
+        timeout : float
+            Wall-clock seconds to wait before giving up (default 30.0). Raise it for
+            slow test suites or heavy builds; on expiry ``reason`` reports the cap.
+        max_bytes : int
+            Cap on captured output bytes (default 131072). On overflow the watch
+            returns early with ``truncated`` set; raise it to keep more output.
+        stream_partials : bool
+            When ``True``, also push each output chunk live as an MCP log message
+            for real-time progress on long runs (default ``False``).
+        snapshot : bool
+            When ``True`` (default), capture the rendered pane grid into
+            ``snapshot_lines`` at settle; ``False`` skips that extra capture and
+            leaves ``snapshot_lines`` ``None``.
         """
         from libtmux.experimental.mcp.target_resolver import resolve_target
         from libtmux.experimental.mcp.vocabulary._resolve import (
@@ -452,7 +476,15 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
     tool = FunctionTool.from_function(
         wait_for_output,
         name="wait_for_output",
-        description="Watch a pane's output and return when it settles (needle-free)",
+        description=(
+            "Run a command and wait for it to finish (command completion): watch "
+            "one pane's live output and return when it goes quiet (settles). Use "
+            "after send_input to wait for long-running tests/builds/installs "
+            "instead of sleep + capture_pane polling. Needle-free (no "
+            "regex/sentinel); read captured_text and the done metadata (pane_dead, "
+            "pane_dead_status = exit / return code, 0 is success) to tell whether "
+            "it finished or failed."
+        ),
         tags={"readonly", "events", "monitor"},
         annotations=ToolAnnotations(title="wait_for_output", readOnlyHint=True),
     )
