@@ -5,17 +5,9 @@ from __future__ import annotations
 from libtmux.experimental.engines.base import AsyncTmuxEngine
 from libtmux.experimental.mcp.target_resolver import resolve_target
 from libtmux.experimental.mcp.vocabulary._bridge import synced
-from libtmux.experimental.mcp.vocabulary._caller import (
-    engine_socket,
-    socket_could_match,
-)
 from libtmux.experimental.mcp.vocabulary._resolve import (
-    caller_of,
-    caller_session_or_none,
-    caller_window_or_none,
+    guard_kill_other_windows,
     guard_self_kill,
-    raise_target_hint,
-    session_id_of,
     window_id,
 )
 from libtmux.experimental.mcp.vocabulary._results import Listing, WindowResult
@@ -142,7 +134,7 @@ async def akill_window(
     resolved = resolve_target(target)
     target_window = await window_id(engine, resolved, version)
     if others:
-        await _guard_kill_other_windows(engine, target, target_window, version)
+        await guard_kill_other_windows(engine, target, target_window, version)
     else:
         await guard_self_kill(engine, window=target_window, version=version)
     (
@@ -152,36 +144,6 @@ async def akill_window(
             version=version,
         )
     ).raise_for_status()
-
-
-async def _guard_kill_other_windows(
-    engine: AsyncTmuxEngine,
-    target: str | Target,
-    target_window: str,
-    version: str | None,
-) -> None:
-    """Refuse ``kill_window(others=True)`` when the caller is a same-session sibling.
-
-    ``others=True`` keeps the target window and kills every other window in its
-    session, so the danger is the caller's window being one of those siblings.
-    """
-    caller = caller_of(engine)
-    if not caller.in_tmux or not caller.pane_id:
-        return
-    if not socket_could_match(engine_socket(engine), caller):
-        return
-    caller_window = await caller_window_or_none(engine, caller.pane_id, version)
-    if caller_window is None or caller_window == target_window:
-        return  # caller not on this server, or it is the kept target window
-    target_session = await session_id_of(engine, target, version)
-    caller_session = await caller_session_or_none(engine, caller.pane_id, version)
-    if caller_session is None or caller_session != target_session:
-        return
-    raise_target_hint(
-        f"refusing to kill the other windows of session {caller_session}: window "
-        f"{caller_window} holds this MCP server's pane {caller.pane_id}. Exclude "
-        "it, or run the tmux command manually.",
-    )
 
 
 async def alist_windows(
