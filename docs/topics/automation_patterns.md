@@ -118,13 +118,18 @@ command that never finishes can't hang your script forever. The `poll_interval` 
 the latency/work trade in one knob: poll faster to react sooner, slower to spare tmux
 the round-trips.
 
+> **Note:** This polls with `capture_pane` + `sleep` — correct for the
+> synchronous library. If you drive tmux through the libtmux MCP server, prefer
+> the event-backed `wait_for_output` tool instead: it folds live `%output` and
+> returns when the pane settles, with no polling.
+
 ```python
 >>> import time
 
 >>> monitor_window = session.new_window(window_name='monitor', attach=False)
 >>> monitor_pane = monitor_window.active_pane
 
->>> def wait_for_output(pane, text, timeout=5.0, poll_interval=0.1):
+>>> def wait_for_text(pane, text, timeout=5.0, poll_interval=0.1):
 ...     """Wait for specific text to appear in pane output."""
 ...     start = time.time()
 ...     while time.time() - start < timeout:
@@ -135,7 +140,7 @@ the round-trips.
 ...     return False
 
 >>> monitor_pane.send_keys('sleep 0.2; echo "READY"')
->>> wait_for_output(monitor_pane, 'READY', timeout=2.0)
+>>> wait_for_text(monitor_pane, 'READY', timeout=2.0)
 True
 
 >>> # Clean up
