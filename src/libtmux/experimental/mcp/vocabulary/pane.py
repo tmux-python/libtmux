@@ -24,7 +24,6 @@ from libtmux.experimental.mcp.vocabulary._bridge import synced
 from libtmux.experimental.mcp.vocabulary._caller import (
     engine_socket,
     is_strict_caller,
-    socket_could_match,
 )
 from libtmux.experimental.mcp.vocabulary._geometry import (
     Corner,
@@ -37,7 +36,7 @@ from libtmux.experimental.mcp.vocabulary._resolve import (
     DIR_FLAG,
     active_pane_id,
     caller_of,
-    caller_window_or_none,
+    guard_kill_other_panes,
     guard_self_kill,
     opt_target,
     pane_id,
@@ -406,7 +405,7 @@ async def akill_pane(
     reject_relative_special(resolved)
     target_pane = await pane_id(engine, target, version)
     if others:
-        await _guard_kill_others(engine, target_pane, version)
+        await guard_kill_other_panes(engine, target_pane, version)
     else:
         await guard_self_kill(engine, pane=target_pane, version=version)
     (
@@ -416,33 +415,6 @@ async def akill_pane(
             version=version,
         )
     ).raise_for_status()
-
-
-async def _guard_kill_others(
-    engine: AsyncTmuxEngine,
-    target_pane: str,
-    version: str | None,
-) -> None:
-    """Refuse ``kill_pane(others=True)`` when the caller is a sibling of the target.
-
-    ``others=True`` keeps the target and kills every other pane in its window, so
-    the danger is the caller pane being one of those siblings (not the target).
-    """
-    caller = caller_of(engine)
-    if not caller.in_tmux or not caller.pane_id or caller.pane_id == target_pane:
-        return
-    if not socket_could_match(engine_socket(engine), caller):
-        return
-    caller_window = await caller_window_or_none(engine, caller.pane_id, version)
-    if caller_window is None:
-        return
-    target_window = await window_id(engine, PaneId(target_pane), version)
-    if caller_window == target_window:
-        raise_target_hint(
-            f"refusing to kill the other panes of window {target_window}: pane "
-            f"{caller.pane_id} runs this MCP server. Kill panes individually "
-            f"(excluding {caller.pane_id}), or run the tmux command manually.",
-        )
 
 
 async def alist_panes(
