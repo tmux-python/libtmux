@@ -37,6 +37,7 @@ from libtmux.experimental.mcp._settle import (
     accumulate_until_settle,
     output_payload,
 )
+from libtmux.experimental.ops import TmuxCommandError
 
 if t.TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Sequence
@@ -53,6 +54,7 @@ _RING_SIZE = 1024
 # tmux format read once at settle to fill DoneMetadata (tab-joined, one round-trip).
 _DONE_FORMAT = "\t".join(
     (
+        "#{pane_id}",
         "#{pane_dead}",
         "#{pane_dead_status}",
         "#{pane_dead_signal}",
@@ -71,9 +73,11 @@ class DoneMetadata:
     A ``pane_dead`` pane with a ``pane_dead_status`` is a *hard* "process exited"
     signal; ``pane_current_command`` reverting to a shell is a *soft* "command
     finished" signal. The screen-state fields add context without claiming intent.
+    ``pane_dead`` is ``None`` when the pane is gone or its liveness could not be
+    read (the command exited and took the pane with it).
     """
 
-    pane_dead: bool
+    pane_dead: bool | None
     pane_dead_status: int | None
     pane_dead_signal: str | None
     pane_current_command: str | None
@@ -92,6 +96,8 @@ class MonitorResult:
     ``truncated``), ``stream_end`` (the notification stream ended).
     ``idle_ms_observed`` is only meaningful when ``reason == "settled"``;
     ``snapshot_lines`` is ``None`` when the call passed ``snapshot=False``.
+    ``exit_code`` is the process exit code when the watched process is known to
+    have exited (``done.pane_dead`` is true), else ``None``.
     """
 
     pane_id: str
@@ -104,6 +110,7 @@ class MonitorResult:
     truncated: bool
     dropped: int
     done: DoneMetadata
+    exit_code: int | None
     snapshot_lines: tuple[str, ...] | None
 
 
@@ -168,6 +175,7 @@ class _EventRing:
         )
         self._seq = 0
         self._task: asyncio.Task[None] | None = None
+        self._error: str | None = None
 
     def _ensure_started(self) -> None:
         """Start the drainer task once, lazily, on the running loop."""
@@ -175,17 +183,29 @@ class _EventRing:
             self._task = asyncio.create_task(self._drain(), name="libtmux-mcp-events")
 
     async def _drain(self) -> None:
-        """Copy every notification into the ring buffer."""
-        stream: AsyncIterator[t.Any] = self._engine.subscribe()
-        async for notification in stream:
-            self._seq += 1
-            self._buffer.append((self._seq, _event_dict(notification)))
+        """Copy every notification into the ring buffer (supervised, fail-safe).
+
+        A reader failure is recorded and surfaced on the next :meth:`since` call,
+        rather than silently freezing the cursor or raising at garbage-collection
+        time. The subscription is closed deterministically via ``aclosing``.
+        """
+        stream = t.cast("AsyncGenerator[t.Any, None]", self._engine.subscribe())
+        try:
+            async with contextlib.aclosing(stream) as managed:
+                async for notification in managed:
+                    self._seq += 1
+                    self._buffer.append((self._seq, _event_dict(notification)))
+        except Exception as error:  # capture: the drainer must never crash
+            self._error = repr(error)
 
     def since(self, seq: int) -> dict[str, t.Any]:
         """Return buffered events with sequence number greater than *seq*."""
         self._ensure_started()
         events = [event for n, event in self._buffer if n > seq]
-        return {"events": events, "cursor": self._seq}
+        out: dict[str, t.Any] = {"events": events, "cursor": self._seq}
+        if self._error is not None:
+            out["error"] = self._error
+        return out
 
 
 def register_events(
@@ -297,12 +317,36 @@ def _register_pull(mcp: FastMCP, engine: _StreamEngine) -> None:
     mcp.add_tool(tool)
 
 
+def _gone_done() -> DoneMetadata:
+    """``DoneMetadata`` for a pane that is gone or whose liveness can't be read."""
+    return DoneMetadata(
+        pane_dead=None,
+        pane_dead_status=None,
+        pane_dead_signal=None,
+        pane_current_command=None,
+        cursor_y=None,
+        history_size=None,
+        pane_in_mode=False,
+    )
+
+
 async def _read_done(engine: _StreamEngine, pane_id: str) -> DoneMetadata:
-    """Fill :class:`DoneMetadata` for *pane_id* in one ``display-message`` read."""
+    """Fill :class:`DoneMetadata` for *pane_id* in one ``display-message`` read.
+
+    Fail-safe: when the pane is gone -- the probe errors, returns blank, or tmux
+    resolves a *different* (fallback) pane -- liveness is reported as unknown
+    (``pane_dead=None``) rather than raising or fabricating ``pane_dead=False``,
+    so a command that exited and took its pane still yields a result.
+    """
     from libtmux.experimental.mcp.vocabulary.server import adisplay_message
 
-    text = (await adisplay_message(engine, pane_id, _DONE_FORMAT)).text
-    fields = (text.split("\t") + [""] * 7)[:7]
+    try:
+        text = (await adisplay_message(engine, pane_id, _DONE_FORMAT)).text
+    except TmuxCommandError:
+        return _gone_done()
+    fields = (text.split("\t") + [""] * 8)[:8]
+    if not fields[0].strip() or fields[0].strip() != pane_id:
+        return _gone_done()  # blank probe, or tmux resolved a fallback pane
 
     def _as_int(value: str) -> int | None:
         value = value.strip()
@@ -317,13 +361,13 @@ async def _read_done(engine: _StreamEngine, pane_id: str) -> DoneMetadata:
         return value.strip() or None
 
     return DoneMetadata(
-        pane_dead=fields[0].strip() == "1",
-        pane_dead_status=_as_int(fields[1]),
-        pane_dead_signal=_as_str(fields[2]),
-        pane_current_command=_as_str(fields[3]),
-        cursor_y=_as_int(fields[4]),
-        history_size=_as_int(fields[5]),
-        pane_in_mode=fields[6].strip() == "1",
+        pane_dead=fields[1].strip() == "1",
+        pane_dead_status=_as_int(fields[2]),
+        pane_dead_signal=_as_str(fields[3]),
+        pane_current_command=_as_str(fields[4]),
+        cursor_y=_as_int(fields[5]),
+        history_size=_as_int(fields[6]),
+        pane_in_mode=fields[7].strip() == "1",
     )
 
 
@@ -451,13 +495,15 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
         done = await _read_done(engine, pane)
         snapshot_lines: tuple[str, ...] | None = None
         if snapshot:
-            captured = await acapture_pane(
-                engine,
-                pane,
-                join_wrapped=True,
-                trim_trailing=True,
-            )
-            snapshot_lines = tuple(captured.lines)
+            # A pane that died at settle cannot be captured -- keep the result.
+            with contextlib.suppress(TmuxCommandError):
+                captured = await acapture_pane(
+                    engine,
+                    pane,
+                    join_wrapped=True,
+                    trim_trailing=True,
+                )
+                snapshot_lines = tuple(captured.lines)
 
         return MonitorResult(
             pane_id=pane,
@@ -470,6 +516,7 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
             truncated=outcome.truncated,
             dropped=dropped,
             done=done,
+            exit_code=done.pane_dead_status if done.pane_dead else None,
             snapshot_lines=snapshot_lines,
         )
 
