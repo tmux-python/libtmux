@@ -1,0 +1,18 @@
+---
+import '../styles.css'
+import { slugify } from '../utils'
+import Docstring from './Docstring.astro'
+
+const { variable } = Astro.props
+const anchor = slugify(variable.qualname)
+const signature = variable.annotation ? `${variable.name}: ${variable.annotation}` : variable.name
+const value = variable.value ? `= ${variable.value}` : ''
+---
+
+<section id={anchor} class="autodoc-card autodoc">
+  <div class="autodoc-title">{variable.name}</div>
+  <div class="autodoc-signature">
+    {signature} {value}
+  </div>
+  <Docstring value={variable.docstring} html={variable.docstringHtml} />
+</section>
