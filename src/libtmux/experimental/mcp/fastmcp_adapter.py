@@ -737,16 +737,27 @@ def build_async_server(
 
     from libtmux.experimental.mcp._lifespan import make_lifespan
     from libtmux.experimental.mcp.events import _supports_stream, register_events
+    from libtmux.experimental.mcp.vocabulary.agents import supports_monitor
 
     level = _resolve_level(safety_level)
     ctx = caller if caller is not None else CallerContext.discover()
     _stash_caller(engine, ctx)
     events_enabled = events != "off" and _supports_stream(engine)
+    # Build the agent monitor up front so the lifespan can start/stop it for the
+    # server's whole lifetime. The monitor needs the full control surface
+    # (subscribe + add_subscription + set_attach_targets), a stricter bar than
+    # the event tools' subscribe-only requirement.
+    monitor_enabled = supports_monitor(engine)
+    agent_monitor = None
+    if monitor_enabled:
+        from libtmux.experimental.agents.monitor import AgentMonitor
+
+        agent_monitor = AgentMonitor(engine)
     mcp: FastMCP = FastMCP(
         name=name,
         instructions=instructions or _instructions(ctx, events_enabled=events_enabled),
         middleware=_make_middleware(level) if include_middleware else None,
-        lifespan=make_lifespan(engine) if lifespan else None,
+        lifespan=make_lifespan(engine, agent_monitor) if lifespan else None,
     )
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=True)
@@ -770,5 +781,9 @@ def build_async_server(
 
         register_resources(mcp, engine, is_async=True)
     register_events(mcp, engine, mode=events, source=event_source)
+    if monitor_enabled:
+        from libtmux.experimental.mcp.vocabulary.agents import register_agents
+
+        register_agents(mcp, engine, monitor=agent_monitor)
     _apply_safety_gate(mcp, level)
     return mcp
