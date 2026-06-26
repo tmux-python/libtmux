@@ -228,9 +228,11 @@ class AsyncControlModeEngine:
     def set_attach_targets(self, ids: list[str]) -> None:
         """Record the sessions the engine should (re)attach to on reconnect.
 
-        Stores a *copy* of *ids* in :attr:`_desired_attach`. The attach replay
-        itself is wired by the events layer (it owns
-        :attr:`_attached_session`); this only records the desired targets.
+        Stores a *copy* of *ids* in :attr:`_desired_attach`. The supervisor
+        replays these on every (re)connect via :meth:`_replay_attach`, so the
+        engine stays attached across a tmux restart or socket blip (a control
+        client attaches to one session at a time, so the last target wins and
+        :attr:`_attached_session` records it).
 
         Parameters
         ----------
@@ -515,6 +517,7 @@ class AsyncControlModeEngine:
                 self._generation += 1
                 connected_once = True
                 await self._replay_subscriptions()
+                await self._replay_attach()
                 self._connected.set()  # first connect done: unblock start()
                 # The reader runs inline (one reader at a time). On EOF it returns
                 # and we reconnect; on cancellation (aclose) it propagates out.
@@ -561,6 +564,45 @@ class AsyncControlModeEngine:
                 # The proc died before replay landed; the reader will EOF and the
                 # supervisor reconnects, failing these pending commands then.
                 return
+
+    async def _replay_attach(self) -> None:
+        """Re-attach to every desired session on the freshly connected proc.
+
+        Mirrors :meth:`_replay_subscriptions`. A fresh ``tmux -C`` process is
+        attached to nothing, and per-pane ``%subscription-changed`` only flows
+        to an *attached* control client, so the supervisor must re-attach after
+        every (re)connect or a monitor that relies on the option channel goes
+        silent. Each target is written as ``attach-session -t <target>`` directly
+        to stdin with a swallowed pending future (same FIFO + :attr:`_write_lock`
+        discipline as the subscription replay), so it re-enters neither
+        :meth:`start` nor :meth:`run_batch`. A control client attaches to one
+        session at a time, so the last target wins; :attr:`_attached_session`
+        records it. Does nothing when :attr:`_desired_attach` is empty.
+        """
+        if not self._desired_attach:
+            return
+        proc = self._proc
+        if proc is None or proc.stdin is None:
+            return
+        loop = asyncio.get_running_loop()
+        async with self._write_lock:
+            payload_parts: list[bytes] = []
+            attached: str | None = None
+            for target in self._desired_attach:
+                argv = ("attach-session", "-t", target)
+                future: asyncio.Future[CommandResult] = loop.create_future()
+                future.add_done_callback(_swallow_future)
+                self._pending.append(_PendingCommand(future, argv, command_count(argv)))
+                payload_parts.append((render_control_line(argv) + "\n").encode())
+                attached = target
+            try:
+                proc.stdin.write(b"".join(payload_parts))
+                await proc.stdin.drain()
+            except (BrokenPipeError, OSError):
+                # The proc died before replay landed; the reader will EOF and the
+                # supervisor reconnects, failing these pending commands then.
+                return
+            self._attached_session = attached
 
     def _reset_attach(self) -> None:
         """Clear the sticky attach so reconnect re-attaches from scratch.
