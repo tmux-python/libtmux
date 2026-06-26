@@ -13,6 +13,30 @@ from libtmux.experimental.agents.state import AgentState
 from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
 
 
+async def _poll_state(
+    monitor: AgentMonitor,
+    pane_id: str,
+    want: str,
+    *,
+    budget: float = 3.0,
+) -> str:
+    """Poll the monitor until *pane_id* reports *want*, or *budget* elapses.
+
+    tmux's subscription timer is ~1s, so callers pass a generous budget rather
+    than asserting sub-second latency.
+    """
+    deadline = asyncio.get_running_loop().time() + budget
+    seen = "missing"
+    while asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(0.1)
+        match = {a.pane_id: a for a in monitor.agents}.get(pane_id)
+        if match is not None:
+            seen = match.state.value
+            if seen == want:
+                return seen
+    return seen
+
+
 def test_monitor_observes_running(session: Session) -> None:
     """@agent_state option set on a real pane is observed within 3s.
 
@@ -115,3 +139,55 @@ def test_reconcile_parses_live_panes(session: Session) -> None:
             )
 
     asyncio.run(main())
+
+
+def test_monitor_survives_engine_reconnect(session: Session) -> None:
+    """The monitor keeps observing state after the control proc is killed.
+
+    Proves the self-heal (the supervised drain re-subscribes + reconciles on
+    reconnect, and the engine supervisor replays the subscription + attach):
+
+    1. Start the monitor, observe ``@agent_state running``.
+    2. Kill the control-mode process out from under it.
+    3. Wait for the supervisor to reconnect.
+    4. Set a NEW state (``awaiting_input``) and assert the monitor observes it —
+       only possible if it re-subscribed against the reconnected engine.
+
+    Timing-tolerant: generous poll budgets, no sub-second assertions.
+    """
+
+    async def main() -> str:
+        engine = AsyncControlModeEngine.for_server(session.server)
+        monitor = AgentMonitor(engine)
+        await monitor.start()
+        assert engine._attached_session is not None
+        active_pane = session.active_window.active_pane
+        assert active_pane is not None
+        pane_id = active_pane.pane_id
+        assert pane_id is not None
+
+        # 1. Observe the initial state.
+        session.cmd("set-option", "-p", "-t", pane_id, "@agent_state", "running")
+        assert await _poll_state(monitor, pane_id, "running", budget=4.0) == "running"
+
+        gen_before = engine._generation
+
+        # 2. Kill the control proc out from under the monitor.
+        assert engine._proc is not None
+        engine._proc.terminate()
+
+        # 3. Wait for the supervisor to reconnect (backoff + respawn + replay).
+        for _ in range(40):
+            await asyncio.sleep(0.1)
+            if engine._generation > gen_before:
+                break
+        assert engine._generation > gen_before, "engine did not reconnect"
+
+        # 4. A NEW state must be observable through the re-subscribed monitor.
+        session.cmd("set-option", "-p", "-t", pane_id, "@agent_state", "awaiting_input")
+        observed = await _poll_state(monitor, pane_id, "awaiting_input", budget=6.0)
+        await monitor.stop()
+        await engine.aclose()
+        return observed
+
+    assert asyncio.run(main()) == "awaiting_input"
