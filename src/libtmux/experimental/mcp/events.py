@@ -122,6 +122,8 @@ class _StreamEngine(t.Protocol):
     against this narrower protocol after the :func:`_supports_stream` guard.
     """
 
+    _attached_session: str | None
+
     async def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command."""
         ...
@@ -393,7 +395,7 @@ async def _ensure_attached(engine: _StreamEngine, session_id: str) -> None:
         detail = " ".join(result.stderr) or "attach-session failed"
         msg = f"cannot watch {session_id}: {detail}"
         raise RuntimeError(msg)
-    engine._attached_session = session_id  # type: ignore[attr-defined]
+    engine._attached_session = session_id
 
 
 def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
