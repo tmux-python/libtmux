@@ -193,6 +193,10 @@ class Window:
         A shell command to launch in the window's first pane instead of the
         default shell (``new-window`` trailing command); also the fallback
         ``shell`` for the window's split panes.
+    window_index : int or None
+        Place this window at an explicit session index (``new-window -t
+        session:N``). Honored only for created windows (2..N); window 0 reuses
+        the session's implicit window and keeps the session base index.
     panes : Sequence[Pane]
         The window's panes (the first reuses the window's implicit pane).
     """
@@ -205,6 +209,7 @@ class Window:
     options_after: Mapping[str, str] = field(default_factory=dict)
     environment: Mapping[str, str] = field(default_factory=dict)
     window_shell: str | None = None
+    window_index: int | None = None
     panes: Sequence[Pane] = ()
 
     def to_dict(self) -> dict[str, t.Any]:
@@ -226,6 +231,8 @@ class Window:
             out["environment"] = dict(self.environment)
         if self.window_shell is not None:
             out["window_shell"] = self.window_shell
+        if self.window_index is not None:
+            out["window_index"] = self.window_index
         out["panes"] = [pane.to_dict() for pane in self.panes]
         return out
 
