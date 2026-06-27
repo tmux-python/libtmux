@@ -31,10 +31,11 @@ from libtmux.experimental.workspace.compiler import (
     compile_workspace,
 )
 from libtmux.experimental.workspace.confirm import ConfirmReport, confirm
-from libtmux.experimental.workspace.ir import Pane, Window, Workspace
+from libtmux.experimental.workspace.ir import Command, Pane, Window, Workspace
 from libtmux.experimental.workspace.runner import abuild_workspace, build_workspace
 
 __all__ = (
+    "Command",
     "Compiled",
     "ConfirmReport",
     "HostStep",

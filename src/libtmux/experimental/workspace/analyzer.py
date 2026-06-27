@@ -20,10 +20,10 @@ Examples
 'dev'
 >>> [w.name for w in ws.windows]
 ['editor', 'logs']
->>> ws.windows[0].panes[0].commands
-('vim',)
->>> ws.windows[0].panes[1].commands
-('cd src', 'pytest -q')
+>>> [c.cmd for c in ws.windows[0].panes[0].commands]
+['vim']
+>>> [c.cmd for c in ws.windows[0].panes[1].commands]
+['cd src', 'pytest -q']
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from __future__ import annotations
 import collections.abc
 import typing as t
 
-from libtmux.experimental.workspace.ir import Pane, Window, Workspace
+from libtmux.experimental.workspace.ir import Command, Pane, Window, Workspace
 
 
 def analyze(raw: collections.abc.Mapping[str, t.Any] | str) -> Workspace:
@@ -111,16 +111,35 @@ def _pane(raw: t.Any) -> Pane:
     raise TypeError(msg)
 
 
-def _shell_commands(value: t.Any) -> tuple[str, ...]:
-    """Normalize a ``shell_command`` (None / string / list of str|{cmd})."""
+def _shell_commands(value: t.Any) -> tuple[str | Command, ...]:
+    """Normalize a ``shell_command`` (None / string / list of str|{cmd}).
+
+    A ``{cmd}`` mapping that carries ``enter``/``sleep_before``/``sleep_after``
+    becomes a :class:`~.ir.Command` preserving that orchestration; a plain
+    command stays a bare string.
+    """
     if value is None:
         return ()
     if isinstance(value, str):
         return (value,)
-    out: list[str] = []
+    out: list[str | Command] = []
     for item in t.cast("collections.abc.Sequence[t.Any]", value):
         if isinstance(item, str):
             out.append(item)
         elif isinstance(item, collections.abc.Mapping):
-            out.append(str(item["cmd"]))
+            out.append(_command(item))
     return tuple(out)
+
+
+def _command(item: collections.abc.Mapping[str, t.Any]) -> str | Command:
+    """Build a Command from a ``{cmd, enter?, sleep_before?, sleep_after?}`` map.
+
+    Stays a bare string when no per-command overrides are present.
+    """
+    cmd = str(item["cmd"])
+    enter = bool(item.get("enter", True))
+    sleep_before = item.get("sleep_before")
+    sleep_after = item.get("sleep_after")
+    if enter and sleep_before is None and sleep_after is None:
+        return cmd
+    return Command(cmd, enter=enter, sleep_before=sleep_before, sleep_after=sleep_after)
