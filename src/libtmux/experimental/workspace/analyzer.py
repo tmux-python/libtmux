@@ -93,9 +93,23 @@ def _window(raw: collections.abc.Mapping[str, t.Any]) -> Window:
     )
 
 
+#: Pane shorthands that mean "an empty pane" (no command sent), per tmuxp.
+_BLANK_PANE = frozenset({"", "blank", "pane"})
+
+
+def _is_blank_command(item: t.Any) -> bool:
+    """Whether a pane/command shorthand means an empty pane (None/blank/pane)."""
+    return item is None or (isinstance(item, str) and item.strip() in _BLANK_PANE)
+
+
 def _pane(raw: t.Any) -> Pane:
-    """Normalize one pane config (None / bare string / mapping)."""
-    if raw is None:
+    """Normalize one pane config (None / bare string / mapping).
+
+    The bare-string shorthands ``blank`` / ``pane`` (and an empty/``None`` entry)
+    mean "create an empty pane" -- they are markers, not commands, matching
+    tmuxp.
+    """
+    if raw is None or (isinstance(raw, str) and raw.strip() in _BLANK_PANE):
         return Pane()
     if isinstance(raw, str):
         return Pane(run=raw)
@@ -124,9 +138,14 @@ def _shell_commands(value: t.Any) -> tuple[str | Command, ...]:
     if value is None:
         return ()
     if isinstance(value, str):
-        return (value,)
+        return () if value.strip() in _BLANK_PANE else (value,)
+    items = list(t.cast("collections.abc.Sequence[t.Any]", value))
+    # A sole blank/pane/None element means "an empty pane" (tmuxp parity); a
+    # blank mixed with real commands is left alone.
+    if len(items) == 1 and _is_blank_command(items[0]):
+        return ()
     out: list[str | Command] = []
-    for item in t.cast("collections.abc.Sequence[t.Any]", value):
+    for item in items:
         if isinstance(item, str):
             out.append(item)
         elif isinstance(item, collections.abc.Mapping):

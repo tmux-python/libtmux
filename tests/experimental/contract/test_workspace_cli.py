@@ -96,3 +96,32 @@ def test_load_builds_and_reattaches(tmp_path: Path) -> None:
         assert again is None
     finally:
         server.kill()
+
+
+def test_dry_run_prints_commands_without_touching_tmux(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--dry-run renders the tmux commands (blank pane = no send) and runs nothing."""
+    import libtmux
+
+    socket = "libtmux_wscli_dryrun"
+    (tmp_path / ".tmuxp.yaml").write_text(
+        "session_name: dry\n"
+        "windows:\n"
+        "  - window_name: editor\n"
+        "    panes:\n"
+        "      - echo one\n"
+        "      - blank\n",
+    )
+    result = cli.load(str(tmp_path), socket_name=socket, dry_run=True)
+    assert result is None
+
+    out = capsys.readouterr().out
+    assert f"tmux -L {socket} new-session" in out  # socket prefix + create
+    assert "split-window" in out  # the blank pane is still created
+    assert "echo one" in out
+    # the blank pane sends no command, so exactly one send-keys line is rendered
+    assert out.count("send-keys") == 1
+    # nothing was executed: no tmux server exists on the dry-run socket
+    assert not libtmux.Server(socket_name=socket).is_alive()
