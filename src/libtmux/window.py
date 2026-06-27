@@ -401,6 +401,65 @@ class Window(
             empty=empty,
         )
 
+    def new_pane(
+        self,
+        /,
+        target: int | str | None = None,
+        start_directory: StrPath | None = None,
+        attach: bool = False,
+        shell: str | None = None,
+        environment: dict[str, str] | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        x: int | None = None,
+        y: int | None = None,
+        zoom: bool | None = None,
+        empty: bool | None = None,
+        style: str | None = None,
+        active_border_style: str | None = None,
+        inactive_border_style: str | None = None,
+        message: str | None = None,
+    ) -> Pane:
+        """Create a floating :class:`Pane` in this window (``$ tmux new-pane``).
+
+        Floating panes require tmux 3.7+. See :meth:`Pane.new_pane` for the
+        full parameter reference.
+
+        Returns
+        -------
+        :class:`Pane`
+            The newly created floating pane.
+
+        Examples
+        --------
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.7"):
+        ...     floating = window.new_pane(width=40, height=10, shell="sleep 5")
+        ...     is_floating = floating.pane_floating_flag
+        ... else:
+        ...     is_floating = "1"
+        >>> is_floating
+        '1'
+        """
+        active_pane = self.active_pane or self.panes[0]
+        return active_pane.new_pane(
+            target=target,
+            start_directory=start_directory,
+            attach=attach,
+            shell=shell,
+            environment=environment,
+            width=width,
+            height=height,
+            x=x,
+            y=y,
+            zoom=zoom,
+            empty=empty,
+            style=style,
+            active_border_style=active_border_style,
+            inactive_border_style=inactive_border_style,
+            message=message,
+        )
+
     def resize(
         self,
         /,

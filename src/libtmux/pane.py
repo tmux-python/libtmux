@@ -1272,6 +1272,164 @@ class Pane(
 
         return pane
 
+    def new_pane(
+        self,
+        /,
+        target: int | str | None = None,
+        start_directory: StrPath | None = None,
+        attach: bool = False,
+        shell: str | None = None,
+        environment: dict[str, str] | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        x: int | None = None,
+        y: int | None = None,
+        zoom: bool | None = None,
+        empty: bool | None = None,
+        style: str | None = None,
+        active_border_style: str | None = None,
+        inactive_border_style: str | None = None,
+        message: str | None = None,
+    ) -> Pane:
+        """Create a floating :class:`Pane` via ``$ tmux new-pane`` (tmux 3.7+).
+
+        Floating panes sit above the tiled layout like a popup, but unlike a
+        popup they are not modal and behave like normal panes. The returned
+        pane has ``pane_floating_flag == "1"``.
+
+        Parameters
+        ----------
+        target : optional
+            Optional, custom *target-pane*, used by :meth:`Window.new_pane`.
+        start_directory : str or PathLike, optional
+            Working directory for the new pane (``-c`` flag).
+        attach : bool, optional
+            Make the new pane the active pane, default False (``-d`` when
+            not attaching).
+        shell : str, optional
+            Command to run in the pane. The pane closes when it exits.
+        environment : dict, optional
+            Environment variables for the new pane (``-e`` flag).
+        width : int, optional
+            Width of the floating pane in cells (``-x`` flag).
+        height : int, optional
+            Height of the floating pane in cells (``-y`` flag).
+        x : int, optional
+            X position of the floating pane in cells (``-X`` flag).
+        y : int, optional
+            Y position of the floating pane in cells (``-Y`` flag).
+        zoom : bool, optional
+            Zoom the pane (``-Z`` flag).
+        empty : bool, optional
+            Create an empty pane with no command (``-E`` flag).
+        style : str, optional
+            Style for the floating pane (``-s`` flag).
+        active_border_style : str, optional
+            Border style when the pane is active (``-S`` flag).
+        inactive_border_style : str, optional
+            Border style when the pane is inactive (``-R`` flag).
+        message : str, optional
+            Message line shown for the floating pane (``-m`` flag).
+
+        Returns
+        -------
+        :class:`Pane`
+            The newly created floating pane.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.LibTmuxException`
+            If the tmux server is older than 3.7 (``new-pane`` is unavailable).
+
+        Examples
+        --------
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.7"):
+        ...     floating = pane.new_pane(width=40, height=10, shell="sleep 5")
+        ...     is_floating = floating.pane_floating_flag
+        ... else:
+        ...     is_floating = "1"
+        >>> is_floating
+        '1'
+        """
+        if not has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+            msg = "new_pane (floating panes) requires tmux 3.7+"
+            raise exc.LibTmuxException(msg)
+
+        tmux_formats = ["#{pane_id}" + FORMAT_SEPARATOR]
+
+        tmux_args: tuple[str, ...] = ()
+
+        if width is not None:
+            tmux_args += (f"-x{width}",)
+        if height is not None:
+            tmux_args += (f"-y{height}",)
+        if x is not None:
+            tmux_args += (f"-X{x}",)
+        if y is not None:
+            tmux_args += (f"-Y{y}",)
+        if zoom:
+            tmux_args += ("-Z",)
+        if style is not None:
+            tmux_args += (f"-s{style}",)
+        if active_border_style is not None:
+            tmux_args += (f"-S{active_border_style}",)
+        if inactive_border_style is not None:
+            tmux_args += (f"-R{inactive_border_style}",)
+        if message is not None:
+            tmux_args += (f"-m{message}",)
+
+        tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
+
+        if start_directory:
+            start_path = pathlib.Path(start_directory).expanduser()
+            tmux_args += (f"-c{start_path}",)
+
+        if not attach:
+            tmux_args += ("-d",)
+
+        if environment:
+            for k, v in environment.items():
+                tmux_args += (f"-e{k}={v}",)
+
+        if empty:
+            tmux_args += ("-E",)
+
+        if shell:
+            tmux_args += (shell,)
+
+        pane_cmd = self.cmd("new-pane", *tmux_args, target=target)
+
+        if pane_cmd.stderr:
+            raise exc.LibTmuxException(
+                pane_cmd.stderr,
+                self.__dict__,
+                self.window.panes,
+            )
+
+        pane_output = pane_cmd.stdout[0]
+
+        pane_formatters = dict(
+            zip(["pane_id"], pane_output.split(FORMAT_SEPARATOR), strict=False),
+        )
+
+        pane = self.from_pane_id(server=self.server, pane_id=pane_formatters["pane_id"])
+
+        extra: dict[str, str] = {
+            "tmux_subcommand": "new-pane",
+            "tmux_pane": str(pane.pane_id),
+        }
+        if self.session.session_name is not None:
+            extra["tmux_session"] = str(self.session.session_name)
+        if self.window.window_name is not None:
+            extra["tmux_window"] = str(self.window.window_name)
+        if target is not None:
+            extra["tmux_target"] = str(target)
+
+        logger.info("floating pane created", extra=extra)
+
+        return pane
+
     """
     Commands (helpers)
     """
