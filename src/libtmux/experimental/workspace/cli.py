@@ -29,7 +29,12 @@ from libtmux.experimental.workspace.analyzer import analyze
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from libtmux.experimental.ops.plan import PlanResult
+    from libtmux.experimental.engines.base import (
+        CommandRequest,
+        CommandResult,
+        TmuxEngine,
+    )
+    from libtmux.experimental.ops.plan import PlanResult, StepReport
     from libtmux.experimental.workspace.ir import Workspace
 
 #: Filenames searched when a directory is given (tmuxp's convention).
@@ -172,31 +177,76 @@ def _attach(session: t.Any, *, detached: bool) -> None:
         session.attach()
 
 
+class _RecordingEngine:
+    """Wrap an engine, capturing every dispatched argv for the dry run.
+
+    Each recorded entry is one tmux dispatch -- a folded ``;`` chain renders as a
+    single argv with bare ``;`` separators, exactly as the real build sends it.
+    """
+
+    def __init__(self, inner: TmuxEngine) -> None:
+        self.inner = inner
+        self.calls: list[tuple[str, ...]] = []
+
+    def run(self, request: CommandRequest) -> CommandResult:
+        """Record the argv, then forward to the wrapped engine."""
+        self.calls.append(request.args)
+        return self.inner.run(request)
+
+    def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
+        """Forward each request in order, recording as it goes."""
+        return [self.run(req) for req in requests]
+
+
 def _print_dry_run(
     workspace: Workspace,
     *,
     socket_name: str | None,
     socket_path: str | None,
+    fold: bool = True,
 ) -> None:
-    """Print the tmux commands a build would run, without touching tmux.
+    r"""Print the tmux commands a build would run, without touching tmux.
 
     The plan is resolved against the in-memory ``ConcreteEngine`` (which
-    fabricates ids) so every line renders fully; host steps (sleep /
-    before_script / pane-readiness) print as comments in execution order.
+    fabricates ids) through the *same* planner the real build uses, so the
+    printed lines are the folded ``;`` dispatches that would actually run -- not
+    an unfolded op-per-line view. Pass ``fold=False`` for one tmux call per
+    operation. Host steps (sleep / before_script / pane-readiness) print as
+    comments in execution order, and a standalone ``;`` renders as ``\;`` so a
+    line stays copy-pasteable into a shell.
     """
     import shlex
 
     from libtmux.experimental.engines import ConcreteEngine
+    from libtmux.experimental.ops import (
+        BoundedPlanner,
+        MarkedPlanner,
+        SequentialPlanner,
+    )
     from libtmux.experimental.workspace.compiler import HostStep, compile_full
 
     compiled = compile_full(workspace)
-    outcome = compiled.plan.execute(ConcreteEngine())
-
     prefix: list[str] = ["tmux"]
     if socket_name:
         prefix += ["-L", socket_name]
     if socket_path:
         prefix += ["-S", socket_path]
+
+    planner = (
+        BoundedPlanner(MarkedPlanner(), frozenset(compiled.host_after))
+        if fold
+        else SequentialPlanner()
+    )
+    engine = _RecordingEngine(ConcreteEngine())
+    hosts_per_dispatch: list[tuple[HostStep, ...]] = []
+
+    def on_step(report: StepReport) -> None:
+        steps: list[HostStep] = []
+        for index in report.step.indices:
+            steps.extend(compiled.host_after.get(index, ()))
+        hosts_per_dispatch.append(tuple(steps))
+
+    compiled.plan.execute(engine, planner=planner, on_step=on_step)
 
     def _emit_host(step: HostStep) -> None:
         if step.kind == "sleep":
@@ -207,12 +257,21 @@ def _print_dry_run(
         elif step.kind == "wait_pane":
             print("# wait for the pane's shell to be ready")
 
-    print(f"# build plan for session {workspace.name!r} (dry run, ids fabricated)")
+    def _render(argv: tuple[str, ...]) -> str:
+        return " ".join(
+            "\\;" if token == ";" else shlex.quote(token) for token in (*prefix, *argv)
+        )
+
+    shape = "folded" if fold else "sequential"
+    print(
+        f"# build plan for session {workspace.name!r} "
+        f"({len(engine.calls)} dispatches, {shape}, ids fabricated)",
+    )
     for step in compiled.pre:
         _emit_host(step)
-    for index, result in enumerate(outcome.results):
-        print(shlex.join([*prefix, *result.argv]))
-        for step in compiled.host_after.get(index, ()):
+    for argv, hosts in zip(engine.calls, hosts_per_dispatch, strict=True):
+        print(_render(argv))
+        for step in hosts:
             _emit_host(step)
 
 
@@ -224,6 +283,7 @@ def load(
     new_session_name: str | None = None,
     detached: bool = False,
     dry_run: bool = False,
+    fold: bool = True,
 ) -> PlanResult | None:
     """Build (and unless *detached*, attach) a workspace file.
 
@@ -232,6 +292,9 @@ def load(
     already-running session of the same name is attached rather than rebuilt
     (unless the file's ``on_exists`` opts into ``replace``/``reuse``). With
     *dry_run*, the tmux commands are printed and nothing is executed.
+
+    The build folds tmux dispatches by default (``fold=True``); ``fold=False``
+    issues one tmux call per operation, for both the dry run and the real build.
 
     Returns
     -------
@@ -246,11 +309,17 @@ def load(
     workspace = analyze(raw)
 
     if dry_run:
-        _print_dry_run(workspace, socket_name=socket_name, socket_path=socket_path)
+        _print_dry_run(
+            workspace,
+            socket_name=socket_name,
+            socket_path=socket_path,
+            fold=fold,
+        )
         return None
 
     import libtmux
     from libtmux.experimental.engines import SubprocessEngine
+    from libtmux.experimental.ops import SequentialPlanner
 
     server = libtmux.Server(socket_name=socket_name, socket_path=socket_path)
     engine = SubprocessEngine.for_server(server)
@@ -258,7 +327,7 @@ def load(
     existed = server.has_session(workspace.name)
     result: PlanResult | None = None
     try:
-        result = workspace.build(engine)
+        result = workspace.build(engine, planner=None if fold else SequentialPlanner())
     except FileExistsError:
         # on_exists="error" (the default) and the session is already running;
         # attach to it rather than failing, matching `tmuxp load`.
@@ -330,6 +399,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="print the tmux commands that would run, without executing them",
     )
+    load_parser.add_argument(
+        "--no-fold",
+        dest="fold",
+        action="store_false",
+        help="dispatch one tmux call per operation (no ; chaining)",
+    )
     return parser
 
 
@@ -349,6 +424,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             new_session_name=args.new_session_name,
             detached=args.detached,
             dry_run=args.dry_run,
+            fold=args.fold,
         )
 
 
