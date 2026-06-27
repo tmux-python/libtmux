@@ -48,6 +48,7 @@ def analyze(raw: collections.abc.Mapping[str, t.Any] | str) -> Workspace:
         windows=windows,
         before_script=data.get("before_script"),
         on_exists=data.get("on_exists", "error"),
+        wait_pane=bool(data.get("wait_pane", False)),
     )
 
 
