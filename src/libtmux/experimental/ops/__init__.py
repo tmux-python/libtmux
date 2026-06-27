@@ -106,8 +106,9 @@ from libtmux.experimental.ops.exc import (
 )
 from libtmux.experimental.ops.execute import arun, run
 from libtmux.experimental.ops.operation import Operation
-from libtmux.experimental.ops.plan import LazyPlan, PlanResult
+from libtmux.experimental.ops.plan import LazyPlan, PlanResult, StepReport
 from libtmux.experimental.ops.planner import (
+    BoundedPlanner,
     FoldingPlanner,
     MarkedPlanner,
     Planner,
@@ -147,6 +148,7 @@ from libtmux.experimental.ops.serialize import (
 
 __all__ = (
     "AckResult",
+    "BoundedPlanner",
     "BreakPane",
     "CapturePane",
     "CapturePaneResult",
@@ -237,6 +239,7 @@ __all__ = (
     "SplitWindowResult",
     "StartServer",
     "Status",
+    "StepReport",
     "SuspendClient",
     "SwapPane",
     "SwapWindow",
