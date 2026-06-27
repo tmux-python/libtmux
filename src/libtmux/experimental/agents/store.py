@@ -297,6 +297,11 @@ class JsonFile:
         -------
         dict[str, Any] | None
             The loaded data, or None if the file does not exist.
+
+        Examples
+        --------
+        >>> JsonFile("/nonexistent/path/x.json").load() is None
+        True
         """
         try:
             with self._path.open(encoding="utf-8") as handle:
@@ -316,6 +321,14 @@ class JsonFile:
         -----
         Uses a temporary file + fsync + os.replace to ensure atomicity.
         The temporary file is cleaned up on any exception.
+
+        Examples
+        --------
+        >>> import tempfile, pathlib
+        >>> sink = JsonFile(pathlib.Path(tempfile.mkdtemp()) / "x.json")
+        >>> sink.save({"agents": {}, "stamps": {}})
+        >>> sink.load()
+        {'agents': {}, 'stamps': {}}
         """
         directory = self._path.parent
         directory.mkdir(parents=True, exist_ok=True)
