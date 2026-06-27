@@ -189,3 +189,21 @@ class AsyncTmuxEngine(t.Protocol):
     ) -> list[CommandResult]:
         """Execute requests in order, returning one result per request."""
         ...
+
+
+@t.runtime_checkable
+class SupportsTmuxVersion(t.Protocol):
+    """An engine that can report the tmux version it targets.
+
+    Optional engine capability. The executors
+    (:func:`~libtmux.experimental.ops.execute.run` / ``arun`` and the
+    :class:`~libtmux.experimental.ops.plan.LazyPlan` drivers) call
+    :meth:`tmux_version` to resolve the version for version-gated rendering when
+    the caller passes none. Engines that cannot know their version -- in-memory
+    or fake engines -- simply do not implement it, and resolution falls back to
+    "assume latest".
+    """
+
+    def tmux_version(self) -> str | None:
+        """Return the engine's tmux version string, or ``None`` if unknown."""
+        ...

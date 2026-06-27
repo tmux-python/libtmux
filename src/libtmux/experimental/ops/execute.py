@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import typing as t
 
-from libtmux.experimental.engines.base import CommandRequest
+from libtmux.experimental.engines.base import CommandRequest, SupportsTmuxVersion
 
 if t.TYPE_CHECKING:
     import pathlib
@@ -21,6 +21,41 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.ops.results import Result
 
 ResultT = t.TypeVar("ResultT", bound="Result")
+
+
+def resolve_engine_version(
+    engine: TmuxEngine | AsyncTmuxEngine,
+    version: str | None,
+) -> str | None:
+    """Resolve the tmux version to render against.
+
+    Returns *version* unchanged when the caller supplied one. Otherwise asks the
+    engine via the optional
+    :class:`~libtmux.experimental.engines.base.SupportsTmuxVersion` capability,
+    so version-gated rendering (flag drops and whole-command gates) reflects the
+    live tmux at runtime instead of silently assuming latest. Engines that cannot
+    report a version fall back to ``None`` ("assume latest").
+
+    Examples
+    --------
+    >>> from libtmux.experimental.engines import CommandResult
+    >>> class VersionedEngine:
+    ...     def run(self, request):
+    ...         return CommandResult(cmd=("tmux", *request.args), returncode=0)
+    ...     def run_batch(self, requests):
+    ...         return [self.run(r) for r in requests]
+    ...     def tmux_version(self):
+    ...         return "2.9"
+    >>> resolve_engine_version(VersionedEngine(), None)
+    '2.9'
+    >>> resolve_engine_version(VersionedEngine(), "3.4")
+    '3.4'
+    """
+    if version is not None:
+        return version
+    if isinstance(engine, SupportsTmuxVersion):
+        return engine.tmux_version()
+    return None
 
 
 def run(
@@ -65,6 +100,7 @@ def run(
     >>> result.argv
     ('send-keys', '-t', '%1', 'echo hi')
     """
+    version = resolve_engine_version(engine, version)
     rendered = operation.render(version=version)
     raw = engine.run(CommandRequest.from_args(*rendered, tmux_bin=tmux_bin))
     return operation.build_result(
@@ -106,6 +142,7 @@ async def arun(
     >>> result.lines
     ('line-1', 'line-2')
     """
+    version = resolve_engine_version(engine, version)
     rendered = operation.render(version=version)
     raw = await engine.run(CommandRequest.from_args(*rendered, tmux_bin=tmux_bin))
     return operation.build_result(
