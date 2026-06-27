@@ -77,6 +77,6 @@ def events_for(op: Operation[t.Any], result: Result) -> list[BuildEvent]:
             events.append(WindowCreated(result.created_id))
         if "pane" in result.created_subids:
             events.append(PaneCreated(result.created_subids["pane"]))
-    elif op.kind == "split_window" and result.created_id is not None:
+    elif op.kind in {"split_window", "new_pane"} and result.created_id is not None:
         events.append(PaneCreated(result.created_id))
     return events
