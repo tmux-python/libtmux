@@ -654,6 +654,7 @@ def build_server(
     include_plan_tools: bool = True,
     include_middleware: bool = True,
     include_prompts: bool = True,
+    include_resources: bool = True,
     safety_level: str | None = None,
     caller: CallerContext | None = None,
 ) -> FastMCP:
@@ -696,6 +697,10 @@ def build_server(
         )
     if include_plan_tools:
         register_plan_tools(mcp, engine, is_async=False, registry=registry)
+    if include_resources:
+        from libtmux.experimental.mcp.resources import register_resources
+
+        register_resources(mcp, engine, is_async=False)
     _apply_safety_gate(mcp, level)
     return mcp
 
@@ -710,6 +715,7 @@ def build_async_server(
     include_plan_tools: bool = True,
     include_middleware: bool = True,
     include_prompts: bool = True,
+    include_resources: bool = True,
     safety_level: str | None = None,
     events: EventMode = "push",
     event_source: EventSource = "subscription",
@@ -756,6 +762,10 @@ def build_async_server(
         )
     if include_plan_tools:
         register_plan_tools(mcp, engine, is_async=True, registry=registry)
+    if include_resources:
+        from libtmux.experimental.mcp.resources import register_resources
+
+        register_resources(mcp, engine, is_async=True)
     register_events(mcp, engine, mode=events, source=event_source)
     _apply_safety_gate(mcp, level)
     return mcp
