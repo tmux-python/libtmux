@@ -26,11 +26,15 @@ from libtmux.experimental.ops import HasSession, KillSession, arun, run
 from libtmux.experimental.ops._types import NameRef
 from libtmux.experimental.ops.plan import PlanResult, _resolve
 from libtmux.experimental.workspace.compiler import compile_full
+from libtmux.experimental.workspace.events import WorkspaceBuilt, events_for
 
 if t.TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
     from libtmux.experimental.ops.results import Result
     from libtmux.experimental.workspace.compiler import HostStep
+    from libtmux.experimental.workspace.events import BuildEvent
     from libtmux.experimental.workspace.ir import Workspace
 
 
@@ -89,8 +93,12 @@ def build_workspace(
     *,
     version: str | None = None,
     preflight: bool = True,
+    on_event: Callable[[BuildEvent], None] | None = None,
 ) -> PlanResult:
     """Compile and execute *ws* synchronously over *engine*.
+
+    Pass *on_event* to observe the structural build stream (session -> windows ->
+    panes -> built) as each operation binds its id.
 
     Examples
     --------
@@ -114,8 +122,13 @@ def build_workspace(
             bindings[index] = result.created_id
         for part, sub in result.created_subids.items():
             bindings[index, part] = sub
+        if on_event is not None:
+            for event in events_for(op, result):
+                on_event(event)
         for step in compiled.host_after.get(index, ()):
             _run_host_sync(step)
+    if on_event is not None:
+        on_event(WorkspaceBuilt(bindings.get(0, "")))
     return PlanResult(tuple(results), bindings)
 
 
@@ -125,8 +138,13 @@ async def abuild_workspace(
     *,
     version: str | None = None,
     preflight: bool = True,
+    on_event: Callable[[BuildEvent], Awaitable[None]] | None = None,
 ) -> PlanResult:
-    """Compile and execute *ws* asynchronously over *engine* (same resolution)."""
+    """Compile and execute *ws* asynchronously over *engine* (same resolution).
+
+    *on_event* is awaited for each build event, so an async observer can stream
+    the structural progress (e.g. through a fastmcp Context).
+    """
     if preflight and await _preflight_async(ws, engine, version):
         return PlanResult((), {})
     compiled = compile_full(ws, version=version)
@@ -141,6 +159,11 @@ async def abuild_workspace(
             bindings[index] = result.created_id
         for part, sub in result.created_subids.items():
             bindings[index, part] = sub
+        if on_event is not None:
+            for event in events_for(op, result):
+                await on_event(event)
         for step in compiled.host_after.get(index, ()):
             await _run_host_async(step)
+    if on_event is not None:
+        await on_event(WorkspaceBuilt(bindings.get(0, "")))
     return PlanResult(tuple(results), bindings)
