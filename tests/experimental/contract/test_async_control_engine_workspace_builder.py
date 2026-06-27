@@ -30,6 +30,7 @@ from libtmux.experimental.ops import (
     NewSession,
     NewWindow,
     SelectLayout,
+    SendKeys,
     SequentialPlanner,
     SetEnvironment,
     SetOption,
@@ -37,6 +38,7 @@ from libtmux.experimental.ops import (
     SplitWindow,
 )
 from libtmux.experimental.workspace import (
+    Command,
     HostStep,
     Pane,
     Window,
@@ -102,8 +104,11 @@ def test_workspace_analyze_normalizes_shorthand() -> None:
     ws = analyze(_YAML)
     assert ws.name == "ws-offline"
     assert [w.name for w in ws.windows] == ["editor", "logs"]
-    assert ws.windows[0].panes[0].commands == ("echo top",)
-    assert ws.windows[0].panes[1].commands == ("echo bottom-1", "echo bottom-2")
+    assert [c.cmd for c in ws.windows[0].panes[0].commands] == ["echo top"]
+    assert [c.cmd for c in ws.windows[0].panes[1].commands] == [
+        "echo bottom-1",
+        "echo bottom-2",
+    ]
     assert ws.windows[0].panes[1].focus is True
 
 
@@ -324,10 +329,46 @@ def test_workspace_builder_rich_async(session: Session, tmp_path: Path) -> None:
 
 
 def test_pane_commands_normalizes_run_forms() -> None:
-    """Pane.commands turns run (None / str / sequence) into a command tuple."""
+    """Pane.commands turns run (None / str / Command / sequence) into Commands."""
     assert Pane().commands == ()
-    assert Pane(run="vim").commands == ("vim",)
-    assert Pane(run=["cd src", "pytest -q"]).commands == ("cd src", "pytest -q")
+    assert [c.cmd for c in Pane(run="vim").commands] == ["vim"]
+    assert [c.cmd for c in Pane(run=["cd src", "pytest -q"]).commands] == [
+        "cd src",
+        "pytest -q",
+    ]
+    # bare strings default to enter=True; a Command carries its own overrides
+    mixed = Pane(run=["plain", Command("typed", enter=False, sleep_after=0.2)]).commands
+    assert (mixed[0].cmd, mixed[0].enter) == ("plain", True)
+    assert (mixed[1].cmd, mixed[1].enter, mixed[1].sleep_after) == ("typed", False, 0.2)
+
+
+def test_compile_per_command_enter_and_sleeps() -> None:
+    """Command(enter=False) emits send-keys without Enter; per-cmd sleeps host-step."""
+    ws = Workspace(
+        name="ws-cmd",
+        windows=[
+            Window(
+                "w",
+                panes=[
+                    Pane(
+                        run=[
+                            Command("git add -p", enter=False),
+                            Command("echo done", sleep_before=0.3, sleep_after=0.4),
+                        ],
+                    ),
+                ],
+            ),
+        ],
+    )
+    compiled = compile_full(ws)
+    sends = [op for op in compiled.plan.operations if isinstance(op, SendKeys)]
+    assert (sends[0].keys, sends[0].enter) == ("git add -p", False)
+    assert (sends[1].keys, sends[1].enter) == ("echo done", True)
+    send_at = [
+        i for i, op in enumerate(compiled.plan.operations) if isinstance(op, SendKeys)
+    ]
+    assert HostStep("sleep", seconds=0.3) in compiled.host_after[send_at[1] - 1]
+    assert HostStep("sleep", seconds=0.4) in compiled.host_after[send_at[1]]
 
 
 def test_analyze_dimensions_list_and_mapping() -> None:
@@ -360,8 +401,8 @@ def test_analyze_shell_command_shorthand_forms() -> None:
         },
     )
     panes = ws.windows[0].panes
-    assert panes[0].commands == ("echo solo",)
-    assert panes[1].commands == ("echo a", "echo b")
+    assert [c.cmd for c in panes[0].commands] == ["echo solo"]
+    assert [c.cmd for c in panes[1].commands] == ["echo a", "echo b"]
     assert panes[2].commands == ()  # a None pane is an empty (implicit) pane
 
 
