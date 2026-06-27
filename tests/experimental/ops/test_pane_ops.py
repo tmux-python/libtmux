@@ -143,6 +143,47 @@ def test_pane_op_round_trips(
     assert result_from_dict(result_to_dict(result)) == result
 
 
+def test_break_pane_placeholder_name_on_tmux_3_7() -> None:
+    """Tmux 3.7 gets a placeholder -n to dodge a nameless break-pane crash."""
+    op = BreakPane(src_target=PaneId("%2"))
+    assert op.render(version="3.7") == (
+        "break-pane",
+        "-d",
+        "-n",
+        "libtmux",
+        "-P",
+        "-F",
+        "#{window_id}",
+        "-s",
+        "%2",
+    )
+
+
+def test_break_pane_no_placeholder_off_3_7() -> None:
+    """Only exactly 3.7 gets the workaround; other versions render bare."""
+    op = BreakPane(src_target=PaneId("%2"))
+    bare = ("break-pane", "-d", "-P", "-F", "#{window_id}", "-s", "%2")
+    assert op.render() == bare
+    assert op.render(version="3.6") == bare
+    assert op.render(version="3.8") == bare
+
+
+def test_break_pane_named_unaffected_on_3_7() -> None:
+    """A requested name is passed through (no placeholder) on 3.7."""
+    op = BreakPane(src_target=PaneId("%2"), name="logs")
+    assert op.render(version="3.7") == (
+        "break-pane",
+        "-d",
+        "-n",
+        "logs",
+        "-P",
+        "-F",
+        "#{window_id}",
+        "-s",
+        "%2",
+    )
+
+
 def test_break_pane_captures_new_window_id() -> None:
     """break-pane parses the captured window id into the typed result."""
     result = BreakPane(src_target=PaneId("%2")).build_result(
