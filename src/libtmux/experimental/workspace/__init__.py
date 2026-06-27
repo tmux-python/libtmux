@@ -31,17 +31,29 @@ from libtmux.experimental.workspace.compiler import (
     compile_workspace,
 )
 from libtmux.experimental.workspace.confirm import ConfirmReport, confirm
+from libtmux.experimental.workspace.events import (
+    BuildEvent,
+    PaneCreated,
+    SessionCreated,
+    WindowCreated,
+    WorkspaceBuilt,
+)
 from libtmux.experimental.workspace.ir import Command, Pane, Window, Workspace
 from libtmux.experimental.workspace.runner import abuild_workspace, build_workspace
 
 __all__ = (
+    "BuildEvent",
     "Command",
     "Compiled",
     "ConfirmReport",
     "HostStep",
     "Pane",
+    "PaneCreated",
+    "SessionCreated",
     "Window",
+    "WindowCreated",
     "Workspace",
+    "WorkspaceBuilt",
     "WorkspaceCompileError",
     "abuild_workspace",
     "analyze",
