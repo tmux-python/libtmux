@@ -44,6 +44,7 @@ def analyze(raw: collections.abc.Mapping[str, t.Any] | str) -> Workspace:
         start_directory=data.get("start_directory"),
         environment=dict(data.get("environment", {}) or {}),
         options=dict(data.get("options", {}) or {}),
+        global_options=dict(data.get("global_options", {}) or {}),
         windows=windows,
         before_script=data.get("before_script"),
         on_exists=data.get("on_exists", "error"),
@@ -83,6 +84,9 @@ def _window(raw: collections.abc.Mapping[str, t.Any]) -> Window:
         start_directory=raw.get("start_directory"),
         focus=bool(raw.get("focus", False)),
         options=dict(raw.get("options", {}) or {}),
+        options_after=dict(raw.get("options_after", {}) or {}),
+        environment=dict(raw.get("environment", {}) or {}),
+        window_shell=raw.get("window_shell"),
         panes=[_pane(p) for p in raw.get("panes", []) or []],
     )
 
@@ -100,6 +104,8 @@ def _pane(raw: t.Any) -> Pane:
             start_directory=raw.get("start_directory"),
             sleep_before=raw.get("sleep_before"),
             sleep_after=raw.get("sleep_after"),
+            environment=dict(raw.get("environment", {}) or {}),
+            shell=raw.get("shell"),
         )
     msg = f"unsupported pane config: {raw!r}"
     raise TypeError(msg)
