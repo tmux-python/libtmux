@@ -272,11 +272,17 @@ class AsyncControlModeEngine:
         if self._supervisor_task is not None:
             await self._connected.wait()
             if self._spawn_error is not None:
+                # Keep _spawn_error set here: a *concurrent* start() caller from
+                # the same failed first connect must also observe it and raise,
+                # not see a nulled error and return "success" against a dead
+                # engine. The error is cleared only by the fresh-start reset
+                # above (the `if not self._started` block) when a NEW attempt
+                # begins, so every waiter from this failed connect raises
+                # consistently.
                 error = self._spawn_error
                 async with self._start_lock:
                     self._started = False
                     self._supervisor_task = None
-                    self._spawn_error = None
                 raise error
 
     async def _spawn(self) -> None:

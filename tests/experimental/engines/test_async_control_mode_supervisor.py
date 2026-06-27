@@ -83,6 +83,35 @@ def test_spawn_keeps_dead_until_startup_ack_consumed(
     assert observed["dead_after"] is None  # cleared only once the ACK is consumed
 
 
+def test_concurrent_start_all_raise_on_first_connect_failure() -> None:
+    """Every concurrent ``start()`` raising on a first-connect spawn failure.
+
+    The supervisor records the spawn error in ``_spawn_error`` then returns. The
+    first ``start()`` waiter must not null it out from under a second concurrent
+    waiter, or that second caller would observe ``_spawn_error is None`` and
+    return "success" against a dead engine. Both gathered ``start()`` calls must
+    raise the same spawn error.
+
+    Deterministic: ``_spawn`` always raises (no real proc, no timing); the two
+    waiters wake FIFO from the supervisor's single ``_connected.set()``.
+    """
+
+    async def main() -> list[object]:
+        class _Probe(AsyncControlModeEngine):
+            async def _spawn(self) -> None:
+                msg = "spawn failed"
+                raise ControlModeError(msg)
+
+        engine = _Probe()
+        return await asyncio.gather(
+            engine.start(), engine.start(), return_exceptions=True
+        )
+
+    results = asyncio.run(main())
+    assert len(results) == 2
+    assert all(isinstance(r, ControlModeError) for r in results)
+
+
 def test_aclose_releases_start_waiter_before_first_connect() -> None:
     """``aclose`` racing a never-connected ``start`` must not hang the waiter.
 
