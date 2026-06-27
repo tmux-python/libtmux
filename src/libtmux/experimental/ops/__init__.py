@@ -98,6 +98,7 @@ from libtmux.experimental.ops._types import (
 from libtmux.experimental.ops.catalog import CatalogEntry, catalog
 from libtmux.experimental.ops.exc import (
     DuplicateOperation,
+    ForwardCaptureError,
     OperationError,
     TmuxCommandError,
     UnknownOperation,
@@ -160,6 +161,7 @@ __all__ = (
     "DuplicateOperation",
     "Effects",
     "FoldingPlanner",
+    "ForwardCaptureError",
     "HasSession",
     "HasSessionResult",
     "IndexRef",
