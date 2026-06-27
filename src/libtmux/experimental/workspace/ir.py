@@ -254,6 +254,11 @@ class Workspace:
         A host shell command run once before building (orchestration).
     on_exists : {"error", "replace", "reuse"}
         What to do if a session of this name already exists.
+    wait_pane : bool
+        When ``True``, wait for each command-bearing pane's shell to be ready
+        (its cursor to leave the origin) before sending keys -- the tmuxp
+        anti-race. Off by default (the fast path); panes with a custom ``shell``
+        skip the wait. See :mod:`~.events` and the runner.
     """
 
     name: str
@@ -265,6 +270,7 @@ class Workspace:
     windows: Sequence[Window] = ()
     before_script: str | None = None
     on_exists: t.Literal["error", "replace", "reuse"] = "error"
+    wait_pane: bool = False
 
     def to_dict(self) -> dict[str, t.Any]:
         """Serialize to a canonical tmuxp workspace dict (the inverse of analyze).
@@ -299,6 +305,8 @@ class Workspace:
             out["before_script"] = self.before_script
         if self.on_exists != "error":
             out["on_exists"] = self.on_exists
+        if self.wait_pane:
+            out["wait_pane"] = True
         out["windows"] = [window.to_dict() for window in self.windows]
         return out
 
