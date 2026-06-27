@@ -574,6 +574,58 @@ def test_compile_folds_first_pane_env_into_creator() -> None:
     assert split.environment == {"SPLIT_ENV": "s"}
 
 
+def test_compile_first_window_start_directory_drives_new_session() -> None:
+    """Window 0's start_directory rides new-session -c (its first pane reuses it).
+
+    Window 0 reuses the session's implicit pane, so without folding the window's
+    directory into ``new-session -c`` the first pane would land in the *session*
+    start_directory instead of the window's.
+    """
+    ws = Workspace(
+        name="s",
+        start_directory="/session",
+        windows=[
+            Window("a", start_directory="/win-a", panes=[Pane(run="x")]),
+            Window("b", start_directory="/win-b", panes=[Pane(run="y")]),
+        ],
+    )
+    ops = compile_full(ws).plan.operations
+    new_session = next(op for op in ops if isinstance(op, NewSession))
+    new_window = next(op for op in ops if isinstance(op, NewWindow))
+    assert new_session.start_directory == "/win-a"  # window 0's dir, not /session
+    assert new_window.start_directory == "/win-b"
+
+    # a window with no start_directory still falls back to the session's
+    plain = Workspace(
+        name="s",
+        start_directory="/session",
+        windows=[Window("a", panes=[Pane(run="x")])],
+    )
+    session_op = next(
+        op for op in compile_full(plain).plan.operations if isinstance(op, NewSession)
+    )
+    assert session_op.start_directory == "/session"
+
+    # a first pane's own start_directory wins for the creator
+    pane_dir = Workspace(
+        name="s",
+        start_directory="/session",
+        windows=[
+            Window(
+                "a",
+                start_directory="/win",
+                panes=[Pane(run="x", start_directory="/pane")],
+            ),
+        ],
+    )
+    pane_session_op = next(
+        op
+        for op in compile_full(pane_dir).plan.operations
+        if isinstance(op, NewSession)
+    )
+    assert pane_session_op.start_directory == "/pane"
+
+
 def test_compile_threads_window_and_pane_shell() -> None:
     """window_shell rides new-window; pane.shell (then window_shell) rides split."""
     ws = Workspace(
