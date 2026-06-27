@@ -188,9 +188,10 @@ into a per-pane {class}`~libtmux.experimental.agents.state.Agent` record —
 carrying the agent's name, its current {class}`~libtmux.experimental.agents.state.AgentState`
 (`RUNNING`, `AWAITING_INPUT`, `IDLE`, `EXITED`, or `UNKNOWN`), the timestamp of
 the last transition, and a liveness flag refreshed from the pane tree on each
-reconcile.  A *local* pane whose process has exited is marked `EXITED`; a
-*remote*, PID-less pane (e.g. over SSH) is never auto-expired by the liveness
-check — those age out on a keepalive TTL instead.
+reconcile.  A *local* pane whose process has exited is marked `EXITED`.  Remote
+(SSH) panes have no local pid to probe, so they are left at their last-known
+state and only become `EXITED` when their tmux pane disappears (no keepalive/TTL
+in v1).
 
 Agents report their state via tmux option subscriptions or OSC escape sequences.
 When both signals arrive for the same pane the monitor applies a
