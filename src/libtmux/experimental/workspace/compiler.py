@@ -24,6 +24,7 @@ Core op spine pure.
 
 from __future__ import annotations
 
+import graphlib
 import typing as t
 from dataclasses import dataclass, field, replace
 
@@ -48,11 +49,53 @@ if t.TYPE_CHECKING:
     from collections.abc import Mapping
 
     from libtmux.experimental.ops._types import SlotRef
-    from libtmux.experimental.workspace.ir import Window, Workspace
+    from libtmux.experimental.workspace.ir import FloatingPane, Window, Workspace
 
 
 class WorkspaceCompileError(ValueError):
     """A declared workspace cannot be lowered to Core operations."""
+
+
+class Symbols:
+    """A by-name registry of window references for cross-tree resolution.
+
+    Mirrors Django's app registry / pending-operations pattern: a declared window
+    publishes its first-pane :class:`~..ops._types.SlotRef` under its name, and a
+    later reference (a floating pane's ``attach_to``) resolves against it -- so a
+    float can attach to any window declared anywhere in the workspace, forward or
+    backward in document order.
+    """
+
+    def __init__(self) -> None:
+        self._refs: dict[str, SlotRef] = {}
+
+    def define(self, name: str, ref: SlotRef) -> None:
+        """Publish *ref* under *name*."""
+        self._refs[name] = ref
+
+    def resolve(self, name: str) -> SlotRef:
+        """Return the ref registered for *name*, or raise if it is undeclared."""
+        try:
+            return self._refs[name]
+        except KeyError:
+            msg = f"floating pane attach_to={name!r} names no declared window"
+            raise WorkspaceCompileError(msg) from None
+
+
+def _topo_order(dependencies: Mapping[t.Any, set[t.Any]]) -> list[t.Any]:
+    """Order nodes so each follows its dependencies; raise on a cycle.
+
+    The cross-reference ordering engine (stdlib :mod:`graphlib`): a node is
+    emitted only after every node it depends on. Floating panes use it to land
+    after the windows they attach to; the same primitive sequences future
+    cross-window operations (join-pane, cross-window focus) correct-by-construction
+    and rejects declared cycles.
+    """
+    try:
+        return list(graphlib.TopologicalSorter(dependencies).static_order())
+    except graphlib.CycleError as exc:
+        msg = f"workspace has a reference cycle: {exc.args[1]}"
+        raise WorkspaceCompileError(msg) from exc
 
 
 @dataclass(frozen=True)
@@ -172,54 +215,88 @@ def _emit_pane_commands(
         )
 
 
-def _emit_floats(
+def _emit_float(
     plan: LazyPlan,
     host_after: dict[int, list[HostStep]],
     pre: list[HostStep],
     ws: Workspace,
-    window: Window,
-    first_pane_ref: SlotRef,
+    host_window: Window,
+    target_ref: SlotRef,
+    fp: FloatingPane,
 ) -> None:
-    """Emit the window's floating-pane overlays (tmux 3.7 ``new-pane``).
+    """Emit one floating-pane overlay (tmux 3.7 ``new-pane``) over *target_ref*.
 
-    Overlays are created *after* the tiled panes and layout, target the window's
-    first pane, and are deliberately kept out of the split chain and the layout so
-    they never perturb the tiled topology. Cross-window ``attach_to`` (floating
-    over a *different* window) is not yet supported.
+    *target_ref* is the captured first pane of the window the float lands on (its
+    host window, or the ``attach_to`` window). *host_window* provides the
+    ``start_directory`` fallback and command context. The overlay is created
+    detached, so it never steals focus during the build.
     """
-    for fp in window.floats:
-        if fp.attach_to is not None and fp.attach_to != window.name:
-            msg = (
-                f"floating pane attach_to={fp.attach_to!r} targets another window; "
-                "cross-window floats are not yet supported"
-            )
-            raise WorkspaceCompileError(msg)
-        geo = fp.geometry
-        float_ref = plan.add(
-            NewPane(
-                target=first_pane_ref,
-                width=geo.width,
-                height=geo.height,
-                x=geo.x,
-                y=geo.y,
-                zoom=geo.zoom,
-                empty=geo.empty,
-                style=geo.style,
-                active_border_style=geo.active_border_style,
-                inactive_border_style=geo.inactive_border_style,
-                message=geo.message,
-                start_directory=(
-                    fp.pane.start_directory
-                    or window.start_directory
-                    or ws.start_directory
-                ),
-                environment=dict(fp.pane.environment) or None,
-                shell_command=fp.pane.shell,
+    geo = fp.geometry
+    float_ref = plan.add(
+        NewPane(
+            target=target_ref,
+            width=geo.width,
+            height=geo.height,
+            x=geo.x,
+            y=geo.y,
+            zoom=geo.zoom,
+            empty=geo.empty,
+            style=geo.style,
+            active_border_style=geo.active_border_style,
+            inactive_border_style=geo.inactive_border_style,
+            message=geo.message,
+            start_directory=(
+                fp.pane.start_directory
+                or host_window.start_directory
+                or ws.start_directory
             ),
+            environment=dict(fp.pane.environment) or None,
+            shell_command=fp.pane.shell,
+        ),
+    )
+    _emit_pane_commands(plan, host_after, pre, ws, host_window, fp.pane, float_ref)
+    if fp.pane.focus:
+        plan.add(SelectPane(target=float_ref))
+
+
+def _emit_pending_floats(
+    plan: LazyPlan,
+    host_after: dict[int, list[HostStep]],
+    pre: list[HostStep],
+    ws: Workspace,
+    symbols: Symbols,
+    pending: list[tuple[FloatingPane, int, SlotRef]],
+) -> None:
+    """Emit every window's floats after all windows exist (the wire phase).
+
+    Each float depends on the window it lands on (its host, or its ``attach_to``);
+    a topological sort over that reference graph orders the floats after their
+    target windows and rejects cycles. ``attach_to`` resolves by name through
+    *symbols*, so a float can attach to a window declared anywhere.
+    """
+    if not pending:
+        return
+    deps: dict[t.Any, set[t.Any]] = {}
+    by_node: dict[t.Any, tuple[FloatingPane, int, SlotRef]] = {}
+    for index, (fp, host_index, host_ref) in enumerate(pending):
+        float_node = ("float", index)
+        target_node = (
+            ("window", fp.attach_to)
+            if fp.attach_to is not None
+            else ("host", host_index)
         )
-        _emit_pane_commands(plan, host_after, pre, ws, window, fp.pane, float_ref)
-        if fp.pane.focus:
-            plan.add(SelectPane(target=float_ref))
+        deps[float_node] = {target_node}
+        deps.setdefault(target_node, set())
+        by_node[float_node] = (fp, host_index, host_ref)
+    for node in _topo_order(deps):
+        entry = by_node.get(node)
+        if entry is None:
+            continue
+        fp, host_index, host_ref = entry
+        target_ref = (
+            symbols.resolve(fp.attach_to) if fp.attach_to is not None else host_ref
+        )
+        _emit_float(plan, host_after, pre, ws, ws.windows[host_index], target_ref, fp)
 
 
 def _emit_window(
@@ -231,10 +308,11 @@ def _emit_window(
     window_ref: SlotRef,
     first_pane_ref: SlotRef,
 ) -> None:
-    """Emit a window's options, panes, sends, layout, pane focus, and floats.
+    """Emit a window's options, panes, sends, layout, and pane focus.
 
     *window_ref* addresses the window (rename/options/layout); *first_pane_ref* is
-    the captured id of the window's first pane.
+    the captured id of the window's first pane. Floating overlays are emitted in a
+    second phase (see :func:`_emit_pending_floats`) once every window exists.
     """
     for key, value in window.options.items():
         plan.add(SetWindowOption(target=window_ref, option=key, value=value))
@@ -271,9 +349,6 @@ def _emit_window(
         plan.add(SelectPane(target=target))
     for key, value in window.options_after.items():
         plan.add(SetWindowOption(target=window_ref, option=key, value=value))
-
-    # Floating overlays come last: after the tiled layout, excluded from it.
-    _emit_floats(plan, host_after, pre, ws, window, first_pane_ref)
 
 
 def _creator_environment(window: Window) -> dict[str, str]:
@@ -337,6 +412,8 @@ def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
         plan.add(SetOption(option=key, value=value, global_=True))
 
     window_refs: list[SlotRef] = []
+    symbols = Symbols()
+    pending_floats: list[tuple[FloatingPane, int, SlotRef]] = []
     for index, window in enumerate(ws.windows):
         if index == 0:
             # Reuse the session's implicit first window via its captured ids.
@@ -365,7 +442,13 @@ def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
             window_ref = slot
             first_pane_ref = slot.pane
         window_refs.append(window_ref)
+        if window.name is not None:
+            symbols.define(window.name, first_pane_ref)
         _emit_window(plan, host_after, pre, ws, window, window_ref, first_pane_ref)
+        pending_floats.extend((fp, index, first_pane_ref) for fp in window.floats)
+
+    # Wire phase: every window now exists, so floats attach to any of them by name.
+    _emit_pending_floats(plan, host_after, pre, ws, symbols, pending_floats)
 
     for index, window in enumerate(ws.windows):
         if window.focus:
