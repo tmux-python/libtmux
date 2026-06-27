@@ -224,6 +224,20 @@ def _creator_environment(window: Window) -> dict[str, str]:
     return env
 
 
+def _creator_start_directory(window: Window, ws: Workspace) -> str | None:
+    """Working directory for a window's *first* (implicit) pane.
+
+    The first pane is created by the window's creator (``new-session`` for
+    window 0, ``new-window`` for the rest), not a split, so its directory must
+    ride the creator's ``-c`` with the full pane -> window -> session precedence.
+    Without this, window 0's first pane would inherit the *session*
+    ``start_directory`` instead of the window's.
+    """
+    if window.panes and window.panes[0].start_directory:
+        return window.panes[0].start_directory
+    return window.start_directory or ws.start_directory
+
+
 def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
     """Lower a workspace into a Core plan plus its host-step schedule."""
     if not ws.windows:
@@ -241,7 +255,7 @@ def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
     session = plan.add(
         NewSession(
             session_name=ws.name,
-            start_directory=ws.start_directory,
+            start_directory=_creator_start_directory(ws.windows[0], ws),
             width=width,
             height=height,
             environment=_creator_environment(ws.windows[0]) or None,
@@ -275,7 +289,7 @@ def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
                 NewWindow(
                     target=create_target,
                     name=window.name,
-                    start_directory=window.start_directory or ws.start_directory,
+                    start_directory=_creator_start_directory(window, ws),
                     environment=_creator_environment(window) or None,
                     window_shell=window.window_shell,
                     capture_pane=True,
