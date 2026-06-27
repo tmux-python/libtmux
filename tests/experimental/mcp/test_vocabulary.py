@@ -18,6 +18,7 @@ from libtmux.experimental.mcp import (
     list_panes,
     list_sessions,
     list_windows,
+    new_pane,
     rename_window,
     send_input,
     split_pane,
@@ -48,6 +49,14 @@ def test_create_window_then_split() -> None:
     assert window.window_id.startswith("@")
     assert window.first_pane_id is not None
     pane = split_pane(engine, window.first_pane_id, horizontal=True)
+    assert pane.pane_id.startswith("%")
+
+
+def test_new_pane_creates_floating_pane() -> None:
+    """new_pane creates a floating pane and returns its id (in-memory)."""
+    engine = ConcreteEngine()
+    session = create_session(engine, name="dev")
+    pane = new_pane(engine, session.first_pane_id or "%1", width=80, height=20)
     assert pane.pane_id.startswith("%")
 
 
