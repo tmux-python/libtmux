@@ -33,7 +33,7 @@ from libtmux.experimental.ops._types import (
     WindowId,
 )
 from libtmux.experimental.ops.exc import ForwardCaptureError
-from libtmux.experimental.ops.execute import arun, run
+from libtmux.experimental.ops.execute import arun, resolve_engine_version, run
 from libtmux.experimental.ops.planner import Planner, PlanStep, SequentialPlanner
 from libtmux.experimental.ops.serialize import operation_from_dict, operation_to_dict
 
@@ -352,6 +352,7 @@ class LazyPlan:
         bind, so a caller can interleave host-side work between dispatches; it is
         a no-op trampoline hop when ``None``.
         """
+        version = resolve_engine_version(engine, version)
         gen = self._drive(version, planner or SequentialPlanner())
         try:
             request = next(gen)
@@ -388,6 +389,7 @@ class LazyPlan:
 
         Mirrors :meth:`execute`; *on_step* is awaited per step.
         """
+        version = resolve_engine_version(engine, version)
         gen = self._drive(version, planner or SequentialPlanner())
         try:
             request = next(gen)
