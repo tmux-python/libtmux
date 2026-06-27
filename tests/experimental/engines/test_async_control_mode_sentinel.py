@@ -69,3 +69,24 @@ def test_subscribe_ends_when_dead_with_full_queue() -> None:
         return seen
 
     asyncio.run(main())
+
+
+def test_subscribe_ends_immediately_after_close() -> None:
+    """A subscribe() after aclose() must end at once, not hang on queue.get().
+
+    aclose() broadcasts the stream-end sentinel and clears the subscriber set,
+    so a queue registered afterwards would never receive a sentinel. The
+    ``_closing`` gate makes subscribe() yield nothing and return immediately.
+    """
+
+    async def main() -> list[ControlNotification]:
+        engine = AsyncControlModeEngine()
+        engine._started = True  # pretend a connection was established
+        await engine.aclose()  # flips _closing, broadcasts sentinel, clears subs
+
+        async def drain() -> list[ControlNotification]:
+            return [note async for note in engine.subscribe()]
+
+        return await asyncio.wait_for(drain(), timeout=1.0)  # must NOT hang
+
+    assert asyncio.run(main()) == []
