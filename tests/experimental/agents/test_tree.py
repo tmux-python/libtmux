@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from libtmux.experimental.agents.tree import diff_panes, panes_of
+from libtmux.experimental.agents.tree import PANE_FORMAT, diff_panes, panes_of
 from libtmux.experimental.models.snapshots import ServerSnapshot
+
+
+def test_pane_format_requests_floating_flag() -> None:
+    """The monitor's pane format requests pane_floating_flag (tmux 3.7 floats)."""
+    assert "pane_floating_flag" in PANE_FORMAT
 
 
 def _snap(pane_ids: list[str]) -> ServerSnapshot:
