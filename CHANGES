@@ -73,6 +73,25 @@ dispatches is a pluggable {class}`~libtmux.experimental.ops.planner.Planner`
 (sequential, ``;``-folding, or ``{marked}``-folding), so dispatch strategies can
 be A/B tested against the same plan with identical results.
 
+#### Declarative workspace builds fold to a few tmux calls (#690)
+
+A {class}`~libtmux.experimental.workspace.ir.Workspace` declares a session as a
+tree of windows and panes and lowers to a Core
+{class}`~libtmux.experimental.ops.plan.LazyPlan`, so a tmuxp-style spec can be
+analyzed, inspected, and built over any engine.
+{meth}`~libtmux.experimental.workspace.ir.Workspace.build` and its async twin
+{meth}`~libtmux.experimental.workspace.ir.Workspace.abuild` fold the build's
+dispatches by default: a multi-pane window collapses from one tmux call per
+operation into a handful of ``;``-chained and ``{marked}`` dispatches, so a
+session renders in a few round-trips instead of dozens.
+
+The resulting {class}`~libtmux.experimental.ops.plan.PlanResult` is identical to
+an unfolded build -- only the dispatch count changes -- because host-side steps
+(per-command sleeps, the ``wait_pane`` anti-race, ``before_script``) stay hard
+fold boundaries that a fold never crosses. Pass a
+{class}`~libtmux.experimental.ops.planner.SequentialPlanner` to ``build`` for one
+legible tmux call per operation when debugging.
+
 ## libtmux 0.61.0 (2026-07-04)
 
 libtmux 0.61.0 hardens support for the tmux 3.7 patch line. It fixes
