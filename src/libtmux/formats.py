@@ -104,4 +104,16 @@ PANE_FORMATS = [
     "mouse_button_flag",
     "mouse_any_flag",
     "mouse_utf8_flag",
+    # tmux 3.7
+    "pane_flags",
+    "pane_floating_flag",
+    "pane_x",
+    "pane_y",
+    "pane_z",
+    "pane_zoomed_flag",
+    "pane_pb_progress",
+    "pane_pb_state",
+    "pane_pipe_pid",
+    "bracket_paste_flag",
+    "synchronized_output_flag",
 ]
