@@ -1,8 +1,9 @@
 """Is the process behind a pane still alive.
 
 Local panes carry a ``pane_pid`` we can probe with ``os.kill(pid, 0)``. Remote
-(SSH) panes are PID-less; this check never declares them dead — they expire on a
-keepalive TTL owned by the monitor instead.
+(SSH) panes are PID-less; this probe never declares them dead. In v1 they are
+simply left at their last-known state (a keepalive/TTL expiry is a possible
+future enhancement, not current behavior).
 """
 
 from __future__ import annotations
