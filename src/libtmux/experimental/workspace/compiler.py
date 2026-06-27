@@ -25,7 +25,7 @@ Core op spine pure.
 from __future__ import annotations
 
 import typing as t
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from libtmux.experimental.ops import (
     LazyPlan,
@@ -264,9 +264,16 @@ def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
             if window.name is not None:
                 plan.add(RenameWindow(target=window_ref, name=window.name))
         else:
+            # An explicit window_index targets new-window at `session:N`; the
+            # SlotRef suffix appends ":N" to the captured session id at run time.
+            create_target = (
+                replace(session, suffix=f":{window.window_index}")
+                if window.window_index is not None
+                else session
+            )
             slot = plan.add(
                 NewWindow(
-                    target=session,
+                    target=create_target,
                     name=window.name,
                     start_directory=window.start_directory or ws.start_directory,
                     environment=_creator_environment(window) or None,

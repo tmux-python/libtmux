@@ -685,6 +685,21 @@ def test_compile_emits_wait_pane_when_enabled() -> None:
     )
 
 
+def test_compile_window_index_targets_session_index() -> None:
+    """window_index places a created window at session:N (capture preserved)."""
+    ws = Workspace(
+        name="wi",
+        windows=[
+            Window("a", panes=[Pane(run="echo x")]),
+            Window("b", window_index=5, panes=[Pane(run="echo y")]),
+        ],
+    )
+    results = ws.build(ConcreteEngine(), preflight=False).results
+    new_window = next(r for r in results if r.argv[0] == "new-window")
+    assert "$1:5" in new_window.argv  # targeted at the explicit session index
+    assert new_window.ok  # the -P -F capture still binds the new window id
+
+
 def test_workspace_wait_pane_builds_live(session: Session, tmp_path: Path) -> None:
     """A wait_pane build polls readiness and still completes over real tmux."""
     spec = analyze(
