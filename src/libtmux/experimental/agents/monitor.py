@@ -23,6 +23,7 @@ import time
 import typing as t
 
 from libtmux.experimental.agents.health import is_alive
+from libtmux.experimental.agents.hud import HudRenderer
 from libtmux.experimental.agents.merge import MonotonicCounter, Stamp
 from libtmux.experimental.agents.signals import SUBSCRIPTION, OptionSignal, OscSignal
 from libtmux.experimental.agents.state import AgentState
@@ -63,6 +64,10 @@ class AgentMonitor:
     clock : Clock or None
         Logical clock for stamping updates. Defaults to
         :class:`~libtmux.experimental.agents.merge.MonotonicCounter`.
+    hud : bool
+        Show a floating HUD pane (tmux 3.7+) that repaints the agent store on
+        every change. Off by default; the HUD pane is excluded from agent
+        tracking and torn down on :meth:`stop`.
 
     Examples
     --------
@@ -83,6 +88,7 @@ class AgentMonitor:
         *,
         sink: Storage | None = None,
         clock: Clock | None = None,
+        hud: bool = False,
     ) -> None:
         self._engine = engine
         self._sink = sink
@@ -92,6 +98,13 @@ class AgentMonitor:
         self._task: asyncio.Task[None] | None = None
         # Supervised-drain control: stop() flips this; _run() exits its loop.
         self._stopping = False
+        # Optional floating HUD (tmux 3.7+): a single floating pane that repaints
+        # the agent store on every change. Opt-in so existing callers (and older
+        # tmux) are unaffected; the pane is excluded from agent tracking.
+        self._hud_enabled = hud
+        self._hud_renderer = HudRenderer()
+        self._hud_pane_id: str | None = None
+        self._hud_dirty = False
         # Bounded poll between reconcile retries while the engine is reconnecting,
         # so the supervised drain waits (not busy-spins) for the engine to revive.
         self._reconnect_poll = 0.5
@@ -173,6 +186,7 @@ class AgentMonitor:
             pid=None,
         )
         self._store = apply(self._store, observed, now=time.monotonic())
+        self._hud_dirty = True
         if self._sink is not None:
             self._sink.save(self._store.to_dict())
         logger.debug(
@@ -299,6 +313,8 @@ class AgentMonitor:
         # then hand off to the supervised drain for the engine's whole lifetime.
         self._stopping = False
         await self.reconcile()
+        if self._hud_enabled:
+            await self._ensure_hud()
         self._task = asyncio.get_running_loop().create_task(self._run())
 
     async def _primary_session_id(self) -> str | None:
@@ -398,6 +414,7 @@ class AgentMonitor:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
+        await self._teardown_hud()
         if self._sink is not None:
             self._sink.save(self._store.to_dict())
 
@@ -430,7 +447,13 @@ class AgentMonitor:
         result = await self._engine.run(req)
         rows = _parse_pane_rows(result.stdout)
         snapshot: ServerSnapshot = ServerSnapshot.from_pane_rows(rows)
-        current_panes = panes_of(snapshot)
+        # The monitor's own floating HUD is not an agent pane: keep it out of the
+        # tracked set so it never enters the diff or the health sweep.
+        current_panes = {
+            pane_id: pane
+            for pane_id, pane in panes_of(snapshot).items()
+            if pane_id != self._hud_pane_id
+        }
         _added, removed = diff_panes(self._prev_panes, current_panes)
         for pane_id in removed:
             self._store = apply(
@@ -440,6 +463,7 @@ class AgentMonitor:
             )
         self._apply_health(current_panes)
         self._prev_panes = dict(current_panes)
+        self._hud_dirty = True
 
     def _apply_health(self, current_panes: dict[str, PaneSnapshot]) -> None:
         """Refresh tracked agents' ``pid``/``alive`` from the pane tree.
@@ -492,6 +516,63 @@ class AgentMonitor:
     # Private helpers
     # ------------------------------------------------------------------
 
+    async def _ensure_hud(self) -> None:
+        """Create the floating HUD pane over the primary session and paint it.
+
+        Best-effort: with no session to host it, an engine error, or a server
+        older than tmux 3.7 (``new-pane`` is unknown there), the HUD is silently
+        skipped and the monitor runs without it.
+        """
+        from libtmux.experimental.ops import NewPane, arun
+        from libtmux.experimental.ops._types import SessionId
+
+        session_id = await self._primary_session_id()
+        if session_id is None:
+            logger.debug("no session to host the agent HUD — skipping")
+            return
+        op = NewPane(
+            target=SessionId(session_id),
+            detach=True,
+            width="40%",
+            height="40%",
+            shell_command=self._hud_renderer.paint_command(self._store),
+        )
+        try:
+            result = await arun(op, self._engine)
+        except Exception:
+            logger.debug("agent HUD creation failed", exc_info=True)
+            return
+        if not result.ok or result.new_pane_id is None:
+            logger.debug("agent HUD unavailable (new-pane failed)")
+            return
+        self._hud_pane_id = result.new_pane_id
+        self._hud_dirty = False
+        logger.debug("agent HUD created on pane %s", self._hud_pane_id)
+
+    async def _repaint_hud(self) -> None:
+        """Repaint the HUD pane from the current store when it has changed."""
+        if self._hud_pane_id is None or not self._hud_dirty:
+            return
+        from libtmux.experimental.ops import arun
+
+        self._hud_dirty = False
+        op = self._hud_renderer.repaint_op(self._hud_pane_id, self._store)
+        try:
+            await arun(op, self._engine)
+        except Exception:
+            logger.debug("agent HUD repaint failed", exc_info=True)
+
+    async def _teardown_hud(self) -> None:
+        """Kill the floating HUD pane if one was created."""
+        if self._hud_pane_id is None:
+            return
+        from libtmux.experimental.ops import KillPane, arun
+        from libtmux.experimental.ops._types import PaneId
+
+        hud_pane_id, self._hud_pane_id = self._hud_pane_id, None
+        with contextlib.suppress(Exception):
+            await arun(KillPane(target=PaneId(hud_pane_id)), self._engine)
+
     async def _run(self) -> None:
         """Supervised drain: re-subscribe + reconcile across engine reconnects.
 
@@ -511,10 +592,12 @@ class AgentMonitor:
                 logger.debug("agents: reconcile not ready, retrying", exc_info=True)
                 await asyncio.sleep(self._reconnect_poll)
                 continue
+            await self._repaint_hud()
             try:
                 async with contextlib.aclosing(self._engine.subscribe()) as stream:
                     async for note in stream:
                         self.ingest(note.raw)
+                        await self._repaint_hud()
             except asyncio.CancelledError:
                 raise
             except Exception:
