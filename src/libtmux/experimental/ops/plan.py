@@ -34,7 +34,7 @@ from libtmux.experimental.ops._types import (
 )
 from libtmux.experimental.ops.exc import ForwardCaptureError
 from libtmux.experimental.ops.execute import arun, run
-from libtmux.experimental.ops.planner import Planner, SequentialPlanner
+from libtmux.experimental.ops.planner import Planner, PlanStep, SequentialPlanner
 from libtmux.experimental.ops.serialize import operation_from_dict, operation_to_dict
 
 if t.TYPE_CHECKING:
@@ -65,6 +65,38 @@ class _Chain:
     """Drive request: dispatch a folded ``;`` chain and return the merged result."""
 
     argv: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class StepReport:
+    """One executed :class:`~.planner.PlanStep`, reported to a per-step callback.
+
+    Passed to the ``on_step`` hook of :meth:`LazyPlan.execute` /
+    :meth:`LazyPlan.aexecute` after each step's results bind, letting a caller
+    interleave host-side work (e.g. the workspace runner's sleeps and pane-ready
+    waits) *between* dispatches without forking the resolution core.
+
+    Parameters
+    ----------
+    step : PlanStep
+        The dispatch unit that just ran.
+    results : tuple[Result, ...]
+        The step's per-op results, in ``step.indices`` order.
+    bindings : dict[int | tuple[int, str], str]
+        The live binding map (same reference the driver mutates), so the callback
+        can resolve a :class:`~._types.SlotRef` against already-captured ids.
+    """
+
+    step: PlanStep
+    results: tuple[Result, ...]
+    bindings: dict[int | tuple[int, str], str]
+
+
+@dataclass(frozen=True)
+class _Host:
+    """Drive request: fire the per-step host hook; the driver returns ``None``."""
+
+    report: StepReport
 
 
 def _target_from_id(value: str) -> Target:
@@ -247,12 +279,15 @@ class LazyPlan:
         self,
         version: str | None,
         planner: Planner,
-    ) -> Generator[_Single | _Chain, t.Any, PlanResult]:
+    ) -> Generator[_Single | _Chain | _Host, t.Any, PlanResult]:
         """Sans-I/O resolution core driven by a :class:`~.planner.Planner`.
 
         Yields a :class:`_Single` (driver runs one op, returns its
-        :class:`~.results.Result`) or a :class:`_Chain` (driver returns the
-        merged :class:`~..engines.base.CommandResult`, attributed per op here).
+        :class:`~.results.Result`), a :class:`_Chain` (driver returns the merged
+        :class:`~..engines.base.CommandResult`, attributed per op here), or a
+        :class:`_Host` once per step *after* its results bind (driver fires the
+        ``on_step`` hook, returns ``None``). The generator performs no host I/O
+        itself -- the host hook is the single colored leaf the drivers fork on.
         The sync and async drivers differ only in ``run`` vs ``await arun`` and
         ``engine.run`` vs ``await engine.run``.
         """
@@ -292,6 +327,8 @@ class LazyPlan:
                 results.update(
                     zip(step.indices, attribute(group, merged, version), strict=True),
                 )
+            ordered_step = tuple(results[i] for i in step.indices)
+            yield _Host(StepReport(step, ordered_step, bindings))
         ordered = tuple(results[slot] for slot in range(len(self._operations)))
         return PlanResult(ordered, bindings)
 
@@ -301,6 +338,7 @@ class LazyPlan:
         *,
         version: str | None = None,
         planner: Planner | None = None,
+        on_step: t.Callable[[StepReport], None] | None = None,
     ) -> PlanResult:
         """Resolve and execute the plan synchronously.
 
@@ -309,12 +347,21 @@ class LazyPlan:
         :class:`~.planner.FoldingPlanner` or :class:`~.planner.MarkedPlanner` to
         fold dispatches -- the :class:`PlanResult` is identical, only the
         dispatch count changes.
+
+        *on_step* is called with a :class:`StepReport` after each step's results
+        bind, so a caller can interleave host-side work between dispatches; it is
+        a no-op trampoline hop when ``None``.
         """
         gen = self._drive(version, planner or SequentialPlanner())
         try:
             request = next(gen)
             while True:
-                request = gen.send(self._dispatch(request, engine, version))
+                if isinstance(request, _Host):
+                    if on_step is not None:
+                        on_step(request.report)
+                    request = gen.send(None)
+                else:
+                    request = gen.send(self._dispatch(request, engine, version))
         except StopIteration as stop:
             return t.cast("PlanResult", stop.value)
 
@@ -335,16 +382,32 @@ class LazyPlan:
         *,
         version: str | None = None,
         planner: Planner | None = None,
+        on_step: t.Callable[[StepReport], t.Awaitable[None]] | None = None,
     ) -> PlanResult:
-        """Resolve and execute the plan asynchronously (same resolution core)."""
+        """Resolve and execute the plan asynchronously (same resolution core).
+
+        Mirrors :meth:`execute`; *on_step* is awaited per step.
+        """
         gen = self._drive(version, planner or SequentialPlanner())
         try:
             request = next(gen)
             while True:
-                if isinstance(request, _Chain):
-                    raw = await engine.run(CommandRequest.from_args(*request.argv))
-                    request = gen.send(raw)
+                if isinstance(request, _Host):
+                    if on_step is not None:
+                        await on_step(request.report)
+                    request = gen.send(None)
                 else:
-                    request = gen.send(await arun(request.op, engine, version=version))
+                    request = gen.send(await self._adispatch(request, engine, version))
         except StopIteration as stop:
             return t.cast("PlanResult", stop.value)
+
+    async def _adispatch(
+        self,
+        request: _Single | _Chain,
+        engine: AsyncTmuxEngine,
+        version: str | None,
+    ) -> t.Any:
+        """Run one drive request asynchronously (async twin of :meth:`_dispatch`)."""
+        if isinstance(request, _Chain):
+            return await engine.run(CommandRequest.from_args(*request.argv))
+        return await arun(request.op, engine, version=version)
