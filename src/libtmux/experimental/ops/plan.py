@@ -32,7 +32,7 @@ from libtmux.experimental.ops._types import (
     Special,
     WindowId,
 )
-from libtmux.experimental.ops.exc import OperationError
+from libtmux.experimental.ops.exc import ForwardCaptureError
 from libtmux.experimental.ops.execute import arun, run
 from libtmux.experimental.ops.planner import Planner, SequentialPlanner
 from libtmux.experimental.ops.serialize import operation_from_dict, operation_to_dict
@@ -89,11 +89,7 @@ def _resolve_slot(
     try:
         concrete = bindings[key] + ref.suffix
     except KeyError as error:
-        msg = (
-            f"slot {ref.slot} (part {ref.part!r}) has no captured id yet; a plan "
-            f"step can only reference an earlier step that creates that object"
-        )
-        raise OperationError(msg) from error
+        raise ForwardCaptureError(ref.slot, ref.part) from error
     return _target_from_id(concrete)
 
 

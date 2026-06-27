@@ -19,7 +19,7 @@ from libtmux.experimental.ops import (
     SwapPane,
 )
 from libtmux.experimental.ops._types import PaneId, SlotRef, WindowId
-from libtmux.experimental.ops.exc import OperationError
+from libtmux.experimental.ops.exc import ForwardCaptureError, OperationError
 
 if t.TYPE_CHECKING:
     from libtmux.experimental.ops.operation import Operation
@@ -134,9 +134,12 @@ def test_plan_serialization_round_trip() -> None:
 
 
 def test_plan_unresolvable_ref_fails_closed() -> None:
-    """Targeting a step that creates nothing raises a clear error."""
+    """Targeting a step that creates nothing raises a clear ForwardCaptureError."""
     plan = LazyPlan()
     typed = plan.add(SendKeys(target=PaneId("%1"), keys="x"))  # creates no id
     plan.add(SendKeys(target=typed, keys="y"))
-    with pytest.raises(OperationError, match="no captured id"):
+    with pytest.raises(ForwardCaptureError, match="captured no id") as exc_info:
         plan.execute(ConcreteEngine())
+    assert exc_info.value.slot == 0  # points at the non-capturing creator
+    # ForwardCaptureError stays an OperationError, so broad handlers keep working
+    assert isinstance(exc_info.value, OperationError)
