@@ -148,7 +148,8 @@ def _emit_window(
                     shell=pane.shell or window.window_shell,
                 ),
             )
-        if pane.commands:
+        commands = pane.commands
+        if commands:
             if pane.sleep_before is not None:
                 _schedule_before(
                     host_after,
@@ -156,15 +157,26 @@ def _emit_window(
                     len(plan),
                     HostStep("sleep", seconds=pane.sleep_before),
                 )
-            for command in pane.commands:
+            for command in commands:
+                if command.sleep_before is not None:
+                    _schedule_before(
+                        host_after,
+                        pre,
+                        len(plan),
+                        HostStep("sleep", seconds=command.sleep_before),
+                    )
                 plan.add(
                     SendKeys(
                         target=target,
-                        keys=command,
-                        enter=True,
+                        keys=command.cmd,
+                        enter=command.enter,
                         suppress_history=pane.suppress_history,
                     ),
                 )
+                if command.sleep_after is not None:
+                    host_after.setdefault(len(plan) - 1, []).append(
+                        HostStep("sleep", seconds=command.sleep_after),
+                    )
             if pane.sleep_after is not None:
                 host_after.setdefault(len(plan) - 1, []).append(
                     HostStep("sleep", seconds=pane.sleep_after),
