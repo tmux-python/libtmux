@@ -66,6 +66,23 @@ class Command:
     sleep_before: float | None = None
     sleep_after: float | None = None
 
+    def to_config(self) -> str | dict[str, t.Any]:
+        """Serialize to a tmuxp ``shell_command`` item.
+
+        A plain command (``enter=True``, no sleeps) collapses back to a bare
+        string; otherwise a ``{cmd, ...}`` mapping carrying only the overrides.
+        """
+        if self.enter and self.sleep_before is None and self.sleep_after is None:
+            return self.cmd
+        out: dict[str, t.Any] = {"cmd": self.cmd}
+        if not self.enter:
+            out["enter"] = False
+        if self.sleep_before is not None:
+            out["sleep_before"] = self.sleep_before
+        if self.sleep_after is not None:
+            out["sleep_after"] = self.sleep_after
+        return out
+
 
 @dataclass(frozen=True)
 class Pane:
@@ -125,6 +142,27 @@ class Pane:
         items = (self.run,) if isinstance(self.run, (str, Command)) else self.run
         return tuple(c if isinstance(c, Command) else Command(c) for c in items)
 
+    def to_dict(self) -> dict[str, t.Any]:
+        """Serialize to a canonical tmuxp pane config (inverse of the analyzer)."""
+        out: dict[str, t.Any] = {}
+        if self.run is not None:
+            out["shell_command"] = [c.to_config() for c in self.commands]
+        if self.focus:
+            out["focus"] = True
+        if self.start_directory is not None:
+            out["start_directory"] = self.start_directory
+        if not self.suppress_history:
+            out["suppress_history"] = False
+        if self.sleep_before is not None:
+            out["sleep_before"] = self.sleep_before
+        if self.sleep_after is not None:
+            out["sleep_after"] = self.sleep_after
+        if self.environment:
+            out["environment"] = dict(self.environment)
+        if self.shell is not None:
+            out["shell"] = self.shell
+        return out
+
 
 @dataclass(frozen=True)
 class Window:
@@ -168,6 +206,28 @@ class Window:
     window_shell: str | None = None
     panes: Sequence[Pane] = ()
 
+    def to_dict(self) -> dict[str, t.Any]:
+        """Serialize to a canonical tmuxp window config (inverse of the analyzer)."""
+        out: dict[str, t.Any] = {}
+        if self.name is not None:
+            out["window_name"] = self.name
+        if self.layout is not None:
+            out["layout"] = self.layout
+        if self.start_directory is not None:
+            out["start_directory"] = self.start_directory
+        if self.focus:
+            out["focus"] = True
+        if self.options:
+            out["options"] = dict(self.options)
+        if self.options_after:
+            out["options_after"] = dict(self.options_after)
+        if self.environment:
+            out["environment"] = dict(self.environment)
+        if self.window_shell is not None:
+            out["window_shell"] = self.window_shell
+        out["panes"] = [pane.to_dict() for pane in self.panes]
+        return out
+
 
 @dataclass(frozen=True)
 class Workspace:
@@ -204,6 +264,42 @@ class Workspace:
     windows: Sequence[Window] = ()
     before_script: str | None = None
     on_exists: t.Literal["error", "replace", "reuse"] = "error"
+
+    def to_dict(self) -> dict[str, t.Any]:
+        """Serialize to a canonical tmuxp workspace dict (the inverse of analyze).
+
+        ``analyze(ws.to_dict())`` reconstructs an equivalent workspace; the output
+        uses canonical (non-shorthand) keys and omits fields left at their default.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.workspace.ir import Workspace, Window, Pane
+        >>> ws = Workspace(
+        ...     name="dev",
+        ...     windows=[Window("editor", panes=[Pane(run="vim")])],
+        ... )
+        >>> ws.to_dict()["session_name"]
+        'dev'
+        >>> ws.to_dict()["windows"][0]["window_name"]
+        'editor'
+        """
+        out: dict[str, t.Any] = {"session_name": self.name}
+        if self.dimensions is not None:
+            out["dimensions"] = list(self.dimensions)
+        if self.start_directory is not None:
+            out["start_directory"] = self.start_directory
+        if self.environment:
+            out["environment"] = dict(self.environment)
+        if self.options:
+            out["options"] = dict(self.options)
+        if self.global_options:
+            out["global_options"] = dict(self.global_options)
+        if self.before_script is not None:
+            out["before_script"] = self.before_script
+        if self.on_exists != "error":
+            out["on_exists"] = self.on_exists
+        out["windows"] = [window.to_dict() for window in self.windows]
+        return out
 
     def compile(self, *, version: str | None = None) -> LazyPlan:
         """Lower this declared workspace into a Core ``LazyPlan`` (ops only).
