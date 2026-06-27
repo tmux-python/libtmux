@@ -133,3 +133,8 @@ def setup(app: Sphinx) -> None:
 
 conf["setup"] = setup
 globals().update(conf)
+
+# Exclude design specs and implementation plans from the Sphinx build so that
+# docs/superpowers/** files are tracked in git without generating toctree
+# warnings.
+exclude_patterns += ["superpowers/**"]  # type: ignore[name-defined]  # noqa: F821
