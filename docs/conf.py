@@ -59,3 +59,8 @@ conf = merge_sphinx_config(
     exclude_patterns=["_build", "AGENTS.md", "CLAUDE.md"],
 )
 globals().update(conf)
+
+# Exclude design specs and implementation plans from the Sphinx build so that
+# docs/superpowers/** files are tracked in git without generating toctree
+# warnings.
+exclude_patterns += ["superpowers/**"]  # type: ignore[name-defined]  # noqa: F821
