@@ -183,6 +183,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="expose the full per-operation tool surface (op_*)",
     )
     parser.add_argument(
+        "--safety",
+        choices=("readonly", "mutating", "destructive"),
+        default=None,
+        help="max tool safety tier (default: $LIBTMUX_SAFETY or mutating)",
+    )
+    parser.add_argument(
         "--sync",
         action="store_true",
         help="use the synchronous subprocess server instead of async-first",
@@ -232,6 +238,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 SubprocessEngine(server_args=srv_args),
                 name=args.name,
                 expose_operations=args.operations,
+                safety_level=args.safety,
                 caller=ctx,
             )
         else:
@@ -243,6 +250,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 AsyncControlModeEngine(server_args=srv_args),
                 name=args.name,
                 expose_operations=args.operations,
+                safety_level=args.safety,
                 events=t.cast("EventMode", args.events),
                 event_source=t.cast("EventSource", args.event_source),
                 caller=ctx,

@@ -27,7 +27,8 @@ if t.TYPE_CHECKING:
 
 def test_adapter_registers_typed_tools() -> None:
     """The curated vocabulary appears as typed tools with safety annotations."""
-    server = build_server(ConcreteEngine())
+    # destructive tier so the kill_* tools this asserts on are visible
+    server = build_server(ConcreteEngine(), safety_level="destructive")
 
     async def main() -> t.Any:
         async with fastmcp.Client(server) as client:
@@ -73,7 +74,8 @@ def test_adapter_calls_tool_offline() -> None:
 def test_adapter_live(session: Session) -> None:
     """Drive a real tmux server through fastmcp tools end to end."""
     server = session.server
-    mcp = build_server(SubprocessEngine.for_server(server))
+    # destructive tier so the live kill_session call below is permitted
+    mcp = build_server(SubprocessEngine.for_server(server), safety_level="destructive")
 
     async def main() -> str | None:
         async with fastmcp.Client(mcp) as client:
@@ -112,7 +114,12 @@ def test_adapter_operations_hidden_by_default() -> None:
 
 def test_adapter_exposes_per_op_tools() -> None:
     """``expose_operations`` reveals one typed ``op_<kind>`` per operation."""
-    server = build_server(ConcreteEngine(), expose_operations=True)
+    # destructive tier so the destructive op_kill_* tools are visible too
+    server = build_server(
+        ConcreteEngine(),
+        expose_operations=True,
+        safety_level="destructive",
+    )
 
     async def main() -> t.Any:
         async with fastmcp.Client(server) as client:
