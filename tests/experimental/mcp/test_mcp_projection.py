@@ -51,6 +51,18 @@ def test_split_window_descriptor_shape() -> None:
     assert desc.params["horizontal"].is_required is False
 
 
+def test_min_version_surfaced_on_descriptor() -> None:
+    """A whole-op min_version projects onto the descriptor and its description."""
+    desc = OperationToolRegistry().descriptor("new_pane")
+    assert desc.min_version == "3.7"
+    assert "tmux >= 3.7" in desc.description
+
+
+def test_ungated_op_has_no_min_version() -> None:
+    """An op without a whole-command gate carries no min_version."""
+    assert OperationToolRegistry().descriptor("split_window").min_version is None
+
+
 def test_readonly_op_annotation() -> None:
     """A readonly operation projects a readOnlyHint annotation + tag."""
     desc = OperationToolRegistry().descriptor("has_session")

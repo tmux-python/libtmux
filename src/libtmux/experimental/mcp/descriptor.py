@@ -77,6 +77,9 @@ class ToolDescriptor:
         MCP-style hints derived from safety/effects.
     operation_cls
         The operation class :meth:`build` instantiates.
+    min_version
+        Minimum tmux version the whole operation requires, if any (surfaced in
+        the tool description so agents see the gate before dispatch).
     """
 
     name: str
@@ -92,6 +95,7 @@ class ToolDescriptor:
     version_gates: Mapping[str, str]
     effects: Mapping[str, t.Any]
     operation_cls: type[Operation[t.Any]]
+    min_version: str | None = None
 
     def input_schema(self) -> dict[str, t.Any]:
         """Render the JSON schema for this tool's input object."""
