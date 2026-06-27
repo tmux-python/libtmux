@@ -53,11 +53,12 @@ def make_lifespan(
             msg = f"tmux engine preflight failed: {error}"
             raise RuntimeError(msg) from error
         if monitor is not None:
-            await monitor.start()
-        try:
-            yield
-        finally:
-            if monitor is not None:
+            try:
+                await monitor.start()
+                yield
+            finally:
                 await monitor.stop()
+        else:
+            yield
 
     return _lifespan
