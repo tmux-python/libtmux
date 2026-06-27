@@ -64,6 +64,7 @@ from libtmux.experimental.ops import (
     JoinPane,
     KillPane,
     ListPanes,
+    NewPane,
     ResizePane,
     RespawnPane,
     SelectPane,
@@ -100,6 +101,45 @@ async def asplit_pane(
             target=resolve_target(target),
             horizontal=horizontal,
             start_directory=start_directory,
+        ),
+        engine,
+        version=version,
+    )
+    result.raise_for_status()
+    return PaneResult(pane_id=result.new_pane_id or "")
+
+
+async def anew_pane(
+    engine: AsyncTmuxEngine,
+    target: str | Target,
+    *,
+    width: int | str | None = None,
+    height: int | str | None = None,
+    x: int | str | None = None,
+    y: int | str | None = None,
+    zoom: bool = False,
+    empty: bool = False,
+    start_directory: str | None = None,
+    shell_command: str | None = None,
+    version: str | None = None,
+) -> PaneResult:
+    """Create a floating pane over *target*'s window (requires tmux 3.7+).
+
+    Floating panes overlay the layout (popup-style, but non-modal) instead of
+    tiling. Geometry is absolute: ``width``/``height`` size it and ``x``/``y``
+    position it, each in cells or an ``"N%"`` string. Returns the new pane id.
+    """
+    result = await arun(
+        NewPane(
+            target=resolve_target(target),
+            width=width,
+            height=height,
+            x=x,
+            y=y,
+            zoom=zoom,
+            empty=empty,
+            start_directory=start_directory,
+            shell_command=shell_command,
         ),
         engine,
         version=version,
@@ -593,6 +633,7 @@ async def _raise_no_neighbour(
 
 
 split_pane = synced(asplit_pane)
+new_pane = synced(anew_pane)
 send_input = synced(asend_input)
 capture_pane = synced(acapture_pane)
 capture_active_pane = synced(acapture_active_pane)
