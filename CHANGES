@@ -47,7 +47,7 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
-#### Typed tmux 3.7 options
+#### Typed tmux 3.7 options (#694)
 
 The option dataclasses now type tmux 3.7's new options. On the server,
 `get-clipboard`; on the session, `focus-follows-mouse`,
@@ -59,7 +59,7 @@ status line's pane list (`window-pane-status-format` and
 `window-pane-current-status-format`). The pane `remain-on-exit` option
 gained tmux 3.7's `key` value.
 
-#### tmux 3.7 pane format variables
+#### tmux 3.7 pane format variables (#694)
 
 {class}`~libtmux.Pane` now exposes tmux 3.7's new pane format
 variables: the floating-pane geometry and flags (`pane_floating_flag`,
@@ -69,7 +69,7 @@ OSC 9;4 progress report (`pane_pb_progress`, `pane_pb_state`),
 `synchronized_output_flag` screen-mode flags. Each is version-gated, so
 the format template stays clean on tmux 3.2a–3.6.
 
-#### tmux 3.7 command flags
+#### tmux 3.7 command flags (#694)
 
 New tmux 3.7 flags are exposed on existing wrappers:
 {meth}`~libtmux.Pane.capture_pane` gains `hyperlinks` (`-H`),
@@ -80,16 +80,18 @@ New tmux 3.7 flags are exposed on existing wrappers:
 gains `no_vis` (`-S`, paste raw bytes). Each warns and is ignored on
 tmux < 3.7.
 
-#### Floating panes (`new-pane`)
+#### Floating panes (`new-pane`) (#694)
 
 tmux 3.7's flagship feature, floating panes, is now reachable through
-{meth}`~libtmux.Window.new_pane` and {meth}`~libtmux.Pane.new_pane`. A
+{meth}`Window.new_pane() <libtmux.Window.new_pane>` and
+{meth}`Pane.new_pane() <libtmux.Pane.new_pane>`. A
 floating pane sits above the tiled layout like a popup but behaves like
 a real pane. Pass `width`/`height` to size it and `x`/`y` to position
 it, alongside the usual `shell`, `start_directory`, `environment`,
 `zoom` and `empty`, plus `style`, `active_border_style` and
 `inactive_border_style`. The returned {class}`~libtmux.Pane` reports
-`pane_floating_flag == "1"`. Requires tmux 3.7+.
+`pane_floating_flag == "1"`. Requires tmux 3.7+. See {ref}`floating-panes`
+for a guide.
 
 ## libtmux 0.59.0 (2026-06-27)
 
