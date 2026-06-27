@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import pytest
+
+from libtmux.experimental.ops import NewPane, SendKeys
 from libtmux.experimental.workspace import (
     Float,
     FloatingPane,
     Pane,
     Window,
     Workspace,
+    WorkspaceCompileError,
     analyze,
+    compile_workspace,
 )
 
 
@@ -81,3 +86,100 @@ def test_floats_round_trip_through_to_dict() -> None:
     assert floated.geometry.zoom is True
     assert floated.attach_to == "editor"
     assert revived.to_dict() == ws.to_dict()
+
+
+def test_compiler_emits_new_pane_after_layout() -> None:
+    """A declared float compiles to a new-pane op after the tiled layout."""
+    ws = Workspace(
+        name="dev",
+        windows=[
+            Window(
+                "editor",
+                layout="main-vertical",
+                panes=[Pane(run="vim")],
+                floats=[
+                    FloatingPane(
+                        pane=Pane(run="lazygit"),
+                        geometry=Float(width=120, height=40),
+                    ),
+                ],
+            ),
+        ],
+    )
+    kinds = [op.kind for op in compile_workspace(ws).operations]
+    assert "new_pane" in kinds
+    assert kinds.index("new_pane") > kinds.index("select_layout")
+
+
+def test_compiler_new_pane_geometry_and_command() -> None:
+    """The emitted new-pane carries the float geometry and sends its command."""
+    ws = Workspace(
+        name="dev",
+        windows=[
+            Window(
+                "editor",
+                panes=[Pane(run="vim")],
+                floats=[
+                    FloatingPane(
+                        pane=Pane(run="lazygit"),
+                        geometry=Float(width="60%", height="50%"),
+                    ),
+                ],
+            ),
+        ],
+    )
+    ops = compile_workspace(ws).operations
+    new_pane = next(op for op in ops if isinstance(op, NewPane))
+    assert (new_pane.width, new_pane.height) == ("60%", "50%")
+    assert any(isinstance(op, SendKeys) and op.keys == "lazygit" for op in ops)
+
+
+def test_cross_window_attach_to_raises() -> None:
+    """A float attaching to a different window is rejected (not yet supported)."""
+    ws = Workspace(
+        name="dev",
+        windows=[
+            Window(
+                "editor",
+                panes=[Pane(run="vim")],
+                floats=[FloatingPane(pane=Pane(run="lazygit"), attach_to="logs")],
+            ),
+            Window("logs", panes=[Pane(run="tail -f x")]),
+        ],
+    )
+    with pytest.raises(WorkspaceCompileError, match="cross-window floats"):
+        compile_workspace(ws)
+
+
+def test_offline_build_with_float() -> None:
+    """A float-bearing workspace builds over the in-memory engine."""
+    from libtmux.experimental.engines import ConcreteEngine
+
+    ws = Workspace(
+        name="dev",
+        windows=[
+            Window(
+                "editor",
+                panes=[Pane(run="vim")],
+                floats=[
+                    FloatingPane(
+                        pane=Pane(run="lazygit"),
+                        geometry=Float(width=120, height=40),
+                    ),
+                ],
+            ),
+        ],
+    )
+    assert ws.build(ConcreteEngine(), preflight=False).ok
+
+
+def test_events_for_new_pane() -> None:
+    """events_for emits a PaneCreated for a new-pane result."""
+    from libtmux.experimental.ops import NewPane
+    from libtmux.experimental.ops._types import PaneId
+    from libtmux.experimental.workspace import PaneCreated
+    from libtmux.experimental.workspace.events import events_for
+
+    op = NewPane(target=PaneId("%1"))
+    result = op.build_result(returncode=0, stdout=("%9",))
+    assert events_for(op, result) == [PaneCreated("%9")]
