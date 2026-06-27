@@ -21,17 +21,27 @@ imports the real fastmcp base classes at module top.
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import time
 import typing as t
 
-from fastmcp.server.middleware import MiddlewareContext
-from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp.server.middleware.error_handling import (
+    ErrorHandlingMiddleware,
+    RetryMiddleware,
+)
 from fastmcp.server.middleware.response_limiting import ResponseLimitingMiddleware
 from fastmcp.tools.base import ToolResult
 from mcp.types import CallToolRequestParams, TextContent
 from pydantic import ValidationError as PydanticValidationError
 
-from libtmux.experimental.mcp._safety import ExpectedToolError
+from libtmux import exc as libtmux_exc
+from libtmux.experimental.mcp._safety import (
+    _TIER_LEVELS,
+    TAG_READONLY,
+    ExpectedToolError,
+)
 
 #: Curated scrollback tools whose output the tail-preserving limiter backstops.
 #: Only terminal-text tools benefit; structured list/get responses stay under the
@@ -346,3 +356,314 @@ class TailPreservingResponseLimitingMiddleware(ResponseLimitingMiddleware):
             content=[TextContent(type="text", text=truncated)],
             meta=meta if meta is not None else {},
         )
+
+
+# ---------------------------------------------------------------------------
+# Safety tier gate (runtime)
+# ---------------------------------------------------------------------------
+
+
+class SafetyMiddleware(Middleware):
+    """Gate tools by safety tier at runtime (defense in depth).
+
+    The adapter hides over-tier tools from listings statically; this middleware
+    blocks *execution* of anything that slips through (e.g. a per-op tool exposed
+    via ``expose_operations=True``). Fail-closed: a tool with no recognized tier
+    tag is denied.
+
+    Parameters
+    ----------
+    max_tier : str
+        Maximum allowed tier (one of the ``TAG_*`` values in :mod:`._safety`).
+    """
+
+    def __init__(self, max_tier: str) -> None:
+        self.max_level = _TIER_LEVELS.get(max_tier, 0)
+
+    def _is_allowed(self, tags: set[str]) -> bool:
+        """Whether the tool's tags fall within the allowed tier (fail-closed)."""
+        found_tier = False
+        for tier, level in _TIER_LEVELS.items():
+            if tier in tags:
+                found_tier = True
+                if level > self.max_level:
+                    return False
+        return found_tier
+
+    async def on_list_tools(
+        self,
+        context: MiddlewareContext,
+        call_next: t.Any,
+    ) -> t.Any:
+        """Filter tools above the safety tier from the listing."""
+        tools = await call_next(context)
+        return [tool for tool in tools if self._is_allowed(tool.tags)]
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext,
+        call_next: t.Any,
+    ) -> t.Any:
+        """Block execution of tools above the safety tier."""
+        if context.fastmcp_context:
+            tool = await context.fastmcp_context.fastmcp.get_tool(context.message.name)
+            if tool and not self._is_allowed(tool.tags):
+                msg = (
+                    f"Tool '{context.message.name}' is not available at the current "
+                    f"safety level. Set LIBTMUX_SAFETY=destructive to enable "
+                    f"destructive tools."
+                )
+                raise ExpectedToolError(msg)
+        return await call_next(context)
+
+
+# ---------------------------------------------------------------------------
+# Audit middleware
+# ---------------------------------------------------------------------------
+
+#: Argument names that carry user payloads we never want in logs (commands,
+#: secrets, arbitrary large strings). Matched by exact name, case-sensitive.
+#: ``environment`` is dict-shaped: its values are digested while its keys (env
+#: var names) stay visible.
+_SENSITIVE_ARG_NAMES: frozenset[str] = frozenset(
+    {"keys", "text", "command", "value", "content", "shell", "environment"},
+)
+
+#: Nested argument containers that may contain sensitive argument names.
+_NESTED_ARG_LIST_NAMES: frozenset[str] = frozenset({"operations"})
+
+_NONE_TYPE = type(None)
+
+_SEND_KEYS_OPERATION_ARG_TYPES: dict[str, tuple[type[t.Any], ...]] = {
+    "keys": (str,),
+    "pane_id": (str, _NONE_TYPE),
+    "session_name": (str, _NONE_TYPE),
+    "session_id": (str, _NONE_TYPE),
+    "window_id": (str, _NONE_TYPE),
+    "enter": (bool,),
+    "literal": (bool,),
+    "suppress_history": (bool,),
+}
+
+#: Non-sensitive strings longer than this get truncated in the log summary.
+_MAX_LOGGED_STR_LEN: int = 200
+
+
+def _redact_digest(value: str) -> dict[str, t.Any]:
+    """Return a length + SHA-256 prefix summary of ``value``.
+
+    Stable and deterministic, so operators correlate the same payload across log
+    lines without ever recording the payload itself.
+
+    Examples
+    --------
+    >>> _redact_digest("hello")
+    {'len': 5, 'sha256_prefix': '2cf24dba5fb0'}
+    >>> _redact_digest("")
+    {'len': 0, 'sha256_prefix': 'e3b0c44298fc'}
+    """
+    return {
+        "len": len(value),
+        "sha256_prefix": hashlib.sha256(value.encode("utf-8")).hexdigest()[:12],
+    }
+
+
+def _redacted_value_shape(value: t.Any) -> dict[str, t.Any]:
+    """Return non-payload metadata for a value that cannot be logged."""
+    return {"type": type(value).__name__, "redacted": True}
+
+
+def _summarize_send_keys_operation_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Summarize one send-keys batch operation for audit logging."""
+    summary: dict[str, t.Any] = {}
+    for key, value in args.items():
+        expected_types = _SEND_KEYS_OPERATION_ARG_TYPES.get(key)
+        if expected_types is None or not isinstance(value, expected_types):
+            summary[key] = _redacted_value_shape(value)
+        else:
+            summary[key] = _summarize_args({key: value})[key]
+    return summary
+
+
+def _summarize_tool_batch_operation_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Summarize one generic tool-batch operation for audit logging."""
+    summary: dict[str, t.Any] = {}
+    for key, value in args.items():
+        if key == "tool" and isinstance(value, str):
+            summary[key] = value
+        elif key == "arguments" and isinstance(value, dict):
+            summary[key] = _summarize_args(value)
+        else:
+            summary[key] = _redacted_value_shape(value)
+    return summary
+
+
+def _summarize_nested_operation_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Summarize a known nested operation shape."""
+    if "tool" in args or "arguments" in args:
+        return _summarize_tool_batch_operation_args(args)
+    return _summarize_send_keys_operation_args(args)
+
+
+def _summarize_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
+    """Summarize tool arguments for audit logging.
+
+    Sensitive keys are replaced by a digest; over-long strings truncated;
+    everything else passes through. Dict-shaped sensitive values keep their keys
+    but digest each value; known nested operation lists are summarized
+    recursively.
+
+    Examples
+    --------
+    >>> _summarize_args({"pane_id": "%1", "bracket": True})
+    {'pane_id': '%1', 'bracket': True}
+    >>> _summarize_args({"keys": "rm -rf /"})["keys"]["len"]
+    8
+    >>> redacted = _summarize_args({"environment": {"FOO": "bar"}})
+    >>> redacted["environment"]["FOO"]["len"]
+    3
+    >>> "bar" in str(redacted)
+    False
+    """
+    summary: dict[str, t.Any] = {}
+    for key, value in args.items():
+        if key in _SENSITIVE_ARG_NAMES and isinstance(value, str):
+            summary[key] = _redact_digest(value)
+        elif key in _SENSITIVE_ARG_NAMES and isinstance(value, dict):
+            summary[key] = {k: _redact_digest(str(v)) for k, v in value.items()}
+        elif key in _NESTED_ARG_LIST_NAMES:
+            if isinstance(value, list):
+                summary[key] = [
+                    _summarize_nested_operation_args(item)
+                    if isinstance(item, dict)
+                    else _redacted_value_shape(item)
+                    for item in value
+                ]
+            else:
+                summary[key] = _redacted_value_shape(value)
+        elif isinstance(value, str) and len(value) > _MAX_LOGGED_STR_LEN:
+            summary[key] = value[:_MAX_LOGGED_STR_LEN] + "...<truncated>"
+        else:
+            summary[key] = value
+    return summary
+
+
+class AuditMiddleware(Middleware):
+    """Emit a structured log record per tool invocation.
+
+    One ``INFO`` record per call carries the tool name, outcome, duration, error
+    type on failure, the fastmcp client/request ids when available, and a
+    redacted argument summary -- all in the record's ``extra`` (the message is a
+    static template, per the project logging standard), so payload-bearing
+    arguments never reach the log as raw text.
+
+    Parameters
+    ----------
+    logger_name : str
+        Name of the :mod:`logging` logger used for audit records.
+    """
+
+    def __init__(
+        self,
+        logger_name: str = "libtmux.experimental.mcp.audit",
+    ) -> None:
+        self._logger = logging.getLogger(logger_name)
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext,
+        call_next: t.Any,
+    ) -> t.Any:
+        """Wrap the tool call with a timer and emit one audit record."""
+        start = time.monotonic()
+        tool_name = getattr(context.message, "name", "<unknown>")
+        raw_args = getattr(context.message, "arguments", None) or {}
+        args_summary = _summarize_args(raw_args)
+
+        client_id: str | None = None
+        request_id: str | None = None
+        if context.fastmcp_context is not None:
+            client_id = getattr(context.fastmcp_context, "client_id", None)
+            request_id = getattr(context.fastmcp_context, "request_id", None)
+
+        try:
+            result = await call_next(context)
+        except Exception as exc:
+            self._logger.info(
+                "tool call failed",
+                extra={
+                    "tmux_subcommand": tool_name,
+                    "outcome": "error",
+                    "error_type": type(exc).__name__,
+                    "duration_ms": round((time.monotonic() - start) * 1000.0, 2),
+                    "client_id": client_id,
+                    "request_id": request_id,
+                    "tmux_args": args_summary,
+                },
+            )
+            raise
+
+        self._logger.info(
+            "tool call completed",
+            extra={
+                "tmux_subcommand": tool_name,
+                "outcome": "ok",
+                "duration_ms": round((time.monotonic() - start) * 1000.0, 2),
+                "client_id": client_id,
+                "request_id": request_id,
+                "tmux_args": args_summary,
+            },
+        )
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Readonly retry
+# ---------------------------------------------------------------------------
+
+
+class ReadonlyRetryMiddleware(Middleware):
+    """Retry transient libtmux failures, but only for readonly tools.
+
+    Composes fastmcp's :class:`RetryMiddleware`. Mutating and destructive tools
+    pass straight through -- re-running them on a transient socket error would
+    silently double side effects. Readonly tools are safe to retry. The default
+    trigger is :class:`libtmux.exc.LibTmuxException` (libtmux wraps the transient
+    subprocess failures); fastmcp's stock ``(ConnectionError, TimeoutError)`` does
+    not match these, so the upstream default would be a silent no-op.
+
+    Place this **inside** ``AuditMiddleware`` (so retried calls are audited once)
+    and **outside** ``SafetyMiddleware`` (so tier-denied tools never reach retry).
+    """
+
+    def __init__(
+        self,
+        max_retries: int = 1,
+        base_delay: float = 0.1,
+        max_delay: float = 1.0,
+        backoff_multiplier: float = 2.0,
+        retry_exceptions: tuple[type[Exception], ...] = (libtmux_exc.LibTmuxException,),
+        logger_: logging.Logger | None = None,
+    ) -> None:
+        if logger_ is None:
+            logger_ = logging.getLogger("libtmux.experimental.mcp.retry")
+        self._retry = RetryMiddleware(
+            max_retries=max_retries,
+            base_delay=base_delay,
+            max_delay=max_delay,
+            backoff_multiplier=backoff_multiplier,
+            retry_exceptions=retry_exceptions,
+            logger=logger_,
+        )
+
+    async def on_call_tool(
+        self,
+        context: MiddlewareContext,
+        call_next: t.Any,
+    ) -> t.Any:
+        """Delegate to the upstream retry only for tools tagged readonly."""
+        if context.fastmcp_context:
+            tool = await context.fastmcp_context.fastmcp.get_tool(context.message.name)
+            if tool and TAG_READONLY in tool.tags:
+                return await self._retry.on_request(context, call_next)
+        return await call_next(context)
