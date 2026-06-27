@@ -653,6 +653,7 @@ def build_server(
     expose_operations: bool = False,
     include_plan_tools: bool = True,
     include_middleware: bool = True,
+    include_prompts: bool = True,
     safety_level: str | None = None,
     caller: CallerContext | None = None,
 ) -> FastMCP:
@@ -681,6 +682,10 @@ def build_server(
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=False)
     register_caller_context(mcp, ctx)
+    if include_prompts:
+        from libtmux.experimental.mcp.prompts import register_prompts
+
+        register_prompts(mcp)
     if include_operations:
         register_operations(
             mcp,
@@ -704,6 +709,7 @@ def build_async_server(
     expose_operations: bool = False,
     include_plan_tools: bool = True,
     include_middleware: bool = True,
+    include_prompts: bool = True,
     safety_level: str | None = None,
     events: EventMode = "push",
     event_source: EventSource = "subscription",
@@ -736,6 +742,10 @@ def build_async_server(
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=True)
     register_caller_context(mcp, ctx)
+    if include_prompts:
+        from libtmux.experimental.mcp.prompts import register_prompts
+
+        register_prompts(mcp)
     if include_operations:
         register_operations(
             mcp,
