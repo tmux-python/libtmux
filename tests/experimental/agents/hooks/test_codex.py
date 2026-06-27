@@ -48,3 +48,20 @@ def test_install_writes_event_hooks(tmp_path: pathlib.Path) -> None:
     hook.uninstall()
     assert hook.status() == "absent"
     assert 'model = "o4"' in config.read_text()
+
+
+def test_install_collapses_duplicate_marker_blocks(tmp_path: pathlib.Path) -> None:
+    """install() over a file with two marker blocks collapses to exactly one."""
+    config = tmp_path / "config.toml"
+    hook = CodexHook(config_path=config)
+    block = hook._build_block()
+    # Seed the file with two copies of the marker block
+    config.write_text(f'model = "o4"\n\n{block}\n{block}')
+    assert config.read_text().count("# >>> libtmux-agent-state >>>") == 2
+
+    hook.install()
+
+    text = config.read_text()
+    assert text.count("# >>> libtmux-agent-state >>>") == 1
+    assert hook.status() == "installed"
+    assert 'model = "o4"' in text
