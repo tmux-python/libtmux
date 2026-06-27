@@ -69,6 +69,17 @@ OSC 9;4 progress report (`pane_pb_progress`, `pane_pb_state`),
 `synchronized_output_flag` screen-mode flags. Each is version-gated, so
 the format template stays clean on tmux 3.2a–3.6.
 
+#### tmux 3.7 command flags
+
+New tmux 3.7 flags are exposed on existing wrappers:
+{meth}`~libtmux.Pane.capture_pane` gains `hyperlinks` (`-H`),
+`line_numbers` (`-L`) and `line_flags` (`-F`);
+{meth}`~libtmux.Window.split` / {meth}`~libtmux.Pane.split` gain `empty`
+(`-E`, an empty pane); {meth}`~libtmux.Session.kill` gains `group`
+(`-g`, kill the session group); and {meth}`~libtmux.Pane.paste_buffer`
+gains `no_vis` (`-S`, paste raw bytes). Each warns and is ignored on
+tmux < 3.7.
+
 ## libtmux 0.59.0 (2026-06-27)
 
 libtmux 0.59.0 adds support for tmux 3.7. tmux 3.7 shipped an upstream
