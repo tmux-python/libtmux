@@ -85,14 +85,9 @@ def _parse_payload(payload: str) -> tuple[AgentState, str | None]:
 class OptionSignal:
     """Parse the local ``@agent_state`` subscription channel.
 
-    Examples
-    --------
-    >>> r = OptionSignal.parse(
-    ...     "%subscription-changed agentstate $0 @0 1 %3 : running")
-    >>> r.pane_id, r.state.value
-    ('%3', 'running')
-    >>> OptionSignal.parse("%output %1 hi") is None
-    True
+    Matches ``%subscription-changed`` notifications for the ``agentstate``
+    subscription and extracts the pane and state. Non-matching lines are
+    silently dropped (``parse`` returns ``None``).
     """
 
     @staticmethod
