@@ -7,20 +7,25 @@ coalescing :class:`~libtmux.experimental.agents.store.AgentStore` via
 :func:`~libtmux.experimental.agents.store.apply`.
 
 The async half (:meth:`AgentMonitor.start`, :meth:`AgentMonitor.stop`,
-:meth:`AgentMonitor.reconcile`) wires the live engine subscribe loop and
-performs a periodic full-pane reconciliation to catch panes the stream missed.
+:meth:`AgentMonitor.reconcile`) wires the live engine subscribe loop in a
+supervised task that re-subscribes and reconciles on every engine (re)connect,
+so a tmux restart or socket blip can never leave the store serving a stale
+snapshot.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import logging
 import time
 import typing as t
 
+from libtmux.experimental.agents.health import is_alive
 from libtmux.experimental.agents.merge import MonotonicCounter, Stamp
 from libtmux.experimental.agents.signals import SUBSCRIPTION, OptionSignal, OscSignal
+from libtmux.experimental.agents.state import AgentState
 from libtmux.experimental.agents.store import (
     AgentStore,
     Observed,
@@ -35,7 +40,7 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.agents.signals import Reading
     from libtmux.experimental.agents.state import Agent
     from libtmux.experimental.agents.store import AgentStore
-    from libtmux.experimental.models.snapshots import ServerSnapshot
+    from libtmux.experimental.models.snapshots import PaneSnapshot, ServerSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +91,11 @@ class AgentMonitor:
         self._osc = OscSignal()
         self._prev_panes: dict[str, t.Any] = {}
         self._task: asyncio.Task[None] | None = None
+        # Supervised-drain control: stop() flips this; _run() exits its loop.
+        self._stopping = False
+        # Bounded poll between reconcile retries while the engine is reconnecting,
+        # so the supervised drain waits (not busy-spins) for the engine to revive.
+        self._reconnect_poll = 0.5
 
         # Seed the store from a persistent sink when one is provided.
         if sink is not None:
@@ -155,6 +165,10 @@ class AgentMonitor:
             key=reading.pane_id,
             name=reading.name,
             state=reading.state,
+            # The counter is assigned at RECEIVE time — correct for the single
+            # stream / single host this monitor drives. A future multi-host pivot
+            # needs an emit-time clock carried in the wire format too (so ordering
+            # survives across hosts), not merely swapping this Clock implementation.
             stamp=Stamp(self._clock(), reading.source),
             source=reading.source,
             pid=None,
@@ -243,8 +257,10 @@ class AgentMonitor:
            across reconnects. The ``%*`` subscription still installs across all
            panes, but per-pane option signals for *other* sessions' panes need
            their own attached client — a known v1 limitation.
-        3. Spawn the drain task feeding every notification into :meth:`ingest`,
-           then run an initial :meth:`reconcile` to sync the pane tree.
+        3. Run an initial :meth:`reconcile` to sync the pane tree, then spawn the
+           supervised drain task (:meth:`_run`), which re-subscribes and
+           reconciles on every engine (re)connect so a tmux restart or socket
+           blip can never leave the store stale.
 
         All attach steps are defensive: a failed ``list-sessions`` or
         ``attach-session`` is logged and skipped so :meth:`start` never crashes.
@@ -268,8 +284,11 @@ class AgentMonitor:
             except Exception:
                 logger.debug("monitor attach-session failed", exc_info=True)
 
-        self._task = asyncio.get_running_loop().create_task(self._drain())
+        # Sync the tree once before returning (callers expect a ready snapshot),
+        # then hand off to the supervised drain for the engine's whole lifetime.
+        self._stopping = False
         await self.reconcile()
+        self._task = asyncio.get_running_loop().create_task(self._run())
 
     async def _primary_session_id(self) -> str | None:
         """Return the first *real* session id to attach to, or ``None``.
@@ -346,7 +365,14 @@ class AgentMonitor:
         return None
 
     async def stop(self) -> None:
-        """Cancel the drain task and optionally flush the sink."""
+        """Stop the supervised drain task and optionally flush the sink.
+
+        Flips :attr:`_stopping` first so the loop will not re-enter, then cancels
+        the task. The cancel interrupts a ``subscribe()`` parked on
+        ``queue.get()`` even when the engine is permanently closed (no more
+        stream-end sentinels will arrive), so :meth:`stop` never hangs.
+        """
+        self._stopping = True
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -356,42 +382,122 @@ class AgentMonitor:
             self._sink.save(self._store.to_dict())
 
     async def reconcile(self) -> None:
-        """Reconcile the store against the live pane tree.
+        """Reconcile the store against the live pane tree (defensive).
 
-        Runs ``list-panes -a -F`` via the engine, diffs the result against
-        the previously seen pane set, and applies :class:`Vanished` for any
-        panes that have disappeared. This is defensive: any error from the
-        engine is caught and logged so the monitor stays alive.
+        Public, never-raising wrapper around :meth:`_reconcile_once`: any error
+        from the engine or parse is caught and logged so a direct caller (or the
+        initial sync in :meth:`start`) stays alive. The supervised drain calls
+        :meth:`_reconcile_once` directly instead, so it can *retry* on failure.
         """
         try:
-            from libtmux.experimental.engines.base import CommandRequest
-            from libtmux.experimental.models.snapshots import ServerSnapshot
-
-            fmt_str = _PANE_FORMAT_STR
-            req = CommandRequest.from_args("list-panes", "-a", "-F", fmt_str)
-            result = await self._engine.run(req)
-            rows = _parse_pane_rows(result.stdout)
-            snapshot: ServerSnapshot = ServerSnapshot.from_pane_rows(rows)
-            current_panes = panes_of(snapshot)
-            _added, removed = diff_panes(self._prev_panes, current_panes)
-            for pane_id in removed:
-                self._store = apply(
-                    self._store,
-                    Vanished(pane_id=pane_id),
-                    now=time.monotonic(),
-                )
-            self._prev_panes = dict(current_panes)
+            await self._reconcile_once()
         except Exception:
             logger.debug("reconcile skipped — engine call failed", exc_info=True)
+
+    async def _reconcile_once(self) -> None:
+        """Reconcile against the live pane tree; **raises** on engine failure.
+
+        Runs ``list-panes -a -F`` via the engine, diffs the result against the
+        previously seen pane set, applies :class:`Vanished` for panes that
+        disappeared, then runs the health sweep (:meth:`_apply_health`). Lets the
+        engine error propagate (e.g. the dead-window ``ControlModeError``) so the
+        supervised drain can wait for the engine to revive before re-subscribing.
+        """
+        from libtmux.experimental.engines.base import CommandRequest
+        from libtmux.experimental.models.snapshots import ServerSnapshot
+
+        req = CommandRequest.from_args("list-panes", "-a", "-F", _PANE_FORMAT_STR)
+        result = await self._engine.run(req)
+        rows = _parse_pane_rows(result.stdout)
+        snapshot: ServerSnapshot = ServerSnapshot.from_pane_rows(rows)
+        current_panes = panes_of(snapshot)
+        _added, removed = diff_panes(self._prev_panes, current_panes)
+        for pane_id in removed:
+            self._store = apply(
+                self._store,
+                Vanished(pane_id=pane_id),
+                now=time.monotonic(),
+            )
+        self._apply_health(current_panes)
+        self._prev_panes = dict(current_panes)
+
+    def _apply_health(self, current_panes: dict[str, PaneSnapshot]) -> None:
+        """Refresh tracked agents' ``pid``/``alive`` from the pane tree.
+
+        For each tracked agent still present in *current_panes*, copy the live
+        ``pane_pid`` from the snapshot and probe it with
+        :func:`~libtmux.experimental.agents.health.is_alive`:
+
+        - A **local** pane (``pid`` is not ``None``) whose process is dead is
+          marked :attr:`~..state.AgentState.EXITED` (``alive=False``).
+        - A **remote / PID-less** pane (``pid`` is ``None``) is *never*
+          auto-EXITED — those expire on a keepalive TTL, not a PID probe (D5).
+        - Otherwise the agent's ``pid`` is refreshed and ``alive`` set ``True``.
+
+        Panes absent from *current_panes* are left untouched here; their removal
+        is handled by the :class:`Vanished` diff in :meth:`_reconcile_once`.
+
+        Parameters
+        ----------
+        current_panes : dict[str, PaneSnapshot]
+            The live ``{pane_id: PaneSnapshot}`` map from this reconcile.
+        """
+        agents = dict(self._store.agents)
+        changed = False
+        now = time.monotonic()
+        for pane_id, agent in self._store.agents.items():
+            pane = current_panes.get(pane_id)
+            if pane is None:
+                continue  # not in the tree → Vanished handles it
+            pid = pane.pid
+            if pid is not None and not is_alive(pid):
+                if agent.alive or agent.state is not AgentState.EXITED:
+                    agents[pane_id] = dataclasses.replace(
+                        agent,
+                        state=AgentState.EXITED,
+                        alive=False,
+                        pid=pid,
+                        since=now,
+                    )
+                    changed = True
+            elif agent.pid != pid or not agent.alive:
+                agents[pane_id] = dataclasses.replace(agent, pid=pid, alive=True)
+                changed = True
+        if changed:
+            self._store = AgentStore(agents=agents, stamps=dict(self._store.stamps))
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    async def _drain(self) -> None:
-        """Background task: forward every engine notification to :meth:`ingest`."""
-        async for note in self._engine.subscribe():
-            self.ingest(note.raw)
+    async def _run(self) -> None:
+        """Supervised drain: re-subscribe + reconcile across engine reconnects.
+
+        Each iteration reconciles **first** (so ``subscribe()`` only runs against
+        a live engine), then drains the notification stream until it ends. When
+        the engine disconnects the stream ends via its ``_STREAM_END`` sentinel;
+        the loop comes back around, :meth:`_reconcile_once` retries until the
+        supervisor has reconnected (and replayed subscriptions + attach), then a
+        fresh ``subscribe()`` re-registers against the reconnected engine. This
+        is the self-heal that keeps the store live across a tmux restart or
+        socket blip. :meth:`stop` flips :attr:`_stopping` and cancels the task.
+        """
+        while not self._stopping:
+            try:
+                await self._reconcile_once()
+            except Exception:
+                logger.debug("agents: reconcile not ready, retrying", exc_info=True)
+                await asyncio.sleep(self._reconnect_poll)
+                continue
+            try:
+                async with contextlib.aclosing(self._engine.subscribe()) as stream:
+                    async for note in stream:
+                        self.ingest(note.raw)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.debug("agents: drain error", exc_info=True)
+            # Stream ended (disconnect/sentinel): loop → reconcile + re-subscribe.
 
 
 def _parse_pane_rows(
