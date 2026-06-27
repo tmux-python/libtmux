@@ -88,6 +88,7 @@ def _window(raw: collections.abc.Mapping[str, t.Any]) -> Window:
         options_after=dict(raw.get("options_after", {}) or {}),
         environment=dict(raw.get("environment", {}) or {}),
         window_shell=raw.get("window_shell"),
+        window_index=raw.get("window_index"),
         panes=[_pane(p) for p in raw.get("panes", []) or []],
     )
 
