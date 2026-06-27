@@ -28,10 +28,13 @@ from libtmux.experimental.ops import (
     LazyPlan,
     MarkedPlanner,
     NewSession,
+    NewWindow,
+    SelectLayout,
     SequentialPlanner,
     SetEnvironment,
     SetOption,
     SetWindowOption,
+    SplitWindow,
 )
 from libtmux.experimental.workspace import (
     HostStep,
@@ -450,6 +453,95 @@ def test_compile_emits_environment_and_options() -> None:
     assert (set_env.name, set_env.value) == ("WS_E", "1")
     assert (set_opt.option, set_opt.value) == ("history-limit", "9000")
     assert (set_wopt.option, set_wopt.value) == ("main-pane-height", "10")
+
+
+def test_compile_emits_global_options() -> None:
+    """Workspace.global_options compile to ``set-option -g`` (no target)."""
+    ws = Workspace(
+        name="ws-global",
+        global_options={"status-position": "top"},
+        windows=[Window("w", panes=[Pane(run="echo a")])],
+    )
+    ops = compile_full(ws).plan.operations
+    global_opt = next(op for op in ops if isinstance(op, SetOption) and op.global_)
+    assert (global_opt.option, global_opt.value) == ("status-position", "top")
+    assert global_opt.target is None  # -g options carry no target
+
+
+def test_compile_folds_first_pane_env_into_creator() -> None:
+    """Window/first-pane env rides the creator's ``-e`` (no extra dispatch).
+
+    Window 0 reuses the session's implicit pane, so its env -- and its first
+    pane's -- folds into ``new-session -e``; window 2..N fold into ``new-window
+    -e``. A *split* pane carries its own ``-e``.
+    """
+    ws = Workspace(
+        name="ws-env",
+        windows=[
+            Window(
+                "editor",
+                environment={"WIN_ENV": "w"},
+                panes=[
+                    Pane(run="vim", environment={"PANE_ENV": "p"}),
+                    Pane(run="htop", environment={"SPLIT_ENV": "s"}),
+                ],
+            ),
+            Window("logs", environment={"W2": "x"}, panes=[Pane(run="tail")]),
+        ],
+    )
+    ops = compile_full(ws).plan.operations
+    new_session = next(op for op in ops if isinstance(op, NewSession))
+    new_window = next(op for op in ops if isinstance(op, NewWindow))
+    split = next(op for op in ops if isinstance(op, SplitWindow))
+    # window 0 + its first pane fold into new-session -e
+    assert new_session.environment == {"WIN_ENV": "w", "PANE_ENV": "p"}
+    # window 1 folds into new-window -e
+    assert new_window.environment == {"W2": "x"}
+    # a split pane carries its own env (falling back to the window's)
+    assert split.environment == {"SPLIT_ENV": "s"}
+
+
+def test_compile_threads_window_and_pane_shell() -> None:
+    """window_shell rides new-window; pane.shell (then window_shell) rides split."""
+    ws = Workspace(
+        name="ws-shell",
+        windows=[
+            Window("a", panes=[Pane(run="x")]),
+            Window(
+                "b",
+                window_shell="fish",
+                panes=[Pane(run="x"), Pane(run="y", shell="zsh")],
+            ),
+        ],
+    )
+    ops = compile_full(ws).plan.operations
+    new_window = next(op for op in ops if isinstance(op, NewWindow))
+    split = next(op for op in ops if isinstance(op, SplitWindow))
+    assert new_window.window_shell == "fish"
+    assert split.shell == "zsh"  # pane.shell wins over window_shell
+
+
+def test_compile_emits_options_after_following_layout() -> None:
+    """options_after compile to set-window-option *after* the layout op."""
+    ws = Workspace(
+        name="ws-after",
+        windows=[
+            Window(
+                "w",
+                layout="main-vertical",
+                options_after={"main-pane-width": "120"},
+                panes=[Pane(run="a"), Pane(run="b")],
+            ),
+        ],
+    )
+    ops = compile_full(ws).plan.operations
+    layout_at = next(i for i, op in enumerate(ops) if isinstance(op, SelectLayout))
+    after_at = next(
+        i
+        for i, op in enumerate(ops)
+        if isinstance(op, SetWindowOption) and op.option == "main-pane-width"
+    )
+    assert after_at > layout_at  # options_after runs once the layout exists
 
 
 def test_compile_schedules_host_steps_off_the_op_spine() -> None:
