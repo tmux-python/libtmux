@@ -29,6 +29,12 @@ Query and filter collections by attributes.
 Send keys, capture output, and interact with panes.
 :::
 
+:::{grid-item-card} Floating Panes
+:link: floating_panes
+:link-type: doc
+Create and position floating (overlay) panes on tmux 3.7+.
+:::
+
 :::{grid-item-card} Workspace Setup
 :link: workspace_setup
 :link-type: doc
@@ -77,6 +83,7 @@ public-vs-internal
 traversal
 filtering
 pane_interaction
+floating_panes
 workspace_setup
 automation_patterns
 context_managers
