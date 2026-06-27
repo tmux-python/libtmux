@@ -46,6 +46,10 @@ class ServerOptions(
     # tmux 3.5+ options
     default_client_command: str | None = field(default=None)
     extended_keys_format: t.Literal["csi-u", "xterm"] | None = field(default=None)
+    # tmux 3.7+ options
+    get_clipboard: t.Literal["off", "buffer", "request", "both"] | None = field(
+        default=None,
+    )
 
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
@@ -123,6 +127,21 @@ class SessionOptions(
     visual_bell: t.Literal["on", "off", "both"] | None = field(default=None)
     visual_silence: t.Literal["on", "off", "both"] | None = field(default=None)
     word_separators: str | None = field(default=None)
+    # tmux 3.7+ options
+    focus_follows_mouse: t.Literal["on", "off"] | None = field(default=None)
+    message_format: str | None = field(default=None)
+    prompt_command_cursor_style: (
+        t.Literal[
+            "default",
+            "blinking-block",
+            "block",
+            "blinking-underline",
+            "underline",
+            "blinking-bar",
+            "bar",
+        ]
+        | None
+    ) = field(default=None)
 
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
@@ -188,6 +207,16 @@ class WindowOptions(
     wrap_search: t.Literal["on", "off"] | None = field(default=None)
     # tmux 3.5+ options
     tiled_layout_max_columns: int | None = field(default=None)
+    # tmux 3.7+ options
+    copy_mode_line_numbers: (
+        t.Literal["off", "default", "absolute", "relative", "hybrid"] | None
+    ) = field(default=None)
+    copy_mode_line_number_style: str | None = field(default=None)
+    copy_mode_current_line_number_style: str | None = field(default=None)
+    tree_mode_preview_format: str | None = field(default=None)
+    tree_mode_preview_style: str | None = field(default=None)
+    window_pane_status_format: str | None = field(default=None)
+    window_pane_current_status_format: str | None = field(default=None)
 
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
@@ -219,7 +248,7 @@ class PaneOptions(
         ]
         | None
     ) = field(default=None)
-    remain_on_exit: t.Literal["on", "off", "failed"] | None = field(default=None)
+    remain_on_exit: t.Literal["on", "off", "failed", "key"] | None = field(default=None)
     remain_on_exit_format: str | None = field(default=None)
     scroll_on_clear: t.Literal["on", "off"] | None = field(default=None)
     synchronize_panes: t.Literal["on", "off"] | None = field(default=None)
