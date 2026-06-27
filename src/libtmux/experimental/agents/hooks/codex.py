@@ -276,7 +276,18 @@ class CodexHook:
         content = self._read()
         new_block = self._build_block()
         if _MARKER_START in content:
-            content = _BLOCK_RE.sub(new_block, content)
+            # Strip ALL existing marker blocks (handles duplicates from a
+            # manually-malformed config) then append exactly one fresh block.
+            content = _BLOCK_WITH_SEP_RE.sub("", content)
+            if _MARKER_START in content:
+                # Any block at the very start of file has no preceding newline.
+                content = _BLOCK_RE.sub("", content)
+            if content:
+                if not content.endswith("\n"):
+                    content += "\n"
+                content = content + "\n" + new_block
+            else:
+                content = new_block
         elif content:
             if not content.endswith("\n"):
                 content += "\n"
