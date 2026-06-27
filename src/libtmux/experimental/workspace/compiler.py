@@ -29,6 +29,7 @@ from dataclasses import dataclass, field, replace
 
 from libtmux.experimental.ops import (
     LazyPlan,
+    NewPane,
     NewSession,
     NewWindow,
     RenameWindow,
@@ -116,6 +117,111 @@ def _schedule_before(
         host_after.setdefault(after, []).append(step)
 
 
+def _emit_pane_commands(
+    plan: LazyPlan,
+    host_after: dict[int, list[HostStep]],
+    pre: list[HostStep],
+    ws: Workspace,
+    window: Window,
+    pane: Pane,
+    target: SlotRef,
+) -> None:
+    """Emit a pane's command sends with their host-side sleep / wait scheduling.
+
+    Shared by tiled panes and floating-pane overlays so both honor ``wait_pane``,
+    ``suppress_history``, and the per-pane / per-command sleeps identically.
+    """
+    commands = pane.commands
+    if not commands:
+        return
+    if ws.wait_pane and (pane.shell or window.window_shell) is None:
+        # Wait for the pane's shell prompt before sending keys (anti-race); a pane
+        # launching a custom shell/command does not get this wait, mirroring
+        # tmuxp's `if pane_shell is None`.
+        _schedule_before(host_after, pre, len(plan), HostStep("wait_pane", pane=target))
+    if pane.sleep_before is not None:
+        _schedule_before(
+            host_after,
+            pre,
+            len(plan),
+            HostStep("sleep", seconds=pane.sleep_before),
+        )
+    for command in commands:
+        if command.sleep_before is not None:
+            _schedule_before(
+                host_after,
+                pre,
+                len(plan),
+                HostStep("sleep", seconds=command.sleep_before),
+            )
+        plan.add(
+            SendKeys(
+                target=target,
+                keys=command.cmd,
+                enter=command.enter,
+                suppress_history=pane.suppress_history,
+            ),
+        )
+        if command.sleep_after is not None:
+            host_after.setdefault(len(plan) - 1, []).append(
+                HostStep("sleep", seconds=command.sleep_after),
+            )
+    if pane.sleep_after is not None:
+        host_after.setdefault(len(plan) - 1, []).append(
+            HostStep("sleep", seconds=pane.sleep_after),
+        )
+
+
+def _emit_floats(
+    plan: LazyPlan,
+    host_after: dict[int, list[HostStep]],
+    pre: list[HostStep],
+    ws: Workspace,
+    window: Window,
+    first_pane_ref: SlotRef,
+) -> None:
+    """Emit the window's floating-pane overlays (tmux 3.7 ``new-pane``).
+
+    Overlays are created *after* the tiled panes and layout, target the window's
+    first pane, and are deliberately kept out of the split chain and the layout so
+    they never perturb the tiled topology. Cross-window ``attach_to`` (floating
+    over a *different* window) is not yet supported.
+    """
+    for fp in window.floats:
+        if fp.attach_to is not None and fp.attach_to != window.name:
+            msg = (
+                f"floating pane attach_to={fp.attach_to!r} targets another window; "
+                "cross-window floats are not yet supported"
+            )
+            raise WorkspaceCompileError(msg)
+        geo = fp.geometry
+        float_ref = plan.add(
+            NewPane(
+                target=first_pane_ref,
+                width=geo.width,
+                height=geo.height,
+                x=geo.x,
+                y=geo.y,
+                zoom=geo.zoom,
+                empty=geo.empty,
+                style=geo.style,
+                active_border_style=geo.active_border_style,
+                inactive_border_style=geo.inactive_border_style,
+                message=geo.message,
+                start_directory=(
+                    fp.pane.start_directory
+                    or window.start_directory
+                    or ws.start_directory
+                ),
+                environment=dict(fp.pane.environment) or None,
+                shell_command=fp.pane.shell,
+            ),
+        )
+        _emit_pane_commands(plan, host_after, pre, ws, window, fp.pane, float_ref)
+        if fp.pane.focus:
+            plan.add(SelectPane(target=float_ref))
+
+
 def _emit_window(
     plan: LazyPlan,
     host_after: dict[int, list[HostStep]],
@@ -125,7 +231,7 @@ def _emit_window(
     window_ref: SlotRef,
     first_pane_ref: SlotRef,
 ) -> None:
-    """Emit a window's options, panes, sends, layout, and pane focus.
+    """Emit a window's options, panes, sends, layout, pane focus, and floats.
 
     *window_ref* addresses the window (rename/options/layout); *first_pane_ref* is
     the captured id of the window's first pane.
@@ -154,49 +260,7 @@ def _emit_window(
                     shell=pane.shell or window.window_shell,
                 ),
             )
-        commands = pane.commands
-        if commands:
-            if ws.wait_pane and (pane.shell or window.window_shell) is None:
-                # Wait for the pane's shell prompt before sending keys (anti-race);
-                # a pane launching a custom shell/command does not get this wait,
-                # mirroring tmuxp's `if pane_shell is None`.
-                _schedule_before(
-                    host_after,
-                    pre,
-                    len(plan),
-                    HostStep("wait_pane", pane=target),
-                )
-            if pane.sleep_before is not None:
-                _schedule_before(
-                    host_after,
-                    pre,
-                    len(plan),
-                    HostStep("sleep", seconds=pane.sleep_before),
-                )
-            for command in commands:
-                if command.sleep_before is not None:
-                    _schedule_before(
-                        host_after,
-                        pre,
-                        len(plan),
-                        HostStep("sleep", seconds=command.sleep_before),
-                    )
-                plan.add(
-                    SendKeys(
-                        target=target,
-                        keys=command.cmd,
-                        enter=command.enter,
-                        suppress_history=pane.suppress_history,
-                    ),
-                )
-                if command.sleep_after is not None:
-                    host_after.setdefault(len(plan) - 1, []).append(
-                        HostStep("sleep", seconds=command.sleep_after),
-                    )
-            if pane.sleep_after is not None:
-                host_after.setdefault(len(plan) - 1, []).append(
-                    HostStep("sleep", seconds=pane.sleep_after),
-                )
+        _emit_pane_commands(plan, host_after, pre, ws, window, pane, target)
         if pane.focus:
             focus_targets.append(target)
         prev = target
@@ -207,6 +271,9 @@ def _emit_window(
         plan.add(SelectPane(target=target))
     for key, value in window.options_after.items():
         plan.add(SetWindowOption(target=window_ref, option=key, value=value))
+
+    # Floating overlays come last: after the tiled layout, excluded from it.
+    _emit_floats(plan, host_after, pre, ws, window, first_pane_ref)
 
 
 def _creator_environment(window: Window) -> dict[str, str]:

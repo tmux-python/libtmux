@@ -44,7 +44,9 @@ def confirm(ws: Workspace, server: Server, *, timeout: float = 5.0) -> ConfirmRe
                 f"window name {live.window_name!r} != declared {spec.name!r}"
             )
         live_panes = list(live.panes)
-        expected_panes = max(1, len(spec.panes))
+        # Floating overlays are real panes in the live window but not tiled cells,
+        # so the expected total is the tiled panes plus the declared floats.
+        expected_panes = max(1, len(spec.panes)) + len(spec.floats)
         if len(live_panes) != expected_panes:
             problems.append(
                 f"window {spec.name!r} pane count "
