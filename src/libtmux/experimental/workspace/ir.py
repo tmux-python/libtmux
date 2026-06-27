@@ -40,14 +40,43 @@ if t.TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
+class Command:
+    """One command sent to a pane, with per-command orchestration.
+
+    Parameters
+    ----------
+    cmd : str
+        The command line sent via ``send-keys``.
+    enter : bool
+        Submit the command with ``Enter`` (``False`` types it without running --
+        e.g. to pre-fill a prompt).
+    sleep_before, sleep_after : float or None
+        Host-side delays around this individual command (orchestration, not tmux).
+
+    Examples
+    --------
+    >>> Command("pytest -q").enter
+    True
+    >>> Command("git commit", enter=False).cmd
+    'git commit'
+    """
+
+    cmd: str
+    enter: bool = True
+    sleep_before: float | None = None
+    sleep_after: float | None = None
+
+
+@dataclass(frozen=True)
 class Pane:
     """A pane in the declared workspace.
 
     Parameters
     ----------
-    run : str or Sequence[str] or None
-        Command(s) to send after the pane is created (a bare string is one
-        command).
+    run : str or Command or Sequence[str or Command] or None
+        Command(s) to send after the pane is created. A bare string is one
+        command (submitted with Enter); a :class:`Command` carries per-command
+        ``enter`` and sleep overrides.
     focus : bool
         Select this pane once its window's panes are built. Every pane -- the
         first one included -- has a concrete captured id (the window's creator
@@ -69,7 +98,7 @@ class Pane:
         ``window_shell``.
     """
 
-    run: str | Sequence[str] | None = None
+    run: str | Command | Sequence[str | Command] | None = None
     focus: bool = False
     start_directory: str | None = None
     suppress_history: bool = True
@@ -79,13 +108,22 @@ class Pane:
     shell: str | None = None
 
     @property
-    def commands(self) -> tuple[str, ...]:
-        """The pane's commands as a tuple (a bare string becomes one command)."""
+    def commands(self) -> tuple[Command, ...]:
+        """The pane's commands as :class:`Command` values (a bare string -> Command).
+
+        Examples
+        --------
+        >>> from libtmux.experimental.workspace.ir import Pane, Command
+        >>> Pane(run="vim").commands
+        (Command(cmd='vim', enter=True, sleep_before=None, sleep_after=None),)
+        >>> [c.cmd for c in Pane(run=["a", Command("b", enter=False)]).commands]
+        ['a', 'b']
+        """
         if self.run is None:
             return ()
-        if isinstance(self.run, str):
-            return (self.run,)
-        return tuple(self.run)
+        items: Sequence[str | Command]
+        items = (self.run,) if isinstance(self.run, (str, Command)) else self.run
+        return tuple(c if isinstance(c, Command) else Command(c) for c in items)
 
 
 @dataclass(frozen=True)
