@@ -141,6 +141,67 @@ class MarkedPlanner:
         return steps
 
 
+def _split_at_boundaries(
+    step: PlanStep,
+    boundaries: frozenset[int],
+) -> list[PlanStep]:
+    """Break *step* wherever a boundary falls between two of its indices.
+
+    A boundary at index ``i`` means a host step runs after op ``i``, so no fold
+    may span ``i -> i+1``. Splitting only ever breaks a step into contiguous
+    sub-runs (never merges), so it cannot change the result -- only the dispatch
+    grouping. A ``marked`` step keeps ``marked=True`` on its first sub-run iff the
+    creator still keeps at least one decorate; later sub-runs become plain
+    ``;``-chains that resolve the creator's now-bound id instead of ``{marked}``.
+    """
+    indices = step.indices
+    cuts = [k + 1 for k in range(len(indices) - 1) if indices[k] in boundaries]
+    if not cuts:
+        return [step]
+    starts, ends = [0, *cuts], [*cuts, len(indices)]
+    runs = [indices[lo:hi] for lo, hi in zip(starts, ends, strict=True)]
+    return [
+        PlanStep(run, marked=step.marked and pos == 0 and len(run) > 1)
+        for pos, run in enumerate(runs)
+    ]
+
+
+@dataclass(frozen=True)
+class BoundedPlanner:
+    """Wrap a planner so no fold crosses a host-step boundary.
+
+    *boundaries* are operation indices after which a host step runs (for the
+    workspace runner, exactly ``frozenset(compiled.host_after)``). The *inner*
+    planner runs over the full operation list -- so its global
+    :class:`~._types.SlotRef` matching is unaffected -- and every resulting
+    :class:`PlanStep` is then split at any boundary it spans.
+    """
+
+    inner: Planner
+    boundaries: frozenset[int]
+
+    def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
+        """Plan with *inner*, then split each step at host-step boundaries.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.ops import SendKeys
+        >>> from libtmux.experimental.ops._types import PaneId
+        >>> ops = [
+        ...     SendKeys(target=PaneId("%1"), keys="a"),
+        ...     SendKeys(target=PaneId("%1"), keys="b"),
+        ... ]
+        >>> BoundedPlanner(FoldingPlanner(), frozenset({0})).plan(ops)
+        [PlanStep(indices=(0,), marked=False), PlanStep(indices=(1,), marked=False)]
+        >>> BoundedPlanner(FoldingPlanner(), frozenset()).plan(ops)
+        [PlanStep(indices=(0, 1), marked=False)]
+        """
+        steps: list[PlanStep] = []
+        for step in self.inner.plan(operations):
+            steps.extend(_split_at_boundaries(step, self.boundaries))
+        return steps
+
+
 def _marked_decorates(
     operations: Sequence[Operation[t.Any]],
     index: int,
