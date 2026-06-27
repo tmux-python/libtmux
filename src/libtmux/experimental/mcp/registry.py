@@ -127,10 +127,15 @@ class OperationToolRegistry:
 
     def _build(self, spec: OpSpec) -> ToolDescriptor:
         """Project one ``OpSpec`` into a tool descriptor."""
+        description = _summary(spec.operation_cls.__doc__)
+        if spec.min_version:
+            # Surface the whole-command version gate so an agent on an older tmux
+            # sees the requirement up front instead of a raw VersionUnsupported.
+            description = f"{description} Requires tmux >= {spec.min_version}."
         return ToolDescriptor(
             name=spec.kind,
             title=spec.kind.replace("_", " ").title(),
-            description=_summary(spec.operation_cls.__doc__),
+            description=description,
             scope=spec.scope,
             safety=spec.safety,
             params=self._params(spec),
@@ -141,6 +146,7 @@ class OperationToolRegistry:
             version_gates=dict(spec.flag_version_map),
             effects=dataclasses.asdict(spec.effects),
             operation_cls=spec.operation_cls,
+            min_version=spec.min_version,
         )
 
     def _params(self, spec: OpSpec) -> dict[str, ParamDescriptor]:
