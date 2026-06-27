@@ -11,19 +11,22 @@ import typing as t
 import pytest
 
 from libtmux.experimental.ops import (
+    BoundedPlanner,
     FoldingPlanner,
     LazyPlan,
     MarkedPlanner,
+    PlanStep,
     SendKeys,
     SequentialPlanner,
     SplitWindow,
 )
-from libtmux.experimental.ops._types import PaneId, WindowId
+from libtmux.experimental.ops._types import PaneId, SlotRef, WindowId
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
     from libtmux.experimental.engines.base import CommandRequest, CommandResult
+    from libtmux.experimental.ops.operation import Operation
     from libtmux.experimental.ops.planner import Planner
     from libtmux.session import Session
 
@@ -123,6 +126,68 @@ def test_marked_falls_back_without_pattern() -> None:
     engine = _CountingEngine()
     plan.execute(engine, planner=MarkedPlanner())
     assert len(engine.calls) == 1  # folded as a plain ; chain
+
+
+def _split_decorate_plan() -> list[Operation[t.Any]]:
+    """Return the {marked}-foldable shape: split @1, then two pane decorates."""
+    return [
+        SplitWindow(target=WindowId("@1")),
+        SendKeys(target=SlotRef(0), keys="a", enter=True),
+        SendKeys(target=SlotRef(0), keys="b", enter=True),
+    ]
+
+
+def test_bounded_planner_no_boundaries_is_identity() -> None:
+    """With no boundaries, BoundedPlanner reproduces the inner planner exactly."""
+    ops = _split_decorate_plan()
+    inner = MarkedPlanner()
+    assert BoundedPlanner(inner, frozenset()).plan(ops) == inner.plan(ops)
+
+
+def test_bounded_planner_splits_chain_at_boundary() -> None:
+    """A boundary breaks a folded chain between the two ops it separates."""
+    ops = [
+        SendKeys(target=PaneId("%1"), keys="a"),
+        SendKeys(target=PaneId("%1"), keys="b"),
+        SendKeys(target=PaneId("%1"), keys="c"),
+    ]
+    steps = BoundedPlanner(FoldingPlanner(), frozenset({1})).plan(ops)
+    assert steps == [PlanStep((0, 1)), PlanStep((2,))]
+
+
+def test_bounded_planner_demotes_marked_at_creator_boundary() -> None:
+    """A host step after the creator forbids {marked}; the creator dispatches alone."""
+    ops = _split_decorate_plan()
+    steps = BoundedPlanner(MarkedPlanner(), frozenset({0})).plan(ops)
+    # creator alone, then the decorates as a plain ; chain -- no marked fold spans
+    # the boundary (the pane id is bound before the host step runs).
+    assert steps == [PlanStep((0,)), PlanStep((1, 2))]
+    assert not any(step.marked for step in steps)
+
+
+def test_bounded_planner_keeps_marked_first_run_between_decorates() -> None:
+    """A boundary between decorates keeps creator+first marked; the rest plain."""
+    ops = _split_decorate_plan()
+    steps = BoundedPlanner(MarkedPlanner(), frozenset({1})).plan(ops)
+    assert steps == [PlanStep((0, 1), marked=True), PlanStep((2,))]
+
+
+def test_bounded_planner_preserves_result() -> None:
+    """Bounding a planner changes only dispatch grouping, never the result."""
+    plan = _build_plan()
+    plain = plan.execute(_CountingEngine(), planner=MarkedPlanner())
+    bounded = plan.execute(
+        _CountingEngine(),
+        planner=BoundedPlanner(MarkedPlanner(), frozenset({0})),
+    )
+    assert [r.argv for r in plain.results] == [r.argv for r in bounded.results]
+    assert plain.bindings == bounded.bindings
+    # the boundary forced an extra dispatch without changing the outcome
+    plain_calls = _CountingEngine()
+    bounded_calls = _CountingEngine()
+    plan.execute(plain_calls, planner=MarkedPlanner())
+    plan.execute(bounded_calls, planner=BoundedPlanner(MarkedPlanner(), frozenset({0})))
+    assert len(bounded_calls.calls) > len(plain_calls.calls)
 
 
 def test_marked_fold_live(session: Session) -> None:
