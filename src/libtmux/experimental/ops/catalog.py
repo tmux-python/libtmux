@@ -69,7 +69,7 @@ def catalog(registry: OperationRegistry | None = None) -> list[CatalogEntry]:
     'display_message', 'has_session', 'join_pane', 'kill_pane', 'kill_server',
     'kill_session', 'kill_window', 'last_pane', 'last_window', 'link_window',
     'list_clients', 'list_panes', 'list_sessions', 'list_windows', 'load_buffer',
-    'move_pane', 'move_window', 'new_session', 'new_window', 'next_window',
+    'move_pane', 'move_window', 'new_pane', 'new_session', 'new_window', 'next_window',
     'paste_buffer', 'pipe_pane', 'previous_window', 'refresh_client', 'rename_session',
     'rename_window', 'resize_pane', 'resize_window', 'respawn_pane', 'respawn_window',
     'rotate_window', 'run_shell', 'save_buffer', 'select_layout', 'select_pane',
