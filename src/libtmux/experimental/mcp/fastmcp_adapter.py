@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import os
 import typing as t
 
 from libtmux.experimental.mcp import vocabulary
@@ -579,6 +580,70 @@ def _stash_caller(engine: t.Any, ctx: CallerContext) -> None:
     engine._caller_context = ctx
 
 
+def _make_middleware(level: str) -> list[t.Any]:
+    """Build the middleware stack (outer-to-inner; Safety innermost, fail-closed).
+
+    Timing observes; the tail-preserving limiter caps oversized scrollback;
+    ToolErrorResult converts failures to typed error results; Audit records each
+    call; ReadonlyRetry retries readonly tools; Safety gates execution by tier.
+    """
+    from fastmcp.server.middleware.timing import TimingMiddleware
+
+    from libtmux.experimental.mcp.middleware import (
+        _RESPONSE_LIMITED_TOOLS,
+        DEFAULT_RESPONSE_LIMIT_BYTES,
+        AuditMiddleware,
+        ReadonlyRetryMiddleware,
+        SafetyMiddleware,
+        TailPreservingResponseLimitingMiddleware,
+        ToolErrorResultMiddleware,
+    )
+
+    return [
+        TimingMiddleware(),
+        TailPreservingResponseLimitingMiddleware(
+            max_size=DEFAULT_RESPONSE_LIMIT_BYTES,
+            tools=list(_RESPONSE_LIMITED_TOOLS),
+        ),
+        ToolErrorResultMiddleware(transform_errors=True),
+        AuditMiddleware(),
+        ReadonlyRetryMiddleware(),
+        SafetyMiddleware(max_tier=level),
+    ]
+
+
+def _apply_safety_gate(mcp: FastMCP, max_tier: str) -> None:
+    """Hide tools above *max_tier* without re-exposing hidden per-op tools.
+
+    Subtractive (never calls ``enable``): disable only the over-tier tiers, so the
+    per-op hide (``mcp.disable(tags={'per-op'})`` in :func:`register_operations`)
+    and any individually-disabled tool survive. ``readonly`` is always allowed.
+    """
+    from libtmux.experimental.mcp._safety import (
+        TAG_DESTRUCTIVE,
+        TAG_MUTATING,
+        TAG_READONLY,
+    )
+
+    allowed = {TAG_READONLY}
+    if max_tier in {TAG_MUTATING, TAG_DESTRUCTIVE}:
+        allowed.add(TAG_MUTATING)
+    if max_tier == TAG_DESTRUCTIVE:
+        allowed.add(TAG_DESTRUCTIVE)
+    for tier in (TAG_MUTATING, TAG_DESTRUCTIVE):
+        if tier not in allowed:
+            mcp.disable(tags={tier})
+
+
+def _resolve_level(safety_level: str | None) -> str:
+    """Resolve the effective tier from an explicit arg or ``LIBTMUX_SAFETY``."""
+    from libtmux.experimental.mcp._safety import resolve_safety_level
+
+    return resolve_safety_level(
+        safety_level if safety_level is not None else os.environ.get("LIBTMUX_SAFETY"),
+    )
+
+
 def build_server(
     engine: TmuxEngine,
     *,
@@ -587,6 +652,8 @@ def build_server(
     include_operations: bool = True,
     expose_operations: bool = False,
     include_plan_tools: bool = True,
+    include_middleware: bool = True,
+    safety_level: str | None = None,
     caller: CallerContext | None = None,
 ) -> FastMCP:
     """Build a synchronous FastMCP server over a sync *engine*.
@@ -595,12 +662,22 @@ def build_server(
     offloads to a worker thread. Prefer :func:`build_async_server` for the
     async-first surface and the event stream. *caller* defaults to
     :meth:`CallerContext.discover`.
+
+    *safety_level* (or ``LIBTMUX_SAFETY``) gates the tool surface by tier
+    (``readonly``/``mutating``/``destructive``, default ``mutating``); over-tier
+    tools are hidden and blocked. *include_middleware* adds the full stack
+    (timing, response cap, error results, audit, readonly retry, safety).
     """
     from fastmcp import FastMCP
 
+    level = _resolve_level(safety_level)
     ctx = caller if caller is not None else CallerContext.discover()
     _stash_caller(engine, ctx)
-    mcp: FastMCP = FastMCP(name=name, instructions=instructions or _instructions(ctx))
+    mcp: FastMCP = FastMCP(
+        name=name,
+        instructions=instructions or _instructions(ctx),
+        middleware=_make_middleware(level) if include_middleware else None,
+    )
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=False)
     register_caller_context(mcp, ctx)
@@ -614,6 +691,7 @@ def build_server(
         )
     if include_plan_tools:
         register_plan_tools(mcp, engine, is_async=False, registry=registry)
+    _apply_safety_gate(mcp, level)
     return mcp
 
 
@@ -625,6 +703,8 @@ def build_async_server(
     include_operations: bool = True,
     expose_operations: bool = False,
     include_plan_tools: bool = True,
+    include_middleware: bool = True,
+    safety_level: str | None = None,
     events: EventMode = "push",
     event_source: EventSource = "subscription",
     caller: CallerContext | None = None,
@@ -636,17 +716,22 @@ def build_async_server(
     notification stream (a control-mode engine), the live event tools are
     registered per *events* (``"push"``/``"pull"``/``"both"``/``"off"``).
     *caller* defaults to :meth:`CallerContext.discover`.
+
+    *safety_level* (or ``LIBTMUX_SAFETY``) and *include_middleware* behave as in
+    :func:`build_server`.
     """
     from fastmcp import FastMCP
 
     from libtmux.experimental.mcp.events import _supports_stream, register_events
 
+    level = _resolve_level(safety_level)
     ctx = caller if caller is not None else CallerContext.discover()
     _stash_caller(engine, ctx)
     events_enabled = events != "off" and _supports_stream(engine)
     mcp: FastMCP = FastMCP(
         name=name,
         instructions=instructions or _instructions(ctx, events_enabled=events_enabled),
+        middleware=_make_middleware(level) if include_middleware else None,
     )
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=True)
@@ -662,4 +747,5 @@ def build_async_server(
     if include_plan_tools:
         register_plan_tools(mcp, engine, is_async=True, registry=registry)
     register_events(mcp, engine, mode=events, source=event_source)
+    _apply_safety_gate(mcp, level)
     return mcp
