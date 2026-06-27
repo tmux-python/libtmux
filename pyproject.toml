@@ -117,6 +117,7 @@ libtmux = "libtmux.pytest_plugin"
 # Experimental typed-ops MCP server (stdio). Requires the `mcp` extra;
 # `main` prints an install hint and exits non-zero when fastmcp is absent.
 libtmux-engine-mcp = "libtmux.experimental.mcp:main"
+libtmux-agent-emit = "libtmux.experimental.agents.hooks.emit:main"
 
 [project.optional-dependencies]
 mcp = [
