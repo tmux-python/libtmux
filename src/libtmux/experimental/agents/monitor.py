@@ -302,17 +302,26 @@ class AgentMonitor:
         session only when no other exists (an otherwise empty server).
 
         Defensive: any engine error (no daemon, list failure) is logged and
-        yields ``None`` so :meth:`start` can proceed without attaching.
+        yields ``None`` so :meth:`start` can proceed without attaching. The
+        own-session probe failing is treated the same way: without knowing which
+        session is the phantom, ``list-sessions[0]`` would be the phantom
+        ``tmux -C`` session (it sorts first), so this returns ``None`` and skips
+        attach rather than binding to a session that holds no agent panes.
 
         Returns
         -------
         str | None
-            The session id to attach to, or ``None`` when the list is empty or
-            the engine call failed.
+            The session id to attach to, or ``None`` when the list is empty, the
+            engine call failed, or the own-session probe failed.
         """
         from libtmux.experimental.engines.base import CommandRequest
 
         own = await self._own_session_id()
+        if own is None:
+            # Without the phantom's id, ids[0] would be tmux's own throwaway
+            # `tmux -C` session — attaching there delivers no real agent panes.
+            logger.debug("own-session probe failed — monitor will not attach")
+            return None
         try:
             result = await self._engine.run(
                 CommandRequest.from_args("list-sessions", "-F", "#{session_id}")
