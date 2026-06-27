@@ -29,6 +29,7 @@ from libtmux.experimental.ops._ops.list_windows import ListWindows
 from libtmux.experimental.ops._ops.load_buffer import LoadBuffer
 from libtmux.experimental.ops._ops.move_pane import MovePane
 from libtmux.experimental.ops._ops.move_window import MoveWindow
+from libtmux.experimental.ops._ops.new_pane import NewPane
 from libtmux.experimental.ops._ops.new_session import NewSession
 from libtmux.experimental.ops._ops.new_window import NewWindow
 from libtmux.experimental.ops._ops.next_window import NextWindow
@@ -88,6 +89,7 @@ __all__ = (
     "LoadBuffer",
     "MovePane",
     "MoveWindow",
+    "NewPane",
     "NewSession",
     "NewWindow",
     "NextWindow",
