@@ -1,11 +1,11 @@
-"""Declarative WorkspaceBuilder: a structural object language over the Core ops.
+"""Declarative workspace: a structural object language over the Core ops.
 
 The *Declarative* tier (à la SQLAlchemy Declarative on Core). Declare a workspace
 shape with :class:`~.ir.Workspace` / :class:`~.ir.Window` / :class:`~.ir.Pane`;
-:func:`~.analyzer.analyze` builds that tree from a tmuxp-style YAML/dict; the
-compiler lowers it to a Core :class:`~libtmux.experimental.ops.plan.LazyPlan`; the
-runner executes it over any engine, sync or async; :func:`~.confirm.confirm`
-verifies the live result.
+:func:`~.analyzer.analyze` builds that tree from a tmuxp-style YAML/dict (and
+:meth:`~.ir.Workspace.to_dict` is its inverse); the compiler lowers it to a Core
+:class:`~libtmux.experimental.ops.plan.LazyPlan`; the runner executes it over any
+engine, sync or async; :func:`~.confirm.confirm` verifies the live result.
 
 Everything here is experimental and outside the versioning policy.
 
