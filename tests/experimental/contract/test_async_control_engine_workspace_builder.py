@@ -19,6 +19,7 @@ import typing as t
 import pytest
 
 from libtmux.experimental.engines import (
+    AsyncConcreteEngine,
     AsyncControlModeEngine,
     ConcreteEngine,
     SubprocessEngine,
@@ -38,11 +39,14 @@ from libtmux.experimental.ops import (
     SplitWindow,
 )
 from libtmux.experimental.workspace import (
+    BuildEvent,
     Command,
     HostStep,
     Pane,
+    SessionCreated,
     Window,
     Workspace,
+    WorkspaceBuilt,
     WorkspaceCompileError,
     analyze,
     compile_full,
@@ -611,6 +615,40 @@ def test_workspace_to_dict_round_trips_through_analyze() -> None:
     )
     revived = analyze(ws.to_dict())
     assert revived.compile().to_list() == ws.compile().to_list()
+
+
+def test_build_emits_event_stream_sync_and_async() -> None:
+    """on_event streams session -> windows -> panes -> built, sync and async."""
+    ws = analyze(
+        {
+            "session_name": "ev",
+            "windows": [
+                {"window_name": "a", "panes": ["echo x", "echo y"]},
+                {"window_name": "b", "panes": ["echo z"]},
+            ],
+        },
+    )
+
+    sync_events: list[BuildEvent] = []
+    ws.build(ConcreteEngine(), preflight=False, on_event=sync_events.append)
+
+    async_events: list[BuildEvent] = []
+
+    async def collect(event: BuildEvent) -> None:
+        async_events.append(event)
+
+    async def main() -> None:
+        await ws.abuild(AsyncConcreteEngine(), preflight=False, on_event=collect)
+
+    asyncio.run(main())
+
+    # the same stream regardless of sync vs async engine (neutrality)
+    for events in (sync_events, async_events):
+        kinds = [type(e).__name__ for e in events]
+        assert isinstance(events[0], SessionCreated)
+        assert isinstance(events[-1], WorkspaceBuilt)
+        assert kinds.count("WindowCreated") == 2  # reused window a + created window b
+        assert kinds.count("PaneCreated") == 3  # a: first + split; b: first
 
 
 def test_compile_schedules_host_steps_off_the_op_spine() -> None:
