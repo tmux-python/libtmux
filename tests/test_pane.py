@@ -1630,3 +1630,20 @@ def test_paste_buffer_no_vis(session: Session) -> None:
     else:
         with pytest.warns(UserWarning, match="no_vis requires tmux 3.7"):
             pane.paste_buffer(buffer_name="novis_test", no_vis=True)
+
+
+def test_new_pane_floating(session: Session) -> None:
+    """Pane.new_pane() creates a floating pane on tmux 3.7+ (else raises)."""
+    window = session.new_window(window_name="floating_pane")
+    window.resize(height=50, width=200)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        floating = pane.new_pane(width=80, height=15, x=5, y=3, shell="sleep 30")
+        assert floating.pane_floating_flag == "1"
+        assert floating.pane_width == "80"
+        assert floating.pane_height == "15"
+    else:
+        with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
+            pane.new_pane(width=40, height=10)

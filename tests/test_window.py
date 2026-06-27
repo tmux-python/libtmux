@@ -1318,3 +1318,19 @@ def test_window_refresh_raises_when_window_id_is_none(session: Session) -> None:
 
     with pytest.raises(ValueError, match="window_id"):
         window.refresh()
+
+
+def test_new_pane(session: Session) -> None:
+    """Window.new_pane() creates a floating pane on tmux 3.7+ (else raises)."""
+    from libtmux.common import has_gte_version
+
+    window = session.new_window(window_name="win_floating")
+    window.resize(height=50, width=200)
+
+    if has_gte_version("3.7"):
+        floating = window.new_pane(width=60, height=12, shell="sleep 30")
+        assert floating.pane_floating_flag == "1"
+        assert floating in window.panes
+    else:
+        with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
+            window.new_pane(width=40, height=10)
