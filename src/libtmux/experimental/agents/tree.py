@@ -22,6 +22,7 @@ PANE_FORMAT: tuple[str, ...] = (
     "pane_id",
     "pane_index",
     "pane_active",
+    "pane_floating_flag",
     "pane_pid",
     "pane_current_command",
     "pane_title",
