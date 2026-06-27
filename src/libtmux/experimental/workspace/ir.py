@@ -49,15 +49,24 @@ class Pane:
         Command(s) to send after the pane is created (a bare string is one
         command).
     focus : bool
-        Select this pane once its window's panes are built. Focusing the *first*
-        pane of a multi-pane window is rejected at compile time (the implicit
-        first pane has no captured id after the window is split).
+        Select this pane once its window's panes are built. Every pane -- the
+        first one included -- has a concrete captured id (the window's creator
+        captures its first pane), so focusing any pane is valid.
     start_directory : str or None
         Working directory (inherited from window/session when unset).
     suppress_history : bool
         Keep sent commands out of shell history (leading-space trick).
     sleep_before, sleep_after : float or None
         Host-side delays around this pane's commands (orchestration, not tmux).
+    environment : Mapping[str, str]
+        Process environment for a *split* pane (``split-window -e``). For the
+        window's first pane -- which reuses the window's implicit pane rather than
+        splitting -- this env is folded into the window's creator instead, so it
+        applies without an extra dispatch.
+    shell : str or None
+        A shell command to launch in the pane instead of the default shell
+        (``split-window`` trailing command); falls back to the window's
+        ``window_shell``.
     """
 
     run: str | Sequence[str] | None = None
@@ -66,6 +75,8 @@ class Pane:
     suppress_history: bool = True
     sleep_before: float | None = None
     sleep_after: float | None = None
+    environment: Mapping[str, str] = field(default_factory=dict)
+    shell: str | None = None
 
     @property
     def commands(self) -> tuple[str, ...]:
@@ -92,7 +103,19 @@ class Window:
     focus : bool
         Select this window at the end of the build.
     options : Mapping[str, str]
-        ``set-window-option`` key/values.
+        ``set-window-option`` key/values applied *before* the panes are built.
+    options_after : Mapping[str, str]
+        ``set-window-option`` key/values applied *after* the layout and pane
+        focus -- for options (e.g. ``main-pane-width``) that only take effect
+        once the panes and layout exist.
+    environment : Mapping[str, str]
+        Process environment for the window (``new-window -e``), inherited by its
+        panes. For window 0 (which reuses the session's implicit window) this is
+        folded into ``new-session -e`` instead.
+    window_shell : str or None
+        A shell command to launch in the window's first pane instead of the
+        default shell (``new-window`` trailing command); also the fallback
+        ``shell`` for the window's split panes.
     panes : Sequence[Pane]
         The window's panes (the first reuses the window's implicit pane).
     """
@@ -102,6 +125,9 @@ class Window:
     start_directory: str | None = None
     focus: bool = False
     options: Mapping[str, str] = field(default_factory=dict)
+    options_after: Mapping[str, str] = field(default_factory=dict)
+    environment: Mapping[str, str] = field(default_factory=dict)
+    window_shell: str | None = None
     panes: Sequence[Pane] = ()
 
 
@@ -118,9 +144,11 @@ class Workspace:
     start_directory : str or None
         Working directory for the session.
     environment : Mapping[str, str]
-        ``set-environment`` key/values.
+        ``set-environment`` key/values (session-scoped tmux environment).
     options : Mapping[str, str]
         ``set-option`` (session) key/values.
+    global_options : Mapping[str, str]
+        ``set-option -g`` key/values (server-global options).
     windows : Sequence[Window]
         The session's windows.
     before_script : str or None
@@ -134,6 +162,7 @@ class Workspace:
     start_directory: str | None = None
     environment: Mapping[str, str] = field(default_factory=dict)
     options: Mapping[str, str] = field(default_factory=dict)
+    global_options: Mapping[str, str] = field(default_factory=dict)
     windows: Sequence[Window] = ()
     before_script: str | None = None
     on_exists: t.Literal["error", "replace", "reuse"] = "error"
