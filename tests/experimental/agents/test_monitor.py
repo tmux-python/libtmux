@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 
 from libtmux.experimental.agents.monitor import AgentMonitor
 from libtmux.experimental.agents.state import AgentState
+from libtmux.experimental.engines.base import CommandRequest, CommandResult
 from libtmux.experimental.models.snapshots import PaneSnapshot
 
 
@@ -17,6 +19,42 @@ class _FakeEngine:
     def add_subscription(self, spec: object) -> None: ...
 
     def set_attach_targets(self, ids: object) -> None: ...
+
+
+class _ProbeFailEngine:
+    """An engine whose own-id (``display-message``) probe raises.
+
+    ``list-sessions`` still succeeds and reports two sessions, so the only
+    reason ``_primary_session_id`` could return ``None`` is the failing
+    own-session probe (the case under test).
+    """
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        if request.args[:1] == ("display-message",):
+            msg = "display-message failed"
+            raise RuntimeError(msg)
+        return CommandResult(cmd=request.args, stdout=("$0", "$1"))
+
+    async def subscribe(self) -> None: ...
+
+    def add_subscription(self, spec: object) -> None: ...
+
+    def set_attach_targets(self, ids: object) -> None: ...
+
+
+def test_primary_session_id_none_when_own_probe_fails() -> None:
+    """A failing own-session probe skips attach (no phantom binding).
+
+    Without the phantom's id, ``list-sessions[0]`` is tmux's own throwaway
+    ``tmux -C`` session, so the monitor must decline to attach rather than
+    bind to a session that holds no agent panes.
+    """
+
+    async def main() -> str | None:
+        mon = AgentMonitor(_ProbeFailEngine())
+        return await mon._primary_session_id()
+
+    assert asyncio.run(main()) is None
 
 
 def test_ingest_option_line_updates_agent() -> None:
