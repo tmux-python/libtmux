@@ -30,6 +30,7 @@ if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
     from libtmux.experimental.ops.plan import PlanResult
+    from libtmux.experimental.workspace.ir import Workspace
 
 #: Filenames searched when a directory is given (tmuxp's convention).
 _WORKSPACE_FILENAMES = (".tmuxp.yaml", ".tmuxp.yml", ".tmuxp.json")
@@ -99,9 +100,7 @@ def _expand_env(
     environment: collections.abc.Mapping[str, t.Any],
 ) -> dict[str, str]:
     """Expand ``$VAR`` in environment *values* (values, not paths)."""
-    return {
-        key: os.path.expandvars(str(value)) for key, value in environment.items()
-    }
+    return {key: os.path.expandvars(str(value)) for key, value in environment.items()}
 
 
 def _expand_pane(pane: t.Any, cwd: str | os.PathLike[str]) -> t.Any:
@@ -173,6 +172,50 @@ def _attach(session: t.Any, *, detached: bool) -> None:
         session.attach()
 
 
+def _print_dry_run(
+    workspace: Workspace,
+    *,
+    socket_name: str | None,
+    socket_path: str | None,
+) -> None:
+    """Print the tmux commands a build would run, without touching tmux.
+
+    The plan is resolved against the in-memory ``ConcreteEngine`` (which
+    fabricates ids) so every line renders fully; host steps (sleep /
+    before_script / pane-readiness) print as comments in execution order.
+    """
+    import shlex
+
+    from libtmux.experimental.engines import ConcreteEngine
+    from libtmux.experimental.workspace.compiler import HostStep, compile_full
+
+    compiled = compile_full(workspace)
+    outcome = compiled.plan.execute(ConcreteEngine())
+
+    prefix: list[str] = ["tmux"]
+    if socket_name:
+        prefix += ["-L", socket_name]
+    if socket_path:
+        prefix += ["-S", socket_path]
+
+    def _emit_host(step: HostStep) -> None:
+        if step.kind == "sleep":
+            print(f"# sleep {step.seconds}")
+        elif step.kind == "script":
+            where = f" (cwd {step.cwd})" if step.cwd else ""
+            print(f"# before_script{where}: {step.command}")
+        elif step.kind == "wait_pane":
+            print("# wait for the pane's shell to be ready")
+
+    print(f"# build plan for session {workspace.name!r} (dry run, ids fabricated)")
+    for step in compiled.pre:
+        _emit_host(step)
+    for index, result in enumerate(outcome.results):
+        print(shlex.join([*prefix, *result.argv]))
+        for step in compiled.host_after.get(index, ()):
+            _emit_host(step)
+
+
 def load(
     workspace_file: str,
     *,
@@ -180,27 +223,34 @@ def load(
     socket_path: str | None = None,
     new_session_name: str | None = None,
     detached: bool = False,
+    dry_run: bool = False,
 ) -> PlanResult | None:
     """Build (and unless *detached*, attach) a workspace file.
 
     Resolves *workspace_file*, expands its paths, analyzes it, and builds it over
     a subprocess engine bound to a :class:`libtmux.Server` on the given socket. An
     already-running session of the same name is attached rather than rebuilt
-    (unless the file's ``on_exists`` opts into ``replace``/``reuse``).
+    (unless the file's ``on_exists`` opts into ``replace``/``reuse``). With
+    *dry_run*, the tmux commands are printed and nothing is executed.
 
     Returns
     -------
     PlanResult or None
-        The build outcome, or ``None`` when an existing session was attached.
+        The build outcome, or ``None`` when an existing session was attached or a
+        dry run was requested.
     """
-    import libtmux
-    from libtmux.experimental.engines import SubprocessEngine
-
     path = _find_workspace_file(workspace_file)
     raw = _expand_workspace(_read_workspace(path), cwd=path.parent)
     if new_session_name:
         raw["session_name"] = new_session_name
     workspace = analyze(raw)
+
+    if dry_run:
+        _print_dry_run(workspace, socket_name=socket_name, socket_path=socket_path)
+        return None
+
+    import libtmux
+    from libtmux.experimental.engines import SubprocessEngine
 
     server = libtmux.Server(socket_name=socket_name, socket_path=socket_path)
     engine = SubprocessEngine.for_server(server)
@@ -274,6 +324,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="build the session without attaching",
     )
+    load_parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="print the tmux commands that would run, without executing them",
+    )
     return parser
 
 
@@ -292,6 +348,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             socket_path=args.socket_path,
             new_session_name=args.new_session_name,
             detached=args.detached,
+            dry_run=args.dry_run,
         )
 
 
