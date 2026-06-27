@@ -257,6 +257,48 @@ def test_window_rename(
     assert window.window_name == window_name_after
 
 
+class WindowNameValidationFixture(t.NamedTuple):
+    """Test fixture for tmux 3.7 window-name validation."""
+
+    test_id: str
+    window_name: str
+
+
+# tmux 3.7 rejects ':' and '.' in window names server-side; tmux 3.2a-3.6
+# accept them. See https://github.com/tmux/tmux/issues/4999.
+WINDOW_NAME_INVALID_ON_3_7_FIXTURES: list[WindowNameValidationFixture] = [
+    WindowNameValidationFixture(test_id="colon", window_name="project:frontend"),
+    WindowNameValidationFixture(test_id="period", window_name="app-v1.0"),
+]
+
+
+@pytest.mark.parametrize(
+    list(WindowNameValidationFixture._fields),
+    WINDOW_NAME_INVALID_ON_3_7_FIXTURES,
+    ids=[tc.test_id for tc in WINDOW_NAME_INVALID_ON_3_7_FIXTURES],
+)
+def test_new_window_name_invalid_on_3_7(
+    session: Session,
+    test_id: str,
+    window_name: str,
+) -> None:
+    """Tmux 3.7+ rejects ':'/'.' in window names; older tmux accepts them.
+
+    The rejection is enforced by tmux itself (no client-side validation),
+    so it surfaces as a :class:`~libtmux.exc.LibTmuxException`. On tmux
+    3.2a-3.6 the same names are accepted verbatim.
+    """
+    from libtmux.common import has_gte_version
+
+    if has_gte_version("3.7"):
+        with pytest.raises(exc.LibTmuxException, match="invalid window name"):
+            session.new_window(window_name=window_name)
+    else:
+        window = session.new_window(window_name=window_name)
+        assert window.window_name == window_name
+        window.kill()
+
+
 def test_kill_window(session: Session) -> None:
     """Test window.kill() kills window."""
     session.new_window()
