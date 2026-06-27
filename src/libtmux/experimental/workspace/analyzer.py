@@ -31,7 +31,14 @@ from __future__ import annotations
 import collections.abc
 import typing as t
 
-from libtmux.experimental.workspace.ir import Command, Pane, Window, Workspace
+from libtmux.experimental.workspace.ir import (
+    Command,
+    Float,
+    FloatingPane,
+    Pane,
+    Window,
+    Workspace,
+)
 
 
 def analyze(raw: collections.abc.Mapping[str, t.Any] | str) -> Workspace:
@@ -90,6 +97,34 @@ def _window(raw: collections.abc.Mapping[str, t.Any]) -> Window:
         window_shell=raw.get("window_shell"),
         window_index=raw.get("window_index"),
         panes=[_pane(p) for p in raw.get("panes", []) or []],
+        floats=[_floating_pane(f) for f in raw.get("floats", []) or []],
+    )
+
+
+def _floating_pane(raw: collections.abc.Mapping[str, t.Any]) -> FloatingPane:
+    """Normalize one floating-pane config (a pane config plus ``float``)."""
+    return FloatingPane(
+        pane=_pane(raw),
+        geometry=_float(raw.get("float")),
+        attach_to=raw.get("attach_to"),
+    )
+
+
+def _float(raw: t.Any) -> Float:
+    """Coerce a ``float`` geometry value (mapping / None / marker) into a Float."""
+    if not isinstance(raw, collections.abc.Mapping):
+        return Float()
+    return Float(
+        width=raw.get("width"),
+        height=raw.get("height"),
+        x=raw.get("x"),
+        y=raw.get("y"),
+        zoom=bool(raw.get("zoom", False)),
+        empty=bool(raw.get("empty", False)),
+        style=raw.get("style"),
+        active_border_style=raw.get("active_border_style"),
+        inactive_border_style=raw.get("inactive_border_style"),
+        message=raw.get("message"),
     )
 
 
