@@ -65,3 +65,21 @@ def test_install_collapses_duplicate_marker_blocks(tmp_path: pathlib.Path) -> No
     assert text.count("# >>> libtmux-agent-state >>>") == 1
     assert hook.status() == "installed"
     assert 'model = "o4"' in text
+
+
+def test_status_outdated_when_block_is_stale(tmp_path: pathlib.Path) -> None:
+    """status() returns 'outdated' when marker block is present but content differs."""
+    config = tmp_path / "config.toml"
+    hook = CodexHook(config_path=config)
+    hook.install()
+
+    # Mutate one of the emit commands inside the block to make it stale
+    text = config.read_text()
+    stale = text.replace(
+        'command = "libtmux-agent-emit running"',
+        'command = "libtmux-agent-emit STALE"',
+    )
+    assert stale != text, "replacement must differ"
+    config.write_text(stale)
+
+    assert hook.status() == "outdated"
