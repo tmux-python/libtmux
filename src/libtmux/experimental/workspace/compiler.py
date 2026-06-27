@@ -56,12 +56,18 @@ class WorkspaceCompileError(ValueError):
 
 @dataclass(frozen=True)
 class HostStep:
-    """A host-side step interleaved by the runner (not a tmux operation)."""
+    """A host-side step interleaved by the runner (not a tmux operation).
 
-    kind: t.Literal["sleep", "script"]
+    ``"sleep"`` waits *seconds*; ``"script"`` runs *command* in *cwd*;
+    ``"wait_pane"`` polls *pane* (a :class:`~..ops._types.SlotRef`) until its
+    shell is ready (the runner resolves the ref and queries the live cursor).
+    """
+
+    kind: t.Literal["sleep", "script", "wait_pane"]
     seconds: float | None = None
     command: str | None = None
     cwd: str | None = None
+    pane: SlotRef | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +156,16 @@ def _emit_window(
             )
         commands = pane.commands
         if commands:
+            if ws.wait_pane and (pane.shell or window.window_shell) is None:
+                # Wait for the pane's shell prompt before sending keys (anti-race);
+                # a pane launching a custom shell/command does not get this wait,
+                # mirroring tmuxp's `if pane_shell is None`.
+                _schedule_before(
+                    host_after,
+                    pre,
+                    len(plan),
+                    HostStep("wait_pane", pane=target),
+                )
             if pane.sleep_before is not None:
                 _schedule_before(
                     host_after,
