@@ -23,6 +23,7 @@ from libtmux.experimental.engines.base import (
     CommandResult,
     EngineKind,
     EngineSpec,
+    SupportsTmuxVersion,
     TmuxEngine,
 )
 from libtmux.experimental.engines.concrete import AsyncConcreteEngine, ConcreteEngine
@@ -55,6 +56,7 @@ __all__ = (
     "EngineSpec",
     "ImsgEngine",
     "SubprocessEngine",
+    "SupportsTmuxVersion",
     "TmuxEngine",
     "available_engines",
     "create_engine",

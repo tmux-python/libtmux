@@ -16,6 +16,7 @@ import subprocess
 import typing as t
 
 from libtmux import exc
+from libtmux.common import get_version
 from libtmux.experimental.engines.base import CommandResult
 
 if t.TYPE_CHECKING:
@@ -46,6 +47,22 @@ class SubprocessEngine:
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
         self.server_args = tuple(server_args)
         self._resolved_bin: str | None = None
+        self._tmux_version: str | None = None
+        self._version_probed = False
+
+    def tmux_version(self) -> str | None:
+        """Report this engine's tmux version (``tmux -V``), memoized.
+
+        Returns ``None`` when the binary is missing or its version cannot be
+        parsed, so version resolution degrades to "assume latest".
+        """
+        if not self._version_probed:
+            self._version_probed = True
+            try:
+                self._tmux_version = str(get_version(self._resolve_bin()))
+            except exc.LibTmuxException:
+                self._tmux_version = None
+        return self._tmux_version
 
     def _resolve_bin(self) -> str:
         """Return the tmux binary path, memoized for the engine instance."""
