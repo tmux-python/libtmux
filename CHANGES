@@ -59,6 +59,16 @@ status line's pane list (`window-pane-status-format` and
 `window-pane-current-status-format`). The pane `remain-on-exit` option
 gained tmux 3.7's `key` value.
 
+#### tmux 3.7 pane format variables
+
+{class}`~libtmux.Pane` now exposes tmux 3.7's new pane format
+variables: the floating-pane geometry and flags (`pane_floating_flag`,
+`pane_x`, `pane_y`, `pane_z`, `pane_flags`, `pane_zoomed_flag`), the
+OSC 9;4 progress report (`pane_pb_progress`, `pane_pb_state`),
+`pane_pipe_pid`, and the `bracket_paste_flag` and
+`synchronized_output_flag` screen-mode flags. Each is version-gated, so
+the format template stays clean on tmux 3.2a–3.6.
+
 ## libtmux 0.59.0 (2026-06-27)
 
 libtmux 0.59.0 adds support for tmux 3.7. tmux 3.7 shipped an upstream
