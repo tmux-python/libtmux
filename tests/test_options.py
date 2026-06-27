@@ -815,6 +815,15 @@ SERVER_CHOICE_OPTIONS: list[OptionTestCase] = [
     OptionTestCase(
         "server_set_clipboard", "set-clipboard", OptionScope.Server, "external", str
     ),
+    # get-clipboard: "off" returns bool, use "buffer" for str test (3.7+)
+    OptionTestCase(
+        "server_get_clipboard",
+        "get-clipboard",
+        OptionScope.Server,
+        "buffer",
+        str,
+        "3.7",
+    ),
 ]
 
 SERVER_STRING_OPTIONS: list[OptionTestCase] = [
@@ -877,6 +886,14 @@ SESSION_BOOLEAN_OPTIONS: list[OptionTestCase] = [
         "session_renumber_windows", "renumber-windows", OptionScope.Session, "on", bool
     ),
     OptionTestCase("session_set_titles", "set-titles", OptionScope.Session, "on", bool),
+    OptionTestCase(
+        "session_focus_follows_mouse",
+        "focus-follows-mouse",
+        OptionScope.Session,
+        "on",
+        bool,
+        "3.7",
+    ),
 ]
 
 SESSION_CHOICE_OPTIONS: list[OptionTestCase] = [
@@ -917,6 +934,14 @@ SESSION_CHOICE_OPTIONS: list[OptionTestCase] = [
     OptionTestCase(
         "session_visual_silence", "visual-silence", OptionScope.Session, "both", str
     ),
+    OptionTestCase(
+        "session_prompt_command_cursor_style",
+        "prompt-command-cursor-style",
+        OptionScope.Session,
+        "blinking-block",
+        str,
+        "3.7",
+    ),
 ]
 
 SESSION_STRING_OPTIONS: list[OptionTestCase] = [
@@ -928,6 +953,14 @@ SESSION_STRING_OPTIONS: list[OptionTestCase] = [
     ),
     OptionTestCase(
         "session_status_right", "status-right", OptionScope.Session, "%H:%M", str
+    ),
+    OptionTestCase(
+        "session_message_format",
+        "message-format",
+        OptionScope.Session,
+        "#[align=centre]#{message}",
+        str,
+        "3.7",
     ),
 ]
 
@@ -996,6 +1029,15 @@ WINDOW_CHOICE_OPTIONS: list[OptionTestCase] = [
     OptionTestCase(
         "window_window_size", "window-size", OptionScope.Window, "latest", str, "3.1"
     ),
+    # copy-mode-line-numbers: "off" returns bool, use "absolute" for str test (3.7+)
+    OptionTestCase(
+        "window_copy_mode_line_numbers",
+        "copy-mode-line-numbers",
+        OptionScope.Window,
+        "absolute",
+        str,
+        "3.7",
+    ),
 ]
 
 WINDOW_STRING_OPTIONS: list[OptionTestCase] = [
@@ -1005,6 +1047,30 @@ WINDOW_STRING_OPTIONS: list[OptionTestCase] = [
         OptionScope.Window,
         "#{pane_index}",
         str,
+    ),
+    OptionTestCase(
+        "window_tree_mode_preview_format",
+        "tree-mode-preview-format",
+        OptionScope.Window,
+        "#{window_name}",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "window_window_pane_status_format",
+        "window-pane-status-format",
+        OptionScope.Window,
+        "#{pane_index}",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "window_window_pane_current_status_format",
+        "window-pane-current-status-format",
+        OptionScope.Window,
+        "#{pane_index}",
+        str,
+        "3.7",
     ),
 ]
 
@@ -1039,6 +1105,30 @@ WINDOW_STYLE_OPTIONS: list[OptionTestCase] = [
         OptionScope.Window,
         "fg=magenta",
         str,
+    ),
+    OptionTestCase(
+        "window_copy_mode_line_number_style",
+        "copy-mode-line-number-style",
+        OptionScope.Window,
+        "fg=cyan",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "window_copy_mode_current_line_number_style",
+        "copy-mode-current-line-number-style",
+        OptionScope.Window,
+        "fg=cyan",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "window_tree_mode_preview_style",
+        "tree-mode-preview-style",
+        OptionScope.Window,
+        "fg=red",
+        str,
+        "3.7",
     ),
 ]
 
@@ -1081,6 +1171,15 @@ PANE_CHOICE_OPTIONS: list[OptionTestCase] = [
         "failed",
         str,
         "3.2",
+    ),
+    # remain-on-exit gained "key" in tmux 3.7
+    OptionTestCase(
+        "pane_remain_on_exit_key",
+        "remain-on-exit",
+        OptionScope.Pane,
+        "key",
+        str,
+        "3.7",
     ),
 ]
 
