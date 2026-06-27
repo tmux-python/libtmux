@@ -492,7 +492,26 @@ def register_plan_tools(
                 "bindings": outcome.bindings,
             }
 
+        async def build_workspace(
+            spec: dict[str, t.Any],
+            preflight: bool = True,
+            version: str | None = None,
+        ) -> dict[str, t.Any]:
+            """Build a declarative workspace (the Declarative tier) in one call."""
+            outcome = await _plan.abuild_workspace(
+                spec,
+                t.cast("AsyncTmuxEngine", engine),
+                version=version,
+                preflight=preflight,
+            )
+            return {
+                "ok": outcome.ok,
+                "results": outcome.results,
+                "bindings": outcome.bindings,
+            }
+
         tools.append((execute_plan, "mutating"))
+        tools.append((build_workspace, "mutating"))
     else:
 
         def execute_plan(  # type: ignore[misc]
@@ -513,7 +532,7 @@ def register_plan_tools(
                 "bindings": outcome.bindings,
             }
 
-        def build_workspace(
+        def build_workspace(  # type: ignore[misc]
             spec: dict[str, t.Any],
             preflight: bool = True,
             version: str | None = None,
