@@ -781,7 +781,7 @@ def build_async_server(
 
         register_resources(mcp, engine, is_async=True)
     register_events(mcp, engine, mode=events, source=event_source)
-    if monitor_enabled:
+    if monitor_enabled and lifespan:
         from libtmux.experimental.mcp.vocabulary.agents import register_agents
 
         register_agents(mcp, engine, monitor=agent_monitor)
