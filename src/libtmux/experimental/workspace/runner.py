@@ -22,7 +22,13 @@ import subprocess
 import time
 import typing as t
 
-from libtmux.experimental.ops import HasSession, KillSession, arun, run
+from libtmux.experimental.ops import (
+    DisplayMessage,
+    HasSession,
+    KillSession,
+    arun,
+    run,
+)
 from libtmux.experimental.ops._types import NameRef
 from libtmux.experimental.ops.plan import PlanResult, _resolve
 from libtmux.experimental.workspace.compiler import compile_full
@@ -38,21 +44,55 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.workspace.ir import Workspace
 
 
-def _run_host_sync(step: HostStep) -> None:
+#: Pane-readiness poll budget: ~2s at a 50ms cadence (matches tmuxp's timeout).
+_WAIT_PANE_POLLS = 40
+_WAIT_PANE_INTERVAL = 0.05
+_CURSOR_FMT = "#{cursor_x},#{cursor_y}"
+
+
+def _pane_ready(cursor: str) -> bool:
+    """Whether the pane's cursor has left the origin (its shell prompt drew)."""
+    return bool(cursor) and cursor != "0,0"
+
+
+def _run_host_sync(
+    step: HostStep,
+    engine: TmuxEngine,
+    bindings: dict[int | tuple[int, str], str],
+    version: str | None,
+) -> None:
     """Execute one host step synchronously."""
     if step.kind == "sleep" and step.seconds is not None:
         time.sleep(step.seconds)
     elif step.kind == "script" and step.command is not None:
         subprocess.run(step.command, shell=True, cwd=step.cwd, check=False)
+    elif step.kind == "wait_pane" and step.pane is not None:
+        op = _resolve(DisplayMessage(target=step.pane, message=_CURSOR_FMT), bindings)
+        for _ in range(_WAIT_PANE_POLLS):
+            if _pane_ready(run(op, engine, version=version).text):
+                return
+            time.sleep(_WAIT_PANE_INTERVAL)
 
 
-async def _run_host_async(step: HostStep) -> None:
+async def _run_host_async(
+    step: HostStep,
+    engine: AsyncTmuxEngine,
+    bindings: dict[int | tuple[int, str], str],
+    version: str | None,
+) -> None:
     """Execute one host step asynchronously."""
     if step.kind == "sleep" and step.seconds is not None:
         await asyncio.sleep(step.seconds)
     elif step.kind == "script" and step.command is not None:
         proc = await asyncio.create_subprocess_shell(step.command, cwd=step.cwd)
         await proc.wait()
+    elif step.kind == "wait_pane" and step.pane is not None:
+        op = _resolve(DisplayMessage(target=step.pane, message=_CURSOR_FMT), bindings)
+        for _ in range(_WAIT_PANE_POLLS):
+            result = await arun(op, engine, version=version)
+            if _pane_ready(result.text):
+                return
+            await asyncio.sleep(_WAIT_PANE_INTERVAL)
 
 
 def _preflight_sync(ws: Workspace, engine: TmuxEngine, version: str | None) -> bool:
@@ -111,10 +151,10 @@ def build_workspace(
     if preflight and _preflight_sync(ws, engine, version):
         return PlanResult((), {})
     compiled = compile_full(ws, version=version)
-    for step in compiled.pre:
-        _run_host_sync(step)
     bindings: dict[int | tuple[int, str], str] = {}
     results: list[Result] = []
+    for step in compiled.pre:
+        _run_host_sync(step, engine, bindings, version)
     for index, op in enumerate(compiled.plan.operations):
         result = run(_resolve(op, bindings), engine, version=version)
         results.append(result)
@@ -126,7 +166,7 @@ def build_workspace(
             for event in events_for(op, result):
                 on_event(event)
         for step in compiled.host_after.get(index, ()):
-            _run_host_sync(step)
+            _run_host_sync(step, engine, bindings, version)
     if on_event is not None:
         on_event(WorkspaceBuilt(bindings.get(0, "")))
     return PlanResult(tuple(results), bindings)
@@ -148,10 +188,10 @@ async def abuild_workspace(
     if preflight and await _preflight_async(ws, engine, version):
         return PlanResult((), {})
     compiled = compile_full(ws, version=version)
-    for step in compiled.pre:
-        await _run_host_async(step)
     bindings: dict[int | tuple[int, str], str] = {}
     results: list[Result] = []
+    for step in compiled.pre:
+        await _run_host_async(step, engine, bindings, version)
     for index, op in enumerate(compiled.plan.operations):
         result = await arun(_resolve(op, bindings), engine, version=version)
         results.append(result)
@@ -163,7 +203,7 @@ async def abuild_workspace(
             for event in events_for(op, result):
                 await on_event(event)
         for step in compiled.host_after.get(index, ()):
-            await _run_host_async(step)
+            await _run_host_async(step, engine, bindings, version)
     if on_event is not None:
         await on_event(WorkspaceBuilt(bindings.get(0, "")))
     return PlanResult(tuple(results), bindings)
