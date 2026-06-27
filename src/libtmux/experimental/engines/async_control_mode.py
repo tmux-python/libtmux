@@ -529,6 +529,12 @@ class AsyncControlModeEngine:
                     await asyncio.sleep(self._backoff(attempt))
                     attempt += 1
                     continue
+                # The spawn succeeded and its startup ACK was consumed, so this
+                # connection is healthy: reset the backoff. A reconnect after a
+                # long healthy session then starts fast instead of waiting near
+                # the cap -- only *consecutive connect failures* (the except path
+                # above) escalate.
+                attempt = 0
                 self._generation += 1
                 connected_once = True
                 await self._replay_subscriptions()
