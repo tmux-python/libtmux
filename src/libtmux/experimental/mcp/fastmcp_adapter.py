@@ -716,6 +716,7 @@ def build_async_server(
     include_middleware: bool = True,
     include_prompts: bool = True,
     include_resources: bool = True,
+    lifespan: bool = True,
     safety_level: str | None = None,
     events: EventMode = "push",
     event_source: EventSource = "subscription",
@@ -734,6 +735,7 @@ def build_async_server(
     """
     from fastmcp import FastMCP
 
+    from libtmux.experimental.mcp._lifespan import make_lifespan
     from libtmux.experimental.mcp.events import _supports_stream, register_events
 
     level = _resolve_level(safety_level)
@@ -744,6 +746,7 @@ def build_async_server(
         name=name,
         instructions=instructions or _instructions(ctx, events_enabled=events_enabled),
         middleware=_make_middleware(level) if include_middleware else None,
+        lifespan=make_lifespan(engine) if lifespan else None,
     )
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=True)
