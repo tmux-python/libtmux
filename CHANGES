@@ -80,6 +80,17 @@ New tmux 3.7 flags are exposed on existing wrappers:
 gains `no_vis` (`-S`, paste raw bytes). Each warns and is ignored on
 tmux < 3.7.
 
+#### Floating panes (`new-pane`)
+
+tmux 3.7's flagship feature, floating panes, is now reachable through
+{meth}`~libtmux.Window.new_pane` and {meth}`~libtmux.Pane.new_pane`. A
+floating pane sits above the tiled layout like a popup but behaves like
+a real pane. Pass `width`/`height` to size it and `x`/`y` to position
+it, alongside the usual `shell`, `start_directory`, `environment`,
+`zoom` and `empty`, plus `style`, `active_border_style` and
+`inactive_border_style`. The returned {class}`~libtmux.Pane` reports
+`pane_floating_flag == "1"`. Requires tmux 3.7+.
+
 ## libtmux 0.59.0 (2026-06-27)
 
 libtmux 0.59.0 adds support for tmux 3.7. tmux 3.7 shipped an upstream
