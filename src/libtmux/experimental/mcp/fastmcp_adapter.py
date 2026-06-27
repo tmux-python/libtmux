@@ -45,6 +45,7 @@ _TOOLS: tuple[tuple[str, str], ...] = (
     ("create_session", "mutating"),
     ("create_window", "mutating"),
     ("split_pane", "mutating"),
+    ("new_pane", "mutating"),
     ("send_input", "mutating"),
     ("capture_pane", "readonly"),
     ("capture_active_pane", "readonly"),
