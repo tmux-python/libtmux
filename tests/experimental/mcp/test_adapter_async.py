@@ -91,3 +91,24 @@ def test_async_plan_preview() -> None:
 
     data = asyncio.run(main())
     assert data["ok"] is True
+
+
+def test_async_build_workspace_offline() -> None:
+    """The async server exposes build_workspace, backed by abuild_workspace."""
+    spec = {
+        "session_name": "ws",
+        "windows": [{"window_name": "editor", "panes": ["vim", "pytest -q"]}],
+    }
+
+    async def main() -> tuple[set[str], t.Any]:
+        async with fastmcp.Client(_async_server()) as client:
+            names = {tool.name for tool in await client.list_tools()}
+            payload = await client.call_tool(
+                "build_workspace",
+                {"spec": spec, "preflight": False},
+            )
+            return names, payload
+
+    names, payload = asyncio.run(main())
+    assert "build_workspace" in names  # Declarative tier reaches the async server
+    assert (payload.structured_content or {})["ok"] is True
