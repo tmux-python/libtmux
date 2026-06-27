@@ -374,7 +374,10 @@ def test_op_kill_pane_is_guarded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TMUX_PANE", "%9")
     monkeypatch.setenv("TMUX", "/s,1,2")
     server = build_async_server(
-        SyncToAsyncEngine(ConcreteEngine()), events="off", expose_operations=True
+        SyncToAsyncEngine(ConcreteEngine()),
+        events="off",
+        expose_operations=True,
+        safety_level="destructive",  # op_kill_* is destructive-tier
     )
 
     async def main() -> None:
@@ -448,6 +451,7 @@ def test_op_kill_pane_others_is_guarded_live(
             AsyncSubprocessEngine.for_server(session.server),
             events="off",
             expose_operations=True,
+            safety_level="destructive",  # op_kill_* is destructive-tier
         )
 
         async def main() -> None:
