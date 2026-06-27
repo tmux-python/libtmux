@@ -167,6 +167,120 @@ class Pane:
 
 
 @dataclass(frozen=True)
+class Float:
+    """Absolute geometry for a floating pane (tmux 3.7 ``new-pane``).
+
+    Floating panes are popup-style overlays, not tiled cells, so their geometry
+    is absolute rather than split-relative. :attr:`width`/:attr:`height` set the
+    size (``-x``/``-y``) and :attr:`x`/:attr:`y` set the top-left offset
+    (``-X``/``-Y``); each is cells (``int``) or a percentage (``str`` like
+    ``"50%"``). The remaining fields mirror the ``new-pane`` flag vocabulary.
+
+    Parameters
+    ----------
+    width, height : int or str or None
+        Size in cells or ``N%`` (``-x`` / ``-y``).
+    x, y : int or str or None
+        Absolute position in cells or ``N%`` (``-X`` / ``-Y``).
+    zoom : bool
+        Zoom the pane (``-Z``).
+    empty : bool
+        Create an empty pane with no command (``-E``).
+    style, active_border_style, inactive_border_style : str or None
+        Content / active-border / inactive-border styles (``-s`` / ``-S`` /
+        ``-R``).
+    message : str or None
+        Remain-on-exit message (``-m``).
+
+    Examples
+    --------
+    >>> from libtmux.experimental.workspace.ir import Float
+    >>> Float(width=120, height=40, x="C", y="C").to_dict()
+    {'width': 120, 'height': 40, 'x': 'C', 'y': 'C'}
+    >>> Float().to_dict()
+    {}
+    """
+
+    width: int | str | None = None
+    height: int | str | None = None
+    x: int | str | None = None
+    y: int | str | None = None
+    zoom: bool = False
+    empty: bool = False
+    style: str | None = None
+    active_border_style: str | None = None
+    inactive_border_style: str | None = None
+    message: str | None = None
+
+    def to_dict(self) -> dict[str, t.Any]:
+        """Serialize to a canonical float-geometry config (omitting defaults)."""
+        out: dict[str, t.Any] = {}
+        if self.width is not None:
+            out["width"] = self.width
+        if self.height is not None:
+            out["height"] = self.height
+        if self.x is not None:
+            out["x"] = self.x
+        if self.y is not None:
+            out["y"] = self.y
+        if self.zoom:
+            out["zoom"] = True
+        if self.empty:
+            out["empty"] = True
+        if self.style is not None:
+            out["style"] = self.style
+        if self.active_border_style is not None:
+            out["active_border_style"] = self.active_border_style
+        if self.inactive_border_style is not None:
+            out["inactive_border_style"] = self.inactive_border_style
+        if self.message is not None:
+            out["message"] = self.message
+        return out
+
+
+@dataclass(frozen=True)
+class FloatingPane:
+    """A floating-pane overlay: a :class:`Pane` plus its :class:`Float` geometry.
+
+    Overlays are *not* tiled cells -- the compiler emits them as ``new-pane`` and
+    keeps them out of the tiled split chain, the ``select-layout`` call, and the
+    pane-count check. :attr:`attach_to` names a :class:`Window` (by name) to float
+    over; ``None`` floats over the window the overlay is declared on.
+
+    Parameters
+    ----------
+    pane : Pane
+        The pane's command(s), focus, env, shell, etc.
+    geometry : Float
+        The floating geometry; defaults to tmux's own (half-width, quarter-height,
+        cascading position).
+    attach_to : str or None
+        Name of the window to float over; ``None`` for the host window.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.workspace.ir import Float, FloatingPane, Pane
+    >>> fp = FloatingPane(pane=Pane(run="lazygit"), geometry=Float(width="60%"))
+    >>> fp.to_dict()["shell_command"]
+    ['lazygit']
+    >>> fp.to_dict()["float"]
+    {'width': '60%'}
+    """
+
+    pane: Pane = field(default_factory=Pane)
+    geometry: Float = field(default_factory=Float)
+    attach_to: str | None = None
+
+    def to_dict(self) -> dict[str, t.Any]:
+        """Serialize to a pane config plus a ``float`` geometry (and ``attach_to``)."""
+        out = self.pane.to_dict()
+        out["float"] = self.geometry.to_dict()
+        if self.attach_to is not None:
+            out["attach_to"] = self.attach_to
+        return out
+
+
+@dataclass(frozen=True)
 class Window:
     """A window in the declared workspace.
 
@@ -200,6 +314,10 @@ class Window:
         the session's implicit window and keeps the session base index.
     panes : Sequence[Pane]
         The window's panes (the first reuses the window's implicit pane).
+    floats : Sequence[FloatingPane]
+        Floating-pane overlays for this window (tmux 3.7+). Overlays are not
+        tiled cells: they are created with ``new-pane`` after the layout and are
+        excluded from the split chain and the tiled pane count.
     """
 
     name: str | None = None
@@ -212,6 +330,7 @@ class Window:
     window_shell: str | None = None
     window_index: int | None = None
     panes: Sequence[Pane] = ()
+    floats: Sequence[FloatingPane] = ()
 
     def to_dict(self) -> dict[str, t.Any]:
         """Serialize to a canonical tmuxp window config (inverse of the analyzer)."""
@@ -235,6 +354,8 @@ class Window:
         if self.window_index is not None:
             out["window_index"] = self.window_index
         out["panes"] = [pane.to_dict() for pane in self.panes]
+        if self.floats:
+            out["floats"] = [fp.to_dict() for fp in self.floats]
         return out
 
 

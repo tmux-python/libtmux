@@ -38,7 +38,14 @@ from libtmux.experimental.workspace.events import (
     WindowCreated,
     WorkspaceBuilt,
 )
-from libtmux.experimental.workspace.ir import Command, Pane, Window, Workspace
+from libtmux.experimental.workspace.ir import (
+    Command,
+    Float,
+    FloatingPane,
+    Pane,
+    Window,
+    Workspace,
+)
 from libtmux.experimental.workspace.runner import abuild_workspace, build_workspace
 
 __all__ = (
@@ -46,6 +53,8 @@ __all__ = (
     "Command",
     "Compiled",
     "ConfirmReport",
+    "Float",
+    "FloatingPane",
     "HostStep",
     "Pane",
     "PaneCreated",
