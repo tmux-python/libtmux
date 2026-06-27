@@ -219,8 +219,13 @@ WINDOW_RENAME_FIXTURES: list[WindowRenameFixture] = [
         window_name_after="ha ha ha fjewlkjflwef",
     ),
     WindowRenameFixture(
+        # Create with a plain name and only assert that rename doubles the
+        # backslash: window_set_name() has escaped names via vis(3) since tmux
+        # 2.6, so this holds on all supported versions. (new-window only began
+        # escaping names in tmux 3.7, so a backslash in the *create* name is
+        # version-dependent and must not be asserted here.)
         test_id="rename_with_escapes",
-        window_name_before=r"hello \ wazzup 0",
+        window_name_before="test",
         window_name_input=r"hello \ wazzup 0",
         window_name_after=r"hello \\ wazzup 0",
     ),
