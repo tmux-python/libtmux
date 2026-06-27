@@ -1,11 +1,16 @@
 """Execute a compiled workspace over any engine, sync or async.
 
-The runner is the Declarative tier's *bound* layer. It keeps the Core operation
-spine pure: it drives the compiled plan one operation at a time (reusing Core's
-:func:`~libtmux.experimental.ops.plan._resolve` forward-ref resolution) and
-interleaves host-side steps (sleep / before_script) *between* operations rather
-than weaving them into Core's ``_drive`` generator. Idempotent replace is handled
-*around* the build via a ``has-session`` pre-check.
+The runner is the Declarative tier's *bound* layer. It drives the compiled plan
+through Core's :meth:`~libtmux.experimental.ops.plan.LazyPlan.execute` so the
+build reuses the same sans-I/O resolution trampoline as any other plan -- and so
+folds dispatches via a :class:`~..ops.planner.Planner`. Host-side steps (sleep /
+before_script / pane-readiness waits) must run *between* tmux dispatches, so the
+compiler records them as a separate schedule keyed by operation index
+(:attr:`~..compiler.Compiled.host_after`). The runner turns those keys into fold
+boundaries via a :class:`~..ops.planner.BoundedPlanner` (no fold may cross a host
+step) and replays each index's host steps from the ``on_step`` hook
+:meth:`~..ops.plan.LazyPlan.execute` fires after every step binds. Idempotent
+replace is handled *around* the build via a ``has-session`` pre-check.
 
 The same compiled plan runs identically through any engine and through either the
 sync (:func:`build_workspace`) or async (:func:`abuild_workspace`) driver -- the
@@ -30,7 +35,8 @@ from libtmux.experimental.ops import (
     run,
 )
 from libtmux.experimental.ops._types import NameRef
-from libtmux.experimental.ops.plan import PlanResult, _resolve
+from libtmux.experimental.ops.plan import PlanResult, StepReport, _resolve
+from libtmux.experimental.ops.planner import BoundedPlanner, MarkedPlanner
 from libtmux.experimental.workspace.compiler import compile_full
 from libtmux.experimental.workspace.events import WorkspaceBuilt, events_for
 
@@ -38,7 +44,7 @@ if t.TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
-    from libtmux.experimental.ops.results import Result
+    from libtmux.experimental.ops.planner import Planner
     from libtmux.experimental.workspace.compiler import HostStep
     from libtmux.experimental.workspace.events import BuildEvent
     from libtmux.experimental.workspace.ir import Workspace
@@ -134,11 +140,19 @@ def build_workspace(
     version: str | None = None,
     preflight: bool = True,
     on_event: Callable[[BuildEvent], None] | None = None,
+    planner: Planner | None = None,
 ) -> PlanResult:
     """Compile and execute *ws* synchronously over *engine*.
 
     Pass *on_event* to observe the structural build stream (session -> windows ->
     panes -> built) as each operation binds its id.
+
+    The build folds dispatches by default (a :class:`~..ops.planner.MarkedPlanner`
+    wrapped so no fold crosses a host step), so a multi-pane window costs a few
+    tmux calls instead of one per op. Pass *planner* to override -- e.g.
+    :class:`~..ops.planner.SequentialPlanner` for one legible call per op. The
+    :class:`~..ops.plan.PlanResult` is identical either way; only the dispatch
+    count changes.
 
     Examples
     --------
@@ -151,25 +165,30 @@ def build_workspace(
     if preflight and _preflight_sync(ws, engine, version):
         return PlanResult((), {})
     compiled = compile_full(ws, version=version)
-    bindings: dict[int | tuple[int, str], str] = {}
-    results: list[Result] = []
+    ops = compiled.plan.operations
     for step in compiled.pre:
-        _run_host_sync(step, engine, bindings, version)
-    for index, op in enumerate(compiled.plan.operations):
-        result = run(_resolve(op, bindings), engine, version=version)
-        results.append(result)
-        if result.created_id is not None:
-            bindings[index] = result.created_id
-        for part, sub in result.created_subids.items():
-            bindings[index, part] = sub
-        if on_event is not None:
-            for event in events_for(op, result):
-                on_event(event)
-        for step in compiled.host_after.get(index, ()):
-            _run_host_sync(step, engine, bindings, version)
+        _run_host_sync(step, engine, {}, version)
+
+    def on_step(report: StepReport) -> None:
+        for index, result in zip(report.step.indices, report.results, strict=True):
+            if on_event is not None:
+                for event in events_for(ops[index], result):
+                    on_event(event)
+            for host_step in compiled.host_after.get(index, ()):
+                _run_host_sync(host_step, engine, report.bindings, version)
+
+    outcome = compiled.plan.execute(
+        engine,
+        version=version,
+        planner=BoundedPlanner(
+            planner or MarkedPlanner(),
+            frozenset(compiled.host_after),
+        ),
+        on_step=on_step,
+    )
     if on_event is not None:
-        on_event(WorkspaceBuilt(bindings.get(0, "")))
-    return PlanResult(tuple(results), bindings)
+        on_event(WorkspaceBuilt(outcome.bindings.get(0, "")))
+    return outcome
 
 
 async def abuild_workspace(
@@ -179,31 +198,38 @@ async def abuild_workspace(
     version: str | None = None,
     preflight: bool = True,
     on_event: Callable[[BuildEvent], Awaitable[None]] | None = None,
+    planner: Planner | None = None,
 ) -> PlanResult:
     """Compile and execute *ws* asynchronously over *engine* (same resolution).
 
     *on_event* is awaited for each build event, so an async observer can stream
-    the structural progress (e.g. through a fastmcp Context).
+    the structural progress (e.g. through a fastmcp Context). Folds by default;
+    see :func:`build_workspace` for the *planner* knob.
     """
     if preflight and await _preflight_async(ws, engine, version):
         return PlanResult((), {})
     compiled = compile_full(ws, version=version)
-    bindings: dict[int | tuple[int, str], str] = {}
-    results: list[Result] = []
+    ops = compiled.plan.operations
     for step in compiled.pre:
-        await _run_host_async(step, engine, bindings, version)
-    for index, op in enumerate(compiled.plan.operations):
-        result = await arun(_resolve(op, bindings), engine, version=version)
-        results.append(result)
-        if result.created_id is not None:
-            bindings[index] = result.created_id
-        for part, sub in result.created_subids.items():
-            bindings[index, part] = sub
-        if on_event is not None:
-            for event in events_for(op, result):
-                await on_event(event)
-        for step in compiled.host_after.get(index, ()):
-            await _run_host_async(step, engine, bindings, version)
+        await _run_host_async(step, engine, {}, version)
+
+    async def on_step(report: StepReport) -> None:
+        for index, result in zip(report.step.indices, report.results, strict=True):
+            if on_event is not None:
+                for event in events_for(ops[index], result):
+                    await on_event(event)
+            for host_step in compiled.host_after.get(index, ()):
+                await _run_host_async(host_step, engine, report.bindings, version)
+
+    outcome = await compiled.plan.aexecute(
+        engine,
+        version=version,
+        planner=BoundedPlanner(
+            planner or MarkedPlanner(),
+            frozenset(compiled.host_after),
+        ),
+        on_step=on_step,
+    )
     if on_event is not None:
-        await on_event(WorkspaceBuilt(bindings.get(0, "")))
-    return PlanResult(tuple(results), bindings)
+        await on_event(WorkspaceBuilt(outcome.bindings.get(0, "")))
+    return outcome
