@@ -229,15 +229,121 @@ class AgentMonitor:
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        """Install the subscription and begin draining the engine event stream.
+        """Install the subscription, attach a session, and drain the event stream.
 
-        Spawns a background task that feeds every notification into
-        :meth:`ingest`.  Also attempts an initial :meth:`reconcile` to
-        synchronise against the current pane tree.
+        Three steps:
+
+        1. Install the ``@agent_state`` subscription on the engine.
+        2. Attach the engine to a session. tmux only delivers per-pane
+           ``%subscription-changed`` notifications to an *attached* control
+           client, so without this the option channel is silent against a live
+           server. A control client attaches to one session at a time; v1
+           attaches to the first session reported by ``list-sessions`` and
+           records it via :meth:`set_attach_targets` so the engine re-attaches
+           across reconnects. The ``%*`` subscription still installs across all
+           panes, but per-pane option signals for *other* sessions' panes need
+           their own attached client — a known v1 limitation.
+        3. Spawn the drain task feeding every notification into :meth:`ingest`,
+           then run an initial :meth:`reconcile` to sync the pane tree.
+
+        All attach steps are defensive: a failed ``list-sessions`` or
+        ``attach-session`` is logged and skipped so :meth:`start` never crashes.
         """
+        from libtmux.experimental.engines.base import CommandRequest
+
         self._engine.add_subscription(SUBSCRIPTION)
+
+        # Attach a session so per-pane %subscription-changed actually flows.
+        session_id = await self._primary_session_id()
+        if session_id is not None:
+            self._engine.set_attach_targets([session_id])
+            try:
+                await self._engine.run(
+                    CommandRequest.from_args("attach-session", "-t", session_id)
+                )
+                # Mirror the events layer: record the sticky attach so a later
+                # _ensure_attached (MCP) does not redundantly re-attach.
+                self._engine._attached_session = session_id
+                logger.debug("monitor attached session %s", session_id)
+            except Exception:
+                logger.debug("monitor attach-session failed", exc_info=True)
+
         self._task = asyncio.get_running_loop().create_task(self._drain())
         await self.reconcile()
+
+    async def _primary_session_id(self) -> str | None:
+        """Return the first *real* session id to attach to, or ``None``.
+
+        A ``tmux -C`` control client creates its own throwaway session on
+        connect (``tmux -C`` with no command implies ``new-session``); that
+        phantom holds no agent panes and per-pane notifications for it are
+        useless. So this skips the control client's own session (identified via
+        ``display-message -p '#{session_id}'``) and returns the first remaining
+        session — tmux orders ``list-sessions`` by name, so this is the
+        alphabetically-first real session. Falls back to the client's own
+        session only when no other exists (an otherwise empty server).
+
+        Defensive: any engine error (no daemon, list failure) is logged and
+        yields ``None`` so :meth:`start` can proceed without attaching.
+
+        Returns
+        -------
+        str | None
+            The session id to attach to, or ``None`` when the list is empty or
+            the engine call failed.
+        """
+        from libtmux.experimental.engines.base import CommandRequest
+
+        own = await self._own_session_id()
+        try:
+            result = await self._engine.run(
+                CommandRequest.from_args("list-sessions", "-F", "#{session_id}")
+            )
+        except Exception:
+            logger.debug(
+                "list-sessions failed — monitor will not attach", exc_info=True
+            )
+            return None
+        ids: list[str] = [
+            str(line).strip() for line in result.stdout if str(line).strip()
+        ]
+        for sid in ids:
+            if sid != own:
+                return sid
+        # Only the control client's own session exists: nothing real to watch,
+        # but attaching to it is harmless (and keeps the option channel live).
+        return ids[0] if ids else None
+
+    async def _own_session_id(self) -> str | None:
+        """Return the control client's own session id, or ``None``.
+
+        Right after the engine connects, ``tmux -C`` is attached to the
+        throwaway session it created; ``display-message -p '#{session_id}'``
+        (no target → the client's current session) reports it. Used by
+        :meth:`_primary_session_id` to avoid attaching the monitor to its own
+        phantom session. Defensive: any engine error yields ``None``.
+
+        Returns
+        -------
+        str | None
+            The control client's current ``#{session_id}``, or ``None`` if the
+            engine call failed or returned nothing.
+        """
+        from libtmux.experimental.engines.base import CommandRequest
+
+        try:
+            result = await self._engine.run(
+                CommandRequest.from_args("display-message", "-p", "#{session_id}")
+            )
+        except Exception:
+            logger.debug(
+                "display-message failed — cannot detect own session", exc_info=True
+            )
+            return None
+        for line in result.stdout:
+            if str(line).strip():
+                return str(line).strip()
+        return None
 
     async def stop(self) -> None:
         """Cancel the drain task and optionally flush the sink."""
