@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import pathlib
-import typing as t
 
 from libtmux.experimental.agents.merge import Stamp
 from libtmux.experimental.agents.state import AgentState
