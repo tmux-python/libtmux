@@ -14,7 +14,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import has_gte_version, has_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -2069,6 +2069,12 @@ class Pane(
         >>> new_window.window_name
         'broken'
         """
+        # tmux 3.7 segfaults break-pane when -n is absent and ignores -n when
+        # given (NULL-deref, fixed upstream after 3.7). Always pass -n -- the
+        # requested name or a placeholder -- then set the real name via
+        # rename-window below. Gated on exactly 3.7; other builds are unaffected.
+        breaks_without_name = has_version("3.7", tmux_bin=self.server.tmux_bin)
+
         tmux_args: tuple[str, ...] = ("-P", "-F#{window_id}")
 
         if detach:
@@ -2076,6 +2082,8 @@ class Pane(
 
         if window_name is not None:
             tmux_args += ("-n", window_name)
+        elif breaks_without_name:
+            tmux_args += ("-n", "libtmux")
 
         tmux_args += ("-s", str(self.pane_id))
 
@@ -2088,7 +2096,12 @@ class Pane(
 
         from libtmux.window import Window
 
-        return Window.from_window_id(server=self.server, window_id=window_id)
+        window = Window.from_window_id(server=self.server, window_id=window_id)
+
+        if window_name is not None and breaks_without_name:
+            window.rename_window(window_name)
+
+        return window
 
     def swap(
         self,

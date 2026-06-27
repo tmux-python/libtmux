@@ -219,8 +219,13 @@ WINDOW_RENAME_FIXTURES: list[WindowRenameFixture] = [
         window_name_after="ha ha ha fjewlkjflwef",
     ),
     WindowRenameFixture(
+        # Create with a plain name and only assert that rename doubles the
+        # backslash: window_set_name() has escaped names via vis(3) since tmux
+        # 2.6, so this holds on all supported versions. (new-window only began
+        # escaping names in tmux 3.7, so a backslash in the *create* name is
+        # version-dependent and must not be asserted here.)
         test_id="rename_with_escapes",
-        window_name_before=r"hello \ wazzup 0",
+        window_name_before="test",
         window_name_input=r"hello \ wazzup 0",
         window_name_after=r"hello \\ wazzup 0",
     ),
@@ -250,6 +255,48 @@ def test_window_rename(
 
     window = session.active_window
     assert window.window_name == window_name_after
+
+
+class WindowNameValidationFixture(t.NamedTuple):
+    """Test fixture for tmux 3.7 window-name validation."""
+
+    test_id: str
+    window_name: str
+
+
+# tmux 3.7+ rejects ':' and '.' in window names server-side; tmux 3.2a-3.6
+# accept them. See https://github.com/tmux/tmux/issues/4999.
+WINDOW_NAME_INVALID_ON_3_7_FIXTURES: list[WindowNameValidationFixture] = [
+    WindowNameValidationFixture(test_id="colon", window_name="project:frontend"),
+    WindowNameValidationFixture(test_id="period", window_name="app-v1.0"),
+]
+
+
+@pytest.mark.parametrize(
+    list(WindowNameValidationFixture._fields),
+    WINDOW_NAME_INVALID_ON_3_7_FIXTURES,
+    ids=[tc.test_id for tc in WINDOW_NAME_INVALID_ON_3_7_FIXTURES],
+)
+def test_new_window_name_invalid_on_3_7(
+    session: Session,
+    test_id: str,
+    window_name: str,
+) -> None:
+    """Tmux 3.7+ rejects ':'/'.' in window names; older tmux accepts them.
+
+    The rejection is enforced by tmux itself (no client-side validation),
+    so it surfaces as a :class:`~libtmux.exc.LibTmuxException`. On tmux
+    3.2a-3.6 the same names are accepted verbatim.
+    """
+    from libtmux.common import has_gte_version
+
+    if has_gte_version("3.7"):
+        with pytest.raises(exc.LibTmuxException, match="invalid window name"):
+            session.new_window(window_name=window_name)
+    else:
+        window = session.new_window(window_name=window_name)
+        assert window.window_name == window_name
+        window.kill()
 
 
 def test_kill_window(session: Session) -> None:

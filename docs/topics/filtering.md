@@ -153,12 +153,12 @@ For complex patterns, use regex lookups:
 
 ```python
 >>> # Create windows with version-like names
->>> w1 = session.new_window(window_name="app-v1.0")
->>> w2 = session.new_window(window_name="app-v2.0")
+>>> w1 = session.new_window(window_name="app-v1-0")
+>>> w2 = session.new_window(window_name="app-v2-0")
 >>> w3 = session.new_window(window_name="app-beta")
 
 >>> # Match version pattern
->>> versioned = session.windows.filter(window_name__regex=r'v\d+\.\d+$')
+>>> versioned = session.windows.filter(window_name__regex=r'v\d+-\d+$')
 >>> len(versioned) >= 2
 True
 
@@ -238,19 +238,19 @@ True
 
 ```python
 >>> # Create windows following a naming convention
->>> w1 = session.new_window(window_name="project:frontend")
->>> w2 = session.new_window(window_name="project:backend")
+>>> w1 = session.new_window(window_name="project-frontend")
+>>> w2 = session.new_window(window_name="project-backend")
 >>> w3 = session.new_window(window_name="logs")
 
 >>> # Find all project windows
->>> project_windows = session.windows.filter(window_name__startswith='project:')
+>>> project_windows = session.windows.filter(window_name__startswith='project-')
 >>> len(project_windows) >= 2
 True
 
 >>> # Get specific project window
->>> backend = session.windows.get(window_name='project:backend')
+>>> backend = session.windows.get(window_name='project-backend')
 >>> backend.window_name
-'project:backend'
+'project-backend'
 
 >>> # Clean up
 >>> w1.kill()
