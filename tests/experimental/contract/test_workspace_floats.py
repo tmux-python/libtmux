@@ -15,6 +15,7 @@ from libtmux.experimental.workspace import (
     analyze,
     compile_workspace,
 )
+from libtmux.experimental.workspace.compiler import Symbols, _topo_order
 
 
 def test_float_to_dict_omits_defaults() -> None:
@@ -134,21 +135,77 @@ def test_compiler_new_pane_geometry_and_command() -> None:
     assert any(isinstance(op, SendKeys) and op.keys == "lazygit" for op in ops)
 
 
-def test_cross_window_attach_to_raises() -> None:
-    """A float attaching to a different window is rejected (not yet supported)."""
+def test_cross_window_float_attaches_to_later_window() -> None:
+    """A float on an early window can attach to a window declared later."""
     ws = Workspace(
         name="dev",
         windows=[
             Window(
                 "editor",
                 panes=[Pane(run="vim")],
+                # attach_to a window declared AFTER this one (forward reference)
                 floats=[FloatingPane(pane=Pane(run="lazygit"), attach_to="logs")],
             ),
             Window("logs", panes=[Pane(run="tail -f x")]),
         ],
     )
-    with pytest.raises(WorkspaceCompileError, match="cross-window floats"):
+    # Compiles (no raise) and the float op lands after both windows exist.
+    kinds = [op.kind for op in compile_workspace(ws).operations]
+    assert kinds.count("new_window") == 1  # 'logs' is created
+    assert kinds.index("new_pane") > kinds.index("new_window")
+
+
+def test_cross_window_float_builds_offline() -> None:
+    """A cross-window float resolves its target and builds in-memory."""
+    from libtmux.experimental.engines import ConcreteEngine
+
+    ws = Workspace(
+        name="dev",
+        windows=[
+            Window(
+                "editor",
+                panes=[Pane(run="vim")],
+                floats=[FloatingPane(pane=Pane(run="htop"), attach_to="logs")],
+            ),
+            Window("logs", panes=[Pane(run="tail -f x")]),
+        ],
+    )
+    assert ws.build(ConcreteEngine(), preflight=False).ok
+
+
+def test_unknown_attach_to_raises() -> None:
+    """A float attaching to an undeclared window name is rejected."""
+    ws = Workspace(
+        name="dev",
+        windows=[
+            Window(
+                "editor",
+                panes=[Pane(run="vim")],
+                floats=[FloatingPane(pane=Pane(run="lazygit"), attach_to="nope")],
+            ),
+        ],
+    )
+    with pytest.raises(WorkspaceCompileError, match="names no declared window"):
         compile_workspace(ws)
+
+
+def test_symbols_resolve_unknown_raises() -> None:
+    """Symbols.resolve raises a clear error for an undeclared name."""
+    symbols = Symbols()
+    with pytest.raises(WorkspaceCompileError, match="names no declared window"):
+        symbols.resolve("ghost")
+
+
+def test_topo_order_orders_dependencies() -> None:
+    """_topo_order returns each node after the nodes it depends on."""
+    order = _topo_order({"float": {"win"}, "win": set()})
+    assert order.index("win") < order.index("float")
+
+
+def test_topo_order_detects_cycle() -> None:
+    """_topo_order rejects a dependency cycle."""
+    with pytest.raises(WorkspaceCompileError, match="reference cycle"):
+        _topo_order({"a": {"b"}, "b": {"a"}})
 
 
 def test_offline_build_with_float() -> None:
