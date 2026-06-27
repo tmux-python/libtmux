@@ -60,6 +60,7 @@ def test_attach_replayed_on_reconnect(session: Session) -> None:
         from libtmux.experimental.engines.base import CommandRequest
 
         sid = session.session_id
+        assert sid is not None  # a live session always has an id
         engine = AsyncControlModeEngine.for_server(session.server)
         engine.set_attach_targets([sid])
         await engine.start()
@@ -138,8 +139,8 @@ def test_concurrent_start_all_raise_on_first_connect_failure() -> None:
                 raise ControlModeError(msg)
 
         engine = _Probe()
-        return await asyncio.gather(
-            engine.start(), engine.start(), return_exceptions=True
+        return list(
+            await asyncio.gather(engine.start(), engine.start(), return_exceptions=True)
         )
 
     results = asyncio.run(main())
