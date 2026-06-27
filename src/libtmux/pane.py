@@ -2069,11 +2069,10 @@ class Pane(
         >>> new_window.window_name
         'broken'
         """
-        # tmux 3.7 segfaults on break-pane when no -n is given (a NULL window
-        # name is dereferenced); fixed upstream after the 3.7 release. Pass a
-        # placeholder -n to avoid the crash -- 3.7 ignores it and applies the
-        # default name -- then rename to the requested name below. Gated on
-        # exactly 3.7 so fixed builds, which honor -n, are left untouched.
+        # tmux 3.7 segfaults break-pane when -n is absent and ignores -n when
+        # given (NULL-deref, fixed upstream after 3.7). Always pass -n -- the
+        # requested name or a placeholder -- then set the real name via
+        # rename-window below. Gated on exactly 3.7; other builds are unaffected.
         breaks_without_name = has_version("3.7", tmux_bin=self.server.tmux_bin)
 
         tmux_args: tuple[str, ...] = ("-P", "-F#{window_id}")
@@ -2100,7 +2099,6 @@ class Pane(
         window = Window.from_window_id(server=self.server, window_id=window_id)
 
         if window_name is not None and breaks_without_name:
-            # tmux 3.7 ignored the -n above; set the requested name now.
             window.rename_window(window_name)
 
         return window
