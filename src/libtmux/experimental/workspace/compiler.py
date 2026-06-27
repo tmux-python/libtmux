@@ -142,6 +142,10 @@ def _emit_window(
                         or window.start_directory
                         or ws.start_directory
                     ),
+                    environment=(
+                        dict(pane.environment) or dict(window.environment) or None
+                    ),
+                    shell=pane.shell or window.window_shell,
                 ),
             )
         if pane.commands:
@@ -173,6 +177,23 @@ def _emit_window(
         plan.add(SelectLayout(target=window_ref, layout=window.layout))
     for target in focus_targets:
         plan.add(SelectPane(target=target))
+    for key, value in window.options_after.items():
+        plan.add(SetWindowOption(target=window_ref, option=key, value=value))
+
+
+def _creator_environment(window: Window) -> dict[str, str]:
+    """Env for a window's *first* (implicit) pane, applied via its creator's ``-e``.
+
+    The first pane reuses the window's implicit pane rather than splitting, so its
+    process environment cannot ride a ``split-window -e``. Instead the window's
+    ``environment`` (and its first pane's own ``environment``) fold into the
+    creator -- ``new-session -e`` for window 0, ``new-window -e`` for the rest --
+    applying it without an extra dispatch.
+    """
+    env = dict(window.environment)
+    if window.panes:
+        env.update(window.panes[0].environment)
+    return env
 
 
 def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
@@ -195,6 +216,7 @@ def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
             start_directory=ws.start_directory,
             width=width,
             height=height,
+            environment=_creator_environment(ws.windows[0]) or None,
             capture_panes=True,
         ),
     )
@@ -202,6 +224,8 @@ def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
         plan.add(SetEnvironment(target=session, name=key, value=value))
     for key, value in ws.options.items():
         plan.add(SetOption(target=session, option=key, value=value))
+    for key, value in ws.global_options.items():
+        plan.add(SetOption(option=key, value=value, global_=True))
 
     window_refs: list[SlotRef] = []
     for index, window in enumerate(ws.windows):
@@ -217,6 +241,8 @@ def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
                     target=session,
                     name=window.name,
                     start_directory=window.start_directory or ws.start_directory,
+                    environment=_creator_environment(window) or None,
+                    window_shell=window.window_shell,
                     capture_pane=True,
                 ),
             )
