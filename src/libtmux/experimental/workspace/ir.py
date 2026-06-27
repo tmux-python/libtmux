@@ -37,6 +37,7 @@ if t.TYPE_CHECKING:
 
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
     from libtmux.experimental.ops.plan import LazyPlan, PlanResult
+    from libtmux.experimental.ops.planner import Planner
     from libtmux.experimental.workspace.events import BuildEvent
 
 
@@ -336,13 +337,15 @@ class Workspace:
         version: str | None = None,
         preflight: bool = True,
         on_event: Callable[[BuildEvent], None] | None = None,
+        planner: Planner | None = None,
     ) -> PlanResult:
         """Compile and execute this workspace synchronously over *engine*.
 
         Set ``preflight=False`` to skip the ``on_exists`` ``has-session`` check
         (e.g. against the stateless ``ConcreteEngine``, which has no real
         sessions to detect). Pass *on_event* to observe the structural build
-        stream (see :mod:`~.events`).
+        stream (see :mod:`~.events`). The build folds dispatches by default; pass
+        *planner* (e.g. :class:`~..ops.planner.SequentialPlanner`) to override.
         """
         from libtmux.experimental.workspace.runner import build_workspace
 
@@ -352,6 +355,7 @@ class Workspace:
             version=version,
             preflight=preflight,
             on_event=on_event,
+            planner=planner,
         )
 
     async def abuild(
@@ -361,10 +365,12 @@ class Workspace:
         version: str | None = None,
         preflight: bool = True,
         on_event: Callable[[BuildEvent], Awaitable[None]] | None = None,
+        planner: Planner | None = None,
     ) -> PlanResult:
         """Compile and execute this workspace asynchronously over *engine*.
 
-        *on_event* is awaited for each build event (see :mod:`~.events`).
+        *on_event* is awaited for each build event (see :mod:`~.events`). Folds by
+        default; pass *planner* to override.
         """
         from libtmux.experimental.workspace.runner import abuild_workspace
 
@@ -374,4 +380,5 @@ class Workspace:
             version=version,
             preflight=preflight,
             on_event=on_event,
+            planner=planner,
         )
