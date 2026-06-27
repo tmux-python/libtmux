@@ -62,6 +62,13 @@ def test_parser_load_arguments() -> None:
     assert args.detached is True
     assert args.socket_name == "sock"
     assert args.new_session_name == "newname"
+    assert args.fold is True  # builds fold by default
+
+
+def test_parser_no_fold_flag() -> None:
+    """``--no-fold`` opts out of dispatch chaining."""
+    args = cli._build_parser().parse_args(["load", "ws.yaml", "--no-fold"])
+    assert args.fold is False
 
 
 def test_load_builds_and_reattaches(tmp_path: Path) -> None:
@@ -123,5 +130,52 @@ def test_dry_run_prints_commands_without_touching_tmux(
     assert "echo one" in out
     # the blank pane sends no command, so exactly one send-keys line is rendered
     assert out.count("send-keys") == 1
+    # the default dry run folds: the header says so and rename + send chain
+    assert "folded" in out
+    assert "\\;" in out
     # nothing was executed: no tmux server exists on the dry-run socket
     assert not libtmux.Server(socket_name=socket).is_alive()
+
+
+def test_dry_run_folds_split_and_send_into_one_dispatch(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A split pane with a command renders as one {marked} dispatch by default."""
+    (tmp_path / ".tmuxp.yaml").write_text(
+        "session_name: dryfold\n"
+        "windows:\n"
+        "  - window_name: editor\n"
+        "    panes:\n"
+        "      - echo one\n"
+        "      - echo two\n",
+    )
+    cli.load(str(tmp_path), socket_name="libtmux_wscli_fold", dry_run=True)
+    out = capsys.readouterr().out
+
+    # the second pane's split + send-keys collapse into a single {marked} chain
+    marked = [line for line in out.splitlines() if "{marked}" in line]
+    assert len(marked) == 1
+    assert "split-window" in marked[0] and "send-keys" in marked[0]
+    assert "\\;" in marked[0]
+
+
+def test_dry_run_no_fold_renders_one_call_per_op(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``--no-fold`` prints an unchained, one-op-per-line plan."""
+    (tmp_path / ".tmuxp.yaml").write_text(
+        "session_name: dryseq\n"
+        "windows:\n"
+        "  - window_name: editor\n"
+        "    panes:\n"
+        "      - echo one\n"
+        "      - echo two\n",
+    )
+    cli.load(str(tmp_path), socket_name="libtmux_wscli_seq", dry_run=True, fold=False)
+    out = capsys.readouterr().out
+
+    assert "sequential" in out
+    assert "\\;" not in out  # nothing chained
+    assert "{marked}" not in out  # no marked fold
