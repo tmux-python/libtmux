@@ -854,19 +854,31 @@ class Session(
         Parameters
         ----------
         target_window : str | int, optional
-            Window to kill.
+            Window to kill. A bare window name or index is scoped to this
+            session so it does not resolve against the server's current
+            session.
 
         Raises
         ------
         :exc:`libtmux.exc.LibTmuxException`
             If tmux returns an error.
+
+        Notes
+        -----
+        A ``target_window`` string that contains ``:`` (or starts with ``@``) is
+        treated as an already-qualified tmux target and passed through
+        unchanged. tmux target syntax cannot distinguish a ``session:window``
+        specifier from a window *name* that itself contains ``:``, so a window
+        whose name contains a colon must be killed via its ``@`` window id.
         """
         target: str | int | None = target_window
         if target_window is not None:
             if isinstance(target_window, int):
-                target = f"{self.session_name}:{target_window}"
+                target = f"{self.session_id}:{target_window}"
+            elif target_window.startswith("@") or ":" in target_window:
+                target = target_window
             else:
-                target = f"{target_window}"
+                target = f"{self.session_id}:{target_window}"
 
         proc = self.cmd("kill-window", target=target)
 
