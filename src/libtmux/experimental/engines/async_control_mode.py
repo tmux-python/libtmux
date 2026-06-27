@@ -623,6 +623,11 @@ class AsyncControlModeEngine:
                 # The proc died before replay landed; the reader will EOF and the
                 # supervisor reconnects, failing these pending commands then.
                 return
+            # Optimistic, like the subscription replay: the attach is fire-and-
+            # forget (swallowed future), so its returncode is not awaited here. A
+            # failed re-attach (e.g. the session vanished during the disconnect)
+            # self-corrects on the monitor's next reconcile, which re-derives the
+            # tree from list-panes and observes the missing session/panes.
             self._attached_session = attached
 
     def _reset_attach(self) -> None:
