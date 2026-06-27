@@ -165,12 +165,21 @@ class OscSignal:
 
         Examples
         --------
+        ST-terminated (``ESC \``) path:
+
         >>> osc = OscSignal()
         >>> readings = osc.feed("%1", b"\033]3008;state=awaiting_input\033\\")
         >>> len(readings)
         1
         >>> readings[0].state.value
         'awaiting_input'
+
+        BEL-terminated (``\\007``) path:
+
+        >>> osc2 = OscSignal()
+        >>> readings2 = osc2.feed("%2", b"\033]3008;state=idle\007")
+        >>> readings2[0].state.value
+        'idle'
         """
         buffer = self._buffers.get(pane_id, b"") + data
         readings: list[Reading] = []
