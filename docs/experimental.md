@@ -187,23 +187,55 @@ control-mode engine, classifies incoming tmux notifications, and coalesces them
 into a per-pane {class}`~libtmux.experimental.agents.state.Agent` record —
 carrying the agent's name, its current {class}`~libtmux.experimental.agents.state.AgentState`
 (`RUNNING`, `AWAITING_INPUT`, `IDLE`, `EXITED`, or `UNKNOWN`), the timestamp of
-the last transition, and a liveness flag updated by a periodic health probe.
+the last transition, and a liveness flag refreshed from the pane tree on each
+reconcile.  A *local* pane whose process has exited is marked `EXITED`; a
+*remote*, PID-less pane (e.g. over SSH) is never auto-expired by the liveness
+check — those age out on a keepalive TTL instead.
 
 Agents report their state via tmux option subscriptions or OSC escape sequences.
 When both signals arrive for the same pane the monitor applies a
-last-writer-wins merge so the store stays consistent without locks.  A full-pane
-reconciliation sweep runs every few seconds to catch any pane the stream missed,
-compare it against the stored snapshot, and emit the minimal diff — so the
-monitor self-heals across reconnects and supervisor restarts.
+last-writer-wins merge so the store stays consistent without locks.  On every
+engine (re)connect the monitor runs a full-pane reconciliation — it lists all
+panes, compares them against the stored snapshot, emits the minimal diff for
+panes that vanished, and refreshes liveness — then re-subscribes to the
+notification stream.  Because this runs on each reconnect (not on a fixed
+timer), the monitor self-heals across a tmux restart or socket blip: a dropped
+connection never leaves the store serving a stale snapshot.
+
+```python
+import asyncio
+
+from libtmux import Server
+from libtmux.experimental.agents.monitor import AgentMonitor
+from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
+
+
+async def main() -> None:
+    engine = AsyncControlModeEngine.for_server(Server())
+    monitor = AgentMonitor(engine)
+    await monitor.start()
+    try:
+        for agent in monitor.agents:
+            print(agent.pane_id, agent.state, "awaiting" if agent.is_awaiting else "")
+    finally:
+        await monitor.stop()
+
+
+asyncio.run(main())
+```
 
 ### Installing agent hooks
 
-Before a coding agent can report state, its shell hooks must be installed into
-the tmux session.  {class}`~libtmux.experimental.agents.hooks.base.AgentHook`
-subclasses (`ClaudeCodeHook`, `CodexHook`) write the necessary `after-*` hooks
-into the running session via a tmux `set-hook` call.  The MCP tool
-`install_agent_hooks` does this on demand — pass `"claude"` or `"codex"` as the
-agent name and the tool installs the hooks in the monitor's target session.
+Before a coding agent can report state, its lifecycle hooks must be installed.
+The {class}`~libtmux.experimental.agents.hooks.base.AgentHook` subclasses do not
+touch tmux: `ClaudeCodeHook` merges hook entries into `~/.claude/settings.json`
+and `CodexHook` into `~/.codex/config.toml`, leaving the rest of each file
+untouched.  Every installed hook runs the `libtmux-agent-emit` console script on
+the agent's lifecycle events, and that script is what writes the agent's state
+to tmux — a per-pane `@agent_state` option locally, or an OSC 3008 escape
+sequence over SSH — exactly the signals the monitor subscribes to.  The MCP tool
+`install_agent_hooks` runs the matching installer on demand — pass `"claude"` or
+`"codex"` as the agent name.
 
 ### MCP tools
 
