@@ -45,6 +45,19 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### `break-pane` no longer crashes the tmux 3.7 server (#693)
+
+tmux 3.7 shipped a regression where `break-pane` aborts the server with
+a NULL-pointer dereference whenever a pane is broken out of a window
+without an explicit name (fixed upstream after the 3.7 release).
+{meth}`~libtmux.Pane.break_pane` now works around this on tmux 3.7 by
+always supplying a name and applying the requested one afterwards, so
+breaking a pane into a new window — and {meth}`~libtmux.Pane.join`,
+which relies on it — work again. Older and post-3.7 tmux are
+unaffected.
+
 ## libtmux 0.58.1 (2026-06-16)
 
 libtmux 0.58.1 restores compatibility with pytest 9.1. The bundled
