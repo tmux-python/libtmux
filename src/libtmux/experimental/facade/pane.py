@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from libtmux.experimental.ops import (
     CapturePane,
+    NewPane,
     SendKeys,
     SplitWindow,
     arun,
@@ -31,10 +32,50 @@ from libtmux.experimental.ops import (
 from libtmux.experimental.ops._types import PaneId
 
 if t.TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
     from libtmux.experimental.ops._types import Target
     from libtmux.experimental.ops.plan import LazyPlan
     from libtmux.experimental.ops.results import CapturePaneResult, Result
+
+
+def _new_pane_op(
+    target: Target,
+    *,
+    width: int | str | None,
+    height: int | str | None,
+    x: int | str | None,
+    y: int | str | None,
+    zoom: bool,
+    detach: bool,
+    empty: bool,
+    start_directory: str | None,
+    environment: Mapping[str, str] | None,
+    style: str | None,
+    active_border_style: str | None,
+    inactive_border_style: str | None,
+    message: str | None,
+    shell_command: str | None,
+) -> NewPane:
+    """Build a :class:`~..ops.NewPane` for *target* (shared by the facades)."""
+    return NewPane(
+        target=target,
+        width=width,
+        height=height,
+        x=x,
+        y=y,
+        zoom=zoom,
+        detach=detach,
+        empty=empty,
+        start_directory=start_directory,
+        environment=environment,
+        style=style,
+        active_border_style=active_border_style,
+        inactive_border_style=inactive_border_style,
+        message=message,
+        shell_command=shell_command,
+    )
 
 
 @dataclass(frozen=True)
@@ -57,6 +98,9 @@ class EagerPane:
     >>> child = pane.split(horizontal=True)
     >>> child.pane_id
     '%1'
+    >>> floating = pane.new_pane(width=80, height=20)
+    >>> floating.pane_id
+    '%2'
     >>> isinstance(pane.capture().lines, tuple)
     True
     """
@@ -79,6 +123,50 @@ class EagerPane:
                 horizontal=horizontal,
                 start_directory=start_directory,
                 shell=shell,
+            ),
+            self.engine,
+            version=self.version,
+        )
+        result.raise_for_status()
+        assert result.new_pane_id is not None
+        return EagerPane(self.engine, result.new_pane_id, self.version)
+
+    def new_pane(
+        self,
+        *,
+        width: int | str | None = None,
+        height: int | str | None = None,
+        x: int | str | None = None,
+        y: int | str | None = None,
+        zoom: bool = False,
+        detach: bool = True,
+        empty: bool = False,
+        start_directory: str | None = None,
+        environment: Mapping[str, str] | None = None,
+        style: str | None = None,
+        active_border_style: str | None = None,
+        inactive_border_style: str | None = None,
+        message: str | None = None,
+        shell_command: str | None = None,
+    ) -> EagerPane:
+        """Create a floating pane (tmux 3.7+) and return a live handle to it."""
+        result = run(
+            _new_pane_op(
+                PaneId(self.pane_id),
+                width=width,
+                height=height,
+                x=x,
+                y=y,
+                zoom=zoom,
+                detach=detach,
+                empty=empty,
+                start_directory=start_directory,
+                environment=environment,
+                style=style,
+                active_border_style=active_border_style,
+                inactive_border_style=inactive_border_style,
+                message=message,
+                shell_command=shell_command,
             ),
             self.engine,
             version=self.version,
@@ -155,6 +243,46 @@ class LazyPane:
         )
         return LazyPane(self.plan, slot)
 
+    def new_pane(
+        self,
+        *,
+        width: int | str | None = None,
+        height: int | str | None = None,
+        x: int | str | None = None,
+        y: int | str | None = None,
+        zoom: bool = False,
+        detach: bool = True,
+        empty: bool = False,
+        start_directory: str | None = None,
+        environment: Mapping[str, str] | None = None,
+        style: str | None = None,
+        active_border_style: str | None = None,
+        inactive_border_style: str | None = None,
+        message: str | None = None,
+        shell_command: str | None = None,
+    ) -> LazyPane:
+        """Record a floating-pane creation; return a deferred handle to it."""
+        slot = self.plan.add(
+            _new_pane_op(
+                self.ref,
+                width=width,
+                height=height,
+                x=x,
+                y=y,
+                zoom=zoom,
+                detach=detach,
+                empty=empty,
+                start_directory=start_directory,
+                environment=environment,
+                style=style,
+                active_border_style=active_border_style,
+                inactive_border_style=inactive_border_style,
+                message=message,
+                shell_command=shell_command,
+            ),
+        )
+        return LazyPane(self.plan, slot)
+
     def send_keys(self, keys: str, *, enter: bool = False) -> LazyPane:
         """Record a send-keys against this handle; return self for chaining."""
         self.plan.add(SendKeys(target=self.ref, keys=keys, enter=enter))
@@ -204,6 +332,50 @@ class AsyncPane:
                 horizontal=horizontal,
                 start_directory=start_directory,
                 shell=shell,
+            ),
+            self.engine,
+            version=self.version,
+        )
+        result.raise_for_status()
+        assert result.new_pane_id is not None
+        return AsyncPane(self.engine, result.new_pane_id, self.version)
+
+    async def new_pane(
+        self,
+        *,
+        width: int | str | None = None,
+        height: int | str | None = None,
+        x: int | str | None = None,
+        y: int | str | None = None,
+        zoom: bool = False,
+        detach: bool = True,
+        empty: bool = False,
+        start_directory: str | None = None,
+        environment: Mapping[str, str] | None = None,
+        style: str | None = None,
+        active_border_style: str | None = None,
+        inactive_border_style: str | None = None,
+        message: str | None = None,
+        shell_command: str | None = None,
+    ) -> AsyncPane:
+        """Create a floating pane (tmux 3.7+) and return a live async handle."""
+        result = await arun(
+            _new_pane_op(
+                PaneId(self.pane_id),
+                width=width,
+                height=height,
+                x=x,
+                y=y,
+                zoom=zoom,
+                detach=detach,
+                empty=empty,
+                start_directory=start_directory,
+                environment=environment,
+                style=style,
+                active_border_style=active_border_style,
+                inactive_border_style=inactive_border_style,
+                message=message,
+                shell_command=shell_command,
             ),
             self.engine,
             version=self.version,

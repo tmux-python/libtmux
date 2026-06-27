@@ -48,6 +48,47 @@ def test_lazy_chain_resolves_forward_ref_on_execute() -> None:
     assert outcome.results[1].argv == ("send-keys", "-t", "%1", "vim", "Enter")
 
 
+def test_eager_new_pane_returns_live_pane() -> None:
+    """EagerPane.new_pane creates a floating pane and returns a live handle."""
+    pane = EagerPane(ConcreteEngine(), "%0")
+    floating = pane.new_pane(width=80, height=20, x=5, y=3)
+    assert isinstance(floating, EagerPane)
+    assert floating.pane_id == "%1"
+
+
+def test_lazy_new_pane_records_new_pane_op() -> None:
+    """LazyPane.new_pane records a new-pane op (deferred) with its geometry."""
+    plan = LazyPlan()
+    LazyPane(plan, PaneId("%0")).new_pane(width="50%", height="40%")
+    assert plan.operations[0].kind == "new_pane"
+    assert plan.operations[0].render() == (
+        "new-pane",
+        "-t",
+        "%0",
+        "-x50%",
+        "-y40%",
+        "-d",
+        "-P",
+        "-F",
+        "#{pane_id}",
+    )
+
+
+def test_async_new_pane_returns_live_pane() -> None:
+    """AsyncPane.new_pane creates a floating pane and returns a live handle."""
+    import asyncio
+
+    from libtmux.experimental.engines import AsyncConcreteEngine
+    from libtmux.experimental.facade import AsyncPane
+
+    async def main() -> str:
+        pane = AsyncPane(AsyncConcreteEngine(), "%0")
+        floating = await pane.new_pane(width=80, height=20)
+        return floating.pane_id
+
+    assert asyncio.run(main()) == "%1"
+
+
 def test_same_operation_backs_both_facades() -> None:
     """Eager and lazy facades render the identical underlying operation argv."""
     eager_engine = ConcreteEngine()
