@@ -49,6 +49,27 @@ def test_plan_resolves_forward_ref() -> None:
     assert outcome.ok
 
 
+def test_plan_execute_auto_resolves_engine_version() -> None:
+    """plan.execute() resolves the engine version so folded renders are gated."""
+    from libtmux.experimental.ops import FoldingPlanner, RespawnPane
+
+    class VersionedConcreteEngine(ConcreteEngine):
+        def tmux_version(self) -> str | None:
+            return "2.9"
+
+    plan = LazyPlan()
+    plan.add(RespawnPane(target=PaneId("%1"), environment={"E": "1"}))
+    plan.add(RespawnPane(target=PaneId("%2"), environment={"E": "2"}))
+
+    outcome = plan.execute(VersionedConcreteEngine(), planner=FoldingPlanner())
+
+    # -e is gated at tmux 3.0; on the engine's resolved 2.9 it is dropped even
+    # from the folded (rendered-in-_drive) dispatch.
+    assert outcome.ok
+    for result in outcome.results:
+        assert not any(arg.startswith("-e") for arg in result.argv)
+
+
 class SrcResolveCase(t.NamedTuple):
     """A dual-target op whose ``src_target`` is a forward :class:`SlotRef`."""
 
