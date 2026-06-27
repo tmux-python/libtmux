@@ -55,6 +55,37 @@ class DuplicateOperation(OperationError):
         super().__init__(msg)
 
 
+class ForwardCaptureError(OperationError):
+    """A plan step references a slot that captured no id.
+
+    Raised when an operation targets the result of an earlier step (via a
+    :class:`~._types.SlotRef`) but that step captured no id -- either it has not
+    run yet (a forward or self reference), or it is not a capturing creator (a
+    mutating op, or a creator built with ``capture=False``). Failing here points
+    at the unbound reference rather than letting a later tmux command fail with an
+    opaque target error.
+
+    Examples
+    --------
+    >>> raise ForwardCaptureError(2, "self")
+    Traceback (most recent call last):
+    ...
+    libtmux.experimental.ops.exc.ForwardCaptureError: plan step references slot 2
+    (its own id) but that step captured no id; only an earlier capturing creator
+    can be targeted
+    """
+
+    def __init__(self, slot: int, part: str) -> None:
+        self.slot = slot
+        self.part = part
+        target = "its own id" if part == "self" else f"its {part!r} child"
+        msg = (
+            f"plan step references slot {slot} ({target}) but that step captured "
+            f"no id; only an earlier capturing creator can be targeted"
+        )
+        super().__init__(msg)
+
+
 class VersionUnsupported(OperationError):
     """An operation cannot render against the given tmux version.
 

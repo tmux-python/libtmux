@@ -345,6 +345,28 @@ class ShowOptionsResult(Result):
 
     options: Mapping[str, str] = field(default_factory=dict)
 
+    def get_int(self, name: str, default: int) -> int:
+        """Return option *name* parsed as an int, or *default* when absent.
+
+        A small typed accessor for the integer options a builder reads back
+        (``base-index`` / ``pane-base-index`` / ``main-pane-width``), so callers
+        do not hand-parse :attr:`options` strings.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.ops import ShowOptions
+        >>> result = ShowOptions().build_result(
+        ...     returncode=0,
+        ...     stdout=("base-index 1", "history-limit 5000"),
+        ... )
+        >>> result.get_int("base-index", 0)
+        1
+        >>> result.get_int("status-interval", 15)
+        15
+        """
+        value = self.options.get(name)
+        return int(value) if value is not None else default
+
 
 @dataclass(frozen=True)
 class ShowBufferResult(Result):
