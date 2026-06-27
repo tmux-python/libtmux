@@ -409,7 +409,16 @@ class AsyncControlModeEngine:
         is unregistered on exit. When the engine dies, ``_STREAM_END`` is
         broadcast to every subscriber queue so the ``async for`` ends cleanly
         instead of hanging on ``queue.get()``.
+
+        A subscribe() *after* :meth:`aclose` (which set :attr:`_closing`,
+        broadcast the stream-end sentinel, and cleared :attr:`_subscribers`)
+        would register a fresh queue no broadcast will ever touch, hanging the
+        consumer forever. So a permanently-closing engine yields nothing and
+        ends at once. A merely :attr:`_dead` (reconnecting) engine keeps the
+        subscriber, so the post-reconnect reader feeds it.
         """
+        if self._closing:
+            return
         queue: asyncio.Queue[t.Any] = asyncio.Queue(
             maxsize=self._event_queue_size,
         )
