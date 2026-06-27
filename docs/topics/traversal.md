@@ -205,13 +205,13 @@ For complex patterns, use `__regex` or `__iregex`:
 
 ```python
 >>> # Create versioned windows
->>> w1 = session.new_window(window_name="release-v1.0")
->>> w2 = session.new_window(window_name="release-v2.0")
+>>> w1 = session.new_window(window_name="release-v1-0")
+>>> w2 = session.new_window(window_name="release-v2-0")
 >>> w3 = session.new_window(window_name="dev")
 
->>> # Match semantic version pattern
->>> session.windows.filter(window_name__regex=r'v\d+\.\d+')  # doctest: +ELLIPSIS
-[Window(@... ...:release-v1.0, Session($... ...)), Window(@... ...:release-v2.0, Session($... ...))]
+>>> # Match version pattern
+>>> session.windows.filter(window_name__regex=r'v\d+-\d+')  # doctest: +ELLIPSIS
+[Window(@... ...:release-v1-0, Session($... ...)), Window(@... ...:release-v2-0, Session($... ...))]
 
 >>> # Clean up
 >>> w1.kill()
