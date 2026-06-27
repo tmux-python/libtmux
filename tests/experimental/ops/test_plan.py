@@ -15,7 +15,9 @@ from libtmux.experimental.ops import (
     MarkedPlanner,
     MovePane,
     SendKeys,
+    SequentialPlanner,
     SplitWindow,
+    StepReport,
     SwapPane,
 )
 from libtmux.experimental.ops._types import PaneId, SlotRef, WindowId
@@ -120,6 +122,51 @@ def test_plan_aexecute_matches_execute() -> None:
 
     assert outcome.bindings == {0: "%1"}
     assert outcome.results[1].argv == ("send-keys", "-t", "%1", "vim", "Enter")
+
+
+def test_execute_on_step_reports_each_step() -> None:
+    """on_step fires once per dispatched step, carrying its per-op results + ids."""
+    plan = LazyPlan()
+    pane = plan.add(SplitWindow(target=WindowId("@1")))
+    plan.add(SendKeys(target=pane, keys="vim", enter=True))
+
+    reports: list[StepReport] = []
+    outcome = plan.execute(
+        ConcreteEngine(),
+        planner=SequentialPlanner(),
+        on_step=reports.append,
+    )
+
+    # one report per op (sequential), in dispatch order
+    assert [report.step.indices for report in reports] == [(0,), (1,)]
+    # the creator's report already sees its freshly-bound pane id
+    assert reports[0].bindings == {0: "%1"}
+    assert reports[0].results[0].created_id == "%1"
+    # the decorate report carries the resolved send-keys argv
+    assert reports[1].results[0].argv == ("send-keys", "-t", "%1", "vim", "Enter")
+    # the reported results are the same objects the PlanResult collects
+    assert tuple(report.results[0] for report in reports) == outcome.results
+
+
+def test_aexecute_on_step_matches_execute() -> None:
+    """The async hook fires identically to the sync one (one report per step)."""
+    plan = LazyPlan()
+    pane = plan.add(SplitWindow(target=WindowId("@1")))
+    plan.add(SendKeys(target=pane, keys="vim", enter=True))
+
+    sync_steps: list[tuple[int, ...]] = []
+    plan.execute(
+        ConcreteEngine(),
+        on_step=lambda report: sync_steps.append(report.step.indices),
+    )
+
+    async_steps: list[tuple[int, ...]] = []
+
+    async def collect(report: StepReport) -> None:
+        async_steps.append(report.step.indices)
+
+    asyncio.run(plan.aexecute(AsyncConcreteEngine(), on_step=collect))
+    assert async_steps == sync_steps == [(0,), (1,)]
 
 
 def test_plan_serialization_round_trip() -> None:
