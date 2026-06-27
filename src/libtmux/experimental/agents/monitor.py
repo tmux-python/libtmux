@@ -39,7 +39,6 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.agents.merge import Clock
     from libtmux.experimental.agents.signals import Reading
     from libtmux.experimental.agents.state import Agent
-    from libtmux.experimental.agents.store import AgentStore
     from libtmux.experimental.models.snapshots import PaneSnapshot, ServerSnapshot
 
 logger = logging.getLogger(__name__)
