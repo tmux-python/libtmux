@@ -1,0 +1,98 @@
+"""Tests for the workspace CLI (``python -m ...workspace.cli load``)."""
+
+from __future__ import annotations
+
+import typing as t
+
+import pytest
+
+from libtmux.experimental.workspace import cli
+
+if t.TYPE_CHECKING:
+    from pathlib import Path
+
+
+def test_find_workspace_file_direct_path(tmp_path: Path) -> None:
+    """A direct file path is returned as-is."""
+    target = tmp_path / "ws.yaml"
+    target.write_text("session_name: x\n")
+    assert cli._find_workspace_file(str(target)) == target
+
+
+def test_find_workspace_file_in_directory(tmp_path: Path) -> None:
+    """A directory is searched for .tmuxp.{yaml,yml,json}."""
+    target = tmp_path / ".tmuxp.yaml"
+    target.write_text("session_name: x\n")
+    assert cli._find_workspace_file(str(tmp_path)) == target
+
+
+def test_find_workspace_file_missing_raises(tmp_path: Path) -> None:
+    """A missing file fails closed."""
+    with pytest.raises(FileNotFoundError):
+        cli._find_workspace_file(str(tmp_path / "nope.yaml"))
+
+
+def test_expand_workspace_resolves_relative_paths(tmp_path: Path) -> None:
+    """start_directory is expanded relative to the workspace file's directory."""
+    raw = {
+        "session_name": "x",
+        "start_directory": "./root",
+        "windows": [
+            {
+                "window_name": "w",
+                "start_directory": "./win",
+                "panes": [{"shell_command": ["echo hi"], "start_directory": "./pane"}],
+            },
+        ],
+    }
+    expanded = cli._expand_workspace(raw, cwd=tmp_path)
+    assert expanded["start_directory"] == str(tmp_path / "root")
+    assert expanded["windows"][0]["start_directory"] == str(tmp_path / "win")
+    pane = expanded["windows"][0]["panes"][0]
+    assert pane["start_directory"] == str(tmp_path / "pane")
+
+
+def test_parser_load_arguments() -> None:
+    """The load subparser captures the workspace file and the flags."""
+    args = cli._build_parser().parse_args(
+        ["load", "ws.yaml", "-d", "-L", "sock", "-s", "newname"],
+    )
+    assert args.command == "load"
+    assert args.workspace_file == "ws.yaml"
+    assert args.detached is True
+    assert args.socket_name == "sock"
+    assert args.new_session_name == "newname"
+
+
+def test_load_builds_and_reattaches(tmp_path: Path) -> None:
+    """load() builds a real detached session; a second load attaches it (no rebuild)."""
+    import libtmux
+
+    socket = "libtmux_wscli_test"
+    (tmp_path / ".tmuxp.yaml").write_text(
+        "session_name: clitest\n"
+        f"start_directory: {tmp_path}\n"
+        "windows:\n"
+        "  - window_name: editor\n"
+        "    panes:\n"
+        "      - echo one\n"
+        "      - echo two\n"
+        "  - window_name: logs\n"
+        "    panes:\n"
+        "      - echo log\n",
+    )
+    server = libtmux.Server(socket_name=socket)
+    try:
+        result = cli.load(str(tmp_path), socket_name=socket, detached=True)
+        assert result is not None
+        assert result.ok
+        assert server.has_session("clitest")
+        session = server.sessions.get(session_name="clitest")
+        assert session is not None
+        assert [window.window_name for window in session.windows] == ["editor", "logs"]
+
+        # A second load finds the running session and attaches it (no rebuild).
+        again = cli.load(str(tmp_path), socket_name=socket, detached=True)
+        assert again is None
+    finally:
+        server.kill()
