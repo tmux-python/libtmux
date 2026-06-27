@@ -99,6 +99,80 @@ def test_run_version_threads_through() -> None:
     assert "-T" not in result.argv
 
 
+class VersionedFakeEngine(FakeEngine):
+    """A sync fake engine that reports a fixed tmux version."""
+
+    def __init__(
+        self,
+        *,
+        tmux_version: str | None,
+        stdout: tuple[str, ...] = (),
+        returncode: int = 0,
+    ) -> None:
+        super().__init__(stdout=stdout, returncode=returncode)
+        self._tmux_version = tmux_version
+
+    def tmux_version(self) -> str | None:
+        """Report the canned tmux version."""
+        return self._tmux_version
+
+
+def test_resolve_engine_version_prefers_explicit() -> None:
+    """An explicit version always wins over the engine's reported version."""
+    from libtmux.experimental.ops.execute import resolve_engine_version
+
+    engine = VersionedFakeEngine(tmux_version="2.9")
+    assert resolve_engine_version(engine, "3.4") == "3.4"
+
+
+def test_resolve_engine_version_falls_back_to_engine() -> None:
+    """With no explicit version, the engine's reported version is used."""
+    from libtmux.experimental.ops.execute import resolve_engine_version
+
+    engine = VersionedFakeEngine(tmux_version="2.9")
+    assert resolve_engine_version(engine, None) == "2.9"
+
+
+def test_resolve_engine_version_none_without_capability() -> None:
+    """A plain engine (no version capability) resolves to None (assume latest)."""
+    from libtmux.experimental.ops.execute import resolve_engine_version
+
+    assert resolve_engine_version(FakeEngine(), None) is None
+
+
+def test_run_auto_resolves_engine_version() -> None:
+    """run() asks the engine for its version when none is passed; gating fires."""
+    from libtmux.experimental.ops import CapturePane
+
+    engine = VersionedFakeEngine(tmux_version="3.3")
+    result = run(CapturePane(target=PaneId("%1"), trim_trailing=True), engine)
+    assert "-T" not in result.argv  # -T is gated >= 3.4, dropped on resolved 3.3
+
+
+def test_run_without_version_capability_renders_every_flag() -> None:
+    """A plain engine has no version, so version-gated flags are kept."""
+    from libtmux.experimental.ops import CapturePane
+
+    engine = FakeEngine()
+    result = run(CapturePane(target=PaneId("%1"), trim_trailing=True), engine)
+    assert "-T" in result.argv
+
+
+def test_arun_auto_resolves_engine_version() -> None:
+    """arun() resolves the engine version on the async path too."""
+    from libtmux.experimental.ops import CapturePane
+
+    class AsyncVersionedFakeEngine(AsyncFakeEngine):
+        def tmux_version(self) -> str | None:
+            return "3.3"
+
+    engine = AsyncVersionedFakeEngine()
+    result = asyncio.run(
+        arun(CapturePane(target=PaneId("%1"), trim_trailing=True), engine),
+    )
+    assert "-T" not in result.argv
+
+
 def test_arun_shares_render_and_build() -> None:
     """``arun`` produces the same typed result as ``run`` via the async path."""
     engine = AsyncFakeEngine(stdout=("%5",))
