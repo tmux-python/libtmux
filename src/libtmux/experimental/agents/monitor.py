@@ -273,13 +273,25 @@ class AgentMonitor:
         if session_id is not None:
             self._engine.set_attach_targets([session_id])
             try:
-                await self._engine.run(
+                result = await self._engine.run(
                     CommandRequest.from_args("attach-session", "-t", session_id)
                 )
-                # Mirror the events layer: record the sticky attach so a later
-                # _ensure_attached (MCP) does not redundantly re-attach.
-                self._engine._attached_session = session_id
-                logger.debug("monitor attached session %s", session_id)
+                # A tmux-side failure (e.g. a stale session id) is *data* -- a
+                # non-zero returncode, not an exception -- so only record the
+                # sticky attach when the command actually succeeded. Recording a
+                # failed attach would point _attached_session at an unattached
+                # session and silence the option channel.
+                if result.returncode == 0:
+                    # Mirror the events layer: record the sticky attach so a later
+                    # _ensure_attached (MCP) does not redundantly re-attach.
+                    self._engine._attached_session = session_id
+                    logger.debug("monitor attached session %s", session_id)
+                else:
+                    logger.debug(
+                        "monitor attach-session failed for %s: %s",
+                        session_id,
+                        result.stderr,
+                    )
             except Exception:
                 logger.debug("monitor attach-session failed", exc_info=True)
 
