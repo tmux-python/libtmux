@@ -142,3 +142,25 @@ def build_workspace(
         results=[result_to_dict(item) for item in result.results],
         bindings=bindings_to_dict(result.bindings),
     )
+
+
+async def abuild_workspace(
+    spec: t.Mapping[str, t.Any] | str,
+    engine: AsyncTmuxEngine,
+    *,
+    version: str | None = None,
+    preflight: bool = True,
+) -> PlanOutcome:
+    """Async sibling of :func:`build_workspace` (builds over an async engine).
+
+    Lets the async-first server expose the Declarative tier too, so an agent on a
+    control-mode engine can build a whole workspace in one call.
+    """
+    from libtmux.experimental.workspace import analyze
+
+    result = await analyze(spec).abuild(engine, version=version, preflight=preflight)
+    return PlanOutcome(
+        ok=result.ok,
+        results=[result_to_dict(item) for item in result.results],
+        bindings=bindings_to_dict(result.bindings),
+    )
