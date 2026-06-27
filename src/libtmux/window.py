@@ -344,6 +344,7 @@ class Window(
         size: str | int | None = None,
         percentage: int | None = None,
         environment: dict[str, str] | None = None,
+        empty: bool | None = None,
     ) -> Pane:
         """Split window on active pane and return the created :class:`Pane`.
 
@@ -376,6 +377,9 @@ class Window(
             .. versionadded:: 0.56
         environment : dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
+        empty : bool, optional
+            Create an empty pane with no command (``-E`` flag) instead of
+            spawning the default shell. Requires tmux 3.7+.
 
         Returns
         -------
@@ -394,6 +398,7 @@ class Window(
             size=size,
             percentage=percentage,
             environment=environment,
+            empty=empty,
         )
 
     def resize(

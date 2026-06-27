@@ -340,6 +340,9 @@ class Pane(
         quiet: bool = ...,
         mode_screen: bool = ...,
         pending: bool = ...,
+        hyperlinks: bool = ...,
+        line_numbers: bool = ...,
+        line_flags: bool = ...,
         to_buffer: str,
     ) -> None: ...
 
@@ -358,6 +361,9 @@ class Pane(
         quiet: bool = ...,
         mode_screen: bool = ...,
         pending: bool = ...,
+        hyperlinks: bool = ...,
+        line_numbers: bool = ...,
+        line_flags: bool = ...,
         to_buffer: None = ...,
     ) -> list[str]: ...
 
@@ -375,6 +381,9 @@ class Pane(
         quiet: bool = False,
         mode_screen: bool = False,
         pending: bool = False,
+        hyperlinks: bool = False,
+        line_numbers: bool = False,
+        line_flags: bool = False,
         to_buffer: str | None = None,
     ) -> list[str] | None:
         r"""Capture text from pane.
@@ -449,6 +458,21 @@ class Pane(
             Default: False
 
             .. versionadded:: 0.57
+        hyperlinks : bool, optional
+            Include hyperlink escape sequences in the capture (``-H`` flag).
+            Requires tmux 3.7+. If used with tmux < 3.7, a warning is issued
+            and the flag is ignored.
+            Default: False
+        line_numbers : bool, optional
+            Prefix each captured line with its line number (``-L`` flag).
+            Requires tmux 3.7+. If used with tmux < 3.7, a warning is issued
+            and the flag is ignored.
+            Default: False
+        line_flags : bool, optional
+            Prefix each captured line with its flags, e.g. ``H`` for a line
+            with a hyperlink (``-F`` flag). Requires tmux 3.7+. If used with
+            tmux < 3.7, a warning is issued and the flag is ignored.
+            Default: False
         to_buffer : str, optional
             Write the capture into the named tmux buffer (``-b`` flag)
             instead of returning it. When set, ``-p`` is omitted and
@@ -516,6 +540,30 @@ class Pane(
                 )
         if pending:
             cmd.append("-P")
+        if hyperlinks:
+            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+                cmd.append("-H")
+            else:
+                warnings.warn(
+                    "hyperlinks requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
+        if line_numbers:
+            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+                cmd.append("-L")
+            else:
+                warnings.warn(
+                    "line_numbers requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
+        if line_flags:
+            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+                cmd.append("-F")
+            else:
+                warnings.warn(
+                    "line_flags requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
         proc = self.cmd(*cmd)
         if to_buffer is not None:
             return None
@@ -1046,6 +1094,7 @@ class Pane(
         size: str | int | None = None,
         percentage: int | None = None,
         environment: dict[str, str] | None = None,
+        empty: bool | None = None,
     ) -> Pane:
         """Split window and return :class:`Pane`, by default beneath current pane.
 
@@ -1080,6 +1129,10 @@ class Pane(
             .. versionadded:: 0.56
         environment: dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
+        empty : bool, optional
+            Create an empty pane with no command (``-E`` flag) instead of
+            spawning the default shell. Requires tmux 3.7+. If used with
+            tmux < 3.7, a warning is issued and the flag is ignored.
 
         Examples
         --------
@@ -1171,6 +1224,15 @@ class Pane(
         if environment:
             for k, v in environment.items():
                 tmux_args += (f"-e{k}={v}",)
+
+        if empty:
+            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-E",)
+            else:
+                warnings.warn(
+                    "empty requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
 
         if shell:
             tmux_args += (shell,)
@@ -1489,6 +1551,7 @@ class Pane(
         linefeed_separator: bool | None = None,
         bracket: bool | None = None,
         separator: str | None = None,
+        no_vis: bool | None = None,
     ) -> None:
         """Paste a buffer into the pane via ``$ tmux paste-buffer``.
 
@@ -1505,6 +1568,12 @@ class Pane(
             Use bracketed paste mode (``-p`` flag).
         separator : str, optional
             Separator between lines (``-s`` flag).
+        no_vis : bool, optional
+            Paste the buffer's raw bytes without passing them through
+            ``vis(3)`` escaping (``-S`` flag). tmux 3.7 escapes pasted
+            content by default; set this to restore the raw behaviour.
+            Requires tmux 3.7+. If used with tmux < 3.7, a warning is issued
+            and the flag is ignored.
 
         Examples
         --------
@@ -1527,6 +1596,15 @@ class Pane(
 
         if separator is not None:
             tmux_args += ("-s", separator)
+
+        if no_vis:
+            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+                tmux_args += ("-S",)
+            else:
+                warnings.warn(
+                    "no_vis requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
 
         proc = self.cmd("paste-buffer", *tmux_args)
 
