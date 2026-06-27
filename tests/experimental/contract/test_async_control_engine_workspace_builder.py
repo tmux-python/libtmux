@@ -585,6 +585,34 @@ def test_compile_emits_options_after_following_layout() -> None:
     assert after_at > layout_at  # options_after runs once the layout exists
 
 
+def test_workspace_to_dict_round_trips_through_analyze() -> None:
+    """Workspace.to_dict() is the inverse of analyze: an identical compiled plan."""
+    ws = Workspace(
+        name="rt",
+        dimensions=(120, 40),
+        environment={"E": "1"},
+        options={"history-limit": "5000"},
+        global_options={"status-position": "top"},
+        on_exists="replace",
+        windows=[
+            Window(
+                "editor",
+                layout="main-vertical",
+                options={"automatic-rename": "off"},
+                options_after={"main-pane-width": "120"},
+                environment={"WE": "w"},
+                panes=[
+                    Pane(run="vim", environment={"PE": "p"}, suppress_history=False),
+                    Pane(run=[Command("htop", enter=False)], shell="bash"),
+                ],
+            ),
+            Window("logs", window_shell="journalctl -f", panes=[Pane(run="tail")]),
+        ],
+    )
+    revived = analyze(ws.to_dict())
+    assert revived.compile().to_list() == ws.compile().to_list()
+
+
 def test_compile_schedules_host_steps_off_the_op_spine() -> None:
     """before_script and pane sleeps become host steps, not recorded operations."""
     ws = Workspace(

@@ -102,6 +102,7 @@ def _pane(raw: t.Any) -> Pane:
             run=_shell_commands(raw.get("shell_command")),
             focus=bool(raw.get("focus", False)),
             start_directory=raw.get("start_directory"),
+            suppress_history=bool(raw.get("suppress_history", True)),
             sleep_before=raw.get("sleep_before"),
             sleep_after=raw.get("sleep_after"),
             environment=dict(raw.get("environment", {}) or {}),
