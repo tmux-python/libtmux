@@ -1573,3 +1573,60 @@ def test_pane_refresh_raises_when_pane_id_is_none(session: Session) -> None:
 
     with pytest.raises(ValueError, match="pane_id"):
         pane.refresh()
+
+
+def test_capture_pane_3_7_flags(session: Session) -> None:
+    """Pane.capture_pane() -H/-L/-F on tmux 3.7+; warn-and-ignore below."""
+    window = session.new_window(window_name="capture_37")
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        assert isinstance(pane.capture_pane(hyperlinks=True), list)
+        assert isinstance(pane.capture_pane(line_numbers=True), list)
+        assert isinstance(pane.capture_pane(line_flags=True), list)
+    else:
+        with pytest.warns(UserWarning, match="hyperlinks requires tmux 3.7"):
+            pane.capture_pane(hyperlinks=True)
+
+
+def test_split_empty(session: Session) -> None:
+    """Pane.split(empty=True) creates an empty pane on tmux 3.7+."""
+    window = session.new_window(window_name="split_empty")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        new_pane = pane.split(empty=True)
+        assert new_pane in window.panes
+        assert len(window.panes) == 2
+    else:
+        with pytest.warns(UserWarning, match="empty requires tmux 3.7"):
+            pane.split(empty=True)
+
+
+def test_paste_buffer_no_vis(session: Session) -> None:
+    """Pane.paste_buffer(no_vis=True) uses -S on tmux 3.7+; warn below."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="paste_novis",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    session.server.set_buffer("raw_content", buffer_name="novis_test")
+    if has_gte_version("3.7"):
+        pane.paste_buffer(buffer_name="novis_test", no_vis=True)
+        retry_until(
+            lambda: "raw_content" in "\n".join(pane.capture_pane()),
+            3,
+            raises=True,
+        )
+    else:
+        with pytest.warns(UserWarning, match="no_vis requires tmux 3.7"):
+            pane.paste_buffer(buffer_name="novis_test", no_vis=True)
