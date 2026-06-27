@@ -466,6 +466,34 @@ def test_analyze_rejects_unsupported_pane() -> None:
         analyze({"session_name": "s", "windows": [{"panes": [123]}]})
 
 
+def test_analyze_blank_pane_shorthands() -> None:
+    """Blank / pane / empty shorthands make an empty pane (no command), tmuxp parity."""
+    ws = analyze(
+        {
+            "session_name": "s",
+            "windows": [
+                {
+                    "panes": [
+                        "blank",
+                        "pane",
+                        None,
+                        "",
+                        {"shell_command": ["blank"]},
+                        "echo real",
+                    ],
+                },
+            ],
+        },
+    )
+    commands = [pane.commands for pane in ws.windows[0].panes]
+    assert commands[0] == ()  # "blank" marker
+    assert commands[1] == ()  # "pane" marker
+    assert commands[2] == ()  # None
+    assert commands[3] == ()  # empty string
+    assert commands[4] == ()  # single-element [blank] shell_command
+    assert [c.cmd for c in commands[5]] == ["echo real"]  # a real command is kept
+
+
 # --- Compiler: op emission + host-step schedule (offline, no tmux) ---
 
 
