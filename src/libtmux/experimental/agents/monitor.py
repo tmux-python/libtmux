@@ -431,7 +431,9 @@ class AgentMonitor:
         - A **local** pane (``pid`` is not ``None``) whose process is dead is
           marked :attr:`~..state.AgentState.EXITED` (``alive=False``).
         - A **remote / PID-less** pane (``pid`` is ``None``) is *never*
-          auto-EXITED — those expire on a keepalive TTL, not a PID probe (D5).
+          auto-EXITED by this probe — it is left at its last-known state and
+          only becomes EXITED via the :class:`Vanished` diff when its tmux pane
+          actually disappears (no keepalive/TTL in v1) (D5).
         - Otherwise the agent's ``pid`` is refreshed and ``alive`` set ``True``.
 
         Panes absent from *current_panes* are left untouched here; their removal
