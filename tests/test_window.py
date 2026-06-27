@@ -264,7 +264,7 @@ class WindowNameValidationFixture(t.NamedTuple):
     window_name: str
 
 
-# tmux 3.7 rejects ':' and '.' in window names server-side; tmux 3.2a-3.6
+# tmux 3.7+ rejects ':' and '.' in window names server-side; tmux 3.2a-3.6
 # accept them. See https://github.com/tmux/tmux/issues/4999.
 WINDOW_NAME_INVALID_ON_3_7_FIXTURES: list[WindowNameValidationFixture] = [
     WindowNameValidationFixture(test_id="colon", window_name="project:frontend"),
