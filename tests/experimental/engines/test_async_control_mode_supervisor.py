@@ -12,6 +12,7 @@ if t.TYPE_CHECKING:
     import pytest
 
     from libtmux.server import Server
+    from libtmux.session import Session
 
 
 def test_desired_subscriptions_recorded_idempotently() -> None:
@@ -43,6 +44,40 @@ def test_reconnects_after_proc_exits(server: Server) -> None:
 
     bumped = asyncio.run(main())
     assert bumped >= 1
+
+
+def test_attach_replayed_on_reconnect(session: Session) -> None:
+    """The supervisor re-attaches every desired session after the proc dies.
+
+    A fresh ``tmux -C`` proc is attached to nothing, so per-pane
+    ``%subscription-changed`` only flows once the supervisor replays the attach.
+    This pins that the replay happens on a *reconnect*, not just the first
+    connect: the attach flag is cleared, the proc killed, and the flag must come
+    back on its own.
+    """
+
+    async def main() -> str | None:
+        from libtmux.experimental.engines.base import CommandRequest
+
+        sid = session.session_id
+        engine = AsyncControlModeEngine.for_server(session.server)
+        engine.set_attach_targets([sid])
+        await engine.start()
+        # The first connect already replayed the attach.
+        assert engine._attached_session == sid
+        # Clear the flag and kill the proc; the supervisor must RE-attach.
+        engine._attached_session = None
+        assert engine._proc is not None
+        engine._proc.terminate()
+        await asyncio.sleep(1.6)  # backoff + reconnect + replay
+        # A fresh command confirms the reconnected proc is live; by the time it
+        # returns the reconnect has run past _replay_attach.
+        await engine.run(CommandRequest.from_args("list-sessions"))
+        reattached = engine._attached_session
+        await engine.aclose()
+        return reattached
+
+    assert asyncio.run(main()) == session.session_id
 
 
 def test_spawn_keeps_dead_until_startup_ack_consumed(
