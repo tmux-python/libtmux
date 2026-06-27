@@ -651,6 +651,56 @@ def test_build_emits_event_stream_sync_and_async() -> None:
         assert kinds.count("PaneCreated") == 3  # a: first + split; b: first
 
 
+def test_compile_emits_wait_pane_when_enabled() -> None:
+    """wait_pane=True schedules a wait host step per command pane (skipping shells)."""
+    ws = Workspace(
+        name="ws-wait",
+        wait_pane=True,
+        windows=[
+            Window(
+                "w",
+                panes=[
+                    Pane(run="echo a"),  # plain shell -> gets a readiness wait
+                    Pane(run="echo b", shell="bash"),  # custom shell -> no wait
+                ],
+            ),
+        ],
+    )
+    compiled = compile_full(ws)
+    waits = [
+        step
+        for steps in (*compiled.host_after.values(), compiled.pre)
+        for step in steps
+        if step.kind == "wait_pane"
+    ]
+    assert len(waits) == 1  # the custom-shell pane is skipped
+    assert waits[0].pane is not None  # carries the pane SlotRef to poll
+
+    # off by default: no wait steps emitted
+    off = Workspace(name="off", windows=[Window("w", panes=[Pane(run="echo a")])])
+    assert not any(
+        step.kind == "wait_pane"
+        for steps in compile_full(off).host_after.values()
+        for step in steps
+    )
+
+
+def test_workspace_wait_pane_builds_live(session: Session, tmp_path: Path) -> None:
+    """A wait_pane build polls readiness and still completes over real tmux."""
+    spec = analyze(
+        {
+            "session_name": "ws-wait-live",
+            "start_directory": str(tmp_path),
+            "on_exists": "replace",
+            "wait_pane": True,
+            "windows": [{"window_name": "w", "panes": ["echo ready", "echo two"]}],
+        },
+    )
+    result = spec.build(SubprocessEngine.for_server(session.server))
+    assert result.ok
+    assert confirm(spec, session.server).ok
+
+
 def test_compile_schedules_host_steps_off_the_op_spine() -> None:
     """before_script and pane sleeps become host steps, not recorded operations."""
     ws = Workspace(
