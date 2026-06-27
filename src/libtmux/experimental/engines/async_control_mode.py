@@ -52,6 +52,8 @@ _DEFAULT_TIMEOUT = 30.0
 _STARTUP_TIMEOUT = 5.0
 _STOP_TIMEOUT = 2.0
 
+_STREAM_END = object()  # broadcast to subscriber queues to end their async for
+
 
 @dataclass(frozen=True)
 class ControlNotification:
@@ -107,6 +109,23 @@ def _offer(
     return 0
 
 
+def _force_put(queue: asyncio.Queue[t.Any], item: t.Any) -> None:
+    """Put *item* on *queue*, evicting the oldest entry first when it is full.
+
+    Like :func:`_offer` but drop-count-free: used to land the stream-end
+    sentinel even on a queue already at ``maxsize``, so a slow consumer that hit
+    backpressure still gets closed instead of hanging on ``queue.get()``. Pulled
+    out of the broadcast loop so the ``try``/``except`` stays out of it.
+    """
+    try:
+        queue.put_nowait(item)
+    except asyncio.QueueFull:
+        with contextlib.suppress(asyncio.QueueEmpty):
+            queue.get_nowait()  # evict oldest; tolerable at death
+        with contextlib.suppress(asyncio.QueueFull):
+            queue.put_nowait(item)
+
+
 class AsyncControlModeEngine:
     """Execute tmux commands over one persistent async ``tmux -C`` connection.
 
@@ -141,7 +160,7 @@ class AsyncControlModeEngine:
         self._parser = ControlModeParser()
         self._pending: collections.deque[_PendingCommand] = collections.deque()
         self._event_queue_size = event_queue_size
-        self._subscribers: set[asyncio.Queue[ControlNotification]] = set()
+        self._subscribers: set[asyncio.Queue[t.Any]] = set()
         self._dropped_notifications = 0
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task[None] | None = None
@@ -272,15 +291,20 @@ class AsyncControlModeEngine:
         push tool, the pull ring, the output monitor) each see *every*
         notification rather than competing for one shared stream. The iterator
         runs until the engine is closed or the caller stops iterating; its queue
-        is unregistered on exit.
+        is unregistered on exit. When the engine dies, ``_STREAM_END`` is
+        broadcast to every subscriber queue so the ``async for`` ends cleanly
+        instead of hanging on ``queue.get()``.
         """
-        queue: asyncio.Queue[ControlNotification] = asyncio.Queue(
+        queue: asyncio.Queue[t.Any] = asyncio.Queue(
             maxsize=self._event_queue_size,
         )
         self._subscribers.add(queue)
         try:
             while True:
-                yield await queue.get()
+                item = await queue.get()
+                if item is _STREAM_END:
+                    return
+                yield item
         finally:
             self._subscribers.discard(queue)
 
@@ -300,6 +324,7 @@ class AsyncControlModeEngine:
             reader.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await reader
+        self._broadcast_stream_end()
         self._fail_pending(ControlModeError("control-mode engine closed"))
         proc = self._proc
         self._proc = None
@@ -378,11 +403,24 @@ class AsyncControlModeEngine:
         for queue in self._subscribers:
             self._dropped_notifications += _offer(queue, notification)
 
+    def _broadcast_stream_end(self) -> None:
+        """Push the stream-end sentinel to every subscriber, then clear them.
+
+        Uses :func:`_force_put` so the sentinel lands even on a queue already at
+        ``maxsize`` (a slow consumer that hit backpressure); otherwise the
+        sentinel would be lost and the consumer would hang forever on
+        ``queue.get()`` -- the exact bug this guards against.
+        """
+        for queue in list(self._subscribers):
+            _force_put(queue, _STREAM_END)
+        self._subscribers.clear()
+
     def _mark_dead(self, error: BaseException) -> None:
         """Record the engine as dead and fail all pending commands."""
         if self._dead is None:
             self._dead = error
         self._fail_pending(error)
+        self._broadcast_stream_end()
 
     def _fail_pending(self, error: BaseException) -> None:
         """Fail every queued command future with *error*."""
