@@ -460,9 +460,8 @@ class Pane(
             .. versionadded:: 0.57
         hyperlinks : bool, optional
             Capture only hyperlink targets in the selected lines (``-H``
-            flag); for full pane text use ``escape_sequences`` instead.
-            Requires tmux 3.7+. If used with tmux < 3.7, a warning is
-            issued and the flag is ignored.
+            flag). Requires tmux 3.7+. If used with tmux < 3.7, a warning
+            is issued and the flag is ignored.
             Default: False
         line_numbers : bool, optional
             Prefix each captured line with its line number (``-L`` flag).
