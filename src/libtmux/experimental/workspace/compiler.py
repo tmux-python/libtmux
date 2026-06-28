@@ -332,9 +332,7 @@ def _emit_window(
                         or window.start_directory
                         or ws.start_directory
                     ),
-                    environment=(
-                        dict(pane.environment) or dict(window.environment) or None
-                    ),
+                    environment={**window.environment, **pane.environment} or None,
                     shell=pane.shell or window.window_shell,
                 ),
             )
