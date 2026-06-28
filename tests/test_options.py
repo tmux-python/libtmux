@@ -30,7 +30,12 @@ if t.TYPE_CHECKING:
 
 
 # tmux 3.7's tree-mode-preview-format is the only new option scoped window+pane.
-TMUX_3_7_SHARED_PANE_OPTION_FIELDS = ("tree_mode_preview_format",)
+TMUX_3_7_SHARED_PANE_OPTION_FIELDS = (
+    "tree_mode_preview_format",
+    # pane-active-border-style / pane-border-style widened to window+pane in 3.7
+    "pane_active_border_style",
+    "pane_border_style",
+)
 
 # tmux 3.7 options scoped window-only in options-table.c: they must NOT be typed
 # on PaneOptions (tmux's set -p silently routes them to the window).
@@ -1234,6 +1239,22 @@ PANE_STYLE_OPTIONS: list[OptionTestCase] = [
         "default",
         str,
         "3.0",
+    ),
+    OptionTestCase(
+        "pane_pane_active_border_style",
+        "pane-active-border-style",
+        OptionScope.Pane,
+        "fg=green",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "pane_pane_border_style",
+        "pane-border-style",
+        OptionScope.Pane,
+        "fg=red",
+        str,
+        "3.7",
     ),
 ]
 

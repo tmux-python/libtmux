@@ -55,7 +55,8 @@ The option dataclasses now type tmux 3.7's new options. On the server,
 the copy-mode line-number options, the tree-mode preview options and the
 window-pane status formats (of these, `tree-mode-preview-format` is also
 pane-scoped). The pane `remain-on-exit` option gained tmux 3.7's `key`
-value.
+value, and `pane-active-border-style` / `pane-border-style` (widened to
+pane scope in 3.7) now type on the pane too.
 
 #### tmux 3.7 pane format variables (#694)
 

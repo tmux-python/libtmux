@@ -257,10 +257,14 @@ class PaneOptions(
     # tmux 3.5+ options
     pane_scrollbars: t.Literal["off", "modal", "on"] | None = field(default=None)
     pane_scrollbars_style: str | None = field(default=None)
-    # tmux 3.7+ options. Only tree-mode-preview-format is window+pane scope;
-    # the copy-mode, tree-mode-preview-style, and window-pane-status options
-    # are window-only in tmux's options-table.c, so they live on WindowOptions.
+    # tmux 3.7+ options. Among the new options only tree-mode-preview-format is
+    # window+pane scope; the copy-mode, tree-mode-preview-style, and
+    # window-pane-status options are window-only, so they live on WindowOptions.
     tree_mode_preview_format: str | None = field(default=None)
+    # tmux 3.7 widened pane-active-border-style / pane-border-style from window
+    # to window+pane scope (set -p now works), so they are typed on panes too.
+    pane_active_border_style: str | None = field(default=None)
+    pane_border_style: str | None = field(default=None)
 
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
