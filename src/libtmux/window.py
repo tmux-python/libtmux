@@ -379,7 +379,8 @@ class Window(
             Environmental variables for new pane. Passthrough to ``-e``.
         empty : bool, optional
             Create an empty pane with no command (``-E`` flag) instead of
-            spawning the default shell. Requires tmux 3.7+.
+            spawning the default shell. Requires tmux 3.7+. If used with
+            tmux < 3.7, a warning is issued and the flag is ignored.
 
         Returns
         -------
