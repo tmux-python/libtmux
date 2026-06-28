@@ -51,10 +51,11 @@ _Notes on the upcoming release will go here._
 
 The option dataclasses now type tmux 3.7's new options. On the server,
 `get-clipboard`; on the session, `focus-follows-mouse`,
-`message-format` and `prompt-command-cursor-style`; and on windows and
-panes, the copy-mode line-number options, tree-mode preview options, and
-window-pane status formats. The pane `remain-on-exit` option gained tmux
-3.7's `key` value.
+`message-format` and `prompt-command-cursor-style`; and on the window,
+the copy-mode line-number options, the tree-mode preview options and the
+window-pane status formats (of these, `tree-mode-preview-format` is also
+pane-scoped). The pane `remain-on-exit` option gained tmux 3.7's `key`
+value.
 
 #### tmux 3.7 pane format variables (#694)
 

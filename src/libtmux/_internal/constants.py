@@ -257,16 +257,10 @@ class PaneOptions(
     # tmux 3.5+ options
     pane_scrollbars: t.Literal["off", "modal", "on"] | None = field(default=None)
     pane_scrollbars_style: str | None = field(default=None)
-    # tmux 3.7+ options
-    copy_mode_line_numbers: (
-        t.Literal["off", "default", "absolute", "relative", "hybrid"] | None
-    ) = field(default=None)
-    copy_mode_line_number_style: str | None = field(default=None)
-    copy_mode_current_line_number_style: str | None = field(default=None)
+    # tmux 3.7+ options. Only tree-mode-preview-format is window+pane scope;
+    # the copy-mode, tree-mode-preview-style, and window-pane-status options
+    # are window-only in tmux's options-table.c, so they live on WindowOptions.
     tree_mode_preview_format: str | None = field(default=None)
-    tree_mode_preview_style: str | None = field(default=None)
-    window_pane_status_format: str | None = field(default=None)
-    window_pane_current_status_format: str | None = field(default=None)
 
     def __init__(self, **kwargs: object) -> None:
         # Convert hyphenated keys to underscored attribute names and assign values
