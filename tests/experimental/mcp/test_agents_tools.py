@@ -9,6 +9,9 @@ import pytest
 
 from libtmux.experimental.agents.monitor import AgentMonitor
 
+if t.TYPE_CHECKING:
+    from fastmcp import FastMCP
+
 
 class _FakeEngine:
     async def run(self, request: object) -> None: ...
@@ -63,7 +66,7 @@ def test_watch_agents_observes_store_without_subscribing() -> None:
 
     engine = _CountingEngine()
     mcp = _CapturingMcp()
-    monitor = register_agents(mcp, engine)
+    monitor = register_agents(t.cast("FastMCP[t.Any]", mcp), engine)
     monitor.ingest("%subscription-changed agentstate $0 @0 1 %1 : running")
 
     watch = mcp.tools["watch_agents"].fn
