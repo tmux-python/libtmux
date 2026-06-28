@@ -1299,8 +1299,8 @@ class Pane(
 
         Parameters
         ----------
-        target : optional
-            Optional, custom *target-pane*, used by :meth:`Window.new_pane`.
+        target : int or str, optional
+            Custom *target-pane*, used by :meth:`Window.new_pane`.
         start_directory : str or PathLike, optional
             Working directory for the new pane (``-c`` flag).
         attach : bool, optional
