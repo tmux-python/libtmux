@@ -692,6 +692,7 @@ class Server(
         self,
         *,
         key_table: str | None = None,
+        format_: str | None = None,
     ) -> list[str]:
         """List key bindings via ``$ tmux list-keys``.
 
@@ -699,6 +700,9 @@ class Server(
         ----------
         key_table : str, optional
             Filter by key table (``-T`` flag).
+        format_ : str, optional
+            Custom output format applied to each line (``-F`` flag).
+            Requires tmux 3.7+; warns and is ignored on older tmux.
 
         Returns
         -------
@@ -715,6 +719,15 @@ class Server(
 
         if key_table is not None:
             tmux_args += ("-T", key_table)
+
+        if format_ is not None:
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += ("-F", format_)
+            else:
+                warnings.warn(
+                    "format requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
 
         proc = self.cmd("list-keys", *tmux_args)
 

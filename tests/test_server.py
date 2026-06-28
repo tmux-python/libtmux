@@ -957,6 +957,20 @@ def test_list_keys(server: Server) -> None:
     assert len(result) > 0  # default bindings exist
 
 
+def test_list_keys_format(server: Server) -> None:
+    """Server.list_keys(format_=...) applies -F on tmux 3.7+; warns below."""
+    from libtmux.common import has_gte_version
+
+    server.new_session(session_name="listkeys_fmt")
+    if has_gte_version("3.7"):
+        result = server.list_keys(format_="fmt")
+        assert result
+        assert all(line == "fmt" for line in result)
+    else:
+        with pytest.warns(UserWarning, match=r"format requires tmux 3.7"):
+            server.list_keys(format_="fmt")
+
+
 def test_list_commands(server: Server) -> None:
     """Test Server.list_commands() returns command listing."""
     server.new_session(session_name="listcmds_test")
