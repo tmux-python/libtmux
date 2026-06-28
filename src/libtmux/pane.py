@@ -1145,7 +1145,7 @@ class Pane(
         inactive_border_style : str, optional
             Inactive-pane border style (``-R``). Requires tmux 3.7+.
         message : str, optional
-            Keep the pane open after exit, showing this
+            Keep the pane open (until a key is pressed) after exit, showing this
             ``remain-on-exit-format`` message (``-m``). Requires tmux 3.7+.
         keep : bool, optional
             Keep the pane open until a key is pressed after exit (``-k``).
