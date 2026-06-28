@@ -238,8 +238,15 @@ def register_agents(
             hook = get(agent)
         except KeyError:
             return {"agent": agent, "error": "unknown agent"}
-        hook.install()
-        return {"agent": agent, "status": hook.status()}
+
+        def _install_and_status() -> str:
+            hook.install()
+            return hook.status()
+
+        # install/status do blocking file I/O (read, fsync, atomic replace);
+        # run off the event loop so concurrent MCP tools are not stalled.
+        status = await asyncio.to_thread(_install_and_status)
+        return {"agent": agent, "status": status}
 
     mcp.add_tool(
         FunctionTool.from_function(
