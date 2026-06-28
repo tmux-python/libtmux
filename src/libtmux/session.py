@@ -11,9 +11,10 @@ import dataclasses
 import logging
 import pathlib
 import typing as t
+import warnings
 
 from libtmux._internal.query_list import QueryList
-from libtmux.common import raise_if_stderr, tmux_cmd
+from libtmux.common import has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import WINDOW_DIRECTION_FLAG_MAP, OptionScope, WindowDirection
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
@@ -568,6 +569,7 @@ class Session(
         self,
         all_except: bool | None = None,
         clear: bool | None = None,
+        group: bool | None = None,
     ) -> None:
         """Kill :class:`Session`, closes linked windows and detach all clients.
 
@@ -579,6 +581,10 @@ class Session(
             Kill all sessions in server except this one.
         clear : bool, optional
             Clear alerts (bell, activity, or silence) in all windows.
+        group : bool, optional
+            Kill all sessions in this session's group (``-g`` flag).
+            Requires tmux 3.7+. If used with tmux < 3.7, a warning is issued
+            and the flag is ignored.
 
         Examples
         --------
@@ -619,6 +625,15 @@ class Session(
 
         if clear:  # Clear alerts (bell, activity, or silence) in all windows
             flags += ("-C",)
+
+        if group:  # Kill all sessions in this session's group (tmux 3.7+)
+            if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
+                flags += ("-g",)
+            else:
+                warnings.warn(
+                    "group requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
 
         proc = self.cmd(
             "kill-session",

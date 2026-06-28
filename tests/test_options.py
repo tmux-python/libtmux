@@ -29,6 +29,26 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 
+# tmux 3.7's tree-mode-preview-format is the only new option scoped window+pane.
+TMUX_3_7_SHARED_PANE_OPTION_FIELDS = (
+    "tree_mode_preview_format",
+    # pane-active-border-style / pane-border-style widened to window+pane in 3.7
+    "pane_active_border_style",
+    "pane_border_style",
+)
+
+# tmux 3.7 options scoped window-only in options-table.c: they must NOT be typed
+# on PaneOptions (tmux's set -p silently routes them to the window).
+WINDOW_ONLY_3_7_OPTION_FIELDS = (
+    "copy_mode_line_numbers",
+    "copy_mode_line_number_style",
+    "copy_mode_current_line_number_style",
+    "tree_mode_preview_style",
+    "window_pane_status_format",
+    "window_pane_current_status_format",
+)
+
+
 def test_options(server: Server) -> None:
     """Test basic options."""
     session = server.new_session(session_name="test")
@@ -140,6 +160,20 @@ def test_options_pane(server: Server) -> None:
 
     pane_options = PaneOptions(**pane_options_)
     assert pane_options.window_active_style == pane_options_.get("window-active-style")
+
+
+@pytest.mark.parametrize("field_name", TMUX_3_7_SHARED_PANE_OPTION_FIELDS)
+def test_pane_options_declares_tmux_3_7_shared_fields(field_name: str) -> None:
+    """Tmux 3.7 options shared with window scope must type on panes too."""
+    assert field_name in PaneOptions.__dataclass_fields__
+    assert field_name in Options.__dataclass_fields__
+
+
+@pytest.mark.parametrize("field_name", WINDOW_ONLY_3_7_OPTION_FIELDS)
+def test_window_only_3_7_options_absent_from_pane(field_name: str) -> None:
+    """Window-only tmux 3.7 options must not be typed on PaneOptions."""
+    assert field_name in WindowOptions.__dataclass_fields__
+    assert field_name not in PaneOptions.__dataclass_fields__
 
 
 def test_options_grid(server: Server) -> None:
@@ -815,6 +849,15 @@ SERVER_CHOICE_OPTIONS: list[OptionTestCase] = [
     OptionTestCase(
         "server_set_clipboard", "set-clipboard", OptionScope.Server, "external", str
     ),
+    # get-clipboard: "off" returns bool, use "buffer" for str test (3.7+)
+    OptionTestCase(
+        "server_get_clipboard",
+        "get-clipboard",
+        OptionScope.Server,
+        "buffer",
+        str,
+        "3.7",
+    ),
 ]
 
 SERVER_STRING_OPTIONS: list[OptionTestCase] = [
@@ -877,6 +920,14 @@ SESSION_BOOLEAN_OPTIONS: list[OptionTestCase] = [
         "session_renumber_windows", "renumber-windows", OptionScope.Session, "on", bool
     ),
     OptionTestCase("session_set_titles", "set-titles", OptionScope.Session, "on", bool),
+    OptionTestCase(
+        "session_focus_follows_mouse",
+        "focus-follows-mouse",
+        OptionScope.Session,
+        "on",
+        bool,
+        "3.7",
+    ),
 ]
 
 SESSION_CHOICE_OPTIONS: list[OptionTestCase] = [
@@ -917,6 +968,14 @@ SESSION_CHOICE_OPTIONS: list[OptionTestCase] = [
     OptionTestCase(
         "session_visual_silence", "visual-silence", OptionScope.Session, "both", str
     ),
+    OptionTestCase(
+        "session_prompt_command_cursor_style",
+        "prompt-command-cursor-style",
+        OptionScope.Session,
+        "blinking-block",
+        str,
+        "3.7",
+    ),
 ]
 
 SESSION_STRING_OPTIONS: list[OptionTestCase] = [
@@ -928,6 +987,14 @@ SESSION_STRING_OPTIONS: list[OptionTestCase] = [
     ),
     OptionTestCase(
         "session_status_right", "status-right", OptionScope.Session, "%H:%M", str
+    ),
+    OptionTestCase(
+        "session_message_format",
+        "message-format",
+        OptionScope.Session,
+        "#[align=centre]#{message}",
+        str,
+        "3.7",
     ),
 ]
 
@@ -996,6 +1063,15 @@ WINDOW_CHOICE_OPTIONS: list[OptionTestCase] = [
     OptionTestCase(
         "window_window_size", "window-size", OptionScope.Window, "latest", str, "3.1"
     ),
+    # copy-mode-line-numbers: "off" returns bool, use "absolute" for str test (3.7+)
+    OptionTestCase(
+        "window_copy_mode_line_numbers",
+        "copy-mode-line-numbers",
+        OptionScope.Window,
+        "absolute",
+        str,
+        "3.7",
+    ),
 ]
 
 WINDOW_STRING_OPTIONS: list[OptionTestCase] = [
@@ -1005,6 +1081,30 @@ WINDOW_STRING_OPTIONS: list[OptionTestCase] = [
         OptionScope.Window,
         "#{pane_index}",
         str,
+    ),
+    OptionTestCase(
+        "window_tree_mode_preview_format",
+        "tree-mode-preview-format",
+        OptionScope.Window,
+        "#{window_name}",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "window_window_pane_status_format",
+        "window-pane-status-format",
+        OptionScope.Window,
+        "#{pane_index}",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "window_window_pane_current_status_format",
+        "window-pane-current-status-format",
+        OptionScope.Window,
+        "#{pane_index}",
+        str,
+        "3.7",
     ),
 ]
 
@@ -1039,6 +1139,30 @@ WINDOW_STYLE_OPTIONS: list[OptionTestCase] = [
         OptionScope.Window,
         "fg=magenta",
         str,
+    ),
+    OptionTestCase(
+        "window_copy_mode_line_number_style",
+        "copy-mode-line-number-style",
+        OptionScope.Window,
+        "fg=cyan",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "window_copy_mode_current_line_number_style",
+        "copy-mode-current-line-number-style",
+        OptionScope.Window,
+        "fg=cyan",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "window_tree_mode_preview_style",
+        "tree-mode-preview-style",
+        OptionScope.Window,
+        "fg=red",
+        str,
+        "3.7",
     ),
 ]
 
@@ -1082,6 +1206,26 @@ PANE_CHOICE_OPTIONS: list[OptionTestCase] = [
         str,
         "3.2",
     ),
+    # remain-on-exit gained "key" in tmux 3.7
+    OptionTestCase(
+        "pane_remain_on_exit_key",
+        "remain-on-exit",
+        OptionScope.Pane,
+        "key",
+        str,
+        "3.7",
+    ),
+]
+
+PANE_STRING_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "pane_tree_mode_preview_format",
+        "tree-mode-preview-format",
+        OptionScope.Pane,
+        "#{pane_index}",
+        str,
+        "3.7",
+    ),
 ]
 
 PANE_STYLE_OPTIONS: list[OptionTestCase] = [
@@ -1095,6 +1239,22 @@ PANE_STYLE_OPTIONS: list[OptionTestCase] = [
         "default",
         str,
         "3.0",
+    ),
+    OptionTestCase(
+        "pane_pane_active_border_style",
+        "pane-active-border-style",
+        OptionScope.Pane,
+        "fg=green",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "pane_pane_border_style",
+        "pane-border-style",
+        OptionScope.Pane,
+        "fg=red",
+        str,
+        "3.7",
     ),
 ]
 
@@ -1116,6 +1276,7 @@ ALL_OPTION_TEST_CASES: list[OptionTestCase] = (
     + WINDOW_STYLE_OPTIONS
     + PANE_BOOLEAN_OPTIONS
     + PANE_CHOICE_OPTIONS
+    + PANE_STRING_OPTIONS
     + PANE_STYLE_OPTIONS
 )
 

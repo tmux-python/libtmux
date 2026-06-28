@@ -768,3 +768,17 @@ def test_session_refresh_raises_when_session_id_is_none(server: Server) -> None:
 
     with pytest.raises(ValueError, match="session_id"):
         session.refresh()
+
+
+def test_kill_session_group(server: Server) -> None:
+    """Session.kill(group=True) uses -g on tmux 3.7+; warn-and-ignore below."""
+    from libtmux.common import has_gte_version
+
+    session = server.new_session(session_name="kill_group_base")
+
+    if has_gte_version("3.7"):
+        session.kill(group=True)
+        assert not server.has_session("kill_group_base")
+    else:
+        with pytest.warns(UserWarning, match="group requires tmux 3.7"):
+            session.kill(group=True)

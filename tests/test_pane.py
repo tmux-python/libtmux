@@ -1573,3 +1573,291 @@ def test_pane_refresh_raises_when_pane_id_is_none(session: Session) -> None:
 
     with pytest.raises(ValueError, match="pane_id"):
         pane.refresh()
+
+
+class CaptureFlagWarnCase(t.NamedTuple):
+    """Test case for capture_pane() 3.7 flag warn-and-ignore paths."""
+
+    test_id: str
+    kwargs: dict[str, t.Any]
+    match: str
+
+
+CAPTURE_FLAG_WARN_CASES: list[CaptureFlagWarnCase] = [
+    CaptureFlagWarnCase(
+        test_id="hyperlinks",
+        kwargs={"hyperlinks": True},
+        match="hyperlinks requires tmux 3.7",
+    ),
+    CaptureFlagWarnCase(
+        test_id="line_numbers",
+        kwargs={"line_numbers": True},
+        match="line_numbers requires tmux 3.7",
+    ),
+    CaptureFlagWarnCase(
+        test_id="line_flags",
+        kwargs={"line_flags": True},
+        match="line_flags requires tmux 3.7",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(CaptureFlagWarnCase._fields),
+    CAPTURE_FLAG_WARN_CASES,
+    ids=[c.test_id for c in CAPTURE_FLAG_WARN_CASES],
+)
+def test_capture_pane_3_7_flags(
+    test_id: str,
+    kwargs: dict[str, t.Any],
+    match: str,
+    session: Session,
+) -> None:
+    """Pane.capture_pane() -H/-L/-F on tmux 3.7+; warn-and-ignore below."""
+    window = session.new_window(window_name="capture_37")
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        assert isinstance(pane.capture_pane(**kwargs), list)
+    else:
+        with pytest.warns(UserWarning, match=match):
+            pane.capture_pane(**kwargs)
+
+
+def test_split_empty(session: Session) -> None:
+    """Pane.split(empty=True) creates an empty pane on tmux 3.7+."""
+    window = session.new_window(window_name="split_empty")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        new_pane = pane.split(empty=True)
+        assert new_pane in window.panes
+        assert len(window.panes) == 2
+    else:
+        with pytest.warns(UserWarning, match="empty requires tmux 3.7"):
+            pane.split(empty=True)
+
+
+class SplitFlagCase(t.NamedTuple):
+    """Test case for Pane.split() tmux 3.7 styling/remain flags."""
+
+    test_id: str
+    kwargs: dict[str, t.Any]
+
+
+SPLIT_FLAG_CASES: list[SplitFlagCase] = [
+    SplitFlagCase(test_id="style", kwargs={"style": "bg=red"}),
+    SplitFlagCase(
+        test_id="active_border_style", kwargs={"active_border_style": "fg=green"}
+    ),
+    SplitFlagCase(
+        test_id="inactive_border_style", kwargs={"inactive_border_style": "fg=blue"}
+    ),
+    SplitFlagCase(test_id="message", kwargs={"message": "bye"}),
+    SplitFlagCase(test_id="keep", kwargs={"keep": True}),
+]
+
+
+@pytest.mark.parametrize(
+    list(SplitFlagCase._fields),
+    SPLIT_FLAG_CASES,
+    ids=[c.test_id for c in SPLIT_FLAG_CASES],
+)
+def test_split_3_7_flags(
+    test_id: str,
+    kwargs: dict[str, t.Any],
+    session: Session,
+) -> None:
+    """Pane.split() tmux 3.7 styling/remain flags work on 3.7+; warn below."""
+    window = session.new_window(window_name="split_37")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        new_pane = pane.split(**kwargs)
+        assert new_pane in window.panes
+    else:
+        with pytest.warns(UserWarning, match=r"require tmux 3.7"):
+            pane.split(**kwargs)
+
+
+class _SplitEmptyValueKwargs(t.TypedDict, total=False):
+    style: str
+    active_border_style: str
+    inactive_border_style: str
+    message: str
+
+
+class _SplitEmptyValueCase(t.NamedTuple):
+    test_id: str
+    option_kwargs: _SplitEmptyValueKwargs
+
+
+_SPLIT_EMPTY_VALUE_CASES = (
+    _SplitEmptyValueCase(test_id="style", option_kwargs={"style": ""}),
+    _SplitEmptyValueCase(
+        test_id="active_border_style", option_kwargs={"active_border_style": ""}
+    ),
+    _SplitEmptyValueCase(
+        test_id="inactive_border_style", option_kwargs={"inactive_border_style": ""}
+    ),
+    _SplitEmptyValueCase(test_id="message", option_kwargs={"message": ""}),
+)
+
+
+@pytest.mark.parametrize(
+    ("test_id", "option_kwargs"),
+    _SPLIT_EMPTY_VALUE_CASES,
+    ids=[case.test_id for case in _SPLIT_EMPTY_VALUE_CASES],
+)
+def test_split_preserves_empty_option_values(
+    session: Session,
+    test_id: str,
+    option_kwargs: _SplitEmptyValueKwargs,
+) -> None:
+    """Pane.split() emits empty value flags as a separate argv entry."""
+    window = session.new_window(window_name=f"split_empty_{test_id}")
+    window.resize(height=40, width=120)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        new_pane = pane.split(**option_kwargs)
+        assert new_pane in window.panes
+    else:
+        with pytest.warns(UserWarning, match=r"require tmux 3.7"):
+            pane.split(**option_kwargs)
+
+
+def test_paste_buffer_no_vis(session: Session) -> None:
+    """Pane.paste_buffer(no_vis=True) uses -S on tmux 3.7+; warn below."""
+    env = shutil.which("env")
+    assert env is not None
+
+    window = session.new_window(
+        window_name="paste_novis",
+        window_shell=f"{env} PS1='$ ' sh",
+    )
+    pane = window.active_pane
+    assert pane is not None
+    retry_until(lambda: "$" in "\n".join(pane.capture_pane()), 2, raises=True)
+
+    session.server.set_buffer("raw_content", buffer_name="novis_test")
+    if has_gte_version("3.7"):
+        pane.paste_buffer(buffer_name="novis_test", no_vis=True)
+        retry_until(
+            lambda: "raw_content" in "\n".join(pane.capture_pane()),
+            3,
+            raises=True,
+        )
+    else:
+        with pytest.warns(UserWarning, match="no_vis requires tmux 3.7"):
+            pane.paste_buffer(buffer_name="novis_test", no_vis=True)
+
+
+class _NewPaneEmptyValueKwargs(t.TypedDict, total=False):
+    style: str
+    active_border_style: str
+    inactive_border_style: str
+    message: str
+
+
+class _NewPaneEmptyValueCase(t.NamedTuple):
+    test_id: str
+    option_kwargs: _NewPaneEmptyValueKwargs
+
+
+_NEW_PANE_EMPTY_VALUE_CASES = (
+    _NewPaneEmptyValueCase(test_id="style", option_kwargs={"style": ""}),
+    _NewPaneEmptyValueCase(
+        test_id="active_border_style",
+        option_kwargs={"active_border_style": ""},
+    ),
+    _NewPaneEmptyValueCase(
+        test_id="inactive_border_style",
+        option_kwargs={"inactive_border_style": ""},
+    ),
+    _NewPaneEmptyValueCase(test_id="message", option_kwargs={"message": ""}),
+)
+
+
+def test_new_pane_floating(session: Session) -> None:
+    """Pane.new_pane() creates a floating pane on tmux 3.7+ (else raises)."""
+    window = session.new_window(window_name="floating_pane")
+    window.resize(height=50, width=200)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        floating = pane.new_pane(width=80, height=15, x=5, y=3, shell="sleep 30")
+        assert floating.pane_floating_flag == "1"
+        assert floating.pane_width == "80"
+        assert floating.pane_height == "15"
+    else:
+        with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
+            pane.new_pane(width=40, height=10)
+
+
+def test_new_pane_keep(session: Session) -> None:
+    """Pane.new_pane(keep=True) sets remain-on-exit (-k) on tmux 3.7+."""
+    window = session.new_window(window_name="floating_keep")
+    window.resize(height=50, width=200)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        floating = pane.new_pane(width=80, height=15, keep=True, shell="sleep 30")
+        assert floating.pane_floating_flag == "1"
+        remain = floating.cmd("show-options", "-p", "-v", "remain-on-exit").stdout
+        assert remain == ["key"]
+    else:
+        with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
+            pane.new_pane(width=40, height=10, keep=True)
+
+
+@pytest.mark.parametrize(
+    ("test_id", "option_kwargs"),
+    _NEW_PANE_EMPTY_VALUE_CASES,
+    ids=[case.test_id for case in _NEW_PANE_EMPTY_VALUE_CASES],
+)
+def test_new_pane_preserves_empty_option_values(
+    session: Session,
+    test_id: str,
+    option_kwargs: _NewPaneEmptyValueKwargs,
+) -> None:
+    """Pane.new_pane() preserves empty string option values."""
+    window = session.new_window(window_name=f"floating_empty_{test_id}")
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        floating = pane.new_pane(
+            width=40,
+            height=10,
+            shell="sleep 30",
+            **option_kwargs,
+        )
+        assert floating.pane_floating_flag == "1"
+    else:
+        with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
+            pane.new_pane(width=40, height=10, **option_kwargs)
+
+
+def test_new_pane_error_tags_subcommand(session: Session) -> None:
+    """Pane.new_pane() tags LibTmuxException with the new-pane subcommand."""
+    window = session.new_window(window_name="new_pane_err")
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        with pytest.raises(exc.LibTmuxException) as excinfo:
+            pane.new_pane(target="%99999")
+        assert excinfo.value.subcommand == "new-pane"
+        assert str(excinfo.value).startswith("new-pane:")
+    else:
+        with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
+            pane.new_pane(target="%99999")

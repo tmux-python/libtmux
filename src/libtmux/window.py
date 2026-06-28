@@ -344,6 +344,12 @@ class Window(
         size: str | int | None = None,
         percentage: int | None = None,
         environment: dict[str, str] | None = None,
+        empty: bool | None = None,
+        style: str | None = None,
+        active_border_style: str | None = None,
+        inactive_border_style: str | None = None,
+        message: str | None = None,
+        keep: bool | None = None,
     ) -> Pane:
         """Split window on active pane and return the created :class:`Pane`.
 
@@ -376,6 +382,22 @@ class Window(
             .. versionadded:: 0.56
         environment : dict, optional
             Environmental variables for new pane. Passthrough to ``-e``.
+        empty : bool, optional
+            Create an empty pane with no command (``-E`` flag) instead of
+            spawning the default shell. Requires tmux 3.7+. If used with
+            tmux < 3.7, a warning is issued and the flag is ignored.
+        style : str, optional
+            Style for the new pane (``-s``). Requires tmux 3.7+.
+        active_border_style : str, optional
+            Active-pane border style (``-S``). Requires tmux 3.7+.
+        inactive_border_style : str, optional
+            Inactive-pane border style (``-R``). Requires tmux 3.7+.
+        message : str, optional
+            Keep the pane open (until a key is pressed) after exit, showing this
+            ``remain-on-exit-format`` message (``-m``). Requires tmux 3.7+.
+        keep : bool, optional
+            Keep the pane open until a key is pressed after exit (``-k``).
+            Requires tmux 3.7+. These 3.7 flags warn and are ignored below 3.7.
 
         Returns
         -------
@@ -394,6 +416,110 @@ class Window(
             size=size,
             percentage=percentage,
             environment=environment,
+            empty=empty,
+            style=style,
+            active_border_style=active_border_style,
+            inactive_border_style=inactive_border_style,
+            message=message,
+            keep=keep,
+        )
+
+    def new_pane(
+        self,
+        /,
+        target: int | str | None = None,
+        start_directory: StrPath | None = None,
+        attach: bool = False,
+        shell: str | None = None,
+        environment: dict[str, str] | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        x: int | None = None,
+        y: int | None = None,
+        zoom: bool | None = None,
+        empty: bool | None = None,
+        style: str | None = None,
+        active_border_style: str | None = None,
+        inactive_border_style: str | None = None,
+        message: str | None = None,
+        keep: bool | None = None,
+    ) -> Pane:
+        """Create a floating :class:`Pane` in this window (``$ tmux new-pane``).
+
+        Use :meth:`split` for a tiled pane. Floating panes require tmux 3.7+;
+        delegates to :meth:`Pane.new_pane` on the active pane.
+
+        Parameters
+        ----------
+        target : int or str, optional
+            Custom *target-pane*.
+        start_directory : str or PathLike, optional
+            Working directory for the new pane (``-c``).
+        attach : bool, optional
+            Make the new pane active, default False (``-d`` otherwise).
+        shell : str, optional
+            Command to run; the pane closes when it exits.
+        environment : dict, optional
+            Environment variables for the new pane (``-e``).
+        width : int, optional
+            Width in cells (``-x``).
+        height : int, optional
+            Height in cells (``-y``).
+        x : int, optional
+            X position in cells (``-X``).
+        y : int, optional
+            Y position in cells (``-Y``).
+        zoom : bool, optional
+            Zoom the pane (``-Z``).
+        empty : bool, optional
+            Create an empty pane with no command (``-E``).
+        style : str, optional
+            Style for the floating pane (``-s``).
+        active_border_style : str, optional
+            Border style when the pane is active (``-S``).
+        inactive_border_style : str, optional
+            Border style when the pane is inactive (``-R``).
+        message : str, optional
+            Keep the pane open (until a key is pressed) after the command
+            exits, showing this ``remain-on-exit-format`` message (``-m``).
+        keep : bool, optional
+            Keep the pane open until a key is pressed after exit (``-k``),
+            using the default ``remain-on-exit-format``.
+
+        Returns
+        -------
+        :class:`Pane`
+            The newly created floating pane.
+
+        Examples
+        --------
+        >>> from libtmux.common import has_gte_version
+        >>> if has_gte_version("3.7"):
+        ...     floating = window.new_pane(width=40, height=10, shell="sleep 5")
+        ...     is_floating = floating.pane_floating_flag
+        ... else:
+        ...     is_floating = "1"
+        >>> is_floating
+        '1'
+        """
+        active_pane = self.active_pane or self.panes[0]
+        return active_pane.new_pane(
+            target=target,
+            start_directory=start_directory,
+            attach=attach,
+            shell=shell,
+            environment=environment,
+            width=width,
+            height=height,
+            x=x,
+            y=y,
+            zoom=zoom,
+            empty=empty,
+            style=style,
+            active_border_style=active_border_style,
+            inactive_border_style=inactive_border_style,
+            message=message,
+            keep=keep,
         )
 
     def resize(

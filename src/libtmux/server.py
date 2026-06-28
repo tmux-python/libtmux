@@ -464,6 +464,7 @@ class Server(
         target_pane: str | None = None,
         cwd: StrPath | None = None,
         show_stderr: bool | None = None,
+        args: list[str] | None = None,
     ) -> list[str] | None:
         r"""Execute a shell command via ``$ tmux run-shell``.
 
@@ -499,6 +500,10 @@ class Server(
             on older tmux a warning is emitted and the kwarg is ignored.
 
             .. versionadded:: 0.57
+        args : list of str, optional
+            Positional arguments passed after *command*, expanded as
+            ``#{1}``, ``#{2}``, … inside it. Requires tmux 3.7+; warns and
+            is ignored on older tmux.
 
         Returns
         -------
@@ -545,6 +550,15 @@ class Server(
                 )
 
         tmux_args += (command,)
+
+        if args:
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += tuple(args)
+            else:
+                warnings.warn(
+                    "args requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
 
         proc = self.cmd("run-shell", *tmux_args)
 
@@ -692,6 +706,7 @@ class Server(
         self,
         *,
         key_table: str | None = None,
+        format_: str | None = None,
     ) -> list[str]:
         """List key bindings via ``$ tmux list-keys``.
 
@@ -699,6 +714,9 @@ class Server(
         ----------
         key_table : str, optional
             Filter by key table (``-T`` flag).
+        format_ : str, optional
+            Custom output format applied to each line (``-F`` flag).
+            Requires tmux 3.7+; warns and is ignored on older tmux.
 
         Returns
         -------
@@ -715,6 +733,15 @@ class Server(
 
         if key_table is not None:
             tmux_args += ("-T", key_table)
+
+        if format_ is not None:
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += ("-F", format_)
+            else:
+                warnings.warn(
+                    "format requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
 
         proc = self.cmd("list-keys", *tmux_args)
 
@@ -839,7 +866,12 @@ class Server(
             return proc.stdout
         return None
 
-    def refresh_client(self, *, target_client: str | None = None) -> None:
+    def refresh_client(
+        self,
+        *,
+        target_client: str | None = None,
+        request_clipboard: bool = False,
+    ) -> None:
         """Refresh a client's display via ``$ tmux refresh-client``.
 
         Requires an attached client.
@@ -848,6 +880,11 @@ class Server(
         ----------
         target_client : str, optional
             Target client (``-t`` flag).
+        request_clipboard : bool, optional
+            Request the clipboard from the terminal (``-l`` flag,
+            ``tty_clipboard_query``) — the runtime companion to the
+            ``get-clipboard`` option. Requires tmux 3.7+; warns and is
+            ignored on older tmux (where ``-l`` is the legacy forward form).
 
         Examples
         --------
@@ -858,6 +895,15 @@ class Server(
 
         if target_client is not None:
             tmux_args += ("-t", target_client)
+
+        if request_clipboard:
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "request_clipboard requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
 
         proc = self.cmd("refresh-client", *tmux_args)
 
@@ -1109,6 +1155,7 @@ class Server(
         expand_format: bool | None = None,
         literal: bool | None = None,
         bspace_exit: bool | None = None,
+        no_freeze: bool | None = None,
     ) -> None:
         """Open a command prompt via ``$ tmux command-prompt``.
 
@@ -1146,6 +1193,10 @@ class Server(
         bspace_exit : bool, optional
             Close the prompt when the user empties it with backspace
             (``-e`` flag, ``PROMPT_BSPACE_EXIT``). Requires tmux 3.7+ (upstream master).
+        no_freeze : bool, optional
+            Do not freeze panes while the prompt is open (``-C`` flag,
+            ``PROMPT_NOFREEZE``), matching ``display-message -C``. Requires
+            tmux 3.7+; warns and is ignored on older tmux.
 
         Examples
         --------
@@ -1204,6 +1255,15 @@ class Server(
             else:
                 warnings.warn(
                     "bspace_exit requires tmux 3.7+ (upstream master), ignoring",
+                    stacklevel=2,
+                )
+
+        if no_freeze:
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += ("-C",)
+            else:
+                warnings.warn(
+                    "no_freeze requires tmux 3.7+, ignoring",
                     stacklevel=2,
                 )
 

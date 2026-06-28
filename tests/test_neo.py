@@ -65,6 +65,50 @@ def test_field_version_keys_are_obj_fields() -> None:
         )
 
 
+# Format tokens first registered in tmux 3.7 (verified against format.c /
+# tmux.1 at the 3.7 tag).
+TMUX_3_7_FORMAT_TOKENS = [
+    "bracket_paste_flag",
+    "pane_flags",
+    "pane_floating_flag",
+    "pane_pb_progress",
+    "pane_pb_state",
+    "pane_pipe_pid",
+    "pane_x",
+    "pane_y",
+    "pane_z",
+    "pane_zoomed_flag",
+    "synchronized_output_flag",
+]
+
+
+@pytest.mark.parametrize("token", TMUX_3_7_FORMAT_TOKENS)
+def test_format_token_gated_to_3_7(token: str) -> None:
+    """Tmux 3.7 pane format tokens must not leak into older -F templates.
+
+    Each token's format-table entry first appears at the 3.7 tag, so
+    emitting it on 3.6 hydrates the field with the literal ``#{...}``
+    text instead of an empty value.
+    """
+    assert FIELD_VERSION[token] == "3.7"
+    fields_old, _ = get_output_format("list-panes", "3.6")
+    assert token not in fields_old
+    fields_new, _ = get_output_format("list-panes", "3.7")
+    assert token in fields_new
+
+
+@pytest.mark.parametrize("token", ["bracket_paste_flag", "synchronized_output_flag"])
+def test_unprefixed_3_7_tokens_are_pane_scope(token: str) -> None:
+    """The 3.7 pane tokens without a ``pane_`` prefix need scope overrides.
+
+    Their ``format_cb_*`` dereference ``ft->wp`` (the pane), so they
+    belong in ``list-panes`` output despite the missing prefix.
+    """
+    assert _token_scope(token) == "pane"
+    fields, _ = get_output_format("list-panes", "3.7")
+    assert token in fields
+
+
 def test_scopes_by_list_cmd_downward_cascade() -> None:
     """Every ``list-*`` admits universal+session+window+pane scopes.
 

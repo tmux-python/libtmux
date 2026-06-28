@@ -650,8 +650,9 @@ def test_command_prompt(
         ({"literal": True}, "-l", "3.6"),
         # -e is master-only (upstream 1e5f93b7); not in any 3.6 release
         ({"bspace_exit": True}, "-e", "3.7"),
+        ({"no_freeze": True}, "-C", "3.7"),
     ],
-    ids=["expand_format_v33", "literal_v36", "bspace_exit"],
+    ids=["expand_format_v33", "literal_v36", "bspace_exit", "no_freeze"],
 )
 def test_command_prompt_extra_flags(
     kwargs: dict[str, t.Any],
@@ -855,6 +856,42 @@ def test_refresh_client(
         server.refresh_client()
 
 
+def test_refresh_client_request_clipboard(
+    monkeypatch: pytest.MonkeyPatch,
+    server: Server,
+) -> None:
+    """refresh_client(request_clipboard=True) emits -l on tmux 3.7+.
+
+    ``refresh-client -l`` queries the client's clipboard via an xterm
+    escape sequence, which has no observable effect under the headless
+    test server, so verify the constructed argv instead.
+    """
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.7"):
+        pytest.skip("refresh-client -l clipboard query requires tmux 3.7+")
+
+    captured: list[tuple[str, ...]] = []
+    real_cmd = server.cmd
+
+    class _StubResult:
+        stderr: t.ClassVar[list[str]] = []
+        stdout: t.ClassVar[list[str]] = []
+
+    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+        if cmd == "refresh-client":
+            captured.append((cmd, *args))
+            return _StubResult()
+        return real_cmd(cmd, *args, **_kw)
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+    server.refresh_client(request_clipboard=True)
+
+    assert captured, "Server.cmd was not invoked"
+    _name, *flags = captured[0]
+    assert "-l" in flags
+
+
 def test_suspend_client(
     control_mode: t.Callable[..., t.Any],
     server: Server,
@@ -954,6 +991,20 @@ def test_list_keys(server: Server) -> None:
     result = server.list_keys()
     assert isinstance(result, list)
     assert len(result) > 0  # default bindings exist
+
+
+def test_list_keys_format(server: Server) -> None:
+    """Server.list_keys(format_=...) applies -F on tmux 3.7+; warns below."""
+    from libtmux.common import has_gte_version
+
+    server.new_session(session_name="listkeys_fmt")
+    if has_gte_version("3.7"):
+        result = server.list_keys(format_="fmt")
+        assert result
+        assert all(line == "fmt" for line in result)
+    else:
+        with pytest.warns(UserWarning, match=r"format requires tmux 3.7"):
+            server.list_keys(format_="fmt")
 
 
 def test_list_commands(server: Server) -> None:
@@ -1092,6 +1143,19 @@ def test_run_shell_show_stderr(server: Server) -> None:
     joined = "\n".join(result)
     assert "to_stdout" in joined
     assert "to_stderr" in joined
+
+
+def test_run_shell_args(server: Server) -> None:
+    """``args`` fill #{1}/#{2} in the command on tmux 3.7+; warn below."""
+    from libtmux.common import has_gte_version
+
+    server.new_session(session_name="run_shell_args_test")
+    if has_gte_version("3.7"):
+        result = server.run_shell("echo #{1}-#{2}", args=["alpha", "beta"])
+        assert result == ["alpha-beta"]
+    else:
+        with pytest.warns(UserWarning, match=r"args requires tmux 3.7"):
+            server.run_shell("echo plain", args=["alpha"])
 
 
 def test_run_shell_cwd_warns_on_old_tmux(

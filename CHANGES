@@ -45,6 +45,63 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Typed tmux 3.7 options (#694)
+
+The option dataclasses now type tmux 3.7's new options. On the server,
+`get-clipboard`; on the session, `focus-follows-mouse`,
+`message-format` and `prompt-command-cursor-style`; and on the window,
+the copy-mode line-number options, the tree-mode preview options and the
+window-pane status formats (of these, `tree-mode-preview-format` is also
+pane-scoped). The pane `remain-on-exit` option gained tmux 3.7's `key`
+value, and `pane-active-border-style` / `pane-border-style` (widened to
+pane scope in 3.7) now type on the pane too.
+
+#### tmux 3.7 pane format variables (#694)
+
+{class}`~libtmux.Pane` now exposes tmux 3.7's new pane format
+variables: the floating-pane geometry and flags (`pane_floating_flag`,
+`pane_x`, `pane_y`, `pane_z`, `pane_flags`, `pane_zoomed_flag`), the
+OSC 9;4 progress report (`pane_pb_progress`, `pane_pb_state`),
+`pane_pipe_pid`, and the `bracket_paste_flag` and
+`synchronized_output_flag` screen-mode flags. Each is version-gated, so
+the format template stays clean on tmux 3.2a–3.6.
+
+#### tmux 3.7 command flags (#694)
+
+New tmux 3.7 flags are exposed on existing wrappers:
+{meth}`~libtmux.Pane.capture_pane` gains `hyperlinks` (`-H`, hyperlink
+targets only),
+`line_numbers` (`-L`) and `line_flags` (`-F`);
+{meth}`~libtmux.Window.split` / {meth}`~libtmux.Pane.split` gain `empty`
+(`-E`, an empty pane) plus `style`/`active_border_style`/
+`inactive_border_style` (`-s`/`-S`/`-R`), `message` (`-m`) and `keep`
+(`-k`, remain-on-exit); {meth}`~libtmux.Session.kill` gains `group`
+(`-g`, kill the session group); and {meth}`~libtmux.Pane.paste_buffer`
+gains `no_vis` (`-S`, paste raw bytes). On the server,
+{meth}`~libtmux.Server.command_prompt` gains `no_freeze` (`-C`, don't
+freeze panes), {meth}`~libtmux.Server.list_keys` gains `format_`
+(`-F`, custom output format), {meth}`~libtmux.Server.run_shell`
+accepts trailing `args` expanded as `#{1}`/`#{2}`, and
+{meth}`~libtmux.Server.refresh_client` gains `request_clipboard`
+(`-l`, request the terminal clipboard). Each warns and is ignored on
+tmux < 3.7.
+
+#### Floating panes (`new-pane`) (#694)
+
+tmux 3.7's flagship feature, floating panes, is now reachable through
+{meth}`Window.new_pane() <libtmux.Window.new_pane>` and
+{meth}`Pane.new_pane() <libtmux.Pane.new_pane>`. A
+floating pane sits above the tiled layout like a popup but behaves like
+a real pane. Pass `width`/`height` to size it and `x`/`y` to position
+it, alongside the usual `shell`, `start_directory`, `environment`,
+`zoom` and `empty`, plus `style`, `active_border_style`,
+`inactive_border_style`, `message` and `keep` (remain-on-exit). The
+returned {class}`~libtmux.Pane` reports
+`pane_floating_flag == "1"`. Requires tmux 3.7+. See {ref}`floating-panes`
+for a guide.
+
 ## libtmux 0.59.0 (2026-06-27)
 
 libtmux 0.59.0 adds support for tmux 3.7. tmux 3.7 shipped an upstream
