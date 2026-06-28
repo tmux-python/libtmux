@@ -26,6 +26,8 @@ if t.TYPE_CHECKING:
 class FakeStreamEngine:
     """An async engine that replays a fixed notification stream."""
 
+    _attached_session: str | None = None
+
     def __init__(self, raw: tuple[bytes, ...]) -> None:
         self._raw = raw
 
@@ -52,6 +54,8 @@ _MON_STREAM = (b"%output %1 a  b", b"%output %1 c", b"%window-add @9")
 
 class _BlockingStreamEngine:
     """An async engine whose ``subscribe()`` never ends (a live stream)."""
+
+    _attached_session: str | None = None
 
     async def run(self, request: CommandRequest) -> CommandResult:
         """Acknowledge any command."""
