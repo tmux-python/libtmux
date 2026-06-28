@@ -71,8 +71,11 @@ class AgentHook(t.Protocol):
 
         Examples
         --------
+        >>> import pathlib, tempfile
         >>> from libtmux.experimental.agents.hooks.claude import ClaudeCodeHook
-        >>> ClaudeCodeHook().install()  # no-op on stub
+        >>> with tempfile.TemporaryDirectory() as d:
+        ...     hook = ClaudeCodeHook(settings_path=pathlib.Path(d) / "settings.json")
+        ...     hook.install()
         """
         ...
 
@@ -81,8 +84,11 @@ class AgentHook(t.Protocol):
 
         Examples
         --------
+        >>> import pathlib, tempfile
         >>> from libtmux.experimental.agents.hooks.claude import ClaudeCodeHook
-        >>> ClaudeCodeHook().uninstall()  # no-op on stub
+        >>> with tempfile.TemporaryDirectory() as d:
+        ...     hook = ClaudeCodeHook(settings_path=pathlib.Path(d) / "settings.json")
+        ...     hook.uninstall()
         """
         ...
 
