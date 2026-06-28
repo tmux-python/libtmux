@@ -180,8 +180,16 @@ class _EventRing:
         self._error: str | None = None
 
     def _ensure_started(self) -> None:
-        """Start the drainer task once, lazily, on the running loop."""
-        if self._task is None:
+        """Start the drainer task, lazily, on the running loop.
+
+        Also restarts it after it has *completed* -- the engine's
+        ``_broadcast_stream_end`` ends the subscribe stream on a disconnect, so
+        the drain task finishes; a bare ``is None`` guard would never re-subscribe
+        after a reconnect, silently freezing the cursor. A restart clears any
+        stale error from the previous run so a healthy restart isn't masked.
+        """
+        if self._task is None or self._task.done():
+            self._error = None
             self._task = asyncio.create_task(self._drain(), name="libtmux-mcp-events")
 
     async def _drain(self) -> None:

@@ -7,6 +7,7 @@ so the push/pull mechanics are exercised without a real tmux ``-C`` connection.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import typing as t
 
 import pytest
@@ -47,6 +48,75 @@ class FakeStreamEngine:
 
 _STREAM = (b"%window-add @3", b"%output %1 hi", b"%window-close @3")
 _MON_STREAM = (b"%output %1 a  b", b"%output %1 c", b"%window-add @9")
+
+
+class _BlockingStreamEngine:
+    """An async engine whose ``subscribe()`` never ends (a live stream)."""
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        """Acknowledge any command."""
+        return CommandResult(cmd=("tmux", *request.args), returncode=0)
+
+    async def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Acknowledge a batch of commands."""
+        return [await self.run(r) for r in requests]
+
+    async def subscribe(self) -> AsyncIterator[ControlNotification]:
+        """Block forever (a never-ending stream)."""
+        await asyncio.Event().wait()
+        yield ControlNotification.parse(b"%unreachable")  # present so this is a gen
+
+
+class _RestartCase(t.NamedTuple):
+    """An EventRing drain state and whether _ensure_started should restart it."""
+
+    test_id: str
+    stream_ends: bool  # True: prior drain completes; False: still running
+    expect_restart: bool
+
+
+_RESTART_CASES = (
+    _RestartCase("done_drain_restarts", stream_ends=True, expect_restart=True),
+    _RestartCase("running_drain_kept", stream_ends=False, expect_restart=False),
+)
+
+
+@pytest.mark.parametrize(
+    list(_RestartCase._fields),
+    _RESTART_CASES,
+    ids=[c.test_id for c in _RESTART_CASES],
+)
+def test_event_ring_restarts_completed_drain(
+    test_id: str,
+    stream_ends: bool,
+    expect_restart: bool,
+) -> None:
+    """_ensure_started restarts a *completed* drain (post-reconnect), not a live one."""
+    from libtmux.experimental.mcp.events import _EventRing
+
+    async def main() -> bool:
+        engine = FakeStreamEngine(()) if stream_ends else _BlockingStreamEngine()
+        ring = _EventRing(engine)
+        ring.since(0)  # starts the drain task
+        first = ring._task
+        assert first is not None
+        if stream_ends:
+            await first  # the empty stream ends, so the drain completes
+            assert first.done()
+        ring.since(0)  # _ensure_started: restart only if the prior task is done
+        second = ring._task
+        restarted = second is not first
+        for task in {first, second}:
+            if task is not None and not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
+        return restarted
+
+    assert asyncio.run(main()) is expect_restart
 
 
 class InstrumentedEngine:
