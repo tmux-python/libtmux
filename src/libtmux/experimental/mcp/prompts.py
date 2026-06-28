@@ -21,7 +21,7 @@ def run_and_wait(command: str, pane_id: str, timeout: float = 60.0) -> str:
 pane to settle and inspect the result:
 
 1. send_input(target={pane_id!r}, keys={command!r}, enter=True)
-2. wait_for_output(pane={pane_id!r}, timeout={timeout}) -- folds the live output
+2. wait_for_output(target={pane_id!r}, timeout={timeout}) -- folds the live output
    and returns when the pane goes quiet (needle-free: no regex, no sentinel).
 3. Read done.pane_dead / done.pane_dead_status (exit code) and captured_text.
    "Settled" means output stopped, not that the command succeeded -- check the
@@ -37,7 +37,7 @@ def diagnose_failing_pane(pane_id: str) -> str:
 
 1. capture_pane(target={pane_id!r}) to read the scrollback (the active prompt and
    most recent output are at the bottom).
-2. If the pane is still producing output, wait_for_output(pane={pane_id!r}) until
+2. If the pane is still producing output, wait_for_output(target={pane_id!r}) until
    it settles, then capture again.
 3. Identify the last command that ran (the prompt line and the line above it) and
    the last non-empty output line.
@@ -70,7 +70,7 @@ control returns to the shell:
 
 1. send_input(target={pane_id!r}, keys="C-c", enter=False) -- tmux interprets
    C-c as SIGINT.
-2. wait_for_output(pane={pane_id!r}, timeout=5.0) -- wait for the pane to settle
+2. wait_for_output(target={pane_id!r}, timeout=5.0) -- wait for the pane to settle
    back at a shell prompt.
 3. If it does not settle, the process is ignoring SIGINT. Stop and ask the caller
    how to proceed -- do NOT escalate automatically to C-\ (SIGQUIT) or kill."""
