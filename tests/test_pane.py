@@ -1685,6 +1685,54 @@ def test_split_3_7_flags(
             pane.split(**kwargs)
 
 
+class _SplitEmptyValueKwargs(t.TypedDict, total=False):
+    style: str
+    active_border_style: str
+    inactive_border_style: str
+    message: str
+
+
+class _SplitEmptyValueCase(t.NamedTuple):
+    test_id: str
+    option_kwargs: _SplitEmptyValueKwargs
+
+
+_SPLIT_EMPTY_VALUE_CASES = (
+    _SplitEmptyValueCase(test_id="style", option_kwargs={"style": ""}),
+    _SplitEmptyValueCase(
+        test_id="active_border_style", option_kwargs={"active_border_style": ""}
+    ),
+    _SplitEmptyValueCase(
+        test_id="inactive_border_style", option_kwargs={"inactive_border_style": ""}
+    ),
+    _SplitEmptyValueCase(test_id="message", option_kwargs={"message": ""}),
+)
+
+
+@pytest.mark.parametrize(
+    ("test_id", "option_kwargs"),
+    _SPLIT_EMPTY_VALUE_CASES,
+    ids=[case.test_id for case in _SPLIT_EMPTY_VALUE_CASES],
+)
+def test_split_preserves_empty_option_values(
+    session: Session,
+    test_id: str,
+    option_kwargs: _SplitEmptyValueKwargs,
+) -> None:
+    """Pane.split() emits empty value flags as a separate argv entry."""
+    window = session.new_window(window_name=f"split_empty_{test_id}")
+    window.resize(height=40, width=120)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        new_pane = pane.split(**option_kwargs)
+        assert new_pane in window.panes
+    else:
+        with pytest.warns(UserWarning, match=r"require tmux 3.7"):
+            pane.split(**option_kwargs)
+
+
 def test_paste_buffer_no_vis(session: Session) -> None:
     """Pane.paste_buffer(no_vis=True) uses -S on tmux 3.7+; warn below."""
     env = shutil.which("env")

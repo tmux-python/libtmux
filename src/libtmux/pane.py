@@ -1261,7 +1261,7 @@ class Pane(
             if has_gte_version("3.7", tmux_bin=self.server.tmux_bin):
                 for flag, value in styling.items():
                     if value is not None:
-                        tmux_args += (f"{flag}{value}",)
+                        tmux_args += (flag, value)
                 if keep:
                     tmux_args += ("-k",)
             else:
