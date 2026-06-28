@@ -866,7 +866,12 @@ class Server(
             return proc.stdout
         return None
 
-    def refresh_client(self, *, target_client: str | None = None) -> None:
+    def refresh_client(
+        self,
+        *,
+        target_client: str | None = None,
+        request_clipboard: bool = False,
+    ) -> None:
         """Refresh a client's display via ``$ tmux refresh-client``.
 
         Requires an attached client.
@@ -875,6 +880,11 @@ class Server(
         ----------
         target_client : str, optional
             Target client (``-t`` flag).
+        request_clipboard : bool, optional
+            Request the clipboard from the terminal (``-l`` flag,
+            ``tty_clipboard_query``) — the runtime companion to the
+            ``get-clipboard`` option. Requires tmux 3.7+; warns and is
+            ignored on older tmux (where ``-l`` is the legacy forward form).
 
         Examples
         --------
@@ -885,6 +895,15 @@ class Server(
 
         if target_client is not None:
             tmux_args += ("-t", target_client)
+
+        if request_clipboard:
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += ("-l",)
+            else:
+                warnings.warn(
+                    "request_clipboard requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
 
         proc = self.cmd("refresh-client", *tmux_args)
 

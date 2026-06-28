@@ -82,9 +82,11 @@ targets only),
 gains `no_vis` (`-S`, paste raw bytes). On the server,
 {meth}`~libtmux.Server.command_prompt` gains `no_freeze` (`-C`, don't
 freeze panes), {meth}`~libtmux.Server.list_keys` gains `format_`
-(`-F`, custom output format), and {meth}`~libtmux.Server.run_shell`
-accepts trailing `args` expanded as `#{1}`/`#{2}`. Each warns and is
-ignored on tmux < 3.7.
+(`-F`, custom output format), {meth}`~libtmux.Server.run_shell`
+accepts trailing `args` expanded as `#{1}`/`#{2}`, and
+{meth}`~libtmux.Server.refresh_client` gains `request_clipboard`
+(`-l`, request the terminal clipboard). Each warns and is ignored on
+tmux < 3.7.
 
 #### Floating panes (`new-pane`) (#694)
 

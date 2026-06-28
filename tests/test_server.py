@@ -856,6 +856,37 @@ def test_refresh_client(
         server.refresh_client()
 
 
+def test_refresh_client_request_clipboard(
+    monkeypatch: pytest.MonkeyPatch,
+    server: Server,
+) -> None:
+    """refresh_client(request_clipboard=True) emits -l on tmux 3.7+."""
+    from libtmux.common import has_gte_version
+
+    if not has_gte_version("3.7"):
+        pytest.skip("refresh-client -l clipboard query requires tmux 3.7+")
+
+    captured: list[tuple[str, ...]] = []
+    real_cmd = server.cmd
+
+    class _StubResult:
+        stderr: t.ClassVar[list[str]] = []
+        stdout: t.ClassVar[list[str]] = []
+
+    def fake_cmd(cmd: str, *args: str, **_kw: t.Any) -> t.Any:
+        if cmd == "refresh-client":
+            captured.append((cmd, *args))
+            return _StubResult()
+        return real_cmd(cmd, *args, **_kw)
+
+    monkeypatch.setattr(server, "cmd", fake_cmd)
+    server.refresh_client(request_clipboard=True)
+
+    assert captured, "Server.cmd was not invoked"
+    _name, *flags = captured[0]
+    assert "-l" in flags
+
+
 def test_suspend_client(
     control_mode: t.Callable[..., t.Any],
     server: Server,
