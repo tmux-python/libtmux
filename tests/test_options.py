@@ -29,6 +29,17 @@ if t.TYPE_CHECKING:
     from libtmux.session import Session
 
 
+TMUX_3_7_SHARED_PANE_OPTION_FIELDS = (
+    "copy_mode_line_numbers",
+    "copy_mode_line_number_style",
+    "copy_mode_current_line_number_style",
+    "tree_mode_preview_format",
+    "tree_mode_preview_style",
+    "window_pane_status_format",
+    "window_pane_current_status_format",
+)
+
+
 def test_options(server: Server) -> None:
     """Test basic options."""
     session = server.new_session(session_name="test")
@@ -140,6 +151,13 @@ def test_options_pane(server: Server) -> None:
 
     pane_options = PaneOptions(**pane_options_)
     assert pane_options.window_active_style == pane_options_.get("window-active-style")
+
+
+@pytest.mark.parametrize("field_name", TMUX_3_7_SHARED_PANE_OPTION_FIELDS)
+def test_pane_options_declares_tmux_3_7_shared_fields(field_name: str) -> None:
+    """Tmux 3.7 options shared with window scope must type on panes too."""
+    assert field_name in PaneOptions.__dataclass_fields__
+    assert field_name in Options.__dataclass_fields__
 
 
 def test_options_grid(server: Server) -> None:
@@ -1181,6 +1199,42 @@ PANE_CHOICE_OPTIONS: list[OptionTestCase] = [
         str,
         "3.7",
     ),
+    # copy-mode-line-numbers is also valid at pane scope on tmux 3.7+
+    OptionTestCase(
+        "pane_copy_mode_line_numbers",
+        "copy-mode-line-numbers",
+        OptionScope.Pane,
+        "absolute",
+        str,
+        "3.7",
+    ),
+]
+
+PANE_STRING_OPTIONS: list[OptionTestCase] = [
+    OptionTestCase(
+        "pane_tree_mode_preview_format",
+        "tree-mode-preview-format",
+        OptionScope.Pane,
+        "#{pane_index}",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "pane_window_pane_status_format",
+        "window-pane-status-format",
+        OptionScope.Pane,
+        "#{pane_index}",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "pane_window_pane_current_status_format",
+        "window-pane-current-status-format",
+        OptionScope.Pane,
+        "#{pane_index}",
+        str,
+        "3.7",
+    ),
 ]
 
 PANE_STYLE_OPTIONS: list[OptionTestCase] = [
@@ -1194,6 +1248,30 @@ PANE_STYLE_OPTIONS: list[OptionTestCase] = [
         "default",
         str,
         "3.0",
+    ),
+    OptionTestCase(
+        "pane_copy_mode_line_number_style",
+        "copy-mode-line-number-style",
+        OptionScope.Pane,
+        "fg=cyan",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "pane_copy_mode_current_line_number_style",
+        "copy-mode-current-line-number-style",
+        OptionScope.Pane,
+        "fg=cyan",
+        str,
+        "3.7",
+    ),
+    OptionTestCase(
+        "pane_tree_mode_preview_style",
+        "tree-mode-preview-style",
+        OptionScope.Pane,
+        "fg=red",
+        str,
+        "3.7",
     ),
 ]
 
@@ -1215,6 +1293,7 @@ ALL_OPTION_TEST_CASES: list[OptionTestCase] = (
     + WINDOW_STYLE_OPTIONS
     + PANE_BOOLEAN_OPTIONS
     + PANE_CHOICE_OPTIONS
+    + PANE_STRING_OPTIONS
     + PANE_STYLE_OPTIONS
 )
 
