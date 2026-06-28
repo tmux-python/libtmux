@@ -72,7 +72,8 @@ the format template stays clean on tmux 3.2a–3.6.
 #### tmux 3.7 command flags (#694)
 
 New tmux 3.7 flags are exposed on existing wrappers:
-{meth}`~libtmux.Pane.capture_pane` gains `hyperlinks` (`-H`),
+{meth}`~libtmux.Pane.capture_pane` gains `hyperlinks` (`-H`, hyperlink
+targets only),
 `line_numbers` (`-L`) and `line_flags` (`-F`);
 {meth}`~libtmux.Window.split` / {meth}`~libtmux.Pane.split` gain `empty`
 (`-E`, an empty pane); {meth}`~libtmux.Session.kill` gains `group`
