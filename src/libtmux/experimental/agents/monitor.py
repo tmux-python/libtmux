@@ -550,17 +550,29 @@ class AgentMonitor:
         logger.debug("agent HUD created on pane %s", self._hud_pane_id)
 
     async def _repaint_hud(self) -> None:
-        """Repaint the HUD pane from the current store when it has changed."""
+        """Repaint the HUD pane from the current store when it has changed.
+
+        A failed repaint -- the HUD pane vanished (e.g. a full tmux restart) --
+        drops :attr:`_hud_pane_id` so :meth:`_run` recreates the HUD on its next
+        pass; the dirty flag stays set so the fresh pane shows the current state.
+        """
         if self._hud_pane_id is None or not self._hud_dirty:
             return
         from libtmux.experimental.ops import arun
 
-        self._hud_dirty = False
         op = self._hud_renderer.repaint_op(self._hud_pane_id, self._store)
         try:
-            await arun(op, self._engine)
+            result = await arun(op, self._engine)
         except Exception:
             logger.debug("agent HUD repaint failed", exc_info=True)
+            self._hud_pane_id = None
+            return
+        if not result.ok:
+            # arun returns failure as data (no raise); a dead pane id means the
+            # HUD is gone, so drop it for _run to recreate.
+            self._hud_pane_id = None
+            return
+        self._hud_dirty = False
 
     async def _teardown_hud(self) -> None:
         """Kill the floating HUD pane if one was created."""
@@ -592,6 +604,8 @@ class AgentMonitor:
                 logger.debug("agents: reconcile not ready, retrying", exc_info=True)
                 await asyncio.sleep(self._reconnect_poll)
                 continue
+            if self._hud_enabled and self._hud_pane_id is None:
+                await self._ensure_hud()  # (re)create after a restart dropped it
             await self._repaint_hud()
             try:
                 async with contextlib.aclosing(self._engine.subscribe()) as stream:
