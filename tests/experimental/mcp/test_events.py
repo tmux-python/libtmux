@@ -26,6 +26,8 @@ if t.TYPE_CHECKING:
 class FakeStreamEngine:
     """An async engine that replays a fixed notification stream."""
 
+    _attached_session: str | None = None
+
     def __init__(self, raw: tuple[bytes, ...]) -> None:
         self._raw = raw
 
