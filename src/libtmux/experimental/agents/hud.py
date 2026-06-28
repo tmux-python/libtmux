@@ -3,9 +3,9 @@
 A *pure* renderer: an :class:`~libtmux.experimental.agents.store.AgentStore`
 becomes text, the text becomes a shell command that paints it into a pane, and
 that command becomes a typed op. The :class:`~..monitor.AgentMonitor` drives it --
-it creates a floating pane on start, repaints on every store change, and tears it
-down on stop. The renderer itself touches no tmux and no engine, so it is fully
-unit-testable.
+it creates a floating pane on start, repaints after each notification and
+reconcile, and tears it down on stop. The renderer itself touches no tmux and no
+engine, so it is fully unit-testable.
 
 The paint command writes the frame and then holds the pane open at zero CPU
 (``tail -f /dev/null``) so the frame stays visible until the next repaint.
