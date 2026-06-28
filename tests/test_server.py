@@ -1109,6 +1109,19 @@ def test_run_shell_show_stderr(server: Server) -> None:
     assert "to_stderr" in joined
 
 
+def test_run_shell_args(server: Server) -> None:
+    """``args`` fill #{1}/#{2} in the command on tmux 3.7+; warn below."""
+    from libtmux.common import has_gte_version
+
+    server.new_session(session_name="run_shell_args_test")
+    if has_gte_version("3.7"):
+        result = server.run_shell("echo #{1}-#{2}", args=["alpha", "beta"])
+        assert result == ["alpha-beta"]
+    else:
+        with pytest.warns(UserWarning, match=r"args requires tmux 3.7"):
+            server.run_shell("echo plain", args=["alpha"])
+
+
 def test_run_shell_cwd_warns_on_old_tmux(
     server: Server,
     monkeypatch: pytest.MonkeyPatch,

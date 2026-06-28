@@ -464,6 +464,7 @@ class Server(
         target_pane: str | None = None,
         cwd: StrPath | None = None,
         show_stderr: bool | None = None,
+        args: list[str] | None = None,
     ) -> list[str] | None:
         r"""Execute a shell command via ``$ tmux run-shell``.
 
@@ -499,6 +500,10 @@ class Server(
             on older tmux a warning is emitted and the kwarg is ignored.
 
             .. versionadded:: 0.57
+        args : list of str, optional
+            Positional arguments passed after *command*, expanded as
+            ``#{1}``, ``#{2}``, … inside it. Requires tmux 3.7+; warns and
+            is ignored on older tmux.
 
         Returns
         -------
@@ -545,6 +550,15 @@ class Server(
                 )
 
         tmux_args += (command,)
+
+        if args:
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += tuple(args)
+            else:
+                warnings.warn(
+                    "args requires tmux 3.7+, ignoring",
+                    stacklevel=2,
+                )
 
         proc = self.cmd("run-shell", *tmux_args)
 

@@ -81,8 +81,10 @@ targets only),
 (`-g`, kill the session group); and {meth}`~libtmux.Pane.paste_buffer`
 gains `no_vis` (`-S`, paste raw bytes). On the server,
 {meth}`~libtmux.Server.command_prompt` gains `no_freeze` (`-C`, don't
-freeze panes) and {meth}`~libtmux.Server.list_keys` gains `format_`
-(`-F`, custom output format). Each warns and is ignored on tmux < 3.7.
+freeze panes), {meth}`~libtmux.Server.list_keys` gains `format_`
+(`-F`, custom output format), and {meth}`~libtmux.Server.run_shell`
+accepts trailing `args` expanded as `#{1}`/`#{2}`. Each warns and is
+ignored on tmux < 3.7.
 
 #### Floating panes (`new-pane`) (#694)
 
