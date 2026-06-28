@@ -457,7 +457,8 @@ class Window(
         inactive_border_style : str, optional
             Border style when the pane is inactive (``-R``).
         message : str, optional
-            Message line shown for the floating pane (``-m``).
+            Keep the pane open after the command exits and show this
+            ``remain-on-exit-format`` message (``-m``).
 
         Returns
         -------
