@@ -442,6 +442,7 @@ class Window(
         active_border_style: str | None = None,
         inactive_border_style: str | None = None,
         message: str | None = None,
+        keep: bool | None = None,
     ) -> Pane:
         """Create a floating :class:`Pane` in this window (``$ tmux new-pane``).
 
@@ -481,6 +482,9 @@ class Window(
         message : str, optional
             Keep the pane open (until a key is pressed) after the command
             exits, showing this ``remain-on-exit-format`` message (``-m``).
+        keep : bool, optional
+            Keep the pane open until a key is pressed after exit (``-k``),
+            using the default ``remain-on-exit-format``.
 
         Returns
         -------
@@ -515,6 +519,7 @@ class Window(
             active_border_style=active_border_style,
             inactive_border_style=inactive_border_style,
             message=message,
+            keep=keep,
         )
 
     def resize(

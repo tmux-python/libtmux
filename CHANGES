@@ -89,8 +89,9 @@ tmux 3.7's flagship feature, floating panes, is now reachable through
 floating pane sits above the tiled layout like a popup but behaves like
 a real pane. Pass `width`/`height` to size it and `x`/`y` to position
 it, alongside the usual `shell`, `start_directory`, `environment`,
-`zoom` and `empty`, plus `style`, `active_border_style` and
-`inactive_border_style`. The returned {class}`~libtmux.Pane` reports
+`zoom` and `empty`, plus `style`, `active_border_style`,
+`inactive_border_style`, `message` and `keep` (remain-on-exit). The
+returned {class}`~libtmux.Pane` reports
 `pane_floating_flag == "1"`. Requires tmux 3.7+. See {ref}`floating-panes`
 for a guide.
 

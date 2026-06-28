@@ -1326,6 +1326,7 @@ class Pane(
         active_border_style: str | None = None,
         inactive_border_style: str | None = None,
         message: str | None = None,
+        keep: bool | None = None,
     ) -> Pane:
         """Create a floating :class:`Pane` via ``$ tmux new-pane`` (tmux 3.7+).
 
@@ -1367,6 +1368,9 @@ class Pane(
         message : str, optional
             Keep the pane open (until a key is pressed) after the command
             exits, showing this ``remain-on-exit-format`` message (``-m`` flag).
+        keep : bool, optional
+            Keep the pane open until a key is pressed after the command exits
+            (``-k`` flag), using the default ``remain-on-exit-format``.
 
         Returns
         -------
@@ -1415,6 +1419,8 @@ class Pane(
             tmux_args += ("-R", inactive_border_style)
         if message is not None:
             tmux_args += ("-m", message)
+        if keep:
+            tmux_args += ("-k",)
 
         tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
 

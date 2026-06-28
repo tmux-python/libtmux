@@ -1754,6 +1754,23 @@ def test_new_pane_floating(session: Session) -> None:
             pane.new_pane(width=40, height=10)
 
 
+def test_new_pane_keep(session: Session) -> None:
+    """Pane.new_pane(keep=True) sets remain-on-exit (-k) on tmux 3.7+."""
+    window = session.new_window(window_name="floating_keep")
+    window.resize(height=50, width=200)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        floating = pane.new_pane(width=80, height=15, keep=True, shell="sleep 30")
+        assert floating.pane_floating_flag == "1"
+        remain = floating.cmd("show-options", "-p", "-v", "remain-on-exit").stdout
+        assert remain == ["key"]
+    else:
+        with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
+            pane.new_pane(width=40, height=10, keep=True)
+
+
 @pytest.mark.parametrize(
     ("test_id", "option_kwargs"),
     _NEW_PANE_EMPTY_VALUE_CASES,
