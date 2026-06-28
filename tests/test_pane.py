@@ -1667,6 +1667,32 @@ def test_paste_buffer_no_vis(session: Session) -> None:
             pane.paste_buffer(buffer_name="novis_test", no_vis=True)
 
 
+class _NewPaneEmptyValueKwargs(t.TypedDict, total=False):
+    style: str
+    active_border_style: str
+    inactive_border_style: str
+    message: str
+
+
+class _NewPaneEmptyValueCase(t.NamedTuple):
+    test_id: str
+    option_kwargs: _NewPaneEmptyValueKwargs
+
+
+_NEW_PANE_EMPTY_VALUE_CASES = (
+    _NewPaneEmptyValueCase(test_id="style", option_kwargs={"style": ""}),
+    _NewPaneEmptyValueCase(
+        test_id="active_border_style",
+        option_kwargs={"active_border_style": ""},
+    ),
+    _NewPaneEmptyValueCase(
+        test_id="inactive_border_style",
+        option_kwargs={"inactive_border_style": ""},
+    ),
+    _NewPaneEmptyValueCase(test_id="message", option_kwargs={"message": ""}),
+)
+
+
 def test_new_pane_floating(session: Session) -> None:
     """Pane.new_pane() creates a floating pane on tmux 3.7+ (else raises)."""
     window = session.new_window(window_name="floating_pane")
@@ -1682,6 +1708,34 @@ def test_new_pane_floating(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             pane.new_pane(width=40, height=10)
+
+
+@pytest.mark.parametrize(
+    ("test_id", "option_kwargs"),
+    _NEW_PANE_EMPTY_VALUE_CASES,
+    ids=[case.test_id for case in _NEW_PANE_EMPTY_VALUE_CASES],
+)
+def test_new_pane_preserves_empty_option_values(
+    session: Session,
+    test_id: str,
+    option_kwargs: _NewPaneEmptyValueKwargs,
+) -> None:
+    """Pane.new_pane() preserves empty string option values."""
+    window = session.new_window(window_name=f"floating_empty_{test_id}")
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        floating = pane.new_pane(
+            width=40,
+            height=10,
+            shell="sleep 30",
+            **option_kwargs,
+        )
+        assert floating.pane_floating_flag == "1"
+    else:
+        with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
+            pane.new_pane(width=40, height=10, **option_kwargs)
 
 
 def test_new_pane_error_tags_subcommand(session: Session) -> None:

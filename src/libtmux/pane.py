@@ -1372,13 +1372,13 @@ class Pane(
         if zoom:
             tmux_args += ("-Z",)
         if style is not None:
-            tmux_args += (f"-s{style}",)
+            tmux_args += ("-s", style)
         if active_border_style is not None:
-            tmux_args += (f"-S{active_border_style}",)
+            tmux_args += ("-S", active_border_style)
         if inactive_border_style is not None:
-            tmux_args += (f"-R{inactive_border_style}",)
+            tmux_args += ("-R", inactive_border_style)
         if message is not None:
-            tmux_args += (f"-m{message}",)
+            tmux_args += ("-m", message)
 
         tmux_args += ("-P", "-F{}".format("".join(tmux_formats)))  # output
 
