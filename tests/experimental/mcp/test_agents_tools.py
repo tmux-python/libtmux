@@ -74,3 +74,54 @@ def test_watch_agents_observes_store_without_subscribing() -> None:
 
     assert engine.subscribe_calls == 0  # fix: watch_agents does not re-subscribe
     assert result == {"transitions": [], "count": 0}  # static store over the window
+
+
+class _InstallCase(t.NamedTuple):
+    """An install_agent_hooks scenario and the dict the tool should return."""
+
+    test_id: str
+    registered: bool
+    expected: dict[str, str]
+
+
+_INSTALL_CASES = (
+    _InstallCase("known_agent", True, {"agent": "claude", "status": "installed"}),
+    _InstallCase(
+        "unknown_agent",
+        False,
+        {"agent": "claude", "error": "unknown agent"},
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    _INSTALL_CASES,
+    ids=[c.test_id for c in _INSTALL_CASES],
+)
+def test_install_agent_hooks(
+    case: _InstallCase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """install_agent_hooks returns the hook status, or an error for unknown agents."""
+    pytest.importorskip("fastmcp")
+    from libtmux.experimental.agents.hooks import registry
+    from libtmux.experimental.mcp.vocabulary.agents import register_agents
+
+    class _FakeHook:
+        def install(self) -> None: ...
+
+        def status(self) -> str:
+            return "installed"
+
+    def _get(name: str) -> _FakeHook:
+        if not case.registered:
+            raise KeyError(name)
+        return _FakeHook()
+
+    monkeypatch.setattr(registry, "get", _get)
+    mcp = _CapturingMcp()
+    register_agents(t.cast("FastMCP[t.Any]", mcp), _FakeEngine())
+
+    install = mcp.tools["install_agent_hooks"].fn
+    assert asyncio.run(install("claude")) == case.expected
