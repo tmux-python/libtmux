@@ -101,6 +101,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     name: str | None = None
     if "--name" in args:
         idx = args.index("--name")
-        name = args[idx + 1]
+        name = args[idx + 1] if idx + 1 < len(args) else None
     emit(state, name=name)
     return 0
