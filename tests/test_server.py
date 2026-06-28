@@ -860,7 +860,12 @@ def test_refresh_client_request_clipboard(
     monkeypatch: pytest.MonkeyPatch,
     server: Server,
 ) -> None:
-    """refresh_client(request_clipboard=True) emits -l on tmux 3.7+."""
+    """refresh_client(request_clipboard=True) emits -l on tmux 3.7+.
+
+    ``refresh-client -l`` queries the client's clipboard via an xterm
+    escape sequence, which has no observable effect under the headless
+    test server, so verify the constructed argv instead.
+    """
     from libtmux.common import has_gte_version
 
     if not has_gte_version("3.7"):
