@@ -1109,6 +1109,7 @@ class Server(
         expand_format: bool | None = None,
         literal: bool | None = None,
         bspace_exit: bool | None = None,
+        no_freeze: bool | None = None,
     ) -> None:
         """Open a command prompt via ``$ tmux command-prompt``.
 
@@ -1146,6 +1147,10 @@ class Server(
         bspace_exit : bool, optional
             Close the prompt when the user empties it with backspace
             (``-e`` flag, ``PROMPT_BSPACE_EXIT``). Requires tmux 3.7+ (upstream master).
+        no_freeze : bool, optional
+            Do not freeze panes while the prompt is open (``-C`` flag,
+            ``PROMPT_NOFREEZE``), matching ``display-message -C``. Requires
+            tmux 3.7+; warns and is ignored on older tmux.
 
         Examples
         --------
@@ -1204,6 +1209,15 @@ class Server(
             else:
                 warnings.warn(
                     "bspace_exit requires tmux 3.7+ (upstream master), ignoring",
+                    stacklevel=2,
+                )
+
+        if no_freeze:
+            if has_gte_version("3.7", tmux_bin=self.tmux_bin):
+                tmux_args += ("-C",)
+            else:
+                warnings.warn(
+                    "no_freeze requires tmux 3.7+, ignoring",
                     stacklevel=2,
                 )
 

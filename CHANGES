@@ -79,8 +79,9 @@ targets only),
 `inactive_border_style` (`-s`/`-S`/`-R`), `message` (`-m`) and `keep`
 (`-k`, remain-on-exit); {meth}`~libtmux.Session.kill` gains `group`
 (`-g`, kill the session group); and {meth}`~libtmux.Pane.paste_buffer`
-gains `no_vis` (`-S`, paste raw bytes). Each warns and is ignored on
-tmux < 3.7.
+gains `no_vis` (`-S`, paste raw bytes). On the server,
+{meth}`~libtmux.Server.command_prompt` gains `no_freeze` (`-C`, don't
+freeze panes). Each warns and is ignored on tmux < 3.7.
 
 #### Floating panes (`new-pane`) (#694)
 

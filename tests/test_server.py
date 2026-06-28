@@ -650,8 +650,9 @@ def test_command_prompt(
         ({"literal": True}, "-l", "3.6"),
         # -e is master-only (upstream 1e5f93b7); not in any 3.6 release
         ({"bspace_exit": True}, "-e", "3.7"),
+        ({"no_freeze": True}, "-C", "3.7"),
     ],
-    ids=["expand_format_v33", "literal_v36", "bspace_exit"],
+    ids=["expand_format_v33", "literal_v36", "bspace_exit", "no_freeze"],
 )
 def test_command_prompt_extra_flags(
     kwargs: dict[str, t.Any],
