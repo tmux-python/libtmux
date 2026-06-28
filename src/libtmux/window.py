@@ -345,6 +345,11 @@ class Window(
         percentage: int | None = None,
         environment: dict[str, str] | None = None,
         empty: bool | None = None,
+        style: str | None = None,
+        active_border_style: str | None = None,
+        inactive_border_style: str | None = None,
+        message: str | None = None,
+        keep: bool | None = None,
     ) -> Pane:
         """Split window on active pane and return the created :class:`Pane`.
 
@@ -381,6 +386,18 @@ class Window(
             Create an empty pane with no command (``-E`` flag) instead of
             spawning the default shell. Requires tmux 3.7+. If used with
             tmux < 3.7, a warning is issued and the flag is ignored.
+        style : str, optional
+            Style for the new pane (``-s``). Requires tmux 3.7+.
+        active_border_style : str, optional
+            Active-pane border style (``-S``). Requires tmux 3.7+.
+        inactive_border_style : str, optional
+            Inactive-pane border style (``-R``). Requires tmux 3.7+.
+        message : str, optional
+            Keep the pane open after exit, showing this
+            ``remain-on-exit-format`` message (``-m``). Requires tmux 3.7+.
+        keep : bool, optional
+            Keep the pane open until a key is pressed after exit (``-k``).
+            Requires tmux 3.7+. These 3.7 flags warn and are ignored below 3.7.
 
         Returns
         -------
@@ -400,6 +417,11 @@ class Window(
             percentage=percentage,
             environment=environment,
             empty=empty,
+            style=style,
+            active_border_style=active_border_style,
+            inactive_border_style=inactive_border_style,
+            message=message,
+            keep=keep,
         )
 
     def new_pane(

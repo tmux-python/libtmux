@@ -1641,6 +1641,50 @@ def test_split_empty(session: Session) -> None:
             pane.split(empty=True)
 
 
+class SplitFlagCase(t.NamedTuple):
+    """Test case for Pane.split() tmux 3.7 styling/remain flags."""
+
+    test_id: str
+    kwargs: dict[str, t.Any]
+
+
+SPLIT_FLAG_CASES: list[SplitFlagCase] = [
+    SplitFlagCase(test_id="style", kwargs={"style": "bg=red"}),
+    SplitFlagCase(
+        test_id="active_border_style", kwargs={"active_border_style": "fg=green"}
+    ),
+    SplitFlagCase(
+        test_id="inactive_border_style", kwargs={"inactive_border_style": "fg=blue"}
+    ),
+    SplitFlagCase(test_id="message", kwargs={"message": "bye"}),
+    SplitFlagCase(test_id="keep", kwargs={"keep": True}),
+]
+
+
+@pytest.mark.parametrize(
+    list(SplitFlagCase._fields),
+    SPLIT_FLAG_CASES,
+    ids=[c.test_id for c in SPLIT_FLAG_CASES],
+)
+def test_split_3_7_flags(
+    test_id: str,
+    kwargs: dict[str, t.Any],
+    session: Session,
+) -> None:
+    """Pane.split() tmux 3.7 styling/remain flags work on 3.7+; warn below."""
+    window = session.new_window(window_name="split_37")
+    window.resize(height=40, width=80)
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        new_pane = pane.split(**kwargs)
+        assert new_pane in window.panes
+    else:
+        with pytest.warns(UserWarning, match=r"require tmux 3.7"):
+            pane.split(**kwargs)
+
+
 def test_paste_buffer_no_vis(session: Session) -> None:
     """Pane.paste_buffer(no_vis=True) uses -S on tmux 3.7+; warn below."""
     env = shutil.which("env")
