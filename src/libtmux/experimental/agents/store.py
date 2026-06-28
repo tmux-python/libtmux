@@ -163,7 +163,7 @@ class AgentStore:
                 pane_id=a["pane_id"],
                 key=a["key"],
                 name=a["name"],
-                state=AgentState(a["state"]),
+                state=AgentState.from_signal(a["state"]),
                 since=a["since"],
                 source=a["source"],
                 pid=a["pid"],

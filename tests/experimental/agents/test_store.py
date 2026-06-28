@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import pathlib
+import typing as t
+
+import pytest
 
 from libtmux.experimental.agents.merge import Stamp
 from libtmux.experimental.agents.state import AgentState
@@ -69,3 +72,44 @@ def test_jsonfile_atomic_roundtrip(tmp_path: pathlib.Path) -> None:
     assert restored.agents["%1"].state is AgentState.RUNNING
     # the saved file is valid JSON
     assert json.loads((tmp_path / "agents.json").read_text())["agents"]
+
+
+class StateCase(t.NamedTuple):
+    """A persisted ``state`` string and the AgentState from_dict should yield."""
+
+    test_id: str
+    stored: str
+    expected: AgentState
+
+
+STATE_CASES = (
+    StateCase("known_round_trips", "running", AgentState.RUNNING),
+    StateCase("unknown_future_state", "paused", AgentState.UNKNOWN),
+    StateCase("garbage", "???", AgentState.UNKNOWN),
+)
+
+
+@pytest.mark.parametrize("case", STATE_CASES, ids=[c.test_id for c in STATE_CASES])
+def test_from_dict_tolerates_unknown_state(case: StateCase) -> None:
+    """from_dict round-trips known states and degrades unknown ones to UNKNOWN.
+
+    A store written by a newer version (a state the current enum lacks) must not
+    crash the monitor on startup, so deserialization mirrors signal ingestion.
+    """
+    data = {
+        "agents": {
+            "%1": {
+                "pane_id": "%1",
+                "key": "%1",
+                "name": "claude",
+                "state": case.stored,
+                "since": 1.0,
+                "source": "option",
+                "pid": 42,
+                "alive": True,
+            },
+        },
+        "stamps": {"%1": [1, "option"]},
+    }
+    store = AgentStore.from_dict(data)
+    assert store.agents["%1"].state is case.expected
