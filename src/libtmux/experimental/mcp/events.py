@@ -122,6 +122,8 @@ class _StreamEngine(t.Protocol):
     against this narrower protocol after the :func:`_supports_stream` guard.
     """
 
+    _attached_session: str | None
+
     async def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command."""
         ...
@@ -178,8 +180,16 @@ class _EventRing:
         self._error: str | None = None
 
     def _ensure_started(self) -> None:
-        """Start the drainer task once, lazily, on the running loop."""
-        if self._task is None:
+        """Start the drainer task, lazily, on the running loop.
+
+        Also restarts it after it has *completed* -- the engine's
+        ``_broadcast_stream_end`` ends the subscribe stream on a disconnect, so
+        the drain task finishes; a bare ``is None`` guard would never re-subscribe
+        after a reconnect, silently freezing the cursor. A restart clears any
+        stale error from the previous run so a healthy restart isn't masked.
+        """
+        if self._task is None or self._task.done():
+            self._error = None
             self._task = asyncio.create_task(self._drain(), name="libtmux-mcp-events")
 
     async def _drain(self) -> None:
@@ -393,7 +403,7 @@ async def _ensure_attached(engine: _StreamEngine, session_id: str) -> None:
         detail = " ".join(result.stderr) or "attach-session failed"
         msg = f"cannot watch {session_id}: {detail}"
         raise RuntimeError(msg)
-    engine._attached_session = session_id  # type: ignore[attr-defined]
+    engine._attached_session = session_id
 
 
 def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
