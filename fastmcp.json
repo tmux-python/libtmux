@@ -1,0 +1,11 @@
+{
+  "$schema": "https://gofastmcp.com/public/schemas/fastmcp.json/v1.json",
+  "source": {
+    "type": "filesystem",
+    "path": "src/libtmux/experimental/mcp/__init__.py",
+    "entrypoint": "default_async_server"
+  },
+  "deployment": {
+    "transport": "stdio"
+  }
+}
