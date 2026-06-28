@@ -57,13 +57,14 @@ control-mode engine and coalesces incoming tmux notifications into per-pane
 {class}`~libtmux.experimental.agents.state.Agent` records carrying the agent's
 name, its current {class}`~libtmux.experimental.agents.state.AgentState`
 (`RUNNING`, `AWAITING_INPUT`, `IDLE`, `EXITED`, or `UNKNOWN`), the timestamp of
-the last transition, and a liveness flag refreshed by a periodic health probe.
+the last transition, and a liveness flag refreshed on each reconciliation.
 
 Agents publish their state through tmux option subscriptions or OSC escape
 sequences; when both signals arrive for the same pane the monitor applies a
 last-writer-wins merge so the in-memory store stays consistent without locks.
-A reconciliation sweep runs every few seconds to catch any pane the stream
-missed, compare it against the stored snapshot, and emit the minimal diff —
+A reconciliation sweep runs at startup and on each engine reconnect to catch
+any pane the stream missed, compare it against the stored snapshot, and emit
+the minimal diff —
 so the monitor self-heals across reconnects and supervisor restarts.  Shell
 hooks for Claude Code and Codex are included; install them into a running
 session at any time via `install_agent_hooks` or the bundled
