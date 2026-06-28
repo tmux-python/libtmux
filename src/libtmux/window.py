@@ -422,8 +422,41 @@ class Window(
     ) -> Pane:
         """Create a floating :class:`Pane` in this window (``$ tmux new-pane``).
 
-        Floating panes require tmux 3.7+. See :meth:`Pane.new_pane` for the
-        full parameter reference.
+        Floating panes require tmux 3.7+. Delegates to :meth:`Pane.new_pane`
+        on the active pane.
+
+        Parameters
+        ----------
+        target : int or str, optional
+            Custom *target-pane*.
+        start_directory : str or PathLike, optional
+            Working directory for the new pane (``-c``).
+        attach : bool, optional
+            Make the new pane active, default False (``-d`` otherwise).
+        shell : str, optional
+            Command to run; the pane closes when it exits.
+        environment : dict, optional
+            Environment variables for the new pane (``-e``).
+        width : int, optional
+            Width in cells (``-x``).
+        height : int, optional
+            Height in cells (``-y``).
+        x : int, optional
+            X position in cells (``-X``).
+        y : int, optional
+            Y position in cells (``-Y``).
+        zoom : bool, optional
+            Zoom the pane (``-Z``).
+        empty : bool, optional
+            Create an empty pane with no command (``-E``).
+        style : str, optional
+            Style for the floating pane (``-s``).
+        active_border_style : str, optional
+            Border style when the pane is active (``-S``).
+        inactive_border_style : str, optional
+            Border style when the pane is inactive (``-R``).
+        message : str, optional
+            Message line shown for the floating pane (``-m``).
 
         Returns
         -------
