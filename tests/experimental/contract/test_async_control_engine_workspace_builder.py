@@ -546,7 +546,7 @@ def test_compile_folds_first_pane_env_into_creator() -> None:
 
     Window 0 reuses the session's implicit pane, so its env -- and its first
     pane's -- folds into ``new-session -e``; window 2..N fold into ``new-window
-    -e``. A *split* pane carries its own ``-e``.
+    -e``. A *split* pane inherits the window env, merged with its own ``-e``.
     """
     ws = Workspace(
         name="ws-env",
@@ -570,8 +570,8 @@ def test_compile_folds_first_pane_env_into_creator() -> None:
     assert new_session.environment == {"WIN_ENV": "w", "PANE_ENV": "p"}
     # window 1 folds into new-window -e
     assert new_window.environment == {"W2": "x"}
-    # a split pane carries its own env (falling back to the window's)
-    assert split.environment == {"SPLIT_ENV": "s"}
+    # a split pane inherits the window env, merged with its own (pane wins)
+    assert split.environment == {"WIN_ENV": "w", "SPLIT_ENV": "s"}
 
 
 def test_compile_first_window_start_directory_drives_new_session() -> None:
