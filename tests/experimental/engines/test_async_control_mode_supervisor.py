@@ -47,13 +47,15 @@ def test_reconnects_after_proc_exits(server: Server) -> None:
 
 
 def test_attach_replayed_on_reconnect(session: Session) -> None:
-    """The supervisor re-attaches every desired session after the proc dies.
+    """A reconnect runs the attach replay without optimistically caching.
 
-    A fresh ``tmux -C`` proc is attached to nothing, so per-pane
-    ``%subscription-changed`` only flows once the supervisor replays the attach.
-    This pins that the replay happens on a *reconnect*, not just the first
-    connect: the attach flag is cleared, the proc killed, and the flag must come
-    back on its own.
+    A fresh ``tmux -C`` proc is attached to nothing, so the supervisor replays
+    ``attach-session`` on every (re)connect. That replay is fire-and-forget, so
+    it must NOT cache ``_attached_session`` -- that cache is owned by the events
+    layer (set only on a confirmed attach, re-attached on a miss), so a session
+    that vanished during the disconnect surfaces a real error rather than a
+    silently-empty capture. This pins that the cache stays unset across a
+    *reconnect*, not just the first connect.
     """
 
     async def main() -> str | None:
@@ -64,21 +66,20 @@ def test_attach_replayed_on_reconnect(session: Session) -> None:
         engine = AsyncControlModeEngine.for_server(session.server)
         engine.set_attach_targets([sid])
         await engine.start()
-        # The first connect already replayed the attach.
-        assert engine._attached_session == sid
-        # Clear the flag and kill the proc; the supervisor must RE-attach.
-        engine._attached_session = None
+        # The first connect replayed the attach but did not cache it.
+        assert engine._attached_session is None
+        # Kill the proc; the supervisor reconnects and replays the attach again.
         assert engine._proc is not None
         engine._proc.terminate()
         await asyncio.sleep(1.6)  # backoff + reconnect + replay
         # A fresh command confirms the reconnected proc is live; by the time it
         # returns the reconnect has run past _replay_attach.
         await engine.run(CommandRequest.from_args("list-sessions"))
-        reattached = engine._attached_session
+        cached = engine._attached_session
         await engine.aclose()
-        return reattached
+        return cached
 
-    assert asyncio.run(main()) == session.session_id
+    assert asyncio.run(main()) is None
 
 
 def test_spawn_keeps_dead_until_startup_ack_consumed(

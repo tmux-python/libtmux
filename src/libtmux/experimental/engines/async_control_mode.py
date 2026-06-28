@@ -231,8 +231,7 @@ class AsyncControlModeEngine:
         Stores a *copy* of *ids* in :attr:`_desired_attach`. The supervisor
         replays these on every (re)connect via :meth:`_replay_attach`, so the
         engine stays attached across a tmux restart or socket blip (a control
-        client attaches to one session at a time, so the last target wins and
-        :attr:`_attached_session` records it).
+        client attaches to one session at a time, so the last target wins).
 
         Parameters
         ----------
@@ -597,8 +596,10 @@ class AsyncControlModeEngine:
         to stdin with a swallowed pending future (same FIFO + :attr:`_write_lock`
         discipline as the subscription replay), so it re-enters neither
         :meth:`start` nor :meth:`run_batch`. A control client attaches to one
-        session at a time, so the last target wins; :attr:`_attached_session`
-        records it. Does nothing when :attr:`_desired_attach` is empty.
+        session at a time, so the last target wins. The attach is fire-and-forget,
+        so it does not cache :attr:`_attached_session` here; the events layer sets
+        that on a confirmed attach and re-attaches on a miss. Does nothing when
+        :attr:`_desired_attach` is empty.
         """
         if not self._desired_attach:
             return
@@ -608,14 +609,12 @@ class AsyncControlModeEngine:
         loop = asyncio.get_running_loop()
         async with self._write_lock:
             payload_parts: list[bytes] = []
-            attached: str | None = None
             for target in self._desired_attach:
                 argv = ("attach-session", "-t", target)
                 future: asyncio.Future[CommandResult] = loop.create_future()
                 future.add_done_callback(_swallow_future)
                 self._pending.append(_PendingCommand(future, argv, command_count(argv)))
                 payload_parts.append((render_control_line(argv) + "\n").encode())
-                attached = target
             try:
                 proc.stdin.write(b"".join(payload_parts))
                 await proc.stdin.drain()
@@ -623,12 +622,11 @@ class AsyncControlModeEngine:
                 # The proc died before replay landed; the reader will EOF and the
                 # supervisor reconnects, failing these pending commands then.
                 return
-            # Optimistic, like the subscription replay: the attach is fire-and-
-            # forget (swallowed future), so its returncode is not awaited here. A
-            # failed re-attach (e.g. the session vanished during the disconnect)
-            # self-corrects on the monitor's next reconcile, which re-derives the
-            # tree from list-panes and observes the missing session/panes.
-            self._attached_session = attached
+            # The attach is fire-and-forget (swallowed future): its returncode is
+            # not awaited, so _attached_session is NOT cached optimistically here.
+            # The events layer caches it only on a confirmed attach and re-attaches
+            # on a miss, so a session that vanished during the disconnect surfaces a
+            # real error instead of a silently-empty capture.
 
     def _reset_attach(self) -> None:
         """Clear the sticky attach so reconnect re-attaches from scratch.
