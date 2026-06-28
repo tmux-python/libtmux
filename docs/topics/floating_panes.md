@@ -59,6 +59,25 @@ Floating panes accept the same overlay styling as tmux's `new-pane`: `style`
 a tmux style string, e.g. `style="bg=black"` or
 `active_border_style="fg=green"`.
 
+## Keeping a pane open
+
+By default a floating pane closes when its command exits. Pass `keep=True` to
+hold it open until a key is pressed (tmux's `-k`), or `message="..."` to hold
+it open showing a custom `remain-on-exit-format` line (tmux's `-m`); both set
+the pane's `remain-on-exit` option to `key`:
+
+```python
+>>> from libtmux.common import has_gte_version
+
+>>> if has_gte_version("3.7"):
+...     held = window.new_pane(width=20, height=5, shell="sleep 30", keep=True)
+...     remain = held.cmd("show-options", "-p", "-v", "remain-on-exit").stdout
+... else:
+...     remain = ["key"]
+>>> remain
+['key']
+```
+
 ## Identifying floating panes
 
 Every pane carries the tmux 3.7 `pane_floating_flag` field, so floating panes
