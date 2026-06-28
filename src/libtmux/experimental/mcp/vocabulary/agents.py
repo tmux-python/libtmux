@@ -22,7 +22,6 @@ registration time.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import typing as t
 
 if t.TYPE_CHECKING:
@@ -167,14 +166,15 @@ def register_agents(
     async def watch_agents(timeout_s: float = 5.0) -> dict[str, t.Any]:
         """Collect agent-state transitions for up to *timeout_s* seconds.
 
-        Drains the engine's ``subscribe()`` stream through
-        :meth:`~libtmux.experimental.agents.monitor.AgentMonitor.ingest`
-        and returns any state changes observed within the window.
+        Observes the monitor's live store over the window and returns any state
+        changes. The monitor's own drain task is the sole ingester, so this only
+        reads ``monitor.agents`` (no second subscription, no re-ingest) -- keeping
+        the clock and ``since`` stamps accurate.
 
         Parameters
         ----------
         timeout_s : float
-            Wall-clock seconds to collect before returning (default 5.0).
+            Wall-clock seconds to observe before returning (default 5.0).
 
         Returns
         -------
@@ -183,15 +183,7 @@ def register_agents(
             for agents whose state changed; ``count`` -- number of transitions.
         """
         snapshot_before = {a.pane_id: a.state.value for a in monitor.agents}
-
-        async def _collect() -> None:
-            async with contextlib.aclosing(engine.subscribe()) as stream:
-                async for note in stream:
-                    monitor.ingest(note.raw)
-
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(_collect(), timeout=timeout_s)
-
+        await asyncio.sleep(timeout_s)
         snapshot_after = {a.pane_id: a.state.value for a in monitor.agents}
         transitions = [
             {
