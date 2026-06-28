@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import typing as t
 
+import pytest
+
 from libtmux.experimental.agents.hud import HudRenderer
 from libtmux.experimental.agents.monitor import AgentMonitor
 from libtmux.experimental.agents.state import Agent, AgentState
@@ -65,8 +67,14 @@ def test_repaint_op_targets_pane() -> None:
 class _HudEngine:
     """A minimal async engine that satisfies the HUD lifecycle calls."""
 
-    def __init__(self, pane_rows: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self,
+        pane_rows: tuple[str, ...] = (),
+        *,
+        respawn_returncode: int = 0,
+    ) -> None:
         self._pane_rows = pane_rows
+        self._respawn_returncode = respawn_returncode
         self.killed: list[str] = []
 
     async def run(self, request: CommandRequest) -> t.Any:
@@ -81,6 +89,12 @@ class _HudEngine:
             return CommandResult(cmd=request.args, stdout=self._pane_rows)
         if cmd == "new-pane":
             return CommandResult(cmd=request.args, stdout=("%99",))
+        if cmd == "respawn-pane":
+            return CommandResult(
+                cmd=request.args,
+                stderr=() if self._respawn_returncode == 0 else ("no such pane",),
+                returncode=self._respawn_returncode,
+            )
         if cmd == "kill-pane":
             self.killed.append(request.args[-1])
             return CommandResult(cmd=request.args, returncode=0)
@@ -121,3 +135,43 @@ def test_reconcile_excludes_hud_pane() -> None:
 
     assert "%1" in monitor._prev_panes
     assert "%99" not in monitor._prev_panes
+
+
+class _RepaintCase(t.NamedTuple):
+    """A HUD repaint outcome and whether the pane id should survive it."""
+
+    test_id: str
+    repaint_ok: bool
+    expect_pane_kept: bool
+
+
+_REPAINT_CASES = (
+    _RepaintCase("ok_keeps_pane", repaint_ok=True, expect_pane_kept=True),
+    _RepaintCase("fail_drops_pane", repaint_ok=False, expect_pane_kept=False),
+)
+
+
+@pytest.mark.parametrize(
+    list(_RepaintCase._fields),
+    _REPAINT_CASES,
+    ids=[c.test_id for c in _REPAINT_CASES],
+)
+def test_repaint_drops_dead_pane(
+    test_id: str,
+    repaint_ok: bool,
+    expect_pane_kept: bool,
+) -> None:
+    """A failed repaint drops _hud_pane_id so _run recreates the HUD."""
+    engine = _HudEngine(respawn_returncode=0 if repaint_ok else 1)
+    monitor = AgentMonitor(engine, hud=True)
+
+    async def go() -> str | None:
+        await monitor._ensure_hud()
+        assert monitor._hud_pane_id == "%99"
+        monitor._hud_dirty = True  # force a repaint
+        await monitor._repaint_hud()
+        return monitor._hud_pane_id
+
+    pane_after = asyncio.run(go())
+    assert (pane_after == "%99") is expect_pane_kept
+    assert (pane_after is None) is not expect_pane_kept
