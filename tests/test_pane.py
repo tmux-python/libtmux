@@ -1647,3 +1647,19 @@ def test_new_pane_floating(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             pane.new_pane(width=40, height=10)
+
+
+def test_new_pane_error_tags_subcommand(session: Session) -> None:
+    """Pane.new_pane() tags LibTmuxException with the new-pane subcommand."""
+    window = session.new_window(window_name="new_pane_err")
+    pane = window.active_pane
+    assert pane is not None
+
+    if has_gte_version("3.7"):
+        with pytest.raises(exc.LibTmuxException) as excinfo:
+            pane.new_pane(target="%99999")
+        assert excinfo.value.subcommand == "new-pane"
+        assert str(excinfo.value).startswith("new-pane:")
+    else:
+        with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
+            pane.new_pane(target="%99999")

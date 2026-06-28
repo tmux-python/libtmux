@@ -1400,12 +1400,7 @@ class Pane(
 
         pane_cmd = self.cmd("new-pane", *tmux_args, target=target)
 
-        if pane_cmd.stderr:
-            raise exc.LibTmuxException(
-                pane_cmd.stderr,
-                self.__dict__,
-                self.window.panes,
-            )
+        raise_if_stderr(pane_cmd, "new-pane")
 
         pane_output = pane_cmd.stdout[0]
 
