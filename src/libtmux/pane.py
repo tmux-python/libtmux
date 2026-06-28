@@ -1330,9 +1330,9 @@ class Pane(
     ) -> Pane:
         """Create a floating :class:`Pane` via ``$ tmux new-pane`` (tmux 3.7+).
 
-        Floating panes sit above the tiled layout like a popup, but unlike a
-        popup they are not modal and behave like normal panes. The returned
-        pane has ``pane_floating_flag == "1"``.
+        Use :meth:`split` for a tiled pane. Floating panes sit above the tiled
+        layout like a popup, but unlike a popup they are not modal and behave
+        like normal panes. The returned pane has ``pane_floating_flag == "1"``.
 
         Parameters
         ----------

@@ -446,8 +446,8 @@ class Window(
     ) -> Pane:
         """Create a floating :class:`Pane` in this window (``$ tmux new-pane``).
 
-        Floating panes require tmux 3.7+. Delegates to :meth:`Pane.new_pane`
-        on the active pane.
+        Use :meth:`split` for a tiled pane. Floating panes require tmux 3.7+;
+        delegates to :meth:`Pane.new_pane` on the active pane.
 
         Parameters
         ----------
