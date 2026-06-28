@@ -185,6 +185,11 @@ def _shell_commands(value: t.Any) -> tuple[str | Command, ...]:
             out.append(item)
         elif isinstance(item, collections.abc.Mapping):
             out.append(_command(item))
+        elif item is None:
+            continue  # a None mixed with real commands is a blank (tmuxp parity)
+        else:
+            msg = f"unsupported shell_command item: {item!r}"
+            raise TypeError(msg)
     return tuple(out)
 
 
