@@ -1575,19 +1575,54 @@ def test_pane_refresh_raises_when_pane_id_is_none(session: Session) -> None:
         pane.refresh()
 
 
-def test_capture_pane_3_7_flags(session: Session) -> None:
+class CaptureFlagWarnCase(t.NamedTuple):
+    """Test case for capture_pane() 3.7 flag warn-and-ignore paths."""
+
+    test_id: str
+    kwargs: dict[str, t.Any]
+    match: str
+
+
+CAPTURE_FLAG_WARN_CASES: list[CaptureFlagWarnCase] = [
+    CaptureFlagWarnCase(
+        test_id="hyperlinks",
+        kwargs={"hyperlinks": True},
+        match="hyperlinks requires tmux 3.7",
+    ),
+    CaptureFlagWarnCase(
+        test_id="line_numbers",
+        kwargs={"line_numbers": True},
+        match="line_numbers requires tmux 3.7",
+    ),
+    CaptureFlagWarnCase(
+        test_id="line_flags",
+        kwargs={"line_flags": True},
+        match="line_flags requires tmux 3.7",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(CaptureFlagWarnCase._fields),
+    CAPTURE_FLAG_WARN_CASES,
+    ids=[c.test_id for c in CAPTURE_FLAG_WARN_CASES],
+)
+def test_capture_pane_3_7_flags(
+    test_id: str,
+    kwargs: dict[str, t.Any],
+    match: str,
+    session: Session,
+) -> None:
     """Pane.capture_pane() -H/-L/-F on tmux 3.7+; warn-and-ignore below."""
     window = session.new_window(window_name="capture_37")
     pane = window.active_pane
     assert pane is not None
 
     if has_gte_version("3.7"):
-        assert isinstance(pane.capture_pane(hyperlinks=True), list)
-        assert isinstance(pane.capture_pane(line_numbers=True), list)
-        assert isinstance(pane.capture_pane(line_flags=True), list)
+        assert isinstance(pane.capture_pane(**kwargs), list)
     else:
-        with pytest.warns(UserWarning, match="hyperlinks requires tmux 3.7"):
-            pane.capture_pane(hyperlinks=True)
+        with pytest.warns(UserWarning, match=match):
+            pane.capture_pane(**kwargs)
 
 
 def test_split_empty(session: Session) -> None:
