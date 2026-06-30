@@ -1,34 +1,75 @@
-# Design Decisions
+# Design decisions
 
-## Why ORM-Style Objects
+This page explains the "why" behind libtmux's shape: the four core choices it
+makes about representing tmux to your Python code. You don't need any of it to
+get started — the defaults work out of the box, and most code never thinks about
+the rationale below. Read on when a choice starts to matter to you: why
+{attr}`session.windows <libtmux.Session.windows>` is a live collection, why
+properties read cleanly off an object, and what to expect from a pre-1.0 API.
 
-tmux organizes terminals in a strict hierarchy: Server → Session → Window → Pane. Each level owns the next. libtmux mirrors this with Python objects that maintain the same parent-child relationships.
+## Why ORM-style objects
 
-The alternative — a flat command-builder API (`tmux("new-session", "-s", "foo")`) — loses the relational structure. You'd have to track which windows belong to which session manually. The ORM approach lets you write `session.windows` and get a live, filterable collection.
+Most of your code just writes {attr}`session.windows <libtmux.Session.windows>`
+and gets a live, filterable collection back — you rarely think about why it's
+shaped that way. This section is for when you're curious about the design.
 
-## Why Format Strings
+tmux organizes terminals in a strict hierarchy: Server → Session → Window →
+Pane. Each level owns the next. libtmux mirrors that hierarchy with Python
+objects — {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane` — that maintain the same
+parent-child relationships, so navigating tmux feels like navigating Python.
 
-tmux exposes object properties through its format system (`-F` flags). For example, `tmux list-sessions -F '#{session_id}:#{session_name}'` returns structured data.
+What you get is a relational structure you can walk in either direction:
+`session.windows` lists a session's windows, `pane.window` points back up to the
+pane's parent. The alternative — a flat command-builder API
+(`tmux("new-session", "-s", "foo")`) — hands back raw strings and leaves you to
+track which windows belong to which session yourself.
 
-libtmux uses this instead of parsing human-readable `tmux ls` output because:
+The trade-off is that an object is a snapshot. If tmux state changes out from
+under you — another client splits a window, a process exits — your object can go
+stale, and you reach for {meth}`~libtmux.Session.refresh` to re-read it. You
+trade that occasional refresh for an API that reads like the hierarchy it
+models.
+
+## Why format strings
+
+tmux exposes object properties through its format system (`-F` flags). For
+example, `tmux list-sessions -F '#{session_id}:#{session_name}'` returns
+structured data.
+
+libtmux queries through this system instead of parsing human-readable `tmux ls`
+output because:
 
 - **Stability**: format variables are part of tmux's documented interface
 - **Precision**: no regex fragility from parsing prose output
 - **Completeness**: formats expose properties (like `session_id`) that don't appear in default output
 
-Format constants are defined in {mod}`libtmux.formats`.
+The cost is a tmux round-trip: reading a property runs a subprocess against the
+server rather than touching a cached Python attribute. What it buys is a value
+you can trust — pulled straight from tmux's own reporting, not reconstructed by
+guessing at the layout of display text. The format constants that make this work
+live in {mod}`libtmux.formats`.
 
-## Why Dataclasses in `neo.py`
+## Why dataclasses in `neo.py`
 
-{mod}`libtmux.neo` provides a modern dataclass-based interface alongside the legacy dict-style objects. The motivation:
+Advanced — for contributors and lower-level query work. Most code uses the ORM
+objects above and never touches this layer directly.
+
+{mod}`libtmux.neo` provides a modern dataclass-based interface alongside the
+legacy dict-style objects. The motivation:
 
 - **Type safety**: dataclass fields have declared types, enabling mypy checks and IDE completion
 - **Predictability**: attribute access (`session.session_name`) instead of dict access (`session["session_name"]`)
 - **Migration path**: the two interfaces coexist, allowing gradual adoption without breaking existing code
 
-## Pre-1.0 API Evolution
+Coexistence is the honest trade-off: two interfaces are more surface area to
+learn than one. The payoff is that you can adopt the typed path incrementally,
+file by file, without a flag-day rewrite.
 
-libtmux is pre-1.0. This is a deliberate choice — the API is still maturing. What this means in practice:
+## Pre-1.0 API evolution
+
+libtmux is pre-1.0. This is a deliberate choice — the API is still maturing.
+What this means in practice for code you write today:
 
 - **Minor versions** (0.x → 0.y) may include breaking changes
 - **Patch versions** (0.x.y → 0.x.z) are bug fixes only

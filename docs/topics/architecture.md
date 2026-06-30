@@ -2,15 +2,31 @@
 
 # Architecture
 
-libtmux is a [typed](https://docs.python.org/3/library/typing.html)
-abstraction layer for tmux. It builds upon tmux's concept of targets
-(`-t`) to direct commands against individual sessions, windows, and panes,
-and `FORMATS` — template variables tmux exposes to describe object
+When you use libtmux, you work through a hierarchy of typed Python
+objects — {class}`~libtmux.server.Server`, {class}`~libtmux.session.Session`,
+{class}`~libtmux.window.Window`, and {class}`~libtmux.pane.Pane` — each a
+proxy for the tmux entity it represents. You navigate from one to the
+next (a server's sessions, a session's windows, a window's panes), and
+every method you call turns into a tmux command directed at that exact
+object.
+
+You don't need anything on this page to use the API; the objects and
+their methods work out of the box. This is reference material for when
+you're curious how libtmux tracks those objects, keeps their identities
+stable across refreshes, and lays out the code underneath. Skim the
+first section and stop whenever you've seen enough.
+
+Under the hood, libtmux is a [typed](https://docs.python.org/3/library/typing.html)
+abstraction layer built on two tmux primitives: targets (`-t`), which
+direct a command at an individual session, window, or pane, and
+`FORMATS`, the template variables tmux exposes to describe each object's
 properties.
 
-## Object Hierarchy
+## Object hierarchy
 
-libtmux mirrors tmux's object hierarchy as a typed Python ORM:
+libtmux mirrors tmux's object hierarchy as a typed Python ORM, so the
+parent-child relationships you know from tmux carry over directly into
+the objects you hold:
 
 ```
 Server
@@ -31,16 +47,20 @@ Server
 {class}`~libtmux.common.TmuxRelationalObject` acts as the base container
 connecting these relationships.
 
-{class}`~libtmux.Client` is a *view*, not part of the ownership chain:
-each attached terminal points at a Session/Window/Pane it is currently
-displaying, but is not owned by them. See {ref}`clients` for the view-
-vs-identity distinction.
+One object breaks the ownership chain: {class}`~libtmux.Client` is a
+*view*, not a child. Each attached terminal points at the
+Session/Window/Pane it is currently displaying, but is not owned by
+them — so its view can change the moment a user switches sessions. See
+{ref}`clients` for the view-vs-identity distinction.
 
-## Internal Identifiers
+## Internal identifiers
 
-tmux assigns unique IDs to sessions, windows, and panes. libtmux uses
-these — via {class}`~libtmux.common.TmuxMappingObject` — to track objects
-reliably across state refreshes.
+When tmux state changes, libtmux needs a way to recognize that the same
+window is still the same window. tmux assigns each session, window, and
+pane a unique ID for exactly this, and libtmux holds onto it — via
+{class}`~libtmux.common.TmuxMappingObject` — to track objects reliably
+across state refreshes rather than relying on names or indexes that
+shift around.
 
 | Object | Prefix | Example |
 |--------|--------|---------|
@@ -49,9 +69,11 @@ reliably across state refreshes.
 | {class}`~libtmux.window.Window` | `@` | `@3243` |
 | {class}`~libtmux.pane.Pane` | `%` | `%5433` |
 
-## Core Objects
+## Core objects
 
-Each level wraps tmux commands and format queries:
+These are the five classes you'll actually hold and call methods on.
+Each level wraps the tmux commands and format queries for its tier of
+the hierarchy:
 
 - {class}`~libtmux.server.Server` — entry point, manages sessions, executes raw tmux commands
 - {class}`~libtmux.session.Session` — manages windows within a session
@@ -59,7 +81,13 @@ Each level wraps tmux commands and format queries:
 - {class}`~libtmux.pane.Pane` — terminal instance, sends keys and captures output
 - {class}`~libtmux.client.Client` — attached terminal viewing a session, window, and pane
 
-## Data Flow
+## Data flow
+
+Every interaction follows the same round-trip: you act on a Python
+object, libtmux talks to tmux, and the result comes back as more typed
+objects. Reading state and changing it both cost a tmux call, which is
+why an object can go stale and why you refresh it rather than trust a
+cached value indefinitely.
 
 1. User creates a `Server` (connects to a running tmux server)
 2. Queries use tmux format strings ({mod}`libtmux.constants`) to fetch state
@@ -67,7 +95,12 @@ Each level wraps tmux commands and format queries:
 4. Mutations dispatch tmux commands via the `cmd()` method
 5. Objects refresh state from tmux on demand
 
-## Module Map
+## Module map
+
+The codebase splits along the same hierarchy: one module per tier, plus
+shared plumbing. The first block is what you import and use day to day;
+the second is lower-level and mostly of interest to contributors or
+deeper integrations.
 
 | Module | Role |
 |--------|------|
@@ -77,13 +110,19 @@ Each level wraps tmux commands and format queries:
 | {mod}`libtmux.pane` | Pane I/O and capture |
 | {mod}`libtmux.client` | Attached-client view and live-attachment lookup |
 | {mod}`libtmux.common` | Base classes, command execution |
+
+The remaining modules are advanced — reach for them only when the core
+objects don't cover your case:
+
+| Module | Role |
+|--------|------|
 | {mod}`libtmux.neo` | Modern dataclass-based query interface |
 | {mod}`libtmux.constants` | Format string constants |
 | {mod}`libtmux.options` | tmux option get/set |
 | {mod}`libtmux.hooks` | tmux hook management |
 | {mod}`libtmux.exc` | Exception hierarchy |
 
-## Naming Conventions
+## Naming conventions
 
 tmux commands use dashes (`new-window`). libtmux replaces these with
 underscores (`new_window`) to follow Python naming conventions.

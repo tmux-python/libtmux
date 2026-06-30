@@ -1,8 +1,18 @@
-# Public vs Internal API
+# Public vs internal API
 
-## The Boundary
+You can import anything from the `libtmux` namespace and build on it: those
+names are public API, they hold still across releases, and they're covered by
+libtmux's {doc}`deprecation policy </project/public-api>`. Anything with a
+leading underscore in its module path — `libtmux._internal.*`,
+`libtmux._vendor.*` — is implementation detail that can change without warning.
+If you only reach for the public API, that's the whole story, and you can stop
+reading here.
 
-libtmux draws a clear line between public and internal code:
+## The boundary
+
+The rule is mechanical: if you can import a name without a leading underscore
+anywhere in its module path, it's public. The table maps each import prefix to
+exactly what you can count on.
 
 | Import path | Status | Stability |
 |-------------|--------|-----------|
@@ -10,39 +20,60 @@ libtmux draws a clear line between public and internal code:
 | `libtmux._internal.*` | Internal | No guarantee — may break between any release |
 | `libtmux._vendor.*` | Vendored | Not part of the API at all |
 
-If you can import it without a leading underscore in the module path, it's public.
+The authoritative list of what's stable lives in
+{doc}`Public API </project/public-api>`.
 
-## Why the Split
+## Why the split
 
-Internal modules exist so the library can iterate freely on implementation details without breaking downstream users. A refactor of `libtmux._internal.query_list` doesn't require a deprecation cycle — it's explicitly not part of the contract.
+Staying on the public API buys you forward compatibility: when a public name has
+to change, it goes through a deprecation cycle first, so your code keeps working
+while you migrate. Reaching into an internal module buys you nothing the public
+API can promise — a refactor of `libtmux._internal.query_list` ships with no
+deprecation cycle, so an import that works today can break on the very next
+release. That freedom is the point: internal modules let the library iterate on
+implementation details without dragging downstream users through a migration for
+each one.
 
-This separation also keeps the public API surface intentionally small. Every public module is a commitment to maintain. Internal modules earn promotion through proven stability and user demand.
+The same line keeps the public surface intentionally small. Every public module
+is a commitment to maintain, so internal modules earn promotion only through
+proven stability and real user demand.
 
-## What `_internal/` Contains
+## What `_internal/` contains
 
-The `_internal` package holds implementation details that support the public API:
+The `_internal/` package holds the machinery the public objects run on —
+implementation details you never need to understand to use libtmux:
 
 - **`query_list`** — the filtering engine behind `.filter()` and `.get()` on collections
 - **`dataclasses`** — base dataclass utilities used by the ORM objects
 - **`constants`** — internal constants not meaningful to end users
 - **`types`** — type aliases used across the codebase
 
-These are documented in [Internals](../internals/index.md) for contributors, but downstream projects should not import from them.
+These are documented in {ref}`internals` for contributors, but downstream
+projects should not import from them.
 
-## What `_vendor/` Contains
+## What `_vendor/` contains
 
-The `_vendor` package holds vendored third-party code — copies of external libraries included directly to avoid adding dependencies. This code is not written by the libtmux authors and is not part of the API.
+The `_vendor/` package holds vendored third-party code — copies of external
+libraries bundled directly so libtmux can avoid adding dependencies. You're not
+meant to import from it; it isn't written by the libtmux authors and isn't part
+of the API.
 
-## How Internal APIs Get Promoted
+## How internal APIs get promoted
+
+Most readers never need this section — it's for contributors and for anyone
+tempted to depend on an internal name. An API travels three stages on its way to
+the public contract:
 
 1. **Internal**: lives in `_internal/`, no stability promise
 2. **Experimental**: documented, usable, but explicitly marked as subject to change
 3. **Public**: moved to a top-level module, covered by the deprecation policy
 
-Promotion happens when an internal API proves stable across multiple releases and users request it. If you depend on an internal API, [file an issue](https://github.com/tmux-python/libtmux/issues) — that signal helps prioritize promotion.
+Promotion happens when an internal API proves stable across multiple releases and
+users ask for it. If you depend on an internal API, [file an
+issue](https://github.com/tmux-python/libtmux/issues) — that signal helps
+prioritize promotion.
 
-## Reference
-
-- [Public API](../project/public-api.md) — the authoritative list of what's stable
-- [Compatibility](../project/compatibility.md) — platform and version support
-- [Deprecations](../project/deprecations.md) — what's changing
+Once a name is public and later has to change, it doesn't vanish quietly; it
+moves through {doc}`a deprecation cycle </project/deprecations>` first. For the
+platforms and tmux versions that stability is promised against, see
+{doc}`Compatibility </project/compatibility>`.
