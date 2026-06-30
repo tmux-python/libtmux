@@ -1,8 +1,19 @@
 (context_managers)=
 
-# Context Managers
+# Context managers
 
-libtmux provides context managers for all main tmux objects to ensure proper cleanup of resources. This is done through Python's `with` statement, which automatically handles cleanup when you're done with the tmux objects.
+When you create tmux objects through libtmux, they normally live until you
+explicitly kill them. A context manager hands that cleanup back to Python: you
+scope an object to a block, and libtmux kills the underlying tmux object the
+moment you leave it — whether you exit cleanly or an exception unwinds the
+stack. The {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane` classes (all main tmux
+objects) support this.
+
+Most readers never reach for this. If you're building a long-running
+application, you typically let objects persist and tear them down yourself. The
+context-manager form earns its keep in test fixtures and short-lived scripts,
+where you want a tmux object to exist for exactly one block and then vanish.
 
 Open two terminals:
 
@@ -24,9 +35,9 @@ Import `libtmux`:
 import libtmux
 ```
 
-## Server Context Manager
+## Server context manager
 
-Create a temporary server that will be killed when you're done:
+You create a temporary server that will be killed when you're done:
 
 ```python
 >>> with Server() as server:
@@ -37,9 +48,9 @@ True
 False
 ```
 
-## Session Context Manager
+## Session context manager
 
-Create a temporary session that will be killed when you're done:
+You create a temporary session that will be killed when you're done:
 
 ```python
 >>> server = Server()
@@ -51,9 +62,9 @@ True
 False
 ```
 
-## Window Context Manager
+## Window context manager
 
-Create a temporary window that will be killed when you're done:
+You create a temporary window that will be killed when you're done:
 
 ```python
 >>> server = Server()
@@ -66,9 +77,9 @@ True
 False
 ```
 
-## Pane Context Manager
+## Pane context manager
 
-Create a temporary pane that will be killed when you're done:
+You create a temporary pane that will be killed when you're done:
 
 ```python
 >>> server = Server()
@@ -82,9 +93,10 @@ True
 False
 ```
 
-## Nested Context Managers
+## Nested context managers
 
-Context managers can be nested to create a clean hierarchy of tmux objects that are automatically cleaned up:
+For complex setups, you can nest contexts to build a whole tmux hierarchy at
+once and have every layer torn down for you:
 
 ```python
 >>> with Server() as server:
@@ -107,22 +119,20 @@ The cleanup happens in reverse order (pane → window → session → server), e
 
 ## Benefits
 
-Using context managers provides several advantages:
+Reaching for a context manager buys you a few things. Resources clean themselves
+up the moment you leave the block, so you never manually call the
+{meth}`~libtmux.Server.kill`, {meth}`~libtmux.Session.kill`,
+{meth}`~libtmux.Window.kill`, or {meth}`~libtmux.Pane.kill` methods and the code
+stays uncluttered. Because cleanup runs on the way out of the block, it fires
+even when an exception unwinds the stack — so you don't leak a stray session or
+pane on the error path. And when you nest contexts, the objects tear down in
+hierarchical order, which keeps tmux's own bookkeeping consistent.
 
-1. **Automatic Cleanup**: Resources are automatically cleaned up when you're done with them
-2. **Clean Code**: No need to manually call `kill()` methods
-3. **Exception Safety**: Resources are cleaned up even if an exception occurs
-4. **Hierarchical Cleanup**: Nested contexts ensure proper cleanup order
-5. **Resource Management**: Prevents resource leaks by ensuring tmux objects are properly destroyed
+## When to use
 
-## When to Use
-
-Context managers are particularly useful when:
-
-1. Creating temporary tmux objects for testing
-2. Running short-lived tmux sessions
-3. Managing multiple tmux servers
-4. Ensuring cleanup in scripts that may raise exceptions
-5. Creating isolated environments that need to be cleaned up afterward
+Use context managers when you're writing test fixtures, running short-lived
+sessions, or managing several tmux servers that each need to disappear cleanly.
+They also pay off in any script that might raise partway through, or when you're
+spinning up an isolated environment that has to be cleaned up afterward.
 
 [target]: http://man.openbsd.org/OpenBSD-5.9/man1/tmux.1#COMMANDS

@@ -1,29 +1,39 @@
 (pane-interaction)=
 
-# Pane Interaction
+# Pane interaction
 
-libtmux provides powerful methods for interacting with tmux panes programmatically.
-This is especially useful for automation, testing, and orchestrating terminal-based
-workflows.
+A {class}`~libtmux.Pane` is a live terminal you drive from Python: you type into
+it, read back what it printed, resize it, and tear it down when you're finished.
+That makes the pane the unit you reach for when automating a shell, testing a
+CLI, or orchestrating a terminal workflow.
 
-Open two terminals:
+Most of that work is two methods — {meth}`~libtmux.Pane.send_keys` to type and
+{meth}`~libtmux.Pane.capture_pane` to read the screen back. If those two cover
+you, you can stop after the first two sections; everything below is for the
+rarer cases — waiting on output, querying a pane's state, resizing, and cleanup.
 
-Terminal one: start tmux in a separate terminal:
+To follow along live, open two terminals.
+
+In the first, start tmux:
 
 ```console
 $ tmux
 ```
 
-Terminal two, `python` or `ptpython` if you have it:
+In the second, start `python` (or `ptpython`, if you have it):
 
 ```console
 $ python
 ```
 
-## Sending Commands
+## Sending commands
 
-The {meth}`~libtmux.Pane.send_keys` method sends text to a pane, optionally pressing
-Enter to execute it.
+{meth}`~libtmux.Pane.send_keys` types text into the pane exactly as if you had
+typed it at the keyboard, and by default presses Enter so the shell runs it.
+That default is what you want most of the time: hand it a command string and it
+executes. The arguments below come into play only when you need to type without
+running, send characters tmux would otherwise interpret, or invoke send-keys
+purely for its flags.
 
 ### Basic command execution
 
@@ -41,7 +51,9 @@ True
 
 ### Send without pressing Enter
 
-Use `enter=False` to type text without executing:
+Sometimes you want the text sitting at the prompt without running it — to stage
+a command, or to feed a keystroke a running program is waiting on. Pass
+`enter=False` to type without pressing Enter:
 
 ```python
 >>> pane.send_keys('echo "waiting"', enter=False)
@@ -52,7 +64,8 @@ Use `enter=False` to type text without executing:
 True
 ```
 
-Press Enter separately with {meth}`~libtmux.Pane.enter`:
+When you're ready to run it, press Enter on its own with
+{meth}`~libtmux.Pane.enter`:
 
 ```python
 >>> import time
@@ -72,7 +85,9 @@ True
 
 ### Literal mode for special characters
 
-Use `literal=True` to send special characters without interpretation:
+Both tmux and your shell interpret certain characters. Pass `literal=True` to
+send them through untouched, so a tab or escape arrives as the literal byte
+rather than a key tmux acts on:
 
 ```python
 >>> import time
@@ -84,8 +99,9 @@ Use `literal=True` to send special characters without interpretation:
 
 ### Suppress shell history
 
-Use `suppress_history=True` to prepend a space (prevents command from being
-saved in shell history):
+Pass `suppress_history=True` to prepend a space before the command. In a shell
+configured to ignore space-prefixed lines, that keeps the command out of your
+history — useful when the command carries a secret:
 
 ```python
 >>> import time
@@ -97,8 +113,9 @@ saved in shell history):
 
 ### Flag-only invocation
 
-When you want to invoke `send-keys` only for its flags — resetting the
-pane or repeating a key — pass `cmd=None`:
+Sometimes you want send-keys only for its side effects — resetting the pane or
+repeating the last key — and have no text to type. Pass `cmd=None` to invoke it
+for the flags alone:
 
 ```python
 >>> # Repeat the last key 5 times (-N 5)
@@ -112,9 +129,13 @@ pane or repeating a key — pass `cmd=None`:
 `copy_mode_cmd=...`; calling it with no flag raises `ValueError` to
 prevent silent no-ops.
 
-## Capturing Output
+## Capturing output
 
-The {meth}`~libtmux.Pane.capture_pane` method captures text from a pane's buffer.
+{meth}`~libtmux.Pane.capture_pane` reads the pane's screen back to you as a list
+of lines — one string per row, top to bottom. With no arguments you get the
+visible screen, which is what most reads want. The parameters below extend that
+reach: into scrollback, keeping color, stitching wrapped lines, or preserving
+spacing. Reach for them only when a plain capture drops something you need.
 
 ### Basic capture
 
@@ -134,7 +155,9 @@ True
 
 ### Capture with line ranges
 
-Capture specific line ranges using `start` and `end` parameters:
+By default you read the visible screen. Pass `start` and `end` to widen or
+narrow that window — negative numbers count back from the visible region, and
+`'-'` reaches the start of history or the current line:
 
 ```python
 >>> # Capture last 5 lines of visible pane
@@ -150,7 +173,9 @@ True
 
 ### Capture with ANSI escape sequences
 
-Capture colored output with escape sequences preserved using `escape_sequences=True`:
+A plain capture strips color and formatting, handing you clean text. When you
+need the styling instead — to assert a prompt really printed in red — pass
+`escape_sequences=True` to keep the ANSI codes intact:
 
 ```python
 >>> import time
@@ -171,7 +196,9 @@ True
 
 ### Join wrapped lines
 
-Long lines that wrap in the terminal can be joined back together:
+A line longer than the pane wraps onto several rows, and a plain capture returns
+it as several strings. Pass `join_wrapped=True` to stitch those rows back into
+one logical line:
 
 ```python
 >>> import time
@@ -204,6 +231,8 @@ True
 
 ### Capture flags summary
 
+The full set of capture flags, and the tmux flag each one maps to:
+
 | Parameter | tmux Flag | Description |
 |-----------|-----------|-------------|
 | `escape_sequences` | `-e` | Include ANSI escape sequences (colors, attributes) |
@@ -220,10 +249,11 @@ a warning is issued and the flag is ignored.
 
 ### Capturing the pending input buffer
 
-Use `pending=True` to dump bytes tmux has buffered in its parser but
+For the rarer case where you need what tmux has read but not yet drawn, pass
+`pending=True`. It dumps bytes tmux has buffered in its parser but
 not yet committed to the pane's terminal — input the tmux process read
 from the pane's PTY but hasn't fed through its escape-sequence parser
-into the visible screen. Use to inspect partial control sequences
+into the visible screen. Use it to inspect partial control sequences
 mid-write.
 
 ```python
@@ -236,9 +266,17 @@ True
 flags (`start`, `end`, `escape_sequences`, etc.) — tmux ignores them when
 `-P` is set.
 
-## Waiting for Output
+## Waiting for output
 
-A common pattern in automation is waiting for a command to complete.
+tmux runs commands asynchronously: {meth}`~libtmux.Pane.send_keys` returns the
+moment the keystrokes are sent, not when the command finishes. So when a later
+step depends on a command completing, you wait for proof in the output rather
+than guessing at a fixed delay.
+
+The honest cost is that this means polling — capturing the pane on a short
+interval until a marker you control appears. It's a busy wait, not an event, but
+it's reliable across shells and commands because you're checking the one thing
+that matters: what actually printed.
 
 ### Polling for completion marker
 
@@ -260,6 +298,9 @@ True
 
 ### Helper function for waiting
 
+Wrapping that loop in a helper keeps the pattern out of the way of your actual
+logic:
+
 ```python
 >>> import time
 
@@ -278,9 +319,17 @@ True
 True
 ```
 
-## Querying Pane State
+## Querying pane state
 
-The {meth}`~libtmux.Pane.display_message` method queries tmux format variables.
+{meth}`~libtmux.Pane.display_message` asks tmux to evaluate a format string
+against the pane and hand back the result — its size, working directory, process
+id, and the rest of tmux's `#{pane_*}` variables. Pass `get_text=True` to get
+the answer as a list of strings.
+
+Each call is a round-trip to tmux, which is exactly what you want for state that
+moves as you watch it — dimensions during a resize, the working directory after
+a `cd` — since you get a fresh reading rather than a value cached when the object
+was built.
 
 ### Get pane dimensions
 
@@ -310,6 +359,8 @@ True
 
 ### Common format variables
 
+A few of the format variables you'll reach for most often:
+
 | Variable | Description |
 |----------|-------------|
 | `#{pane_width}` | Pane width in characters |
@@ -319,9 +370,13 @@ True
 | `#{pane_id}` | Unique pane ID (e.g., `%0`) |
 | `#{pane_index}` | Pane index in window |
 
-## Resizing Panes
+## Resizing panes
 
-The {meth}`~libtmux.Pane.resize` method adjusts pane dimensions.
+{meth}`~libtmux.Pane.resize` changes how much of the window a pane occupies. It
+covers three needs through one method: set an exact size, nudge a dimension by a
+relative amount, or toggle zoom to make the pane fill the window and back. The
+result is bounded by the window and the pane's neighbors — tmux grants the space
+it can, so treat a resize as a request, not a guarantee.
 
 ### Resize by specific dimensions
 
@@ -332,6 +387,9 @@ Pane(%... Window(@... ..., Session($... ...)))
 ```
 
 ### Resize by adjustment
+
+To grow or shrink a pane relative to its current size, name a direction from
+{class}`~libtmux.constants.ResizeAdjustmentDirection` and how far to move:
 
 ```python
 >>> from libtmux.constants import ResizeAdjustmentDirection
@@ -347,6 +405,10 @@ Pane(%... Window(@... ..., Session($... ...)))
 
 ### Zoom toggle
 
+Zoom blows a pane up to fill the whole window so you can focus on it, then
+restores the layout on the next call. It's a toggle, so the same call both
+zooms and unzooms:
+
 ```python
 >>> # Zoom pane to fill window
 >>> pane.resize(zoom=True)  # doctest: +ELLIPSIS
@@ -357,18 +419,22 @@ Pane(%... Window(@... ..., Session($... ...)))
 Pane(%... Window(@... ..., Session($... ...)))
 ```
 
-## Clearing the Pane
+## Clearing the pane
 
-The {meth}`~libtmux.Pane.clear` method clears the pane's screen:
+{meth}`~libtmux.Pane.clear` wipes the pane's visible screen, leaving a clean
+prompt — it runs `reset` in the pane, so it restores terminal state, not just
+the screen:
 
 ```python
 >>> pane.clear()  # doctest: +ELLIPSIS
 Pane(%... Window(@... ..., Session($... ...)))
 ```
 
-## Killing Panes
+## Killing panes
 
-The {meth}`~libtmux.Pane.kill` method destroys a pane:
+{meth}`~libtmux.Pane.kill` destroys a pane and the process running inside it.
+Once killed, the pane is gone from its window, and any {class}`~libtmux.Pane`
+object still pointing at it is stale — drop the reference rather than reusing it.
 
 ```python
 >>> # Create a temporary pane
@@ -383,6 +449,10 @@ True
 ```
 
 ### Kill all except current
+
+Pass `all_except=True` to invert the target — kill every other pane in the
+window and keep this one. It's the quick way to collapse a window back to a
+single pane:
 
 ```python
 >>> # Setup: create multiple panes
@@ -407,9 +477,15 @@ True
 >>> keep_pane.kill()
 ```
 
-## Practical Recipes
+## Practical recipes
 
-### Recipe: Run command and capture output
+These tie the pieces together into the patterns you'll actually reach for:
+running a command and collecting its output, and scanning output for trouble.
+Lift them as-is or adapt them — both lean only on the
+{meth}`~libtmux.Pane.send_keys` and {meth}`~libtmux.Pane.capture_pane` methods
+you've already met.
+
+### Recipe: run command and capture output
 
 ```python
 >>> import time
@@ -431,7 +507,7 @@ True
 True
 ```
 
-### Recipe: Check for error patterns
+### Recipe: check for error patterns
 
 ```python
 >>> import time

@@ -1,17 +1,22 @@
 (format-tokens)=
 
-# Format-Token Fields
+# Format-token fields
 
-Every libtmux object — {class}`~libtmux.Server`,
+When you work with a libtmux object — {class}`~libtmux.Server`,
 {class}`~libtmux.Session`, {class}`~libtmux.Window`,
-{class}`~libtmux.Pane`, {class}`~libtmux.Client` — exposes a flat set
-of typed string attributes named after tmux's
-[FORMATS](https://man.openbsd.org/tmux.1#FORMATS) tokens
-(`pane_id`, `window_zoomed_flag`, `client_theme`, etc.). This is why a
-single {class}`~libtmux.Pane` can expose `pane.pane_id`, `pane.window_id`,
-and `pane.session_id`.
+{class}`~libtmux.Pane`, or {class}`~libtmux.Client` — you get a flat set
+of typed string attributes that report the object's current state
+straight from tmux, mirroring tmux's built-in
+[FORMATS](https://man.openbsd.org/tmux.1#FORMATS) tokens (`pane_id`,
+`window_zoomed_flag`, `session_name`, etc.). This is why a single
+{class}`~libtmux.Pane` can hand you `pane.pane_id`, `pane.window_id`,
+and `pane.session_id` without you writing a raw tmux command.
 
-Two gates decide which fields actually hold a value on a given object:
+Most of the time you just read these attributes and move on. Not every
+field holds a value on every object, though: the object's type and your
+tmux version decide which fields are populated and which stay `None`.
+
+Which fields hold a value comes down to two gates:
 
 1. **Scope** — which kind of tmux object can provide the token. A `pane_*`
    token needs pane context, a `session_*` token needs session context, and
@@ -20,7 +25,9 @@ Two gates decide which fields actually hold a value on a given object:
    `format.c`'s static table.
 
 If either gate excludes a token, libtmux leaves the field at `None`
-rather than risking a server-side fault on an older tmux.
+rather than risking a server-side fault on an older tmux. You trade an
+occasional `None` check for attribute access that stays safe on every
+supported version.
 
 ## Why a field is `None`
 
@@ -49,11 +56,12 @@ Everything not listed above is safe on every supported tmux (≥ 3.2a).
 Fields for newer tmux tokens will be added as each supported version is
 validated.
 
-## Active Child Fields
+## Active child fields
 
-When tmux lists a parent object, it can also report fields from that parent's
-active child. That's why pane fields have meaningful values on a session row:
-they describe the active pane in the session's current window.
+Reach for `session.pane_id` and you get a real pane id back, not an
+error. When tmux lists a parent object, it also reports fields from that
+parent's active child — so the pane fields on a session row describe the
+active pane in the session's current window.
 
 ```python
 >>> session = server.new_session()
@@ -70,14 +78,17 @@ infer one attached client from a session row. The `client_*` tokens only
 appear on {class}`~libtmux.Client` rows returned by
 {attr}`~libtmux.Server.clients`.
 
-If you treat `session.pane_id` as "the session's pane id" (rather
-than "the active pane of the session's current window") you will be
-surprised when the active window changes.
+So read `session.pane_id` as "the active pane of the session's current
+window," not "the session's pane id." Treat it as the latter and the
+value will surprise you the moment the {attr}`~libtmux.Session.active_window`
+changes.
 
 ## Inspecting which fields apply
 
-Use {func}`libtmux.neo.get_output_format` to ask, for a given
-`list-*` subcommand and tmux version, which tokens libtmux will request:
+For the rarer cases — contributors, or code that introspects libtmux's
+own queries — you can ask, for a given `list-*` subcommand and tmux
+version, which tokens libtmux will request. Use
+{func}`libtmux.neo.get_output_format`:
 
 ```python
 >>> from libtmux.neo import get_output_format
@@ -102,9 +113,10 @@ True
 
 The result is cached per `(list_cmd, tmux_version)` pair.
 
-## Tmux version detection
+## tmux version detection
 
-libtmux detects the live tmux version via
+You never call this directly, but it's worth knowing how the version
+gate gets its answer. libtmux detects the live tmux version via
 {func}`libtmux.common.get_version` and passes it through to
 `get_output_format` whenever it builds a `-F` template. The result
 is cached for the process lifetime; if you're swapping the `tmux`

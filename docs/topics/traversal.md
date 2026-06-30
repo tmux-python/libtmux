@@ -2,11 +2,23 @@
 
 # Traversal
 
-libtmux provides convenient access to move around the hierarchy of sessions,
-windows and panes in tmux.
+When you navigate a tmux server with libtmux, you move through a hierarchy of
+related objects: a {class}`~libtmux.Server` holds {class}`~libtmux.Session`
+objects, each session holds {class}`~libtmux.Window` objects, and each window
+holds {class}`~libtmux.Pane` objects. Every object knows both its parents and
+its children, so you can traverse in either direction — reach for
+`session.windows` to list the windows under a session, or `pane.session` to jump
+from a pane back up to the session that contains it.
 
-This is done by libtmux's object abstraction of {term}`target`s (the `-t`
-argument) and the permanent internal ID's tmux gives to objects.
+Most of the time you call a handful of properties like `session.windows` and
+`pane.session` and never look further. This works out of the box, with no setup.
+The filtering and relationship checks later on the page are there for the rarer
+cases where you need to find a specific object by name or pattern, or confirm
+how two objects relate.
+
+Under the hood this all rides on libtmux's object abstraction of {term}`target`s
+(the `-t` argument) and the permanent internal IDs tmux assigns to each object,
+but you rarely have to think about that layer to move around.
 
 Open two terminals:
 
@@ -30,9 +42,10 @@ First, create a test session:
 >>> session = server.new_session()  # Create a test session using existing server
 ```
 
-## Server Level
+## Server level
 
-View the server's representation:
+The {class}`~libtmux.Server` sits at the top of the hierarchy. Start by viewing
+its representation:
 
 ```python
 >>> server  # doctest: +ELLIPSIS
@@ -60,9 +73,15 @@ Get all panes across all windows:
 [Pane(%... Window(@... ..., Session($... ...)))]
 ```
 
-## Session Level
+Each of these properties queries tmux fresh every time you access it, so the
+result always reflects the server's current state. That freshness costs a tmux
+round-trip per access — worth it for correctness, but if you iterate over the
+same collection repeatedly, bind it to a variable once instead of re-reading the
+property inside a loop.
 
-Get first session:
+## Session level
+
+A {class}`~libtmux.Session` groups windows. Get the first one:
 
 ```python
 >>> session = server.sessions[0]
@@ -87,9 +106,9 @@ Window(@... ..., Session($... ...))
 Pane(%... Window(@... ..., Session($... ...)))
 ```
 
-## Window Level
+## Window level
 
-Get a window and inspect its properties:
+A {class}`~libtmux.Window` groups panes. Get one and inspect its properties:
 
 ```python
 >>> window = session.windows[0]
@@ -97,7 +116,7 @@ Get a window and inspect its properties:
 '...'
 ```
 
-Access the window's parent session:
+Traverse upward to the window's parent session:
 
 ```python
 >>> window.session  # doctest: +ELLIPSIS
@@ -120,9 +139,10 @@ Get active pane:
 Pane(%... Window(@... ..., Session($... ...)))
 ```
 
-## Pane Level
+## Pane level
 
-Get a pane and traverse upwards:
+A {class}`~libtmux.Pane` is the leaf of the hierarchy. From a pane you can walk
+all the way back up to its window, session, and server:
 
 ```python
 >>> pane = window.panes[0]
@@ -134,14 +154,23 @@ True
 True
 ```
 
-## Filtering and Finding Objects
+## Filtering and finding objects
 
-libtmux collections support Django-style filtering with `filter()` and `get()`.
-For comprehensive coverage of all lookup operators, see {ref}`querylist-filtering`.
-For tmux-native filters that return only matching rows on large servers, see
-{ref}`native-filtering`.
+Sometimes a property like `session.windows` hands you more objects than you
+want, and you need the one — or the few — matching a name, an index, or a
+pattern. Every libtmux collection lets you narrow it down: call
+{meth}`~libtmux._internal.query_list.QueryList.filter` to keep the objects that
+match a condition, or {meth}`~libtmux._internal.query_list.QueryList.get` to
+pull out a single object (it raises if it finds zero or more than one). You match
+on the same attributes the objects already expose — `window_name`,
+`window_index`, `pane_id`, and so on.
 
-### Basic Filtering
+This is the opt-in part of the page. If the plain properties above already get
+you to the object you want, you can stop here. For comprehensive coverage of all
+lookup operators, see {ref}`querylist-filtering`. For tmux-native filters that
+return only matching rows on large servers, see {ref}`native-filtering`.
+
+### Basic filtering
 
 Find windows by exact attribute match:
 
@@ -157,7 +186,7 @@ Get a specific pane by ID:
 Pane(%... Window(@... ..., Session($... ...)))
 ```
 
-### Partial Matching
+### Partial matching
 
 Use lookup suffixes like `__contains`, `__startswith`, `__endswith`:
 
@@ -181,7 +210,7 @@ Use lookup suffixes like `__contains`, `__startswith`, `__endswith`:
 >>> w3.kill()
 ```
 
-### Case-Insensitive Matching
+### Case-insensitive matching
 
 Prefix any lookup with `i` for case-insensitive matching:
 
@@ -199,7 +228,7 @@ Prefix any lookup with `i` for case-insensitive matching:
 >>> w2.kill()
 ```
 
-### Regex Filtering
+### Regex filtering
 
 For complex patterns, use `__regex` or `__iregex`:
 
@@ -219,7 +248,7 @@ For complex patterns, use `__regex` or `__iregex`:
 >>> w3.kill()
 ```
 
-### Chaining Filters
+### Chaining filters
 
 Multiple conditions can be combined:
 
@@ -250,7 +279,7 @@ Multiple conditions can be combined:
 >>> w3.kill()
 ```
 
-### Get with Default
+### Get with default
 
 Avoid exceptions when an object might not exist:
 
@@ -260,9 +289,11 @@ Avoid exceptions when an object might not exist:
 True
 ```
 
-## Checking Relationships
+## Checking relationships
 
-Check if objects are related:
+Two questions come up often: does an object belong to a collection (membership),
+and do two handles point at the same tmux entity (identity)? Python's `in`
+operator answers the first — whether an object is part of a collection:
 
 ```python
 >>> window in session.windows
@@ -273,14 +304,15 @@ True
 True
 ```
 
-Check if a window is active:
+Comparing IDs answers the second — here, whether the window you hold is the
+session's active window:
 
 ```python
 >>> window.window_id == session.active_window.window_id
 True
 ```
 
-Check if a pane is active:
+And whether the pane you hold is the window's active pane:
 
 ```python
 >>> pane.pane_id == window.active_pane.pane_id
