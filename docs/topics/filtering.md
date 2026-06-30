@@ -1,24 +1,35 @@
 (querylist-filtering)=
 
-# QueryList Filtering
+# QueryList filtering
 
-libtmux uses `QueryList` to enable Django-style filtering on tmux objects.
-Every collection (`server.sessions`, `session.windows`, `window.panes`) returns
-a `QueryList`, letting you filter sessions, windows, and panes with a fluent,
-chainable API.
+Every collection libtmux hands you — `server.sessions`, `session.windows`,
+`window.panes` — is a `QueryList`, a list that knows how to filter itself. You
+narrow one by calling {meth}`~libtmux._internal.query_list.QueryList.filter`
+with keyword arguments, optionally suffixed with a lookup like `__contains`,
+`__startswith`, or `__regex`, and you get back another `QueryList` you can
+iterate or chain further. It's Django-style filtering applied to sessions,
+windows, and panes.
 
-## Basic Filtering
+Most readers never look beyond `.filter()`. It's the common path, it works out
+of the box on every collection, and the lookup suffixes and chaining cover
+almost every query you'll write. The tmux-native `.search_*()` methods at the
+end of this page are an optional escape hatch for large servers — you can skip
+them until you measure a reason to care.
 
-The `filter()` method accepts keyword arguments with optional lookup suffixes:
+## Basic filtering
+
+Every collection is already a `QueryList`, so you can inspect one before you
+narrow it. Here's the full set of sessions on your server:
 
 ```python
 >>> server.sessions  # doctest: +ELLIPSIS
 [Session($... ...)]
 ```
 
-### Exact Match
+### Exact match
 
-The default lookup is `exact`:
+When you pass a bare keyword like `session_name=...`, the default lookup is
+`exact` — so these two calls mean the same thing:
 
 ```python
 >>> # These are equivalent
@@ -28,9 +39,10 @@ The default lookup is `exact`:
 [Session($... ...)]
 ```
 
-### Contains and Startswith
+### Contains and startswith
 
-Use suffixes for partial matching:
+Add a suffix to the keyword to match part of a value instead of the whole
+thing:
 
 ```python
 >>> # Create windows for this example
@@ -54,7 +66,10 @@ True
 >>> w3.kill()
 ```
 
-## Available Lookups
+## Available lookups
+
+Each suffix you append after the `__` selects one of these lookups. The
+`i`-prefixed variants ignore case:
 
 | Lookup | Description |
 |--------|-------------|
@@ -71,9 +86,10 @@ True
 | `regex` | Regular expression match |
 | `iregex` | Case-insensitive regex |
 
-## Getting a Single Item
+## Getting a single item
 
-Use `get()` to retrieve exactly one matching item:
+When you expect exactly one match and want the object itself rather than a
+list, reach for {meth}`~libtmux._internal.query_list.QueryList.get`:
 
 ```python
 >>> window = session.windows.get(window_id=session.active_window.window_id)
@@ -81,21 +97,24 @@ Use `get()` to retrieve exactly one matching item:
 Window(@... ..., Session($... ...))
 ```
 
-If no match or multiple matches are found, `get()` raises an exception:
+`get()` insists on exactly one result. If the query matches the wrong number of
+objects, it raises:
 
-- `ObjectDoesNotExist` - no matching object found
-- `MultipleObjectsReturned` - more than one object matches
+- {exc}`~libtmux._internal.query_list.ObjectDoesNotExist` - no matching object found
+- {exc}`~libtmux._internal.query_list.MultipleObjectsReturned` - more than one object matches
 
-You can provide a default value to avoid the exception:
+Pass a `default` to get a fallback value back instead of an exception:
 
 ```python
 >>> session.windows.get(window_name="nonexistent", default=None) is None
 True
 ```
 
-## Chaining Filters
+## Chaining filters
 
-Filters can be chained for complex queries:
+You can stack conditions two ways, and both narrow with AND. Pass several
+keywords to a single `.filter()` call, or chain `.filter()` calls one after
+another:
 
 ```python
 >>> # Create windows for this example
@@ -124,9 +143,9 @@ Filters can be chained for complex queries:
 >>> w3.kill()
 ```
 
-## Case-Insensitive Filtering
+## Case-insensitive filtering
 
-Use `i` prefix variants for case-insensitive matching:
+Reach for the `i`-prefixed variants when the casing of a name shouldn't matter:
 
 ```python
 >>> # Create windows with mixed case
@@ -147,9 +166,10 @@ True
 >>> w2.kill()
 ```
 
-## Regex Filtering
+## Regex filtering
 
-For complex patterns, use regex lookups:
+When a prefix or substring isn't expressive enough, the regex lookups match
+against a full pattern:
 
 ```python
 >>> # Create windows with version-like names
@@ -172,9 +192,10 @@ True
 >>> w3.kill()
 ```
 
-## Filtering by List Membership
+## Filtering by list membership
 
-Use `in` and `nin` (not in) for list-based filtering:
+When you already have a set of names in hand, `in` keeps the matches and `nin`
+(not in) drops them:
 
 ```python
 >>> # Create test windows
@@ -198,9 +219,14 @@ False
 >>> w3.kill()
 ```
 
-## Filtering Across the Hierarchy
+## Filtering across the hierarchy
 
-Filter at any level of the tmux hierarchy:
+You aren't limited to one window's panes. Every level of the hierarchy returns
+a `QueryList`, and the server-wide collections — `server.panes`,
+`server.windows`, `server.sessions` — flatten everything beneath them into a
+single list. That lets you query the whole server at once, which is handy when
+you want a pane by some attribute and don't care which session or window it
+lives in:
 
 ```python
 >>> # All panes across all windows in the server
@@ -213,9 +239,13 @@ Filter at any level of the tmux hierarchy:
 Pane(%... Window(@... ..., Session($... ...)))
 ```
 
-## Real-World Examples
+## Real-world examples
+
+A couple of patterns you'll reach for in practice.
 
 ### Find all editor windows
+
+Match several editor names at once with a single regex lookup:
 
 ```python
 >>> # Create sample windows
@@ -235,6 +265,9 @@ True
 ```
 
 ### Find windows by naming convention
+
+If you name windows by convention, a prefix match pulls the whole group, and
+`.get()` plucks one out by name:
 
 ```python
 >>> # Create windows following a naming convention
@@ -260,13 +293,16 @@ True
 
 (native-filtering)=
 
-## tmux-native Filtering with `search_*()`
+## tmux-native filtering with `search_*()`
 
-`QueryList.filter()` runs in Python *after* tmux has returned every
-row. For large servers, or when you only need a handful of matches,
-ask tmux to apply the filter before libtmux builds objects. Every level
-of the hierarchy ships a `search_*()` method that passes a format
-expression to tmux:
+Everything above runs in Python, *after* tmux has already returned every row.
+That's fine for the handful of sessions and windows most servers carry. But on
+a large server — hundreds or thousands of panes, where you want only a few —
+you pay to build objects you immediately discard.
+
+The `search_*()` methods push the filtering down to tmux itself: tmux applies a
+format expression and hands back only the matching rows, so libtmux builds
+objects for the matches alone. Every level of the hierarchy ships one:
 
 | Caller | Method | Underlying tmux |
 |--------|--------|-----------------|
@@ -374,7 +410,7 @@ Use `.filter()` when:
 - you're chaining multiple filters and prefer composing in Python,
 - you want predictable, version-independent semantics.
 
-## API Reference
+## API reference
 
 See {class}`~libtmux._internal.query_list.QueryList` for the complete
 QueryList API, and each `search_*()` method for the tmux-native filter
