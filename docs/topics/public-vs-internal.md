@@ -1,8 +1,11 @@
 # Public vs internal API
 
 You can import anything from the `libtmux` namespace and build on it: those
-names are public API, they hold still across releases, and they're covered by
-libtmux's {doc}`deprecation policy </project/public-api>`. Anything with a
+names are the public API — documented, and changed only through a deprecation
+process announced ahead of time. (libtmux is pre-1.0, so a minor version can
+still carry a breaking change; pin a version when you need to lock things
+down.) See the {doc}`public API reference </project/public-api>` for the
+stability policy. Anything with a
 leading underscore in its module path — `libtmux._internal.*`,
 `libtmux._vendor.*` — is implementation detail that can change without warning.
 If you only reach for the public API, that's the whole story, and you can stop
@@ -25,12 +28,14 @@ The authoritative list of what's stable lives in
 
 ## Why the split
 
-Staying on the public API buys you forward compatibility: when a public name has
-to change, it goes through a deprecation cycle first, so your code keeps working
-while you migrate. Reaching into an internal module buys you nothing the public
-API can promise — a refactor of `libtmux._internal.query_list` ships with no
-deprecation cycle, so an import that works today can break on the very next
-release. That freedom is the point: internal modules let the library iterate on
+Staying on the public API buys you a predictable migration path: when a public
+name changes, it goes through a deprecation process first — a warning for at
+least one release, documented in the changelog — rather than vanishing without
+notice. (libtmux is pre-1.0, so a minor version can still carry a breaking
+change; pin a version when you need to lock things down.) Reaching into an
+internal module buys you none of that — a refactor of
+`libtmux._internal.query_list` ships with no deprecation cycle, so an import
+that works today can break on the very next release. That freedom is the point: internal modules let the library iterate on
 implementation details without dragging downstream users through a migration for
 each one.
 
@@ -46,7 +51,7 @@ implementation details you never need to understand to use libtmux:
 - **`query_list`** — the filtering engine behind `.filter()` and `.get()` on collections
 - **`dataclasses`** — base dataclass utilities used by the ORM objects
 - **`constants`** — internal constants not meaningful to end users
-- **`types`** — type aliases used across the codebase
+- **`sparse_array`** — the sparse-index mapping behind indexed hooks and options
 
 These are documented in {ref}`internals` for contributors, but downstream
 projects should not import from them.

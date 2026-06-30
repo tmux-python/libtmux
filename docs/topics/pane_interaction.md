@@ -422,7 +422,8 @@ Pane(%... Window(@... ..., Session($... ...)))
 ## Clearing the pane
 
 {meth}`~libtmux.Pane.clear` wipes the pane's visible screen, leaving a clean
-prompt — the programmatic equivalent of running `clear` in the shell:
+prompt — it runs `reset` in the pane, so it restores terminal state, not just
+the screen:
 
 ```python
 >>> pane.clear()  # doctest: +ELLIPSIS

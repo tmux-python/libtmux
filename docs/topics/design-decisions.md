@@ -44,8 +44,10 @@ output because:
 - **Precision**: no regex fragility from parsing prose output
 - **Completeness**: formats expose properties (like `session_id`) that don't appear in default output
 
-The cost is a tmux round-trip: reading a property runs a subprocess against the
-server rather than touching a cached Python attribute. What it buys is a value
+The cost is a tmux round-trip on the live collections: reading a property like
+`session.windows` runs a subprocess against the server each time you access it,
+not a cached value (the scalar fields like `session.session_name` are different
+— read once when the object is built). What it buys is a value
 you can trust — pulled straight from tmux's own reporting, not reconstructed by
 guessing at the layout of display text. The format constants that make this work
 live in {mod}`libtmux.formats`.

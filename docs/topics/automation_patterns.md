@@ -12,9 +12,9 @@ makes that coordination ordinary Python — you start commands with
 pile of `send_keys()` calls into automation you can trust: output monitoring,
 timeouts, retries, and multi-pane orchestration.
 
-Most scripts only need the first two sections. Output monitoring and the context
-manager patterns cover the common case — send a command, wait for a marker, clean
-up after yourself — and you can stop reading there. The later sections (state
+Most scripts only need a couple of these patterns. Output monitoring and the
+context manager patterns cover the common case — send a command, wait for a
+marker, clean up after yourself — so start there. The later sections (state
 machines, task queues) are for the rarer cases where a single pane drives a longer
 sequence of steps; reach for them when you actually need them.
 
@@ -27,7 +27,7 @@ hooks or an external event-driven framework.
 
 Open two terminals:
 
-Terminal one: start tmux in a separate terminal:
+Terminal one: start tmux:
 
 ```console
 $ tmux

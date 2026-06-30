@@ -41,7 +41,7 @@ Use {meth}`~libtmux.options.OptionsMixin.show_option` to get a single option:
 
 Use {meth}`~libtmux.options.OptionsMixin.set_option` to set an option. The call
 returns the object you set it on, so the change is live the moment it returns —
-no {meth}`~libtmux.window.Window.refresh` needed:
+no {meth}`~libtmux.Window.refresh` needed:
 
 ```python
 >>> window.set_option('automatic-rename', False)  # doctest: +ELLIPSIS

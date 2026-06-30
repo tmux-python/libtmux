@@ -331,7 +331,7 @@ fan-out.
 | Filter language | libtmux's lookup operators (`__contains`, `__regex`, etc.) | tmux's [FORMATS](https://man.openbsd.org/tmux.1#FORMATS) grammar |
 | Round trips | one (full list, then filter in memory) | one (tmux returns only matches) |
 | Best for | rich Python checks, set membership, post-fetch composition | exact/glob matches over many rows |
-| Stability | every libtmux version supports it | requires tmux ≥ 3.2 (≥ 3.4 for `list-clients -f`) |
+| Stability | every libtmux version supports it | requires tmux ≥ 3.2 |
 
 Both are valid; pick based on data volume and the filter language you want.
 

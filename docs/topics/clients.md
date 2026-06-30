@@ -57,7 +57,7 @@ session to its
 {attr}`~libtmux.Client.attached_pane` follows that window to its
 {attr}`~libtmux.window.Window.active_pane`. The three properties chain,
 so reading {attr}`~libtmux.Client.attached_pane` does one
-`list-clients` refresh plus two object lookups.
+`list-clients` refresh, then walks to the active window and its active pane.
 
 ```python
 >>> with control_mode() as ctl:

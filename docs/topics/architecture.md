@@ -44,10 +44,12 @@ Server
 | {class}`~libtmux.pane.Pane` | None | {class}`~libtmux.window.Window` |
 | {class}`~libtmux.client.Client` | None | {class}`~libtmux.server.Server` |
 
-{class}`~libtmux.common.TmuxRelationalObject` acts as the base container
-connecting these relationships.
+The Session, Window, Pane, and Client classes share a common dataclass
+base (`Obj`) defined in {mod}`libtmux.neo`, which fetches each object's
+fields from tmux; the parent and child links above are plain properties
+on each class.
 
-One object breaks the ownership chain: {class}`~libtmux.Client` is a
+One object breaks the ownership chain: {class}`~libtmux.client.Client` is a
 *view*, not a child. Each attached terminal points at the
 Session/Window/Pane it is currently displaying, but is not owned by
 them — so its view can change the moment a user switches sessions. See
@@ -57,10 +59,10 @@ them — so its view can change the moment a user switches sessions. See
 
 When tmux state changes, libtmux needs a way to recognize that the same
 window is still the same window. tmux assigns each session, window, and
-pane a unique ID for exactly this, and libtmux holds onto it — via
-{class}`~libtmux.common.TmuxMappingObject` — to track objects reliably
-across state refreshes rather than relying on names or indexes that
-shift around.
+pane a unique ID for exactly this, and libtmux stores it as a dataclass
+attribute on each object (`session_id`, `window_id`, `pane_id`) to track
+objects reliably across state refreshes rather than relying on names or
+indexes that shift around.
 
 | Object | Prefix | Example |
 |--------|--------|---------|

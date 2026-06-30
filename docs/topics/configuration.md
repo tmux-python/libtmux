@@ -1,12 +1,11 @@
 # Configuration
 
-You configure libtmux entirely through Python. There are no config files
-and no environment variables that libtmux itself reads — you set
-everything through method calls on {class}`~libtmux.Server`,
+You configure libtmux through Python: there are no config files, and you
+set everything through method calls on {class}`~libtmux.Server`,
 {class}`~libtmux.Session`, {class}`~libtmux.Window`, and
-{class}`~libtmux.Pane` objects, and the defaults are sensible. If you're
-driving tmux through the standard object API, you're already configured
-correctly and can stop reading here.
+{class}`~libtmux.Pane` objects, with sensible defaults. If you're driving
+tmux through the standard object API, you're already configured correctly
+and can stop reading here.
 
 The rest of this page is for the rarer cases. It documents two lower
 layers you can reach for when the defaults aren't enough: the tmux
@@ -15,9 +14,13 @@ format-string system libtmux uses internally to read tmux state.
 
 ## Environment variables
 
-libtmux reads no environment variables of its own, so there's nothing to
-set here in normal use. What can still matter is the tmux *server* you
-connect to: the standard tmux variables `TMUX` (the address of an
+libtmux reads almost nothing from the environment, so in normal use
+there's nothing to set here. The one knob it does read is
+`LIBTMUX_TMUX_FORMAT_SEPARATOR`, an advanced override for the separator
+(default `␞`) libtmux uses internally to parse tmux's format output — you'd
+touch it only if that character ever collided with your own data. What more
+often matters is the tmux *server* you connect to: the standard tmux
+variables `TMUX` (the address of an
 existing server) and `TMUX_TMPDIR` (where tmux keeps its socket) shape
 which server a fresh {class}`~libtmux.Server` finds. If you run several
 servers, or point tmux at a custom socket directory, those two variables

@@ -39,8 +39,10 @@ can split, rename, and fill with panes.
 
 ### Basic window creation
 
-By default the new window becomes the active one, and it joins the session's
-window list right away:
+Hand {meth}`~libtmux.Session.new_window` a name and you get a
+{class}`~libtmux.Window` back, added to the session's window list. By
+default the window is created in the background — it doesn't pull your
+focus from the window you're already on:
 
 ```python
 >>> new_window = session.new_window(window_name='workspace')
@@ -54,10 +56,10 @@ True
 
 ### Create without attaching
 
-When you are assembling a workspace you usually don't want focus to jump to
-each window as it appears. Build it in the background instead, then switch to
-it once everything is in place. You trade the immediate view for a
-flicker-free build:
+Because `attach=False` is the default, the windows you build stay in the
+background while you assemble a workspace — focus never jumps to each one as
+it appears. Pass it explicitly when you want that intent on the page, and
+reach for `attach=True` only when a window should take focus as it's created:
 
 ```python
 >>> background_window = session.new_window(
@@ -247,8 +249,10 @@ Window(@... ...:new-name, Session($... ...))
 
 A {class}`~libtmux.Window` object reflects tmux's state at the moment you ask:
 its index in the session, its stable id, and the {class}`~libtmux.Session` it
-belongs to are all available as attributes. If something changes the window
-externally, read the attribute again for the current value:
+belongs to are all available as attributes. libtmux reads them once when it
+builds the object, so if something changes the window externally, call
+{meth}`~libtmux.Window.refresh` to re-fetch from tmux before you read them
+again:
 
 ```python
 >>> demo_window = session.new_window(window_name='props-demo', attach=False)
