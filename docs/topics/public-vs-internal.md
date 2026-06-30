@@ -48,10 +48,10 @@ proven stability and real user demand.
 The `_internal/` package holds the machinery the public objects run on —
 implementation details you never need to understand to use libtmux:
 
-- **`query_list`** — the filtering engine behind `.filter()` and `.get()` on collections
-- **`dataclasses`** — base dataclass utilities used by the ORM objects
-- **`constants`** — internal constants not meaningful to end users
-- **`sparse_array`** — the sparse-index mapping behind indexed hooks and options
+- {mod}`~libtmux._internal.query_list` — the filtering engine behind `.filter()` and `.get()` on collections
+- {mod}`~libtmux._internal.dataclasses` — base dataclass utilities used by the ORM objects
+- {mod}`~libtmux._internal.constants` — internal constants not meaningful to end users
+- {mod}`~libtmux._internal.sparse_array` — the sparse-index mapping behind indexed hooks and options
 
 These are documented in {ref}`internals` for contributors, but downstream
 projects should not import from them.
