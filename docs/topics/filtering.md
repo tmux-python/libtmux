@@ -2,13 +2,17 @@
 
 # QueryList filtering
 
-Every collection libtmux hands you — `server.sessions`, `session.windows`,
-`window.panes` — is a `QueryList`, a list that knows how to filter itself. You
-narrow one by calling {meth}`~libtmux._internal.query_list.QueryList.filter`
-with keyword arguments, optionally suffixed with a lookup like `__contains`,
-`__startswith`, or `__regex`, and you get back another `QueryList` you can
-iterate or chain further. It's Django-style filtering applied to sessions,
-windows, and panes.
+Every collection libtmux hands you —
+{attr}`server.sessions <libtmux.Server.sessions>`,
+{attr}`session.windows <libtmux.Session.windows>`, and
+{attr}`window.panes <libtmux.Window.panes>` — is a
+{class}`~libtmux._internal.query_list.QueryList`, a list that knows how to filter
+itself. You narrow one by calling
+{meth}`~libtmux._internal.query_list.QueryList.filter` with keyword arguments,
+optionally suffixed with a lookup like `__contains`, `__startswith`, or
+`__regex`, and you get back another
+{class}`~libtmux._internal.query_list.QueryList` you can iterate or chain
+further. It's Django-style filtering applied to sessions, windows, and panes.
 
 Most readers never look beyond `.filter()`. It's the common path, it works out
 of the box on every collection, and the lookup suffixes and chaining cover
@@ -18,8 +22,9 @@ them until you measure a reason to care.
 
 ## Basic filtering
 
-Every collection is already a `QueryList`, so you can inspect one before you
-narrow it. Here's the full set of sessions on your server:
+Every collection is already a {class}`~libtmux._internal.query_list.QueryList`,
+so you can inspect one before you narrow it. Here's the full set of sessions on
+your server:
 
 ```python
 >>> server.sessions  # doctest: +ELLIPSIS
@@ -222,11 +227,13 @@ False
 ## Filtering across the hierarchy
 
 You aren't limited to one window's panes. Every level of the hierarchy returns
-a `QueryList`, and the server-wide collections — `server.panes`,
-`server.windows`, `server.sessions` — flatten everything beneath them into a
-single list. That lets you query the whole server at once, which is handy when
-you want a pane by some attribute and don't care which session or window it
-lives in:
+a {class}`~libtmux._internal.query_list.QueryList`, and the server-wide
+collections — {attr}`server.panes <libtmux.Server.panes>`,
+{attr}`server.windows <libtmux.Server.windows>`, and
+{attr}`server.sessions <libtmux.Server.sessions>` — flatten everything beneath
+them into a single list. That lets you query the whole server at once, which is
+handy when you want a pane by some attribute and don't care which session or
+window it lives in:
 
 ```python
 >>> # All panes across all windows in the server
