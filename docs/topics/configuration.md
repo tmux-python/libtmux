@@ -29,8 +29,9 @@ decide which one you land on — otherwise you can ignore them.
 ## Format strings
 
 When you read a typed attribute like {attr}`~libtmux.Window.window_name`
-or `pane.pane_current_path`, libtmux is querying tmux behind the scenes
-through tmux's own format system. The format constants that drive those
+or {attr}`pane.pane_current_path <libtmux.Pane.pane_current_path>`, libtmux is
+querying tmux behind the scenes through tmux's own format system. The format
+constants that drive those
 queries live in {mod}`libtmux.formats` and are used internally by every
 object type, so in normal use you never write format strings yourself —
 the typed attributes on each object hand you the values directly.

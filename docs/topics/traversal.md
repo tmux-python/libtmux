@@ -7,14 +7,16 @@ related objects: a {class}`~libtmux.Server` holds {class}`~libtmux.Session`
 objects, each session holds {class}`~libtmux.Window` objects, and each window
 holds {class}`~libtmux.Pane` objects. Every object knows both its parents and
 its children, so you can traverse in either direction — reach for
-`session.windows` to list the windows under a session, or `pane.session` to jump
+{attr}`session.windows <libtmux.Session.windows>` to list the windows under a
+session, or {attr}`pane.session <libtmux.Pane.session>` to jump
 from a pane back up to the session that contains it.
 
-Most of the time you call a handful of properties like `session.windows` and
-`pane.session` and never look further. This works out of the box, with no setup.
-The filtering and relationship checks later on the page are there for the rarer
-cases where you need to find a specific object by name or pattern, or confirm
-how two objects relate.
+Most of the time you call a handful of properties like
+{attr}`session.windows <libtmux.Session.windows>` and
+{attr}`pane.session <libtmux.Pane.session>` and never look further. This works
+out of the box, with no setup. The filtering and relationship checks later on
+the page are there for the rarer cases where you need to find a specific object
+by name or pattern, or confirm how two objects relate.
 
 Under the hood this all rides on libtmux's object abstraction of {term}`target`s
 (the `-t` argument) and the permanent internal IDs tmux assigns to each object,
@@ -156,7 +158,8 @@ True
 
 ## Filtering and finding objects
 
-Sometimes a property like `session.windows` hands you more objects than you
+Sometimes a property like {attr}`session.windows <libtmux.Session.windows>`
+hands you more objects than you
 want, and you need the one — or the few — matching a name, an index, or a
 pattern. Every libtmux collection lets you narrow it down: call
 {meth}`~libtmux._internal.query_list.QueryList.filter` to keep the objects that

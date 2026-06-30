@@ -9,8 +9,11 @@ of typed string attributes that report the object's current state
 straight from tmux, mirroring tmux's built-in
 [FORMATS](https://man.openbsd.org/tmux.1#FORMATS) tokens (`pane_id`,
 `window_zoomed_flag`, `session_name`, etc.). This is why a single
-{class}`~libtmux.Pane` can hand you `pane.pane_id`, `pane.window_id`,
-and `pane.session_id` without you writing a raw tmux command.
+{class}`~libtmux.Pane` can hand you
+{attr}`pane.pane_id <libtmux.Pane.pane_id>`,
+{attr}`pane.window_id <libtmux.Pane.window_id>`, and
+{attr}`pane.session_id <libtmux.Pane.session_id>` without you writing a raw tmux
+command.
 
 Most of the time you just read these attributes and move on. Not every
 field holds a value on every object, though: the object's type and your
@@ -58,10 +61,10 @@ validated.
 
 ## Active child fields
 
-Reach for `session.pane_id` and you get a real pane id back, not an
-error. When tmux lists a parent object, it also reports fields from that
-parent's active child — so the pane fields on a session row describe the
-active pane in the session's current window.
+Reach for {attr}`session.pane_id <libtmux.Session.pane_id>` and you get a real
+pane id back, not an error. When tmux lists a parent object, it also reports
+fields from that parent's active child — so the pane fields on a session row
+describe the active pane in the session's current window.
 
 ```python
 >>> session = server.new_session()
@@ -78,10 +81,10 @@ infer one attached client from a session row. The `client_*` tokens only
 appear on {class}`~libtmux.Client` rows returned by
 {attr}`~libtmux.Server.clients`.
 
-So read `session.pane_id` as "the active pane of the session's current
-window," not "the session's pane id." Treat it as the latter and the
-value will surprise you the moment the {attr}`~libtmux.Session.active_window`
-changes.
+So read {attr}`session.pane_id <libtmux.Session.pane_id>` as "the active pane
+of the session's current window," not "the session's pane id." Treat it as the
+latter and the value will surprise you the moment the
+{attr}`~libtmux.Session.active_window` changes.
 
 ## Inspecting which fields apply
 

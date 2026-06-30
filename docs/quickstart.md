@@ -140,7 +140,7 @@ $ ptpython
 :no-index:
 ```
 
-First, we can grab a {class}`Server`.
+First, we can grab a {class}`~libtmux.Server`.
 
 ```python
 >>> import libtmux
@@ -165,8 +165,9 @@ in your server object. `libtmux.Server(socket_name='mysocket')` is
 equivalent to `$ tmux -L mysocket`.
 :::
 
-`server` is now a living object bound to the tmux server's Sessions,
-Windows and Panes.
+`server` is now a living object bound to the tmux server's
+{class}`~libtmux.Session`, {class}`~libtmux.Window`, and
+{class}`~libtmux.Pane` objects.
 
 ## Raw, contextual commands
 
@@ -182,8 +183,9 @@ New session:
 'libtmux...:2.0'
 ```
 
-From raw command output, to a rich {class}`Window` object (in practice and as shown
-later, you'd use {meth}`Session.new_window()`):
+From raw command output, to a rich {class}`~libtmux.Window` object (in practice
+and as shown later, you'd use
+{meth}`Session.new_window() <libtmux.Session.new_window>`):
 
 ```python
 >>> Window.from_window_id(window_id=session.cmd('new-window', '-P', '-F#{window_id}').stdout[0], server=session.server)
@@ -197,25 +199,27 @@ Create a pane from a window:
 '%2'
 ```
 
-Raw output directly to a {class}`Pane` (in practice, you'd use {meth}`Window.split()`):
+Raw output directly to a {class}`~libtmux.Pane` (in practice, you'd use
+{meth}`Window.split() <libtmux.Window.split>`):
 
 ```python
 >>> Pane.from_pane_id(pane_id=window.cmd('split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
 Pane(%... Window(@1 1:..., Session($1 libtmux_...)))
 ```
 
-## Find your {class}`Session`
+## Find your {class}`~libtmux.Session`
 
-If you have multiple tmux sessions open, all methods in {class}`Server` are available.
+If you have multiple tmux sessions open, all methods in
+{class}`~libtmux.Server` are available.
 
-We can list sessions with {meth}`Server.sessions`:
+We can list sessions with {attr}`Server.sessions <libtmux.Server.sessions>`:
 
 ```python
 >>> server.sessions
 [Session($1 ...), Session($0 ...)]
 ```
 
-This returns a list of {class}`Session` objects you can grab. We can
+This returns a list of {class}`~libtmux.Session` objects you can grab. We can
 find our current session with:
 
 ```python
@@ -225,20 +229,23 @@ Session($1 ...)
 
 However, this isn't guaranteed, libtmux works against current tmux information, the
 session's name could be changed, or another tmux session may be created,
-so {meth}`Server.sessions` and {meth}`Server.windows` exist as a lookup.
+so {attr}`Server.sessions <libtmux.Server.sessions>` and
+{attr}`Server.windows <libtmux.Server.windows>` exist as a lookup.
 
 ## Get session by ID
 
 tmux sessions use the `$[0-9]` convention as a way to identify sessions.
 
-`$1` is whatever the ID `sessions()` returned above.
+`$1` is whatever ID {attr}`Server.sessions <libtmux.Server.sessions>` returned
+above.
 
 ```python
 >>> server.sessions.filter(session_id='$1')[0]
 Session($1 ...)
 ```
 
-You may `session = server.get_by_id('$<yourId>')` to use the session object.
+You may call {meth}`server.get_by_id() <libtmux.Server.get_by_id>` to use the
+session object.
 
 ## Get session by name / other properties
 
@@ -253,10 +260,13 @@ Session($1 foo)
 Session($1 foo)
 ```
 
-With `filter`, pass in attributes and return a list of matches. In
-this case, a {class}`Server` holds a collection of child {class}`Session`.
-{class}`Session` and {class}`Window` both utilize `filter` to sift
-through Windows and Panes, respectively.
+With {meth}`filter() <libtmux._internal.query_list.QueryList.filter>`, pass in
+attributes and return a list of matches. In this case, a
+{class}`~libtmux.Server` holds a collection of child
+{class}`~libtmux.Session` objects. {class}`~libtmux.Session` and
+{class}`~libtmux.Window` both utilize
+{meth}`filter() <libtmux._internal.query_list.QueryList.filter>` to sift
+through windows and panes, respectively.
 
 So you may now use:
 
@@ -274,9 +284,10 @@ to give us a `session` object to play with.
 ## Playing with our tmux session
 
 We now have access to `session` from above with all of the methods
-available in {class}`Session`.
+available in {class}`~libtmux.Session`.
 
-Let's make a {meth}`Session.new_window`, in the background:
+Let's make a {meth}`Session.new_window() <libtmux.Session.new_window>`, in the
+background:
 
 ```python
 >>> session.new_window(attach=False, window_name="ha in the bg")
@@ -288,13 +299,13 @@ So a few things:
 1. `attach=False` meant to create a new window, but not to switch to it.
    It is the same as `$ tmux new-window -d`.
 2. `window_name` may be specified.
-3. Returns the {class}`Window` object created.
+3. Returns the {class}`~libtmux.Window` object created.
 
 :::{note}
 Use the API reference {ref}`api` for more commands.
 :::
 
-Let's delete that window ({meth}`Session.kill_window`).
+Let's delete that window ({meth}`Session.kill_window() <libtmux.Session.kill_window>`).
 
 Method 1: Use passthrough to tmux's `target` system.
 
@@ -331,8 +342,8 @@ Window(@2 ...:ha in the bg, Session($1 ...))
 >>> session.kill_window('ha in the bg')
 ```
 
-In addition, you could also `.kill_window` direction from the {class}`Window`
-object:
+In addition, you could also call {meth}`Window.kill() <libtmux.Window.kill>` on
+the {class}`~libtmux.Window` object:
 
 ```python
 >>> window = session.new_window(attach=False, window_name="check this out")
@@ -346,21 +357,24 @@ And kill:
 >>> window.kill()
 ```
 
-Use {meth}`Session.windows` and {meth}`Session.windows.filter()` to list and sort
-through active {class}`Window`'s.
+Use {attr}`Session.windows <libtmux.Session.windows>` and
+{meth}`Session.windows.filter() <libtmux._internal.query_list.QueryList.filter>`
+to list and sort through active {class}`~libtmux.Window` objects.
 
 ## Manipulating windows
 
-Now that we know how to create windows, let's use one. Let's use {meth}`Session.active_window()`
-to grab our current window.
+Now that we know how to create windows, let's use one. Let's use
+{attr}`Session.active_window <libtmux.Session.active_window>` to grab our
+current window.
 
 ```python
 >>> window = session.active_window
 ```
 
-`window` now has access to all of the objects inside of {class}`Window`.
+`window` now has access to all of the objects inside of
+{class}`~libtmux.Window`.
 
-Let's create a pane, {meth}`Window.split`:
+Let's create a pane, {meth}`Window.split() <libtmux.Window.split>`:
 
 ```python
 >>> window.split(attach=False)
@@ -369,9 +383,10 @@ Pane(%2 Window(@1 ...:..., Session($1 ...)))
 
 Powered up. Let's have a break down:
 
-1. `window = session.active_window()` gave us the {class}`Window` of the current attached to window.
+1. {attr}`session.active_window <libtmux.Session.active_window>` gave us the
+   {class}`~libtmux.Window` of the current attached window.
 2. `attach=False` assures the cursor didn't switch to the newly created pane.
-3. Returned the created {class}`Pane`.
+3. Returned the created {class}`~libtmux.Pane`.
 
 Also, since you are aware of this power, let's commemorate the experience:
 
@@ -380,7 +395,9 @@ Also, since you are aware of this power, let's commemorate the experience:
 Window(@1 ...:..., Session($1 ...))
 ```
 
-You should have noticed {meth}`Window.rename_window` renamed the window.
+You should have noticed
+{meth}`Window.rename_window() <libtmux.Window.rename_window>` renamed the
+window.
 
 ## Moving cursor across windows and panes
 
@@ -392,9 +409,9 @@ For one, arguments such as `attach=False` can be omittted.
 >>> pane = window.split()
 ```
 
-This gives you the {class}`Pane` along with moving the cursor to a new window. You
-can also use the `.select_*` available on the object, in this case the pane has
-{meth}`Pane.select()`.
+This gives you the {class}`~libtmux.Pane` along with moving the cursor to a new
+window. You can also use the `.select_*` available on the object; in this case
+the pane has {meth}`Pane.select() <libtmux.Pane.select>`.
 
 ```python
 >>> pane = window.split(attach=False)
@@ -415,7 +432,8 @@ Pane(%1 Window(@1 ...:..., Session($1 ...)))
 
 ## Sending commands to tmux panes remotely
 
-As long as you have the object, or are iterating through a list of them, you can use `.send_keys`.
+As long as you have the object, or are iterating through a list of them, you can
+use {meth}`Pane.send_keys() <libtmux.Pane.send_keys>`.
 
 ```python
 >>> window = session.new_window(attach=False, window_name="test")
@@ -423,12 +441,13 @@ As long as you have the object, or are iterating through a list of them, you can
 >>> pane.send_keys('echo hey', enter=False)
 ```
 
-See the other window, notice that {meth}`Pane.send_keys` has "`echo hey`" written,
+See the other window, notice that
+{meth}`Pane.send_keys() <libtmux.Pane.send_keys>` has "`echo hey`" written,
 _still in the prompt_.
 
 `enter=False` can be used to send keys without pressing return. In this case,
 you may leave it to the user to press return himself, or complete a command
-using {meth}`Pane.enter()`:
+using {meth}`Pane.enter() <libtmux.Pane.enter>`:
 
 ```python
 >>> pane.enter()
@@ -444,15 +463,17 @@ them being visible in the history.
 >>> pane.send_keys('echo Howdy', enter=True, suppress_history=True)
 ```
 
-In this case, {meth}`Pane.send_keys` has " `echo Howdy`" written,
-automatically sent, the leading space character prevents adding it to the user's
-shell history. Omitting `enter=false` means the default behavior (sending the
-command) is done, without needing to use `pane.enter()` after.
+In this case, {meth}`Pane.send_keys() <libtmux.Pane.send_keys>` has
+" `echo Howdy`" written, automatically sent, the leading space character
+prevents adding it to the user's shell history. Omitting `enter=false` means the
+default behavior (sending the command) is done, without needing to use
+{meth}`pane.enter() <libtmux.Pane.enter>` after.
 
 ## Working with options
 
-libtmux provides a unified API for managing tmux options across Server, Session,
-Window, and Pane objects.
+libtmux provides a unified API for managing tmux options across
+{class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, and {class}`~libtmux.Pane` objects.
 
 ### Getting options
 
@@ -483,12 +504,12 @@ See {ref}`options-and-hooks` for more details on options and hooks.
 
 ## Final notes
 
-These objects created use tmux's internal usage of ID's to make servers,
-sessions, windows and panes accessible at the object level.
+These objects use tmux's internal IDs to make servers, sessions, windows, and
+panes accessible at the object level.
 
 You don't have to see the tmux session to be able to orchestrate it. After
-all, {class}`WorkspaceBuilder` uses these same internals to build your
-sessions in the background. :)
+all, {ref}`workspace-setup` uses these same internals to build sessions in the
+background. :)
 
 :::{seealso}
 
@@ -497,5 +518,4 @@ and our [test suite] (see {ref}`development`.)
 
 :::
 
-[workspacebuilder.py]: https://github.com/tmux-python/libtmux/blob/master/libtmux/workspacebuilder.py
 [test suite]: https://github.com/tmux-python/libtmux/tree/master/tests

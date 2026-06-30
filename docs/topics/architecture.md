@@ -91,7 +91,7 @@ objects. Reading state and changing it both cost a tmux call, which is
 why an object can go stale and why you refresh it rather than trust a
 cached value indefinitely.
 
-1. User creates a `Server` (connects to a running tmux server)
+1. User creates a {class}`~libtmux.Server` (connects to a running tmux server)
 2. Queries use tmux format strings ({mod}`libtmux.constants`) to fetch state
 3. Results are parsed into typed Python objects
 4. Mutations dispatch tmux commands via the `cmd()` method

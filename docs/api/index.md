@@ -5,8 +5,9 @@
 # API Reference
 
 libtmux's public API mirrors tmux's object hierarchy:
-`Server` → `Session` → `Window` → `Pane`. Attached terminals show up as
-`Client` objects accessed off the server.
+{class}`~libtmux.Server` → {class}`~libtmux.Session` →
+{class}`~libtmux.Window` → {class}`~libtmux.Pane`. Attached terminals show up as
+{class}`~libtmux.Client` objects accessed off the server.
 
 ## What do you want to do?
 
@@ -16,19 +17,21 @@ libtmux's public API mirrors tmux's object hierarchy:
 :::{grid-item-card} Find a session, window, or pane?
 :link: libtmux.server
 :link-type: doc
-Use `server.sessions.get()`, `session.windows.get()`.
+Use {meth}`server.sessions.get() <libtmux._internal.query_list.QueryList.get>`,
+{meth}`session.windows.get() <libtmux._internal.query_list.QueryList.get>`.
 :::
 
 :::{grid-item-card} Send commands or keys to a terminal?
 :link: libtmux.pane
 :link-type: doc
-Use `pane.send_keys()` and `pane.enter()`.
+Use {meth}`pane.send_keys() <libtmux.Pane.send_keys>` and
+{meth}`pane.enter() <libtmux.Pane.enter>`.
 :::
 
 :::{grid-item-card} Capture output from a pane?
 :link: libtmux.pane
 :link-type: doc
-Use `pane.capture_pane()`.
+Use {meth}`pane.capture_pane() <libtmux.Pane.capture_pane>`.
 :::
 
 :::{grid-item-card} Write tests against tmux?

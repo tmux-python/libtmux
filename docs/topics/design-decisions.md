@@ -20,8 +20,9 @@ objects — {class}`~libtmux.Server`, {class}`~libtmux.Session`,
 parent-child relationships, so navigating tmux feels like navigating Python.
 
 What you get is a relational structure you can walk in either direction:
-`session.windows` lists a session's windows, `pane.window` points back up to the
-pane's parent. The alternative — a flat command-builder API
+{attr}`session.windows <libtmux.Session.windows>` lists a session's windows,
+{attr}`pane.window <libtmux.Pane.window>` points back up to the pane's parent.
+The alternative — a flat command-builder API
 (`tmux("new-session", "-s", "foo")`) — hands back raw strings and leaves you to
 track which windows belong to which session yourself.
 
@@ -45,9 +46,10 @@ output because:
 - **Completeness**: formats expose properties (like `session_id`) that don't appear in default output
 
 The cost is a tmux round-trip on the live collections: reading a property like
-`session.windows` runs a subprocess against the server each time you access it,
-not a cached value (the scalar fields like `session.session_name` are different
-— read once when the object is built). What it buys is a value
+{attr}`session.windows <libtmux.Session.windows>` runs a subprocess against the
+server each time you access it, not a cached value (the scalar fields like
+{attr}`session.session_name <libtmux.Session.session_name>` are different —
+read once when the object is built). What it buys is a value
 you can trust — pulled straight from tmux's own reporting, not reconstructed by
 guessing at the layout of display text. The format constants that make this work
 live in {mod}`libtmux.formats`.

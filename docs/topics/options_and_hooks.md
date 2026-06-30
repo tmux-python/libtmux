@@ -116,7 +116,7 @@ Session(...)
 
 A single hook reads back as a dict keyed by index rather than a bare string,
 because tmux stores hooks as arrays (more on that under indexed hooks,
-below). `show_hook()` returns a
+below). {meth}`show_hook() <libtmux.hooks.HooksMixin.show_hook>` returns a
 {class}`~libtmux._internal.sparse_array.SparseArray`, a dict-like type whose
 keys are those array indices.
 

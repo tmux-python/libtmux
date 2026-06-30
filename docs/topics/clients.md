@@ -72,7 +72,8 @@ True
 If you need to find or filter clients, you iterate over or query the
 server's client collection. {attr}`~libtmux.Server.clients` returns a
 {class}`~libtmux._internal.query_list.QueryList` of every client tmux
-reports through `list-clients`. Filter or `get()` it the same way as
+reports through `list-clients`. Filter or
+{meth}`get() <libtmux._internal.query_list.QueryList.get>` it the same way as
 {attr}`~libtmux.Server.sessions`:
 
 ```python
@@ -110,6 +111,6 @@ Calling {meth}`~libtmux.Client.refresh` directly still raises
 ## See also
 
 - {doc}`/api/libtmux.client` — autodoc reference
-- {ref}`about` — where `Client` fits in the overall object model
+- {ref}`about` — where {class}`~libtmux.Client` fits in the overall object model
 - {ref}`native-filtering` — tmux-native filtering for sessions, windows, panes,
   and buffers

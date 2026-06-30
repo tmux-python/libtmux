@@ -9,8 +9,8 @@ makes that coordination ordinary Python — you start commands with
 {meth}`~libtmux.Pane.send_keys`, read what came back with
 {meth}`~libtmux.Pane.capture_pane`, and fan work across panes with
 {meth}`~libtmux.Pane.split`. This guide collects the patterns that turn a loose
-pile of `send_keys()` calls into automation you can trust: output monitoring,
-timeouts, retries, and multi-pane orchestration.
+pile of {meth}`send_keys() <libtmux.Pane.send_keys>` calls into automation you
+can trust: output monitoring, timeouts, retries, and multi-pane orchestration.
 
 Most scripts only need a couple of these patterns. Output monitoring and the
 context manager patterns cover the common case — send a command, wait for a
@@ -74,9 +74,10 @@ going in the pane. The pane object stays your handle on that running work.
 
 ### Checking process status
 
-Because `send_keys()` doesn't wait, you find out whether a command is still running
-the same way a person would: by reading what's on screen. Capture the pane and look
-for a marker your command prints when it reaches a known state.
+Because {meth}`send_keys() <libtmux.Pane.send_keys>` doesn't wait, you find out
+whether a command is still running the same way a person would: by reading
+what's on screen. Capture the pane and look for a marker your command prints
+when it reaches a known state.
 
 ```python
 >>> import time
@@ -223,8 +224,8 @@ True
 To run work in parallel, give each task its own pane. You split the window with
 {meth}`~libtmux.Pane.split`, choosing where the new pane lands with
 {class}`~libtmux.constants.PaneDirection`, then fire a command into each. Because
-`send_keys()` returns immediately, the tasks run concurrently; you gather their
-results afterward by capturing every pane.
+{meth}`send_keys() <libtmux.Pane.send_keys>` returns immediately, the tasks run
+concurrently; you gather their results afterward by capturing every pane.
 
 ```python
 >>> import time
