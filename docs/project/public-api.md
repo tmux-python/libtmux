@@ -9,10 +9,10 @@ This includes:
 
 | Module | Import Path |
 |--------|-------------|
-| Server | `from libtmux.server import Server` |
-| Session | `from libtmux.session import Session` |
-| Window | `from libtmux.window import Window` |
-| Pane | `from libtmux.pane import Pane` |
+| {class}`~libtmux.Server` | `from libtmux.server import Server` |
+| {class}`~libtmux.Session` | `from libtmux.session import Session` |
+| {class}`~libtmux.Window` | `from libtmux.window import Window` |
+| {class}`~libtmux.Pane` | `from libtmux.pane import Pane` |
 | Common | `from libtmux.common import ...` |
 | Neo | `from libtmux.neo import ...` |
 | Options | `from libtmux.options import ...` |

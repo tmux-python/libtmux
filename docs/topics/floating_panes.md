@@ -28,7 +28,8 @@ Floating panes require **tmux 3.7+**
 When you call {meth}`Window.new_pane() <libtmux.Window.new_pane>`, you get back
 the new {class}`~libtmux.Pane`, exactly as {meth}`Window.split()
 <libtmux.Window.split>` hands you a tiled one. You can confirm a pane is
-floating by reading its `pane_floating_flag`, which is `"1"` when it floats:
+floating by reading its {attr}`pane_floating_flag <libtmux.Pane.pane_floating_flag>`,
+which is `"1"` when it floats:
 
 ```python
 >>> from libtmux.common import has_gte_version
@@ -47,7 +48,8 @@ floating by reading its `pane_floating_flag`, which is `"1"` when it floats:
 You set the pane's **size** with `width` and `height` (tmux's `-x` / `-y`), and
 its **position** with `x` and `y` — cells measured from the top-left of the
 window (tmux's `-X` / `-Y`). tmux reports the placement back through the
-`pane_x` / `pane_y` fields:
+{attr}`pane_x <libtmux.Pane.pane_x>` /
+{attr}`pane_y <libtmux.Pane.pane_y>` fields:
 
 ```python
 >>> from libtmux.common import has_gte_version
@@ -96,9 +98,10 @@ vanishing:
 ## Identifying floating panes
 
 When you need to tell floating panes from tiled ones in code, reach for the
-tmux 3.7 `pane_floating_flag` field. Every {class}`~libtmux.Pane` carries it, so
-you can branch on it anywhere you hold a pane — including filtering a window's
-{attr}`~libtmux.Window.panes` down to just the floats:
+tmux 3.7 {attr}`pane_floating_flag <libtmux.Pane.pane_floating_flag>` field.
+Every {class}`~libtmux.Pane` carries it, so you can branch on it anywhere you
+hold a pane — including filtering a window's {attr}`~libtmux.Window.panes` down
+to just the floats:
 
 ```python
 >>> from libtmux.common import has_gte_version
@@ -114,5 +117,7 @@ True
 ```
 
 See {meth}`Pane.new_pane() <libtmux.Pane.new_pane>` for the full parameter
-reference and {ref}`format-tokens` for the floating-pane geometry fields (`pane_x`,
-`pane_y`, `pane_z`, `pane_floating_flag`).
+reference and {ref}`format-tokens` for the floating-pane geometry fields
+({attr}`pane_x <libtmux.Pane.pane_x>`, {attr}`pane_y <libtmux.Pane.pane_y>`,
+{attr}`pane_z <libtmux.Pane.pane_z>`,
+{attr}`pane_floating_flag <libtmux.Pane.pane_floating_flag>`).

@@ -52,8 +52,8 @@ following are the tokens libtmux currently gates:
 
 | Added in | Tokens |
 |----------|--------|
-| 3.3 | `pane_dead_signal`, `pane_dead_time` |
-| 3.7 | `bracket_paste_flag`, `pane_flags`, `pane_floating_flag`, `pane_pb_progress`, `pane_pb_state`, `pane_pipe_pid`, `pane_x`, `pane_y`, `pane_z`, `pane_zoomed_flag`, `synchronized_output_flag` |
+| 3.3 | {attr}`~libtmux.Pane.pane_dead_signal`, {attr}`~libtmux.Pane.pane_dead_time` |
+| 3.7 | {attr}`~libtmux.Pane.bracket_paste_flag`, {attr}`~libtmux.Pane.pane_flags`, {attr}`~libtmux.Pane.pane_floating_flag`, {attr}`~libtmux.Pane.pane_pb_progress`, {attr}`~libtmux.Pane.pane_pb_state`, {attr}`~libtmux.Pane.pane_pipe_pid`, {attr}`~libtmux.Pane.pane_x`, {attr}`~libtmux.Pane.pane_y`, {attr}`~libtmux.Pane.pane_z`, {attr}`~libtmux.Pane.pane_zoomed_flag`, {attr}`~libtmux.Pane.synchronized_output_flag` |
 
 Everything not listed above is safe on every supported tmux (≥ 3.2a).
 Fields for newer tmux tokens will be added as each supported version is

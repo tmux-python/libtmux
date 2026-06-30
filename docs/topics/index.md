@@ -14,7 +14,8 @@ Module hierarchy, data flow, and internal identifiers.
 :::{grid-item-card} Traversal
 :link: traversal
 :link-type: doc
-Navigate the Server, Session, Window, Pane hierarchy.
+Navigate the {class}`~libtmux.Server`, {class}`~libtmux.Session`,
+{class}`~libtmux.Window`, {class}`~libtmux.Pane` hierarchy.
 :::
 
 :::{grid-item-card} Filtering

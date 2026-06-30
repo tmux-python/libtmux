@@ -13,11 +13,11 @@ Most of your code just writes {attr}`session.windows <libtmux.Session.windows>`
 and gets a live, filterable collection back — you rarely think about why it's
 shaped that way. This section is for when you're curious about the design.
 
-tmux organizes terminals in a strict hierarchy: Server → Session → Window →
-Pane. Each level owns the next. libtmux mirrors that hierarchy with Python
-objects — {class}`~libtmux.Server`, {class}`~libtmux.Session`,
-{class}`~libtmux.Window`, and {class}`~libtmux.Pane` — that maintain the same
-parent-child relationships, so navigating tmux feels like navigating Python.
+tmux organizes terminals in a strict hierarchy: {class}`~libtmux.Server` →
+{class}`~libtmux.Session` → {class}`~libtmux.Window` →
+{class}`~libtmux.Pane`. Each level owns the next. libtmux mirrors that
+hierarchy with Python objects that maintain the same parent-child
+relationships, so navigating tmux feels like navigating Python.
 
 What you get is a relational structure you can walk in either direction:
 {attr}`session.windows <libtmux.Session.windows>` lists a session's windows,
