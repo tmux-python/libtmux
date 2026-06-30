@@ -1,6 +1,20 @@
 (floating-panes)=
 
-# Floating Panes
+# Floating panes
+
+You can create floating panes — non-modal panes that hover above the tiled
+layout like a popup, but with full escape-sequence support and all the regular
+pane operations (capture, send-keys, and so on). You create them with
+{meth}`Window.new_pane() <libtmux.Window.new_pane>` or
+{meth}`Pane.new_pane() <libtmux.Pane.new_pane>`, the same way you reach for
+{meth}`Window.split() <libtmux.Window.split>` to add a tiled pane.
+
+Most workflows never need one — tiled panes cover the everyday cases, and you
+can stop reading here unless you want a transient overlay (a quick log tail, a
+scratch shell, a status readout) sitting on top of your layout without
+rearranging it. Because a floating pane behaves like any other
+{class}`~libtmux.Pane`, everything you already do — capturing output, sending
+keys, querying state — works on it unchanged.
 
 ```{note}
 Floating panes require **tmux 3.7+**
@@ -9,18 +23,12 @@ Floating panes require **tmux 3.7+**
 {exc}`~libtmux.exc.LibTmuxException` on older tmux).
 ```
 
-tmux 3.7 introduced *floating panes* — panes that sit above the tiled layout
-like a popup, but unlike a popup are not modal and behave like ordinary panes
-(full escape-sequence support, capture, send-keys, and so on). libtmux exposes
-them through {meth}`Window.new_pane() <libtmux.Window.new_pane>` and
-{meth}`Pane.new_pane() <libtmux.Pane.new_pane>`, which wrap tmux's `new-pane`
-command.
-
 ## Creating a floating pane
 
-{meth}`Window.new_pane() <libtmux.Window.new_pane>` returns the new
-{class}`~libtmux.Pane`, just like {meth}`Window.split() <libtmux.Window.split>`.
-The returned pane reports `pane_floating_flag == "1"`:
+When you call {meth}`Window.new_pane() <libtmux.Window.new_pane>`, you get back
+the new {class}`~libtmux.Pane`, exactly as {meth}`Window.split()
+<libtmux.Window.split>` hands you a tiled one. You can confirm a pane is
+floating by reading its `pane_floating_flag`, which is `"1"` when it floats:
 
 ```python
 >>> from libtmux.common import has_gte_version
@@ -36,9 +44,10 @@ The returned pane reports `pane_floating_flag == "1"`:
 
 ## Sizing and positioning
 
-`width` and `height` set the pane's **size** (tmux's `-x` / `-y`); `x` and `y`
-set its **position** in cells from the top-left of the window (tmux's `-X` /
-`-Y`). The placement is reported back by the `pane_x` / `pane_y` fields:
+You set the pane's **size** with `width` and `height` (tmux's `-x` / `-y`), and
+its **position** with `x` and `y` — cells measured from the top-left of the
+window (tmux's `-X` / `-Y`). tmux reports the placement back through the
+`pane_x` / `pane_y` fields:
 
 ```python
 >>> from libtmux.common import has_gte_version
@@ -54,17 +63,23 @@ set its **position** in cells from the top-left of the window (tmux's `-X` /
 
 ## Styling
 
-Floating panes accept the same overlay styling as tmux's `new-pane`: `style`
-(the pane body), `active_border_style`, and `inactive_border_style`. Each takes
-a tmux style string, e.g. `style="bg=black"` or
-`active_border_style="fg=green"`.
+For the rarer cases where appearance matters, you can style a floating pane with
+the same overlay options tmux's `new-pane` accepts: `style` (the pane body),
+`active_border_style`, and `inactive_border_style`. Each takes a tmux style
+string, for example `style="bg=black"` or `active_border_style="fg=green"`. The
+defaults read fine on most terminals, so reach for these only when you want a
+float to stand out.
 
 ## Keeping a pane open
 
-By default a floating pane closes when its command exits. Pass `keep=True` to
-hold it open until a key is pressed (tmux's `-k`), or `message="..."` to hold
-it open showing a custom `remain-on-exit-format` line (tmux's `-m`); both set
-the pane's `remain-on-exit` option to `key`:
+By default a floating pane closes the moment its command exits — fine for a
+fire-and-forget command, but you lose whatever it printed. When you want the
+output to linger, pass `keep=True` to hold the pane open until you press a key
+(tmux's `-k`), or `message="..."` to hold it open showing a custom
+`remain-on-exit-format` line (tmux's `-m`). The cost is explicit and small:
+both flip the pane's `remain-on-exit` option to `key`, which buys you a pane
+that stays on screen and waits for you after the command finishes instead of
+vanishing:
 
 ```python
 >>> from libtmux.common import has_gte_version
@@ -80,9 +95,10 @@ the pane's `remain-on-exit` option to `key`:
 
 ## Identifying floating panes
 
-Every pane carries the tmux 3.7 `pane_floating_flag` field, so floating panes
-can be told apart from tiled panes anywhere a {class}`~libtmux.Pane` is
-available — including filtering a window's {attr}`~libtmux.Window.panes`:
+When you need to tell floating panes from tiled ones in code, reach for the
+tmux 3.7 `pane_floating_flag` field. Every {class}`~libtmux.Pane` carries it, so
+you can branch on it anywhere you hold a pane — including filtering a window's
+{attr}`~libtmux.Window.panes` down to just the floats:
 
 ```python
 >>> from libtmux.common import has_gte_version
