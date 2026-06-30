@@ -1,10 +1,29 @@
 (automation-patterns)=
 
-# Automation Patterns
+# Automation patterns
 
-libtmux is ideal for automating terminal workflows, orchestrating multiple processes,
-and building agentic systems that interact with terminal applications. This guide covers
-practical patterns for automation use cases.
+When you automate a terminal workflow, you are usually coordinating more than one
+process: you kick off work in one pane, watch another for a completion signal, and
+keep several tasks moving without blocking on any single one. libtmux's object API
+makes that coordination ordinary Python — you start commands with
+{meth}`~libtmux.Pane.send_keys`, read what came back with
+{meth}`~libtmux.Pane.capture_pane`, and fan work across panes with
+{meth}`~libtmux.Pane.split`. This guide collects the patterns that turn a loose
+pile of `send_keys()` calls into automation you can trust: output monitoring,
+timeouts, retries, and multi-pane orchestration.
+
+Most scripts only need the first two sections. Output monitoring and the context
+manager patterns cover the common case — send a command, wait for a marker, clean
+up after yourself — and you can stop reading there. The later sections (state
+machines, task queues) are for the rarer cases where a single pane drives a longer
+sequence of steps; reach for them when you actually need them.
+
+These patterns lean on polling: you call {meth}`~libtmux.Pane.capture_pane` in a
+loop and `sleep` between reads. That is simpler than wiring up an event-driven
+system, and it costs you latency — each poll is a tmux round-trip, and a `sleep`
+between polls is dead time you pay whether the command finished or not. For most
+automation that trade is worth it. When milliseconds matter, look instead at tmux
+hooks or an external event-driven framework.
 
 Open two terminals:
 
@@ -20,9 +39,20 @@ Terminal two, `python` or `ptpython` if you have it:
 $ python
 ```
 
-## Process Control
+The examples below assume you already have `server` and `session` objects in scope.
+In this documentation they come from libtmux's pytest fixtures, which run the
+doctests against a live tmux server; in your own scripts you create them yourself
+(a {class}`~libtmux.Server` and a session from
+{meth}`~libtmux.Server.new_session`). Each example builds its own window or pane and
+tears it down at the end, so the snippets stand alone and don't depend on each other.
+
+## Process control
 
 ### Starting long-running processes
+
+When you send a command to a pane with {meth}`~libtmux.Pane.send_keys`, it runs in
+the background — control returns to your script immediately, while the command keeps
+going in the pane. The pane object stays your handle on that running work.
 
 ```python
 >>> import time
@@ -43,6 +73,10 @@ $ python
 ```
 
 ### Checking process status
+
+Because `send_keys()` doesn't wait, you find out whether a command is still running
+the same way a person would: by reading what's on screen. Capture the pane and look
+for a marker your command prints when it reaches a known state.
 
 ```python
 >>> import time
@@ -72,9 +106,15 @@ True
 >>> status_window.kill()
 ```
 
-## Output Monitoring
+## Output monitoring
 
 ### Waiting for specific output
+
+The workhorse of terminal automation is "run something, then block until a string
+shows up." You wrap {meth}`~libtmux.Pane.capture_pane` in a loop with a timeout, so a
+command that never finishes can't hang your script forever. The `poll_interval` is
+the latency/work trade in one knob: poll faster to react sooner, slower to spare tmux
+the round-trips.
 
 ```python
 >>> import time
@@ -101,6 +141,10 @@ True
 ```
 
 ### Detecting errors in output
+
+Waiting for success is only half the job — you also want to notice failure. The same
+capture-and-scan approach works for spotting error patterns, so you can bail out
+early instead of timing out on a command that already crashed.
 
 ```python
 >>> import time
@@ -129,6 +173,11 @@ True
 ```
 
 ### Capturing output between markers
+
+Sometimes you don't want the whole scrollback — you want just the lines a command
+produced. Bracket the interesting output with a marker you control, then return
+everything that follows it. This is how you pull a command's result out of a shared
+pane without dragging along the prompt and prior history.
 
 ```python
 >>> import time
@@ -167,9 +216,15 @@ True
 >>> capture_window.kill()
 ```
 
-## Multi-Pane Orchestration
+## Multi-pane orchestration
 
 ### Running parallel tasks
+
+To run work in parallel, give each task its own pane. You split the window with
+{meth}`~libtmux.Pane.split`, choosing where the new pane lands with
+{class}`~libtmux.constants.PaneDirection`, then fire a command into each. Because
+`send_keys()` returns immediately, the tasks run concurrently; you gather their
+results afterward by capturing every pane.
 
 ```python
 >>> import time
@@ -206,6 +261,11 @@ True
 
 ### Monitoring multiple panes for completion
 
+A fixed `sleep` only works when you know how long the slowest task takes. When tasks
+finish at different times, watch them all at once and drop each pane from the
+watch-list as its marker appears — you return as soon as the last one completes,
+instead of always waiting for a worst-case timeout.
+
 ```python
 >>> import time
 >>> from libtmux.constants import PaneDirection
@@ -241,9 +301,15 @@ True
 >>> multi_window.kill()
 ```
 
-## Context Manager Patterns
+## Context manager patterns
 
 ### Temporary session for isolated work
+
+Cleanup is the part of automation that's easy to forget — and forgetting leaves
+orphaned sessions and windows behind on the tmux server. A `with` block makes the
+cleanup automatic: the session lives for the body and is killed on the way out, even
+if an exception interrupts you. It costs a little to spin a session up and tear it
+down, but you get a guaranteed-clean slate that never leaks.
 
 ```python
 >>> # Create isolated session for a task
@@ -262,6 +328,10 @@ True
 
 ### Temporary window for subtask
 
+When you only need a scratch space for one subtask, scope a window the same way. The
+window opens for the body of the block and is gone afterward, so a short-lived job
+never outlives its purpose.
+
 ```python
 >>> import time
 
@@ -277,9 +347,14 @@ True
 True
 ```
 
-## Timeout Handling
+## Timeout handling
 
 ### Command with timeout
+
+Any command you wait on can hang, so give every wait an upper bound. Pair the command
+with a completion marker and poll until either the marker shows up or the clock runs
+out — and when it runs out, raise, so a stuck command surfaces as an error you can
+catch instead of a script that quietly stalls.
 
 ```python
 >>> import time
@@ -313,6 +388,11 @@ True
 
 ### Retry pattern
 
+For flaky work that succeeds on a later attempt, retry until a success marker
+appears. Be honest about the cost: each retry runs the command again and waits the
+full `delay`, so a slow `delay` times `max_retries` is the worst case you're signing
+up for. Tune both for how expensive the command is and how patient you can be.
+
 ```python
 >>> import time
 
@@ -342,9 +422,17 @@ True
 >>> retry_window.kill()
 ```
 
-## Agentic Workflow Patterns
+## Agentic workflow patterns
+
+The patterns so far drive one command at a time. The two below compose them into
+longer sequences that one pane runs end to end — reach for these when a task is
+genuinely a pipeline of steps, not a single call.
 
 ### Task queue processor
+
+A task queue runs a list of commands in order, waiting for each to finish before
+starting the next. You tag every task with an indexed marker so you know exactly
+which step you're waiting on, and you collect a pass/fail result per task.
 
 ```python
 >>> import time
@@ -379,6 +467,11 @@ True
 ```
 
 ### State machine runner
+
+When the next step depends on the previous one finishing, model the work as a state
+machine: each state runs a command and waits for the transition marker that unlocks
+the next. A per-state timeout keeps a single stuck step from stalling the whole run,
+and the history tells you how far you got before it stopped.
 
 ```python
 >>> import time
@@ -424,11 +517,13 @@ True
 >>> state_window.kill()
 ```
 
-## Best Practices
+## Best practices
 
 ### 1. Always use markers for completion detection
 
-Instead of relying on timing, use explicit markers:
+Timing is a guess; a marker is a fact. Instead of sleeping long enough and hoping a
+command finished, have it print an explicit marker and poll for that. Your automation
+then reacts to what actually happened rather than to a clock.
 
 ```python
 >>> bp_window = session.new_window(window_name='best-practice', attach=False)
@@ -448,7 +543,9 @@ True
 
 ### 2. Clean up resources
 
-Always clean up windows and sessions when done:
+Every window and session you create lives on the tmux server until something kills
+it. Tear down what you opened when you're done, so a long-running automation process
+doesn't accumulate orphaned objects.
 
 ```python
 >>> cleanup_window = session.new_window(window_name='cleanup-demo', attach=False)
@@ -465,6 +562,10 @@ True
 
 ### 3. Use context managers for automatic cleanup
 
+Better still, let a `with` block do the cleanup for you. It runs even when the body
+raises, which is exactly when manual cleanup tends to get skipped — so the resource
+is released whether the work succeeded or blew up.
+
 ```python
 >>> # Context managers ensure cleanup even on exceptions
 >>> with session.new_window(window_name='safe-work') as safe_window:
@@ -476,6 +577,6 @@ True
 :::{seealso}
 - {ref}`pane-interaction` for basic pane operations
 - {ref}`workspace-setup` for creating workspace layouts
-- {ref}`context-managers` for resource management patterns
+- {ref}`context_managers` for resource management patterns
 - {class}`~libtmux.Pane` for all pane methods
 :::

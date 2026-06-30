@@ -1,30 +1,46 @@
 (workspace-setup)=
 
-# Workspace Setup
+# Workspace setup
 
-libtmux makes it easy to create and configure multi-pane workspaces programmatically.
-This is useful for setting up development environments, running parallel tasks,
-and orchestrating terminal-based workflows.
+A workspace is a single window carved into panes, each running its own
+program: an editor in one, a dev server in another, a log tail in a third.
+With libtmux you build that layout from Python instead of arranging it by
+hand — you open a window, split it into panes, arrange them with a layout,
+and send commands into each.
 
-Open two terminals:
+You will reach for four methods more than any others:
+{meth}`~libtmux.Session.new_window` to open a window,
+{meth}`~libtmux.Window.split` to carve it into panes,
+{meth}`~libtmux.Window.select_layout` to arrange them, and
+{meth}`~libtmux.Pane.send_keys` to drive a command into one. The defaults
+are sensible, so most of what you build needs nothing more — the recipes
+near the end are ready-made patterns you can copy whole and adapt.
 
-Terminal one: start tmux in a separate terminal:
+To follow along you need two terminals: one running a live tmux server, one
+running a Python prompt to drive it.
+
+In the first terminal, start tmux:
 
 ```console
 $ tmux
 ```
 
-Terminal two, `python` or `ptpython` if you have it:
+In the second, start Python (`ptpython` if you have it):
 
 ```console
 $ python
 ```
 
-## Creating Windows
+## Creating windows
 
-The {meth}`~libtmux.Session.new_window` method creates new windows within a session.
+Every workspace begins with a window. {meth}`~libtmux.Session.new_window`
+opens one inside a session and hands you back a {class}`~libtmux.Window` you
+can split, rename, and fill with panes.
 
 ### Basic window creation
+
+By default the new window becomes the active one, and it joins the session's
+window list right away:
 
 ```python
 >>> new_window = session.new_window(window_name='workspace')
@@ -38,7 +54,10 @@ True
 
 ### Create without attaching
 
-Use `attach=False` to create a window in the background:
+When you are assembling a workspace you usually don't want focus to jump to
+each window as it appears. Build it in the background instead, then switch to
+it once everything is in place. You trade the immediate view for a
+flicker-free build:
 
 ```python
 >>> background_window = session.new_window(
@@ -54,6 +73,10 @@ Window(@... ...:background-task, Session($... ...))
 
 ### Create with specific shell
 
+You can also choose what runs inside the window instead of the default shell
+— handy when a pane should boot straight into a REPL, a server, or a one-off
+script:
+
 ```python
 >>> shell_window = session.new_window(
 ...     window_name='shell-test',
@@ -67,11 +90,19 @@ Window(@... ...:shell-test, Session($... ...))
 >>> shell_window.kill()
 ```
 
-## Splitting Panes
+## Splitting panes
 
-The {meth}`~libtmux.Window.split` method divides windows into multiple panes.
+A window with one pane is just a terminal. Splitting is what turns it into a
+workspace: {meth}`~libtmux.Window.split` (or the same method on a specific
+{meth}`~libtmux.Pane.split`) divides the available space and returns the new
+{class}`~libtmux.Pane`. Each split and {meth}`~libtmux.Window.resize` is a
+round-trip to the tmux server; the resize calls below buy a window large
+enough that the splits have room to land on a small terminal.
 
 ### Vertical split (top/bottom)
+
+Splitting top-and-bottom is the default — the new pane opens below the one
+you split:
 
 ```python
 >>> import time
@@ -97,6 +128,10 @@ Pane(%... Window(@... ..., Session($... ...)))
 
 ### Horizontal split (left/right)
 
+Pass a direction to split side-by-side instead.
+{class}`~libtmux.constants.PaneDirection` names where the new pane goes —
+here, to the right of the one you split:
+
 ```python
 >>> from libtmux.constants import PaneDirection
 
@@ -119,6 +154,9 @@ Pane(%... Window(@... ..., Session($... ...)))
 
 ### Split with specific size
 
+By default tmux halves the space. Ask for a specific share — a percentage or
+a cell count — when one pane should be smaller than the rest:
+
 ```python
 >>> # Create a fresh window for size demo
 >>> size_window = session.new_window(window_name='size-demo', attach=False)
@@ -135,9 +173,11 @@ Pane(%... Window(@... ..., Session($... ...)))
 >>> size_window.kill()
 ```
 
-## Layout Management
+## Layout management
 
-The {meth}`~libtmux.Window.select_layout` method arranges panes using built-in layouts.
+Once a window holds several panes, a layout decides how they share the
+screen. {meth}`~libtmux.Window.select_layout` applies one of tmux's built-in
+arrangements so you don't have to size each pane by hand.
 
 ### Available layouts
 
@@ -152,6 +192,10 @@ tmux provides five built-in layouts:
 | `tiled` | Panes spread evenly in rows and columns |
 
 ### Applying layouts
+
+Pass a layout name and tmux re-tiles every pane in the window. You can switch
+layouts as often as you like — the panes and their contents stay put, only
+their geometry changes:
 
 ```python
 >>> # Create window with multiple panes
@@ -180,9 +224,12 @@ Window(@... ...)
 >>> layout_window.kill()
 ```
 
-## Renaming and Organizing
+## Renaming and organizing
 
 ### Rename windows
+
+A window's name is how you find it later, so give each one a label that says
+what it's for. {meth}`~libtmux.Window.rename_window` updates it in place:
 
 ```python
 >>> rename_window = session.new_window(window_name='old-name', attach=False)
@@ -197,6 +244,11 @@ Window(@... ...:new-name, Session($... ...))
 ```
 
 ### Access window properties
+
+A {class}`~libtmux.Window` object reflects tmux's state at the moment you ask:
+its index in the session, its stable id, and the {class}`~libtmux.Session` it
+belongs to are all available as attributes. If something changes the window
+externally, read the attribute again for the current value:
 
 ```python
 >>> demo_window = session.new_window(window_name='props-demo', attach=False)
@@ -217,9 +269,17 @@ Session($... ...)
 >>> demo_window.kill()
 ```
 
-## Practical Recipes
+## Practical recipes
 
-### Recipe: Create a development workspace
+The methods above are enough to build any workspace. The recipes below stitch
+them into patterns worth keeping — lift one and adapt it, or read them as
+worked examples of how the pieces fit together.
+
+### Recipe: create a development workspace
+
+A common shape: one large editing pane, a smaller terminal beneath it, and a
+log pane beside the terminal. This helper wires that up and returns the panes
+keyed by role, so the caller can drive each one by name:
 
 ```python
 >>> import time
@@ -254,7 +314,11 @@ Session($... ...)
 >>> workspace['window'].kill()
 ```
 
-### Recipe: Create a grid of panes
+### Recipe: create a grid of panes
+
+Need a uniform grid — four panes, nine, sixteen — for watching parallel jobs?
+Split a row across, repeat down the rows, then let the `tiled`
+{meth}`~libtmux.Window.select_layout` even everything out:
 
 ```python
 >>> from libtmux.constants import PaneDirection
@@ -295,7 +359,13 @@ True
 >>> grid_window.kill()
 ```
 
-### Recipe: Run commands in multiple panes
+### Recipe: run commands in multiple panes
+
+Sending keys is how you put work into a pane.
+{meth}`~libtmux.Pane.send_keys` returns as soon as the keystrokes are
+delivered — the command itself runs asynchronously — so when you need to read
+its output back with {meth}`~libtmux.Pane.capture_pane`, give it a beat to
+finish first:
 
 ```python
 >>> import time
@@ -329,9 +399,12 @@ True
 >>> multi_window.kill()
 ```
 
-## Window Context Managers
+## Window context managers
 
-Windows can be used as context managers for automatic cleanup:
+When a window is only meant to live for the span of a task — a test run, a
+quick capture — let a `with` block own it. The window is created on entry and
+killed on exit, so you never leak a stray window even if something raises
+midway through:
 
 ```python
 >>> with session.new_window(window_name='temp-window') as temp_win:
