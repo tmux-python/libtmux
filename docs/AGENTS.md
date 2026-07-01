@@ -96,6 +96,22 @@ exactly — anchors mix underscore and hyphen forms across pages
 broken cross-reference; the doctests do not — so build the docs before
 you commit.
 
+Link the first prose mention of any symbol that has a useful destination on
+that page. This includes Python objects, libtmux APIs, tmux concepts with
+glossary entries, topic/configuration pages, and external tools or projects.
+Use the most specific target available: `{class}`, `{meth}`, `{func}`, `{mod}`,
+`{exc}`, or `{attr}` for API objects; `{ref}`, `{doc}`, or `{term}` for
+documentation pages, section anchors, and glossary entries; and a Markdown link
+or reference link for external projects. After the first linked mention on a
+page, later mentions can stay plain unless the distance or context makes
+another link useful.
+
+Do not rely on a later reference section to satisfy the first-mention rule. If
+the first occurrence would be a heading, grid-card teaser, or introductory
+sentence, link that occurrence or retitle the heading so the first prose mention
+can carry the link. Leave command examples, code blocks, Mermaid node labels,
+and literal configuration values as code; link the surrounding prose instead.
+
 ## A page that does this
 
 `docs/topics/pane_interaction.md` is the worked example: a concept-first
