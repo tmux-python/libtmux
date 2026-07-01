@@ -34,7 +34,7 @@ least one release, documented in the changelog — rather than vanishing without
 notice. (libtmux is pre-1.0, so a minor version can still carry a breaking
 change; pin a version when you need to lock things down.) Reaching into an
 internal module buys you none of that — a refactor of
-`libtmux._internal.query_list` ships with no deprecation cycle, so an import
+{mod}`~libtmux._internal.query_list` ships with no deprecation cycle, so an import
 that works today can break on the very next release. That freedom is the point: internal modules let the library iterate on
 implementation details without dragging downstream users through a migration for
 each one.

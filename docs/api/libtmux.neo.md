@@ -56,13 +56,13 @@ Quick access to basic attributes:
 '$1'
 ```
 
-To see all attributes for a session:
+Inspect field names on {class}`~libtmux.neo.Obj`:
 
 ```python
-from libtmux.neo import Obj
+>>> from libtmux.neo import Obj
 
->>> sorted(list(Obj.__dataclass_fields__.keys()))
-['session_attached', 'session_created', ...]
+>>> sorted(Obj.__dataclass_fields__)[:3]
+['active_window_index', 'alternate_saved_x', 'alternate_saved_y']
 ```
 
 ```python

@@ -37,7 +37,7 @@ Use {meth}`pane.capture_pane() <libtmux.Pane.capture_pane>`.
 :::{grid-item-card} Write tests against tmux?
 :link: testing/index
 :link-type: doc
-Use the pytest plugin and test helpers.
+Use the {doc}`pytest plugin <testing/pytest-plugin/index>` and test helpers.
 :::
 
 ::::
@@ -130,7 +130,8 @@ Exception hierarchy.
 :::{grid-item-card} Testing Utilities
 :link: testing/index
 :link-type: doc
-pytest plugin, fixtures, and test helpers for testing code that uses libtmux.
+{doc}`pytest plugin <testing/pytest-plugin/index>`, fixtures, and test helpers
+for testing code that uses libtmux.
 :::
 
 ::::

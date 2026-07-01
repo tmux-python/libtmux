@@ -195,7 +195,7 @@ $ make ruff_format
 
 ````
 
-### mypy
+### Type checking
 
 [mypy] is used for static type checking.
 
@@ -272,12 +272,12 @@ $ git tag v0.9.1
 ```
 
 After `git push` and `git push --tags`, CI will automatically build and deploy
-to PyPI.
+to [PyPI].
 
 ### Releasing via GitHub Actions (manual)
 
 This isn't used yet since package maintainers may want setup.py in the source.
-See https://github.com/tmux-python/tmuxp/issues/625.
+See [tmuxp issue #625].
 
 As of v0.10, [uv] handles virtualenv creation, package requirements, versioning,
 building, and publishing. Therefore there is no setup.py or requirements files.
@@ -305,3 +305,5 @@ $ git push --tags
 [ruff format]: https://docs.astral.sh/ruff/formatter/
 [ruff]: https://ruff.rs
 [mypy]: http://mypy-lang.org/
+[PyPI]: https://pypi.org/project/libtmux/
+[tmuxp issue #625]: https://github.com/tmux-python/tmuxp/issues/625

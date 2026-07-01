@@ -1,4 +1,7 @@
-# Internal Constants - `libtmux._internal.constants`
+# Internal Constants
+
+The {mod}`libtmux._internal.constants` module documents private constants used
+inside libtmux.
 
 :::{warning}
 Be careful with these! These constants are private, internal as they're **not** covered by version policies. They can break or be removed between minor versions!

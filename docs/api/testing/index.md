@@ -10,7 +10,8 @@ Tools for testing code that uses libtmux.
 :::{grid-item-card} pytest Plugin
 :link: pytest-plugin/index
 :link-type: doc
-Fixtures for isolated tmux servers, sessions, windows, and panes in automated tests.
+[pytest] fixtures for isolated tmux servers, sessions, windows, and panes in
+automated tests.
 :::
 
 :::{grid-item-card} Test Helpers
@@ -28,3 +29,5 @@ Utilities for test setup: constants, environment mocking, retry logic, temporary
 pytest-plugin/index
 test-helpers/index
 ```
+
+[pytest]: https://docs.pytest.org/en/stable/

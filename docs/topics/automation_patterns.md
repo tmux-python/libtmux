@@ -40,7 +40,8 @@ $ python
 ```
 
 The examples below assume you already have `server` and `session` objects in scope.
-In this documentation they come from libtmux's pytest fixtures, which run the
+In this documentation they come from libtmux's
+{doc}`pytest fixtures </api/testing/pytest-plugin/fixtures>`, which run the
 doctests against a live tmux server; in your own scripts you create them yourself
 (a {class}`~libtmux.Server` and a session from
 {meth}`~libtmux.Server.new_session`). Each example builds its own window or pane and

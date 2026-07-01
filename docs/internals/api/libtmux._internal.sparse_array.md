@@ -1,4 +1,7 @@
-# Internal Sparse Array - `libtmux._internal.sparse_array`
+# Internal Sparse Array
+
+The {mod}`libtmux._internal.sparse_array` module contains the sparse-index
+mapping used by indexed hooks and options.
 
 :::{warning}
 Be careful with these! Internal APIs are **not** covered by version policies. They can break or be removed between minor versions!
