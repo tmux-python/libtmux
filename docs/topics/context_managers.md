@@ -32,7 +32,7 @@ $ python
 Import `libtmux`:
 
 ```python
-import libtmux
+>>> import libtmux
 ```
 
 ## Server context manager

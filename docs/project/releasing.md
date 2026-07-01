@@ -7,7 +7,7 @@ Users should pin to `>=0.x,<0.y`.
 
 ## Release Process
 
-Releases are triggered by git tags and published to PyPI via OIDC trusted publishing.
+Releases are triggered by git tags and published to [PyPI] via OIDC trusted publishing.
 
 1. Update `CHANGES` with the release notes
 
@@ -31,7 +31,7 @@ Releases are triggered by git tags and published to PyPI via OIDC trusted publis
    $ git push && git push --tags
    ```
 
-6. CI builds and publishes to PyPI automatically via trusted publishing
+6. CI builds and publishes to [PyPI] automatically via trusted publishing
 
 ## Changelog Format
 
@@ -53,3 +53,5 @@ libtmux <version> (<date>)
 
 - Description of break, migration path (#issue)
 ```
+
+[PyPI]: https://pypi.org/project/libtmux/

@@ -2,8 +2,8 @@
 
 # pytest Plugin
 
-libtmux's pytest plugin provides fixtures for isolated tmux servers, sessions, windows, and panes
-in automated tests.
+libtmux's [pytest] plugin provides fixtures for isolated tmux servers,
+sessions, windows, and panes in automated tests.
 
 ::::{grid} 1 1 2 2
 :gutter: 2 2 3 3
@@ -29,3 +29,5 @@ Complete autodoc for all fixtures and plugin API.
 usage
 fixtures
 ```
+
+[pytest]: https://docs.pytest.org/en/stable/

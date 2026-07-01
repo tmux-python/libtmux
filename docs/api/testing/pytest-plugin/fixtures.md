@@ -4,17 +4,20 @@
 
 ## Quick Start
 
-Add a fixture name as a test parameter — pytest creates and injects it automatically. You never call fixtures yourself.
+Add a fixture name as a test parameter — [pytest] creates and injects it
+automatically. You never call fixtures yourself. In doctests, libtmux injects
+the same objects through `doctest_namespace`:
 
 ```python
-def test_basic(server: Server) -> None:
-    session = server.new_session(session_name="my-session")
-    assert session is not None
+>>> created_session = server.new_session(session_name="my-session")
+>>> created_session is not None
+True
+>>> created_session.kill()
 
-
-def test_with_session(session: Session) -> None:
-    window = session.new_window(window_name="test")
-    assert window is not None
+>>> created_window = session.new_window(window_name="test")
+>>> created_window is not None
+True
+>>> created_window.kill()
 ```
 
 ## Which Fixture Do I Need?
@@ -28,8 +31,16 @@ def test_with_session(session: Session) -> None:
 
 ## Fixture Summary
 
-```{autofixture-index} libtmux.pytest_plugin
-```
+| Fixture | Use |
+|---------|-----|
+| {fixture}`server` | Bare isolated server |
+| {fixture}`session` | Ready-to-use isolated session |
+| {fixture}`home_path` / {fixture}`user_path` | Temporary home directories |
+| {fixture}`config_file` | Test `.tmux.conf` |
+| {fixture}`session_params` | Session creation override |
+| {fixture}`TestServer` | Factory for extra isolated servers |
+| {fixture}`control_mode` | Attached client factory |
+| {fixture}`clear_env` | Minimal test environment |
 
 ---
 
@@ -40,23 +51,7 @@ The primary injection points for libtmux tests.
 ```{eval-rst}
 .. autofixture:: libtmux.pytest_plugin.server
 
-   .. rubric:: Example
-
-   .. code-block:: python
-
-      def test_server_sessions(server: Server) -> None:
-          session = server.new_session(session_name="work")
-          assert session.session_name == "work"
-
 .. autofixture:: libtmux.pytest_plugin.session
-
-   .. rubric:: Example
-
-   .. code-block:: python
-
-      def test_session_windows(session: Session) -> None:
-          window = session.new_window(window_name="editor")
-          assert window.window_name == "editor"
 ```
 
 ## Environment Fixtures
@@ -85,14 +80,6 @@ Override these in your project's `conftest.py` to customise the test environment
 .. autofixture:: libtmux.pytest_plugin.session_params
    :kind: override_hook
 
-   .. rubric:: Example
-
-   .. code-block:: python
-
-      # conftest.py
-      @pytest.fixture
-      def session_params() -> dict:
-          return {"x": 800, "y": 600}
 ```
 
 ## Factories
@@ -102,14 +89,6 @@ Override these in your project's `conftest.py` to customise the test environment
 
 .. autofixture:: libtmux.pytest_plugin.control_mode
 
-   .. rubric:: Example
-
-   .. code-block:: python
-
-      def test_display_popup(control_mode) -> None:
-          with control_mode() as ctl:
-              # commands needing an attached client now work
-              assert ctl.client_name != ""
 ```
 
 ## Low-Level / Rarely Needed
@@ -168,3 +147,5 @@ All fixtures above are also auto-discoverable via:
 Use ``autofixtures::`` in your own plugin docs to document all fixtures from a
 module without listing each one manually.
 ```
+
+[pytest]: https://docs.pytest.org/en/stable/

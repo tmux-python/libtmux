@@ -35,12 +35,14 @@ stable for the lifetime of the attachment.
 | `client_session` | session name of the same attached view | No — snapshot |
 | `client_pid` / `client_tty` / `client_user` | terminal-level facts | Yes — identity-adjacent |
 
-## Live attachment with `attached_*`
+## Live attachment lookup
 
 When you want the *current* attachment — not the snapshot — use the
-three live properties. Each calls {meth}`~libtmux.Client.refresh` to
-query the current state (one tmux round-trip) and then resolves the
-typed Session/Window/Pane it's viewing. This costs a little — you're
+three `attached_*` properties. Each calls
+{meth}`~libtmux.Client.refresh` to query the current state (one tmux
+round-trip) and then resolves the typed
+{class}`~libtmux.Session`, {class}`~libtmux.Window`, or
+{class}`~libtmux.Pane` it's viewing. This costs a little — you're
 asking for the live state — but you get the current view in return:
 
 ```python
@@ -92,7 +94,7 @@ For filtering clients, use `server.clients.filter(...)` or iterate over
 you want tmux's native format-based filtering on sessions, windows,
 panes, and buffers.
 
-## When `attached_*` returns `None`
+## Missing live attachments
 
 When a client detaches or its view becomes stale, the `attached_*`
 properties return `None` so you can branch on truthiness without a

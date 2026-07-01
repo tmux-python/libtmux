@@ -29,7 +29,7 @@ Every public class, function, and exception.
 :::{grid-item-card} Testing
 :link: api/testing/index
 :link-type: doc
-pytest plugin and test helpers for isolated tmux environments.
+Isolated tmux fixtures and test helpers.
 :::
 
 :::{grid-item-card} Contributing
@@ -57,13 +57,10 @@ See [Quickstart](quickstart.md) for all methods and first steps.
 ## At a glance
 
 ```python
-import libtmux
-
-server = libtmux.Server()
-session = server.sessions.get(session_name="my-project")
-window = session.active_window
-pane = window.split()
-pane.send_keys("echo hello")
+>>> demo_window = session.new_window(window_name="my-project")
+>>> demo_pane = demo_window.active_pane
+>>> demo_pane.send_keys("echo hello")
+>>> demo_window.kill()
 ```
 
 ```
@@ -86,11 +83,12 @@ libtmux ships a [pytest plugin](api/testing/pytest-plugin/index.md) with
 isolated tmux fixtures:
 
 ```python
-def test_my_tool(session):
-    window = session.new_window(window_name="test")
-    pane = window.active_pane
-    pane.send_keys("echo hello")
-    assert window.window_name == "test"
+>>> test_window = session.new_window(window_name="test")
+>>> test_pane = test_window.active_pane
+>>> test_pane.send_keys("echo hello")
+>>> test_window.window_name
+'test'
+>>> test_window.kill()
 ```
 
 ```{toctree}

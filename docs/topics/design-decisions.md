@@ -54,15 +54,17 @@ you can trust — pulled straight from tmux's own reporting, not reconstructed b
 guessing at the layout of display text. The format constants that make this work
 live in {mod}`libtmux.formats`.
 
-## Why dataclasses in `neo.py`
+## Why typed data rows
 
 Advanced — for contributors and lower-level query work. Most code uses the ORM
 objects above and never touches this layer directly.
 
-{mod}`libtmux.neo` provides a modern dataclass-based interface alongside the
-legacy dict-style objects. The motivation:
+{mod}`libtmux.neo` provides a modern
+[dataclass](https://docs.python.org/3/library/dataclasses.html)-based interface
+alongside the legacy dict-style objects. The motivation:
 
-- **Type safety**: dataclass fields have declared types, enabling mypy checks and IDE completion
+- **Type safety**: dataclass fields have declared types, enabling
+  [mypy](https://mypy-lang.org/) checks and IDE completion
 - **Predictability**: attribute access (`session.session_name`) instead of dict access (`session["session_name"]`)
 - **Migration path**: the two interfaces coexist, allowing gradual adoption without breaking existing code
 

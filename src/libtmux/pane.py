@@ -56,10 +56,6 @@ class Pane(
     ``Pane`` instances can send commands directly to a pane, or traverse
     between linked tmux objects.
 
-    Attributes
-    ----------
-    window : :class:`Window`
-
     Examples
     --------
     >>> pane

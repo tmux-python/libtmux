@@ -1,6 +1,6 @@
 (querylist-filtering)=
 
-# QueryList filtering
+# Filtering collections
 
 Every collection libtmux hands you —
 {attr}`server.sessions <libtmux.Server.sessions>`,
@@ -300,7 +300,7 @@ True
 
 (native-filtering)=
 
-## tmux-native filtering with `search_*()`
+## Filtering before object creation
 
 Everything above runs in Python, *after* tmux has already returned every row.
 That's fine for the handful of sessions and windows most servers carry. But on
