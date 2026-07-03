@@ -257,46 +257,44 @@ def test_window_rename(
     assert window.window_name == window_name_after
 
 
-class WindowNameValidationFixture(t.NamedTuple):
-    """Test fixture for tmux 3.7 window-name validation."""
+class WindowNameSpecialCharFixture(t.NamedTuple):
+    """Test fixture for ':'/'.' window names across tmux versions."""
 
     test_id: str
     window_name: str
 
 
-# tmux 3.7+ rejects ':' and '.' in window names server-side; tmux 3.2a-3.6
-# accept them. See https://github.com/tmux/tmux/issues/4999.
-WINDOW_NAME_INVALID_ON_3_7_FIXTURES: list[WindowNameValidationFixture] = [
-    WindowNameValidationFixture(test_id="colon", window_name="project:frontend"),
-    WindowNameValidationFixture(test_id="period", window_name="app-v1.0"),
+# The tmux 3.7 point release briefly rejected ':' and '.' in window names,
+# then reverted it in 3.7a as "overly pernickety" (tmux commit 166267c8).
+# Every tmux libtmux supports -- 3.2a-3.6 and 3.7a onward -- accepts them.
+WINDOW_NAME_SPECIAL_CHAR_FIXTURES: list[WindowNameSpecialCharFixture] = [
+    WindowNameSpecialCharFixture(test_id="colon", window_name="project:frontend"),
+    WindowNameSpecialCharFixture(test_id="period", window_name="app-v1.0"),
 ]
 
 
 @pytest.mark.parametrize(
-    list(WindowNameValidationFixture._fields),
-    WINDOW_NAME_INVALID_ON_3_7_FIXTURES,
-    ids=[tc.test_id for tc in WINDOW_NAME_INVALID_ON_3_7_FIXTURES],
+    list(WindowNameSpecialCharFixture._fields),
+    WINDOW_NAME_SPECIAL_CHAR_FIXTURES,
+    ids=[tc.test_id for tc in WINDOW_NAME_SPECIAL_CHAR_FIXTURES],
 )
-def test_new_window_name_invalid_on_3_7(
+def test_new_window_name_colon_period_accepted(
     session: Session,
     test_id: str,
     window_name: str,
 ) -> None:
-    """Tmux 3.7+ rejects ':'/'.' in window names; older tmux accepts them.
+    """Window names with ':' and '.' are accepted verbatim.
 
-    The rejection is enforced by tmux itself (no client-side validation),
-    so it surfaces as a :class:`~libtmux.exc.LibTmuxException`. On tmux
-    3.2a-3.6 the same names are accepted verbatim.
+    The lone tmux 3.7 point release briefly rejected these characters before
+    3.7a reverted the restriction (tmux commit 166267c8, "overly
+    pernickety"). libtmux's version helpers strip the letter suffix, so
+    :func:`~libtmux.common.get_version` cannot tell 3.7 from 3.7a -- both
+    report ``3.7`` -- so CI exercises 3.7a/3.7b rather than the superseded
+    3.7 release.
     """
-    from libtmux.common import has_gte_version
-
-    if has_gte_version("3.7"):
-        with pytest.raises(exc.LibTmuxException, match="invalid window name"):
-            session.new_window(window_name=window_name)
-    else:
-        window = session.new_window(window_name=window_name)
-        assert window.window_name == window_name
-        window.kill()
+    window = session.new_window(window_name=window_name)
+    assert window.window_name == window_name
+    window.kill()
 
 
 def test_kill_window(session: Session) -> None:
