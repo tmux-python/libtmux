@@ -228,6 +228,14 @@ class RestoreReuseWindowNameCase(t.NamedTuple):
     expected_target: str
 
 
+class RestoreAutomaticRenameCase(t.NamedTuple):
+    """Case for preserving automatic rename while restoring window names."""
+
+    test_id: str
+    automatic_rename: bool
+    expected_option: str
+
+
 RESTORE_REUSE_MISSING_WINDOW_CASES = (
     RestoreReuseMissingWindowCase(
         test_id="single_pane",
@@ -272,6 +280,14 @@ RESTORE_REUSE_WINDOW_NAME_CASES = (
         test_id="existing_window",
         window_name="logs",
         expected_target="alpha:0",
+    ),
+)
+
+RESTORE_AUTOMATIC_RENAME_CASES = (
+    RestoreAutomaticRenameCase(
+        test_id="automatic_rename_on",
+        automatic_rename=True,
+        expected_option="on",
     ),
 )
 
@@ -836,6 +852,58 @@ def test_restore_archive_reuses_existing_window_name(
         ("-t", case.expected_target, case.window_name),
         {},
     ) in server.calls
+
+
+@pytest.mark.parametrize(
+    "case",
+    RESTORE_AUTOMATIC_RENAME_CASES,
+    ids=[case.test_id for case in RESTORE_AUTOMATIC_RENAME_CASES],
+)
+def test_restore_archive_preserves_automatic_rename_after_name_restore(
+    case: RestoreAutomaticRenameCase,
+) -> None:
+    """restore_archive() restores automatic rename after manual rename."""
+    archive = WorkspaceArchive(
+        saved_at=datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc),
+        sessions=(
+            SessionArchive(
+                name="alpha",
+                windows=(
+                    WindowArchive(
+                        index=0,
+                        name="logs",
+                        layout="",
+                        active=True,
+                        automatic_rename=case.automatic_rename,
+                        panes=(
+                            PaneArchive(
+                                index=0,
+                                active=True,
+                                current_command="tail",
+                                current_path="/logs",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    server = _FakeServer()
+
+    restore_archive(archive, t.cast("Server", server))
+    rename_call: tuple[str, tuple[object, ...], dict[str, object]] = (
+        "rename-window",
+        ("-t", "alpha:0", "logs"),
+        {},
+    )
+    option_call: tuple[str, tuple[object, ...], dict[str, object]] = (
+        "set-window-option",
+        ("-t", "alpha:0", "automatic-rename", case.expected_option),
+        {},
+    )
+    assert rename_call in server.calls
+    assert option_call in server.calls
+    assert server.calls.index(rename_call) < server.calls.index(option_call)
 
 
 @pytest.mark.parametrize(
