@@ -43,15 +43,18 @@ from libtmux.experimental.ops import (
     RespawnPane,
     SelectPane,
     SendKeys,
+    SplitWindow,
     run,
 )
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
+    from typing_extensions import Self
+
     from libtmux.experimental.models.snapshots import PaneSnapshot
     from libtmux.experimental.ops import Planner, PlanResult
-    from libtmux.experimental.ops._types import SlotRef
+    from libtmux.experimental.ops._types import SlotRef, Target
 
 #: A source of pane snapshots: an engine to read from, or pre-taken snapshots.
 PaneSource = t.Union["TmuxEngine", "Sequence[PaneSnapshot]"]
@@ -149,11 +152,13 @@ class BoundPaneCommands:
 
     Each method appends a typed operation targeting the bound pane to the plan
     and returns its :class:`~..ops._types.SlotRef`, so commands compose and the
-    plan folds to a single tmux dispatch.
+    plan folds to a single tmux dispatch. ``target`` is a :data:`~..ops._types.Target`
+    so a forward :class:`~..ops._types.SlotRef` (a pane an earlier op creates)
+    flows through as well as a concrete :class:`~..ops._types.PaneId`.
     """
 
     plan: LazyPlan
-    target: PaneId
+    target: Target
 
     def send_keys(
         self,
@@ -198,26 +203,93 @@ class BoundPaneCommands:
 
 
 @dataclass(frozen=True)
-class PaneRef:
-    """A matched pane plus a ``cmd`` namespace that records into a plan."""
+class _PaneRefBase:
+    """The verbs shared by concrete and forward pane handles.
 
-    pane: PaneSnapshot
+    An immutable pointer into a *mutable* :class:`LazyPlan`. Structural verbs
+    (:meth:`split`) record a create op and return a *forward* handle to the
+    not-yet-created pane; leaf commands live under :attr:`cmd`; :meth:`do`
+    threads a side-effecting recorder into a fluent chain.
+    """
+
     plan: LazyPlan
+    target: Target
+
+    @property
+    def cmd(self) -> BoundPaneCommands:
+        """Pane commands bound to this handle's target (recorded into the plan)."""
+        return BoundPaneCommands(self.plan, self.target)
+
+    def split(self, *, horizontal: bool = False) -> ForwardPaneRef:
+        """Split this pane; return a forward handle to the new pane.
+
+        Examples
+        --------
+        >>> plan = LazyPlan()
+        >>> new = _PaneRefBase(plan, PaneId("%1")).split()
+        >>> isinstance(new, ForwardPaneRef)
+        True
+        >>> [op.kind for op in plan.operations]
+        ['split_window']
+        """
+        slot = self.plan.add(SplitWindow(target=self.target, horizontal=horizontal))
+        return ForwardPaneRef(self.plan, slot)
+
+    def do(self, fn: Callable[[BoundPaneCommands], object]) -> Self:
+        """Apply *fn* to this handle's :attr:`cmd`, returning the handle.
+
+        Examples
+        --------
+        >>> plan = LazyPlan()
+        >>> h = _PaneRefBase(plan, PaneId("%1"))
+        >>> h.do(lambda c: c.send_keys("vim")) is h
+        True
+        >>> [op.kind for op in plan.operations]
+        ['send_keys']
+        """
+        fn(self.cmd)
+        return self
+
+
+@dataclass(frozen=True)
+class ForwardPaneRef(_PaneRefBase):
+    """A pane an earlier operation will create.
+
+    Carries a forward :class:`~..ops._types.SlotRef`; it has no snapshot, so
+    reading a pane id/attribute off it is a *static* type error (the id is
+    unknown until the plan runs). Keep building instead -- ``split().do(...)``.
+    """
+
+
+@dataclass(frozen=True)
+class PaneRef(_PaneRefBase):
+    """A concrete matched pane: the shared verbs plus snapshot reads.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.models.snapshots import PaneSnapshot
+    >>> snap = PaneSnapshot.from_format({"pane_id": "%1", "pane_active": "1"})
+    >>> ref = PaneRef(LazyPlan(), PaneId("%1"), snapshot=snap)
+    >>> ref.pane_id, ref.active
+    ('%1', True)
+    """
+
+    snapshot: PaneSnapshot
+
+    @property
+    def pane(self) -> PaneSnapshot:
+        """The underlying pane snapshot."""
+        return self.snapshot
 
     @property
     def pane_id(self) -> str:
         """The pane's id."""
-        return self.pane.pane_id
+        return self.snapshot.pane_id
 
     @property
     def active(self) -> bool:
         """Whether the pane is active in its window."""
-        return self.pane.active
-
-    @property
-    def cmd(self) -> BoundPaneCommands:
-        """Pane commands bound to this pane (recorded into the plan)."""
-        return BoundPaneCommands(self.plan, PaneId(self.pane.pane_id))
+        return self.snapshot.active
 
 
 @dataclass(frozen=True)
@@ -250,7 +322,7 @@ class CommandPlan:
         """
         plan = LazyPlan()
         for pane in self.query.all(source):
-            self.mapper(PaneRef(pane, plan))
+            self.mapper(PaneRef(plan, PaneId(pane.pane_id), snapshot=pane))
         return plan
 
     def run(
