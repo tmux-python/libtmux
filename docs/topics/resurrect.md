@@ -67,9 +67,10 @@ server = Server()
 archive = capture_archive(server, process_provider=default_process_command_provider())
 ```
 
-The default provider chain reads Linux procfs first and falls back to `ps`, so
-it works headlessly on common POSIX systems. On unsupported systems it simply
-leaves `full_command` empty.
+The default provider reads Linux procfs and leaves `full_command` empty when
+procfs cannot resolve the foreground process. Use
+{class}`~libtmux.resurrect.PsProcessCommandProvider` explicitly when you want a
+`ps`-based provider.
 
 ## tmux-resurrect Files
 
