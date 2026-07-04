@@ -551,6 +551,13 @@ class LazyPlan:
         loop is never blocked between dispatches. Run one ``astream`` per engine
         at a time (the engine's write order is shared).
 
+        Like :meth:`aexecute`, this observes plan *dispatch* only: it does not
+        run a workspace's host steps (``sleep`` / ``before_script`` /
+        ``wait_pane``, which the runner threads through ``on_step``), so
+        ``send-keys`` can reach a shell the plan never waited for. For a full
+        build that runs those, use
+        :meth:`~libtmux.experimental.workspace.ir.Workspace.abuild`.
+
         Examples
         --------
         >>> import asyncio
