@@ -211,3 +211,75 @@ def test_plan_unresolvable_ref_fails_closed() -> None:
     assert exc_info.value.slot == 0  # points at the non-capturing creator
     # ForwardCaptureError stays an OperationError, so broad handlers keep working
     assert isinstance(exc_info.value, OperationError)
+
+
+class _ExplainCase(t.NamedTuple):
+    """A planner and the (kinds, reason) each of its dispatch steps should carry."""
+
+    test_id: str
+    planner: t.Any
+    expected: list[tuple[tuple[str, ...], str]]
+
+
+def _split_then_send() -> LazyPlan:
+    plan = LazyPlan()
+    pane = plan.add(SplitWindow(target=WindowId("@1")))
+    plan.add(SendKeys(target=pane, keys="vim"))
+    return plan
+
+
+_EXPLAIN_CASES: tuple[_ExplainCase, ...] = (
+    _ExplainCase(
+        "sequential_created_then_single",
+        SequentialPlanner(),
+        [(("split_window",), "created-id"), (("send_keys",), "single")],
+    ),
+    _ExplainCase(
+        "marked_fold",
+        MarkedPlanner(),
+        [(("split_window", "send_keys"), "marked-fold")],
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    _EXPLAIN_CASES,
+    ids=[c.test_id for c in _EXPLAIN_CASES],
+)
+def test_explain_annotates_dispatch_boundaries(case: _ExplainCase) -> None:
+    """explain() reports why each step is its own dispatch under a planner."""
+    steps = _split_then_send().explain(case.planner)
+    assert [(e.kinds, e.reason) for e in steps] == case.expected
+
+
+def test_astream_yields_step_then_plan_done() -> None:
+    """astream() streams a StepDone per step and a terminal PlanDone."""
+    from libtmux.experimental.ops import PlanDone, StepDone
+
+    plan = _split_then_send()
+
+    async def drain() -> list[object]:
+        return [event async for event in plan.astream(AsyncConcreteEngine())]
+
+    events = asyncio.run(drain())
+    assert [type(e).__name__ for e in events] == ["StepDone", "StepDone", "PlanDone"]
+    assert isinstance(events[-1], PlanDone)
+    assert isinstance(events[0], StepDone)
+    # the terminal PlanDone carries the same result aexecute() would return
+    assert events[-1].result.ok
+
+
+def test_astream_last_result_matches_aexecute() -> None:
+    """The terminal PlanDone.result equals what aexecute() returns."""
+    from libtmux.experimental.ops import PlanDone
+
+    async def both() -> tuple[bool, bool]:
+        streamed = [e async for e in _split_then_send().astream(AsyncConcreteEngine())]
+        direct = await _split_then_send().aexecute(AsyncConcreteEngine())
+        last = streamed[-1]
+        assert isinstance(last, PlanDone)
+        return last.result.ok, direct.ok
+
+    stream_ok, direct_ok = asyncio.run(both())
+    assert stream_ok == direct_ok
