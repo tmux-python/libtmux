@@ -7,6 +7,8 @@ import os
 
 from libtmux.experimental.agents.monitor import AgentMonitor
 from libtmux.experimental.agents.state import AgentState
+from libtmux.experimental.agents.store import AgentStore
+from libtmux.experimental.agents.tree import PANE_FORMAT
 from libtmux.experimental.engines.base import CommandRequest, CommandResult
 from libtmux.experimental.models.snapshots import PaneSnapshot
 
@@ -42,6 +44,56 @@ class _ProbeFailEngine:
     def set_attach_targets(self, ids: object) -> None: ...
 
 
+class _PaneRowsEngine:
+    def __init__(self, rows: tuple[str, ...]) -> None:
+        self.rows = rows
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        if request.args[:1] == ("list-panes",):
+            return CommandResult(cmd=request.args, stdout=self.rows)
+        return CommandResult(cmd=request.args, stdout=("$0",))
+
+    async def subscribe(self) -> None: ...
+
+    def add_subscription(self, spec: object) -> None: ...
+
+    def set_attach_targets(self, ids: object) -> None: ...
+
+
+class _MemorySink:
+    def __init__(self) -> None:
+        self.data: dict[str, object] | None = None
+
+    def load(self) -> dict[str, object] | None:
+        return self.data
+
+    def save(self, data: dict[str, object]) -> None:
+        self.data = data
+
+
+def _pane_row(**values: str) -> str:
+    """Build one tab-separated pane row in the monitor's requested field order."""
+    fields = {
+        "session_id": "$0",
+        "session_name": "agents",
+        "window_id": "@0",
+        "window_index": "0",
+        "window_name": "agents",
+        "window_active": "1",
+        "pane_id": "%1",
+        "pane_index": "0",
+        "pane_active": "1",
+        "pane_floating_flag": "0",
+        "pane_pid": str(os.getpid()),
+        "pane_current_command": "claude",
+        "pane_title": "",
+        "@agent_state": "",
+        "@agent_name": "",
+    }
+    fields.update(values)
+    return "\t".join(fields.get(field, "") for field in PANE_FORMAT)
+
+
 def test_primary_session_id_none_when_own_probe_fails() -> None:
     """A failing own-session probe skips attach (no phantom binding).
 
@@ -57,12 +109,54 @@ def test_primary_session_id_none_when_own_probe_fails() -> None:
     assert asyncio.run(main()) is None
 
 
+def test_reconcile_seeds_existing_agent_state_option() -> None:
+    """A pane option present before subscribe still becomes an agent record."""
+
+    async def main() -> dict[str, str | None]:
+        mon = AgentMonitor(
+            _PaneRowsEngine(
+                (
+                    _pane_row(
+                        pane_id="%7",
+                        pane_current_command="claude",
+                        **{"@agent_state": "running", "@agent_name": "claude"},
+                    ),
+                )
+            )
+        )
+        await mon.reconcile()
+        agent = {a.pane_id: a for a in mon.agents}["%7"]
+        return {
+            "state": agent.state.value,
+            "name": agent.name,
+            "source": agent.source,
+        }
+
+    assert asyncio.run(main()) == {
+        "state": "running",
+        "name": "claude",
+        "source": "option",
+    }
+
+
 def test_ingest_option_line_updates_agent() -> None:
     """Option-channel %subscription-changed maps to a store entry."""
     mon = AgentMonitor(_FakeEngine())
     mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : running")
     by_pane = {a.pane_id: a for a in mon.agents}
     assert by_pane["%1"].state is AgentState.RUNNING
+
+
+def test_ingest_persists_snapshot_immediately() -> None:
+    """The monitor sink is current while the monitor is still running."""
+    sink = _MemorySink()
+    mon = AgentMonitor(_FakeEngine(), sink=sink)
+
+    mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : running")
+
+    data = sink.data
+    assert data is not None
+    assert AgentStore.from_dict(data).agents["%1"].state is AgentState.RUNNING
 
 
 def test_ingest_osc_output_updates_agent() -> None:

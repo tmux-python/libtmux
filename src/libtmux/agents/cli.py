@@ -371,27 +371,30 @@ async def run_monitor(config: AgentConsoleConfig) -> int:
             loop.add_signal_handler(item, stop.set)
 
     server = _server(config)
-    async with AsyncControlModeEngine.for_server(server) as engine:
-        monitor = AgentMonitor(
-            engine,
-            sink=JsonFile(config.resolved_state_path),
-            hud=config.hud,
-        )
+    engine = AsyncControlModeEngine.for_server(server)
+    monitor = AgentMonitor(
+        engine,
+        sink=JsonFile(config.resolved_state_path),
+        hud=config.hud,
+    )
 
-        redraws: set[asyncio.Task[None]] = set()
+    redraws: set[asyncio.Task[None]] = set()
 
-        def changed(_: t.Any) -> None:
-            task = loop.create_task(_redraw_monitor(engine, monitor, config))
-            redraws.add(task)
-            task.add_done_callback(redraws.discard)
+    def changed(_: t.Any) -> None:
+        task = loop.create_task(_redraw_monitor(engine, monitor, config))
+        redraws.add(task)
+        task.add_done_callback(redraws.discard)
 
-        monitor.add_transition_observer(changed)
+    monitor.add_transition_observer(changed)
+    try:
         await monitor.start()
         await _redraw_monitor(engine, monitor, config)
         try:
             await stop.wait()
         finally:
             await monitor.stop()
+    finally:
+        await engine.aclose()
     return 0
 
 
@@ -406,8 +409,9 @@ def _parse_states(raw: str) -> tuple[AgentState, ...]:
 
 async def _wait_command(args: argparse.Namespace, config: AgentConsoleConfig) -> int:
     """Run the ``wait`` command."""
-    async with AsyncControlModeEngine.for_server(_server(config)) as engine:
-        monitor = AgentMonitor(engine, sink=JsonFile(config.resolved_state_path))
+    engine = AsyncControlModeEngine.for_server(_server(config))
+    monitor = AgentMonitor(engine, sink=JsonFile(config.resolved_state_path))
+    try:
         await monitor.start()
         try:
             outcome = await wait_for_agent_state(
@@ -418,6 +422,8 @@ async def _wait_command(args: argparse.Namespace, config: AgentConsoleConfig) ->
             )
         finally:
             await monitor.stop()
+    finally:
+        await engine.aclose()
     if args.json:
         print(
             json.dumps(
@@ -437,8 +443,9 @@ async def _wait_command(args: argparse.Namespace, config: AgentConsoleConfig) ->
 async def _send_command(args: argparse.Namespace, config: AgentConsoleConfig) -> int:
     """Run the ``send`` command."""
     text = " ".join(args.text)
-    async with AsyncControlModeEngine.for_server(_server(config)) as engine:
-        monitor = AgentMonitor(engine, sink=JsonFile(config.resolved_state_path))
+    engine = AsyncControlModeEngine.for_server(_server(config))
+    monitor = AgentMonitor(engine, sink=JsonFile(config.resolved_state_path))
+    try:
         await monitor.start()
         try:
             outcome = await send_to_agent(
@@ -450,6 +457,8 @@ async def _send_command(args: argparse.Namespace, config: AgentConsoleConfig) ->
             )
         finally:
             await monitor.stop()
+    finally:
+        await engine.aclose()
     wait = outcome.wait
     if args.json:
         print(

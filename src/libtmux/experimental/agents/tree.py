@@ -26,6 +26,8 @@ PANE_FORMAT: tuple[str, ...] = (
     "pane_pid",
     "pane_current_command",
     "pane_title",
+    "@agent_state",
+    "@agent_name",
 )
 
 
