@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import pathlib
+import typing as t
+
+import pytest
 
 from libtmux.resurrect.processes import (
     CompositeProcessCommandProvider,
@@ -23,6 +26,85 @@ class _Provider:
     def capture(self, pid: int) -> str | None:
         """Return the configured command."""
         return self.command
+
+
+class ProcfsEntry(t.NamedTuple):
+    """Procfs process entry test fixture."""
+
+    pid: int
+    ppid: int
+    pgrp: int
+    tpgid: int
+    command: tuple[str, ...]
+
+
+class ProcfsCaptureCase(t.NamedTuple):
+    """Case for procfs process command capture."""
+
+    test_id: str
+    pid: int
+    entries: tuple[ProcfsEntry, ...]
+    expected_command: str | None
+
+
+PROCFS_CAPTURE_CASES = (
+    ProcfsCaptureCase(
+        test_id="direct_cmdline",
+        pid=123,
+        entries=(
+            ProcfsEntry(
+                pid=123,
+                ppid=1,
+                pgrp=123,
+                tpgid=123,
+                command=("python", "-m", "http.server"),
+            ),
+        ),
+        expected_command="python -m http.server",
+    ),
+    ProcfsCaptureCase(
+        test_id="foreground_child",
+        pid=100,
+        entries=(
+            ProcfsEntry(
+                pid=100,
+                ppid=1,
+                pgrp=100,
+                tpgid=200,
+                command=("-zsh",),
+            ),
+            ProcfsEntry(
+                pid=200,
+                ppid=100,
+                pgrp=200,
+                tpgid=200,
+                command=("vim", "README.md"),
+            ),
+        ),
+        expected_command="vim README.md",
+    ),
+    ProcfsCaptureCase(
+        test_id="missing_pid",
+        pid=456,
+        entries=(),
+        expected_command=None,
+    ),
+)
+
+
+def _write_procfs_entry(proc_root: pathlib.Path, entry: ProcfsEntry) -> None:
+    proc_dir = proc_root / str(entry.pid)
+    proc_dir.mkdir()
+    (proc_dir / "cmdline").write_bytes(
+        b"\0".join(part.encode() for part in entry.command) + b"\0",
+    )
+    (proc_dir / "stat").write_text(
+        (
+            f"{entry.pid} ({entry.command[0]}) S {entry.ppid} {entry.pgrp} "
+            f"0 34816 {entry.tpgid} 0 0 0 0 0 0 0 0 20 0 1 0 0\n"
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_process_restore_policy_matches_defaults_and_inline_rules() -> None:
@@ -61,19 +143,23 @@ def test_process_restore_rule_handles_unparseable_commands() -> None:
     assert rule.resolve("vim notes.md") == "vim notes.md"
 
 
+@pytest.mark.parametrize(
+    "case",
+    PROCFS_CAPTURE_CASES,
+    ids=[case.test_id for case in PROCFS_CAPTURE_CASES],
+)
 def test_procfs_process_command_provider_reads_cmdline(
+    case: ProcfsCaptureCase,
     tmp_path: pathlib.Path,
 ) -> None:
-    """ProcfsProcessCommandProvider reads null-delimited procfs cmdline files."""
-    proc_dir = tmp_path / "123"
-    proc_dir.mkdir()
-    (proc_dir / "cmdline").write_bytes(b"python\0-m\0http.server\0")
+    """ProcfsProcessCommandProvider resolves pane PIDs to active commands."""
+    for entry in case.entries:
+        _write_procfs_entry(tmp_path, entry)
 
     provider = ProcfsProcessCommandProvider(tmp_path)
 
-    assert provider.capture(123) == "python -m http.server"
+    assert provider.capture(case.pid) == case.expected_command
     assert provider.capture(0) is None
-    assert provider.capture(456) is None
 
 
 def test_composite_process_command_provider_uses_first_command() -> None:
