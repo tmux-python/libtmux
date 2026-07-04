@@ -378,6 +378,69 @@ class tmux_cmd:
             )
 
 
+def _query_version(tmux_bin: str | None = None) -> str:
+    """Return the raw ``tmux -V`` version token, letter suffix intact.
+
+    Runs ``tmux -V`` and extracts the version token (e.g. ``"3.7a"``,
+    ``"master"``, ``"next-3.8"``). Not memoized -- :func:`get_version` and
+    :func:`get_version_str` layer caching on top of this single query.
+
+    Parameters
+    ----------
+    tmux_bin : str, optional
+        Path to tmux binary. If *None*, uses the system tmux.
+
+    Returns
+    -------
+    str
+        Raw version token from ``tmux -V``. OpenBSD base tmux (no ``-V``)
+        yields the synthetic ``"<max>-openbsd"``.
+    """
+    proc = tmux_cmd("-V", tmux_bin=tmux_bin)
+    if proc.stderr:
+        if proc.stderr[0] == "tmux: unknown option -- V":
+            if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
+                return f"{TMUX_MAX_VERSION}-openbsd"
+            msg = (
+                f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. This system"
+                " does not meet the minimum tmux version requirement."
+            )
+            raise exc.LibTmuxException(
+                msg,
+            )
+        raise exc.VersionTooLow(proc.stderr)
+
+    return proc.stdout[0].split("tmux ")[1]
+
+
+@functools.cache
+def get_version_str(tmux_bin: str | None = None) -> str:
+    """Return the tmux version string verbatim, preserving letter suffixes.
+
+    :func:`get_version` normalizes point releases for numeric comparison
+    (``"3.7a"`` becomes ``LooseVersion("3.7")``). This helper keeps the raw
+    suffix, so callers can distinguish patch releases whose behavior differs
+    -- for example the tmux 3.7 break-pane crash, reverted in 3.7a.
+
+    Parameters
+    ----------
+    tmux_bin : str, optional
+        Path to tmux binary. If *None*, uses the system tmux.
+
+    Returns
+    -------
+    str
+        Raw tmux version, e.g. ``"3.7a"``. Git builds return ``"master"``;
+        OpenBSD base tmux returns ``"<max>-openbsd"``.
+
+    Notes
+    -----
+    Memoized via :func:`functools.cache` like :func:`get_version`; call
+    ``get_version_str.cache_clear()`` after swapping the tmux binary.
+    """
+    return _query_version(tmux_bin=tmux_bin)
+
+
 @functools.cache
 def get_version(tmux_bin: str | None = None) -> LooseVersion:
     """Return tmux version.
@@ -409,21 +472,11 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     invalidate. Tests that monkey-patch :class:`tmux_cmd` should call
     ``cache_clear()`` before asserting parsed-version behavior.
     """
-    proc = tmux_cmd("-V", tmux_bin=tmux_bin)
-    if proc.stderr:
-        if proc.stderr[0] == "tmux: unknown option -- V":
-            if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
-                return LooseVersion(f"{TMUX_MAX_VERSION}-openbsd")
-            msg = (
-                f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. This system"
-                " does not meet the minimum tmux version requirement."
-            )
-            raise exc.LibTmuxException(
-                msg,
-            )
-        raise exc.VersionTooLow(proc.stderr)
+    version = _query_version(tmux_bin=tmux_bin)
 
-    version = proc.stdout[0].split("tmux ")[1]
+    # OpenBSD base tmux has no -V; _query_version returns a synthetic string.
+    if version == f"{TMUX_MAX_VERSION}-openbsd":
+        return LooseVersion(version)
 
     # Allow latest tmux HEAD
     if version == "master":

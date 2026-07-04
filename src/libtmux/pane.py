@@ -14,7 +14,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
-from libtmux.common import has_gte_version, has_version, raise_if_stderr, tmux_cmd
+from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
     RESIZE_ADJUSTMENT_DIRECTION_FLAG_MAP,
@@ -2340,20 +2340,11 @@ class Pane(
         'broken'
         """
         # tmux 3.7 segfaults break-pane when -n is absent and ignores -n when
-        # given (NULL-deref); 3.7a reverted it. Pass -n -- the requested name
-        # or a placeholder -- then set the real name via rename-window below.
-        # get_version() strips the letter suffix, so has_version("3.7") also
-        # matches the already-fixed 3.7a/3.7b; narrow with the raw version
-        # string so the workaround only fires on the literal 3.7 release.
-        breaks_without_name = has_version("3.7", tmux_bin=self.server.tmux_bin)
-        if breaks_without_name:
-            raw_version = (
-                tmux_cmd("-V", tmux_bin=self.server.tmux_bin)
-                .stdout[0]
-                .split("tmux ", 1)[1]
-                .strip()
-            )
-            breaks_without_name = raw_version == "3.7"
+        # given (NULL-deref); 3.7a reverted it. When needed, pass a placeholder
+        # -n then set the real name via rename-window below. get_version()
+        # strips the letter suffix, so compare the raw (memoized) version
+        # string to gate the workaround on the literal 3.7 release only.
+        breaks_without_name = get_version_str(tmux_bin=self.server.tmux_bin) == "3.7"
 
         tmux_args: tuple[str, ...] = ("-P", "-F#{window_id}")
 
