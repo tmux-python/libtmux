@@ -32,6 +32,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 from libtmux import exc
+from libtmux.common import get_version
 from libtmux.experimental.engines.base import render_control_line
 from libtmux.experimental.engines.control_mode import (
     ControlModeError,
@@ -149,6 +150,19 @@ class AsyncControlModeEngine:
         self._write_lock = asyncio.Lock()
         self._started = False
         self._dead: BaseException | None = None
+
+    def tmux_version(self) -> str | None:
+        """Report the connected server's tmux version (``tmux -V``).
+
+        Implements
+        :class:`~libtmux.experimental.engines.base.SupportsTmuxVersion` so
+        version-gated operations render correctly over control mode; in-memory
+        engines omit it and resolution assumes latest.
+        """
+        try:
+            return str(get_version(self.tmux_bin))
+        except exc.LibTmuxException:
+            return None
 
     async def start(self) -> None:
         """Spawn ``tmux -C``, consume the startup ACK, and start the reader."""
