@@ -202,9 +202,13 @@ async def abuild_workspace(
 ) -> PlanResult:
     """Compile and execute *ws* asynchronously over *engine* (same resolution).
 
-    *on_event* is awaited for each build event, so an async observer can stream
-    the structural progress (e.g. through a fastmcp Context). Folds by default;
-    see :func:`build_workspace` for the *planner* knob.
+    *on_event* is awaited inline on the coroutine that runs the interleaved host
+    steps and drives the next dispatch, so it must return promptly and must not
+    re-enter *engine* (``Awaitable[None]`` cannot enforce this). A slow network
+    or render sink should own its own buffer and drain independently -- e.g. the
+    ``register_events`` + ``_EventRing``-over-``engine.subscribe()`` pattern in
+    ``libtmux.experimental.mcp.events``. Folds by default; see
+    :func:`build_workspace` for the *planner* knob.
     """
     if preflight and await _preflight_async(ws, engine, version):
         return PlanResult((), {})
@@ -213,6 +217,9 @@ async def abuild_workspace(
     for step in compiled.pre:
         await _run_host_async(step, engine, {}, version)
 
+    # on_event is awaited inline (keep it fast/non-reentrant); a future buffered
+    # mode must back-pressure a bounded queue, never drop -- every BuildEvent
+    # carries a unique tmux id that must arrive exactly once.
     async def on_step(report: StepReport) -> None:
         for index, result in zip(report.step.indices, report.results, strict=True):
             if on_event is not None:
