@@ -46,6 +46,33 @@ def preview_plan(plan: LazyPlan, *, version: str | None = None) -> PlanPreview:
 
 
 @dataclass(frozen=True)
+class PlanExplanation:
+    """Why a planner breaks a plan into its dispatch steps: one dict per step.
+
+    Each entry carries ``indices`` (the operation indices in the step),
+    ``kinds`` (their operation kinds), and ``reason`` (the boundary reason --
+    ``marked-fold`` / ``folded`` / ``created-id`` / ``capture`` / ``single``), so
+    an agent can see why a chain folds or breaks before it runs.
+    """
+
+    steps: list[dict[str, t.Any]]
+
+
+def explain_plan(plan: LazyPlan, *, planner: Planner | None = None) -> PlanExplanation:
+    """Explain a plan's dispatch grouping under *planner* (pure, no engine)."""
+    return PlanExplanation(
+        steps=[
+            {
+                "indices": list(entry.step.indices),
+                "kinds": list(entry.kinds),
+                "reason": entry.reason,
+            }
+            for entry in plan.explain(planner)
+        ],
+    )
+
+
+@dataclass(frozen=True)
 class PlanOutcome:
     """The result of executing a plan: per-op result dicts + a bindings map."""
 
