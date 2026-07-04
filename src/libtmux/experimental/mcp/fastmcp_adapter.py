@@ -48,6 +48,7 @@ _TOOLS: tuple[tuple[str, str], ...] = (
     ("split_pane", "mutating"),
     ("new_pane", "mutating"),
     ("send_input", "mutating"),
+    ("run_in_pane", "mutating"),
     ("capture_pane", "readonly"),
     ("capture_active_pane", "readonly"),
     ("grep_pane", "readonly"),
@@ -146,8 +147,9 @@ def _instructions(ctx: CallerContext, *, events_enabled: bool = False) -> str:
     )
     if events_enabled:
         closer += (
-            " For live output: wait_for_output waits for one pane to settle "
-            "(run-a-command-and-wait); watch_events/poll_events stream/buffer raw "
+            " For live output: run_in_pane sends a command and waits for one "
+            "pane to settle in one tool call; wait_for_output observes an "
+            "already-running pane; watch_events/poll_events stream/buffer raw "
             "control-mode notifications across the server."
         )
     segments = [
@@ -176,12 +178,15 @@ def _instructions(ctx: CallerContext, *, events_enabled: bool = False) -> str:
         segments.append(
             "Run a command and wait for it to finish / for completion "
             "(long-running builds, test runs like `uv run pytest`, installs, a "
-            "server reaching ready): split_pane or pick a pane, send_input the "
-            "command (enter=True), then call wait_for_output on that same pane -- "
-            "it folds the live output and returns when the pane goes quiet "
-            "(settles), needle-free (no regex, no sentinel). Prefer this over "
-            "polling with sleep + capture_pane: wait_for_output is event-backed, "
-            "returns the captured_text, and reports done.pane_dead / "
+            "server reaching ready): split_pane or pick a pane, then call "
+            "run_in_pane(target=..., command=...) -- it sends the command, folds "
+            "the live output, and returns when the pane goes quiet (settles), "
+            "needle-free (no regex, no sentinel). Prefer this over polling with "
+            "sleep + capture_pane, and over a separate send_input + "
+            "wait_for_output pair when you are just running one shell command. "
+            "For commands already started or control keys such as C-c, use "
+            "send_input first and wait_for_output on that same pane. Both "
+            "return captured_text and report done.pane_dead / "
             "done.pane_dead_status (process exit / return code) plus "
             "done.pane_current_command so you can tell finished from "
             "blocked-on-input. Settled means output stopped, not that the command "

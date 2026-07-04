@@ -409,6 +409,82 @@ async def _ensure_attached(engine: _StreamEngine, session_id: str) -> None:
     engine._attached_session = session_id
 
 
+async def await_pane_output(
+    engine: _StreamEngine,
+    target: str,
+    *,
+    ctx: Context | None = None,
+    settle_ms: int = 750,
+    timeout: float = 30.0,
+    max_bytes: int = 131072,
+    needle: str | None = None,
+    stream_partials: bool = False,
+    snapshot: bool = True,
+) -> MonitorResult:
+    """Watch one pane's live output until it settles or reaches a cap."""
+    from libtmux.experimental.mcp.target_resolver import resolve_target
+    from libtmux.experimental.mcp.vocabulary._resolve import (
+        pane_id as resolve_pane_id,
+        reject_relative_special,
+        session_id_of,
+    )
+    from libtmux.experimental.mcp.vocabulary.pane import acapture_pane
+
+    reject_relative_special(resolve_target(target))
+    pane = await resolve_pane_id(engine, target, None)
+    await _ensure_attached(engine, await session_id_of(engine, target, None))
+
+    dropped_before = getattr(engine, "dropped_notifications", 0)
+    started = time.monotonic()
+
+    async def _frames() -> AsyncGenerator[str, None]:
+        async for notification in engine.subscribe():
+            payload = output_payload(notification.raw, pane)
+            if payload is None:
+                continue
+            if stream_partials and ctx is not None:
+                await ctx.info(payload)
+            yield payload
+
+    outcome = await accumulate_until_settle(
+        _frames(),
+        settle_ms=settle_ms,
+        timeout_ms=int(timeout * 1000),
+        max_bytes=max_bytes,
+        needle=needle,
+    )
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    dropped = getattr(engine, "dropped_notifications", 0) - dropped_before
+
+    done = await _read_done(engine, pane)
+    snapshot_lines: tuple[str, ...] | None = None
+    if snapshot:
+        # A pane that died at settle cannot be captured -- keep the result.
+        with contextlib.suppress(TmuxCommandError):
+            captured = await acapture_pane(
+                engine,
+                pane,
+                join_wrapped=True,
+                trim_trailing=True,
+            )
+            snapshot_lines = tuple(captured.lines)
+
+    return MonitorResult(
+        pane_id=pane,
+        reason=outcome.reason,
+        captured_text=outcome.text,
+        byte_count=outcome.byte_count,
+        frame_count=outcome.frame_count,
+        idle_ms_observed=outcome.idle_ms_observed,
+        elapsed_ms=elapsed_ms,
+        truncated=outcome.truncated,
+        dropped=dropped,
+        done=done,
+        exit_code=done.pane_dead_status if done.pane_dead else None,
+        snapshot_lines=snapshot_lines,
+    )
+
+
 def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
     """Register the ``wait_for_output`` needle-free settle monitor tool."""
     from fastmcp.tools import FunctionTool
@@ -477,66 +553,16 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
             ``snapshot_lines`` at settle; ``False`` skips that extra capture and
             leaves ``snapshot_lines`` ``None``.
         """
-        from libtmux.experimental.mcp.target_resolver import resolve_target
-        from libtmux.experimental.mcp.vocabulary._resolve import (
-            pane_id as resolve_pane_id,
-            reject_relative_special,
-            session_id_of,
-        )
-        from libtmux.experimental.mcp.vocabulary.pane import acapture_pane
-
-        reject_relative_special(resolve_target(target))
-        pane = await resolve_pane_id(engine, target, None)
-        await _ensure_attached(engine, await session_id_of(engine, target, None))
-
-        dropped_before = getattr(engine, "dropped_notifications", 0)
-        started = time.monotonic()
-
-        async def _frames() -> AsyncGenerator[str, None]:
-            async for notification in engine.subscribe():
-                payload = output_payload(notification.raw, pane)
-                if payload is None:
-                    continue
-                if stream_partials:
-                    await ctx.info(payload)
-                yield payload
-
-        outcome = await accumulate_until_settle(
-            _frames(),
+        return await await_pane_output(
+            engine,
+            target,
+            ctx=ctx,
             settle_ms=settle_ms,
-            timeout_ms=int(timeout * 1000),
+            timeout=timeout,
             max_bytes=max_bytes,
             needle=needle,
-        )
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        dropped = getattr(engine, "dropped_notifications", 0) - dropped_before
-
-        done = await _read_done(engine, pane)
-        snapshot_lines: tuple[str, ...] | None = None
-        if snapshot:
-            # A pane that died at settle cannot be captured -- keep the result.
-            with contextlib.suppress(TmuxCommandError):
-                captured = await acapture_pane(
-                    engine,
-                    pane,
-                    join_wrapped=True,
-                    trim_trailing=True,
-                )
-                snapshot_lines = tuple(captured.lines)
-
-        return MonitorResult(
-            pane_id=pane,
-            reason=outcome.reason,
-            captured_text=outcome.text,
-            byte_count=outcome.byte_count,
-            frame_count=outcome.frame_count,
-            idle_ms_observed=outcome.idle_ms_observed,
-            elapsed_ms=elapsed_ms,
-            truncated=outcome.truncated,
-            dropped=dropped,
-            done=done,
-            exit_code=done.pane_dead_status if done.pane_dead else None,
-            snapshot_lines=snapshot_lines,
+            stream_partials=stream_partials,
+            snapshot=snapshot,
         )
 
     tool = FunctionTool.from_function(

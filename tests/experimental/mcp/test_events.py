@@ -375,6 +375,65 @@ def test_monitor_settles_on_stream_end() -> None:
     assert data.done.pane_dead is None
 
 
+def test_run_in_pane_sends_then_waits_for_output() -> None:
+    """run_in_pane sends one command, then returns the shared monitor result."""
+    from libtmux.experimental.mcp.vocabulary.pane import arun_in_pane
+
+    engine = InstrumentedEngine(
+        (b"%output %1 READY",),
+        done_line="%1\t0\t\t\tzsh\t2\t10\t0",
+    )
+
+    result = asyncio.run(
+        arun_in_pane(
+            engine,
+            "%1",
+            "echo READY",
+            needle="READY",
+            snapshot=False,
+        ),
+    )
+
+    assert result.pane_id == "%1"
+    assert result.reason == "matched"
+    assert result.captured_text == "READY"
+    assert result.snapshot_lines is None
+    assert engine.calls[0] == ("send-keys", "-t", "%1", "echo READY", "Enter")
+    assert ("attach-session", "-t", "$1") in engine.calls
+
+
+def test_run_in_pane_registered_when_streaming() -> None:
+    """Streaming MCP servers expose and execute the one-call command runner."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    engine = InstrumentedEngine((b"%output %1 READY",))
+    server = build_async_server(
+        engine,
+        events="push",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+    assert "run_in_pane" in _tool_names(server)
+
+    async def main() -> t.Any:
+        async with fastmcp.Client(server) as client:
+            result = await client.call_tool(
+                "run_in_pane",
+                {
+                    "target": "%1",
+                    "command": "echo READY",
+                    "needle": "READY",
+                    "snapshot": False,
+                },
+            )
+            return result.data
+
+    data = asyncio.run(main())
+    assert data.pane_id == "%1"
+    assert data.reason == "matched"
+    assert ("send-keys", "-t", "%1", "echo READY", "Enter") in engine.calls
+
+
 def test_monitor_snapshot_false_omits_grid() -> None:
     """snapshot=False leaves snapshot_lines None and skips the capture."""
     from libtmux.experimental.mcp.fastmcp_adapter import build_async_server

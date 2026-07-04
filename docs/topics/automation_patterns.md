@@ -120,8 +120,9 @@ the round-trips.
 
 > **Note:** This polls with `capture_pane` + `sleep` — correct for the
 > synchronous library. If you drive tmux through the libtmux MCP server, prefer
-> the event-backed `wait_for_output` tool instead: it folds live `%output` and
-> returns when the pane settles, with no polling.
+> `run_in_pane` for the one-call "send a command, then wait" path. For commands
+> already running, use the event-backed `wait_for_output` tool instead: it folds
+> live `%output` and returns when the pane settles, with no polling.
 
 ```python
 >>> import time

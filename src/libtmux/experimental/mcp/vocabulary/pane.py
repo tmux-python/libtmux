@@ -1,11 +1,12 @@
 """Pane-scope vocabulary: split, send, capture, resize, swap/join/break, select.
 
-Beyond thin op wrappers, this module hosts the composed, caller-aware
+Beyond single-operation tools, this module hosts the composed, caller-aware
 conveniences an agent reaches for that raw tmux makes awkward:
-``capture_active_pane`` (no target), ``grep_pane`` (capture + filter, since tmux
-has no server-side grep), ``search_panes`` ("which pane shows X?"), and the
-geometry-resolved ``resolve_relative_pane`` / ``capture_relative_pane`` /
-``grep_relative_pane`` / ``find_pane_by_position`` / directional ``select_pane``.
+``run_in_pane`` (send + wait), ``capture_active_pane`` (no target),
+``grep_pane`` (capture + filter, since tmux has no server-side grep),
+``search_panes`` ("which pane shows X?"), and the geometry-resolved
+``resolve_relative_pane`` / ``capture_relative_pane`` / ``grep_relative_pane`` /
+``find_pane_by_position`` / directional ``select_pane``.
 The relative tools resolve layout geometry to a concrete ``%N`` (robust across
 tmux versions) and default their origin to the *caller's* pane; every
 single-target tool that could act on the wrong pane rejects a relative special
@@ -74,6 +75,11 @@ from libtmux.experimental.ops import (
     arun,
 )
 from libtmux.experimental.ops._types import PaneId, Target
+
+try:
+    from libtmux.experimental.mcp.events import MonitorResult
+except ImportError:  # pragma: no cover - only when the optional MCP extra is absent
+    MonitorResult = t.Any  # type: ignore[misc, assignment]
 
 #: Default ceiling on the panes ``search_panes`` captures, to bound fan-out cost.
 _SEARCH_PANE_CAP = 200
@@ -183,6 +189,65 @@ async def asend_input(
                 version=version,
             )
         ).raise_for_status()
+
+
+async def arun_in_pane(
+    engine: AsyncTmuxEngine,
+    target: str | Target,
+    command: str,
+    *,
+    settle_ms: int = 750,
+    timeout: float = 30.0,
+    max_bytes: int = 131072,
+    needle: str | None = None,
+    suppress_history: bool = False,
+    snapshot: bool = True,
+    version: str | None = None,
+) -> MonitorResult:
+    """Send a shell command to one pane, press Enter, and wait for output.
+
+    This is the one-call path for command execution through a streaming control
+    engine. It sends the command with the same ``SendKeys`` operation as
+    ``send_input`` and then uses the shared live-output monitor to return the
+    folded output plus done metadata. The per-pane drive lock stays held across
+    both phases so two callers do not interleave commands in the same pane.
+    """
+    from libtmux.experimental.agents.drive import pane_lock
+    from libtmux.experimental.mcp.events import (
+        _StreamEngine,
+        _supports_stream,
+        await_pane_output,
+    )
+    from libtmux.experimental.ops._types import render_target
+
+    resolved = resolve_target(target)
+    reject_relative_special(resolved)
+    if not _supports_stream(engine):
+        msg = "run_in_pane requires a streaming control-mode engine"
+        raise RuntimeError(msg)
+    pane_key = render_target(resolved) or str(resolved)
+    async with pane_lock(pane_key):
+        (
+            await arun(
+                SendKeys(
+                    target=resolved,
+                    keys=command,
+                    enter=True,
+                    suppress_history=suppress_history,
+                ),
+                engine,
+                version=version,
+            )
+        ).raise_for_status()
+        return await await_pane_output(
+            t.cast("_StreamEngine", engine),
+            pane_key,
+            settle_ms=settle_ms,
+            timeout=timeout,
+            max_bytes=max_bytes,
+            needle=needle,
+            snapshot=snapshot,
+        )
 
 
 async def acapture_pane(
@@ -644,6 +709,7 @@ async def _raise_no_neighbour(
 split_pane = synced(asplit_pane)
 new_pane = synced(anew_pane)
 send_input = synced(asend_input)
+run_in_pane = synced(arun_in_pane)
 capture_pane = synced(acapture_pane)
 capture_active_pane = synced(acapture_active_pane)
 grep_pane = synced(agrep_pane)
