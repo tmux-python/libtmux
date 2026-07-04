@@ -45,6 +45,16 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### New helper: `get_version_str()` (#699)
+
+{func}`libtmux.common.get_version_str` returns the running tmux version
+verbatim, keeping the point-release suffix (`"3.7a"`) that
+{func}`~libtmux.common.get_version` strips for numeric comparison. Reach
+for it to distinguish patch releases whose behavior differs -- for
+example telling tmux `3.7` from `3.7a`.
+
 ### Fixes
 
 #### `break_pane()` keeps tmux's default window name on 3.7a/3.7b (#699)
