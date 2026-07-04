@@ -35,6 +35,7 @@ from libtmux.experimental.mcp.plan_tools import (
     aexecute_plan,
     build_workspace,
     execute_plan,
+    explain_plan,
     preview_plan,
     result_schema,
 )
@@ -286,6 +287,7 @@ __all__ = (
     "default_async_server",
     "default_server",
     "execute_plan",
+    "explain_plan",
     "kill_pane",
     "kill_session",
     "kill_window",

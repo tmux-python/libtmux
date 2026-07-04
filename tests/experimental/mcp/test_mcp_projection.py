@@ -13,12 +13,14 @@ from libtmux.experimental.mcp import (
     OperationToolRegistry,
     build_workspace,
     execute_plan,
+    explain_plan,
     preview_plan,
     resolve_target,
     result_schema,
 )
 from libtmux.experimental.ops import (
     LazyPlan,
+    MarkedPlanner,
     NewSession,
     SendKeys,
     SplitWindow,
@@ -105,6 +107,18 @@ def test_preview_plan_marks_unresolved_forward_refs() -> None:
     assert preview.argv[0] is not None
     assert preview.argv[1] is None  # SendKeys targets the not-yet-created pane
     assert preview.ok is False
+
+
+def test_explain_plan_reports_boundary_reasons() -> None:
+    """explain_plan annotates each dispatch step with why it can't fold further."""
+    plan = LazyPlan()
+    pane = plan.add(SplitWindow(target=WindowId("@1")))
+    plan.add(SendKeys(target=pane, keys="vim", enter=True))
+    steps = explain_plan(plan, planner=MarkedPlanner()).steps
+    assert len(steps) == 1
+    assert steps[0]["indices"] == [0, 1]
+    assert steps[0]["kinds"] == ["split_window", "send_keys"]
+    assert steps[0]["reason"] == "marked-fold"
 
 
 def test_execute_plan_returns_bindings() -> None:
