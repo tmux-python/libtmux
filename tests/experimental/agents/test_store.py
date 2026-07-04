@@ -84,6 +84,7 @@ class StateCase(t.NamedTuple):
 
 STATE_CASES = (
     StateCase("known_round_trips", "running", AgentState.RUNNING),
+    StateCase("done_round_trips", "done", AgentState.DONE),
     StateCase("unknown_future_state", "paused", AgentState.UNKNOWN),
     StateCase("garbage", "???", AgentState.UNKNOWN),
 )
