@@ -197,13 +197,24 @@ class ProcessCommandProvider(t.Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class _ProcfsProcess:
+    """Parsed procfs process metadata."""
+
+    pid: int
+    ppid: int
+    pgrp: int
+    tpgid: int
+    command: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ProcfsProcessCommandProvider:
     """Capture full process commands from Linux procfs."""
 
     proc_root: pathlib.Path = pathlib.Path("/proc")
 
     def capture(self, pid: int) -> str | None:
-        """Return a command from ``/proc/<pid>/cmdline``.
+        """Return the foreground command for a tmux pane process id.
 
         Examples
         --------
@@ -215,20 +226,142 @@ class ProcfsProcessCommandProvider:
         if pid <= 0:
             return None
 
-        cmdline_path = self.proc_root / str(pid) / "cmdline"
         try:
-            raw_cmdline = cmdline_path.read_bytes()
+            proc_dirs = tuple(self.proc_root.iterdir())
         except OSError:
-            return None
+            proc_dirs = ()
 
-        parts = [
-            part.decode("utf-8", "backslashreplace")
-            for part in raw_cmdline.split(b"\0")
-            if part
-        ]
-        if not parts:
+        processes = {
+            process.pid: process
+            for process in (_read_procfs_process(proc_dir) for proc_dir in proc_dirs)
+            if process is not None
+        }
+        root = processes.get(pid) or _read_procfs_process(self.proc_root / str(pid))
+        if root is None:
             return None
-        return shlex.join(parts)
+        processes[root.pid] = root
+
+        process = _select_foreground_process(root, processes)
+        if process is None:
+            return None
+        return shlex.join(process.command)
+
+
+def _read_procfs_process(proc_dir: pathlib.Path) -> _ProcfsProcess | None:
+    """Return parsed process metadata from a procfs PID directory.
+
+    Examples
+    --------
+    >>> _read_procfs_process(pathlib.Path('/missing-proc/1234')) is None
+    True
+    """
+    if not proc_dir.name.isdecimal():
+        return None
+
+    pid = int(proc_dir.name)
+    command = _read_procfs_cmdline(proc_dir / "cmdline")
+    stat = _read_procfs_stat(proc_dir / "stat")
+    if stat is None and not command:
+        return None
+
+    ppid, pgrp, tpgid = stat or (0, 0, 0)
+    return _ProcfsProcess(
+        pid=pid,
+        ppid=ppid,
+        pgrp=pgrp,
+        tpgid=tpgid,
+        command=command,
+    )
+
+
+def _read_procfs_cmdline(path: pathlib.Path) -> tuple[str, ...]:
+    """Return decoded argv from a procfs ``cmdline`` file.
+
+    Examples
+    --------
+    >>> _read_procfs_cmdline(pathlib.Path('/missing-proc/cmdline'))
+    ()
+    """
+    try:
+        raw_cmdline = path.read_bytes()
+    except OSError:
+        return ()
+
+    return tuple(
+        part.decode("utf-8", "backslashreplace")
+        for part in raw_cmdline.split(b"\0")
+        if part
+    )
+
+
+def _read_procfs_stat(path: pathlib.Path) -> tuple[int, int, int] | None:
+    r"""Return ``(ppid, pgrp, tpgid)`` from a procfs ``stat`` file.
+
+    Examples
+    --------
+    >>> tmp_path = pathlib.Path(request.getfixturevalue("tmp_path"))
+    >>> stat_path = tmp_path / "stat"
+    >>> _ = stat_path.write_text("123 (vim) S 1 200 0 34816 200 0\\n")
+    >>> _read_procfs_stat(stat_path)
+    (1, 200, 200)
+    """
+    try:
+        stat = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    try:
+        suffix = stat.rsplit(")", 1)[1].split()
+        return int(suffix[1]), int(suffix[2]), int(suffix[5])
+    except (IndexError, ValueError):
+        return None
+
+
+def _select_foreground_process(
+    root: _ProcfsProcess,
+    processes: t.Mapping[int, _ProcfsProcess],
+) -> _ProcfsProcess | None:
+    """Return the foreground descendant process, falling back to ``root``.
+
+    Examples
+    --------
+    >>> shell = _ProcfsProcess(100, 1, 100, 200, ("-zsh",))
+    >>> vim = _ProcfsProcess(200, 100, 200, 200, ("vim", "README.md"))
+    >>> _select_foreground_process(shell, {100: shell, 200: vim}) == vim
+    True
+    """
+    children_by_parent: dict[int, list[_ProcfsProcess]] = {}
+    for process in processes.values():
+        children_by_parent.setdefault(process.ppid, []).append(process)
+
+    descendants: list[tuple[int, _ProcfsProcess]] = []
+    seen = {root.pid}
+    stack = [(1, child) for child in children_by_parent.get(root.pid, [])]
+    while stack:
+        depth, process = stack.pop()
+        if process.pid in seen:
+            continue
+        seen.add(process.pid)
+        descendants.append((depth, process))
+        stack.extend(
+            (depth + 1, child) for child in children_by_parent.get(process.pid, [])
+        )
+
+    foreground = [
+        (depth, process)
+        for depth, process in descendants
+        if root.tpgid > 0 and process.pgrp == root.tpgid and process.command
+    ]
+    if foreground:
+        return max(foreground, key=lambda item: (item[0], item[1].pid))[1]
+
+    with_command = [
+        (depth, process) for depth, process in descendants if process.command
+    ]
+    if with_command:
+        return max(with_command, key=lambda item: (item[0], item[1].pid))[1]
+
+    return root if root.command else None
 
 
 @dataclass(frozen=True, slots=True)
