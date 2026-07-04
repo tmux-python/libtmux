@@ -60,7 +60,12 @@ def write_archive_snapshot(
         last_path=last_path,
         portable_last=portable_last,
     )
-    removed = _rotate(base_dir, basename=basename, keep=keep)
+    removed = _rotate(
+        base_dir,
+        basename=basename,
+        keep=keep,
+        protected=archive_path,
+    )
     return ArchiveSnapshot(
         archive_path=archive_path,
         last_path=last_path,
@@ -100,11 +105,16 @@ def _rotate(
     *,
     basename: str,
     keep: int,
+    protected: pathlib.Path | None = None,
 ) -> tuple[pathlib.Path, ...]:
     if keep <= 0:
         return ()
     archives = sorted(directory.glob(f"{basename}-*.json"))
-    expired = archives[:-keep]
+    retained = keep
+    if protected is not None and protected in archives:
+        archives.remove(protected)
+        retained -= 1
+    expired = archives if retained <= 0 else archives[:-retained]
     for path in expired:
         path.unlink(missing_ok=True)
     return tuple(expired)
