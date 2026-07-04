@@ -31,6 +31,7 @@ if t.TYPE_CHECKING:
 #: Short per-state labels for the default tally (override via ``labels``).
 DEFAULT_LABELS: dict[AgentState, str] = {
     AgentState.AWAITING_INPUT: "wait",
+    AgentState.DONE: "done",
     AgentState.IDLE: "idle",
     AgentState.RUNNING: "run",
     AgentState.EXITED: "exit",
@@ -40,6 +41,7 @@ DEFAULT_LABELS: dict[AgentState, str] = {
 #: The order states appear in the default tally (most-urgent first).
 _ATTENTION_ORDER: tuple[AgentState, ...] = (
     AgentState.AWAITING_INPUT,
+    AgentState.DONE,
     AgentState.IDLE,
     AgentState.RUNNING,
     AgentState.UNKNOWN,

@@ -83,6 +83,17 @@ def test_most_urgent_picks_blocked_agent() -> None:
     assert top.pane_id == "%2"
 
 
+def test_done_outranks_idle_by_default() -> None:
+    """DONE is visible above idle in the default attention ladder."""
+    rows = [
+        _agent("%1", AgentState.IDLE),
+        _agent("%2", AgentState.DONE),
+    ]
+    top = agents().most_urgent(rows)
+    assert top is not None
+    assert top.pane_id == "%2"
+
+
 def test_most_urgent_none_when_empty() -> None:
     """``most_urgent`` returns ``None`` when nothing matches."""
     assert agents().filter(name="nobody").most_urgent([]) is None

@@ -8,15 +8,14 @@ the rest of ``config.toml`` verbatim.
 
 The modern ``[hooks]`` TOML format (array-of-tables ``[[hooks.<event>]]``) is
 the primary mechanism.  Codex's older single-program ``notify`` hook (fires
-on turn-complete only, emitting ``awaiting_input``) is a fallback for old
-Codex versions — it is **not** implemented in v1; modern ``[hooks]`` is
-primary.
+on turn-complete only, emitting ``done``) is a fallback for old Codex
+versions — it is **not** implemented in v1; modern ``[hooks]`` is primary.
 
 Codex event → state mapping::
 
     user_prompt_submit  → running
     permission_request  → awaiting_input
-    stop                → awaiting_input
+    stop                → done
     session_start       → idle
 
 Each hook fires on a named Codex lifecycle event.  Codex passes event JSON
@@ -60,7 +59,7 @@ import tempfile
 _CODEX_EVENT_STATE: dict[str, str] = {
     "user_prompt_submit": "running",
     "permission_request": "awaiting_input",
-    "stop": "awaiting_input",
+    "stop": "done",
     "session_start": "idle",
 }
 
@@ -106,9 +105,9 @@ class CodexHook:
     -----
     **Legacy notify fallback (not implemented in v1).**
     Old Codex versions support a single-program ``notify`` hook that fires
-    on turn-complete only (equivalent to ``awaiting_input``).  Modern
-    ``[hooks]`` is the primary mechanism; the ``notify`` path is documented
-    here for future reference but is not implemented.
+    on turn-complete only (equivalent to ``done``).  Modern ``[hooks]`` is the
+    primary mechanism; the ``notify`` path is documented here for future
+    reference but is not implemented.
 
     Examples
     --------

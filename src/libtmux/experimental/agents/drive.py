@@ -44,7 +44,11 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.agents.monitor import AgentMonitor
 
 #: Default states an agent is considered "ready to receive a prompt" in.
-READY_STATES: tuple[AgentState, ...] = (AgentState.AWAITING_INPUT, AgentState.IDLE)
+READY_STATES: tuple[AgentState, ...] = (
+    AgentState.AWAITING_INPUT,
+    AgentState.DONE,
+    AgentState.IDLE,
+)
 
 # Process-wide per-pane logical drive locks (the comprehensive chokepoint). Held
 # weakly: a lock survives exactly as long as a sender references it (inside an

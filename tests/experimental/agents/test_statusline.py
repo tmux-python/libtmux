@@ -66,8 +66,9 @@ def test_render_tally_in_attention_order() -> None:
         _agent("%2", AgentState.RUNNING),
         _agent("%3", AgentState.RUNNING),
         _agent("%4", AgentState.IDLE),
+        _agent("%5", AgentState.DONE),
     ]
-    assert render_status_line(rows) == "wait:1 idle:1 run:2"
+    assert render_status_line(rows) == "wait:1 done:1 idle:1 run:2"
 
 
 def test_render_empty_fleet() -> None:

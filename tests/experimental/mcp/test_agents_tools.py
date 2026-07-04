@@ -49,9 +49,9 @@ class _CapturingMcp:
 def test_list_agents_reflects_ingested_state() -> None:
     """list_agents shape: ingested option-line produces the expected pane dict."""
     mon = AgentMonitor(_FakeEngine())
-    mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : running")
+    mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : done")
     listing = [{"pane_id": a.pane_id, "state": a.state.value} for a in mon.agents]
-    assert {"pane_id": "%1", "state": "running"} in listing
+    assert {"pane_id": "%1", "state": "done"} in listing
 
 
 def test_watch_agents_observes_store_without_subscribing() -> None:
@@ -147,13 +147,14 @@ def test_wait_for_agent_tool_reports_reached() -> None:
 
     mcp = _CapturingMcp()
     monitor = register_agents(t.cast("FastMCP[t.Any]", mcp), _FakeEngine())
-    monitor.ingest("%subscription-changed agentstate $0 @0 1 %1 : idle")
+    monitor.ingest("%subscription-changed agentstate $0 @0 1 %1 : done")
 
     wait = mcp.tools["wait_for_agent"].fn
-    result = asyncio.run(wait("%1", "idle", 0.5))
+    result = asyncio.run(wait("%1", "done", 0.5))
 
     assert result["reached"] is True
     assert result["reason"] == "reached"
+    assert result["state"] == "done"
 
 
 def test_send_to_agent_tool_dispatches_when_ready() -> None:

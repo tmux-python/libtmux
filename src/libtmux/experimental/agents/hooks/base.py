@@ -23,13 +23,13 @@ import typing as t
 #: >>> EVENT_STATE["needs_approval"]
 #: 'awaiting_input'
 #: >>> EVENT_STATE["turn_end"]
-#: 'awaiting_input'
+#: 'done'
 #: >>> EVENT_STATE["session_start"]
 #: 'idle'
 EVENT_STATE: dict[str, str] = {
     "turn_start": "running",
     "needs_approval": "awaiting_input",
-    "turn_end": "awaiting_input",
+    "turn_end": "done",
     "session_start": "idle",
 }
 

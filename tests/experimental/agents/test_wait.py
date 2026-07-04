@@ -78,6 +78,19 @@ def test_wait_returns_immediately_when_already_in_state() -> None:
     assert asyncio.run(main()) is WaitReason.REACHED
 
 
+def test_wait_can_target_done_state() -> None:
+    """DONE is a first-class target for turn-complete fan-in waits."""
+
+    async def main() -> WaitReason:
+        mon = AgentMonitor(_FakeEngine())
+        mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : done")
+        return (
+            await wait_for_agent_state(mon, "%1", AgentState.DONE, timeout=1.0)
+        ).reason
+
+    assert asyncio.run(main()) is WaitReason.REACHED
+
+
 def test_wait_wakes_on_later_ingest() -> None:
     """A parked wait resolves the moment the drain ingests the target state."""
 
