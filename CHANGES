@@ -47,6 +47,25 @@ _Notes on the upcoming release will go here._
 
 ### What's new
 
+#### Agent console session (#692)
+
+`python -m libtmux.agents` now boots a tmux-native agent console.  Running the
+module with no subcommand creates the managed `libtmux-agents` session when it
+does not exist, then attaches or switches the current tmux client to it; `start`
+is the explicit form, and `attach` or `att` reconnect to an already-running
+console.  The session itself is declared with
+{class}`~libtmux.experimental.workspace.ir.Workspace`, so creation uses the same
+chainable workspace compiler and folded tmux dispatch path as other declarative
+workspace builds.
+
+The console includes a long-lived `monitor` pane backed by
+{class}`~libtmux.experimental.agents.monitor.AgentMonitor` and an interactive
+shell pane for orchestration work.  `status` and `list --json` read the
+monitor's persisted JSON store directly, so a caller can inspect the latest
+agent snapshot without making a live tmux call.  The command also exposes hook
+installation plus `wait` and `send` wrappers over the existing in-process agent
+synchronization primitives.
+
 #### Agent-state monitor (#692)
 
 `libtmux.experimental.agents` is a live agent-state monitor

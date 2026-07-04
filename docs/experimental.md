@@ -227,6 +227,49 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+### Agent console
+
+For an interactive tmux-native view, run the top-level module:
+
+```console
+$ python -m libtmux.agents
+```
+
+With no subcommand, the module behaves like tmux: it creates the managed
+`libtmux-agents` session if needed, then attaches to it (or switches the current
+tmux client when already inside tmux).  The explicit `start` command has the
+same behavior, while `attach` and `att` reconnect to an existing console without
+creating one.
+
+```console
+$ python -m libtmux.agents attach
+```
+
+The managed session contains a monitor pane and an interactive shell pane.  The
+monitor writes a JSON snapshot under `$XDG_STATE_HOME/libtmux/agents/` (or
+`~/.local/state/libtmux/agents/`), so status commands can render the latest
+known state without contacting tmux:
+
+```console
+$ python -m libtmux.agents status
+```
+
+Machine-readable callers can use the `list` alias:
+
+```console
+$ python -m libtmux.agents list --json
+```
+
+Socket and session selectors mirror tmux's own flags.  For example, this starts
+or attaches a console on a named tmux socket:
+
+```console
+$ python -m libtmux.agents -L work-agents -s libtmux-agents
+```
+
+The same module also exposes operational shortcuts over the in-process monitor:
+`hooks status`, `hooks install`, `wait <pane-id>`, and `send <pane-id> <text>`.
+
 ### Installing agent hooks
 
 Before a coding agent can report state, its lifecycle hooks must be installed.

@@ -118,6 +118,7 @@ libtmux = "libtmux.pytest_plugin"
 # `main` prints an install hint and exits non-zero when fastmcp is absent.
 libtmux-engine-mcp = "libtmux.experimental.mcp:main"
 libtmux-agent-emit = "libtmux.experimental.agents.hooks.emit:main"
+libtmux-agents = "libtmux.agents.cli:main"
 
 [project.optional-dependencies]
 mcp = [
