@@ -402,7 +402,11 @@ async def abuild_workspaces(
     on_event: Callable[[BuildEvent], Awaitable[None]] | None = None,
     planner: Planner | None = None,
 ) -> WorkspaceSetResult:
-    """Compile and execute multiple workspaces asynchronously over *engine*."""
+    """Compile and execute multiple workspaces asynchronously over *engine*.
+
+    *on_event* has the same inline-await contract as :func:`abuild_workspace`:
+    keep it fast and non-reentrant, or buffer and drain it yourself.
+    """
     rows = _workspace_tuple(workspaces)
     active, reused = await _split_reused_async(rows, engine, version, preflight)
     if not active:
