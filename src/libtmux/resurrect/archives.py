@@ -481,6 +481,20 @@ def _restore_missing_session_topology(
                 process_policy=process_policy,
                 shell_commands=shell_commands,
             )
+            for pane_archive in window_archive.panes[1:]:
+                _create_missing_pane(
+                    server,
+                    session_archive=session_archive,
+                    window_archive=window_archive,
+                    pane_archive=pane_archive,
+                    process_policy=process_policy,
+                    shell_commands=shell_commands,
+                )
+            _restore_reused_window_state(
+                server,
+                session_archive=session_archive,
+                window_archive=window_archive,
+            )
             continue
 
         existing_panes = _existing_pane_indexes(
