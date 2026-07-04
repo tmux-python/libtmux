@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import typing as t
 
+import pytest
+
 from libtmux.experimental.models.snapshots import PaneSnapshot
-from libtmux.experimental.query import PaneQuery, panes
+from libtmux.experimental.ops import LazyPlan, PaneId
+from libtmux.experimental.query import ForwardPaneRef, PaneQuery, PaneRef, panes
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -27,6 +30,60 @@ ROWS = (
     _pane("%2", 1, active=False, command="zsh"),
     _pane("%3", 2, active=False, command="vim"),
 )
+
+
+def _concrete(plan: LazyPlan) -> PaneRef:
+    return PaneRef(
+        plan,
+        PaneId("%1"),
+        snapshot=_pane("%1", 0, active=True, command="vim"),
+    )
+
+
+def test_split_returns_forward_handle() -> None:
+    """A structural verb records a create and returns a forward handle."""
+    plan = LazyPlan()
+    new = _concrete(plan).split()
+    assert isinstance(new, ForwardPaneRef)
+    assert [op.kind for op in plan.operations] == ["split_window"]
+
+
+def test_do_chains_on_the_handle() -> None:
+    """do() records into the plan and returns the same handle."""
+    plan = LazyPlan()
+    ref = _concrete(plan)
+    assert ref.do(lambda c: c.send_keys("vim")) is ref
+    assert [op.kind for op in plan.operations] == ["send_keys"]
+
+
+class _ReadCase(t.NamedTuple):
+    """Whether a handle exposes concrete pane reads (concrete) or not (forward)."""
+
+    test_id: str
+    forward: bool
+
+
+_READ_CASES: tuple[_ReadCase, ...] = (
+    _ReadCase("concrete_reads", forward=False),
+    _ReadCase("forward_no_reads", forward=True),
+)
+
+
+@pytest.mark.parametrize("case", _READ_CASES, ids=[c.test_id for c in _READ_CASES])
+def test_handle_read_surface(case: _ReadCase) -> None:
+    """Concrete handles expose pane reads; forward handles have none.
+
+    The forward handle's absence of ``pane_id`` is what makes a premature read a
+    *static* type error (mypy + ty), with the structural absence as its runtime
+    shadow.
+    """
+    plan = LazyPlan()
+    concrete = _concrete(plan)
+    handle: object = concrete.split() if case.forward else concrete
+    assert hasattr(handle, "pane_id") is (not case.forward)
+    if not case.forward:
+        assert concrete.pane_id == "%1"
+        assert concrete.active is True
 
 
 def test_panes_returns_query() -> None:
