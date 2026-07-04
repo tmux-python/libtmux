@@ -420,7 +420,7 @@ class CompositeProcessCommandProvider:
 
 
 def default_process_command_provider() -> ProcessCommandProvider:
-    """Return the default portable full-command provider chain.
+    """Return the default full-command provider chain.
 
     Examples
     --------
@@ -429,10 +429,7 @@ def default_process_command_provider() -> ProcessCommandProvider:
     True
     """
     return CompositeProcessCommandProvider(
-        (
-            ProcfsProcessCommandProvider(),
-            PsProcessCommandProvider(),
-        ),
+        (ProcfsProcessCommandProvider(),),
     )
 
 
