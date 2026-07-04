@@ -115,8 +115,11 @@ def register_agents(
     from fastmcp.tools import FunctionTool
     from mcp.types import ToolAnnotations
 
+    from libtmux.experimental.agents.drive import send_to_agent as drive_send_to_agent
     from libtmux.experimental.agents.hooks.registry import get
     from libtmux.experimental.agents.monitor import AgentMonitor
+    from libtmux.experimental.agents.state import AgentState
+    from libtmux.experimental.agents.wait import wait_for_agent_state
 
     if monitor is None:
         monitor = AgentMonitor(engine, sink=sink)
@@ -259,6 +262,128 @@ def register_agents(
             annotations=ToolAnnotations(
                 title="install_agent_hooks", readOnlyHint=False
             ),
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    # wait_for_agent
+    # ------------------------------------------------------------------
+
+    async def wait_for_agent(
+        pane_id: str,
+        target: str,
+        timeout_s: float = 30.0,
+    ) -> dict[str, t.Any]:
+        """Block until a pane's agent reaches a target state.
+
+        Adds no tmux round-trip: the wait is served from the monitor's live
+        store (the drain already ingests the stream), returning the moment the
+        target is observed or *timeout_s* elapses.
+
+        Parameters
+        ----------
+        pane_id : str
+            The pane to watch (e.g. ``"%1"``).
+        target : str
+            One state or a comma-separated set (e.g. ``"awaiting_input,idle"``).
+        timeout_s : float
+            Seconds to wait before giving up (default 30).
+
+        Returns
+        -------
+        dict[str, Any]
+            ``pane_id``, ``reason`` (``reached``/``timeout``/``exited``/
+            ``stopped``), ``reached``, and the last-known ``state``/``name``.
+        """
+        states = frozenset(
+            AgentState.from_signal(part) for part in target.split(",") if part.strip()
+        )
+        outcome = await wait_for_agent_state(
+            monitor, pane_id, states, timeout=timeout_s
+        )
+        agent = outcome.agent
+        return {
+            "pane_id": outcome.pane_id,
+            "reason": outcome.reason.value,
+            "reached": outcome.reached,
+            "state": agent.state.value if agent else None,
+            "name": agent.name if agent else None,
+        }
+
+    mcp.add_tool(
+        FunctionTool.from_function(
+            wait_for_agent,
+            name="wait_for_agent",
+            description=(
+                "Block until a coding-agent pane reaches a target state "
+                "(zero tmux calls; served from the live agent store)"
+            ),
+            tags={"readonly", "agents"},
+            annotations=ToolAnnotations(title="wait_for_agent", readOnlyHint=True),
+        ),
+    )
+
+    # ------------------------------------------------------------------
+    # send_to_agent
+    # ------------------------------------------------------------------
+
+    async def send_to_agent(
+        pane_id: str,
+        text: str,
+        wait_ready: bool = True,
+        timeout_s: float = 30.0,
+        key: str | None = None,
+    ) -> dict[str, t.Any]:
+        """Wait until the agent is ready, then inject *text* in one folded dispatch.
+
+        The send is atomic under the per-pane drive lock (concurrent sends
+        serialize) and folds to a single tmux command. An optional *key* makes a
+        retried send a no-op within a short window.
+
+        Parameters
+        ----------
+        pane_id : str
+            The agent's pane (e.g. ``"%1"``).
+        text : str
+            The prompt to deliver (multi-line is pasted, then submitted).
+        wait_ready : bool
+            Wait for ``awaiting_input``/``idle`` before sending (default True).
+        timeout_s : float
+            Readiness-wait budget in seconds (default 30).
+        key : str or None
+            Idempotency key; a repeat within the dedup TTL is a no-op.
+
+        Returns
+        -------
+        dict[str, Any]
+            ``pane_id``, ``sent``, ``deduplicated``, and the readiness ``wait``
+            reason (or ``None`` when *wait_ready* is False).
+        """
+        outcome = await drive_send_to_agent(
+            monitor,
+            pane_id,
+            text,
+            wait_ready=wait_ready,
+            timeout=timeout_s,
+            key=key,
+        )
+        return {
+            "pane_id": outcome.pane_id,
+            "sent": outcome.sent,
+            "deduplicated": outcome.deduplicated,
+            "wait": outcome.wait.reason.value if outcome.wait else None,
+        }
+
+    mcp.add_tool(
+        FunctionTool.from_function(
+            send_to_agent,
+            name="send_to_agent",
+            description=(
+                "Wait until a coding agent is ready, then send it a prompt "
+                "atomically in a single folded tmux dispatch"
+            ),
+            tags={"mutating", "agents"},
+            annotations=ToolAnnotations(title="send_to_agent", readOnlyHint=False),
         ),
     )
 

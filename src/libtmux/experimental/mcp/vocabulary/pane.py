@@ -158,22 +158,31 @@ async def asend_input(
     suppress_history: bool = False,
     version: str | None = None,
 ) -> None:
-    """Send keys to a pane (mirrors ``pane.send_keys``)."""
+    """Send keys to a pane (mirrors ``pane.send_keys``).
+
+    Acquires the per-pane logical drive lock (the chokepoint shared with
+    ``send_to_agent``) so two concurrent sends to one pane serialize instead of
+    interleaving keystrokes.
+    """
+    from libtmux.experimental.agents.drive import pane_lock
+    from libtmux.experimental.ops._types import render_target
+
     resolved = resolve_target(target)
     reject_relative_special(resolved)
-    (
-        await arun(
-            SendKeys(
-                target=resolved,
-                keys=keys,
-                enter=enter,
-                literal=literal,
-                suppress_history=suppress_history,
-            ),
-            engine,
-            version=version,
-        )
-    ).raise_for_status()
+    async with pane_lock(render_target(resolved) or str(resolved)):
+        (
+            await arun(
+                SendKeys(
+                    target=resolved,
+                    keys=keys,
+                    enter=enter,
+                    literal=literal,
+                    suppress_history=suppress_history,
+                ),
+                engine,
+                version=version,
+            )
+        ).raise_for_status()
 
 
 async def acapture_pane(

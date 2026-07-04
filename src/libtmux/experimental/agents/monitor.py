@@ -22,11 +22,12 @@ import logging
 import time
 import typing as t
 
+from libtmux.experimental.agents.drive import DedupLedger
 from libtmux.experimental.agents.health import is_alive
 from libtmux.experimental.agents.hud import HudRenderer
 from libtmux.experimental.agents.merge import MonotonicCounter, Stamp
 from libtmux.experimental.agents.signals import SUBSCRIPTION, OptionSignal, OscSignal
-from libtmux.experimental.agents.state import AgentState
+from libtmux.experimental.agents.state import AgentState, AgentTransition
 from libtmux.experimental.agents.store import (
     AgentStore,
     Observed,
@@ -35,8 +36,11 @@ from libtmux.experimental.agents.store import (
     apply,
 )
 from libtmux.experimental.agents.tree import PANE_FORMAT, diff_panes, panes_of
+from libtmux.experimental.agents.wait import WaiterRegistry
 
 if t.TYPE_CHECKING:
+    from collections.abc import Callable
+
     from libtmux.experimental.agents.merge import Clock
     from libtmux.experimental.agents.signals import Reading
     from libtmux.experimental.agents.state import Agent
@@ -48,6 +52,17 @@ logger = logging.getLogger(__name__)
 _SEP = "\t"
 # Pre-build the -F format string from the PANE_FORMAT tuple once.
 _PANE_FORMAT_STR = _SEP.join(f"#{{{field}}}" for field in PANE_FORMAT)
+
+
+def _notify_observer(
+    observer: Callable[[AgentTransition], None],
+    transition: AgentTransition,
+) -> None:
+    """Invoke a transition observer, swallowing its errors (kept out of the loop)."""
+    try:
+        observer(transition)
+    except Exception:
+        logger.debug("agent transition observer failed", exc_info=True)
 
 
 class AgentMonitor:
@@ -108,6 +123,12 @@ class AgentMonitor:
         # Bounded poll between reconcile retries while the engine is reconnecting,
         # so the supervised drain waits (not busy-spins) for the engine to revive.
         self._reconnect_poll = 0.5
+        # Synchronization layer: waiters parked by wait_for_agent_state (woken
+        # from the single _observe/reconcile mutation point), the send
+        # idempotency ledger, and transition observers.
+        self._waiters = WaiterRegistry()
+        self._dedup = DedupLedger()
+        self._transition_observers: list[Callable[[AgentTransition], None]] = []
 
         # Seed the store from a persistent sink when one is provided.
         if sink is not None:
@@ -185,7 +206,9 @@ class AgentMonitor:
             source=reading.source,
             pid=None,
         )
+        before = self._store.agents.get(reading.pane_id)
         self._store = apply(self._store, observed, now=time.monotonic())
+        after = self._store.agents.get(reading.pane_id)
         self._hud_dirty = True
         if self._sink is not None:
             self._sink.save(self._store.to_dict())
@@ -195,6 +218,7 @@ class AgentMonitor:
             reading.pane_id,
             reading.source,
         )
+        self._notify_change(before, after)
 
     # ------------------------------------------------------------------
     # Public read API
@@ -250,6 +274,113 @@ class AgentMonitor:
             "agents": len(self._store.agents),
             "generation": getattr(self._engine, "_generation", 0),
         }
+
+    @property
+    def waiters(self) -> WaiterRegistry:
+        """The registry backing :func:`~..wait.wait_for_agent_state`.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.engines import AsyncConcreteEngine
+        >>> from libtmux.experimental.agents.wait import WaiterRegistry
+        >>> isinstance(AgentMonitor(AsyncConcreteEngine()).waiters, WaiterRegistry)
+        True
+        """
+        return self._waiters
+
+    @property
+    def dedup(self) -> DedupLedger:
+        """The idempotency ledger backing :func:`~..drive.send_to_agent` keys.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.engines import AsyncConcreteEngine
+        >>> from libtmux.experimental.agents.drive import DedupLedger
+        >>> isinstance(AgentMonitor(AsyncConcreteEngine()).dedup, DedupLedger)
+        True
+        """
+        return self._dedup
+
+    @property
+    def engine(self) -> t.Any:
+        """The async engine this monitor drives (reused by ``send_to_agent``).
+
+        Examples
+        --------
+        >>> from libtmux.experimental.engines import AsyncConcreteEngine
+        >>> e = AsyncConcreteEngine()
+        >>> AgentMonitor(e).engine is e
+        True
+        """
+        return self._engine
+
+    def agent_for(self, pane_id: str) -> Agent | None:
+        """Return the current :class:`~..state.Agent` for *pane_id*, or ``None``.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.engines import AsyncConcreteEngine
+        >>> mon = AgentMonitor(AsyncConcreteEngine())
+        >>> mon.agent_for("%1") is None
+        True
+        >>> mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : running")
+        >>> mon.agent_for("%1").state
+        <AgentState.RUNNING: 'running'>
+        """
+        return self._store.agents.get(pane_id)
+
+    def add_transition_observer(
+        self,
+        callback: Callable[[AgentTransition], None],
+    ) -> None:
+        """Register *callback*, invoked with each :class:`~..state.AgentTransition`.
+
+        Called on every state change (the edge), after the store is updated.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.engines import AsyncConcreteEngine
+        >>> seen = []
+        >>> mon = AgentMonitor(AsyncConcreteEngine())
+        >>> mon.add_transition_observer(seen.append)
+        >>> mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : running")
+        >>> seen[0].after
+        <AgentState.RUNNING: 'running'>
+        """
+        self._transition_observers.append(callback)
+
+    def _notify_change(self, before: Agent | None, after: Agent | None) -> None:
+        """Wake waiters and emit the transition edge for a changed pane record.
+
+        Called from every store-mutation site (``_observe``, the reconcile
+        ``Vanished`` loop, the health sweep). Logs a structured ``agent_*``
+        record and fans an :class:`~..state.AgentTransition` to observers only on
+        an actual *state* change; waiters are notified on any updated record so
+        their predicates re-evaluate.
+        """
+        if after is None:
+            return
+        state_changed = before is None or before.state is not after.state
+        if state_changed:
+            logger.info(
+                "agent state changed",
+                extra={
+                    "tmux_pane": after.pane_id,
+                    "agent_state_before": before.state.value if before else None,
+                    "agent_state_after": after.state.value,
+                    "agent_name": after.name,
+                    "agent_source": after.source,
+                },
+            )
+            transition = AgentTransition(
+                pane_id=after.pane_id,
+                before=before.state if before else None,
+                after=after.state,
+                agent=after,
+            )
+            for observer in tuple(self._transition_observers):
+                _notify_observer(observer, transition)
+        self._waiters.notify(after)
 
     # ------------------------------------------------------------------
     # Async lifecycle
@@ -414,6 +545,7 @@ class AgentMonitor:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
+        self._waiters.fail_all()
         await self._teardown_hud()
         if self._sink is not None:
             self._sink.save(self._store.to_dict())
@@ -456,11 +588,13 @@ class AgentMonitor:
         }
         _added, removed = diff_panes(self._prev_panes, current_panes)
         for pane_id in removed:
+            before = self._store.agents.get(pane_id)
             self._store = apply(
                 self._store,
                 Vanished(pane_id=pane_id),
                 now=time.monotonic(),
             )
+            self._notify_change(before, self._store.agents.get(pane_id))
         self._apply_health(current_panes)
         self._prev_panes = dict(current_panes)
         self._hud_dirty = True
@@ -490,6 +624,7 @@ class AgentMonitor:
         """
         agents = dict(self._store.agents)
         changed = False
+        exits: list[tuple[Agent, Agent]] = []
         now = time.monotonic()
         for pane_id, agent in self._store.agents.items():
             pane = current_panes.get(pane_id)
@@ -498,19 +633,23 @@ class AgentMonitor:
             pid = pane.pid
             if pid is not None and not is_alive(pid):
                 if agent.alive or agent.state is not AgentState.EXITED:
-                    agents[pane_id] = dataclasses.replace(
+                    exited = dataclasses.replace(
                         agent,
                         state=AgentState.EXITED,
                         alive=False,
                         pid=pid,
                         since=now,
                     )
+                    agents[pane_id] = exited
+                    exits.append((agent, exited))
                     changed = True
             elif agent.pid != pid or not agent.alive:
                 agents[pane_id] = dataclasses.replace(agent, pid=pid, alive=True)
                 changed = True
         if changed:
             self._store = AgentStore(agents=agents, stamps=dict(self._store.stamps))
+            for before, after in exits:
+                self._notify_change(before, after)
 
     # ------------------------------------------------------------------
     # Private helpers
