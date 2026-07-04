@@ -108,6 +108,20 @@ def _offer(
     return 0
 
 
+def _swallow_future(future: asyncio.Future[t.Any]) -> None:
+    """Retrieve a fire-and-forget future's outcome so it isn't flagged unretrieved.
+
+    A reap command is dispatched without an awaiter; its future resolves in the
+    reader. Calling :meth:`asyncio.Future.exception` marks the result retrieved
+    so a tmux-side ``%error`` never surfaces as a noisy "exception was never
+    retrieved" warning.
+    """
+    if future.cancelled():
+        return
+    with contextlib.suppress(Exception):
+        future.exception()
+
+
 class AsyncControlModeEngine:
     """Execute tmux commands over one persistent async ``tmux -C`` connection.
 
@@ -189,6 +203,7 @@ class AsyncControlModeEngine:
                 self._reader(),
                 name="libtmux-async-control-reader",
             )
+            await self._reap_own_session()
             self._started = True
 
     async def _consume_startup(self) -> None:
@@ -219,6 +234,32 @@ class AsyncControlModeEngine:
             self._parser.feed(chunk)
             self._parser.notifications()  # discard any startup notifications
             if self._parser.blocks():  # startup ACK seen and discarded
+                return
+
+    async def _reap_own_session(self) -> None:
+        """Mark this control client's throwaway session ``destroy-unattached``.
+
+        A bare ``tmux -C`` connect implies ``new-session``, so each connection
+        spawns a phantom session on the target server. Setting
+        ``destroy-unattached on`` on the *current* session (no ``-t``/``-g``, so
+        scoped to exactly that phantom, never global) makes tmux reap it the
+        moment this client disconnects, so control mode never litters the server
+        with throwaway sessions. Fire-and-forget: the reader resolves the result
+        future, which is swallowed.
+        """
+        proc = self._proc
+        if proc is None or proc.stdin is None:
+            return
+        loop = asyncio.get_running_loop()
+        argv = ("set-option", "destroy-unattached", "on")
+        async with self._write_lock:
+            future: asyncio.Future[CommandResult] = loop.create_future()
+            future.add_done_callback(_swallow_future)
+            self._pending.append(_PendingCommand(future, argv, command_count(argv)))
+            try:
+                proc.stdin.write((render_control_line(argv) + "\n").encode())
+                await proc.stdin.drain()
+            except (BrokenPipeError, OSError):
                 return
 
     async def run(self, request: CommandRequest) -> CommandResult:
