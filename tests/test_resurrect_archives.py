@@ -236,6 +236,16 @@ class RestoreAutomaticRenameCase(t.NamedTuple):
     expected_option: str
 
 
+class RestorePaneTargetMapCase(t.NamedTuple):
+    """Case for mapping archived panes onto restored tmux pane targets."""
+
+    test_id: str
+    archived_indexes: tuple[int, int]
+    restored_pane_ids: tuple[str, str]
+    expected_title_targets: tuple[str, str]
+    expected_active_target: str
+
+
 RESTORE_REUSE_MISSING_WINDOW_CASES = (
     RestoreReuseMissingWindowCase(
         test_id="single_pane",
@@ -288,6 +298,16 @@ RESTORE_AUTOMATIC_RENAME_CASES = (
         test_id="automatic_rename_on",
         automatic_rename=True,
         expected_option="on",
+    ),
+)
+
+RESTORE_PANE_TARGET_MAP_CASES = (
+    RestorePaneTargetMapCase(
+        test_id="pane_base_index_mismatch",
+        archived_indexes=(1, 2),
+        restored_pane_ids=("%10", "%11"),
+        expected_title_targets=("%10", "%11"),
+        expected_active_target="%11",
     ),
 )
 
@@ -904,6 +924,60 @@ def test_restore_archive_preserves_automatic_rename_after_name_restore(
     assert rename_call in server.calls
     assert option_call in server.calls
     assert server.calls.index(rename_call) < server.calls.index(option_call)
+
+
+@pytest.mark.parametrize(
+    "case",
+    RESTORE_PANE_TARGET_MAP_CASES,
+    ids=[case.test_id for case in RESTORE_PANE_TARGET_MAP_CASES],
+)
+def test_restore_archive_maps_pane_metadata_to_restored_targets(
+    case: RestorePaneTargetMapCase,
+) -> None:
+    """restore_archive() maps archived pane indexes to restored pane targets."""
+    archive = WorkspaceArchive(
+        saved_at=datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc),
+        sessions=(
+            SessionArchive(
+                name="alpha",
+                windows=(
+                    WindowArchive(
+                        index=0,
+                        name="editor",
+                        layout="",
+                        active=True,
+                        panes=(
+                            PaneArchive(
+                                index=case.archived_indexes[0],
+                                active=False,
+                                current_command="vim",
+                                current_path="/workspace",
+                                title="left",
+                            ),
+                            PaneArchive(
+                                index=case.archived_indexes[1],
+                                active=True,
+                                current_command="less",
+                                current_path="/workspace",
+                                title="right",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    server = _FakeServer(stdout_by_cmd={"list-panes": list(case.restored_pane_ids)})
+
+    restore_archive(archive, t.cast("Server", server))
+
+    for title, target in zip(
+        ("left", "right"),
+        case.expected_title_targets,
+        strict=True,
+    ):
+        assert ("select-pane", ("-T", title), {"target": target}) in server.calls
+    assert ("select-pane", (), {"target": case.expected_active_target}) in server.calls
 
 
 @pytest.mark.parametrize(

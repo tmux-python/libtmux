@@ -600,6 +600,32 @@ def _existing_pane_indexes(
     return {_tmux_int(line) for line in proc.stdout}
 
 
+def _restored_pane_targets(
+    server: Server,
+    *,
+    session_archive: SessionArchive,
+    window_archive: WindowArchive,
+) -> dict[int, str]:
+    proc = server.cmd(
+        "list-panes",
+        "-t",
+        _target_window(session_archive, window_archive),
+        "-F",
+        "#{pane_id}",
+    )
+    if proc.stderr:
+        return {}
+
+    targets = tuple(line for line in proc.stdout if line.startswith("%"))
+    if len(targets) != len(window_archive.panes):
+        return {}
+
+    return {
+        pane_archive.index: target
+        for pane_archive, target in zip(window_archive.panes, targets, strict=True)
+    }
+
+
 def _restore_window(
     server: Server,
     *,
@@ -627,15 +653,22 @@ def _restore_window(
     if window_archive.layout:
         window.select_layout(window_archive.layout)
 
+    pane_targets = _restored_pane_targets(
+        server,
+        session_archive=session_archive,
+        window_archive=window_archive,
+    )
     _restore_window_metadata(
         server,
         session_archive=session_archive,
         window_archive=window_archive,
+        pane_targets=pane_targets,
     )
     _restore_active_pane(
         server,
         session_archive=session_archive,
         window_archive=window_archive,
+        pane_targets=pane_targets,
     )
 
 
@@ -650,15 +683,22 @@ def _restore_reused_window_state(
         proc = server.cmd("select-layout", "-t", target_window, window_archive.layout)
         raise_if_stderr(proc, "select-layout")
 
+    pane_targets = _restored_pane_targets(
+        server,
+        session_archive=session_archive,
+        window_archive=window_archive,
+    )
     _restore_window_metadata(
         server,
         session_archive=session_archive,
         window_archive=window_archive,
+        pane_targets=pane_targets,
     )
     _restore_active_pane(
         server,
         session_archive=session_archive,
         window_archive=window_archive,
+        pane_targets=pane_targets,
     )
 
 
@@ -667,6 +707,7 @@ def _restore_window_metadata(
     *,
     session_archive: SessionArchive,
     window_archive: WindowArchive,
+    pane_targets: t.Mapping[int, str],
 ) -> None:
     target_window = _target_window(session_archive, window_archive)
     if window_archive.name:
@@ -690,7 +731,12 @@ def _restore_window_metadata(
             "select-pane",
             "-T",
             pane_archive.title,
-            target=f"{target_window}.{pane_archive.index}",
+            target=_target_pane(
+                session_archive,
+                window_archive,
+                pane_archive,
+                pane_targets=pane_targets,
+            ),
         )
         raise_if_stderr(proc, "select-pane")
 
@@ -704,14 +750,17 @@ def _restore_active_pane(
     *,
     session_archive: SessionArchive,
     window_archive: WindowArchive,
+    pane_targets: t.Mapping[int, str],
 ) -> None:
     active_pane_archive = _active_pane(window_archive)
     if active_pane_archive is not None:
         proc = server.cmd(
             "select-pane",
-            target=(
-                f"{session_archive.name}:"
-                f"{window_archive.index}.{active_pane_archive.index}"
+            target=_target_pane(
+                session_archive,
+                window_archive,
+                active_pane_archive,
+                pane_targets=pane_targets,
             ),
         )
         raise_if_stderr(proc, "select-pane")
@@ -768,6 +817,19 @@ def _target_window(
     window_archive: WindowArchive,
 ) -> str:
     return f"{session_archive.name}:{window_archive.index}"
+
+
+def _target_pane(
+    session_archive: SessionArchive,
+    window_archive: WindowArchive,
+    pane_archive: PaneArchive,
+    *,
+    pane_targets: t.Mapping[int, str],
+) -> str:
+    return pane_targets.get(
+        pane_archive.index,
+        f"{_target_window(session_archive, window_archive)}.{pane_archive.index}",
+    )
 
 
 def _group_representatives(
