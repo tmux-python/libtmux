@@ -247,8 +247,13 @@ def restore_archive(
         archive if isinstance(archive, WorkspaceArchive) else read_archive(archive)
     )
     sessions: list[Session] = []
+    group_representatives = _group_representatives(resolved_archive.sessions)
 
-    for session_archive in resolved_archive.sessions:
+    for session_archive in _ordered_session_archives(
+        resolved_archive.sessions,
+        group_representatives=group_representatives,
+    ):
+        group_target = _group_target(session_archive, group_representatives)
         if server.has_session(session_archive.name):
             if on_exists == "reuse":
                 _restore_missing_session_topology(
@@ -264,13 +269,22 @@ def restore_archive(
             proc = server.cmd("kill-session", target=session_archive.name)
             raise_if_stderr(proc, "kill-session")
 
-        sessions.append(
-            _restore_session(
+        if group_target is not None and server.has_session(group_target):
+            session = _restore_grouped_session(
                 server,
                 session_archive,
-                shell_commands=shell_commands,
-            ),
+                target_session=group_target,
+            )
+            if session is not None:
+                sessions.append(session)
+            continue
+
+        session = _restore_session(
+            server,
+            session_archive,
+            shell_commands=shell_commands,
         )
+        sessions.append(session)
 
     _restore_workspace_focus(server, resolved_archive)
 
@@ -406,6 +420,25 @@ def _restore_session(
     _restore_session_focus(server, session_archive, session=session)
 
     return session
+
+
+def _restore_grouped_session(
+    server: Server,
+    session_archive: SessionArchive,
+    *,
+    target_session: str,
+) -> Session | None:
+    proc = server.cmd(
+        "new-session",
+        "-d",
+        "-s",
+        session_archive.name,
+        "-t",
+        target_session,
+    )
+    raise_if_stderr(proc, "new-session")
+    _restore_session_focus(server, session_archive)
+    return _resolve_session(server, session_archive.name)
 
 
 def _restore_missing_session_topology(
@@ -676,6 +709,65 @@ def _target_window(
     window_archive: WindowArchive,
 ) -> str:
     return f"{session_archive.name}:{window_archive.index}"
+
+
+def _group_representatives(
+    sessions: t.Iterable[SessionArchive],
+) -> dict[str, str]:
+    members_by_group: dict[str, list[str]] = {}
+    for session_archive in sessions:
+        if session_archive.group_name is None:
+            continue
+        members_by_group.setdefault(session_archive.group_name, []).append(
+            session_archive.name,
+        )
+
+    return {
+        group_name: group_name if group_name in members else members[0]
+        for group_name, members in members_by_group.items()
+    }
+
+
+def _ordered_session_archives(
+    sessions: tuple[SessionArchive, ...],
+    *,
+    group_representatives: t.Mapping[str, str],
+) -> tuple[SessionArchive, ...]:
+    return tuple(
+        session_archive
+        for _, session_archive in sorted(
+            enumerate(sessions),
+            key=lambda item: (
+                _is_group_follower(item[1], group_representatives),
+                item[0],
+            ),
+        )
+    )
+
+
+def _is_group_follower(
+    session_archive: SessionArchive,
+    group_representatives: t.Mapping[str, str],
+) -> bool:
+    if session_archive.group_name is None:
+        return False
+    return group_representatives.get(session_archive.group_name) != session_archive.name
+
+
+def _group_target(
+    session_archive: SessionArchive,
+    group_representatives: t.Mapping[str, str],
+) -> str | None:
+    if not _is_group_follower(session_archive, group_representatives):
+        return None
+    return group_representatives[session_archive.group_name or ""]
+
+
+def _resolve_session(server: Server, session_name: str) -> Session | None:
+    try:
+        return server.sessions.get(default=None, session_name=session_name)
+    except AttributeError:
+        return None
 
 
 def _move_initial_window(
