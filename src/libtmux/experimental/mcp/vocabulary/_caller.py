@@ -14,7 +14,7 @@ and a bounded same-uid ``/proc`` parent walk (:mod:`._proc`) to recover the pane
 Everything here is pure (no tmux call, no fastmcp). A pane id is unique only
 within one tmux server, so identity is socket-scoped: :func:`is_strict_caller`
 (realpath-only, for the ``is_caller`` annotation) and the fail-safe
-:func:`is_conservative_caller` (true-when-uncertain, for destructive guards).
+:func:`socket_could_match` (true-when-uncertain, for destructive guards).
 """
 
 from __future__ import annotations
@@ -364,30 +364,3 @@ def is_strict_caller(
     if not caller.in_tmux or caller.pane_id is None or pane_id != caller.pane_id:
         return False
     return socket_matches(socket, caller)
-
-
-def is_conservative_caller(
-    pane_id: str | None,
-    socket: str | None,
-    caller: CallerContext,
-) -> bool:
-    """Whether *pane_id* could be the caller's pane (conservative, for guards).
-
-    Scoped to a matching pane id but biased to block under socket uncertainty --
-    the comparator the self-kill guards use, so better discovery never makes the
-    destructive surface fail open. A different pane, or the same ``%N`` on a
-    provably different socket, is not the caller.
-
-    Examples
-    --------
-    >>> caller = CallerContext.from_env({"TMUX_PANE": "%3", "TMUX": "/tmp/s,1,2"})
-    >>> is_conservative_caller("%3", None, caller)
-    True
-    >>> is_conservative_caller("%9", None, caller)
-    False
-    >>> is_conservative_caller("%3", "/tmp/other", caller)
-    False
-    """
-    if not caller.in_tmux or caller.pane_id is None or pane_id != caller.pane_id:
-        return False
-    return socket_could_match(socket, caller)
