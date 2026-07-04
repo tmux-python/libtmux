@@ -38,6 +38,7 @@ from libtmux.experimental.workspace.events import (
     WindowCreated,
     WorkspaceBuilt,
 )
+from libtmux.experimental.workspace.expand import expand
 from libtmux.experimental.workspace.freeze import (
     afreeze_server,
     freeze,
@@ -52,11 +53,20 @@ from libtmux.experimental.workspace.ir import (
     Workspace,
 )
 from libtmux.experimental.workspace.runner import abuild_workspace, build_workspace
+from libtmux.experimental.workspace.sets import (
+    CompiledWorkspaceSet,
+    WorkspaceSet,
+    WorkspaceSetResult,
+    abuild_workspaces,
+    build_workspaces,
+    compile_workspaces,
+)
 
 __all__ = (
     "BuildEvent",
     "Command",
     "Compiled",
+    "CompiledWorkspaceSet",
     "ConfirmReport",
     "Float",
     "FloatingPane",
@@ -69,13 +79,19 @@ __all__ = (
     "Workspace",
     "WorkspaceBuilt",
     "WorkspaceCompileError",
+    "WorkspaceSet",
+    "WorkspaceSetResult",
     "abuild_workspace",
+    "abuild_workspaces",
     "afreeze_server",
     "analyze",
     "build_workspace",
+    "build_workspaces",
     "compile_full",
     "compile_workspace",
+    "compile_workspaces",
     "confirm",
+    "expand",
     "freeze",
     "freeze_server",
 )
