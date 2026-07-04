@@ -26,6 +26,7 @@ from libtmux.experimental.agents.drive import DedupLedger
 from libtmux.experimental.agents.health import is_alive
 from libtmux.experimental.agents.hud import HudRenderer
 from libtmux.experimental.agents.merge import MonotonicCounter, Stamp
+from libtmux.experimental.agents.processes import detect_agent_process
 from libtmux.experimental.agents.signals import (
     SUBSCRIPTION,
     OptionSignal,
@@ -189,7 +190,7 @@ class AgentMonitor:
             if opt_reading is not None:
                 self._observe(opt_reading)
 
-    def _observe(self, reading: Reading) -> None:
+    def _observe(self, reading: Reading, *, pid: int | None = None) -> None:
         """Apply one parsed reading to the store (latest-wins via :func:`apply`).
 
         Parameters
@@ -209,7 +210,7 @@ class AgentMonitor:
             # survives across hosts), not merely swapping this Clock implementation.
             stamp=Stamp(self._clock(), reading.source),
             source=reading.source,
-            pid=None,
+            pid=pid,
         )
         before = self._store.agents.get(reading.pane_id)
         self._store = apply(self._store, observed, now=time.monotonic())
@@ -592,6 +593,7 @@ class AgentMonitor:
             if pane_id != self._hud_pane_id
         }
         self._observe_pane_options(current_panes)
+        self._observe_processes(current_panes)
         _added, removed = diff_panes(self._prev_panes, current_panes)
         for pane_id in removed:
             before = self._store.agents.get(pane_id)
@@ -615,11 +617,53 @@ class AgentMonitor:
             name = pane.fields.get("@agent_name") or None
             current = self._store.agents.get(pane_id)
             if current is not None:
-                if current.source != "option":
+                if current.source == "osc":
                     continue
                 if current.state is state and current.name == name:
                     continue
             self._observe(Reading(pane_id, state, name, "option"))
+
+    def _observe_processes(self, current_panes: dict[str, PaneSnapshot]) -> None:
+        """Seed/refresh weak entries from known local agent processes."""
+        for pane_id, pane in current_panes.items():
+            current = self._store.agents.get(pane_id)
+            detected = detect_agent_process(pane.current_command, pane.pid)
+            if detected is None:
+                if current is not None and current.source == "process":
+                    self._mark_process_exited(current)
+                continue
+            if current is not None and current.source != "process":
+                continue
+            if (
+                current is not None
+                and current.state is AgentState.RUNNING
+                and current.name == detected.name
+                and current.pid == detected.pid
+                and current.alive
+            ):
+                continue
+            self._observe(
+                Reading(pane_id, AgentState.RUNNING, detected.name, "process"),
+                pid=detected.pid,
+            )
+
+    def _mark_process_exited(self, agent: Agent) -> None:
+        """Mark a process-discovered agent as exited when discovery disappears."""
+        if agent.state is AgentState.EXITED and not agent.alive:
+            return
+        before = agent
+        after = dataclasses.replace(
+            agent,
+            state=AgentState.EXITED,
+            alive=False,
+            since=time.monotonic(),
+        )
+        agents = dict(self._store.agents)
+        agents[agent.pane_id] = after
+        self._store = AgentStore(agents=agents, stamps=dict(self._store.stamps))
+        if self._sink is not None:
+            self._sink.save(self._store.to_dict())
+        self._notify_change(before, after)
 
     def _apply_health(self, current_panes: dict[str, PaneSnapshot]) -> None:
         """Refresh tracked agents' ``pid``/``alive`` from the pane tree.
@@ -652,7 +696,9 @@ class AgentMonitor:
             pane = current_panes.get(pane_id)
             if pane is None:
                 continue  # not in the tree → Vanished handles it
-            pid = pane.pid
+            if agent.source == "process" and agent.state is AgentState.EXITED:
+                continue  # process discovery, not pane shell liveness, revives it
+            pid = agent.pid if agent.source == "process" and agent.pid else pane.pid
             if pid is not None and not is_alive(pid):
                 if agent.alive or agent.state is not AgentState.EXITED:
                     exited = dataclasses.replace(
