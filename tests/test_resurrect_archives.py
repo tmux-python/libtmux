@@ -656,3 +656,76 @@ def test_restore_archive_reuses_existing_topology() -> None:
         ("-d", "-t", "alpha:0", "-c", "/workspace"),
         {},
     ) in server.calls
+
+
+def test_restore_archive_replays_focus_and_window_metadata() -> None:
+    """restore_archive() replays focus, title, zoom, and window option metadata."""
+    archive = WorkspaceArchive(
+        saved_at=datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc),
+        active_session_name="alpha",
+        alternate_session_name="beta",
+        sessions=(
+            SessionArchive(
+                name="alpha",
+                active_window_index=2,
+                alternate_window_index=0,
+                windows=(
+                    WindowArchive(
+                        index=0,
+                        name="editor",
+                        layout="tiled",
+                        active=False,
+                        flags="-",
+                        automatic_rename=True,
+                        panes=(
+                            PaneArchive(
+                                index=0,
+                                active=True,
+                                current_command="vim",
+                                current_path="/workspace",
+                                title="src",
+                            ),
+                        ),
+                    ),
+                    WindowArchive(
+                        index=2,
+                        name="logs",
+                        layout="even-horizontal",
+                        active=True,
+                        flags="*Z",
+                        automatic_rename=False,
+                        panes=(
+                            PaneArchive(
+                                index=0,
+                                active=True,
+                                current_command="tail",
+                                current_path="/logs",
+                                title="log",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    server = _FakeServer()
+
+    restore_archive(archive, t.cast("Server", server))
+
+    assert (
+        "set-window-option",
+        ("-t", "alpha:0", "automatic-rename", "on"),
+        {},
+    ) in server.calls
+    assert (
+        "set-window-option",
+        ("-t", "alpha:2", "automatic-rename", "off"),
+        {},
+    ) in server.calls
+    assert ("select-pane", ("-T", "src"), {"target": "alpha:0.0"}) in server.calls
+    assert ("select-pane", ("-T", "log"), {"target": "alpha:2.0"}) in server.calls
+    assert ("resize-pane", ("-Z",), {"target": "alpha:2"}) in server.calls
+    assert ("select-window", ("-t", "alpha:0"), {}) in server.calls
+    assert ("session.select_window", (2,), {}) in server.calls
+    assert ("switch-client", ("-t", "beta"), {}) in server.calls
+    assert ("switch-client", ("-t", "alpha"), {}) in server.calls
