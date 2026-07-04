@@ -15,6 +15,7 @@ import typing as t
 import pytest
 
 from libtmux.experimental.engines.base import CommandRequest
+from libtmux.experimental.mcp._settle import output_payload
 
 fastmcp = pytest.importorskip("fastmcp")
 
@@ -114,8 +115,8 @@ def test_watch_events_output_source_captures_real_output(session: Session) -> No
                         {
                             "target": pane_id,
                             "kinds": ["output"],
-                            "max_events": 1,
-                            "timeout": 10.0,
+                            "max_events": 8,
+                            "timeout": 2.0,
                         },
                     )
                 finally:
@@ -123,6 +124,11 @@ def test_watch_events_output_source_captures_real_output(session: Session) -> No
                 return result.data
 
     data = asyncio.run(main())
-    assert data["count"] == 1
-    assert data["events"][0]["kind"] == "output"
-    assert "WATCH_OK" in data["events"][0]["raw"]
+    assert data["count"] >= 1
+    assert {event["kind"] for event in data["events"]} == {"output"}
+    text = "".join(
+        payload
+        for event in data["events"]
+        if (payload := output_payload(event["raw"], pane_id)) is not None
+    )
+    assert "WATCH_OK" in text
