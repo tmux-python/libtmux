@@ -131,8 +131,9 @@ reaches `tmux wait-for -S` so a failed command cannot leave your script blocked.
 Channels are server-wide, so give each in-flight command a distinct channel name.
 
 > **Note:** If you drive tmux through the libtmux MCP server, prefer the
-> event-backed `wait_for_output` tool: it folds live `%output` and returns when
-> the pane settles without requiring a raw tmux synchronization channel.
+> `run_in_pane` tool to send a command and wait for its output. For commands
+> already running, use the event-backed `wait_for_output` tool: it folds live
+> `%output` and returns when the pane settles.
 
 ```python
 >>> monitor_window = session.new_window(window_name='monitor', attach=False)
