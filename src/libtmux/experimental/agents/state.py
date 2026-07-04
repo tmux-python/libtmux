@@ -90,3 +90,27 @@ class Agent:
         True
         """
         return self.state is AgentState.RUNNING
+
+
+@dataclass(frozen=True)
+class AgentTransition:
+    """One observed change in a pane's agent state.
+
+    Published by the monitor on every state change (the edge an orchestrator
+    reacts to) and carried to transition observers; *before* is ``None`` for a
+    pane's first observation.
+
+    Examples
+    --------
+    >>> agent = Agent(pane_id="%1", key="%1", name="claude",
+    ...               state=AgentState.AWAITING_INPUT, since=1.0,
+    ...               source="option", pid=42, alive=True)
+    >>> AgentTransition(pane_id="%1", before=AgentState.RUNNING,
+    ...                 after=AgentState.AWAITING_INPUT, agent=agent).after
+    <AgentState.AWAITING_INPUT: 'awaiting_input'>
+    """
+
+    pane_id: str
+    before: AgentState | None
+    after: AgentState
+    agent: Agent
