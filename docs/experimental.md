@@ -115,6 +115,45 @@ many times tmux is invoked:
 True
 ```
 
+## Building fluently with `plan()`
+
+{func}`~libtmux.experimental.fluent.plan` is a fluent builder over a plan: you
+name a session, walk down to a pane, and record what each pane runs, without
+threading the new ids through yourself. Nothing touches tmux until
+{meth}`~libtmux.experimental.fluent.PlanBuilder.run`, which folds the whole
+description into a few dispatches (its async twin is ``arun``):
+
+```python
+>>> from libtmux.experimental.fluent import plan
+>>> from libtmux.experimental.engines import ConcreteEngine
+>>> p = plan()
+>>> pane = p.new_session("dev").window().pane()
+>>> _ = pane.do(lambda c: c.send_keys("vim")).split().do(lambda c: c.send_keys("htop"))
+>>> p.run(ConcreteEngine()).ok
+True
+```
+
+``.split()`` makes a new pane that does not exist yet, so it comes back as a
+*forward* handle: you keep building on it, but reading its id is a static type
+error (the concrete {class}`~libtmux.experimental.query.PaneRef` has
+``.pane_id``; the {class}`~libtmux.experimental.query.ForwardPaneRef` does not),
+resolved against the captured id only when the plan runs.
+
+``run()`` folds by default and breaks the fold only at a true blocker -- a
+created id a later op needs, or a host pause recorded by ``sleep()``/``wait()``.
+{meth}`~libtmux.experimental.fluent.PlanBuilder.find_or_create_session` makes the
+create conditional, so re-running a build reuses a live session instead of
+duplicating it:
+
+```python
+>>> from libtmux.experimental.fluent import plan
+>>> from libtmux.experimental.engines import ConcreteEngine
+>>> p = plan()
+>>> _ = p.find_or_create_session("dev").window().pane()
+>>> p.run(ConcreteEngine()).ok
+True
+```
+
 ## Operation catalog
 
 The catalog below is generated from the operation registry, so it always matches
