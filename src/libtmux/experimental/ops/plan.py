@@ -38,7 +38,7 @@ from libtmux.experimental.ops.planner import Planner, PlanStep, SequentialPlanne
 from libtmux.experimental.ops.serialize import operation_from_dict, operation_to_dict
 
 if t.TYPE_CHECKING:
-    from collections.abc import Generator, Iterator
+    from collections.abc import AsyncGenerator, Generator, Iterator
 
     from typing_extensions import Self
 
@@ -97,6 +97,40 @@ class _Host:
     """Drive request: fire the per-step host hook; the driver returns ``None``."""
 
     report: StepReport
+
+
+@dataclass(frozen=True)
+class StepExplanation:
+    """Why one dispatch step is its own tmux call (from :meth:`LazyPlan.explain`).
+
+    ``reason`` is one of ``"marked-fold"`` (a pane create plus its ``{marked}``
+    decorates), ``"folded"`` (a ``;``-chain of chainable ops), ``"created-id"``
+    (a create whose captured id a later op must target -- a true blocker),
+    ``"capture"`` (a non-chainable op whose stdout can't merge into a chain), or
+    ``"single"`` (a lone chainable op with nothing to fold with).
+    """
+
+    step: PlanStep
+    kinds: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class StepDone:
+    """Stream event: a plan step finished and its results have bound."""
+
+    report: StepReport
+
+
+@dataclass(frozen=True)
+class PlanDone:
+    """Stream event: the plan finished; carries the full :class:`PlanResult`."""
+
+    result: PlanResult
+
+
+#: An event yielded by :meth:`LazyPlan.astream`.
+PlanEvent = StepDone | PlanDone
 
 
 def _target_from_id(value: str) -> Target:
@@ -275,6 +309,45 @@ class LazyPlan:
 
         return [_render(op) for op in self._operations]
 
+    def explain(self, planner: Planner | None = None) -> list[StepExplanation]:
+        """Explain why *planner* breaks the plan into the dispatches it does.
+
+        A pure companion to :meth:`preview`: folding hides per-op structure, so
+        this annotates each dispatch step with the reason it can't fold further
+        (see :class:`StepExplanation`). Defaults to
+        :class:`~.planner.SequentialPlanner`.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.ops import SplitWindow, SendKeys, MarkedPlanner
+        >>> from libtmux.experimental.ops._types import WindowId
+        >>> plan = LazyPlan()
+        >>> pane = plan.add(SplitWindow(target=WindowId("@1")))
+        >>> _ = plan.add(SendKeys(target=pane, keys="vim"))
+        >>> [(e.kinds, e.reason) for e in plan.explain(MarkedPlanner())]
+        [(('split_window', 'send_keys'), 'marked-fold')]
+        >>> [(e.kinds, e.reason) for e in plan.explain()]
+        [(('split_window',), 'created-id'), (('send_keys',), 'single')]
+        """
+        steps = (planner or SequentialPlanner()).plan(self._operations)
+        out: list[StepExplanation] = []
+        for step in steps:
+            kinds = tuple(self._operations[i].kind for i in step.indices)
+            if step.marked:
+                reason = "marked-fold"
+            elif len(step.indices) > 1:
+                reason = "folded"
+            else:
+                op = self._operations[step.indices[0]]
+                if op.effects.creates is not None:
+                    reason = "created-id"
+                elif not op.chainable:
+                    reason = "capture"
+                else:
+                    reason = "single"
+            out.append(StepExplanation(step, kinds, reason))
+        return out
+
     def _drive(
         self,
         version: str | None,
@@ -413,3 +486,48 @@ class LazyPlan:
         if isinstance(request, _Chain):
             return await engine.run(CommandRequest.from_args(*request.argv))
         return await arun(request.op, engine, version=version)
+
+    async def astream(
+        self,
+        engine: AsyncTmuxEngine,
+        *,
+        version: str | None = None,
+        planner: Planner | None = None,
+    ) -> AsyncGenerator[PlanEvent, None]:
+        """Execute the plan, streaming a :data:`PlanEvent` per step as it binds.
+
+        The observe-as-you-go twin of :meth:`aexecute` over the same sans-I/O
+        resolution core: it yields a :class:`StepDone` after each dispatch binds
+        and a terminal :class:`PlanDone` carrying the full :class:`PlanResult`, so
+        ``[e async for e in plan.astream(engine)][-1].result`` equals ``await
+        plan.aexecute(engine)``. The stream is pull-based -- a slow ``async for``
+        naturally paces the plan, so backpressure needs no buffer and the event
+        loop is never blocked between dispatches. Run one ``astream`` per engine
+        at a time (the engine's write order is shared).
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> from libtmux.experimental.engines.concrete import AsyncConcreteEngine
+        >>> from libtmux.experimental.ops import SendKeys
+        >>> from libtmux.experimental.ops._types import PaneId
+        >>> plan = LazyPlan()
+        >>> _ = plan.add(SendKeys(target=PaneId("%1"), keys="vim"))
+        >>> async def drain() -> list[str]:
+        ...     engine = AsyncConcreteEngine()
+        ...     return [type(e).__name__ async for e in plan.astream(engine)]
+        >>> asyncio.run(drain())
+        ['StepDone', 'PlanDone']
+        """
+        version = resolve_engine_version(engine, version)
+        gen = self._drive(version, planner or SequentialPlanner())
+        try:
+            request = next(gen)
+            while True:
+                if isinstance(request, _Host):
+                    yield StepDone(request.report)  # pull point: consumer paces here
+                    request = gen.send(None)
+                else:
+                    request = gen.send(await self._adispatch(request, engine, version))
+        except StopIteration as stop:
+            yield PlanDone(t.cast("PlanResult", stop.value))
