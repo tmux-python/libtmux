@@ -58,6 +58,10 @@ if t.TYPE_CHECKING:
 _CURSOR_FMT = "#{cursor_x},#{cursor_y}"
 _WAIT_PANE_POLLS = 40
 _WAIT_PANE_INTERVAL = 0.05
+#: The probe format for a session find-or-create -- the ids
+#: ``NewSession(capture_panes=True)`` captures, so a found session binds the
+#: same self/window/pane slots a created one would.
+_SESSION_PROBE = "#{session_id} #{window_id} #{pane_id}"
 
 
 def _pane_ready(cursor: str) -> bool:
@@ -156,6 +160,32 @@ class PlanBuilder:
         ['new_session']
         """
         slot = self.plan.add(NewSession(session_name=name, capture_panes=True))
+        return SessionRef(self.plan, name, slot)
+
+    def find_or_create_session(self, name: str) -> SessionRef:
+        """Reach session *name*, creating it only if it does not exist.
+
+        At build time this records the same create as :meth:`new_session`, but
+        makes it conditional (see :meth:`~..ops.plan.LazyPlan.ensure`): at
+        execution the plan probes for *name* and reuses the live session when it
+        is already there, so a re-run is idempotent instead of a duplicate.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.engines.concrete import ConcreteEngine
+        >>> p = plan()
+        >>> _ = p.find_or_create_session("dev").window().pane()
+        >>> [op.kind for op in p.plan.operations]
+        ['new_session']
+        >>> p.run(ConcreteEngine()).ok
+        True
+        """
+        create = NewSession(session_name=name, capture_panes=True)
+        slot = self.plan.add(create)
+        self.plan.ensure(
+            slot.slot,
+            DisplayMessage(target=NameRef(name), message=_SESSION_PROBE),
+        )
         return SessionRef(self.plan, name, slot)
 
     def sleep(self, seconds: float) -> PlanBuilder:
