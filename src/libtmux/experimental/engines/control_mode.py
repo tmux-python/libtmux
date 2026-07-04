@@ -305,6 +305,7 @@ class ControlModeEngine:
         self._proc = proc
         self._selector = selector
         self._consume_startup()
+        self._reap_own_session()
 
     def _consume_startup(self) -> None:
         """Read and discard tmux's startup ACK block before any command.
@@ -325,6 +326,24 @@ class ControlModeEngine:
                 self._parser.notifications()
                 return
             self._parser.notifications()
+
+    def _reap_own_session(self) -> None:
+        """Mark this control client's throwaway session ``destroy-unattached``.
+
+        A bare ``tmux -C`` connect implies ``new-session``, so set
+        ``destroy-unattached on`` on the *current* session (the phantom; no
+        ``-t``/``-g``, scoped to exactly it) right after connect. tmux reaps it
+        the moment the client disconnects, so control mode leaves no throwaway
+        sessions. Its result block is read and discarded here -- before any user
+        command -- so it cannot desync the next command. Best-effort.
+        """
+        proc = self._proc
+        if proc is None or proc.stdin is None:
+            return
+        argv = ("set-option", "destroy-unattached", "on")
+        with contextlib.suppress(OSError, BrokenPipeError, ControlModeError):
+            self._write((render_control_line(argv) + "\n").encode())
+            self._read_blocks(command_count(argv))
 
     def _drain_unsolicited(self) -> None:
         """Discard any blocks/notifications already buffered (non-blocking)."""
