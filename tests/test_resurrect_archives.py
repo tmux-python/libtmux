@@ -337,6 +337,104 @@ def test_write_read_archive_round_trips_json(tmp_path: pathlib.Path) -> None:
     assert read_archive(archive_path) == archive
 
 
+def test_read_archive_accepts_existing_minimal_json(tmp_path: pathlib.Path) -> None:
+    """read_archive() remains compatible with pre-parity archive JSON."""
+    archive_path = tmp_path / "minimal.json"
+    archive_path.write_text(
+        """{
+  "capabilities": [
+    "sessions",
+    "windows",
+    "panes"
+  ],
+  "format_version": "libtmux.resurrect.archive.v1",
+  "saved_at": "2026-07-04T12:00:00+00:00",
+  "sessions": [
+    {
+      "name": "alpha",
+      "windows": [
+        {
+          "active": true,
+          "index": 0,
+          "layout": "tiled",
+          "name": "editor",
+          "panes": [
+            {
+              "active": true,
+              "current_command": "vim",
+              "current_path": "/workspace",
+              "index": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+""",
+        encoding="utf-8",
+    )
+
+    archive = read_archive(archive_path)
+
+    assert archive.active_session_name is None
+    assert archive.alternate_session_name is None
+    assert archive.sessions[0].group_name is None
+    assert archive.sessions[0].active_window_index is None
+    assert archive.sessions[0].alternate_window_index is None
+    assert archive.sessions[0].windows[0].flags == ""
+    assert archive.sessions[0].windows[0].automatic_rename is None
+    assert archive.sessions[0].windows[0].panes[0].title == ""
+    assert archive.sessions[0].windows[0].panes[0].full_command == ""
+    assert archive.sessions[0].windows[0].panes[0].history_size == 0
+    assert archive.sessions[0].windows[0].panes[0].contents == ()
+
+
+def test_write_read_archive_preserves_extended_metadata(
+    tmp_path: pathlib.Path,
+) -> None:
+    """write_archive() persists the richer parity metadata."""
+    archive = WorkspaceArchive(
+        saved_at=datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc),
+        active_session_name="alpha",
+        alternate_session_name="beta",
+        sessions=(
+            SessionArchive(
+                name="alpha",
+                group_name="work",
+                active_window_index=1,
+                alternate_window_index=0,
+                windows=(
+                    WindowArchive(
+                        index=1,
+                        name="editor",
+                        layout="tiled",
+                        active=True,
+                        flags="*Z",
+                        automatic_rename=False,
+                        panes=(
+                            PaneArchive(
+                                index=0,
+                                active=True,
+                                current_command="vim",
+                                current_path="/workspace",
+                                title="src",
+                                full_command="vim pyproject.toml",
+                                history_size=42,
+                                contents=("hello", "world"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    archive_path = tmp_path / "extended.json"
+
+    assert write_archive(archive, archive_path) == archive_path
+    assert read_archive(archive_path) == archive
+
+
 def test_restore_archive_recreates_windows_panes_and_layout() -> None:
     """restore_archive() recreates sessions, windows, panes, and selections."""
     archive = WorkspaceArchive(
