@@ -44,6 +44,11 @@ from .resurrect_file import (
     archive_from_resurrect_file,
     archive_to_resurrect_file,
 )
+from .storage import (
+    ArchiveSnapshot,
+    LastPointerKind,
+    write_archive_snapshot,
+)
 
 __all__ = (
     "CAPTURED_CAPABILITIES",
@@ -53,10 +58,12 @@ __all__ = (
     "DEFAULT_SHELL_COMMANDS",
     "FORMAT_VERSION",
     "STATE_FORMAT_VERSION",
+    "ArchiveSnapshot",
     "AutosavePaths",
     "AutosaveResult",
     "AutosaveState",
     "CompositeProcessCommandProvider",
+    "LastPointerKind",
     "PaneArchive",
     "ProcessCommandProvider",
     "ProcessRestorePolicy",
@@ -79,5 +86,6 @@ __all__ = (
     "restore_archive",
     "should_autosave",
     "write_archive",
+    "write_archive_snapshot",
     "write_autosave_state",
 )
