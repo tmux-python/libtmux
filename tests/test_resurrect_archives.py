@@ -6,6 +6,7 @@ import datetime
 import pathlib
 import typing as t
 
+from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.resurrect.archives import (
     PaneArchive,
     SessionArchive,
@@ -184,10 +185,9 @@ class _FakeServer:
 def test_capture_archive_groups_tmux_pane_rows() -> None:
     """capture_archive() groups list-panes rows by session and window."""
     saved_at = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
-    separator = "\x1f"
     server = _FakeServer(
         [
-            separator.join(
+            FORMAT_SEPARATOR.join(
                 [
                     "alpha",
                     "0",
@@ -200,7 +200,7 @@ def test_capture_archive_groups_tmux_pane_rows() -> None:
                     "/workspace",
                 ],
             ),
-            separator.join(
+            FORMAT_SEPARATOR.join(
                 [
                     "alpha",
                     "0",
@@ -237,6 +237,72 @@ def test_capture_archive_groups_tmux_pane_rows() -> None:
         ),
     )
     assert server.calls[0][0] == "list-panes"
+
+
+def test_capture_archive_records_captured_capabilities() -> None:
+    """capture_archive() declares the parity features captured in the archive."""
+    archive = capture_archive(t.cast("Server", _FakeServer()))
+
+    assert archive.capabilities == (
+        "sessions",
+        "windows",
+        "panes",
+        "window-order",
+        "pane-order",
+        "working-directories",
+        "layouts",
+        "active-windows",
+        "active-panes",
+        "pane-current-command",
+    )
+
+
+def test_capture_archive_uses_configured_libtmux_separator() -> None:
+    """capture_archive() uses a tmux-version-safe separator."""
+    server = _FakeServer()
+
+    capture_archive(t.cast("Server", server))
+
+    format_arg = server.calls[0][1][2]
+    assert isinstance(format_arg, str)
+    assert server.calls == [("list-panes", ("-a", "-F", format_arg), {})]
+    assert FORMAT_SEPARATOR in format_arg
+    if FORMAT_SEPARATOR != "\x1f":
+        assert "\x1f" not in format_arg
+
+
+def test_capture_archive_accepts_trailing_format_separator() -> None:
+    """capture_archive() accepts the output shape used by neo format strings."""
+    saved_at = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
+    server = _FakeServer(
+        [
+            FORMAT_SEPARATOR.join(
+                [
+                    "alpha",
+                    "0",
+                    "editor",
+                    "tiled",
+                    "1",
+                    "0",
+                    "1",
+                    "vim",
+                    "/workspace",
+                    "",
+                ],
+            ),
+        ],
+    )
+
+    archive = capture_archive(t.cast("Server", server), saved_at=saved_at)
+
+    assert archive.sessions[0].windows[0].panes == (
+        PaneArchive(
+            index=0,
+            active=True,
+            current_command="vim",
+            current_path="/workspace",
+        ),
+    )
 
 
 def test_write_read_archive_round_trips_json(tmp_path: pathlib.Path) -> None:

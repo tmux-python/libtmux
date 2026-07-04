@@ -6,10 +6,13 @@ import datetime
 import pathlib
 import typing as t
 
+from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.resurrect.continuum import (
     DEFAULT_AUTOSAVE_INTERVAL,
+    AutosavePaths,
     AutosaveState,
     autosave_once,
+    default_autosave_paths,
     next_autosave_at,
     read_autosave_state,
     should_autosave,
@@ -32,10 +35,16 @@ class _Cmd:
 class _FakeServer:
     """Server double that returns one captured pane."""
 
-    def __init__(self) -> None:
-        separator = "\x1f"
+    def __init__(
+        self,
+        *,
+        socket_name: str | None = None,
+        socket_path: pathlib.Path | None = None,
+    ) -> None:
+        self.socket_name = socket_name
+        self.socket_path = socket_path
         self.stdout = [
-            separator.join(
+            FORMAT_SEPARATOR.join(
                 [
                     "alpha",
                     "0",
@@ -113,6 +122,40 @@ def test_read_write_autosave_state_round_trips(tmp_path: pathlib.Path) -> None:
 
     assert write_autosave_state(state, state_path) == state_path
     assert read_autosave_state(state_path) == state
+
+
+def test_default_autosave_paths_are_socket_aware(tmp_path: pathlib.Path) -> None:
+    """default_autosave_paths() keeps independent tmux servers separate."""
+    alpha = default_autosave_paths(
+        t.cast("Server", _FakeServer(socket_name="alpha")),
+        tmp_path,
+    )
+    beta = default_autosave_paths(
+        t.cast("Server", _FakeServer(socket_name="beta")),
+        tmp_path,
+    )
+
+    assert isinstance(alpha, AutosavePaths)
+    assert alpha.archive_path.parent == tmp_path
+    assert alpha.state_path.parent == tmp_path
+    assert alpha.archive_path != alpha.state_path
+    assert alpha.archive_path != beta.archive_path
+    assert alpha.state_path != beta.state_path
+
+
+def test_default_autosave_paths_hash_socket_paths(tmp_path: pathlib.Path) -> None:
+    """default_autosave_paths() does not embed raw socket paths in filenames."""
+    socket_path = pathlib.Path("/tmp/tmux-user/private.sock")
+
+    paths = default_autosave_paths(
+        t.cast("Server", _FakeServer(socket_path=socket_path)),
+        tmp_path,
+    )
+
+    assert "private.sock" not in paths.archive_path.name
+    assert "tmux-user" not in paths.archive_path.name
+    assert paths.archive_path.suffix == ".json"
+    assert paths.state_path.name.endswith(".state.json")
 
 
 def test_autosave_once_skips_until_interval_elapses(tmp_path: pathlib.Path) -> None:
