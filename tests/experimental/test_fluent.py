@@ -11,6 +11,7 @@ from libtmux.experimental.fluent import PlanBuilder, plan
 from libtmux.experimental.query import ForwardPaneRef
 
 if t.TYPE_CHECKING:
+    from libtmux.server import Server
     from libtmux.session import Session
 
 
@@ -72,21 +73,36 @@ def test_window_pane_is_forward_handle() -> None:
     assert not hasattr(ref, "pane_id")
 
 
+def _kill_named(server: Server, name: str) -> None:
+    """Kill every session named *name* so a live test leaves the shared server clean.
+
+    The ``server`` fixture is session-scoped, so a leaked session would perturb
+    later tests that measure global session counts (e.g. the phantom-reap tests).
+    """
+    for sess in server.sessions:
+        if sess.session_name == name:
+            sess.kill()
+
+
 def test_build_session_live(session: Session) -> None:
     """A fluent build creates a real session with the declared panes."""
     from libtmux.experimental.engines.subprocess import SubprocessEngine
 
-    engine = SubprocessEngine.for_server(session.server)
-    p = plan()
-    pane = p.new_session("fluentdev").window().pane()
-    pane.do(lambda c: c.send_keys("echo top", enter=False)).split().do(
-        lambda c: c.send_keys("echo bottom", enter=False),
-    )
-    p.run(engine).raise_for_status()
+    server = session.server
+    engine = SubprocessEngine.for_server(server)
+    try:
+        p = plan()
+        pane = p.new_session("fluentdev").window().pane()
+        pane.do(lambda c: c.send_keys("echo top", enter=False)).split().do(
+            lambda c: c.send_keys("echo bottom", enter=False),
+        )
+        p.run(engine).raise_for_status()
 
-    built = [s for s in session.server.sessions if s.session_name == "fluentdev"]
-    assert len(built) == 1
-    assert len(built[0].windows[0].panes) == 2
+        built = [s for s in server.sessions if s.session_name == "fluentdev"]
+        assert len(built) == 1
+        assert len(built[0].windows[0].panes) == 2
+    finally:
+        _kill_named(server, "fluentdev")
 
 
 class _HostCase(t.NamedTuple):
@@ -150,7 +166,8 @@ def test_find_or_create_session_is_idempotent_live(session: Session) -> None:
     """Building the same session name twice reuses it instead of duplicating."""
     from libtmux.experimental.engines.subprocess import SubprocessEngine
 
-    engine = SubprocessEngine.for_server(session.server)
+    server = session.server
+    engine = SubprocessEngine.for_server(server)
 
     def build() -> None:
         p = plan()
@@ -159,8 +176,11 @@ def test_find_or_create_session_is_idempotent_live(session: Session) -> None:
         )
         p.run(engine).raise_for_status()
 
-    build()
-    build()  # second run must find the existing session, not create a duplicate
+    try:
+        build()
+        build()  # second run must find the existing session, not create a duplicate
 
-    named = [s for s in session.server.sessions if s.session_name == "fluent-idem"]
-    assert len(named) == 1
+        named = [s for s in server.sessions if s.session_name == "fluent-idem"]
+        assert len(named) == 1
+    finally:
+        _kill_named(server, "fluent-idem")
