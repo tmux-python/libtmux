@@ -17,6 +17,10 @@ from dataclasses import dataclass
 from libtmux._internal.types import StrPath
 from libtmux.common import raise_if_stderr
 from libtmux.formats import FORMAT_SEPARATOR
+from libtmux.resurrect.processes import (
+    DEFAULT_PROCESS_RESTORE_POLICY,
+    ProcessRestorePolicy,
+)
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
@@ -225,6 +229,7 @@ def restore_archive(
     server: Server,
     *,
     on_exists: RestorePolicy = "error",
+    process_policy: ProcessRestorePolicy | None = DEFAULT_PROCESS_RESTORE_POLICY,
     shell_commands: t.Collection[str] = DEFAULT_SHELL_COMMANDS,
 ) -> list[Session]:
     """Restore sessions from an archive into a tmux server.
@@ -259,6 +264,7 @@ def restore_archive(
                 _restore_missing_session_topology(
                     server,
                     session_archive,
+                    process_policy=process_policy,
                     shell_commands=shell_commands,
                 )
                 _restore_session_focus(server, session_archive)
@@ -282,6 +288,7 @@ def restore_archive(
         session = _restore_session(
             server,
             session_archive,
+            process_policy=process_policy,
             shell_commands=shell_commands,
         )
         sessions.append(session)
@@ -367,6 +374,7 @@ def _restore_session(
     server: Server,
     session_archive: SessionArchive,
     *,
+    process_policy: ProcessRestorePolicy | None,
     shell_commands: t.Collection[str],
 ) -> Session:
     first_window = session_archive.windows[0] if session_archive.windows else None
@@ -376,7 +384,11 @@ def _restore_session(
         session_name=session_archive.name,
         start_directory=_pane_path(first_pane),
         window_name=_name_or_none(first_window.name) if first_window else None,
-        window_command=_pane_command(first_pane, shell_commands=shell_commands),
+        window_command=_pane_command(
+            first_pane,
+            process_policy=process_policy,
+            shell_commands=shell_commands,
+        ),
     )
 
     if first_window is not None:
@@ -392,6 +404,7 @@ def _restore_session(
             session_archive=session_archive,
             window=active_window,
             window_archive=first_window,
+            process_policy=process_policy,
             shell_commands=shell_commands,
             skip_first_pane=True,
         )
@@ -404,6 +417,7 @@ def _restore_session(
             window_index=str(window_archive.index),
             window_shell=_pane_command(
                 first_window_pane,
+                process_policy=process_policy,
                 shell_commands=shell_commands,
             ),
             attach=False,
@@ -413,6 +427,7 @@ def _restore_session(
             session_archive=session_archive,
             window=window,
             window_archive=window_archive,
+            process_policy=process_policy,
             shell_commands=shell_commands,
             skip_first_pane=True,
         )
@@ -445,6 +460,7 @@ def _restore_missing_session_topology(
     server: Server,
     session_archive: SessionArchive,
     *,
+    process_policy: ProcessRestorePolicy | None,
     shell_commands: t.Collection[str],
 ) -> None:
     existing_windows = _existing_window_indexes(server, session_archive.name)
@@ -454,6 +470,7 @@ def _restore_missing_session_topology(
                 server,
                 session_archive=session_archive,
                 window_archive=window_archive,
+                process_policy=process_policy,
                 shell_commands=shell_commands,
             )
             continue
@@ -471,6 +488,7 @@ def _restore_missing_session_topology(
                 session_archive=session_archive,
                 window_archive=window_archive,
                 pane_archive=pane_archive,
+                process_policy=process_policy,
                 shell_commands=shell_commands,
             )
         _restore_reused_window_state(
@@ -485,6 +503,7 @@ def _create_missing_window(
     *,
     session_archive: SessionArchive,
     window_archive: WindowArchive,
+    process_policy: ProcessRestorePolicy | None,
     shell_commands: t.Collection[str],
 ) -> None:
     first_pane = window_archive.panes[0] if window_archive.panes else None
@@ -498,7 +517,11 @@ def _create_missing_window(
     path = _pane_path(first_pane)
     if path is not None:
         args.extend(("-c", path))
-    command = _pane_command(first_pane, shell_commands=shell_commands)
+    command = _pane_command(
+        first_pane,
+        process_policy=process_policy,
+        shell_commands=shell_commands,
+    )
     if command is not None:
         args.append(command)
 
@@ -512,13 +535,18 @@ def _create_missing_pane(
     session_archive: SessionArchive,
     window_archive: WindowArchive,
     pane_archive: PaneArchive,
+    process_policy: ProcessRestorePolicy | None,
     shell_commands: t.Collection[str],
 ) -> None:
     args = ["-d", "-t", f"{session_archive.name}:{window_archive.index}"]
     path = _path_or_none(pane_archive.current_path)
     if path is not None:
         args.extend(("-c", path))
-    command = _pane_command(pane_archive, shell_commands=shell_commands)
+    command = _pane_command(
+        pane_archive,
+        process_policy=process_policy,
+        shell_commands=shell_commands,
+    )
     if command is not None:
         args.append(command)
 
@@ -556,6 +584,7 @@ def _restore_window(
     session_archive: SessionArchive,
     window: Window,
     window_archive: WindowArchive,
+    process_policy: ProcessRestorePolicy | None,
     shell_commands: t.Collection[str],
     skip_first_pane: bool,
 ) -> None:
@@ -565,7 +594,11 @@ def _restore_window(
     for pane_archive in pane_archives:
         window.split(
             start_directory=_path_or_none(pane_archive.current_path),
-            shell=_pane_command(pane_archive, shell_commands=shell_commands),
+            shell=_pane_command(
+                pane_archive,
+                process_policy=process_policy,
+                shell_commands=shell_commands,
+            ),
             attach=pane_archive.active,
         )
 
@@ -816,13 +849,16 @@ def _name_or_none(name: str) -> str | None:
 def _pane_command(
     pane: PaneArchive | None,
     *,
+    process_policy: ProcessRestorePolicy | None,
     shell_commands: t.Collection[str],
 ) -> str | None:
     if pane is None:
         return None
     if not pane.current_command or pane.current_command in shell_commands:
         return None
-    return pane.current_command
+    if process_policy is None:
+        return None
+    return process_policy.resolve_command(pane.full_command or pane.current_command)
 
 
 def _parse_pane_row(row: str) -> _PaneRow:
