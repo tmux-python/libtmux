@@ -107,7 +107,15 @@ from libtmux.experimental.ops.exc import (
 )
 from libtmux.experimental.ops.execute import arun, run
 from libtmux.experimental.ops.operation import Operation
-from libtmux.experimental.ops.plan import LazyPlan, PlanResult, StepReport
+from libtmux.experimental.ops.plan import (
+    LazyPlan,
+    PlanDone,
+    PlanEvent,
+    PlanResult,
+    StepDone,
+    StepExplanation,
+    StepReport,
+)
 from libtmux.experimental.ops.planner import (
     BoundedPlanner,
     FoldingPlanner,
@@ -202,6 +210,8 @@ __all__ = (
     "PaneId",
     "PasteBuffer",
     "PipePane",
+    "PlanDone",
+    "PlanEvent",
     "PlanResult",
     "PlanStep",
     "Planner",
@@ -241,6 +251,8 @@ __all__ = (
     "SplitWindowResult",
     "StartServer",
     "Status",
+    "StepDone",
+    "StepExplanation",
     "StepReport",
     "SuspendClient",
     "SwapPane",
