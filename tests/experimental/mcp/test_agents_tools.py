@@ -125,3 +125,49 @@ def test_install_agent_hooks(
 
     install = mcp.tools["install_agent_hooks"].fn
     assert asyncio.run(install("claude")) == case.expected
+
+
+class _DispatchEngine(_FakeEngine):
+    """A fake engine that records dispatched requests and succeeds."""
+
+    def __init__(self) -> None:
+        self.requests: list[t.Any] = []
+
+    async def run(self, request: t.Any) -> t.Any:
+        from libtmux.experimental.engines.base import CommandResult
+
+        self.requests.append(request)
+        return CommandResult(cmd=request.args, returncode=0)
+
+
+def test_wait_for_agent_tool_reports_reached() -> None:
+    """The wait_for_agent tool returns the typed outcome as a dict."""
+    pytest.importorskip("fastmcp")
+    from libtmux.experimental.mcp.vocabulary.agents import register_agents
+
+    mcp = _CapturingMcp()
+    monitor = register_agents(t.cast("FastMCP[t.Any]", mcp), _FakeEngine())
+    monitor.ingest("%subscription-changed agentstate $0 @0 1 %1 : idle")
+
+    wait = mcp.tools["wait_for_agent"].fn
+    result = asyncio.run(wait("%1", "idle", 0.5))
+
+    assert result["reached"] is True
+    assert result["reason"] == "reached"
+
+
+def test_send_to_agent_tool_dispatches_when_ready() -> None:
+    """The send_to_agent tool folds a ready send into a single dispatch."""
+    pytest.importorskip("fastmcp")
+    from libtmux.experimental.mcp.vocabulary.agents import register_agents
+
+    engine = _DispatchEngine()
+    mcp = _CapturingMcp()
+    monitor = register_agents(t.cast("FastMCP[t.Any]", mcp), engine)
+    monitor.ingest("%subscription-changed agentstate $0 @0 1 %1 : idle")
+
+    send = mcp.tools["send_to_agent"].fn
+    result = asyncio.run(send("%1", "echo hi"))
+
+    assert result["sent"] is True
+    assert len(engine.requests) == 1
