@@ -76,6 +76,13 @@ class PaneSnapshot:
     ('%1', 0, True, 80)
     >>> pane.current_command
     'zsh'
+
+    The ``floating`` flag reflects ``#{pane_floating_flag}`` (tmux 3.7+):
+
+    >>> PaneSnapshot.from_format({"pane_id": "%9", "pane_floating_flag": "1"}).floating
+    True
+    >>> pane.floating
+    False
     """
 
     pane_id: str = ""
@@ -89,6 +96,7 @@ class PaneSnapshot:
     current_path: str | None = None
     title: str | None = None
     pid: int | None = None
+    floating: bool = False
     fields: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -106,6 +114,7 @@ class PaneSnapshot:
             current_path=raw.get("pane_current_path"),
             title=raw.get("pane_title"),
             pid=_as_int(raw.get("pane_pid")),
+            floating=_as_bool(raw.get("pane_floating_flag")),
             fields=dict(raw),
         )
 
