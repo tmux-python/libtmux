@@ -92,6 +92,41 @@ fold boundaries that a fold never crosses. Pass a
 {class}`~libtmux.experimental.ops.planner.SequentialPlanner` to ``build`` for one
 legible tmux call per operation when debugging.
 
+#### Floating panes on tmux 3.7 (#690)
+
+On tmux 3.7, the operations create floating panes -- overlays with an absolute
+size, position, and optional zoom. A ``new-pane`` operation, ``new_pane()`` on
+the pane wrappers, and a curated MCP tool each open one, and a
+{class}`~libtmux.experimental.workspace.ir.Workspace` can declare floating panes
+on a window, including a pane that overlays a different window.
+
+#### Query and command live panes with `panes()` (#690)
+
+{func}`~libtmux.experimental.query.panes` is a lazy, chainable query over the
+panes a running server has: ``filter``, ``order_by``, ``limit``, and ``map``
+compose and read nothing until a terminal call. The same query commands what it
+selects -- ``commands()`` attaches per-pane actions (send keys, resize, select,
+respawn, clear history, kill) that run as one folded tmux dispatch. A query
+resolves against a live engine or a plain list of pane snapshots, so the same
+code runs offline in tests.
+
+#### Drive tmux from an MCP server (#690)
+
+An optional Model Context Protocol server exposes tmux as tools an AI agent can
+call, installed with the ``libtmux[mcp]`` extra and launched as
+``libtmux-engine-mcp``. It offers a curated vocabulary of intuitive verbs
+(``send_input``, ``wait_for_output``, ``split_pane``, ``capture_pane``,
+``new_pane``, and the session, window, and pane lifecycle), a tool for every
+individual operation, and plan tools that preview or build a whole workspace in
+one call.
+
+The server is caller-aware: because a control-mode agent shares the server with
+the panes it drives, it knows which pane launched it and refuses to kill or
+respawn its own pane, window, or session. A safety level (``LIBTMUX_SAFETY``)
+keeps mutating and destructive tools hidden until an operator opts in, and a
+needle-free ``wait_for_output`` reports when a pane goes quiet after a command --
+no sentinel string -- and whether its process exited.
+
 ## libtmux 0.61.0 (2026-07-04)
 
 libtmux 0.61.0 hardens support for the tmux 3.7 patch line. It fixes
