@@ -11,7 +11,12 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux._internal.types import StrPath
-from libtmux.resurrect.archives import capture_archive, write_archive
+from libtmux.resurrect.archives import (
+    RestorePolicy,
+    capture_archive,
+    restore_archive,
+    write_archive,
+)
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
@@ -21,6 +26,9 @@ STATE_FORMAT_VERSION = "libtmux.resurrect.autosave-state.v1"
 
 DEFAULT_AUTOSAVE_INTERVAL = datetime.timedelta(minutes=15)
 """Default interval between autosaves."""
+
+DEFAULT_STARTUP_RESTORE_GRACE = datetime.timedelta(seconds=10)
+"""Default window in which startup restore is considered fresh."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +58,24 @@ class AutosaveResult:
     archive_path: pathlib.Path
     state: AutosaveState
     state_path: pathlib.Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StartupRestoreDecision:
+    """Decision returned by :func:`should_restore_on_startup`."""
+
+    allowed: bool
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class StartupRestoreResult:
+    """Result returned by :func:`startup_restore_once`."""
+
+    restored: bool
+    reason: str
+    archive_path: pathlib.Path
+    decision: StartupRestoreDecision
 
 
 def default_autosave_paths(
@@ -219,6 +245,102 @@ def autosave_once(
         archive_path=resolved_archive_path,
         state=next_state,
         state_path=resolved_state_path,
+    )
+
+
+def should_restore_on_startup(
+    *,
+    enabled: bool,
+    halt_file: StrPath | None,
+    session_count: int,
+    another_server_running: bool,
+    tmux_started_at: datetime.datetime | None = None,
+    now: datetime.datetime | None = None,
+    startup_grace: datetime.timedelta = DEFAULT_STARTUP_RESTORE_GRACE,
+) -> StartupRestoreDecision:
+    """Return whether startup restore should run.
+
+    Examples
+    --------
+    >>> import datetime
+    >>> now = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
+    >>> should_restore_on_startup(
+    ...     enabled=True,
+    ...     halt_file=None,
+    ...     session_count=0,
+    ...     another_server_running=False,
+    ...     tmux_started_at=now,
+    ...     now=now,
+    ... )
+    StartupRestoreDecision(allowed=True, reason='restore_allowed')
+    """
+    if not enabled:
+        return StartupRestoreDecision(allowed=False, reason="restore_disabled")
+    if halt_file is not None and pathlib.Path(halt_file).exists():
+        return StartupRestoreDecision(allowed=False, reason="halt_file_present")
+    if another_server_running:
+        return StartupRestoreDecision(allowed=False, reason="another_server_running")
+    if session_count > 0:
+        return StartupRestoreDecision(allowed=False, reason="sessions_exist")
+    if tmux_started_at is not None:
+        elapsed = _coerce_datetime(now) - _coerce_datetime(tmux_started_at)
+        if elapsed > startup_grace:
+            return StartupRestoreDecision(
+                allowed=False,
+                reason="startup_window_elapsed",
+            )
+    return StartupRestoreDecision(allowed=True, reason="restore_allowed")
+
+
+def startup_restore_once(
+    server: Server,
+    archive_path: StrPath,
+    *,
+    enabled: bool,
+    halt_file: StrPath | None = None,
+    another_server_running: bool = False,
+    tmux_started_at: datetime.datetime | None = None,
+    now: datetime.datetime | None = None,
+    startup_grace: datetime.timedelta = DEFAULT_STARTUP_RESTORE_GRACE,
+    on_exists: RestorePolicy = "reuse",
+) -> StartupRestoreResult:
+    """Restore an archive once when startup guards allow it.
+
+    Examples
+    --------
+    >>> import pathlib
+    >>> result = startup_restore_once(
+    ...     server,
+    ...     pathlib.Path("missing.json"),
+    ...     enabled=False,
+    ... )
+    >>> result.restored
+    False
+    """
+    resolved_archive_path = pathlib.Path(archive_path)
+    decision = should_restore_on_startup(
+        enabled=enabled,
+        halt_file=halt_file,
+        session_count=len(server.sessions),
+        another_server_running=another_server_running,
+        tmux_started_at=tmux_started_at,
+        now=now,
+        startup_grace=startup_grace,
+    )
+    if not decision.allowed:
+        return StartupRestoreResult(
+            restored=False,
+            reason=decision.reason,
+            archive_path=resolved_archive_path,
+            decision=decision,
+        )
+
+    restore_archive(resolved_archive_path, server, on_exists=on_exists)
+    return StartupRestoreResult(
+        restored=True,
+        reason="restored",
+        archive_path=resolved_archive_path,
+        decision=decision,
     )
 
 

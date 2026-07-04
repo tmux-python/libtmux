@@ -7,15 +7,19 @@ import pathlib
 import typing as t
 
 from libtmux.formats import FORMAT_SEPARATOR
+from libtmux.resurrect.archives import WorkspaceArchive, write_archive
 from libtmux.resurrect.continuum import (
     DEFAULT_AUTOSAVE_INTERVAL,
     AutosavePaths,
     AutosaveState,
+    StartupRestoreDecision,
     autosave_once,
     default_autosave_paths,
     next_autosave_at,
     read_autosave_state,
     should_autosave,
+    should_restore_on_startup,
+    startup_restore_once,
     write_autosave_state,
 )
 
@@ -38,9 +42,11 @@ class _FakeServer:
     def __init__(
         self,
         *,
+        sessions: list[object] | None = None,
         socket_name: str | None = None,
         socket_path: pathlib.Path | None = None,
     ) -> None:
+        self.sessions = sessions or []
         self.socket_name = socket_name
         self.socket_path = socket_path
         self.stdout = [
@@ -209,3 +215,124 @@ def test_autosave_once_writes_archive_and_state(tmp_path: pathlib.Path) -> None:
         save_count=1,
     )
     assert server.calls[0][0] == "list-panes"
+
+
+def test_should_restore_on_startup_allows_fresh_opt_in_restore(
+    tmp_path: pathlib.Path,
+) -> None:
+    """should_restore_on_startup() allows fresh, explicit startup restore."""
+    now = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
+
+    decision = should_restore_on_startup(
+        enabled=True,
+        halt_file=tmp_path / "halt",
+        session_count=0,
+        another_server_running=False,
+        tmux_started_at=now - datetime.timedelta(seconds=2),
+        now=now,
+    )
+
+    assert decision == StartupRestoreDecision(allowed=True, reason="restore_allowed")
+
+
+def test_should_restore_on_startup_reports_specific_vetoes(
+    tmp_path: pathlib.Path,
+) -> None:
+    """should_restore_on_startup() reports why restore is skipped."""
+    now = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
+    halt_file = tmp_path / "halt"
+    halt_file.write_text("", encoding="utf-8")
+
+    assert (
+        should_restore_on_startup(
+            enabled=False,
+            halt_file=tmp_path / "missing",
+            session_count=0,
+            another_server_running=False,
+            tmux_started_at=now,
+            now=now,
+        ).reason
+        == "restore_disabled"
+    )
+    assert (
+        should_restore_on_startup(
+            enabled=True,
+            halt_file=halt_file,
+            session_count=0,
+            another_server_running=False,
+            tmux_started_at=now,
+            now=now,
+        ).reason
+        == "halt_file_present"
+    )
+    assert (
+        should_restore_on_startup(
+            enabled=True,
+            halt_file=None,
+            session_count=0,
+            another_server_running=True,
+            tmux_started_at=now,
+            now=now,
+        ).reason
+        == "another_server_running"
+    )
+    assert (
+        should_restore_on_startup(
+            enabled=True,
+            halt_file=None,
+            session_count=1,
+            another_server_running=False,
+            tmux_started_at=now,
+            now=now,
+        ).reason
+        == "sessions_exist"
+    )
+    assert (
+        should_restore_on_startup(
+            enabled=True,
+            halt_file=None,
+            session_count=0,
+            another_server_running=False,
+            tmux_started_at=now - datetime.timedelta(minutes=1),
+            now=now,
+        ).reason
+        == "startup_window_elapsed"
+    )
+
+
+def test_startup_restore_once_restores_when_allowed(
+    tmp_path: pathlib.Path,
+) -> None:
+    """startup_restore_once() restores only after startup guards pass."""
+    now = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
+    archive_path = tmp_path / "workspace.json"
+    write_archive(WorkspaceArchive(saved_at=now, sessions=()), archive_path)
+
+    result = startup_restore_once(
+        t.cast("Server", _FakeServer()),
+        archive_path,
+        enabled=True,
+        tmux_started_at=now,
+        now=now,
+    )
+
+    assert result.restored
+    assert result.reason == "restored"
+    assert result.decision == StartupRestoreDecision(
+        allowed=True,
+        reason="restore_allowed",
+    )
+
+
+def test_startup_restore_once_skips_when_guard_vetoes(
+    tmp_path: pathlib.Path,
+) -> None:
+    """startup_restore_once() returns the guard reason without reading archive."""
+    result = startup_restore_once(
+        t.cast("Server", _FakeServer(sessions=[object()])),
+        tmp_path / "missing.json",
+        enabled=True,
+    )
+
+    assert not result.restored
+    assert result.reason == "sessions_exist"
