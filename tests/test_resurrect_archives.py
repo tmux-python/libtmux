@@ -143,14 +143,21 @@ class _FakeSession:
 class _FakeServer:
     """Server double used by archive tests."""
 
-    def __init__(self, stdout: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        stdout: list[str] | None = None,
+        stdout_by_cmd: dict[str, list[str]] | None = None,
+    ) -> None:
         self.stdout = stdout or []
+        self.stdout_by_cmd = stdout_by_cmd or {}
         self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
         self.existing_sessions: set[str] = set()
 
     def cmd(self, cmd: str, *args: object, **kwargs: object) -> _Cmd:
         """Record tmux commands."""
         self.calls.append((cmd, args, kwargs))
+        if cmd in self.stdout_by_cmd:
+            return _Cmd(self.stdout_by_cmd[cmd])
         return _Cmd(self.stdout if cmd == "list-panes" else [])
 
     def has_session(self, target_session: str) -> bool:
@@ -254,6 +261,14 @@ def test_capture_archive_records_captured_capabilities() -> None:
         "active-windows",
         "active-panes",
         "pane-current-command",
+        "pane-titles",
+        "window-flags",
+        "automatic-rename",
+        "grouped-sessions",
+        "alternate-windows",
+        "active-sessions",
+        "alternate-sessions",
+        "history-size",
     )
 
 
@@ -265,7 +280,7 @@ def test_capture_archive_uses_configured_libtmux_separator() -> None:
 
     format_arg = server.calls[0][1][2]
     assert isinstance(format_arg, str)
-    assert server.calls == [("list-panes", ("-a", "-F", format_arg), {})]
+    assert server.calls[0] == ("list-panes", ("-a", "-F", format_arg), {})
     assert FORMAT_SEPARATOR in format_arg
     if FORMAT_SEPARATOR != "\x1f":
         assert "\x1f" not in format_arg
@@ -303,6 +318,56 @@ def test_capture_archive_accepts_trailing_format_separator() -> None:
             current_path="/workspace",
         ),
     )
+
+
+def test_capture_archive_records_focus_and_window_metadata() -> None:
+    """capture_archive() records focus, grouping, pane, and window metadata."""
+    saved_at = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
+    server = _FakeServer(
+        stdout_by_cmd={
+            "list-clients": [
+                FORMAT_SEPARATOR.join(["alpha", "beta", ""]),
+            ],
+            "list-panes": [
+                FORMAT_SEPARATOR.join(
+                    [
+                        "alpha",
+                        "1",
+                        "editor",
+                        "tiled",
+                        "1",
+                        "*Z",
+                        "0",
+                        "1",
+                        "vim",
+                        "/workspace",
+                        "src",
+                        "42",
+                        "",
+                    ],
+                ),
+            ],
+            "list-sessions": [
+                FORMAT_SEPARATOR.join(["alpha", "1", "work", ""]),
+            ],
+            "show-window-options": ["off"],
+        },
+    )
+
+    archive = capture_archive(t.cast("Server", server), saved_at=saved_at)
+
+    assert archive.active_session_name == "alpha"
+    assert archive.alternate_session_name == "beta"
+    session = archive.sessions[0]
+    assert session.group_name == "work"
+    assert session.active_window_index == 1
+    assert session.alternate_window_index is None
+    window = session.windows[0]
+    assert window.flags == "*Z"
+    assert window.automatic_rename is False
+    pane = window.panes[0]
+    assert pane.title == "src"
+    assert pane.history_size == 42
 
 
 def test_write_read_archive_round_trips_json(tmp_path: pathlib.Path) -> None:
