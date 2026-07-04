@@ -251,6 +251,11 @@ def restore_archive(
     for session_archive in resolved_archive.sessions:
         if server.has_session(session_archive.name):
             if on_exists == "reuse":
+                _restore_missing_session_topology(
+                    server,
+                    session_archive,
+                    shell_commands=shell_commands,
+                )
                 continue
             if on_exists == "error":
                 msg = f"session already exists: {session_archive.name}"
@@ -400,6 +405,110 @@ def _restore_session(
         session.select_window(active_window_archive.index)
 
     return session
+
+
+def _restore_missing_session_topology(
+    server: Server,
+    session_archive: SessionArchive,
+    *,
+    shell_commands: t.Collection[str],
+) -> None:
+    existing_windows = _existing_window_indexes(server, session_archive.name)
+    for window_archive in session_archive.windows:
+        if window_archive.index not in existing_windows:
+            _create_missing_window(
+                server,
+                session_archive=session_archive,
+                window_archive=window_archive,
+                shell_commands=shell_commands,
+            )
+            continue
+
+        existing_panes = _existing_pane_indexes(
+            server,
+            session_archive.name,
+            window_archive.index,
+        )
+        for pane_archive in window_archive.panes:
+            if pane_archive.index in existing_panes:
+                continue
+            _create_missing_pane(
+                server,
+                session_archive=session_archive,
+                window_archive=window_archive,
+                pane_archive=pane_archive,
+                shell_commands=shell_commands,
+            )
+
+
+def _create_missing_window(
+    server: Server,
+    *,
+    session_archive: SessionArchive,
+    window_archive: WindowArchive,
+    shell_commands: t.Collection[str],
+) -> None:
+    first_pane = window_archive.panes[0] if window_archive.panes else None
+    args = [
+        "-d",
+        "-t",
+        f"{session_archive.name}:{window_archive.index}",
+        "-n",
+        window_archive.name,
+    ]
+    path = _pane_path(first_pane)
+    if path is not None:
+        args.extend(("-c", path))
+    command = _pane_command(first_pane, shell_commands=shell_commands)
+    if command is not None:
+        args.append(command)
+
+    proc = server.cmd("new-window", *args)
+    raise_if_stderr(proc, "new-window")
+
+
+def _create_missing_pane(
+    server: Server,
+    *,
+    session_archive: SessionArchive,
+    window_archive: WindowArchive,
+    pane_archive: PaneArchive,
+    shell_commands: t.Collection[str],
+) -> None:
+    args = ["-d", "-t", f"{session_archive.name}:{window_archive.index}"]
+    path = _path_or_none(pane_archive.current_path)
+    if path is not None:
+        args.extend(("-c", path))
+    command = _pane_command(pane_archive, shell_commands=shell_commands)
+    if command is not None:
+        args.append(command)
+
+    proc = server.cmd("split-window", *args)
+    raise_if_stderr(proc, "split-window")
+
+
+def _existing_window_indexes(server: Server, session_name: str) -> set[int]:
+    proc = server.cmd("list-windows", "-t", session_name, "-F", "#{window_index}")
+    if proc.stderr:
+        return set()
+    return {_tmux_int(line) for line in proc.stdout}
+
+
+def _existing_pane_indexes(
+    server: Server,
+    session_name: str,
+    window_index: int,
+) -> set[int]:
+    proc = server.cmd(
+        "list-panes",
+        "-t",
+        f"{session_name}:{window_index}",
+        "-F",
+        "#{pane_index}",
+    )
+    if proc.stderr:
+        return set()
+    return {_tmux_int(line) for line in proc.stdout}
 
 
 def _restore_window(
