@@ -19,6 +19,7 @@ from libtmux.common import raise_if_stderr
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.resurrect.processes import (
     DEFAULT_PROCESS_RESTORE_POLICY,
+    ProcessCommandProvider,
     ProcessRestorePolicy,
 )
 
@@ -41,6 +42,7 @@ CAPTURED_CAPABILITIES = (
     "active-windows",
     "active-panes",
     "pane-current-command",
+    "pane-full-command",
     "pane-titles",
     "window-flags",
     "automatic-rename",
@@ -68,6 +70,7 @@ _PANE_FIELDS = (
     "#{window_flags}",
     "#{pane_index}",
     "#{pane_active}",
+    "#{pane_pid}",
     "#{pane_current_command}",
     "#{pane_current_path}",
     "#{pane_title}",
@@ -153,6 +156,7 @@ class _PaneRow:
     window_flags: str
     pane_index: int
     pane_active: bool
+    pane_pid: int
     pane_current_command: str
     pane_current_path: str
     pane_title: str
@@ -162,6 +166,7 @@ class _PaneRow:
 def capture_archive(
     server: Server,
     *,
+    process_provider: ProcessCommandProvider | None = None,
     saved_at: datetime.datetime | None = None,
 ) -> WorkspaceArchive:
     """Capture all panes from a tmux server into a workspace archive.
@@ -182,6 +187,7 @@ def capture_archive(
         active_session_name=active_session_name,
         alternate_session_name=alternate_session_name,
         automatic_renames=_capture_automatic_renames(server, rows),
+        process_commands=_capture_process_commands(rows, process_provider),
         saved_at=saved_at,
         session_groups=_capture_session_groups(server),
     )
@@ -304,6 +310,7 @@ def _archive_from_rows(
     active_session_name: str | None = None,
     alternate_session_name: str | None = None,
     automatic_renames: t.Mapping[tuple[str, int], bool | None] | None = None,
+    process_commands: t.Mapping[int, str] | None = None,
     saved_at: datetime.datetime | None = None,
     session_groups: t.Mapping[str, str] | None = None,
 ) -> WorkspaceArchive:
@@ -326,6 +333,7 @@ def _archive_from_rows(
                     active=row.pane_active,
                     current_command=row.pane_current_command,
                     current_path=row.pane_current_path,
+                    full_command=(process_commands or {}).get(row.pane_pid, ""),
                     title=row.pane_title,
                     history_size=row.history_size,
                 )
@@ -866,32 +874,43 @@ def _parse_pane_row(row: str) -> _PaneRow:
     if parts and parts[-1] == "":
         parts.pop()
 
-    if len(parts) not in {9, 12}:
-        msg = f"expected 9 or 12 list-panes fields, got {len(parts)}"
+    if len(parts) not in {9, 12, 13}:
+        msg = f"expected 9, 12, or 13 list-panes fields, got {len(parts)}"
         raise ValueError(msg)
 
     if len(parts) == 9:
         parts = [
             *parts[:5],
             "",
-            *parts[5:],
+            parts[5],
+            parts[6],
+            "0",
+            parts[7],
+            parts[8],
             "",
             "0",
+        ]
+    elif len(parts) == 12:
+        parts = [
+            *parts[:8],
+            "0",
+            *parts[8:],
         ]
 
     return _PaneRow(
         session_name=parts[0],
-        window_index=int(parts[1]),
+        window_index=_tmux_int(parts[1]),
         window_name=parts[2],
         window_layout=parts[3],
         window_active=_tmux_bool(parts[4]),
         window_flags=parts[5],
-        pane_index=int(parts[6]),
+        pane_index=_tmux_int(parts[6]),
         pane_active=_tmux_bool(parts[7]),
-        pane_current_command=parts[8],
-        pane_current_path=parts[9],
-        pane_title=parts[10],
-        history_size=_tmux_int(parts[11]),
+        pane_pid=_tmux_int(parts[8]),
+        pane_current_command=parts[9],
+        pane_current_path=parts[10],
+        pane_title=parts[11],
+        history_size=_tmux_int(parts[12]),
     )
 
 
@@ -964,6 +983,21 @@ def _capture_automatic_rename(
     if value == "off":
         return False
     return None
+
+
+def _capture_process_commands(
+    rows: tuple[_PaneRow, ...],
+    process_provider: ProcessCommandProvider | None,
+) -> dict[int, str]:
+    if process_provider is None:
+        return {}
+
+    commands: dict[int, str] = {}
+    for pane_pid in sorted({row.pane_pid for row in rows if row.pane_pid > 0}):
+        command = process_provider.capture(pane_pid)
+        if command:
+            commands[pane_pid] = command
+    return commands
 
 
 def _split_tmux_row(row: str) -> list[str]:

@@ -196,6 +196,19 @@ class _FakeServer:
         return _FakeSession(self.calls)
 
 
+class _ProcessProvider:
+    """Process command provider test double."""
+
+    def __init__(self, commands: dict[int, str]) -> None:
+        self.commands = commands
+        self.captured_pids: list[int] = []
+
+    def capture(self, pid: int) -> str | None:
+        """Record pid capture and return a configured command."""
+        self.captured_pids.append(pid)
+        return self.commands.get(pid)
+
+
 def _arg_after(args: tuple[object, ...], flag: str) -> str | None:
     try:
         value = args[args.index(flag) + 1]
@@ -276,6 +289,7 @@ def test_capture_archive_records_captured_capabilities() -> None:
         "active-windows",
         "active-panes",
         "pane-current-command",
+        "pane-full-command",
         "pane-titles",
         "window-flags",
         "automatic-rename",
@@ -383,6 +397,46 @@ def test_capture_archive_records_focus_and_window_metadata() -> None:
     pane = window.panes[0]
     assert pane.title == "src"
     assert pane.history_size == 42
+
+
+def test_capture_archive_uses_process_command_provider() -> None:
+    """capture_archive() records provider-supplied full process commands."""
+    saved_at = datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc)
+    provider = _ProcessProvider({123: "vim pyproject.toml"})
+    server = _FakeServer(
+        stdout_by_cmd={
+            "list-panes": [
+                FORMAT_SEPARATOR.join(
+                    [
+                        "alpha",
+                        "0",
+                        "editor",
+                        "tiled",
+                        "1",
+                        "*",
+                        "0",
+                        "1",
+                        "123",
+                        "vim",
+                        "/workspace",
+                        "src",
+                        "42",
+                        "",
+                    ],
+                ),
+            ],
+        },
+    )
+
+    archive = capture_archive(
+        t.cast("Server", server),
+        process_provider=provider,
+        saved_at=saved_at,
+    )
+
+    pane = archive.sessions[0].windows[0].panes[0]
+    assert pane.full_command == "vim pyproject.toml"
+    assert provider.captured_pids == [123]
 
 
 def test_write_read_archive_round_trips_json(tmp_path: pathlib.Path) -> None:
