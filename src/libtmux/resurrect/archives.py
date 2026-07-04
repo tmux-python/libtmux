@@ -256,6 +256,7 @@ def restore_archive(
                     session_archive,
                     shell_commands=shell_commands,
                 )
+                _restore_session_focus(server, session_archive)
                 continue
             if on_exists == "error":
                 msg = f"session already exists: {session_archive.name}"
@@ -270,6 +271,8 @@ def restore_archive(
                 shell_commands=shell_commands,
             ),
         )
+
+    _restore_workspace_focus(server, resolved_archive)
 
     return sessions
 
@@ -315,9 +318,9 @@ def _archive_from_rows(
                     active=first.window_active,
                     panes=panes,
                     flags=first.window_flags,
-                    automatic_rename=(
-                        automatic_renames or {}
-                    ).get((first.session_name, first.window_index)),
+                    automatic_rename=(automatic_renames or {}).get(
+                        (first.session_name, first.window_index)
+                    ),
                 ),
             )
         active_window_index = next(
@@ -400,9 +403,7 @@ def _restore_session(
             skip_first_pane=True,
         )
 
-    active_window_archive = _active_window(session_archive)
-    if active_window_archive is not None:
-        session.select_window(active_window_archive.index)
+    _restore_session_focus(server, session_archive, session=session)
 
     return session
 
@@ -439,6 +440,11 @@ def _restore_missing_session_topology(
                 pane_archive=pane_archive,
                 shell_commands=shell_commands,
             )
+        _restore_reused_window_state(
+            server,
+            session_archive=session_archive,
+            window_archive=window_archive,
+        )
 
 
 def _create_missing_window(
@@ -533,6 +539,80 @@ def _restore_window(
     if window_archive.layout:
         window.select_layout(window_archive.layout)
 
+    _restore_window_metadata(
+        server,
+        session_archive=session_archive,
+        window_archive=window_archive,
+    )
+    _restore_active_pane(
+        server,
+        session_archive=session_archive,
+        window_archive=window_archive,
+    )
+
+
+def _restore_reused_window_state(
+    server: Server,
+    *,
+    session_archive: SessionArchive,
+    window_archive: WindowArchive,
+) -> None:
+    target_window = _target_window(session_archive, window_archive)
+    if window_archive.layout:
+        proc = server.cmd("select-layout", "-t", target_window, window_archive.layout)
+        raise_if_stderr(proc, "select-layout")
+
+    _restore_window_metadata(
+        server,
+        session_archive=session_archive,
+        window_archive=window_archive,
+    )
+    _restore_active_pane(
+        server,
+        session_archive=session_archive,
+        window_archive=window_archive,
+    )
+
+
+def _restore_window_metadata(
+    server: Server,
+    *,
+    session_archive: SessionArchive,
+    window_archive: WindowArchive,
+) -> None:
+    target_window = _target_window(session_archive, window_archive)
+    if window_archive.automatic_rename is not None:
+        proc = server.cmd(
+            "set-window-option",
+            "-t",
+            target_window,
+            "automatic-rename",
+            "on" if window_archive.automatic_rename else "off",
+        )
+        raise_if_stderr(proc, "set-window-option")
+
+    for pane_archive in window_archive.panes:
+        if not pane_archive.title:
+            continue
+        proc = server.cmd(
+            "select-pane",
+            "-T",
+            pane_archive.title,
+            target=f"{target_window}.{pane_archive.index}",
+        )
+        raise_if_stderr(proc, "select-pane")
+
+    if "Z" in window_archive.flags:
+        proc = server.cmd("resize-pane", "-Z", target=target_window)
+        raise_if_stderr(proc, "resize-pane")
+
+
+def _restore_active_pane(
+    server: Server,
+    *,
+    session_archive: SessionArchive,
+    window_archive: WindowArchive,
+) -> None:
     active_pane_archive = _active_pane(window_archive)
     if active_pane_archive is not None:
         proc = server.cmd(
@@ -543,6 +623,59 @@ def _restore_window(
             ),
         )
         raise_if_stderr(proc, "select-pane")
+
+
+def _restore_session_focus(
+    server: Server,
+    session_archive: SessionArchive,
+    *,
+    session: Session | None = None,
+) -> None:
+    if session_archive.alternate_window_index is not None:
+        proc = server.cmd(
+            "select-window",
+            "-t",
+            f"{session_archive.name}:{session_archive.alternate_window_index}",
+        )
+        raise_if_stderr(proc, "select-window")
+
+    active_window_index = session_archive.active_window_index
+    if active_window_index is None:
+        active_window_archive = _active_window(session_archive)
+        active_window_index = (
+            active_window_archive.index if active_window_archive is not None else None
+        )
+
+    if active_window_index is None:
+        return
+
+    if session is not None:
+        session.select_window(active_window_index)
+        return
+
+    proc = server.cmd(
+        "select-window",
+        "-t",
+        f"{session_archive.name}:{active_window_index}",
+    )
+    raise_if_stderr(proc, "select-window")
+
+
+def _restore_workspace_focus(server: Server, archive: WorkspaceArchive) -> None:
+    for session_name in (
+        archive.alternate_session_name,
+        archive.active_session_name,
+    ):
+        if session_name is None:
+            continue
+        server.cmd("switch-client", "-t", session_name)
+
+
+def _target_window(
+    session_archive: SessionArchive,
+    window_archive: WindowArchive,
+) -> str:
+    return f"{session_archive.name}:{window_archive.index}"
 
 
 def _move_initial_window(
