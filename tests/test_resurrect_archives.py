@@ -156,6 +156,10 @@ class _FakeServer:
     def cmd(self, cmd: str, *args: object, **kwargs: object) -> _Cmd:
         """Record tmux commands."""
         self.calls.append((cmd, args, kwargs))
+        if cmd == "new-session":
+            session_name = _arg_after(args, "-s")
+            if session_name is not None:
+                self.existing_sessions.add(session_name)
         if cmd in self.stdout_by_cmd:
             return _Cmd(self.stdout_by_cmd[cmd])
         return _Cmd(self.stdout if cmd == "list-panes" else [])
@@ -174,6 +178,8 @@ class _FakeServer:
         window_command: str | None = None,
     ) -> _FakeSession:
         """Record session creation."""
+        if session_name is not None:
+            self.existing_sessions.add(session_name)
         self.calls.append(
             (
                 "new_session",
@@ -187,6 +193,14 @@ class _FakeServer:
             ),
         )
         return _FakeSession(self.calls)
+
+
+def _arg_after(args: tuple[object, ...], flag: str) -> str | None:
+    try:
+        value = args[args.index(flag) + 1]
+    except (ValueError, IndexError):
+        return None
+    return str(value)
 
 
 def test_capture_archive_groups_tmux_pane_rows() -> None:
@@ -729,3 +743,73 @@ def test_restore_archive_replays_focus_and_window_metadata() -> None:
     assert ("session.select_window", (2,), {}) in server.calls
     assert ("switch-client", ("-t", "beta"), {}) in server.calls
     assert ("switch-client", ("-t", "alpha"), {}) in server.calls
+
+
+def test_restore_archive_recreates_grouped_sessions_once() -> None:
+    """restore_archive() recreates grouped sessions without duplicating windows."""
+    windows = (
+        WindowArchive(
+            index=1,
+            name="editor",
+            layout="tiled",
+            active=True,
+            panes=(
+                PaneArchive(
+                    index=0,
+                    active=True,
+                    current_command="vim",
+                    current_path="/workspace",
+                ),
+            ),
+        ),
+    )
+    archive = WorkspaceArchive(
+        saved_at=datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc),
+        sessions=(
+            SessionArchive(
+                name="alpha",
+                group_name="shared",
+                active_window_index=1,
+                windows=windows,
+            ),
+            SessionArchive(
+                name="beta",
+                group_name="shared",
+                active_window_index=1,
+                windows=windows,
+            ),
+        ),
+    )
+    server = _FakeServer()
+
+    restore_archive(archive, t.cast("Server", server))
+
+    assert (
+        "new_session",
+        (),
+        {
+            "session_name": "alpha",
+            "start_directory": "/workspace",
+            "window_command": "vim",
+            "window_name": "editor",
+        },
+    ) in server.calls
+    assert ("new-session", ("-d", "-s", "beta", "-t", "alpha"), {}) in server.calls
+    assert ("session.select_window", (1,), {}) in server.calls
+    assert ("select-window", ("-t", "beta:1"), {}) in server.calls
+    assert [
+        call
+        for call in server.calls
+        if call[0] in {"new_session", "session.new_window"}
+    ] == [
+        (
+            "new_session",
+            (),
+            {
+                "session_name": "alpha",
+                "start_directory": "/workspace",
+                "window_command": "vim",
+                "window_name": "editor",
+            },
+        ),
+    ]
