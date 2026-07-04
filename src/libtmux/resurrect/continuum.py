@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import os
 import pathlib
@@ -33,6 +34,14 @@ class AutosaveState:
 
 
 @dataclass(frozen=True, slots=True)
+class AutosavePaths:
+    """Socket-aware archive and state paths."""
+
+    archive_path: pathlib.Path
+    state_path: pathlib.Path
+
+
+@dataclass(frozen=True, slots=True)
 class AutosaveResult:
     """Result returned by :func:`autosave_once`."""
 
@@ -41,6 +50,37 @@ class AutosaveResult:
     archive_path: pathlib.Path
     state: AutosaveState
     state_path: pathlib.Path | None = None
+
+
+def default_autosave_paths(
+    server: Server,
+    directory: StrPath,
+    *,
+    prefix: str = "workspace",
+) -> AutosavePaths:
+    """Return deterministic, socket-aware autosave paths.
+
+    The generated filenames are keyed by the tmux socket identity, but socket
+    paths are hashed so local filesystem details are not embedded in filenames.
+
+    Examples
+    --------
+    >>> import pathlib
+    >>> paths = default_autosave_paths(
+    ...     Server(socket_name="demo"),
+    ...     pathlib.Path("/tmp"),
+    ... )
+    >>> paths.archive_path.name.startswith("workspace-name-")
+    True
+    >>> paths.state_path.name.endswith(".state.json")
+    True
+    """
+    base_dir = pathlib.Path(directory)
+    stem = _autosave_stem(server, prefix=prefix)
+    return AutosavePaths(
+        archive_path=base_dir / f"{stem}.json",
+        state_path=base_dir / f"{stem}.state.json",
+    )
 
 
 def next_autosave_at(
@@ -188,6 +228,31 @@ def _coerce_datetime(value: datetime.datetime | None) -> datetime.datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=datetime.timezone.utc)
     return value.astimezone(datetime.timezone.utc)
+
+
+def _autosave_stem(server: Server, *, prefix: str) -> str:
+    safe_prefix = _safe_path_component(prefix) or "workspace"
+    socket_path = getattr(server, "socket_path", None)
+    socket_name = getattr(server, "socket_name", None)
+    if socket_path is not None:
+        identity = f"path:{os.fspath(socket_path)}"
+        identity_kind = "path"
+    elif socket_name is not None:
+        identity = f"name:{socket_name}"
+        identity_kind = "name"
+    else:
+        identity = "default"
+        identity_kind = "default"
+
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
+    return f"{safe_prefix}-{identity_kind}-{digest}"
+
+
+def _safe_path_component(value: str) -> str:
+    return "".join(
+        character if character.isalnum() or character in {"-", "_"} else "-"
+        for character in value
+    ).strip("-")
 
 
 def _state_to_dict(state: AutosaveState) -> dict[str, object]:
