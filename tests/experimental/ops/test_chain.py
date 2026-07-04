@@ -117,7 +117,7 @@ def test_no_fold_dispatches_per_op() -> None:
     plan.add(RenameWindow(target=WindowId("@1"), name="x"))
     engine = _CountingEngine()
 
-    plan.execute(engine)  # fold defaults to False
+    plan.execute(engine)  # default planner: one dispatch per op
 
     assert len(engine.calls) == 2
 
