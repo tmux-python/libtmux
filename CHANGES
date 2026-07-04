@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Development
+
+#### tmux 3.7a/3.7b test compatibility (#698)
+
+libtmux's test suite now passes against tmux 3.7a and 3.7b, which CI also
+exercises. A window-name test had assumed the `:`/`.` rejection tmux
+introduced in 3.7, but tmux reverted it in 3.7a as "overly pernickety" — so
+the test now checks these names are accepted.
+
 ## libtmux 0.60.0 (2026-06-28)
 
 libtmux 0.60.0 completes tmux 3.7 feature parity. Building on the 3.7
