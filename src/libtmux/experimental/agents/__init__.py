@@ -17,6 +17,12 @@ from libtmux.experimental.agents.drive import (
 )
 from libtmux.experimental.agents.monitor import AgentMonitor
 from libtmux.experimental.agents.state import Agent, AgentState, AgentTransition
+from libtmux.experimental.agents.statusline import (
+    DEFAULT_LABELS,
+    paint_status_line,
+    render_status_line,
+    status_line_op,
+)
 from libtmux.experimental.agents.wait import (
     AgentWait,
     WaitReason,
@@ -25,6 +31,7 @@ from libtmux.experimental.agents.wait import (
 )
 
 __all__ = (
+    "DEFAULT_LABELS",
     "Agent",
     "AgentMonitor",
     "AgentState",
@@ -32,9 +39,12 @@ __all__ = (
     "AgentWait",
     "SendOutcome",
     "WaitReason",
+    "paint_status_line",
     "pane_lock",
+    "render_status_line",
     "send_to_agent",
     "send_to_agents",
+    "status_line_op",
     "wait_for_agent_state",
     "wait_for_agents",
 )
