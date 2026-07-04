@@ -120,6 +120,12 @@ Format strings and constants.
 Exception hierarchy.
 :::
 
+:::{grid-item-card} Resurrect
+:link: libtmux.resurrect
+:link-type: doc
+Headless workspace archive, restore, autosave, and startup helpers.
+:::
+
 ::::
 
 ## Testing
@@ -179,4 +185,5 @@ Hooks <libtmux.hooks>
 Constants <libtmux.constants>
 Formats <libtmux.formats>
 Exceptions <libtmux.exc>
+Resurrect <libtmux.resurrect>
 ```
