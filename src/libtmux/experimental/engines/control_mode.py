@@ -28,6 +28,7 @@ import time
 import typing as t
 
 from libtmux import exc
+from libtmux.common import get_version
 from libtmux.experimental.engines.base import CommandResult, render_control_line
 
 if t.TYPE_CHECKING:
@@ -187,6 +188,19 @@ class ControlModeEngine:
         self._parser = ControlModeParser()
         self._proc: subprocess.Popen[bytes] | None = None
         self._selector: selectors.DefaultSelector | None = None
+
+    def tmux_version(self) -> str | None:
+        """Report the connected server's tmux version (``tmux -V``).
+
+        Implements
+        :class:`~libtmux.experimental.engines.base.SupportsTmuxVersion` so
+        version-gated operations render correctly over control mode; in-memory
+        engines omit it and resolution assumes latest.
+        """
+        try:
+            return str(get_version(self.tmux_bin))
+        except exc.LibTmuxException:
+            return None
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command over the control connection."""
