@@ -17,6 +17,7 @@ from libtmux.resurrect.archives import (
     restore_archive,
     write_archive,
 )
+from libtmux.resurrect.processes import ProcessRestorePolicy
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
@@ -670,6 +671,65 @@ def test_restore_archive_reuses_existing_topology() -> None:
         ("-d", "-t", "alpha:0", "-c", "/workspace"),
         {},
     ) in server.calls
+
+
+def test_restore_archive_uses_process_restore_policy() -> None:
+    """restore_archive() only replays pane commands allowed by policy."""
+    archive = WorkspaceArchive(
+        saved_at=datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc),
+        sessions=(
+            SessionArchive(
+                name="alpha",
+                windows=(
+                    WindowArchive(
+                        index=0,
+                        name="server",
+                        layout="",
+                        active=True,
+                        panes=(
+                            PaneArchive(
+                                index=0,
+                                active=True,
+                                current_command="node",
+                                current_path="/workspace",
+                                full_command="node server.js",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    default_server = _FakeServer()
+    all_server = _FakeServer()
+
+    restore_archive(archive, t.cast("Server", default_server))
+    restore_archive(
+        archive,
+        t.cast("Server", all_server),
+        process_policy=ProcessRestorePolicy.from_options(":all:"),
+    )
+
+    assert (
+        "new_session",
+        (),
+        {
+            "session_name": "alpha",
+            "start_directory": "/workspace",
+            "window_command": None,
+            "window_name": "server",
+        },
+    ) in default_server.calls
+    assert (
+        "new_session",
+        (),
+        {
+            "session_name": "alpha",
+            "start_directory": "/workspace",
+            "window_command": "node server.js",
+            "window_name": "server",
+        },
+    ) in all_server.calls
 
 
 def test_restore_archive_replays_focus_and_window_metadata() -> None:

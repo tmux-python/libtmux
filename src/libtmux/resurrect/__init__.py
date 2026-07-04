@@ -29,10 +29,18 @@ from .continuum import (
     should_autosave,
     write_autosave_state,
 )
+from .processes import (
+    DEFAULT_PROCESS_RESTORE_POLICY,
+    DEFAULT_RESTORE_PROGRAMS,
+    ProcessRestorePolicy,
+    ProcessRestoreRule,
+)
 
 __all__ = (
     "CAPTURED_CAPABILITIES",
     "DEFAULT_AUTOSAVE_INTERVAL",
+    "DEFAULT_PROCESS_RESTORE_POLICY",
+    "DEFAULT_RESTORE_PROGRAMS",
     "DEFAULT_SHELL_COMMANDS",
     "FORMAT_VERSION",
     "STATE_FORMAT_VERSION",
@@ -40,6 +48,8 @@ __all__ = (
     "AutosaveResult",
     "AutosaveState",
     "PaneArchive",
+    "ProcessRestorePolicy",
+    "ProcessRestoreRule",
     "RestorePolicy",
     "SessionArchive",
     "WindowArchive",
