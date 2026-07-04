@@ -220,6 +220,14 @@ class RestoreReuseMissingWindowCase(t.NamedTuple):
     expected_active_target: str
 
 
+class RestoreReuseWindowNameCase(t.NamedTuple):
+    """Case for restoring an archived name onto an existing reused window."""
+
+    test_id: str
+    window_name: str
+    expected_target: str
+
+
 RESTORE_REUSE_MISSING_WINDOW_CASES = (
     RestoreReuseMissingWindowCase(
         test_id="single_pane",
@@ -256,6 +264,14 @@ RESTORE_REUSE_MISSING_WINDOW_CASES = (
         ),
         expected_split_count=1,
         expected_active_target="alpha:2.1",
+    ),
+)
+
+RESTORE_REUSE_WINDOW_NAME_CASES = (
+    RestoreReuseWindowNameCase(
+        test_id="existing_window",
+        window_name="logs",
+        expected_target="alpha:0",
     ),
 )
 
@@ -774,6 +790,50 @@ def test_restore_archive_reuses_existing_topology() -> None:
     assert (
         "split-window",
         ("-d", "-t", "alpha:0", "-c", "/workspace"),
+        {},
+    ) in server.calls
+
+
+@pytest.mark.parametrize(
+    "case",
+    RESTORE_REUSE_WINDOW_NAME_CASES,
+    ids=[case.test_id for case in RESTORE_REUSE_WINDOW_NAME_CASES],
+)
+def test_restore_archive_reuses_existing_window_name(
+    case: RestoreReuseWindowNameCase,
+) -> None:
+    """restore_archive(on_exists='reuse') renames existing reused windows."""
+    archive = WorkspaceArchive(
+        saved_at=datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc),
+        sessions=(
+            SessionArchive(
+                name="alpha",
+                windows=(
+                    WindowArchive(
+                        index=0,
+                        name=case.window_name,
+                        layout="tiled",
+                        active=True,
+                        panes=(
+                            PaneArchive(
+                                index=0,
+                                active=True,
+                                current_command="tail",
+                                current_path="/logs",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    server = _FakeServer(stdout_by_cmd={"list-panes": ["0"], "list-windows": ["0"]})
+    server.existing_sessions.add("alpha")
+
+    assert restore_archive(archive, t.cast("Server", server), on_exists="reuse") == []
+    assert (
+        "rename-window",
+        ("-t", case.expected_target, case.window_name),
         {},
     ) in server.calls
 

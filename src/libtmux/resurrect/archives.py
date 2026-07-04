@@ -679,6 +679,10 @@ def _restore_window_metadata(
         )
         raise_if_stderr(proc, "set-window-option")
 
+    if window_archive.name:
+        proc = server.cmd("rename-window", "-t", target_window, window_archive.name)
+        raise_if_stderr(proc, "rename-window")
+
     for pane_archive in window_archive.panes:
         if not pane_archive.title:
             continue
