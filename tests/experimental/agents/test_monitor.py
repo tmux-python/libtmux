@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import os
+import pathlib
 
 from libtmux.experimental.agents.monitor import AgentMonitor
+from libtmux.experimental.agents.processes import (
+    ProcessInfo,
+    detect_agent_process,
+    iter_processes,
+)
 from libtmux.experimental.agents.state import AgentState
 from libtmux.experimental.agents.store import AgentStore
 from libtmux.experimental.agents.tree import PANE_FORMAT
@@ -137,6 +143,132 @@ def test_reconcile_seeds_existing_agent_state_option() -> None:
         "name": "claude",
         "source": "option",
     }
+
+
+def test_reconcile_discovers_agent_process_without_hook() -> None:
+    """A known agent process appears even before lifecycle hooks emit."""
+
+    async def main() -> dict[str, str | None]:
+        mon = AgentMonitor(
+            _PaneRowsEngine(
+                (
+                    _pane_row(
+                        pane_id="%9",
+                        pane_current_command="claude",
+                        **{"@agent_state": "", "@agent_name": ""},
+                    ),
+                )
+            )
+        )
+        await mon.reconcile()
+        agent = {a.pane_id: a for a in mon.agents}["%9"]
+        return {
+            "state": agent.state.value,
+            "name": agent.name,
+            "source": agent.source,
+        }
+
+    assert asyncio.run(main()) == {
+        "state": "running",
+        "name": "claude",
+        "source": "process",
+    }
+
+
+def test_reconcile_option_overrides_process_discovery() -> None:
+    """Explicit hook state beats the weak process-discovery seed."""
+
+    async def main() -> dict[str, str | None]:
+        engine = _PaneRowsEngine(
+            (
+                _pane_row(
+                    pane_id="%9",
+                    pane_current_command="claude",
+                    **{"@agent_state": "", "@agent_name": ""},
+                ),
+            )
+        )
+        mon = AgentMonitor(engine)
+        await mon.reconcile()
+        engine.rows = (
+            _pane_row(
+                pane_id="%9",
+                pane_current_command="claude",
+                **{"@agent_state": "awaiting_input", "@agent_name": "claude"},
+            ),
+        )
+        await mon.reconcile()
+        agent = {a.pane_id: a for a in mon.agents}["%9"]
+        return {
+            "state": agent.state.value,
+            "name": agent.name,
+            "source": agent.source,
+        }
+
+    assert asyncio.run(main()) == {
+        "state": "awaiting_input",
+        "name": "claude",
+        "source": "option",
+    }
+
+
+def test_reconcile_exits_process_discovery_when_command_disappears() -> None:
+    """A process-discovered agent exits when the pane no longer runs an agent."""
+
+    async def main() -> dict[str, str | bool]:
+        engine = _PaneRowsEngine(
+            (
+                _pane_row(
+                    pane_id="%9",
+                    pane_current_command="claude",
+                    **{"@agent_state": "", "@agent_name": ""},
+                ),
+            )
+        )
+        mon = AgentMonitor(engine)
+        await mon.reconcile()
+        engine.rows = (
+            _pane_row(
+                pane_id="%9",
+                pane_current_command="zsh",
+                **{"@agent_state": "", "@agent_name": ""},
+            ),
+        )
+        await mon.reconcile()
+        agent = {a.pane_id: a for a in mon.agents}["%9"]
+        return {
+            "state": agent.state.value,
+            "source": agent.source,
+            "alive": agent.alive,
+        }
+
+    assert asyncio.run(main()) == {
+        "state": "exited",
+        "source": "process",
+        "alive": False,
+    }
+
+
+def test_detect_agent_process_scans_descendant_argv() -> None:
+    """Codex launched through node is discovered below the pane shell."""
+    detected = detect_agent_process(
+        "node",
+        10,
+        processes=(
+            ProcessInfo(10, 1, "zsh", ("/bin/zsh",)),
+            ProcessInfo(11, 10, "MainThread", ("node", "/mise/bin/codex", "--yolo")),
+            ProcessInfo(12, 11, "codex", ("/vendor/bin/codex", "--yolo")),
+        ),
+    )
+
+    assert detected is not None
+    assert detected.name == "codex"
+    assert detected.pid == 11
+
+
+def test_iter_processes_tolerates_missing_proc(tmp_path: pathlib.Path) -> None:
+    """Missing process tables behave like an empty table."""
+    assert list(iter_processes(tmp_path / "missing")) == []
 
 
 def test_ingest_option_line_updates_agent() -> None:
