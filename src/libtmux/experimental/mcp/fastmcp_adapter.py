@@ -425,7 +425,6 @@ def register_plan_tools(
         Planner,
         SequentialPlanner,
     )
-    from libtmux.experimental.ops.serialize import operation_from_dict
 
     reg = registry if registry is not None else OperationToolRegistry()
     planners: dict[str, type[Planner]] = {
@@ -435,10 +434,9 @@ def register_plan_tools(
     }
 
     def _plan_from_dicts(operations: list[dict[str, t.Any]]) -> LazyPlan:
-        plan = LazyPlan()
-        for data in operations:
-            plan.add(operation_from_dict(data))
-        return plan
+        # from_list (not add) so a serialized find-or-create `ensure` probe
+        # survives the round-trip instead of being silently dropped.
+        return LazyPlan.from_list(operations)
 
     def _planner(name: str) -> Planner:
         chosen = planners.get(name)
