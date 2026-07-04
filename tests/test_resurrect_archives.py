@@ -6,6 +6,8 @@ import datetime
 import pathlib
 import typing as t
 
+import pytest
+
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.resurrect.archives import (
     PaneArchive,
@@ -207,6 +209,55 @@ class _ProcessProvider:
         """Record pid capture and return a configured command."""
         self.captured_pids.append(pid)
         return self.commands.get(pid)
+
+
+class RestoreReuseMissingWindowCase(t.NamedTuple):
+    """Case for restoring an archived window missing from a reused session."""
+
+    test_id: str
+    panes: tuple[PaneArchive, ...]
+    expected_split_count: int
+    expected_active_target: str
+
+
+RESTORE_REUSE_MISSING_WINDOW_CASES = (
+    RestoreReuseMissingWindowCase(
+        test_id="single_pane",
+        panes=(
+            PaneArchive(
+                index=0,
+                active=True,
+                current_command="tail",
+                current_path="/logs",
+                title="main",
+            ),
+        ),
+        expected_split_count=0,
+        expected_active_target="alpha:2.0",
+    ),
+    RestoreReuseMissingWindowCase(
+        test_id="multi_pane",
+        panes=(
+            PaneArchive(
+                index=0,
+                active=False,
+                current_command="tail",
+                current_path="/logs",
+                title="main",
+            ),
+            PaneArchive(
+                index=1,
+                active=True,
+                current_command="less",
+                current_path="/logs",
+                full_command="less error.log",
+                title="secondary",
+            ),
+        ),
+        expected_split_count=1,
+        expected_active_target="alpha:2.1",
+    ),
+)
 
 
 def _arg_after(args: tuple[object, ...], flag: str) -> str | None:
@@ -725,6 +776,72 @@ def test_restore_archive_reuses_existing_topology() -> None:
         ("-d", "-t", "alpha:0", "-c", "/workspace"),
         {},
     ) in server.calls
+
+
+@pytest.mark.parametrize(
+    "case",
+    RESTORE_REUSE_MISSING_WINDOW_CASES,
+    ids=[case.test_id for case in RESTORE_REUSE_MISSING_WINDOW_CASES],
+)
+def test_restore_archive_reuses_missing_window_state(
+    case: RestoreReuseMissingWindowCase,
+) -> None:
+    """restore_archive(on_exists='reuse') restores newly created window state."""
+    archive = WorkspaceArchive(
+        saved_at=datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc),
+        sessions=(
+            SessionArchive(
+                name="alpha",
+                windows=(
+                    WindowArchive(
+                        index=2,
+                        name="logs",
+                        layout="even-horizontal",
+                        active=True,
+                        automatic_rename=False,
+                        panes=case.panes,
+                    ),
+                ),
+            ),
+        ),
+    )
+    server = _FakeServer(stdout_by_cmd={"list-windows": ["0"]})
+    server.existing_sessions.add("alpha")
+
+    assert restore_archive(archive, t.cast("Server", server), on_exists="reuse") == []
+
+    assert (
+        "new-window",
+        ("-d", "-t", "alpha:2", "-n", "logs", "-c", "/logs", "tail"),
+        {},
+    ) in server.calls
+    assert (
+        len(
+            [
+                call
+                for call in server.calls
+                if call[0] == "split-window" and call[1][0:3] == ("-d", "-t", "alpha:2")
+            ],
+        )
+        == case.expected_split_count
+    )
+    assert (
+        "select-layout",
+        ("-t", "alpha:2", "even-horizontal"),
+        {},
+    ) in server.calls
+    assert (
+        "set-window-option",
+        ("-t", "alpha:2", "automatic-rename", "off"),
+        {},
+    ) in server.calls
+    for pane in case.panes:
+        assert (
+            "select-pane",
+            ("-T", pane.title),
+            {"target": f"alpha:2.{pane.index}"},
+        ) in server.calls
+    assert ("select-pane", (), {"target": case.expected_active_target}) in server.calls
 
 
 def test_restore_archive_uses_process_restore_policy() -> None:
