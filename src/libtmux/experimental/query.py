@@ -32,6 +32,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 from libtmux._internal.query_list import QueryList
+from libtmux.experimental.agents.state import AgentState
 from libtmux.experimental.engines.base import TmuxEngine
 from libtmux.experimental.ops import (
     ClearHistory,
@@ -53,13 +54,30 @@ if t.TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    from libtmux.experimental.agents.monitor import AgentMonitor
+    from libtmux.experimental.agents.state import Agent
     from libtmux.experimental.models.snapshots import PaneSnapshot
     from libtmux.experimental.ops import Planner, PlanResult
     from libtmux.experimental.ops._types import SlotRef, Target
 
 #: A source of pane snapshots: an engine to read from, or pre-taken snapshots.
 PaneSource = t.Union["TmuxEngine", "Sequence[PaneSnapshot]"]
+#: A source of agent records: a monitor to read its store, or pre-taken records.
+AgentSource = t.Union["AgentMonitor", "Sequence[Agent]"]
 MappedT = t.TypeVar("MappedT")
+KeyT = t.TypeVar("KeyT")
+
+#: Default attention ladder for agent rollups (higher value = more urgent). The
+#: ordering is a *documented default* a caller can override per call: surveyed
+#: orchestrators disagree on the exact weighting, so it is policy, not a rule.
+ATTENTION: dict[AgentState, int] = {
+    AgentState.AWAITING_INPUT: 5,
+    AgentState.DONE: 4,
+    AgentState.IDLE: 3,
+    AgentState.RUNNING: 2,
+    AgentState.UNKNOWN: 1,
+    AgentState.EXITED: 0,
+}
 
 
 def _snapshot_panes(source: PaneSource) -> tuple[PaneSnapshot, ...]:
@@ -353,3 +371,152 @@ def panes() -> PaneQuery:
     PaneQuery(lookups={'active': True}, order='pane_index', limit_count=1)
     """
     return PaneQuery()
+
+
+def _query_agents(source: AgentSource) -> tuple[Agent, ...]:
+    """Resolve *source* into agent records (read a monitor's store, or pass through).
+
+    A monitor is detected by its ``agents`` snapshot property (zero tmux calls --
+    the store is already populated by the monitor's own drain); any other value
+    is taken as a pure sequence of :class:`~..agents.state.Agent` records.
+    """
+    store_agents = getattr(source, "agents", None)
+    if store_agents is not None:
+        return tuple(store_agents)
+    return tuple(t.cast("Sequence[Agent]", source))
+
+
+@dataclass(frozen=True)
+class AgentQuery:
+    """An immutable, chainable query over agents (the agent twin of PaneQuery).
+
+    Resolves against an :data:`AgentSource` -- an
+    :class:`~..agents.monitor.AgentMonitor` (read straight from its in-process
+    store, **zero tmux calls**) or a pure sequence of
+    :class:`~..agents.state.Agent` records. Each method returns a new query;
+    :meth:`all` / :meth:`first` resolve it.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.agents.state import Agent, AgentState
+    >>> rows = [
+    ...     Agent(pane_id="%1", key="%1", name="claude",
+    ...           state=AgentState.AWAITING_INPUT, since=0.0, source="option",
+    ...           pid=None, alive=True),
+    ...     Agent(pane_id="%2", key="%2", name="codex",
+    ...           state=AgentState.RUNNING, since=0.0, source="option",
+    ...           pid=None, alive=True),
+    ... ]
+    >>> agents().filter(state=AgentState.AWAITING_INPUT).map(
+    ...     lambda a: a.pane_id).all(rows)
+    ('%1',)
+    """
+
+    lookups: Mapping[str, t.Any] = field(default_factory=dict)
+    order: str | None = None
+    limit_count: int | None = None
+
+    def filter(self, **lookups: t.Any) -> AgentQuery:
+        """Narrow by QueryList lookups (e.g. ``state=AgentState.IDLE``, ``name=``)."""
+        return dataclasses.replace(self, lookups={**self.lookups, **lookups})
+
+    def order_by(self, field_name: str) -> AgentQuery:
+        """Sort the results by an Agent attribute (missing values last)."""
+        return dataclasses.replace(self, order=field_name)
+
+    def limit(self, count: int) -> AgentQuery:
+        """Keep only the first *count* results."""
+        return dataclasses.replace(self, limit_count=count)
+
+    def all(self, source: AgentSource) -> tuple[Agent, ...]:
+        """Resolve the query against *source* and return the matched agents."""
+        rows: t.Any = QueryList(_query_agents(source))
+        if self.lookups:
+            rows = rows.filter(**self.lookups)
+        rows = list(rows)
+        if self.order is not None:
+            rows.sort(key=lambda agent: _order_key(agent, self.order))
+        if self.limit_count is not None:
+            rows = rows[: self.limit_count]
+        return tuple(rows)
+
+    def first(self, source: AgentSource) -> Agent | None:
+        """Return the first matched agent, or ``None`` when none match."""
+        rows = self.all(source)
+        return rows[0] if rows else None
+
+    def map(self, fn: Callable[[Agent], MappedT]) -> MappedAgentQuery[MappedT]:
+        """Project each matched agent through *fn* (a pure read projection)."""
+        return MappedAgentQuery(self, fn)
+
+    def most_urgent(
+        self,
+        source: AgentSource,
+        *,
+        priority: Mapping[AgentState, int] = ATTENTION,
+    ) -> Agent | None:
+        """Return the matched agent whose state ranks highest in *priority*.
+
+        The "jump to the agent that needs me" primitive (ties keep input order);
+        ``None`` when nothing matches. *priority* defaults to :data:`ATTENTION`.
+        """
+        rows = self.all(source)
+        if not rows:
+            return None
+        return max(rows, key=lambda agent: priority.get(agent.state, -1))
+
+    def rollup(
+        self,
+        source: AgentSource,
+        *,
+        key: Callable[[Agent], KeyT],
+        priority: Mapping[AgentState, int] = ATTENTION,
+    ) -> dict[KeyT, AgentState]:
+        """Collapse each ``key(agent)`` group to its most-urgent state.
+
+        The fleet "who needs me" read model: group the matched agents by *key*
+        (e.g. ``lambda a: a.name``) and report, per group, the state with the
+        highest *priority*. *priority* defaults to :data:`ATTENTION` and is
+        overridable -- the weighting is policy, not a fixed rule.
+        """
+        best_rank: dict[KeyT, int] = {}
+        out: dict[KeyT, AgentState] = {}
+        for agent in self.all(source):
+            group = key(agent)
+            rank = priority.get(agent.state, -1)
+            if group not in best_rank or rank > best_rank[group]:
+                best_rank[group] = rank
+                out[group] = agent.state
+        return out
+
+
+@dataclass(frozen=True)
+class MappedAgentQuery(t.Generic[MappedT]):
+    """An :class:`AgentQuery` whose rows are projected through a function."""
+
+    query: AgentQuery
+    fn: Callable[[Agent], MappedT]
+
+    def all(self, source: AgentSource) -> tuple[MappedT, ...]:
+        """Resolve and project every matched agent."""
+        return tuple(self.fn(agent) for agent in self.query.all(source))
+
+    def first(self, source: AgentSource) -> MappedT | None:
+        """Resolve and project the first matched agent, or ``None``."""
+        first = self.query.first(source)
+        return self.fn(first) if first is not None else None
+
+
+def agents() -> AgentQuery:
+    """Start a query over tracked coding agents (the agent twin of :func:`panes`).
+
+    Resolve it against an :class:`~..agents.monitor.AgentMonitor` (zero tmux
+    calls -- the monitor's store is already live) or a pure sequence of
+    :class:`~..agents.state.Agent` records.
+
+    Examples
+    --------
+    >>> agents().filter(name="claude").limit(1)
+    AgentQuery(lookups={'name': 'claude'}, order=None, limit_count=1)
+    """
+    return AgentQuery()
