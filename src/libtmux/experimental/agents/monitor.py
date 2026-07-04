@@ -26,7 +26,12 @@ from libtmux.experimental.agents.drive import DedupLedger
 from libtmux.experimental.agents.health import is_alive
 from libtmux.experimental.agents.hud import HudRenderer
 from libtmux.experimental.agents.merge import MonotonicCounter, Stamp
-from libtmux.experimental.agents.signals import SUBSCRIPTION, OptionSignal, OscSignal
+from libtmux.experimental.agents.signals import (
+    SUBSCRIPTION,
+    OptionSignal,
+    OscSignal,
+    Reading,
+)
 from libtmux.experimental.agents.state import AgentState, AgentTransition
 from libtmux.experimental.agents.store import (
     AgentStore,
@@ -586,6 +591,7 @@ class AgentMonitor:
             for pane_id, pane in panes_of(snapshot).items()
             if pane_id != self._hud_pane_id
         }
+        self._observe_pane_options(current_panes)
         _added, removed = diff_panes(self._prev_panes, current_panes)
         for pane_id in removed:
             before = self._store.agents.get(pane_id)
@@ -598,6 +604,22 @@ class AgentMonitor:
         self._apply_health(current_panes)
         self._prev_panes = dict(current_panes)
         self._hud_dirty = True
+
+    def _observe_pane_options(self, current_panes: dict[str, PaneSnapshot]) -> None:
+        """Seed/refresh store entries from durable per-pane option values."""
+        for pane_id, pane in current_panes.items():
+            raw_state = pane.fields.get("@agent_state", "").strip()
+            if not raw_state:
+                continue
+            state = AgentState.from_signal(raw_state)
+            name = pane.fields.get("@agent_name") or None
+            current = self._store.agents.get(pane_id)
+            if current is not None:
+                if current.source != "option":
+                    continue
+                if current.state is state and current.name == name:
+                    continue
+            self._observe(Reading(pane_id, state, name, "option"))
 
     def _apply_health(self, current_panes: dict[str, PaneSnapshot]) -> None:
         """Refresh tracked agents' ``pid``/``alive`` from the pane tree.
