@@ -8,22 +8,28 @@ import typing as t
 import pytest
 
 from libtmux.experimental.engines import AsyncConcreteEngine, ConcreteEngine
+from libtmux.experimental.engines.base import CommandResult
 from libtmux.experimental.ops import (
     BreakPane,
+    DisplayMessage,
     JoinPane,
     LazyPlan,
     MarkedPlanner,
     MovePane,
+    NewSession,
     SendKeys,
     SequentialPlanner,
     SplitWindow,
     StepReport,
     SwapPane,
 )
-from libtmux.experimental.ops._types import PaneId, SlotRef, WindowId
+from libtmux.experimental.ops._types import NameRef, PaneId, SlotRef, WindowId
 from libtmux.experimental.ops.exc import ForwardCaptureError, OperationError
 
 if t.TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from libtmux.experimental.engines.base import CommandRequest
     from libtmux.experimental.ops.operation import Operation
 
 
@@ -283,3 +289,75 @@ def test_astream_last_result_matches_aexecute() -> None:
 
     stream_ok, direct_ok = asyncio.run(both())
     assert stream_ok == direct_ok
+
+
+class _FindEngine:
+    """A fake engine where the probe reports found-or-not and the create makes one."""
+
+    def __init__(self, *, found: bool) -> None:
+        self.found = found
+        self.calls: list[tuple[str, ...]] = []
+
+    def run(self, request: CommandRequest) -> CommandResult:
+        """Answer a display-message probe, or a new-session create."""
+        self.calls.append(request.args)
+        cmd = ("tmux", *request.args)
+        if request.args[0] == "display-message":
+            if self.found:
+                return CommandResult(cmd=cmd, stdout=("$9 @9 %9",), returncode=0)
+            return CommandResult(cmd=cmd, stderr=("no session",), returncode=1)
+        return CommandResult(cmd=cmd, stdout=("$1 @1 %1",), returncode=0)
+
+    def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
+        """Run each request in order."""
+        return [self.run(req) for req in requests]
+
+
+class _EnsureCase(t.NamedTuple):
+    """Whether the probe finds the object, and the id + create-count expected."""
+
+    test_id: str
+    found: bool
+    session_id: str
+    creates: int
+
+
+_ENSURE_CASES: tuple[_EnsureCase, ...] = (
+    _EnsureCase("found_reuses", found=True, session_id="$9", creates=0),
+    _EnsureCase("absent_creates", found=False, session_id="$1", creates=1),
+)
+
+
+@pytest.mark.parametrize("case", _ENSURE_CASES, ids=[c.test_id for c in _ENSURE_CASES])
+def test_ensure_probes_then_creates_only_if_absent(case: _EnsureCase) -> None:
+    """An ensured create binds a found object's ids, or creates when absent."""
+    plan = LazyPlan()
+    slot = plan.add(NewSession(session_name="dev", capture_panes=True))
+    plan.ensure(
+        slot.slot,
+        DisplayMessage(target=NameRef("dev"), message="#{session_id}"),
+    )
+    engine = _FindEngine(found=case.found)
+    result = plan.execute(engine)
+
+    assert result.ok
+    assert result.bindings[0] == case.session_id
+    assert result.bindings[0, "pane"].startswith("%")  # first-pane subref bound
+    creates = [call for call in engine.calls if call[0] == "new-session"]
+    assert len(creates) == case.creates  # created only when the probe found nothing
+
+
+def test_ensure_survives_serialization_round_trip() -> None:
+    """to_list/from_list carry an ensured op's probe, so the conditional persists."""
+    plan = LazyPlan()
+    slot = plan.add(NewSession(session_name="dev", capture_panes=True))
+    plan.ensure(
+        slot.slot, DisplayMessage(target=NameRef("dev"), message="#{session_id}")
+    )
+
+    revived = LazyPlan.from_list(plan.to_list())
+
+    assert revived.operations == plan.operations
+    engine = _FindEngine(found=True)
+    assert revived.execute(engine).bindings[0] == "$9"
+    assert not [call for call in engine.calls if call[0] == "new-session"]
