@@ -38,6 +38,11 @@ from libtmux.experimental.workspace.events import (
     WindowCreated,
     WorkspaceBuilt,
 )
+from libtmux.experimental.workspace.freeze import (
+    afreeze_server,
+    freeze,
+    freeze_server,
+)
 from libtmux.experimental.workspace.ir import (
     Command,
     Float,
@@ -65,9 +70,12 @@ __all__ = (
     "WorkspaceBuilt",
     "WorkspaceCompileError",
     "abuild_workspace",
+    "afreeze_server",
     "analyze",
     "build_workspace",
     "compile_full",
     "compile_workspace",
     "confirm",
+    "freeze",
+    "freeze_server",
 )
