@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import re
 import time
 import typing as t
 from dataclasses import dataclass
@@ -24,7 +25,7 @@ from dataclasses import dataclass
 if t.TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable
 
-SettleReason = t.Literal["settled", "time_cap", "byte_cap", "stream_end"]
+SettleReason = t.Literal["settled", "time_cap", "byte_cap", "stream_end", "matched"]
 
 
 @dataclass(frozen=True)
@@ -36,9 +37,10 @@ class SettleOutcome:
     text : str
         The decoded bytes the pane produced during the watch (tail-preserving
         prefix when ``truncated``).
-    reason : {"settled", "time_cap", "byte_cap", "stream_end"}
+    reason : {"settled", "time_cap", "byte_cap", "stream_end", "matched"}
         Why the fold stopped. ``settled`` means *stopped producing output*, not
-        *succeeded* -- the caller interprets the text.
+        *succeeded* -- the caller interprets the text. ``matched`` means the
+        ``needle`` appeared, resolving the fold early (before any idle gap).
     byte_count : int
         Size of ``text`` in bytes (capped at ``max_bytes``).
     frame_count : int
@@ -160,6 +162,7 @@ async def accumulate_until_settle(
     settle_ms: int,
     timeout_ms: int,
     max_bytes: int,
+    needle: str | re.Pattern[str] | None = None,
     now: Callable[[], float] = time.monotonic,
 ) -> SettleOutcome:
     r"""Fold a stream of decoded chunks until the pane settles.
@@ -183,6 +186,11 @@ async def accumulate_until_settle(
         Overall wall-clock budget.
     max_bytes : int
         Byte cap; the returned text keeps the tail.
+    needle : str or re.Pattern or None
+        When set, resolve ``reason='matched'`` the instant the accumulated output
+        contains *needle* -- a ``str`` is matched literally, a compiled pattern is
+        searched -- instead of waiting for the idle gap. ``None`` keeps the pure
+        needle-free settle.
     now : Callable[[], float]
         Monotonic clock source, injectable for tests.
 
@@ -232,6 +240,20 @@ async def accumulate_until_settle(
     ...     )
     ... ).reason
     'stream_end'
+
+    A needle resolves the moment it appears, before the (long) idle window:
+
+    >>> async def says_ready():
+    ...     yield "booting "
+    ...     yield "READY"
+    ...     await asyncio.Event().wait()
+    >>> asyncio.run(
+    ...     accumulate_until_settle(
+    ...         says_ready(), settle_ms=10000, timeout_ms=1000, max_bytes=4096,
+    ...         needle="READY",
+    ...     )
+    ... ).reason
+    'matched'
     """
     buf: list[str] = []
     byte_count = frame_count = 0
@@ -239,6 +261,13 @@ async def accumulate_until_settle(
     reason: SettleReason = "stream_end"
     settle_s = settle_ms / 1000.0
     deadline = now() + timeout_ms / 1000.0
+    pattern = (
+        None
+        if needle is None
+        else needle
+        if isinstance(needle, re.Pattern)
+        else re.compile(re.escape(needle))
+    )
     async with contextlib.aclosing(frames):
         while True:
             remaining = deadline - now()
@@ -263,6 +292,10 @@ async def accumulate_until_settle(
             buf.append(chunk)
             frame_count += 1
             byte_count += len(chunk.encode())
+            if pattern is not None and pattern.search("".join(buf)):
+                # The caller's explicit goal appeared -- resolve before the caps.
+                reason = "matched"
+                break
             if byte_count >= max_bytes:
                 reason = "byte_cap"
                 break

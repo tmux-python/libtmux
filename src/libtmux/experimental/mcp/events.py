@@ -420,6 +420,7 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
         settle_ms: int = 750,
         timeout: float = 30.0,
         max_bytes: int = 131072,
+        needle: str | None = None,
         stream_partials: bool = False,
         snapshot: bool = True,
     ) -> MonitorResult:
@@ -464,6 +465,10 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
         max_bytes : int
             Cap on captured output bytes (default 131072). On overflow the watch
             returns early with ``truncated`` set; raise it to keep more output.
+        needle : str or None
+            When set, return ``reason='matched'`` the instant the pane's output
+            contains this substring (e.g. wait until a server prints ``READY``)
+            instead of waiting for the idle settle. Default ``None`` (needle-free).
         stream_partials : bool
             When ``True``, also push each output chunk live as an MCP log message
             for real-time progress on long runs (default ``False``).
@@ -501,6 +506,7 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
             settle_ms=settle_ms,
             timeout_ms=int(timeout * 1000),
             max_bytes=max_bytes,
+            needle=needle,
         )
         elapsed_ms = int((time.monotonic() - started) * 1000)
         dropped = getattr(engine, "dropped_notifications", 0) - dropped_before
