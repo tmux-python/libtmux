@@ -272,3 +272,58 @@ def test_monitor_persists_live_state(session: Session, tmp_path: Path) -> None:
     assert data is not None
     store = AgentStore.from_dict(data)
     assert [agent.state for agent in store.agents.values()] == [AgentState.RUNNING]
+
+
+def test_run_monitor_observes_option_after_start(
+    session: Session,
+    tmp_path: Path,
+) -> None:
+    """The CLI monitor installs subscriptions before the first connection."""
+    state_path = tmp_path / "agents.json"
+
+    async def main() -> bool:
+        session_name = session.session_name
+        assert session_name is not None
+        task = asyncio.create_task(
+            cli.run_monitor(
+                cli.AgentConsoleConfig(
+                    socket_name=session.server.socket_name,
+                    session_name=session_name,
+                    state_path=state_path,
+                    status_line=False,
+                )
+            )
+        )
+        try:
+            for _ in range(30):
+                await asyncio.sleep(0.1)
+                clients = session.server.cmd(
+                    "list-clients",
+                    "-F",
+                    "#{client_control_mode} #{session_name}",
+                ).stdout
+                if any(line == f"1 {session_name}" for line in clients):
+                    break
+
+            pane = session.active_window.active_pane
+            assert pane is not None
+            pane_id = pane.pane_id
+            assert pane_id is not None
+            session.cmd("set-option", "-p", "-t", pane_id, "@agent_state", "running")
+
+            for _ in range(40):
+                await asyncio.sleep(0.1)
+                data = JsonFile(state_path).load()
+                if not data:
+                    continue
+                store = AgentStore.from_dict(data)
+                agent = store.agents.get(pane_id)
+                if agent is not None and agent.state is AgentState.RUNNING:
+                    return True
+            return False
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    assert asyncio.run(main()) is True
