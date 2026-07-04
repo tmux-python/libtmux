@@ -37,6 +37,14 @@ CAPTURED_CAPABILITIES = (
     "active-windows",
     "active-panes",
     "pane-current-command",
+    "pane-titles",
+    "window-flags",
+    "automatic-rename",
+    "grouped-sessions",
+    "alternate-windows",
+    "active-sessions",
+    "alternate-sessions",
+    "history-size",
 )
 """tmux-resurrect parity features captured by :func:`capture_archive`."""
 
@@ -53,12 +61,30 @@ _PANE_FIELDS = (
     "#{window_name}",
     "#{window_layout}",
     "#{window_active}",
+    "#{window_flags}",
     "#{pane_index}",
     "#{pane_active}",
     "#{pane_current_command}",
     "#{pane_current_path}",
+    "#{pane_title}",
+    "#{history_size}",
 )
 _PANE_FORMAT = "".join(f"{field}{_FIELD_SEPARATOR}" for field in _PANE_FIELDS)
+_SESSION_FORMAT = "".join(
+    f"{field}{_FIELD_SEPARATOR}"
+    for field in (
+        "#{session_name}",
+        "#{session_grouped}",
+        "#{session_group}",
+    )
+)
+_CLIENT_FORMAT = "".join(
+    f"{field}{_FIELD_SEPARATOR}"
+    for field in (
+        "#{client_session}",
+        "#{client_last_session}",
+    )
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,10 +146,13 @@ class _PaneRow:
     window_name: str
     window_layout: str
     window_active: bool
+    window_flags: str
     pane_index: int
     pane_active: bool
     pane_current_command: str
     pane_current_path: str
+    pane_title: str
+    history_size: int
 
 
 def capture_archive(
@@ -143,7 +172,15 @@ def capture_archive(
     raise_if_stderr(proc, "list-panes")
 
     rows = tuple(_parse_pane_row(line) for line in proc.stdout)
-    return _archive_from_rows(rows, saved_at=saved_at)
+    active_session_name, alternate_session_name = _capture_client_state(server)
+    return _archive_from_rows(
+        rows,
+        active_session_name=active_session_name,
+        alternate_session_name=alternate_session_name,
+        automatic_renames=_capture_automatic_renames(server, rows),
+        saved_at=saved_at,
+        session_groups=_capture_session_groups(server),
+    )
 
 
 def write_archive(archive: WorkspaceArchive, path: StrPath) -> pathlib.Path:
@@ -235,7 +272,11 @@ def restore_archive(
 def _archive_from_rows(
     rows: tuple[_PaneRow, ...],
     *,
+    active_session_name: str | None = None,
+    alternate_session_name: str | None = None,
+    automatic_renames: t.Mapping[tuple[str, int], bool | None] | None = None,
     saved_at: datetime.datetime | None = None,
+    session_groups: t.Mapping[str, str] | None = None,
 ) -> WorkspaceArchive:
     grouped: dict[str, dict[int, list[_PaneRow]]] = {}
     for row in sorted(rows, key=lambda item: (item.session_name, item.window_index)):
@@ -256,6 +297,8 @@ def _archive_from_rows(
                     active=row.pane_active,
                     current_command=row.pane_current_command,
                     current_path=row.pane_current_path,
+                    title=row.pane_title,
+                    history_size=row.history_size,
                 )
                 for row in sorted(pane_rows, key=lambda item: item.pane_index)
             )
@@ -266,11 +309,33 @@ def _archive_from_rows(
                     layout=first.window_layout,
                     active=first.window_active,
                     panes=panes,
+                    flags=first.window_flags,
+                    automatic_rename=(
+                        automatic_renames or {}
+                    ).get((first.session_name, first.window_index)),
                 ),
             )
-        sessions.append(SessionArchive(name=session_name, windows=tuple(windows)))
+        active_window_index = next(
+            (window.index for window in windows if window.active),
+            None,
+        )
+        alternate_window_index = next(
+            (window.index for window in windows if "-" in window.flags),
+            None,
+        )
+        sessions.append(
+            SessionArchive(
+                name=session_name,
+                windows=tuple(windows),
+                group_name=(session_groups or {}).get(session_name),
+                active_window_index=active_window_index,
+                alternate_window_index=alternate_window_index,
+            ),
+        )
 
     return WorkspaceArchive(
+        active_session_name=active_session_name,
+        alternate_session_name=alternate_session_name,
         saved_at=_coerce_saved_at(saved_at),
         sessions=tuple(sessions),
     )
@@ -431,9 +496,18 @@ def _parse_pane_row(row: str) -> _PaneRow:
     if parts and parts[-1] == "":
         parts.pop()
 
-    if len(parts) != 9:
-        msg = f"expected 9 list-panes fields, got {len(parts)}"
+    if len(parts) not in {9, 12}:
+        msg = f"expected 9 or 12 list-panes fields, got {len(parts)}"
         raise ValueError(msg)
+
+    if len(parts) == 9:
+        parts = [
+            *parts[:5],
+            "",
+            *parts[5:],
+            "",
+            "0",
+        ]
 
     return _PaneRow(
         session_name=parts[0],
@@ -441,15 +515,92 @@ def _parse_pane_row(row: str) -> _PaneRow:
         window_name=parts[2],
         window_layout=parts[3],
         window_active=_tmux_bool(parts[4]),
-        pane_index=int(parts[5]),
-        pane_active=_tmux_bool(parts[6]),
-        pane_current_command=parts[7],
-        pane_current_path=parts[8],
+        window_flags=parts[5],
+        pane_index=int(parts[6]),
+        pane_active=_tmux_bool(parts[7]),
+        pane_current_command=parts[8],
+        pane_current_path=parts[9],
+        pane_title=parts[10],
+        history_size=_tmux_int(parts[11]),
     )
 
 
 def _tmux_bool(value: str) -> bool:
     return value == "1"
+
+
+def _tmux_int(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError:
+        return 0
+
+
+def _capture_session_groups(server: Server) -> dict[str, str]:
+    proc = server.cmd("list-sessions", "-F", _SESSION_FORMAT)
+    if proc.stderr:
+        return {}
+
+    groups: dict[str, str] = {}
+    for line in proc.stdout:
+        parts = _split_tmux_row(line)
+        if len(parts) != 3:
+            continue
+        session_name, session_grouped, session_group = parts
+        if _tmux_bool(session_grouped) and session_group:
+            groups[session_name] = session_group
+    return groups
+
+
+def _capture_client_state(server: Server) -> tuple[str | None, str | None]:
+    proc = server.cmd("list-clients", "-F", _CLIENT_FORMAT)
+    if proc.stderr or not proc.stdout:
+        return None, None
+
+    parts = _split_tmux_row(proc.stdout[0])
+    if len(parts) != 2:
+        return None, None
+    return parts[0] or None, parts[1] or None
+
+
+def _capture_automatic_renames(
+    server: Server,
+    rows: tuple[_PaneRow, ...],
+) -> dict[tuple[str, int], bool | None]:
+    window_keys = sorted({(row.session_name, row.window_index) for row in rows})
+    return {
+        window_key: _capture_automatic_rename(server, *window_key)
+        for window_key in window_keys
+    }
+
+
+def _capture_automatic_rename(
+    server: Server,
+    session_name: str,
+    window_index: int,
+) -> bool | None:
+    proc = server.cmd(
+        "show-window-options",
+        "-v",
+        "-t",
+        f"{session_name}:{window_index}",
+        "automatic-rename",
+    )
+    if proc.stderr or not proc.stdout:
+        return None
+    value = proc.stdout[0]
+    if value == "on":
+        return True
+    if value == "off":
+        return False
+    return None
+
+
+def _split_tmux_row(row: str) -> list[str]:
+    parts = row.split(_FIELD_SEPARATOR)
+    if parts and parts[-1] == "":
+        parts.pop()
+    return parts
 
 
 def _coerce_saved_at(value: datetime.datetime | None) -> datetime.datetime:
