@@ -45,6 +45,15 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### `break_pane()` keeps tmux's default window name on 3.7a/3.7b (#699)
+
+On tmux 3.7a/3.7b, breaking a pane into a new window without an explicit
+`window_name` left it named `libtmux` instead of tmux's own default
+(typically the running command). {meth}`~libtmux.Pane.break_pane` now
+keeps that natural name; passing `window_name` is unaffected.
+
 ### Development
 
 #### tmux 3.7a/3.7b test compatibility (#698)
