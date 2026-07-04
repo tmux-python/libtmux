@@ -10,7 +10,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_gte_version, has_version
+from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
 
@@ -1346,15 +1346,6 @@ def test_break_pane_with_name(session: Session) -> None:
     assert new_window.window_name == "my_broken"
 
 
-@pytest.mark.xfail(
-    has_version("3.7"),
-    reason=(
-        "break_pane() without window_name forces the 'libtmux' placeholder "
-        "on the tmux 3.7 family; the underlying crash was reverted in 3.7a "
-        "but get_version() strips the suffix, so the workaround still fires"
-    ),
-    strict=True,
-)
 def test_break_pane_no_name_uses_natural_name(session: Session) -> None:
     """Pane.break_pane() without a name keeps tmux's default window name.
 
