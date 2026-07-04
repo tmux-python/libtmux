@@ -459,6 +459,17 @@ def register_plan_tools(
             "argv": [list(item) if item is not None else None for item in preview.argv],
         }
 
+    def explain_plan(
+        operations: list[dict[str, t.Any]],
+        planner: str = "marked",
+    ) -> dict[str, t.Any]:
+        """Explain why *planner* folds or breaks a serialized plan (pure)."""
+        explanation = _plan.explain_plan(
+            _plan_from_dicts(operations),
+            planner=_planner(planner),
+        )
+        return {"steps": explanation.steps}
+
     def result_schema(kind: str) -> dict[str, t.Any]:
         """Report what an operation kind returns, for planning forward refs."""
         schema = _plan.result_schema(reg, kind)
@@ -471,6 +482,7 @@ def register_plan_tools(
 
     tools: list[tuple[Callable[..., t.Any], str]] = [
         (preview_plan, "readonly"),
+        (explain_plan, "readonly"),
         (result_schema, "readonly"),
     ]
 
