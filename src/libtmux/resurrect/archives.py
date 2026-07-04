@@ -69,6 +69,10 @@ class PaneArchive:
     active: bool
     current_command: str
     current_path: str
+    title: str = ""
+    full_command: str = ""
+    history_size: int = 0
+    contents: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +84,8 @@ class WindowArchive:
     layout: str
     active: bool
     panes: tuple[PaneArchive, ...]
+    flags: str = ""
+    automatic_rename: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +94,9 @@ class SessionArchive:
 
     name: str
     windows: tuple[WindowArchive, ...]
+    group_name: str | None = None
+    active_window_index: int | None = None
+    alternate_window_index: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +107,8 @@ class WorkspaceArchive:
     sessions: tuple[SessionArchive, ...]
     format_version: str = FORMAT_VERSION
     capabilities: tuple[str, ...] = CAPTURED_CAPABILITIES
+    active_session_name: str | None = None
+    alternate_session_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -451,24 +462,35 @@ def _coerce_saved_at(value: datetime.datetime | None) -> datetime.datetime:
 
 def _archive_to_dict(archive: WorkspaceArchive) -> dict[str, object]:
     return {
+        "active_session_name": archive.active_session_name,
+        "alternate_session_name": archive.alternate_session_name,
         "capabilities": list(archive.capabilities),
         "format_version": archive.format_version,
         "saved_at": _coerce_saved_at(archive.saved_at).isoformat(),
         "sessions": [
             {
+                "active_window_index": session.active_window_index,
+                "alternate_window_index": session.alternate_window_index,
+                "group_name": session.group_name,
                 "name": session.name,
                 "windows": [
                     {
                         "active": window.active,
+                        "automatic_rename": window.automatic_rename,
+                        "flags": window.flags,
                         "index": window.index,
                         "layout": window.layout,
                         "name": window.name,
                         "panes": [
                             {
                                 "active": pane.active,
+                                "contents": list(pane.contents),
                                 "current_command": pane.current_command,
                                 "current_path": pane.current_path,
+                                "full_command": pane.full_command,
+                                "history_size": pane.history_size,
                                 "index": pane.index,
+                                "title": pane.title,
                             }
                             for pane in window.panes
                         ],
@@ -489,6 +511,8 @@ def _archive_from_dict(data: object) -> WorkspaceArchive:
         raise ValueError(msg)
 
     return WorkspaceArchive(
+        active_session_name=_optional_str(archive_data, "active_session_name"),
+        alternate_session_name=_optional_str(archive_data, "alternate_session_name"),
         capabilities=_optional_str_tuple(
             archive_data,
             "capabilities",
@@ -506,6 +530,9 @@ def _archive_from_dict(data: object) -> WorkspaceArchive:
 def _session_from_dict(data: object) -> SessionArchive:
     session_data = _expect_mapping(data, "session")
     return SessionArchive(
+        active_window_index=_optional_int(session_data, "active_window_index"),
+        alternate_window_index=_optional_int(session_data, "alternate_window_index"),
+        group_name=_optional_str(session_data, "group_name"),
         name=_expect_str(session_data, "name"),
         windows=tuple(
             _window_from_dict(window)
@@ -517,10 +544,12 @@ def _session_from_dict(data: object) -> SessionArchive:
 def _window_from_dict(data: object) -> WindowArchive:
     window_data = _expect_mapping(data, "window")
     return WindowArchive(
-        index=_expect_int(window_data, "index"),
-        name=_expect_str(window_data, "name"),
-        layout=_expect_str(window_data, "layout"),
         active=_expect_bool(window_data, "active"),
+        automatic_rename=_optional_bool(window_data, "automatic_rename"),
+        flags=_optional_str(window_data, "flags") or "",
+        index=_expect_int(window_data, "index"),
+        layout=_expect_str(window_data, "layout"),
+        name=_expect_str(window_data, "name"),
         panes=tuple(
             _pane_from_dict(pane) for pane in _expect_list(window_data, "panes")
         ),
@@ -530,10 +559,14 @@ def _window_from_dict(data: object) -> WindowArchive:
 def _pane_from_dict(data: object) -> PaneArchive:
     pane_data = _expect_mapping(data, "pane")
     return PaneArchive(
-        index=_expect_int(pane_data, "index"),
         active=_expect_bool(pane_data, "active"),
+        contents=_optional_str_tuple(pane_data, "contents", default=()),
         current_command=_expect_str(pane_data, "current_command"),
         current_path=_expect_str(pane_data, "current_path"),
+        full_command=_optional_str(pane_data, "full_command") or "",
+        history_size=_optional_int(pane_data, "history_size") or 0,
+        index=_expect_int(pane_data, "index"),
+        title=_optional_str(pane_data, "title") or "",
     )
 
 
@@ -565,6 +598,36 @@ def _optional_str_tuple(
         msg = f"{key} must be a list of strings"
         raise TypeError(msg)
     return tuple(value)
+
+
+def _optional_str(data: t.Mapping[str, object], key: str) -> str | None:
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        msg = f"{key} must be a string or null"
+        raise TypeError(msg)
+    return value
+
+
+def _optional_int(data: t.Mapping[str, object], key: str) -> int | None:
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int):
+        msg = f"{key} must be an integer or null"
+        raise TypeError(msg)
+    return value
+
+
+def _optional_bool(data: t.Mapping[str, object], key: str) -> bool | None:
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, bool):
+        msg = f"{key} must be a boolean or null"
+        raise TypeError(msg)
+    return value
 
 
 def _expect_str(data: t.Mapping[str, object], key: str) -> str:
