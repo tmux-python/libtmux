@@ -9,6 +9,7 @@ def test_from_signal_maps_known_and_unknown() -> None:
     """Test AgentState.from_signal maps known and unknown states."""
     assert AgentState.from_signal("running") is AgentState.RUNNING
     assert AgentState.from_signal("awaiting_input") is AgentState.AWAITING_INPUT
+    assert AgentState.from_signal("done") is AgentState.DONE
     assert AgentState.from_signal("idle") is AgentState.IDLE
     assert AgentState.from_signal("garbage") is AgentState.UNKNOWN
 

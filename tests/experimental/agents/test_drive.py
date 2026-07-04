@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from libtmux.experimental.agents.drive import (
+    READY_STATES,
     DedupLedger,
     SendOutcome,
     pane_lock,
@@ -12,6 +13,7 @@ from libtmux.experimental.agents.drive import (
     send_to_agents,
 )
 from libtmux.experimental.agents.monitor import AgentMonitor
+from libtmux.experimental.agents.state import AgentState
 from libtmux.experimental.agents.wait import WaitReason
 from libtmux.experimental.engines.base import CommandRequest, CommandResult
 
@@ -86,6 +88,22 @@ def test_send_to_agent_folds_multiline_into_one_dispatch() -> None:
     assert "paste-buffer" in args
     assert "send-keys" in args
     assert ";" in args  # the ops are chained into one invocation
+
+
+def test_done_is_ready_for_the_next_prompt() -> None:
+    """A completed turn is ready by default so follow-up sends do not time out."""
+
+    async def main() -> tuple[bool, int]:
+        engine = _RecordingEngine()
+        monitor = AgentMonitor(engine)
+        monitor.ingest("%subscription-changed agentstate $0 @0 1 %1 : done")
+        outcome = await send_to_agent(monitor, "%1", "review")
+        return outcome.sent, len(engine.requests)
+
+    assert AgentState.DONE in READY_STATES
+    sent, dispatch_count = asyncio.run(main())
+    assert sent is True
+    assert dispatch_count == 1
 
 
 def test_send_to_agent_skips_dispatch_when_not_ready() -> None:

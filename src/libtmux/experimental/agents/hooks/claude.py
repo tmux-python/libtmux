@@ -33,11 +33,11 @@ import typing as t
 #: >>> _CLAUDE_EVENT_STATE["UserPromptSubmit"]
 #: 'running'
 #: >>> _CLAUDE_EVENT_STATE["Stop"]
-#: 'awaiting_input'
+#: 'done'
 _CLAUDE_EVENT_STATE: dict[str, str] = {
     "UserPromptSubmit": "running",
     "Notification": "awaiting_input",
-    "Stop": "awaiting_input",
+    "Stop": "done",
     "SessionStart": "idle",
 }
 

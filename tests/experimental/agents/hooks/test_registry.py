@@ -12,6 +12,7 @@ def test_event_state_map_is_canonical() -> None:
     """EVENT_STATE maps the four canonical lifecycle events to state strings."""
     assert EVENT_STATE["turn_start"] == "running"
     assert EVENT_STATE["needs_approval"] == "awaiting_input"
+    assert EVENT_STATE["turn_end"] == "done"
 
 
 def test_registry_has_claude_and_codex() -> None:

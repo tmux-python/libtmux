@@ -30,6 +30,7 @@ def test_install_writes_event_hooks(tmp_path: pathlib.Path) -> None:
     assert "permission_request" in text
     assert "libtmux-agent-emit awaiting_input" in text
     assert "stop" in text
+    assert "libtmux-agent-emit done" in text
     assert "session_start" in text
     assert "libtmux-agent-emit idle" in text
     assert 'model = "o4"' in text  # untouched
