@@ -45,6 +45,16 @@ def test_filter_lookup() -> None:
     assert [p.pane_id for p in result] == ["%1", "%3"]
 
 
+def test_filter_floating() -> None:
+    """filter(floating=True) selects floating overlays (tmux 3.7+)."""
+    rows = (
+        _pane("%1", 0, active=True, command="vim"),
+        PaneSnapshot.from_format({"pane_id": "%9", "pane_floating_flag": "1"}),
+    )
+    assert [p.pane_id for p in panes().filter(floating=True).all(rows)] == ["%9"]
+    assert [p.pane_id for p in panes().filter(floating=False).all(rows)] == ["%1"]
+
+
 def test_order_by_and_limit() -> None:
     """order_by sorts and limit truncates."""
     result = panes().order_by("pane_index").limit(2).all(ROWS)
