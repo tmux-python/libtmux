@@ -6,8 +6,10 @@ import asyncio
 import dataclasses
 import typing as t
 
+from libtmux.experimental.agents.state import Agent, AgentState
 from libtmux.experimental.engines import AsyncMockEngine, MockEngine
 from libtmux.experimental.engines.base import CommandResult
+from libtmux.experimental.models import ServerSnapshot
 from libtmux.experimental.ops import SequentialPlanner
 from libtmux.experimental.ops._types import SlotRef
 from libtmux.experimental.workspace import (
@@ -19,6 +21,7 @@ from libtmux.experimental.workspace import (
     WorkspaceSet,
     build_workspaces,
     compile_workspaces,
+    workspace_status,
 )
 
 if t.TYPE_CHECKING:
@@ -165,3 +168,55 @@ def test_workspace_set_async_build_matches_sync_shape() -> None:
     assert len(outcome.result.results) == len(
         compile_workspaces(workspace_set.workspaces).plan.operations,
     )
+
+
+def test_workspace_status_projects_snapshots_and_agents_without_tmux() -> None:
+    """workspace_status joins workspace specs, server snapshots, and agent records."""
+    snapshot = ServerSnapshot.from_pane_rows(
+        [
+            {
+                "session_id": "$1",
+                "session_name": "dev-api",
+                "window_id": "@1",
+                "window_name": "editor",
+                "pane_id": "%1",
+            },
+            {
+                "session_id": "$2",
+                "session_name": "dev-docs",
+                "window_id": "@2",
+                "window_name": "editor",
+                "pane_id": "%2",
+            },
+        ],
+    )
+    agents = [
+        Agent(
+            pane_id="%1",
+            key="%1",
+            name="claude",
+            state=AgentState.AWAITING_INPUT,
+            since=0.0,
+            source="option",
+            pid=None,
+            alive=True,
+        ),
+    ]
+
+    statuses = workspace_status(
+        [
+            Workspace(name="dev-api", windows=[Window("editor")]),
+            Workspace(name="dev-docs", windows=[Window("editor")]),
+            Workspace(name="missing", windows=[Window("editor")]),
+        ],
+        snapshot,
+        agents,
+    )
+
+    assert [(item.name, item.exists, item.session_id) for item in statuses] == [
+        ("dev-api", True, "$1"),
+        ("dev-docs", True, "$2"),
+        ("missing", False, None),
+    ]
+    assert statuses[0].agent_state == AgentState.AWAITING_INPUT
+    assert statuses[1].agent_state is None

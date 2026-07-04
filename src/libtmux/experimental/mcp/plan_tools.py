@@ -94,6 +94,17 @@ def _to_outcome(result: PlanResult) -> PlanOutcome:
     )
 
 
+@dataclass(frozen=True)
+class WorkspaceSetOutcome:
+    """The result of executing a workspace-set build."""
+
+    ok: bool
+    results: list[dict[str, t.Any]]
+    bindings: dict[str, str]
+    sessions: list[str]
+    reused: list[str]
+
+
 def execute_plan(
     plan: LazyPlan,
     engine: TmuxEngine,
@@ -187,4 +198,60 @@ async def abuild_workspace(
 
     return _to_outcome(
         await analyze(spec).abuild(engine, version=version, preflight=preflight),
+    )
+
+
+def build_workspaces(
+    specs: t.Sequence[t.Mapping[str, t.Any] | str],
+    engine: TmuxEngine,
+    *,
+    version: str | None = None,
+    preflight: bool = True,
+) -> WorkspaceSetOutcome:
+    """Build multiple declarative workspaces as one merged plan."""
+    from libtmux.experimental.workspace import (
+        analyze,
+        build_workspaces as run_workspaces,
+    )
+
+    result = run_workspaces(
+        [analyze(spec) for spec in specs],
+        engine,
+        version=version,
+        preflight=preflight,
+    )
+    return WorkspaceSetOutcome(
+        ok=result.ok,
+        results=[result_to_dict(item) for item in result.result.results],
+        bindings=bindings_to_dict(result.bindings),
+        sessions=list(result.sessions),
+        reused=list(result.reused),
+    )
+
+
+async def abuild_workspaces(
+    specs: t.Sequence[t.Mapping[str, t.Any] | str],
+    engine: AsyncTmuxEngine,
+    *,
+    version: str | None = None,
+    preflight: bool = True,
+) -> WorkspaceSetOutcome:
+    """Async sibling of :func:`build_workspaces`."""
+    from libtmux.experimental.workspace import (
+        abuild_workspaces as arun_workspaces,
+        analyze,
+    )
+
+    result = await arun_workspaces(
+        [analyze(spec) for spec in specs],
+        engine,
+        version=version,
+        preflight=preflight,
+    )
+    return WorkspaceSetOutcome(
+        ok=result.ok,
+        results=[result_to_dict(item) for item in result.result.results],
+        bindings=bindings_to_dict(result.bindings),
+        sessions=list(result.sessions),
+        reused=list(result.reused),
     )

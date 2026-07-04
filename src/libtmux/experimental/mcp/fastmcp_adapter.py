@@ -143,7 +143,7 @@ def _instructions(ctx: CallerContext, *, events_enabled: bool = False) -> str:
     closer = (
         "The curated tools cover most needs; the per-operation surface (op_*) "
         "and the plan tools (preview_plan/execute_plan/result_schema/"
-        "build_workspace) are power-use."
+        "build_workspace/build_workspaces) are power-use."
     )
     if events_enabled:
         closer += (
@@ -512,8 +512,29 @@ def register_plan_tools(
             )
             return outcome.to_dict()
 
+        async def build_workspaces(
+            specs: list[dict[str, t.Any]],
+            preflight: bool = True,
+            version: str | None = None,
+        ) -> dict[str, t.Any]:
+            """Build multiple declarative workspaces in one merged plan."""
+            outcome = await _plan.abuild_workspaces(
+                specs,
+                t.cast("AsyncTmuxEngine", engine),
+                version=version,
+                preflight=preflight,
+            )
+            return {
+                "ok": outcome.ok,
+                "results": outcome.results,
+                "bindings": outcome.bindings,
+                "sessions": outcome.sessions,
+                "reused": outcome.reused,
+            }
+
         tools.append((execute_plan, "mutating"))
         tools.append((build_workspace, "mutating"))
+        tools.append((build_workspaces, "mutating"))
     else:
 
         def execute_plan(  # type: ignore[misc]
@@ -544,8 +565,29 @@ def register_plan_tools(
             )
             return outcome.to_dict()
 
+        def build_workspaces(  # type: ignore[misc]
+            specs: list[dict[str, t.Any]],
+            preflight: bool = True,
+            version: str | None = None,
+        ) -> dict[str, t.Any]:
+            """Build multiple declarative workspaces in one merged plan."""
+            outcome = _plan.build_workspaces(
+                specs,
+                t.cast("TmuxEngine", engine),
+                version=version,
+                preflight=preflight,
+            )
+            return {
+                "ok": outcome.ok,
+                "results": outcome.results,
+                "bindings": outcome.bindings,
+                "sessions": outcome.sessions,
+                "reused": outcome.reused,
+            }
+
         tools.append((execute_plan, "mutating"))
         tools.append((build_workspace, "mutating"))
+        tools.append((build_workspaces, "mutating"))
 
     for fn, safety in tools:
         annotations = ToolAnnotations(

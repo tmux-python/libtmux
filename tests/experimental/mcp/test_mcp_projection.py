@@ -12,6 +12,7 @@ from libtmux.experimental.engines import MockEngine
 from libtmux.experimental.mcp import (
     OperationToolRegistry,
     build_workspace,
+    build_workspaces,
     execute_plan,
     explain_plan,
     preview_plan,
@@ -155,4 +156,21 @@ def test_build_workspace_tool_offline() -> None:
         preflight=False,
     )
     assert outcome.ok
+    assert outcome.bindings["0"].startswith("$")
+
+
+def test_build_workspaces_tool_offline() -> None:
+    """build_workspaces runs multiple declarative specs as one tool call."""
+    outcome = build_workspaces(
+        [
+            {"session_name": "api", "windows": [{"window_name": "w", "panes": ["a"]}]},
+            {"session_name": "docs", "windows": [{"window_name": "w", "panes": ["b"]}]},
+        ],
+        ConcreteEngine(),
+        preflight=False,
+    )
+
+    assert outcome.ok
+    assert outcome.sessions == ["api", "docs"]
+    assert outcome.reused == []
     assert outcome.bindings["0"].startswith("$")
