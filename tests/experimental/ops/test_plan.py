@@ -299,13 +299,22 @@ class _FindEngine:
         self.calls: list[tuple[str, ...]] = []
 
     def run(self, request: CommandRequest) -> CommandResult:
-        """Answer a display-message probe, or a new-session create."""
+        """Answer a display-message probe, or a new-session create.
+
+        The probe is *format-aware*: it returns only the ids the probe's format
+        actually requests, so a probe that omits ``#{pane_id}`` yields no pane id
+        -- mirroring real tmux, so a test cannot pass on ids the probe never asked
+        for.
+        """
         self.calls.append(request.args)
         cmd = ("tmux", *request.args)
         if request.args[0] == "display-message":
-            if self.found:
-                return CommandResult(cmd=cmd, stdout=("$9 @9 %9",), returncode=0)
-            return CommandResult(cmd=cmd, stderr=("no session",), returncode=1)
+            if not self.found:
+                return CommandResult(cmd=cmd, stderr=("no session",), returncode=1)
+            fmt = request.args[-1]  # the -p <format> value
+            ids = {"session_id": "$9", "window_id": "@9", "pane_id": "%9"}
+            text = " ".join(v for key, v in ids.items() if f"#{{{key}}}" in fmt)
+            return CommandResult(cmd=cmd, stdout=(text,), returncode=0)
         return CommandResult(cmd=cmd, stdout=("$1 @1 %1",), returncode=0)
 
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
@@ -333,9 +342,14 @@ def test_ensure_probes_then_creates_only_if_absent(case: _EnsureCase) -> None:
     """An ensured create binds a found object's ids, or creates when absent."""
     plan = LazyPlan()
     slot = plan.add(NewSession(session_name="dev", capture_panes=True))
+    # The probe renders the SAME capture format the create captures, so a found
+    # session binds the same self/window/pane subrefs a created one would.
     plan.ensure(
         slot.slot,
-        DisplayMessage(target=NameRef("dev"), message="#{session_id}"),
+        DisplayMessage(
+            target=NameRef("dev"),
+            message="#{session_id} #{window_id} #{pane_id}",
+        ),
     )
     engine = _FindEngine(found=case.found)
     result = plan.execute(engine)
@@ -345,6 +359,25 @@ def test_ensure_probes_then_creates_only_if_absent(case: _EnsureCase) -> None:
     assert result.bindings[0, "pane"].startswith("%")  # first-pane subref bound
     creates = [call for call in engine.calls if call[0] == "new-session"]
     assert len(creates) == case.creates  # created only when the probe found nothing
+
+
+def test_ensure_probe_must_match_create_capture() -> None:
+    """A probe that omits the pane id binds no pane subref (the format contract).
+
+    This guards the ensure() footgun: the probe must render the create's capture
+    format. A session-only probe finds the session but yields no pane id, so a
+    downstream ``.pane`` forward-ref would fail closed rather than mis-bind.
+    """
+    plan = LazyPlan()
+    slot = plan.add(NewSession(session_name="dev", capture_panes=True))
+    plan.ensure(
+        slot.slot, DisplayMessage(target=NameRef("dev"), message="#{session_id}")
+    )
+
+    result = plan.execute(_FindEngine(found=True))
+
+    assert result.bindings[0] == "$9"  # the session bound
+    assert (0, "pane") not in result.bindings  # but no pane id -- probe omitted it
 
 
 def test_ensure_survives_serialization_round_trip() -> None:
