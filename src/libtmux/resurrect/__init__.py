@@ -32,8 +32,13 @@ from .continuum import (
 from .processes import (
     DEFAULT_PROCESS_RESTORE_POLICY,
     DEFAULT_RESTORE_PROGRAMS,
+    CompositeProcessCommandProvider,
+    ProcessCommandProvider,
     ProcessRestorePolicy,
     ProcessRestoreRule,
+    ProcfsProcessCommandProvider,
+    PsProcessCommandProvider,
+    default_process_command_provider,
 )
 
 __all__ = (
@@ -47,9 +52,13 @@ __all__ = (
     "AutosavePaths",
     "AutosaveResult",
     "AutosaveState",
+    "CompositeProcessCommandProvider",
     "PaneArchive",
+    "ProcessCommandProvider",
     "ProcessRestorePolicy",
     "ProcessRestoreRule",
+    "ProcfsProcessCommandProvider",
+    "PsProcessCommandProvider",
     "RestorePolicy",
     "SessionArchive",
     "WindowArchive",
@@ -57,6 +66,7 @@ __all__ = (
     "autosave_once",
     "capture_archive",
     "default_autosave_paths",
+    "default_process_command_provider",
     "next_autosave_at",
     "read_archive",
     "read_autosave_state",

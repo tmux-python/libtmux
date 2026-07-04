@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pathlib
 import shlex
+import subprocess
+import typing as t
 from dataclasses import dataclass
 
 DEFAULT_RESTORE_PROGRAMS = (
@@ -174,6 +177,130 @@ class ProcessRestorePolicy:
 
 DEFAULT_PROCESS_RESTORE_POLICY = ProcessRestorePolicy()
 """Default conservative process replay policy."""
+
+
+class ProcessCommandProvider(t.Protocol):
+    """Provider that resolves a pane process id to a full command line."""
+
+    def capture(self, pid: int) -> str | None:
+        """Return a shell command for a process id.
+
+        Examples
+        --------
+        >>> class MissingProvider:
+        ...     def capture(self, pid: int) -> str | None:
+        ...         return None
+        >>> MissingProvider().capture(1234) is None
+        True
+        """
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class ProcfsProcessCommandProvider:
+    """Capture full process commands from Linux procfs."""
+
+    proc_root: pathlib.Path = pathlib.Path("/proc")
+
+    def capture(self, pid: int) -> str | None:
+        """Return a command from ``/proc/<pid>/cmdline``.
+
+        Examples
+        --------
+        >>> import pathlib
+        >>> provider = ProcfsProcessCommandProvider(pathlib.Path('/missing-proc'))
+        >>> provider.capture(1234) is None
+        True
+        """
+        if pid <= 0:
+            return None
+
+        cmdline_path = self.proc_root / str(pid) / "cmdline"
+        try:
+            raw_cmdline = cmdline_path.read_bytes()
+        except OSError:
+            return None
+
+        parts = [
+            part.decode("utf-8", "backslashreplace")
+            for part in raw_cmdline.split(b"\0")
+            if part
+        ]
+        if not parts:
+            return None
+        return shlex.join(parts)
+
+
+@dataclass(frozen=True, slots=True)
+class PsProcessCommandProvider:
+    """Capture full process commands with ``ps``."""
+
+    ps_bin: str = "ps"
+
+    def capture(self, pid: int) -> str | None:
+        """Return a command from ``ps -p <pid> -o command=``.
+
+        Examples
+        --------
+        >>> PsProcessCommandProvider(ps_bin='/missing-ps').capture(1234) is None
+        True
+        """
+        if pid <= 0:
+            return None
+        try:
+            proc = subprocess.run(
+                (self.ps_bin, "-p", str(pid), "-o", "command="),
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+        except OSError:
+            return None
+        if proc.returncode != 0:
+            return None
+        command = proc.stdout.strip()
+        return command or None
+
+
+@dataclass(frozen=True, slots=True)
+class CompositeProcessCommandProvider:
+    """Try multiple process command providers in order."""
+
+    providers: tuple[ProcessCommandProvider, ...]
+
+    def capture(self, pid: int) -> str | None:
+        """Return the first command captured by a child provider.
+
+        Examples
+        --------
+        >>> class Provider:
+        ...     def capture(self, pid: int) -> str | None:
+        ...         return 'vim README.md'
+        >>> CompositeProcessCommandProvider((Provider(),)).capture(1234)
+        'vim README.md'
+        """
+        for provider in self.providers:
+            command = provider.capture(pid)
+            if command:
+                return command
+        return None
+
+
+def default_process_command_provider() -> ProcessCommandProvider:
+    """Return the default portable full-command provider chain.
+
+    Examples
+    --------
+    >>> provider = default_process_command_provider()
+    >>> hasattr(provider, 'capture')
+    True
+    """
+    return CompositeProcessCommandProvider(
+        (
+            ProcfsProcessCommandProvider(),
+            PsProcessCommandProvider(),
+        ),
+    )
 
 
 def _command_matches(full_command: str, match: str) -> bool:
