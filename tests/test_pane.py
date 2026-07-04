@@ -10,7 +10,7 @@ import typing as t
 import pytest
 
 from libtmux import exc
-from libtmux.common import has_gte_version
+from libtmux.common import has_gte_version, has_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
 from libtmux.test.retry import retry_until
 
@@ -1344,6 +1344,32 @@ def test_break_pane_with_name(session: Session) -> None:
     new_pane = pane.split(shell="sleep 1m")
     new_window = new_pane.break_pane(window_name="my_broken")
     assert new_window.window_name == "my_broken"
+
+
+@pytest.mark.xfail(
+    has_version("3.7"),
+    reason=(
+        "break_pane() without window_name forces the 'libtmux' placeholder "
+        "on the tmux 3.7 family; the underlying crash was reverted in 3.7a "
+        "but get_version() strips the suffix, so the workaround still fires"
+    ),
+    strict=True,
+)
+def test_break_pane_no_name_uses_natural_name(session: Session) -> None:
+    """Pane.break_pane() without a name keeps tmux's default window name.
+
+    The tmux 3.7 break-pane crash workaround injects a placeholder ``-n``
+    when no ``window_name`` is given. On tmux 3.7a/3.7b, where the crash is
+    already fixed, that placeholder must not leak as the window name -- the
+    broken window should keep tmux's own auto-name (here ``sleep``).
+    """
+    window = session.new_window(window_name="test_break_natural")
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(shell="sleep 123")
+    broken = new_pane.break_pane()
+    assert broken.window_name == "sleep"
 
 
 def test_swap_pane(session: Session) -> None:
