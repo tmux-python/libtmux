@@ -1346,6 +1346,23 @@ def test_break_pane_with_name(session: Session) -> None:
     assert new_window.window_name == "my_broken"
 
 
+def test_break_pane_no_name_uses_natural_name(session: Session) -> None:
+    """Pane.break_pane() without a name keeps tmux's default window name.
+
+    The tmux 3.7 break-pane crash workaround injects a placeholder ``-n``
+    when no ``window_name`` is given. On tmux 3.7a/3.7b, where the crash is
+    already fixed, that placeholder must not leak as the window name -- the
+    broken window should keep tmux's own auto-name (here ``sleep``).
+    """
+    window = session.new_window(window_name="test_break_natural")
+    pane = window.active_pane
+    assert pane is not None
+
+    new_pane = pane.split(shell="sleep 123")
+    broken = new_pane.break_pane()
+    assert broken.window_name == "sleep"
+
+
 def test_swap_pane(session: Session) -> None:
     """Test Pane.swap() swaps two panes."""
     window = session.new_window(window_name="test_swap_pane")
