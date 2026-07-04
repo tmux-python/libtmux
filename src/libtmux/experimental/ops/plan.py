@@ -245,6 +245,7 @@ class LazyPlan:
 
     def __init__(self) -> None:
         self._operations: list[Operation[t.Any]] = []
+        self._ensures: dict[int, Operation[t.Any]] = {}
 
     def add(self, operation: Operation[t.Any]) -> SlotRef:
         """Record an operation; return a :class:`SlotRef` to its eventual id.
@@ -254,6 +255,20 @@ class LazyPlan:
         """
         self._operations.append(operation)
         return SlotRef(len(self._operations) - 1)
+
+    def ensure(self, index: int, probe: Operation[t.Any]) -> None:
+        """Make the create at *index* conditional: probe first, create only if absent.
+
+        At execution the driver runs *probe* (a read that returns the object's
+        capture format -- e.g. ``display-message`` yielding ``#{session_id} ...``);
+        if it succeeds the create is *skipped* and the slot binds to the found
+        ids, so a find-or-create build reuses an existing object. The plan stays a
+        flat, serializable list of operations -- the branch lives in the driver.
+        The create at *index* must be a non-chainable create (so it is its own
+        dispatch step); *probe* must render the same capture format the create
+        captures, so :meth:`Operation.build_result` parses the found ids.
+        """
+        self._ensures[index] = probe
 
     @property
     def operations(self) -> tuple[Operation[t.Any], ...]:
@@ -269,14 +284,30 @@ class LazyPlan:
         return iter(self._operations)
 
     def to_list(self) -> list[dict[str, t.Any]]:
-        """Serialize the whole plan to a list of plain operation dicts."""
-        return [operation_to_dict(operation) for operation in self._operations]
+        """Serialize the whole plan to a list of plain operation dicts.
+
+        A find-or-create op (see :meth:`ensure`) carries its probe under an
+        ``"ensure"`` key so the conditional survives the round-trip.
+        """
+        out: list[dict[str, t.Any]] = []
+        for index, operation in enumerate(self._operations):
+            item = operation_to_dict(operation)
+            probe = self._ensures.get(index)
+            if probe is not None:
+                item["ensure"] = operation_to_dict(probe)
+            out.append(item)
+        return out
 
     @classmethod
     def from_list(cls, data: t.Sequence[t.Mapping[str, t.Any]]) -> LazyPlan:
-        """Reconstruct a plan from :meth:`to_list` output."""
+        """Reconstruct a plan from :meth:`to_list` output (probes included)."""
         plan = cls()
-        plan._operations = [operation_from_dict(item) for item in data]
+        for index, item in enumerate(data):
+            rest = {key: value for key, value in item.items() if key != "ensure"}
+            plan._operations.append(operation_from_dict(rest))
+            probe = item.get("ensure")
+            if probe is not None:
+                plan._ensures[index] = operation_from_dict(probe)
         return plan
 
     def add_chain(self, chain: OpChain) -> None:
@@ -388,7 +419,22 @@ class LazyPlan:
                     bindings[create_idx] = new_id
             elif len(step.indices) == 1:
                 index = step.indices[0]
-                result = yield _Single(_resolve(self._operations[index], bindings))
+                probe = self._ensures.get(index)
+                if probe is not None:
+                    found = yield _Single(_resolve(probe, bindings))
+                    if found.ok and found.text.strip():
+                        # The object exists: bind to its ids, skip the create.
+                        result = self._operations[index].build_result(
+                            returncode=0,
+                            stdout=(found.text,),
+                            version=version,
+                        )
+                    else:
+                        result = yield _Single(
+                            _resolve(self._operations[index], bindings),
+                        )
+                else:
+                    result = yield _Single(_resolve(self._operations[index], bindings))
                 results[index] = result
                 if result.created_id is not None:
                     bindings[index] = result.created_id
