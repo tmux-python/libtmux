@@ -11,6 +11,11 @@ import typing as t
 
 import pytest
 
+from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
+from libtmux.experimental.engines.base import SupportsTmuxVersion
+from libtmux.experimental.engines.concrete import ConcreteEngine
+from libtmux.experimental.engines.control_mode import ControlModeEngine
+from libtmux.experimental.engines.subprocess import SubprocessEngine
 from libtmux.experimental.ops import SendKeys, SplitWindow, arun, run
 from libtmux.experimental.ops._types import PaneId, WindowId
 from libtmux.experimental.ops.exc import TmuxCommandError
@@ -138,6 +143,38 @@ def test_resolve_engine_version_none_without_capability() -> None:
     from libtmux.experimental.ops.execute import resolve_engine_version
 
     assert resolve_engine_version(FakeEngine(), None) is None
+
+
+class _CapabilityCase(t.NamedTuple):
+    """One engine and whether it reports a tmux version to the resolver."""
+
+    test_id: str
+    make_engine: t.Callable[[], object]
+    reports_version: bool
+
+
+_CAPABILITY_CASES: tuple[_CapabilityCase, ...] = (
+    _CapabilityCase("subprocess", SubprocessEngine, True),
+    _CapabilityCase("control_mode", ControlModeEngine, True),
+    _CapabilityCase("async_control_mode", AsyncControlModeEngine, True),
+    _CapabilityCase("concrete", ConcreteEngine, False),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    _CAPABILITY_CASES,
+    ids=[c.test_id for c in _CAPABILITY_CASES],
+)
+def test_engine_advertises_version_capability(case: _CapabilityCase) -> None:
+    """Real-tmux engines satisfy SupportsTmuxVersion; simulators assume latest.
+
+    A control-mode engine can query its server's version, so version-gated
+    rendering must fire over it; an in-memory engine cannot, so it omits the
+    capability and resolution assumes latest.
+    """
+    engine = case.make_engine()
+    assert isinstance(engine, SupportsTmuxVersion) is case.reports_version
 
 
 def test_run_auto_resolves_engine_version() -> None:
