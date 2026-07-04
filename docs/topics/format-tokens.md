@@ -121,10 +121,12 @@ The result is cached per `(list_cmd, tmux_version)` pair.
 You never call this directly, but it's worth knowing how the version
 gate gets its answer. libtmux detects the live tmux version via
 {func}`libtmux.common.get_version` and passes it through to
-`get_output_format` whenever it builds a `-F` template. The result
-is cached for the process lifetime; if you're swapping the `tmux`
-binary mid-test, call
-`libtmux.common.get_version.cache_clear()` to invalidate.
+`get_output_format` whenever it builds a `-F` template. That lookup is
+memoized for the process lifetime, as is the raw-string
+{func}`libtmux.common.get_version_str`; the two cache independently, so
+if you're swapping the `tmux` binary mid-test, clear both with
+`libtmux.common.get_version.cache_clear()` and
+`get_version_str.cache_clear()`.
 
 The {ref}`project` page tracks the project's minimum tmux version
 (currently 3.2a); see {doc}`/project/compatibility` for the full

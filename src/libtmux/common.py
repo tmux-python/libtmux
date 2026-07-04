@@ -378,12 +378,31 @@ class tmux_cmd:
             )
 
 
+class _TmuxVersionUnavailable(Exception):
+    """Internal signal: this tmux predates the ``-V`` flag (pre-1.7)."""
+
+
+def _no_version_flag_fallback() -> str:
+    """Return a synthetic version string when tmux lacks ``-V``.
+
+    OpenBSD ships a ``-V``-less base tmux, so assume the maximum supported
+    version; any other platform is genuinely too old.
+    """
+    if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
+        return f"{TMUX_MAX_VERSION}-openbsd"
+    msg = (
+        f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. This system"
+        " does not meet the minimum tmux version requirement."
+    )
+    raise exc.LibTmuxException(msg)
+
+
 def _query_version(tmux_bin: str | None = None) -> str:
     """Return the raw ``tmux -V`` version token, letter suffix intact.
 
     Runs ``tmux -V`` and extracts the version token (e.g. ``"3.7a"``,
     ``"master"``, ``"next-3.8"``). Not memoized -- :func:`get_version` and
-    :func:`get_version_str` layer caching on top of this single query.
+    :func:`get_version_str` each cache their own result on top of this query.
 
     Parameters
     ----------
@@ -393,21 +412,20 @@ def _query_version(tmux_bin: str | None = None) -> str:
     Returns
     -------
     str
-        Raw version token from ``tmux -V``. OpenBSD base tmux (no ``-V``)
-        yields the synthetic ``"<max>-openbsd"``.
+        Raw version token from ``tmux -V``.
+
+    Raises
+    ------
+    _TmuxVersionUnavailable
+        tmux predates the ``-V`` flag; callers apply
+        :func:`_no_version_flag_fallback`.
+    :exc:`~libtmux.exc.VersionTooLow`
+        tmux reported another error on ``-V``.
     """
     proc = tmux_cmd("-V", tmux_bin=tmux_bin)
     if proc.stderr:
         if proc.stderr[0] == "tmux: unknown option -- V":
-            if sys.platform.startswith("openbsd"):  # openbsd has no tmux -V
-                return f"{TMUX_MAX_VERSION}-openbsd"
-            msg = (
-                f"libtmux supports tmux {TMUX_MIN_VERSION} and greater. This system"
-                " does not meet the minimum tmux version requirement."
-            )
-            raise exc.LibTmuxException(
-                msg,
-            )
+            raise _TmuxVersionUnavailable
         raise exc.VersionTooLow(proc.stderr)
 
     return proc.stdout[0].split("tmux ")[1]
@@ -433,12 +451,21 @@ def get_version_str(tmux_bin: str | None = None) -> str:
         Raw tmux version, e.g. ``"3.7a"``. Git builds return ``"master"``;
         OpenBSD base tmux returns ``"<max>-openbsd"``.
 
+    Examples
+    --------
+    >>> isinstance(get_version_str(), str)
+    True
+
     Notes
     -----
-    Memoized via :func:`functools.cache` like :func:`get_version`; call
-    ``get_version_str.cache_clear()`` after swapping the tmux binary.
+    Memoized via :func:`functools.cache`, keyed on *tmux_bin*, independently of
+    :func:`get_version`. Call ``get_version_str.cache_clear()`` after swapping
+    the tmux binary.
     """
-    return _query_version(tmux_bin=tmux_bin)
+    try:
+        return _query_version(tmux_bin=tmux_bin)
+    except _TmuxVersionUnavailable:
+        return _no_version_flag_fallback()
 
 
 @functools.cache
@@ -466,17 +493,18 @@ def get_version(tmux_bin: str | None = None) -> LooseVersion:
     Notes
     -----
     Memoized via :func:`functools.cache`, keyed on the *tmux_bin* argument
-    (``None`` is a distinct key from any explicit path). The cache is sticky
-    across ``PATH`` changes and on-disk binary swaps when *tmux_bin* is
-    ``None`` or the same path string — call ``get_version.cache_clear()`` to
-    invalidate. Tests that monkey-patch :class:`tmux_cmd` should call
-    ``cache_clear()`` before asserting parsed-version behavior.
+    (``None`` is a distinct key from any explicit path), independently of
+    :func:`get_version_str`. The cache is sticky across ``PATH`` changes and
+    on-disk binary swaps when *tmux_bin* is ``None`` or the same path string --
+    call ``get_version.cache_clear()`` to invalidate. Tests that monkey-patch
+    :class:`tmux_cmd` should call ``cache_clear()`` before asserting
+    parsed-version behavior.
     """
-    version = _query_version(tmux_bin=tmux_bin)
-
-    # OpenBSD base tmux has no -V; _query_version returns a synthetic string.
-    if version == f"{TMUX_MAX_VERSION}-openbsd":
-        return LooseVersion(version)
+    try:
+        version = _query_version(tmux_bin=tmux_bin)
+    except _TmuxVersionUnavailable:
+        # OpenBSD base tmux lacks ``-V``; skip letter-stripping on the synthetic.
+        return LooseVersion(_no_version_flag_fallback())
 
     # Allow latest tmux HEAD
     if version == "master":
