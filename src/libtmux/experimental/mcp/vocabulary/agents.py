@@ -285,7 +285,7 @@ def register_agents(
         pane_id : str
             The pane to watch (e.g. ``"%1"``).
         target : str
-            One state or a comma-separated set (e.g. ``"awaiting_input,idle"``).
+            One state or a comma-separated set (e.g. ``"awaiting_input,done"``).
         timeout_s : float
             Seconds to wait before giving up (default 30).
 
@@ -347,7 +347,8 @@ def register_agents(
         text : str
             The prompt to deliver (multi-line is pasted, then submitted).
         wait_ready : bool
-            Wait for ``awaiting_input``/``idle`` before sending (default True).
+            Wait for ``awaiting_input``/``done``/``idle`` before sending
+            (default True).
         timeout_s : float
             Readiness-wait budget in seconds (default 30).
         key : str or None

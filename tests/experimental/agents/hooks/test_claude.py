@@ -30,7 +30,7 @@ def test_install_status_uninstall_roundtrip(tmp_path: pathlib.Path) -> None:
 
     data = json.loads(settings.read_text())
     stop_cmds = [h["command"] for grp in data["hooks"]["Stop"] for h in grp["hooks"]]
-    assert any("libtmux-agent-emit awaiting_input" in c for c in stop_cmds)
+    assert any("libtmux-agent-emit done" in c for c in stop_cmds)
     assert "echo user-owned" in stop_cmds  # never clobber the user's hook
 
     hook.uninstall()

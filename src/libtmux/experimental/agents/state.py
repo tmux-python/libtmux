@@ -19,6 +19,7 @@ class AgentState(str, enum.Enum):
 
     RUNNING = "running"
     AWAITING_INPUT = "awaiting_input"
+    DONE = "done"
     IDLE = "idle"
     EXITED = "exited"
     UNKNOWN = "unknown"
@@ -34,6 +35,8 @@ class AgentState(str, enum.Enum):
         --------
         >>> AgentState.from_signal("AWAITING_INPUT")
         <AgentState.AWAITING_INPUT: 'awaiting_input'>
+        >>> AgentState.from_signal("done")
+        <AgentState.DONE: 'done'>
         >>> AgentState.from_signal("garbage")
         <AgentState.UNKNOWN: 'unknown'>
         """
