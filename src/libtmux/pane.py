@@ -2340,10 +2340,20 @@ class Pane(
         'broken'
         """
         # tmux 3.7 segfaults break-pane when -n is absent and ignores -n when
-        # given (NULL-deref, fixed upstream after 3.7). Always pass -n -- the
-        # requested name or a placeholder -- then set the real name via
-        # rename-window below. Gated on exactly 3.7; other builds are unaffected.
+        # given (NULL-deref); 3.7a reverted it. Pass -n -- the requested name
+        # or a placeholder -- then set the real name via rename-window below.
+        # get_version() strips the letter suffix, so has_version("3.7") also
+        # matches the already-fixed 3.7a/3.7b; narrow with the raw version
+        # string so the workaround only fires on the literal 3.7 release.
         breaks_without_name = has_version("3.7", tmux_bin=self.server.tmux_bin)
+        if breaks_without_name:
+            raw_version = (
+                tmux_cmd("-V", tmux_bin=self.server.tmux_bin)
+                .stdout[0]
+                .split("tmux ", 1)[1]
+                .strip()
+            )
+            breaks_without_name = raw_version == "3.7"
 
         tmux_args: tuple[str, ...] = ("-P", "-F#{window_id}")
 
