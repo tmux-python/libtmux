@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from libtmux._internal.types import StrPath
 from libtmux.common import raise_if_stderr
+from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
@@ -25,26 +26,39 @@ if t.TYPE_CHECKING:
 FORMAT_VERSION = "libtmux.resurrect.archive.v1"
 """Archive format identifier."""
 
+CAPTURED_CAPABILITIES = (
+    "sessions",
+    "windows",
+    "panes",
+    "window-order",
+    "pane-order",
+    "working-directories",
+    "layouts",
+    "active-windows",
+    "active-panes",
+    "pane-current-command",
+)
+"""tmux-resurrect parity features captured by :func:`capture_archive`."""
+
 DEFAULT_SHELL_COMMANDS = frozenset({"bash", "dash", "fish", "ksh", "sh", "zsh"})
 """Commands treated as shells during restore."""
 
 RestorePolicy: t.TypeAlias = t.Literal["error", "replace", "reuse"]
 """How restore handles sessions that already exist."""
 
-_FIELD_SEPARATOR = "\x1f"
-_PANE_FORMAT = _FIELD_SEPARATOR.join(
-    (
-        "#{session_name}",
-        "#{window_index}",
-        "#{window_name}",
-        "#{window_layout}",
-        "#{window_active}",
-        "#{pane_index}",
-        "#{pane_active}",
-        "#{pane_current_command}",
-        "#{pane_current_path}",
-    ),
+_FIELD_SEPARATOR = FORMAT_SEPARATOR
+_PANE_FIELDS = (
+    "#{session_name}",
+    "#{window_index}",
+    "#{window_name}",
+    "#{window_layout}",
+    "#{window_active}",
+    "#{pane_index}",
+    "#{pane_active}",
+    "#{pane_current_command}",
+    "#{pane_current_path}",
 )
+_PANE_FORMAT = "".join(f"{field}{_FIELD_SEPARATOR}" for field in _PANE_FIELDS)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +97,7 @@ class WorkspaceArchive:
     saved_at: datetime.datetime
     sessions: tuple[SessionArchive, ...]
     format_version: str = FORMAT_VERSION
+    capabilities: tuple[str, ...] = CAPTURED_CAPABILITIES
 
 
 @dataclass(frozen=True, slots=True)
@@ -402,6 +417,9 @@ def _pane_command(
 
 def _parse_pane_row(row: str) -> _PaneRow:
     parts = row.split(_FIELD_SEPARATOR)
+    if parts and parts[-1] == "":
+        parts.pop()
+
     if len(parts) != 9:
         msg = f"expected 9 list-panes fields, got {len(parts)}"
         raise ValueError(msg)
@@ -433,6 +451,7 @@ def _coerce_saved_at(value: datetime.datetime | None) -> datetime.datetime:
 
 def _archive_to_dict(archive: WorkspaceArchive) -> dict[str, object]:
     return {
+        "capabilities": list(archive.capabilities),
         "format_version": archive.format_version,
         "saved_at": _coerce_saved_at(archive.saved_at).isoformat(),
         "sessions": [
@@ -470,6 +489,11 @@ def _archive_from_dict(data: object) -> WorkspaceArchive:
         raise ValueError(msg)
 
     return WorkspaceArchive(
+        capabilities=_optional_str_tuple(
+            archive_data,
+            "capabilities",
+            default=CAPTURED_CAPABILITIES,
+        ),
         format_version=format_version,
         saved_at=datetime.datetime.fromisoformat(_expect_str(archive_data, "saved_at")),
         sessions=tuple(
@@ -526,6 +550,21 @@ def _expect_list(data: t.Mapping[str, object], key: str) -> list[object]:
         msg = f"{key} must be a list"
         raise TypeError(msg)
     return value
+
+
+def _optional_str_tuple(
+    data: t.Mapping[str, object],
+    key: str,
+    *,
+    default: tuple[str, ...],
+) -> tuple[str, ...]:
+    value = data.get(key)
+    if value is None:
+        return default
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        msg = f"{key} must be a list of strings"
+        raise TypeError(msg)
+    return tuple(value)
 
 
 def _expect_str(data: t.Mapping[str, object], key: str) -> str:

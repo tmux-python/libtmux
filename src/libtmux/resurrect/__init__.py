@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .archives import (
+    CAPTURED_CAPABILITIES,
     DEFAULT_SHELL_COMMANDS,
     FORMAT_VERSION,
     PaneArchive,
@@ -18,9 +19,11 @@ from .archives import (
 from .continuum import (
     DEFAULT_AUTOSAVE_INTERVAL,
     STATE_FORMAT_VERSION,
+    AutosavePaths,
     AutosaveResult,
     AutosaveState,
     autosave_once,
+    default_autosave_paths,
     next_autosave_at,
     read_autosave_state,
     should_autosave,
@@ -28,10 +31,12 @@ from .continuum import (
 )
 
 __all__ = (
+    "CAPTURED_CAPABILITIES",
     "DEFAULT_AUTOSAVE_INTERVAL",
     "DEFAULT_SHELL_COMMANDS",
     "FORMAT_VERSION",
     "STATE_FORMAT_VERSION",
+    "AutosavePaths",
     "AutosaveResult",
     "AutosaveState",
     "PaneArchive",
@@ -41,6 +46,7 @@ __all__ = (
     "WorkspaceArchive",
     "autosave_once",
     "capture_archive",
+    "default_autosave_paths",
     "next_autosave_at",
     "read_archive",
     "read_autosave_state",
