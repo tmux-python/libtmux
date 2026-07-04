@@ -17,7 +17,9 @@ single notification queue, so run one *or* the other per process when comparing.
 
 The ``source`` axis selects the substrate: ``"output"`` streams raw
 notifications; ``"subscription"`` first installs ``refresh-client -B`` format
-subscriptions, tmux's debounced, server-side change detection.
+subscriptions, tmux's debounced, server-side change detection. Raw pane output
+requires the control-mode client to be attached to a session; tools that use the
+``"output"`` source accept a ``target`` so they can attach before subscribing.
 """
 
 from __future__ import annotations
@@ -50,6 +52,10 @@ EventMode = t.Literal["off", "push", "pull", "both"]
 EventSource = t.Literal["subscription", "output"]
 
 _RING_SIZE = 1024
+_OUTPUT_ATTACH_MESSAGE = (
+    "event_source='output' requires target=... so the control-mode client can "
+    "attach before %output is streamed"
+)
 
 # tmux format read once at settle to fill DoneMetadata (tab-joined, one round-trip).
 _DONE_FORMAT = "\t".join(
@@ -220,6 +226,10 @@ class _EventRing:
             out["error"] = self._error
         return out
 
+    def unattached(self, message: str = _OUTPUT_ATTACH_MESSAGE) -> dict[str, t.Any]:
+        """Return an error payload without starting the background drainer."""
+        return {"events": [], "cursor": self._seq, "error": message}
+
 
 def register_events(
     mcp: FastMCP,
@@ -240,7 +250,7 @@ def register_events(
     if mode in ("push", "both"):
         _register_push(mcp, stream, source=source)
     if mode in ("pull", "both"):
-        _register_pull(mcp, stream)
+        _register_pull(mcp, stream, source=source)
     _register_monitor(mcp, stream)
 
 
@@ -260,6 +270,7 @@ def _register_push(
         max_events: int = 20,
         timeout: float = 30.0,
         subscriptions: list[str] | None = None,
+        target: str | None = None,
     ) -> dict[str, t.Any]:
         """Stream live tmux notifications, pushing each as an MCP log message.
 
@@ -267,9 +278,13 @@ def _register_push(
         comes first. ``kinds`` filters by notification kind (e.g. ``window-add``,
         ``output``). With ``source="subscription"``, pass ``subscriptions`` as
         ``name:what:format`` specs to install ``refresh-client -B`` watches first.
+        With ``source="output"``, pass ``target`` so the control client can attach
+        to the target's session before subscribing to raw ``%output``.
         """
         if source == "subscription":
             await _install_subscriptions(engine, subscriptions)
+        else:
+            await _ensure_output_attached(engine, target)
         collected: list[dict[str, t.Any]] = []
 
         async def _collect() -> None:
@@ -295,7 +310,12 @@ def _register_push(
     mcp.add_tool(tool)
 
 
-def _register_pull(mcp: FastMCP, engine: _StreamEngine) -> None:
+def _register_pull(
+    mcp: FastMCP,
+    engine: _StreamEngine,
+    *,
+    source: EventSource,
+) -> None:
     """Register the ``tmux://events`` resource + ``poll_events`` pull tool."""
     from fastmcp.tools import FunctionTool
     from mcp.types import ToolAnnotations
@@ -304,6 +324,8 @@ def _register_pull(mcp: FastMCP, engine: _StreamEngine) -> None:
 
     async def read_events() -> dict[str, t.Any]:
         """Return all buffered tmux events (starts the reader on first read)."""
+        if source == "output" and getattr(engine, "_attached_session", None) is None:
+            return ring.unattached()
         return ring.since(0)
 
     mcp.resource(
@@ -312,12 +334,19 @@ def _register_pull(mcp: FastMCP, engine: _StreamEngine) -> None:
         description="Buffered tmux control-mode notifications",
     )(read_events)
 
-    async def poll_events(since: int = 0) -> dict[str, t.Any]:
+    async def poll_events(
+        since: int = 0,
+        target: str | None = None,
+    ) -> dict[str, t.Any]:
         """Return tmux events with sequence number greater than *since*.
 
         The response ``cursor`` is the latest sequence number; pass it back as
-        ``since`` next call to receive only newer events.
+        ``since`` next call to receive only newer events. With
+        ``source="output"``, pass ``target`` on the first call so the control
+        client can attach before the ring starts draining raw ``%output``.
         """
+        if source == "output":
+            await _ensure_output_attached(engine, target)
         return ring.since(since)
 
     tool = FunctionTool.from_function(
@@ -407,6 +436,28 @@ async def _ensure_attached(engine: _StreamEngine, session_id: str) -> None:
         msg = f"cannot watch {session_id}: {detail}"
         raise RuntimeError(msg)
     engine._attached_session = session_id
+
+
+async def _ensure_output_attached(
+    engine: _StreamEngine,
+    target: str | None,
+) -> None:
+    """Ensure raw ``%output`` subscribers have an attached control client."""
+    if target is None:
+        if getattr(engine, "_attached_session", None) is not None:
+            return
+        from libtmux.experimental.mcp.vocabulary._resolve import raise_target_hint
+
+        raise_target_hint(_OUTPUT_ATTACH_MESSAGE)
+
+    from libtmux.experimental.mcp.target_resolver import resolve_target
+    from libtmux.experimental.mcp.vocabulary._resolve import (
+        reject_relative_special,
+        session_id_of,
+    )
+
+    reject_relative_special(resolve_target(target))
+    await _ensure_attached(engine, await session_id_of(engine, target, None))
 
 
 async def await_pane_output(

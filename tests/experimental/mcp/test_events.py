@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import typing as t
 
 import pytest
@@ -212,6 +213,7 @@ class InstrumentedEngine:
     ) -> None:
         self._raw = raw
         self.calls: list[tuple[str, ...]] = []
+        self.subscriptions = 0
         self.dropped_notifications = 0
         self._attached_session: str | None = None
         self._attach_returncode = attach_returncode
@@ -250,6 +252,7 @@ class InstrumentedEngine:
 
     async def subscribe(self) -> AsyncIterator[ControlNotification]:
         """Yield the fixed notification sequence, then bump the drop counter."""
+        self.subscriptions += 1
         for raw in self._raw:
             yield ControlNotification.parse(raw)
         self.dropped_notifications += self._dropped_after
@@ -293,6 +296,63 @@ def test_push_collects_filtered_events() -> None:
     assert [event["kind"] for event in data["events"]] == ["window-add", "window-close"]
 
 
+def test_push_output_source_requires_attach_target() -> None:
+    """Raw %output streams need a target so the control client can attach."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    server = build_async_server(
+        InstrumentedEngine((b"%output %1 hi",)),
+        events="push",
+        event_source="output",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> str:
+        async with fastmcp.Client(server) as client:
+            with pytest.raises(Exception) as exc_info:
+                await client.call_tool(
+                    "watch_events",
+                    {"kinds": ["output"], "max_events": 1, "timeout": 0.2},
+                )
+            return str(exc_info.value)
+
+    assert "requires target" in asyncio.run(main())
+
+
+def test_push_output_source_attaches_target_session() -> None:
+    """watch_events(target=...) attaches before subscribing to raw %output."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    engine = InstrumentedEngine((b"%output %1 hi",))
+    server = build_async_server(
+        engine,
+        events="push",
+        event_source="output",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> dict[str, t.Any]:
+        async with fastmcp.Client(server) as client:
+            result = await client.call_tool(
+                "watch_events",
+                {
+                    "target": "%1",
+                    "kinds": ["output"],
+                    "max_events": 1,
+                    "timeout": 2.0,
+                },
+            )
+            return t.cast("dict[str, t.Any]", result.data)
+
+    data = asyncio.run(main())
+    assert data["count"] == 1
+    assert data["events"][0]["raw"] == "%output %1 hi"
+    assert ("display-message", "-t", "%1", "-p", "#{session_id}") in engine.calls
+    assert ("attach-session", "-t", "$1") in engine.calls
+
+
 def test_pull_buffers_events() -> None:
     """poll_events drains the background ring buffer with a cursor."""
     from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
@@ -314,6 +374,90 @@ def test_pull_buffers_events() -> None:
     data = asyncio.run(main())
     assert len(data["events"]) == 3
     assert data["cursor"] == 3
+
+
+def test_pull_output_source_attaches_before_drain() -> None:
+    """poll_events(target=...) attaches before starting the output event ring."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    engine = InstrumentedEngine((b"%output %1 hi",))
+    server = build_async_server(
+        engine,
+        events="pull",
+        event_source="output",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> dict[str, t.Any]:
+        async with fastmcp.Client(server) as client:
+            await client.call_tool("poll_events", {"since": 0, "target": "%1"})
+            await asyncio.sleep(0.05)
+            result = await client.call_tool("poll_events", {"since": 0})
+            return t.cast("dict[str, t.Any]", result.data)
+
+    data = asyncio.run(main())
+    assert data["events"][0]["raw"] == "%output %1 hi"
+    assert ("display-message", "-t", "%1", "-p", "#{session_id}") in engine.calls
+    assert ("attach-session", "-t", "$1") in engine.calls
+
+
+def test_pull_output_resource_reports_missing_attach_target() -> None:
+    """The tmux://events resource must not silently drain raw output unattached."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    engine = InstrumentedEngine((b"%output %1 hi",))
+    server = build_async_server(
+        engine,
+        events="pull",
+        event_source="output",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> dict[str, t.Any]:
+        async with fastmcp.Client(server) as client:
+            contents = await client.read_resource("tmux://events")
+            text = "".join(getattr(item, "text", "") for item in contents)
+            return t.cast("dict[str, t.Any]", json.loads(text))
+
+    data = asyncio.run(main())
+    assert data["events"] == []
+    assert data["cursor"] == 0
+    assert "requires target" in data["error"]
+    assert engine.subscriptions == 0
+
+
+def test_subscription_source_does_not_attach_for_watch_events() -> None:
+    """Subscription event streams keep their refresh-client behavior."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    engine = InstrumentedEngine(_STREAM)
+    server = build_async_server(
+        engine,
+        events="push",
+        event_source="subscription",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> dict[str, t.Any]:
+        async with fastmcp.Client(server) as client:
+            result = await client.call_tool(
+                "watch_events",
+                {
+                    "kinds": ["window-add"],
+                    "max_events": 1,
+                    "timeout": 2.0,
+                    "subscriptions": ["demo:@1:#{window_id}"],
+                },
+            )
+            return t.cast("dict[str, t.Any]", result.data)
+
+    data = asyncio.run(main())
+    assert data["count"] == 1
+    assert ("refresh-client", "-B", "demo:@1:#{window_id}") in engine.calls
+    assert not [call for call in engine.calls if call and call[0] == "attach-session"]
 
 
 def test_both_registers_push_and_pull() -> None:
