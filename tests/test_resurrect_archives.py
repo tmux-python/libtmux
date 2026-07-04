@@ -585,3 +585,74 @@ def test_restore_archive_recreates_windows_panes_and_layout() -> None:
     assert ("window.select_layout", ("even-horizontal",), {}) in server.calls
     assert ("select-pane", (), {"target": "alpha:0.0"}) in server.calls
     assert ("session.select_window", (2,), {}) in server.calls
+
+
+def test_restore_archive_reuses_existing_topology() -> None:
+    """restore_archive(on_exists='reuse') creates only missing topology."""
+    archive = WorkspaceArchive(
+        saved_at=datetime.datetime(2026, 7, 4, 12, tzinfo=datetime.timezone.utc),
+        sessions=(
+            SessionArchive(
+                name="alpha",
+                windows=(
+                    WindowArchive(
+                        index=0,
+                        name="editor",
+                        layout="tiled",
+                        active=True,
+                        panes=(
+                            PaneArchive(
+                                index=0,
+                                active=True,
+                                current_command="vim",
+                                current_path="/workspace",
+                            ),
+                            PaneArchive(
+                                index=1,
+                                active=False,
+                                current_command="bash",
+                                current_path="/workspace",
+                            ),
+                        ),
+                    ),
+                    WindowArchive(
+                        index=2,
+                        name="logs",
+                        layout="even-horizontal",
+                        active=False,
+                        panes=(
+                            PaneArchive(
+                                index=0,
+                                active=True,
+                                current_command="tail",
+                                current_path="/logs",
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    server = _FakeServer(
+        stdout_by_cmd={
+            "list-panes": ["0"],
+            "list-windows": ["0"],
+        },
+    )
+    server.existing_sessions.add("alpha")
+
+    assert restore_archive(archive, t.cast("Server", server), on_exists="reuse") == []
+
+    assert not any(call[0] == "new_session" for call in server.calls)
+    assert [call[0] for call in server.calls].count("new-window") == 1
+    assert [call[0] for call in server.calls].count("split-window") == 1
+    assert (
+        "new-window",
+        ("-d", "-t", "alpha:2", "-n", "logs", "-c", "/logs", "tail"),
+        {},
+    ) in server.calls
+    assert (
+        "split-window",
+        ("-d", "-t", "alpha:0", "-c", "/workspace"),
+        {},
+    ) in server.calls
