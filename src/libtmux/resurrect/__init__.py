@@ -40,6 +40,10 @@ from .processes import (
     PsProcessCommandProvider,
     default_process_command_provider,
 )
+from .resurrect_file import (
+    archive_from_resurrect_file,
+    archive_to_resurrect_file,
+)
 
 __all__ = (
     "CAPTURED_CAPABILITIES",
@@ -63,6 +67,8 @@ __all__ = (
     "SessionArchive",
     "WindowArchive",
     "WorkspaceArchive",
+    "archive_from_resurrect_file",
+    "archive_to_resurrect_file",
     "autosave_once",
     "capture_archive",
     "default_autosave_paths",
