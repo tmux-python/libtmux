@@ -7,6 +7,7 @@ import typing as t
 
 import pytest
 
+import libtmux.resurrect.processes as resurrect_processes
 from libtmux.resurrect.processes import (
     CompositeProcessCommandProvider,
     ProcessRestorePolicy,
@@ -45,6 +46,14 @@ class ProcfsCaptureCase(t.NamedTuple):
     pid: int
     entries: tuple[ProcfsEntry, ...]
     expected_command: str | None
+
+
+class DefaultProviderFallbackCase(t.NamedTuple):
+    """Case for default process provider fallback behavior."""
+
+    test_id: str
+    pid: int
+    ps_command: str
 
 
 PROCFS_CAPTURE_CASES = (
@@ -88,6 +97,14 @@ PROCFS_CAPTURE_CASES = (
         pid=456,
         entries=(),
         expected_command=None,
+    ),
+)
+
+DEFAULT_PROVIDER_FALLBACK_CASES = (
+    DefaultProviderFallbackCase(
+        test_id="pane_shell_from_ps",
+        pid=1234,
+        ps_command="-zsh",
     ),
 )
 
@@ -180,3 +197,29 @@ def test_default_process_command_provider_and_missing_ps() -> None:
 
     assert hasattr(provider, "capture")
     assert PsProcessCommandProvider(ps_bin="/missing-ps").capture(123) is None
+
+
+@pytest.mark.parametrize(
+    "case",
+    DEFAULT_PROVIDER_FALLBACK_CASES,
+    ids=[case.test_id for case in DEFAULT_PROVIDER_FALLBACK_CASES],
+)
+def test_default_process_command_provider_skips_ps_fallback(
+    case: DefaultProviderFallbackCase,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """default_process_command_provider() does not archive ps shell fallback."""
+    monkeypatch.setattr(
+        resurrect_processes,
+        "ProcfsProcessCommandProvider",
+        lambda: _Provider(None),
+    )
+    monkeypatch.setattr(
+        resurrect_processes,
+        "PsProcessCommandProvider",
+        lambda: _Provider(case.ps_command),
+    )
+
+    provider = default_process_command_provider()
+
+    assert provider.capture(case.pid) is None
