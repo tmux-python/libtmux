@@ -135,3 +135,32 @@ def test_sleep_runs_offline() -> None:
     p.sleep(0.0)
     pane.split().do(lambda c: c.send_keys("htop"))
     assert p.run(ConcreteEngine()).ok
+
+
+def test_find_or_create_session_records_a_conditional_create() -> None:
+    """find_or_create_session records one create, made conditional via ensure."""
+    p = plan()
+    pane = p.find_or_create_session("dev").window().pane()
+    pane.do(lambda c: c.send_keys("vim"))
+    assert [op.kind for op in p.plan.operations] == ["new_session", "send_keys"]
+    assert 0 in p.plan._ensures  # the create is conditional
+
+
+def test_find_or_create_session_is_idempotent_live(session: Session) -> None:
+    """Building the same session name twice reuses it instead of duplicating."""
+    from libtmux.experimental.engines.subprocess import SubprocessEngine
+
+    engine = SubprocessEngine.for_server(session.server)
+
+    def build() -> None:
+        p = plan()
+        p.find_or_create_session("fluent-idem").window().pane().do(
+            lambda c: c.send_keys("echo hi", enter=False),
+        )
+        p.run(engine).raise_for_status()
+
+    build()
+    build()  # second run must find the existing session, not create a duplicate
+
+    named = [s for s in session.server.sessions if s.session_name == "fluent-idem"]
+    assert len(named) == 1
