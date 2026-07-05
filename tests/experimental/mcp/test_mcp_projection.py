@@ -266,7 +266,7 @@ def test_build_workspaces_tool_offline() -> None:
             {"session_name": "api", "windows": [{"window_name": "w", "panes": ["a"]}]},
             {"session_name": "docs", "windows": [{"window_name": "w", "panes": ["b"]}]},
         ],
-        ConcreteEngine(),
+        MockEngine(),
         preflight=False,
     )
 
