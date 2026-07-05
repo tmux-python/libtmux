@@ -9,7 +9,7 @@ next to their operations.
 Results never raise on construction. Raising is opt-in via
 :meth:`Result.raise_for_status`, mirroring
 :meth:`subprocess.CompletedProcess.check_returncode`. *How* an engine treats a
-failed result is the engine's policy: the classic engine raises in its facade to
+failed result is the engine's policy: the classic engine raises in its wrapper to
 match today's behavior, while newer engines hand the result back and let the
 caller decide.
 """

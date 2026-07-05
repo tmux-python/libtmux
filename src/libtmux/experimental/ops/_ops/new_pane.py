@@ -30,7 +30,7 @@ class NewPane(Operation[SplitWindowResult]):
 
     Like :class:`~.split_window.SplitWindow` it reuses
     :class:`~.results.SplitWindowResult`, capturing the new pane id via
-    ``-P -F '#{pane_id}'`` so plans, the facade, and MCP bind it the same way.
+    ``-P -F '#{pane_id}'`` so plans, the wrapper, and MCP bind it the same way.
 
     Rendering against a tmux older than 3.7 raises
     :exc:`~.exc.VersionUnsupported` (this op sets
