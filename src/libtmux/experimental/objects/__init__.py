@@ -1,6 +1,11 @@
-"""Engine-typed facades over the operation spine.
+"""Engine-typed tmux objects over the operation spine.
 
-The execution mode lives in the facade *type* (eager vs lazy vs async), so each
+Each class binds an engine + a tmux id and exposes a curated, ergonomic method
+set. The objects are the domain-shaped layer over the Core ``Operation``/engine
+spine: the same server/session/window/pane/client nouns as tmux, with the
+execution mode carried by the class.
+
+The execution mode lives in the object *type* (eager vs lazy vs async), so each
 method has one statically-known return type, while the operation definitions stay
 shared. The matrix over scope x mode:
 
@@ -14,23 +19,23 @@ pane        EagerPane     LazyPane      AsyncPane
 client      EagerClient   LazyClient    AsyncClient
 ==========  ============  ============  ============
 
-Eager handles execute immediately and return live handles; lazy handles record
-into a :class:`~..ops.plan.LazyPlan`; async handles await an
+Eager objects execute immediately and return live objects; lazy objects record
+into a :class:`~..ops.plan.LazyPlan`; async objects await an
 :class:`~..engines.base.AsyncTmuxEngine`. "Control mode" is not a separate family
--- any eager/async facade bound to a ``ControlModeEngine`` already uses it.
+-- any eager/async object bound to a ``ControlModeEngine`` already uses it.
 """
 
 from __future__ import annotations
 
-from libtmux.experimental.facade.client import AsyncClient, EagerClient, LazyClient
-from libtmux.experimental.facade.pane import AsyncPane, EagerPane, LazyPane
-from libtmux.experimental.facade.server import AsyncServer, EagerServer, LazyServer
-from libtmux.experimental.facade.session import (
+from libtmux.experimental.objects.client import AsyncClient, EagerClient, LazyClient
+from libtmux.experimental.objects.pane import AsyncPane, EagerPane, LazyPane
+from libtmux.experimental.objects.server import AsyncServer, EagerServer, LazyServer
+from libtmux.experimental.objects.session import (
     AsyncSession,
     EagerSession,
     LazySession,
 )
-from libtmux.experimental.facade.window import AsyncWindow, EagerWindow, LazyWindow
+from libtmux.experimental.objects.window import AsyncWindow, EagerWindow, LazyWindow
 
 __all__ = (
     "AsyncClient",

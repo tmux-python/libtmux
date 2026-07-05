@@ -1,11 +1,11 @@
-"""Tests completing the facade matrix: lazy/async Server+Session and Client."""
+"""Tests completing the object matrix: lazy/async Server+Session and Client."""
 
 from __future__ import annotations
 
 import asyncio
 
 from libtmux.experimental.engines import AsyncConcreteEngine, ConcreteEngine
-from libtmux.experimental.facade import (
+from libtmux.experimental.objects import (
     AsyncClient,
     AsyncServer,
     EagerClient,
