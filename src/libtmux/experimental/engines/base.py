@@ -1,7 +1,6 @@
 """Core engine abstractions: requests, results, and the engine protocols.
 
-Adapted from the ``libtmux-protocol-engines`` prototype. A
-:class:`CommandRequest` is a rendered tmux argv plus an optional binary path; a
+A :class:`CommandRequest` is a rendered tmux argv plus an optional binary path; a
 :class:`CommandResult` is the structured outcome. :class:`TmuxEngine` and
 :class:`AsyncTmuxEngine` are :class:`typing.Protocol` types, so any object with
 the right methods is an engine -- including a live :class:`libtmux.Server` for

@@ -2,9 +2,8 @@ r"""Chaining and ``;``-folding for lazy plans.
 
 A run of *chainable* operations can render to a single ``tmux a \; b`` invocation
 and dispatch once, instead of one process fork / control-mode command per
-operation. This ports the chainable-commands prototype's fold onto the typed-op
-model: only operations whose ``chainable`` class var is ``True`` (no captured
-output, no created object) fold; the rest dispatch alone.
+operation. Only operations whose ``chainable`` class var is ``True`` (no
+captured output, no created object) fold; the rest dispatch alone.
 
 tmux runs a ``;`` sequence up to the first error and drops the remainder
 (``cmd-queue.c`` ``cmdq_remove_group``), returning one merged stdout/exit with no
