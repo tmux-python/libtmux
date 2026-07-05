@@ -1,9 +1,9 @@
-"""Window-scope facades (eager / lazy / async) over the operation spine.
+"""Window-scope objects (eager / lazy / async) over the operation spine.
 
-Mirrors the pane facades one scope up: an :class:`EagerWindow` executes now and
-returns live handles (``split()`` -> :class:`~.pane.EagerPane`), a
+Mirrors the pane objects one scope up: an :class:`EagerWindow` executes now and
+returns live objects (``split()`` -> :class:`~.pane.EagerPane`), a
 :class:`LazyWindow` records into a plan, and an :class:`AsyncWindow` awaits. All
-three drive the *same* window-scope operations; only the facade differs.
+three drive the *same* window-scope operations; only the object differs.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import typing as t
 from dataclasses import dataclass
 
-from libtmux.experimental.facade.pane import AsyncPane, EagerPane, LazyPane
+from libtmux.experimental.objects.pane import AsyncPane, EagerPane, LazyPane
 from libtmux.experimental.ops import (
     KillWindow,
     RenameWindow,
@@ -31,7 +31,7 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class EagerWindow:
-    """A live window handle bound to an engine; methods execute immediately.
+    """A live window object bound to an engine; methods execute immediately.
 
     Examples
     --------
@@ -55,7 +55,7 @@ class EagerWindow:
         start_directory: str | None = None,
         shell: str | None = None,
     ) -> EagerPane:
-        """Split this window's active pane; return a live pane handle."""
+        """Split this window's active pane; return a live pane object."""
         result = run(
             SplitWindow(
                 target=WindowId(self.window_id),
@@ -97,7 +97,7 @@ class EagerWindow:
 
 @dataclass(frozen=True)
 class LazyWindow:
-    """A deferred window handle; methods record into a plan.
+    """A deferred window object; methods record into a plan.
 
     Examples
     --------
@@ -123,7 +123,7 @@ class LazyWindow:
         start_directory: str | None = None,
         shell: str | None = None,
     ) -> LazyPane:
-        """Record a split; return a deferred pane handle to the new pane."""
+        """Record a split; return a deferred pane object to the new pane."""
         slot = self.plan.add(
             SplitWindow(
                 target=self.ref,
@@ -152,7 +152,7 @@ class LazyWindow:
 
 @dataclass(frozen=True)
 class AsyncWindow:
-    """An async live window handle: the eager window, awaited."""
+    """An async live window object: the eager window, awaited."""
 
     engine: AsyncTmuxEngine
     window_id: str
@@ -165,7 +165,7 @@ class AsyncWindow:
         start_directory: str | None = None,
         shell: str | None = None,
     ) -> AsyncPane:
-        """Split this window's active pane; return a live async pane handle."""
+        """Split this window's active pane; return a live async pane object."""
         result = await arun(
             SplitWindow(
                 target=WindowId(self.window_id),

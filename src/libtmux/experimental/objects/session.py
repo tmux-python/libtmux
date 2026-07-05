@@ -1,11 +1,11 @@
-"""Session-scope facades (eager / lazy / async) over the operation spine."""
+"""Session-scope objects (eager / lazy / async) over the operation spine."""
 
 from __future__ import annotations
 
 import typing as t
 from dataclasses import dataclass
 
-from libtmux.experimental.facade.window import AsyncWindow, EagerWindow, LazyWindow
+from libtmux.experimental.objects.window import AsyncWindow, EagerWindow, LazyWindow
 from libtmux.experimental.ops import (
     KillSession,
     NewWindow,
@@ -24,7 +24,7 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class EagerSession:
-    """A live session handle; methods execute immediately.
+    """A live session object; methods execute immediately.
 
     Examples
     --------
@@ -47,7 +47,7 @@ class EagerSession:
         name: str | None = None,
         start_directory: str | None = None,
     ) -> EagerWindow:
-        """Create a window in this session; return a live window handle."""
+        """Create a window in this session; return a live window object."""
         result = run(
             NewWindow(
                 target=SessionId(self.session_id),
@@ -80,7 +80,7 @@ class EagerSession:
 
 @dataclass(frozen=True)
 class LazySession:
-    """A deferred session handle; methods record into a plan.
+    """A deferred session object; methods record into a plan.
 
     Examples
     --------
@@ -104,7 +104,7 @@ class LazySession:
         name: str | None = None,
         start_directory: str | None = None,
     ) -> LazyWindow:
-        """Record a new window; return a deferred window handle."""
+        """Record a new window; return a deferred window object."""
         slot = self.plan.add(
             NewWindow(target=self.ref, name=name, start_directory=start_directory),
         )
@@ -123,7 +123,7 @@ class LazySession:
 
 @dataclass(frozen=True)
 class AsyncSession:
-    """An async live session handle: the eager session, awaited."""
+    """An async live session object: the eager session, awaited."""
 
     engine: AsyncTmuxEngine
     session_id: str
@@ -135,7 +135,7 @@ class AsyncSession:
         name: str | None = None,
         start_directory: str | None = None,
     ) -> AsyncWindow:
-        """Create a window in this session; return a live async window handle."""
+        """Create a window in this session; return a live async window object."""
         result = await arun(
             NewWindow(
                 target=SessionId(self.session_id),
