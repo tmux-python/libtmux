@@ -524,6 +524,8 @@ def _summarize_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
     3
     >>> "bar" in str(redacted)
     False
+    >>> "secret" in str(_summarize_args({"command": ["secret"]}))  # non-str value
+    False
     """
     summary: dict[str, t.Any] = {}
     for key, value in args.items():
@@ -531,6 +533,10 @@ def _summarize_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
             summary[key] = _redact_digest(value)
         elif key in _SENSITIVE_ARG_NAMES and isinstance(value, dict):
             summary[key] = {k: _redact_digest(str(v)) for k, v in value.items()}
+        elif key in _SENSITIVE_ARG_NAMES:
+            # Any other-typed sensitive value (e.g. a list from a non-conformant
+            # client) is shape-redacted, never passed through to the log raw.
+            summary[key] = _redacted_value_shape(value)
         elif key in _NESTED_ARG_LIST_NAMES:
             if isinstance(value, list):
                 summary[key] = [
