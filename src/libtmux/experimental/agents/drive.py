@@ -186,9 +186,9 @@ async def send_to_agent(
     Examples
     --------
     >>> import asyncio
-    >>> from libtmux.experimental.engines import AsyncConcreteEngine
+    >>> from libtmux.experimental.engines import AsyncMockEngine
     >>> from libtmux.experimental.agents.monitor import AgentMonitor
-    >>> mon = AgentMonitor(AsyncConcreteEngine())
+    >>> mon = AgentMonitor(AsyncMockEngine())
     >>> mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : idle")
     >>> outcome = asyncio.run(send_to_agent(mon, "%1", "echo hi"))
     >>> outcome.sent
@@ -236,9 +236,9 @@ async def send_to_agents(
     Examples
     --------
     >>> import asyncio
-    >>> from libtmux.experimental.engines import AsyncConcreteEngine
+    >>> from libtmux.experimental.engines import AsyncMockEngine
     >>> from libtmux.experimental.agents.monitor import AgentMonitor
-    >>> mon = AgentMonitor(AsyncConcreteEngine())
+    >>> mon = AgentMonitor(AsyncMockEngine())
     >>> mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : idle")
     >>> mon.ingest("%subscription-changed agentstate $0 @0 2 %2 : idle")
     >>> outs = asyncio.run(send_to_agents(mon, ["%1", "%2"], "echo hi"))

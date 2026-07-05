@@ -15,7 +15,7 @@ from libtmux.experimental.agents.statusline import (
     render_status_line,
     status_line_op,
 )
-from libtmux.experimental.engines import AsyncConcreteEngine
+from libtmux.experimental.engines import AsyncMockEngine
 from libtmux.experimental.engines.base import CommandResult
 from libtmux.experimental.ops._types import SessionId
 
@@ -92,7 +92,7 @@ def test_paint_reads_store_then_writes_once() -> None:
     """Paint reads agents from the monitor (0 calls) and writes ONE set-option."""
     from libtmux.experimental.agents.monitor import AgentMonitor
 
-    mon = AgentMonitor(AsyncConcreteEngine())
+    mon = AgentMonitor(AsyncMockEngine())
     mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : awaiting_input")
     rec = _Recorder()
     ok = asyncio.run(paint_status_line(rec, mon, global_=True))
