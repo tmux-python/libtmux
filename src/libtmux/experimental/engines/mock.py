@@ -1,10 +1,10 @@
 """Deterministic, in-memory engines for tests and docs (no tmux server).
 
-The concrete engines simulate just enough tmux behaviour to exercise the
+The mock engines simulate just enough tmux behaviour to exercise the
 operation contract offline: creation commands that ask for an id
 (``-P -F '#{pane_id}'``) get a fabricated, monotonic id, ``capture-pane`` returns
 canned lines, and everything else succeeds with empty output. A sync
-(:class:`ConcreteEngine`) and async (:class:`AsyncConcreteEngine`) variant share
+(:class:`MockEngine`) and async (:class:`AsyncMockEngine`) variant share
 the same simulation, so the same operation returns the same typed result through
 either, with no tmux required.
 """
@@ -65,7 +65,7 @@ def _new_counters() -> dict[str, int]:
     return {"pane_id": 0, "window_id": 0, "session_id": 0}
 
 
-class ConcreteEngine:
+class MockEngine:
     """Execute operations against an in-memory simulation (synchronous).
 
     Parameters
@@ -84,7 +84,7 @@ class ConcreteEngine:
     --------
     >>> from libtmux.experimental.ops import SplitWindow, CapturePane, run
     >>> from libtmux.experimental.ops._types import WindowId, PaneId
-    >>> engine = ConcreteEngine(capture_lines=("hello", "world"))
+    >>> engine = MockEngine(capture_lines=("hello", "world"))
     >>> run(SplitWindow(target=WindowId("@1")), engine).new_pane_id
     '%1'
     >>> run(SplitWindow(target=WindowId("@1")), engine).new_pane_id
@@ -106,8 +106,8 @@ class ConcreteEngine:
         return [self.run(req) for req in requests]
 
 
-class AsyncConcreteEngine:
-    """Async sibling of :class:`ConcreteEngine` for offline async tests/docs.
+class AsyncMockEngine:
+    """Async sibling of :class:`MockEngine` for offline async tests/docs.
 
     Examples
     --------
@@ -115,7 +115,7 @@ class AsyncConcreteEngine:
     >>> from libtmux.experimental.ops import SplitWindow, arun
     >>> from libtmux.experimental.ops._types import WindowId
     >>> async def main():
-    ...     return await arun(SplitWindow(target=WindowId("@1")), AsyncConcreteEngine())
+    ...     return await arun(SplitWindow(target=WindowId("@1")), AsyncMockEngine())
     >>> asyncio.run(main()).new_pane_id
     '%1'
     """

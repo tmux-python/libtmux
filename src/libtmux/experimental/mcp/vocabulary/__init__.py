@@ -11,8 +11,8 @@ surface) and exposed as a derived synchronous twin under the plain name (see
 
 Examples
 --------
->>> from libtmux.experimental.engines import ConcreteEngine
->>> engine = ConcreteEngine()
+>>> from libtmux.experimental.engines import MockEngine
+>>> engine = MockEngine()
 >>> session = create_session(engine, name="dev")
 >>> session.session_id
 '$1'

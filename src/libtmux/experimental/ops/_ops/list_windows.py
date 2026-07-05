@@ -31,9 +31,9 @@ class ListWindows(Operation[ListWindowsResult]):
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.ops import run
-    >>> run(ListWindows(), ConcreteEngine(), version="3.6a").windows
+    >>> run(ListWindows(), MockEngine(), version="3.6a").windows
     ()
     """
 

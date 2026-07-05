@@ -14,7 +14,7 @@ Everything here is experimental and outside the versioning policy.
 
 Examples
 --------
->>> from libtmux.experimental.engines import ConcreteEngine
+>>> from libtmux.experimental.engines import MockEngine
 >>> reg = OperationToolRegistry()
 >>> reg.descriptor("new_session").safety
 'mutating'

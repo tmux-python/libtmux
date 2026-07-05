@@ -142,9 +142,9 @@ def test_fold_keeps_creation_ops_unfolded() -> None:
     pane = plan.add(SplitWindow(target=WindowId("@1")))  # not chainable
     plan.add(SendKeys(target=pane, keys="vim"))  # chainable, targets new pane
     plan.add(RenameWindow(target=WindowId("@1"), name="x"))  # chainable
-    from libtmux.experimental.engines import ConcreteEngine
+    from libtmux.experimental.engines import MockEngine
 
-    outcome = plan.execute(ConcreteEngine(), planner=FoldingPlanner())
+    outcome = plan.execute(MockEngine(), planner=FoldingPlanner())
 
     # split resolved the pane id; the send-keys folded with rename, retargeted
     assert outcome.results[1].argv[:3] == ("send-keys", "-t", "%1")

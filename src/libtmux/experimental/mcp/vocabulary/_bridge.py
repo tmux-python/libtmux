@@ -41,8 +41,8 @@ class SyncToAsyncEngine:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> bridge = SyncToAsyncEngine(ConcreteEngine())
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> bridge = SyncToAsyncEngine(MockEngine())
     >>> hasattr(bridge, "run") and hasattr(bridge, "run_batch")
     True
     """

@@ -207,7 +207,7 @@ def _print_dry_run(
 ) -> None:
     r"""Print the tmux commands a build would run, without touching tmux.
 
-    The plan is resolved against the in-memory ``ConcreteEngine`` (which
+    The plan is resolved against the in-memory ``MockEngine`` (which
     fabricates ids) through the *same* planner the real build uses, so the
     printed lines are the folded ``;`` dispatches that would actually run -- not
     an unfolded op-per-line view. Pass ``fold=False`` for one tmux call per
@@ -217,7 +217,7 @@ def _print_dry_run(
     """
     import shlex
 
-    from libtmux.experimental.engines import ConcreteEngine
+    from libtmux.experimental.engines import MockEngine
     from libtmux.experimental.ops import (
         BoundedPlanner,
         MarkedPlanner,
@@ -237,7 +237,7 @@ def _print_dry_run(
         if fold
         else SequentialPlanner()
     )
-    engine = _RecordingEngine(ConcreteEngine())
+    engine = _RecordingEngine(MockEngine())
     hosts_per_dispatch: list[tuple[HostStep, ...]] = []
 
     def on_step(report: StepReport) -> None:
