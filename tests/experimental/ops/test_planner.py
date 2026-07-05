@@ -15,6 +15,7 @@ from libtmux.experimental.ops import (
     FoldingPlanner,
     LazyPlan,
     MarkedPlanner,
+    NewPane,
     PlanStep,
     SendKeys,
     SequentialPlanner,
@@ -126,6 +127,43 @@ def test_marked_falls_back_without_pattern() -> None:
     engine = _CountingEngine()
     plan.execute(engine, planner=MarkedPlanner())
     assert len(engine.calls) == 1  # folded as a plain ; chain
+
+
+class _MarkedFoldCase(t.NamedTuple):
+    """A pane creator and whether its decorates should {marked}-fold."""
+
+    test_id: str
+    creator: Operation[t.Any]
+    marked: bool
+
+
+_MARKED_FOLD_CASES = (
+    _MarkedFoldCase("split_focuses_new_pane", SplitWindow(target=WindowId("@1")), True),
+    _MarkedFoldCase(
+        "detached_new_pane_falls_back",
+        NewPane(target=PaneId("%1"), width=80, height=15),
+        False,
+    ),
+    _MarkedFoldCase(
+        "focused_new_pane_marks",
+        NewPane(target=PaneId("%1"), width=80, height=15, detach=False),
+        True,
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    _MARKED_FOLD_CASES,
+    ids=[c.test_id for c in _MARKED_FOLD_CASES],
+)
+def test_marked_fold_skips_detached_creator(case: _MarkedFoldCase) -> None:
+    """A detached creator's new pane isn't focused, so {marked} can't target it."""
+    plan = LazyPlan()
+    pane = plan.add(case.creator)
+    plan.add(SendKeys(target=pane, keys="vim", enter=True))
+    steps = MarkedPlanner().plan(plan.operations)
+    assert any(step.marked for step in steps) is case.marked
 
 
 def _split_decorate_plan() -> list[Operation[t.Any]]:
