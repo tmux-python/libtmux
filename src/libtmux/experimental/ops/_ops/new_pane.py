@@ -32,9 +32,9 @@ class NewPane(Operation[SplitWindowResult]):
     :class:`~.results.SplitWindowResult`, capturing the new pane id via
     ``-P -F '#{pane_id}'`` so plans, the facade, and MCP bind it the same way.
 
-    This is the first operation gated by :attr:`~.operation.Operation.min_version`:
-    rendering against a tmux older than 3.7 raises
-    :exc:`~.exc.VersionUnsupported`.
+    Rendering against a tmux older than 3.7 raises
+    :exc:`~.exc.VersionUnsupported` (this op sets
+    :attr:`~.operation.Operation.min_version`).
 
     Parameters
     ----------
