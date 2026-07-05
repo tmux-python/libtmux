@@ -1,18 +1,18 @@
-"""Pane-scope facades demonstrating "mode lives in the type".
+"""Pane-scope objects demonstrating "mode lives in the type".
 
-Two thin facades over the *same* operation spine show why the execution mode
+Two thin objects over the *same* operation spine show why the execution mode
 belongs in the class rather than a runtime flag:
 
-- :class:`EagerPane` executes immediately and returns *live* handles
+- :class:`EagerPane` executes immediately and returns *live* objects
   (``split()`` -> :class:`EagerPane`), so its return types are concrete.
 - :class:`LazyPane` records into a :class:`~libtmux.experimental.ops.plan.LazyPlan`
-  and returns *deferred* handles (``split()`` -> :class:`LazyPane`), executing
+  and returns *deferred* objects (``split()`` -> :class:`LazyPane`), executing
   only when the plan runs.
 
 Each ``split()`` therefore has exactly one statically-known return type -- a
 single ``Pane`` class with a runtime engine attribute could not express that.
 The same :class:`~libtmux.experimental.ops.SplitWindow` operation backs both;
-only the facade differs. This is the seed of the wider facade matrix
+only the object differs. This is the seed of the wider object matrix
 (``AsyncPane``, ``LazyControlWindow``, ...) described in issue 689.
 """
 
@@ -58,7 +58,7 @@ def _new_pane_op(
     message: str | None,
     shell_command: str | None,
 ) -> NewPane:
-    """Build a :class:`~..ops.NewPane` for *target* (shared by the facades)."""
+    """Build a :class:`~..ops.NewPane` for *target* (shared by the objects)."""
     return NewPane(
         target=target,
         width=width,
@@ -80,7 +80,7 @@ def _new_pane_op(
 
 @dataclass(frozen=True)
 class EagerPane:
-    """A live pane handle bound to an engine; methods execute immediately.
+    """A live pane object bound to an engine; methods execute immediately.
 
     Parameters
     ----------
@@ -116,7 +116,7 @@ class EagerPane:
         start_directory: str | None = None,
         shell: str | None = None,
     ) -> EagerPane:
-        """Split this pane and return a live handle to the new pane."""
+        """Split this pane and return a live object to the new pane."""
         result = run(
             SplitWindow(
                 target=PaneId(self.pane_id),
@@ -149,7 +149,7 @@ class EagerPane:
         message: str | None = None,
         shell_command: str | None = None,
     ) -> EagerPane:
-        """Create a floating pane (tmux 3.7+) and return a live handle to it."""
+        """Create a floating pane (tmux 3.7+) and return a live object to it."""
         result = run(
             _new_pane_op(
                 PaneId(self.pane_id),
@@ -196,14 +196,14 @@ class EagerPane:
 
 @dataclass(frozen=True)
 class LazyPane:
-    """A deferred pane handle; methods record into a plan instead of running.
+    """A deferred pane object; methods record into a plan instead of running.
 
     Parameters
     ----------
     plan : LazyPlan
         The plan operations are recorded into.
     ref : Target
-        The target this handle addresses (a concrete id, or a SlotRef for a
+        The target this object addresses (a concrete id, or a SlotRef for a
         pane created earlier in the plan).
 
     Examples
@@ -232,7 +232,7 @@ class LazyPane:
         start_directory: str | None = None,
         shell: str | None = None,
     ) -> LazyPane:
-        """Record a split; return a deferred handle to the pane it will create."""
+        """Record a split; return a deferred object to the pane it will create."""
         slot = self.plan.add(
             SplitWindow(
                 target=self.ref,
@@ -261,7 +261,7 @@ class LazyPane:
         message: str | None = None,
         shell_command: str | None = None,
     ) -> LazyPane:
-        """Record a floating-pane creation; return a deferred handle to it."""
+        """Record a floating-pane creation; return a deferred object to it."""
         slot = self.plan.add(
             _new_pane_op(
                 self.ref,
@@ -284,23 +284,23 @@ class LazyPane:
         return LazyPane(self.plan, slot)
 
     def send_keys(self, keys: str, *, enter: bool = False) -> LazyPane:
-        """Record a send-keys against this handle; return self for chaining."""
+        """Record a send-keys against this object; return self for chaining."""
         self.plan.add(SendKeys(target=self.ref, keys=keys, enter=enter))
         return self
 
     def capture(self, *, start: int | None = None, end: int | None = None) -> LazyPane:
-        """Record a capture against this handle; return self for chaining."""
+        """Record a capture against this object; return self for chaining."""
         self.plan.add(CapturePane(target=self.ref, start=start, end=end))
         return self
 
 
 @dataclass(frozen=True)
 class AsyncPane:
-    """An async live pane handle: the eager pane, awaited.
+    """An async live pane object: the eager pane, awaited.
 
     Identical in shape to :class:`EagerPane` -- same operations, same spine --
     but bound to an :class:`~..engines.base.AsyncTmuxEngine` and awaited. This is
-    why async is a sibling facade, not a transformation.
+    why async is a sibling object, not a transformation.
 
     Examples
     --------
@@ -325,7 +325,7 @@ class AsyncPane:
         start_directory: str | None = None,
         shell: str | None = None,
     ) -> AsyncPane:
-        """Split this pane and return a live async handle to the new pane."""
+        """Split this pane and return a live async object to the new pane."""
         result = await arun(
             SplitWindow(
                 target=PaneId(self.pane_id),
@@ -358,7 +358,7 @@ class AsyncPane:
         message: str | None = None,
         shell_command: str | None = None,
     ) -> AsyncPane:
-        """Create a floating pane (tmux 3.7+) and return a live async handle."""
+        """Create a floating pane (tmux 3.7+) and return a live async object."""
         result = await arun(
             _new_pane_op(
                 PaneId(self.pane_id),

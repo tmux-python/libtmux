@@ -34,7 +34,7 @@ True
 ```
 
 How a *failed* result is treated is the engine's policy: the classic subprocess
-path raises in its facade to match today's libtmux behavior, while the newer
+path raises in its wrapper to match today's libtmux behavior, while the newer
 engines hand the result back and let the caller decide.
 
 ## Choosing an engine
