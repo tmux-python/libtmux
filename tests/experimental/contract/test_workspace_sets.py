@@ -6,7 +6,7 @@ import asyncio
 import dataclasses
 import typing as t
 
-from libtmux.experimental.engines import AsyncConcreteEngine, ConcreteEngine
+from libtmux.experimental.engines import AsyncMockEngine, MockEngine
 from libtmux.experimental.engines.base import CommandResult
 from libtmux.experimental.ops import SequentialPlanner
 from libtmux.experimental.ops._types import SlotRef
@@ -31,7 +31,7 @@ if t.TYPE_CHECKING:
 class _RecordingEngine:
     """Record dispatches while forwarding to an inner engine."""
 
-    inner: TmuxEngine = dataclasses.field(default_factory=ConcreteEngine)
+    inner: TmuxEngine = dataclasses.field(default_factory=MockEngine)
     calls: list[tuple[str, ...]] = dataclasses.field(default_factory=list)
 
     def run(self, request: CommandRequest) -> CommandResult:
@@ -127,7 +127,7 @@ def test_workspace_set_all_reused_returns_noop_result() -> None:
         windows=[Window("w", panes=[Pane("echo nope")])],
         on_exists="reuse",
     )
-    engine = ConcreteEngine()
+    engine = MockEngine()
 
     first = build_workspaces([reused], engine, preflight=False)
     second = build_workspaces([reused], engine)
@@ -143,7 +143,7 @@ def test_workspace_set_emits_built_event_per_workspace() -> None:
     events: list[BuildEvent] = []
     outcome = build_workspaces(
         [_workspace("one"), _workspace("two")],
-        ConcreteEngine(),
+        MockEngine(),
         preflight=False,
         on_event=events.append,
     )
@@ -157,7 +157,7 @@ def test_workspace_set_async_build_matches_sync_shape() -> None:
     """The async runner exposes the same result shape as the sync runner."""
     workspace_set = WorkspaceSet((_workspace("one"), _workspace("two")))
     outcome = asyncio.run(
-        workspace_set.abuild(AsyncConcreteEngine(), preflight=False),
+        workspace_set.abuild(AsyncMockEngine(), preflight=False),
     )
 
     assert outcome.ok

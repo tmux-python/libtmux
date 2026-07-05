@@ -228,15 +228,15 @@ class LazyPlan:
     Examples
     --------
     Build a plan that splits a window then types into the *new* pane, and run it
-    against the in-memory concrete engine (no tmux required):
+    against the in-memory mock engine (no tmux required):
 
     >>> from libtmux.experimental.ops import SplitWindow, SendKeys
     >>> from libtmux.experimental.ops._types import WindowId
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> plan = LazyPlan()
     >>> pane = plan.add(SplitWindow(target=WindowId("@1")))
     >>> _ = plan.add(SendKeys(target=pane, keys="vim", enter=True))
-    >>> outcome = plan.execute(ConcreteEngine())
+    >>> outcome = plan.execute(MockEngine())
     >>> outcome.bindings
     {0: '%1'}
     >>> outcome.results[1].argv
@@ -511,12 +511,12 @@ class LazyPlan:
         Examples
         --------
         >>> import asyncio
-        >>> from libtmux.experimental.engines.concrete import AsyncConcreteEngine
+        >>> from libtmux.experimental.engines.mock import AsyncMockEngine
         >>> from libtmux.experimental.ops import SendKeys
         >>> from libtmux.experimental.ops._types import PaneId
         >>> plan = LazyPlan()
         >>> _ = plan.add(SendKeys(target=PaneId("%1"), keys="vim"))
-        >>> asyncio.run(plan.aexecute(AsyncConcreteEngine())).ok
+        >>> asyncio.run(plan.aexecute(AsyncMockEngine())).ok
         True
         """
         version = resolve_engine_version(engine, version)
@@ -572,13 +572,13 @@ class LazyPlan:
         Examples
         --------
         >>> import asyncio
-        >>> from libtmux.experimental.engines.concrete import AsyncConcreteEngine
+        >>> from libtmux.experimental.engines.mock import AsyncMockEngine
         >>> from libtmux.experimental.ops import SendKeys
         >>> from libtmux.experimental.ops._types import PaneId
         >>> plan = LazyPlan()
         >>> _ = plan.add(SendKeys(target=PaneId("%1"), keys="vim"))
         >>> async def drain() -> list[str]:
-        ...     engine = AsyncConcreteEngine()
+        ...     engine = AsyncMockEngine()
         ...     return [type(e).__name__ async for e in plan.astream(engine)]
         >>> asyncio.run(drain())
         ['StepDone', 'PlanDone']

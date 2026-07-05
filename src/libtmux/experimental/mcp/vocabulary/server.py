@@ -53,8 +53,8 @@ async def arun_tmux(
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> run_tmux(ConcreteEngine(), ["list-sessions"]).ok
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> run_tmux(MockEngine(), ["list-sessions"]).ok
     True
     """
     raw = await engine.run(CommandRequest.from_args(*args))

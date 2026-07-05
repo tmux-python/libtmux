@@ -7,7 +7,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine
+from libtmux.experimental.engines import MockEngine
 
 fastmcp = pytest.importorskip("fastmcp")
 
@@ -18,7 +18,7 @@ def _names_at(level: str, **kwargs: t.Any) -> set[str]:
     """Return the visible tool names from a server built at *level*."""
 
     async def main() -> set[str]:
-        server = build_server(ConcreteEngine(), safety_level=level, **kwargs)
+        server = build_server(MockEngine(), safety_level=level, **kwargs)
         async with fastmcp.Client(server) as client:
             return {tool.name for tool in await client.list_tools()}
 
@@ -59,7 +59,7 @@ def test_safety_gate_blocks_destructive_call_at_readonly() -> None:
     """A destructive tool cannot be successfully called at the readonly tier."""
 
     async def main() -> tuple[str, t.Any]:
-        server = build_server(ConcreteEngine(), safety_level="readonly")
+        server = build_server(MockEngine(), safety_level="readonly")
         async with fastmcp.Client(server) as client:
             try:
                 result = await client.call_tool("kill_session", {"target": "$1"})

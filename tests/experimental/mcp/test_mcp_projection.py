@@ -3,12 +3,12 @@
 Exercises descriptor generation from the operation registry, agent target
 resolution, plan preview/execute with forward-ref bindings, result-schema
 introspection, and the build_workspace tool -- all against the in-memory
-``ConcreteEngine`` so the projection is provably correct offline.
+``MockEngine`` so the projection is provably correct offline.
 """
 
 from __future__ import annotations
 
-from libtmux.experimental.engines import ConcreteEngine
+from libtmux.experimental.engines import MockEngine
 from libtmux.experimental.mcp import (
     OperationToolRegistry,
     build_workspace,
@@ -126,7 +126,7 @@ def test_execute_plan_returns_bindings() -> None:
     plan = LazyPlan()
     session = plan.add(NewSession(session_name="dev", capture_panes=True))
     plan.add(SendKeys(target=session.pane, keys="vim", enter=True))
-    outcome = execute_plan(plan, ConcreteEngine())
+    outcome = execute_plan(plan, MockEngine())
     assert outcome.ok
     assert outcome.bindings["0"].startswith("$")
     assert outcome.bindings["0:pane"].startswith("%")
@@ -151,7 +151,7 @@ def test_build_workspace_tool_offline() -> None:
             "session_name": "dev",
             "windows": [{"window_name": "editor", "panes": ["vim", "pytest -q"]}],
         },
-        ConcreteEngine(),
+        MockEngine(),
         preflight=False,
     )
     assert outcome.ok
