@@ -211,3 +211,40 @@ def test_connect_then_die_escalates_backoff() -> None:
 
     asyncio.run(main())
     assert seen[:3] == [0, 1, 2]  # escalates, not pinned at 0
+
+
+def test_spawn_terminates_a_live_prior_proc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_spawn terminates a still-alive prior proc so a reconnect can't orphan it.
+
+    On a reader-EXCEPTION reconnect (vs a clean EOF) the old tmux -C is still
+    alive; overwriting _proc without terminating it would leak a control client.
+    """
+    terminated: list[bool] = []
+
+    class _AliveProc:
+        returncode: int | None = None
+
+        def terminate(self) -> None:
+            terminated.append(True)
+
+    class _NewProc:
+        returncode: int | None = None
+
+    async def _fake_exec(*_a: object, **_k: object) -> _NewProc:
+        return _NewProc()
+
+    class _Probe(AsyncControlModeEngine):
+        async def _consume_startup(self) -> None:
+            return  # skip the real startup drain (the fake proc has no stdout)
+
+    async def main() -> None:
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+        engine = _Probe(tmux_bin="tmux")
+        # a prior, still-alive control client (as a reader-exception reconnect leaves)
+        engine._proc = t.cast("asyncio.subprocess.Process", _AliveProc())
+        await engine._spawn()
+
+    asyncio.run(main())
+    assert terminated == [True]  # the prior live proc was terminated
