@@ -157,7 +157,7 @@ def test_cross_window_float_attaches_to_later_window() -> None:
 
 def test_cross_window_float_builds_offline() -> None:
     """A cross-window float resolves its target and builds in-memory."""
-    from libtmux.experimental.engines import ConcreteEngine
+    from libtmux.experimental.engines import MockEngine
 
     ws = Workspace(
         name="dev",
@@ -170,7 +170,7 @@ def test_cross_window_float_builds_offline() -> None:
             Window("logs", panes=[Pane(run="tail -f x")]),
         ],
     )
-    assert ws.build(ConcreteEngine(), preflight=False).ok
+    assert ws.build(MockEngine(), preflight=False).ok
 
 
 def test_unknown_attach_to_raises() -> None:
@@ -210,7 +210,7 @@ def test_topo_order_detects_cycle() -> None:
 
 def test_offline_build_with_float() -> None:
     """A float-bearing workspace builds over the in-memory engine."""
-    from libtmux.experimental.engines import ConcreteEngine
+    from libtmux.experimental.engines import MockEngine
 
     ws = Workspace(
         name="dev",
@@ -227,7 +227,7 @@ def test_offline_build_with_float() -> None:
             ),
         ],
     )
-    assert ws.build(ConcreteEngine(), preflight=False).ok
+    assert ws.build(MockEngine(), preflight=False).ok
 
 
 def test_events_for_new_pane() -> None:

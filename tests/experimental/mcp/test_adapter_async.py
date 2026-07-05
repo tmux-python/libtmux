@@ -1,6 +1,6 @@
 """The async-first FastMCP adapter -- awaited tools, per-op, and plan tiers.
 
-Exercised offline via an in-process FastMCP client over a sync ``ConcreteEngine``
+Exercised offline via an in-process FastMCP client over a sync ``MockEngine``
 wrapped into the async protocol, so the async registration path is validated with
 no tmux.
 """
@@ -12,7 +12,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine
+from libtmux.experimental.engines import MockEngine
 from libtmux.experimental.mcp.vocabulary._bridge import SyncToAsyncEngine
 
 fastmcp = pytest.importorskip("fastmcp")
@@ -22,9 +22,7 @@ def _async_server(**kwargs: t.Any) -> t.Any:
     """Build an async server over a wrapped in-memory engine."""
     from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
 
-    return build_async_server(
-        SyncToAsyncEngine(ConcreteEngine()), events="off", **kwargs
-    )
+    return build_async_server(SyncToAsyncEngine(MockEngine()), events="off", **kwargs)
 
 
 def test_async_server_exposes_curated_and_conveniences() -> None:

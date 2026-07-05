@@ -6,7 +6,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines.concrete import ConcreteEngine
+from libtmux.experimental.engines.mock import MockEngine
 from libtmux.experimental.fluent import PlanBuilder, plan
 from libtmux.experimental.query import ForwardPaneRef
 
@@ -63,7 +63,7 @@ def test_builder_runs_offline(case: _BuildCase) -> None:
     """The build resolves forward refs and folds over the in-memory engine."""
     p = plan()
     case.build(p)
-    assert p.run(ConcreteEngine()).ok
+    assert p.run(MockEngine()).ok
 
 
 def test_window_pane_is_forward_handle() -> None:
@@ -150,7 +150,7 @@ def test_sleep_runs_offline() -> None:
     pane.do(lambda c: c.send_keys("vim"))
     p.sleep(0.0)
     pane.split().do(lambda c: c.send_keys("htop"))
-    assert p.run(ConcreteEngine()).ok
+    assert p.run(MockEngine()).ok
 
 
 def test_find_or_create_session_records_a_conditional_create() -> None:

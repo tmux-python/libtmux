@@ -13,8 +13,8 @@ import pytest
 
 from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
 from libtmux.experimental.engines.base import SupportsTmuxVersion
-from libtmux.experimental.engines.concrete import ConcreteEngine
 from libtmux.experimental.engines.control_mode import ControlModeEngine
+from libtmux.experimental.engines.mock import MockEngine
 from libtmux.experimental.engines.subprocess import SubprocessEngine
 from libtmux.experimental.ops import SendKeys, SplitWindow, arun, run
 from libtmux.experimental.ops._types import PaneId, WindowId
@@ -157,7 +157,7 @@ _CAPABILITY_CASES: tuple[_CapabilityCase, ...] = (
     _CapabilityCase("subprocess", SubprocessEngine, True),
     _CapabilityCase("control_mode", ControlModeEngine, True),
     _CapabilityCase("async_control_mode", AsyncControlModeEngine, True),
-    _CapabilityCase("concrete", ConcreteEngine, False),
+    _CapabilityCase("mock", MockEngine, False),
 )
 
 

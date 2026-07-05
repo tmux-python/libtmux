@@ -7,7 +7,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import AsyncConcreteEngine, ConcreteEngine
+from libtmux.experimental.engines import AsyncMockEngine, MockEngine
 from libtmux.experimental.engines.base import CommandResult
 from libtmux.experimental.ops import (
     BreakPane,
@@ -48,7 +48,7 @@ def test_plan_resolves_forward_ref() -> None:
     pane = plan.add(SplitWindow(target=WindowId("@1")))
     plan.add(SendKeys(target=pane, keys="vim", enter=True))
 
-    outcome = plan.execute(ConcreteEngine())
+    outcome = plan.execute(MockEngine())
 
     assert outcome.bindings == {0: "%1"}
     assert outcome.results[1].argv == ("send-keys", "-t", "%1", "vim", "Enter")
@@ -59,7 +59,7 @@ def test_plan_execute_auto_resolves_engine_version() -> None:
     """plan.execute() resolves the engine version so folded renders are gated."""
     from libtmux.experimental.ops import FoldingPlanner, RespawnPane
 
-    class VersionedConcreteEngine(ConcreteEngine):
+    class VersionedMockEngine(MockEngine):
         def tmux_version(self) -> str | None:
             return "2.9"
 
@@ -67,7 +67,7 @@ def test_plan_execute_auto_resolves_engine_version() -> None:
     plan.add(RespawnPane(target=PaneId("%1"), environment={"E": "1"}))
     plan.add(RespawnPane(target=PaneId("%2"), environment={"E": "2"}))
 
-    outcome = plan.execute(VersionedConcreteEngine(), planner=FoldingPlanner())
+    outcome = plan.execute(VersionedMockEngine(), planner=FoldingPlanner())
 
     # -e is gated at tmux 3.0; on the engine's resolved 2.9 it is dropped even
     # from the folded (rendered-in-_drive) dispatch.
@@ -101,7 +101,7 @@ def test_plan_resolves_src_target(test_id: str, op: Operation[t.Any]) -> None:
     plan = LazyPlan()
     plan.add(SplitWindow(target=WindowId("@1")))  # slot 0 -> %1
     plan.add(op)
-    outcome = plan.execute(ConcreteEngine())
+    outcome = plan.execute(MockEngine())
     assert outcome.ok
     assert outcome.results[1].argv[-2:] == ("-s", "%1")
 
@@ -134,7 +134,7 @@ def test_marked_plan_resolves_decorate_src_target(
     plan.add(SplitWindow(target=WindowId("@1")))  # slot 0 -> %1 (own dispatch)
     plan.add(SplitWindow(target=WindowId("@1")))  # slot 1 -> the marked-fold creator
     plan.add(op)  # slot 2 -> decorate: target {marked}, src_target -> slot 0
-    outcome = plan.execute(ConcreteEngine(), planner=MarkedPlanner())
+    outcome = plan.execute(MockEngine(), planner=MarkedPlanner())
     assert outcome.ok
     assert outcome.results[2].argv[-2:] == ("-s", "%1")
 
@@ -145,7 +145,7 @@ def test_plan_aexecute_matches_execute() -> None:
     pane = plan.add(SplitWindow(target=WindowId("@1")))
     plan.add(SendKeys(target=pane, keys="vim", enter=True))
 
-    outcome = asyncio.run(plan.aexecute(AsyncConcreteEngine()))
+    outcome = asyncio.run(plan.aexecute(AsyncMockEngine()))
 
     assert outcome.bindings == {0: "%1"}
     assert outcome.results[1].argv == ("send-keys", "-t", "%1", "vim", "Enter")
@@ -159,7 +159,7 @@ def test_execute_on_step_reports_each_step() -> None:
 
     reports: list[StepReport] = []
     outcome = plan.execute(
-        ConcreteEngine(),
+        MockEngine(),
         planner=SequentialPlanner(),
         on_step=reports.append,
     )
@@ -183,7 +183,7 @@ def test_aexecute_on_step_matches_execute() -> None:
 
     sync_steps: list[tuple[int, ...]] = []
     plan.execute(
-        ConcreteEngine(),
+        MockEngine(),
         on_step=lambda report: sync_steps.append(report.step.indices),
     )
 
@@ -192,7 +192,7 @@ def test_aexecute_on_step_matches_execute() -> None:
     async def collect(report: StepReport) -> None:
         async_steps.append(report.step.indices)
 
-    asyncio.run(plan.aexecute(AsyncConcreteEngine(), on_step=collect))
+    asyncio.run(plan.aexecute(AsyncMockEngine(), on_step=collect))
     assert async_steps == sync_steps == [(0,), (1,)]
 
 
@@ -213,7 +213,7 @@ def test_plan_unresolvable_ref_fails_closed() -> None:
     typed = plan.add(SendKeys(target=PaneId("%1"), keys="x"))  # creates no id
     plan.add(SendKeys(target=typed, keys="y"))
     with pytest.raises(ForwardCaptureError, match="captured no id") as exc_info:
-        plan.execute(ConcreteEngine())
+        plan.execute(MockEngine())
     assert exc_info.value.slot == 0  # points at the non-capturing creator
     # ForwardCaptureError stays an OperationError, so broad handlers keep working
     assert isinstance(exc_info.value, OperationError)
@@ -266,7 +266,7 @@ def test_astream_yields_step_then_plan_done() -> None:
     plan = _split_then_send()
 
     async def drain() -> list[object]:
-        return [event async for event in plan.astream(AsyncConcreteEngine())]
+        return [event async for event in plan.astream(AsyncMockEngine())]
 
     events = asyncio.run(drain())
     assert [type(e).__name__ for e in events] == ["StepDone", "StepDone", "PlanDone"]
@@ -281,8 +281,8 @@ def test_astream_last_result_matches_aexecute() -> None:
     from libtmux.experimental.ops import PlanDone
 
     async def both() -> tuple[bool, bool]:
-        streamed = [e async for e in _split_then_send().astream(AsyncConcreteEngine())]
-        direct = await _split_then_send().aexecute(AsyncConcreteEngine())
+        streamed = [e async for e in _split_then_send().astream(AsyncMockEngine())]
+        direct = await _split_then_send().aexecute(AsyncMockEngine())
         last = streamed[-1]
         assert isinstance(last, PlanDone)
         return last.result.ok, direct.ok

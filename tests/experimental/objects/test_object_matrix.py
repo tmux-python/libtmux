@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import typing as t
 
-from libtmux.experimental.engines import AsyncConcreteEngine, ConcreteEngine
+from libtmux.experimental.engines import AsyncMockEngine, MockEngine
 from libtmux.experimental.objects import (
     AsyncPane,
     AsyncWindow,
@@ -22,8 +22,8 @@ if t.TYPE_CHECKING:
 
 
 def test_eager_full_navigation_offline() -> None:
-    """Eager Server->Session->Window->Pane navigation via the concrete engine."""
-    server = EagerServer(ConcreteEngine())
+    """Eager Server->Session->Window->Pane navigation via the mock engine."""
+    server = EagerServer(MockEngine())
     session = server.new_session(name="work")
     assert session.session_id == "$1"
     window = session.new_window(name="build")
@@ -35,7 +35,7 @@ def test_eager_full_navigation_offline() -> None:
 
 def test_eager_window_methods() -> None:
     """EagerWindow rename/select_layout/kill return successful results."""
-    window = EagerWindow(ConcreteEngine(), "@1")
+    window = EagerWindow(MockEngine(), "@1")
     assert window.rename("x").ok
     assert window.select_layout("tiled").ok
     assert window.kill().ok
@@ -49,7 +49,7 @@ def test_lazy_window_records_and_executes() -> None:
     window.rename("build")
     assert len(plan) == 2
 
-    outcome = plan.execute(ConcreteEngine())
+    outcome = plan.execute(MockEngine())
     assert outcome.ok
     assert outcome.results[0].created_id == "%1"
 
@@ -58,7 +58,7 @@ def test_async_window_and_pane() -> None:
     """Async objects mirror the eager ones via await."""
 
     async def main() -> tuple[str, bool, bool]:
-        window = AsyncWindow(AsyncConcreteEngine(), "@1")
+        window = AsyncWindow(AsyncMockEngine(), "@1")
         pane = await window.split()
         assert isinstance(pane, AsyncPane)
         sent = await pane.send_keys("echo hi", enter=True)
