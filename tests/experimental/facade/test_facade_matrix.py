@@ -57,16 +57,18 @@ def test_lazy_window_records_and_executes() -> None:
 def test_async_window_and_pane() -> None:
     """Async facades mirror the eager ones via await."""
 
-    async def main() -> tuple[str, bool]:
+    async def main() -> tuple[str, bool, bool]:
         window = AsyncWindow(AsyncConcreteEngine(), "@1")
         pane = await window.split()
         assert isinstance(pane, AsyncPane)
         sent = await pane.send_keys("echo hi", enter=True)
-        return pane.pane_id, sent.ok
+        laid_out = await window.select_layout("tiled")  # parity with eager/lazy
+        return pane.pane_id, sent.ok, laid_out.ok
 
-    pane_id, ok = asyncio.run(main())
+    pane_id, ok, laid_out = asyncio.run(main())
     assert pane_id == "%1"
     assert ok
+    assert laid_out
 
 
 def test_eager_navigation_live(session: Session) -> None:
