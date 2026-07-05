@@ -178,8 +178,14 @@ class _EventRing:
         self._error: str | None = None
 
     def _ensure_started(self) -> None:
-        """Start the drainer task once, lazily, on the running loop."""
-        if self._task is None:
+        """Start the drainer task, lazily, on the running loop.
+
+        Also restarts it after it has *completed* -- the engine's
+        ``_broadcast_stream_end`` ends the subscribe stream on a disconnect, so
+        the drain task finishes; a bare ``is None`` guard would never re-subscribe
+        after a reconnect, silently freezing the cursor.
+        """
+        if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._drain(), name="libtmux-mcp-events")
 
     async def _drain(self) -> None:
@@ -187,8 +193,13 @@ class _EventRing:
 
         A reader failure is recorded and surfaced on the next :meth:`since` call,
         rather than silently freezing the cursor or raising at garbage-collection
-        time. The subscription is closed deterministically via ``aclosing``.
+        time. The subscription is closed deterministically via ``aclosing``. The
+        prior error is cleared here, as this fresh attempt begins -- not in
+        :meth:`_ensure_started`, so a restart cannot wipe a still-unread failure
+        before :meth:`since` surfaces it (which would mask a persistently dead
+        stream as empty-but-healthy).
         """
+        self._error = None
         stream = t.cast("AsyncGenerator[t.Any, None]", self._engine.subscribe())
         try:
             async with contextlib.aclosing(stream) as managed:
