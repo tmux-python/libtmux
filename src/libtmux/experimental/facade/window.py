@@ -188,6 +188,14 @@ class AsyncWindow:
             version=self.version,
         )
 
+    async def select_layout(self, layout: str) -> Result:
+        """Apply a layout to this window."""
+        return await arun(
+            SelectLayout(target=WindowId(self.window_id), layout=layout),
+            self.engine,
+            version=self.version,
+        )
+
     async def kill(self) -> Result:
         """Kill this window."""
         return await arun(
