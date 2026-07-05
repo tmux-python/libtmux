@@ -281,7 +281,17 @@ class PlanBuilder:
         version: str | None = None,
         planner: Planner | None = None,
     ) -> PlanResult:
-        """Async twin of :meth:`run` (same fold and host steps, ``await``ed)."""
+        """Async twin of :meth:`run` (same fold and host steps, ``await``ed).
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> from libtmux.experimental.engines.concrete import AsyncConcreteEngine
+        >>> p = plan()
+        >>> _ = p.new_session("dev").window().pane().do(lambda c: c.send_keys("vim"))
+        >>> asyncio.run(p.arun(AsyncConcreteEngine())).ok
+        True
+        """
 
         async def on_step(report: StepReport) -> None:
             for action in self._host_after.get(report.step.indices[-1], ()):
