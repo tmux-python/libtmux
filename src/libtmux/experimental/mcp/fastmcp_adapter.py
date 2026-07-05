@@ -411,8 +411,8 @@ def register_plan_tools(
 
     ``preview_plan`` / ``result_schema`` are pure; ``execute_plan`` runs a
     serialized plan (via :func:`~..mcp.plan_tools.aexecute_plan` on an async
-    engine). ``build_workspace`` is registered only on the synchronous server
-    (the declarative runner is synchronous).
+    engine). ``build_workspace`` is registered on both servers -- dispatching to
+    ``abuild_workspace`` on an async engine and ``build_workspace`` on a sync one.
     """
     from fastmcp.tools import FunctionTool
     from mcp.types import ToolAnnotations
