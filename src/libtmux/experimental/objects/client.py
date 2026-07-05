@@ -1,8 +1,8 @@
-"""Client-scope facades (eager / lazy / async) over the operation spine.
+"""Client-scope objects (eager / lazy / async) over the operation spine.
 
 A client is a *view* (a terminal attachment keyed by name/tty), not part of the
 ownership chain, but tmux exposes client-scoped commands -- ``detach-client``,
-``switch-client``, ``refresh-client`` -- so it gets a facade like any other scope.
+``switch-client``, ``refresh-client`` -- so it gets a object like any other scope.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class EagerClient:
-    """A live client handle; methods execute immediately.
+    """A live client object; methods execute immediately.
 
     Examples
     --------
@@ -70,7 +70,7 @@ class EagerClient:
 
 @dataclass(frozen=True)
 class LazyClient:
-    """A deferred client handle; methods record into a plan."""
+    """A deferred client object; methods record into a plan."""
 
     plan: LazyPlan
     client_name: str
@@ -93,7 +93,7 @@ class LazyClient:
 
 @dataclass(frozen=True)
 class AsyncClient:
-    """An async live client handle: the eager client, awaited."""
+    """An async live client object: the eager client, awaited."""
 
     engine: AsyncTmuxEngine
     client_name: str
