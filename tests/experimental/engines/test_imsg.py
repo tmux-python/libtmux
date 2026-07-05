@@ -58,6 +58,17 @@ def test_imsg_registered() -> None:
     assert type(create_engine("imsg")).__name__ == "ImsgEngine"
 
 
+def test_imsg_reports_tmux_version() -> None:
+    """ImsgEngine resolves its tmux version so version-gated ops render right."""
+    from libtmux.experimental.engines.base import SupportsTmuxVersion
+
+    engine = ImsgEngine()
+    assert isinstance(engine, SupportsTmuxVersion)  # not "assume latest"
+    version = engine.tmux_version()
+    assert version is not None  # real tmux is on PATH in the test env
+    assert version == engine.tmux_version()  # memoized
+
+
 def test_v8_codec_header_round_trip() -> None:
     """A v8 frame packs to wire bytes and its header unpacks back (no tmux)."""
     codec = ProtocolV8Codec()
