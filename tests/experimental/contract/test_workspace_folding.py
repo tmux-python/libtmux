@@ -16,7 +16,7 @@ import typing as t
 from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
 from libtmux.experimental.engines.base import CommandResult
 from libtmux.experimental.ops import SequentialPlanner
-from libtmux.experimental.workspace import Command, Pane, Window, Workspace
+from libtmux.experimental.workspace import Command, Pane, Window, Workspace, analyze
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
@@ -146,3 +146,35 @@ def test_build_folds_live_subprocess(session: Session) -> None:
     # the build folded: at least one ; chain, fewer dispatches than operations
     assert any(";" in argv for argv in engine.calls)
     assert len(engine.calls) < len(spec.compile().operations)
+
+
+def test_build_int_window_option_folds(session: Session) -> None:
+    """A non-str option value (YAML int) folds and builds without a render crash.
+
+    Regression: ``main-pane-height: 35`` reached the ``;``-chain renderer as an
+    int, which raised ``AttributeError`` in ``_escape_arg``; analyze now
+    stringifies option values so the fold sees only strings.
+    """
+    server = session.server
+    engine = _RecordingEngine(SubprocessEngine.for_server(server))
+    spec = analyze(
+        {
+            "session_name": "int-opt",
+            "start_directory": "/tmp",
+            "windows": [
+                {
+                    "window_name": "main",
+                    "layout": "main-horizontal",
+                    "options": {"main-pane-height": 35},
+                    "panes": ["echo a", "echo b", "echo c"],
+                },
+            ],
+        },
+    )
+
+    result = spec.build(engine)
+
+    assert result.ok
+    built = server.sessions.get(session_name="int-opt")
+    assert built is not None
+    assert len(built.windows[0].panes) == 3
