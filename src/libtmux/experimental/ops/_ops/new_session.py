@@ -35,6 +35,8 @@ class NewSession(Operation[CreateResult]):
     ('new-session', '-d', '-s', 'work', '-P', '-F', '#{session_id}')
     >>> NewSession(session_name="work", capture_panes=True).render()[-1]
     '#{session_id} #{window_id} #{pane_id}'
+    >>> NewSession(session_name="work", window_shell="fish").render()[-1]
+    'fish'
     >>> NewSession().build_result(returncode=0, stdout=("$2",)).new_id
     '$2'
     >>> r = NewSession(capture_panes=True).build_result(
@@ -60,6 +62,7 @@ class NewSession(Operation[CreateResult]):
     height: int | None = None
     capture: bool = True
     capture_panes: bool = False
+    window_shell: str | None = None
 
     def args(self, *, version: str | None = None) -> tuple[str, ...]:
         """Render ``new-session`` flags (always detached for headless use)."""
@@ -81,6 +84,10 @@ class NewSession(Operation[CreateResult]):
                 else "#{session_id}"
             )
             out.extend(("-P", "-F", fmt))
+        if self.window_shell is not None:
+            # A trailing shell-command runs in the first pane instead of the
+            # default shell (as NewWindow does for windows 2..N).
+            out.append(self.window_shell)
         return tuple(out)
 
     def _make_result(
