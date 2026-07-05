@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import typing as t
 
 from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
@@ -175,3 +176,38 @@ def test_aclose_releases_start_waiter_before_first_connect() -> None:
         await asyncio.wait_for(start_task, timeout=1.0)  # must NOT hang
 
     asyncio.run(main())
+
+
+def test_connect_then_die_escalates_backoff() -> None:
+    """A flapping connect-then-die escalates the backoff, not a fixed spin.
+
+    Regression: the supervisor reset ``attempt`` to 0 on every spawn-success, so a
+    proc that connected then immediately EOF'd kept reconnecting at ``_backoff(0)``
+    forever instead of escalating. The reset is now gated on connection lifetime.
+    """
+    seen: list[int] = []
+
+    class _Probe(AsyncControlModeEngine):
+        async def _spawn(self) -> None:
+            return  # connect "succeeds" instantly; _proc stays None
+
+        async def _reader(self) -> None:
+            return  # reader returns at once: a connect-then-die
+
+        @staticmethod
+        def _backoff(attempt: int) -> float:
+            seen.append(attempt)
+            return 0.0  # no real delay, so the test runs fast
+
+    async def main() -> None:
+        engine = _Probe()
+        task = asyncio.create_task(engine._supervisor())
+        for _ in range(30):  # let several connect-then-die iterations run
+            await asyncio.sleep(0)
+        engine._closing = True
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    asyncio.run(main())
+    assert seen[:3] == [0, 1, 2]  # escalates, not pinned at 0
