@@ -60,6 +60,10 @@ _READ_CHUNK = 65536
 _DEFAULT_TIMEOUT = 30.0
 _STARTUP_TIMEOUT = 5.0
 _STOP_TIMEOUT = 2.0
+# A connection must survive at least this long to count as healthy and reset the
+# reconnect backoff; a shorter-lived one is treated as a failed attempt so a
+# persistently flapping proc escalates instead of fork-storming.
+_HEALTHY_CONNECTION_SECONDS = 1.0
 
 _STREAM_END = object()  # broadcast to subscriber queues to end their async for
 
@@ -542,12 +546,11 @@ class AsyncControlModeEngine:
                     await asyncio.sleep(self._backoff(attempt))
                     attempt += 1
                     continue
-                # The spawn succeeded and its startup ACK was consumed, so this
-                # connection is healthy: reset the backoff. A reconnect after a
-                # long healthy session then starts fast instead of waiting near
-                # the cap -- only *consecutive connect failures* (the except path
-                # above) escalate.
-                attempt = 0
+                # The spawn succeeded and its startup ACK was consumed. Do NOT
+                # reset the backoff yet: a proc that connects then immediately
+                # dies (reader EOF within the grace) is not a healthy session, and
+                # resetting here would pin every reconnect at _backoff(0) and
+                # fork-storm tmux. The reset is gated on connection lifetime below.
                 self._generation += 1
                 connected_once = True
                 await self._reap_own_session()
@@ -556,9 +559,17 @@ class AsyncControlModeEngine:
                 self._connected.set()  # first connect done: unblock start()
                 # The reader runs inline (one reader at a time). On EOF it returns
                 # and we reconnect; on cancellation (aclose) it propagates out.
+                loop = asyncio.get_running_loop()
+                connected_at = loop.time()
                 await self._reader()
                 if self._closing:
                     return
+                # Only a connection that survived a meaningful interval resets the
+                # backoff; a connect-then-immediately-die counts as a failed
+                # attempt, so a persistently flapping proc escalates instead of
+                # spinning at _backoff(0).
+                if loop.time() - connected_at >= _HEALTHY_CONNECTION_SECONDS:
+                    attempt = 0
                 await asyncio.sleep(self._backoff(attempt))
                 attempt += 1
         finally:
