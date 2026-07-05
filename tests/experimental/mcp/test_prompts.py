@@ -7,7 +7,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine
+from libtmux.experimental.engines import MockEngine
 
 fastmcp = pytest.importorskip("fastmcp")
 
@@ -32,7 +32,7 @@ _FOREIGN_TOOLS = (
 
 def test_sync_server_omits_wait_for_output_prompts() -> None:
     """The sync server lacks wait_for_output, so those recipe prompts are gated off."""
-    server = build_server(ConcreteEngine())
+    server = build_server(MockEngine())
 
     async def main() -> set[str]:
         async with fastmcp.Client(server) as client:

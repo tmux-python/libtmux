@@ -97,10 +97,10 @@ class WorkspaceSet:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.workspace import Pane, Window, Workspace
     >>> ws = Workspace("dev", windows=[Window("w", panes=[Pane("echo hi")])])
-    >>> WorkspaceSet((ws,)).build(ConcreteEngine(), preflight=False).ok
+    >>> WorkspaceSet((ws,)).build(MockEngine(), preflight=False).ok
     True
     """
 

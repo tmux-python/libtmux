@@ -1,4 +1,4 @@
-"""Control-mode engine against a real tmux server, and parity with concrete.
+"""Control-mode engine against a real tmux server, and parity with mock.
 
 Exercises the persistent ``tmux -C`` engine end to end and asserts it returns
 the same typed result shape the other engines do. The engine is used as a
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import typing as t
 
-from libtmux.experimental.engines import ConcreteEngine, ControlModeEngine
+from libtmux.experimental.engines import ControlModeEngine, MockEngine
 from libtmux.experimental.ops import (
     CapturePane,
     SendKeys,
@@ -84,8 +84,8 @@ def test_control_batches_multiple_commands(session: Session) -> None:
     assert captured.ok
 
 
-def test_control_concrete_parity(session: Session) -> None:
-    """Control-mode and concrete engines agree on result type and argv."""
+def test_control_mock_parity(session: Session) -> None:
+    """Control-mode and mock engines agree on result type and argv."""
     server = session.server
     window = session.active_window
     assert window.window_id is not None
@@ -93,8 +93,8 @@ def test_control_concrete_parity(session: Session) -> None:
 
     with ControlModeEngine.for_server(server) as engine:
         control = run(operation, engine)
-    concrete = run(operation, ConcreteEngine())
+    mock = run(operation, MockEngine())
 
-    assert type(control) is type(concrete) is SplitWindowResult
-    assert control.argv == concrete.argv == operation.render()
-    assert control.ok and concrete.ok
+    assert type(control) is type(mock) is SplitWindowResult
+    assert control.argv == mock.argv == operation.render()
+    assert control.ok and mock.ok

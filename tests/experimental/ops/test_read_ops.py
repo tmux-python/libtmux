@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typing as t
 
-from libtmux.experimental.engines import ConcreteEngine
+from libtmux.experimental.engines import MockEngine
 from libtmux.experimental.ops import (
     ListPanes,
     ListSessions,
@@ -72,7 +72,7 @@ def test_list_result_serialization_round_trip() -> None:
 
 def test_empty_output_yields_empty_views() -> None:
     """No panes -> empty rows, empty snapshot, no error."""
-    result = run(ListPanes(), ConcreteEngine(), version="3.6a")
+    result = run(ListPanes(), MockEngine(), version="3.6a")
     assert result.rows == ()
     assert result.server.sessions == ()
     assert result.ok

@@ -24,7 +24,7 @@ Shape = `windows x panes-per-window`. Structural builds (no shell-readiness wait
 | builder / imsg | 20.6 | 31.1 | 62.6 | 153.4 | 262.0 (13x) |
 | builder / control_mode | 2.5 | 9.4 | 26.5 | 103.3 | 166.7 (21x) |
 | **pipelined (prototype)** | **1.4** | **7.9** | **20.2** | **65.3** | **115.7 (30x)** |
-| concrete (offline, in-memory) | 0.1 | 0.1 | 0.3 | 1.3 | 1.5 |
+| mock (offline, in-memory) | 0.1 | 0.1 | 0.3 | 1.3 | 1.5 |
 
 Full percentiles at 8x4 (ms):
 
@@ -35,7 +35,7 @@ Full percentiles at 8x4 (ms):
 | imsg | 222 | 283 | 262 | 342 | 421 | 455 | 455 |
 | control_mode | 118 | 180 | 167 | 215 | 216 | 398 | 398 |
 | pipelined | 97 | 123 | 116 | 156 | 165 | 194 | 194 |
-| concrete | 1 | 2 | 2 | 2 | 2 | 2 | 2 |
+| mock | 1 | 2 | 2 | 2 | 2 | 2 | 2 |
 
 Reads:
 
@@ -46,7 +46,7 @@ Reads:
 - **pipelined** (prototype: batch independent creates into ~3 `run_batch`
   round-trips instead of ~34) is fastest overall, ~1.4x over control_mode. Not
   the 11x the round-trip count implies, because the build is **tmux-server-bound**
-  (one shell fork per pane), not round-trip-bound. `concrete` (offline, 1.5 ms)
+  (one shell fork per pane), not round-trip-bound. `mock` (offline, 1.5 ms)
   is the Python floor: the plan/compile layer is negligible; the time is tmux.
 
 ## With vs without shell-readiness wait

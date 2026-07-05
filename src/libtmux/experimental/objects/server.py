@@ -23,8 +23,8 @@ class EagerServer:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> server = EagerServer(ConcreteEngine())
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> server = EagerServer(MockEngine())
     >>> session = server.new_session(name="work")
     >>> session.session_id
     '$1'
@@ -66,13 +66,13 @@ class LazyServer:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.ops import LazyPlan
     >>> plan = LazyPlan()
     >>> server = LazyServer(plan)
     >>> session = server.new_session(name="work")
     >>> _ = session.new_window(name="build")
-    >>> plan.execute(ConcreteEngine()).ok
+    >>> plan.execute(MockEngine()).ok
     True
     """
 

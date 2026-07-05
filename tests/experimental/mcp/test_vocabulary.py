@@ -1,6 +1,6 @@
 """The curated core vocabulary -- intuitive named tmux tools.
 
-Pure tests run the vocabulary against the in-memory ``ConcreteEngine`` (no tmux);
+Pure tests run the vocabulary against the in-memory ``MockEngine`` (no tmux);
 a live test drives a real tmux server end to end (create -> window -> split ->
 send -> capture -> rename -> kill) over the subprocess engine.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import typing as t
 
-from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
+from libtmux.experimental.engines import MockEngine, SubprocessEngine
 from libtmux.experimental.mcp import (
     capture_pane,
     create_session,
@@ -34,7 +34,7 @@ if t.TYPE_CHECKING:
 
 def test_create_session_returns_typed_result() -> None:
     """create_session yields a typed result with the captured first pane id."""
-    result = create_session(ConcreteEngine(), name="dev")
+    result = create_session(MockEngine(), name="dev")
     assert result.session_id == "$1"
     assert result.name == "dev"
     assert result.first_window_id == "@1"
@@ -43,7 +43,7 @@ def test_create_session_returns_typed_result() -> None:
 
 def test_create_window_then_split() -> None:
     """create_window captures a first pane id that split_pane can target."""
-    engine = ConcreteEngine()
+    engine = MockEngine()
     session = create_session(engine, name="dev")
     window = create_window(engine, session.session_id, name="logs")
     assert window.window_id.startswith("@")
@@ -54,7 +54,7 @@ def test_create_window_then_split() -> None:
 
 def test_new_pane_creates_floating_pane() -> None:
     """new_pane creates a floating pane and returns its id (in-memory)."""
-    engine = ConcreteEngine()
+    engine = MockEngine()
     session = create_session(engine, name="dev")
     pane = new_pane(engine, session.first_pane_id or "%1", width=80, height=20)
     assert pane.pane_id.startswith("%")
@@ -62,18 +62,18 @@ def test_new_pane_creates_floating_pane() -> None:
 
 def test_send_input_is_fire_and_forget() -> None:
     """send_input runs without returning a value (and without raising)."""
-    send_input(ConcreteEngine(), "%1", "echo hi", enter=True)
+    send_input(MockEngine(), "%1", "echo hi", enter=True)
 
 
 def test_capture_pane_returns_lines() -> None:
     """capture_pane surfaces the pane's lines."""
-    engine = ConcreteEngine(capture_lines=("line-1", "line-2"))
+    engine = MockEngine(capture_lines=("line-1", "line-2"))
     assert capture_pane(engine, "%1").lines == ("line-1", "line-2")
 
 
 def test_list_tools_return_listings() -> None:
     """The list_* tools return a Listing of format rows."""
-    engine = ConcreteEngine()
+    engine = MockEngine()
     assert isinstance(list_sessions(engine).rows, tuple)
     assert isinstance(list_windows(engine).rows, tuple)
     assert isinstance(list_panes(engine).rows, tuple)
@@ -81,7 +81,7 @@ def test_list_tools_return_listings() -> None:
 
 def test_target_accepts_string_or_typed() -> None:
     """A vocabulary target may be a string or an already-typed Target."""
-    engine = ConcreteEngine()
+    engine = MockEngine()
     assert create_window(engine, "$1").window_id.startswith("@")
     assert create_window(engine, SessionId("$1")).window_id.startswith("@")
 
