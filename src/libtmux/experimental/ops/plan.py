@@ -507,6 +507,17 @@ class LazyPlan:
         """Resolve and execute the plan asynchronously (same resolution core).
 
         Mirrors :meth:`execute`; *on_step* is awaited per step.
+
+        Examples
+        --------
+        >>> import asyncio
+        >>> from libtmux.experimental.engines.concrete import AsyncConcreteEngine
+        >>> from libtmux.experimental.ops import SendKeys
+        >>> from libtmux.experimental.ops._types import PaneId
+        >>> plan = LazyPlan()
+        >>> _ = plan.add(SendKeys(target=PaneId("%1"), keys="vim"))
+        >>> asyncio.run(plan.aexecute(AsyncConcreteEngine())).ok
+        True
         """
         version = resolve_engine_version(engine, version)
         gen = self._drive(version, planner or SequentialPlanner())
