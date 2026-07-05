@@ -6,7 +6,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine
+from libtmux.experimental.engines import MockEngine
 from libtmux.experimental.ops import (
     KillPane,
     KillWindow,
@@ -58,7 +58,7 @@ def test_no_output_ops_return_ack(
     expected_argv: tuple[str, ...],
 ) -> None:
     """No-output operations render correctly and yield an AckResult."""
-    result = run(operation, ConcreteEngine())
+    result = run(operation, MockEngine())
     assert type(result) is AckResult
     assert result.argv == expected_argv
     assert result.ok

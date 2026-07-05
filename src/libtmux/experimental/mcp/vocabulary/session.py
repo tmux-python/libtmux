@@ -39,8 +39,8 @@ async def acreate_session(
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> r = create_session(ConcreteEngine(), name="work")
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> r = create_session(MockEngine(), name="work")
     >>> (r.session_id, r.name, r.first_pane_id)
     ('$1', 'work', '%1')
     """
@@ -117,8 +117,8 @@ async def ahas_session(
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> has_session(ConcreteEngine(), "$1")
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> has_session(MockEngine(), "$1")
     True
     """
     result = await arun(

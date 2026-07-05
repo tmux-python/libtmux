@@ -35,8 +35,8 @@ class EagerWindow:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> window = EagerWindow(ConcreteEngine(), "@1")
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> window = EagerWindow(MockEngine(), "@1")
     >>> pane = window.split(horizontal=True)
     >>> pane.pane_id
     '%1'
@@ -101,14 +101,14 @@ class LazyWindow:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.ops import LazyPlan
     >>> from libtmux.experimental.ops._types import WindowId
     >>> plan = LazyPlan()
     >>> window = LazyWindow(plan, WindowId("@1"))
     >>> pane = window.split()
     >>> _ = window.rename("build")
-    >>> outcome = plan.execute(ConcreteEngine())
+    >>> outcome = plan.execute(MockEngine())
     >>> outcome.ok
     True
     """

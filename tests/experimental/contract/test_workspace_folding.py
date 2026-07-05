@@ -13,7 +13,7 @@ from __future__ import annotations
 import dataclasses
 import typing as t
 
-from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
+from libtmux.experimental.engines import MockEngine, SubprocessEngine
 from libtmux.experimental.engines.base import CommandResult
 from libtmux.experimental.ops import SequentialPlanner
 from libtmux.experimental.workspace import Command, Pane, Window, Workspace, analyze
@@ -35,7 +35,7 @@ class _RecordingEngine:
     fast.
     """
 
-    inner: TmuxEngine = dataclasses.field(default_factory=ConcreteEngine)
+    inner: TmuxEngine = dataclasses.field(default_factory=MockEngine)
     calls: list[tuple[str, ...]] = dataclasses.field(default_factory=list)
 
     def run(self, request: CommandRequest) -> CommandResult:
@@ -83,9 +83,9 @@ def test_build_folds_by_default() -> None:
 
 def test_build_planner_equivalence() -> None:
     """The default (folding) build yields the same PlanResult as the sequential one."""
-    folded = _spec().build(ConcreteEngine(), preflight=False)
+    folded = _spec().build(MockEngine(), preflight=False)
     sequential = _spec().build(
-        ConcreteEngine(),
+        MockEngine(),
         preflight=False,
         planner=SequentialPlanner(),
     )

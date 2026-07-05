@@ -593,12 +593,12 @@ def test_wait_for_output_metadata_is_discoverable() -> None:
 
 def test_no_event_tools_without_a_stream() -> None:
     """A non-streaming engine registers no event tools, even when asked."""
-    from libtmux.experimental.engines import ConcreteEngine
+    from libtmux.experimental.engines import MockEngine
     from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
     from libtmux.experimental.mcp.vocabulary._bridge import SyncToAsyncEngine
 
     server = build_async_server(
-        SyncToAsyncEngine(ConcreteEngine()),
+        SyncToAsyncEngine(MockEngine()),
         events="both",
         include_operations=False,
         include_plan_tools=False,

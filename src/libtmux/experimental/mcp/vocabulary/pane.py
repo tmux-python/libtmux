@@ -217,8 +217,8 @@ async def acapture_active_pane(
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> capture_active_pane(ConcreteEngine(capture_lines=("hi",))).lines
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> capture_active_pane(MockEngine(capture_lines=("hi",))).lines
     ('hi',)
     """
     result = await arun(
@@ -252,8 +252,8 @@ async def agrep_pane(
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> engine = ConcreteEngine(capture_lines=("foo", "bar baz", "foobar"))
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> engine = MockEngine(capture_lines=("foo", "bar baz", "foobar"))
     >>> grep_pane(engine, "%1", "foo").lines
     ('foo', 'foobar')
     """
@@ -502,8 +502,8 @@ async def aselect_pane(
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> select_pane(ConcreteEngine(), "%1", direction="left")
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> select_pane(MockEngine(), "%1", direction="left")
     PaneRef(pane_id=None)
     """
     if direction in DIR_FLAG:

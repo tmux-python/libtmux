@@ -4,7 +4,7 @@ Replicates a tmuxp-style workspace build through the Declarative tier
 (:mod:`libtmux.experimental.workspace`): a YAML/dict is analyzed into a structural
 ``Workspace`` spec, compiled to a Core ``LazyPlan``, and executed. Two tracks:
 
-* **offline** -- compile against the in-memory ``ConcreteEngine`` and assert the
+* **offline** -- compile against the in-memory ``MockEngine`` and assert the
   op sequence and planner-equivalence (no tmux);
 * **live** -- build over the async control-mode engine *and* the sync subprocess
   engine against a real tmux server, then confirm the live structure matches the
@@ -19,9 +19,9 @@ import typing as t
 import pytest
 
 from libtmux.experimental.engines import (
-    AsyncConcreteEngine,
     AsyncControlModeEngine,
-    ConcreteEngine,
+    AsyncMockEngine,
+    MockEngine,
     SubprocessEngine,
 )
 from libtmux.experimental.ops import (
@@ -129,8 +129,8 @@ def test_workspace_compiles_to_core_ops() -> None:
 def test_workspace_offline_build_and_planner_equivalence() -> None:
     """The compiled plan runs offline and the optimizer preserves the result."""
     plan = analyze(_YAML).compile()
-    sequential = plan.execute(ConcreteEngine(), planner=SequentialPlanner())
-    folded = plan.execute(ConcreteEngine(), planner=FoldingPlanner())
+    sequential = plan.execute(MockEngine(), planner=SequentialPlanner())
+    folded = plan.execute(MockEngine(), planner=FoldingPlanner())
     assert sequential.ok
     assert folded.ok
     assert [r.status for r in sequential.results] == [r.status for r in folded.results]
@@ -152,7 +152,7 @@ def test_first_pane_focus_multipane_compiles() -> None:
     plan = ws.compile()
     assert "select_pane" in [op.kind for op in plan.operations]
     # offline execution resolves the first-pane sub-ref without error
-    assert plan.execute(ConcreteEngine()).ok
+    assert plan.execute(MockEngine()).ok
 
 
 def test_empty_workspace_is_rejected() -> None:
@@ -274,7 +274,7 @@ def test_workspace_all_planners_agree(tmp_path: Path) -> None:
     """Sequential, Folding, and Marked planners give an identical PlanResult."""
     plan = _rich_spec(str(tmp_path)).compile()
     runs = {
-        name: plan.execute(ConcreteEngine(), planner=planner())
+        name: plan.execute(MockEngine(), planner=planner())
         for name, planner in (
             ("sequential", SequentialPlanner),
             ("folding", FoldingPlanner),
@@ -752,7 +752,7 @@ def test_build_emits_event_stream_sync_and_async() -> None:
     )
 
     sync_events: list[BuildEvent] = []
-    ws.build(ConcreteEngine(), preflight=False, on_event=sync_events.append)
+    ws.build(MockEngine(), preflight=False, on_event=sync_events.append)
 
     async_events: list[BuildEvent] = []
 
@@ -760,7 +760,7 @@ def test_build_emits_event_stream_sync_and_async() -> None:
         async_events.append(event)
 
     async def main() -> None:
-        await ws.abuild(AsyncConcreteEngine(), preflight=False, on_event=collect)
+        await ws.abuild(AsyncMockEngine(), preflight=False, on_event=collect)
 
     asyncio.run(main())
 
@@ -864,7 +864,7 @@ def test_compile_window_index_targets_session_index() -> None:
             Window("b", window_index=5, panes=[Pane(run="echo y")]),
         ],
     )
-    results = ws.build(ConcreteEngine(), preflight=False).results
+    results = ws.build(MockEngine(), preflight=False).results
     new_window = next(r for r in results if r.argv[0] == "new-window")
     assert "$1:5" in new_window.argv  # targeted at the explicit session index
     assert new_window.ok  # the -P -F capture still binds the new window id

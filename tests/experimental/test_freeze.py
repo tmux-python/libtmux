@@ -13,7 +13,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine
+from libtmux.experimental.engines import MockEngine
 from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
 from libtmux.experimental.models.snapshots import ServerSnapshot
 from libtmux.experimental.workspace.freeze import SHELLS, afreeze_server, freeze
@@ -187,7 +187,7 @@ def test_freeze_round_trips_into_a_buildable_workspace() -> None:
     )
     ws = freeze(server)
     assert ws.compile().operations[0].kind == "new_session"
-    assert ws.build(ConcreteEngine(), preflight=False).ok
+    assert ws.build(MockEngine(), preflight=False).ok
 
 
 def test_afreeze_server_captures_live_tree(session: Session) -> None:

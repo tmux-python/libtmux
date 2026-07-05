@@ -3,7 +3,7 @@
 Proves the framework-agnostic projection actually drives fastmcp: the curated
 vocabulary registers as typed tools (engine bound out of the schema, safety ->
 annotations), and an in-process client can list and call them -- offline against
-the ``ConcreteEngine`` and live against a real tmux server. Skipped entirely when
+the ``MockEngine`` and live against a real tmux server. Skipped entirely when
 the ``mcp`` extra (fastmcp) is not installed.
 """
 
@@ -14,7 +14,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
+from libtmux.experimental.engines import MockEngine, SubprocessEngine
 from libtmux.experimental.mcp.fastmcp_adapter import build_server
 from libtmux.experimental.ops import NewSession
 from libtmux.experimental.ops.serialize import operation_to_dict
@@ -28,7 +28,7 @@ if t.TYPE_CHECKING:
 def test_adapter_registers_typed_tools() -> None:
     """The curated vocabulary appears as typed tools with safety annotations."""
     # destructive tier so the kill_* tools this asserts on are visible
-    server = build_server(ConcreteEngine(), safety_level="destructive")
+    server = build_server(MockEngine(), safety_level="destructive")
 
     async def main() -> t.Any:
         async with fastmcp.Client(server) as client:
@@ -59,7 +59,7 @@ def test_adapter_registers_typed_tools() -> None:
 
 def test_adapter_calls_tool_offline() -> None:
     """Calling a tool through the in-process client returns structured output."""
-    server = build_server(ConcreteEngine())
+    server = build_server(MockEngine())
 
     async def main() -> t.Any:
         async with fastmcp.Client(server) as client:
@@ -96,7 +96,7 @@ def test_adapter_live(session: Session) -> None:
 
 def test_adapter_operations_hidden_by_default() -> None:
     """Per-operation tools are registered but hidden; plan tools stay visible."""
-    server = build_server(ConcreteEngine())
+    server = build_server(MockEngine())
 
     async def main() -> t.Any:
         async with fastmcp.Client(server) as client:
@@ -116,7 +116,7 @@ def test_adapter_exposes_per_op_tools() -> None:
     """``expose_operations`` reveals one typed ``op_<kind>`` per operation."""
     # destructive tier so the destructive op_kill_* tools are visible too
     server = build_server(
-        ConcreteEngine(),
+        MockEngine(),
         expose_operations=True,
         safety_level="destructive",
     )
@@ -141,7 +141,7 @@ def test_adapter_exposes_per_op_tools() -> None:
 
 def test_adapter_per_op_call_offline() -> None:
     """A per-op tool builds + runs its operation, returning the serialized result."""
-    server = build_server(ConcreteEngine(), expose_operations=True)
+    server = build_server(MockEngine(), expose_operations=True)
 
     async def main() -> t.Any:
         async with fastmcp.Client(server) as client:
@@ -154,7 +154,7 @@ def test_adapter_per_op_call_offline() -> None:
 
 def test_adapter_plan_tools_offline() -> None:
     """preview/execute/result_schema drive a serialized plan with forward refs."""
-    server = build_server(ConcreteEngine())
+    server = build_server(MockEngine())
     operations = [operation_to_dict(NewSession(session_name="dev", capture_panes=True))]
 
     async def main() -> tuple[t.Any, t.Any, t.Any]:
@@ -175,7 +175,7 @@ def test_adapter_plan_tools_offline() -> None:
 
 def test_adapter_build_workspace_offline() -> None:
     """The workspace tool builds a declarative spec in one call (preflight off)."""
-    server = build_server(ConcreteEngine())
+    server = build_server(MockEngine())
     spec = {
         "session_name": "ws",
         "windows": [{"window_name": "editor", "panes": ["vim", "pytest -q"]}],

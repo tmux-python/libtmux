@@ -28,8 +28,8 @@ class EagerSession:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> session = EagerSession(ConcreteEngine(), "$0")
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> session = EagerSession(MockEngine(), "$0")
     >>> window = session.new_window(name="build")
     >>> window.window_id
     '@1'
@@ -84,14 +84,14 @@ class LazySession:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.ops import LazyPlan
     >>> from libtmux.experimental.ops._types import SessionId
     >>> plan = LazyPlan()
     >>> session = LazySession(plan, SessionId("$0"))
     >>> window = session.new_window(name="build")
     >>> _ = session.rename("work")
-    >>> plan.execute(ConcreteEngine()).ok
+    >>> plan.execute(MockEngine()).ok
     True
     """
 

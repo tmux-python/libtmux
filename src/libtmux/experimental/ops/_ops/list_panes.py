@@ -36,14 +36,14 @@ class ListPanes(Operation[ListPanesResult]):
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.ops import run
     >>> op = ListPanes()
     >>> op.render(version="3.6a")[:1]
     ('list-panes',)
     >>> "-a" in op.render(version="3.6a")
     True
-    >>> result = run(op, ConcreteEngine(), version="3.6a")
+    >>> result = run(op, MockEngine(), version="3.6a")
     >>> result.rows
     ()
     >>> result.server.sessions

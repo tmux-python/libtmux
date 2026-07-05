@@ -13,7 +13,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
+from libtmux.experimental.engines import MockEngine, SubprocessEngine
 from libtmux.experimental.mcp.vocabulary import (
     break_pane,
     capture_pane,
@@ -42,25 +42,25 @@ if t.TYPE_CHECKING:
 def test_grep_rejects_relative_special(token: str) -> None:
     """grep_pane with a directional special target raises a targeted hint."""
     with pytest.raises(ToolError, match="control-mode client"):
-        grep_pane(ConcreteEngine(capture_lines=("x",)), token, "x")
+        grep_pane(MockEngine(capture_lines=("x",)), token, "x")
 
 
 def test_capture_rejects_relative_special() -> None:
     """capture_pane rejects a directional special target."""
     with pytest.raises(ToolError, match="control-mode client"):
-        capture_pane(ConcreteEngine(), "{down-of}")
+        capture_pane(MockEngine(), "{down-of}")
 
 
 def test_send_rejects_relative_special() -> None:
     """send_input rejects a directional special target."""
     with pytest.raises(ToolError, match="control-mode client"):
-        send_input(ConcreteEngine(), "{left-of}", "ls")
+        send_input(MockEngine(), "{left-of}", "ls")
 
 
 @pytest.mark.parametrize("token", ["{marked}", "{last}"])
 def test_anchor_specials_pass_through(token: str) -> None:
     """Anchor special targets are not rejected (real tmux semantics)."""
-    engine = ConcreteEngine(capture_lines=("hi",))
+    engine = MockEngine(capture_lines=("hi",))
     assert capture_pane(engine, token).lines == ("hi",)
 
 
@@ -90,13 +90,13 @@ def test_anchor_specials_pass_through(token: str) -> None:
 def test_mutating_tools_reject_relative_special(call: t.Any) -> None:
     """Destructive/mutating pane tools reject a relative special target too."""
     with pytest.raises(ToolError, match="control-mode client"):
-        call(ConcreteEngine())
+        call(MockEngine())
 
 
 def test_grep_pane_invalid_regex_hint() -> None:
     """An invalid search regex is surfaced as a targeted hint, not a raw re.error."""
     with pytest.raises(ToolError, match="invalid search pattern"):
-        grep_pane(ConcreteEngine(capture_lines=("x",)), "%1", "[unclosed")
+        grep_pane(MockEngine(capture_lines=("x",)), "%1", "[unclosed")
 
 
 def test_capture_relative_pane_resolves_concrete_live(session: Session) -> None:
