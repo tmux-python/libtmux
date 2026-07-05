@@ -311,6 +311,14 @@ class AsyncControlModeEngine:
         dead-guard). The caller is responsible for resetting the parser *before*
         this runs, so the new process's startup bytes are parsed by a fresh parser.
         """
+        # A reader that returned via an exception (not a clean EOF) leaves the
+        # prior tmux -C alive; terminate it before overwriting _proc so a
+        # reconnect never orphans a control client. A clean-EOF proc has already
+        # exited, so this is a no-op there.
+        old = self._proc
+        if old is not None and old.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                old.terminate()
         tmux_bin = self.tmux_bin or shutil.which("tmux")
         if tmux_bin is None:
             raise exc.TmuxCommandNotFound
