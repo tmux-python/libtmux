@@ -3,8 +3,8 @@
 Each function is a FastMCP prompt -- a template returning the text an MCP client
 sends to its model, packaging a few common workflows over the engine-ops
 vocabulary (``send_input`` / ``wait_for_output`` / ``capture_pane`` /
-``create_session`` / ``split_pane``). Pure string builders, engine-agnostic, so
-the same set registers on both the sync and async servers.
+``create_session`` / ``split_pane``). Pure string builders, engine-agnostic;
+:func:`register_prompts` picks which apply to a given server.
 """
 
 from __future__ import annotations
@@ -76,14 +76,19 @@ control returns to the shell:
    how to proceed -- do NOT escalate automatically to C-\ (SIGQUIT) or kill."""
 
 
-def register_prompts(mcp: FastMCP) -> None:
-    """Register the recipe prompts on *mcp*."""
+def register_prompts(mcp: FastMCP, *, events_enabled: bool = False) -> None:
+    """Register the recipe prompts on *mcp*.
+
+    The prompts that steer an agent to call ``wait_for_output`` are registered
+    only when *events_enabled* -- that tool exists only on a streaming
+    control-mode server, so naming it elsewhere would send the agent to a
+    missing tool. ``build_dev_workspace`` needs no such tool and always
+    registers.
+    """
     from fastmcp.prompts import Prompt
 
-    for fn in (
-        run_and_wait,
-        diagnose_failing_pane,
-        build_dev_workspace,
-        interrupt_gracefully,
-    ):
+    prompts: list[t.Callable[..., str]] = [build_dev_workspace]
+    if events_enabled:
+        prompts += [run_and_wait, diagnose_failing_pane, interrupt_gracefully]
+    for fn in prompts:
         mcp.add_prompt(Prompt.from_function(fn, name=fn.__name__))
