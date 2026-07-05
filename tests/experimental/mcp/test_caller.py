@@ -14,7 +14,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
+from libtmux.experimental.engines import MockEngine, SubprocessEngine
 from libtmux.experimental.mcp.vocabulary import (
     create_session,
     kill_pane,
@@ -113,7 +113,7 @@ def test_get_caller_context_tool(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("TMUX_PANE", "%7")
     monkeypatch.setenv("TMUX", "/tmp/tmux-1000/sock,1,3")
-    server = build_async_server(SyncToAsyncEngine(ConcreteEngine()), events="off")
+    server = build_async_server(SyncToAsyncEngine(MockEngine()), events="off")
 
     async def main() -> t.Any:
         async with fastmcp.Client(server) as client:
@@ -130,7 +130,7 @@ def test_instructions_include_caller(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("TMUX_PANE", "%7")
     monkeypatch.setenv("TMUX", "/tmp/tmux-1000/sock,1,3")
-    server = build_async_server(SyncToAsyncEngine(ConcreteEngine()), events="off")
+    server = build_async_server(SyncToAsyncEngine(MockEngine()), events="off")
     assert "%7" in (server.instructions or "")
     assert "is_caller" in (server.instructions or "")
 
@@ -143,7 +143,7 @@ def test_instructions_outside_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TMUX_PANE", raising=False)
     # Disable the /proc parent walk so a test runner inside tmux is not discovered.
     monkeypatch.setenv("LIBTMUX_MCP_DISCOVER", "0")
-    server = build_async_server(SyncToAsyncEngine(ConcreteEngine()), events="off")
+    server = build_async_server(SyncToAsyncEngine(MockEngine()), events="off")
     assert "not running inside a tmux pane" in (server.instructions or "")
 
 
@@ -185,7 +185,7 @@ def test_resolve_origin_same_server_uses_caller(
     """resolve_origin trusts the caller pane when the engine shares its server."""
     monkeypatch.setenv("TMUX_PANE", "%3")
     monkeypatch.setenv("TMUX", "/tmp/a,1,2")
-    engine = SyncToAsyncEngine(ConcreteEngine())  # default socket -> ambient server
+    engine = SyncToAsyncEngine(MockEngine())  # default socket -> ambient server
 
     async def main() -> str:
         return await resolve_origin(engine, None, None)
@@ -203,7 +203,7 @@ def test_resolve_origin_cross_server_requires_explicit(
     class CrossServer(SyncToAsyncEngine):
         server_args = ("-S", "/tmp/b")  # a different socket than the caller's
 
-    engine = CrossServer(ConcreteEngine())
+    engine = CrossServer(MockEngine())
 
     async def main() -> str:
         return await resolve_origin(engine, None, None)
@@ -309,7 +309,7 @@ def test_kill_pane_refuses_caller_pane(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TMUX_PANE", "%9")
     monkeypatch.setenv("TMUX", "/s,1,2")
     with pytest.raises(ToolError, match="this MCP server"):
-        kill_pane(ConcreteEngine(), "%9")
+        kill_pane(MockEngine(), "%9")
 
 
 def test_respawn_pane_refuses_caller_pane(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -317,14 +317,14 @@ def test_respawn_pane_refuses_caller_pane(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("TMUX_PANE", "%9")
     monkeypatch.setenv("TMUX", "/s,1,2")
     with pytest.raises(ToolError, match="this MCP server"):
-        respawn_pane(ConcreteEngine(), "%9")
+        respawn_pane(MockEngine(), "%9")
 
 
 def test_kill_pane_allows_other_pane(monkeypatch: pytest.MonkeyPatch) -> None:
     """A different pane is not the caller, so it is not refused."""
     monkeypatch.setenv("TMUX_PANE", "%9")
     monkeypatch.setenv("TMUX", "/s,1,2")
-    assert kill_pane(ConcreteEngine(), "%1") is None
+    assert kill_pane(MockEngine(), "%1") is None
 
 
 def test_self_kill_refusals_live(
@@ -374,7 +374,7 @@ def test_op_kill_pane_is_guarded(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TMUX_PANE", "%9")
     monkeypatch.setenv("TMUX", "/s,1,2")
     server = build_async_server(
-        SyncToAsyncEngine(ConcreteEngine()),
+        SyncToAsyncEngine(MockEngine()),
         events="off",
         expose_operations=True,
         safety_level="destructive",  # op_kill_* is destructive-tier
@@ -399,7 +399,7 @@ def test_conservative_socket_prefers_explicit_path() -> None:
         server_args = ("-S", "/tmp/explicit-socket")
 
     async def main() -> str | None:
-        return await conservative_socket(Pathed(ConcreteEngine()), None)
+        return await conservative_socket(Pathed(MockEngine()), None)
 
     assert asyncio.run(main()) == "/tmp/explicit-socket"
 

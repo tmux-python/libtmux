@@ -11,12 +11,12 @@ Everything here is experimental and outside the versioning policy.
 
 Examples
 --------
->>> from libtmux.experimental.engines import ConcreteEngine
+>>> from libtmux.experimental.engines import MockEngine
 >>> ws = analyze({
 ...     "session_name": "dev",
 ...     "windows": [{"window_name": "editor", "panes": ["vim", "pytest -q"]}],
 ... })
->>> ws.build(ConcreteEngine(), preflight=False).ok
+>>> ws.build(MockEngine(), preflight=False).ok
 True
 """
 

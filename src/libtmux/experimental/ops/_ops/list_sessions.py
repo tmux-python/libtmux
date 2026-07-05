@@ -26,9 +26,9 @@ class ListSessions(Operation[ListSessionsResult]):
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.ops import run
-    >>> run(ListSessions(), ConcreteEngine(), version="3.6a").sessions
+    >>> run(ListSessions(), MockEngine(), version="3.6a").sessions
     ()
     """
 

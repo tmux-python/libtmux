@@ -17,7 +17,7 @@ operation's captured id at execution.
 
 Examples
 --------
->>> from libtmux.experimental.engines.concrete import ConcreteEngine
+>>> from libtmux.experimental.engines.mock import MockEngine
 >>> p = plan()
 >>> pane = p.new_session("dev").window().pane()
 >>> bottom = pane.do(lambda c: c.send_keys("vim")).split()
@@ -25,7 +25,7 @@ Examples
 True
 >>> [op.kind for op in p.plan.operations]
 ['new_session', 'send_keys', 'split_window', 'send_keys']
->>> p.run(ConcreteEngine()).ok
+>>> p.run(MockEngine()).ok
 True
 """
 
@@ -172,12 +172,12 @@ class PlanBuilder:
 
         Examples
         --------
-        >>> from libtmux.experimental.engines.concrete import ConcreteEngine
+        >>> from libtmux.experimental.engines.mock import MockEngine
         >>> p = plan()
         >>> _ = p.find_or_create_session("dev").window().pane()
         >>> [op.kind for op in p.plan.operations]
         ['new_session']
-        >>> p.run(ConcreteEngine()).ok
+        >>> p.run(MockEngine()).ok
         True
         """
         create = NewSession(session_name=name, capture_panes=True)
@@ -196,11 +196,11 @@ class PlanBuilder:
 
         Examples
         --------
-        >>> from libtmux.experimental.engines.concrete import ConcreteEngine
+        >>> from libtmux.experimental.engines.mock import MockEngine
         >>> p = plan()
         >>> pane = p.new_session("dev").window().pane()
         >>> _ = pane.do(lambda c: c.send_keys("slow-start"))
-        >>> p.sleep(0.0).run(ConcreteEngine()).ok
+        >>> p.sleep(0.0).run(MockEngine()).ok
         True
         """
         self._record_host(_HostAction("sleep", seconds=seconds))
@@ -246,10 +246,10 @@ class PlanBuilder:
 
         Examples
         --------
-        >>> from libtmux.experimental.engines.concrete import ConcreteEngine
+        >>> from libtmux.experimental.engines.mock import MockEngine
         >>> p = plan()
         >>> _ = p.new_session("dev").window().pane().do(lambda c: c.send_keys("vim"))
-        >>> p.run(ConcreteEngine()).ok
+        >>> p.run(MockEngine()).ok
         True
         """
 
@@ -286,10 +286,10 @@ class PlanBuilder:
         Examples
         --------
         >>> import asyncio
-        >>> from libtmux.experimental.engines.concrete import AsyncConcreteEngine
+        >>> from libtmux.experimental.engines.mock import AsyncMockEngine
         >>> p = plan()
         >>> _ = p.new_session("dev").window().pane().do(lambda c: c.send_keys("vim"))
-        >>> asyncio.run(p.arun(AsyncConcreteEngine())).ok
+        >>> asyncio.run(p.arun(AsyncMockEngine())).ok
         True
         """
 

@@ -2,7 +2,7 @@
 
 Reads the live server through the classic libtmux objects and diffs the observed
 session/window/pane structure against the declared :class:`~.ir.Workspace`. Used by
-the live test track; the offline (``ConcreteEngine``) track asserts on the
+the live test track; the offline (``MockEngine``) track asserts on the
 compiled plan instead, since a stateless engine has no structure to read back.
 """
 

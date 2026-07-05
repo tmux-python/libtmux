@@ -1,8 +1,8 @@
-"""Classic engine against a real tmux server, and parity with concrete.
+"""Classic engine against a real tmux server, and parity with mock.
 
 These use the libtmux pytest fixtures (a live tmux server), so they exercise the
 classic :class:`~libtmux.experimental.engines.subprocess.SubprocessEngine` path
-end to end and assert it returns the *same typed result shape* the concrete
+end to end and assert it returns the *same typed result shape* the mock
 engine does.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import typing as t
 
-from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
+from libtmux.experimental.engines import MockEngine, SubprocessEngine
 from libtmux.experimental.ops import (
     CapturePane,
     SelectLayout,
@@ -81,16 +81,16 @@ def test_classic_capture_returns_lines(session: Session) -> None:
     assert isinstance(result.lines, tuple)
 
 
-def test_classic_concrete_parity(session: Session) -> None:
-    """Classic and concrete engines agree on result type and argv (not payload)."""
+def test_classic_mock_parity(session: Session) -> None:
+    """Classic and mock engines agree on result type and argv (not payload)."""
     server = session.server
     window = session.active_window
     assert window.window_id is not None
     operation = SplitWindow(target=WindowId(window.window_id))
 
     classic = run(operation, SubprocessEngine.for_server(server))
-    concrete = run(operation, ConcreteEngine())
+    mock = run(operation, MockEngine())
 
-    assert type(classic) is type(concrete) is SplitWindowResult
-    assert classic.argv == concrete.argv == operation.render()
-    assert classic.ok and concrete.ok
+    assert type(classic) is type(mock) is SplitWindowResult
+    assert classic.argv == mock.argv == operation.render()
+    assert classic.ok and mock.ok
