@@ -17,7 +17,7 @@ sync (:func:`build_workspace`) or async (:func:`abuild_workspace`) driver -- the
 only difference is ``run`` vs ``await arun`` and the host-step executor.
 
 ``preflight=False`` skips the ``on_exists`` ``has-session`` check; use it offline
-against the stateless ``ConcreteEngine`` (whose ``has-session`` is always true).
+against the stateless ``MockEngine`` (whose ``has-session`` is always true).
 """
 
 from __future__ import annotations
@@ -156,10 +156,10 @@ def build_workspace(
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.workspace.ir import Workspace, Window, Pane
     >>> ws = Workspace(name="dev", windows=[Window("w", panes=[Pane(run="vim")])])
-    >>> build_workspace(ws, ConcreteEngine(), preflight=False).ok
+    >>> build_workspace(ws, MockEngine(), preflight=False).ok
     True
     """
     if preflight and _preflight_sync(ws, engine, version):

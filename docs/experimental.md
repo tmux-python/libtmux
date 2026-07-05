@@ -25,8 +25,8 @@ inspect ``ok``/``status``, or opt into raising with ``raise_for_status()``:
 ```python
 >>> from libtmux.experimental.ops import HasSession, run
 >>> from libtmux.experimental.ops._types import SessionId
->>> from libtmux.experimental.engines import ConcreteEngine
->>> result = run(HasSession(target=SessionId("$0")), ConcreteEngine())
+>>> from libtmux.experimental.engines import MockEngine
+>>> result = run(HasSession(target=SessionId("$0")), MockEngine())
 >>> result.ok
 True
 >>> result.raise_for_status() is result
@@ -46,12 +46,12 @@ only *how* and *where* the command runs.
 | Engine | Transport | Use it for |
 | --- | --- | --- |
 | ``SubprocessEngine`` | one ``tmux`` process per command | the classic path; reproduces today's libtmux behavior |
-| ``ConcreteEngine`` | in-memory, no tmux | tests and dry runs (deterministic, fabricated output) |
+| ``MockEngine`` | in-memory, no tmux | tests and dry runs (deterministic, fabricated output) |
 | ``ControlModeEngine`` | a persistent ``tmux -C`` connection | many commands over one long-lived session |
 | ``ImsgEngine`` | tmux's native binary peer protocol | an opt-in easter egg |
 
 Each has an ``Async*`` counterpart (``AsyncSubprocessEngine``,
-``AsyncConcreteEngine``, ``AsyncControlModeEngine``) behind ``AsyncTmuxEngine``.
+``AsyncMockEngine``, ``AsyncControlModeEngine``) behind ``AsyncTmuxEngine``.
 Construct one directly, bind it to a live server with
 ``SubprocessEngine.for_server(server)``, or select one by name from the engine
 registry:
@@ -61,8 +61,8 @@ registry:
 >>> from libtmux.experimental.ops import HasSession, run
 >>> from libtmux.experimental.ops._types import SessionId
 >>> available_engines()
-('concrete', 'control_mode', 'imsg', 'subprocess')
->>> engine = create_engine("concrete")
+('control_mode', 'imsg', 'mock', 'subprocess')
+>>> engine = create_engine("mock")
 >>> run(HasSession(target=SessionId("$0")), engine).status
 'complete'
 ```
@@ -77,11 +77,11 @@ later operation can target something that does not exist yet. ``execute``
 ```python
 >>> from libtmux.experimental.ops import LazyPlan, SplitWindow, SendKeys
 >>> from libtmux.experimental.ops._types import WindowId
->>> from libtmux.experimental.engines import ConcreteEngine
+>>> from libtmux.experimental.engines import MockEngine
 >>> plan = LazyPlan()
 >>> pane = plan.add(SplitWindow(target=WindowId("@1")))
 >>> _ = plan.add(SendKeys(target=pane, keys="echo hi", enter=True))
->>> outcome = plan.execute(ConcreteEngine())
+>>> outcome = plan.execute(MockEngine())
 >>> outcome.ok
 True
 >>> [r.status for r in outcome.results]
@@ -107,11 +107,11 @@ many times tmux is invoked:
 ```python
 >>> from libtmux.experimental.ops import LazyPlan, SplitWindow, SendKeys, FoldingPlanner
 >>> from libtmux.experimental.ops._types import WindowId
->>> from libtmux.experimental.engines import ConcreteEngine
+>>> from libtmux.experimental.engines import MockEngine
 >>> plan = LazyPlan()
 >>> pane = plan.add(SplitWindow(target=WindowId("@1")))
 >>> _ = plan.add(SendKeys(target=pane, keys="echo hi", enter=True))
->>> plan.execute(ConcreteEngine(), planner=FoldingPlanner()).ok
+>>> plan.execute(MockEngine(), planner=FoldingPlanner()).ok
 True
 ```
 
@@ -125,11 +125,11 @@ description into a few dispatches (its async twin is ``arun``):
 
 ```python
 >>> from libtmux.experimental.fluent import plan
->>> from libtmux.experimental.engines import ConcreteEngine
+>>> from libtmux.experimental.engines import MockEngine
 >>> p = plan()
 >>> pane = p.new_session("dev").window().pane()
 >>> _ = pane.do(lambda c: c.send_keys("vim")).split().do(lambda c: c.send_keys("htop"))
->>> p.run(ConcreteEngine()).ok
+>>> p.run(MockEngine()).ok
 True
 ```
 
@@ -147,10 +147,10 @@ duplicating it:
 
 ```python
 >>> from libtmux.experimental.fluent import plan
->>> from libtmux.experimental.engines import ConcreteEngine
+>>> from libtmux.experimental.engines import MockEngine
 >>> p = plan()
 >>> _ = p.find_or_create_session("dev").window().pane()
->>> p.run(ConcreteEngine()).ok
+>>> p.run(MockEngine()).ok
 True
 ```
 
