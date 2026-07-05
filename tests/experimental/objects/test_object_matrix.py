@@ -1,4 +1,4 @@
-"""Tests for the facade matrix (scope x mode) over the shared spine."""
+"""Tests for the object matrix (scope x mode) over the shared spine."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import asyncio
 import typing as t
 
 from libtmux.experimental.engines import AsyncConcreteEngine, ConcreteEngine
-from libtmux.experimental.facade import (
+from libtmux.experimental.objects import (
     AsyncPane,
     AsyncWindow,
     EagerPane,
@@ -55,7 +55,7 @@ def test_lazy_window_records_and_executes() -> None:
 
 
 def test_async_window_and_pane() -> None:
-    """Async facades mirror the eager ones via await."""
+    """Async objects mirror the eager ones via await."""
 
     async def main() -> tuple[str, bool, bool]:
         window = AsyncWindow(AsyncConcreteEngine(), "@1")
@@ -72,11 +72,11 @@ def test_async_window_and_pane() -> None:
 
 
 def test_eager_navigation_live(session: Session) -> None:
-    """Eager facade builds a real session/window/pane against tmux, then cleans up."""
+    """Eager object builds a real session/window/pane against tmux, then cleans up."""
     server = session.server
-    facade = EagerServer.for_server(server)
+    server_obj = EagerServer.for_server(server)
 
-    created = facade.new_session(name="facade-matrix-test")
+    created = server_obj.new_session(name="object-matrix-test")
     try:
         assert created.session_id.startswith("$")
         assert server.sessions.get(session_id=created.session_id) is not None
