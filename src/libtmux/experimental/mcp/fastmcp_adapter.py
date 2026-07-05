@@ -765,7 +765,7 @@ def build_async_server(
     if include_prompts:
         from libtmux.experimental.mcp.prompts import register_prompts
 
-        register_prompts(mcp)
+        register_prompts(mcp, events_enabled=events_enabled)
     if include_operations:
         register_operations(
             mcp,
