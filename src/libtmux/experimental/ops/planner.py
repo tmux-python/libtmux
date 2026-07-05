@@ -214,6 +214,11 @@ def _marked_decorates(
     creator = operations[index]
     if creator.effects.creates != "pane" or creator.chainable:
         return ()
+    # A detached creator (e.g. NewPane ``-d``) does not focus its new pane, so
+    # the {marked} fold's untargeted ``select-pane -m`` would mark the wrong
+    # pane; fall back to lone dispatch (decorates bind the captured id via slot).
+    if getattr(creator, "detach", False):
+        return ()
     decorates: list[int] = []
     cursor = index + 1
     while cursor < len(operations):
