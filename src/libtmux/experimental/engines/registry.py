@@ -2,8 +2,7 @@
 
 Lets engines be created by name (or :class:`~.base.EngineSpec`) so downstream
 code and the contract suite can select a transport without importing its class.
-Fails closed on an unknown name. Adapted from the ``libtmux-protocol-engines``
-prototype.
+Fails closed on an unknown name.
 """
 
 from __future__ import annotations

@@ -6,8 +6,8 @@ an earlier operation* via a :class:`~._types.SlotRef` (e.g. send keys to the pan
 a split is about to create); the plan resolves those references from captured ids
 at execution time.
 
-Resolution is a sans-I/O generator -- the same yield-operation / resume-with-
-result trampoline the chainable-commands prototype uses. The sync
+Resolution is a sans-I/O generator -- a yield-operation / resume-with-result
+trampoline. The sync
 :meth:`LazyPlan.execute` and async :meth:`LazyPlan.aexecute` drivers differ only
 in ``run(...)`` versus ``await arun(...)``; the resolution logic is written once.
 """
