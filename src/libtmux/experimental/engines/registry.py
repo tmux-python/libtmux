@@ -11,8 +11,8 @@ import typing as t
 
 from libtmux import exc
 from libtmux.experimental.engines.base import EngineKind
-from libtmux.experimental.engines.concrete import ConcreteEngine
 from libtmux.experimental.engines.control_mode import ControlModeEngine
+from libtmux.experimental.engines.mock import MockEngine
 from libtmux.experimental.engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
@@ -34,7 +34,7 @@ def available_engines() -> tuple[str, ...]:
     Examples
     --------
     >>> from libtmux.experimental.engines import available_engines
-    >>> "concrete" in available_engines()
+    >>> "mock" in available_engines()
     True
     >>> "subprocess" in available_engines()
     True
@@ -48,8 +48,8 @@ def create_engine(name: str | EngineKind, **kwargs: t.Any) -> TmuxEngine:
     Examples
     --------
     >>> from libtmux.experimental.engines import create_engine
-    >>> create_engine("concrete")
-    <libtmux.experimental.engines.concrete.ConcreteEngine object at ...>
+    >>> create_engine("mock")
+    <libtmux.experimental.engines.mock.MockEngine object at ...>
     >>> create_engine("nope")
     Traceback (most recent call last):
     ...
@@ -65,5 +65,5 @@ def create_engine(name: str | EngineKind, **kwargs: t.Any) -> TmuxEngine:
 
 
 register_engine(EngineKind.SUBPROCESS.value, SubprocessEngine)
-register_engine(EngineKind.CONCRETE.value, ConcreteEngine)
+register_engine(EngineKind.MOCK.value, MockEngine)
 register_engine(EngineKind.CONTROL_MODE.value, ControlModeEngine)

@@ -9,7 +9,7 @@ before anything runs.
 
 Examples
 --------
->>> from libtmux.experimental.engines import ConcreteEngine
+>>> from libtmux.experimental.engines import MockEngine
 >>> from libtmux.experimental.workspace.ir import Workspace, Window, Pane
 >>> ws = Workspace(
 ...     name="dev",
@@ -23,7 +23,7 @@ Examples
 ... )
 >>> ws.compile().operations[0].kind
 'new_session'
->>> ws.build(ConcreteEngine(), preflight=False).ok
+>>> ws.build(MockEngine(), preflight=False).ok
 True
 """
 
@@ -463,7 +463,7 @@ class Workspace:
         """Compile and execute this workspace synchronously over *engine*.
 
         Set ``preflight=False`` to skip the ``on_exists`` ``has-session`` check
-        (e.g. against the stateless ``ConcreteEngine``, which has no real
+        (e.g. against the stateless ``MockEngine``, which has no real
         sessions to detect). Pass *on_event* to observe the structural build
         stream (see :mod:`~.events`). The build folds dispatches by default; pass
         *planner* (e.g. :class:`~..ops.planner.SequentialPlanner`) to override.

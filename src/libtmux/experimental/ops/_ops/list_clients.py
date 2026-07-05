@@ -26,9 +26,9 @@ class ListClients(Operation[ListClientsResult]):
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.ops import run
-    >>> run(ListClients(), ConcreteEngine(), version="3.6a").clients
+    >>> run(ListClients(), MockEngine(), version="3.6a").clients
     ()
     """
 

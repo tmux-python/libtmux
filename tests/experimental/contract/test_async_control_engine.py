@@ -11,8 +11,8 @@ import asyncio
 import typing as t
 
 from libtmux.experimental.engines import (
-    AsyncConcreteEngine,
     AsyncControlModeEngine,
+    AsyncMockEngine,
     CommandRequest,
     ControlNotification,
 )
@@ -90,8 +90,8 @@ def test_async_control_batches_pipelined(session: Session) -> None:
     assert first != second
 
 
-def test_async_control_concrete_parity(session: Session) -> None:
-    """Async control-mode and concrete engines agree on result type and argv."""
+def test_async_control_mock_parity(session: Session) -> None:
+    """Async control-mode and mock engines agree on result type and argv."""
     server = session.server
     window_id = session.active_window.window_id
     assert window_id is not None
@@ -102,9 +102,9 @@ def test_async_control_concrete_parity(session: Session) -> None:
             return await arun(operation, engine)
 
     control = asyncio.run(main())
-    concrete = asyncio.run(arun(operation, AsyncConcreteEngine()))
-    assert type(control) is type(concrete) is SplitWindowResult
-    assert control.argv == concrete.argv == operation.render()
+    mock = asyncio.run(arun(operation, AsyncMockEngine()))
+    assert type(control) is type(mock) is SplitWindowResult
+    assert control.argv == mock.argv == operation.render()
 
 
 def test_async_control_event_stream(session: Session) -> None:

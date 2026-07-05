@@ -19,7 +19,7 @@ def test_available_engines_are_registered() -> None:
     """The registry exposes exactly the constructable (sync) engine kinds."""
     assert set(available_engines()) == {
         "subprocess",
-        "concrete",
+        "mock",
         "control_mode",
         "imsg",
     }
@@ -40,7 +40,7 @@ class CreateCase(t.NamedTuple):
 
 CREATE_CASES = (
     CreateCase("subprocess", "subprocess"),
-    CreateCase("concrete", "concrete"),
+    CreateCase("mock", "mock"),
     CreateCase("control_mode", "control_mode"),
 )
 

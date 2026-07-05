@@ -8,7 +8,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
+from libtmux.experimental.engines import MockEngine, SubprocessEngine
 
 fastmcp = pytest.importorskip("fastmcp")
 
@@ -25,7 +25,7 @@ def _text(contents: t.Any) -> str:
 
 def test_resources_read_offline_returns_json() -> None:
     """The sessions resource is registered and returns a JSON array."""
-    server = build_server(ConcreteEngine())
+    server = build_server(MockEngine())
 
     async def main() -> t.Any:
         async with fastmcp.Client(server) as client:

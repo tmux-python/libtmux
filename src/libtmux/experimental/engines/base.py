@@ -100,7 +100,7 @@ class EngineKind(str, enum.Enum):
     """Named engine families."""
 
     SUBPROCESS = "subprocess"
-    CONCRETE = "concrete"
+    MOCK = "mock"
     CONTROL_MODE = "control_mode"
     IMSG = "imsg"
 
@@ -139,9 +139,9 @@ class EngineSpec:
         return cls(kind=EngineKind.SUBPROCESS, protocol_version=protocol_version)
 
     @classmethod
-    def concrete(cls) -> EngineSpec:
-        """Build a concrete (in-memory) engine spec."""
-        return cls(kind=EngineKind.CONCRETE)
+    def mock(cls) -> EngineSpec:
+        """Build a mock (in-memory) engine spec."""
+        return cls(kind=EngineKind.MOCK)
 
     @classmethod
     def control_mode(cls) -> EngineSpec:

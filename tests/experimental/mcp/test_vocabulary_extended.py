@@ -1,6 +1,6 @@
 """Extended vocabulary -- new verbs, conveniences, the async surface, the bridge.
 
-Pure tests run against the in-memory ``ConcreteEngine`` and the pure geometry
+Pure tests run against the in-memory ``MockEngine`` and the pure geometry
 helpers (no tmux); live tests drive a real tmux server for the geometry-resolved
 conveniences (``resolve_relative_pane`` / ``find_pane_by_position`` / directional
 ``select_pane``) that only mean something against a real layout.
@@ -13,7 +13,7 @@ import typing as t
 
 import pytest
 
-from libtmux.experimental.engines import ConcreteEngine, SubprocessEngine
+from libtmux.experimental.engines import MockEngine, SubprocessEngine
 from libtmux.experimental.mcp.vocabulary import (
     PaneRef,
     acreate_session,
@@ -103,7 +103,7 @@ def test_corner_pane_uses_edge_predicates() -> None:
 # --------------------------------------------------------------------------- #
 def test_synced_twin_runs_over_sync_engine() -> None:
     """A synced twin drives its async source over a plain sync engine."""
-    result = create_session(ConcreteEngine(), name="dev")  # create_session is a twin
+    result = create_session(MockEngine(), name="dev")  # create_session is a twin
     assert result.session_id == "$1"
 
 
@@ -134,25 +134,25 @@ def test_synced_preserves_callable() -> None:
 # --------------------------------------------------------------------------- #
 def test_grep_pane_filters_lines() -> None:
     """grep_pane returns only the captured lines matching the pattern."""
-    engine = ConcreteEngine(capture_lines=("foo", "bar baz", "foobar"))
+    engine = MockEngine(capture_lines=("foo", "bar baz", "foobar"))
     assert grep_pane(engine, "%1", "foo").lines == ("foo", "foobar")
 
 
 def test_grep_pane_ignore_case() -> None:
     """grep_pane honours the ignore_case flag."""
-    engine = ConcreteEngine(capture_lines=("FOO", "bar"))
+    engine = MockEngine(capture_lines=("FOO", "bar"))
     assert grep_pane(engine, "%1", "foo", ignore_case=True).lines == ("FOO",)
 
 
 def test_capture_active_pane_needs_no_target() -> None:
     """capture_active_pane captures with no explicit target."""
-    engine = ConcreteEngine(capture_lines=("hello",))
+    engine = MockEngine(capture_lines=("hello",))
     assert capture_active_pane(engine).lines == ("hello",)
 
 
 def test_resize_and_run_tmux_offline() -> None:
     """resize_pane is fire-and-forget; run_tmux returns a raw outcome."""
-    engine = ConcreteEngine()
+    engine = MockEngine()
     assert resize_pane(engine, "%1", width=80) is None
     raw = run_tmux(engine, ["list-sessions"])
     assert raw.ok and raw.returncode == 0
@@ -160,12 +160,12 @@ def test_resize_and_run_tmux_offline() -> None:
 
 def test_has_session_returns_bool() -> None:
     """has_session answers an existence query as a bool."""
-    assert has_session(ConcreteEngine(), "$1") is True
+    assert has_session(MockEngine(), "$1") is True
 
 
 def test_geometry_tools_return_paneref_offline() -> None:
     """Geometry-resolved tools return a PaneRef even with nothing to resolve."""
-    engine = ConcreteEngine()
+    engine = MockEngine()
     assert isinstance(resolve_relative_pane(engine, "right", "%1"), PaneRef)
     assert isinstance(select_pane(engine, "%1", direction="left"), PaneRef)
 
@@ -177,7 +177,7 @@ def test_async_surface_over_wrapped_engine() -> None:
     """The a-prefixed tools run over an async engine (sync engine wrapped)."""
 
     async def main() -> tuple[str, tuple[str, ...]]:
-        engine = SyncToAsyncEngine(ConcreteEngine(capture_lines=("x", "y")))
+        engine = SyncToAsyncEngine(MockEngine(capture_lines=("x", "y")))
         session = await acreate_session(engine, name="dev")
         grep = await agrep_pane(engine, "%1", "x")
         return session.session_id, grep.lines
