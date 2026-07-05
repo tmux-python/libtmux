@@ -776,6 +776,54 @@ def test_compile_emits_wait_pane_when_enabled() -> None:
     )
 
 
+class _WaitFirstPaneCase(t.NamedTuple):
+    """A first-pane shell config and whether wait_pane should still wait."""
+
+    test_id: str
+    window_shell: str | None
+    pane_shell: str | None
+    expect_wait: bool
+
+
+_WAIT_FIRST_PANE_CASES = (
+    _WaitFirstPaneCase("plain_waits", None, None, True),
+    # Regression: the first pane's own shell is never applied, so the wait
+    # must still fire (the pane runs the default shell and draws a prompt).
+    _WaitFirstPaneCase("pane_shell_still_waits", None, "fish", True),
+    # window_shell IS applied to the first pane by its creator, so skip.
+    _WaitFirstPaneCase("window_shell_skips", "fish", None, False),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    _WAIT_FIRST_PANE_CASES,
+    ids=[c.test_id for c in _WAIT_FIRST_PANE_CASES],
+)
+def test_compile_wait_pane_first_pane_effective_shell(
+    case: _WaitFirstPaneCase,
+) -> None:
+    """wait_pane gates the first pane on the shell its creator actually applies."""
+    ws = Workspace(
+        name="ws-wait-first",
+        wait_pane=True,
+        windows=[
+            Window(
+                "w",
+                window_shell=case.window_shell,
+                panes=[Pane(run="x", shell=case.pane_shell)],
+            ),
+        ],
+    )
+    compiled = compile_full(ws)
+    waited = any(
+        step.kind == "wait_pane"
+        for steps in (*compiled.host_after.values(), compiled.pre)
+        for step in steps
+    )
+    assert waited is case.expect_wait
+
+
 def test_compile_window_index_targets_session_index() -> None:
     """window_index places a created window at session:N (capture preserved)."""
     ws = Workspace(
