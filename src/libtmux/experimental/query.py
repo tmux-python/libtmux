@@ -27,8 +27,9 @@ Examples
 
 from __future__ import annotations
 
+import dataclasses
 import typing as t
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 from libtmux._internal.query_list import QueryList
 from libtmux.experimental.engines.base import TmuxEngine
@@ -88,15 +89,15 @@ class PaneQuery:
 
     def filter(self, **lookups: t.Any) -> PaneQuery:
         """Narrow by QueryList lookups (e.g. ``active=True``, ``pane_index=0``)."""
-        return replace(self, lookups={**self.lookups, **lookups})
+        return dataclasses.replace(self, lookups={**self.lookups, **lookups})
 
     def order_by(self, field_name: str) -> PaneQuery:
         """Sort the results by a snapshot attribute (missing values last)."""
-        return replace(self, order=field_name)
+        return dataclasses.replace(self, order=field_name)
 
     def limit(self, count: int) -> PaneQuery:
         """Keep only the first *count* results."""
-        return replace(self, limit_count=count)
+        return dataclasses.replace(self, limit_count=count)
 
     def all(self, source: PaneSource) -> tuple[PaneSnapshot, ...]:
         """Resolve the query against *source* and return the matched snapshots."""
