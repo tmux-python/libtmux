@@ -193,6 +193,37 @@ def test_workspace_builder_subprocess_live(
     assert report.ok, report.problems
 
 
+def test_confirm_start_directory_checks_first_pane_not_active(
+    session: Session,
+    tmp_path: Path,
+) -> None:
+    """start_directory is confirmed on window 0's FIRST pane, not the active one.
+
+    Regression: confirm read active_pane, so a focused non-first pane with a
+    different cwd falsely reported "first pane cwd != declared".
+    """
+    server = session.server
+    other = tmp_path / "other"
+    other.mkdir()
+    spec = Workspace(
+        name="ws-cwd-first",
+        start_directory=str(tmp_path),
+        windows=[
+            Window(
+                "w",
+                panes=[
+                    Pane(run="echo a"),  # first pane inherits ws.start_directory
+                    Pane(run="echo b", start_directory=str(other), focus=True),
+                ],
+            ),
+        ],
+    )
+
+    assert spec.build(SubprocessEngine.for_server(server)).ok
+    report = confirm(spec, server)
+    assert report.ok, report.problems  # first pane matches despite focus elsewhere
+
+
 # --- Robust QA: a rich workspace exercising the full feature surface ---
 
 
