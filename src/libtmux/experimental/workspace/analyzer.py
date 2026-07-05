@@ -49,9 +49,9 @@ def analyze(raw: collections.abc.Mapping[str, t.Any] | str) -> Workspace:
         name=data["session_name"],
         dimensions=_dimensions(data.get("dimensions")),
         start_directory=data.get("start_directory"),
-        environment=dict(data.get("environment", {}) or {}),
-        options=dict(data.get("options", {}) or {}),
-        global_options=dict(data.get("global_options", {}) or {}),
+        environment=_str_map(data.get("environment")),
+        options=_str_map(data.get("options")),
+        global_options=_str_map(data.get("global_options")),
         windows=windows,
         before_script=data.get("before_script"),
         on_exists=data.get("on_exists", "error"),
@@ -84,6 +84,19 @@ def _dimensions(value: t.Any) -> tuple[int, int] | None:
     return (int(width), int(height))
 
 
+def _str_map(value: t.Any) -> dict[str, str]:
+    """Coerce a config options/environment mapping to ``dict[str, str]``.
+
+    YAML types ``main-pane-height: 35`` as an int, but tmux option and
+    environment values are strings on the command line (libtmux's ``cmd``
+    str()s every arg). Stringifying at ingest keeps the IR's declared
+    ``Mapping[str, str]`` honest, so the folded renderer never meets a non-str.
+    """
+    if not value:
+        return {}
+    return {str(key): str(val) for key, val in dict(value).items()}
+
+
 def _window(raw: collections.abc.Mapping[str, t.Any]) -> Window:
     """Normalize one window config."""
     return Window(
@@ -91,9 +104,9 @@ def _window(raw: collections.abc.Mapping[str, t.Any]) -> Window:
         layout=raw.get("layout"),
         start_directory=raw.get("start_directory"),
         focus=bool(raw.get("focus", False)),
-        options=dict(raw.get("options", {}) or {}),
-        options_after=dict(raw.get("options_after", {}) or {}),
-        environment=dict(raw.get("environment", {}) or {}),
+        options=_str_map(raw.get("options")),
+        options_after=_str_map(raw.get("options_after")),
+        environment=_str_map(raw.get("environment")),
         window_shell=raw.get("window_shell"),
         window_index=raw.get("window_index"),
         panes=[_pane(p) for p in raw.get("panes", []) or []],
@@ -156,7 +169,7 @@ def _pane(raw: t.Any) -> Pane:
             suppress_history=bool(raw.get("suppress_history", True)),
             sleep_before=raw.get("sleep_before"),
             sleep_after=raw.get("sleep_after"),
-            environment=dict(raw.get("environment", {}) or {}),
+            environment=_str_map(raw.get("environment")),
             shell=raw.get("shell"),
         )
     msg = f"unsupported pane config: {raw!r}"
