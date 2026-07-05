@@ -165,19 +165,21 @@ def _emit_pane_commands(
     host_after: dict[int, list[HostStep]],
     pre: list[HostStep],
     ws: Workspace,
-    window: Window,
     pane: Pane,
     target: SlotRef,
+    effective_shell: str | None,
 ) -> None:
     """Emit a pane's command sends with their host-side sleep / wait scheduling.
 
     Shared by tiled panes and floating-pane overlays so both honor ``wait_pane``,
     ``suppress_history``, and the per-pane / per-command sleeps identically.
+    *effective_shell* is the shell actually applied to this pane by its creator
+    (``None`` means the default shell), which gates the readiness wait.
     """
     commands = pane.commands
     if not commands:
         return
-    if ws.wait_pane and (pane.shell or window.window_shell) is None:
+    if ws.wait_pane and effective_shell is None:
         # Wait for the pane's shell prompt before sending keys (anti-race); a pane
         # launching a custom shell/command does not get this wait, mirroring
         # tmuxp's `if pane_shell is None`.
@@ -254,7 +256,7 @@ def _emit_float(
             shell_command=fp.pane.shell,
         ),
     )
-    _emit_pane_commands(plan, host_after, pre, ws, host_window, fp.pane, float_ref)
+    _emit_pane_commands(plan, host_after, pre, ws, fp.pane, float_ref, fp.pane.shell)
     if fp.pane.focus:
         plan.add(SelectPane(target=float_ref))
 
@@ -322,8 +324,12 @@ def _emit_window(
     focus_targets: list[SlotRef] = []
     for pane_index, pane in enumerate(panes):
         if pane_index == 0:
+            # The first pane rides the creator, which applies window_shell (not
+            # the pane's own shell); reflect that in the readiness gate.
             target: SlotRef = first_pane_ref
+            effective_shell = window.window_shell
         else:
+            effective_shell = pane.shell or window.window_shell
             target = plan.add(
                 SplitWindow(
                     target=prev,
@@ -333,10 +339,10 @@ def _emit_window(
                         or ws.start_directory
                     ),
                     environment={**window.environment, **pane.environment} or None,
-                    shell=pane.shell or window.window_shell,
+                    shell=effective_shell,
                 ),
             )
-        _emit_pane_commands(plan, host_after, pre, ws, window, pane, target)
+        _emit_pane_commands(plan, host_after, pre, ws, pane, target, effective_shell)
         if pane.focus:
             focus_targets.append(target)
         prev = target
