@@ -6,6 +6,13 @@
 # [tool.uv.sources]
 # libtmux = { path = "..", editable = true }
 # ///
+
+# ``typer`` is a PEP 723 inline dependency, resolved only inside ``uv run``'s
+# ephemeral venv; the repo's mypy environment can't import it, which also makes
+# its command decorators look untyped. Suppress just those two environment
+# artifacts -- every other check (including the ImsgForServer narrowing below)
+# stays strict.
+# mypy: disable-error-code="import-not-found, untyped-decorator"
 """Hermetic libtmux engine build-benchmark grid.
 
 Measures how long the experimental workspace builder (and the classic API, and a
@@ -181,7 +188,8 @@ class ImsgForServer:
     args -- so this wrapper prepends the isolated socket flag to every request.
     """
 
-    def __init__(self, server: Server) -> None:
+    def __init__(self, server: Server | None) -> None:
+        assert server is not None
         self._e = ImsgEngine()
         self._flag = (
             f"-S{server.socket_path}"
