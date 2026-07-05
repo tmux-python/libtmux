@@ -1,11 +1,11 @@
-"""Server-scope facades -- the entry points for facade navigation."""
+"""Server-scope objects -- the entry points for object navigation."""
 
 from __future__ import annotations
 
 import typing as t
 from dataclasses import dataclass
 
-from libtmux.experimental.facade.session import (
+from libtmux.experimental.objects.session import (
     AsyncSession,
     EagerSession,
     LazySession,
@@ -19,7 +19,7 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class EagerServer:
-    """A live server handle; the root of eager facade navigation.
+    """A live server object; the root of eager object navigation.
 
     Examples
     --------
@@ -42,7 +42,7 @@ class EagerServer:
         name: str | None = None,
         start_directory: str | None = None,
     ) -> EagerSession:
-        """Create a detached session; return a live session handle."""
+        """Create a detached session; return a live session object."""
         result = run(
             NewSession(session_name=name, start_directory=start_directory),
             self.engine,
@@ -54,7 +54,7 @@ class EagerServer:
 
     @classmethod
     def for_server(cls, server: t.Any, *, version: str | None = None) -> EagerServer:
-        """Bind an eager facade to a live :class:`libtmux.Server`'s classic engine."""
+        """Bind an eager object to a live :class:`libtmux.Server`'s classic engine."""
         from libtmux.experimental.engines import SubprocessEngine
 
         return cls(SubprocessEngine.for_server(server), version=version)
@@ -62,7 +62,7 @@ class EagerServer:
 
 @dataclass(frozen=True)
 class LazyServer:
-    """A deferred server handle; records session creation into a plan.
+    """A deferred server object; records session creation into a plan.
 
     Examples
     --------
@@ -84,7 +84,7 @@ class LazyServer:
         name: str | None = None,
         start_directory: str | None = None,
     ) -> LazySession:
-        """Record a new session; return a deferred session handle."""
+        """Record a new session; return a deferred session object."""
         slot = self.plan.add(
             NewSession(session_name=name, start_directory=start_directory),
         )
@@ -93,7 +93,7 @@ class LazyServer:
 
 @dataclass(frozen=True)
 class AsyncServer:
-    """An async live server handle: the eager server, awaited."""
+    """An async live server object: the eager server, awaited."""
 
     engine: AsyncTmuxEngine
     version: str | None = None
@@ -104,7 +104,7 @@ class AsyncServer:
         name: str | None = None,
         start_directory: str | None = None,
     ) -> AsyncSession:
-        """Create a detached session; return a live async session handle."""
+        """Create a detached session; return a live async session object."""
         result = await arun(
             NewSession(session_name=name, start_directory=start_directory),
             self.engine,
@@ -116,7 +116,7 @@ class AsyncServer:
 
     @classmethod
     def for_server(cls, server: t.Any, *, version: str | None = None) -> AsyncServer:
-        """Bind an async facade to a live :class:`libtmux.Server`'s socket."""
+        """Bind an async object to a live :class:`libtmux.Server`'s socket."""
         from libtmux.experimental.engines import AsyncSubprocessEngine
 
         return cls(AsyncSubprocessEngine.for_server(server), version=version)
