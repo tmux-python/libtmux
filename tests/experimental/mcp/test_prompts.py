@@ -30,15 +30,50 @@ _FOREIGN_TOOLS = (
 )
 
 
-def test_prompts_registered() -> None:
-    """The four recipe prompts are registered on the server."""
+def test_sync_server_omits_wait_for_output_prompts() -> None:
+    """The sync server lacks wait_for_output, so those recipe prompts are gated off."""
     server = build_server(ConcreteEngine())
 
     async def main() -> set[str]:
         async with fastmcp.Client(server) as client:
             return {prompt.name for prompt in await client.list_prompts()}
 
-    assert asyncio.run(main()) >= _NAMES
+    names = asyncio.run(main())
+    assert "build_dev_workspace" in names  # needs no wait_for_output
+    assert names.isdisjoint(_NAMES - {"build_dev_workspace"})
+
+
+class _PromptGateCase(t.NamedTuple):
+    """events_enabled and the prompt names that should register."""
+
+    test_id: str
+    events_enabled: bool
+    expected: set[str]
+
+
+_PROMPT_GATE_CASES = (
+    _PromptGateCase("events_off", False, {"build_dev_workspace"}),
+    _PromptGateCase("events_on", True, _NAMES),
+)
+
+
+@pytest.mark.parametrize(
+    "case",
+    _PROMPT_GATE_CASES,
+    ids=[c.test_id for c in _PROMPT_GATE_CASES],
+)
+def test_register_prompts_gates_wait_for_output(case: _PromptGateCase) -> None:
+    """wait_for_output prompts register only when events (streaming) are enabled."""
+    from libtmux.experimental.mcp.prompts import register_prompts
+
+    mcp = fastmcp.FastMCP("test")
+    register_prompts(mcp, events_enabled=case.events_enabled)
+
+    async def main() -> set[str]:
+        async with fastmcp.Client(mcp) as client:
+            return {prompt.name for prompt in await client.list_prompts()}
+
+    assert asyncio.run(main()) == case.expected
 
 
 def test_prompt_bodies_use_engine_ops_vocabulary() -> None:
