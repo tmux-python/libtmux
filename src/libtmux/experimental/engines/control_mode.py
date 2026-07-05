@@ -5,8 +5,7 @@ parsing each command's ``%begin``/``%end``/``%error`` block back into a
 :class:`~.base.CommandResult`. Because it returns the same typed result the
 subprocess engine does, an operation run through control mode is
 indistinguishable -- at the result level -- from one run through a fork-per-call
-subprocess. Adapted from the chainable-commands control runner and the
-``libtmux-protocol-engines`` parser.
+subprocess.
 
 The parser (:class:`ControlModeParser`) is I/O-free: it consumes bytes and emits
 parsed blocks, so it is unit-testable without spawning tmux. ``run_batch`` writes
