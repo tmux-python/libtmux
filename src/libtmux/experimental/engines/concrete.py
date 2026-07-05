@@ -24,9 +24,9 @@ if t.TYPE_CHECKING:
 def _fabricate(fmt: str, counters: dict[str, int]) -> str:
     """Fabricate one id per ``#{..._id}`` token in *fmt*, in their order.
 
-    A single-token format (e.g. ``#{pane_id}``) yields one id, preserving the
-    historical behaviour; a multi-token capture (e.g. ``new-session -F
-    '#{session_id} #{window_id} #{pane_id}'``) yields a space-joined id per token.
+    A single-token format (e.g. ``#{pane_id}``) yields one id; a multi-token
+    capture (e.g. ``new-session -F '#{session_id} #{window_id} #{pane_id}'``)
+    yields a space-joined id per token.
     """
     found: list[tuple[int, str, str]] = []
     for key, sigil in (("session_id", "$"), ("window_id", "@"), ("pane_id", "%")):
