@@ -29,7 +29,7 @@ Engines (``--engines``):
   subprocess    builder on SubprocessEngine     (one tmux fork per op)
   control_mode  builder on ControlModeEngine    (one persistent ``tmux -C``)
   imsg          builder on ImsgEngine           (AF_UNIX imsg, socket-injected)
-  concrete      builder on ConcreteEngine       (offline, in-memory: Python floor)
+  mock          builder on MockEngine       (offline, in-memory: Python floor)
   pipelined     prototype: batch independent creates via run_batch (control_mode)
 
 Timing (``run`` = in-process build-only, the clean signal; ``--hyperfine`` also
@@ -71,9 +71,9 @@ import rich.table
 import typer
 
 from libtmux.experimental.engines import (
-    ConcreteEngine,
     ControlModeEngine,
     ImsgEngine,
+    MockEngine,
     SubprocessEngine,
 )
 from libtmux.experimental.engines.base import CommandRequest
@@ -230,9 +230,7 @@ IMPLS: dict[str, Impl] = {
         "control_mode", "builder", lambda s: ControlModeEngine.for_server(s)
     ),
     "imsg": Impl("imsg", "builder", lambda s: ImsgForServer(s), needs_preboot=True),
-    "concrete": Impl(
-        "concrete", "offline", lambda s: ConcreteEngine(), preflight=False
-    ),
+    "mock": Impl("mock", "offline", lambda s: MockEngine(), preflight=False),
     "pipelined": Impl(
         "pipelined", "pipelined", lambda s: ControlModeEngine.for_server(s)
     ),
@@ -353,7 +351,7 @@ app = typer.Typer(add_completion=False, help=__doc__)
 def run(
     shapes: str = typer.Option("1x1,1x4,3x3,5x4,8x4", help="comma WxP shapes"),
     engines: str = typer.Option(
-        "classic,subprocess,control_mode,imsg,concrete,pipelined",
+        "classic,subprocess,control_mode,imsg,mock,pipelined",
         help="comma engine names",
     ),
     wait: bool = typer.Option(False, help="ALSO measure with shell-readiness wait"),

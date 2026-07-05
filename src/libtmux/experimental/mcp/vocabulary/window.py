@@ -37,8 +37,8 @@ async def acreate_window(
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> w = create_window(ConcreteEngine(), "$1", name="logs")
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> w = create_window(MockEngine(), "$1", name="logs")
     >>> w.window_id.startswith("@"), w.name
     (True, 'logs')
     """
