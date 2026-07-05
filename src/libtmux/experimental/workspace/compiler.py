@@ -399,6 +399,7 @@ def compile_full(ws: Workspace, *, version: str | None = None) -> Compiled:
             width=width,
             height=height,
             environment=_creator_environment(ws.windows[0]) or None,
+            window_shell=ws.windows[0].window_shell,
             capture_panes=True,
         ),
     )
