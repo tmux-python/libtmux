@@ -81,7 +81,11 @@ def confirm(ws: Workspace, server: Server, *, timeout: float = 5.0) -> ConfirmRe
             fresh = server.sessions.filter(session_id=session_id)
             if not fresh:
                 return False
-            pane = next(iter(fresh[0].windows)).active_pane
+            # start_directory sets the session -c, which lands on window 0's
+            # FIRST pane -- not necessarily the active one (a split or focused
+            # non-first pane can carry a different cwd).
+            panes = list(next(iter(fresh[0].windows)).panes)
+            pane = panes[0] if panes else None
             return pane is not None and pane.pane_current_path == want_cwd
 
         if not retry_until(_cwd_ok, timeout, raises=False):
