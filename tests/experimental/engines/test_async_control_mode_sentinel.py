@@ -90,3 +90,24 @@ def test_subscribe_ends_immediately_after_close() -> None:
         return await asyncio.wait_for(drain(), timeout=1.0)  # must NOT hang
 
     assert asyncio.run(main()) == []
+
+
+def test_subscribe_ends_immediately_after_death() -> None:
+    """A subscribe() after the engine died must end at once, not hang.
+
+    _mark_dead() broadcasts the sentinel and clears the subscriber set but does
+    not flip ``_closing``; a queue registered afterwards would never receive a
+    sentinel. The ``_dead`` gate makes subscribe() yield nothing and return.
+    """
+
+    async def main() -> list[ControlNotification]:
+        engine = AsyncControlModeEngine()
+        engine._started = True  # pretend a connection was established
+        engine._mark_dead(ControlModeError("tmux -C closed stdout"))
+
+        async def drain() -> list[ControlNotification]:
+            return [note async for note in engine.subscribe()]
+
+        return await asyncio.wait_for(drain(), timeout=1.0)  # must NOT hang
+
+    assert asyncio.run(main()) == []
