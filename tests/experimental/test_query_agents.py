@@ -8,7 +8,7 @@ calls and mirrors the ``panes()`` query shape.
 from __future__ import annotations
 
 from libtmux.experimental.agents.state import Agent, AgentState
-from libtmux.experimental.engines import AsyncConcreteEngine
+from libtmux.experimental.engines import AsyncMockEngine
 from libtmux.experimental.query import ATTENTION, AgentQuery, agents
 
 
@@ -53,7 +53,7 @@ def test_query_reads_monitor_store_zero_calls() -> None:
     """A query resolves against a monitor's live store with no tmux round-trip."""
     from libtmux.experimental.agents.monitor import AgentMonitor
 
-    mon = AgentMonitor(AsyncConcreteEngine())
+    mon = AgentMonitor(AsyncMockEngine())
     mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : idle")
     mon.ingest("%subscription-changed agentstate $0 @0 2 %2 : running")
     idle = agents().filter(state=AgentState.IDLE).all(mon)

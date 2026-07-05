@@ -120,12 +120,12 @@ async def paint_status_line(
     Examples
     --------
     >>> import asyncio
-    >>> from libtmux.experimental.engines import AsyncConcreteEngine
+    >>> from libtmux.experimental.engines import AsyncMockEngine
     >>> from libtmux.experimental.agents.state import Agent, AgentState
     >>> agents = [Agent(pane_id="%1", key="%1", name=None,
     ...                 state=AgentState.AWAITING_INPUT, since=0.0,
     ...                 source="option", pid=None, alive=True)]
-    >>> asyncio.run(paint_status_line(AsyncConcreteEngine(), agents, global_=True))
+    >>> asyncio.run(paint_status_line(AsyncMockEngine(), agents, global_=True))
     True
     """
     store_agents = getattr(source, "agents", None)

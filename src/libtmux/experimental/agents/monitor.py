@@ -287,9 +287,9 @@ class AgentMonitor:
 
         Examples
         --------
-        >>> from libtmux.experimental.engines import AsyncConcreteEngine
+        >>> from libtmux.experimental.engines import AsyncMockEngine
         >>> from libtmux.experimental.agents.wait import WaiterRegistry
-        >>> isinstance(AgentMonitor(AsyncConcreteEngine()).waiters, WaiterRegistry)
+        >>> isinstance(AgentMonitor(AsyncMockEngine()).waiters, WaiterRegistry)
         True
         """
         return self._waiters
@@ -300,9 +300,9 @@ class AgentMonitor:
 
         Examples
         --------
-        >>> from libtmux.experimental.engines import AsyncConcreteEngine
+        >>> from libtmux.experimental.engines import AsyncMockEngine
         >>> from libtmux.experimental.agents.drive import DedupLedger
-        >>> isinstance(AgentMonitor(AsyncConcreteEngine()).dedup, DedupLedger)
+        >>> isinstance(AgentMonitor(AsyncMockEngine()).dedup, DedupLedger)
         True
         """
         return self._dedup
@@ -313,8 +313,8 @@ class AgentMonitor:
 
         Examples
         --------
-        >>> from libtmux.experimental.engines import AsyncConcreteEngine
-        >>> e = AsyncConcreteEngine()
+        >>> from libtmux.experimental.engines import AsyncMockEngine
+        >>> e = AsyncMockEngine()
         >>> AgentMonitor(e).engine is e
         True
         """
@@ -325,8 +325,8 @@ class AgentMonitor:
 
         Examples
         --------
-        >>> from libtmux.experimental.engines import AsyncConcreteEngine
-        >>> mon = AgentMonitor(AsyncConcreteEngine())
+        >>> from libtmux.experimental.engines import AsyncMockEngine
+        >>> mon = AgentMonitor(AsyncMockEngine())
         >>> mon.agent_for("%1") is None
         True
         >>> mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : running")
@@ -345,9 +345,9 @@ class AgentMonitor:
 
         Examples
         --------
-        >>> from libtmux.experimental.engines import AsyncConcreteEngine
+        >>> from libtmux.experimental.engines import AsyncMockEngine
         >>> seen = []
-        >>> mon = AgentMonitor(AsyncConcreteEngine())
+        >>> mon = AgentMonitor(AsyncMockEngine())
         >>> mon.add_transition_observer(seen.append)
         >>> mon.ingest("%subscription-changed agentstate $0 @0 1 %1 : running")
         >>> seen[0].after
