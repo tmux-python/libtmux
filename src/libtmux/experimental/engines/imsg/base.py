@@ -14,6 +14,7 @@ import socket
 import typing as t
 
 from libtmux import exc
+from libtmux.common import get_version
 from libtmux.experimental.engines.base import CommandRequest, CommandResult
 from libtmux.experimental.engines.imsg.exc import (
     ImsgProtocolError,
@@ -227,6 +228,23 @@ class ImsgEngine:
             str(protocol_version) if protocol_version is not None else None
         )
         self._resolved_tmux_bin: str | None = None
+        self._tmux_version: str | None = None
+        self._version_probed = False
+
+    def tmux_version(self) -> str | None:
+        """Report this engine's tmux version (``tmux -V``), memoized.
+
+        Like the other real-server engines, so version-gated ops render for the
+        true server version instead of degrading to "assume latest". Returns
+        ``None`` when the binary is missing or its version cannot be parsed.
+        """
+        if not self._version_probed:
+            self._version_probed = True
+            try:
+                self._tmux_version = str(get_version(self._resolve_tmux_bin()))
+            except exc.LibTmuxException:
+                self._tmux_version = None
+        return self._tmux_version
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute a tmux command over the server socket."""
