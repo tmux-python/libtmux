@@ -646,6 +646,17 @@ def test_compile_threads_window_and_pane_shell() -> None:
     assert split.shell == "zsh"  # pane.shell wins over window_shell
 
 
+def test_compile_first_window_shell_rides_new_session() -> None:
+    """window_shell on window 0 rides new-session (not silently dropped)."""
+    ws = Workspace(
+        name="ws-shell0",
+        windows=[Window("a", window_shell="fish", panes=[Pane(run="x")])],
+    )
+    ops = compile_full(ws).plan.operations
+    new_session = next(op for op in ops if isinstance(op, NewSession))
+    assert new_session.window_shell == "fish"
+
+
 def test_compile_emits_options_after_following_layout() -> None:
     """options_after compile to set-window-option *after* the layout op."""
     ws = Workspace(
