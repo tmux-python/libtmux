@@ -31,8 +31,8 @@ class EagerClient:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> client = EagerClient(ConcreteEngine(), "/dev/pts/3")
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> client = EagerClient(MockEngine(), "/dev/pts/3")
     >>> client.refresh().ok
     True
     >>> client.switch_to("$1").ok

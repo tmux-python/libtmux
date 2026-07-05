@@ -147,9 +147,9 @@ def test_query_is_immutable() -> None:
 
 def test_empty_engine_source() -> None:
     """A query resolves against an engine; the in-memory engine has no panes."""
-    from libtmux.experimental.engines import ConcreteEngine
+    from libtmux.experimental.engines import MockEngine
 
-    assert panes().all(ConcreteEngine()) == ()
+    assert panes().all(MockEngine()) == ()
 
 
 def test_commands_to_plan_builds_one_op_per_pane() -> None:

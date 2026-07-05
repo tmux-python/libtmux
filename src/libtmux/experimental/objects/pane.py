@@ -93,8 +93,8 @@ class EagerPane:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
-    >>> pane = EagerPane(ConcreteEngine(), "%0")
+    >>> from libtmux.experimental.engines import MockEngine
+    >>> pane = EagerPane(MockEngine(), "%0")
     >>> child = pane.split(horizontal=True)
     >>> child.pane_id
     '%1'
@@ -208,14 +208,14 @@ class LazyPane:
 
     Examples
     --------
-    >>> from libtmux.experimental.engines import ConcreteEngine
+    >>> from libtmux.experimental.engines import MockEngine
     >>> from libtmux.experimental.ops import LazyPlan
     >>> from libtmux.experimental.ops._types import PaneId
     >>> plan = LazyPlan()
     >>> root = LazyPane(plan, PaneId("%0"))
     >>> child = root.split()
     >>> _ = child.send_keys("vim", enter=True)
-    >>> outcome = plan.execute(ConcreteEngine())
+    >>> outcome = plan.execute(MockEngine())
     >>> outcome.results[0].new_pane_id
     '%1'
     >>> outcome.results[1].argv
@@ -305,9 +305,9 @@ class AsyncPane:
     Examples
     --------
     >>> import asyncio
-    >>> from libtmux.experimental.engines import AsyncConcreteEngine
+    >>> from libtmux.experimental.engines import AsyncMockEngine
     >>> async def main():
-    ...     pane = AsyncPane(AsyncConcreteEngine(), "%0")
+    ...     pane = AsyncPane(AsyncMockEngine(), "%0")
     ...     child = await pane.split(horizontal=True)
     ...     return child.pane_id
     >>> asyncio.run(main())
