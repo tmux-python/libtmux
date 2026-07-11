@@ -304,7 +304,11 @@ class Session(
         server = Server.from_env(environ)
         pane_id = _caller_pane_id(environ)
 
-        holding = server.panes.filter(pane_id=pane_id)
+        holding = [
+            pane.session_id
+            for pane in server.panes.filter(pane_id=pane_id)
+            if pane.session_id is not None
+        ]
         if not holding:
             raise exc.TmuxObjectDoesNotExist(
                 obj_key="pane_id",
@@ -313,10 +317,8 @@ class Session(
                 list_extra_args=("-a",),
             )
 
-        session_ids = [pane.session_id for pane in holding]
         spawned_in = _spawn_session_id(environ)
-        session_id = spawned_in if spawned_in in session_ids else session_ids[-1]
-        assert isinstance(session_id, str)
+        session_id = spawned_in if spawned_in in holding else holding[-1]
 
         return cls.from_session_id(server=server, session_id=session_id)
 

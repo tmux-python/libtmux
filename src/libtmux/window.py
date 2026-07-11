@@ -251,10 +251,7 @@ class Window(
 
         .. versionadded:: 0.62
         """
-        pane = Pane.from_env(env)
-        assert isinstance(pane.window_id, str)
-
-        return cls.from_window_id(server=pane.server, window_id=pane.window_id)
+        return Pane.from_env(env).window
 
     @property
     def session(self) -> Session:
