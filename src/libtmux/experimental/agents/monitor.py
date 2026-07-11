@@ -43,6 +43,7 @@ from libtmux.experimental.agents.store import (
 )
 from libtmux.experimental.agents.tree import PANE_FORMAT, diff_panes, panes_of
 from libtmux.experimental.agents.wait import WaiterRegistry
+from libtmux.experimental.engines.base import unescape_control_output
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -183,7 +184,7 @@ class AgentMonitor:
             if len(parts) < 3:
                 return
             _tag, pane_id, rest = parts
-            for reading in self._osc.feed(pane_id, rest.encode()):
+            for reading in self._osc.feed(pane_id, unescape_control_output(rest)):
                 self._observe(reading)
         else:
             opt_reading = OptionSignal.parse(notification_raw)
