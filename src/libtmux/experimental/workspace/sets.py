@@ -14,8 +14,8 @@ import dataclasses
 import typing as t
 from dataclasses import dataclass, field
 
-from libtmux.experimental.ops import HasSession, KillSession, LazyPlan, arun, run
-from libtmux.experimental.ops._types import NameRef, SlotRef, Target
+from libtmux.experimental.ops import LazyPlan
+from libtmux.experimental.ops._types import SlotRef, Target
 from libtmux.experimental.ops.plan import PlanResult, StepReport
 from libtmux.experimental.ops.planner import BoundedPlanner, MarkedPlanner
 from libtmux.experimental.workspace.compiler import Compiled, HostStep, compile_full
@@ -25,7 +25,12 @@ from libtmux.experimental.workspace.expand import (
     Variant,
     expand,
 )
-from libtmux.experimental.workspace.runner import _run_host_async, _run_host_sync
+from libtmux.experimental.workspace.runner import (
+    _preflight_async,
+    _preflight_sync,
+    _run_host_async,
+    _run_host_sync,
+)
 
 if t.TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, Mapping
@@ -265,46 +270,6 @@ def compile_workspaces(
         session_slots,
         end_indices,
     )
-
-
-def _preflight_sync(
-    workspace: Workspace,
-    engine: TmuxEngine,
-    version: str | None,
-) -> bool:
-    """Apply one workspace's ``on_exists`` policy before a batch build."""
-    exists = run(HasSession(target=NameRef(workspace.name)), engine, version=version)
-    if not exists.exists:
-        return False
-    if workspace.on_exists == "replace":
-        run(KillSession(target=NameRef(workspace.name)), engine, version=version)
-        return False
-    if workspace.on_exists == "reuse":
-        return True
-    msg = f"session {workspace.name!r} already exists (on_exists='error')"
-    raise FileExistsError(msg)
-
-
-async def _preflight_async(
-    workspace: Workspace,
-    engine: AsyncTmuxEngine,
-    version: str | None,
-) -> bool:
-    """Async sibling of :func:`_preflight_sync`."""
-    result = await arun(
-        HasSession(target=NameRef(workspace.name)),
-        engine,
-        version=version,
-    )
-    if not result.exists:
-        return False
-    if workspace.on_exists == "replace":
-        await arun(KillSession(target=NameRef(workspace.name)), engine, version=version)
-        return False
-    if workspace.on_exists == "reuse":
-        return True
-    msg = f"session {workspace.name!r} already exists (on_exists='error')"
-    raise FileExistsError(msg)
 
 
 def _split_reused_sync(

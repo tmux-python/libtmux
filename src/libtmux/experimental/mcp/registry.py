@@ -14,6 +14,7 @@ import typing as t
 from libtmux.experimental.mcp.descriptor import ParamDescriptor, ToolDescriptor
 from libtmux.experimental.mcp.schema import schema_for_type
 from libtmux.experimental.ops import registry as ops_registry
+from libtmux.experimental.ops._docstring import first_line
 
 if t.TYPE_CHECKING:
     from libtmux.experimental.ops.registry import OpSpec
@@ -80,14 +81,6 @@ def _docstring_params(doc: str | None) -> dict[str, str]:
     return out
 
 
-def _summary(doc: str | None) -> str:
-    """Return the first non-empty docstring line."""
-    for line in (doc or "").splitlines():
-        if line.strip():
-            return line.strip()
-    return ""
-
-
 class OperationToolRegistry:
     """Build (and cache) a :class:`~.descriptor.ToolDescriptor` per operation.
 
@@ -127,7 +120,7 @@ class OperationToolRegistry:
 
     def _build(self, spec: OpSpec) -> ToolDescriptor:
         """Project one ``OpSpec`` into a tool descriptor."""
-        description = _summary(spec.operation_cls.__doc__)
+        description = first_line(spec.operation_cls.__doc__)
         if spec.min_version:
             # Surface the whole-command version gate so an agent on an older tmux
             # sees the requirement up front instead of a raw VersionUnsupported.
