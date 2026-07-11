@@ -239,6 +239,10 @@ class Session(
         :exc:`libtmux.exc.NotInsideTmux`
             When ``TMUX`` or ``TMUX_PANE`` is unset, i.e. this process is not
             inside a pane.
+        :exc:`libtmux.exc.TmuxObjectDoesNotExist`
+            When the server has no pane named by ``TMUX_PANE``, i.e. the
+            caller's pane is gone. No pane means no session to claim; the stale
+            id in ``TMUX`` is not a fallback.
 
         See Also
         --------
@@ -250,6 +254,10 @@ class Session(
         There is no ``Client.from_env``: tmux exports no client id into a pane's
         environment, and cannot -- a pane is not owned by a client. Zero clients
         may be attached, or several, each with its own view.
+
+        The server comes from :meth:`Server.from_env`, with no keyword arguments.
+        For ``config_file`` or ``colors``, build it and pass it to
+        :meth:`Session.from_session_id`.
 
         Examples
         --------

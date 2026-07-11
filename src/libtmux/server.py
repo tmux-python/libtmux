@@ -218,7 +218,8 @@ class Server(
         env : Mapping[str, str], optional
             Environment to read. Defaults to :data:`os.environ`.
         **kwargs : Any
-            Passed through to :class:`Server`.
+            Passed through to :class:`Server`, e.g. ``config_file`` or
+            ``colors``. ``socket_path`` is taken from ``TMUX``.
 
         Returns
         -------
@@ -229,6 +230,21 @@ class Server(
         ------
         :exc:`libtmux.exc.NotInsideTmux`
             When ``TMUX`` is unset, i.e. this process is not inside a pane.
+
+        See Also
+        --------
+        :meth:`Pane.from_env` : the pane on this server the caller is in.
+        :meth:`Window.from_env` : the window the caller is in.
+        :meth:`Session.from_env` : the session the caller is in.
+
+        Notes
+        -----
+        :meth:`Session.from_env`, :meth:`Window.from_env` and
+        :meth:`Pane.from_env` resolve their server by calling this with the
+        environment alone, so there is no way to inject server keyword
+        arguments through them. When they are needed, build the server here and
+        hand it to :meth:`Pane.from_pane_id`, :meth:`Window.from_window_id` or
+        :meth:`Session.from_session_id`.
 
         Examples
         --------

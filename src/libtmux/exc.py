@@ -88,8 +88,12 @@ class NotInsideTmux(LibTmuxException):
 
     tmux exports ``TMUX`` and ``TMUX_PANE`` into the environment of every
     process it spawns inside a pane. When either is absent there is no pane to
-    resolve, so :meth:`Server.from_env` and :meth:`Pane.from_env` raise rather
-    than guess a server or pane the caller does not belong to.
+    resolve, so the ``from_env`` constructors --
+    :meth:`Server.from_env() <libtmux.Server.from_env>`,
+    :meth:`Session.from_env() <libtmux.Session.from_env>`,
+    :meth:`Window.from_env() <libtmux.Window.from_env>` and
+    :meth:`Pane.from_env() <libtmux.Pane.from_env>` -- raise rather than guess
+    a server or pane the caller does not belong to.
 
     .. versionadded:: 0.62
     """
@@ -216,7 +220,7 @@ class WindowAdjustmentDirectionRequiresAdjustment(
     WindowError,
     AdjustmentDirectionRequiresAdjustment,
 ):
-    """ValueError for :meth:`libtmux.Window.resize_window`."""
+    """ValueError for :meth:`libtmux.Window.resize`."""
 
 
 class PaneAdjustmentDirectionRequiresAdjustment(

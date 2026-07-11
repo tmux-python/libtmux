@@ -202,11 +202,21 @@ class Window(
         :exc:`libtmux.exc.NotInsideTmux`
             When ``TMUX`` or ``TMUX_PANE`` is unset, i.e. this process is not
             inside a pane.
+        :exc:`libtmux.exc.TmuxObjectDoesNotExist`
+            When the server has no pane named by ``TMUX_PANE``, i.e. the
+            caller's pane is gone. The window is resolved through that pane, so
+            a pane that is gone takes its window with it.
 
         See Also
         --------
         :meth:`Pane.from_env` : the pane this window is resolved from.
         :meth:`Session.from_env` : the session containing this window.
+
+        Notes
+        -----
+        The server comes from :meth:`Server.from_env`, with no keyword arguments.
+        For ``config_file`` or ``colors``, build it and pass it to
+        :meth:`Window.from_window_id`.
 
         Examples
         --------
