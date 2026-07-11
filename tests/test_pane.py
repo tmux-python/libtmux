@@ -1925,3 +1925,114 @@ def test_pane_from_env_without_pane_id(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(exc.NotInsideTmux):
         Pane.from_env()
+
+
+def _tmux_env(server: Server, session: Session, pane: Pane) -> dict[str, str]:
+    """Build the environment tmux exports into ``pane``.
+
+    ``$TMUX`` is ``socket_path,server_pid,session_id``. :meth:`Server.from_env`
+    reads only the socket path, so the trailing fields are inert here.
+    """
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(session.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    return {
+        "TMUX": f"{socket_path},1,{session.session_id}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+
+def test_pane_from_env_window_is_containing_window(
+    server: Server,
+    session: Session,
+) -> None:
+    """:attr:`Pane.window` off ``from_env()`` is the *containing* window.
+
+    Not the session's active window: the pane under test sits in a background
+    window, so an implementation that reached for ``session.active_window``
+    would resolve the wrong object.
+    """
+    original = session.active_window
+    background = session.new_window(window_name="background", attach=False)
+    original.select()  # keep the original window active
+
+    pane = background.active_pane
+    assert pane is not None
+
+    active_window = session.active_window
+    assert active_window.window_id != background.window_id, (
+        "precondition: the pane's window must not be the session's active window"
+    )
+
+    caller = Pane.from_env(_tmux_env(server, session, pane))
+
+    assert caller.window.window_id == background.window_id
+    assert caller.window.window_id != active_window.window_id
+    assert caller.session.session_id == session.session_id
+
+
+def test_pane_from_env_traversal_survives_move_window(
+    server: Server,
+    session: Session,
+) -> None:
+    """Traversal reads live containment, even when ``$TMUX`` has gone stale.
+
+    tmux freezes ``$TMUX`` into a pane's environment when it spawns the pane and
+    never updates it, so the session id inside ``$TMUX`` is stale the moment the
+    pane's window moves to another session. Walking up from the live pane is
+    immune to that: the pane, not the environment, is the source of truth.
+    """
+    window = session.new_window(window_name="from-env-mover", attach=False)
+    pane = window.active_pane
+    assert pane is not None
+
+    env = _tmux_env(server, session, pane)
+
+    destination = server.new_session(session_name="from-env-destination")
+    window.move_window(session=str(destination.session_id), no_select=True)
+
+    # The environment tmux handed the pane still names the *origin* session.
+    assert env["TMUX"].endswith(f",{session.session_id}")
+    assert session.session_id != destination.session_id
+
+    caller = Pane.from_env(env)
+
+    # Ground truth: the pane now lives under ``destination``.
+    assert caller.session.session_id == destination.session_id
+    assert caller.session.session_name == "from-env-destination"
+
+    # ...in the window it always lived in, which is *not* ``destination``'s
+    # active window (``no_select=True`` left the original one selected).
+    assert caller.window.window_id == window.window_id
+    assert destination.active_window.window_id != window.window_id
+
+
+def test_pane_session_resolves_through_live_window(
+    server: Server,
+    session: Session,
+) -> None:
+    """:attr:`Pane.session` resolves through the window, not a cached id.
+
+    A :class:`Pane` carries the ``session_id`` it held when it was fetched. Move
+    its window and that field goes stale, while ``pane.session`` — which re-reads
+    the window from tmux — still lands on the containing session. Resolving
+    :attr:`Pane.session` from ``self.session_id`` would save a subprocess and
+    return the wrong session here.
+    """
+    window = session.new_window(window_name="stale-holder", attach=False)
+    pane = window.active_pane
+    assert pane is not None
+    assert pane.session_id == session.session_id
+
+    destination = server.new_session(session_name="stale-destination")
+    window.move_window(session=str(destination.session_id), no_select=True)
+
+    # The already-fetched Pane still carries the origin session's id.
+    assert pane.session_id == session.session_id
+
+    assert pane.session.session_id == destination.session_id
+    assert pane.window.session_id == destination.session_id

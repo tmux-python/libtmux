@@ -258,7 +258,15 @@ class Pane(
 
     @property
     def session(self) -> Session:
-        """Parent session of pane."""
+        """Parent session of pane.
+
+        Notes
+        -----
+        Resolved through :attr:`window` — two tmux round-trips — rather than
+        from this pane's ``session_id``. A pane's ``session_id`` goes stale the
+        moment its window moves to another session, so the window is looked up
+        live and asked which session holds it *now*.
+        """
         return self.window.session
 
     """
