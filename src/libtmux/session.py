@@ -76,9 +76,12 @@ def _spawn_session_id(environ: t.Mapping[str, str]) -> str | None:
     >>> _spawn_session_id({"TMUX": "/tmp/tmux-1000/default,123,47"})
     '$47'
 
-    A pane spawned without a session, and a process outside tmux entirely:
+    A pane spawned without a session, a truncated ``TMUX``, and a process
+    outside tmux entirely:
 
     >>> _spawn_session_id({"TMUX": "/tmp/tmux-1000/default,123,-1"}) is None
+    True
+    >>> _spawn_session_id({"TMUX": "/tmp/tmux-1000/default,123"}) is None
     True
     >>> _spawn_session_id({}) is None
     True

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import shutil
+import subprocess
 import typing as t
 from contextlib import nullcontext as does_not_raise
 
@@ -985,3 +986,41 @@ def test_session_from_env_unusable_spawn_id_defers_to_server(
     }
 
     assert Session.from_env(env).session_id == session.session_id
+
+
+def test_session_from_env_missing_pane(server: Server, session: Session) -> None:
+    """A pane that is not on the server is reported as missing.
+
+    The server is alive, so the liveness check passes through and the caller
+    learns the truth: there is no such pane, and therefore no session to claim.
+    """
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(session.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{session.session_id}",
+        "TMUX_PANE": "%99999",
+    }
+
+    with pytest.raises(exc.TmuxObjectDoesNotExist):
+        Session.from_env(env)
+
+
+def test_session_from_env_dead_server(tmp_path: pathlib.Path) -> None:
+    """A dead server is reported as dead, not as a missing pane.
+
+    ``Server.panes`` is lenient and hands back an empty list whether the pane
+    is gone or the server is, so the empty result is not enough to answer with.
+    Asking the server whether it is alive is what keeps the two apart.
+    """
+    env = {
+        "TMUX": f"{tmp_path / 'no_server'},1,0",
+        "TMUX_PANE": "%1",
+    }
+
+    with pytest.raises(subprocess.CalledProcessError):
+        Session.from_env(env)

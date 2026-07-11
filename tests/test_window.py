@@ -1445,3 +1445,20 @@ def test_window_from_env_outside_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(exc.NotInsideTmux):
         Window.from_env()
+
+
+def test_window_from_env_pane_without_window_id(
+    server: Server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pane carrying no ``window_id`` raises rather than querying for None.
+
+    Surfaces a clear error under ``python -O``, where an ``assert`` would be
+    stripped and the None would reach tmux as a lookup for nothing.
+    """
+    orphan = Pane(server=server, pane_id="%1")
+    assert orphan.window_id is None
+    monkeypatch.setattr(Pane, "from_env", classmethod(lambda cls, env=None: orphan))
+
+    with pytest.raises(ValueError, match="window_id"):
+        Window.from_env({"TMUX": "/nowhere,1,0", "TMUX_PANE": "%1"})
