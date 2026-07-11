@@ -13,22 +13,12 @@ import dataclasses
 import typing as t
 from dataclasses import dataclass
 
+from libtmux.experimental.ops._docstring import first_line
 from libtmux.experimental.ops.registry import registry as default_registry
 
 if t.TYPE_CHECKING:
     from libtmux.experimental.ops._types import Safety, Scope
     from libtmux.experimental.ops.registry import OperationRegistry
-
-
-def _summary(doc: str | None) -> str:
-    """Return the first non-empty line of a docstring."""
-    if not doc:
-        return ""
-    for line in doc.strip().splitlines():
-        stripped = line.strip()
-        if stripped:
-            return stripped
-    return ""
 
 
 @dataclass(frozen=True)
@@ -96,7 +86,7 @@ def catalog(registry: OperationRegistry | None = None) -> list[CatalogEntry]:
             min_version=spec.min_version,
             flag_version_gates=dict(spec.flag_version_map),
             effects=dataclasses.asdict(spec.effects),
-            summary=_summary(spec.operation_cls.__doc__),
+            summary=first_line(spec.operation_cls.__doc__),
         )
         for spec in reg.select()
     ]

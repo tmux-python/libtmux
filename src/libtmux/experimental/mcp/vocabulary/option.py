@@ -3,16 +3,11 @@
 from __future__ import annotations
 
 from libtmux.experimental.engines.base import AsyncTmuxEngine
-from libtmux.experimental.mcp.target_resolver import resolve_target
 from libtmux.experimental.mcp.vocabulary._bridge import synced
+from libtmux.experimental.mcp.vocabulary._resolve import opt_target
 from libtmux.experimental.mcp.vocabulary._results import OptionMap
 from libtmux.experimental.ops import SetOption, ShowOptions, arun
 from libtmux.experimental.ops._types import Target
-
-
-def _opt(target: str | Target | None) -> Target | None:
-    """Resolve an optional target, preserving ``None``."""
-    return None if target is None else resolve_target(target)
 
 
 async def ashow_options(
@@ -27,7 +22,7 @@ async def ashow_options(
     """Show tmux options as ``name -> value`` pairs (``show-options``)."""
     result = await arun(
         ShowOptions(
-            target=_opt(target),
+            target=opt_target(target),
             global_=global_,
             server=server,
             window=window,
@@ -55,7 +50,7 @@ async def aset_option(
     (
         await arun(
             SetOption(
-                target=_opt(target),
+                target=opt_target(target),
                 option=option,
                 value=value,
                 global_=global_,
