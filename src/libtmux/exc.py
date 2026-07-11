@@ -83,6 +83,57 @@ class TmuxCommandNotFound(LibTmuxException):
     """Application binary for tmux not found."""
 
 
+class NotInsideTmux(LibTmuxException):
+    """Raised when the process is not running inside a tmux pane.
+
+    tmux exports ``$TMUX`` and ``$TMUX_PANE`` into the environment of every
+    pane it spawns. The ``from_env()`` family raises this when one of them is
+    missing or malformed -- i.e. the caller is not (or is no longer)
+    recognizable as a tmux pane's child process.
+
+    Parameters
+    ----------
+    variable : str, optional
+        Name of the offending environment variable, e.g. ``"TMUX"``.
+    reason : str
+        Why it is unusable. Defaults to ``"unset or empty"``.
+    *args : object
+        Forwarded to :class:`LibTmuxException`.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> str(exc.NotInsideTmux("TMUX"))
+    'Not inside a tmux pane: $TMUX is unset or empty'
+
+    >>> str(exc.NotInsideTmux("TMUX_PANE", reason="not a pane id"))
+    'Not inside a tmux pane: $TMUX_PANE is not a pane id'
+
+    >>> str(exc.NotInsideTmux())
+    'Not inside a tmux pane'
+
+    It is part of the :exc:`LibTmuxException` hierarchy:
+
+    >>> issubclass(exc.NotInsideTmux, exc.LibTmuxException)
+    True
+
+    .. versionadded:: 0.62
+    """
+
+    def __init__(
+        self,
+        variable: str | None = None,
+        *args: object,
+        reason: str = "unset or empty",
+    ) -> None:
+        if variable is None:
+            return super().__init__("Not inside a tmux pane", *args)
+        return super().__init__(
+            f"Not inside a tmux pane: ${variable} is {reason}",
+            *args,
+        )
+
+
 class TmuxObjectDoesNotExist(ObjectDoesNotExist):
     """The query returned multiple objects when only one was expected."""
 
