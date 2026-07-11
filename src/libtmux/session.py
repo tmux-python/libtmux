@@ -75,7 +75,9 @@ def _spawn_session_id(environ: t.Mapping[str, str]) -> str | None:
     if not tmux:
         return None
 
-    fields = tmux.split(",")
+    # Split from the right: the pid and session id are integers, so a comma in
+    # ``TMUX`` can only ever belong to the socket path.
+    fields = tmux.rsplit(",", 2)
     if len(fields) < 3:
         return None
 

@@ -268,7 +268,9 @@ class Server(
             msg = "Not inside a tmux pane: TMUX is unset"
             raise exc.NotInsideTmux(msg)
 
-        socket_path = tmux.split(",", 1)[0]
+        # Split from the right: the pid and session id are integers, so a comma
+        # in ``TMUX`` can only ever belong to the socket path.
+        socket_path = tmux.rsplit(",", 2)[0]
         return cls(socket_path=socket_path, **kwargs)
 
     def __enter__(self) -> Self:
