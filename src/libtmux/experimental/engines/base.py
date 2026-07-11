@@ -12,7 +12,7 @@ from __future__ import annotations
 import enum
 import shlex
 import typing as t
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 if t.TYPE_CHECKING:
     import pathlib
@@ -123,7 +123,6 @@ class EngineSpec:
 
     kind: EngineKind
     protocol_version: int | None = None
-    extra: t.Mapping[str, t.Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Normalize and validate the spec."""
