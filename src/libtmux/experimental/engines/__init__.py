@@ -26,6 +26,7 @@ from libtmux.experimental.engines.base import (
     SupportsTmuxVersion,
     TmuxEngine,
 )
+from libtmux.experimental.engines.connection import ServerConnection
 from libtmux.experimental.engines.control_mode import (
     ControlModeEngine,
     ControlModeError,
@@ -55,6 +56,7 @@ __all__ = (
     "EngineSpec",
     "ImsgEngine",
     "MockEngine",
+    "ServerConnection",
     "SubprocessEngine",
     "SupportsTmuxVersion",
     "TmuxEngine",
