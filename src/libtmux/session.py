@@ -261,6 +261,8 @@ class Session(
             When the server named by ``TMUX`` is no longer running. Its pane
             listing is empty either way, so it is asked whether it is alive
             rather than reporting the caller's pane as gone.
+        :exc:`libtmux.exc.TmuxCommandNotFound`
+            When that liveness check cannot run the tmux binary at all.
 
         See Also
         --------
