@@ -5,18 +5,15 @@ from __future__ import annotations
 import typing as t
 from dataclasses import dataclass
 
-from libtmux.experimental.query import ATTENTION
+from libtmux.experimental.agents.source import ATTENTION, AgentSource, agent_rows
 
 if t.TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable
 
-    from libtmux.experimental.agents.monitor import AgentMonitor
     from libtmux.experimental.agents.state import Agent, AgentState
     from libtmux.experimental.models import ServerSnapshot
     from libtmux.experimental.models.snapshots import SessionSnapshot
     from libtmux.experimental.workspace.ir import Workspace
-
-AgentSource = t.Union["AgentMonitor", "Sequence[Agent]"]
 
 
 @dataclass(frozen=True)
@@ -30,14 +27,6 @@ class WorkspaceStatus:
     panes: int = 0
     agents: tuple[Agent, ...] = ()
     agent_state: AgentState | None = None
-
-
-def _agent_rows(source: AgentSource) -> tuple[Agent, ...]:
-    """Resolve an agent source without making a tmux call."""
-    store_agents = getattr(source, "agents", None)
-    if store_agents is not None:
-        return tuple(store_agents)
-    return tuple(t.cast("Sequence[Agent]", source))
 
 
 def _session_pane_ids(session: SessionSnapshot) -> set[str]:
@@ -76,7 +65,7 @@ def workspace_status(
     True
     """
     by_name = {session.name: session for session in snapshot.sessions}
-    agents = _agent_rows(agents_source)
+    agents = agent_rows(agents_source)
     statuses: list[WorkspaceStatus] = []
     for workspace in workspaces:
         session = by_name.get(workspace.name)

@@ -8,15 +8,13 @@ persistence is an optional seed in v1 (agents re-announce on reconnect).
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import json
-import os
 import pathlib
-import tempfile
 import typing as t
 from dataclasses import dataclass, field
 
+from libtmux.experimental.agents._atomic import atomic_write_text
 from libtmux.experimental.agents.merge import Stamp, latest
 from libtmux.experimental.agents.state import Agent, AgentState
 
@@ -330,16 +328,4 @@ class JsonFile:
         >>> sink.load()
         {'agents': {}, 'stamps': {}}
         """
-        directory = self._path.parent
-        directory.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(directory), suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(data, handle)
-                handle.flush()
-                os.fsync(handle.fileno())
-            pathlib.Path(tmp).replace(self._path)
-        except BaseException:
-            with contextlib.suppress(OSError):
-                pathlib.Path(tmp).unlink()
-            raise
+        atomic_write_text(self._path, json.dumps(data))
