@@ -87,13 +87,12 @@ class NotInsideTmux(LibTmuxException):
     """Raised when this process is not running inside a :term:`tmux(1)` pane.
 
     tmux exports ``TMUX`` and ``TMUX_PANE`` into the environment of every
-    process it spawns inside a pane. When either is absent there is no pane to
-    resolve, so the ``from_env`` constructors --
-    :meth:`Server.from_env() <libtmux.Server.from_env>`,
-    :meth:`Session.from_env() <libtmux.Session.from_env>`,
+    process it spawns inside a pane. The ``from_env`` constructors read them
+    back, and raise rather than guess a server or pane the caller does not
+    belong to. :meth:`Server.from_env() <libtmux.Server.from_env>` needs only
+    ``TMUX``; :meth:`Session.from_env() <libtmux.Session.from_env>`,
     :meth:`Window.from_env() <libtmux.Window.from_env>` and
-    :meth:`Pane.from_env() <libtmux.Pane.from_env>` -- raise rather than guess
-    a server or pane the caller does not belong to.
+    :meth:`Pane.from_env() <libtmux.Pane.from_env>` need ``TMUX_PANE`` as well.
 
     .. versionadded:: 0.62
     """

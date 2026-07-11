@@ -277,9 +277,8 @@ class Pane(
         Notes
         -----
         Resolved through :attr:`window` — two tmux round-trips — rather than
-        from this pane's ``session_id``. A pane's ``session_id`` goes stale the
-        moment its window moves to another session, so the window is looked up
-        live and asked which session holds it *now*.
+        from this pane's ``session_id``, which goes stale the moment its window
+        moves to another session.
         """
         return self.window.session
 
