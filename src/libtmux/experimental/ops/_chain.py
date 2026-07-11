@@ -11,6 +11,12 @@ per-command boundary. :func:`attribute` recovers a typed result per operation:
 on success every member is ``complete``; on failure the first member is
 ``failed`` and the rest are ``skipped`` (the status the spine reserves for
 exactly this case).
+
+Because that merged stdout has no per-command boundary, folding an op that
+*captures* output (or creates an object whose id it prints) would silently
+mis-attribute those lines. :func:`ensure_chainable` is the fail-closed guard for
+that, and every rendering path that emits a ``;`` fold runs it over the ops it is
+about to fold -- so the mistake raises here instead of corrupting a result.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import PaneId, Special
 from libtmux.experimental.ops.exc import OperationError
+from libtmux.experimental.ops.results import status_for
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -31,7 +38,18 @@ if t.TYPE_CHECKING:
 
 
 def ensure_chainable(op: Operation[t.Any]) -> None:
-    """Raise if *op* cannot be folded into a ``;`` chain (fail closed)."""
+    """Raise if *op* cannot be folded into a ``;`` chain (fail closed).
+
+    Examples
+    --------
+    >>> from libtmux.experimental.ops import CapturePane
+    >>> from libtmux.experimental.ops._types import PaneId
+    >>> ensure_chainable(CapturePane(target=PaneId("%1")))
+    Traceback (most recent call last):
+    ...
+    libtmux.experimental.ops.exc.OperationError: operation 'capture_pane' is not
+    chainable; it produces output or creates an object and must dispatch on its own
+    """
     if not op.chainable:
         msg = (
             f"operation {op.kind!r} is not chainable; it produces output or "
@@ -62,9 +80,24 @@ def render_chain(
     ...     RenameWindow(target=WindowId("@1"), name="edit"),
     ... ])
     ('send-keys', '-t', '%1', 'vim', 'Enter', ';', 'rename-window', '-t', '@1', 'edit')
+
+    Every op is checked against :func:`ensure_chainable` first: a capturing or
+    creating op has nowhere to put its stdout in a merged chain result, so it
+    fails closed instead of folding.
+
+    >>> from libtmux.experimental.ops import CapturePane, SendKeys
+    >>> render_chain([
+    ...     SendKeys(target=PaneId("%1"), keys="vim"),
+    ...     CapturePane(target=PaneId("%1")),
+    ... ])
+    Traceback (most recent call last):
+    ...
+    libtmux.experimental.ops.exc.OperationError: operation 'capture_pane' is not
+    chainable; it produces output or creates an object and must dispatch on its own
     """
     out: list[str] = []
     for index, op in enumerate(ops):
+        ensure_chainable(op)
         if index:
             out.append(";")
         out.extend(_escape_arg(token) for token in op.render(version=version))
@@ -77,7 +110,7 @@ def attribute(
     version: str | None = None,
 ) -> list[Result]:
     """Split one merged ``;``-chain result into a typed result per operation."""
-    if merged.returncode == 0 and not merged.stderr:
+    if status_for(merged.returncode, merged.stderr) == "complete":
         return [op.result_with_status("complete", version=version) for op in ops]
     first, *rest = ops
     results: list[Result] = [
@@ -103,11 +136,20 @@ def render_marked(
     Emits ``<create -P -F '#{pane_id}'> ; select-pane -m ; <decorate -t {marked}>
     ... ; select-pane -M``: the new pane is marked, every decorate addresses it
     through tmux's ``{marked}`` register, and the mark is cleared at the end.
+
+    The *create* is the one non-chainable op the fold tolerates -- its captured id
+    is the whole point, and :func:`attribute_marked` reads it back from
+    ``stdout[0]``. That is exactly why every *decorate* must be chainable: a
+    capturing decorate would interleave its lines into the same merged stdout and
+    the captured id would be read from the wrong line. :func:`ensure_chainable`
+    fails that closed.
     """
     parts: list[tuple[str, ...]] = [
         create.render(version=version),
         ("select-pane", "-m"),
     ]
+    for op in decorates:
+        ensure_chainable(op)
     parts.extend(
         dataclasses.replace(op, target=Special("{marked}")).render(version=version)
         for op in decorates
@@ -133,7 +175,7 @@ def attribute_marked(
     # target is unresolved and cannot render.
     marked = [dataclasses.replace(op, target=Special("{marked}")) for op in decorates]
     if new_id is None:
-        if merged.returncode == 0 and not merged.stderr:
+        if status_for(merged.returncode, merged.stderr) == "complete":
             # A non-capturing creator (capture=False) succeeded but emitted no
             # id; every command in the fold ran.
             create_result = create.build_result(returncode=0, version=version)
