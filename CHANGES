@@ -45,6 +45,31 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Find where you are running (#705)
+
+A program started inside tmux can now ask where it is.
+{meth}`Server.from_env() <libtmux.Server.from_env>`, {meth}`Session.from_env()
+<libtmux.Session.from_env>`, {meth}`Window.from_env() <libtmux.Window.from_env>`
+and {meth}`Pane.from_env() <libtmux.Pane.from_env>` each return the object the
+current process is running inside, so a script, a hook, or an agent can pick up
+the hierarchy from wherever it happens to be. Outside tmux they raise
+{exc}`~libtmux.exc.NotInsideTmux` rather than guess, and each accepts an
+environment mapping in place of the process environment, which keeps them
+straightforward to test. See {ref}`self-location`.
+
+They report what *contains* the caller, not what is focused — a pane running in
+the background gets its own window back, not the one someone happens to be
+looking at. And the server gives the answer, not the environment: the session id
+tmux writes into `TMUX` goes stale the moment a window is moved, so resolution
+anchors on the pane, which tmux keeps answering for live.
+
+There is no `Client.from_env()`. A tmux client is an attached terminal, and a
+pane is not owned by one — none may be attached, or several may be, each with
+its own view. tmux exports no client id into a pane, so there is nothing to read
+back.
+
 ## libtmux 0.61.0 (2026-07-04)
 
 libtmux 0.61.0 hardens support for the tmux 3.7 patch line. It fixes
