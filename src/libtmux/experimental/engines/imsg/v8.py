@@ -165,11 +165,6 @@ class ProtocolV8Codec:
         return int(MessageType.MSG_READY)
 
     @property
-    def msg_exit(self) -> int:
-        """Return the numeric ``MSG_EXIT`` message type."""
-        return int(MessageType.MSG_EXIT)
-
-    @property
     def msg_exited(self) -> int:
         """Return the numeric ``MSG_EXITED`` message type."""
         return int(MessageType.MSG_EXITED)
@@ -183,31 +178,6 @@ class ProtocolV8Codec:
     def msg_flags(self) -> int:
         """Return the numeric ``MSG_FLAGS`` message type."""
         return int(MessageType.MSG_FLAGS)
-
-    @property
-    def msg_write_open(self) -> int:
-        """Return the numeric ``MSG_WRITE_OPEN`` message type."""
-        return int(MessageType.MSG_WRITE_OPEN)
-
-    @property
-    def msg_write(self) -> int:
-        """Return the numeric ``MSG_WRITE`` message type."""
-        return int(MessageType.MSG_WRITE)
-
-    @property
-    def msg_write_close(self) -> int:
-        """Return the numeric ``MSG_WRITE_CLOSE`` message type."""
-        return int(MessageType.MSG_WRITE_CLOSE)
-
-    @property
-    def msg_read_open(self) -> int:
-        """Return the numeric ``MSG_READ_OPEN`` message type."""
-        return int(MessageType.MSG_READ_OPEN)
-
-    @property
-    def msg_exiting(self) -> int:
-        """Return the numeric ``MSG_EXITING`` message type."""
-        return int(MessageType.MSG_EXITING)
 
     def frame_message(
         self,
@@ -257,18 +227,6 @@ class ProtocolV8Codec:
             frame.header.pid,
         )
         return header + frame.payload
-
-    def pack_message(
-        self,
-        msg_type: int,
-        payload: bytes,
-        *,
-        peer_id: int,
-    ) -> bytes:
-        """Return a framed tmux imsg message without an attached FD."""
-        return self.pack_frame(
-            self.frame_message(msg_type, payload, peer_id=peer_id),
-        )
 
     def unpack_header(self, data: bytes) -> ImsgHeader:
         """Decode and validate a tmux imsg header."""

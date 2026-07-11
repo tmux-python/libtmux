@@ -2,8 +2,8 @@
 
 One descriptor per registered operation ``kind``, derived by introspecting the
 operation dataclass (fields + type hints + NumPy-docstring params) and its
-``OpSpec`` metadata (scope/safety/effects/version gates). Zero MCP-framework
-coupling: the result is plain data + a builder.
+``OpSpec`` metadata (scope, safety, the whole-command version gate). Zero
+MCP-framework coupling: the result is plain data + a builder.
 """
 
 from __future__ import annotations
@@ -136,8 +136,6 @@ class OperationToolRegistry:
             result_schema=schema_for_type(spec.result_cls),
             annotations=_ANNOTATIONS.get(spec.safety, {}),
             tags=frozenset({spec.safety}),
-            version_gates=dict(spec.flag_version_map),
-            effects=dataclasses.asdict(spec.effects),
             operation_cls=spec.operation_cls,
             min_version=spec.min_version,
         )
@@ -160,6 +158,5 @@ class OperationToolRegistry:
                     and field.default_factory is dataclasses.MISSING
                 ),
                 description=docs.get(field.name),
-                version_gate=spec.flag_version_map.get(field.name),
             )
         return params

@@ -13,7 +13,11 @@ import socket
 import typing as t
 
 from libtmux import exc
-from libtmux.experimental.engines.base import CommandRequest, CommandResult
+from libtmux.experimental.engines.base import (
+    CommandRequest,
+    CommandResult,
+    EngineKind,
+)
 from libtmux.experimental.engines.connection import ServerConnection
 from libtmux.experimental.engines.imsg.exc import (
     ImsgProtocolError,
@@ -46,9 +50,6 @@ class ImsgProtocolCodec(t.Protocol):
 
     def pack_frame(self, frame: ImsgFrame) -> bytes:
         """Return wire bytes for a typed imsg frame."""
-
-    def pack_message(self, msg_type: int, payload: bytes, *, peer_id: int) -> bytes:
-        """Return a framed tmux imsg message without an attached FD."""
 
     def unpack_header(self, data: bytes) -> ImsgHeader:
         """Decode a tmux imsg header."""
@@ -126,10 +127,6 @@ class ImsgProtocolCodec(t.Protocol):
         """Return the numeric ``MSG_READY`` message type."""
 
     @property
-    def msg_exit(self) -> int:
-        """Return the numeric ``MSG_EXIT`` message type."""
-
-    @property
     def msg_exited(self) -> int:
         """Return the numeric ``MSG_EXITED`` message type."""
 
@@ -140,26 +137,6 @@ class ImsgProtocolCodec(t.Protocol):
     @property
     def msg_flags(self) -> int:
         """Return the numeric ``MSG_FLAGS`` message type."""
-
-    @property
-    def msg_write_open(self) -> int:
-        """Return the numeric ``MSG_WRITE_OPEN`` message type."""
-
-    @property
-    def msg_write(self) -> int:
-        """Return the numeric ``MSG_WRITE`` message type."""
-
-    @property
-    def msg_write_close(self) -> int:
-        """Return the numeric ``MSG_WRITE_CLOSE`` message type."""
-
-    @property
-    def msg_read_open(self) -> int:
-        """Return the numeric ``MSG_READ_OPEN`` message type."""
-
-    @property
-    def msg_exiting(self) -> int:
-        """Return the numeric ``MSG_EXITING`` message type."""
 
     def exiting_message(self, *, peer_id: int) -> ImsgFrame:
         """Build a ``MSG_EXITING`` notification."""
@@ -899,4 +876,4 @@ def _server_available(socket_path: str) -> bool:
     return True
 
 
-register_engine("imsg", ImsgEngine)
+register_engine(EngineKind.IMSG.value, ImsgEngine)
