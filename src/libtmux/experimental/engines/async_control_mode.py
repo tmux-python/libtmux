@@ -35,13 +35,12 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
-import shutil
 import typing as t
 from dataclasses import dataclass, field
 
 from libtmux import exc
-from libtmux.common import get_version
 from libtmux.experimental.engines.base import render_control_line
+from libtmux.experimental.engines.connection import ServerConnection
 from libtmux.experimental.engines.control_mode import (
     ControlModeError,
     ControlModeParser,
@@ -160,7 +159,7 @@ class AsyncControlModeEngine:
     Parameters
     ----------
     tmux_bin : str or None
-        The tmux binary; resolved via :func:`shutil.which` when ``None``.
+        The tmux binary; resolved from ``$PATH`` when ``None``.
     server_args : Sequence[str]
         Connection flags inserted before ``-C``.
     timeout : float
@@ -182,8 +181,7 @@ class AsyncControlModeEngine:
         timeout: float = _DEFAULT_TIMEOUT,
         event_queue_size: int = 4096,
     ) -> None:
-        self.tmux_bin = tmux_bin
-        self.server_args = tuple(server_args)
+        self._conn = ServerConnection.of(tmux_bin, server_args)
         self.timeout = timeout
         self._parser = ControlModeParser()
         self._pending: collections.deque[_PendingCommand] = collections.deque()
@@ -206,18 +204,30 @@ class AsyncControlModeEngine:
         self._connected = asyncio.Event()
         self._spawn_error: BaseException | None = None
 
+    @property
+    def connection(self) -> ServerConnection:
+        """The tmux binary + connection flags this engine dispatches through."""
+        return self._conn
+
+    @property
+    def tmux_bin(self) -> str | None:
+        """The explicitly configured tmux binary, if any."""
+        return self._conn.tmux_bin
+
+    @property
+    def server_args(self) -> tuple[str, ...]:
+        """Connection flags placed before ``-C``."""
+        return self._conn.args
+
     def tmux_version(self) -> str | None:
-        """Report the connected server's tmux version (``tmux -V``).
+        """Report the connected server's tmux version (``tmux -V``), memoized.
 
         Implements
         :class:`~libtmux.experimental.engines.base.SupportsTmuxVersion` so
         version-gated operations render correctly over control mode; in-memory
         engines omit it and resolution assumes latest.
         """
-        try:
-            return str(get_version(self.tmux_bin))
-        except exc.LibTmuxException:
-            return None
+        return self._conn.tmux_version()
 
     def add_subscription(self, spec: str) -> None:
         """Record a desired ``refresh-client -B`` subscription (idempotent).
@@ -319,10 +329,7 @@ class AsyncControlModeEngine:
         if old is not None and old.returncode is None:
             with contextlib.suppress(ProcessLookupError):
                 old.terminate()
-        tmux_bin = self.tmux_bin or shutil.which("tmux")
-        if tmux_bin is None:
-            raise exc.TmuxCommandNotFound
-        cmd = [tmux_bin, *self.server_args, "-C"]
+        cmd = self._conn.argv("-C")
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -794,20 +801,9 @@ class AsyncControlModeEngine:
     @classmethod
     def for_server(cls, server: t.Any, **kwargs: t.Any) -> AsyncControlModeEngine:
         """Build an async control-mode engine bound to a live server's socket."""
-        server_args: list[str] = []
-        if getattr(server, "socket_name", None):
-            server_args.append(f"-L{server.socket_name}")
-        if getattr(server, "socket_path", None):
-            server_args.append(f"-S{server.socket_path}")
-        if getattr(server, "config_file", None):
-            server_args.append(f"-f{server.config_file}")
-        colors = getattr(server, "colors", None)
-        if colors == 256:
-            server_args.append("-2")
-        elif colors == 88:
-            server_args.append("-8")
+        conn = ServerConnection.from_server(server)
         return cls(
-            tmux_bin=getattr(server, "tmux_bin", None),
-            server_args=server_args,
+            tmux_bin=conn.tmux_bin,
+            server_args=conn.args,
             **kwargs,
         )
