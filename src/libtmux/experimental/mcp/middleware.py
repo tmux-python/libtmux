@@ -485,26 +485,6 @@ def _summarize_send_keys_operation_args(args: dict[str, t.Any]) -> dict[str, t.A
     return summary
 
 
-def _summarize_tool_batch_operation_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
-    """Summarize one generic tool-batch operation for audit logging."""
-    summary: dict[str, t.Any] = {}
-    for key, value in args.items():
-        if key == "tool" and isinstance(value, str):
-            summary[key] = value
-        elif key == "arguments" and isinstance(value, dict):
-            summary[key] = _summarize_args(value)
-        else:
-            summary[key] = _redacted_value_shape(value)
-    return summary
-
-
-def _summarize_nested_operation_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
-    """Summarize a known nested operation shape."""
-    if "tool" in args or "arguments" in args:
-        return _summarize_tool_batch_operation_args(args)
-    return _summarize_send_keys_operation_args(args)
-
-
 def _summarize_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
     """Summarize tool arguments for audit logging.
 
@@ -540,7 +520,7 @@ def _summarize_args(args: dict[str, t.Any]) -> dict[str, t.Any]:
         elif key in _NESTED_ARG_LIST_NAMES:
             if isinstance(value, list):
                 summary[key] = [
-                    _summarize_nested_operation_args(item)
+                    _summarize_send_keys_operation_args(item)
                     if isinstance(item, dict)
                     else _redacted_value_shape(item)
                     for item in value
