@@ -159,78 +159,15 @@ True
 ## Locating yourself
 
 Everything above starts from a handle you already hold. Sometimes you hold
-nothing: your code is *running inside* a pane — a script you launched in a
-split, a tmux hook, an agent — and the first thing it needs to know is where it
-is. You don't have to search the server for yourself. tmux already told you: it
-exports `TMUX` and `TMUX_PANE` into every pane it spawns, and each level of the
-hierarchy reads them back — {meth}`Server.from_env()
-<libtmux.Server.from_env>`, {meth}`Session.from_env()
-<libtmux.Session.from_env>`, {meth}`Window.from_env()
-<libtmux.Window.from_env>`, {meth}`Pane.from_env() <libtmux.Pane.from_env>`.
+nothing, because your code is *running inside* a pane — and tmux has already told
+it where it is. {meth}`Pane.from_env() <libtmux.Pane.from_env>`, and its siblings
+on {class}`~libtmux.Server`, {class}`~libtmux.Session` and
+{class}`~libtmux.Window`, read that back, so you can pick up the hierarchy from
+wherever you happen to be running.
 
-Inside a real pane each is the whole call — `Session.from_env()`, no arguments;
-it reads {data}`os.environ`. These docs run outside a pane, so the examples hand
-it an explicit environment instead.
-
-```python
->>> socket_path = server.cmd(
-...     "display-message", "-p", "-t", session.session_id, "#{socket_path}"
-... ).stdout[0]
->>> env = {
-...     "TMUX": f"{socket_path},1,{session.session_id}",
-...     "TMUX_PANE": pane.pane_id,
-... }
-
->>> Pane.from_env(env).pane_id == pane.pane_id  # inside a pane: Pane.from_env()
-True
->>> Window.from_env(env).window_id == window.window_id
-True
->>> Session.from_env(env).session_id == session.session_id
-True
-```
-
-There is no `Client.from_env()`. A client is an attached terminal, and a pane
-isn't owned by one — no client may be attached at all, or several may be, each
-with its own view. tmux exports no client id into a pane, so there is nothing to
-read back.
-
-### The server answers, not the environment
-
-`$TMUX` looks like it answers the session question on its own — its third field
-is a session id. It isn't the answer. tmux writes these variables into a pane's
-environment once, when it spawns the pane, and never revises them. Move the
-pane's window to another session and the pane really is somewhere else, while
-`$TMUX` still names the session it was born in.
-
-So `from_env` anchors on `TMUX_PANE` — the one id tmux keeps answering for
-live — and asks the server where that pane is *now*:
-
-```python
->>> socket_path = server.cmd(
-...     "display-message", "-p", "-t", session.session_id, "#{socket_path}"
-... ).stdout[0]
->>> worker_window = session.new_window(window_name="worker", attach=False)
->>> worker = worker_window.active_pane
->>> env = {
-...     "TMUX": f"{socket_path},1,{session.session_id}",  # names *this* session
-...     "TMUX_PANE": worker.pane_id,
-... }
-
->>> elsewhere = server.new_session(session_name="elsewhere")
->>> _ = worker_window.move_window(session=elsewhere.session_id, no_select=True)
-
->>> Session.from_env(env).session_name  # where the pane is, not where $TMUX says
-'elsewhere'
-```
-
-`$TMUX` is not useless, though — it settles the one question the server cannot.
-`link-window` puts a single window in several sessions at once, and then the
-pane genuinely belongs to all of them; tmux lists it once per session, ordered
-by session *name*. Asked "which session am I in?", the server has two equally
-true answers and no way to choose between them. `$TMUX` remembers which one the
-process was *spawned* under, so that is the one {meth}`Session.from_env()
-<libtmux.Session.from_env>` returns — as long as it still holds the pane.
-Otherwise the window has moved on, and the server's answer wins.
+See {ref}`self-location` for the whole story, including the window that
+*contains* you versus the one in front of you, and what to do when a window
+belongs to two sessions at once.
 
 ## Filtering and finding objects
 
