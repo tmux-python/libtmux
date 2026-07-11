@@ -9,13 +9,12 @@ import logging
 import os
 import pathlib
 import selectors
-import shutil
 import socket
 import typing as t
 
 from libtmux import exc
-from libtmux.common import get_version
 from libtmux.experimental.engines.base import CommandRequest, CommandResult
+from libtmux.experimental.engines.connection import ServerConnection
 from libtmux.experimental.engines.imsg.exc import (
     ImsgProtocolError,
     UnsupportedProtocolVersion,
@@ -227,9 +226,12 @@ class ImsgEngine:
         self.protocol_version = (
             str(protocol_version) if protocol_version is not None else None
         )
-        self._resolved_tmux_bin: str | None = None
-        self._tmux_version: str | None = None
-        self._version_probed = False
+        self._conn = ServerConnection()
+
+    @property
+    def connection(self) -> ServerConnection:
+        """The tmux binary this engine execs for local/spawning commands."""
+        return self._conn
 
     def tmux_version(self) -> str | None:
         """Report this engine's tmux version (``tmux -V``), memoized.
@@ -238,17 +240,11 @@ class ImsgEngine:
         true server version instead of degrading to "assume latest". Returns
         ``None`` when the binary is missing or its version cannot be parsed.
         """
-        if not self._version_probed:
-            self._version_probed = True
-            try:
-                self._tmux_version = str(get_version(self._resolve_tmux_bin()))
-            except exc.LibTmuxException:
-                self._tmux_version = None
-        return self._tmux_version
+        return self._conn.tmux_version()
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute a tmux command over the server socket."""
-        tmux_bin = request.tmux_bin or self._resolve_tmux_bin()
+        tmux_bin = request.tmux_bin or self._conn.resolve_bin()
         parsed = self._parse_args(request.args)
         cmd = [tmux_bin, *parsed.global_args, *parsed.command_argv]
 
@@ -314,21 +310,6 @@ class ImsgEngine:
             finally:
                 if sock is not None:
                     sock.close()
-
-    def _resolve_tmux_bin(self) -> str:
-        """Return the tmux binary path, memoized per engine instance.
-
-        ``shutil.which`` walks ``$PATH`` on every call (~50µs); the engine
-        invokes it on the hot path of every command, so caching the
-        result for the lifetime of the engine instance is a free win.
-        ``TmuxCommandNotFound`` is intentionally not memoized.
-        """
-        if self._resolved_tmux_bin is None:
-            resolved = shutil.which("tmux")
-            if resolved is None:
-                raise exc.TmuxCommandNotFound
-            self._resolved_tmux_bin = resolved
-        return self._resolved_tmux_bin
 
     def run_batch(
         self,
