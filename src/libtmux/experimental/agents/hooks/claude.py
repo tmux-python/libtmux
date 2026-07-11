@@ -15,13 +15,12 @@ all other user groups are preserved verbatim.
 
 from __future__ import annotations
 
-import contextlib
 import json
-import os
 import pathlib
 import shutil
-import tempfile
 import typing as t
+
+from libtmux.experimental.agents._atomic import atomic_write_text
 
 #: Claude Code event name → agent-state string.
 #:
@@ -201,19 +200,7 @@ class ClaudeCodeHook:
         >>> result
         {'hooks': {}}
         """
-        directory = self._settings_path.parent
-        directory.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(directory), suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, indent=2)
-                fh.flush()
-                os.fsync(fh.fileno())
-            pathlib.Path(tmp).replace(self._settings_path)
-        except BaseException:
-            with contextlib.suppress(OSError):
-                pathlib.Path(tmp).unlink()
-            raise
+        atomic_write_text(self._settings_path, json.dumps(data, indent=2))
 
     # ------------------------------------------------------------------
     # Public interface (AgentHook protocol)

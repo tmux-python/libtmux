@@ -32,6 +32,11 @@ import typing as t
 from dataclasses import dataclass, field
 
 from libtmux._internal.query_list import QueryList
+from libtmux.experimental.agents.source import (
+    ATTENTION as ATTENTION,  # re-exported: the ladder's public home is the query layer
+    AgentSource as AgentSource,
+    agent_rows,
+)
 from libtmux.experimental.agents.state import AgentState
 from libtmux.experimental.engines.base import TmuxEngine
 from libtmux.experimental.ops import (
@@ -54,7 +59,6 @@ if t.TYPE_CHECKING:
 
     from typing_extensions import Self
 
-    from libtmux.experimental.agents.monitor import AgentMonitor
     from libtmux.experimental.agents.state import Agent
     from libtmux.experimental.models.snapshots import PaneSnapshot
     from libtmux.experimental.ops import Planner, PlanResult
@@ -62,22 +66,8 @@ if t.TYPE_CHECKING:
 
 #: A source of pane snapshots: an engine to read from, or pre-taken snapshots.
 PaneSource = t.Union["TmuxEngine", "Sequence[PaneSnapshot]"]
-#: A source of agent records: a monitor to read its store, or pre-taken records.
-AgentSource = t.Union["AgentMonitor", "Sequence[Agent]"]
 MappedT = t.TypeVar("MappedT")
 KeyT = t.TypeVar("KeyT")
-
-#: Default attention ladder for agent rollups (higher value = more urgent). The
-#: ordering is a *documented default* a caller can override per call: surveyed
-#: orchestrators disagree on the exact weighting, so it is policy, not a rule.
-ATTENTION: dict[AgentState, int] = {
-    AgentState.AWAITING_INPUT: 5,
-    AgentState.DONE: 4,
-    AgentState.IDLE: 3,
-    AgentState.RUNNING: 2,
-    AgentState.UNKNOWN: 1,
-    AgentState.EXITED: 0,
-}
 
 
 def _snapshot_panes(source: PaneSource) -> tuple[PaneSnapshot, ...]:
@@ -373,19 +363,6 @@ def panes() -> PaneQuery:
     return PaneQuery()
 
 
-def _query_agents(source: AgentSource) -> tuple[Agent, ...]:
-    """Resolve *source* into agent records (read a monitor's store, or pass through).
-
-    A monitor is detected by its ``agents`` snapshot property (zero tmux calls --
-    the store is already populated by the monitor's own drain); any other value
-    is taken as a pure sequence of :class:`~..agents.state.Agent` records.
-    """
-    store_agents = getattr(source, "agents", None)
-    if store_agents is not None:
-        return tuple(store_agents)
-    return tuple(t.cast("Sequence[Agent]", source))
-
-
 @dataclass(frozen=True)
 class AgentQuery:
     """An immutable, chainable query over agents (the agent twin of PaneQuery).
@@ -430,7 +407,7 @@ class AgentQuery:
 
     def all(self, source: AgentSource) -> tuple[Agent, ...]:
         """Resolve the query against *source* and return the matched agents."""
-        rows: t.Any = QueryList(_query_agents(source))
+        rows: t.Any = QueryList(agent_rows(source))
         if self.lookups:
             rows = rows.filter(**self.lookups)
         rows = list(rows)
