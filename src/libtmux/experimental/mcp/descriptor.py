@@ -38,7 +38,6 @@ class ParamDescriptor:
     is_required: bool = True
     item_origin: str | None = None
     description: str | None = None
-    version_gate: str | None = None
 
     def to_json_schema(self) -> dict[str, t.Any]:
         """Render this parameter as a JSON-schema fragment.
@@ -74,7 +73,7 @@ class ToolDescriptor:
     result_type, result_schema
         The result class name and a JSON schema for its payload.
     annotations, tags
-        MCP-style hints derived from safety/effects.
+        MCP-style hints derived from the safety tier.
     operation_cls
         The operation class :meth:`build` instantiates.
     min_version
@@ -92,8 +91,6 @@ class ToolDescriptor:
     result_schema: Mapping[str, t.Any]
     annotations: Mapping[str, bool]
     tags: frozenset[str]
-    version_gates: Mapping[str, str]
-    effects: Mapping[str, t.Any]
     operation_cls: type[Operation[t.Any]]
     min_version: str | None = None
 
