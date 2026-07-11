@@ -1,8 +1,9 @@
 """A name-keyed registry of engine factories.
 
-Lets engines be created by name (or :class:`~.base.EngineSpec`) so downstream
-code and the contract suite can select a transport without importing its class.
-Fails closed on an unknown name.
+Lets engines be created by name -- or by the :class:`~.base.EngineKind` an
+:class:`~.base.EngineSpec` carries -- so downstream code and the contract suite
+can select a transport without importing its class. Fails closed on an unknown
+name.
 """
 
 from __future__ import annotations
