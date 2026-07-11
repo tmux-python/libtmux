@@ -1,8 +1,15 @@
 """Emit an agent-state signal from inside an agent's lifecycle hook.
 
-Local (tmux reachable): write the ``@agent_state`` pane option. Remote (SSH):
-write an ``OSC 3008`` escape to ``/dev/tty`` -- NOT stdout, which agent hooks
-pipe/null -- so it reaches the pane pty and travels over SSH into tmux %output.
+This is the *write* end of the protocol; it chooses a channel and hands the
+payload to the codec. Local (tmux reachable): write the ``@agent_state`` pane
+option. Remote (SSH): write an ``OSC 3008`` escape to ``/dev/tty`` -- NOT
+stdout, which agent hooks pipe/null -- so it reaches the pane pty and travels
+over SSH into tmux ``%output``.
+
+Neither escape sequence nor option name is spelled here. Both come from
+:mod:`libtmux.experimental.agents.protocol`, whose decoders
+(:mod:`libtmux.experimental.agents.signals`) read back exactly what these
+encoders write.
 """
 
 from __future__ import annotations
@@ -12,6 +19,8 @@ import pathlib
 import subprocess
 import sys
 import typing as t
+
+from libtmux.experimental.agents.protocol import Payload, encode_option, encode_osc
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -51,24 +60,14 @@ def emit(
     ['tmux', 'set-option']
     """
     environ = os.environ if env is None else env
+    payload = Payload(state, name)
     pane = environ.get("TMUX_PANE")
     if environ.get("TMUX") and pane:
-        runner(
-            ["tmux", "set-option", "-p", "-t", pane, "@agent_state", state],
-            check=False,
-        )
-        if name:
-            runner(
-                ["tmux", "set-option", "-p", "-t", pane, "@agent_name", name],
-                check=False,
-            )
+        for argv in encode_option(pane, payload):
+            runner(argv, check=False)
         return
-    payload = f"state={state}"
-    if name:
-        payload += f";name={name}"
-    escape = f"\033]3008;{payload}\033\\".encode()
     with pathlib.Path(tty_path).open("wb", buffering=0) as tty:
-        tty.write(escape)
+        tty.write(encode_osc(payload))
 
 
 def main(argv: Sequence[str] | None = None) -> int:

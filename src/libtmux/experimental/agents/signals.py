@@ -1,25 +1,40 @@
 """The two channels an agent uses to report state.
 
-``OptionSignal`` reads tmux ``@agent_state`` user-options surfaced as
-``%subscription-changed`` (local; ~1 s debounced, re-queryable). ``OscSignal``
-reads a bare ``OSC 3008`` escape out of ``%output`` (remote/SSH; instant), with a
-per-pane accumulator because tmux delivers ``%output`` byte-fragmented.
+This is the *read* end of the protocol; it chooses a channel and hands the
+bytes to the codec. ``OptionSignal`` reads tmux ``@agent_state`` user-options
+surfaced as ``%subscription-changed`` (local; ~1 s debounced, re-queryable).
+``OscSignal`` reads a bare ``OSC 3008`` escape out of ``%output`` (remote/SSH;
+instant), with a per-pane accumulator because tmux delivers ``%output``
+byte-fragmented.
+
+Neither escape sequence nor option name is spelled here. The grammar lives in
+:mod:`libtmux.experimental.agents.protocol` alongside the encoders
+(:mod:`libtmux.experimental.agents.hooks.emit`) that produce it; what remains
+here is *policy*: which channel a line belongs to, the per-pane buffering the
+fragmented OSC stream needs, and the mapping from the wire's raw state string
+to the :class:`~libtmux.experimental.agents.state.AgentState` vocabulary.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
+from libtmux.experimental.agents.protocol import (
+    SUBSCRIPTION,
+    decode_osc,
+    decode_subscription,
+)
 from libtmux.experimental.agents.state import AgentState
 
-#: The ``refresh-client -B`` spec the monitor installs for the local channel.
-SUBSCRIPTION = "agentstate:%*:#{@agent_state}"
+__all__ = [
+    "SUBSCRIPTION",
+    "OptionSignal",
+    "OscSignal",
+    "Reading",
+]
 
-_SUB_RE = re.compile(
-    r"^%subscription-changed\s+agentstate\s+\S+\s+\S+\s+\S+\s+(?P<pane>%\d+)\s+:\s+(?P<value>\S+)"
-)
-_OSC_RE = re.compile(rb"\033\]3008;([^\033\007]*)(?:\033\\|\007)")
+#: Cap the per-pane accumulator so a never-terminated OSC can't grow unbounded.
+_MAX_BUFFER = 4096
 
 
 @dataclass(frozen=True)
@@ -49,37 +64,6 @@ class Reading:
     state: AgentState
     name: str | None
     source: str
-
-
-def _parse_payload(payload: str) -> tuple[AgentState, str | None]:
-    """Parse an OSC/option payload like ``state=running`` (``name=`` optional).
-
-    Parameters
-    ----------
-    payload : str
-        The payload string, e.g., ``"state=running;name=claude"``.
-
-    Returns
-    -------
-    tuple[AgentState, str | None]
-        The agent state and optional name.
-
-    Examples
-    --------
-    >>> _parse_payload("state=running")
-    (<AgentState.RUNNING: 'running'>, None)
-    >>> _parse_payload("state=idle;name=test")
-    (<AgentState.IDLE: 'idle'>, 'test')
-    """
-    state = AgentState.UNKNOWN
-    name: str | None = None
-    for part in payload.split(";"):
-        key, _, value = part.partition("=")
-        if key == "state":
-            state = AgentState.from_signal(value)
-        elif key == "name":
-            name = value or None
-    return state, name
 
 
 class OptionSignal:
@@ -114,11 +98,16 @@ class OptionSignal:
         >>> OptionSignal.parse("%output %1 hi") is None
         True
         """
-        match = _SUB_RE.match(notification_raw)
-        if match is None:
+        decoded = decode_subscription(notification_raw)
+        if decoded is None:
             return None
-        state = AgentState.from_signal(match.group("value"))
-        return Reading(match.group("pane"), state, None, "option")
+        pane_id, payload = decoded
+        return Reading(
+            pane_id,
+            AgentState.from_signal(payload.state),
+            payload.name,
+            "option",
+        )
 
 
 class OscSignal:
@@ -176,16 +165,14 @@ class OscSignal:
         >>> readings2[0].state.value
         'idle'
         """
-        buffer = self._buffers.get(pane_id, b"") + data
-        readings: list[Reading] = []
-        while True:
-            match = _OSC_RE.search(buffer)
-            if match is None:
-                break
-            payload = match.group(1).decode(errors="replace")
-            state, name = _parse_payload(payload)
-            readings.append(Reading(pane_id, state, name, "osc"))
-            buffer = buffer[match.end() :]
-        # keep only a bounded tail so a never-terminated OSC can't grow unbounded
-        self._buffers[pane_id] = buffer[-4096:]
-        return readings
+        payloads, tail = decode_osc(self._buffers.get(pane_id, b"") + data)
+        self._buffers[pane_id] = tail[-_MAX_BUFFER:]
+        return [
+            Reading(
+                pane_id,
+                AgentState.from_signal(payload.state),
+                payload.name,
+                "osc",
+            )
+            for payload in payloads
+        ]
