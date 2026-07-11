@@ -1752,3 +1752,17 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def test_socket_path_not_derived_from_socket_name() -> None:
+    """``socket_path`` stays unset unless the caller supplies it.
+
+    tmux resolves a ``-L`` socket name on its own, so libtmux must not guess
+    a path for it: setting both would emit ``-L`` *and* ``-S``, targeting the
+    server twice.
+    """
+    assert Server().socket_path is None
+    assert Server(socket_name="libtmux_test_no_derive").socket_path is None
+    assert Server(socket_name="libtmux_test_no_derive").socket_name == (
+        "libtmux_test_no_derive"
+    )
