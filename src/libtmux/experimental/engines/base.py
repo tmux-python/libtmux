@@ -10,6 +10,7 @@ the classic case -- without inheriting a base class.
 from __future__ import annotations
 
 import enum
+import re
 import shlex
 import typing as t
 from dataclasses import dataclass
@@ -17,6 +18,9 @@ from dataclasses import dataclass
 if t.TYPE_CHECKING:
     import pathlib
     from collections.abc import Sequence
+
+#: tmux escapes a byte in ``%output`` as a backslash plus three octal digits.
+_CONTROL_OCTAL = re.compile(rb"\\([0-7]{3})")
 
 
 def render_control_line(argv: Sequence[str]) -> str:
@@ -34,6 +38,39 @@ def render_control_line(argv: Sequence[str]) -> str:
     'rename-window a ; kill-window @2'
     """
     return " ".join(token if token == ";" else shlex.quote(token) for token in argv)
+
+
+def unescape_control_output(payload: str) -> bytes:
+    r"""Decode a control-mode ``%output`` payload back to the bytes the pane wrote.
+
+    tmux does not forward pane output verbatim: in a ``%output`` notification it
+    writes every non-printable byte -- and the backslash itself -- as a backslash
+    followed by three octal digits. A reader that scans for raw bytes must undo
+    this first, or it can never match: an ``ESC`` (``0x1b``) arrives on the wire
+    as the four *characters* ``\``, ``0``, ``3``, ``3``.
+
+    Bytes tmux left alone pass through untouched, so feeding this an already-raw
+    payload is harmless.
+
+    Examples
+    --------
+    Printable output is returned as-is:
+
+    >>> unescape_control_output("hello world")
+    b'hello world'
+
+    An escape sequence tmux octal-escaped comes back as real bytes:
+
+    >>> unescape_control_output(r"\033]3008;state=idle\033\134")
+    b'\x1b]3008;state=idle\x1b\\'
+
+    Multi-byte UTF-8 survives the round trip:
+
+    >>> unescape_control_output(r"caf\303\251").decode()
+    'café'
+    """
+    raw = payload.encode("utf-8", "surrogateescape")
+    return _CONTROL_OCTAL.sub(lambda m: bytes((int(m.group(1), 8),)), raw)
 
 
 @dataclass(frozen=True)
