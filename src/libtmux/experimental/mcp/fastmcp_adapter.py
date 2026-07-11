@@ -641,13 +641,7 @@ def register_plan_tools(
                 version=version,
                 preflight=preflight,
             )
-            return {
-                "ok": outcome.ok,
-                "results": outcome.results,
-                "bindings": outcome.bindings,
-                "sessions": outcome.sessions,
-                "reused": outcome.reused,
-            }
+            return outcome.to_dict()
 
         tools.append((execute_plan, "mutating"))
         tools.append((build_workspace, "mutating"))
@@ -710,13 +704,7 @@ def register_plan_tools(
                 version=version,
                 preflight=preflight,
             )
-            return {
-                "ok": outcome.ok,
-                "results": outcome.results,
-                "bindings": outcome.bindings,
-                "sessions": outcome.sessions,
-                "reused": outcome.reused,
-            }
+            return outcome.to_dict()
 
         tools.append((execute_plan, "mutating"))
         tools.append((build_workspace, "mutating"))
