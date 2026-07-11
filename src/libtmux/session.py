@@ -243,6 +243,10 @@ class Session(
             When the server has no pane named by ``TMUX_PANE``, i.e. the
             caller's pane is gone. No pane means no session to claim; the stale
             id in ``TMUX`` is not a fallback.
+        :class:`subprocess.CalledProcessError`
+            When the server named by ``TMUX`` is no longer running. Its pane
+            listing is empty either way, so it is asked whether it is alive
+            rather than reporting the caller's pane as gone.
 
         See Also
         --------
@@ -310,6 +314,7 @@ class Session(
             if pane.session_id is not None
         ]
         if not holding:
+            server.raise_if_dead()  # a dead server is not a missing pane
             raise exc.TmuxObjectDoesNotExist(
                 obj_key="pane_id",
                 obj_id=pane_id,
