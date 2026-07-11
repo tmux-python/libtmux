@@ -83,6 +83,18 @@ class TmuxCommandNotFound(LibTmuxException):
     """Application binary for tmux not found."""
 
 
+class NotInsideTmux(LibTmuxException):
+    """Raised when this process is not running inside a :term:`tmux(1)` pane.
+
+    tmux exports ``TMUX`` and ``TMUX_PANE`` into the environment of every
+    process it spawns inside a pane. When either is absent there is no pane to
+    resolve, so :meth:`Server.from_env` and :meth:`Pane.from_env` raise rather
+    than guess a server or pane the caller does not belong to.
+
+    .. versionadded:: 0.62
+    """
+
+
 class TmuxObjectDoesNotExist(ObjectDoesNotExist):
     """The query returned multiple objects when only one was expected."""
 

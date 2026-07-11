@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 import pathlib
 import typing as t
 import warnings
@@ -159,6 +160,67 @@ class Pane(
             list_extra_args=("-a",),
         )
         return cls(server=server, **pane)
+
+    @classmethod
+    def from_env(cls, env: t.Mapping[str, str] | None = None) -> Pane:
+        """Return the :class:`Pane` this process is running inside.
+
+        tmux exports ``TMUX_PANE`` into every pane it spawns, alongside the
+        ``TMUX`` variable that names the server. Together they identify the
+        caller's own pane without searching for it.
+
+        Parameters
+        ----------
+        env : Mapping[str, str], optional
+            Environment to read. Defaults to :data:`os.environ`.
+
+        Returns
+        -------
+        :class:`Pane`
+            The pane named by ``TMUX_PANE``, on the server named by ``TMUX``.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.NotInsideTmux`
+            When ``TMUX`` or ``TMUX_PANE`` is unset, i.e. this process is not
+            inside a pane.
+
+        Examples
+        --------
+        A pane can recognize itself from the environment tmux gave it:
+
+        >>> socket_path = server.cmd(
+        ...     "display-message", "-p", "-t", session.session_id, "#{socket_path}"
+        ... ).stdout[0]
+        >>> caller = Pane.from_env(
+        ...     {
+        ...         "TMUX": f"{socket_path},1,{session.session_id}",
+        ...         "TMUX_PANE": pane.pane_id,
+        ...     }
+        ... )
+        >>> caller.pane_id == pane.pane_id
+        True
+
+        Outside of tmux there is no pane to resolve:
+
+        >>> Pane.from_env({})
+        Traceback (most recent call last):
+        ...
+        libtmux.exc.NotInsideTmux: Not inside a tmux pane: TMUX is unset
+
+        .. versionadded:: 0.62
+        """
+        from libtmux.server import Server
+
+        environ: t.Mapping[str, str] = os.environ if env is None else env
+        server = Server.from_env(environ)
+
+        pane_id = environ.get("TMUX_PANE")
+        if not pane_id:
+            msg = "Not inside a tmux pane: TMUX_PANE is unset"
+            raise exc.NotInsideTmux(msg)
+
+        return cls.from_pane_id(server=server, pane_id=pane_id)
 
     #
     # Relations

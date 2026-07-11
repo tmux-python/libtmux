@@ -1766,3 +1766,38 @@ def test_socket_path_not_derived_from_socket_name() -> None:
     assert Server(socket_name="libtmux_test_no_derive").socket_name == (
         "libtmux_test_no_derive"
     )
+
+
+def test_server_from_env(server: Server, session: Session) -> None:
+    """:meth:`Server.from_env` targets the socket named by ``$TMUX``."""
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(session.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+
+    caller = Server.from_env({"TMUX": f"{socket_path},1,{session.session_id}"})
+
+    assert caller.socket_path == socket_path
+    assert caller.is_alive()
+    assert session.session_id in [s.session_id for s in caller.sessions]
+
+
+def test_server_from_env_reads_os_environ(monkeypatch: pytest.MonkeyPatch) -> None:
+    """:meth:`Server.from_env` falls back to :data:`os.environ`."""
+    monkeypatch.setenv("TMUX", "/tmp/libtmux-test/default,1234,$0")
+
+    assert Server.from_env().socket_path == "/tmp/libtmux-test/default"
+
+
+def test_server_from_env_outside_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
+    """:meth:`Server.from_env` raises when ``$TMUX`` is unset."""
+    monkeypatch.delenv("TMUX", raising=False)
+
+    with pytest.raises(exc.NotInsideTmux):
+        Server.from_env()
+
+    with pytest.raises(exc.NotInsideTmux):
+        Server.from_env({})

@@ -12,11 +12,12 @@ import pytest
 from libtmux import exc
 from libtmux.common import has_gte_version
 from libtmux.constants import PaneDirection, ResizeAdjustmentDirection
+from libtmux.pane import Pane
 from libtmux.test.retry import retry_until
 
 if t.TYPE_CHECKING:
     from libtmux._internal.types import StrPath
-    from libtmux.pane import Pane
+    from libtmux.server import Server
     from libtmux.session import Session
 
 logger = logging.getLogger(__name__)
@@ -1878,3 +1879,49 @@ def test_new_pane_error_tags_subcommand(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"requires tmux 3.7"):
             pane.new_pane(target="%99999")
+
+
+def test_pane_from_env(server: Server, session: Session) -> None:
+    """:meth:`Pane.from_env` returns the pane named by ``$TMUX_PANE``."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(session.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{session.session_id}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+    caller = Pane.from_env(env)
+
+    assert caller.pane_id == pane.pane_id
+    assert caller.window_id == pane.window_id
+    assert caller.session_id == pane.session_id
+
+
+def test_pane_from_env_outside_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
+    """:meth:`Pane.from_env` raises when ``$TMUX`` is unset."""
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
+
+    with pytest.raises(exc.NotInsideTmux):
+        Pane.from_env()
+
+
+def test_pane_from_env_without_pane_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """:meth:`Pane.from_env` raises when ``$TMUX_PANE`` is unset.
+
+    ``$TMUX`` alone identifies the server but not the pane: tmux only exports
+    ``TMUX_PANE`` into a pane's own process environment.
+    """
+    monkeypatch.setenv("TMUX", "/tmp/libtmux-test/default,1234,$0")
+    monkeypatch.delenv("TMUX_PANE", raising=False)
+
+    with pytest.raises(exc.NotInsideTmux):
+        Pane.from_env()

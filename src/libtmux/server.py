@@ -198,6 +198,63 @@ class Server(
         if on_init is not None:
             on_init(self)
 
+    @classmethod
+    def from_env(
+        cls,
+        env: t.Mapping[str, str] | None = None,
+        **kwargs: t.Any,
+    ) -> Server:
+        """Return the :class:`Server` this process is running inside.
+
+        tmux exports ``TMUX`` into every pane it spawns, formatted as
+        ``socket_path,server_pid,session_id``. The socket path is
+        authoritative: it names the server directly, so it sidesteps ``-L``
+        name resolution and the ``TMUX_TMPDIR`` differences between platforms.
+
+        Runs no tmux command.
+
+        Parameters
+        ----------
+        env : Mapping[str, str], optional
+            Environment to read. Defaults to :data:`os.environ`.
+        **kwargs : Any
+            Passed through to :class:`Server`.
+
+        Returns
+        -------
+        :class:`Server`
+            Bound to the socket named by ``TMUX``.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.NotInsideTmux`
+            When ``TMUX`` is unset, i.e. this process is not inside a pane.
+
+        Examples
+        --------
+        >>> from libtmux.server import Server
+
+        >>> Server.from_env({"TMUX": "/tmp/tmux-1000/default,123,$0"})
+        Server(socket_path=/tmp/tmux-1000/default)
+
+        Outside of tmux there is no server to resolve:
+
+        >>> Server.from_env({})
+        Traceback (most recent call last):
+        ...
+        libtmux.exc.NotInsideTmux: Not inside a tmux pane: TMUX is unset
+
+        .. versionadded:: 0.62
+        """
+        environ: t.Mapping[str, str] = os.environ if env is None else env
+        tmux = environ.get("TMUX")
+        if not tmux:
+            msg = "Not inside a tmux pane: TMUX is unset"
+            raise exc.NotInsideTmux(msg)
+
+        socket_path = tmux.split(",", 1)[0]
+        return cls(socket_path=socket_path, **kwargs)
+
     def __enter__(self) -> Self:
         """Enter the context, returning self.
 
