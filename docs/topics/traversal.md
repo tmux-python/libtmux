@@ -156,6 +156,19 @@ True
 True
 ```
 
+## Locating yourself
+
+Everything above starts from a handle you already hold. Sometimes you hold
+nothing, because your code is *running inside* a pane — and tmux has already told
+it where it is. {meth}`Pane.from_env() <libtmux.Pane.from_env>`, and its siblings
+on {class}`~libtmux.Server`, {class}`~libtmux.Session` and
+{class}`~libtmux.Window`, read that back, so you can pick up the hierarchy from
+wherever you happen to be running.
+
+See {ref}`self-location` for the whole story, including the window that
+*contains* you versus the one in front of you, and windows that live in more than
+one session at once.
+
 ## Filtering and finding objects
 
 Sometimes a property like {attr}`session.windows <libtmux.Session.windows>`

@@ -61,4 +61,27 @@ Pane
 Target
     A target, cited in the manual as ``[-t target]`` can be a session,
     window or pane.
+
+TMUX
+    Environment variable tmux exports into every {term}`Pane` it spawns.
+
+    Holds ``socket_path,server_pid,session_id`` for the {term}`Server`
+    the pane belongs to. The session id is spelled bare, e.g. ``47``, or
+    ``-1`` for a pane spawned without a session.
+
+    Written once, when the pane is spawned, and never revised — so its
+    session id records where the process was *launched*, and goes stale if
+    the pane's {term}`Window` later moves.
+
+    libtmux takes only the socket path from it, and asks tmux for the rest.
+    See {ref}`self-location`.
+
+TMUX_PANE
+    Environment variable tmux exports into every {term}`Pane` it spawns.
+
+    Holds that pane's ``pane_id``, e.g. ``%1``. Unlike ``TMUX`` it always
+    names the pane the process is really in, so it is the id libtmux
+    anchors on to answer where a process is running.
+
+    Read back by libtmux in {ref}`self-location`.
 ```
