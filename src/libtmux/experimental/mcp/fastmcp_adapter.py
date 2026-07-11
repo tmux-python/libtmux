@@ -29,6 +29,7 @@ import typing as t
 from libtmux.experimental.mcp import vocabulary
 from libtmux.experimental.mcp.registry import OperationToolRegistry
 from libtmux.experimental.mcp.vocabulary._caller import CallerContext
+from libtmux.experimental.ops._docstring import first_line
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -195,14 +196,6 @@ def _instructions(ctx: CallerContext, *, events_enabled: bool = False) -> str:
     return "\n\n".join(segments)
 
 
-def _summary(doc: str | None) -> str | None:
-    """Return the first non-empty docstring line."""
-    for line in (doc or "").splitlines():
-        if line.strip():
-            return line.strip()
-    return None
-
-
 def _bind_engine(
     fn: Callable[..., t.Any],
     engine: TmuxEngine | AsyncTmuxEngine,
@@ -258,7 +251,7 @@ def register_vocabulary(
         tool = FunctionTool.from_function(
             _bind_engine(fn, engine, is_async=is_async),
             name=name,
-            description=_summary(fn.__doc__),
+            description=first_line(fn.__doc__) or None,
             tags={safety},
             annotations=annotations,
             meta={"anthropic/alwaysLoad": True} if name in _ANCHORS else None,
@@ -287,7 +280,7 @@ def register_caller_context(mcp: FastMCP, ctx: CallerContext) -> None:
     tool = FunctionTool.from_function(
         get_caller_context,
         name="get_caller_context",
-        description=_summary(get_caller_context.__doc__),
+        description=first_line(get_caller_context.__doc__) or None,
         tags={"readonly"},
         annotations=ToolAnnotations(title="get_caller_context", readOnlyHint=True),
         meta=(
@@ -498,11 +491,7 @@ def register_plan_tools(
                 version=version,
                 planner=_planner(planner),
             )
-            return {
-                "ok": outcome.ok,
-                "results": outcome.results,
-                "bindings": outcome.bindings,
-            }
+            return outcome.to_dict()
 
         async def build_workspace(
             spec: dict[str, t.Any],
@@ -516,11 +505,7 @@ def register_plan_tools(
                 version=version,
                 preflight=preflight,
             )
-            return {
-                "ok": outcome.ok,
-                "results": outcome.results,
-                "bindings": outcome.bindings,
-            }
+            return outcome.to_dict()
 
         tools.append((execute_plan, "mutating"))
         tools.append((build_workspace, "mutating"))
@@ -538,11 +523,7 @@ def register_plan_tools(
                 version=version,
                 planner=_planner(planner),
             )
-            return {
-                "ok": outcome.ok,
-                "results": outcome.results,
-                "bindings": outcome.bindings,
-            }
+            return outcome.to_dict()
 
         def build_workspace(  # type: ignore[misc]
             spec: dict[str, t.Any],
@@ -556,11 +537,7 @@ def register_plan_tools(
                 version=version,
                 preflight=preflight,
             )
-            return {
-                "ok": outcome.ok,
-                "results": outcome.results,
-                "bindings": outcome.bindings,
-            }
+            return outcome.to_dict()
 
         tools.append((execute_plan, "mutating"))
         tools.append((build_workspace, "mutating"))
@@ -574,7 +551,7 @@ def register_plan_tools(
         tool = FunctionTool.from_function(
             fn,
             name=fn.__name__,
-            description=_summary(fn.__doc__),
+            description=first_line(fn.__doc__) or None,
             tags={"plan", safety},
             annotations=annotations,
         )

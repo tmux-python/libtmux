@@ -250,6 +250,45 @@ def caller_server_args(caller: CallerContext, *, explicit: bool) -> tuple[str, .
     return ("-S", caller.socket_path)
 
 
+def socket_path_of(socket: str) -> str:
+    """Return the filesystem path an engine *socket* selector denotes.
+
+    A ``-S`` selector (anything containing ``/``) already *is* the path. A bare
+    ``-L`` name is the per-user socket tmux derives from ``$TMUX_TMPDIR`` (default
+    ``/tmp``), so a bare name cannot collide with an unrelated socket's basename.
+
+    Examples
+    --------
+    >>> socket_path_of("/tmp/explicit")
+    '/tmp/explicit'
+    >>> socket_path_of("work").endswith("/work")
+    True
+    """
+    if "/" in socket:
+        return socket
+    tmpdir = os.environ.get("TMUX_TMPDIR") or "/tmp"
+    return f"{tmpdir}/tmux-{os.getuid()}/{socket}"
+
+
+def same_socket_path(left: str, right: str) -> bool:
+    """Whether two socket paths point at the same file (realpath-compared).
+
+    Falls back to a literal comparison when the paths cannot be resolved (a
+    broken symlink or an unreadable directory must not mask the guard).
+
+    Examples
+    --------
+    >>> same_socket_path("/tmp/s", "/tmp/s")
+    True
+    >>> same_socket_path("/tmp/s", "/tmp/other")
+    False
+    """
+    try:
+        return os.path.realpath(left) == os.path.realpath(right)
+    except OSError:
+        return left == right
+
+
 def socket_matches(socket: str | None, caller: CallerContext) -> bool:
     """Whether an engine *socket* selector denotes the caller's tmux server.
 
@@ -280,17 +319,7 @@ def socket_matches(socket: str | None, caller: CallerContext) -> bool:
         )
     if caller.socket_path is None:
         return False
-    if "/" in socket:
-        try:
-            return os.path.realpath(socket) == os.path.realpath(caller.socket_path)
-        except OSError:
-            return socket == caller.socket_path
-    tmpdir = os.environ.get("TMUX_TMPDIR") or "/tmp"
-    expected = f"{tmpdir}/tmux-{os.getuid()}/{socket}"
-    try:
-        return os.path.realpath(expected) == os.path.realpath(caller.socket_path)
-    except OSError:
-        return expected == caller.socket_path
+    return same_socket_path(socket_path_of(socket), caller.socket_path)
 
 
 def socket_could_match(socket: str | None, caller: CallerContext) -> bool:
@@ -322,19 +351,11 @@ def socket_could_match(socket: str | None, caller: CallerContext) -> bool:
         # Ambient default engine: the caller's server only when the MCP inherited
         # $TMUX (process-env), not when its pane was parent-walked or overridden.
         return caller.source == "process-env"
-    if "/" in socket:
-        try:
-            return os.path.realpath(socket) == os.path.realpath(caller.socket_path)
-        except OSError:
-            return socket == caller.socket_path
-    tmpdir = os.environ.get("TMUX_TMPDIR") or "/tmp"
-    expected = f"{tmpdir}/tmux-{os.getuid()}/{socket}"
-    try:
-        if os.path.realpath(expected) == os.path.realpath(caller.socket_path):
-            return True
-    except OSError:
-        pass
-    return caller.socket_path.rsplit("/", 1)[-1] == socket
+    if same_socket_path(socket_path_of(socket), caller.socket_path):
+        return True
+    # Last chance for a bare -L name whose reconstructed path did not resolve
+    # (e.g. a $TMUX_TMPDIR divergence): a basename match blocks under doubt.
+    return "/" not in socket and caller.socket_path.rsplit("/", 1)[-1] == socket
 
 
 def is_strict_caller(
