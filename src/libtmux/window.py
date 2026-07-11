@@ -206,6 +206,9 @@ class Window(
             When the server has no pane named by ``TMUX_PANE``, i.e. the
             caller's pane is gone. The window is resolved through that pane, so
             a pane that is gone takes its window with it.
+        ValueError
+            When the resolved pane carries no ``window_id``. Surfaces a clear
+            error under ``python -O``, where an ``assert`` would be stripped.
 
         See Also
         --------
@@ -251,7 +254,11 @@ class Window(
 
         .. versionadded:: 0.62
         """
-        return Pane.from_env(env).window
+        pane = Pane.from_env(env)
+        if pane.window_id is None:
+            msg = "Pane must have a window_id to resolve its window"
+            raise ValueError(msg)
+        return cls.from_window_id(server=pane.server, window_id=pane.window_id)
 
     @property
     def session(self) -> Session:
