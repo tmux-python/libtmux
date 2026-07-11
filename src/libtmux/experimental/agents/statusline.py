@@ -17,13 +17,13 @@ from __future__ import annotations
 import collections
 import typing as t
 
+from libtmux.experimental.agents.source import ATTENTION_ORDER, AgentSource, agent_rows
 from libtmux.experimental.agents.state import AgentState
 from libtmux.experimental.ops import SetOption, arun
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
-    from libtmux.experimental.agents.monitor import AgentMonitor
     from libtmux.experimental.agents.state import Agent
     from libtmux.experimental.engines.base import AsyncTmuxEngine
     from libtmux.experimental.ops._types import Target
@@ -37,20 +37,6 @@ DEFAULT_LABELS: dict[AgentState, str] = {
     AgentState.EXITED: "exit",
     AgentState.UNKNOWN: "?",
 }
-
-#: The order states appear in the default tally (most-urgent first).
-_ATTENTION_ORDER: tuple[AgentState, ...] = (
-    AgentState.AWAITING_INPUT,
-    AgentState.DONE,
-    AgentState.IDLE,
-    AgentState.RUNNING,
-    AgentState.UNKNOWN,
-    AgentState.EXITED,
-)
-
-#: A source of agent records: a monitor (read its ``agents`` snapshot at zero
-#: tmux cost), or a pure sequence of :class:`~..state.Agent`.
-AgentSource = t.Union["AgentMonitor", "Sequence[Agent]"]
 
 
 def render_status_line(
@@ -79,7 +65,7 @@ def render_status_line(
     counts = collections.Counter(agent.state for agent in agents)
     parts = [
         f"{merged[state]}:{counts[state]}"
-        for state in _ATTENTION_ORDER
+        for state in ATTENTION_ORDER
         if counts.get(state)
     ]
     return " ".join(parts)
@@ -128,13 +114,7 @@ async def paint_status_line(
     >>> asyncio.run(paint_status_line(AsyncMockEngine(), agents, global_=True))
     True
     """
-    store_agents = getattr(source, "agents", None)
-    agents: Sequence[Agent] = (
-        store_agents
-        if store_agents is not None
-        else tuple(t.cast("Sequence[Agent]", source))
-    )
-    value = render(agents)
+    value = render(agent_rows(source))
     op = status_line_op(value, option=option, target=target, global_=global_)
     result = await arun(op, engine)
     return result.ok

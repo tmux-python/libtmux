@@ -38,12 +38,11 @@ operate exclusively on the marker-bounded block.
 
 from __future__ import annotations
 
-import contextlib
-import os
 import pathlib
 import re
 import shutil
-import tempfile
+
+from libtmux.experimental.agents._atomic import atomic_write_text
 
 #: Codex event name → agent-state string.
 #:
@@ -181,21 +180,7 @@ class CodexHook:
         >>> text
         'model = "o4"\n'
         """
-        self._config_path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_path = tempfile.mkstemp(
-            dir=str(self._config_path.parent),
-            suffix=".tmp",
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(content)
-                fh.flush()
-                os.fsync(fh.fileno())
-            pathlib.Path(tmp_path).replace(self._config_path)
-        except BaseException:
-            with contextlib.suppress(OSError):
-                pathlib.Path(tmp_path).unlink()
-            raise
+        atomic_write_text(self._config_path, content)
 
     def _build_block(self) -> str:
         r"""Build the marker-bounded TOML block string.
