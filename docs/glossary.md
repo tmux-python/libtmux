@@ -66,8 +66,8 @@ TMUX
     Environment variable tmux exports into every {term}`Pane` it spawns.
 
     Holds ``socket_path,server_pid,session_id`` for the {term}`Server`
-    the pane belongs to. The session id is spelled bare, e.g. ``47``, or
-    ``-1`` for a pane spawned without a session.
+    the pane belongs to. The session id is spelled bare, e.g. ``47``, where
+    libtmux spells the same session ``$47``.
 
     Written once, when the pane is spawned, and never revised — so its
     session id records where the process was *launched*, and goes stale if

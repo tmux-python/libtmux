@@ -7,10 +7,15 @@ tmux exports two variables into the child environment of every pane it spawns:
 
 ``TMUX``
     ``"<socket_path>,<server_pid>,<session_id>"``. The session id is spelled
-    *bare* (``47``, not ``$47``), and is ``-1`` when the pane has no session.
+    *bare* -- ``47``, where libtmux spells the same session ``$47``.
 
 ``TMUX_PANE``
     ``"%N"`` -- the pane's id.
+
+tmux also exports ``TMUX`` to the job children it spawns for ``run-shell`` and
+``#()``, and those never get ``TMUX_PANE``. A ``#()`` job carries no session at
+all, and its ``TMUX`` says so with a session id of ``-1``. So a process holding
+a pane id always has a real session id beside it.
 
 Both are frozen at spawn time and tmux never revises them. The moment a pane's
 window is moved or linked into another session, the session id baked into
