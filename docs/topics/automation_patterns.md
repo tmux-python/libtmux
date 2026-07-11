@@ -149,34 +149,66 @@ True
 
 ### Detecting errors in output
 
-Waiting for success is only half the job — you also want to notice failure. The same
-capture-and-scan approach works for spotting error patterns, so you can bail out
-early instead of timing out on a command that already crashed.
+Waiting for success is only half the job — you also want to notice failure, so you
+can bail out early instead of timing out on a command that already crashed.
+
+Scan the command's **output**, never the whole pane. The shell echoes what you sent
+into the same buffer, so a pane-wide substring search reports a crash for
+`mytool --log-level=ERROR` before the tool has printed anything at all — it is
+matching your own command line. That is the same trap the polls above avoid, in the
+one place it is easiest to walk into.
+
+So have the command tag the lines it owns, and scan only those. The tag has to be one
+that cannot begin a line of the echoed command — and a long command *wraps*, so "it
+is not at the start of my command" is not good enough. Let the shell assemble it:
+below, `printf` builds `out:` from a format and a separate argument, so the literal
+never appears in what you typed, wrapped or not.
 
 ```python
 >>> error_window = session.new_window(window_name='error-check', attach=False)
 >>> error_pane = error_window.active_pane
 
->>> def check_for_errors(pane, patterns=None):
-...     """Check pane output for error patterns."""
+>>> def command_output(pane, tag='out:'):
+...     """The lines the command tagged as its own."""
+...     return [
+...         line.removeprefix(tag)
+...         for line in pane.capture_pane()
+...         if line.startswith(tag)
+...     ]
+
+>>> def check_for_errors(lines, patterns=None):
+...     """Return the first error pattern found in *lines*, or None."""
 ...     if patterns is None:
 ...         patterns = ['Error:', 'error:', 'ERROR', 'FAILED', 'Exception']
-...     output = '\\n'.join(pane.capture_pane())
-...     for pattern in patterns:
-...         if pattern in output:
-...             return pattern
+...     for line in lines:
+...         for pattern in patterns:
+...             if pattern in line:
+...                 return pattern
 ...     return None
 
->>> error_channel = 'libtmux-error-check'
+A command that succeeds, even though its own command line says `ERROR`:
+
+>>> ch = 'libtmux-errors'
 >>> error_pane.send_keys(
-...     "printf 'Success%s\\n' '!'; "
-...     f"tmux wait-for -S {error_channel}"
+...     "true --log-level=ERROR; "
+...     "printf 'out%s%s\\n' : ok; "
+...     f"tmux wait-for -S {ch}"
 ... )
->>> server.wait_for(error_channel)
->>> 'Success!' in error_pane.capture_pane()
+>>> server.wait_for(ch)
+>>> command_output(error_pane)
+['ok']
+>>> check_for_errors(command_output(error_pane)) is None
 True
->>> check_for_errors(error_pane) is None
-True
+
+And one that genuinely fails:
+
+>>> error_pane.send_keys(
+...     "printf 'out%sError: no disk\\n' :; "
+...     f"tmux wait-for -S {ch}"
+... )
+>>> server.wait_for(ch)
+>>> check_for_errors(command_output(error_pane))
+'Error:'
 
 >>> # Clean up
 >>> error_window.kill()
