@@ -27,6 +27,7 @@ from libtmux.experimental.agents.health import is_alive
 from libtmux.experimental.agents.hud import HudRenderer
 from libtmux.experimental.agents.merge import MonotonicCounter, Stamp
 from libtmux.experimental.agents.processes import detect_agent_process
+from libtmux.experimental.agents.protocol import decode_option
 from libtmux.experimental.agents.signals import (
     SUBSCRIPTION,
     OptionSignal,
@@ -611,11 +612,11 @@ class AgentMonitor:
     def _observe_pane_options(self, current_panes: dict[str, PaneSnapshot]) -> None:
         """Seed/refresh store entries from durable per-pane option values."""
         for pane_id, pane in current_panes.items():
-            raw_state = pane.fields.get("@agent_state", "").strip()
-            if not raw_state:
+            payload = decode_option(pane.fields)
+            if payload is None:
                 continue
-            state = AgentState.from_signal(raw_state)
-            name = pane.fields.get("@agent_name") or None
+            state = AgentState.from_signal(payload.state)
+            name = payload.name
             current = self._store.agents.get(pane_id)
             if current is not None:
                 if current.source == "osc":

@@ -9,9 +9,14 @@ from __future__ import annotations
 
 import typing as t
 
+from libtmux.experimental.agents.protocol import PANE_OPTIONS
+
 if t.TYPE_CHECKING:
     from libtmux.experimental.models.snapshots import PaneSnapshot, ServerSnapshot
 
+#: The fields the monitor's ``list-panes`` requests. The agent-state options are
+#: not spelled here: they come from the protocol module, so what this listing
+#: reads back is by construction what the emitter wrote.
 PANE_FORMAT: tuple[str, ...] = (
     "session_id",
     "session_name",
@@ -26,8 +31,7 @@ PANE_FORMAT: tuple[str, ...] = (
     "pane_pid",
     "pane_current_command",
     "pane_title",
-    "@agent_state",
-    "@agent_name",
+    *PANE_OPTIONS,
 )
 
 
