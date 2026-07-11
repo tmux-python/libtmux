@@ -27,15 +27,15 @@ import subprocess
 import time
 import typing as t
 
+from libtmux.experimental._wait_pane import await_pane, wait_pane
 from libtmux.experimental.ops import (
-    DisplayMessage,
     HasSession,
     KillSession,
     arun,
     run,
 )
 from libtmux.experimental.ops._types import NameRef
-from libtmux.experimental.ops.plan import PlanResult, StepReport, _resolve
+from libtmux.experimental.ops.plan import PlanResult, StepReport
 from libtmux.experimental.ops.planner import BoundedPlanner, MarkedPlanner
 from libtmux.experimental.workspace.compiler import compile_full
 from libtmux.experimental.workspace.events import WorkspaceBuilt, events_for
@@ -50,17 +50,6 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.workspace.ir import Workspace
 
 
-#: Pane-readiness poll budget: ~2s at a 50ms cadence (matches tmuxp's timeout).
-_WAIT_PANE_POLLS = 40
-_WAIT_PANE_INTERVAL = 0.05
-_CURSOR_FMT = "#{cursor_x},#{cursor_y}"
-
-
-def _pane_ready(cursor: str) -> bool:
-    """Whether the pane's cursor has left the origin (its shell prompt drew)."""
-    return bool(cursor) and cursor != "0,0"
-
-
 def _run_host_sync(
     step: HostStep,
     engine: TmuxEngine,
@@ -73,11 +62,7 @@ def _run_host_sync(
     elif step.kind == "script" and step.command is not None:
         subprocess.run(step.command, shell=True, cwd=step.cwd, check=False)
     elif step.kind == "wait_pane" and step.pane is not None:
-        op = _resolve(DisplayMessage(target=step.pane, message=_CURSOR_FMT), bindings)
-        for _ in range(_WAIT_PANE_POLLS):
-            if _pane_ready(run(op, engine, version=version).text):
-                return
-            time.sleep(_WAIT_PANE_INTERVAL)
+        wait_pane(engine, step.pane, bindings, version)
 
 
 async def _run_host_async(
@@ -93,12 +78,7 @@ async def _run_host_async(
         proc = await asyncio.create_subprocess_shell(step.command, cwd=step.cwd)
         await proc.wait()
     elif step.kind == "wait_pane" and step.pane is not None:
-        op = _resolve(DisplayMessage(target=step.pane, message=_CURSOR_FMT), bindings)
-        for _ in range(_WAIT_PANE_POLLS):
-            result = await arun(op, engine, version=version)
-            if _pane_ready(result.text):
-                return
-            await asyncio.sleep(_WAIT_PANE_INTERVAL)
+        await await_pane(engine, step.pane, bindings, version)
 
 
 def _preflight_sync(ws: Workspace, engine: TmuxEngine, version: str | None) -> bool:

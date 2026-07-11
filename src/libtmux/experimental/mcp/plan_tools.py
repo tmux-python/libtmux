@@ -20,7 +20,7 @@ from libtmux.experimental.ops.serialize import (
 if t.TYPE_CHECKING:
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
     from libtmux.experimental.mcp.registry import OperationToolRegistry
-    from libtmux.experimental.ops.plan import LazyPlan
+    from libtmux.experimental.ops.plan import LazyPlan, PlanResult
     from libtmux.experimental.ops.planner import Planner
 
 
@@ -80,6 +80,19 @@ class PlanOutcome:
     results: list[dict[str, t.Any]]
     bindings: dict[str, str]
 
+    def to_dict(self) -> dict[str, t.Any]:
+        """Render as the JSON object an MCP adapter returns to an agent."""
+        return {"ok": self.ok, "results": self.results, "bindings": self.bindings}
+
+
+def _to_outcome(result: PlanResult) -> PlanOutcome:
+    """Project a Core :class:`~..ops.plan.PlanResult` into a JSON-friendly outcome."""
+    return PlanOutcome(
+        ok=result.ok,
+        results=[result_to_dict(item) for item in result.results],
+        bindings=bindings_to_dict(result.bindings),
+    )
+
 
 def execute_plan(
     plan: LazyPlan,
@@ -89,12 +102,7 @@ def execute_plan(
     planner: Planner | None = None,
 ) -> PlanOutcome:
     """Execute *plan* over *engine*; return JSON-friendly results + bindings."""
-    result = plan.execute(engine, version=version, planner=planner)
-    return PlanOutcome(
-        ok=result.ok,
-        results=[result_to_dict(item) for item in result.results],
-        bindings=bindings_to_dict(result.bindings),
-    )
+    return _to_outcome(plan.execute(engine, version=version, planner=planner))
 
 
 async def aexecute_plan(
@@ -105,12 +113,7 @@ async def aexecute_plan(
     planner: Planner | None = None,
 ) -> PlanOutcome:
     """Async sibling of :func:`execute_plan` (same shape)."""
-    result = await plan.aexecute(engine, version=version, planner=planner)
-    return PlanOutcome(
-        ok=result.ok,
-        results=[result_to_dict(item) for item in result.results],
-        bindings=bindings_to_dict(result.bindings),
-    )
+    return _to_outcome(await plan.aexecute(engine, version=version, planner=planner))
 
 
 @dataclass(frozen=True)
@@ -163,11 +166,8 @@ def build_workspace(
     """
     from libtmux.experimental.workspace import analyze
 
-    result = analyze(spec).build(engine, version=version, preflight=preflight)
-    return PlanOutcome(
-        ok=result.ok,
-        results=[result_to_dict(item) for item in result.results],
-        bindings=bindings_to_dict(result.bindings),
+    return _to_outcome(
+        analyze(spec).build(engine, version=version, preflight=preflight),
     )
 
 
@@ -185,9 +185,6 @@ async def abuild_workspace(
     """
     from libtmux.experimental.workspace import analyze
 
-    result = await analyze(spec).abuild(engine, version=version, preflight=preflight)
-    return PlanOutcome(
-        ok=result.ok,
-        results=[result_to_dict(item) for item in result.results],
-        bindings=bindings_to_dict(result.bindings),
+    return _to_outcome(
+        await analyze(spec).abuild(engine, version=version, preflight=preflight),
     )
