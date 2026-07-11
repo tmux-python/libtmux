@@ -3,21 +3,19 @@
 Executes tmux via the CLI binary, one fork per command, mirroring today's
 :class:`libtmux.common.tmux_cmd` output handling: ``backslashreplace`` decoding
 and trailing-blank stripping. A tmux-side failure is returned as data (nonzero
-``returncode`` plus ``stderr``); only a missing binary raises. ``server_args``
-carries the
-connection flags (``-L``/``-S``/``-f``/``-2``) so the engine can target a
-specific tmux server.
+``returncode`` plus ``stderr``); only a missing binary raises. The engine holds a
+:class:`~.connection.ServerConnection`, which owns the tmux binary and the
+connection flags (``-L``/``-S``/``-f``/``-2``) that target one tmux server.
 """
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import typing as t
 
 from libtmux import exc
-from libtmux.common import get_version
 from libtmux.experimental.engines.base import CommandResult
+from libtmux.experimental.engines.connection import ServerConnection
 
 if t.TYPE_CHECKING:
     import pathlib
@@ -32,7 +30,7 @@ class SubprocessEngine:
     Parameters
     ----------
     tmux_bin : str or pathlib.Path or None
-        The tmux binary; resolved via :func:`shutil.which` when ``None``.
+        The tmux binary; resolved from ``$PATH`` when ``None``.
     server_args : Sequence[str]
         Connection flags inserted before the command (e.g.
         ``("-L", "test")`` or ``("-Lmysocket",)``).
@@ -44,11 +42,22 @@ class SubprocessEngine:
         *,
         server_args: Sequence[str] = (),
     ) -> None:
-        self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
-        self.server_args = tuple(server_args)
-        self._resolved_bin: str | None = None
-        self._tmux_version: str | None = None
-        self._version_probed = False
+        self._conn = ServerConnection.of(tmux_bin, server_args)
+
+    @property
+    def connection(self) -> ServerConnection:
+        """The tmux binary + connection flags this engine dispatches through."""
+        return self._conn
+
+    @property
+    def tmux_bin(self) -> str | None:
+        """The explicitly configured tmux binary, if any."""
+        return self._conn.tmux_bin
+
+    @property
+    def server_args(self) -> tuple[str, ...]:
+        """Connection flags placed before every tmux subcommand."""
+        return self._conn.args
 
     def tmux_version(self) -> str | None:
         """Report this engine's tmux version (``tmux -V``), memoized.
@@ -56,29 +65,11 @@ class SubprocessEngine:
         Returns ``None`` when the binary is missing or its version cannot be
         parsed, so version resolution degrades to "assume latest".
         """
-        if not self._version_probed:
-            self._version_probed = True
-            try:
-                self._tmux_version = str(get_version(self._resolve_bin()))
-            except exc.LibTmuxException:
-                self._tmux_version = None
-        return self._tmux_version
-
-    def _resolve_bin(self) -> str:
-        """Return the tmux binary path, memoized for the engine instance."""
-        if self.tmux_bin is not None:
-            return self.tmux_bin
-        if self._resolved_bin is None:
-            resolved = shutil.which("tmux")
-            if resolved is None:
-                raise exc.TmuxCommandNotFound
-            self._resolved_bin = resolved
-        return self._resolved_bin
+        return self._conn.tmux_version()
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command via subprocess and return its result."""
-        tmux_bin = request.tmux_bin or self._resolve_bin()
-        cmd = [tmux_bin, *self.server_args, *request.args]
+        cmd = self._conn.argv(*request.args, tmux_bin=request.tmux_bin)
 
         try:
             process = subprocess.Popen(
@@ -117,16 +108,5 @@ class SubprocessEngine:
         Mirrors :meth:`libtmux.Server.cmd`'s connection-flag construction so the
         engine talks to the same tmux server as the object API.
         """
-        server_args: list[str] = []
-        if getattr(server, "socket_name", None):
-            server_args.append(f"-L{server.socket_name}")
-        if getattr(server, "socket_path", None):
-            server_args.append(f"-S{server.socket_path}")
-        if getattr(server, "config_file", None):
-            server_args.append(f"-f{server.config_file}")
-        colors = getattr(server, "colors", None)
-        if colors == 256:
-            server_args.append("-2")
-        elif colors == 88:
-            server_args.append("-8")
-        return cls(tmux_bin=getattr(server, "tmux_bin", None), server_args=server_args)
+        conn = ServerConnection.from_server(server)
+        return cls(tmux_bin=conn.tmux_bin, server_args=conn.args)
