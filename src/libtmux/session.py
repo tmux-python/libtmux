@@ -70,6 +70,18 @@ def _spawn_session_id(environ: t.Mapping[str, str]) -> str | None:
     str or None
         The session id as libtmux spells it, or None when ``TMUX`` is absent,
         malformed, or names no session.
+
+    Examples
+    --------
+    >>> _spawn_session_id({"TMUX": "/tmp/tmux-1000/default,123,47"})
+    '$47'
+
+    A pane spawned without a session, and a process outside tmux entirely:
+
+    >>> _spawn_session_id({"TMUX": "/tmp/tmux-1000/default,123,-1"}) is None
+    True
+    >>> _spawn_session_id({}) is None
+    True
     """
     tmux = environ.get("TMUX")
     if not tmux:

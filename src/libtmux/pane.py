@@ -66,6 +66,16 @@ def _caller_pane_id(environ: t.Mapping[str, str]) -> str:
     ------
     :exc:`libtmux.exc.NotInsideTmux`
         When ``TMUX_PANE`` is unset.
+
+    Examples
+    --------
+    >>> _caller_pane_id({"TMUX_PANE": "%1"})
+    '%1'
+
+    >>> _caller_pane_id({})
+    Traceback (most recent call last):
+    ...
+    libtmux.exc.NotInsideTmux: Not inside a tmux pane: TMUX_PANE is unset
     """
     pane_id = environ.get("TMUX_PANE")
     if not pane_id:
