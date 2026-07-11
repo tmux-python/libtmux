@@ -1,37 +1,13 @@
-"""AgentHook protocol and canonical lifecycle-event → state map.
+"""The protocol every agent hook installer satisfies.
 
-The ``EVENT_STATE`` map translates neutral event names emitted by agent
-lifecycle hooks into the :data:`AgentState` string vocabulary understood
-by the monitor.  ``AgentHook`` is the protocol every hook installer must
-satisfy.
+Each agent ships its own lifecycle-event vocabulary and its own config format, so
+a hook object owns that translation: it knows how to detect its agent, install and
+uninstall its hooks, and report their status.
 """
 
 from __future__ import annotations
 
 import typing as t
-
-#: Canonical map from a neutral lifecycle event name to an agent-state string.
-#:
-#: Keys are the event names that agent hooks fire (e.g. as hook script names);
-#: values are the :class:`~libtmux.experimental.agents.state.AgentState`
-#: string representations the monitor stores.
-#:
-#: Examples
-#: --------
-#: >>> EVENT_STATE["turn_start"]
-#: 'running'
-#: >>> EVENT_STATE["needs_approval"]
-#: 'awaiting_input'
-#: >>> EVENT_STATE["turn_end"]
-#: 'done'
-#: >>> EVENT_STATE["session_start"]
-#: 'idle'
-EVENT_STATE: dict[str, str] = {
-    "turn_start": "running",
-    "needs_approval": "awaiting_input",
-    "turn_end": "done",
-    "session_start": "idle",
-}
 
 
 @t.runtime_checkable

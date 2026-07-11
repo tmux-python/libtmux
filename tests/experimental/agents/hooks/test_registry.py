@@ -1,18 +1,10 @@
-"""Tests for the hook registry + canonical event map."""
+"""Tests for the hook registry."""
 
 from __future__ import annotations
 
 import pytest
 
-from libtmux.experimental.agents.hooks.base import EVENT_STATE
 from libtmux.experimental.agents.hooks.registry import get, registry
-
-
-def test_event_state_map_is_canonical() -> None:
-    """EVENT_STATE maps the four canonical lifecycle events to state strings."""
-    assert EVENT_STATE["turn_start"] == "running"
-    assert EVENT_STATE["needs_approval"] == "awaiting_input"
-    assert EVENT_STATE["turn_end"] == "done"
 
 
 def test_registry_has_claude_and_codex() -> None:
