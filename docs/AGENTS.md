@@ -63,17 +63,30 @@ requires them to actually execute — `testpaths` includes `docs/`, so
 pytest runs every one. Lead with a small, runnable example early rather
 than after paragraphs of prose; libtmux is code-first.
 
-- Use the `doctest_namespace` fixtures — `server`, `session`, `window`,
-  `pane` (and `Server` / `Session` / `Window` / `Pane` / `Client`) —
-  instead of building a server by hand.
+- Use the `doctest_namespace` fixtures instead of building a server by
+  hand. `conftest.py` seeds the namespace with `server`, `session`,
+  `window`, `pane`, the `Server` / `Session` / `Window` / `Pane` /
+  `Client` classes, `ControlMode` and `control_mode`, `monkeypatch`,
+  and `request`.
 - Fence a `>>>` session as a ```` ```python ```` block, and reach for
   `# doctest: +ELLIPSIS` when output varies (ids like `@1`, `$2`,
   socket names). Use a ```` ```console ```` block for shell commands at
   a `$` prompt.
-- The code blocks on a page share one doctest session, so a later
-  block can use a `pane` an earlier block created. That makes their
-  **order load-bearing**: never reorder, add, or drop a code block when
-  you reshape the prose around it.
+- **Every code block on a page is an independent doctest.** Blocks do
+  not share a session: each one gets a fresh copy of the namespace *and*
+  a fresh tmux server. A later block cannot use a `pane` an earlier
+  block created — the name is simply not defined there. So **write every
+  block self-contained**. The fixtures above are re-seeded for each
+  block, which makes that cheap: no block needs an import or a setup
+  preamble to get a `server`, a `session`, or a `pane`. Order is
+  load-bearing for the reader's narrative, not for state — reorder, add,
+  or drop a block as the prose demands, and keep the story coherent.
+- Two of those names are not quite what they look like. `Server` is a
+  `TestServer` partial, not the real class; write
+  `>>> from libtmux.server import Server` when an example needs the
+  class itself. And the fixture server is created with a socket *name*,
+  so `server.socket_path` is `None` — an example that needs the path
+  must ask tmux for it with `display-message -p '#{socket_path}'`.
 
 ## What stays precise
 
@@ -109,8 +122,8 @@ another link useful.
 Do not rely on a later reference section to satisfy the first-mention rule. If
 the first occurrence would be a heading, grid-card teaser, or introductory
 sentence, link that occurrence or retitle the heading so the first prose mention
-can carry the link. Leave command examples, code blocks, Mermaid node labels,
-and literal configuration values as code; link the surrounding prose instead.
+can carry the link. Leave command examples, code blocks, and literal
+configuration values as code; link the surrounding prose instead.
 
 ## A page that does this
 
