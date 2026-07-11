@@ -77,6 +77,31 @@ Python object with traversal, filtering, and command execution.
 | {class}`~libtmux.window.Window` | tmux window |
 | {class}`~libtmux.pane.Pane` | tmux pane |
 
+## Know where you're running
+
+Sometimes you hold no handle at all, because your code is *running inside* a
+pane. You don't have to search the server for yourself — tmux writes `TMUX` and
+`TMUX_PANE` into every pane it spawns, and each level of the hierarchy reads
+them back:
+
+```python
+>>> socket_path = server.cmd(
+...     "display-message", "-p", "-t", session.session_id, "#{socket_path}"
+... ).stdout[0]
+>>> monkeypatch.setenv("TMUX", f"{socket_path},1,{session.session_id}")
+>>> monkeypatch.setenv("TMUX_PANE", pane.pane_id)
+
+>>> Pane.from_env().pane_id == pane.pane_id
+True
+>>> Session.from_env().session_name == session.session_name
+True
+```
+
+Inside a pane tmux has already set those two variables, so {meth}`Pane.from_env()
+<libtmux.Pane.from_env>` takes no arguments; these docs are not running in a
+pane, so the example sets them first. Outside tmux there is no pane to return and
+{exc}`~libtmux.exc.NotInsideTmux` is raised instead. See {ref}`self-location`.
+
 ## Testing
 
 libtmux ships a [pytest plugin](api/testing/pytest-plugin/index.md) with
