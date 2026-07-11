@@ -418,59 +418,27 @@ def test_osc_magic_number_agrees(tmp_path: pathlib.Path) -> None:
 
 
 # ----------------------------------------------------------------------------
-# KNOWN DESYNCS -- pinned strict-xfail.  These are bugs, not behavior.
+# HOSTILE NAMES -- every delimiter of the grammar, carried inside a value.
 # ----------------------------------------------------------------------------
 
 HOSTILE_NAMES = (
-    pytest.param(
-        "claude;code",
-        id="semicolon",
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason=(
-                "DESYNC: emit() writes name= unescaped, but the decoder splits the "
-                "payload on ';'. A name containing ';' is silently truncated at the "
-                "first one ('claude;code' decodes as 'claude')."
-            ),
-        ),
-    ),
-    pytest.param(
-        "claude\007code",
-        id="bel",
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason=(
-                "DESYNC: emit() writes BEL into the payload unescaped, but BEL is an "
-                "OSC terminator for the decoder. The escape is cut short and the "
-                "name truncated."
-            ),
-        ),
-    ),
-    pytest.param(
-        "claude\033code",
-        id="esc",
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason=(
-                "DESYNC: emit() writes ESC into the payload unescaped. The decoder's "
-                "payload class excludes ESC, so the escape never terminates and the "
-                "reading is dropped ENTIRELY -- the state is lost, not merely the "
-                "name."
-            ),
-        ),
-    ),
+    pytest.param("claude;code", id="semicolon"),
+    pytest.param("claude\007code", id="bel"),
+    pytest.param("claude\033code", id="esc"),
+    pytest.param("claude=code", id="equals"),
+    pytest.param("claude%3Bcode", id="literal_percent_escape"),
 )
 
 
 @pytest.mark.parametrize("name", HOSTILE_NAMES)
 def test_osc_round_trips_hostile_names(name: str, tmp_path: pathlib.Path) -> None:
-    """A name containing a wire delimiter must still round-trip (it does not).
+    """A name carrying a wire delimiter round-trips instead of corrupting the read.
 
-    The encoder performs no escaping and the decoder performs no unescaping, so
-    every delimiter in the grammar (``;``, ``=``, ``ESC``, ``BEL``) is a hole.
-    The fix belongs on the wire format -- percent-encode or base64 the value on
-    the encoder side and decode it on the reader side, or reject the name up
-    front -- not in this test.
+    Every delimiter of the grammar (``;``, ``=``, ``ESC``, ``BEL``) used to be a
+    hole: ``;`` truncated the name, ``BEL`` cut the escape short, and ``ESC``
+    dropped the reading entirely because the payload class excludes it. The
+    values are percent-encoded on the wire now, so none of them can be
+    structural.
     """
     readings = decode_osc(encode_osc("running", name, tmp_path / "tty"))
     assert len(readings) == 1, "the encoder produced bytes the decoder cannot read"
@@ -478,24 +446,21 @@ def test_osc_round_trips_hostile_names(name: str, tmp_path: pathlib.Path) -> Non
     assert readings[0].name == name
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "DESYNC (severity: state corruption): the unescaped name= field can inject "
-        "a second 'state=' pair into the payload. The decoder's last-wins loop lets "
-        "an agent NAME overwrite the agent STATE -- emit('running', "
-        "name='x;state=idle') decodes as IDLE. Any agent that can influence its own "
-        "name can forge its own state."
-    ),
-)
 def test_name_cannot_forge_state(tmp_path: pathlib.Path) -> None:
-    """The name field must not be able to overwrite the state field."""
+    """The name field must not be able to overwrite the state field.
+
+    The payload is a ``;``-delimited, ``=``-paired body and the decoder takes the
+    last value for a repeated key, so an unescaped name could inject a second
+    ``state=`` pair: any agent able to influence its own name could forge its own
+    state. Percent-encoding the value closes it.
+    """
     raw = encode_osc("running", "x;state=idle", tmp_path / "tty")
     readings = decode_osc(raw)
     assert len(readings) == 1
     assert readings[0].state is AgentState.RUNNING, (
         "the name field overwrote the state field"
     )
+    assert readings[0].name == "x;state=idle"
 
 
 def test_osc_survives_the_real_tmux_output_transport(

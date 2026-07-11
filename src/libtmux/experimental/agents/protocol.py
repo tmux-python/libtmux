@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import re
 import typing as t
+import urllib.parse
 from dataclasses import dataclass
 
 if t.TYPE_CHECKING:
@@ -114,8 +115,28 @@ class Payload:
     name: str | None = None
 
 
+def _quote(value: str) -> str:
+    """Percent-encode a payload value so no character of it can be structural.
+
+    ``safe=""`` leaves only the unreserved ASCII set intact, so the pair
+    separator, the key/value separator, the percent sign itself, and both OSC
+    terminators (``ESC`` and ``BEL``) all come out as ``%XX``.
+    """
+    return urllib.parse.quote(value, safe="")
+
+
 def encode_payload(payload: Payload) -> str:
     """Render *payload* as the ``key=value;key=value`` body both channels carry.
+
+    Values are percent-encoded, so a value can never be mistaken for structure.
+    This is what stops an agent's *name* from forging its own *state*: the name
+    is attacker-influenced, the body is delimited by ``;`` and ``=``, and the
+    decoder takes the last value for a repeated key -- so an unescaped
+    ``name=x;state=idle`` would overwrite the state. It also keeps a name
+    containing ``ESC`` or ``BEL`` from terminating the OSC escape early and
+    truncating the reading.
+
+    Benign values are unreserved, so the common wire form is unchanged.
 
     Parameters
     ----------
@@ -133,18 +154,25 @@ def encode_payload(payload: Payload) -> str:
     'state=running'
     >>> encode_payload(Payload("idle", "claude"))
     'state=idle;name=claude'
+
+    A name that tries to smuggle structure is neutralized:
+
+    >>> encode_payload(Payload("running", "x;state=idle"))
+    'state=running;name=x%3Bstate%3Didle'
     """
-    body = f"{KEY_STATE}{_KV_SEP}{payload.state}"
+    body = f"{KEY_STATE}{_KV_SEP}{_quote(payload.state)}"
     if payload.name:
-        body += f"{_PAIR_SEP}{KEY_NAME}{_KV_SEP}{payload.name}"
+        body += f"{_PAIR_SEP}{KEY_NAME}{_KV_SEP}{_quote(payload.name)}"
     return body
 
 
 def decode_payload(body: str) -> Payload:
     """Parse a ``key=value;key=value`` body back into a :class:`Payload`.
 
-    Unknown keys are ignored and a missing ``state=`` yields an empty state, so
-    a malformed signal degrades rather than raising.
+    Values are percent-decoded, reversing :func:`encode_payload`. Unknown keys
+    are ignored and a missing ``state=`` yields an empty state, so a malformed
+    signal degrades rather than raising. A value with no escapes decodes to
+    itself, so a payload written by an older agent still reads.
 
     Parameters
     ----------
@@ -164,15 +192,20 @@ def decode_payload(body: str) -> Payload:
     Payload(state='idle', name='claude')
     >>> decode_payload("garbage")
     Payload(state='', name=None)
+
+    The escaped name round-trips, and the state it tried to forge does not win:
+
+    >>> decode_payload("state=running;name=x%3Bstate%3Didle")
+    Payload(state='running', name='x;state=idle')
     """
     state = ""
     name: str | None = None
     for part in body.split(_PAIR_SEP):
         key, _, value = part.partition(_KV_SEP)
         if key == KEY_STATE:
-            state = value
+            state = urllib.parse.unquote(value)
         elif key == KEY_NAME:
-            name = value or None
+            name = urllib.parse.unquote(value) or None
     return Payload(state, name)
 
 
