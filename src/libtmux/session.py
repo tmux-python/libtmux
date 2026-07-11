@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 import pathlib
 import typing as t
 import warnings
@@ -20,7 +21,7 @@ from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
 from libtmux.neo import Obj, fetch_obj, fetch_objs
 from libtmux.options import OptionsMixin
-from libtmux.pane import Pane
+from libtmux.pane import Pane, _caller_pane_id
 from libtmux.window import Window
 
 from . import exc
@@ -46,6 +47,47 @@ if t.TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _spawn_session_id(environ: t.Mapping[str, str]) -> str | None:
+    """Return the session id frozen into ``TMUX`` when the pane was spawned.
+
+    tmux writes ``TMUX`` as ``socket_path,server_pid,session_id`` and spells the
+    session id bare -- ``47``, where libtmux spells the same session ``$47``. A
+    pane spawned without a session carries ``-1``.
+
+    This is *provenance*, not location: tmux never rewrites a live process's
+    environment, so the id goes stale the moment the pane's window is moved. It
+    is only good for choosing between sessions that genuinely hold the pane.
+
+    Parameters
+    ----------
+    environ : Mapping[str, str]
+        Environment to read.
+
+    Returns
+    -------
+    str or None
+        The session id as libtmux spells it, or None when ``TMUX`` is absent,
+        malformed, or names no session.
+    """
+    tmux = environ.get("TMUX")
+    if not tmux:
+        return None
+
+    fields = tmux.split(",")
+    if len(fields) < 3:
+        return None
+
+    try:
+        session_number = int(fields[2].removeprefix("$"))
+    except ValueError:
+        return None
+
+    if session_number < 0:  # tmux writes -1 when there is no session
+        return None
+
+    return f"${session_number}"
 
 
 @dataclasses.dataclass()
@@ -159,6 +201,116 @@ class Session(
             server=server,
         )
         return cls(server=server, **session)
+
+    @classmethod
+    def from_env(cls, env: t.Mapping[str, str] | None = None) -> Session:
+        """Return the :class:`Session` this process is running inside.
+
+        The live server decides, and ``TMUX`` only breaks ties.
+
+        tmux writes ``TMUX`` and ``TMUX_PANE`` into a pane's environment when it
+        spawns the pane, and never rewrites them. So the session id inside
+        ``TMUX`` goes stale the moment the pane's window is moved elsewhere
+        (``move-window``), and asking the server which session holds
+        ``TMUX_PANE`` is the only way to stay right.
+
+        That answer is not always unique. ``link-window`` puts one window in
+        several sessions at once, and then the pane genuinely belongs to all of
+        them -- tmux lists it once per session, ordered by session *name*, so
+        picking from the listing alone would answer with whichever session
+        happens to sort last. Here the stale id earns its keep: it records the
+        session the process was *spawned* under, so when that session still
+        holds the pane, it is the one the caller can claim. Otherwise the window
+        has moved on, and the server's answer wins.
+
+        Parameters
+        ----------
+        env : Mapping[str, str], optional
+            Environment to read. Defaults to :data:`os.environ`.
+
+        Returns
+        -------
+        :class:`Session`
+            The session holding the pane named by ``TMUX_PANE``; where several
+            do, the one named by ``TMUX``.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.NotInsideTmux`
+            When ``TMUX`` or ``TMUX_PANE`` is unset, i.e. this process is not
+            inside a pane.
+
+        See Also
+        --------
+        :meth:`Pane.from_env` : the pane this session is resolved from.
+        :meth:`Window.from_env` : the window between the two.
+
+        Notes
+        -----
+        There is no ``Client.from_env``: tmux exports no client id into a pane's
+        environment, and cannot -- a pane is not owned by a client. Zero clients
+        may be attached, or several, each with its own view.
+
+        Examples
+        --------
+        A process can name the session it is running in:
+
+        >>> socket_path = server.cmd(
+        ...     "display-message", "-p", "-t", session.session_id, "#{socket_path}"
+        ... ).stdout[0]
+        >>> env = {
+        ...     "TMUX": f"{socket_path},1,{session.session_id}",
+        ...     "TMUX_PANE": pane.pane_id,
+        ... }
+        >>> Session.from_env(env).session_id == session.session_id
+        True
+
+        tmux spells that id bare in ``TMUX`` -- ``1``, not ``$1`` -- and either
+        is understood:
+
+        >>> bare = session.session_id.removeprefix("$")
+        >>> env["TMUX"] = f"{socket_path},1,{bare}"
+        >>> Session.from_env(env).session_id == session.session_id
+        True
+
+        A session id in ``TMUX`` that no longer holds the pane is ignored; the
+        server is what knows:
+
+        >>> env["TMUX"] = f"{socket_path},1,999"
+        >>> Session.from_env(env).session_id == session.session_id
+        True
+
+        Outside of tmux there is no session to resolve:
+
+        >>> Session.from_env({})
+        Traceback (most recent call last):
+        ...
+        libtmux.exc.NotInsideTmux: Not inside a tmux pane: TMUX is unset
+
+        .. versionadded:: 0.62
+        """
+        environ: t.Mapping[str, str] = os.environ if env is None else env
+
+        from libtmux.server import Server
+
+        server = Server.from_env(environ)
+        pane_id = _caller_pane_id(environ)
+
+        holding = server.panes.filter(pane_id=pane_id)
+        if not holding:
+            raise exc.TmuxObjectDoesNotExist(
+                obj_key="pane_id",
+                obj_id=pane_id,
+                list_cmd="list-panes",
+                list_extra_args=("-a",),
+            )
+
+        session_ids = [pane.session_id for pane in holding]
+        spawned_in = _spawn_session_id(environ)
+        session_id = spawned_in if spawned_in in session_ids else session_ids[-1]
+        assert isinstance(session_id, str)
+
+        return cls.from_session_id(server=server, session_id=session_id)
 
     #
     # Relations

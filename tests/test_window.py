@@ -1332,3 +1332,116 @@ def test_new_pane(session: Session) -> None:
     else:
         with pytest.raises(exc.LibTmuxException, match=r"new_pane .*requires tmux 3.7"):
             window.new_pane(width=40, height=10)
+
+
+def test_window_from_env(server: Server, session: Session) -> None:
+    """:meth:`Window.from_env` returns the window containing the caller's pane."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(session.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{session.session_id}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+    caller = Window.from_env(env)
+
+    assert caller.window_id == pane.window_id
+    assert caller.session_id == session.session_id
+
+
+def test_window_from_env_is_containing_not_active(
+    server: Server,
+    session: Session,
+) -> None:
+    """:meth:`Window.from_env` resolves the caller's window, focused or not.
+
+    ``session.active_window`` answers "what is the user looking at", which is a
+    different question. A pane running in the background must still be able to
+    name its own window.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(session.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{session.session_id}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+    # Focus elsewhere: the caller's window is now a background window.
+    foreground = session.new_window(window_name="from_env_foreground", attach=True)
+    assert session.active_window.window_id == foreground.window_id
+    assert session.active_window.window_id != pane.window_id
+
+    assert Window.from_env(env).window_id == pane.window_id
+
+
+def test_window_from_env_after_move_window(server: Server, session: Session) -> None:
+    """:meth:`Window.from_env` survives the window moving between sessions.
+
+    ``$TMUX`` is frozen at spawn time, so its session id is stale after
+    ``move-window``. ``TMUX_PANE`` is not: the pane still names a live window,
+    and the window still names a live session.
+    """
+    origin = session
+    pane = origin.active_window.active_pane
+    assert pane is not None
+    window = pane.window
+
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(origin.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{origin.session_id}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+    origin.new_window(window_name="from_env_origin_keepalive")
+    destination = server.new_session(session_name="from_env_window_destination")
+    # ``no_select`` (-d) leaves the moved window unfocused in its new session,
+    # so "containing" and "active" are provably different windows.
+    window.move_window(session=str(destination.session_id), no_select=True)
+
+    caller = Window.from_env(env)
+
+    assert caller.window_id == window.window_id
+    assert caller.session_id == destination.session_id
+
+    active = destination.active_window
+    assert active.window_id != caller.window_id
+    assert caller.window_id in [w.window_id for w in destination.windows]
+
+
+def test_window_from_env_outside_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
+    """:meth:`Window.from_env` raises when ``$TMUX`` or ``$TMUX_PANE`` is unset."""
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
+
+    with pytest.raises(exc.NotInsideTmux):
+        Window.from_env()
+
+    with pytest.raises(exc.NotInsideTmux):
+        Window.from_env({})
+
+    monkeypatch.setenv("TMUX", "/tmp/libtmux-test/default,1234,$0")
+
+    with pytest.raises(exc.NotInsideTmux):
+        Window.from_env()

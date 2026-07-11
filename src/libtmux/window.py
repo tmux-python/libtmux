@@ -178,6 +178,74 @@ class Window(
         )
         return cls(server=server, **window)
 
+    @classmethod
+    def from_env(cls, env: t.Mapping[str, str] | None = None) -> Window:
+        """Return the :class:`Window` this process is running inside.
+
+        The window *containing* the caller's pane, resolved through
+        ``TMUX_PANE`` -- not ``session.active_window``, which names whatever
+        window is focused, often somebody else's. Stays correct after the
+        window moves between sessions.
+
+        Parameters
+        ----------
+        env : Mapping[str, str], optional
+            Environment to read. Defaults to :data:`os.environ`.
+
+        Returns
+        -------
+        :class:`Window`
+            The window containing the pane named by ``TMUX_PANE``.
+
+        Raises
+        ------
+        :exc:`libtmux.exc.NotInsideTmux`
+            When ``TMUX`` or ``TMUX_PANE`` is unset, i.e. this process is not
+            inside a pane.
+
+        See Also
+        --------
+        :meth:`Pane.from_env` : the pane this window is resolved from.
+        :meth:`Session.from_env` : the session containing this window.
+
+        Examples
+        --------
+        A process can name the window it is running in:
+
+        >>> socket_path = server.cmd(
+        ...     "display-message", "-p", "-t", session.session_id, "#{socket_path}"
+        ... ).stdout[0]
+        >>> env = {
+        ...     "TMUX": f"{socket_path},1,{session.session_id}",
+        ...     "TMUX_PANE": pane.pane_id,
+        ... }
+        >>> Window.from_env(env).window_id == window.window_id
+        True
+
+        Focus is irrelevant. Push the caller's window into the background and
+        it still resolves to itself, not to whatever is active:
+
+        >>> session.new_window(attach=True)
+        Window(@... ...:..., Session($... ...))
+        >>> session.active_window.window_id == window.window_id
+        False
+        >>> Window.from_env(env).window_id == window.window_id
+        True
+
+        Outside of tmux there is no window to resolve:
+
+        >>> Window.from_env({})
+        Traceback (most recent call last):
+        ...
+        libtmux.exc.NotInsideTmux: Not inside a tmux pane: TMUX is unset
+
+        .. versionadded:: 0.62
+        """
+        pane = Pane.from_env(env)
+        assert isinstance(pane.window_id, str)
+
+        return cls.from_window_id(server=pane.server, window_id=pane.window_id)
+
     @property
     def session(self) -> Session:
         """Parent session of window."""

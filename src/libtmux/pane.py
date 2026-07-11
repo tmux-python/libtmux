@@ -46,6 +46,34 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _caller_pane_id(environ: t.Mapping[str, str]) -> str:
+    """Return the pane id tmux gave this process, from ``TMUX_PANE``.
+
+    Shared by the ``from_env`` constructors, which all anchor on the caller's
+    pane: it is the one identifier tmux keeps answering for live.
+
+    Parameters
+    ----------
+    environ : Mapping[str, str]
+        Environment to read.
+
+    Returns
+    -------
+    str
+        The pane id, e.g. ``"%1"``.
+
+    Raises
+    ------
+    :exc:`libtmux.exc.NotInsideTmux`
+        When ``TMUX_PANE`` is unset.
+    """
+    pane_id = environ.get("TMUX_PANE")
+    if not pane_id:
+        msg = "Not inside a tmux pane: TMUX_PANE is unset"
+        raise exc.NotInsideTmux(msg)
+    return pane_id
+
+
 @dataclasses.dataclass()
 class Pane(
     Obj,
@@ -215,12 +243,7 @@ class Pane(
         environ: t.Mapping[str, str] = os.environ if env is None else env
         server = Server.from_env(environ)
 
-        pane_id = environ.get("TMUX_PANE")
-        if not pane_id:
-            msg = "Not inside a tmux pane: TMUX_PANE is unset"
-            raise exc.NotInsideTmux(msg)
-
-        return cls.from_pane_id(server=server, pane_id=pane_id)
+        return cls.from_pane_id(server=server, pane_id=_caller_pane_id(environ))
 
     #
     # Relations

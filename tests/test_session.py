@@ -782,3 +782,167 @@ def test_kill_session_group(server: Server) -> None:
     else:
         with pytest.warns(UserWarning, match="group requires tmux 3.7"):
             session.kill(group=True)
+
+
+def test_session_from_env(server: Server, session: Session) -> None:
+    """:meth:`Session.from_env` returns the session containing the caller's pane."""
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(session.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{session.session_id}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+    caller = Session.from_env(env)
+
+    assert caller.session_id == session.session_id
+    assert caller.server.socket_path == socket_path
+
+
+def test_session_from_env_after_move_window(server: Server, session: Session) -> None:
+    """:meth:`Session.from_env` follows the pane, not the id frozen into ``$TMUX``.
+
+    tmux writes ``TMUX`` (``socket_path,server_pid,session_id``) into a pane's
+    environment when it spawns the pane and never rewrites it. Move the pane's
+    window to another session and ``$TMUX`` still names the old one. Resolving
+    through ``TMUX_PANE`` -- which tmux answers for live -- is what keeps the
+    answer right.
+    """
+    origin = session
+    pane = origin.active_window.active_pane
+    assert pane is not None
+    window = pane.window
+
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(origin.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{origin.session_id}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+    # Keep ``origin`` alive past the move: a session with no windows is
+    # destroyed, and an implementation that trusted ``$TMUX`` would then fail
+    # loudly rather than answer wrongly. The dangerous case is the quiet one.
+    origin.new_window(window_name="from_env_origin_keepalive")
+
+    destination = server.new_session(session_name="from_env_destination")
+    window.move_window(session=str(destination.session_id), no_select=True)
+
+    # Ground truth: tmux says the pane now lives in ``destination``.
+    pane.refresh()
+    assert pane.session_id == destination.session_id
+    # ...while the environment the pane was spawned with still names ``origin``,
+    # which is alive and would be returned by anything that parsed ``$TMUX``.
+    assert env["TMUX"].endswith(f",{origin.session_id}")
+    assert server.has_session(str(origin.session_name))
+
+    assert Session.from_env(env).session_id == destination.session_id
+    assert Session.from_env(env).session_id != origin.session_id
+
+
+def test_session_from_env_outside_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
+    """:meth:`Session.from_env` raises when ``$TMUX`` or ``$TMUX_PANE`` is unset."""
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
+
+    with pytest.raises(exc.NotInsideTmux):
+        Session.from_env()
+
+    with pytest.raises(exc.NotInsideTmux):
+        Session.from_env({})
+
+    monkeypatch.setenv("TMUX", "/tmp/libtmux-test/default,1234,$0")
+
+    with pytest.raises(exc.NotInsideTmux):
+        Session.from_env()
+
+
+def test_session_from_env_linked_window_prefers_spawn_session(
+    server: Server,
+) -> None:
+    """A linked window lives in several sessions; ``$TMUX`` breaks the tie.
+
+    ``link-window`` puts one window in more than one session at once, so
+    ``list-panes -a`` lists the caller's pane once per session and tmux holds
+    two equally true answers. The pane alone cannot choose between them: tmux
+    orders that listing by session *name*, so resolving from the pane answers
+    with whichever session happens to sort last -- rename the sessions and the
+    answer changes. ``TMUX`` can choose: it records the session the process was
+    spawned under, which is the one the caller can actually claim.
+
+    The names are deliberate. ``zzz_...`` sorts after ``aaa_...``, so the
+    pane's last row is the destination, and resolving from the pane alone would
+    answer with a session the caller was never spawned in.
+    """
+    origin = server.new_session(session_name="aaa_from_env_origin")
+    window = origin.new_window(window_name="from_env_linked", attach=False)
+    pane = window.active_pane
+    assert pane is not None
+
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(origin.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{origin.session_id}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+    destination = server.new_session(session_name="zzz_from_env_link_target")
+    server.cmd(
+        "link-window",
+        "-s",
+        str(window.window_id),
+        "-t",
+        f"{destination.session_id}:",
+    )
+
+    resolved = [p.session_id for p in server.panes.filter(pane_id=pane.pane_id)]
+    assert set(resolved) == {origin.session_id, destination.session_id}
+    assert resolved[-1] == destination.session_id
+
+    assert Session.from_env(env).session_id == origin.session_id
+
+
+def test_session_from_env_accepts_bare_session_id(
+    server: Server,
+    session: Session,
+) -> None:
+    """Bare session ids in ``$TMUX`` resolve, because that is what tmux writes.
+
+    tmux formats the id with ``%d`` from ``s->id``, so a real pane sees
+    ``socket,pid,47`` where libtmux spells the same session ``$47``.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+    bare = str(session.session_id).removeprefix("$")
+
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(session.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{bare}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+    assert Session.from_env(env).session_id == session.session_id
