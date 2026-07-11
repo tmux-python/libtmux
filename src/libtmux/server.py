@@ -189,16 +189,6 @@ class Server(
         elif socket_name_factory is not None:
             self.socket_name = socket_name_factory()
 
-        tmux_tmpdir = pathlib.Path(os.getenv("TMUX_TMPDIR", "/tmp"))
-        socket_name = self.socket_name or "default"
-        if (
-            tmux_tmpdir is not None
-            and self.socket_path is None
-            and self.socket_name is None
-            and socket_name != "default"
-        ):
-            self.socket_path = str(tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name)
-
         if config_file:
             self.config_file = config_file
 
