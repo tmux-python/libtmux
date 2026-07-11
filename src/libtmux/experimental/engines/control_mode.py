@@ -20,15 +20,14 @@ import dataclasses
 import logging
 import os
 import selectors
-import shutil
 import subprocess
 import threading
 import time
 import typing as t
 
 from libtmux import exc
-from libtmux.common import get_version
 from libtmux.experimental.engines.base import CommandResult, render_control_line
+from libtmux.experimental.engines.connection import ServerConnection
 
 if t.TYPE_CHECKING:
     import types
@@ -161,7 +160,7 @@ class ControlModeEngine:
     Parameters
     ----------
     tmux_bin : str or None
-        The tmux binary; resolved via :func:`shutil.which` when ``None``.
+        The tmux binary; resolved from ``$PATH`` when ``None``.
     server_args : Sequence[str]
         Connection flags inserted before ``-C``.
     timeout : float
@@ -180,26 +179,37 @@ class ControlModeEngine:
         server_args: Sequence[str] = (),
         timeout: float = _DEFAULT_TIMEOUT,
     ) -> None:
-        self.tmux_bin = tmux_bin
-        self.server_args = tuple(server_args)
+        self._conn = ServerConnection.of(tmux_bin, server_args)
         self.timeout = timeout
         self._lock = threading.Lock()
         self._parser = ControlModeParser()
         self._proc: subprocess.Popen[bytes] | None = None
         self._selector: selectors.DefaultSelector | None = None
 
+    @property
+    def connection(self) -> ServerConnection:
+        """The tmux binary + connection flags this engine dispatches through."""
+        return self._conn
+
+    @property
+    def tmux_bin(self) -> str | None:
+        """The explicitly configured tmux binary, if any."""
+        return self._conn.tmux_bin
+
+    @property
+    def server_args(self) -> tuple[str, ...]:
+        """Connection flags placed before ``-C``."""
+        return self._conn.args
+
     def tmux_version(self) -> str | None:
-        """Report the connected server's tmux version (``tmux -V``).
+        """Report the connected server's tmux version (``tmux -V``), memoized.
 
         Implements
         :class:`~libtmux.experimental.engines.base.SupportsTmuxVersion` so
         version-gated operations render correctly over control mode; in-memory
         engines omit it and resolution assumes latest.
         """
-        try:
-            return str(get_version(self.tmux_bin))
-        except exc.LibTmuxException:
-            return None
+        return self._conn.tmux_version()
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command over the control connection."""
@@ -277,10 +287,7 @@ class ControlModeEngine:
                 msg = f"tmux -C exited with code {self._proc.returncode}"
                 raise ControlModeError(msg)
             return
-        tmux_bin = self.tmux_bin or shutil.which("tmux")
-        if tmux_bin is None:
-            raise exc.TmuxCommandNotFound
-        cmd = [tmux_bin, *self.server_args, "-C"]
+        cmd = self._conn.argv("-C")
         try:
             proc = subprocess.Popen(
                 cmd,
@@ -445,21 +452,10 @@ class ControlModeEngine:
     @classmethod
     def for_server(cls, server: t.Any, **kwargs: t.Any) -> ControlModeEngine:
         """Build a control-mode engine bound to a live server's socket."""
-        server_args: list[str] = []
-        if getattr(server, "socket_name", None):
-            server_args.append(f"-L{server.socket_name}")
-        if getattr(server, "socket_path", None):
-            server_args.append(f"-S{server.socket_path}")
-        if getattr(server, "config_file", None):
-            server_args.append(f"-f{server.config_file}")
-        colors = getattr(server, "colors", None)
-        if colors == 256:
-            server_args.append("-2")
-        elif colors == 88:
-            server_args.append("-8")
+        conn = ServerConnection.from_server(server)
         return cls(
-            tmux_bin=getattr(server, "tmux_bin", None),
-            server_args=server_args,
+            tmux_bin=conn.tmux_bin,
+            server_args=conn.args,
             **kwargs,
         )
 
