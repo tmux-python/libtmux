@@ -946,3 +946,42 @@ def test_session_from_env_accepts_bare_session_id(
     }
 
     assert Session.from_env(env).session_id == session.session_id
+
+
+@pytest.mark.parametrize(
+    "spawn_field",
+    [
+        pytest.param("-1", id="no-session-at-spawn"),
+        pytest.param("999", id="session-since-killed"),
+        pytest.param("wat", id="not-a-number"),
+        pytest.param("", id="empty"),
+    ],
+)
+def test_session_from_env_unusable_spawn_id_defers_to_server(
+    server: Server,
+    session: Session,
+    spawn_field: str,
+) -> None:
+    """An unusable id in ``$TMUX`` is ignored; the server still knows.
+
+    ``TMUX`` only ever breaks a tie between sessions that genuinely hold the
+    pane. When it names nothing usable -- tmux writes ``-1`` for a pane spawned
+    without a session, and the id it does write goes stale -- there is no tie to
+    break, and the session holding the pane is the answer.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    socket_path = server.cmd(
+        "display-message",
+        "-p",
+        "-t",
+        str(session.session_id),
+        "#{socket_path}",
+    ).stdout[0]
+    env = {
+        "TMUX": f"{socket_path},1,{spawn_field}",
+        "TMUX_PANE": str(pane.pane_id),
+    }
+
+    assert Session.from_env(env).session_id == session.session_id
