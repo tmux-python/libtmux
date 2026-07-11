@@ -36,6 +36,7 @@ import time
 import typing as t
 from dataclasses import dataclass, field
 
+from libtmux.experimental._wait_pane import await_pane, wait_pane
 from libtmux.experimental.ops import (
     BoundedPlanner,
     DisplayMessage,
@@ -44,10 +45,7 @@ from libtmux.experimental.ops import (
     NameRef,
     NewSession,
     NewWindow,
-    arun,
-    run,
 )
-from libtmux.experimental.ops.plan import _resolve
 from libtmux.experimental.query import ForwardPaneRef, _PaneRefBase
 
 if t.TYPE_CHECKING:
@@ -55,18 +53,10 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.ops import Planner, PlanResult, StepReport
     from libtmux.experimental.ops._types import SlotRef, Target
 
-_CURSOR_FMT = "#{cursor_x},#{cursor_y}"
-_WAIT_PANE_POLLS = 40
-_WAIT_PANE_INTERVAL = 0.05
 #: The probe format for a session find-or-create -- the ids
 #: ``NewSession(capture_panes=True)`` captures, so a found session binds the
 #: same self/window/pane slots a created one would.
 _SESSION_PROBE = "#{session_id} #{window_id} #{pane_id}"
-
-
-def _pane_ready(cursor: str) -> bool:
-    """Whether a pane's cursor has left the origin (its shell prompt drew)."""
-    return bool(cursor) and cursor != "0,0"
 
 
 @dataclass(frozen=True)
@@ -258,14 +248,7 @@ class PlanBuilder:
                 if action.kind == "sleep":
                     time.sleep(action.seconds)
                 elif action.pane is not None:
-                    op = _resolve(
-                        DisplayMessage(target=action.pane, message=_CURSOR_FMT),
-                        report.bindings,
-                    )
-                    for _ in range(_WAIT_PANE_POLLS):
-                        if _pane_ready(run(op, engine, version=version).text):
-                            break
-                        time.sleep(_WAIT_PANE_INTERVAL)
+                    wait_pane(engine, action.pane, report.bindings, version)
 
         return self.plan.execute(
             engine,
@@ -298,15 +281,7 @@ class PlanBuilder:
                 if action.kind == "sleep":
                     await asyncio.sleep(action.seconds)
                 elif action.pane is not None:
-                    op = _resolve(
-                        DisplayMessage(target=action.pane, message=_CURSOR_FMT),
-                        report.bindings,
-                    )
-                    for _ in range(_WAIT_PANE_POLLS):
-                        result = await arun(op, engine, version=version)
-                        if _pane_ready(result.text):
-                            break
-                        await asyncio.sleep(_WAIT_PANE_INTERVAL)
+                    await await_pane(engine, action.pane, report.bindings, version)
 
         return await self.plan.aexecute(
             engine,
