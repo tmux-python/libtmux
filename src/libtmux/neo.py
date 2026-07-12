@@ -833,14 +833,16 @@ def _best_winlink(rows: OutputsRaw) -> OutputRaw:
     ``window_index``.
 
     tmux selects the current winlink when it contains the window, otherwise the
-    first. ``#{window_active}`` identifies the current row, and ascending
-    ``window_index`` order makes the first matching row tmux's first.
+    first. ``#{window_active}`` identifies the current row, and the lowest
+    ``window_index`` is tmux's first -- chosen explicitly here, so the caller
+    need not pre-sort the rows.
 
     Parameters
     ----------
     rows : OutputsRaw
-        Non-empty rows for one object id in one session. When several rows
-        match, they must be ordered by ascending ``window_index``.
+        Non-empty rows for one object id in one session. Order does not
+        matter: the current winlink wins, otherwise the lowest
+        ``window_index``.
 
     Returns
     -------
@@ -872,6 +874,15 @@ def _best_winlink(rows: OutputsRaw) -> OutputRaw:
     ...     {"window_id": "@0", "window_index": "5", "window_active": "0"},
     ... ])["window_index"]
     '1'
+
+    The fallback reads the lowest index, not the first row, so a listing that
+    happened to arrive high-index-first still answers tmux's first:
+
+    >>> _best_winlink([
+    ...     {"window_id": "@0", "window_index": "5", "window_active": "0"},
+    ...     {"window_id": "@0", "window_index": "1", "window_active": "0"},
+    ... ])["window_index"]
+    '1'
     """
     if len(rows) == 1:
         return rows[0]
@@ -880,7 +891,7 @@ def _best_winlink(rows: OutputsRaw) -> OutputRaw:
         if row.get("window_active") == "1":
             return row
 
-    return rows[0]
+    return min(rows, key=lambda row: int(row["window_index"]))
 
 
 def fetch_obj(
