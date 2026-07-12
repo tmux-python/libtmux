@@ -336,3 +336,10 @@ def test_get_default_with_broad_eq_is_returned() -> None:
 
     default = BroadEq()
     assert QueryList([]).get(missing="x", default=default) is default
+
+
+def test_object_does_not_exist_exposes_query() -> None:
+    """``ObjectDoesNotExist`` exposes its lookup, mirroring its sibling."""
+    query: dict[str, t.Any] = {"pane_id": "%9"}
+    assert ObjectDoesNotExist(query=query).query == query
+    assert ObjectDoesNotExist().query is None

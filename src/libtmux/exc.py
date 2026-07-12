@@ -191,6 +191,7 @@ class ObjectDoesNotExist(LibTmuxException):
         *args: object,
         query: t.Mapping[str, t.Any] | None = None,
     ) -> None:
+        self.query: t.Mapping[str, t.Any] | None = query
         if args:
             super().__init__(*args)
             return
