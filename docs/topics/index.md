@@ -18,6 +18,13 @@ Navigate the {class}`~libtmux.Server`, {class}`~libtmux.Session`,
 {class}`~libtmux.Window`, {class}`~libtmux.Pane` hierarchy.
 :::
 
+:::{grid-item-card} Locating Yourself
+:link: self_location
+:link-type: doc
+Code running inside a pane asking which pane, window, session, and server
+it is in.
+:::
+
 :::{grid-item-card} Filtering
 :link: filtering
 :link-type: doc
@@ -82,6 +89,7 @@ configuration
 design-decisions
 public-vs-internal
 traversal
+self_location
 filtering
 pane_interaction
 floating_panes

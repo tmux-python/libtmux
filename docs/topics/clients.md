@@ -35,6 +35,17 @@ stable for the lifetime of the attachment.
 | `client_session` | session name of the same attached view | No — snapshot |
 | `client_pid` / `client_tty` / `client_user` | terminal-level facts | Yes — identity-adjacent |
 
+:::{seealso}
+**Why there is no `Client.from_env()`.** A pane can name the
+{class}`~libtmux.Session`, {class}`~libtmux.Window`, and
+{class}`~libtmux.Pane` it is running in, because tmux writes those ids into
+its environment. A client is the one thing it cannot name. Viewing is not
+owning: no client may be attached at all — a detached session, a CI job, a
+`send-keys` script — or several may be, each looking somewhere else. tmux
+exports no client id into a pane because there is no single right answer to
+export. See {ref}`self-location` for what a pane *can* resolve about itself.
+:::
+
 ## Live attachment lookup
 
 When you want the *current* attachment — not the snapshot — use the

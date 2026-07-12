@@ -45,6 +45,28 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Find where you are running (#714)
+
+Code running *inside* tmux — a script in a split, a hook, a test harness, an
+agent — can now ask libtmux where it is.
+{meth}`Pane.from_env() <libtmux.Pane.from_env>` returns the pane the calling
+process is running in, and {meth}`Server.from_env() <libtmux.Server.from_env>`,
+{meth}`Session.from_env() <libtmux.Session.from_env>` and
+{meth}`Window.from_env() <libtmux.Window.from_env>` do the same for the rest of
+the hierarchy. Each takes an optional environment mapping, so code that locates
+itself stays testable outside a pane.
+
+The answer stays true as tmux moves things around: it survives a `move-window`,
+and for a window linked into several sessions it names the session tmux itself
+would act on. Outside tmux, or with an environment that does not parse, the
+family raises {exc}`~libtmux.exc.NotInsideTmux` rather than guessing.
+
+See {ref}`self-location` for the whole story — why the session id tmux exports
+goes stale, the window that *contains* you versus the one in front of you, and
+how to test code that locates itself.
+
 ### Fixes
 
 #### Linked windows resolve to the session tmux would use (#713)

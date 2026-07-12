@@ -16,6 +16,7 @@ import typing as t
 import warnings
 
 from libtmux import exc
+from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
@@ -189,16 +190,6 @@ class Server(
         elif socket_name_factory is not None:
             self.socket_name = socket_name_factory()
 
-        tmux_tmpdir = pathlib.Path(os.getenv("TMUX_TMPDIR", "/tmp"))
-        socket_name = self.socket_name or "default"
-        if (
-            tmux_tmpdir is not None
-            and self.socket_path is None
-            and self.socket_name is None
-            and socket_name != "default"
-        ):
-            self.socket_path = str(tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name)
-
         if config_file:
             self.config_file = config_file
 
@@ -207,6 +198,61 @@ class Server(
 
         if on_init is not None:
             on_init(self)
+
+    @classmethod
+    def from_env(cls, env: t.Mapping[str, str] | None = None) -> Server:
+        """Return the tmux server this process's pane is attached to.
+
+        Reads the socket path out of ``$TMUX``, which tmux exports into every
+        pane it spawns as ``"<socket_path>,<server_pid>,<session_id>"``. Only
+        the socket path is used: the pid and the session id are frozen at pane
+        spawn, and the session id goes stale as soon as the pane's window is
+        moved between sessions. Costs no tmux subprocess -- it is a pure read
+        of the environment.
+
+        Parameters
+        ----------
+        env : :class:`typing.Mapping`, optional
+            Environment to read. Defaults to :data:`os.environ`, which is what
+            a process running inside a pane wants; pass an explicit mapping to
+            resolve on behalf of another pane.
+
+        Returns
+        -------
+        :class:`Server`
+            Server bound to the socket named by ``$TMUX``. Not verified to be
+            alive -- use :meth:`Server.is_alive` for that.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.NotInsideTmux`
+            When ``$TMUX`` is unset, empty, or not shaped like tmux's triple.
+
+        Examples
+        --------
+        >>> from libtmux.server import Server as TmuxServer
+        >>> socket_path = server.cmd(
+        ...     "display-message", "-p", "-t", pane.pane_id, "#{socket_path}"
+        ... ).stdout[0]
+        >>> env = {"TMUX": f"{socket_path},1,0", "TMUX_PANE": pane.pane_id}
+
+        >>> TmuxServer.from_env(env)
+        Server(socket_path=...)
+
+        >>> TmuxServer.from_env(env).is_alive()
+        True
+
+        Outside a pane there is no server to name:
+
+        >>> try:
+        ...     TmuxServer.from_env({})
+        ... except exc.NotInsideTmux as e:
+        ...     print(e)
+        Not inside a tmux pane: $TMUX is unset or empty
+
+        .. versionadded:: 0.62
+        """
+        return cls(socket_path=socket_path_from_env(env))
 
     def __enter__(self) -> Self:
         """Enter the context, returning self.

@@ -21,6 +21,7 @@ libtmux is a typed Python API over [tmux], the terminal multiplexer. Stop shelli
 
 - Typed, object-oriented control of tmux state
 - Query and [traverse](https://libtmux.git-pull.com/topics/traversal/) live sessions, windows, and panes
+- [Locate yourself](https://libtmux.git-pull.com/topics/self_location/) from inside a pane with `from_env()`
 - Raw escape hatch via `.cmd(...)` on any object
 - Works with multiple tmux sockets and servers
 - [Context managers](https://libtmux.git-pull.com/topics/context_managers/) for automatic cleanup
@@ -225,6 +226,27 @@ Window(@... ...:..., Session($... ...))
 >>> pane.window.session
 Session($... ...)
 ```
+
+### Know where you're running
+
+[**Learn more about Locating yourself**](https://libtmux.git-pull.com/topics/self_location/)
+
+Code *running inside* a pane — a script in a split, a tmux hook, an agent — can ask where it is. tmux writes `TMUX` and `TMUX_PANE` into every pane it spawns, and `Server`, `Session`, `Window`, and `Pane` each read them back:
+
+```python
+>>> socket_path = server.cmd(
+...     "display-message", "-p", "-t", session.session_id, "#{socket_path}"
+... ).stdout[0]
+>>> monkeypatch.setenv("TMUX", f"{socket_path},1,{session.session_id}")
+>>> monkeypatch.setenv("TMUX_PANE", pane.pane_id)
+
+>>> Pane.from_env()
+Pane(%... ...)
+>>> Session.from_env().session_name == session.session_name
+True
+```
+
+In a real pane tmux has already set those two variables, so `from_env()` takes no arguments and there is nothing to arrange — this README is not running in a pane, so the example sets them first. Outside tmux there is no pane to return, and `from_env()` raises `NotInsideTmux`.
 
 ## Core concepts
 

@@ -222,6 +222,59 @@ class Window(
         )
         return cls(server=server, **window)
 
+    @classmethod
+    def from_env(cls, env: t.Mapping[str, str] | None = None) -> Window:
+        """Return the window containing the pane this process runs inside of.
+
+        Resolves through :meth:`Pane.from_env`, so the answer is the window
+        that *contains* the caller -- not the session's currently active
+        window, which may be a different one entirely.
+
+        Parameters
+        ----------
+        env : :class:`typing.Mapping`, optional
+            Environment to read. Defaults to :data:`os.environ`.
+
+        Returns
+        -------
+        :class:`Window`
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.NotInsideTmux`
+            When ``$TMUX`` or ``$TMUX_PANE`` is unset or malformed.
+        :exc:`~libtmux.exc.TmuxObjectDoesNotExist`
+            When the pane named by ``$TMUX_PANE`` is gone.
+        :exc:`~libtmux.exc.LibTmuxException`
+            When the server named by ``$TMUX`` is unreachable.
+        ValueError
+            When the resolved pane carries no ``window_id``. Surfaces a clear
+            error under ``python -O``, where an ``assert`` would be stripped.
+
+        Examples
+        --------
+        >>> socket_path = server.cmd(
+        ...     "display-message", "-p", "-t", pane.pane_id, "#{socket_path}"
+        ... ).stdout[0]
+        >>> env = {"TMUX": f"{socket_path},1,0", "TMUX_PANE": pane.pane_id}
+
+        >>> Window.from_env(env)
+        Window(@1 1:..., Session($1 ...))
+
+        The caller's window is reported even while another window is active:
+
+        >>> _ = session.new_window(window_name="foreground", attach=True)
+        >>> Window.from_env(env).window_id == window.window_id
+        True
+
+        .. versionadded:: 0.62
+        """
+        pane = Pane.from_env(env)
+        if pane.window_id is None:
+            msg = "Pane must have a window_id to resolve its window"
+            raise ValueError(msg)
+        return cls.from_window_id(server=pane.server, window_id=pane.window_id)
+
     @property
     def session(self) -> Session:
         """Parent session of window."""

@@ -151,7 +151,31 @@ class Session(
 
     @classmethod
     def from_session_id(cls, server: Server, session_id: str) -> Session:
-        """Create Session from existing session_id."""
+        """Create Session from existing session_id.
+
+        Parameters
+        ----------
+        server : :class:`~libtmux.server.Server`
+            The tmux server holding the session.
+        session_id : str
+            Session id, e.g. ``"$1"``.
+
+        Returns
+        -------
+        :class:`Session`
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxObjectDoesNotExist`
+            When no such session exists on a reachable server.
+
+        Examples
+        --------
+        >>> Session.from_session_id(
+        ...     server=session.server, session_id=session.session_id
+        ... )
+        Session($1 ...)
+        """
         session = fetch_obj(
             obj_key="session_id",
             obj_id=session_id,
@@ -159,6 +183,63 @@ class Session(
             server=server,
         )
         return cls(server=server, **session)
+
+    @classmethod
+    def from_env(cls, env: t.Mapping[str, str] | None = None) -> Session:
+        """Return the session this process's pane belongs to.
+
+        The session id baked into ``$TMUX`` is frozen at pane spawn and goes
+        stale the moment the pane's window is moved or linked elsewhere, so it
+        is never read. tmux is asked instead: the pane row that
+        :meth:`Pane.from_env` fetches is stamped with the session tmux
+        considers canonical for that pane's window.
+
+        Parameters
+        ----------
+        env : :class:`typing.Mapping`, optional
+            Environment to read. Defaults to :data:`os.environ`.
+
+        Returns
+        -------
+        :class:`Session`
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.NotInsideTmux`
+            When ``$TMUX`` or ``$TMUX_PANE`` is unset or malformed.
+        :exc:`~libtmux.exc.TmuxObjectDoesNotExist`
+            When the pane named by ``$TMUX_PANE`` is gone.
+        :exc:`~libtmux.exc.LibTmuxException`
+            When the server named by ``$TMUX`` is unreachable.
+        ValueError
+            When the resolved pane carries no ``session_id``. Surfaces a clear
+            error under ``python -O``, where an ``assert`` would be stripped.
+
+        Examples
+        --------
+        >>> socket_path = server.cmd(
+        ...     "display-message", "-p", "-t", pane.pane_id, "#{socket_path}"
+        ... ).stdout[0]
+
+        Even a deliberately wrong session id in ``$TMUX`` cannot mislead it:
+
+        >>> env = {"TMUX": f"{socket_path},1,999", "TMUX_PANE": pane.pane_id}
+        >>> Session.from_env(env).session_id == session.session_id
+        True
+
+        >>> Session.from_env(env)
+        Session($1 ...)
+
+        .. versionadded:: 0.62
+        """
+        pane = Pane.from_env(env)
+        if pane.session_id is None:
+            msg = "Pane must have a session_id to resolve its session"
+            raise ValueError(msg)
+        return cls.from_session_id(
+            server=pane.server,
+            session_id=pane.session_id,
+        )
 
     #
     # Relations

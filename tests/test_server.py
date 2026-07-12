@@ -51,6 +51,19 @@ def test_socket_path(server: Server) -> None:
     assert myserver.socket_path == "test"
 
 
+def test_socket_path_not_derived_from_socket_name() -> None:
+    """A named socket leaves ``socket_path`` unset.
+
+    tmux resolves a ``-L`` name against its own socket directory, so libtmux
+    has no reason to guess the path. Anything that needs the real path asks
+    tmux for it (``#{socket_path}``).
+    """
+    myserver = Server(socket_name="libtmux_test_named_socket")
+
+    assert myserver.socket_name == "libtmux_test_named_socket"
+    assert myserver.socket_path is None
+
+
 def test_config(server: Server) -> None:
     """``-f`` file for tmux(1) configuration."""
     myserver = Server(config_file="test")
