@@ -58,6 +58,18 @@ Pane
 
     a pseudoterminal.
 
+winlink
+    The link between a {term}`session` and a {term}`window`: the triple
+    ``(session, index, window)``.
+
+    A window does not live *in* one session; a session holds *links* to
+    windows, each at an index. ``link-window`` adds another link to the same
+    window, so one window can be reachable from several sessions -- and even
+    from one session at two indexes.
+
+    This is what tmux enumerates: a row of ``list-windows`` or
+    ``list-panes -a`` names a winlink, not a window. See {ref}`winlinks`.
+
 Target
     A target, cited in the manual as ``[-t target]`` can be a session,
     window or pane.
