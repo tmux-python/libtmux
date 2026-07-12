@@ -613,7 +613,7 @@ class QueryList(list[T], t.Generic[T]):
         if len(objs) > 1:
             raise MultipleObjectsReturned(count=len(objs), query=kwargs)
         if len(objs) == 0:
-            if default == no_arg:
+            if default is no_arg:
                 raise ObjectDoesNotExist(query=kwargs)
             return default
         return objs[0]

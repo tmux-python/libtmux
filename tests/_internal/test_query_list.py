@@ -318,3 +318,21 @@ def test_query_exception_annotations_resolve() -> None:
         MultipleObjectsReturned.__init__,
     ):
         assert "query" in t.get_type_hints(initializer)
+
+
+def test_get_default_with_broad_eq_is_returned() -> None:
+    """A default whose ``__eq__`` is non-identity is returned, not raised.
+
+    ``get`` guards the "nothing matched" branch with the ``no_arg`` sentinel.
+    Comparing the default to it with ``==`` rather than ``is`` misfires when the
+    default answers ``__eq__`` truthily to an unrelated object.
+    """
+
+    class BroadEq:
+        def __eq__(self, other: object) -> bool:
+            return True
+
+        __hash__ = None  # type: ignore[assignment]
+
+    default = BroadEq()
+    assert QueryList([]).get(missing="x", default=default) is default
