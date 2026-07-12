@@ -166,26 +166,30 @@ Server (tmux server instance)
 
 8. **pytest Plugin** (`src/libtmux/pytest_plugin.py`)
    - Provides fixtures for testing with tmux
-   - Creates temporary tmux sessions/windows/panes
+   - Creates temporary tmux servers and sessions
 
 ## Testing Strategy
 
-libtmux uses pytest for testing with custom fixtures. The pytest plugin (`pytest_plugin.py`) defines fixtures for creating temporary tmux objects for testing. These include:
+libtmux uses pytest for testing with custom fixtures. The pytest plugin
+(`src/libtmux/pytest_plugin.py`) is the source of truth for the fixtures it
+provides. Its ready-to-use tmux hierarchy object fixtures are:
 
 - `server`: A tmux server instance for testing
 - `session`: A tmux session for testing
-- `window`: A tmux window for testing
-- `pane`: A tmux pane for testing
 
-These fixtures handle setup and teardown automatically, creating isolated test environments.
+These fixtures handle setup and teardown automatically, creating isolated test
+environments. For regular tests, derive windows and panes from the `session`
+fixture with `session.new_window(...)` and `window.active_pane`. The `window`
+and `pane` names described below are doctest namespace values, not pytest
+fixtures.
 
 ### Testing Guidelines
 
 1. **Use functional tests only**: Write tests as standalone functions, not classes. Avoid `class TestFoo:` groupings - use descriptive function names and file organization instead.
 
 2. **Use existing fixtures over mocks**
-   - Use fixtures from conftest.py instead of `monkeypatch` and `MagicMock` when available
-   - For libtmux, use provided fixtures: `server`, `session`, `window`, and `pane`
+   - Use fixtures from `src/libtmux/pytest_plugin.py` and `conftest.py` instead of `monkeypatch` and `MagicMock` when available
+   - For regular libtmux tests, use the `server` and `session` object fixtures; derive windows and panes from the session
    - Document in test docstrings why standard fixtures weren't used for exceptional cases
 
 3. **Preferred pytest patterns**
@@ -199,11 +203,16 @@ These fixtures handle setup and teardown automatically, creating isolated test e
 ### Example Fixture Usage
 
 ```python
-def test_window_rename(window):
-    """Test renaming a window."""
-    # window is already a Window instance with a live tmux window
-    window.rename_window('new_name')
-    assert window.window_name == 'new_name'
+def test_window_rename(session):
+    """Test renaming a window derived from the session fixture."""
+    window = session.new_window(window_name="old_name")
+    pane = window.active_pane
+    assert pane is not None
+
+    window.rename_window("new_name")
+
+    assert window.window_name == "new_name"
+    assert pane.window_id == window.window_id
 ```
 
 ## Coding Standards
@@ -251,9 +260,24 @@ type
 - If you cannot create a working doctest, **STOP and ask for help**
 
 **Available tools for doctests:**
-- `doctest_namespace` fixtures: `server`, `session`, `window`, `pane`, `Server`, `Session`, `Window`, `Pane`, `request`
+- `doctest_namespace` values: `server`, `session`, `window`, `pane`, `Server`, `Session`, `Window`, `Pane`, `Client`, `request`, `ControlMode`, `control_mode`, `monkeypatch`
 - Ellipsis for variable output: `# doctest: +ELLIPSIS`
 - Update `conftest.py` to add new fixtures to `doctest_namespace`
+
+In doctests, `Server` is the `TestServer` factory from
+`src/libtmux/pytest_plugin.py`, a `functools.partial` that creates uniquely
+named servers and registers their cleanup. It is not the
+`libtmux.server.Server` class. Import the real class explicitly when a doctest
+needs class-level APIs:
+
+```python
+>>> from libtmux.server import Server
+```
+
+The `server` fixture and the doctest `Server()` factory construct servers with
+socket names, so their `socket_path` attributes are `None`. When a doctest
+needs the actual path, query tmux's `#{socket_path}` format with
+`server.cmd("display-message", "-p", "#{socket_path}").stdout[0]`.
 
 **`# doctest: +SKIP` is NOT permitted** - it's just another workaround that doesn't test anything. Use the fixtures properly - tmux is required to run tests anyway.
 
