@@ -150,11 +150,25 @@ class Window(
     def refresh(self) -> None:
         """Refresh window attributes from tmux.
 
+        Scoped to this window's own session (``list-windows -t @ID``), so tmux
+        -- not libtmux -- decides which session the window belongs to. See
+        :meth:`Window.from_window_id`.
+
         Raises
         ------
         ValueError
             When ``window_id`` is unset. Surfaces a clear error under
             ``python -O``, where an ``assert`` would be stripped.
+        :exc:`~libtmux.exc.TmuxObjectDoesNotExist`
+            When the window no longer exists.
+        :exc:`~libtmux.exc.LibTmuxException`
+            When tmux itself is unreachable.
+
+        Examples
+        --------
+        >>> window.refresh()
+        >>> window.window_id
+        '@1'
         """
         if self.window_id is None:
             msg = "Window must have a window_id to refresh"
@@ -163,18 +177,48 @@ class Window(
             obj_key="window_id",
             obj_id=self.window_id,
             list_cmd="list-windows",
-            list_extra_args=("-a",),
+            list_extra_args=("-t", self.window_id),
         )
 
     @classmethod
     def from_window_id(cls, server: Server, window_id: str) -> Window:
-        """Create Window from existing window_id."""
+        """Create Window from existing window_id.
+
+        tmux's ``cmd_find`` routes a ``-t`` target by *sigil*, so an ``@``-id
+        handed to ``list-windows`` resolves to that window's session and lists
+        it. The rows come back stamped with the session tmux considers
+        canonical for the window -- the most recently active one -- so a window
+        linked into several sessions reports the same parent tmux itself would.
+
+        Parameters
+        ----------
+        server : :class:`~libtmux.server.Server`
+            The tmux server holding the window.
+        window_id : str
+            Window id, e.g. ``"@3"``.
+
+        Returns
+        -------
+        :class:`Window`
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxObjectDoesNotExist`
+            When no such window exists on a reachable server.
+        :exc:`~libtmux.exc.LibTmuxException`
+            When tmux itself is unreachable.
+
+        Examples
+        --------
+        >>> Window.from_window_id(server=window.server, window_id=window.window_id)
+        Window(@1 1:..., Session($1 ...))
+        """
         window = fetch_obj(
             obj_key="window_id",
             obj_id=window_id,
             server=server,
             list_cmd="list-windows",
-            list_extra_args=("-a",),
+            list_extra_args=("-t", window_id),
         )
         return cls(server=server, **window)
 

@@ -45,6 +45,24 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### Linked windows resolve to the session tmux would use (#713)
+
+A window can be linked into several sessions at once, and libtmux used to pick
+one of them by accident — whichever sorted last by name. So
+{meth}`Window.from_window_id() <libtmux.Window.from_window_id>`,
+{meth}`Pane.from_pane_id() <libtmux.Pane.from_pane_id>` and both `refresh()`
+methods could change their answer when you renamed a session.
+
+libtmux now lets tmux resolve the object, so a window reports the session tmux
+itself would act on. For a window in a single session — the ordinary case —
+nothing changes. For a linked or grouped window, note that tmux picks by
+*activity*: the session a window reports can change as focus moves between the
+sessions holding it, where before it was stable but arbitrary. The lookups also
+got cheaper: they list one window's panes or one session's windows instead of
+scanning the whole server.
+
 ## libtmux 0.61.0 (2026-07-04)
 
 libtmux 0.61.0 hardens support for the tmux 3.7 patch line. It fixes

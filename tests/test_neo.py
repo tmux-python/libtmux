@@ -9,6 +9,8 @@ verified against tmux's ``format.c`` (see commit messages on
 
 from __future__ import annotations
 
+import typing as t
+
 import pytest
 
 from libtmux.neo import (
@@ -16,9 +18,73 @@ from libtmux.neo import (
     FIELD_VERSION,
     SCOPES_BY_LIST_CMD,
     Obj,
+    _is_target_not_found_error,
     _token_scope,
     get_output_format,
 )
+
+
+class TargetNotFoundFixture(t.NamedTuple):
+    """One line of tmux stderr, and whether it means "that object is gone"."""
+
+    test_id: str
+    stderr_text: str
+    expected: bool
+
+
+TARGET_NOT_FOUND_FIXTURES: list[TargetNotFoundFixture] = [
+    TargetNotFoundFixture(
+        test_id="missing-pane",
+        stderr_text="can't find pane: %99",
+        expected=True,
+    ),
+    TargetNotFoundFixture(
+        test_id="missing-window",
+        stderr_text="can't find window: @99",
+        expected=True,
+    ),
+    TargetNotFoundFixture(
+        test_id="missing-session",
+        stderr_text="can't find session: $99",
+        expected=True,
+    ),
+    TargetNotFoundFixture(
+        test_id="daemon-not-running",
+        stderr_text="no server running on /tmp/tmux-1000/default",
+        expected=False,
+    ),
+    TargetNotFoundFixture(
+        test_id="socket-missing",
+        stderr_text=(
+            "error connecting to /tmp/tmux-1000/nope (No such file or directory)"
+        ),
+        expected=False,
+    ),
+    TargetNotFoundFixture(
+        test_id="permission-denied",
+        stderr_text="error connecting to /tmp/tmux-1000/other (Permission denied)",
+        expected=False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    list(TargetNotFoundFixture._fields),
+    TARGET_NOT_FOUND_FIXTURES,
+    ids=[test.test_id for test in TARGET_NOT_FOUND_FIXTURES],
+)
+def test_is_target_not_found_error(
+    test_id: str,
+    stderr_text: str,
+    expected: bool,
+) -> None:
+    """Only an unknown ``-t`` target means the object is gone.
+
+    Every other tmux failure -- a stopped daemon, a missing socket, a
+    permission error -- leaves the object's existence unknown, and must keep
+    surfacing as a :exc:`~libtmux.exc.LibTmuxException`.
+    """
+    assert _is_target_not_found_error(stderr_text) is expected
 
 
 def test_pane_dead_signal_gated_to_3_3() -> None:
