@@ -12,6 +12,11 @@ import re
 import typing as t
 from collections.abc import Callable, Iterable, Mapping, Sequence
 
+from libtmux.exc import (
+    MultipleObjectsReturned as MultipleObjectsReturned,
+    ObjectDoesNotExist as ObjectDoesNotExist,
+)
+
 logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
@@ -31,14 +36,6 @@ if t.TYPE_CHECKING:
 T = t.TypeVar("T")
 
 no_arg = object()
-
-
-class MultipleObjectsReturned(Exception):
-    """The query returned multiple objects when only one was expected."""
-
-
-class ObjectDoesNotExist(Exception):
-    """The requested object does not exist."""
 
 
 def keygetter(
@@ -558,17 +555,65 @@ class QueryList(list[T], t.Generic[T]):
         default: t.Any | None = no_arg,
         **kwargs: t.Any,
     ) -> T | None:
-        """Retrieve one object.
+        """Retrieve exactly one object.
 
-        Raises :exc:`MultipleObjectsReturned` if multiple objects found.
+        Parameters
+        ----------
+        matcher : :class:`~collections.abc.Callable` or object, optional
+            Same matcher :meth:`filter` takes.
+        default : object, optional
+            Returned instead of raising when *nothing* matches.
+        **kwargs : object
+            Lookups, as passed to :meth:`filter`.
 
-        Raises :exc:`ObjectDoesNotExist` if no object found, unless ``default`` stated.
+        Returns
+        -------
+        object
+            The single match, or *default* when there is no match and one was
+            given.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.ObjectDoesNotExist`
+            When nothing matches and no *default* was passed.
+        :exc:`~libtmux.exc.MultipleObjectsReturned`
+            When more than one object matches. A *default* does not suppress
+            this: it stands in for an object that is absent, and an ambiguous
+            lookup is not an absent one.
+
+        Examples
+        --------
+        >>> from libtmux._internal.query_list import QueryList
+        >>> from libtmux import exc
+        >>> qs = QueryList([{"pane_id": "%0"}, {"pane_id": "%0"}, {"pane_id": "%1"}])
+
+        >>> qs.get(pane_id="%1")
+        {'pane_id': '%1'}
+
+        A lookup that matches nothing says what it went looking for:
+
+        >>> try:
+        ...     qs.get(pane_id="%9")
+        ... except exc.ObjectDoesNotExist as e:
+        ...     print(e)
+        No objects found: pane_id='%9'
+
+        >>> qs.get(pane_id="%9", default=None) is None
+        True
+
+        A lookup that matches several says how many, and for what:
+
+        >>> try:
+        ...     qs.get(pane_id="%0")
+        ... except exc.MultipleObjectsReturned as e:
+        ...     print(e)
+        Multiple objects returned (2): pane_id='%0'
         """
         objs = self.filter(matcher=matcher, **kwargs)
         if len(objs) > 1:
-            raise MultipleObjectsReturned
+            raise MultipleObjectsReturned(count=len(objs), query=kwargs)
         if len(objs) == 0:
             if default == no_arg:
-                raise ObjectDoesNotExist
+                raise ObjectDoesNotExist(query=kwargs)
             return default
         return objs[0]

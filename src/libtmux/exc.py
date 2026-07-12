@@ -9,10 +9,26 @@ from __future__ import annotations
 
 import typing as t
 
-from libtmux._internal.query_list import ObjectDoesNotExist
-
 if t.TYPE_CHECKING:
     from libtmux.neo import ListExtraArgs
+
+
+def _format_query(query: t.Mapping[str, t.Any]) -> str:
+    """Render a :meth:`QueryList.get` lookup back as ``key=value`` text.
+
+    Examples
+    --------
+    >>> from libtmux.exc import _format_query
+    >>> _format_query({"pane_id": "%0"})
+    "pane_id='%0'"
+
+    >>> _format_query({"window_name": "shared", "window_index": "1"})
+    "window_name='shared', window_index='1'"
+
+    >>> _format_query({})
+    ''
+    """
+    return ", ".join(f"{key}={value!r}" for key, value in query.items())
 
 
 class LibTmuxException(Exception):
@@ -134,8 +150,140 @@ class NotInsideTmux(LibTmuxException):
         )
 
 
+class ObjectDoesNotExist(LibTmuxException):
+    """A lookup expected one object and matched none.
+
+    Raised by :meth:`~libtmux._internal.query_list.QueryList.get` when nothing
+    matches and no ``default`` was passed.
+
+    Parameters
+    ----------
+    *args : object
+        A ready-made message, forwarded to :class:`LibTmuxException`. When
+        omitted, the message is built from *query*.
+    query : :class:`~collections.abc.Mapping`, optional
+        The lookup that matched nothing, e.g. ``{"pane_id": "%99"}``.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> str(exc.ObjectDoesNotExist())
+    'No objects found'
+
+    A lookup that named what it wanted says so:
+
+    >>> str(exc.ObjectDoesNotExist(query={"pane_id": "%99"}))
+    "No objects found: pane_id='%99'"
+
+    It is part of the :exc:`LibTmuxException` hierarchy, so
+    ``except LibTmuxException`` catches it:
+
+    >>> issubclass(exc.ObjectDoesNotExist, exc.LibTmuxException)
+    True
+
+    .. versionchanged:: 0.62
+
+        Re-based on :exc:`LibTmuxException` and given a message.
+    """
+
+    def __init__(
+        self,
+        *args: object,
+        query: t.Mapping[str, t.Any] | None = None,
+    ) -> None:
+        if args:
+            super().__init__(*args)
+            return
+        msg = "No objects found"
+        if query:
+            msg += f": {_format_query(query)}"
+        super().__init__(msg)
+
+
+class MultipleObjectsReturned(LibTmuxException):
+    """A lookup expected one object and matched several.
+
+    Raised by :meth:`~libtmux._internal.query_list.QueryList.get`. Unlike
+    :exc:`ObjectDoesNotExist`, a ``default`` does **not** suppress it: a
+    ``default`` is a stand-in for an object that is *absent*, and an ambiguous
+    lookup is not an absent one. Silently answering with one of several equally
+    valid matches is how you end up driving the wrong pane.
+
+    On a server-wide collection, several matches for a single id is ordinary
+    and means the window is linked into more than one session. See
+    :ref:`winlinks` for what to do about it.
+
+    Parameters
+    ----------
+    *args : object
+        A ready-made message, forwarded to :class:`LibTmuxException`. When
+        omitted, the message is built from *count* and *query*.
+    count : int, optional
+        How many objects the lookup matched.
+    query : :class:`~collections.abc.Mapping`, optional
+        The lookup that matched them, e.g. ``{"pane_id": "%0"}``.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> str(exc.MultipleObjectsReturned())
+    'Multiple objects returned'
+
+    A lookup that matched too much reports how much, and for what:
+
+    >>> str(exc.MultipleObjectsReturned(count=2, query={"pane_id": "%0"}))
+    "Multiple objects returned (2): pane_id='%0'"
+
+    It is part of the :exc:`LibTmuxException` hierarchy, so
+    ``except LibTmuxException`` catches it:
+
+    >>> issubclass(exc.MultipleObjectsReturned, exc.LibTmuxException)
+    True
+
+    .. versionadded:: 0.62
+
+        Added to :mod:`libtmux.exc` as a :exc:`LibTmuxException` subclass with
+        a message.
+    """
+
+    def __init__(
+        self,
+        *args: object,
+        count: int | None = None,
+        query: t.Mapping[str, t.Any] | None = None,
+    ) -> None:
+        self.count: int | None = count
+        self.query: t.Mapping[str, t.Any] | None = query
+        if args:
+            super().__init__(*args)
+            return
+        msg = "Multiple objects returned"
+        if count is not None:
+            msg += f" ({count})"
+        if query:
+            msg += f": {_format_query(query)}"
+        super().__init__(msg)
+
+
 class TmuxObjectDoesNotExist(ObjectDoesNotExist):
-    """The query returned multiple objects when only one was expected."""
+    """tmux has no object with the id that was asked for.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> str(exc.TmuxObjectDoesNotExist())
+    'Could not find object'
+
+    >>> str(
+    ...     exc.TmuxObjectDoesNotExist(
+    ...         obj_key="pane_id",
+    ...         obj_id="%99",
+    ...         list_cmd="list-panes",
+    ...         list_extra_args=("-t", "%99"),
+    ...     )
+    ... )
+    "Could not find pane_id=%99 for list-panes ('-t', '%99')"
+    """
 
     def __init__(
         self,
