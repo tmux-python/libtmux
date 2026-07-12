@@ -113,7 +113,7 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
-## libtmux 0.62.x: Query exceptions join the hierarchy (#718)
+## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 
 {exc}`~libtmux.exc.ObjectDoesNotExist` and
 {exc}`~libtmux.exc.MultipleObjectsReturned` now subclass

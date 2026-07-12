@@ -37,13 +37,28 @@ $ uv add libtmux --prerelease allow
 $ uvx --from 'libtmux' --prerelease allow python
 ```
 
-## libtmux 0.62.x (Yet to be released)
+## libtmux 0.63.x (Yet to be released)
 
 <!-- To maintainers and contributors: Please add notes for the forthcoming version below -->
 
 <!-- KEEP THIS PLACEHOLDER - DO NOT REMOVE OR MODIFY THIS LINE -->
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
+
+## libtmux 0.62.0 (2026-07-12)
+
+libtmux 0.62.0 teaches libtmux objects to locate themselves and to resolve
+shared windows the way tmux does. Code running *inside* tmux can now find its
+own pane, window, session, and server with
+{meth}`Pane.from_env() <libtmux.Pane.from_env>` and its siblings, and a window
+reports every session that holds it through
+{attr}`~libtmux.Window.linked_sessions`. Point lookups now resolve a linked
+window to the session and index tmux itself would act on rather than an
+arbitrary one. The release also folds {exc}`~libtmux.exc.ObjectDoesNotExist`
+and {exc}`~libtmux.exc.MultipleObjectsReturned` into the
+{exc}`~libtmux.exc.LibTmuxException` hierarchy — a breaking change for
+exception handlers, detailed below. See {ref}`self-location` and
+{ref}`winlinks` for the full story.
 
 ### Breaking changes
 
