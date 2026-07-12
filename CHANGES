@@ -45,6 +45,47 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### Query errors join the libtmux exception hierarchy (#718)
+
+{exc}`~libtmux.exc.ObjectDoesNotExist` and
+{exc}`~libtmux.exc.MultipleObjectsReturned` now subclass
+{exc}`~libtmux.exc.LibTmuxException`. Because
+{exc}`~libtmux.exc.TmuxObjectDoesNotExist` inherits from
+{exc}`~libtmux.exc.ObjectDoesNotExist`, it now falls under
+{exc}`~libtmux.exc.LibTmuxException` as well. Previously, a lookup-specific
+handler could follow the common libtmux handler:
+
+```python
+from libtmux import exc
+
+try:
+    pane = server.panes.get(pane_id="%0")
+except exc.LibTmuxException:
+    pane = None
+except exc.ObjectDoesNotExist:
+    pane = None
+```
+
+Put the more specific handler first:
+
+```python
+from libtmux import exc
+
+try:
+    pane = server.panes.get(pane_id="%0")
+except exc.ObjectDoesNotExist:
+    pane = None
+except exc.LibTmuxException:
+    pane = None
+```
+
+Blanket retry policies for {exc}`~libtmux.exc.LibTmuxException` should exclude
+{exc}`~libtmux.exc.ObjectDoesNotExist` and
+{exc}`~libtmux.exc.MultipleObjectsReturned`: they report deterministic missing
+or ambiguous lookups, not transient tmux failures.
+
 ### What's new
 
 #### Find where you are running (#714)
@@ -67,6 +108,21 @@ See {ref}`self-location` for the whole story — why the session id tmux exports
 goes stale, the window that *contains* you versus the one in front of you, and
 how to test code that locates itself.
 
+#### Ask a window which sessions hold it (#718)
+
+{attr}`~libtmux.Window.linked_sessions` lists every
+{class}`~libtmux.Session` from which a window is reachable. A typical window
+returns one session; a linked or grouped window can return several, with each
+session appearing once even when it holds the same window at multiple indexes.
+
+Use {attr}`~libtmux.Window.linked_sessions` when you need every holder.
+{attr}`~libtmux.Window.session` follows the `session_id` recorded on that
+{class}`~libtmux.Window` instance; use
+{meth}`~libtmux.Window.from_window_id` when you need tmux to resolve a window id
+afresh.
+See {ref}`winlinks` for the relationship between sessions, indexes, and shared
+windows.
+
 ### Fixes
 
 #### Linked windows resolve to the session tmux would use (#713)
@@ -74,8 +130,10 @@ how to test code that locates itself.
 A window can be linked into several sessions at once, and libtmux used to pick
 one of them by accident — whichever sorted last by name. So
 {meth}`Window.from_window_id() <libtmux.Window.from_window_id>`,
-{meth}`Pane.from_pane_id() <libtmux.Pane.from_pane_id>` and both `refresh()`
-methods could change their answer when you renamed a session.
+{meth}`Pane.from_pane_id() <libtmux.Pane.from_pane_id>`,
+{meth}`Window.refresh() <libtmux.Window.refresh>` and
+{meth}`Pane.refresh() <libtmux.Pane.refresh>` could change their answer when you
+renamed a session.
 
 libtmux now lets tmux resolve the object, so a window reports the session tmux
 itself would act on. For a window in a single session — the ordinary case —
@@ -84,6 +142,40 @@ nothing changes. For a linked or grouped window, note that tmux picks by
 sessions holding it, where before it was stable but arbitrary. The lookups also
 got cheaper: they list one window's panes or one session's windows instead of
 scanning the whole server.
+
+#### A window linked twice now reports tmux's index (#718)
+
+tmux lets one session link the same window at multiple indexes.
+{meth}`Window.from_window_id() <libtmux.Window.from_window_id>` and
+{meth}`Window.refresh() <libtmux.Window.refresh>` now give
+{attr}`Window.window_index <libtmux.Window.window_index>` the index tmux would
+choose: the current link when that window is current, otherwise the
+lowest-indexed link. Windows held at one index are unaffected.
+
+#### Missing and ambiguous lookups explain what happened (#718)
+
+{meth}`QueryList.get() <libtmux._internal.query_list.QueryList.get>` now names
+both the lookup and its missing or ambiguous outcome. A missing
+`pane_id="%99"` raises {exc}`~libtmux.exc.ObjectDoesNotExist` with
+`No objects found: pane_id='%99'`; two matches for `pane_id="%0"` raise
+{exc}`~libtmux.exc.MultipleObjectsReturned` with
+`Multiple objects returned (2): pane_id='%0'`.
+
+### Documentation
+
+#### Understand winlinks in server-wide listings (#718)
+
+{ref}`winlinks` explains that
+{attr}`Server.windows <libtmux.Server.windows>` and
+{attr}`Server.panes <libtmux.Server.panes>` enumerate {term}`winlinks <winlink>`
+— the session, index, and window relationships tmux stores — rather than
+deduplicating windows. A shared window can therefore appear once for each path
+by which a session reaches it.
+
+Read those rows when you need their session and index context. For a unique
+lookup by id, use {meth}`Pane.from_pane_id() <libtmux.Pane.from_pane_id>` or
+{meth}`Window.from_window_id() <libtmux.Window.from_window_id>`; use
+{attr}`~libtmux.Window.linked_sessions` when you need every holding session.
 
 ## libtmux 0.61.0 (2026-07-04)
 

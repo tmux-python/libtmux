@@ -823,6 +823,77 @@ def _is_target_not_found_error(stderr_text: str) -> bool:
     return "can't find " in stderr_text
 
 
+def _best_winlink(rows: OutputsRaw) -> OutputRaw:
+    """Pick the winlink row tmux would select.
+
+    A ``list-windows`` listing enumerates :term:`winlinks <winlink>` --
+    ``(session, index, window)`` edges -- not windows. ``link-window`` can attach
+    one window to a session at several indexes at once, so the same
+    ``window_id`` may appear on several rows, each with a different
+    ``window_index``.
+
+    tmux selects the current winlink when it contains the window, otherwise the
+    first. ``#{window_active}`` identifies the current row, and the lowest
+    ``window_index`` is tmux's first -- chosen explicitly here, so the caller
+    need not pre-sort the rows.
+
+    Parameters
+    ----------
+    rows : OutputsRaw
+        Non-empty rows for one object id in one session. Order does not
+        matter: the current winlink wins, otherwise the lowest
+        ``window_index``.
+
+    Returns
+    -------
+    OutputRaw
+        The row naming the winlink tmux would act on.
+
+    Examples
+    --------
+    One row is the whole answer:
+
+    >>> from libtmux.neo import _best_winlink
+    >>> _best_winlink([{"window_id": "@0", "window_index": "1"}])["window_index"]
+    '1'
+
+    A window linked into one session twice gives two rows. When the session is
+    sitting on the higher-indexed link, that is the one tmux acts on:
+
+    >>> _best_winlink([
+    ...     {"window_id": "@0", "window_index": "1", "window_active": "0"},
+    ...     {"window_id": "@0", "window_index": "5", "window_active": "1"},
+    ... ])["window_index"]
+    '5'
+
+    When the session is sitting on some *other* window, neither link is current,
+    and tmux falls back to the first:
+
+    >>> _best_winlink([
+    ...     {"window_id": "@0", "window_index": "1", "window_active": "0"},
+    ...     {"window_id": "@0", "window_index": "5", "window_active": "0"},
+    ... ])["window_index"]
+    '1'
+
+    The fallback reads the lowest index, not the first row, so a listing that
+    happened to arrive high-index-first still answers tmux's first:
+
+    >>> _best_winlink([
+    ...     {"window_id": "@0", "window_index": "5", "window_active": "0"},
+    ...     {"window_id": "@0", "window_index": "1", "window_active": "0"},
+    ... ])["window_index"]
+    '1'
+    """
+    if len(rows) == 1:
+        return rows[0]
+
+    for row in rows:
+        if row.get("window_active") == "1":
+            return row
+
+    return min(rows, key=lambda row: int(row["window_index"]))
+
+
 def fetch_obj(
     server: Server,
     obj_key: str,
@@ -831,6 +902,10 @@ def fetch_obj(
     list_extra_args: ListExtraArgs = None,
 ) -> OutputRaw:
     """Fetch the single ``list-*`` row whose *obj_key* equals *obj_id*.
+
+    A listing enumerates :term:`winlinks <winlink>`, so a window linked into one
+    session at two indexes matches twice. :func:`_best_winlink` then picks the
+    row tmux itself would act on, rather than whichever sorted last.
 
     Parameters
     ----------
@@ -908,12 +983,9 @@ def fetch_obj(
             list_extra_args=list_extra_args,
         ) from e
 
-    obj = None
-    for _obj in obj_formatters_filtered:
-        if _obj.get(obj_key) == obj_id:
-            obj = _obj
+    matches = [row for row in obj_formatters_filtered if row.get(obj_key) == obj_id]
 
-    if obj is None:
+    if not matches:
         raise exc.TmuxObjectDoesNotExist(
             obj_key=obj_key,
             obj_id=obj_id,
@@ -921,4 +993,4 @@ def fetch_obj(
             list_extra_args=list_extra_args,
         )
 
-    return obj
+    return _best_winlink(matches)

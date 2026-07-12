@@ -105,8 +105,20 @@ Window(@... ..., Session($... ...))
 `get()` insists on exactly one result. If the query matches the wrong number of
 objects, it raises:
 
-- {exc}`~libtmux._internal.query_list.ObjectDoesNotExist` - no matching object found
-- {exc}`~libtmux._internal.query_list.MultipleObjectsReturned` - more than one object matches
+- {exc}`~libtmux.exc.ObjectDoesNotExist` - no matching object found
+- {exc}`~libtmux.exc.MultipleObjectsReturned` - more than one object matches
+
+Both are {exc}`~libtmux.exc.LibTmuxException`s, so one `except` clause catches
+either, and both say what they went looking for:
+
+```python
+>>> from libtmux import exc
+>>> try:
+...     session.windows.get(window_name="nonexistent")
+... except exc.LibTmuxException as e:
+...     print(e)
+No objects found: window_name='nonexistent'
+```
 
 Pass a `default` to get a fallback value back instead of an exception:
 
@@ -114,6 +126,106 @@ Pass a `default` to get a fallback value back instead of an exception:
 >>> session.windows.get(window_name="nonexistent", default=None) is None
 True
 ```
+
+A `default` stands in for an object that is *absent*, so it does not apply when
+a query is merely ambiguous — {exc}`~libtmux.exc.MultipleObjectsReturned` is
+raised whether or not you passed one. Handing back one of several equally valid
+matches is how you end up driving the wrong pane. The next section is about the
+one case where an ambiguous match is routine rather than a mistake.
+
+(winlinks)=
+
+## When one window is in two sessions
+
+A server-wide collection — {attr}`server.windows <libtmux.Server.windows>` and
+{attr}`server.panes <libtmux.Server.panes>` — does not enumerate windows. It
+enumerates {term}`winlinks <winlink>`: the `(session, index, window)` edges tmux
+actually stores. Nearly always there is exactly one edge per window and you never
+notice the difference.
+
+Sharing a window adds edges. `link-window` does it explicitly, and a grouped
+session (`tmux new-session -t existing`, the mechanism behind [tmuxp](https://tmuxp.git-pull.com/)'s session
+groups) does it for every window at once. The window is then genuinely reachable
+from each session that links it, and a server-wide listing reports it once per
+edge:
+
+```python
+>>> home = server.new_session(session_name="home")
+>>> shared = home.new_window(window_name="shared", attach=False)
+>>> guest = server.new_session(session_name="guest")
+>>> _ = server.cmd(
+...     "link-window", "-d", "-s", shared.window_id, "-t", f"{guest.session_id}:"
+... )
+
+>>> len(server.windows.filter(window_id=shared.window_id))
+2
+```
+
+Two rows for one `window_id` is not a miscount — it is the shape of the data.
+The window is in both sessions, and a listing that collapsed the rows would be
+throwing away the very fact you need.
+
+The consequence is that a *point lookup* against a server-wide collection can be
+ambiguous, and says so rather than guessing:
+
+```python
+>>> from libtmux import exc
+>>> home = server.new_session(session_name="home")
+>>> shared = home.new_window(window_name="shared", attach=False)
+>>> guest = server.new_session(session_name="guest")
+>>> _ = server.cmd(
+...     "link-window", "-d", "-s", shared.window_id, "-t", f"{guest.session_id}:"
+... )
+
+>>> try:
+...     server.windows.get(window_id=shared.window_id)
+... except exc.MultipleObjectsReturned as e:
+...     print(e)  # doctest: +ELLIPSIS
+Multiple objects returned (2): window_id='@...'
+```
+
+### Which sessions hold it?
+
+{attr}`Window.linked_sessions <libtmux.Window.linked_sessions>` answers directly,
+listing each holding session once however many indexes it links the window at:
+
+```python
+>>> home = server.new_session(session_name="home")
+>>> shared = home.new_window(window_name="shared", attach=False)
+>>> guest = server.new_session(session_name="guest")
+>>> _ = server.cmd(
+...     "link-window", "-d", "-s", shared.window_id, "-t", f"{guest.session_id}:"
+... )
+
+>>> sorted(s.session_name for s in shared.linked_sessions)
+['guest', 'home']
+```
+
+### Just fetch the object
+
+When you have an id and want the object, don't scan a listing for it — name it.
+{meth}`Pane.from_pane_id <libtmux.Pane.from_pane_id>` and
+{meth}`Window.from_window_id <libtmux.Window.from_window_id>` hand the id to tmux
+with a `-t` target, and tmux always resolves it to exactly one object — the same
+one it would act on if you typed the command yourself. They cannot be ambiguous,
+so they are the right tool for a lookup by id:
+
+```python
+>>> from libtmux.window import Window
+>>> home = server.new_session(session_name="home")
+>>> shared = home.new_window(window_name="shared", attach=False)
+>>> guest = server.new_session(session_name="guest")
+>>> _ = server.cmd(
+...     "link-window", "-d", "-s", shared.window_id, "-t", f"{guest.session_id}:"
+... )
+
+>>> Window.from_window_id(server, shared.window_id).window_id == shared.window_id
+True
+```
+
+Reserve the server-wide collections for what they are good at — sweeping the
+whole server — and reach for them with {meth}`~libtmux._internal.query_list.QueryList.filter`,
+which is happy to return two rows, rather than `get()`, which is not.
 
 ## Chaining filters
 

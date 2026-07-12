@@ -284,6 +284,82 @@ class Window(
         return Session.from_session_id(server=self.server, session_id=self.session_id)
 
     @property
+    def linked_sessions(self) -> QueryList[Session]:
+        """Every session this window is reachable from.
+
+        Usually one, and then this is just :attr:`Window.session` in a list.
+        ``link-window`` and grouped sessions (``tmux new-session -t existing``)
+        make it more: the window is genuinely in each of them at once, and
+        :attr:`Window.session` returns the session recorded on this
+        :class:`Window` instance.
+
+        Each session is listed once, however many indexes it links the window
+        at, and they come back in the order tmux lists them. Fetching the
+        holders takes two list commands total, independent of how many there
+        are.
+        If either listing fails, the result is empty.
+
+        Returns
+        -------
+        :class:`~libtmux._internal.query_list.QueryList` of :class:`~libtmux.Session`
+
+        See Also
+        --------
+        :attr:`Window.session` : the session recorded on this window instance.
+
+        Examples
+        --------
+        A window you just made belongs to the session you made it in:
+
+        >>> window = session.new_window(window_name="solo", attach=False)
+        >>> [s.session_name for s in window.linked_sessions] == [session.session_name]
+        True
+
+        Link it into a second session and it belongs to both:
+
+        >>> guest = server.new_session(session_name="guest")
+        >>> target = f"{guest.session_id}:"
+        >>> _ = server.cmd("link-window", "-d", "-s", window.window_id, "-t", target)
+        >>> sorted(s.session_name for s in window.linked_sessions) == sorted(
+        ...     [session.session_name, "guest"]
+        ... )
+        True
+
+        .. versionadded:: 0.62
+        """
+        from libtmux.session import Session
+
+        try:
+            window_rows = fetch_objs(
+                server=self.server,
+                list_cmd="list-windows",
+                list_extra_args=("-a",),
+            )
+            session_ids = dict.fromkeys(
+                row["session_id"]
+                for row in window_rows
+                if row.get("window_id") == self.window_id and row.get("session_id")
+            )
+            session_rows = fetch_objs(
+                server=self.server,
+                list_cmd="list-sessions",
+            )
+        except exc.LibTmuxException:
+            return QueryList([])
+
+        sessions_by_id = {
+            row["session_id"]: row for row in session_rows if row.get("session_id")
+        }
+
+        return QueryList(
+            [
+                Session(server=self.server, **sessions_by_id[session_id])
+                for session_id in session_ids
+                if session_id in sessions_by_id
+            ],
+        )
+
+    @property
     def panes(self) -> QueryList[Pane]:
         """Panes contained by window.
 

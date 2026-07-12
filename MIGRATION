@@ -113,6 +113,71 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
+## libtmux 0.62.x: Query exceptions join the hierarchy (#718)
+
+{exc}`~libtmux.exc.ObjectDoesNotExist` and
+{exc}`~libtmux.exc.MultipleObjectsReturned` now subclass
+{exc}`~libtmux.exc.LibTmuxException`.
+{exc}`~libtmux.exc.TmuxObjectDoesNotExist` already subclasses
+{exc}`~libtmux.exc.ObjectDoesNotExist`, so it follows the same hierarchy.
+
+Before 0.62, a broad libtmux handler could precede lookup-specific handlers
+because the exception families were separate:
+
+```python
+from libtmux import exc
+
+try:
+    pane = server.panes.get(pane_id="%0")
+    pane.refresh()
+except exc.LibTmuxException:
+    retry_tmux_operation()
+except exc.TmuxObjectDoesNotExist:
+    handle_disappeared_pane()
+except exc.ObjectDoesNotExist:
+    handle_missing_pane()
+except exc.MultipleObjectsReturned:
+    handle_ambiguous_pane()
+```
+
+Starting with 0.62, order the handlers from most specific to most general so
+the broad clause does not intercept lookup outcomes:
+
+```python
+from libtmux import exc
+
+try:
+    pane = server.panes.get(pane_id="%0")
+    pane.refresh()
+except exc.TmuxObjectDoesNotExist:
+    handle_disappeared_pane()
+except exc.ObjectDoesNotExist:
+    handle_missing_pane()
+except exc.MultipleObjectsReturned:
+    handle_ambiguous_pane()
+except exc.LibTmuxException:
+    retry_tmux_operation()
+```
+
+Blanket retry predicates for {exc}`~libtmux.exc.LibTmuxException` now also
+match deterministic missing and ambiguous lookups. Exclude both lookup
+exceptions explicitly:
+
+```python
+def should_retry(error: Exception) -> bool:
+    lookup_errors = (
+        exc.ObjectDoesNotExist,
+        exc.MultipleObjectsReturned,
+    )
+    return isinstance(error, exc.LibTmuxException) and not isinstance(
+        error,
+        lookup_errors,
+    )
+```
+
+The {exc}`~libtmux.exc.ObjectDoesNotExist` exclusion also covers
+{exc}`~libtmux.exc.TmuxObjectDoesNotExist`.
+
 ## libtmux 0.57.0: Subcommand-tagged exceptions (#672)
 
 ### `LibTmuxException` `str()` gains a subcommand prefix

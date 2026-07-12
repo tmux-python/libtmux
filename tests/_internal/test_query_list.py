@@ -249,8 +249,10 @@ class Obj:
         ([1, 2, 3, 4, 5], None, QueryList([1, 2, 3, 4, 5])),
         ([1, 2, 3, 4, 5], [1], QueryList([1])),
         ([1, 2, 3, 4, 5], [1, 4], QueryList([1, 4])),
+        ([1, 2, 3, 4, 5], [9], QueryList([])),
         ([1, 2, 3, 4, 5], lambda val: val == 1, QueryList([1])),
         ([1, 2, 3, 4, 5], lambda val: val == 2, QueryList([2])),
+        ([1, 2, 3, 4, 5], lambda val: val == 9, QueryList([])),
     ],
 )
 def test_filter(
@@ -267,27 +269,77 @@ def test_filter(
     else:
         assert qs.filter() == expected_result
 
-    if (
-        isinstance(expected_result, list)
-        and len(expected_result) > 0
-        and not isinstance(expected_result[0], dict)
-    ):
-        if len(expected_result) == 1:
+    if not isinstance(expected_result, list):
+        return
+
+    # ``get()`` insists on exactly one match. Assert the message too: an
+    # exception nobody can read is the defect, not just the raise.
+    if len(expected_result) == 0:
+        with pytest.raises(ObjectDoesNotExist) as missing:
             if isinstance(filter_expr, dict):
-                assert qs.get(**filter_expr) == expected_result[0]
+                qs.get(**filter_expr)
             else:
-                assert qs.get(filter_expr) == expected_result[0]
-        elif len(expected_result) > 1:
-            with pytest.raises(MultipleObjectsReturned) as e:
-                if isinstance(filter_expr, dict):
-                    assert qs.get(**filter_expr) == expected_result
-                else:
-                    assert qs.get(filter_expr) == expected_result
-                assert e.match("Multiple objects returned")
-        elif len(expected_result) == 0:
-            with pytest.raises(ObjectDoesNotExist) as exc:
-                if isinstance(filter_expr, dict):
-                    assert qs.get(**filter_expr) == expected_result
-                else:
-                    assert qs.get(filter_expr) == expected_result
-            assert exc.match("No objects found")
+                qs.get(filter_expr)
+        assert missing.match("No objects found")
+        return
+
+    if isinstance(expected_result[0], dict):
+        return
+
+    if len(expected_result) == 1:
+        if isinstance(filter_expr, dict):
+            assert qs.get(**filter_expr) == expected_result[0]
+        else:
+            assert qs.get(filter_expr) == expected_result[0]
+    else:
+        with pytest.raises(MultipleObjectsReturned) as multiple:
+            if isinstance(filter_expr, dict):
+                qs.get(**filter_expr)
+            else:
+                qs.get(filter_expr)
+        assert multiple.match("Multiple objects returned")
+
+
+def test_get_multiple_objects_exposes_ambiguity_data() -> None:
+    query: dict[str, t.Any] = {"fruit": "apple"}
+    qs = QueryList([query, query])
+
+    with pytest.raises(MultipleObjectsReturned) as multiple:
+        qs.get(**query)
+
+    assert multiple.value.count == 2
+    assert multiple.value.query == query
+
+
+def test_query_exception_annotations_resolve() -> None:
+    """Runtime introspection resolves the query annotations."""
+    for initializer in (
+        ObjectDoesNotExist.__init__,
+        MultipleObjectsReturned.__init__,
+    ):
+        assert "query" in t.get_type_hints(initializer)
+
+
+def test_get_default_with_broad_eq_is_returned() -> None:
+    """A default whose ``__eq__`` is non-identity is returned, not raised.
+
+    ``get`` guards the "nothing matched" branch with the ``no_arg`` sentinel.
+    Comparing the default to it with ``==`` rather than ``is`` misfires when the
+    default answers ``__eq__`` truthily to an unrelated object.
+    """
+
+    class BroadEq:
+        def __eq__(self, other: object) -> bool:
+            return True
+
+        __hash__ = None  # type: ignore[assignment]
+
+    default = BroadEq()
+    assert QueryList([]).get(missing="x", default=default) is default
+
+
+def test_object_does_not_exist_exposes_query() -> None:
+    """``ObjectDoesNotExist`` exposes its lookup, mirroring its sibling."""
+    query: dict[str, t.Any] = {"pane_id": "%9"}
+    assert ObjectDoesNotExist(query=query).query == query
+    assert ObjectDoesNotExist().query is None
