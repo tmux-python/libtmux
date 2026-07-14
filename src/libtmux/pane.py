@@ -238,10 +238,13 @@ class Pane(
 
         Examples
         --------
-        >>> socket_path = server.cmd(
+        >>> socket_path = server.cmd(  # doctest: +HIDE
         ...     "display-message", "-p", "-t", pane.pane_id, "#{socket_path}"
         ... ).stdout[0]
-        >>> env = {"TMUX": f"{socket_path},1,0", "TMUX_PANE": pane.pane_id}
+        >>> env = {  # doctest: +HIDE
+        ...     "TMUX": f"{socket_path},1,0",
+        ...     "TMUX_PANE": pane.pane_id,
+        ... }
 
         >>> Pane.from_env(env)
         Pane(%1 Window(@1 1:..., Session($1 ...)))

@@ -217,7 +217,7 @@ class Session(
 
         Examples
         --------
-        >>> socket_path = server.cmd(
+        >>> socket_path = server.cmd(  # doctest: +HIDE
         ...     "display-message", "-p", "-t", pane.pane_id, "#{socket_path}"
         ... ).stdout[0]
 
