@@ -45,6 +45,18 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Documentation
+
+#### Cleaner `from_env` examples (#719)
+
+The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and
+its {meth}`Server <libtmux.Server.from_env>`,
+{meth}`Session <libtmux.Session.from_env>`, and
+{meth}`Window <libtmux.Window.from_env>` siblings now hide the incidental
+environment-setup plumbing, so each example leads with the constructor call it
+demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
+it.
+
 ## libtmux 0.62.0 (2026-07-12)
 
 libtmux 0.62.0 teaches libtmux objects to locate themselves and to resolve
