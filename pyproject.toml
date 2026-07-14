@@ -59,7 +59,7 @@ dev = [
   "types-docutils",
   # Testing
   "typing-extensions; python_version < '3.11'",
-  "gp-libs>=0.0.18",
+  "gp-libs>=0.0.19",
   "pytest",
   "pytest-rerunfailures",
   "pytest-mock",
@@ -82,7 +82,7 @@ docs = [
 ]
 testing = [
   "typing-extensions; python_version < '3.11'",
-  "gp-libs>=0.0.18",
+  "gp-libs>=0.0.19",
   "pytest",
   "pytest-rerunfailures",
   "pytest-mock",
