@@ -230,11 +230,14 @@ class Server(
 
         Examples
         --------
-        >>> from libtmux.server import Server as TmuxServer
-        >>> socket_path = server.cmd(
+        >>> from libtmux.server import Server as TmuxServer  # doctest: +HIDE
+        >>> socket_path = server.cmd(  # doctest: +HIDE
         ...     "display-message", "-p", "-t", pane.pane_id, "#{socket_path}"
         ... ).stdout[0]
-        >>> env = {"TMUX": f"{socket_path},1,0", "TMUX_PANE": pane.pane_id}
+        >>> env = {  # doctest: +HIDE
+        ...     "TMUX": f"{socket_path},1,0",
+        ...     "TMUX_PANE": pane.pane_id,
+        ... }
 
         >>> TmuxServer.from_env(env)
         Server(socket_path=...)
