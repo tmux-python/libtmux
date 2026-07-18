@@ -32,13 +32,23 @@ Run from the repo root.
 
 | Command | What it does |
 |---|---|
-| `uv run scripts/bench_engines.py run` | full grid (the clean signal) |
+| `uv run scripts/bench_engines.py run` | full engine grid (the clean signal) |
+| `uv run scripts/bench_engines.py matrix --shapes 1x4,3x3,5x4` | 4-axis factorial: which choice drives build cost |
+| `uv run scripts/bench_engines.py concurrency --transport control_mode --k 4` | K builds sync-serial vs async-`gather` |
+| `uv run scripts/bench_engines.py contract` | mock-parity ops-language check only (for CI) |
 | `uv run scripts/bench_engines.py profile --engine control_mode --shape 8x4` | cProfile one engine, print slowest by cumtime |
 | `uv run scripts/bench_engines.py cell control_mode 8x4` | one isolated build (for wrapping in hyperfine) |
 
 `run` flags: `--shapes 1x1,1x4,3x3,5x4,8x4`, `--engines classic,subprocess,control_mode,imsg,mock,pipelined`,
 `--wait` (ALSO measure with shell-readiness wait), `--runs 20`, `--warmup 3`,
 `--json-out grid.json`. Shape is `windows x panes-per-window`.
+
+`matrix` sweeps five expression layers (`imperative`, `plan-seq`, `plan-fold`,
+`ws-seq`, `ws-fold`) × transport {subprocess, control_mode} × mode {sync, async}
+against a `classic` reference. `mock` is the offline correctness **oracle**, not
+a results row: `matrix --check` (default on) and `contract` assert every layer ×
+mode renders identical tmux argv to it, so the benchmark doubles as an
+ops-language contract test.
 
 Engines: `classic` (Server/Session/Window/Pane API) · `subprocess` (one fork
 per op) · `control_mode` (one persistent `tmux -C`) · `imsg` (AF_UNIX one-shot) ·
