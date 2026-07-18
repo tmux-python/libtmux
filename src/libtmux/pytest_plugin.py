@@ -190,7 +190,7 @@ def server(
         )
         rust_server = _rust_server(server.socket_name, socket_path, server.colors)
         rust_refresh = rust_server.subscribe(10, capture_view=False)
-        setattr(server, "_rust_refresh", rust_refresh)
+        setattr(server, "_rust_refresh", rust_refresh)  # noqa: B010
 
     def fin() -> None:
         if rust_server is not None:

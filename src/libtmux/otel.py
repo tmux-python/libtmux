@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from contextlib import ExitStack, contextmanager
+from collections.abc import Iterator
+from contextlib import ExitStack, contextmanager, suppress
 from typing import Any
 
 from ._internal import trace as libtmux_trace
@@ -41,6 +42,7 @@ def _normalize_endpoint(endpoint: str) -> str:
 
 
 def init_otel() -> None:
+    """Initialize the OpenTelemetry tracer provider once, if enabled."""
     global _initialized, _tracer, _provider
     if _initialized:
         return
@@ -54,13 +56,20 @@ def init_otel() -> None:
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
             OTLPSpanExporter,
         )
-        from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_NAMESPACE
+        from opentelemetry.sdk.resources import (
+            SERVICE_NAME,
+            SERVICE_NAMESPACE,
+            Resource,
+        )
         from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export import (
+            BatchSpanProcessor,
+            SimpleSpanProcessor,
+        )
         from opentelemetry.trace.propagation.tracecontext import (
             TraceContextTextMapPropagator,
         )
+
         from libtmux.__about__ import __version__
     except Exception:
         return
@@ -104,8 +113,7 @@ def init_otel() -> None:
         atexit.register(_provider.shutdown)
 
 
-
-def _normalize_attr(value: Any):
+def _normalize_attr(value: Any) -> Any:
     if value is None:
         return None
     if isinstance(value, (str, bytes, bool, int, float)):
@@ -120,14 +128,24 @@ def _normalize_attr(value: Any):
         return items
     return str(value)
 
-def start_span(name: str, attributes: dict[str, Any] | None = None, **fields: Any):
+
+def start_span(
+    name: str,
+    attributes: dict[str, Any] | None = None,
+    **fields: Any,
+) -> ExitStack:
+    """Open a combined libtmux-trace and OpenTelemetry span."""
     init_otel()
     stack = ExitStack()
     stack.enter_context(libtmux_trace.span(name, **fields))
     if _tracer is None:
         return stack
     otel_attrs = attributes or fields
-    filtered = {k: _normalize_attr(v) for k, v in otel_attrs.items() if _normalize_attr(v) is not None}
+    filtered = {
+        k: _normalize_attr(v)
+        for k, v in otel_attrs.items()
+        if _normalize_attr(v) is not None
+    }
     stack.enter_context(_tracer.start_as_current_span(name, attributes=filtered))
     return stack
 
@@ -155,7 +173,9 @@ def _traceparent_from_current() -> tuple[str, str | None] | None:
             span_id = getattr(ctx, "span_id", 0)
             if not trace_id or not span_id:
                 return None
-            sampled = bool(getattr(ctx, "trace_flags", None) and ctx.trace_flags.sampled)
+            sampled = bool(
+                getattr(ctx, "trace_flags", None) and ctx.trace_flags.sampled,
+            )
             flags = "01" if sampled else "00"
             traceparent = f"00-{trace_id:032x}-{span_id:016x}-{flags}"
         except Exception:
@@ -165,7 +185,8 @@ def _traceparent_from_current() -> tuple[str, str | None] | None:
 
 
 @contextmanager
-def traceparent_scope():
+def traceparent_scope() -> Iterator[None]:
+    """Propagate the current traceparent into vibe_tmux, if available."""
     if not _otel_enabled():
         yield
         return
@@ -203,7 +224,5 @@ def traceparent_scope():
         yield
     finally:
         if ok and clearer is not None:
-            try:
+            with suppress(Exception):
                 clearer()
-            except Exception:
-                pass
