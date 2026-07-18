@@ -126,12 +126,32 @@ _SOCK_DIR = pathlib.Path(
     tempfile.mkdtemp(prefix="ltbench-")
 )  # short: /tmp/ltbench-XXXX
 _SERVERS: list[Server] = []
+#: A session every bench server keeps for its whole life, so killing a cell's
+#: session never drops the server to zero and trips tmux's exit-empty teardown.
+_KEEPALIVE = "keepalive"
 
 
 def new_server() -> Server:
-    """Return a fresh isolated server on a unique socket under the scratch dir."""
+    """Return a fresh isolated server on a unique socket under the scratch dir.
+
+    The server is pinned alive by a keepalive session. Every cell kills its
+    session between builds, which would otherwise drop the server to zero
+    sessions; under tmux's ``exit-empty`` default the server then starts
+    exiting, and the next build's ``new-session`` can reach the still-bound
+    socket mid-shutdown and fail with "server exited unexpectedly". The race is
+    load-dependent, so it surfaced as an intermittent create failure rather than
+    an obvious teardown bug. Control mode never hit it -- its ``tmux -C``
+    phantom session already pinned the server -- which is exactly why only the
+    subprocess cells were affected.
+    """
     srv = Server(socket_path=str(_SOCK_DIR / f"{uuid.uuid4().hex[:8]}.sock"))
     _SERVERS.append(srv)
+    # The keepalive has to come first: `start-server` alone leaves a server with
+    # zero sessions, which exits immediately under the default, so there is no
+    # server left to set the option on. Creating a session that is never killed
+    # is what actually holds the floor above zero.
+    srv.cmd("new-session", "-d", "-s", _KEEPALIVE)
+    srv.cmd("set-option", "-s", "exit-empty", "off")
     return srv
 
 
@@ -585,6 +605,17 @@ def _sync_cell(
     return samples
 
 
+async def _akill_session(server: Server, name: str) -> None:
+    """Kill *name* without blocking the event loop.
+
+    ``server.cmd`` shells out synchronously. Called straight from a coroutine it
+    stalls the loop mid-cell, and a blocking subprocess issued from inside a
+    running loop measurably raises the rate of failed ``new-session`` calls, so
+    the cleanup is offloaded to a thread.
+    """
+    await asyncio.to_thread(server.cmd, "kill-session", "-t", name)
+
+
 async def _async_cell(
     transport: Transport,
     layer: Layer,
@@ -599,14 +630,14 @@ async def _async_cell(
         for _ in range(warmup):
             name = uniq()
             await build_async(layer, engine, name, wins, panes)
-            server.cmd("kill-session", "-t", name)
+            await _akill_session(server, name)
         samples: list[float] = []
         for _ in range(runs):
             name = uniq()
             t0 = time.perf_counter()
             await build_async(layer, engine, name, wins, panes)
             samples.append((time.perf_counter() - t0) * 1000)
-            server.cmd("kill-session", "-t", name)
+            await _akill_session(server, name)
         return samples
 
 
@@ -989,7 +1020,7 @@ async def _gather_build(
         )
         elapsed = (time.perf_counter() - t0) * 1000
         for name in names:
-            server.cmd("kill-session", "-t", name)
+            await _akill_session(server, name)
         return elapsed
 
 
