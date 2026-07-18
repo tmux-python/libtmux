@@ -35,10 +35,23 @@ Engines (``--engines``):
 Timing (``run`` = in-process build-only, the clean signal; ``--hyperfine`` also
 runs whole-process wall time via hyperfine over the ``cell`` subcommand).
 
+The ``matrix`` subcommand isolates *why* a build costs what it does, sweeping a
+four-axis factorial -- async {sync, async} x transport {subprocess,
+control_mode} x planner {imperative, plan-seq, plan-fold} x workspace
+{hand plan, declarative} -- as five expression layers x 2 transports x 2 modes,
+against a ``classic`` reference. ``mock`` is not benchmarked here: it is the
+offline correctness oracle, and ``matrix --check`` / ``contract`` assert every
+layer x mode renders identical tmux argv to it, so the grid doubles as an
+ops-language contract test. ``concurrency`` measures async's real lever -- K
+independent builds sync-serial vs ``asyncio.gather`` over one connection.
+
 Run:  uv run bench_engines.py run
       uv run bench_engines.py run --engines control_mode,pipelined --wait
       uv run bench_engines.py profile --engine control_mode --shape 8x4
       uv run bench_engines.py cell control_mode 8x4     # one build (for hyperfine)
+      uv run bench_engines.py matrix --shapes 1x4,3x3,5x4
+      uv run bench_engines.py concurrency --transport control_mode --k 4
+      uv run bench_engines.py contract              # parity only, for CI
 """
 
 from __future__ import annotations
