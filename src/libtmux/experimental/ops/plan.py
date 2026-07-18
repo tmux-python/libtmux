@@ -32,7 +32,7 @@ from libtmux.experimental.ops._types import (
     Special,
     WindowId,
 )
-from libtmux.experimental.ops.exc import ForwardCaptureError
+from libtmux.experimental.ops.exc import FailedCreateError, ForwardCaptureError
 from libtmux.experimental.ops.execute import arun, resolve_engine_version, run
 from libtmux.experimental.ops.planner import Planner, PlanStep, SequentialPlanner
 from libtmux.experimental.ops.serialize import operation_from_dict, operation_to_dict
@@ -147,14 +147,24 @@ def _target_from_id(value: str) -> Target:
 def _resolve_slot(
     ref: SlotRef,
     bindings: dict[int | tuple[int, str], str],
+    results: dict[int, t.Any] | None = None,
 ) -> Target:
-    """Map a :class:`SlotRef` to the captured concrete target it points at."""
+    """Map a :class:`SlotRef` to the captured concrete target it points at.
+
+    A create that failed captures no id, so its slot never binds. When *results*
+    shows the referenced step already ran and failed, the tmux error is the real
+    cause: :exc:`~.exc.FailedCreateError` reports it instead of
+    :exc:`~.exc.ForwardCaptureError`, which would name only the symptom.
+    """
     key: int | tuple[int, str] = (
         ref.slot if ref.part == "self" else (ref.slot, ref.part)
     )
     try:
         concrete = bindings[key] + ref.suffix
     except KeyError as error:
+        creator = None if results is None else results.get(ref.slot)
+        if creator is not None and not creator.ok:
+            raise FailedCreateError(ref.slot, ref.part, creator) from error
         raise ForwardCaptureError(ref.slot, ref.part) from error
     return _target_from_id(concrete)
 
@@ -162,13 +172,14 @@ def _resolve_slot(
 def _resolve(
     operation: Operation[t.Any],
     bindings: dict[int | tuple[int, str], str],
+    results: dict[int, t.Any] | None = None,
 ) -> Operation[t.Any]:
     """Substitute any :class:`SlotRef` ``target``/``src_target`` with its id."""
     changes: dict[str, Target] = {}
     if isinstance(operation.target, SlotRef):
-        changes["target"] = _resolve_slot(operation.target, bindings)
+        changes["target"] = _resolve_slot(operation.target, bindings, results)
     if isinstance(operation.src_target, SlotRef):
-        changes["src_target"] = _resolve_slot(operation.src_target, bindings)
+        changes["src_target"] = _resolve_slot(operation.src_target, bindings, results)
     if not changes:
         return operation
     return dataclasses.replace(operation, **changes)
@@ -400,7 +411,7 @@ class LazyPlan:
         for step in planner.plan(self._operations):
             if step.marked:
                 create_idx, *decorate_idx = step.indices
-                create = _resolve(self._operations[create_idx], bindings)
+                create = _resolve(self._operations[create_idx], bindings, results)
                 decorates = [
                     _resolve_src(self._operations[i], bindings) for i in decorate_idx
                 ]
@@ -421,7 +432,7 @@ class LazyPlan:
                 index = step.indices[0]
                 probe = self._ensures.get(index)
                 if probe is not None:
-                    found = yield _Single(_resolve(probe, bindings))
+                    found = yield _Single(_resolve(probe, bindings, results))
                     if found.ok and found.text.strip():
                         # The object exists: bind to its ids, skip the create.
                         result = self._operations[index].build_result(
@@ -431,17 +442,22 @@ class LazyPlan:
                         )
                     else:
                         result = yield _Single(
-                            _resolve(self._operations[index], bindings),
+                            _resolve(self._operations[index], bindings, results),
                         )
                 else:
-                    result = yield _Single(_resolve(self._operations[index], bindings))
+                    result = yield _Single(
+                        _resolve(self._operations[index], bindings, results),
+                    )
                 results[index] = result
                 if result.created_id is not None:
                     bindings[index] = result.created_id
                 for sub_part, sub_id in result.created_subids.items():
                     bindings[index, sub_part] = sub_id
             else:
-                group = [_resolve(self._operations[i], bindings) for i in step.indices]
+                group = [
+                    _resolve(self._operations[i], bindings, results)
+                    for i in step.indices
+                ]
                 merged = yield _Chain(render_chain(group, version))
                 results.update(
                     zip(step.indices, attribute(group, merged, version), strict=True),
