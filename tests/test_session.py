@@ -103,6 +103,28 @@ def test_active_pane(session: Session) -> None:
     assert isinstance(session.active_pane, Pane)
 
 
+def test_kill_window_targets_owning_session(server: Server) -> None:
+    """``kill_window`` scopes a bare window name to its owning session.
+
+    Regression for the bundled targeting fix: a bare window name resolves
+    against the server's current session, so two sessions holding a window of
+    the same name could cross-target. Killing the owning session's window must
+    leave the other session's same-named window untouched.
+    """
+    owning = server.new_session(session_name="cc_killwin_owner")
+    other = server.new_session(session_name="cc_killwin_other")
+
+    owning.new_window(window_name="dup")
+    other.new_window(window_name="dup")
+
+    owning.kill_window("dup")
+
+    owning.refresh()
+    other.refresh()
+    assert "dup" not in [w.window_name for w in owning.windows]
+    assert "dup" in [w.window_name for w in other.windows]
+
+
 def test_session_rename(session: Session) -> None:
     """Session.rename_session renames session."""
     session_name = session.session_name

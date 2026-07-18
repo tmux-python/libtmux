@@ -76,7 +76,10 @@ def test_repo_git_remote_checkout(
         )
 
     # Test
-    result = pytester.runpytest(str(first_test_filename))
+    # Inner pytester runs are isolated and don't read this project's
+    # asyncio_default_fixture_loop_scope, so pytest-asyncio would emit its
+    # loop-scope deprecation. Disable the plugin for these synchronous runs.
+    result = pytester.runpytest(str(first_test_filename), "-p", "no:asyncio")
     result.assert_outcomes(passed=1)
 
 
