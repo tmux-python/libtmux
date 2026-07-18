@@ -86,6 +86,45 @@ class ForwardCaptureError(OperationError):
         super().__init__(msg)
 
 
+class FailedCreateError(OperationError):
+    """A plan step references a slot whose create failed.
+
+    Raised instead of :exc:`ForwardCaptureError` when the referenced step did
+    run and its tmux command failed. A failed create captures no id, so without
+    this the real tmux error is discarded and the *next* step reports an unbound
+    forward reference -- naming the symptom rather than the cause. Carrying the
+    failing command, exit code, and stderr keeps the diagnosis at the failure.
+
+    Examples
+    --------
+    >>> import types
+    >>> result = types.SimpleNamespace(
+    ...     argv=("tmux", "new-session", "-d", "-s", "dev"),
+    ...     returncode=1,
+    ...     stderr=("server exited unexpectedly",),
+    ... )
+    >>> raise FailedCreateError(0, "window", result)
+    Traceback (most recent call last):
+    ...
+    libtmux.experimental.ops.exc.FailedCreateError: plan step references slot 0
+    (its 'window' child) but that step's create failed: 'tmux new-session -d -s
+    dev' exited 1: server exited unexpectedly
+    """
+
+    def __init__(self, slot: int, part: str, result: t.Any) -> None:
+        self.slot = slot
+        self.part = part
+        self.result = result
+        target = "its own id" if part == "self" else f"its {part!r} child"
+        cmd = " ".join(result.argv)
+        stderr = "; ".join(result.stderr) or "no stderr"
+        msg = (
+            f"plan step references slot {slot} ({target}) but that step's create "
+            f"failed: {cmd!r} exited {result.returncode}: {stderr}"
+        )
+        super().__init__(msg)
+
+
 class VersionUnsupported(OperationError):
     """An operation cannot render against the given tmux version.
 
