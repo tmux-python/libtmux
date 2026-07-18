@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
+import logging
 import typing as t
 from dataclasses import dataclass, field
 
@@ -42,6 +43,7 @@ from libtmux import exc
 from libtmux.experimental.engines.base import render_control_line
 from libtmux.experimental.engines.connection import ServerConnection
 from libtmux.experimental.engines.control_mode import (
+    BlockSequenceMonitor,
     ControlModeError,
     ControlModeParser,
     _merge_blocks,
@@ -54,6 +56,8 @@ if t.TYPE_CHECKING:
 
     from libtmux.experimental.engines.base import CommandRequest, CommandResult
     from libtmux.experimental.engines.control_mode import ControlModeBlock
+
+logger = logging.getLogger(__name__)
 
 _READ_CHUNK = 65536
 _DEFAULT_TIMEOUT = 30.0
@@ -184,6 +188,7 @@ class AsyncControlModeEngine:
         self._conn = ServerConnection.of(tmux_bin, server_args)
         self.timeout = timeout
         self._parser = ControlModeParser()
+        self._sequence = BlockSequenceMonitor()
         self._pending: collections.deque[_PendingCommand] = collections.deque()
         self._event_queue_size = event_queue_size
         self._subscribers: set[asyncio.Queue[t.Any]] = set()
@@ -376,7 +381,26 @@ class AsyncControlModeEngine:
                 return
             self._parser.feed(chunk)
             self._parser.notifications()  # discard any startup notifications
-            if self._parser.blocks():  # startup ACK seen and discarded
+            discarded = self._parser.blocks()
+            if discarded:  # startup ACK seen and discarded
+                solicited = [block for block in discarded if block.flags == 1]
+                if solicited:
+                    # Anything but the ACK here is a command reply thrown away on
+                    # the reconnect path -- the documented swallow risk.
+                    logger.warning(
+                        "control-mode startup consumed %s solicited block(s); "
+                        "%s command(s) were pending",
+                        len(solicited),
+                        len(self._pending),
+                        extra={
+                            "tmux_stdout": [
+                                f"#{block.number}: "
+                                + b" | ".join(block.body).decode(errors="replace")
+                                for block in solicited
+                            ],
+                            "tmux_stdout_len": len(solicited),
+                        },
+                    )
                 return
 
     async def run(self, request: CommandRequest) -> CommandResult:
@@ -545,6 +569,7 @@ class AsyncControlModeEngine:
                 # Reconnect is the only place permitted to reset the parser and
                 # fail pending, keeping FIFO correlation aligned across the gap.
                 self._parser = ControlModeParser()
+                self._sequence.reset()
                 self._fail_pending(ControlModeError("control-mode reconnecting"))
                 self._reset_attach()
                 try:
@@ -753,8 +778,21 @@ class AsyncControlModeEngine:
         if block.flags != 1:
             return  # unsolicited (hook-triggered command or startup ACK): skip
         if not self._pending:
+            # A solicited reply with no command waiting: its command's future was
+            # already resolved, cancelled, or failed. FIFO is now one block off.
+            logger.warning(
+                "control-mode dropped solicited block #%s with no pending command",
+                block.number,
+                extra={
+                    "tmux_stdout": [
+                        line.decode(errors="replace") for line in block.body
+                    ],
+                    "tmux_stdout_len": len(block.body),
+                },
+            )
             return
         pending = self._pending[0]
+        self._sequence.check(block, pending.argv)
         pending.blocks.append(block)
         if len(pending.blocks) < pending.expected:
             return
