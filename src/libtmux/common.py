@@ -26,12 +26,22 @@ from ._internal import trace as libtmux_trace
 try:
     from .otel import start_span, traceparent_scope
 except Exception:  # pragma: no cover - optional dependency
-    def start_span(name: str, **fields):
-        return libtmux_trace.span(name, **fields)
+
+    def start_span(
+        name: str,
+        attributes: dict[str, t.Any] | None = None,
+        **fields: t.Any,
+    ) -> contextlib.ExitStack:
+        """Fall back to a libtmux-trace-only span when otel is absent."""
+        stack = contextlib.ExitStack()
+        stack.enter_context(libtmux_trace.span(name, **fields))
+        return stack
 
     @contextlib.contextmanager
-    def traceparent_scope():
+    def traceparent_scope() -> t.Iterator[None]:
+        """No-op traceparent propagation when otel is absent."""
         yield
+
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -234,22 +244,24 @@ def _rust_server(
             kwargs["control_autostart"] = control_autostart
         if mux_server_bin:
             kwargs["mux_server_bin"] = mux_server_bin
-        with start_span(
-            "rust_server_init",
-            layer="python",
-            socket_name=socket_name,
-            socket_path=socket_path,
-            connection_kind=connection_kind,
-            server_kind=server_kind,
-            control_autostart=control_autostart,
-            mux_server_bin=mux_server_bin,
+        with (
+            start_span(
+                "rust_server_init",
+                layer="python",
+                socket_name=socket_name,
+                socket_path=socket_path,
+                connection_kind=connection_kind,
+                server_kind=server_kind,
+                control_autostart=control_autostart,
+                mux_server_bin=mux_server_bin,
+            ),
+            traceparent_scope(),
         ):
-            with traceparent_scope():
-                server = rust_backend.Server(
-                    socket_path=socket_path,
-                    socket_name=socket_name,
-                    **kwargs,
-                )
+            server = rust_backend.Server(
+                socket_path=socket_path,
+                socket_name=socket_name,
+                **kwargs,
+            )
         _RUST_SERVER_CACHE[key] = server
         _RUST_SERVER_CONFIG[key] = set()
 
@@ -316,9 +328,11 @@ def _rust_cmd_result(
         if config_file:
             loaded = _RUST_SERVER_CONFIG.setdefault(key, set())
             if config_file not in loaded:
-                with start_span("rust_server_is_alive", layer="rust"):
-                    with traceparent_scope():
-                        server_alive = bool(server.is_alive())
+                with (
+                    start_span("rust_server_is_alive", layer="rust"),
+                    traceparent_scope(),
+                ):
+                    server_alive = bool(server.is_alive())
                 if not server_alive:
                     stdout_lines, stderr_lines, exit_code, cmd_args = (
                         _rust_run_with_config(
@@ -334,13 +348,15 @@ def _rust_cmd_result(
                     return stdout_lines, stderr_lines, exit_code, cmd_args
                 quoted = shlex.quote(config_file)
                 try:
-                    with start_span(
-                        "rust_server_source_file",
-                        layer="rust",
-                        config_file=config_file,
+                    with (
+                        start_span(
+                            "rust_server_source_file",
+                            layer="rust",
+                            config_file=config_file,
+                        ),
+                        traceparent_scope(),
                     ):
-                        with traceparent_scope():
-                            server.cmd(f"source-file {quoted}")
+                        server.cmd(f"source-file {quoted}")
                 except Exception as err:
                     message = str(err)
                     error_stdout: list[str] = []
@@ -352,17 +368,19 @@ def _rust_cmd_result(
 
         cmd_line = " ".join(shlex.quote(part) for part in cmd_parts)
         try:
-            with start_span(
-                "rust_server_cmd",
-                layer="rust",
-                cmd=cmd_line,
-                socket_name=socket_name,
-                socket_path=socket_path,
-                config_file=config_file,
-                connection_kind=connection_kind,
+            with (
+                start_span(
+                    "rust_server_cmd",
+                    layer="rust",
+                    cmd=cmd_line,
+                    socket_name=socket_name,
+                    socket_path=socket_path,
+                    config_file=config_file,
+                    connection_kind=connection_kind,
+                ),
+                traceparent_scope(),
             ):
-                with traceparent_scope():
-                    result = server.cmd(cmd_line)
+                result = server.cmd(cmd_line)
         except Exception as err:
             message = str(err)
             error_stdout_lines: list[str] = []

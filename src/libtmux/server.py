@@ -7,6 +7,7 @@ libtmux.server
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import pathlib
@@ -22,12 +23,22 @@ from libtmux._internal.env import socket_path_from_env
 try:
     from libtmux.otel import start_span, traceparent_scope
 except Exception:  # pragma: no cover - optional dependency
-    def start_span(name: str, **fields):
-        return libtmux_trace.span(name, **fields)
+
+    def start_span(
+        name: str,
+        attributes: dict[str, t.Any] | None = None,
+        **fields: t.Any,
+    ) -> contextlib.ExitStack:
+        """Fall back to a libtmux-trace-only span when otel is absent."""
+        stack = contextlib.ExitStack()
+        stack.enter_context(libtmux_trace.span(name, **fields))
+        return stack
 
     @contextlib.contextmanager
-    def traceparent_scope():
+    def traceparent_scope() -> t.Iterator[None]:
+        """No-op traceparent propagation when otel is absent."""
         yield
+
 
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
@@ -321,12 +332,14 @@ class Server(
                         else self.socket_path
                     )
                     server = _rust_server(self.socket_name, socket_path, self.colors)
-                    with start_span(
-                        "rust_server_is_alive",
-                        layer="rust",
+                    with (
+                        start_span(
+                            "rust_server_is_alive",
+                            layer="rust",
+                        ),
+                        traceparent_scope(),
                     ):
-                        with traceparent_scope():
-                            return bool(server.is_alive())
+                        return bool(server.is_alive())
                 except Exception:
                     return False
         try:
@@ -375,12 +388,14 @@ class Server(
                         else self.socket_path
                     )
                     server = _rust_server(self.socket_name, socket_path, self.colors)
-                    with start_span(
-                        "rust_server_require",
-                        layer="rust",
+                    with (
+                        start_span(
+                            "rust_server_require",
+                            layer="rust",
+                        ),
+                        traceparent_scope(),
                     ):
-                        with traceparent_scope():
-                            server.require_server()
+                        server.require_server()
                 except Exception as err:
                     raise subprocess.CalledProcessError(1, rust_cmd_args) from err
                 return

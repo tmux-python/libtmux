@@ -146,6 +146,13 @@ files = [
 ]
 
 
+[[tool.mypy.overrides]]
+module = [
+  "opentelemetry.*",
+  "vibe_tmux",
+]
+ignore_missing_imports = true
+
 [tool.coverage.run]
 branch = true
 parallel = true
