@@ -67,6 +67,10 @@ jobs:
       - name: Lint with mypy
         run: uv run mypy .
 
+      - name: Lint with ty
+        continue-on-error: true
+        run: uv run ty check .
+
       - name: Print python versions
         run: |
           python -V
