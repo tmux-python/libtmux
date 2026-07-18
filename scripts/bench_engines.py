@@ -174,7 +174,41 @@ def _cleanup() -> None:
         shutil.rmtree(_SOCK_DIR, ignore_errors=True)
 
 
+def _reap_stale_scratch() -> None:
+    """Remove scratch dirs left behind by runs that died before their cleanup.
+
+    :func:`_cleanup` only knows *this* process's socket dir, so a run killed
+    before its ``atexit`` hook leaves its dir -- and any tmux still bound to
+    it -- behind for good. Those survivors keep consuming CPU and file
+    descriptors, and machine load is precisely what makes the server-teardown
+    race fire, so an unreaped leak feeds the very failure it came from.
+
+    A dir with a live tmux is left alone: it may belong to a concurrent run, and
+    stealing another run's servers would be worse than leaking. That means hung
+    clients are only reclaimed once their server is gone, which is the
+    conservative trade.
+    """
+    reaped = 0
+    for path in pathlib.Path(tempfile.gettempdir()).glob("ltbench-*"):
+        if path == _SOCK_DIR or not path.is_dir():
+            continue
+        with contextlib.suppress(Exception):
+            alive = subprocess.run(
+                ["pgrep", "-f", f"tmux .*-S{path}/"],
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout.split()
+            if alive:
+                continue
+            shutil.rmtree(path, ignore_errors=True)
+            reaped += 1
+    if reaped:
+        console.print(f"[dim]reaped {reaped} stale bench scratch dir(s)[/dim]")
+
+
 atexit.register(_cleanup)
+_reap_stale_scratch()
 
 
 def uniq() -> str:
