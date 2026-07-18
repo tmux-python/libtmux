@@ -81,3 +81,57 @@ on `SubprocessEngine`, 50 runs: classic simple 210 ms / large 6764 ms; builder
 simple 453 ms / large 1692 ms. End-to-end on the *slowest* engine understates the
 builder (startup dwarfs a 3 ms build) — the in-process grid above is the clean
 signal. Prefer `control_mode` and in-process timing to measure build cost.
+
+## Build-cost factorial — `matrix`
+
+The `matrix` subcommand isolates which of four independent choices drives build
+cost, sweeping them as a factorial: **async** {sync, async} × **transport**
+{subprocess, control_mode} × **planner** {imperative, plan-seq, plan-fold} ×
+**workspace** {hand `LazyPlan`, declarative `Workspace`}. Because a declarative
+workspace compiles to a lazy plan, the valid expression layers are five —
+`imperative`, `plan-seq`, `plan-fold`, `ws-seq`, `ws-fold` — crossed with 2
+transports × 2 modes = 20 cells, against a `classic` reference. Reproduce:
+
+```console
+$ uv run scripts/bench_engines.py matrix --shapes 1x4,3x3,5x4
+```
+
+`mock` is absent from the table by design: it is the offline correctness
+**oracle**, not a results row. `matrix --check` (default on) and the standalone
+`contract` subcommand assert every layer × mode renders identical tmux argv to
+mock, so the benchmark doubles as an ops-language contract test:
+
+```console
+$ uv run scripts/bench_engines.py contract
+```
+
+Illustrative 1×4 snapshot (small run; absolute ms are machine-dependent — the
+ratios are the portable signal):
+
+| layer × transport × mode | median ms | vs classic |
+|---|--:|--:|
+| classic (reference) | 168.7 | 1.0x |
+| ws-fold · control_mode · sync | 7.8 | 21.5x |
+| plan-fold · control_mode · sync | 6.3 | 26.8x |
+| imperative · control_mode · async | 7.0 | 24.0x |
+| ws-fold · subprocess · sync | 30.7 | 5.5x |
+
+Reads: transport dominates (control_mode ~4-5× subprocess); planner choice
+(imperative → plan-seq → plan-fold) and the declarative-workspace compile move
+build cost only marginally — the plan/compile layer is cheap, the time is tmux.
+Single-build async ≈ sync (a linear build serializes either way).
+
+## Concurrency — `concurrency`
+
+Async's real lever is not single-build latency but overlap. `concurrency`
+builds K independent sessions sync-serial vs `asyncio.gather` over one
+connection:
+
+```console
+$ uv run scripts/bench_engines.py concurrency --transport control_mode --k 4
+```
+
+Over one `control_mode` connection, async-gather runs ~2.4× the sync-serial
+wall time at K=4 — the persistent connection multiplexes the K builds'
+round-trips instead of paying them end-to-end. This is the win the single-build
+matrix structurally cannot show.
