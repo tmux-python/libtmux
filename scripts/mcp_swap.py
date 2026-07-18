@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["tomlkit>=0.13"]
 # ///
-"""Swap MCP server configs across Claude / Codex / Cursor / Gemini / Grok / Antigravity.
+"""Swap MCP server configs across Claude / Codex / Cursor / Gemini / Grok / agy.
 
 Use when you want every installed agent CLI to run a local checkout of an
 MCP server (editable) instead of a pinned release. ``use-local`` rewrites
@@ -38,10 +38,9 @@ This script is best-effort and intentionally narrow:
   ``~/.claude.json``, ``~/.codex/config.toml``,
   ``~/.gemini/settings.json``, ``~/.grok/config.toml`` (TOML
   ``mcp_servers``, same shape as Codex), and
-  ``~/.gemini/antigravity/mcp_config.json`` (Antigravity, JSON
-  ``mcpServers``). The Antigravity desktop IDE and the ``agy`` CLI may
-  read different profiles; only the documented profile path above is
-  written. Workspace / project-local configs
+  ``~/.gemini/config/mcp_config.json`` (agy / Antigravity CLI, JSON
+  ``mcpServers`` — the shared-config file the CLI reads, sibling to the
+  ``config.json`` it loads at startup). Workspace / project-local configs
   (``$PWD/.cursor/mcp.json``, ``$PWD/.gemini/settings.json``,
   per-project ``projects.<abs>.mcpServers`` entries inside
   ``~/.claude.json`` *are* recognised for Claude only) are NOT
@@ -56,7 +55,7 @@ This script is best-effort and intentionally narrow:
   pre-flag behaviour. ``--scope user`` writes Claude's top-level
   ``mcpServers`` fallback so every project that has no per-project
   override picks up the swap; useful when QA-ing a branch across
-  many directories. Codex, Cursor, and Gemini have no per-project
+  many directories. Codex, Cursor, Gemini, Grok, and agy have no per-project
   layer in their config files; the flag is silently coerced to
   ``user`` for them. Both Claude scopes can coexist with
   independent backups; full ``revert`` unwinds in LIFO order.
@@ -94,7 +93,7 @@ ALL_CLIS: tuple[CLIName, ...] = ("claude", "codex", "cursor", "gemini", "grok", 
 #: Claude config scope: ``"user"`` targets the user/system-level top-level
 #: ``mcpServers`` fallback that applies to every project without its own
 #: override; ``"project"`` targets the project-level per-project
-#: ``projects.<abs>.mcpServers`` node. Codex / Cursor / Gemini have no
+#: ``projects.<abs>.mcpServers`` node. Non-Claude CLIs have no
 #: per-project scope in their config files, so for those CLIs the scope
 #: is always normalised to ``"user"`` regardless of what was passed.
 Scope = t.Literal["user", "project"]
@@ -231,15 +230,15 @@ CLIS: dict[CLIName, CLIInfo] = {
         fmt="toml",
     ),
     # Antigravity (the ``agy`` CLI). Its MCP config is the standard JSON
-    # ``mcpServers`` shape (same as Cursor / Gemini) under the
-    # Antigravity profile dir. The file may not exist until the IDE/CLI
-    # writes it and starts empty; ``load_config`` tolerates a 0-byte
-    # JSON file as ``{}``. Note: the desktop IDE and the ``agy`` CLI may
-    # read different profiles; this targets the documented profile path.
+    # ``mcpServers`` shape (same as Cursor / Gemini). The CLI reads
+    # ``~/.gemini/config/mcp_config.json`` — its shared-config dir,
+    # sibling to the ``config.json`` it loads at startup. The file may
+    # start empty until a server is added; ``load_config`` tolerates a
+    # 0-byte JSON file as ``{}``.
     "agy": CLIInfo(
         name="agy",
         binary="agy",
-        config_path=pathlib.Path.home() / ".gemini" / "antigravity" / "mcp_config.json",
+        config_path=(pathlib.Path.home() / ".gemini" / "config" / "mcp_config.json"),
         fmt="json",
     ),
 }
@@ -317,9 +316,8 @@ class SwapEntry:
 def load_config(info: CLIInfo) -> t.Any:
     """Parse a CLI's config file (JSON or TOML) into an editable structure.
 
-    An empty JSON file is treated as an empty object ``{}`` rather than a
-    parse error: Antigravity's ``mcp_config.json`` is created empty until
-    a server is added, so a swap must be able to seed the first entry.
+    Empty JSON files are treated as empty objects so first-run MCP configs can
+    be seeded with their initial server entry.
     """
     raw = info.config_path.read_bytes()
     if info.fmt == "json":
