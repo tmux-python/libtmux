@@ -15,6 +15,7 @@ typed result -- both without touching a tmux server.
 
 from __future__ import annotations
 
+import logging
 import types
 import typing as t
 from dataclasses import dataclass
@@ -36,7 +37,109 @@ if t.TYPE_CHECKING:
         Target,
     )
 
+logger = logging.getLogger(__name__)
+
 ResultT = t.TypeVar("ResultT", bound=Result)
+
+
+def _requested_format_fields(argv: tuple[str, ...]) -> int:
+    """How many ``#{...}`` fields a rendered ``-P -F`` template asks tmux to print.
+
+    Returns ``0`` when the argv carries no printed format, so a non-capturing
+    operation is never held to a capture invariant.
+
+    Examples
+    --------
+    >>> _requested_format_fields(("new-session", "-d", "-P", "-F", "#{session_id}"))
+    1
+    >>> _requested_format_fields(
+    ...     ("new-session", "-P", "-F", "#{session_id} #{window_id} #{pane_id}")
+    ... )
+    3
+    >>> _requested_format_fields(("kill-window", "-t", "@1"))
+    0
+    """
+    if "-P" not in argv or "-F" not in argv:
+        return 0
+    index = argv.index("-F") + 1
+    if index >= len(argv):
+        return 0
+    return argv[index].count("#{")
+
+
+def _check_capture_invariant(result: Result) -> None:
+    """Log when a creating operation succeeded but captured fewer ids than it asked for.
+
+    A create op rendered with ``-P -F`` tells tmux exactly how many ids to print.
+    A ``complete`` result must therefore carry that many. When it carries fewer --
+    none at all, or a *partial* line missing the trailing fields -- the missing
+    ids become ``None`` silently, and the failure only surfaces later and
+    elsewhere: as an unresolvable forward reference in a plan, or as an
+    ``AttributeError`` when a ``None`` id is wrapped in a typed target.
+
+    Comparing against the requested field count (rather than only
+    :attr:`~.results.Result.created_id`) is what catches the partial case, where
+    the primary id parsed fine and only its implicit children went missing.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.ops import NewSession
+    >>> full = NewSession(capture_panes=True).build_result(
+    ...     returncode=0, stdout=("$1 @2 %3",)
+    ... )
+    >>> (full.new_id, full.first_window_id, full.first_pane_id)
+    ('$1', '@2', '%3')
+
+    A short line silently drops the children -- which is what this check reports:
+
+    >>> partial = NewSession(capture_panes=True).build_result(
+    ...     returncode=0, stdout=("$1",)
+    ... )
+    >>> (partial.new_id, partial.first_window_id, partial.first_pane_id)
+    ('$1', None, None)
+    """
+    operation = result.operation
+    if not getattr(operation.effects, "creates", None):
+        return
+    if result.status != "complete":
+        # A create that did not complete has no id to hand downstream. Nothing
+        # raises here (results never raise on construction), so the ``None`` id
+        # travels until something dereferences it -- far from the real cause.
+        # Naming the failing create here is what makes that cause findable.
+        logger.warning(
+            "tmux create op did not complete; downstream ids will be None",
+            extra={
+                "tmux_cmd": " ".join(result.argv),
+                "tmux_subcommand": operation.command,
+                "tmux_exit_code": result.returncode,
+                "tmux_stdout": list(result.stdout),
+                "tmux_stdout_len": len(result.stdout),
+                "tmux_stderr": list(result.stderr),
+                "tmux_stderr_len": len(result.stderr),
+            },
+        )
+        return
+    expected = _requested_format_fields(result.argv)
+    if expected == 0:
+        return  # the op never asked tmux to print an id (capture=False)
+    captured = len(result.stdout[0].split()) if result.stdout else 0
+    if captured >= expected:
+        return
+    logger.error(
+        "tmux create op completed but captured %s of %s requested ids",
+        captured,
+        expected,
+        extra={
+            "tmux_cmd": " ".join(result.argv),
+            "tmux_subcommand": operation.command,
+            "tmux_target": " ".join(result.argv[:3]),
+            "tmux_exit_code": result.returncode,
+            "tmux_stdout": list(result.stdout),
+            "tmux_stdout_len": len(result.stdout),
+            "tmux_stderr": list(result.stderr),
+            "tmux_stderr_len": len(result.stderr),
+        },
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -246,7 +349,7 @@ class Operation(t.Generic[ResultT]):
         """
         rendered = argv if argv is not None else self.render(version=version)
         status = status_for(returncode, stderr)
-        return self._make_result(
+        result = self._make_result(
             rendered,
             status,
             returncode,
@@ -254,6 +357,8 @@ class Operation(t.Generic[ResultT]):
             tuple(stderr),
             version=version,
         )
+        _check_capture_invariant(result)
+        return result
 
     def result_with_status(
         self,
