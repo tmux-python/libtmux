@@ -45,6 +45,33 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Experimental operations and engines (#690)
+
+Operations describe tmux commands as data. Each renders its argv against a tmux
+version (dropping flags an older tmux cannot accept), adapts raw output into a
+typed result, and serializes to and from plain dicts -- all without a running
+tmux server. The set spans the read seam (``list-*``, ``has-session``,
+``display-message``, ``show-options``, ``show-buffer``) and the
+mutating/creating surface for panes, windows, the server, options, environment,
+hooks, and paste buffers. A registry-generated catalog on the {ref}`experimental`
+page always matches the code.
+
+Engines run those operations behind one protocol, so the same operation returns
+the same typed result whether it goes through a subprocess (the classic path
+that reproduces today's libtmux behavior), an in-memory simulator for tests and
+dry runs, a persistent ``tmux -C`` control connection, an async transport, or
+tmux's native binary peer protocol. Results never raise on construction;
+raising is opt-in via ``raise_for_status()``, and how a failed result is handled
+is each engine's policy.
+
+A {class}`~libtmux.experimental.ops.plan.LazyPlan` records operations and yields
+forward references so a later operation can target an object that does not exist
+yet, resolved against captured ids at execution time. How a plan becomes tmux
+dispatches is a pluggable {class}`~libtmux.experimental.ops.planner.Planner`
+(sequential, ``;``-folding, or ``{marked}``-folding), so dispatch strategies can
+be A/B tested against the same plan with identical results.
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
@@ -56,6 +83,60 @@ its {meth}`Server <libtmux.Server.from_env>`,
 environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
+
+#### Declarative workspace builds fold to a few tmux calls (#690)
+
+A {class}`~libtmux.experimental.workspace.ir.Workspace` declares a session as a
+tree of windows and panes and lowers to a Core
+{class}`~libtmux.experimental.ops.plan.LazyPlan`, so a tmuxp-style spec can be
+analyzed, inspected, and built over any engine.
+{meth}`~libtmux.experimental.workspace.ir.Workspace.build` and its async twin
+{meth}`~libtmux.experimental.workspace.ir.Workspace.abuild` fold the build's
+dispatches by default: a multi-pane window collapses from one tmux call per
+operation into a handful of ``;``-chained and ``{marked}`` dispatches, so a
+session renders in a few round-trips instead of dozens.
+
+The resulting {class}`~libtmux.experimental.ops.plan.PlanResult` is identical to
+an unfolded build -- only the dispatch count changes -- because host-side steps
+(per-command sleeps, the ``wait_pane`` anti-race, ``before_script``) stay hard
+fold boundaries that a fold never crosses. Pass a
+{class}`~libtmux.experimental.ops.planner.SequentialPlanner` to ``build`` for one
+legible tmux call per operation when debugging.
+
+#### Floating panes on tmux 3.7 (#690)
+
+On tmux 3.7, the operations create floating panes -- overlays with an absolute
+size, position, and optional zoom. A ``new-pane`` operation, ``new_pane()`` on
+the pane wrappers, and a curated MCP tool each open one, and a
+{class}`~libtmux.experimental.workspace.ir.Workspace` can declare floating panes
+on a window, including a pane that overlays a different window.
+
+#### Query and command live panes with `panes()` (#690)
+
+{func}`~libtmux.experimental.query.panes` is a lazy, chainable query over the
+panes a running server has: ``filter``, ``order_by``, ``limit``, and ``map``
+compose and read nothing until a terminal call. The same query commands what it
+selects -- ``commands()`` attaches per-pane actions (send keys, resize, select,
+respawn, clear history, kill) that run as one folded tmux dispatch. A query
+resolves against a live engine or a plain list of pane snapshots, so the same
+code runs offline in tests.
+
+#### Drive tmux from an MCP server (#690)
+
+An optional Model Context Protocol server exposes tmux as tools an AI agent can
+call, installed with the ``libtmux[mcp]`` extra and launched as
+``libtmux-engine-mcp``. It offers a curated vocabulary of intuitive verbs
+(``send_input``, ``wait_for_output``, ``split_pane``, ``capture_pane``,
+``new_pane``, and the session, window, and pane lifecycle), a tool for every
+individual operation, and plan tools that preview or build a whole workspace in
+one call.
+
+The server is caller-aware: because a control-mode agent shares the server with
+the panes it drives, it knows which pane launched it and refuses to kill or
+respawn its own pane, window, or session. A safety level (``LIBTMUX_SAFETY``)
+keeps mutating and destructive tools hidden until an operator opts in, and a
+needle-free ``wait_for_output`` reports when a pane goes quiet after a command --
+no sentinel string -- and whether its process exited.
 
 ## libtmux 0.62.0 (2026-07-12)
 
