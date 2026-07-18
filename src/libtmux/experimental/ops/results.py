@@ -16,6 +16,7 @@ caller decide.
 
 from __future__ import annotations
 
+import logging
 import typing as t
 from dataclasses import dataclass, field
 
@@ -35,6 +36,8 @@ if t.TYPE_CHECKING:
 
     from libtmux.experimental.ops._types import Status
     from libtmux.experimental.ops.operation import Operation
+
+logger = logging.getLogger(__name__)
 
 
 def status_for(returncode: int, stderr: t.Sequence[str]) -> Status:
@@ -66,6 +69,18 @@ def status_for(returncode: int, stderr: t.Sequence[str]) -> Status:
     """
     if returncode == 0 and not stderr:
         return "complete"
+    if returncode == 0:
+        # A zero exit downgraded purely on stderr text. The caller sees only
+        # "failed" and no id, so record what tmux actually said -- a stray
+        # warning and a real error are indistinguishable from the status alone.
+        logger.warning(
+            "tmux exited 0 but wrote to stderr; result marked failed",
+            extra={
+                "tmux_exit_code": returncode,
+                "tmux_stderr": list(stderr),
+                "tmux_stderr_len": len(stderr),
+            },
+        )
     return "failed"
 
 
