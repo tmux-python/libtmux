@@ -8,6 +8,7 @@ import pytest
 
 from libtmux.experimental.engines.control_mode import (
     ControlModeBlock,
+    ControlModeEngine,
     _merge_blocks,
     command_count,
 )
@@ -157,3 +158,25 @@ def test_control_mode_fold_runs_all_live(session: Session) -> None:
     assert outcome.ok
     second.refresh()
     assert second.window_name == "two"
+
+
+def test_connection_death_carries_tmux_stderr() -> None:
+    """A dead connection reports tmux's own words, not just how libtmux noticed.
+
+    tmux writes a lost server to the client's stderr rather than into an
+    ``%error`` block, so that text is the only description of what went wrong.
+    """
+    engine = ControlModeEngine()
+    engine._stderr_tail.extend(["server exited unexpectedly"])
+
+    error = engine._died("tmux -C closed stdout")
+
+    assert "tmux -C closed stdout" in str(error)  # how libtmux noticed
+    assert "server exited unexpectedly" in str(error)  # what tmux said
+
+
+def test_connection_death_without_stderr_is_unchanged() -> None:
+    """With nothing on stderr the message stays exactly as before."""
+    engine = ControlModeEngine()
+
+    assert str(engine._died("tmux -C closed stdout")) == "tmux -C closed stdout"
