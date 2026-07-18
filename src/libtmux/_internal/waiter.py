@@ -761,7 +761,7 @@ def wait_for_pane_content(
         )
         if exception:
             if raises:
-                raise
+                raise exception
             result.error = str(exception)
             return result
         result.success = success
@@ -1288,7 +1288,7 @@ def wait_for_any_content(
         result.content = content
 
         for i, (pattern, match_type) in enumerate(
-            zip(content_patterns, match_types),
+            zip(content_patterns, match_types, strict=False),
         ):
             # Handle predicate match
             if match_type == ContentMatchType.PREDICATE:
@@ -1365,7 +1365,7 @@ def wait_for_any_content(
         )
         if exception:
             if raises:
-                raise
+                raise exception
             result.error = str(exception)
             return result
         result.success = success
@@ -1513,7 +1513,7 @@ def wait_for_all_content(
         matched_patterns.clear()
 
         for i, (pattern, match_type) in enumerate(
-            zip(content_patterns, match_types),
+            zip(content_patterns, match_types, strict=False),
         ):
             # Handle predicate match
             if match_type == ContentMatchType.PREDICATE:
@@ -1579,7 +1579,7 @@ def wait_for_all_content(
         )
         if exception:
             if raises:
-                raise
+                raise exception
             result.error = str(exception)
             return result
         result.success = success
