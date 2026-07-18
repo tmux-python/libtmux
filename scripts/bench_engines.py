@@ -981,6 +981,41 @@ async def _gather_build(
 
 
 @app.command()
+def contract(
+    shapes: str = typer.Option("1x1,1x4,2x2,3x3,5x4", help="comma WxP shapes"),
+) -> None:
+    """Run the mock-parity contract standalone; exit non-zero on divergence.
+
+    The benchmark's correctness oracle without the timing -- for CI, which can
+    assert the ops language stays consistent without paying for live builds.
+    Every expression layer, sync and async, must render the mock oracle's argv.
+    A negative control confirms the equality gate is not vacuous (the oracle is
+    non-empty and order-sensitive, so a dropped op would be caught).
+    """
+    shape_list = [parse_shape(s) for s in shapes.split(",") if s]
+    failures: list[str] = []
+    for wins, panes in shape_list:
+        oracle, rows = check_parity(wins, panes)
+        # Negative control: a non-empty oracle whose prefix differs from itself
+        # proves the `== oracle` check below can actually catch a dropped op.
+        if not oracle or oracle[:-1] == oracle:
+            failures.append(f"{wins}x{panes}: negative control vacuous (empty oracle)")
+        failures.extend(
+            f"{wins}x{panes}: {label} diverges from the mock oracle"
+            for label, agrees in rows
+            if not agrees
+        )
+    if failures:
+        for problem in failures:
+            console.print(f"[red]FAIL[/red] {problem}")
+        raise typer.Exit(1)
+    console.print(
+        f"[green]contract OK[/green] -- every layer x {{sync,async}} renders the "
+        f"mock oracle's argv across {len(shape_list)} shape(s); negative control passed"
+    )
+
+
+@app.command()
 def concurrency(
     shape: str = typer.Option("1x4", help="WxP shape of each session"),
     transport: str = typer.Option("control_mode", help="subprocess | control_mode"),
