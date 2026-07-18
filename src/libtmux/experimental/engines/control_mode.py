@@ -15,6 +15,7 @@ control engine's advantage over per-call subprocess startup.
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import dataclasses
 import logging
@@ -257,6 +258,11 @@ class ControlModeEngine:
         self._proc: subprocess.Popen[bytes] | None = None
         self._selector: selectors.DefaultSelector | None = None
         self._sequence = BlockSequenceMonitor()
+        # Recent lines the ``tmux -C`` process wrote to its own stderr. tmux
+        # reports a lost server there ("server exited unexpectedly") rather than
+        # in a ``%error`` block, so keeping the tail is what lets a connection
+        # death carry tmux's own words instead of a bare "closed stdout".
+        self._stderr_tail: collections.deque[str] = collections.deque(maxlen=20)
 
     @property
     def connection(self) -> ServerConnection:
@@ -357,7 +363,7 @@ class ControlModeEngine:
         if self._proc is not None:
             if self._proc.poll() is not None:
                 msg = f"tmux -C exited with code {self._proc.returncode}"
-                raise ControlModeError(msg)
+                raise self._died(msg)
             return
         cmd = self._conn.argv("-C")
         try:
@@ -493,7 +499,7 @@ class ControlModeEngine:
             if not ready:
                 if proc.poll() is not None:
                     msg = f"tmux -C exited with code {proc.returncode}"
-                    raise ControlModeError(msg)
+                    raise self._died(msg)
                 continue
             for key, _events in ready:
                 if key.data == "stdout":
@@ -540,7 +546,7 @@ class ControlModeEngine:
             raise ControlModeError(msg) from error
         if not chunk:
             msg = "tmux -C closed stdout"
-            raise ControlModeError(msg)
+            raise self._died(msg)
         self._parser.feed(chunk)
 
     def _read_stderr(self) -> None:
@@ -552,10 +558,23 @@ class ControlModeEngine:
         except (BlockingIOError, OSError):
             return
         if chunk:
+            text = chunk.decode(errors="replace")
+            self._stderr_tail.extend(line for line in text.splitlines() if line.strip())
             logger.debug(
                 "tmux control-mode stderr",
-                extra={"tmux_stderr": [chunk.decode(errors="replace")]},
+                extra={"tmux_stderr": [text]},
             )
+
+    def _died(self, msg: str) -> ControlModeError:
+        """Build a connection-death error carrying tmux's own stderr text.
+
+        tmux writes a lost server to the client's stderr, not into a ``%error``
+        block, so without this the caller sees only how libtmux noticed (``tmux
+        -C closed stdout``) and never what tmux said (``server exited
+        unexpectedly``).
+        """
+        tail = "; ".join(self._stderr_tail)
+        return ControlModeError(f"{msg}: {tail}" if tail else msg)
 
     @classmethod
     def for_server(cls, server: t.Any, **kwargs: t.Any) -> ControlModeEngine:
