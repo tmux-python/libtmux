@@ -572,7 +572,7 @@ class Server(
         if proc.returncode is not None and proc.returncode != 0:
             raise subprocess.CalledProcessError(
                 returncode=proc.returncode,
-                cmd=[tmux_bin, *server_args, "list-sessions"],
+                cmd=[resolved, *server_args, "list-sessions"],
             )
 
     #
@@ -585,11 +585,6 @@ class Server(
         if self.config_file:
             server_args.append(f"-f{self.config_file}")
         return server_args
-
-        try:
-            subprocess.check_call([resolved, *cmd_args])
-        except FileNotFoundError:
-            raise exc.TmuxCommandNotFound from None
 
     def _socket_args(self) -> list[str]:
         """Return this server's ``-S``/``-L`` flags, measuring the socket path.
