@@ -10,6 +10,7 @@ connection flags (``-L``/``-S``/``-f``/``-2``) that target one tmux server.
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import typing as t
 
@@ -22,6 +23,8 @@ if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
     from libtmux.experimental.engines.base import CommandRequest
+
+logger = logging.getLogger(__name__)
 
 
 class SubprocessEngine:
@@ -90,12 +93,26 @@ class SubprocessEngine:
             stdout_lines.pop()
         stderr_lines = [line for line in stderr.split("\n") if line]
 
-        return CommandResult(
+        result = CommandResult(
             cmd=tuple(cmd),
             stdout=tuple(stdout_lines),
             stderr=tuple(stderr_lines),
             returncode=returncode,
         )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "tmux subprocess command completed",
+                extra={
+                    "tmux_cmd": " ".join(cmd),
+                    "tmux_subcommand": request.args[0] if request.args else "",
+                    "tmux_exit_code": returncode,
+                    "tmux_stdout": list(result.stdout),
+                    "tmux_stdout_len": len(result.stdout),
+                    "tmux_stderr": list(result.stderr),
+                    "tmux_stderr_len": len(result.stderr),
+                },
+            )
+        return result
 
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
         """Execute each request in order (subprocess forks per call)."""
