@@ -136,6 +136,15 @@ class ControlModeParser:
     def _open_block(self, line: bytes) -> None:
         number, flags = _parse_guard(line, _BEGIN_PREFIX)
         if number is None:
+            # A %begin whose guard will not parse is dropped: its body lines then
+            # fall through as notifications and a LATER command's block fills the
+            # count, silently mis-attributing output. Never observed in practice
+            # (tmux always writes "%begin <time> <number> <flags>"), so treat it
+            # as a protocol violation worth an error, not a debug line.
+            logger.error(
+                "control-mode dropped an unparseable %%begin guard",
+                extra={"tmux_stdout": [line.decode(errors="replace")]},
+            )
             return
         self._pending = _PendingBlock(number=number, flags=flags or 0, body=[])
 
@@ -152,6 +161,68 @@ class ControlModeParser:
                 body=tuple(pending.body),
             ),
         )
+
+
+class BlockSequenceMonitor:
+    """Watch control-mode command numbers for correlation desync.
+
+    tmux stamps every command it runs with a server-global, strictly increasing
+    counter (``item->number`` in ``cmd-queue.c``) and echoes it in the
+    ``%begin``/``%end`` guard. Solicited blocks therefore reach a client in
+    strictly increasing number order. A block that arrives with a number at or
+    below one already consumed means the reader is handing a *stale* block to a
+    newer command -- output mis-attribution, which downstream looks like a
+    ``complete`` result with no id rather than an error.
+
+    This is a cheap invariant (one integer compare per block) that turns an
+    otherwise silent desync into a log record.
+
+    Examples
+    --------
+    >>> monitor = BlockSequenceMonitor()
+    >>> monitor.check(ControlModeBlock(number=4, flags=1, is_error=False, body=()))
+    True
+    >>> monitor.check(ControlModeBlock(number=9, flags=1, is_error=False, body=()))
+    True
+    >>> monitor.check(ControlModeBlock(number=7, flags=1, is_error=False, body=()))
+    False
+    """
+
+    __slots__ = ("_last",)
+
+    def __init__(self) -> None:
+        self._last: int | None = None
+
+    @property
+    def last(self) -> int | None:
+        """The highest command number consumed so far, if any."""
+        return self._last
+
+    def check(self, block: ControlModeBlock, argv: tuple[str, ...] = ()) -> bool:
+        """Record *block*'s number; return whether it advanced the sequence."""
+        previous = self._last
+        if previous is not None and block.number <= previous:
+            logger.error(
+                "control-mode block number went backwards (%s <= %s): "
+                "block mis-attributed to a later command",
+                block.number,
+                previous,
+                extra={
+                    "tmux_cmd": render_control_line(argv) if argv else "",
+                    "tmux_subcommand": argv[0] if argv else "",
+                    "tmux_stdout": [
+                        line.decode(errors="replace") for line in block.body
+                    ],
+                    "tmux_stdout_len": len(block.body),
+                },
+            )
+            return False
+        self._last = block.number
+        return True
+
+    def reset(self) -> None:
+        """Forget the sequence (after a reconnect, which restarts numbering)."""
+        self._last = None
 
 
 class ControlModeEngine:
@@ -185,6 +256,7 @@ class ControlModeEngine:
         self._parser = ControlModeParser()
         self._proc: subprocess.Popen[bytes] | None = None
         self._selector: selectors.DefaultSelector | None = None
+        self._sequence = BlockSequenceMonitor()
 
     @property
     def connection(self) -> ServerConnection:
@@ -358,8 +430,25 @@ class ControlModeEngine:
             return
         while selector.select(0):
             self._pump(0)
-        self._parser.blocks()
+        discarded = self._parser.blocks()
         self._parser.notifications()
+        solicited = [block for block in discarded if block.flags == 1]
+        if solicited:
+            # A solicited (flags 1) block here is a reply to a command WE sent
+            # that arrived after its batch was accounted for -- discarding it
+            # loses real tmux output. Unsolicited hook blocks are expected noise.
+            logger.warning(
+                "control-mode drained %s solicited block(s) before a batch",
+                len(solicited),
+                extra={
+                    "tmux_stdout": [
+                        f"#{block.number}: "
+                        + b" | ".join(block.body).decode(errors="replace")
+                        for block in solicited
+                    ],
+                    "tmux_stdout_len": len(solicited),
+                },
+            )
 
     def _pump(self, timeout: float) -> None:
         """Wait up to *timeout* for output and feed it to the parser."""
@@ -414,8 +503,27 @@ class ControlModeEngine:
             for block in self._parser.blocks():
                 # Skip unsolicited blocks (hook-triggered commands carry flags 0);
                 # only solicited command blocks (flags 1) belong to this batch.
-                if block.flags == 1 and len(blocks) < count:
+                if block.flags != 1:
+                    continue
+                if len(blocks) < count:
+                    self._sequence.check(block)
                     blocks.append(block)
+                else:
+                    # More solicited blocks than commands sent: the surplus is
+                    # dropped here, so the NEXT batch reads replies belonging to
+                    # this one. Loud, because it is the desync's first moment.
+                    logger.error(
+                        "control-mode discarded a surplus solicited block "
+                        "(#%s) beyond the %s expected for this batch",
+                        block.number,
+                        count,
+                        extra={
+                            "tmux_stdout": [
+                                line.decode(errors="replace") for line in block.body
+                            ],
+                            "tmux_stdout_len": len(block.body),
+                        },
+                    )
             self._parser.notifications()  # sync engine ignores notifications
         return blocks
 
@@ -515,12 +623,30 @@ def _merge_blocks(
             returncode = returncode or 1
         else:
             stdout.extend(lines)
-    return CommandResult(
+    result = CommandResult(
         cmd=cmd,
         stdout=_trim(tuple(stdout)),
         stderr=_trim(tuple(stderr)),
         returncode=returncode,
     )
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "control-mode merged %s block(s) into a result",
+            len(blocks),
+            extra={
+                "tmux_cmd": render_control_line(argv),
+                "tmux_subcommand": argv[0] if argv else "",
+                "tmux_exit_code": result.returncode,
+                "tmux_stdout": list(result.stdout),
+                "tmux_stdout_len": len(result.stdout),
+                "tmux_stderr": list(result.stderr),
+                "tmux_stderr_len": len(result.stderr),
+                # Guard numbers make a merged result traceable back to the exact
+                # tmux command items that produced it.
+                "tmux_block_numbers": [block.number for block in blocks],
+            },
+        )
+    return result
 
 
 def _trim(lines: tuple[str, ...]) -> tuple[str, ...]:
