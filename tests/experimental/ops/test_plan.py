@@ -24,7 +24,11 @@ from libtmux.experimental.ops import (
     SwapPane,
 )
 from libtmux.experimental.ops._types import NameRef, PaneId, SlotRef, WindowId
-from libtmux.experimental.ops.exc import ForwardCaptureError, OperationError
+from libtmux.experimental.ops.exc import (
+    FailedCreateError,
+    ForwardCaptureError,
+    OperationError,
+)
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
@@ -217,6 +221,48 @@ def test_plan_unresolvable_ref_fails_closed() -> None:
     assert exc_info.value.slot == 0  # points at the non-capturing creator
     # ForwardCaptureError stays an OperationError, so broad handlers keep working
     assert isinstance(exc_info.value, OperationError)
+
+
+class _FailingCreateEngine:
+    """A fake engine whose creates fail the way a vanishing tmux server does.
+
+    Mirrors the real shape: ``returncode=1`` with tmux's message on stderr and
+    no stdout, so the create captures no id.
+    """
+
+    def run(self, request: CommandRequest) -> CommandResult:
+        """Fail every dispatched command with a tmux-style server error."""
+        return CommandResult(
+            cmd=("tmux", *request.args),
+            stderr=("server exited unexpectedly",),
+            returncode=1,
+        )
+
+    def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
+        """Run each request in order."""
+        return [self.run(request) for request in requests]
+
+
+def test_plan_failed_create_surfaces_the_tmux_error() -> None:
+    """A failed create reports its tmux error, not an unbound forward reference.
+
+    A create that fails captures no id, so the slot never binds. Reporting the
+    reference would name the symptom and discard the cause, leaving the real
+    tmux failure invisible.
+    """
+    plan = LazyPlan()
+    session = plan.add(NewSession(session_name="dev", capture_panes=True))
+    plan.add(SendKeys(target=session.pane, keys="x"))
+
+    with pytest.raises(FailedCreateError, match="server exited unexpectedly") as info:
+        plan.execute(_FailingCreateEngine())
+
+    assert info.value.slot == 0  # points at the create that actually failed
+    assert info.value.result.returncode == 1
+    assert "new-session" in str(info.value)  # the failing command is named
+    assert isinstance(info.value, OperationError)  # broad handlers keep working
+    # It must NOT degrade into the misleading forward-reference error.
+    assert not isinstance(info.value, ForwardCaptureError)
 
 
 class _ExplainCase(t.NamedTuple):
