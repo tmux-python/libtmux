@@ -43,6 +43,7 @@ Run:  uv run bench_engines.py run
 
 from __future__ import annotations
 
+import asyncio
 import atexit
 import contextlib
 import cProfile
@@ -71,16 +72,36 @@ import rich.table
 import typer
 
 from libtmux.experimental.engines import (
+    AsyncControlModeEngine,
+    AsyncMockEngine,
+    AsyncSubprocessEngine,
     ControlModeEngine,
     ImsgEngine,
     MockEngine,
     SubprocessEngine,
 )
 from libtmux.experimental.engines.base import CommandRequest
+from libtmux.experimental.ops import (
+    FoldingPlanner,
+    LazyPlan,
+    NewSession,
+    NewWindow,
+    Planner,
+    RenameWindow,
+    SequentialPlanner,
+    SplitWindow,
+    arun as op_arun,
+    run as op_run,
+)
+from libtmux.experimental.ops._types import PaneId, SessionId, SlotRef, WindowId
 from libtmux.experimental.workspace import Pane, Window, Workspace
 from libtmux.server import Server
 
 console = rich.console.Console()
+# Wide console for the factorial tables: their per-cell labels (layer · transport
+# · mode) overflow an 80-col pipe, so render them at a fixed width so each row
+# stays on one line under redirection.
+wide_console = rich.console.Console(width=132)
 R = CommandRequest.from_args
 _ctr = itertools.count()
 STAT_LABELS = ("n", "min", "avg", "median", "p90", "p95", "p99", "max")
@@ -342,6 +363,346 @@ def summarize(samples: list[float]) -> dict[str, float]:
 
 
 # --------------------------------------------------------------------------- #
+# Factorial matrix -- axes as registries, the grid via itertools.product       #
+# --------------------------------------------------------------------------- #
+# Three orthogonal axes, each its own small registry. The matrix is *generated*
+# by product() over them, never enumerated by hand -- adding an axis value (a new
+# transport, a new expression layer) is one registry entry, and every cell flows
+# through one generic timing core.
+#
+#   MODES       sync | async                -- which run-strategy drives a build
+#   TRANSPORTS  subprocess | control_mode   -- each supplies a sync + async engine
+#   LAYERS      imperative | plan-seq | plan-fold | ws-seq | ws-fold
+#
+# The five LAYERS are the valid *expression* layers: a declarative Workspace
+# compiles to a LazyPlan, so ws-* and plan-* share one op spine, and folding is a
+# planner swap. `mock` is NOT a layer -- it is the offline correctness oracle for
+# the parity contract (`check_parity`), never a results row.
+#
+# Sync/async is unified without contaminating either path with the other's
+# machinery: the plan/ws layers differ only by method name (`execute`/`aexecute`,
+# `build`/`abuild`), and the imperative layer is a single sans-I/O generator of
+# ops -- a sync pump drives it with `run`, an async pump with `arun`. That is the
+# same colored-leaf split the library's own ``LazyPlan._drive`` uses.
+
+MODES: tuple[str, ...] = ("sync", "async")
+
+
+def _imperative_ops(
+    name: str, wins: int, panes: int
+) -> t.Generator[t.Any, t.Any, None]:
+    """Yield the WxP build as typed ops, reading each created id off its result.
+
+    A sans-I/O generator: it ``yield``s an operation and is ``.send()`` the typed
+    result, from which it reads the concrete id to target the next op. Written
+    ONCE; :func:`_pump_sync` drives it with :func:`op_run`, :func:`_pump_async`
+    with :func:`op_arun`. The emitted op sequence mirrors the workspace compiler
+    exactly, so it renders argv-identical to every other layer under mock.
+    """
+    result = yield NewSession(session_name=name, capture_panes=True)
+    session_id, window0_id, pane0_id = (
+        result.new_id,
+        result.first_window_id,
+        result.first_pane_id,
+    )
+    yield RenameWindow(target=WindowId(window0_id), name="w0")
+    prev = pane0_id
+    for _ in range(panes - 1):
+        result = yield SplitWindow(target=PaneId(prev))
+        prev = result.new_pane_id
+    for wi in range(1, wins):
+        result = yield NewWindow(
+            target=SessionId(session_id), name=f"w{wi}", capture_pane=True
+        )
+        prev = result.first_pane_id
+        for _ in range(panes - 1):
+            result = yield SplitWindow(target=PaneId(prev))
+            prev = result.new_pane_id
+
+
+def _pump_sync(gen: t.Generator[t.Any, t.Any, None], engine: t.Any) -> None:
+    """Drive an op-generator synchronously (``run`` one op, send its result back)."""
+    try:
+        op = next(gen)
+        while True:
+            op = gen.send(op_run(op, engine))
+    except StopIteration:
+        pass
+
+
+async def _pump_async(gen: t.Generator[t.Any, t.Any, None], engine: t.Any) -> None:
+    """Async twin of :func:`_pump_sync` (``await arun`` per op)."""
+    try:
+        op = next(gen)
+        while True:
+            op = gen.send(await op_arun(op, engine))
+    except StopIteration:
+        pass
+
+
+def _hand_plan(name: str, wins: int, panes: int) -> LazyPlan:
+    """Hand-author the WxP build as a ``LazyPlan`` with forward SlotRef targets.
+
+    Mirrors :func:`_imperative_ops` (and the workspace compiler) op-for-op, but
+    records refs instead of resolving ids eagerly, so a planner can fold or
+    sequence the dispatch.
+    """
+    plan = LazyPlan()
+    session = plan.add(NewSession(session_name=name, capture_panes=True))
+    plan.add(RenameWindow(target=session.window, name="w0"))
+    prev: SlotRef = session.pane
+    for _ in range(panes - 1):
+        prev = plan.add(SplitWindow(target=prev))
+    for wi in range(1, wins):
+        window = plan.add(NewWindow(target=session, name=f"w{wi}", capture_pane=True))
+        prev = window.pane
+        for _ in range(panes - 1):
+            prev = plan.add(SplitWindow(target=prev))
+    return plan
+
+
+@dataclasses.dataclass(frozen=True)
+class Layer:
+    """One expression layer: how a build is *authored* (not how it is dispatched).
+
+    ``kind`` selects the execution shape (``imperative`` drives the generator;
+    ``plan`` executes a hand ``LazyPlan``; ``ws`` builds the declarative
+    :class:`~libtmux.experimental.workspace.Workspace` IR). ``planner`` is the
+    dispatch policy for the plan/ws kinds (``None`` for imperative).
+    """
+
+    name: str
+    kind: str  # imperative | plan | ws
+    planner: Planner | None = None
+
+
+LAYERS: dict[str, Layer] = {
+    "imperative": Layer("imperative", "imperative"),
+    "plan-seq": Layer("plan-seq", "plan", SequentialPlanner()),
+    "plan-fold": Layer("plan-fold", "plan", FoldingPlanner()),
+    "ws-seq": Layer("ws-seq", "ws", SequentialPlanner()),
+    "ws-fold": Layer("ws-fold", "ws", FoldingPlanner()),
+}
+
+
+def build_sync(layer: Layer, engine: t.Any, name: str, wins: int, panes: int) -> None:
+    """Execute one WxP build for *layer* over a synchronous *engine*."""
+    if layer.kind == "imperative":
+        _pump_sync(_imperative_ops(name, wins, panes), engine)
+    elif layer.kind == "plan":
+        _hand_plan(name, wins, panes).execute(engine, planner=layer.planner)
+    else:  # ws
+        spec(name, wins, panes).build(engine, preflight=False, planner=layer.planner)
+
+
+async def build_async(
+    layer: Layer, engine: t.Any, name: str, wins: int, panes: int
+) -> None:
+    """Execute one WxP build for *layer* over an asynchronous *engine*."""
+    if layer.kind == "imperative":
+        await _pump_async(_imperative_ops(name, wins, panes), engine)
+    elif layer.kind == "plan":
+        await _hand_plan(name, wins, panes).aexecute(engine, planner=layer.planner)
+    else:  # ws
+        await spec(name, wins, panes).abuild(
+            engine, preflight=False, planner=layer.planner
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class Transport:
+    """One transport axis value: a sync engine factory and an async one."""
+
+    name: str
+    make_sync: t.Callable[[Server], t.Any]
+    make_async: t.Callable[[Server], t.Any]
+
+
+TRANSPORTS: dict[str, Transport] = {
+    "subprocess": Transport(
+        "subprocess",
+        lambda s: SubprocessEngine.for_server(s),
+        lambda s: AsyncSubprocessEngine.for_server(s),
+    ),
+    "control_mode": Transport(
+        "control_mode",
+        lambda s: ControlModeEngine.for_server(s),
+        lambda s: AsyncControlModeEngine.for_server(s),
+    ),
+}
+
+
+@contextlib.asynccontextmanager
+async def _open_async(transport: Transport, server: Server) -> t.AsyncIterator[t.Any]:
+    """Yield an async engine, honoring an async context manager when it is one.
+
+    ``AsyncControlModeEngine`` holds a persistent connection (opened on enter,
+    closed on exit); ``AsyncSubprocessEngine`` is per-call and needs no teardown.
+    """
+    engine = transport.make_async(server)
+    if hasattr(engine, "__aenter__"):
+        async with engine as opened:
+            yield opened
+    else:
+        yield engine
+
+
+def _sync_cell(
+    transport: Transport,
+    layer: Layer,
+    server: Server,
+    wins: int,
+    panes: int,
+    runs: int,
+    warmup: int,
+) -> list[float]:
+    """Time *runs* synchronous builds of one cell (untimed kill-session cleanup)."""
+    engine = transport.make_sync(server)
+    for _ in range(warmup):
+        name = uniq()
+        build_sync(layer, engine, name, wins, panes)
+        server.cmd("kill-session", "-t", name)
+    samples: list[float] = []
+    for _ in range(runs):
+        name = uniq()
+        t0 = time.perf_counter()
+        build_sync(layer, engine, name, wins, panes)
+        samples.append((time.perf_counter() - t0) * 1000)
+        server.cmd("kill-session", "-t", name)
+    return samples
+
+
+async def _async_cell(
+    transport: Transport,
+    layer: Layer,
+    server: Server,
+    wins: int,
+    panes: int,
+    runs: int,
+    warmup: int,
+) -> list[float]:
+    """Async twin of :func:`_sync_cell`, over one persistent async connection."""
+    async with _open_async(transport, server) as engine:
+        for _ in range(warmup):
+            name = uniq()
+            await build_async(layer, engine, name, wins, panes)
+            server.cmd("kill-session", "-t", name)
+        samples: list[float] = []
+        for _ in range(runs):
+            name = uniq()
+            t0 = time.perf_counter()
+            await build_async(layer, engine, name, wins, panes)
+            samples.append((time.perf_counter() - t0) * 1000)
+            server.cmd("kill-session", "-t", name)
+        return samples
+
+
+def matrix_cell(
+    transport: Transport,
+    mode: str,
+    layer: Layer,
+    wins: int,
+    panes: int,
+    runs: int,
+    warmup: int,
+) -> list[float]:
+    """Time one generated cell (transport x mode x layer) on a fresh server."""
+    server = new_server()
+    try:
+        if mode == "sync":
+            return _sync_cell(transport, layer, server, wins, panes, runs, warmup)
+        return asyncio.run(
+            _async_cell(transport, layer, server, wins, panes, runs, warmup)
+        )
+    finally:
+        with contextlib.suppress(Exception):
+            server.kill()
+
+
+# --------------------------------------------------------------------------- #
+# Mock-parity contract: every layer x mode renders the SAME argv as mock        #
+# --------------------------------------------------------------------------- #
+class _Recorder:
+    """Wrap a sync engine, recording each dispatched argv (the parity oracle tap)."""
+
+    def __init__(self, inner: t.Any) -> None:
+        self.inner = inner
+        self.argv: list[tuple[str, ...]] = []
+
+    def run(self, request: CommandRequest) -> t.Any:
+        """Record and forward one request."""
+        self.argv.append(tuple(request.args))
+        return self.inner.run(request)
+
+    def run_batch(self, requests: t.Sequence[CommandRequest]) -> t.Any:
+        """Record and forward a batch of requests."""
+        self.argv.extend(tuple(r.args) for r in requests)
+        return self.inner.run_batch(requests)
+
+
+class _AsyncRecorder:
+    """Async twin of :class:`_Recorder`."""
+
+    def __init__(self, inner: t.Any) -> None:
+        self.inner = inner
+        self.argv: list[tuple[str, ...]] = []
+
+    async def run(self, request: CommandRequest) -> t.Any:
+        """Record and forward one request."""
+        self.argv.append(tuple(request.args))
+        return await self.inner.run(request)
+
+    async def run_batch(self, requests: t.Sequence[CommandRequest]) -> t.Any:
+        """Record and forward a batch of requests."""
+        self.argv.extend(tuple(r.args) for r in requests)
+        return await self.inner.run_batch(requests)
+
+
+def _record_sync(
+    layer: Layer, name: str, wins: int, panes: int
+) -> list[tuple[str, ...]]:
+    """Render *layer* through the deterministic MockEngine, capturing its argv."""
+    recorder = _Recorder(MockEngine())
+    build_sync(layer, recorder, name, wins, panes)
+    return recorder.argv
+
+
+async def _record_async(
+    layer: Layer, name: str, wins: int, panes: int
+) -> list[tuple[str, ...]]:
+    """Async twin of :func:`_record_sync` (AsyncMockEngine)."""
+    recorder = _AsyncRecorder(AsyncMockEngine())
+    await build_async(layer, recorder, name, wins, panes)
+    return recorder.argv
+
+
+def check_parity(
+    wins: int, panes: int
+) -> tuple[list[tuple[str, ...]], list[tuple[str, bool]]]:
+    """Assert every layer x mode renders the mock oracle's argv for WxP.
+
+    Mock is deterministic, so all five expression layers -- driven through it via
+    both the sync and async paths -- must emit the identical op argv sequence.
+    The oracle is the declarative ws-seq rendering (one argv per op); returns the
+    oracle plus a ``(label, agrees)`` row per layer x mode.
+    """
+    name = "parity"
+    oracle = _record_sync(LAYERS["ws-seq"], name, wins, panes)
+    rows: list[tuple[str, bool]] = []
+    for layer_name, layer in LAYERS.items():
+        rows.append(
+            (f"{layer_name}/sync", _record_sync(layer, name, wins, panes) == oracle)
+        )
+        rows.append(
+            (
+                f"{layer_name}/async",
+                asyncio.run(_record_async(layer, name, wins, panes)) == oracle,
+            )
+        )
+    return oracle, rows
+
+
+# --------------------------------------------------------------------------- #
 # CLI                                                                         #
 # --------------------------------------------------------------------------- #
 app = typer.Typer(add_completion=False, help=__doc__)
@@ -470,6 +831,223 @@ def profile(
         if server is not None:
             with contextlib.suppress(Exception):
                 server.kill()
+
+
+@app.command()
+def matrix(
+    shapes: str = typer.Option("1x4", help="comma WxP shapes"),
+    layers: str = typer.Option(",".join(LAYERS), help="comma expression layers"),
+    transports: str = typer.Option(",".join(TRANSPORTS), help="comma transports"),
+    modes: str = typer.Option("sync,async", help="comma modes: sync,async"),
+    runs: int = typer.Option(10, help="timed builds per cell"),
+    warmup: int = typer.Option(2, help="warmup builds per cell"),
+    check: bool = typer.Option(True, help="run the mock-parity contract first"),
+    json_out: str = typer.Option("", help="write full JSON results here"),
+) -> None:
+    """Factorial matrix: expression-layer x transport x mode, one table per shape.
+
+    Rows are *generated* by ``product`` over the axis registries (never
+    hand-enumerated); ``classic`` is the reference row and ``mock`` never appears
+    (it is the parity oracle, run first when ``--check``).
+    """
+    shape_list = [parse_shape(s) for s in shapes.split(",") if s]
+    layer_list = [name for name in layers.split(",") if name in LAYERS]
+    transport_list = [name for name in transports.split(",") if name in TRANSPORTS]
+    mode_list = [name for name in modes.split(",") if name in MODES]
+    results: list[dict[str, t.Any]] = []
+
+    for wins, panes in shape_list:
+        if check:
+            _oracle, parity_rows = check_parity(wins, panes)
+            failed = [label for label, agrees in parity_rows if not agrees]
+            if failed:
+                console.print(
+                    f"[bold red]mock-parity FAILED[/bold red] for {wins}x{panes}: "
+                    f"{', '.join(failed)}"
+                )
+                raise typer.Exit(1)
+            console.print(
+                f"[green]mock-parity OK[/green] -- {len(parity_rows)} layer x mode "
+                f"agree with mock argv for {wins}x{panes}"
+            )
+
+        classic_samples = run_cell(IMPLS["classic"], wins, panes, False, runs, warmup)
+        base_median = summarize(classic_samples)["median"]
+
+        table = rich.table.Table(
+            title=f"[bold]{wins} win x {panes} pane  ({wins * panes} panes)"
+            f"  -- in-process build ms (async x transport x layer)[/bold]"
+        )
+        table.add_column("cell", style="cyan")
+        for label in STAT_LABELS:
+            table.add_column(label, justify="right")
+        table.add_column("vs classic", justify="right", style="green")
+
+        classic_stat = summarize(classic_samples)
+        table.add_row(
+            "classic (reference)",
+            f"{int(classic_stat['n'])}",
+            *[f"{classic_stat[k]:.1f}" for k in STAT_LABELS[1:]],
+            "1.0x",
+        )
+        results.append(
+            {
+                "cell": "classic",
+                "layer": "classic",
+                "transport": "classic",
+                "mode": "sync",
+                "shape": f"{wins}x{panes}",
+                "panes": wins * panes,
+                "samples_ms": classic_samples,
+                **{f"{k}_ms": classic_stat[k] for k in STAT_LABELS},
+            }
+        )
+
+        for layer_name, transport_name, mode in itertools.product(
+            layer_list, transport_list, mode_list
+        ):
+            samples = matrix_cell(
+                TRANSPORTS[transport_name],
+                mode,
+                LAYERS[layer_name],
+                wins,
+                panes,
+                runs,
+                warmup,
+            )
+            st = summarize(samples)
+            speed = (
+                f"{base_median / st['median']:.1f}x"
+                if base_median and st["median"]
+                else "-"
+            )
+            label = f"{layer_name} · {transport_name} · {mode}"
+            table.add_row(
+                label,
+                f"{int(st['n'])}",
+                *[f"{st[k]:.1f}" for k in STAT_LABELS[1:]],
+                speed,
+            )
+            results.append(
+                {
+                    "cell": label,
+                    "layer": layer_name,
+                    "transport": transport_name,
+                    "mode": mode,
+                    "shape": f"{wins}x{panes}",
+                    "panes": wins * panes,
+                    "samples_ms": samples,
+                    **{f"{k}_ms": st[k] for k in STAT_LABELS},
+                }
+            )
+
+        wide_console.print(table)
+        wide_console.print()
+
+    if json_out:
+        pathlib.Path(json_out).write_text(json.dumps(results, indent=2))
+        console.print(f"[dim]wrote {json_out}[/dim]")
+
+
+def _serial_build(
+    transport: Transport, layer: Layer, server: Server, k: int, wins: int, panes: int
+) -> float:
+    """Build *k* independent sessions serially over a sync engine; return ms."""
+    engine = transport.make_sync(server)
+    names = [uniq() for _ in range(k)]
+    t0 = time.perf_counter()
+    for name in names:
+        build_sync(layer, engine, name, wins, panes)
+    elapsed = (time.perf_counter() - t0) * 1000
+    for name in names:
+        server.cmd("kill-session", "-t", name)
+    return elapsed
+
+
+async def _gather_build(
+    transport: Transport, layer: Layer, server: Server, k: int, wins: int, panes: int
+) -> float:
+    """Build *k* independent sessions via ``asyncio.gather`` over one connection."""
+    async with _open_async(transport, server) as engine:
+        names = [uniq() for _ in range(k)]
+        t0 = time.perf_counter()
+        await asyncio.gather(
+            *(build_async(layer, engine, name, wins, panes) for name in names)
+        )
+        elapsed = (time.perf_counter() - t0) * 1000
+        for name in names:
+            server.cmd("kill-session", "-t", name)
+        return elapsed
+
+
+@app.command()
+def concurrency(
+    shape: str = typer.Option("1x4", help="WxP shape of each session"),
+    transport: str = typer.Option("control_mode", help="subprocess | control_mode"),
+    layer: str = typer.Option("ws-fold", help="expression layer"),
+    k: int = typer.Option(4, help="independent sessions to build"),
+    runs: int = typer.Option(5, help="timed repeats"),
+    warmup: int = typer.Option(1, help="warmup repeats"),
+) -> None:
+    """Build K independent sessions: sync-serial vs async-gather wall time.
+
+    Async should actually win here: one async connection pipelines K builds'
+    round-trips instead of blocking on each in turn.
+    """
+    wins, panes = parse_shape(shape)
+    tp = TRANSPORTS[transport]
+    lay = LAYERS[layer]
+
+    def timed_serial() -> float:
+        server = new_server()
+        try:
+            return _serial_build(tp, lay, server, k, wins, panes)
+        finally:
+            with contextlib.suppress(Exception):
+                server.kill()
+
+    def timed_gather() -> float:
+        server = new_server()
+        try:
+            return asyncio.run(_gather_build(tp, lay, server, k, wins, panes))
+        finally:
+            with contextlib.suppress(Exception):
+                server.kill()
+
+    for _ in range(warmup):
+        timed_serial()
+        timed_gather()
+    serial = [timed_serial() for _ in range(runs)]
+    gather = [timed_gather() for _ in range(runs)]
+
+    serial_stat = summarize(serial)
+    gather_stat = summarize(gather)
+    table = rich.table.Table(
+        title=f"[bold]K={k} x ({wins}x{panes}) sessions -- {transport} / {layer}"
+        f"  -- wall ms[/bold]"
+    )
+    table.add_column("strategy", style="cyan")
+    for label in STAT_LABELS:
+        table.add_column(label, justify="right")
+    table.add_column("speedup", justify="right", style="green")
+    table.add_row(
+        "sync-serial",
+        f"{int(serial_stat['n'])}",
+        *[f"{serial_stat[k]:.1f}" for k in STAT_LABELS[1:]],
+        "1.0x",
+    )
+    speed = (
+        f"{serial_stat['median'] / gather_stat['median']:.2f}x"
+        if gather_stat["median"]
+        else "-"
+    )
+    table.add_row(
+        "async-gather",
+        f"{int(gather_stat['n'])}",
+        *[f"{gather_stat[k]:.1f}" for k in STAT_LABELS[1:]],
+        speed,
+    )
+    wide_console.print(table)
 
 
 if __name__ == "__main__":
