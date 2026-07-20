@@ -47,6 +47,19 @@ _Notes on the upcoming release will go here._
 
 ### Documentation
 
+#### The automation recipes no longer race the shell's echo (#709)
+
+Every wait helper in {ref}`automation-patterns` returned the moment the command was
+*sent*, not when it finished. {meth}`~libtmux.Pane.send_keys` types into the pane, so
+the shell echoes it straight back, and the helpers matched their completion marker
+against that echo. A copied `wait_for_output(pane, 'READY')` returned `True` in
+milliseconds, before the command had printed anything, and its timeout branch was
+unreachable. `check_for_errors` had the same fault in reverse: it reported a crash for
+any healthy command whose own arguments happened to mention an error.
+
+The recipes now synchronize through {meth}`~libtmux.Server.wait_for` channels where the
+command is yours to change, and where a poll is genuinely needed they match complete
+output lines that cannot also occur in the echoed input.
 #### Cleaner `from_env` examples (#719)
 
 The rendered examples for {meth}`Pane.from_env() <libtmux.Pane.from_env>` and
