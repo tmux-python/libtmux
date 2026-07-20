@@ -54,11 +54,25 @@ PANE_DIRECTION_FLAG_MAP: dict[PaneDirection, list[str]] = {
 
 
 class _DefaultOptionScope:
-    # Sentinel value for default scope
-    ...
+    """Sentinel type for the ``scope=`` parameter's default value.
+
+    The lone instance :data:`DEFAULT_OPTION_SCOPE` is used as the
+    default for option-related helpers; receiving methods use ``is``
+    comparison against the sentinel to detect "no explicit scope was
+    passed" and infer the right scope from the bound object type.
+    """
 
 
 DEFAULT_OPTION_SCOPE: _DefaultOptionScope = _DefaultOptionScope()
+"""Sentinel default for ``scope=`` parameters on option / hook helpers.
+
+When ``scope is DEFAULT_OPTION_SCOPE`` the caller hasn't selected an
+explicit :class:`OptionScope`; the receiving method
+(:meth:`Pane._show_option`, :meth:`Server.show_options`, etc.)
+infers the appropriate scope from the bound object type
+(``Pane`` → ``OptionScope.Pane``, ``Server`` → ``OptionScope.Server``,
+…).
+"""
 
 
 class OptionScope(enum.Enum):
