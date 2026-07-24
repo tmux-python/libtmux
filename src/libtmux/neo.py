@@ -11,7 +11,7 @@ from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux._compat import LooseVersion
-from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.common import get_version, raise_if_stderr
 from libtmux.formats import FORMAT_SEPARATOR
 
 if t.TYPE_CHECKING:
@@ -669,6 +669,11 @@ def fetch_objs(
     Runs a tmux list command (e.g. ``list-sessions``) with the format string
     from :func:`get_output_format` and parses each line of output into a dict.
 
+    Routes all commands through the server's engine, enabling:
+    - Control mode persistent connection for fetch operations
+    - Engine-specific validation (e.g., control_session preflight checks)
+    - Consistent error handling across all tmux operations
+
     Parameters
     ----------
     server : :class:`~libtmux.server.Server`
@@ -722,23 +727,18 @@ def fetch_objs(
 
     cmd_args: list[str | int] = []
 
-    if server.socket_name:
-        cmd_args.insert(0, f"-L{server.socket_name}")
-    if server.socket_path:
-        cmd_args.insert(0, f"-S{server.socket_path}")
-
-    tmux_cmds = [
-        *cmd_args,
-        list_cmd,
-    ]
-
     if list_extra_args is not None and isinstance(list_extra_args, Iterable):
-        tmux_cmds.extend(list(list_extra_args))
+        cmd_args.extend(list(list_extra_args))
 
     if filter is not None:
-        tmux_cmds.extend(["-f", filter])
+        cmd_args.extend(["-f", filter])
 
-    tmux_cmds.append(f"-F{format_string}")
+    cmd_args.append(f"-F{format_string}")
+
+    tmux_cmds = [
+        list_cmd,
+        *cmd_args,
+    ]
 
     cmd_str: str | None = None
 
@@ -752,10 +752,8 @@ def fetch_objs(
             },
         )
 
-    proc = tmux_cmd(
-        *tmux_cmds,
-        tmux_bin=server.tmux_bin,
-    )
+    # Route through the server's engine via server.cmd()
+    proc = server.cmd(list_cmd, *cmd_args)
 
     raise_if_stderr(proc, list_cmd)
 
