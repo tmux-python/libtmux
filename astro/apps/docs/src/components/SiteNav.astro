@@ -1,0 +1,42 @@
+---
+const navLinks = [
+  { label: 'Overview', href: '/' },
+  { label: 'Guides', href: '/guides' },
+  { label: 'API', href: '/api' },
+  { label: 'Architecture', href: '/architecture' },
+]
+---
+
+<header class="sticky top-0 z-20 border-b border-ink/10 bg-paper/80 backdrop-blur">
+  <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+    <a href="/" class="flex items-center gap-3 font-serif text-xl">
+      <span class="tag">libtmux</span>
+      <span>Docs</span>
+    </a>
+    <nav class="hidden items-center gap-6 text-sm font-medium md:flex">
+      {navLinks.map((link) => (
+        <a class="nav-link" href={link.href}>
+          {link.label}
+        </a>
+      ))}
+    </nav>
+    <div class="hidden items-center gap-3 md:flex">
+      <a class="text-sm" href="https://github.com/tmux-python/libtmux">
+        GitHub
+      </a>
+      <a
+        class="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-paper shadow-glow"
+        href="https://tmuxp.git-pull.com/"
+      >
+        tmuxp
+      </a>
+    </div>
+  </div>
+  <div class="mx-auto flex w-full max-w-6xl flex-wrap gap-3 px-6 pb-4 text-xs font-semibold uppercase tracking-wide text-ink/70 md:hidden">
+    {navLinks.map((link) => (
+      <a class="nav-link" href={link.href}>
+        {link.label}
+      </a>
+    ))}
+  </div>
+</header>

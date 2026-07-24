@@ -1,0 +1,69 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+
+const features = [
+  {
+    title: 'Typed tmux ORM',
+    description: 'Navigate servers, sessions, windows, and panes with a typed Python API.',
+  },
+  {
+    title: 'Built for automation',
+    description: 'Drive tmux workflows for testing, pipelines, and local tooling.',
+  },
+  {
+    title: 'Sphinx parity',
+    description: 'Autodoc-grade API reference generated directly from the source tree.',
+  },
+]
+
+const links = [
+  { label: 'Get started', href: '/guides' },
+  { label: 'API reference', href: '/api' },
+  { label: 'Architecture', href: '/architecture' },
+]
+---
+
+<BaseLayout title="Overview" description="libtmux documentation reimagined in Astro.">
+  <section class="surface surface-glow flex flex-col gap-6 p-10">
+    <div class="tag">libtmux docs</div>
+    <h1 class="text-4xl md:text-5xl">A calm, scriptable cockpit for tmux.</h1>
+    <p class="max-w-2xl text-lg text-ink/70">
+      libtmux wraps tmux with a typed ORM so you can orchestrate terminals, sessions, and panes with
+      confidence. This Astro site keeps the docs fast, expressive, and API-first.
+    </p>
+    <div class="flex flex-wrap gap-3">
+      {links.map((link) => (
+        <a
+          class="rounded-full border border-ink/20 px-5 py-2 text-sm font-semibold text-ink transition hover:border-ink"
+          href={link.href}
+        >
+          {link.label}
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <section class="grid gap-6 md:grid-cols-3">
+    {features.map((feature) => (
+      <article class="surface p-6">
+        <h2 class="text-xl">{feature.title}</h2>
+        <p class="text-sm text-ink/70">{feature.description}</p>
+      </article>
+    ))}
+  </section>
+
+  <section class="surface p-8">
+    <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div>
+        <h2 class="text-2xl">Quick start</h2>
+        <p class="text-ink/70">Install libtmux and open a new tmux session programmatically.</p>
+      </div>
+      <div class="rounded-xl border border-ink/10 bg-ink/95 p-4 text-paper">
+        <code>pip install libtmux</code>
+      </div>
+    </div>
+    <div class="mt-6 rounded-xl border border-ink/10 bg-ink/95 p-4 text-paper">
+      <code>python -c "import libtmux; libtmux.Server().new_session(session_name='docs')"</code>
+    </div>
+  </section>
+</BaseLayout>

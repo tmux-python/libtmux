@@ -1,0 +1,40 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro'
+
+const layers = [
+  { name: 'Server', description: 'Top-level tmux server connection and command runner.' },
+  { name: 'Session', description: 'Named tmux sessions with window lifecycle controls.' },
+  { name: 'Window', description: 'Windows inside sessions that host panes.' },
+  { name: 'Pane', description: 'Terminal panes that execute commands and capture output.' },
+]
+---
+
+<BaseLayout title="Architecture" description="libtmux object model overview.">
+  <section class="surface p-10">
+    <div class="tag">Architecture</div>
+    <h1 class="text-4xl">A layered object model.</h1>
+    <p class="max-w-2xl text-ink/70">
+      libtmux mirrors tmux itself. Each object understands its place in the hierarchy and exposes
+      typed helpers that keep automation predictable.
+    </p>
+  </section>
+
+  <section class="grid gap-6 md:grid-cols-2">
+    {layers.map((layer) => (
+      <article class="surface p-6">
+        <h2 class="text-xl">{layer.name}</h2>
+        <p class="text-sm text-ink/70">{layer.description}</p>
+      </article>
+    ))}
+  </section>
+
+  <section class="surface p-8">
+    <h2 class="text-2xl">Hierarchy map</h2>
+    <pre class="mt-4 rounded-xl bg-ink/95 p-4 text-paper">
+Server
+  Session
+    Window
+      Pane
+    </pre>
+  </section>
+</BaseLayout>
