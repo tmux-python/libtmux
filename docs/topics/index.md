@@ -99,4 +99,5 @@ context_managers
 options_and_hooks
 clients
 format-tokens
+snapshots
 ```
