@@ -17,7 +17,9 @@ single notification queue, so run one *or* the other per process when comparing.
 
 The ``source`` axis selects the substrate: ``"output"`` streams raw
 notifications; ``"subscription"`` first installs ``refresh-client -B`` format
-subscriptions, tmux's debounced, server-side change detection.
+subscriptions, tmux's debounced, server-side change detection. Raw pane output
+requires the control-mode client to be attached to a session; tools that use the
+``"output"`` source accept a ``target`` so they can attach before subscribing.
 """
 
 from __future__ import annotations
@@ -50,6 +52,10 @@ EventMode = t.Literal["off", "push", "pull", "both"]
 EventSource = t.Literal["subscription", "output"]
 
 _RING_SIZE = 1024
+_OUTPUT_ATTACH_MESSAGE = (
+    "event_source='output' requires target=... so the control-mode client can "
+    "attach before %output is streamed"
+)
 
 # tmux format read once at settle to fill DoneMetadata (tab-joined, one round-trip).
 _DONE_FORMAT = "\t".join(
@@ -121,6 +127,8 @@ class _StreamEngine(t.Protocol):
     ``subscribe`` (only the control-mode engine has it), so the event tools type
     against this narrower protocol after the :func:`_supports_stream` guard.
     """
+
+    _attached_session: str | None
 
     async def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command."""
@@ -218,6 +226,10 @@ class _EventRing:
             out["error"] = self._error
         return out
 
+    def unattached(self, message: str = _OUTPUT_ATTACH_MESSAGE) -> dict[str, t.Any]:
+        """Return an error payload without starting the background drainer."""
+        return {"events": [], "cursor": self._seq, "error": message}
+
 
 def register_events(
     mcp: FastMCP,
@@ -238,7 +250,7 @@ def register_events(
     if mode in ("push", "both"):
         _register_push(mcp, stream, source=source)
     if mode in ("pull", "both"):
-        _register_pull(mcp, stream)
+        _register_pull(mcp, stream, source=source)
     _register_monitor(mcp, stream)
 
 
@@ -258,6 +270,7 @@ def _register_push(
         max_events: int = 20,
         timeout: float = 30.0,
         subscriptions: list[str] | None = None,
+        target: str | None = None,
     ) -> dict[str, t.Any]:
         """Stream live tmux notifications, pushing each as an MCP log message.
 
@@ -265,9 +278,13 @@ def _register_push(
         comes first. ``kinds`` filters by notification kind (e.g. ``window-add``,
         ``output``). With ``source="subscription"``, pass ``subscriptions`` as
         ``name:what:format`` specs to install ``refresh-client -B`` watches first.
+        With ``source="output"``, pass ``target`` so the control client can attach
+        to the target's session before subscribing to raw ``%output``.
         """
         if source == "subscription":
             await _install_subscriptions(engine, subscriptions)
+        else:
+            await _ensure_output_attached(engine, target)
         collected: list[dict[str, t.Any]] = []
 
         async def _collect() -> None:
@@ -293,7 +310,12 @@ def _register_push(
     mcp.add_tool(tool)
 
 
-def _register_pull(mcp: FastMCP, engine: _StreamEngine) -> None:
+def _register_pull(
+    mcp: FastMCP,
+    engine: _StreamEngine,
+    *,
+    source: EventSource,
+) -> None:
     """Register the ``tmux://events`` resource + ``poll_events`` pull tool."""
     from fastmcp.tools import FunctionTool
     from mcp.types import ToolAnnotations
@@ -302,6 +324,8 @@ def _register_pull(mcp: FastMCP, engine: _StreamEngine) -> None:
 
     async def read_events() -> dict[str, t.Any]:
         """Return all buffered tmux events (starts the reader on first read)."""
+        if source == "output" and getattr(engine, "_attached_session", None) is None:
+            return ring.unattached()
         return ring.since(0)
 
     mcp.resource(
@@ -310,12 +334,19 @@ def _register_pull(mcp: FastMCP, engine: _StreamEngine) -> None:
         description="Buffered tmux control-mode notifications",
     )(read_events)
 
-    async def poll_events(since: int = 0) -> dict[str, t.Any]:
+    async def poll_events(
+        since: int = 0,
+        target: str | None = None,
+    ) -> dict[str, t.Any]:
         """Return tmux events with sequence number greater than *since*.
 
         The response ``cursor`` is the latest sequence number; pass it back as
-        ``since`` next call to receive only newer events.
+        ``since`` next call to receive only newer events. With
+        ``source="output"``, pass ``target`` on the first call so the control
+        client can attach before the ring starts draining raw ``%output``.
         """
+        if source == "output":
+            await _ensure_output_attached(engine, target)
         return ring.since(since)
 
     tool = FunctionTool.from_function(
@@ -404,7 +435,105 @@ async def _ensure_attached(engine: _StreamEngine, session_id: str) -> None:
         detail = " ".join(result.stderr) or "attach-session failed"
         msg = f"cannot watch {session_id}: {detail}"
         raise RuntimeError(msg)
-    engine._attached_session = session_id  # type: ignore[attr-defined]
+    engine._attached_session = session_id
+
+
+async def _ensure_output_attached(
+    engine: _StreamEngine,
+    target: str | None,
+) -> None:
+    """Ensure raw ``%output`` subscribers have an attached control client."""
+    if target is None:
+        if getattr(engine, "_attached_session", None) is not None:
+            return
+        from libtmux.experimental.mcp.vocabulary._resolve import raise_target_hint
+
+        raise_target_hint(_OUTPUT_ATTACH_MESSAGE)
+
+    from libtmux.experimental.mcp.target_resolver import resolve_target
+    from libtmux.experimental.mcp.vocabulary._resolve import (
+        reject_relative_special,
+        session_id_of,
+    )
+
+    reject_relative_special(resolve_target(target))
+    await _ensure_attached(engine, await session_id_of(engine, target, None))
+
+
+async def await_pane_output(
+    engine: _StreamEngine,
+    target: str,
+    *,
+    ctx: Context | None = None,
+    settle_ms: int = 750,
+    timeout: float = 30.0,
+    max_bytes: int = 131072,
+    needle: str | None = None,
+    stream_partials: bool = False,
+    snapshot: bool = True,
+) -> MonitorResult:
+    """Watch one pane's live output until it settles or reaches a cap."""
+    from libtmux.experimental.mcp.target_resolver import resolve_target
+    from libtmux.experimental.mcp.vocabulary._resolve import (
+        pane_id as resolve_pane_id,
+        reject_relative_special,
+        session_id_of,
+    )
+    from libtmux.experimental.mcp.vocabulary.pane import acapture_pane
+
+    reject_relative_special(resolve_target(target))
+    pane = await resolve_pane_id(engine, target, None)
+    await _ensure_attached(engine, await session_id_of(engine, target, None))
+
+    dropped_before = getattr(engine, "dropped_notifications", 0)
+    started = time.monotonic()
+
+    async def _frames() -> AsyncGenerator[str, None]:
+        async for notification in engine.subscribe():
+            payload = output_payload(notification.raw, pane)
+            if payload is None:
+                continue
+            if stream_partials and ctx is not None:
+                await ctx.info(payload)
+            yield payload
+
+    outcome = await accumulate_until_settle(
+        _frames(),
+        settle_ms=settle_ms,
+        timeout_ms=int(timeout * 1000),
+        max_bytes=max_bytes,
+        needle=needle,
+    )
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    dropped = getattr(engine, "dropped_notifications", 0) - dropped_before
+
+    done = await _read_done(engine, pane)
+    snapshot_lines: tuple[str, ...] | None = None
+    if snapshot:
+        # A pane that died at settle cannot be captured -- keep the result.
+        with contextlib.suppress(TmuxCommandError):
+            captured = await acapture_pane(
+                engine,
+                pane,
+                join_wrapped=True,
+                trim_trailing=True,
+            )
+            snapshot_lines = tuple(captured.lines)
+
+    return MonitorResult(
+        pane_id=pane,
+        reason=outcome.reason,
+        captured_text=outcome.text,
+        byte_count=outcome.byte_count,
+        frame_count=outcome.frame_count,
+        idle_ms_observed=outcome.idle_ms_observed,
+        elapsed_ms=elapsed_ms,
+        truncated=outcome.truncated,
+        dropped=dropped,
+        done=done,
+        exit_code=done.pane_dead_status if done.pane_dead else None,
+        snapshot_lines=snapshot_lines,
+    )
 
 
 def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
@@ -418,6 +547,7 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
         settle_ms: int = 750,
         timeout: float = 30.0,
         max_bytes: int = 131072,
+        needle: str | None = None,
         stream_partials: bool = False,
         snapshot: bool = True,
     ) -> MonitorResult:
@@ -462,6 +592,10 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
         max_bytes : int
             Cap on captured output bytes (default 131072). On overflow the watch
             returns early with ``truncated`` set; raise it to keep more output.
+        needle : str or None
+            When set, return ``reason='matched'`` the instant the pane's output
+            contains this substring (e.g. wait until a server prints ``READY``)
+            instead of waiting for the idle settle. Default ``None`` (needle-free).
         stream_partials : bool
             When ``True``, also push each output chunk live as an MCP log message
             for real-time progress on long runs (default ``False``).
@@ -470,65 +604,16 @@ def _register_monitor(mcp: FastMCP, engine: _StreamEngine) -> None:
             ``snapshot_lines`` at settle; ``False`` skips that extra capture and
             leaves ``snapshot_lines`` ``None``.
         """
-        from libtmux.experimental.mcp.target_resolver import resolve_target
-        from libtmux.experimental.mcp.vocabulary._resolve import (
-            pane_id as resolve_pane_id,
-            reject_relative_special,
-            session_id_of,
-        )
-        from libtmux.experimental.mcp.vocabulary.pane import acapture_pane
-
-        reject_relative_special(resolve_target(target))
-        pane = await resolve_pane_id(engine, target, None)
-        await _ensure_attached(engine, await session_id_of(engine, target, None))
-
-        dropped_before = getattr(engine, "dropped_notifications", 0)
-        started = time.monotonic()
-
-        async def _frames() -> AsyncGenerator[str, None]:
-            async for notification in engine.subscribe():
-                payload = output_payload(notification.raw, pane)
-                if payload is None:
-                    continue
-                if stream_partials:
-                    await ctx.info(payload)
-                yield payload
-
-        outcome = await accumulate_until_settle(
-            _frames(),
+        return await await_pane_output(
+            engine,
+            target,
+            ctx=ctx,
             settle_ms=settle_ms,
-            timeout_ms=int(timeout * 1000),
+            timeout=timeout,
             max_bytes=max_bytes,
-        )
-        elapsed_ms = int((time.monotonic() - started) * 1000)
-        dropped = getattr(engine, "dropped_notifications", 0) - dropped_before
-
-        done = await _read_done(engine, pane)
-        snapshot_lines: tuple[str, ...] | None = None
-        if snapshot:
-            # A pane that died at settle cannot be captured -- keep the result.
-            with contextlib.suppress(TmuxCommandError):
-                captured = await acapture_pane(
-                    engine,
-                    pane,
-                    join_wrapped=True,
-                    trim_trailing=True,
-                )
-                snapshot_lines = tuple(captured.lines)
-
-        return MonitorResult(
-            pane_id=pane,
-            reason=outcome.reason,
-            captured_text=outcome.text,
-            byte_count=outcome.byte_count,
-            frame_count=outcome.frame_count,
-            idle_ms_observed=outcome.idle_ms_observed,
-            elapsed_ms=elapsed_ms,
-            truncated=outcome.truncated,
-            dropped=dropped,
-            done=done,
-            exit_code=done.pane_dead_status if done.pane_dead else None,
-            snapshot_lines=snapshot_lines,
+            needle=needle,
+            stream_partials=stream_partials,
+            snapshot=snapshot,
         )
 
     tool = FunctionTool.from_function(

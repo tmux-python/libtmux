@@ -61,6 +61,7 @@ from libtmux.experimental.workspace.sets import (
     build_workspaces,
     compile_workspaces,
 )
+from libtmux.experimental.workspace.status import WorkspaceStatus, workspace_status
 
 __all__ = (
     "BuildEvent",
@@ -81,6 +82,7 @@ __all__ = (
     "WorkspaceCompileError",
     "WorkspaceSet",
     "WorkspaceSetResult",
+    "WorkspaceStatus",
     "abuild_workspace",
     "abuild_workspaces",
     "afreeze_server",
@@ -94,4 +96,5 @@ __all__ = (
     "expand",
     "freeze",
     "freeze_server",
+    "workspace_status",
 )

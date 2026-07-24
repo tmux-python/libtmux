@@ -414,12 +414,16 @@ class ControlModeEngine:
     def _reap_own_session(self) -> None:
         """Mark this control client's throwaway session ``destroy-unattached``.
 
-        A bare ``tmux -C`` connect implies ``new-session``, so set
-        ``destroy-unattached on`` on the *current* session (the phantom; no
-        ``-t``/``-g``, scoped to exactly it) right after connect. tmux reaps it
-        the moment the client disconnects, so control mode leaves no throwaway
-        sessions. Its result block is read and discarded here -- before any user
-        command -- so it cannot desync the next command. Best-effort.
+        Synchronous twin of
+        :meth:`~..async_control_mode.AsyncControlModeEngine._reap_own_session`. A
+        bare ``tmux -C`` connect implies ``new-session``, so set
+        ``destroy-unattached on`` on the *current* session (the phantom; no ``-t``
+        and no ``-g``, scoped to exactly that session) right after connect. tmux
+        reaps it the moment the client attaches elsewhere or disconnects, so
+        control-mode leaves no throwaway sessions on the target server. Its result
+        block is read and discarded here -- inside ``_ensure_started``, before any
+        user command -- so it cannot desync the next command's result.
+        Best-effort: a failure here must not break the connection.
         """
         proc = self._proc
         if proc is None or proc.stdin is None:

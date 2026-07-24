@@ -79,4 +79,6 @@ def test_safety_gate_plan_tool_tier() -> None:
     mutating = _names_at("mutating")
     assert "preview_plan" in readonly  # readonly plan tool always visible
     assert "build_workspace" not in readonly  # mutating plan tool hidden ...
+    assert "build_workspaces" not in readonly
     assert "build_workspace" in mutating  # ... visible at mutating
+    assert "build_workspaces" in mutating
