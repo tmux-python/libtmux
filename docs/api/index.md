@@ -171,6 +171,7 @@ Server <libtmux.server>
 Session <libtmux.session>
 Window <libtmux.window>
 Pane <libtmux.pane>
+Async <async>
 Client <libtmux.client>
 Common <libtmux.common>
 Neo <libtmux.neo>
