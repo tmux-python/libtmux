@@ -120,6 +120,7 @@ isolated tmux fixtures:
 :hidden:
 
 quickstart
+quickstart_async
 topics/index
 api/index
 api/testing/index
