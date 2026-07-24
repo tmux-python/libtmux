@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import importlib.util
+import json
 import pathlib
 import sys
 import typing as t
@@ -118,3 +119,292 @@ def test_load_config_tolerates_empty_json(tmp_path: pathlib.Path) -> None:
     cfg.write_text("")
     info = mcp_swap.CLIInfo(name="agy", binary="agy", config_path=cfg, fmt="json")
     assert mcp_swap.load_config(info) == {}
+
+
+# ---------------------------------------------------------------------------
+# Fixtures for the doctor / --env / naming-hint ports
+# ---------------------------------------------------------------------------
+#
+# The upstream ``mcp_swap`` tests use a module-level import plus ``fake_home``
+# / ``fake_repo`` fixtures. This file loads the PEP 723 script fresh per test
+# (tomlkit-gated) via ``_load_mcp_swap``, so ``mcp_swap`` is a fixture — passed
+# by name into the ported tests, which reference ``mcp_swap.<attr>`` unchanged.
+
+
+@pytest.fixture
+def mcp_swap() -> t.Any:
+    """Load the swap script as a fresh module per test (tomlkit-gated)."""
+    pytest.importorskip("tomlkit")
+    return _load_mcp_swap()
+
+
+@pytest.fixture
+def fake_home(
+    mcp_swap: t.Any, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> pathlib.Path:
+    """Redirect every config path and the state file the script touches into tmp."""
+    monkeypatch.setattr(
+        mcp_swap,
+        "CLIS",
+        {
+            "claude": mcp_swap.CLIInfo(
+                name="claude",
+                binary="claude",
+                config_path=tmp_path / ".claude.json",
+                fmt="json",
+            ),
+            "codex": mcp_swap.CLIInfo(
+                name="codex",
+                binary="codex",
+                config_path=tmp_path / ".codex" / "config.toml",
+                fmt="toml",
+            ),
+            "cursor": mcp_swap.CLIInfo(
+                name="cursor",
+                binary="cursor-agent",
+                config_path=tmp_path / ".cursor" / "mcp.json",
+                fmt="json",
+            ),
+            "gemini": mcp_swap.CLIInfo(
+                name="gemini",
+                binary="gemini",
+                config_path=tmp_path / ".gemini" / "settings.json",
+                fmt="json",
+            ),
+            "grok": mcp_swap.CLIInfo(
+                name="grok",
+                binary="grok",
+                config_path=tmp_path / ".grok" / "config.toml",
+                fmt="toml",
+            ),
+            "agy": mcp_swap.CLIInfo(
+                name="agy",
+                binary="agy",
+                config_path=tmp_path / ".gemini" / "config" / "mcp_config.json",
+                fmt="json",
+            ),
+        },
+    )
+    state_dir = tmp_path / "state"
+    monkeypatch.setattr(mcp_swap, "STATE_DIR", state_dir)
+    monkeypatch.setattr(mcp_swap, "STATE_FILE", state_dir / "state.json")
+    return tmp_path
+
+
+@pytest.fixture
+def fake_repo(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Create a minimal pyproject.toml matching libtmux's engine-mcp wiring.
+
+    The console-script entry is ``libtmux-engine-mcp`` (as in the real
+    pyproject), so the derived server slug is ``libtmux-engine``.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "pyproject.toml").write_text(
+        "[project]\n"
+        'name = "libtmux"\n'
+        "[project.scripts]\n"
+        'libtmux-engine-mcp = "libtmux.experimental.mcp:main"\n'
+    )
+    return repo
+
+
+def _write_json(path: pathlib.Path, data: dict[str, t.Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _local_entry(repo: pathlib.Path) -> dict[str, t.Any]:
+    """Return a local ``uv --directory <repo> run <entry>`` JSON entry."""
+    return {
+        "command": "uv",
+        "args": ["--directory", str(repo.resolve()), "run", "libtmux-engine-mcp"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# use-local --env injection
+# ---------------------------------------------------------------------------
+
+
+def test_use_local_env_flag_injects_into_entry(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """``--env KEY=VALUE`` lands in the written server entry's ``env``.
+
+    The isolation workflow needs to point the server at a scratch socket
+    without a manual post-edit; ``--env`` writes that env at swap time.
+    """
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(info.config_path, {"mcpServers": {}})
+
+    args = mcp_swap.build_parser().parse_args(
+        [
+            "use-local",
+            "--repo",
+            str(fake_repo),
+            "--cli",
+            "cursor",
+            "--env",
+            "LIBTMUX_SOCKET=mcp-target",
+        ]
+    )
+    assert mcp_swap.cmd_use_local(args) == 0
+
+    entry = json.loads(info.config_path.read_text())["mcpServers"]["libtmux-engine"]
+    assert entry["env"] == {"LIBTMUX_SOCKET": "mcp-target"}
+
+
+def test_use_local_env_flag_wins_over_preserved_env(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """Explicit ``--env`` overrides a preserved key; other preserved keys survive."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {
+                "libtmux-engine": {
+                    "command": "uvx",
+                    "args": ["libtmux==0.63.0"],
+                    "env": {"LIBTMUX_SAFETY": "readonly", "KEEP": "me"},
+                }
+            }
+        },
+    )
+
+    args = mcp_swap.build_parser().parse_args(
+        [
+            "use-local",
+            "--repo",
+            str(fake_repo),
+            "--cli",
+            "cursor",
+            "--env",
+            "LIBTMUX_SAFETY=destructive",
+        ]
+    )
+    assert mcp_swap.cmd_use_local(args) == 0
+
+    entry = json.loads(info.config_path.read_text())["mcpServers"]["libtmux-engine"]
+    assert entry["env"] == {"LIBTMUX_SAFETY": "destructive", "KEEP": "me"}
+
+
+def test_env_pair_rejects_malformed(mcp_swap: t.Any) -> None:
+    """``--env`` without ``=`` is an argparse error, not a silent skip."""
+    with pytest.raises(SystemExit):
+        mcp_swap.build_parser().parse_args(["use-local", "--env", "NOEQUALS"])
+
+
+# ---------------------------------------------------------------------------
+# naming hint
+# ---------------------------------------------------------------------------
+
+
+def test_naming_hint_points_at_registered_alias(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """Hint names the real slug when the repo uses a non-default server name.
+
+    A bare run would otherwise no-op on a missing entry, so the hint points
+    at the name the CLIs were actually registered under.
+    """
+    _write_json(
+        mcp_swap.CLIS["cursor"].config_path,
+        {"mcpServers": {"tmux": _local_entry(fake_repo)}},
+    )
+    hint = mcp_swap._naming_hint(fake_repo.resolve(), "libtmux-engine")
+    assert hint is not None
+    assert "--server tmux" in hint
+
+
+def test_naming_hint_none_when_derived_name_matches(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """No hint when the repo is already registered under the derived name."""
+    _write_json(
+        mcp_swap.CLIS["cursor"].config_path,
+        {"mcpServers": {"libtmux-engine": _local_entry(fake_repo)}},
+    )
+    assert mcp_swap._naming_hint(fake_repo.resolve(), "libtmux-engine") is None
+
+
+# ---------------------------------------------------------------------------
+# doctor
+# ---------------------------------------------------------------------------
+
+
+def test_doctor_reports_name_mismatch_and_auth_env(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Doctor surfaces the server-name mismatch and auth-overriding env vars."""
+    _write_json(
+        mcp_swap.CLIS["cursor"].config_path,
+        {"mcpServers": {"tmux": _local_entry(fake_repo)}},
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    args = mcp_swap.build_parser().parse_args(["doctor", "--repo", str(fake_repo)])
+    assert mcp_swap.cmd_doctor(args) == 0
+    out = capsys.readouterr().out
+    assert "server name mismatch" in out
+    assert "--server tmux" in out
+    assert "OPENAI_API_KEY" in out and "codex" in out
+
+
+def test_doctor_flags_missing_backup_and_orphans(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Doctor flags a state entry whose backup vanished, and untracked backups."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path, {"mcpServers": {"libtmux-engine": _local_entry(fake_repo)}}
+    )
+    # A recorded swap whose backup file does not exist -> revert would fail.
+    mcp_swap.save_state(
+        {
+            ("cursor", "user"): mcp_swap.SwapEntry(
+                config_path=str(info.config_path),
+                backup_path=str(info.config_path) + ".bak.mcp-swap-20200101000000",
+                server="libtmux-engine",
+                action="replaced",
+                swapped_at="20200101000000",
+                seq_no=0,
+            )
+        }
+    )
+    # An orphaned backup on disk not referenced by state.
+    orphan = info.config_path.parent / (
+        info.config_path.name + ".bak.mcp-swap-20190101000000"
+    )
+    orphan.write_text("stale")
+
+    args = mcp_swap.build_parser().parse_args(["doctor", "--repo", str(fake_repo)])
+    assert mcp_swap.cmd_doctor(args) == 0
+    out = capsys.readouterr().out
+    assert "BACKUP MISSING" in out
+    assert "orphaned backups" in out
+
+
+def test_orphaned_backups_matches_swap_pattern(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+) -> None:
+    """``_orphaned_backups`` finds swap backups and ignores the live config."""
+    info = mcp_swap.CLIS["cursor"]
+    info.config_path.parent.mkdir(parents=True, exist_ok=True)
+    info.config_path.write_text("{}\n")
+    b1 = info.config_path.parent / (
+        info.config_path.name + ".bak.mcp-swap-20260101000000"
+    )
+    b1.write_text("x")
+    found = mcp_swap._orphaned_backups(info.config_path)
+    assert b1 in found
+    assert info.config_path not in found

@@ -850,6 +850,11 @@ def cmd_use_local(args: argparse.Namespace) -> int:
     server = args.server or server
     entry = args.entry or default_entry
     spec = build_local_spec(repo, entry)
+    extra_env = dict(args.env or [])
+
+    hint = _naming_hint(repo, server)
+    if hint:
+        print(hint, file=sys.stderr)
 
     targets = args.cli or present_clis()
     if not targets:
@@ -887,8 +892,12 @@ def cmd_use_local(args: argparse.Namespace) -> int:
             # client-side settings (LIBTMUX_SAFETY, LIBTMUX_SOCKET, custom dev
             # knobs). Symmetric with ``_spec_from_entry`` which round-trips env on
             # the read side.
+            base_env = dict(current.env) if current else {}
+            base_env.update(extra_env)
             cli_spec = (
-                dataclasses.replace(spec, env={**current.env}) if current else spec
+                dataclasses.replace(spec, env=base_env)
+                if (current or extra_env)
+                else spec
             )
             action = set_server(cli, config, server, cli_spec, repo, scope=scope)
             new_bytes = dump_config_bytes(info, config)
@@ -1025,6 +1034,200 @@ def cmd_revert(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# doctor — read-only diagnostics
+# ---------------------------------------------------------------------------
+
+#: Env vars that, when set, override a CLI's stored subscription/login auth
+#: with an API key — a frequent cause of "why is it billing / refusing?"
+#: surprises when driving the CLI against a local server. Doctor only reports
+#: presence; it never reads the value.
+AUTH_ENV_VARS: dict[str, CLIName] = {
+    "ANTHROPIC_API_KEY": "claude",
+    "OPENAI_API_KEY": "codex",
+    "GEMINI_API_KEY": "gemini",
+    "GOOGLE_API_KEY": "gemini",
+    "XAI_API_KEY": "grok",
+    "GROK_API_KEY": "grok",
+}
+
+
+def _env_pair(raw: str) -> tuple[str, str]:
+    """Parse a ``KEY=VALUE`` ``--env`` argument, or raise for argparse."""
+    key, sep, value = raw.partition("=")
+    if not sep or not key:
+        msg = f"--env expects KEY=VALUE, got {raw!r}"
+        raise argparse.ArgumentTypeError(msg)
+    return key, value
+
+
+def _config_present_clis() -> list[CLIName]:
+    """CLIs whose config file exists — enough to *read* entries (no binary needed).
+
+    Distinct from :func:`present_clis`, which also requires the binary on
+    ``PATH``. Doctor and the naming hint only inspect config files, so a CLI
+    whose binary is absent but whose config is present still has readable
+    entries worth surfacing.
+    """
+    return [cli for cli in ALL_CLIS if CLIS[cli].config_path.exists()]
+
+
+def _all_server_specs(
+    cli: CLIName, config: t.Any, repo: pathlib.Path
+) -> dict[str, McpServerSpec]:
+    """Enumerate every MCP server entry visible in a CLI's config.
+
+    Spans the scopes a CLI actually keys servers under: Claude's top-level
+    user ``mcpServers`` plus this repo's per-project node, and the single
+    ``mcpServers`` / ``mcp_servers`` table for the others. Used to detect the
+    server-name footgun — the repo registered under a name other than the
+    derived default — which a same-name-only lookup misses.
+    """
+    out: dict[str, McpServerSpec] = {}
+
+    def _add(raw: t.Any) -> None:
+        if not isinstance(raw, dict):
+            return
+        for name, entry in raw.items():
+            out[str(name)] = _spec_from_entry(entry, fmt=CLIS[cli].fmt)
+
+    if cli == "claude":
+        _add(_claude_user_servers(config, create=False))
+        node = _claude_project_node(config, repo, create=False)
+        if node:
+            _add(node.get("mcpServers"))
+    elif cli in ("cursor", "gemini", "agy"):
+        _add(config.get("mcpServers"))
+    else:  # codex, grok
+        _add(config.get("mcp_servers"))
+    return out
+
+
+def _repo_pointing_names(cli: CLIName, config: t.Any, repo: pathlib.Path) -> list[str]:
+    """Server names in this CLI's config whose local checkout is ``repo``."""
+    return sorted(
+        name
+        for name, spec in _all_server_specs(cli, config, repo).items()
+        if spec.is_local_uv_directory() and spec.local_repo_path() == repo
+    )
+
+
+def _naming_hint(repo: pathlib.Path, server: str) -> str | None:
+    """Suggest ``--server <name>`` when the repo is registered under another name.
+
+    The derived default (the console-script entry minus ``-mcp``) often
+    doesn't match the slug the CLIs were actually registered under (e.g.
+    ``tmux`` vs the derived ``libtmux-engine``), so a bare run silently
+    operates on a non-existent entry. Returns a one-line hint naming the real
+    slug, or ``None`` when the derived name is already the registered one (or
+    nothing points here).
+    """
+    names: set[str] = set()
+    for cli in _config_present_clis():
+        try:
+            config = load_config(CLIS[cli])
+            pointing = _repo_pointing_names(cli, config, repo)
+        except (RuntimeError, ValueError, OSError):
+            continue
+        for name in pointing:
+            if name != server:
+                names.add(name)
+    if not names:
+        return None
+    pick = sorted(names)[0]
+    return (
+        f"note: nothing is registered under server {server!r}, but this repo is "
+        f"registered as {sorted(names)} — pass --server {pick} to target it"
+    )
+
+
+def _orphaned_backups(config_path: pathlib.Path) -> list[pathlib.Path]:
+    """All ``mcp-swap`` backups sitting next to ``config_path`` (any timestamp)."""
+    pattern = config_path.name + BACKUP_SUFFIX_PREFIX + "*"
+    return sorted(config_path.parent.glob(pattern))
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Report the effective MCP-swap environment without changing anything.
+
+    Read-only. Surfaces the footguns that swap/status don't: the repo
+    registered under an unexpected server name, un-reverted swaps and orphaned
+    backups accumulating on disk, a state entry whose backup has gone missing
+    (so revert would fail), and auth-overriding env vars. It deliberately does
+    NOT model each CLI's config-merge behaviour — that is CLI-version-specific
+    and lives in documentation, not here.
+    """
+    repo = pathlib.Path(args.repo).resolve()
+    server = args.server or resolve_repo_meta(repo)[0]
+    print("mcp-swap doctor")
+    print(f"  repo:   {repo}")
+    print(f"  server: {server}  (derived default; override with --server)")
+
+    print("  entries by CLI:")
+    all_repo_names: set[str] = set()
+    for cli in _config_present_clis():
+        try:
+            config = load_config(CLIS[cli])
+            specs = _all_server_specs(cli, config, repo)
+            pointing = _repo_pointing_names(cli, config, repo)
+        except (RuntimeError, ValueError, OSError) as exc:
+            print(f"    [{cli}] config unreadable: {exc}")
+            continue
+        spec = specs.get(server)
+        if spec is not None:
+            print(f"    [{cli}] {server} = {_describe_spec(spec, repo)}")
+        all_repo_names.update(pointing)
+        for name in pointing:
+            if name != server:
+                print(f"    [{cli}] {name} = local: this repo  (other name)")
+    if not all_repo_names:
+        print("    (no CLI currently points at this repo)")
+
+    if all_repo_names and server not in all_repo_names:
+        pick = sorted(all_repo_names)[0]
+        print(
+            f"  ! server name mismatch: this repo is registered as "
+            f"{sorted(all_repo_names)}, not {server!r} — use --server {pick}"
+        )
+
+    state = load_state()
+    if state:
+        print("  outstanding swaps (un-reverted):")
+        for (cli, scope), entry in sorted(state.items(), key=lambda kv: kv[1].seq_no):
+            flag = (
+                ""
+                if pathlib.Path(entry.backup_path).exists()
+                else "  ! BACKUP MISSING — revert would fail for this entry"
+            )
+            print(f"    {cli}:{scope}  swapped_at={entry.swapped_at}{flag}")
+
+    referenced = {e.backup_path for e in state.values()}
+    orphans = [
+        b
+        for info in CLIS.values()
+        for b in _orphaned_backups(info.config_path)
+        if str(b) not in referenced
+    ]
+    if orphans:
+        total = sum(b.stat().st_size for b in orphans if b.exists())
+        print(
+            f"  orphaned backups: {len(orphans)} file(s), {total} bytes not tracked "
+            "by state — safe to delete"
+        )
+
+    auth_hits = [
+        (var, cli) for var, cli in AUTH_ENV_VARS.items() if os.environ.get(var)
+    ]
+    if auth_hits:
+        print("  auth-overriding env vars set:")
+        for var, cli in auth_hits:
+            print(
+                f"    ! {var} overrides {cli}'s stored login — prefix with "
+                f"`env -u {var}` to use the subscription/OAuth auth instead"
+            )
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # argparse glue
 # ---------------------------------------------------------------------------
 
@@ -1068,6 +1271,17 @@ def build_parser() -> argparse.ArgumentParser:
     pu.add_argument(
         "--entry", help="uv run entry command (default: [project.scripts] first key)"
     )
+    pu.add_argument(
+        "--env",
+        action="append",
+        type=_env_pair,
+        metavar="KEY=VALUE",
+        help=(
+            "Extra env var to write into the server entry (repeatable). "
+            "Layered on top of any preserved existing env; explicit --env wins. "
+            "Use to inject e.g. LIBTMUX_SOCKET without a manual post-edit."
+        ),
+    )
     pu.add_argument("--cli", action="append", choices=ALL_CLIS)
     pu.add_argument(
         "--scope",
@@ -1096,6 +1310,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pr.add_argument("--dry-run", action="store_true")
     pr.set_defaults(func=cmd_revert)
+
+    pd = sub.add_parser(
+        "doctor", help="report the effective MCP-swap environment (read-only)"
+    )
+    pd.add_argument("--repo", default=".", help="repo root (default: .)")
+    pd.add_argument(
+        "--server", help="MCP server name (default: derived from pyproject.toml)"
+    )
+    pd.set_defaults(func=cmd_doctor)
 
     return p
 

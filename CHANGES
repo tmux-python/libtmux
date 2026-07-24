@@ -169,6 +169,17 @@ parsers, {meth}`Server.is_alive() <libtmux.Server.is_alive>`, and the Sphinx
 config carry scoped per-file ignores where catching everything is the intended
 contract.
 
+#### `mcp_swap.py doctor` and `use-local --env`
+
+The dev config-swap helper (`scripts/mcp_swap.py`) gains a read-only `doctor`
+subcommand that reports the effective MCP-swap environment -- which server name
+each CLI points at (and a mismatch when the repo is registered under a name
+other than the derived `libtmux-engine` default), un-reverted swaps and orphaned
+backups accumulating on disk, a state entry whose backup has gone missing, and
+auth-overriding env vars such as `OPENAI_API_KEY`. `use-local` also takes a
+repeatable `--env KEY=VALUE` to write env (e.g. an isolated `LIBTMUX_SOCKET`)
+into the server entry without a manual post-edit.
+
 ## libtmux 0.62.0 (2026-07-12)
 
 libtmux 0.62.0 teaches libtmux objects to locate themselves and to resolve
