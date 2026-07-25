@@ -1,17 +1,40 @@
 # Use control mode
 
-Control-mode engines keep one `tmux -C` client alive and correlate tmux's
-framed replies with submitted
+Once connected, control-mode engines keep one `tmux -C` client alive and
+correlate tmux's framed replies with submitted
 {class}`~libtmux.experimental.engines.base.CommandRequest` values.
+Over that connected client,
 {meth}`~libtmux.experimental.engines.control_mode.ControlModeEngine.run_batch`
 and
 {meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.run_batch`
 pipeline commands instead of starting one process per request.
 
+## How attachment stays safe
+
+Before opening a control connection, the engine looks for an existing session
+whose effective `destroy-unattached` value is `off`. It attaches to that exact
+session ID with `attach-session -E`. The exact target avoids tmux's implicit
+session selection, while `-E` leaves the session's `update-environment` state
+unchanged.
+
+If no safe session exists, the engine uses the corresponding subprocess engine
+for that batch. `new-session` can therefore bootstrap an empty server without a
+private control session. A later batch can switch to the persistent client once
+a safe session exists.
+
+The control process is still a normal attached client. It appears in
+`list-clients`, contributes to `session_attached`, and participates in client
+attach and detach hooks. The engine does not change `destroy-unattached` or
+issue a session-deletion command during cleanup. If you change that option
+while the engine is connected, tmux applies the new policy when the client
+detaches.
+
 ## Synchronous batch
 
 Use {class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` as a
 context manager so the persistent control client is closed on every exit path.
+Context entry is lazy; the first batch chooses persistent or subprocess
+dispatch.
 
 ```python
 >>> from libtmux.experimental.engines import CommandRequest, ControlModeEngine
@@ -36,9 +59,12 @@ True
 
 ## Async batch
 
-The async context starts and closes
+The async context scopes and closes
 {class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine`.
-Its supervisor owns the reader and reconnect loop.
+When a safe session already exists, context entry eagerly starts its supervisor
+so notification consumers have a reader without first sending a command. On an
+empty server, context entry stays lazy so the first batch can bootstrap through
+native async subprocess execution.
 
 ```python
 >>> import asyncio
@@ -79,9 +105,12 @@ exposes queue overflow.
 
 {meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.subscribe`
 returns an async generator, but creating that generator does not register its
-queue. Registration happens when iteration first advances. There is no public
-readiness handshake, so code must not assume an event emitted before that point
-will be observed.
+queue or start the engine. If context entry stayed lazy, or you do not use the
+context manager, a notification-only consumer must call
+{meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.start`
+after a safe session exists. Registration happens when iteration first
+advances. There is no public readiness handshake, so code must not assume an
+event emitted before that point will be observed.
 
 Command `%error` frames remain
 {class}`~libtmux.experimental.engines.base.CommandResult` data. Timeouts and
