@@ -81,8 +81,7 @@ def test_subscribe_ends_immediately_after_close() -> None:
 
     async def main() -> list[ControlNotification]:
         engine = AsyncControlModeEngine()
-        engine._started = True  # pretend a connection was established
-        await engine.aclose()  # flips _closing, broadcasts sentinel, clears subs
+        await engine.aclose()
 
         async def drain() -> list[ControlNotification]:
             return [note async for note in engine.subscribe()]

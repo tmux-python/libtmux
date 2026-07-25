@@ -469,7 +469,7 @@ def test_ensure_attached_is_idempotent_per_session() -> None:
 
     asyncio.run(main())
     attaches = [c for c in engine.calls if c and c[0] == "attach-session"]
-    assert len(attaches) == 1
+    assert attaches == [("attach-session", "-E", "-t", "$1")]
     assert engine._attached_session == "$1"
 
 

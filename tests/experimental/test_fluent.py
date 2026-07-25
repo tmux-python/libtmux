@@ -77,7 +77,7 @@ def _kill_named(server: Server, name: str) -> None:
     """Kill every session named *name* so a live test leaves the shared server clean.
 
     The ``server`` fixture is session-scoped, so a leaked session would perturb
-    later tests that measure global session counts (e.g. the phantom-reap tests).
+    later control-engine lifecycle tests that measure global session counts.
     """
     for sess in server.sessions:
         if sess.session_name == name:

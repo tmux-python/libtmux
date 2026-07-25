@@ -17,13 +17,18 @@ Design, informed by prior libtmux/mux control-mode work:
   desyncs. The startup ACK is consumed synchronously in :meth:`_spawn` before
   the reader runs, closing the startup race.
 - A supervisor owns the process lifecycle. :meth:`start` launches it once; it
-  spawns ``tmux -C``, replays the desired subscriptions, and runs the reader
-  inline (one reader at a time). When the reader returns on EOF, the supervisor
-  resets connection-scoped state -- a fresh parser, failed pending commands,
-  cleared attach -- bumps the connection generation, and reconnects with a
-  deterministic jittered backoff, so a tmux restart or socket blip self-heals
-  instead of freezing the engine. An intentional :meth:`aclose` flags
-  ``_closing`` first so the close is not mistaken for a crash and retried.
+  attaches to an exact existing session without updating its environment,
+  replays the desired subscriptions, and runs the reader inline (one reader at
+  a time). When the reader returns on EOF, the supervisor resets
+  connection-scoped state -- a fresh parser, failed pending commands, cleared
+  attach -- bumps the connection generation, and reconnects with a deterministic
+  jittered backoff, so a tmux restart or socket blip self-heals instead of
+  freezing the engine. An intentional :meth:`aclose` flags ``_closing`` first so
+  the close is not mistaken for a crash and retried.
+- If no safe session exists yet, command batches use the native async
+  subprocess engine. A command such as ``new-session`` can bootstrap the server
+  without a throwaway control session; later batches can open the persistent
+  client.
 - A reader failure or EOF marks the engine *dead* and fails every pending
   command, rather than hanging; the supervisor then reconnects.
 - Notifications go to a bounded queue; on overflow the oldest is dropped and
@@ -40,7 +45,8 @@ import typing as t
 from dataclasses import dataclass, field
 
 from libtmux import exc
-from libtmux.experimental.engines.base import render_control_line
+from libtmux.experimental.engines.asyncio import AsyncSubprocessEngine
+from libtmux.experimental.engines.base import CommandRequest, render_control_line
 from libtmux.experimental.engines.connection import ServerConnection
 from libtmux.experimental.engines.control_mode import (
     BlockSequenceMonitor,
@@ -54,7 +60,7 @@ if t.TYPE_CHECKING:
     import types
     from collections.abc import AsyncIterator, Sequence
 
-    from libtmux.experimental.engines.base import CommandRequest, CommandResult
+    from libtmux.experimental.engines.base import CommandResult
     from libtmux.experimental.engines.control_mode import ControlModeBlock
 
 logger = logging.getLogger(__name__)
@@ -143,13 +149,11 @@ def _force_put(queue: asyncio.Queue[t.Any], item: t.Any) -> None:
 
 
 def _swallow_future(future: asyncio.Future[t.Any]) -> None:
-    """Retrieve a fire-and-forget future's outcome so it isn't flagged unretrieved.
+    """Retrieve an independently owned future so it isn't flagged unretrieved.
 
-    Subscription-replay commands are dispatched without an awaiter; their futures
-    resolve in the reader. Calling :meth:`asyncio.Future.exception` marks the
-    result retrieved so a tmux-side ``%error`` (or a reconnect that fails the
-    pending command) never surfaces as a noisy "exception was never retrieved"
-    warning.
+    Subscription replays have no awaiter, and every caller may cancel its wait
+    on a shared start attempt. Calling :meth:`asyncio.Future.exception` marks
+    either result retrieved without changing what a later ``result()`` observes.
     """
     if future.cancelled():
         return
@@ -173,8 +177,11 @@ class AsyncControlModeEngine:
 
     Notes
     -----
-    The connection opens lazily on first use. Use the engine as an async context
-    manager, or call :meth:`aclose`, to tear it down.
+    The connection opens on async context entry when a safe session exists, or
+    on the first later command that finds one. Use the engine as an async context
+    manager, or call :meth:`aclose`, to tear it down. Commands use async
+    subprocess execution until an existing session has an effective
+    ``destroy-unattached`` value of ``off``.
     """
 
     def __init__(
@@ -198,6 +205,11 @@ class AsyncControlModeEngine:
         self._write_lock = asyncio.Lock()
         self._started = False
         self._dead: BaseException | None = None
+        self._bootstrap = AsyncSubprocessEngine(
+            tmux_bin=self._conn.tmux_bin,
+            server_args=self._conn.args,
+        )
+        self._bootstrap_tasks: set[asyncio.Task[list[CommandResult]]] = set()
         # Desired (declarative) state, replayed on every (re)connect.
         self._desired_subscriptions: list[str] = []
         self._desired_attach: list[str] = []
@@ -206,8 +218,8 @@ class AsyncControlModeEngine:
         self._generation = 0
         self._closing = False
         self._supervisor_task: asyncio.Task[None] | None = None
-        self._connected = asyncio.Event()
-        self._spawn_error: BaseException | None = None
+        self._start_attempt: asyncio.Future[None] | None = None
+        self._next_attach_target: str | None = None
 
     @property
     def connection(self) -> ServerConnection:
@@ -287,35 +299,45 @@ class AsyncControlModeEngine:
         proc, consumes the startup ACK, replays desired subscriptions, runs the
         reader, and reconnects with backoff when the reader returns. This method
         is idempotent (the ``_start_lock`` + ``_started`` guard) and never
-        launches a second supervisor; all callers block until the first
-        connection is established.
+        launches a second supervisor; all callers block on the same immutable
+        attempt. Direct startup requires an existing session whose effective
+        ``destroy-unattached`` option is ``off``; :meth:`run_batch` uses
+        subprocess execution while no such target exists.
         """
         async with self._start_lock:
-            if not self._started:
-                self._closing = False
-                self._spawn_error = None
-                self._connected.clear()
-                self._supervisor_task = asyncio.create_task(
-                    self._supervisor(),
-                    name="libtmux-async-control-supervisor",
-                )
-                self._started = True
-        # Block (every caller) until the supervisor's first connect resolves.
-        if self._supervisor_task is not None:
-            await self._connected.wait()
-            if self._spawn_error is not None:
-                # Keep _spawn_error set here: a *concurrent* start() caller from
-                # the same failed first connect must also observe it and raise,
-                # not see a nulled error and return "success" against a dead
-                # engine. The error is cleared only by the fresh-start reset
-                # above (the `if not self._started` block) when a NEW attempt
-                # begins, so every waiter from this failed connect raises
-                # consistently.
-                error = self._spawn_error
-                async with self._start_lock:
-                    self._started = False
-                    self._supervisor_task = None
-                raise error
+            attempt = self._begin_start_locked()
+        await self._wait_start_attempt(attempt)
+
+    def _begin_start_locked(self) -> asyncio.Future[None]:
+        """Return the current immutable start attempt, creating it if needed."""
+        if not self._started:
+            self._closing = False
+            attempt = asyncio.get_running_loop().create_future()
+            attempt.add_done_callback(_swallow_future)
+            self._start_attempt = attempt
+            self._supervisor_task = asyncio.create_task(
+                self._supervisor(attempt),
+                name="libtmux-async-control-supervisor",
+            )
+            self._started = True
+        else:
+            attempt = self._start_attempt
+        if attempt is None:
+            msg = "control-mode start attempt is unavailable"
+            raise ControlModeError(msg)
+        return attempt
+
+    @staticmethod
+    async def _wait_start_attempt(attempt: asyncio.Future[None]) -> None:
+        """Wait without propagating caller cancellation into *attempt*.
+
+        ``asyncio.shield`` creates an intermediate future whose exception can be
+        reported as unretrieved when its only waiter is cancelled. Waiting on
+        the shared future through ``asyncio.wait`` preserves its immutable result
+        without creating that diagnostic-only wrapper.
+        """
+        await asyncio.wait((attempt,))
+        attempt.result()
 
     async def _spawn(self) -> None:
         """Spawn a fresh ``tmux -C`` process and consume its startup ACK.
@@ -331,10 +353,25 @@ class AsyncControlModeEngine:
         # reconnect never orphans a control client. A clean-EOF proc has already
         # exited, so this is a no-op there.
         old = self._proc
-        if old is not None and old.returncode is None:
-            with contextlib.suppress(ProcessLookupError):
-                old.terminate()
-        cmd = self._conn.argv("-C")
+        if old is not None:
+            await self._stop_process(old)
+        target = self._next_attach_target
+        self._next_attach_target = None
+        if target is None:
+            target = await self._find_attach_target()
+        if target is None:
+            msg = (
+                "control mode requires an existing session whose effective "
+                "destroy-unattached option is off"
+            )
+            raise ControlModeError(msg)
+        cmd = self._conn.argv(
+            "-C",
+            "attach-session",
+            "-E",
+            "-t",
+            target,
+        )
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -345,13 +382,16 @@ class AsyncControlModeEngine:
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
         self._proc = proc
-        # Keep the death-sentinel set while the startup ACK is consumed: across a
-        # reconnect ``_connected`` stays set, so a concurrent ``run_batch`` would
-        # otherwise pass the dead-guard, write to the new proc, and have its reply
-        # DRAINED+DISCARDED by ``_consume_startup`` (its future then times out and
-        # its stale pending entry desyncs FIFO). Clearing ``_dead`` only after the
-        # ACK is consumed makes such a racing command hit the dead-guard instead.
-        await self._consume_startup()
+        # Keep the death-sentinel set while the startup ACK is consumed. The
+        # first-start future is already resolved during reconnects, so a racing
+        # run_batch must hit the dead guard instead of writing a reply that
+        # _consume_startup would drain and discard.
+        try:
+            await self._consume_startup()
+        except BaseException:
+            await self._stop_process(proc)
+            self._proc = None
+            raise
         self._dead = None
 
     async def _consume_startup(self) -> None:
@@ -369,20 +409,29 @@ class AsyncControlModeEngine:
         while True:
             remaining = deadline - loop.time()
             if remaining <= 0:
-                return
+                msg = "tmux control-mode startup timed out"
+                raise ControlModeError(msg)
             try:
                 chunk = await asyncio.wait_for(
                     proc.stdout.read(_READ_CHUNK),
                     timeout=remaining,
                 )
             except asyncio.TimeoutError:
-                return
+                msg = "tmux control-mode startup timed out"
+                raise ControlModeError(msg) from None
             if not chunk:
-                return
+                msg = "tmux -C closed stdout during startup"
+                raise ControlModeError(msg)
             self._parser.feed(chunk)
             self._parser.notifications()  # discard any startup notifications
             discarded = self._parser.blocks()
-            if discarded:  # startup ACK seen and discarded
+            if discarded:
+                if discarded[-1].is_error:
+                    detail = "; ".join(
+                        line.decode(errors="replace") for line in discarded[-1].body
+                    )
+                    msg = "tmux control-mode attach failed"
+                    raise ControlModeError(f"{msg}: {detail}" if detail else msg)
                 solicited = [block for block in discarded if block.flags == 1]
                 if solicited:
                     # Anything but the ACK here is a command reply thrown away on
@@ -404,16 +453,39 @@ class AsyncControlModeEngine:
                 return
 
     async def run(self, request: CommandRequest) -> CommandResult:
-        """Execute one tmux command over the control connection."""
+        """Execute one command through control mode or bootstrap subprocess."""
         return (await self.run_batch([request]))[0]
 
     async def run_batch(
         self, requests: Sequence[CommandRequest]
     ) -> list[CommandResult]:
-        """Pipeline a batch of commands; one result per request, in order."""
+        """Pipeline a batch, bootstrapping through subprocess when necessary."""
         if not requests:
             return []
-        await self.start()
+        bootstrap: asyncio.Task[list[CommandResult]] | None = None
+        attempt: asyncio.Future[None] | None = None
+        async with self._start_lock:
+            if self._bootstrap_tasks:
+                bootstrap = self._begin_bootstrap_locked(requests)
+            elif self._started and self._dead is not None:
+                target = await self._find_attach_target()
+                if target is None:
+                    await self._close_locked()
+                    bootstrap = self._begin_bootstrap_locked(requests)
+            if bootstrap is None and not self._started:
+                target = await self._find_attach_target()
+                if target is None:
+                    bootstrap = self._begin_bootstrap_locked(requests)
+                else:
+                    self._next_attach_target = target
+            if bootstrap is None:
+                attempt = self._begin_start_locked()
+        if bootstrap is not None:
+            return await bootstrap
+        if attempt is None:
+            msg = "control-mode dispatch attempt is unavailable"
+            raise ControlModeError(msg)
+        await self._wait_start_attempt(attempt)
         if self._dead is not None:
             msg = "control-mode engine is dead"
             raise ControlModeError(msg) from self._dead
@@ -439,6 +511,14 @@ class AsyncControlModeEngine:
             try:
                 proc.stdin.write(payload)
                 await proc.stdin.drain()
+            except asyncio.CancelledError:
+                # ``write`` already accepted the payload. Keep its FIFO entries
+                # so the reader can drain any replies, but make their futures
+                # terminal so close/reconnect cannot publish unobserved errors.
+                for queued in appended:
+                    if not queued.future.done():
+                        queued.future.cancel()
+                raise
             except (BrokenPipeError, OSError) as error:
                 # Remove the futures we just queued so a write failure cannot
                 # leave orphans that desync FIFO correlation for the next batch.
@@ -447,7 +527,7 @@ class AsyncControlModeEngine:
                     with contextlib.suppress(ValueError):
                         self._pending.remove(queued)
                     if not queued.future.done():
-                        queued.future.set_exception(cm_error)
+                        queued.future.cancel()
                 raise cm_error from error
 
         try:
@@ -460,6 +540,20 @@ class AsyncControlModeEngine:
             # blocks on arrival, keeping FIFO correlation aligned.
             msg = f"tmux control-mode timed out after {self.timeout}s"
             raise ControlModeError(msg) from error
+
+    def _begin_bootstrap_locked(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> asyncio.Task[list[CommandResult]]:
+        """Start one tracked subprocess batch while lifecycle state is locked."""
+        self._closing = False
+        task = asyncio.create_task(
+            self._bootstrap.run_batch(requests),
+            name="libtmux-async-control-bootstrap",
+        )
+        self._bootstrap_tasks.add(task)
+        task.add_done_callback(self._bootstrap_tasks.discard)
+        return task
 
     async def subscribe(self) -> AsyncIterator[ControlNotification]:
         """Yield asynchronous tmux notifications as they arrive.
@@ -476,8 +570,8 @@ class AsyncControlModeEngine:
         broadcast the stream-end sentinel, and cleared :attr:`_subscribers`)
         would register a fresh queue no broadcast will ever touch, hanging the
         consumer forever. So a permanently-closing engine yields nothing and
-        ends at once. A merely :attr:`_dead` (reconnecting) engine keeps the
-        subscriber, so the post-reconnect reader feeds it.
+        ends at once. A reader death also closes the current stream; callers can
+        subscribe again after the supervisor reconnects.
         """
         if self._closing:
             return
@@ -504,39 +598,84 @@ class AsyncControlModeEngine:
 
         Setting :attr:`_closing` *first* distinguishes an intentional close from a
         crash, so cancelling the supervisor (and the reader it owns inline) ends
-        the loop instead of triggering a reconnect.
+        the loop instead of triggering a reconnect. The start lock covers the
+        complete transition so a new supervisor cannot appear midway through
+        close.
         """
-        if not self._started:
-            return
+        cleanup = asyncio.create_task(
+            self._aclose_impl(),
+            name="libtmux-async-control-close",
+        )
+        cancelled = await self._wait_for_close_cleanup(cleanup)
+        cleanup.result()
+        if cancelled:
+            raise asyncio.CancelledError
+
+    @staticmethod
+    async def _wait_for_close_cleanup(cleanup: asyncio.Task[None]) -> bool:
+        """Wait through every caller cancellation; report whether one occurred."""
+        try:
+            await asyncio.wait((cleanup,))
+        except asyncio.CancelledError:
+            # Recursion gives each accepted ``cancel()`` its own handler without
+            # propagating cancellation into the independently owned cleanup task.
+            await AsyncControlModeEngine._wait_for_close_cleanup(cleanup)
+            return True
+        return False
+
+    async def _aclose_impl(self) -> None:
+        """Serialize close and cancel every tracked subprocess bootstrap."""
+        async with self._start_lock:
+            self._closing = True
+            bootstrap = tuple(self._bootstrap_tasks)
+            for task in bootstrap:
+                task.cancel()
+            if bootstrap:
+                await asyncio.gather(*bootstrap, return_exceptions=True)
+            await self._close_locked()
+
+    async def _close_locked(self) -> None:
+        """Close while the caller holds :attr:`_start_lock`."""
         self._closing = True
         self._started = False
         supervisor = self._supervisor_task
-        self._supervisor_task = None
+        attempt = self._start_attempt
+        self._next_attach_target = None
         if supervisor is not None:
             supervisor.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            try:
                 await supervisor
-        # Release any start() still blocked on the first connection. The
-        # supervisor's finally covers a normal exit, but a task cancelled before
-        # it ever runs never reaches that finally, so set it here too.
-        self._connected.set()
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
+            if self._supervisor_task is supervisor:
+                self._supervisor_task = None
+        if attempt is not None and not attempt.done():
+            attempt.set_exception(ControlModeError("control-mode engine closed"))
+        if self._start_attempt is attempt:
+            self._start_attempt = None
         self._broadcast_stream_end()
         self._fail_pending(ControlModeError("control-mode engine closed"))
         proc = self._proc
-        self._proc = None
-        if proc is not None and proc.returncode is None:
-            with contextlib.suppress(ProcessLookupError):
-                proc.terminate()
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=_STOP_TIMEOUT)
-            except asyncio.TimeoutError:
-                with contextlib.suppress(ProcessLookupError):
-                    proc.kill()
-                await proc.wait()
+        if proc is not None:
+            await self._stop_process(proc)
+            if self._proc is proc:
+                self._proc = None
 
     async def __aenter__(self) -> AsyncControlModeEngine:
-        """Start the engine on context entry."""
-        await self.start()
+        """Start when a safe session exists; otherwise remain lazy to bootstrap."""
+        attempt: asyncio.Future[None] | None = None
+        async with self._start_lock:
+            if self._started:
+                attempt = self._begin_start_locked()
+            else:
+                target = await self._find_attach_target()
+                if target is not None:
+                    self._next_attach_target = target
+                    attempt = self._begin_start_locked()
+        if attempt is not None:
+            await self._wait_start_attempt(attempt)
         return self
 
     async def __aexit__(
@@ -548,7 +687,10 @@ class AsyncControlModeEngine:
         """Close the engine on context exit."""
         await self.aclose()
 
-    async def _supervisor(self) -> None:
+    async def _supervisor(
+        self,
+        first_attempt: asyncio.Future[None] | None = None,
+    ) -> None:
         """Own the proc lifecycle: connect, replay desired state, read, reconnect.
 
         One supervisor runs at a time (launched once by :meth:`start`). Each
@@ -580,7 +722,7 @@ class AsyncControlModeEngine:
                     if not connected_once:
                         # First connect failed (e.g. missing binary): surface it
                         # to start() and stop -- a permanent error should not spin.
-                        self._spawn_error = error
+                        await self._finish_failed_start(first_attempt, error)
                         return
                     # A transient spawn failure mid-life: back off and retry.
                     await asyncio.sleep(self._backoff(attempt))
@@ -593,10 +735,10 @@ class AsyncControlModeEngine:
                 # fork-storm tmux. The reset is gated on connection lifetime below.
                 self._generation += 1
                 connected_once = True
-                await self._reap_own_session()
                 await self._replay_subscriptions()
                 await self._replay_attach()
-                self._connected.set()  # first connect done: unblock start()
+                if first_attempt is not None and not first_attempt.done():
+                    first_attempt.set_result(None)
                 # The reader runs inline (one reader at a time). On EOF it returns
                 # and we reconnect; on cancellation (aclose) it propagates out.
                 loop = asyncio.get_running_loop()
@@ -612,42 +754,85 @@ class AsyncControlModeEngine:
                     attempt = 0
                 await asyncio.sleep(self._backoff(attempt))
                 attempt += 1
+        except asyncio.CancelledError:
+            raise
+        except BaseException as error:
+            failure = ControlModeError(f"control-mode supervisor failed: {error}")
+            self._mark_dead(failure)
+            proc = self._proc
+            if proc is not None:
+                try:
+                    await self._stop_process(proc)
+                except Exception as cleanup_error:
+                    failure = ControlModeError(
+                        f"control-mode supervisor failed: {error}; "
+                        f"process cleanup failed: {cleanup_error}"
+                    )
+                else:
+                    if self._proc is proc:
+                        self._proc = None
+            await self._finish_failed_start(first_attempt, failure)
         finally:
-            # Always release start() waiters -- even on cancel/return before the
-            # first connect -- so an aclose() racing a start() can never leave a
-            # waiter blocked on _connected.wait() forever.
-            self._connected.set()
+            if first_attempt is not None and not first_attempt.done():
+                first_attempt.set_exception(
+                    ControlModeError("control-mode engine closed before connecting"),
+                )
 
-    async def _reap_own_session(self) -> None:
-        """Mark this control client's throwaway session ``destroy-unattached``.
-
-        A bare ``tmux -C`` connect implies ``new-session``, so each connection
-        spawns a phantom session on the target server. Right after connect -- while
-        the control client is still attached to that just-created session, before
-        :meth:`_replay_attach` moves it -- this sets ``destroy-unattached on`` on
-        the *current* session (the phantom; no ``-t`` and no ``-g``, so it is scoped
-        to exactly that session, never global). tmux then reaps the phantom the
-        moment the client attaches elsewhere or disconnects, so control-mode never
-        litters the server with throwaway sessions and a reconnect storm cannot pile
-        them up. Fire-and-forget, like :meth:`_replay_subscriptions` -- the result
-        block is swallowed since the reader has not started yet.
-        """
-        proc = self._proc
-        if proc is None or proc.stdin is None:
+    async def _finish_failed_start(
+        self,
+        attempt: asyncio.Future[None] | None,
+        error: BaseException,
+    ) -> None:
+        """Publish one failed attempt and make a later call eligible to retry."""
+        if attempt is None:
             return
-        loop = asyncio.get_running_loop()
-        argv = ("set-option", "destroy-unattached", "on")
-        async with self._write_lock:
-            future: asyncio.Future[CommandResult] = loop.create_future()
-            future.add_done_callback(_swallow_future)
-            self._pending.append(_PendingCommand(future, argv, command_count(argv)))
+        async with self._start_lock:
+            if self._start_attempt is attempt:
+                self._started = False
+                self._start_attempt = None
+                if self._supervisor_task is asyncio.current_task():
+                    self._supervisor_task = None
+            if not attempt.done():
+                attempt.set_exception(error)
+
+    async def _find_attach_target(self) -> str | None:
+        """Return an exact session id whose effective detach policy is off."""
+        sessions = await self._bootstrap.run(
+            CommandRequest.from_args("list-sessions", "-F", "#{session_id}"),
+        )
+        if sessions.returncode != 0:
+            return None
+        for session_id in sessions.stdout:
+            option = await self._bootstrap.run(
+                CommandRequest.from_args(
+                    "show-options",
+                    "-Av",
+                    "-t",
+                    session_id,
+                    "destroy-unattached",
+                ),
+            )
+            if option.returncode == 0 and option.stdout == ("off",):
+                return session_id
+        return None
+
+    @staticmethod
+    async def _stop_process(proc: asyncio.subprocess.Process) -> None:
+        """Terminate and reap *proc*, escalating after a bounded wait."""
+        if proc.returncode is not None:
+            return
+        with contextlib.suppress(ProcessLookupError):
+            proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=_STOP_TIMEOUT)
+        except asyncio.TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
             try:
-                proc.stdin.write((render_control_line(argv) + "\n").encode())
-                await proc.stdin.drain()
-            except (BrokenPipeError, OSError):
-                # The proc died before the option landed; the reader will EOF and
-                # the supervisor reconnects (the next connect re-marks its phantom).
-                return
+                await asyncio.wait_for(proc.wait(), timeout=_STOP_TIMEOUT)
+            except asyncio.TimeoutError:
+                msg = "tmux control process did not exit after kill"
+                raise ControlModeError(msg) from None
 
     async def _replay_subscriptions(self) -> None:
         """Re-issue every desired subscription to the freshly connected proc.
@@ -685,18 +870,14 @@ class AsyncControlModeEngine:
     async def _replay_attach(self) -> None:
         """Re-attach to every desired session on the freshly connected proc.
 
-        Mirrors :meth:`_replay_subscriptions`. A fresh ``tmux -C`` process is
-        attached to nothing, and per-pane ``%subscription-changed`` only flows
-        to an *attached* control client, so the supervisor must re-attach after
-        every (re)connect or a monitor that relies on the option channel goes
-        silent. Each target is written as ``attach-session -t <target>`` directly
-        to stdin with a swallowed pending future (same FIFO + :attr:`_write_lock`
-        discipline as the subscription replay), so it re-enters neither
-        :meth:`start` nor :meth:`run_batch`. A control client attaches to one
-        session at a time, so the last target wins. The attach is fire-and-forget,
-        so it does not cache :attr:`_attached_session` here; the events layer sets
-        that on a confirmed attach and re-attaches on a miss. Does nothing when
-        :attr:`_desired_attach` is empty.
+        Mirrors :meth:`_replay_subscriptions`. The process initially attaches to
+        an existing session; this replay switches it to each requested target
+        with ``-E`` so the last target wins without applying
+        ``update-environment``. Each command is written directly to stdin with a
+        swallowed pending future, so it re-enters neither :meth:`start` nor
+        :meth:`run_batch`. The fire-and-forget replay does not cache
+        :attr:`_attached_session`; the events layer sets that only after a
+        confirmed attach. Does nothing when :attr:`_desired_attach` is empty.
         """
         if not self._desired_attach:
             return
@@ -707,7 +888,7 @@ class AsyncControlModeEngine:
         async with self._write_lock:
             payload_parts: list[bytes] = []
             for target in self._desired_attach:
-                argv = ("attach-session", "-t", target)
+                argv = ("attach-session", "-E", "-t", target)
                 future: asyncio.Future[CommandResult] = loop.create_future()
                 future.add_done_callback(_swallow_future)
                 self._pending.append(_PendingCommand(future, argv, command_count(argv)))
@@ -728,9 +909,10 @@ class AsyncControlModeEngine:
     def _reset_attach(self) -> None:
         """Clear the sticky attach so reconnect re-attaches from scratch.
 
-        The events layer caches which session this engine attached to in
-        :attr:`_attached_session`; a fresh process is attached to nothing, so the
-        cache must be cleared on every (re)connect.
+        The events layer caches a confirmed requested target in
+        :attr:`_attached_session`. A fresh process starts on the engine's safe
+        bootstrap session, not necessarily that requested target, so the cache
+        is cleared on every reconnect.
         """
         self._attached_session = None
 
@@ -738,11 +920,11 @@ class AsyncControlModeEngine:
     def _backoff(attempt: int) -> float:
         """Deterministic jittered exponential backoff (seconds) for *attempt*.
 
-        Capped exponential (``min(0.1 * 2**attempt, 5.0)``) plus a small jitter
-        derived solely from *attempt* -- never :mod:`random` or wall-clock time --
-        so reconnect timing stays reproducible under test.
+        Capped exponential growth plus a small jitter derived solely from
+        *attempt* -- never :mod:`random` or wall-clock time -- so reconnect
+        timing stays finite and reproducible under test.
         """
-        base = min(0.1 * (2.0**attempt), 5.0)
+        base = min(0.1 * (2.0 ** min(attempt, 6)), 5.0)
         jitter = 0.01 * float(attempt % 7)
         return base + jitter
 
