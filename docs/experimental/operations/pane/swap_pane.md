@@ -1,34 +1,56 @@
 # Swap two panes
 
-`SwapPane` models `swap-pane` as a typed pane operation and
-returns `AckResult`.
+{class}`~libtmux.experimental.ops.SwapPane` exchanges the positions of two
+panes without changing their identifiers.
+
+## Example
+
+This executable example uses the injected live `server`, `window`, and `pane`
+context.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import ListPanes, SplitWindow, SwapPane, run
+>>> from libtmux.experimental.ops._types import PaneId, WindowId
+>>> assert pane.pane_id is not None and window.window_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> created = run(
+...     SplitWindow(target=WindowId(window.window_id)),
+...     engine,
+... ).raise_for_status()
+>>> assert created.new_pane_id is not None
+>>> before = {
+...     item.pane_id: item.pane_index
+...     for item in run(ListPanes(), engine).raise_for_status().panes
+... }
+>>> result = run(
+...     SwapPane(
+...         target=PaneId(pane.pane_id),
+...         src_target=PaneId(created.new_pane_id),
+...     ),
+...     engine,
+... ).raise_for_status()
+>>> after = {
+...     item.pane_id: item.pane_index
+...     for item in run(ListPanes(), engine).raise_for_status().panes
+... }
+>>> (
+...     type(result).__name__,
+...     after[pane.pane_id] == before[created.new_pane_id],
+...     after[created.new_pane_id] == before[pane.pane_id],
+... )
+('AckResult', True, True)
+```
+
+## Operation reference
 
 ```{tmuxop:operation} swap_pane
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import SwapPane, run
->>> from libtmux.experimental.ops._types import PaneId
->>> operation = SwapPane(target=PaneId("%1"), src_target=PaneId("%2"))
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation changes tmux state.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The panes must exist on the same server. Use `detach=True` when the current
+selection should remain with the original position.
 
 ## Related operations
 
