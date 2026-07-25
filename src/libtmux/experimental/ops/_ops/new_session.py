@@ -23,11 +23,25 @@ class NewSession(Operation[CreateResult]):
 
     Parameters
     ----------
+    session_name : str or None
+        Name for the new session, or ``None`` to let tmux choose one.
+    start_directory : str or None
+        Working directory for the first pane.
+    environment : Mapping[str, str] or None
+        Environment variables for the new session. Requires tmux 3.0 or later.
+    width : int or None
+        Width of the detached session in columns.
+    height : int or None
+        Height of the detached session in rows.
+    capture : bool
+        Print and capture the new session id.
     capture_panes : bool
         Also capture the new session's first window id and first pane id (into
         :attr:`~.results.CreateResult.first_window_id` /
         :attr:`~.results.CreateResult.first_pane_id`), so a plan can target them
         via ``slot.window`` / ``slot.pane``.
+    window_shell : str or None
+        Command to run in the first pane instead of the default shell.
 
     Examples
     --------

@@ -1,33 +1,45 @@
 # Load a paste buffer from a file
 
-`LoadBuffer` models `load-buffer` as a typed server operation and
-returns `AckResult`.
+{class}`~libtmux.experimental.ops.LoadBuffer` reads a file into a paste buffer
+through {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` and
+returns {class}`~libtmux.experimental.ops.results.AckResult`.
+
+## Example
+
+This executable example uses an isolated live tmux server. `server` and
+`tmp_path` are injected documentation context.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import DeleteBuffer, LoadBuffer, ShowBuffer, run
+>>> source = tmp_path / "buffer.txt"
+>>> _ = source.write_text("loaded from file", encoding="utf-8")
+>>> engine = SubprocessEngine.for_server(server)
+>>> loaded = run(
+...     LoadBuffer(path=str(source), buffer_name="docs-load"),
+...     engine,
+... ).raise_for_status()
+>>> observed = run(
+...     ShowBuffer(buffer_name="docs-load"),
+...     engine,
+... ).raise_for_status()
+>>> proof = type(loaded).__name__, observed.text
+>>> _ = run(DeleteBuffer(buffer_name="docs-load"), engine).raise_for_status()
+>>> proof
+('AckResult', 'loaded from file')
+```
+
+## Operation reference
 
 ```{tmuxop:operation} load_buffer
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import LoadBuffer, run
->>> operation = LoadBuffer(path="buffer.txt")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation changes tmux state.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+A missing or unreadable path returns a failed result. Call
+{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise it.
+The loaded buffer persists until it is replaced or deleted; the example owns
+and removes its named buffer.
 
 ## Related operations
 

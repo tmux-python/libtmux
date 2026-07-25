@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 import dataclasses
+import importlib
+import inspect
 import pathlib
 import sys
+import types
 import typing as t
 
 import pytest
+from docutils import nodes
 from sphinx.errors import SphinxError
 
-from libtmux.experimental.ops import catalog
+from libtmux.experimental.ops import catalog, registry
+from libtmux.experimental.ops.registry import OpSpec
 
 
 @dataclasses.dataclass
@@ -19,7 +24,7 @@ class _Environment:
 
 
 @pytest.fixture
-def tmuxop_module(monkeypatch: pytest.MonkeyPatch):
+def tmuxop_module(monkeypatch: pytest.MonkeyPatch) -> types.ModuleType:
     """Import the in-tree Sphinx extension as Sphinx does."""
     extension_path = pathlib.Path(__file__).parents[2] / "docs" / "_ext"
     monkeypatch.syspath_prepend(str(extension_path))
@@ -27,7 +32,9 @@ def tmuxop_module(monkeypatch: pytest.MonkeyPatch):
     return __import__("tmuxop")
 
 
-def test_domain_exposes_semantic_operation_surface(tmuxop_module) -> None:
+def test_domain_exposes_semantic_operation_surface(
+    tmuxop_module: types.ModuleType,
+) -> None:
     """The extension exposes one object type, role, and two directives."""
     domain = tmuxop_module.TmuxOperationDomain
 
@@ -36,7 +43,9 @@ def test_domain_exposes_semantic_operation_surface(tmuxop_module) -> None:
     assert set(domain.directives) == {"operation", "catalog"}
 
 
-def test_domain_rejects_duplicate_operation_targets(tmuxop_module) -> None:
+def test_domain_rejects_duplicate_operation_targets(
+    tmuxop_module: types.ModuleType,
+) -> None:
     """A kind cannot silently point to two documentation pages."""
     domain = tmuxop_module.TmuxOperationDomain(_Environment())
 
@@ -50,7 +59,9 @@ def test_domain_rejects_duplicate_operation_targets(tmuxop_module) -> None:
         )
 
 
-def test_domain_clears_only_objects_from_changed_document(tmuxop_module) -> None:
+def test_domain_clears_only_objects_from_changed_document(
+    tmuxop_module: types.ModuleType,
+) -> None:
     """Incremental builds retain targets owned by unchanged documents."""
     domain = tmuxop_module.TmuxOperationDomain(_Environment())
     domain.note_operation("send_keys", "pane/send_keys", "send-keys")
@@ -63,7 +74,9 @@ def test_domain_clears_only_objects_from_changed_document(tmuxop_module) -> None
     }
 
 
-def test_domain_merges_only_worker_documents(tmuxop_module) -> None:
+def test_domain_merges_only_worker_documents(
+    tmuxop_module: types.ModuleType,
+) -> None:
     """Parallel readers cannot import stale targets from unrelated documents."""
     domain = tmuxop_module.TmuxOperationDomain(_Environment())
     domain.note_operation("send_keys", "pane/send_keys", "send-keys")
@@ -84,7 +97,9 @@ def test_domain_merges_only_worker_documents(tmuxop_module) -> None:
     }
 
 
-def test_domain_inventory_is_stable_and_specific(tmuxop_module) -> None:
+def test_domain_inventory_is_stable_and_specific(
+    tmuxop_module: types.ModuleType,
+) -> None:
     """Sphinx inventory entries identify operation targets and their priority."""
     domain = tmuxop_module.TmuxOperationDomain(_Environment())
     domain.note_operation("send_keys", "pane/send_keys", "send-keys")
@@ -99,6 +114,49 @@ def test_domain_inventory_is_stable_and_specific(tmuxop_module) -> None:
             1,
         )
     ]
+
+
+def test_operation_badges_share_api_metrics_and_spacing(
+    tmuxop_module: types.ModuleType,
+) -> None:
+    """Operation metadata renders as one evenly spaced API badge group."""
+    entry = next(item for item in catalog() if item.kind == "send_keys")
+
+    render = importlib.import_module("tmuxop.render")
+    group = render.build_operation_badges(entry)
+
+    assert len(group.children) == 3
+    assert all(not isinstance(child, nodes.Text) for child in group.children)
+    assert {
+        "tmuxop-badge--safety-mutating",
+        "tmuxop-badge--scope-pane",
+        "tmuxop-badge--shape-primitive",
+    } <= {class_name for child in group.children for class_name in child["classes"]}
+    for child in group.children:
+        assert "gp-sphinx-badge--dense" in child["classes"]
+        assert "gp-sphinx-badge--underline-none" in child["classes"]
+
+
+@pytest.mark.parametrize(
+    "spec",
+    registry,
+    ids=lambda spec: spec.kind,
+)
+def test_operation_constructor_parameters_are_documented(
+    tmuxop_module: types.ModuleType,
+    spec: OpSpec,
+) -> None:
+    """Every rendered constructor parameter has canonical API prose."""
+    render = importlib.import_module("tmuxop.render")
+    parameter_names = tuple(
+        name
+        for name in inspect.signature(spec.operation_cls.__init__).parameters
+        if name != "self"
+    )
+
+    fields = render._constructor_parameter_fields(spec.operation_cls)
+
+    assert tuple(fields) == parameter_names
 
 
 @pytest.mark.parametrize(
@@ -134,7 +192,7 @@ def test_domain_inventory_is_stable_and_specific(tmuxop_module) -> None:
     ],
 )
 def test_catalog_filter_uses_registry_metadata(
-    tmuxop_module,
+    tmuxop_module: types.ModuleType,
     options: dict[str, str | None],
     expected: set[str],
 ) -> None:
@@ -152,7 +210,7 @@ def test_catalog_filter_uses_registry_metadata(
     ],
 )
 def test_catalog_filter_rejects_unknown_values(
-    tmuxop_module,
+    tmuxop_module: types.ModuleType,
     options: dict[str, str],
     message: str,
 ) -> None:

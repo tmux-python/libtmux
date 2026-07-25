@@ -1,34 +1,42 @@
-# Evaluate a tmux format and print it
+# Evaluate a tmux format
 
-`DisplayMessage` models `display-message` as a typed pane operation and
-returns `DisplayMessageResult`.
+{class}`~libtmux.experimental.ops.DisplayMessage` evaluates a tmux format
+against a target and returns its text.
+
+## Example
+
+This executable example uses the injected live `server`, `session`, `window`,
+and `pane` context.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import DisplayMessage, run
+>>> from libtmux.experimental.ops._types import PaneId
+>>> assert pane.pane_id is not None
+>>> result = run(
+...     DisplayMessage(
+...         target=PaneId(pane.pane_id),
+...         message="#{session_id}:#{window_id}:#{pane_id}",
+...     ),
+...     SubprocessEngine.for_server(server),
+... ).raise_for_status()
+>>> result.text.split(":") == [
+...     session.session_id,
+...     window.window_id,
+...     pane.pane_id,
+... ]
+True
+```
+
+## Operation reference
 
 ```{tmuxop:operation} display_message
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import DisplayMessage, run
->>> from libtmux.experimental.ops._types import PaneId
->>> operation = DisplayMessage(target=PaneId("%1"), message="#{pane_id}")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation reads tmux state without changing it. It reads command output, is safe to repeat.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+This operation reads tmux state without changing it. An unknown or unavailable
+format expands to an empty value; a missing target produces a failed result.
 
 ## Related operations
 

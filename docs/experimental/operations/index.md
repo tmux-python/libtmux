@@ -14,10 +14,11 @@ failures as data; call
 {meth}`~libtmux.experimental.ops.results.Result.raise_for_status` when the
 calling boundary requires an exception.
 
-Examples use {class}`~libtmux.experimental.engines.mock.MockEngine` so every
-page tests deterministically without depending on ambient tmux state. The
-failure section on each page identifies what a mock cannot prove about a live
-server.
+Each operation page runs its visible example against an isolated tmux server
+through
+{class}`~libtmux.experimental.engines.subprocess.SubprocessEngine`. The
+example shows the typed result and an observable tmux outcome, so the same code
+that teaches the operation also verifies its public behavior.
 
 ## Browse by tmux object
 

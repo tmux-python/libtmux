@@ -1,34 +1,58 @@
 # Set a window option
 
-`SetWindowOption` models `set-window-option` as a typed window operation and
-returns `AckResult`.
-
-```{tmuxop:operation} set_window_option
-```
+{class}`~libtmux.experimental.ops.SetWindowOption` changes a window-scoped
+option and returns an {class}`~libtmux.experimental.ops.results.AckResult`.
 
 ## Example
 
-This example executes the typed operation against the deterministic mock engine:
+This executable example uses an isolated live tmux server. `server` and
+`session` are injected documentation context.
 
 ```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import SetWindowOption, run
->>> from libtmux.experimental.ops._types import WindowId
->>> operation = SetWindowOption(target=WindowId("@1"), option="mode-keys", value="vi")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import (
+...     NewWindow,
+...     SetWindowOption,
+...     ShowOptions,
+...     run,
+... )
+>>> from libtmux.experimental.ops._types import SessionId, WindowId
+>>> assert session.session_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> created = run(
+...     NewWindow(target=SessionId(session.session_id), name="docs-window-option"),
+...     engine,
+... ).raise_for_status()
+>>> assert created.new_id is not None
+>>> target = WindowId(created.new_id)
+>>> result = run(
+...     SetWindowOption(
+...         target=target,
+...         option="@libtmux_docs_window",
+...         value="enabled",
+...     ),
+...     engine,
+... ).raise_for_status()
+>>> observed = run(
+...     ShowOptions(target=target, window=True),
+...     engine,
+... ).raise_for_status()
+>>> type(result).__name__, observed.options["@libtmux_docs_window"]
+('AckResult', 'enabled')
+```
+
+## Operation reference
+
+```{tmuxop:operation} set_window_option
 ```
 
 ## Failure and effects
 
 This operation changes tmux state.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The custom option is scoped to a window created by the example and read back
+with {class}`~libtmux.experimental.ops.ShowOptions`. Use `unset=True` to remove
+an option instead of assigning a value.
 
 ## Related operations
 

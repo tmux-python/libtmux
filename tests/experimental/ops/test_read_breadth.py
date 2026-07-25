@@ -227,12 +227,21 @@ def test_show_options_live(session: Session) -> None:
     assert result.options  # global options are always present
 
 
-def test_list_clients_live(session: Session) -> None:
-    """list-clients returns typed client snapshots (possibly none)."""
+def test_list_clients_live(
+    control_mode: t.Callable[..., t.Any],
+    session: Session,
+) -> None:
+    """list-clients describes a known live attachment."""
     from libtmux.experimental.engines import SubprocessEngine
     from libtmux.experimental.ops import run
 
     engine = SubprocessEngine.for_server(session.server)
-    result = run(ListClients(), engine)
+    with control_mode() as attached:
+        result = run(ListClients(), engine)
+        client = next(
+            item for item in result.clients if item.name == attached.client_name
+        )
+
     assert result.ok
-    assert all(c.name for c in result.clients)
+    assert client.session == session.session_name
+    assert client.pid is not None
