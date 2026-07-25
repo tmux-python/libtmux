@@ -15,6 +15,11 @@ from libtmux.experimental.ops.results import AckResult
 class RenameSession(Operation[AckResult]):
     """Rename a session. Produces no output (:class:`AckResult`).
 
+    Parameters
+    ----------
+    name : str
+        New name for the session.
+
     Examples
     --------
     >>> from libtmux.experimental.ops._types import SessionId

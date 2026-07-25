@@ -1,34 +1,68 @@
 # Rotate the panes in a window
 
-`RotateWindow` models `rotate-window` as a typed window operation and
-returns `AckResult`.
-
-```{tmuxop:operation} rotate_window
-```
+{class}`~libtmux.experimental.ops.RotateWindow` rotates pane positions within
+a window and returns an {class}`~libtmux.experimental.ops.results.AckResult`.
 
 ## Example
 
-This example executes the typed operation against the deterministic mock engine:
+This executable example uses an isolated live tmux server. `server` and
+`session` are injected documentation context.
 
 ```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import RotateWindow, run
->>> from libtmux.experimental.ops._types import WindowId
->>> operation = RotateWindow(target=WindowId("@1"), down=True)
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import (
+...     ListPanes,
+...     NewWindow,
+...     RotateWindow,
+...     SplitWindow,
+...     run,
+... )
+>>> from libtmux.experimental.ops._types import SessionId, WindowId
+>>> assert session.session_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> created = run(
+...     NewWindow(target=SessionId(session.session_id), name="docs-rotate"),
+...     engine,
+... ).raise_for_status()
+>>> assert created.new_id is not None
+>>> _ = run(SplitWindow(target=WindowId(created.new_id)), engine).raise_for_status()
+>>> _ = run(SplitWindow(target=WindowId(created.new_id)), engine).raise_for_status()
+>>> initial = run(ListPanes(), engine).raise_for_status()
+>>> before = tuple(
+...     item.pane_id
+...     for item in sorted(
+...         (item for item in initial.panes if item.window_id == created.new_id),
+...         key=lambda item: item.pane_index,
+...     )
+... )
+>>> result = run(
+...     RotateWindow(target=WindowId(created.new_id), down=True),
+...     engine,
+... ).raise_for_status()
+>>> observed = run(ListPanes(), engine).raise_for_status()
+>>> after = tuple(
+...     item.pane_id
+...     for item in sorted(
+...         (item for item in observed.panes if item.window_id == created.new_id),
+...         key=lambda item: item.pane_index,
+...     )
+... )
+>>> type(result).__name__, len(before) == 3 and set(after) == set(before) and after != before
+('AckResult', True)
+```
+
+## Operation reference
+
+```{tmuxop:operation} rotate_window
 ```
 
 ## Failure and effects
 
 This operation changes tmux state. It changes layout.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The same three pane identifiers remain after rotation, but their index order
+changes. The before-and-after snapshots prove that relationship without
+depending on volatile identifiers.
 
 ## Related operations
 

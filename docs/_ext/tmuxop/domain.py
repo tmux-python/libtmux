@@ -5,7 +5,7 @@ from __future__ import annotations
 import typing as t
 
 from docutils import nodes
-from docutils.parsers.rst import directives
+from docutils.parsers.rst import directives, states
 from sphinx import addnodes
 from sphinx.domains import Domain, ObjType
 from sphinx.errors import SphinxError
@@ -83,7 +83,15 @@ class TmuxOperationDirective(SphinxDirective):
 
         entry = next(item for item in catalog() if item.kind == kind)
         node_id = operation_anchor(kind)
-        summary_nodes, messages = self.state.inline_text(entry.summary, self.lineno)
+        # Registry summaries are reStructuredText docstrings on every page type.
+        inliner = states.Inliner()
+        inliner.init_customizations(self.state.document.settings)
+        summary_nodes, messages = inliner.parse(
+            entry.summary,
+            self.lineno,
+            self.state.memo,
+            t.cast("nodes.Element", self.state_machine.node),
+        )
         for pending in nodes.container("", *summary_nodes).findall(
             addnodes.pending_xref
         ):
@@ -191,10 +199,15 @@ class TmuxOperationCatalogDirective(SphinxDirective):
 
         summaries: dict[str, Sequence[nodes.Node]] = {}
         messages: list[nodes.system_message] = []
+        # Registry summaries are reStructuredText docstrings on every page type.
+        inliner = states.Inliner()
+        inliner.init_customizations(self.state.document.settings)
         for entry in entries:
-            summary_nodes, summary_messages = self.state.inline_text(
+            summary_nodes, summary_messages = inliner.parse(
                 entry.summary,
                 self.lineno,
+                self.state.memo,
+                t.cast("nodes.Element", self.state_machine.node),
             )
             for pending in nodes.container("", *summary_nodes).findall(
                 addnodes.pending_xref

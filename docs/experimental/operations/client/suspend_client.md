@@ -1,34 +1,50 @@
 # Suspend a client
 
-`SuspendClient` models `suspend-client` as a typed client operation and
-returns `AckResult`.
+{class}`~libtmux.experimental.ops.SuspendClient` suspends one attached client
+while leaving its tmux session running.
+
+## Example
+
+This executable example uses the injected live `server` and `session`.
+`control_mode` creates a real attached client that the example owns.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import HasSession, ListClients, SuspendClient, run
+>>> from libtmux.experimental.ops._types import ClientName, SessionId
+>>> assert session.session_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> session_target = SessionId(session.session_id)
+>>> with control_mode() as attached:
+...     client_name = attached.client_name
+...     before = run(ListClients(), engine).raise_for_status()
+...     client = next(item for item in before.clients if item.name == client_name)
+...     result = run(
+...         SuspendClient(target=ClientName(client.name)),
+...         engine,
+...     ).raise_for_status()
+...     after = run(ListClients(), engine).raise_for_status()
+...     session_alive = run(HasSession(target=session_target), engine)
+>>> (
+...     type(client).__name__,
+...     type(result).__name__,
+...     client_name not in {item.name for item in after.clients},
+...     type(session_alive).__name__,
+...     session_alive.exists,
+... )
+('ClientSnapshot', 'AckResult', True, 'HasSessionResult', True)
+```
+
+## Operation reference
 
 ```{tmuxop:operation} suspend_client
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import SuspendClient, run
->>> from libtmux.experimental.ops._types import ClientName
->>> operation = SuspendClient(target=ClientName("/dev/pts/3"))
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation changes tmux state.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+Suspension removes the client from the active client listing but leaves its
+session alive. Resuming terminal job control belongs to the client process, not
+the operation result.
 
 ## Related operations
 

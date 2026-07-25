@@ -1,33 +1,46 @@
 # Delete a paste buffer
 
-`DeleteBuffer` models `delete-buffer` as a typed server operation and
-returns `AckResult`.
+{class}`~libtmux.experimental.ops.DeleteBuffer` removes one paste buffer through
+{class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` and returns
+{class}`~libtmux.experimental.ops.results.AckResult`.
+
+## Example
+
+This executable example uses an isolated live tmux server. `server`, `session`,
+`window`, and `pane` are injected documentation context.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import DeleteBuffer, SetBuffer, ShowBuffer, run
+>>> engine = SubprocessEngine.for_server(server)
+>>> _ = run(
+...     SetBuffer(buffer_name="docs-delete", data="temporary"),
+...     engine,
+... ).raise_for_status()
+>>> before = run(
+...     ShowBuffer(buffer_name="docs-delete"),
+...     engine,
+... ).raise_for_status()
+>>> deleted = run(
+...     DeleteBuffer(buffer_name="docs-delete"),
+...     engine,
+... ).raise_for_status()
+>>> after = run(ShowBuffer(buffer_name="docs-delete"), engine)
+>>> type(deleted).__name__, before.text, after.ok, bool(after.stderr)
+('AckResult', 'temporary', False, True)
+```
+
+## Operation reference
 
 ```{tmuxop:operation} delete_buffer
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import DeleteBuffer, run
->>> operation = DeleteBuffer(buffer_name="build")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation changes tmux state.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+Omitting `buffer_name` deletes tmux's most recent buffer. Prefer an explicit,
+owned name when cleanup must be predictable. Deleting or showing a missing
+named buffer returns a failed result; call
+{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise it.
 
 ## Related operations
 

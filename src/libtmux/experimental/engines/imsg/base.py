@@ -207,7 +207,7 @@ class ImsgEngine:
 
     @property
     def connection(self) -> ServerConnection:
-        """The tmux binary this engine execs for local/spawning commands."""
+        """The tmux binary resolver used by local and server-starting paths."""
         return self._conn
 
     def tmux_version(self) -> str | None:
@@ -220,7 +220,7 @@ class ImsgEngine:
         return self._conn.tmux_version()
 
     def run(self, request: CommandRequest) -> CommandResult:
-        """Execute a tmux command over the server socket."""
+        """Execute through the server socket or a required local fallback."""
         tmux_bin = request.tmux_bin or self._conn.resolve_bin()
         parsed = self._parse_args(request.args)
         cmd = [tmux_bin, *parsed.global_args, *parsed.command_argv]
@@ -292,11 +292,11 @@ class ImsgEngine:
         self,
         requests: t.Sequence[CommandRequest],
     ) -> list[CommandResult]:
-        """Loop over ``run`` — imsg opens a fresh socket per call.
+        """Loop over ``run`` in order.
 
-        No batching benefit but provided for uniform API: callers can
-        use ``run_batch`` regardless of engine and get the right
-        ordered list of results.
+        Each socket-dispatched call opens a fresh connection. Local and
+        server-starting fallbacks invoke the tmux binary instead. There is no
+        batching benefit, but the method preserves the uniform engine API.
         """
         return [self.run(req) for req in requests]
 

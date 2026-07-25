@@ -1,34 +1,41 @@
-# Create a window in a session; capture the new window's id
+# Create a window in a session
 
-`NewWindow` models `new-window` as a typed session operation and
-returns `CreateResult`.
-
-```{tmuxop:operation} new_window
-```
+{class}`~libtmux.experimental.ops.NewWindow` creates a window and captures its
+tmux identifier in a typed creation result.
 
 ## Example
 
-This example executes the typed operation against the deterministic mock engine:
+This executable example uses an isolated live tmux server. `server` and
+`session` are injected documentation context; the standalone setup tutorial
+shows the equivalent public setup and cleanup.
 
 ```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import NewWindow, run
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import ListWindows, NewWindow, run
 >>> from libtmux.experimental.ops._types import SessionId
->>> operation = NewWindow(target=SessionId("$1"), name="build")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
+>>> assert session.session_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> created = run(
+...     NewWindow(target=SessionId(session.session_id), name="docs-build"),
+...     engine,
+... ).raise_for_status()
+>>> assert created.new_id is not None
+>>> observed = run(ListWindows(), engine).raise_for_status()
+>>> next(item.name for item in observed.windows if item.window_id == created.new_id)
+'docs-build'
+```
+
+## Operation reference
+
+```{tmuxop:operation} new_window
 ```
 
 ## Failure and effects
 
 This operation changes tmux state. It creates a window.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The captured identifier is resolved through a second live operation; a
+non-`None` identifier alone would not prove that tmux created the window.
 
 ## Related operations
 
