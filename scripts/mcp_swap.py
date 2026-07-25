@@ -9,6 +9,8 @@ Use when you want every installed agent CLI to run a local checkout of an
 MCP server (editable) instead of a pinned release. ``use-local`` rewrites
 each CLI's config to invoke the checkout via ``uv --directory <repo> run
 <entry>``; ``revert`` restores from the timestamped backup the swap wrote.
+Swapping a layer that is already swapped keeps that first backup rather
+than taking a new one, so ``revert`` always lands on the pre-swap config.
 
 Defaults are derived from the current repo's ``pyproject.toml``:
 
@@ -68,6 +70,9 @@ This script is best-effort and intentionally narrow:
 - **Single config shape per CLI.** No fallback paths, no merge of
   multiple sources. If your setup deviates from the defaults above,
   use the CLI's native ``mcp`` subcommand instead.
+- **Serialized mutations.** Concurrent ``use-local`` and ``revert``
+  invocations share an advisory transaction lock, so config and recovery-state
+  updates cannot overwrite one another.
 """
 
 from __future__ import annotations
@@ -75,6 +80,8 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import difflib
+import fcntl
+import functools
 import json
 import os
 import pathlib
@@ -179,6 +186,7 @@ def _xdg_state_home() -> pathlib.Path:
 # any sibling ``libtmux-mcp-dev`` swap state.
 STATE_DIR = _xdg_state_home() / "libtmux-engine-mcp-dev" / "swap"
 STATE_FILE = STATE_DIR / "state.json"
+STATE_LOCK_NAME = "transaction.lock"
 
 BACKUP_SUFFIX_PREFIX = ".bak.mcp-swap-"
 
@@ -345,6 +353,48 @@ def atomic_write(path: pathlib.Path, data: bytes) -> None:
     except Exception:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def write_new_backup(base: pathlib.Path, data: bytes) -> pathlib.Path:
+    """Write a backup without overwriting an existing path.
+
+    The timestamp in ``base`` has one-second precision, so claim each
+    candidate with exclusive creation and add a numeric suffix on collision.
+
+    Parameters
+    ----------
+    base : pathlib.Path
+        Preferred backup path.
+    data : bytes
+        Config bytes to preserve.
+
+    Returns
+    -------
+    pathlib.Path
+        Exclusively created backup path.
+
+    Examples
+    --------
+    >>> with tempfile.TemporaryDirectory() as tmp_dir:
+    ...     base = pathlib.Path(tmp_dir) / "config.bak"
+    ...     first = write_new_backup(base, b"first")
+    ...     second = write_new_backup(base, b"second")
+    ...     (first.name, second.name, first.read_bytes(), second.read_bytes())
+    ('config.bak', 'config.bak-1', b'first', b'second')
+    """
+    base.parent.mkdir(parents=True, exist_ok=True)
+    candidate = base
+    attempt = 0
+    while True:
+        try:
+            fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            attempt += 1
+            candidate = base.with_name(f"{base.name}-{attempt}")
+            continue
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        return candidate
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +647,9 @@ def _spec_from_entry(entry: t.Any, *, fmt: t.Literal["json", "toml"]) -> McpServ
             if isinstance(entry, tomlkit.items.Table)
             else dict(entry)
         )
+    if not isinstance(entry, dict):
+        msg = f"expected server entry to be a mapping, got {type(entry).__name__}"
+        raise TypeError(msg)
     command = str(entry.get("command", ""))
     raw_args = entry.get("args", [])
     args = [str(a) for a in raw_args] if raw_args else []
@@ -655,15 +708,31 @@ def load_state() -> dict[tuple[CLIName, Scope], SwapEntry]:
     """Read the swap-state file, returning an empty mapping when absent.
 
     The state file's schema is internal — no compatibility contract —
-    so this loader assumes a single canonical shape. Malformed keys
-    (those that don't parse as ``cli:scope``) and entries with a
-    non-coercible ``seq_no`` or missing required fields are dropped
-    silently so a hand-edited file cannot crash the script.
+    so this loader requires its canonical top-level shape. Invalid JSON
+    and invalid containers raise ``RuntimeError`` so mutating commands
+    cannot overwrite recovery metadata they failed to understand.
+    Malformed individual keys and entries are dropped.
     """
     if not STATE_FILE.exists():
         return {}
-    raw = json.loads(STATE_FILE.read_text())
+    try:
+        raw = json.loads(STATE_FILE.read_text())
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        msg = f"recovery state is unreadable: {exc}"
+        raise RuntimeError(msg) from exc
+    if not isinstance(raw, dict):
+        msg = (
+            "recovery state is unreadable: expected a mapping, got "
+            f"{type(raw).__name__}"
+        )
+        raise TypeError(msg)
     entries = raw.get("entries", {})
+    if not isinstance(entries, dict):
+        msg = (
+            "recovery state is unreadable: expected 'entries' to be a mapping, "
+            f"got {type(entries).__name__}"
+        )
+        raise TypeError(msg)
     out: dict[tuple[CLIName, Scope], SwapEntry] = {}
     for k, v in entries.items():
         parsed = _parse_state_key(k)
@@ -697,6 +766,24 @@ def clear_state(keys: t.Iterable[tuple[CLIName, Scope]]) -> None:
         save_state(current)
     elif STATE_FILE.exists():
         STATE_FILE.unlink()
+
+
+def _serialized_transaction(
+    command: t.Callable[[argparse.Namespace], int],
+) -> t.Callable[[argparse.Namespace], int]:
+    """Serialize one config-and-recovery-state transaction across processes."""
+
+    @functools.wraps(command)
+    def locked(args: argparse.Namespace) -> int:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        with (STATE_DIR / STATE_LOCK_NAME).open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                return command(args)
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    return locked
 
 
 # ---------------------------------------------------------------------------
@@ -768,6 +855,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     repo = pathlib.Path(args.repo).resolve()
     server = args.server or resolve_repo_meta(repo)[0]
     scope_filter: Scope | None = args.scope
+    had_error = 0
     for cli in args.cli or present_clis():
         info = CLIS[cli]
         if not info.config_path.exists():
@@ -819,10 +907,11 @@ def cmd_status(args: argparse.Namespace) -> int:
                 print(
                     f"[{cli}] {server} = {spec.command} {' '.join(spec.args)}  ({tag})"
                 )
-        except RuntimeError as exc:
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
             print(f"[{cli}] {exc}", file=sys.stderr)
+            had_error = 1
             continue
-    return 0
+    return had_error
 
 
 def _describe_spec(spec: McpServerSpec, repo: pathlib.Path) -> str:
@@ -838,6 +927,7 @@ def _describe_spec(spec: McpServerSpec, repo: pathlib.Path) -> str:
     return "other"
 
 
+@_serialized_transaction
 def cmd_use_local(args: argparse.Namespace) -> int:
     """Rewrite each target CLI's config to run the repo's checkout via ``uv``.
 
@@ -862,7 +952,11 @@ def cmd_use_local(args: argparse.Namespace) -> int:
         return 1
 
     ts = time.strftime("%Y%m%d%H%M%S")
-    state = load_state()
+    try:
+        state = load_state()
+    except (OSError, RuntimeError, TypeError) as exc:
+        print(f"recovery state error: {exc}; no config changed", file=sys.stderr)
+        return 1
     had_error = 0
     for cli in targets:
         scope = _normalize_scope(cli, args.scope)
@@ -871,19 +965,30 @@ def cmd_use_local(args: argparse.Namespace) -> int:
         if not info.config_path.exists():
             print(f"[{label}] skip — config not found at {info.config_path}")
             continue
-        # Wrap the read + shape-guarded mutation in try/except RuntimeError
-        # so a malformed Claude config (top-level mcpServers / projects not a
-        # mapping) surfaces as a clean per-CLI error instead of an uncaught
-        # traceback. Same per-CLI continuation pattern the inner write-failure
-        # handler below uses.
+        # Treat read, parse, and shape errors as per-CLI failures so one
+        # malformed target cannot strand earlier successful targets.
         try:
             original_bytes = info.config_path.read_bytes()
             config = load_config(info)
             current = get_server(cli, config, server, repo, scope=scope)
+            state_key = (cli, scope)
+            prior = state.get(state_key)
+            prior_backup = (
+                pathlib.Path(prior.backup_path) if prior is not None else None
+            )
+            if prior_backup is not None and not prior_backup.exists():
+                print(
+                    f"[{label}] recorded pre-swap backup is missing "
+                    f"({prior_backup}); refusing to replace recovery state",
+                    file=sys.stderr,
+                )
+                had_error = 1
+                continue
             if (
                 current
-                and current.is_local_uv_directory()
-                and current.local_repo_path() == repo
+                and current.command == spec.command
+                and current.args == spec.args
+                and all(current.env.get(k) == v for k, v in extra_env.items())
             ):
                 print(f"[{label}] already local (this repo) — no change")
                 continue
@@ -901,7 +1006,7 @@ def cmd_use_local(args: argparse.Namespace) -> int:
             )
             action = set_server(cli, config, server, cli_spec, repo, scope=scope)
             new_bytes = dump_config_bytes(info, config)
-        except RuntimeError as exc:
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
             print(f"[{label}] {exc}", file=sys.stderr)
             had_error = 1
             continue
@@ -917,41 +1022,142 @@ def cmd_use_local(args: argparse.Namespace) -> int:
             sys.stdout.writelines(diff)
             continue
 
-        # Claude is the only CLI where two swaps (different scopes) can
-        # touch the same config file in one second; embed the scope so
-        # the second backup doesn't overwrite the first. Non-Claude
-        # backup filenames carry no scope suffix.
-        backup_suffix = f"{BACKUP_SUFFIX_PREFIX}{ts}"
-        if cli == "claude":
-            backup_suffix += f"-{scope}"
-        backup_path = info.config_path.with_suffix(
-            info.config_path.suffix + backup_suffix
-        )
-        backup_path.write_bytes(original_bytes)
-        try:
-            atomic_write(info.config_path, new_bytes)
-            _revalidate(info)
-        except Exception as exc:
-            atomic_write(info.config_path, original_bytes)
-            print(
-                f"[{label}] write failed ({exc}); backup at {backup_path}",
-                file=sys.stderr,
+        # A repeated swap sees this script's earlier output, not the
+        # user's pristine config. Keep the first backup and its ordering
+        # metadata so revert still unwinds the layers it actually captured.
+        if prior is not None:
+            newer = sorted(
+                (
+                    (other_key, other_entry)
+                    for other_key, other_entry in state.items()
+                    if other_key != state_key
+                    and other_entry.config_path == prior.config_path
+                    and other_entry.seq_no > prior.seq_no
+                ),
+                key=lambda item: item[1].seq_no,
+                reverse=True,
             )
-            had_error = 1
-            continue
-        next_seq = max((e.seq_no for e in state.values()), default=-1) + 1
-        state[(cli, scope)] = SwapEntry(
+            if newer:
+                newer_labels = ", ".join(
+                    f"{new_cli}:{new_scope}" if new_cli == "claude" else new_cli
+                    for (new_cli, new_scope), _entry in newer
+                )
+                print(
+                    f"[{label}] cannot update beneath newer whole-file layer(s) "
+                    f"{newer_labels}; revert those layers first",
+                    file=sys.stderr,
+                )
+                had_error = 1
+                continue
+        reused_prior_backup = False
+        if prior_backup is not None:
+            backup_path = prior_backup
+            reused_prior_backup = True
+            backup_note = f"pre-swap backup kept: {backup_path}"
+        else:
+            backup_suffix = f"{BACKUP_SUFFIX_PREFIX}{ts}"
+            if cli == "claude":
+                backup_suffix += f"-{scope}"
+            try:
+                backup_path = write_new_backup(
+                    info.config_path.with_suffix(
+                        info.config_path.suffix + backup_suffix
+                    ),
+                    original_bytes,
+                )
+            except OSError as exc:
+                print(f"[{label}] backup failed ({exc})", file=sys.stderr)
+                had_error = 1
+                continue
+            backup_note = f"backup: {backup_path}"
+
+        if prior is not None and reused_prior_backup:
+            seq_no = prior.seq_no
+            swapped_at = prior.swapped_at
+        else:
+            seq_no = max((e.seq_no for e in state.values()), default=-1) + 1
+            swapped_at = ts
+        recovery_entry = SwapEntry(
             config_path=str(info.config_path),
             backup_path=str(backup_path),
             server=server,
             action=action,
-            swapped_at=ts,
-            seq_no=next_seq,
+            swapped_at=swapped_at,
+            seq_no=seq_no,
         )
-        print(f"[{label}] {action}; backup: {backup_path}")
+        state[state_key] = recovery_entry
+        try:
+            save_state(state)
+        except (OSError, TypeError, ValueError) as exc:
+            if prior is None:
+                state.pop(state_key)
+            else:
+                state[state_key] = prior
+            cleanup_note = ""
+            if not reused_prior_backup:
+                try:
+                    backup_path.unlink(missing_ok=True)
+                except OSError as cleanup_exc:
+                    cleanup_note = f"; backup cleanup failed ({cleanup_exc})"
+            print(
+                f"[{label}] recovery state write failed ({exc}){cleanup_note}",
+                file=sys.stderr,
+            )
+            had_error = 1
+            continue
 
-    if not args.dry_run:
-        save_state(state)
+        try:
+            atomic_write(info.config_path, new_bytes)
+            _revalidate(info)
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            try:
+                atomic_write(info.config_path, original_bytes)
+                load_config(info)
+            except (OSError, RuntimeError, TypeError, ValueError) as rollback_exc:
+                print(
+                    f"[{label}] write failed ({exc}); config rollback failed "
+                    f"({rollback_exc}); recovery state and backup kept at "
+                    f"{backup_path}",
+                    file=sys.stderr,
+                )
+                had_error = 1
+                continue
+
+            if prior is None:
+                state.pop(state_key)
+            else:
+                state[state_key] = prior
+            try:
+                if state:
+                    save_state(state)
+                else:
+                    STATE_FILE.unlink(missing_ok=True)
+            except (OSError, TypeError, ValueError) as rollback_exc:
+                state[state_key] = recovery_entry
+                print(
+                    f"[{label}] write failed ({exc}); recovery state rollback "
+                    f"failed ({rollback_exc}); backup kept at {backup_path}",
+                    file=sys.stderr,
+                )
+                had_error = 1
+                continue
+
+            cleanup_note = ""
+            if not reused_prior_backup:
+                try:
+                    backup_path.unlink(missing_ok=True)
+                except OSError as cleanup_exc:
+                    cleanup_note = f"; backup cleanup failed ({cleanup_exc})"
+            print(
+                f"[{label}] write failed ({exc}); config and state rolled back"
+                f"{cleanup_note}",
+                file=sys.stderr,
+            )
+            had_error = 1
+            continue
+
+        print(f"[{label}] {action}; {backup_note}")
+
     return had_error
 
 
@@ -960,6 +1166,7 @@ def _revalidate(info: CLIInfo) -> None:
     load_config(info)
 
 
+@_serialized_transaction
 def cmd_revert(args: argparse.Namespace) -> int:
     """Restore each target CLI's config from the backup recorded in the state file.
 
@@ -969,14 +1176,18 @@ def cmd_revert(args: argparse.Namespace) -> int:
     the matching scope is reverted; the parameter is silently coerced
     to ``"user"`` for non-Claude CLIs.
     """
-    state = load_state()
+    try:
+        state = load_state()
+    except (OSError, RuntimeError, TypeError) as exc:
+        print(f"recovery state error: {exc}; no config changed", file=sys.stderr)
+        return 1
     # Without --cli, revert every CLI that has any recorded swap.
     targets = list(args.cli) if args.cli else list({cli for cli, _scope in state})
     if not targets:
         print("no recorded swaps — nothing to revert", file=sys.stderr)
         return 1
 
-    reverted: list[tuple[CLIName, Scope]] = []
+    had_error = 0
     for cli in targets:
         if args.scope is not None:
             wanted_scopes: tuple[Scope, ...] = (_normalize_scope(cli, args.scope),)
@@ -990,6 +1201,38 @@ def cmd_revert(args: argparse.Namespace) -> int:
         if not cli_keys:
             label = f"{cli}:{args.scope}" if args.scope and cli == "claude" else cli
             print(f"[{label}] no state entry — skip")
+            continue
+        blocked = False
+        if args.scope is not None:
+            for key in cli_keys:
+                entry = state[key]
+                newer = sorted(
+                    (
+                        (other_key, other_entry)
+                        for other_key, other_entry in state.items()
+                        if other_key != key
+                        and other_entry.config_path == entry.config_path
+                        and other_entry.seq_no > entry.seq_no
+                    ),
+                    key=lambda item: item[1].seq_no,
+                    reverse=True,
+                )
+                if not newer:
+                    continue
+                sc_cli, sc_scope = key
+                label = f"{sc_cli}:{sc_scope}" if sc_cli == "claude" else sc_cli
+                newer_labels = ", ".join(
+                    f"{new_cli}:{new_scope}" if new_cli == "claude" else new_cli
+                    for (new_cli, new_scope), _entry in newer
+                )
+                print(
+                    f"[{label}] cannot revert before newer whole-file layer(s) "
+                    f"{newer_labels}; revert those layers first",
+                    file=sys.stderr,
+                )
+                had_error = 1
+                blocked = True
+        if blocked:
             continue
         # Unwind in reverse-registration order (LIFO) — sort by the
         # explicit ``SwapEntry.seq_no`` counter so order is independent
@@ -1012,25 +1255,46 @@ def cmd_revert(args: argparse.Namespace) -> int:
             dest = pathlib.Path(entry.config_path)
             if not backup.exists():
                 print(f"[{label}] backup missing: {backup}", file=sys.stderr)
-                continue
+                had_error = 1
+                break
             if args.dry_run:
                 print(f"[{label}] would restore {dest} from {backup}")
                 continue
-            atomic_write(dest, backup.read_bytes())
-            # Backup served its purpose; LIFO unwind for this layer is
-            # complete. Delete on success, keep on error — same idiom
-            # CPython's ``tempfile.NamedTemporaryFile`` uses
-            # (Lib/tempfile.py:614-618). If ``atomic_write`` had raised,
-            # this line wouldn't run and the backup would survive for
-            # post-mortem; on success the backup is redundant and would
-            # otherwise accumulate forever across swap/revert cycles.
-            backup.unlink()
-            print(f"[{label}] restored from {backup}")
-            reverted.append(key)
+            try:
+                atomic_write(dest, backup.read_bytes())
+            except OSError as exc:
+                print(f"[{label}] restore failed ({exc})", file=sys.stderr)
+                had_error = 1
+                break
 
-    if not args.dry_run and reverted:
-        clear_state(reverted)
-    return 0
+            # Checkpoint each completed layer before consuming its backup.
+            # A later LIFO restore may fail, so deferring state cleanup until
+            # the whole command finishes would leave a dead state entry that
+            # points at an already-deleted backup.
+            try:
+                clear_state([key])
+            except (OSError, RuntimeError, TypeError, ValueError) as exc:
+                print(
+                    f"[{label}] restored config but state checkpoint failed "
+                    f"({exc}); backup kept at {backup}",
+                    file=sys.stderr,
+                )
+                had_error = 1
+                break
+            state.pop(key)
+
+            try:
+                backup.unlink()
+            except OSError as exc:
+                print(
+                    f"[{label}] restored from {backup}; backup cleanup failed ({exc})",
+                    file=sys.stderr,
+                )
+                had_error = 1
+                continue
+            print(f"[{label}] restored from {backup}")
+
+    return had_error
 
 
 # ---------------------------------------------------------------------------
@@ -1088,6 +1352,8 @@ def _all_server_specs(
         if not isinstance(raw, dict):
             return
         for name, entry in raw.items():
+            if not isinstance(entry, dict):
+                continue
             out[str(name)] = _spec_from_entry(entry, fmt=CLIS[cli].fmt)
 
     if cli == "claude":
@@ -1122,16 +1388,19 @@ def _naming_hint(repo: pathlib.Path, server: str) -> str | None:
     nothing points here).
     """
     names: set[str] = set()
+    server_points = False
     for cli in _config_present_clis():
         try:
             config = load_config(CLIS[cli])
             pointing = _repo_pointing_names(cli, config, repo)
-        except (RuntimeError, ValueError, OSError):
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
             continue
         for name in pointing:
-            if name != server:
+            if name == server:
+                server_points = True
+            else:
                 names.add(name)
-    if not names:
+    if server_points or not names:
         return None
     pick = sorted(names)[0]
     return (
@@ -1163,14 +1432,16 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"  server: {server}  (derived default; override with --server)")
 
     print("  entries by CLI:")
+    had_error = 0
     all_repo_names: set[str] = set()
     for cli in _config_present_clis():
         try:
             config = load_config(CLIS[cli])
             specs = _all_server_specs(cli, config, repo)
             pointing = _repo_pointing_names(cli, config, repo)
-        except (RuntimeError, ValueError, OSError) as exc:
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
             print(f"    [{cli}] config unreadable: {exc}")
+            had_error = 1
             continue
         spec = specs.get(server)
         if spec is not None:
@@ -1189,7 +1460,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             f"{sorted(all_repo_names)}, not {server!r} — use --server {pick}"
         )
 
-    state = load_state()
+    try:
+        state = load_state()
+    except (OSError, RuntimeError, TypeError) as exc:
+        print(f"  ! recovery state unreadable: {exc}")
+        state = {}
+        had_error = 1
     if state:
         print("  outstanding swaps (un-reverted):")
         for (cli, scope), entry in sorted(state.items(), key=lambda kv: kv[1].seq_no):
@@ -1211,7 +1487,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         total = sum(b.stat().st_size for b in orphans if b.exists())
         print(
             f"  orphaned backups: {len(orphans)} file(s), {total} bytes not tracked "
-            "by state — safe to delete"
+            "by state — inspect before deleting: an untracked backup can be the "
+            "only surviving pre-swap copy of a config"
         )
 
     auth_hits = [
@@ -1224,7 +1501,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 f"    ! {var} overrides {cli}'s stored login — prefix with "
                 f"`env -u {var}` to use the subscription/OAuth auth instead"
             )
-    return 0
+    return had_error
 
 
 # ---------------------------------------------------------------------------
