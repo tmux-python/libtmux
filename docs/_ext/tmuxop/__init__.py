@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typing as t
 
-from tmuxop.domain import (
+from .domain import (
     TmuxOperationCatalogDirective,
     TmuxOperationDirective,
     TmuxOperationDomain,
