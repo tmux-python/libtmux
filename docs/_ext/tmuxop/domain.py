@@ -16,7 +16,8 @@ from sphinx.util.nodes import make_refnode
 
 from libtmux.experimental.ops import CatalogEntry, catalog, registry
 from libtmux.experimental.ops.exc import UnknownOperation
-from tmuxop.render import (
+
+from .render import (
     build_catalog_table,
     build_operation_description,
     operation_init_target,
@@ -27,7 +28,6 @@ if t.TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence, Set
 
     from sphinx.builders import Builder
-    from sphinx.domains.python import PythonDomain
     from sphinx.environment import BuildEnvironment
 
 _SCOPES = frozenset({"server", "session", "window", "pane", "client"})
@@ -116,7 +116,7 @@ class TmuxOperationDirective(SphinxDirective):
                 self.env.docname,
                 node_id,
             )
-            python_domain = t.cast("PythonDomain", self.env.domains["py"])
+            python_domain = self.env.domains["py"]
             python_domain.note_object(
                 operation_python_target(spec),
                 "class",
@@ -230,15 +230,19 @@ class TmuxOperationDomain(Domain):
 
     name = "tmuxop"
     label = "tmux operation"
-    object_types: t.ClassVar[dict[str, t.Any]] = {
+    object_types = {  # noqa: RUF012 — matches upstream sphinx.domains.Domain shape
         "operation": ObjType("operation", "op")
     }
-    directives: t.ClassVar[dict[str, t.Any]] = {
+    directives = {  # noqa: RUF012 — matches upstream sphinx.domains.Domain shape
         "operation": TmuxOperationDirective,
         "catalog": TmuxOperationCatalogDirective,
     }
-    roles: t.ClassVar[dict[str, t.Any]] = {"op": XRefRole(warn_dangling=True)}
-    initial_data: t.ClassVar[dict[str, object]] = {"operations": {}}
+    roles = {  # noqa: RUF012 — XRefRole instances are safe to share across domains
+        "op": XRefRole(warn_dangling=True)
+    }
+    initial_data = {  # noqa: RUF012 — matches upstream sphinx.domains.Domain shape
+        "operations": {}
+    }
 
     @property
     def operations(self) -> dict[str, tuple[str, str]]:
