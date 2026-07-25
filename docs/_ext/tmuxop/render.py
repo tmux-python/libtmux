@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import inspect
 import pathlib
+import re
 import typing as t
 
 from docutils import nodes
 from sphinx import addnodes
 from sphinx.errors import SphinxError
+from sphinx.ext.napoleon.docstring import NumpyDocstring
 from sphinx_ux_autodoc_layout import (
     ApiFactRow,
     build_api_facts_section,
@@ -19,9 +21,10 @@ from sphinx_ux_autodoc_layout import (
     iter_desc_nodes,
     parse_generated_markup,
 )
-from sphinx_ux_badges import BadgeSpec, build_badge_group_from_specs
+from sphinx_ux_badges import SAB, BadgeSpec, build_badge_from_spec
 
 from libtmux.experimental.ops import CatalogEntry
+from libtmux.experimental.ops.operation import Operation
 from libtmux.experimental.ops.registry import OpSpec
 
 if t.TYPE_CHECKING:
@@ -54,10 +57,70 @@ def _constructor_signature(operation_cls: type) -> inspect.Signature:
     )
 
 
+_PARAMETER_FIELD = re.compile(r"^:(param|type) ([^:]+):(.*)$")
+
+
+def _constructor_parameter_fields(
+    operation_cls: type[Operation[t.Any]],
+) -> dict[str, tuple[str, ...]]:
+    """Return Napoleon-rendered fields for every constructor parameter."""
+    fields: dict[str, dict[str, tuple[str, ...]]] = {}
+    for base in reversed(operation_cls.__mro__):
+        if not issubclass(base, Operation):
+            continue
+        docstring = inspect.getdoc(base)
+        if not docstring:
+            continue
+        lines = str(NumpyDocstring(docstring)).splitlines()
+        index = 0
+        while index < len(lines):
+            match = _PARAMETER_FIELD.match(lines[index])
+            if match is None:
+                index += 1
+                continue
+            kind, name, _ = match.groups()
+            block = [lines[index]]
+            index += 1
+            while index < len(lines) and (
+                not lines[index] or lines[index][0].isspace()
+            ):
+                block.append(lines[index])
+                index += 1
+            fields.setdefault(name, {})[kind] = tuple(block)
+
+    parameter_names = tuple(_constructor_signature(operation_cls).parameters)
+    missing = [
+        name
+        for name in parameter_names
+        if "param" not in fields.get(name, {}) or "type" not in fields.get(name, {})
+    ]
+    if missing:
+        joined = ", ".join(missing)
+        msg = (
+            f"{operation_cls.__name__} has undocumented constructor "
+            f"parameter(s): {joined}"
+        )
+        raise SphinxError(msg)
+
+    return {
+        name: fields[name]["param"] + fields[name]["type"] for name in parameter_names
+    }
+
+
+def _constructor_field_markup(operation_cls: type[Operation[t.Any]]) -> str:
+    """Return ordered parameter fields for the generated constructor."""
+    return "\n".join(
+        line
+        for block in _constructor_parameter_fields(operation_cls).values()
+        for line in block
+    )
+
+
 def _operation_api_markup(directive: SphinxDirective, spec: OpSpec) -> str:
     """Return parser-native Python API markup for an operation."""
     python_target = operation_python_target(spec)
     constructor = _constructor_signature(spec.operation_cls)
+    parameter_fields = _constructor_field_markup(spec.operation_cls)
     source, _ = directive.get_source_info()
     if pathlib.Path(source).suffix.lower() in {".md", ".markdown", ".myst"}:
         return (
@@ -66,15 +129,22 @@ def _operation_api_markup(directive: SphinxDirective, spec: OpSpec) -> str:
             "\n"
             f":::{{py:method}} __init__{constructor}\n"
             ":no-index:\n"
+            "\n"
+            f"{parameter_fields}\n"
             ":::\n"
             "::::\n"
         )
+    indented_fields = "\n".join(
+        f"      {line}" if line else "" for line in parameter_fields.splitlines()
+    )
     return (
         f".. py:class:: {python_target}\n"
         "   :no-index:\n"
         "\n"
         f"   .. py:method:: __init__{constructor}\n"
         "      :no-index:\n"
+        "\n"
+        f"{indented_fields}\n"
     )
 
 
@@ -103,33 +173,44 @@ def _effect_labels(entry: CatalogEntry) -> list[str]:
 
 def build_operation_badges(entry: CatalogEntry) -> nodes.inline:
     """Build text-complete safety, scope, and shape badges."""
-    return build_badge_group_from_specs(
-        [
-            BadgeSpec(
-                entry.safety,
-                tooltip=f"Safety: {entry.safety}",
-                classes=(f"tmuxop-badge--{entry.safety}",),
-                size="sm",
+    shape = "primitive" if entry.primitive else "composed"
+    shared_classes = (SAB.DENSE, SAB.NO_UNDERLINE)
+    specs = [
+        BadgeSpec(
+            entry.safety,
+            tooltip=f"Safety: {entry.safety}",
+            classes=(
+                *shared_classes,
+                "tmuxop-badge--safety",
+                f"tmuxop-badge--safety-{entry.safety}",
             ),
-            BadgeSpec(
-                entry.scope,
-                tooltip=f"Scope: {entry.scope}",
-                fill="outline",
-                size="sm",
+        ),
+        BadgeSpec(
+            entry.scope,
+            tooltip=f"Scope: {entry.scope}",
+            classes=(
+                *shared_classes,
+                "tmuxop-badge--scope",
+                f"tmuxop-badge--scope-{entry.scope}",
             ),
-            BadgeSpec(
-                "primitive" if entry.primitive else "composed",
-                tooltip=(
-                    "One tmux command"
-                    if entry.primitive
-                    else "Composed from multiple operations"
-                ),
-                fill="outline",
-                size="sm",
+        ),
+        BadgeSpec(
+            shape,
+            tooltip=(
+                "One tmux command"
+                if entry.primitive
+                else "Composed from multiple operations"
             ),
-        ],
-        classes=["tmuxop-badge-group"],
-    )
+            classes=(
+                *shared_classes,
+                "tmuxop-badge--shape",
+                f"tmuxop-badge--shape-{shape}",
+            ),
+        ),
+    ]
+    group = nodes.inline(classes=[SAB.BADGE_GROUP, "tmuxop-badge-group"])
+    group.extend(build_badge_from_spec(spec) for spec in specs)
+    return group
 
 
 def build_operation_description(
@@ -170,6 +251,8 @@ def build_operation_description(
         msg = f"Missing Python class signature for {operation_cls.__name__}"
         raise SphinxError(msg)
     signature_node["ids"] = [node_id]
+    signature_node["module"] = operation_cls.__module__
+    signature_node["fullname"] = operation_cls.__qualname__
     inject_signature_slots(
         signature_node,
         marker_attr="tmuxop_badges_injected",

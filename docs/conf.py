@@ -59,4 +59,5 @@ conf = merge_sphinx_config(
     # page; keep Sphinx from treating it as an orphan document.
     exclude_patterns=["_build", "AGENTS.md", "CLAUDE.md", "superpowers/**"],
 )
+conf["myst_enable_extensions"].append("fieldlist")
 globals().update(conf)

@@ -1,34 +1,41 @@
-# Set a tmux option (`set-option`); the write counterpart to show-options
+# Set a session option
 
-`SetOption` models `set-option` as a typed session operation and
-returns `AckResult`.
-
-```{tmuxop:operation} set_option
-```
+{class}`~libtmux.experimental.ops.SetOption` changes one tmux option at the
+session, server, window, or pane scope.
 
 ## Example
 
-This example executes the typed operation against the deterministic mock engine:
+This executable example uses an isolated live tmux server. `server` and
+`session` are injected documentation context; the standalone setup tutorial
+shows the equivalent public setup and cleanup.
 
 ```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import SetOption, run
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import SetOption, ShowOptions, run
 >>> from libtmux.experimental.ops._types import SessionId
->>> operation = SetOption(target=SessionId("$1"), option="status", value="on")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
+>>> assert session.session_id is not None
+>>> target = SessionId(session.session_id)
+>>> engine = SubprocessEngine.for_server(server)
+>>> changed = run(
+...     SetOption(target=target, option="@docs_mode", value="live"),
+...     engine,
+... ).raise_for_status()
+>>> observed = run(ShowOptions(target=target), engine).raise_for_status()
+>>> type(changed).__name__, observed.options["@docs_mode"]
+('AckResult', 'live')
+```
+
+## Operation reference
+
+```{tmuxop:operation} set_option
 ```
 
 ## Failure and effects
 
 This operation changes tmux state.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+An acknowledgement confirms dispatch. The separate {tmuxop:op}`show_options`
+operation proves the stored value.
 
 ## Related operations
 
