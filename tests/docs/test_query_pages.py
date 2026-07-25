@@ -62,11 +62,7 @@ def test_legacy_query_topic_urls_redirect_to_new_guides() -> None:
     """Existing traversal and filtering URLs remain valid after the split."""
     redirects = (_ROOT / "docs" / "redirects.txt").read_text(encoding="utf-8")
 
-    assert (
-        '"topics/traversal.md" "topics/querying/hierarchy.md"' in redirects
-    )
-    assert (
-        '"topics/filtering.md" "topics/querying/query-list.md"' in redirects
-    )
+    assert '"topics/traversal.md" "topics/querying/hierarchy.md"' in redirects
+    assert '"topics/filtering.md" "topics/querying/query-list.md"' in redirects
     assert not (_ROOT / "docs" / "topics" / "traversal.md").exists()
     assert not (_ROOT / "docs" / "topics" / "filtering.md").exists()
