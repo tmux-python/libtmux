@@ -10,29 +10,29 @@ This executable example uses the injected live `server` and `session`.
 
 ```python
 >>> from libtmux.experimental.engines import SubprocessEngine
->>> from libtmux.experimental.ops import HasSession, ListClients, SuspendClient, run
+>>> from libtmux.experimental.ops import HasSession, SuspendClient, run
 >>> from libtmux.experimental.ops._types import ClientName, SessionId
 >>> assert session.session_id is not None
 >>> engine = SubprocessEngine.for_server(server)
 >>> session_target = SessionId(session.session_id)
 >>> with control_mode() as attached:
-...     client_name = attached.client_name
-...     before = run(ListClients(), engine).raise_for_status()
-...     client = next(item for item in before.clients if item.name == client_name)
 ...     result = run(
-...         SuspendClient(target=ClientName(client.name)),
+...         SuspendClient(target=ClientName(attached.client_name)),
 ...         engine,
 ...     ).raise_for_status()
-...     after = run(ListClients(), engine).raise_for_status()
-...     session_alive = run(HasSession(target=session_target), engine)
+...     session_alive = run(
+...         HasSession(target=session_target),
+...         engine,
+...     ).raise_for_status()
 >>> (
-...     type(client).__name__,
 ...     type(result).__name__,
-...     client_name not in {item.name for item in after.clients},
-...     type(session_alive).__name__,
+...     result.status,
+...     result.returncode,
+...     result.stdout,
+...     result.stderr,
 ...     session_alive.exists,
 ... )
-('ClientSnapshot', 'AckResult', True, 'HasSessionResult', True)
+('AckResult', 'complete', 0, (), (), True)
 ```
 
 ## Operation reference
@@ -42,9 +42,10 @@ This executable example uses the injected live `server` and `session`.
 
 ## Failure and effects
 
-Suspension removes the client from the active client listing but leaves its
-session alive. Resuming terminal job control belongs to the client process, not
-the operation result.
+Suspension leaves the tmux session alive. Depending on the tmux release,
+`list-clients` may retain or filter the suspended client, so list membership is
+not a portable suspension signal. Resuming terminal job control belongs to the
+client process, not the operation result.
 
 ## Related operations
 
