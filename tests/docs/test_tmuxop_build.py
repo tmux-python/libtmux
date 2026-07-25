@@ -34,9 +34,18 @@ def _write_project(
 
             sys.path.insert(0, {_EXTENSION_PATH.as_posix()!r})
 
-            extensions = ["sphinx.ext.linkcode", "tmuxop"]
+            extensions = [
+                "myst_parser",
+                "sphinx.ext.linkcode",
+                "sphinx_autodoc_api_style",
+                "tmuxop",
+            ]
             project = "tmuxop-test"
             html_theme = "basic"
+            api_layout_enabled = True
+            autodoc_class_signature = "separated"
+            autodoc_typehints = "description"
+            myst_enable_extensions = {{"colon_fence"}}
 
             def linkcode_resolve(domain, info):
                 if domain != "py":
@@ -111,15 +120,41 @@ def test_operation_card_and_catalog_render_semantic_html(
     assert warnings == ""
     operation_html = (tmp_path / "html" / "send_keys.html").read_text(encoding="utf-8")
     catalog_html = (tmp_path / "html" / "index.html").read_text(encoding="utf-8")
-    assert "gp-sphinx-api-card-shell" in operation_html
-    assert "gp-sphinx-api-card-entry" in operation_html
-    assert "SendKeys" in operation_html
+    assert '<dl class="py class ' in operation_html
+    assert "gp-sphinx-api-container gp-sphinx-api-profile--py-class" in operation_html
+    assert 'data-domain="py"' in operation_html
+    assert 'data-objtype="class"' in operation_html
+    assert "gp-sphinx-badge--type-class" in operation_html
+    assert (
+        '<span class="sig-prename descclassname">'
+        '<span class="pre">libtmux.experimental.ops.</span></span>'
+        '<span class="sig-name descname"><span class="pre">SendKeys</span>'
+        in operation_html
+    )
+    assert (
+        "py method gp-sphinx-api-container gp-sphinx-api-profile--py-method"
+        in operation_html
+    )
+    assert (
+        '<span class="sig-name descname">'
+        '<span class="pre">__init__</span></span>' in operation_html
+    )
+    assert 'class="sig-param"' in operation_html
+    assert '<span class="pre">keys</span>' in operation_html
+    assert "gp-sphinx-api-card-shell" not in operation_html
+    assert (
+        'href="#tmuxop-operation-send-keys" '
+        'title="libtmux.experimental.ops.SendKeys"' in operation_html
+    )
     assert "send-keys" in operation_html
     assert "mutating" in operation_html
     assert "primitive" in operation_html
     assert "AckResult" in operation_html
-    assert "Link to this operation" in operation_html
-    assert "https://example.invalid/source/SendKeys" in operation_html
+    assert "Link to this definition" in operation_html
+    assert (
+        "https://example.invalid/source/libtmux.experimental.ops.SendKeys"
+        in operation_html
+    )
     assert 'href="send_keys.html#tmuxop-operation-send-keys"' in catalog_html
 
 
@@ -139,6 +174,32 @@ def test_catalog_can_own_operation_page_navigation(tmp_path: pathlib.Path) -> No
     assert set(app.env.toctree_includes["index"]) == {
         entry.kind for entry in catalog() if entry.scope == "pane"
     }
+
+
+def test_myst_operation_uses_native_python_api_nodes(tmp_path: pathlib.Path) -> None:
+    """A MyST operation page reparses generated Python directives."""
+    source_dir = _write_project(
+        tmp_path,
+        {
+            "index.md": """
+                # Delete a paste buffer
+
+                ```{tmuxop:operation} delete_buffer
+                ```
+            """
+        },
+    )
+
+    app, _, warnings = _build(source_dir)
+
+    assert app.statuscode == 0
+    assert warnings == ""
+    operation_html = (tmp_path / "html" / "index.html").read_text(encoding="utf-8")
+    assert "gp-sphinx-api-profile--py-class" in operation_html
+    assert "gp-sphinx-api-profile--py-method" in operation_html
+    assert "libtmux.experimental.ops." in operation_html
+    assert "DeleteBuffer" in operation_html
+    assert "__init__" in operation_html
 
 
 def test_parallel_build_exports_operation_inventory(tmp_path: pathlib.Path) -> None:
@@ -171,6 +232,8 @@ def test_parallel_build_exports_operation_inventory(tmp_path: pathlib.Path) -> N
             posixpath_join,
         )
     assert "send_keys" in inventory["tmuxop:operation"]
+    assert "libtmux.experimental.ops.SendKeys" in inventory["py:class"]
+    assert "libtmux.experimental.ops.SendKeys.__init__" in inventory["py:method"]
 
 
 def posixpath_join(uri: str, location: str) -> str:

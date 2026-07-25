@@ -16,12 +16,18 @@ from sphinx.util.nodes import make_refnode
 
 from libtmux.experimental.ops import CatalogEntry, catalog, registry
 from libtmux.experimental.ops.exc import UnknownOperation
-from tmuxop.render import build_catalog_table, build_operation_card
+from tmuxop.render import (
+    build_catalog_table,
+    build_operation_description,
+    operation_init_target,
+    operation_python_target,
+)
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence, Set
 
     from sphinx.builders import Builder
+    from sphinx.domains.python import PythonDomain
     from sphinx.environment import BuildEnvironment
 
 _SCOPES = frozenset({"server", "session", "window", "pane", "client"})
@@ -77,15 +83,6 @@ class TmuxOperationDirective(SphinxDirective):
 
         entry = next(item for item in catalog() if item.kind == kind)
         node_id = operation_anchor(kind)
-        target = nodes.target("", "", ids=[node_id])
-        if "no-index" not in self.options:
-            domain = self.env.domains["tmuxop"]
-            t.cast("TmuxOperationDomain", domain).note_operation(
-                kind,
-                self.env.docname,
-                node_id,
-            )
-
         summary_nodes, messages = self.state.inline_text(entry.summary, self.lineno)
         for pending in nodes.container("", *summary_nodes).findall(
             addnodes.pending_xref
@@ -96,26 +93,54 @@ class TmuxOperationDirective(SphinxDirective):
         if self.content:
             self.state.nested_parse(self.content, self.content_offset, body)
 
-        resolver = getattr(self.env.config, "linkcode_resolve", None)
-        source_url = None
-        if callable(resolver):
-            source_url = resolver(
-                "py",
-                {
-                    "module": spec.operation_cls.__module__,
-                    "fullname": spec.operation_cls.__qualname__,
-                },
-            )
-
-        card = build_operation_card(
+        description = build_operation_description(
+            self,
             spec,
             entry,
             node_id=node_id,
             summary_nodes=summary_nodes,
-            source_url=source_url,
             body_nodes=body.children,
         )
-        return [target, card, *messages]
+        if "no-index" not in self.options:
+            domain = self.env.domains["tmuxop"]
+            t.cast("TmuxOperationDomain", domain).note_operation(
+                kind,
+                self.env.docname,
+                node_id,
+            )
+            python_domain = t.cast("PythonDomain", self.env.domains["py"])
+            python_domain.note_object(
+                operation_python_target(spec),
+                "class",
+                node_id,
+                location=description,
+            )
+            implementation_target = (
+                f"{spec.operation_cls.__module__}.{spec.operation_cls.__qualname__}"
+            )
+            python_domain.note_object(
+                implementation_target,
+                "class",
+                node_id,
+                aliased=True,
+                location=description,
+            )
+            init_node_id = f"{node_id}-init"
+            python_domain.note_object(
+                operation_init_target(spec),
+                "method",
+                init_node_id,
+                location=description,
+            )
+            python_domain.note_object(
+                f"{implementation_target}.__init__",
+                "method",
+                init_node_id,
+                aliased=True,
+                location=description,
+            )
+
+        return [description, *messages]
 
 
 class TmuxOperationCatalogDirective(SphinxDirective):
