@@ -385,11 +385,12 @@ async def _read_done(engine: _StreamEngine, pane_id: str) -> DoneMetadata:
 async def _ensure_attached(engine: _StreamEngine, session_id: str) -> None:
     """Attach the control client to *session_id* so its panes emit ``%output``.
 
-    A bare ``tmux -C`` control client receives **no** ``%output`` until it
-    attaches to a session (a server-global notification like ``%window-add``
-    arrives without attaching, but per-pane output does not). Attaching also
-    triggers a one-time screen redraw, so a *successful* attachment is tracked
-    per engine: re-watching the same session does not re-attach or redraw again.
+    A control client receives ``%output`` only for its attached session (a
+    server-global notification like ``%window-add`` is not session-scoped).
+    Switching sessions also triggers a one-time screen redraw, so a *successful*
+    attachment is tracked per engine: re-watching the same session does not
+    re-attach or redraw again. ``-E`` prevents the transport switch from applying
+    the client's environment to the target session.
 
     Raises on a failed attach (stale or killed session) instead of caching, so
     the caller gets a clear error rather than a silently empty capture and a
@@ -398,7 +399,7 @@ async def _ensure_attached(engine: _StreamEngine, session_id: str) -> None:
     if getattr(engine, "_attached_session", None) == session_id:
         return
     result = await engine.run(
-        CommandRequest.from_args("attach-session", "-t", session_id),
+        CommandRequest.from_args("attach-session", "-E", "-t", session_id),
     )
     if result.returncode != 0:
         detail = " ".join(result.stderr) or "attach-session failed"
