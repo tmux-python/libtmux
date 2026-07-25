@@ -134,9 +134,7 @@ class TmuxOperationCatalogDirective(SphinxDirective):
         entries: Sequence[CatalogEntry],
     ) -> nodes.compound:
         """Build a native hidden toctree for the filtered operation pages."""
-        docnames = [
-            docname_join(self.env.docname, entry.kind) for entry in entries
-        ]
+        docnames = [docname_join(self.env.docname, entry.kind) for entry in entries]
         missing = sorted(set(docnames) - self.env.found_docs)
         if missing:
             msg = "tmuxop catalog toctree pages do not exist: " + ", ".join(missing)
