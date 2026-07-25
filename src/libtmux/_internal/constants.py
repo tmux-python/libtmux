@@ -300,6 +300,203 @@ class Hooks(
 
     Parses tmux hook output into typed :class:`SparseArray` fields, preserving
     array indices for hooks that can have multiple commands at different indices.
+    A field holds an empty :class:`SparseArray` when tmux reports no commands
+    for that hook.
+
+    Attributes
+    ----------
+    alert_activity : SparseArray[str]
+        Run when a window has activity. See monitor-activity.
+    alert_bell : SparseArray[str]
+        Run when a window has received a bell. See monitor-bell.
+    alert_silence : SparseArray[str]
+        Run when a window has been silent. See monitor-silence.
+    client_active : SparseArray[str]
+        Run when a client becomes the latest active client of its session.
+    client_attached : SparseArray[str]
+        Run when a client is attached.
+    client_detached : SparseArray[str]
+        Run when a client is detached.
+    client_focus_in : SparseArray[str]
+        Run when focus enters a client.
+    client_focus_out : SparseArray[str]
+        Run when focus exits a client.
+    client_resized : SparseArray[str]
+        Run when a client is resized.
+    client_session_changed : SparseArray[str]
+        Run when a client's attached session is changed.
+    pane_died : SparseArray[str]
+        Run when the program running in a pane exits, but remain-on-exit is on so the
+        pane has not closed.
+    pane_exited : SparseArray[str]
+        Run when the program running in a pane exits.
+    pane_focus_in : SparseArray[str]
+        Run when the focus enters a pane, if the focus-events option is on.
+    pane_focus_out : SparseArray[str]
+        Run when the focus exits a pane, if the focus-events option is on.
+    pane_set_clipboard : SparseArray[str]
+        Run when the terminal clipboard is set using the xterm(1) escape sequence.
+    session_created : SparseArray[str]
+        Run when a new session created.
+    session_closed : SparseArray[str]
+        Run when a session closed.
+    session_renamed : SparseArray[str]
+        Run when a session is renamed.
+    window_linked : SparseArray[str]
+        Run when a window is linked into a session.
+    window_renamed : SparseArray[str]
+        Run when a window is renamed.
+    window_resized : SparseArray[str]
+        Run when a window is resized. This may be after the client-resized hook is run.
+    window_unlinked : SparseArray[str]
+        Run when a window is unlinked from a session.
+    pane_title_changed : SparseArray[str]
+        Run when a pane title changes (tmux 3.5+).
+    client_light_theme : SparseArray[str]
+        Run when terminal reports a light theme (tmux 3.5+).
+    client_dark_theme : SparseArray[str]
+        Run when terminal reports a dark theme (tmux 3.5+).
+    client_detached_control : SparseArray[str]
+        The client has detached.
+    client_session_changed_control : SparseArray[str]
+        The client is now attached to the session with ID session-id, which is named
+        name.
+    config_error : SparseArray[str]
+        An error has happened in a configuration file.
+    continue_control : SparseArray[str]
+        The pane has been continued after being paused (if the pause-after flag is set,
+        see refresh-client -A).
+    exit_control : SparseArray[str]
+        The tmux client is exiting immediately, either because it is not attached to any
+        session or an error occurred.
+    extended_output : SparseArray[str]
+        New form of %output sent when the pause-after flag is set.
+    layout_change : SparseArray[str]
+        The layout of a window with ID window-id changed.
+    message_control : SparseArray[str]
+        A message sent with the display-message command.
+    output : SparseArray[str]
+        A window pane produced output.
+    pane_mode_changed : SparseArray[str]
+        The pane with ID pane-id has changed mode.
+    paste_buffer_changed : SparseArray[str]
+        Paste buffer name has been changed.
+    paste_buffer_deleted : SparseArray[str]
+        Paste buffer name has been deleted.
+    pause_control : SparseArray[str]
+        The pane has been paused (if the pause-after flag is set).
+    session_changed_control : SparseArray[str]
+        The client is now attached to the session with ID session-id, which is named
+        name.
+    session_renamed_control : SparseArray[str]
+        The current session was renamed to name.
+    session_window_changed : SparseArray[str]
+        The session with ID session-id changed its active window to the window with ID
+        window-id.
+    sessions_changed : SparseArray[str]
+        A session was created or destroyed.
+    subscription_changed : SparseArray[str]
+        The value of the format associated with subscription name has changed to value.
+    unlinked_window_add : SparseArray[str]
+        The window with ID window-id was created but is not linked to the current
+        session.
+    unlinked_window_close : SparseArray[str]
+        The window with ID window-id, which is not linked to the current session, was
+        closed.
+    unlinked_window_renamed : SparseArray[str]
+        The window with ID window-id, which is not linked to the current session, was
+        renamed.
+    window_add : SparseArray[str]
+        The window with ID window-id was linked to the current session.
+    window_close : SparseArray[str]
+        The window with ID window-id closed.
+    window_layout_changed : SparseArray[str]
+        The layout of a window with ID window-id changed. The new layout is
+        window-layout. The window's visible layout is window-visible-layout and the
+        window flags are window-flags.
+    window_pane_changed : SparseArray[str]
+        The active pane in the window with ID window-id changed to the pane with ID
+        pane-id.
+    window_renamed_control : SparseArray[str]
+        The window with ID window-id was renamed to name.
+    after_bind_key : SparseArray[str]
+        Runs after 'bind-key' completes.
+    after_capture_pane : SparseArray[str]
+        Runs after 'capture-pane' completes.
+    after_copy_mode : SparseArray[str]
+        Runs after 'copy-mode' completes.
+    after_display_message : SparseArray[str]
+        Runs after 'display-message' completes.
+    after_display_panes : SparseArray[str]
+        Runs after 'display-panes' completes.
+    after_kill_pane : SparseArray[str]
+        Runs after 'kill-pane' completes.
+    after_list_buffers : SparseArray[str]
+        Runs after 'list-buffers' completes.
+    after_list_clients : SparseArray[str]
+        Runs after 'list-clients' completes.
+    after_list_keys : SparseArray[str]
+        Runs after 'list-keys' completes.
+    after_list_panes : SparseArray[str]
+        Runs after 'list-panes' completes.
+    after_list_sessions : SparseArray[str]
+        Runs after 'list-sessions' completes.
+    after_list_windows : SparseArray[str]
+        Runs after 'list-windows' completes.
+    after_load_buffer : SparseArray[str]
+        Runs after 'load-buffer' completes.
+    after_lock_server : SparseArray[str]
+        Runs after 'lock-server' completes.
+    after_new_session : SparseArray[str]
+        Runs after 'new-session' completes.
+    after_new_window : SparseArray[str]
+        Runs after 'new-window' completes.
+    after_paste_buffer : SparseArray[str]
+        Runs after 'paste-buffer' completes.
+    after_pipe_pane : SparseArray[str]
+        Runs after 'pipe-pane' completes.
+    after_queue : SparseArray[str]
+        Runs after 'queue' command is processed.
+    after_refresh_client : SparseArray[str]
+        Runs after 'refresh-client' completes.
+    after_rename_session : SparseArray[str]
+        Runs after 'rename-session' completes.
+    after_rename_window : SparseArray[str]
+        Runs after 'rename-window' completes.
+    after_resize_pane : SparseArray[str]
+        Runs after 'resize-pane' completes.
+    after_resize_window : SparseArray[str]
+        Runs after 'resize-window' completes.
+    after_save_buffer : SparseArray[str]
+        Runs after 'save-buffer' completes.
+    after_select_layout : SparseArray[str]
+        Runs after 'select-layout' completes.
+    after_select_pane : SparseArray[str]
+        Runs after 'select-pane' completes.
+    after_select_window : SparseArray[str]
+        Runs after 'select-window' completes.
+    after_send_keys : SparseArray[str]
+        Runs after 'send-keys' completes.
+    after_set_buffer : SparseArray[str]
+        Runs after 'set-buffer' completes.
+    after_set_environment : SparseArray[str]
+        Runs after 'set-environment' completes.
+    after_set_hook : SparseArray[str]
+        Runs after 'set-hook' completes.
+    after_set_option : SparseArray[str]
+        Runs after 'set-option' completes.
+    after_show_environment : SparseArray[str]
+        Runs after 'show-environment' completes.
+    after_show_messages : SparseArray[str]
+        Runs after 'show-messages' completes.
+    after_show_options : SparseArray[str]
+        Runs after 'show-options' completes.
+    after_split_window : SparseArray[str]
+        Runs after 'split-window' completes.
+    after_unbind_key : SparseArray[str]
+        Runs after 'unbind-key' completes.
+    command_error : SparseArray[str]
+        Runs when a command fails (tmux 3.5+).
 
     Examples
     --------
