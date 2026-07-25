@@ -54,6 +54,7 @@ conf = merge_sphinx_config(
     html_css_files=["css/custom.css"],
     html_extra_path=["manifest.json"],
     rediraffe_redirects="redirects.txt",
+    api_layout_enabled=True,
     # AGENTS.md (+ its CLAUDE.md symlink) is agent guidance, not a site
     # page; keep Sphinx from treating it as an orphan document.
     exclude_patterns=["_build", "AGENTS.md", "CLAUDE.md"],

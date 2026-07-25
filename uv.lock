@@ -1179,6 +1179,8 @@ dev = [
     { name = "sphinx-autobuild", version = "2025.8.25", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-autodoc-api-style" },
     { name = "sphinx-autodoc-pytest-fixtures" },
+    { name = "sphinx-ux-autodoc-layout" },
+    { name = "sphinx-ux-badges" },
     { name = "tomlkit" },
     { name = "ty" },
     { name = "types-docutils" },
@@ -1190,6 +1192,8 @@ docs = [
     { name = "sphinx-autobuild", version = "2025.8.25", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sphinx-autodoc-api-style" },
     { name = "sphinx-autodoc-pytest-fixtures" },
+    { name = "sphinx-ux-autodoc-layout" },
+    { name = "sphinx-ux-badges" },
 ]
 lint = [
     { name = "mypy" },
@@ -1234,6 +1238,8 @@ dev = [
     { name = "sphinx-autobuild" },
     { name = "sphinx-autodoc-api-style", specifier = "==0.0.1a36" },
     { name = "sphinx-autodoc-pytest-fixtures", specifier = "==0.0.1a36" },
+    { name = "sphinx-ux-autodoc-layout", specifier = "==0.0.1a36" },
+    { name = "sphinx-ux-badges", specifier = "==0.0.1a36" },
     { name = "tomlkit" },
     { name = "ty" },
     { name = "types-docutils" },
@@ -1244,6 +1250,8 @@ docs = [
     { name = "sphinx-autobuild" },
     { name = "sphinx-autodoc-api-style", specifier = "==0.0.1a36" },
     { name = "sphinx-autodoc-pytest-fixtures", specifier = "==0.0.1a36" },
+    { name = "sphinx-ux-autodoc-layout", specifier = "==0.0.1a36" },
+    { name = "sphinx-ux-badges", specifier = "==0.0.1a36" },
 ]
 lint = [
     { name = "mypy" },
