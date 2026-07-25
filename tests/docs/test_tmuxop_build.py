@@ -111,6 +111,7 @@ def test_operation_card_and_catalog_render_semantic_html(
     assert warnings == ""
     operation_html = (tmp_path / "html" / "send_keys.html").read_text(encoding="utf-8")
     catalog_html = (tmp_path / "html" / "index.html").read_text(encoding="utf-8")
+    assert "gp-sphinx-api-card-shell" in operation_html
     assert "gp-sphinx-api-card-entry" in operation_html
     assert "SendKeys" in operation_html
     assert "send-keys" in operation_html
