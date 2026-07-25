@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import inspect
+import pathlib
 import typing as t
 
 from docutils import nodes
 from sphinx import addnodes
+from sphinx.errors import SphinxError
 from sphinx_ux_autodoc_layout import (
-    API,
     ApiFactRow,
-    api_permalink,
-    build_api_card_entry,
     build_api_facts_section,
     build_api_summary_section,
     build_chip_paragraph,
     build_linked_literal,
+    inject_signature_slots,
+    iter_desc_nodes,
+    parse_generated_markup,
 )
 from sphinx_ux_badges import BadgeSpec, build_badge_group_from_specs
 
@@ -24,6 +26,56 @@ from libtmux.experimental.ops.registry import OpSpec
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from sphinx.util.docutils import SphinxDirective
+
+
+def operation_python_target(spec: OpSpec) -> str:
+    """Return the public Python API target for an operation class."""
+    return f"libtmux.experimental.ops.{spec.operation_cls.__name__}"
+
+
+def operation_init_target(spec: OpSpec) -> str:
+    """Return the public Python API target for an operation constructor."""
+    return f"{operation_python_target(spec)}.__init__"
+
+
+def _constructor_signature(operation_cls: type) -> inspect.Signature:
+    """Return a gp-sphinx-style constructor signature."""
+    signature = inspect.signature(operation_cls.__init__)
+    parameters = [
+        parameter.replace(annotation=inspect.Parameter.empty)
+        for parameter in signature.parameters.values()
+        if parameter.name != "self"
+    ]
+    return signature.replace(
+        parameters=parameters,
+        return_annotation=inspect.Signature.empty,
+    )
+
+
+def _operation_api_markup(directive: SphinxDirective, spec: OpSpec) -> str:
+    """Return parser-native Python API markup for an operation."""
+    python_target = operation_python_target(spec)
+    constructor = _constructor_signature(spec.operation_cls)
+    source, _ = directive.get_source_info()
+    if pathlib.Path(source).suffix.lower() in {".md", ".markdown", ".myst"}:
+        return (
+            f"::::{{py:class}} {python_target}\n"
+            ":no-index:\n"
+            "\n"
+            f":::{{py:method}} __init__{constructor}\n"
+            ":no-index:\n"
+            ":::\n"
+            "::::\n"
+        )
+    return (
+        f".. py:class:: {python_target}\n"
+        "   :no-index:\n"
+        "\n"
+        f"   .. py:method:: __init__{constructor}\n"
+        "      :no-index:\n"
+    )
 
 
 def _literal_fact(value: str) -> nodes.paragraph:
@@ -80,24 +132,49 @@ def build_operation_badges(entry: CatalogEntry) -> nodes.inline:
     )
 
 
-def build_operation_card(
+def build_operation_description(
+    directive: SphinxDirective,
     spec: OpSpec,
     entry: CatalogEntry,
     *,
     node_id: str,
     summary_nodes: Sequence[nodes.Node],
-    source_url: str | None,
     body_nodes: Sequence[nodes.Node] = (),
-) -> nodes.Element:
+) -> addnodes.desc:
     """Render one operation from canonical registry metadata."""
     operation_cls = spec.operation_cls
-    signature = inspect.signature(operation_cls).replace(
-        return_annotation=inspect.Signature.empty
+    rendered = parse_generated_markup(directive, _operation_api_markup(directive, spec))
+    descriptions = [
+        desc
+        for desc in iter_desc_nodes(rendered)
+        if desc.get("domain") == "py" and desc.get("objtype") == "class"
+    ]
+    if len(descriptions) != 1:
+        msg = (
+            f"Expected one Python class description for {operation_cls.__name__}, "
+            f"found {len(descriptions)}"
+        )
+        raise SphinxError(msg)
+    description = descriptions[0]
+    description["classes"].append("tmuxop-operation-card")
+
+    signature_node = next(
+        (
+            child
+            for child in description.children
+            if isinstance(child, addnodes.desc_signature)
+        ),
+        None,
     )
-    signature_node = nodes.literal(
-        "",
-        f"{operation_cls.__name__}{signature}",
-        classes=["sig", "sig-object"],
+    if signature_node is None:
+        msg = f"Missing Python class signature for {operation_cls.__name__}"
+        raise SphinxError(msg)
+    signature_node["ids"] = [node_id]
+    inject_signature_slots(
+        signature_node,
+        marker_attr="tmuxop_badges_injected",
+        badge_node=build_operation_badges(entry),
+        extract_source_link=False,
     )
 
     result_target = (
@@ -111,7 +188,7 @@ def build_operation_card(
             build_chip_paragraph(
                 [
                     build_linked_literal(
-                        f"{operation_cls.__module__}.{operation_cls.__qualname__}",
+                        operation_python_target(spec),
                         operation_cls.__name__,
                     )
                 ]
@@ -140,38 +217,44 @@ def build_operation_card(
         ),
         ApiFactRow("Effects", build_chip_paragraph(_effect_labels(entry))),
     ]
-    if source_url is not None:
-        source = nodes.paragraph()
-        source += nodes.reference(
-            "",
-            "View source",
-            refuri=source_url,
-            internal=False,
-        )
-        facts.append(ApiFactRow("Source", source))
 
     summary = build_api_summary_section(
         nodes.paragraph("", "", *[node.deepcopy() for node in summary_nodes])
     )
-    content: list[nodes.Node] = [summary, build_api_facts_section(facts)]
-    content.extend(node.deepcopy() for node in body_nodes)
-
-    entry = build_api_card_entry(
-        profile_class="gp-sphinx-api-profile--tmux-operation",
-        signature_children=(signature_node,),
-        content_children=content,
-        badge_group=build_operation_badges(entry),
-        permalink=api_permalink(
-            href=f"#{node_id}",
-            title="Link to this operation",
+    content_node = next(
+        (
+            child
+            for child in description.children
+            if isinstance(child, addnodes.desc_content)
         ),
-        entry_classes=("tmuxop-operation-card",),
+        None,
     )
-    shell = nodes.container(
-        classes=[API.CARD_SHELL, "tmuxop-operation-shell"],
+    if content_node is None:
+        msg = f"Missing Python class content for {operation_cls.__name__}"
+        raise SphinxError(msg)
+    member_descriptions = [
+        child.deepcopy()
+        for child in content_node.children
+        if isinstance(child, addnodes.desc)
+    ]
+    if not member_descriptions:
+        msg = f"Missing __init__ API description for {operation_cls.__name__}"
+        raise SphinxError(msg)
+    member_signature = next(
+        member_descriptions[0].findall(addnodes.desc_signature),
+        None,
     )
-    shell += entry
-    return shell
+    if member_signature is None:
+        msg = f"Missing __init__ signature for {operation_cls.__name__}"
+        raise SphinxError(msg)
+    member_signature["ids"] = [f"{node_id}-init"]
+
+    content_node.children.clear()
+    content_node += summary
+    content_node += build_api_facts_section(facts)
+    content_node.extend(node.deepcopy() for node in body_nodes)
+    content_node.extend(member_descriptions)
+    return description
 
 
 def operation_xref(kind: str) -> addnodes.pending_xref:
