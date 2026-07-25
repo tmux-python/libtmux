@@ -250,6 +250,26 @@ type
 """
 ```
 
+**Classes with fields** — `NamedTuple`, dataclasses — document every field in
+an `Attributes` section:
+
+```python
+@dataclasses.dataclass()
+class Pane(Obj, OptionsMixin, HooksMixin):
+    """:term:`tmux(1)` :term:`Pane`.
+
+    Attributes
+    ----------
+    server : Server
+        Server the pane belongs to.
+    """
+```
+
+Autodoc renders every field whether or not you describe it, so an
+undocumented `NamedTuple` field ships to the API docs as "Alias for field
+number 0" and a dataclass field ships bare. Document all of them — a class
+with three fields and two documented still ships a stub for the third.
+
 ### Doctests
 
 **All functions and methods MUST have working doctests.** Doctests serve as both documentation and tests.
