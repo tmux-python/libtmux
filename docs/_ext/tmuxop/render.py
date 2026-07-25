@@ -8,6 +8,7 @@ import typing as t
 from docutils import nodes
 from sphinx import addnodes
 from sphinx_ux_autodoc_layout import (
+    API,
     ApiFactRow,
     api_permalink,
     build_api_card_entry,
@@ -155,7 +156,7 @@ def build_operation_card(
     content: list[nodes.Node] = [summary, build_api_facts_section(facts)]
     content.extend(node.deepcopy() for node in body_nodes)
 
-    return build_api_card_entry(
+    entry = build_api_card_entry(
         profile_class="gp-sphinx-api-profile--tmux-operation",
         signature_children=(signature_node,),
         content_children=content,
@@ -166,6 +167,11 @@ def build_operation_card(
         ),
         entry_classes=("tmuxop-operation-card",),
     )
+    shell = nodes.container(
+        classes=[API.CARD_SHELL, "tmuxop-operation-shell"],
+    )
+    shell += entry
+    return shell
 
 
 def operation_xref(kind: str) -> addnodes.pending_xref:
