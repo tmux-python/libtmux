@@ -54,6 +54,8 @@ dev = [
   "gp-sphinx==0.1.0a39",
   "sphinx-autodoc-api-style==0.1.0a39",
   "sphinx-autodoc-pytest-fixtures==0.1.0a39",
+  "sphinx-ux-autodoc-layout==0.1.0a39",
+  "sphinx-ux-badges==0.1.0a39",
   "sphinx-autobuild",
   "types-docutils",
   # Testing
@@ -83,6 +85,8 @@ docs = [
   "gp-sphinx==0.1.0a39",
   "sphinx-autodoc-api-style==0.1.0a39",
   "sphinx-autodoc-pytest-fixtures==0.1.0a39",
+  "sphinx-ux-autodoc-layout==0.1.0a39",
+  "sphinx-ux-badges==0.1.0a39",
   "sphinx-autobuild",
 ]
 testing = [
