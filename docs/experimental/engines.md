@@ -8,15 +8,19 @@ boundary around execution.
 
 ## Choose an engine
 
-| Engine                                                                                                                        | Dispatch model                                   | Use it for                                                  |
-| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------- |
-| {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` ([reference](engines/subprocess.md))                       | One tmux CLI process per request                 | Straightforward synchronous live-server work                |
-| {class}`~libtmux.experimental.engines.asyncio.AsyncSubprocessEngine` ([reference](engines/async-subprocess.md))               | One asyncio subprocess per request               | Async applications that do not need a persistent connection |
-| {class}`~libtmux.experimental.engines.mock.MockEngine` ([reference](engines/mock.md))                                         | Stateless in-memory simulation                   | Offline rendering and result-conversion tests               |
-| {class}`~libtmux.experimental.engines.mock.AsyncMockEngine` ([reference](engines/async-mock.md))                              | Async stateless in-memory simulation             | Offline tests of async callers                              |
-| {class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` ([reference](engines/control-mode.md))                  | One persistent synchronous `tmux -C` connection  | Pipelined command batches                                   |
-| {class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine` ([reference](engines/async-control-mode.md)) | Supervised persistent async `tmux -C` connection | Async batches and control-mode notifications                |
-| {class}`~libtmux.experimental.engines.imsg.base.ImsgEngine` ([reference](engines/imsg.md))                                    | Native socket with required CLI fallbacks        | POSIX protocol experiments and narrow parity checks         |
+| Engine                                                                                                                        | Dispatch model                                        | Use it for                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------- |
+| {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` ([reference](engines/subprocess.md))                       | One tmux CLI process per request                      | Straightforward synchronous live-server work                |
+| {class}`~libtmux.experimental.engines.asyncio.AsyncSubprocessEngine` ([reference](engines/async-subprocess.md))               | One asyncio subprocess per request                    | Async applications that do not need a persistent connection |
+| {class}`~libtmux.experimental.engines.mock.MockEngine` ([reference](engines/mock.md))                                         | Stateless in-memory simulation                        | Offline rendering and result-conversion tests               |
+| {class}`~libtmux.experimental.engines.mock.AsyncMockEngine` ([reference](engines/async-mock.md))                              | Async stateless in-memory simulation                  | Offline tests of async callers                              |
+| {class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` ([reference](engines/control-mode.md))                  | Subprocess bootstrap, then persistent `tmux -C`       | Pipelined command batches                                   |
+| {class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine` ([reference](engines/async-control-mode.md)) | Async subprocess bootstrap, then supervised `tmux -C` | Async batches and control-mode notifications                |
+| {class}`~libtmux.experimental.engines.imsg.base.ImsgEngine` ([reference](engines/imsg.md))                                    | Native socket with required CLI fallbacks             | POSIX protocol experiments and narrow parity checks         |
+
+The control-mode engines open a persistent client only when an existing
+session has `destroy-unattached` set to `off`. Until then, they use their
+matching subprocess engine so a user command can create the first safe session.
 
 ## Select by name
 

@@ -1,8 +1,8 @@
 # Async control-mode engine
 
 {class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine`
-combines a persistent async `tmux -C` connection with supervised reconnection
-and notification fan-out.
+combines hybrid async dispatch with supervised control-mode reconnection and
+notification fan-out.
 
 ## Use it when
 
@@ -17,10 +17,20 @@ subscription has a public readiness handshake.
 
 ## Construction and cleanup
 
-The engine starts lazily or on async context entry. Bind it with
+Bind the engine with
 {meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.for_server`.
 Use the async context manager or call
 {meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.aclose`.
+
+Async context entry looks for an existing session whose effective
+`destroy-unattached` value is `off`. When it finds one, it starts the
+supervisor eagerly and attaches to that exact session ID with
+`attach-session -E`; tmux neither chooses a different session nor applies
+`update-environment`. If no safe session exists, context entry stays lazy and
+the first batch uses
+{class}`~libtmux.experimental.engines.asyncio.AsyncSubprocessEngine`. This lets
+`new-session` bootstrap an empty server without creating a private control
+session. A later batch can open the persistent connection.
 
 ```python
 >>> import asyncio
@@ -60,11 +70,23 @@ reports overflow. Connection failures and timeouts raise at the engine
 boundary, while tmux command errors remain result data. Sequence anomalies are
 logged.
 
+The persistent process has normal tmux client semantics: `list-clients` shows
+it, `session_attached` includes it, and client attach and detach hooks can
+observe it. The engine never changes `destroy-unattached` and does not issue a
+session-deletion command during cleanup. If that option changes while the
+client is attached, closing the engine detaches normally and tmux applies the
+new policy.
+
 {meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.subscribe`
 is an async generator. Its queue is registered only when iteration advances,
-not when the generator object is created, and the API has no readiness signal.
-Code must not assume a notification emitted before the first iteration will be
-delivered.
+not when the generator object is created, and it does not start the engine.
+If context entry stayed lazy, or the caller does not use the context manager, a
+notification-only consumer must call
+{meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.start`
+after a safe session exists; direct startup raises
+{exc}`~libtmux.experimental.engines.control_mode.ControlModeError` when none is
+available. The API has no subscriber-readiness signal, so code must not assume
+a notification emitted before the first iteration will be delivered.
 
 ## API
 

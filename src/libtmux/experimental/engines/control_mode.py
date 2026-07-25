@@ -7,6 +7,11 @@ subprocess engine does, an operation run through control mode is
 indistinguishable -- at the result level -- from one run through a fork-per-call
 subprocess.
 
+Control mode attaches to an existing safe session instead of creating a private
+one. Until a session has an effective ``destroy-unattached`` value of ``off``,
+requests run through the subprocess engine; a later batch can then open the
+persistent client.
+
 The parser (:class:`ControlModeParser`) is I/O-free: it consumes bytes and emits
 parsed blocks, so it is unit-testable without spawning tmux. ``run_batch`` writes
 all command lines at once and collects one block per command, which is the
@@ -27,14 +32,17 @@ import time
 import typing as t
 
 from libtmux import exc
-from libtmux.experimental.engines.base import CommandResult, render_control_line
+from libtmux.experimental.engines.base import (
+    CommandRequest,
+    CommandResult,
+    render_control_line,
+)
 from libtmux.experimental.engines.connection import ServerConnection
+from libtmux.experimental.engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
     import types
     from collections.abc import Sequence
-
-    from libtmux.experimental.engines.base import CommandRequest
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +249,9 @@ class ControlModeEngine:
     Notes
     -----
     The connection is opened lazily on first use. Call :meth:`close` (or use the
-    engine as a context manager) to tear it down.
+    engine as a context manager) to tear it down. Commands use subprocess
+    execution until an existing session has an effective ``destroy-unattached``
+    value of ``off``.
     """
 
     def __init__(
@@ -254,10 +264,17 @@ class ControlModeEngine:
         self._conn = ServerConnection.of(tmux_bin, server_args)
         self.timeout = timeout
         self._lock = threading.Lock()
+        self._lifecycle = threading.Condition(self._lock)
+        self._bootstrap_inflight = 0
+        self._closing = False
         self._parser = ControlModeParser()
         self._proc: subprocess.Popen[bytes] | None = None
         self._selector: selectors.DefaultSelector | None = None
         self._sequence = BlockSequenceMonitor()
+        self._bootstrap = SubprocessEngine(
+            tmux_bin=self._conn.tmux_bin,
+            server_args=self._conn.args,
+        )
         # Recent lines the ``tmux -C`` process wrote to its own stderr. tmux
         # reports a lost server there ("server exited unexpectedly") rather than
         # in a ``%error`` block, so keeping the tail is what lets a connection
@@ -303,17 +320,44 @@ class ControlModeEngine:
             return []
         rendered = [tuple(req.args) for req in requests]
         counts = [command_count(argv) for argv in rendered]
-        with self._lock:
-            self._ensure_started()
-            # Discard any unsolicited blocks (hook-triggered commands) left
-            # buffered from earlier activity, so they cannot be mis-attributed
-            # to this batch's commands.
-            self._drain_unsolicited()
-            payload = b"".join(
-                (render_control_line(argv) + "\n").encode() for argv in rendered
-            )
-            self._write(payload)
-            blocks = self._read_blocks(sum(counts))
+        bootstrap = False
+        with self._lifecycle:
+            # A close draining an active fallback cohort must still admit
+            # dependent fallback commands (for example ``wait-for -S`` releasing
+            # an in-flight ``wait-for``). Once the cohort reaches zero, close has
+            # exclusive ownership and later callers wait.
+            while self._closing and not self._bootstrap_inflight:
+                self._lifecycle.wait()
+            if self._bootstrap_inflight:
+                bootstrap = True
+            else:
+                if self._proc is not None and self._proc.poll() is not None:
+                    self._close_failed_start()
+                if self._proc is None:
+                    target = self._find_attach_target()
+                    if target is None:
+                        bootstrap = True
+                    else:
+                        self._ensure_started(target)
+            if bootstrap:
+                self._bootstrap_inflight += 1
+            else:
+                # Discard any unsolicited blocks (hook-triggered commands) left
+                # buffered from earlier activity, so they cannot be
+                # mis-attributed to this batch's commands.
+                self._drain_unsolicited()
+                payload = b"".join(
+                    (render_control_line(argv) + "\n").encode() for argv in rendered
+                )
+                self._write(payload)
+                blocks = self._read_blocks(sum(counts))
+        if bootstrap:
+            try:
+                return self._bootstrap.run_batch(requests)
+            finally:
+                with self._lifecycle:
+                    self._bootstrap_inflight -= 1
+                    self._lifecycle.notify_all()
         results: list[CommandResult] = []
         index = 0
         for argv, count in zip(rendered, counts, strict=True):
@@ -323,28 +367,40 @@ class ControlModeEngine:
 
     def close(self) -> None:
         """Tear down the control-mode subprocess (lock-guarded)."""
-        with self._lock:
-            proc = self._proc
-            selector = self._selector
-            self._proc = None
-            self._selector = None
-            self._parser = ControlModeParser()
-            if selector is not None:
-                with contextlib.suppress(Exception):
-                    selector.close()
-            if proc is None:
-                return
-            if proc.stdin is not None and not proc.stdin.closed:
-                with contextlib.suppress(OSError):
-                    proc.stdin.close()
-            if not _wait_for_exit(proc, _GRACEFUL_EXIT_TIMEOUT):
-                with contextlib.suppress(OSError):
-                    proc.terminate()
-                if not _wait_for_exit(proc, _TERMINATE_TIMEOUT):
+        with self._lifecycle:
+            while self._closing:
+                self._lifecycle.wait()
+            self._closing = True
+            self._lifecycle.notify_all()
+            try:
+                while self._bootstrap_inflight:
+                    self._lifecycle.wait()
+                proc = self._proc
+                selector = self._selector
+                self._proc = None
+                self._selector = None
+                self._parser = ControlModeParser()
+                self._sequence.reset()
+                self._stderr_tail.clear()
+                if selector is not None:
+                    with contextlib.suppress(Exception):
+                        selector.close()
+                if proc is None:
+                    return
+                if proc.stdin is not None and not proc.stdin.closed:
                     with contextlib.suppress(OSError):
-                        proc.kill()
-                    with contextlib.suppress(subprocess.TimeoutExpired):
-                        proc.wait(timeout=_TERMINATE_TIMEOUT)
+                        proc.stdin.close()
+                if not _wait_for_exit(proc, _GRACEFUL_EXIT_TIMEOUT):
+                    with contextlib.suppress(OSError):
+                        proc.terminate()
+                    if not _wait_for_exit(proc, _TERMINATE_TIMEOUT):
+                        with contextlib.suppress(OSError):
+                            proc.kill()
+                        with contextlib.suppress(subprocess.TimeoutExpired):
+                            proc.wait(timeout=_TERMINATE_TIMEOUT)
+            finally:
+                self._closing = False
+                self._lifecycle.notify_all()
 
     def __enter__(self) -> ControlModeEngine:
         """Return this engine."""
@@ -359,13 +415,20 @@ class ControlModeEngine:
         """Tear down the connection on context exit."""
         self.close()
 
-    def _ensure_started(self) -> None:
+    def _ensure_started(self, target: str) -> None:
         if self._proc is not None:
             if self._proc.poll() is not None:
                 msg = f"tmux -C exited with code {self._proc.returncode}"
                 raise self._died(msg)
             return
-        cmd = self._conn.argv("-C")
+        self._stderr_tail.clear()
+        cmd = self._conn.argv(
+            "-C",
+            "attach-session",
+            "-E",
+            "-t",
+            target,
+        )
         try:
             proc = subprocess.Popen(
                 cmd,
@@ -388,8 +451,11 @@ class ControlModeEngine:
         selector.register(proc.stderr, selectors.EVENT_READ, "stderr")
         self._proc = proc
         self._selector = selector
-        self._consume_startup()
-        self._reap_own_session()
+        try:
+            self._consume_startup()
+        except BaseException:
+            self._close_failed_start()
+            raise
 
     def _consume_startup(self) -> None:
         """Read and discard tmux's startup ACK block before any command.
@@ -402,32 +468,70 @@ class ControlModeEngine:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return
+                msg = "tmux control-mode startup timed out"
+                raise ControlModeError(msg)
             if self._proc is not None and self._proc.poll() is not None:
-                return
+                msg = f"tmux -C exited with code {self._proc.returncode}"
+                raise self._died(msg)
             self._pump(remaining)
-            if self._parser.blocks():  # startup ACK seen and discarded
+            blocks = self._parser.blocks()
+            if blocks:
                 self._parser.notifications()
+                if blocks[-1].is_error:
+                    detail = "; ".join(
+                        line.decode(errors="replace") for line in blocks[-1].body
+                    )
+                    msg = "tmux control-mode attach failed"
+                    raise ControlModeError(f"{msg}: {detail}" if detail else msg)
                 return
             self._parser.notifications()
 
-    def _reap_own_session(self) -> None:
-        """Mark this control client's throwaway session ``destroy-unattached``.
+    def _find_attach_target(self) -> str | None:
+        """Return an exact session id whose effective detach policy is off."""
+        sessions = self._bootstrap.run(
+            CommandRequest.from_args("list-sessions", "-F", "#{session_id}"),
+        )
+        if sessions.returncode != 0:
+            return None
+        for session_id in sessions.stdout:
+            option = self._bootstrap.run(
+                CommandRequest.from_args(
+                    "show-options",
+                    "-Av",
+                    "-t",
+                    session_id,
+                    "destroy-unattached",
+                ),
+            )
+            if option.returncode == 0 and option.stdout == ("off",):
+                return session_id
+        return None
 
-        A bare ``tmux -C`` connect implies ``new-session``, so set
-        ``destroy-unattached on`` on the *current* session (the phantom; no
-        ``-t``/``-g``, scoped to exactly it) right after connect. tmux reaps it
-        the moment the client disconnects, so control mode leaves no throwaway
-        sessions. Its result block is read and discarded here -- before any user
-        command -- so it cannot desync the next command. Best-effort.
-        """
+    def _close_failed_start(self) -> None:
+        """Close a partial control frontend after attach or startup failure."""
         proc = self._proc
-        if proc is None or proc.stdin is None:
+        selector = self._selector
+        self._proc = None
+        self._selector = None
+        self._parser = ControlModeParser()
+        self._sequence.reset()
+        self._stderr_tail.clear()
+        if selector is not None:
+            with contextlib.suppress(Exception):
+                selector.close()
+        if proc is None:
             return
-        argv = ("set-option", "destroy-unattached", "on")
-        with contextlib.suppress(OSError, BrokenPipeError, ControlModeError):
-            self._write((render_control_line(argv) + "\n").encode())
-            self._read_blocks(command_count(argv))
+        if proc.stdin is not None and not proc.stdin.closed:
+            with contextlib.suppress(OSError):
+                proc.stdin.close()
+        if not _wait_for_exit(proc, _GRACEFUL_EXIT_TIMEOUT):
+            with contextlib.suppress(OSError):
+                proc.terminate()
+            if not _wait_for_exit(proc, _TERMINATE_TIMEOUT):
+                with contextlib.suppress(OSError):
+                    proc.kill()
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    proc.wait(timeout=_TERMINATE_TIMEOUT)
 
     def _drain_unsolicited(self) -> None:
         """Discard any blocks/notifications already buffered (non-blocking)."""
