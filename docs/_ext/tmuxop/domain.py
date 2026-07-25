@@ -10,6 +10,7 @@ from sphinx import addnodes
 from sphinx.domains import Domain, ObjType
 from sphinx.errors import SphinxError
 from sphinx.roles import XRefRole
+from sphinx.util import docname_join
 from sphinx.util.docutils import SphinxDirective
 from sphinx.util.nodes import make_refnode
 
@@ -128,6 +129,36 @@ class TmuxOperationCatalogDirective(SphinxDirective):
         "toctree": directives.flag,
     }
 
+    def _hidden_toctree(
+        self,
+        entries: Sequence[CatalogEntry],
+    ) -> nodes.compound:
+        """Build a native hidden toctree for the filtered operation pages."""
+        docnames = [
+            docname_join(self.env.docname, entry.kind) for entry in entries
+        ]
+        missing = sorted(set(docnames) - self.env.found_docs)
+        if missing:
+            msg = "tmuxop catalog toctree pages do not exist: " + ", ".join(missing)
+            raise SphinxError(msg)
+
+        toctree = addnodes.toctree()
+        toctree["parent"] = self.env.docname
+        toctree["entries"] = [(None, docname) for docname in docnames]
+        toctree["includefiles"] = docnames
+        toctree["maxdepth"] = -1
+        toctree["caption"] = None
+        toctree["glob"] = False
+        toctree["hidden"] = True
+        toctree["includehidden"] = False
+        toctree["numbered"] = 0
+        toctree["titlesonly"] = False
+        self.set_source_info(toctree)
+
+        wrapper = nodes.compound(classes=["toctree-wrapper"])
+        wrapper += toctree
+        return wrapper
+
     def run(self) -> list[nodes.Node]:
         """Render a registry catalog."""
         entries = filter_catalog(catalog(), self.options)
@@ -154,10 +185,7 @@ class TmuxOperationCatalogDirective(SphinxDirective):
             *messages,
         ]
         if "toctree" in self.options:
-            markup = ".. toctree::\n   :hidden:\n\n" + "\n".join(
-                f"   {entry.kind}" for entry in entries
-            )
-            rendered.extend(self.parse_text_to_nodes(markup))
+            rendered.append(self._hidden_toctree(entries))
         return rendered
 
 

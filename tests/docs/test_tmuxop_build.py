@@ -122,6 +122,24 @@ def test_operation_card_and_catalog_render_semantic_html(
     assert 'href="send_keys.html#tmuxop-operation-send-keys"' in catalog_html
 
 
+def test_catalog_can_own_operation_page_navigation(tmp_path: pathlib.Path) -> None:
+    """The catalog's toctree option includes its filtered operation pages."""
+    sources = _operation_sources()
+    sources["index.rst"] = sources["index.rst"].replace(
+        ".. tmuxop:catalog::\n   :scope: pane\n",
+        ".. tmuxop:catalog::\n   :scope: pane\n   :toctree:\n",
+    )
+    source_dir = _write_project(tmp_path, sources)
+
+    app, _, warnings = _build(source_dir)
+
+    assert app.statuscode == 0
+    assert warnings == ""
+    assert set(app.env.toctree_includes["index"]) == {
+        entry.kind for entry in catalog() if entry.scope == "pane"
+    }
+
+
 def test_parallel_build_exports_operation_inventory(tmp_path: pathlib.Path) -> None:
     """Parallel reading preserves operation targets and inventory entries."""
     source_dir = _write_project(tmp_path, _operation_sources())
