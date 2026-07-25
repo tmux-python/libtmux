@@ -64,6 +64,22 @@ class Window(
     ----------
     session : :class:`Session`
 
+    Attributes
+    ----------
+    default_option_scope : OptionScope | None
+        Scope :class:`~libtmux.options.OptionsMixin` falls back to when an
+        option call leaves ``scope`` unset. ``OptionScope.Window`` sends
+        ``set-option`` and ``show-options`` with tmux's ``-w`` flag; ``None``
+        sends no scope flag, which tmux resolves as session scope.
+    default_hook_scope : OptionScope | None
+        Scope :class:`~libtmux.hooks.HooksMixin` falls back to when a hook
+        call leaves ``scope`` unset. ``OptionScope.Window`` sends ``set-hook``
+        and ``show-hooks`` with tmux's ``-w`` flag; ``None`` sends no scope
+        flag, which tmux resolves as session scope.
+    server : Server
+        Server the window was queried from, and the connection every command
+        and refresh runs over.
+
     Examples
     --------
     >>> window = session.new_window('My project', attach=True)
