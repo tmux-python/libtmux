@@ -310,6 +310,7 @@ class AsyncControlModeEngine:
 
     def _begin_start_locked(self) -> asyncio.Future[None]:
         """Return the current immutable start attempt, creating it if needed."""
+        attempt: asyncio.Future[None] | None
         if not self._started:
             self._closing = False
             attempt = asyncio.get_running_loop().create_future()
@@ -643,12 +644,9 @@ class AsyncControlModeEngine:
         self._next_attach_target = None
         if supervisor is not None:
             supervisor.cancel()
-            try:
-                await supervisor
-            except asyncio.CancelledError:
-                current = asyncio.current_task()
-                if current is not None and current.cancelling():
-                    raise
+            await asyncio.wait((supervisor,))
+            if not supervisor.cancelled():
+                supervisor.result()
             if self._supervisor_task is supervisor:
                 self._supervisor_task = None
         if attempt is not None and not attempt.done():
