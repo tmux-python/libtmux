@@ -57,6 +57,6 @@ conf = merge_sphinx_config(
     api_layout_enabled=True,
     # AGENTS.md (+ its CLAUDE.md symlink) is agent guidance, not a site
     # page; keep Sphinx from treating it as an orphan document.
-    exclude_patterns=["_build", "AGENTS.md", "CLAUDE.md"],
+    exclude_patterns=["_build", "AGENTS.md", "CLAUDE.md", "superpowers/**"],
 )
 globals().update(conf)
