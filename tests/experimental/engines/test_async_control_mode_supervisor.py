@@ -159,10 +159,10 @@ def test_failed_start_waiter_cannot_observe_new_attempt() -> None:
         second_spawn_started = asyncio.Event()
         release_second_spawn = asyncio.Event()
         reader_hold = asyncio.Event()
+        waiter_count = 0
 
         class _Probe(AsyncControlModeEngine):
             attempts = 0
-            waiters = 0
 
             async def _spawn(self) -> None:
                 self.attempts += 1
@@ -175,15 +175,16 @@ def test_failed_start_waiter_cannot_observe_new_attempt() -> None:
             async def _reader(self) -> None:
                 await reader_hold.wait()
 
+            @staticmethod
             async def _wait_start_attempt(
-                self,
                 attempt: asyncio.Future[None],
             ) -> None:
-                index = self.waiters
-                self.waiters += 1
+                nonlocal waiter_count
+                index = waiter_count
+                waiter_count += 1
                 if index == 1:
                     await release_old_waiter.wait()
-                await super()._wait_start_attempt(attempt)
+                await AsyncControlModeEngine._wait_start_attempt(attempt)
 
         engine = _Probe()
         first = asyncio.create_task(engine.start())
@@ -271,6 +272,8 @@ def test_close_cancels_and_waits_for_bootstrap_dispatch() -> None:
                 except asyncio.CancelledError:
                     bootstrap_cancelled.set()
                     raise
+                msg = "bootstrap unexpectedly resumed"
+                raise AssertionError(msg)
 
         class _Probe(AsyncControlModeEngine):
             async def _find_attach_target(self) -> str | None:
