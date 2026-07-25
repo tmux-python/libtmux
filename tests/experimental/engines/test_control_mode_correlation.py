@@ -116,12 +116,57 @@ def test_async_control_write_failure_clears_pending() -> None:
     async def _check() -> None:
         engine = AsyncControlModeEngine()
         engine._started = True
+        engine._start_attempt = asyncio.get_running_loop().create_future()
+        engine._start_attempt.set_result(None)
         engine._proc = t.cast("t.Any", _FakeProc())
-        with pytest.raises(ControlModeError):
+        with pytest.raises(ControlModeError, match="write failed"):
             await engine.run_batch([CommandRequest.from_args("list-sessions")])
         assert not engine._pending
 
     asyncio.run(_check())
+
+
+def test_async_control_cancelled_drain_cancels_pending_futures() -> None:
+    """Cancellation during ``drain`` leaves no future that can warn on close."""
+    import asyncio
+
+    from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
+    from libtmux.experimental.engines.base import CommandRequest
+
+    drain_started: asyncio.Event
+
+    class _FakeStdin:
+        def write(self, _data: bytes) -> None:
+            return
+
+        async def drain(self) -> None:
+            drain_started.set()
+            await asyncio.Event().wait()
+
+    class _FakeProc:
+        stdin = _FakeStdin()
+
+    async def _check() -> tuple[int, bool]:
+        nonlocal drain_started
+        drain_started = asyncio.Event()
+        engine = AsyncControlModeEngine()
+        engine._started = True
+        engine._start_attempt = asyncio.get_running_loop().create_future()
+        engine._start_attempt.set_result(None)
+        engine._proc = t.cast("t.Any", _FakeProc())
+        task = asyncio.create_task(
+            engine.run_batch([CommandRequest.from_args("list-sessions")])
+        )
+        await drain_started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert len(engine._pending) == 1
+        pending = engine._pending[0]
+        engine._fail_pending(RuntimeError("closed"))
+        return len(engine._pending), pending.future.cancelled()
+
+    assert asyncio.run(_check()) == (0, True)
 
 
 def test_control_mode_fold_detects_failure_live(session: Session) -> None:
