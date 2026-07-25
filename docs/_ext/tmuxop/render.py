@@ -45,11 +45,10 @@ def operation_init_target(spec: OpSpec) -> str:
 
 def _constructor_signature(operation_cls: type) -> inspect.Signature:
     """Return a gp-sphinx-style constructor signature."""
-    signature = inspect.signature(operation_cls.__init__)
+    signature = inspect.signature(operation_cls)
     parameters = [
         parameter.replace(annotation=inspect.Parameter.empty)
         for parameter in signature.parameters.values()
-        if parameter.name != "self"
     ]
     return signature.replace(
         parameters=parameters,
