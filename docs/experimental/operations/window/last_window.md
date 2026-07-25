@@ -1,34 +1,62 @@
 # Select the previously active window
 
-`LastWindow` models `last-window` as a typed window operation and
-returns `AckResult`.
-
-```{tmuxop:operation} last_window
-```
+{class}`~libtmux.experimental.ops.LastWindow` selects a session's previously
+active window and returns an
+{class}`~libtmux.experimental.ops.results.AckResult`.
 
 ## Example
 
-This example executes the typed operation against the deterministic mock engine:
+This executable example uses an isolated live tmux server. `server` and
+`session` are injected documentation context.
 
 ```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import LastWindow, run
->>> from libtmux.experimental.ops._types import SessionId
->>> operation = LastWindow(target=SessionId("$1"))
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import (
+...     LastWindow,
+...     ListWindows,
+...     NewWindow,
+...     SelectWindow,
+...     run,
+... )
+>>> from libtmux.experimental.ops._types import SessionId, WindowId
+>>> assert session.session_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> first = run(
+...     NewWindow(target=SessionId(session.session_id), name="docs-last-first"),
+...     engine,
+... ).raise_for_status()
+>>> second = run(
+...     NewWindow(target=SessionId(session.session_id), name="docs-last-second"),
+...     engine,
+... ).raise_for_status()
+>>> assert first.new_id is not None and second.new_id is not None
+>>> _ = run(SelectWindow(target=WindowId(first.new_id)), engine).raise_for_status()
+>>> _ = run(SelectWindow(target=WindowId(second.new_id)), engine).raise_for_status()
+>>> result = run(
+...     LastWindow(target=SessionId(session.session_id)),
+...     engine,
+... ).raise_for_status()
+>>> observed = run(ListWindows(), engine).raise_for_status()
+>>> active_window_id = next(
+...     item.window_id
+...     for item in observed.windows
+...     if item.session_id == session.session_id and item.active
+... )
+>>> type(result).__name__, active_window_id == first.new_id
+('AckResult', True)
+```
+
+## Operation reference
+
+```{tmuxop:operation} last_window
 ```
 
 ## Failure and effects
 
 This operation changes tmux state. It is safe to repeat.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The example owns both history entries, then resolves the active window through
+{class}`~libtmux.experimental.ops.ListWindows`.
 
 ## Related operations
 
