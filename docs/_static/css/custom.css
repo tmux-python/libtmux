@@ -232,3 +232,17 @@ img[src*="codecov.io"] {
 ::view-transition-new(root) {
   animation-duration: 150ms;
 }
+.tmuxop-badge--readonly {
+  --sab-badge-bg: var(--color-background-secondary);
+  --sab-badge-color: var(--color-foreground-secondary);
+}
+
+.tmuxop-badge--mutating {
+  --sab-badge-bg: var(--color-brand-primary);
+  --sab-badge-color: var(--color-background-primary);
+}
+
+.tmuxop-badge--destructive {
+  --sab-badge-bg: var(--color-problematic);
+  --sab-badge-color: var(--color-background-primary);
+}
