@@ -1,33 +1,48 @@
-# Create a detached session; capture the new session's id
+# Create a detached session and capture its ID
 
-`NewSession` models `new-session` as a typed server operation and
-returns `CreateResult`.
+{class}`~libtmux.experimental.ops.NewSession` creates a detached session through
+{class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` and captures
+its ID in {class}`~libtmux.experimental.ops.results.CreateResult`.
+
+## Example
+
+This executable example uses an isolated live tmux server. `server`, `session`,
+`window`, and `pane` are injected documentation context.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import KillSession, ListSessions, NewSession, run
+>>> from libtmux.experimental.ops._types import SessionId
+>>> engine = SubprocessEngine.for_server(server)
+>>> created = run(
+...     NewSession(session_name="docs-created"),
+...     engine,
+... ).raise_for_status()
+>>> assert created.new_id is not None
+>>> observed = run(ListSessions(), engine).raise_for_status()
+>>> snapshot = next(
+...     item for item in observed.sessions if item.session_id == created.new_id
+... )
+>>> proof = type(created).__name__, snapshot.name, snapshot.session_id == created.new_id
+>>> _ = run(
+...     KillSession(target=SessionId(created.new_id)),
+...     engine,
+... ).raise_for_status()
+>>> proof
+('CreateResult', 'docs-created', True)
+```
+
+## Operation reference
 
 ```{tmuxop:operation} new_session
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import NewSession, run
->>> operation = NewSession(session_name="build")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation changes tmux state. It creates a session.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The captured ID resolves the session without relying on its generated numeric
+value. A duplicate session name returns a failed result. Call
+{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise that
+error. The example removes the session it creates.
 
 ## Related operations
 

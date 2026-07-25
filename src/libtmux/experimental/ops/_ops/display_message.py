@@ -19,6 +19,11 @@ if t.TYPE_CHECKING:
 class DisplayMessage(Operation[DisplayMessageResult]):
     """Evaluate a tmux format and print it (``display-message -p``).
 
+    Parameters
+    ----------
+    message : str
+        The tmux format string to evaluate and print.
+
     Examples
     --------
     >>> from libtmux.experimental.ops._types import PaneId

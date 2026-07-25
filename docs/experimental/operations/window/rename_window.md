@@ -1,34 +1,48 @@
-# Rename a window. Produces no output; returns an :class:`AckResult`
+# Rename a window
 
-`RenameWindow` models `rename-window` as a typed window operation and
-returns `AckResult`.
-
-```{tmuxop:operation} rename_window
-```
+{class}`~libtmux.experimental.ops.RenameWindow` changes a window's name and
+returns an {class}`~libtmux.experimental.ops.results.AckResult`.
 
 ## Example
 
-This example executes the typed operation against the deterministic mock engine:
+This executable example uses an isolated live tmux server. `server` and
+`session` are injected documentation context.
 
 ```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import RenameWindow, run
->>> from libtmux.experimental.ops._types import WindowId
->>> operation = RenameWindow(target=WindowId("@1"), name="build")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import ListWindows, NewWindow, RenameWindow, run
+>>> from libtmux.experimental.ops._types import SessionId, WindowId
+>>> assert session.session_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> created = run(
+...     NewWindow(target=SessionId(session.session_id), name="docs-before"),
+...     engine,
+... ).raise_for_status()
+>>> assert created.new_id is not None
+>>> result = run(
+...     RenameWindow(target=WindowId(created.new_id), name="docs-after"),
+...     engine,
+... ).raise_for_status()
+>>> observed = run(ListWindows(), engine).raise_for_status()
+>>> renamed = next(
+...     item.name for item in observed.windows if item.window_id == created.new_id
+... )
+>>> type(result).__name__, renamed
+('AckResult', 'docs-after')
+```
+
+## Operation reference
+
+```{tmuxop:operation} rename_window
 ```
 
 ## Failure and effects
 
 This operation changes tmux state. It is safe to repeat.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The operation returns no name payload. The example resolves the same window
+identifier through {class}`~libtmux.experimental.ops.ListWindows` and reads its
+new name independently.
 
 ## Related operations
 

@@ -1,34 +1,54 @@
-# Join a source pane into a destination window/pane
+# Join a pane into another window
 
-`JoinPane` models `join-pane` as a typed pane operation and
-returns `AckResult`.
+{class}`~libtmux.experimental.ops.JoinPane` moves a source pane into a
+destination window and splits the destination around it.
+
+## Example
+
+This executable example uses the injected live `server`, `session`, and
+`window` context.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import JoinPane, ListPanes, NewWindow, run
+>>> from libtmux.experimental.ops._types import PaneId, SessionId, WindowId
+>>> assert session.session_id is not None and window.window_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> created = run(
+...     NewWindow(
+...         target=SessionId(session.session_id),
+...         name="docs-join-source",
+...         capture_pane=True,
+...     ),
+...     engine,
+... ).raise_for_status()
+>>> assert created.new_id is not None and created.first_pane_id is not None
+>>> before = run(ListPanes(), engine).raise_for_status()
+>>> source = next(
+...     item for item in before.panes if item.pane_id == created.first_pane_id
+... )
+>>> result = run(
+...     JoinPane(
+...         target=WindowId(window.window_id),
+...         src_target=PaneId(source.pane_id),
+...     ),
+...     engine,
+... ).raise_for_status()
+>>> after = run(ListPanes(), engine).raise_for_status()
+>>> moved = next(item for item in after.panes if item.pane_id == source.pane_id)
+>>> type(result).__name__, source.window_id == created.new_id, moved.window_id == window.window_id
+('AckResult', True, True)
+```
+
+## Operation reference
 
 ```{tmuxop:operation} join_pane
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import JoinPane, run
->>> from libtmux.experimental.ops._types import PaneId, WindowId
->>> operation = JoinPane(target=WindowId("@1"), src_target=PaneId("%2"))
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation changes tmux state.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+Moving the only pane out of its source window removes that empty window. Both
+targets must belong to the same tmux server.
 
 ## Related operations
 

@@ -232,17 +232,79 @@ img[src*="codecov.io"] {
 ::view-transition-new(root) {
   animation-duration: 150ms;
 }
-.tmuxop-badge--readonly {
-  --sab-badge-bg: var(--color-background-secondary);
-  --sab-badge-color: var(--color-foreground-secondary);
+/* Keep producer-supplied operation badges on the same compact rhythm as
+ * gp-sphinx's native Python type badge. */
+.tmuxop-operation-card .gp-sphinx-api-badge-container {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
-.tmuxop-badge--mutating {
-  --sab-badge-bg: var(--color-brand-primary);
-  --sab-badge-color: var(--color-background-primary);
+.tmuxop-badge-group {
+  flex-wrap: wrap;
+  max-width: 100%;
+  white-space: normal;
 }
 
-.tmuxop-badge--destructive {
-  --sab-badge-bg: var(--color-problematic);
-  --sab-badge-color: var(--color-background-primary);
+.tmuxop-badge--safety-readonly {
+  --gp-sphinx-badge-bg: #1f7a3f;
+  --gp-sphinx-badge-fg: #f3fff7;
+  --gp-sphinx-badge-border: #2a8d4d;
+}
+
+.tmuxop-badge--safety-mutating {
+  --gp-sphinx-badge-bg: #a85b13;
+  --gp-sphinx-badge-fg: #fff8ef;
+  --gp-sphinx-badge-border: #cf7a23;
+}
+
+.tmuxop-badge--safety-destructive {
+  --gp-sphinx-badge-bg: #b4232c;
+  --gp-sphinx-badge-fg: #fff5f5;
+  --gp-sphinx-badge-border: #cb3640;
+}
+
+.tmuxop-badge--scope-server {
+  --gp-sphinx-badge-bg: #155e75;
+  --gp-sphinx-badge-fg: #ecfeff;
+  --gp-sphinx-badge-border: #0891b2;
+}
+
+.tmuxop-badge--scope-session {
+  --gp-sphinx-badge-bg: #1e40af;
+  --gp-sphinx-badge-fg: #eff6ff;
+  --gp-sphinx-badge-border: #3b82f6;
+}
+
+.tmuxop-badge--scope-window {
+  --gp-sphinx-badge-bg: #5b21b6;
+  --gp-sphinx-badge-fg: #f5f3ff;
+  --gp-sphinx-badge-border: #8b5cf6;
+}
+
+.tmuxop-badge--scope-pane {
+  --gp-sphinx-badge-bg: #3730a3;
+  --gp-sphinx-badge-fg: #eef2ff;
+  --gp-sphinx-badge-border: #6366f1;
+}
+
+.tmuxop-badge--scope-client {
+  --gp-sphinx-badge-bg: #0e7490;
+  --gp-sphinx-badge-fg: #ecfeff;
+  --gp-sphinx-badge-border: #06b6d4;
+}
+
+.tmuxop-badge--shape-primitive {
+  --gp-sphinx-badge-bg: #374151;
+  --gp-sphinx-badge-fg: #f9fafb;
+  --gp-sphinx-badge-border: #6b7280;
+}
+
+.tmuxop-badge--shape-composed {
+  --gp-sphinx-badge-bg: #6b21a8;
+  --gp-sphinx-badge-fg: #faf5ff;
+  --gp-sphinx-badge-border: #a855f7;
 }

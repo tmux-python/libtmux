@@ -1,33 +1,44 @@
 # Save a paste buffer to a file
 
-`SaveBuffer` models `save-buffer` as a typed server operation and
-returns `AckResult`.
+{class}`~libtmux.experimental.ops.SaveBuffer` writes a paste buffer to a file
+through {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` and
+returns {class}`~libtmux.experimental.ops.results.AckResult`.
+
+## Example
+
+This executable example uses an isolated live tmux server. `server` and
+`tmp_path` are injected documentation context.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import DeleteBuffer, SaveBuffer, SetBuffer, run
+>>> destination = tmp_path / "saved.txt"
+>>> engine = SubprocessEngine.for_server(server)
+>>> _ = run(
+...     SetBuffer(buffer_name="docs-save", data="saved by tmux"),
+...     engine,
+... ).raise_for_status()
+>>> saved = run(
+...     SaveBuffer(path=str(destination), buffer_name="docs-save"),
+...     engine,
+... ).raise_for_status()
+>>> proof = type(saved).__name__, destination.read_text(encoding="utf-8")
+>>> _ = run(DeleteBuffer(buffer_name="docs-save"), engine).raise_for_status()
+>>> proof
+('AckResult', 'saved by tmux')
+```
+
+## Operation reference
 
 ```{tmuxop:operation} save_buffer
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import SaveBuffer, run
->>> operation = SaveBuffer(path="buffer.txt", buffer_name="build")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation reads tmux state without changing it.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+Saving reads tmux state but writes to the filesystem. It replaces the
+destination by default; `append=True` extends it instead. A missing buffer or
+unwritable path returns a failed result. The example confines both resources to
+an owned buffer and pytest's private temporary directory.
 
 ## Related operations
 

@@ -18,6 +18,13 @@ class SwitchClient(Operation[AckResult]):
     Uses ``-c`` for the client and ``-t`` for the destination session, so it
     does not use the generic target slot.
 
+    Parameters
+    ----------
+    client : str
+        Name of the client to switch.
+    to_session : str
+        Target session for the client.
+
     Examples
     --------
     >>> SwitchClient(client="/dev/pts/3", to_session="$1").render()

@@ -1,33 +1,40 @@
 # Run a shell command via tmux
 
-`RunShell` models `run-shell` as a typed server operation and
-returns `AckResult`.
+{class}`~libtmux.experimental.ops.RunShell` asks tmux to execute a shell command
+through {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` and
+returns {class}`~libtmux.experimental.ops.results.AckResult`.
+
+## Example
+
+This executable example uses an isolated live tmux server. `server` and
+`tmp_path` are injected documentation context.
+
+```python
+>>> import shlex
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import RunShell, run
+>>> destination = tmp_path / "run-shell.txt"
+>>> command = f"printf ready > {shlex.quote(str(destination))}"
+>>> result = run(
+...     RunShell(command_line=command),
+...     SubprocessEngine.for_server(server),
+... ).raise_for_status()
+>>> type(result).__name__, destination.read_text(encoding="utf-8")
+('AckResult', 'ready')
+```
+
+## Operation reference
 
 ```{tmuxop:operation} run_shell
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import RunShell, run
->>> operation = RunShell(command_line="echo ready")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation changes tmux state.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The command runs with the tmux server process's privileges and may change
+external state. Without `background=True`, the acknowledgement arrives after
+the command finishes, so the example can read its private file directly.
+Background execution needs a bounded state poll rather than an arbitrary
+delay.
 
 ## Related operations
 

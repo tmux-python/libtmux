@@ -1,34 +1,43 @@
-# Kill a session. Destructive; produces no output
+# Kill a session
 
-`KillSession` models `kill-session` as a typed session operation and
-returns `AckResult`.
-
-```{tmuxop:operation} kill_session
-```
+{class}`~libtmux.experimental.ops.KillSession` removes one session and all of
+its windows and panes.
 
 ## Example
 
-This example executes the typed operation against the deterministic mock engine:
+This executable example uses an isolated live tmux server. `server` is injected
+documentation context; the standalone setup tutorial shows the equivalent
+public setup and cleanup.
 
 ```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import KillSession, run
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import HasSession, KillSession, NewSession, run
 >>> from libtmux.experimental.ops._types import SessionId
->>> operation = KillSession(target=SessionId("$1"))
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
+>>> engine = SubprocessEngine.for_server(server)
+>>> created = run(
+...     NewSession(session_name="docs-disposable"),
+...     engine,
+... ).raise_for_status()
+>>> assert created.new_id is not None
+>>> target = SessionId(created.new_id)
+>>> run(HasSession(target=target), engine).exists
+True
+>>> result = run(KillSession(target=target), engine).raise_for_status()
+>>> type(result).__name__, run(HasSession(target=target), engine).exists
+('AckResult', False)
+```
+
+## Operation reference
+
+```{tmuxop:operation} kill_session
 ```
 
 ## Failure and effects
 
 This operation is destructive and cannot be undone.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The example creates and removes a disposable session so the documentation
+fixture remains available for cleanup and later assertions.
 
 ## Related operations
 

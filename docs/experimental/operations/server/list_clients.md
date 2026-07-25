@@ -1,33 +1,46 @@
 # List attached clients and return typed snapshots
 
-`ListClients` models `list-clients` as a typed server operation and
-returns `ListClientsResult`.
+{class}`~libtmux.experimental.ops.ListClients` reads attached clients through
+{class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` and returns
+their snapshots in
+{class}`~libtmux.experimental.ops.results.ListClientsResult`.
+
+## Example
+
+This executable example uses an isolated live tmux server. `server`, `session`,
+and `control_mode` are injected documentation context.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import ListClients, run
+>>> engine = SubprocessEngine.for_server(server)
+>>> with control_mode() as attached:
+...     result = run(ListClients(), engine).raise_for_status()
+...     client = next(
+...         item
+...         for item in result.clients
+...         if item.name == attached.client_name
+...     )
+...     proof = (
+...         type(client).__name__,
+...         client.session == session.session_name,
+...         client.pid is not None,
+...     )
+>>> proof
+('ClientSnapshot', True, True)
+```
+
+## Operation reference
 
 ```{tmuxop:operation} list_clients
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import ListClients, run
->>> operation = ListClients()
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation reads tmux state without changing it. It is safe to repeat.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+An unattached server legitimately returns no rows. The example creates an
+attachment so its assertion cannot pass vacuously. Client snapshots are
+point-in-time values; a client may detach after the read. The operation does not
+change tmux state and is safe to repeat.
 
 ## Related operations
 
