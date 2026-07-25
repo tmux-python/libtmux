@@ -1,34 +1,43 @@
-# Detach a client. Produces no output
+# Detach a client
 
-`DetachClient` models `detach-client` as a typed client operation and
-returns `AckResult`.
+{class}`~libtmux.experimental.ops.DetachClient` disconnects one attached tmux
+client without stopping its session.
+
+## Example
+
+This executable example uses an isolated live tmux server. `control_mode`
+creates a real attached client that the example owns.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import DetachClient, ListClients, run
+>>> from libtmux.experimental.ops._types import ClientName
+>>> engine = SubprocessEngine.for_server(server)
+>>> with control_mode() as attached:
+...     client_name = attached.client_name
+...     before = run(ListClients(), engine).raise_for_status()
+...     result = run(
+...         DetachClient(target=ClientName(client_name)),
+...         engine,
+...     ).raise_for_status()
+...     after = run(ListClients(), engine).raise_for_status()
+>>> (
+...     type(result).__name__,
+...     client_name in {item.name for item in before.clients},
+...     client_name not in {item.name for item in after.clients},
+... )
+('AckResult', True, True)
+```
+
+## Operation reference
 
 ```{tmuxop:operation} detach_client
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import DetachClient, run
->>> from libtmux.experimental.ops._types import ClientName
->>> operation = DetachClient(target=ClientName("/dev/pts/3"))
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation changes tmux state.
-
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The target must name a currently attached client. Detaching it invalidates
+snapshots that assumed the client remained connected.
 
 ## Related operations
 

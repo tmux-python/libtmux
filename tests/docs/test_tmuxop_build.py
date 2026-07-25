@@ -20,6 +20,12 @@ _REPO_ROOT = pathlib.Path(__file__).parents[2]
 _EXTENSION_PATH = _REPO_ROOT / "docs" / "_ext"
 
 
+class _OperationDomain(t.Protocol):
+    """Typed operation-domain surface used by incremental build assertions."""
+
+    operations: dict[str, tuple[str, str]]
+
+
 def _write_project(
     root: pathlib.Path,
     sources: dict[str, str],
@@ -45,12 +51,20 @@ def _write_project(
             api_layout_enabled = True
             autodoc_class_signature = "separated"
             autodoc_typehints = "description"
-            myst_enable_extensions = {{"colon_fence"}}
+            myst_enable_extensions = {{"colon_fence", "fieldlist"}}
 
             def linkcode_resolve(domain, info):
                 if domain != "py":
                     return None
-                return "https://example.invalid/source/" + info["fullname"]
+                module = info.get("module", "")
+                if not module.startswith("libtmux.experimental.ops._ops."):
+                    return None
+                return (
+                    "https://example.invalid/source/"
+                    + module
+                    + "/"
+                    + info["fullname"]
+                )
             """
         ),
         encoding="utf-8",
@@ -124,6 +138,8 @@ def test_operation_card_and_catalog_render_semantic_html(
     assert "gp-sphinx-api-container gp-sphinx-api-profile--py-class" in operation_html
     assert 'data-domain="py"' in operation_html
     assert 'data-objtype="class"' in operation_html
+    assert 'data-has-source="true"' in operation_html
+    assert "gp-sphinx-api-source-link" in operation_html
     assert "gp-sphinx-badge--type-class" in operation_html
     assert (
         '<span class="sig-prename descclassname">'
@@ -141,6 +157,8 @@ def test_operation_card_and_catalog_render_semantic_html(
     )
     assert 'class="sig-param"' in operation_html
     assert '<span class="pre">keys</span>' in operation_html
+    assert "gp-sphinx-api-parameters" in operation_html
+    assert "The key string to send." in operation_html
     assert "gp-sphinx-api-card-shell" not in operation_html
     assert (
         'href="#tmuxop-operation-send-keys" '
@@ -152,8 +170,8 @@ def test_operation_card_and_catalog_render_semantic_html(
     assert "AckResult" in operation_html
     assert "Link to this definition" in operation_html
     assert (
-        "https://example.invalid/source/libtmux.experimental.ops.SendKeys"
-        in operation_html
+        "https://example.invalid/source/"
+        "libtmux.experimental.ops._ops.send_keys/SendKeys" in operation_html
     )
     assert 'href="send_keys.html#tmuxop-operation-send-keys"' in catalog_html
 
@@ -200,6 +218,33 @@ def test_myst_operation_uses_native_python_api_nodes(tmp_path: pathlib.Path) -> 
     assert "libtmux.experimental.ops." in operation_html
     assert "DeleteBuffer" in operation_html
     assert "__init__" in operation_html
+    assert "gp-sphinx-api-parameters" in operation_html
+    assert "The buffer to delete" in operation_html
+    assert ":param buffer_name:" not in operation_html
+
+
+def test_myst_operation_summary_parses_rst_roles(tmp_path: pathlib.Path) -> None:
+    """A MyST operation page renders reStructuredText docstring roles."""
+    source_dir = _write_project(
+        tmp_path,
+        {
+            "index.md": """
+                # Kill a session
+
+                ```{tmuxop:operation} kill_session
+                ```
+            """
+        },
+    )
+
+    app, _, warnings = _build(source_dir)
+
+    assert app.statuscode == 0
+    assert warnings == ""
+    operation_html = (tmp_path / "html" / "index.html").read_text(encoding="utf-8")
+    assert ":class:" not in operation_html
+    assert "xref py py-class" in operation_html
+    assert '<span class="pre">AckResult</span>' in operation_html
 
 
 def test_parallel_build_exports_operation_inventory(tmp_path: pathlib.Path) -> None:
@@ -284,7 +329,7 @@ def test_incremental_build_retains_unchanged_operation_targets(
 
     assert app.statuscode == 0
     assert warnings == ""
-    domain = app.env.domains["tmuxop"]
+    domain = t.cast("_OperationDomain", app.env.domains["tmuxop"])
     assert set(domain.operations) == {"send_keys", "split_window"}
 
 
