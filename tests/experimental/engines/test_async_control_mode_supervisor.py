@@ -6,13 +6,12 @@ import asyncio
 import contextlib
 import typing as t
 
+import pytest
+
 from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
 from libtmux.experimental.engines.control_mode import ControlModeError
 
 if t.TYPE_CHECKING:
-    import pytest
-
-    from libtmux.server import Server
     from libtmux.session import Session
 
 
@@ -24,8 +23,9 @@ def test_desired_subscriptions_recorded_idempotently() -> None:
     assert engine._desired_subscriptions == ["agentstate:%*:#{@agent_state}"]
 
 
-def test_reconnects_after_proc_exits(server: Server) -> None:
+def test_reconnects_after_proc_exits(session: Session) -> None:
     """The supervisor reconnects and bumps generation after the proc dies."""
+    server = session.server
 
     async def main() -> int:
         engine = AsyncControlModeEngine.for_server(server)
@@ -88,11 +88,11 @@ def test_spawn_keeps_dead_until_startup_ack_consumed(
 ) -> None:
     """``_spawn`` clears ``_dead`` only *after* the startup ACK is consumed.
 
-    Across a reconnect ``_connected`` stays set, so a command racing the
-    reconnect's startup window must still hit the dead-guard rather than have its
-    reply drained and discarded by ``_consume_startup``. The fix keeps ``_dead``
-    set until the ACK is fully consumed; this asserts that ordering deterministically
-    (no real proc, no timing) by observing ``_dead`` from inside startup.
+    Across a reconnect the original start attempt is already resolved, so a
+    command racing the startup window must still hit the dead-guard rather than
+    have its reply drained and discarded by ``_consume_startup``. This asserts
+    that ordering deterministically (no real proc, no timing) by observing
+    ``_dead`` from inside startup.
     """
     observed: dict[str, object] = {}
 
@@ -106,32 +106,33 @@ def test_spawn_keeps_dead_until_startup_ack_consumed(
             # liveness state at the instant the startup ACK begins draining
             observed["dead_during_startup"] = self._dead
 
-    async def _fake_exec(*_a: object, **_k: object) -> _FakeProc:
+    created_cmd: tuple[object, ...] = ()
+
+    async def _fake_exec(*args: object, **_kwargs: object) -> _FakeProc:
+        nonlocal created_cmd
+        created_cmd = args
         return _FakeProc()
 
     async def main() -> None:
         monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
         engine = _Probe(tmux_bin="tmux")
         engine._dead = ControlModeError("prior EOF")  # simulate post-disconnect
+        engine._next_attach_target = "$7"
         await engine._spawn()
         observed["dead_after"] = engine._dead
 
     asyncio.run(main())
     assert observed["dead_during_startup"] is not None  # dead-guard still active
     assert observed["dead_after"] is None  # cleared only once the ACK is consumed
+    assert created_cmd == ("tmux", "-C", "attach-session", "-E", "-t", "$7")
 
 
 def test_concurrent_start_all_raise_on_first_connect_failure() -> None:
     """Every concurrent ``start()`` raising on a first-connect spawn failure.
 
-    The supervisor records the spawn error in ``_spawn_error`` then returns. The
-    first ``start()`` waiter must not null it out from under a second concurrent
-    waiter, or that second caller would observe ``_spawn_error is None`` and
-    return "success" against a dead engine. Both gathered ``start()`` calls must
-    raise the same spawn error.
-
-    Deterministic: ``_spawn`` always raises (no real proc, no timing); the two
-    waiters wake FIFO from the supervisor's single ``_connected.set()``.
+    Every caller keeps the immutable future for the attempt it joined. One
+    caller handling the error must not replace the outcome observed by another.
+    ``_spawn`` always raises, so this needs no real process or timing.
     """
 
     async def main() -> list[object]:
@@ -150,13 +151,184 @@ def test_concurrent_start_all_raise_on_first_connect_failure() -> None:
     assert all(isinstance(r, ControlModeError) for r in results)
 
 
+def test_failed_start_waiter_cannot_observe_new_attempt() -> None:
+    """A delayed waiter keeps the immutable result of its original attempt."""
+
+    async def main() -> None:
+        release_old_waiter = asyncio.Event()
+        second_spawn_started = asyncio.Event()
+        release_second_spawn = asyncio.Event()
+        reader_hold = asyncio.Event()
+
+        class _Probe(AsyncControlModeEngine):
+            attempts = 0
+            waiters = 0
+
+            async def _spawn(self) -> None:
+                self.attempts += 1
+                if self.attempts == 1:
+                    msg = "first attempt failed"
+                    raise ControlModeError(msg)
+                second_spawn_started.set()
+                await release_second_spawn.wait()
+
+            async def _reader(self) -> None:
+                await reader_hold.wait()
+
+            async def _wait_start_attempt(
+                self,
+                attempt: asyncio.Future[None],
+            ) -> None:
+                index = self.waiters
+                self.waiters += 1
+                if index == 1:
+                    await release_old_waiter.wait()
+                await super()._wait_start_attempt(attempt)
+
+        engine = _Probe()
+        first = asyncio.create_task(engine.start())
+        delayed = asyncio.create_task(engine.start())
+        with pytest.raises(ControlModeError, match="first attempt failed"):
+            await first
+
+        retry = asyncio.create_task(engine.start())
+        await second_spawn_started.wait()
+        release_old_waiter.set()
+        with pytest.raises(ControlModeError, match="first attempt failed"):
+            await delayed
+
+        release_second_spawn.set()
+        await retry
+        await engine.aclose()
+
+    asyncio.run(main())
+
+
+def test_cancelled_only_start_waiter_does_not_poison_retry() -> None:
+    """A failed attempt is finalized by its supervisor, not by a live waiter."""
+
+    async def main() -> tuple[int, list[dict[str, object]]]:
+        first_spawn_started = asyncio.Event()
+        release_first_spawn = asyncio.Event()
+        reader_hold = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        diagnostics: list[dict[str, object]] = []
+        loop.set_exception_handler(
+            lambda _loop, context: diagnostics.append(dict(context))
+        )
+
+        class _Probe(AsyncControlModeEngine):
+            attempts = 0
+
+            async def _spawn(self) -> None:
+                self.attempts += 1
+                if self.attempts == 1:
+                    first_spawn_started.set()
+                    await release_first_spawn.wait()
+                    msg = "first attempt failed"
+                    raise ControlModeError(msg)
+
+            async def _reader(self) -> None:
+                await reader_hold.wait()
+
+        engine = _Probe()
+        cancelled = asyncio.create_task(engine.start())
+        await first_spawn_started.wait()
+        cancelled.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled
+
+        release_first_spawn.set()
+        for _ in range(20):
+            if not engine._started:
+                break
+            await asyncio.sleep(0)
+        assert not engine._started
+
+        await engine.start()
+        attempts = engine.attempts
+        await engine.aclose()
+        await asyncio.sleep(0)
+        return attempts, diagnostics
+
+    attempts, diagnostics = asyncio.run(main())
+    assert attempts == 2
+    assert diagnostics == []
+
+
+def test_close_cancels_and_waits_for_bootstrap_dispatch() -> None:
+    """Closing cancels an in-flight bootstrap before it returns."""
+
+    async def main() -> tuple[bool, bool]:
+        bootstrap_started = asyncio.Event()
+        bootstrap_cancelled = asyncio.Event()
+
+        class _Bootstrap:
+            async def run_batch(self, requests: object) -> list[object]:
+                bootstrap_started.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    bootstrap_cancelled.set()
+                    raise
+
+        class _Probe(AsyncControlModeEngine):
+            async def _find_attach_target(self) -> str | None:
+                return None
+
+        engine = _Probe()
+        engine._bootstrap = t.cast("t.Any", _Bootstrap())
+        run_task = asyncio.create_task(engine.run_batch([t.cast("t.Any", object())]))
+        await bootstrap_started.wait()
+        await engine.aclose()
+        with pytest.raises(asyncio.CancelledError):
+            await run_task
+        return bootstrap_cancelled.is_set(), engine._closing
+
+    assert asyncio.run(main()) == (True, True)
+
+
+def test_cancelled_close_finishes_process_reap() -> None:
+    """Caller cancellation cannot make close lose ownership of a live process."""
+
+    async def main() -> tuple[bool, object | None]:
+        stop_started = asyncio.Event()
+        release_stop = asyncio.Event()
+
+        class _FakeProc:
+            returncode: int | None = None
+
+        class _Probe(AsyncControlModeEngine):
+            @staticmethod
+            async def _stop_process(proc: t.Any) -> None:
+                stop_started.set()
+                await release_stop.wait()
+                proc.returncode = 0
+
+        engine = _Probe()
+        engine._started = True
+        engine._proc = t.cast("asyncio.subprocess.Process", _FakeProc())
+        close_task = asyncio.create_task(engine.aclose())
+        await stop_started.wait()
+        close_task.cancel()
+        await asyncio.sleep(0)
+        close_task.cancel()
+        await asyncio.sleep(0)
+        cleanup_survived = not close_task.done()
+        release_stop.set()
+        with pytest.raises(asyncio.CancelledError):
+            await close_task
+        return cleanup_survived, engine._proc
+
+    assert asyncio.run(main()) == (True, None)
+
+
 def test_aclose_releases_start_waiter_before_first_connect() -> None:
     """``aclose`` racing a never-connected ``start`` must not hang the waiter.
 
-    If the supervisor is cancelled before it ever sets ``_connected``, an
-    in-flight ``start()`` blocked on ``_connected.wait()`` would hang forever.
-    The supervisor's ``finally`` plus ``aclose``'s own ``_connected.set()`` release
-    it deterministically.
+    If the supervisor is cancelled before it resolves the shared start future,
+    an in-flight ``start()`` could hang forever. The supervisor's ``finally``
+    publishes the close outcome deterministically.
     """
 
     async def main() -> None:
@@ -164,18 +336,93 @@ def test_aclose_releases_start_waiter_before_first_connect() -> None:
 
         class _Probe(AsyncControlModeEngine):
             async def _spawn(self) -> None:
-                await block.wait()  # park in spawn, before _connected is ever set
+                await block.wait()  # park before the shared attempt resolves
 
         engine = _Probe()
         start_task = asyncio.create_task(engine.start())
-        # Let start() launch the supervisor and park on _connected.wait(), and the
-        # supervisor park in _spawn (so it has entered its try/finally).
+        # Let start() launch the supervisor and let _spawn enter its try/finally.
         for _ in range(5):
             await asyncio.sleep(0)
         await engine.aclose()  # cancels the supervisor before it ever connected
-        await asyncio.wait_for(start_task, timeout=1.0)  # must NOT hang
+        with pytest.raises(ControlModeError, match="closed before connecting"):
+            await asyncio.wait_for(start_task, timeout=1.0)
 
     asyncio.run(main())
+
+
+def test_start_waits_for_an_in_progress_close() -> None:
+    """A restart cannot replace lifecycle state while close awaits cancellation."""
+
+    async def main() -> None:
+        close_entered = asyncio.Event()
+        release_close = asyncio.Event()
+
+        class _Probe(AsyncControlModeEngine):
+            async def _supervisor(
+                self,
+                first_attempt: asyncio.Future[None] | None = None,
+            ) -> None:
+                if first_attempt is not None:
+                    first_attempt.set_result(None)
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    close_entered.set()
+                    await release_close.wait()
+                    raise
+
+        engine = _Probe()
+        await engine.start()
+        close_task = asyncio.create_task(engine.aclose())
+        await close_entered.wait()
+
+        restart_task = asyncio.create_task(engine.start())
+        await asyncio.sleep(0)
+        assert not restart_task.done()
+
+        release_close.set()
+        await close_task
+        await restart_task
+        assert engine._started
+        assert engine._supervisor_task is not None
+        assert not engine._supervisor_task.done()
+        await engine.aclose()
+
+    asyncio.run(main())
+
+
+def test_dead_engine_bootstraps_after_server_loses_all_sessions(
+    session: Session,
+) -> None:
+    """A used engine can recreate an empty server through async subprocess."""
+    server = session.server
+
+    async def main() -> tuple[int, int]:
+        from libtmux.experimental.engines.base import CommandRequest
+
+        engine = AsyncControlModeEngine.for_server(server)
+        await engine.start()
+        server.cmd("kill-server")
+        for _ in range(100):
+            if engine._dead is not None:
+                break
+            await asyncio.sleep(0.01)
+        assert engine._dead is not None
+
+        created = await engine.run(
+            CommandRequest.from_args(
+                "new-session",
+                "-d",
+                "-s",
+                "recovered",
+            ),
+        )
+        listed = await engine.run(CommandRequest.from_args("list-sessions"))
+        await engine.aclose()
+        return created.returncode, listed.returncode
+
+    assert asyncio.run(main()) == (0, 0)
+    assert server.is_alive()
 
 
 def test_connect_then_die_escalates_backoff() -> None:
@@ -213,6 +460,61 @@ def test_connect_then_die_escalates_backoff() -> None:
     assert seen[:3] == [0, 1, 2]  # escalates, not pinned at 0
 
 
+def test_large_reconnect_attempt_has_bounded_backoff() -> None:
+    """Backoff arithmetic remains finite after arbitrarily many failures."""
+    assert AsyncControlModeEngine._backoff(10_000) <= 5.06
+
+
+def test_unexpected_supervisor_failure_reaps_and_allows_retry() -> None:
+    """An error outside spawn preserves its cause, reaps, and resets lifecycle."""
+
+    async def main() -> tuple[int, int, bool]:
+        reader_hold = asyncio.Event()
+
+        class _FakeProc:
+            def __init__(self) -> None:
+                self.returncode: int | None = None
+                self.terminate_calls = 0
+
+            def terminate(self) -> None:
+                self.terminate_calls += 1
+                self.returncode = 0
+
+            async def wait(self) -> int:
+                return 0
+
+        processes: list[_FakeProc] = []
+
+        class _Probe(AsyncControlModeEngine):
+            replay_attempts = 0
+
+            async def _spawn(self) -> None:
+                proc = _FakeProc()
+                processes.append(proc)
+                self._proc = t.cast("asyncio.subprocess.Process", proc)
+                self._dead = None
+
+            async def _replay_subscriptions(self) -> None:
+                self.replay_attempts += 1
+                if self.replay_attempts == 1:
+                    msg = "replay failed"
+                    raise RuntimeError(msg)
+
+            async def _reader(self) -> None:
+                await reader_hold.wait()
+
+        engine = _Probe()
+        with pytest.raises(ControlModeError, match="replay failed"):
+            await engine.start()
+        first_terminated = processes[0].terminate_calls
+        await engine.start()
+        attempts = engine.replay_attempts
+        await engine.aclose()
+        return first_terminated, attempts, engine._proc is None
+
+    assert asyncio.run(main()) == (1, 2, True)
+
+
 def test_spawn_terminates_a_live_prior_proc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -228,6 +530,10 @@ def test_spawn_terminates_a_live_prior_proc(
 
         def terminate(self) -> None:
             terminated.append(True)
+            self.returncode = 0
+
+        async def wait(self) -> int:
+            return 0
 
     class _NewProc:
         returncode: int | None = None
@@ -244,6 +550,7 @@ def test_spawn_terminates_a_live_prior_proc(
         engine = _Probe(tmux_bin="tmux")
         # a prior, still-alive control client (as a reader-exception reconnect leaves)
         engine._proc = t.cast("asyncio.subprocess.Process", _AliveProc())
+        engine._next_attach_target = "$0"
         await engine._spawn()
 
     asyncio.run(main())
