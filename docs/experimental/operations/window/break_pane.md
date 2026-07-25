@@ -1,34 +1,64 @@
 # Break a pane out into a new window
 
-`BreakPane` models `break-pane` as a typed window operation and
-returns `CreateResult`.
-
-```{tmuxop:operation} break_pane
-```
+{class}`~libtmux.experimental.ops.BreakPane` breaks a pane into a new window
+and returns its identifier in a
+{class}`~libtmux.experimental.ops.results.CreateResult`.
 
 ## Example
 
-This example executes the typed operation against the deterministic mock engine:
+This executable example uses an isolated live tmux server. `server` and
+`session` are injected documentation context.
 
 ```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import BreakPane, run
->>> from libtmux.experimental.ops._types import PaneId
->>> operation = BreakPane(src_target=PaneId("%2"))
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import (
+...     BreakPane,
+...     ListWindows,
+...     NewWindow,
+...     SplitWindow,
+...     run,
+... )
+>>> from libtmux.experimental.ops._types import PaneId, SessionId, WindowId
+>>> assert session.session_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> owned = run(
+...     NewWindow(target=SessionId(session.session_id), name="docs-break-source"),
+...     engine,
+... ).raise_for_status()
+>>> assert owned.new_id is not None
+>>> split = run(SplitWindow(target=WindowId(owned.new_id)), engine).raise_for_status()
+>>> assert split.new_pane_id is not None
+>>> broken = run(
+...     BreakPane(src_target=PaneId(split.new_pane_id)),
+...     engine,
+... ).raise_for_status()
+>>> assert broken.new_id is not None
+>>> observed = run(ListWindows(), engine).raise_for_status()
+>>> any(
+...     item.window_id == broken.new_id
+...     and item.session_id == session.session_id
+...     for item in observed.windows
+... )
+True
+```
+
+## Operation reference
+
+```{tmuxop:operation} break_pane
 ```
 
 ## Failure and effects
 
 This operation changes tmux state. It creates a window.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+On exactly tmux 3.7, a nameless request receives the placeholder
+`-n libtmux` to avoid an upstream null dereference. Other versions omit the
+placeholder. tmux 3.7 also ignores a requested name, so rename the captured
+window afterward when its name matters.
+
+The captured identifier is resolved through
+{class}`~libtmux.experimental.ops.ListWindows`; a non-`None` identifier alone
+would not prove that tmux created the window.
 
 ## Related operations
 

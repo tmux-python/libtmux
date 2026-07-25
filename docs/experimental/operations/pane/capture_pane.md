@@ -1,34 +1,46 @@
-# Capture a pane's contents
+# Capture pane output
 
-`CapturePane` models `capture-pane` as a typed pane operation and
-returns `CapturePaneResult`.
+{class}`~libtmux.experimental.ops.CapturePane` reads the visible pane and
+scrollback into typed output lines.
+
+## Example
+
+This executable example uses the injected live `server` and `pane` context.
+
+```python
+>>> from libtmux.experimental.engines import SubprocessEngine
+>>> from libtmux.experimental.ops import CapturePane, SendKeys, run
+>>> from libtmux.experimental.ops._types import PaneId
+>>> assert pane.pane_id is not None
+>>> target = PaneId(pane.pane_id)
+>>> engine = SubprocessEngine.for_server(server)
+>>> _ = run(
+...     SendKeys(
+...         target=target,
+...         keys="printf 'docs-captured\\n'; tmux wait-for -S docs-capture",
+...         enter=True,
+...     ),
+...     engine,
+... ).raise_for_status()
+>>> server.wait_for("docs-capture")
+>>> result = run(CapturePane(target=target, start=-10), engine).raise_for_status()
+>>> type(result).__name__, any("docs-captured" in line for line in result.lines)
+('CapturePaneResult', True)
+```
+
+## Operation reference
 
 ```{tmuxop:operation} capture_pane
 ```
 
-## Example
-
-This example executes the typed operation against the deterministic mock engine:
-
-```python
->>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import CapturePane, run
->>> from libtmux.experimental.ops._types import PaneId
->>> operation = CapturePane(target=PaneId("%1"))
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
-```
-
 ## Failure and effects
 
-This operation reads tmux state without changing it. It reads command output, is safe to repeat.
+This operation reads terminal output without changing tmux state. It is safe to
+repeat.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The `trim_trailing` flag is available on tmux 3.4 and newer; `mode_screen`
+requires tmux 3.6. The operation omits an unavailable optional flag when you
+provide an older tmux version.
 
 ## Related operations
 

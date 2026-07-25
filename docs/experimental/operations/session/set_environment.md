@@ -1,34 +1,43 @@
 # Set or unset a session environment variable
 
-`SetEnvironment` models `set-environment` as a typed session operation and
-returns `AckResult`.
-
-```{tmuxop:operation} set_environment
-```
+{class}`~libtmux.experimental.ops.SetEnvironment` changes the environment
+inherited by new processes in a session.
 
 ## Example
 
-This example executes the typed operation against the deterministic mock engine:
+This executable example uses an isolated live tmux server. `server` and
+`session` are injected documentation context; the standalone setup tutorial
+shows the equivalent public setup and cleanup.
 
 ```python
->>> from libtmux.experimental.engines import MockEngine
+>>> from libtmux.experimental.engines import SubprocessEngine
 >>> from libtmux.experimental.ops import SetEnvironment, run
 >>> from libtmux.experimental.ops._types import SessionId
->>> operation = SetEnvironment(target=SessionId("$1"), name="MODE", value="build")
->>> result = run(operation, MockEngine())
->>> result.status
-'complete'
+>>> assert session.session_id is not None
+>>> engine = SubprocessEngine.for_server(server)
+>>> changed = run(
+...     SetEnvironment(
+...         target=SessionId(session.session_id),
+...         name="LIBTMUX_DOC_MODE",
+...         value="live",
+...     ),
+...     engine,
+... ).raise_for_status()
+>>> type(changed).__name__, session.getenv("LIBTMUX_DOC_MODE")
+('AckResult', 'live')
+```
+
+## Operation reference
+
+```{tmuxop:operation} set_environment
 ```
 
 ## Failure and effects
 
 This operation changes tmux state.
 
-`MockEngine` validates the command and result contract, but it does not prove
-that a live target exists. A live engine reports an invalid or missing target
-as a failed result; call
-{meth}`~libtmux.experimental.ops.results.Result.raise_for_status` to raise the
-underlying error.
+The typed operation has no matching typed read operation, so the example uses
+{meth}`~libtmux.common.EnvironmentMixin.getenv` for the independent readback.
 
 ## Related operations
 
