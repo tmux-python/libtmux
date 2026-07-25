@@ -88,6 +88,7 @@ def add_doctest_fixtures(
         doctest_namespace["session"] = session
         doctest_namespace["window"] = session.active_window
         doctest_namespace["pane"] = session.active_pane
+        doctest_namespace["tmp_path"] = request.getfixturevalue("tmp_path")
         doctest_namespace["request"] = request
         doctest_namespace["ControlMode"] = ControlMode
         doctest_namespace["control_mode"] = functools.partial(

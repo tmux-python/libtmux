@@ -25,10 +25,22 @@ class NewWindow(Operation[CreateResult]):
 
     Parameters
     ----------
+    name : str or None
+        Name for the new window, or ``None`` to let tmux choose one.
+    start_directory : str or None
+        Working directory for the first pane.
+    environment : Mapping[str, str] or None
+        Environment variables for the new window. Requires tmux 3.0 or later.
+    detach : bool
+        Create the window without selecting it.
+    capture : bool
+        Print and capture the new window id.
     capture_pane : bool
         Also capture the new window's first pane id (into
         :attr:`~.results.CreateResult.first_pane_id`), so a plan can target it
         via ``slot.pane``.
+    window_shell : str or None
+        Command to run in the first pane instead of the default shell.
 
     Examples
     --------

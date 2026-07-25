@@ -1,25 +1,28 @@
-# Choose an engine
+# Execution engines
 
-Every engine satisfies the same
-{class}`~libtmux.experimental.engines.base.TmuxEngine` or
-{class}`~libtmux.experimental.engines.base.AsyncTmuxEngine` protocol. Changing
-the engine changes how and where a command runs, not the operation or its
-result type.
+Operations declare tmux commands and convert their output to typed results.
+Engines own dispatch: transport, concurrency, process or connection lifetime,
+batching, and transport-level failures. Changing the engine does not change the
+operation or its result type, but it does change the resources and failure
+boundary around execution.
 
-| Engine | Transport | Use it for |
-| --- | --- | --- |
-| {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` | one `tmux` process per command | compatibility with the classic libtmux execution path |
-| {class}`~libtmux.experimental.engines.mock.MockEngine` | in-memory, no tmux | deterministic tests and command-shape assertions |
-| {class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` | persistent `tmux -C` connection | many commands over one connection |
-| {class}`~libtmux.experimental.engines.imsg.base.ImsgEngine` | tmux native peer protocol | direct protocol experiments |
+## Choose an engine
 
-Async subprocess, mock, and control-mode engines implement
-{class}`~libtmux.experimental.engines.base.AsyncTmuxEngine`.
+| Engine                                                                                                                        | Dispatch model                                   | Use it for                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------- |
+| {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` ([reference](engines/subprocess.md))                       | One tmux CLI process per request                 | Straightforward synchronous live-server work                |
+| {class}`~libtmux.experimental.engines.asyncio.AsyncSubprocessEngine` ([reference](engines/async-subprocess.md))               | One asyncio subprocess per request               | Async applications that do not need a persistent connection |
+| {class}`~libtmux.experimental.engines.mock.MockEngine` ([reference](engines/mock.md))                                         | Stateless in-memory simulation                   | Offline rendering and result-conversion tests               |
+| {class}`~libtmux.experimental.engines.mock.AsyncMockEngine` ([reference](engines/async-mock.md))                              | Async stateless in-memory simulation             | Offline tests of async callers                              |
+| {class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` ([reference](engines/control-mode.md))                  | One persistent synchronous `tmux -C` connection  | Pipelined command batches                                   |
+| {class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine` ([reference](engines/async-control-mode.md)) | Supervised persistent async `tmux -C` connection | Async batches and control-mode notifications                |
+| {class}`~libtmux.experimental.engines.imsg.base.ImsgEngine` ([reference](engines/imsg.md))                                    | Native socket with required CLI fallbacks        | POSIX protocol experiments and narrow parity checks         |
 
 ## Select by name
 
-Construct an engine directly, bind a subprocess engine to a live server, or use
-the engine registry:
+The registry exposes the synchronous engine families.
+Async engines are constructed directly. Their lifecycle belongs to the caller's
+event loop.
 
 ```python
 >>> from libtmux.experimental.engines import available_engines, create_engine
@@ -34,16 +37,59 @@ the engine registry:
 
 ## Engine boundary
 
-An engine emits a raw
-{class}`~libtmux.experimental.engines.base.CommandResult`. The operation runner
-converts it to the operation's declared
-{class}`~libtmux.experimental.ops.results.Result` subtype. This boundary lets a
-mock prove rendering and result conversion without claiming that a target
-exists on a live tmux server.
+A synchronous engine satisfies
+{class}`~libtmux.experimental.engines.base.TmuxEngine`; an async engine
+satisfies {class}`~libtmux.experimental.engines.base.AsyncTmuxEngine`. Both
+accept a {class}`~libtmux.experimental.engines.base.CommandRequest` and produce
+a raw {class}`~libtmux.experimental.engines.base.CommandResult`.
+{func}`~libtmux.experimental.ops.run` and
+{func}`~libtmux.experimental.ops.arun` own the next boundary: they render an
+operation and convert the raw command outcome to its declared typed result.
 
-## API
+A tmux command rejection is normally result data. Missing executables, dead
+persistent connections, protocol mismatches, and similar transport failures
+raise at the engine boundary.
 
-- {class}`~libtmux.experimental.engines.base.TmuxEngine`
-- {class}`~libtmux.experimental.engines.base.AsyncTmuxEngine`
-- {func}`~libtmux.experimental.engines.registry.available_engines`
-- {func}`~libtmux.experimental.engines.registry.create_engine`
+## Tutorials
+
+Start with {doc}`tutorials/live-operation`, then use the task guide that matches
+the boundary you need to understand:
+
+- {doc}`tutorials/results-and-failures`
+- {doc}`tutorials/async-subprocess`
+- {doc}`tutorials/control-mode`
+- {doc}`tutorials/offline-testing`
+- {doc}`tutorials/imsg-parity`
+
+## Shared API
+
+```{eval-rst}
+.. autoclass:: libtmux.experimental.engines.base.TmuxEngine
+   :members:
+
+.. autoclass:: libtmux.experimental.engines.base.AsyncTmuxEngine
+   :members:
+
+.. autoclass:: libtmux.experimental.engines.base.CommandRequest
+   :members:
+
+.. autoclass:: libtmux.experimental.engines.base.CommandResult
+   :members:
+
+.. autofunction:: libtmux.experimental.engines.registry.available_engines
+
+.. autofunction:: libtmux.experimental.engines.registry.create_engine
+```
+
+```{toctree}
+:hidden:
+
+engines/subprocess
+engines/async-subprocess
+engines/mock
+engines/async-mock
+engines/control-mode
+engines/async-control-mode
+engines/imsg
+tutorials/index
+```
