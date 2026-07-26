@@ -16,6 +16,8 @@ from libtmux.test.retry import retry_until
 if t.TYPE_CHECKING:
     import types
 
+    from typing_extensions import Self
+
     from libtmux.server import Server
     from libtmux.session import Session
 
@@ -56,7 +58,7 @@ class ControlMode:
         self.server = server
         self.session = session
 
-    def __enter__(self) -> ControlMode:
+    def __enter__(self) -> Self:
         """Spawn control-mode client and wait for registration."""
         read_fd, self._write_fd = os.pipe()
 
