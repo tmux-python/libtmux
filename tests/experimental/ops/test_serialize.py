@@ -8,9 +8,11 @@ import pytest
 
 from libtmux.experimental.ops import (
     CapturePane,
+    DeleteBuffer,
     SelectLayout,
     SendKeys,
     SplitWindow,
+    SwapPane,
 )
 from libtmux.experimental.ops._types import (
     ClientName,
@@ -69,6 +71,39 @@ def test_operation_dict_is_plain_data(operation: Operation[t.Any]) -> None:
     data = operation_to_dict(operation)
     assert data["kind"] == operation.kind
     assert isinstance(data["target"], (dict, type(None)))
+
+
+def test_operation_dict_contains_only_constructor_target_fields() -> None:
+    """Serialized target keys match each operation's public constructor."""
+    assert set(operation_to_dict(DeleteBuffer())) == {"kind", "buffer_name"}
+    assert set(operation_to_dict(SendKeys(keys="x"))) >= {"kind", "target"}
+    assert "src_target" not in operation_to_dict(SendKeys(keys="x"))
+    assert {"target", "src_target"} <= set(
+        operation_to_dict(SwapPane()),
+    )
+
+
+def test_from_dict_rejects_unsupported_target_field() -> None:
+    """Serialized operations cannot smuggle a target the command lacks."""
+    with pytest.raises(TypeError, match="target"):
+        operation_from_dict(
+            {
+                "kind": "delete_buffer",
+                "target": {"type": "PaneId", "value": "%1"},
+            },
+        )
+
+
+def test_from_dict_rejects_unsupported_source_target_field() -> None:
+    """Serialized operations cannot smuggle a source into single-target commands."""
+    with pytest.raises(TypeError, match="src_target"):
+        operation_from_dict(
+            {
+                "kind": "send_keys",
+                "keys": "x",
+                "src_target": {"type": "PaneId", "value": "%1"},
+            },
+        )
 
 
 @pytest.mark.parametrize("operation", _OPERATIONS)

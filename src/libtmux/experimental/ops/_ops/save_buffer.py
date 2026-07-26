@@ -5,17 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import UntargetedOperation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class SaveBuffer(Operation[AckResult]):
+class SaveBuffer(UntargetedOperation[AckResult]):
     """Save a paste buffer to a file (``save-buffer``).
 
-    Parameters
+    Attributes
     ----------
     path : str
         The file to write (``-`` for stdout).
@@ -27,9 +27,9 @@ class SaveBuffer(Operation[AckResult]):
     Examples
     --------
     >>> SaveBuffer(path="/tmp/x").render()
-    ('save-buffer', '/tmp/x')
+    ('save-buffer', '--', '/tmp/x')
     >>> SaveBuffer(buffer_name="b0", path="/tmp/x", append=True).render()
-    ('save-buffer', '-a', '-b', 'b0', '/tmp/x')
+    ('save-buffer', '-a', '-b', 'b0', '--', '/tmp/x')
     """
 
     kind = "save_buffer"
@@ -50,5 +50,5 @@ class SaveBuffer(Operation[AckResult]):
             out.append("-a")
         if self.buffer_name is not None:
             out.extend(("-b", self.buffer_name))
-        out.append(self.path)
+        out.extend(positional_args(self.path))
         return tuple(out)

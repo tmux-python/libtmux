@@ -74,7 +74,19 @@ class MessageType(enum.IntEnum):
 
 @dataclasses.dataclass(frozen=True)
 class WriteOpenMessage:
-    """Parsed ``MSG_WRITE_OPEN`` payload."""
+    """Parsed ``MSG_WRITE_OPEN`` payload.
+
+    Attributes
+    ----------
+    stream : int
+        Write stream identifier.
+    fd : int
+        File descriptor opened for writing.
+    flags : int
+        tmux write-open flags.
+    path : str
+        Path associated with the opened stream.
+    """
 
     stream: int
     fd: int
@@ -84,7 +96,15 @@ class WriteOpenMessage:
 
 @dataclasses.dataclass(frozen=True)
 class WriteDataMessage:
-    """Parsed ``MSG_WRITE`` payload."""
+    """Parsed ``MSG_WRITE`` payload.
+
+    Attributes
+    ----------
+    stream : int
+        Write stream identifier.
+    data : bytes
+        Bytes written to the stream.
+    """
 
     stream: int
     data: bytes
@@ -92,7 +112,15 @@ class WriteDataMessage:
 
 @dataclasses.dataclass(frozen=True)
 class WriteReadyMessage:
-    """Parsed ``MSG_WRITE_READY`` payload."""
+    """Parsed ``MSG_WRITE_READY`` payload.
+
+    Attributes
+    ----------
+    stream : int
+        Write stream identifier.
+    error : int
+        Write completion error code.
+    """
 
     stream: int
     error: int
@@ -100,14 +128,30 @@ class WriteReadyMessage:
 
 @dataclasses.dataclass(frozen=True)
 class WriteCloseMessage:
-    """Parsed ``MSG_WRITE_CLOSE`` payload."""
+    """Parsed ``MSG_WRITE_CLOSE`` payload.
+
+    Attributes
+    ----------
+    stream : int
+        Closed write stream identifier.
+    """
 
     stream: int
 
 
 @dataclasses.dataclass(frozen=True)
 class ReadOpenMessage:
-    """Parsed ``MSG_READ_OPEN`` payload."""
+    """Parsed ``MSG_READ_OPEN`` payload.
+
+    Attributes
+    ----------
+    stream : int
+        Read stream identifier.
+    fd : int
+        File descriptor opened for reading.
+    path : str
+        Path associated with the opened stream.
+    """
 
     stream: int
     fd: int
@@ -116,7 +160,15 @@ class ReadOpenMessage:
 
 @dataclasses.dataclass(frozen=True)
 class ReadDoneMessage:
-    """Parsed ``MSG_READ_DONE`` payload."""
+    """Parsed ``MSG_READ_DONE`` payload.
+
+    Attributes
+    ----------
+    stream : int
+        Read stream identifier.
+    error : int
+        Read completion error code.
+    """
 
     stream: int
     error: int
@@ -124,7 +176,15 @@ class ReadDoneMessage:
 
 @dataclasses.dataclass(frozen=True)
 class ExitMessage:
-    """Parsed ``MSG_EXIT`` payload."""
+    """Parsed ``MSG_EXIT`` payload.
+
+    Attributes
+    ----------
+    returncode : int
+        tmux process exit code.
+    message : str or None
+        Optional tmux exit message.
+    """
 
     returncode: int
     message: str | None
@@ -132,7 +192,13 @@ class ExitMessage:
 
 @dataclasses.dataclass(frozen=True)
 class RawMessage:
-    """Payload for message types without a dedicated parser."""
+    """Payload for message types without a dedicated parser.
+
+    Attributes
+    ----------
+    payload : bytes
+        Unparsed message payload bytes.
+    """
 
     payload: bytes
 
@@ -440,6 +506,9 @@ class ProtocolV8Codec:
 
 
 def _c_string(value: str) -> bytes:
+    if "\0" in value:
+        msg = "tmux imsg strings cannot contain NUL"
+        raise ValueError(msg)
     return value.encode("utf-8") + b"\0"
 
 

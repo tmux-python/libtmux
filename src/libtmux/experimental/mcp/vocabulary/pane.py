@@ -6,8 +6,9 @@ conveniences an agent reaches for that raw tmux makes awkward:
 has no server-side grep), ``search_panes`` ("which pane shows X?"), and the
 geometry-resolved ``resolve_relative_pane`` / ``capture_relative_pane`` /
 ``grep_relative_pane`` / ``find_pane_by_position`` / directional ``select_pane``.
-The relative tools resolve layout geometry to a concrete ``%N`` (robust across
-tmux versions) and default their origin to the *caller's* pane; every
+The relative tools resolve layout geometry to a concrete ``%N`` without using
+tmux's version-dependent special-target semantics and default their origin to
+the *caller's* pane; every
 single-target tool that could act on the wrong pane rejects a relative special
 target (``{up-of}`` …) with a hint, because those resolve against this MCP's
 control client, not the caller.
@@ -74,6 +75,7 @@ from libtmux.experimental.ops import (
     arun,
 )
 from libtmux.experimental.ops._types import PaneId, Target
+from libtmux.experimental.ops.results import _require_created_id
 
 #: Default ceiling on the panes ``search_panes`` captures, to bound fan-out cost.
 _SEARCH_PANE_CAP = 200
@@ -106,7 +108,7 @@ async def asplit_pane(
         version=version,
     )
     result.raise_for_status()
-    return PaneResult(pane_id=result.new_pane_id or "")
+    return PaneResult(pane_id=_require_created_id(result))
 
 
 async def anew_pane(
@@ -145,7 +147,7 @@ async def anew_pane(
         version=version,
     )
     result.raise_for_status()
-    return PaneResult(pane_id=result.new_pane_id or "")
+    return PaneResult(pane_id=_require_created_id(result))
 
 
 async def asend_input(
@@ -401,7 +403,7 @@ async def abreak_pane(
         version=version,
     )
     result.raise_for_status()
-    return WindowResult(window_id=result.new_id or "", name=name)
+    return WindowResult(window_id=_require_created_id(result), name=name)
 
 
 async def arespawn_pane(
@@ -531,11 +533,11 @@ async def aresolve_relative_pane(
     """Return the id of the pane *direction* of *origin* (caller pane by default).
 
     Resolved from layout geometry (the ``pane_left/top/right/bottom`` the list
-    template already carries) -- robust across tmux versions, and without moving
-    the active pane. ``origin=None`` means the caller's own pane (the pane that
-    launched this MCP), resolved only when this engine targets the caller's tmux
-    server; otherwise an explicit ``origin`` is required. This never falls back to
-    tmux's active pane (the control client's cursor, not the caller).
+    template already carries) into a concrete id, without moving the active pane.
+    ``origin=None`` means the caller's own pane (the pane that launched this MCP),
+    resolved only when this engine targets the caller's tmux server; otherwise an
+    explicit ``origin`` is required. This never falls back to tmux's active pane
+    (the control client's cursor, not the caller).
     """
     origin_id = await resolve_origin(engine, origin, version)
     if not origin_id:

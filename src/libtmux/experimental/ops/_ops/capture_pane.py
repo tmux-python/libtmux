@@ -21,10 +21,12 @@ if t.TYPE_CHECKING:
 class CapturePane(Operation[CapturePaneResult]):
     """Capture a pane's contents (a read-only operation).
 
-    Parameters
+    Attributes
     ----------
-    start, end : int or None
-        Start/end line for the capture (``-S`` / ``-E``).
+    start : int or None
+        First line to capture (``-S``).
+    end : int or None
+        Last line to capture (``-E``).
     escape_sequences : bool
         Include escape sequences (``-e``).
     join_wrapped : bool

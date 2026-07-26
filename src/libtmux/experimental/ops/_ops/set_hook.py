@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class SetHook(Operation[AckResult]):
     """Set or unset a tmux hook (``set-hook``).
 
-    Parameters
+    Attributes
     ----------
     name : str
         The hook name (e.g. ``after-new-window``).
@@ -29,7 +29,7 @@ class SetHook(Operation[AckResult]):
     Examples
     --------
     >>> SetHook(name="after-new-window", hook_command="display hi").render()
-    ('set-hook', 'after-new-window', 'display hi')
+    ('set-hook', '--', 'after-new-window', 'display hi')
     """
 
     kind = "set_hook"
@@ -51,7 +51,8 @@ class SetHook(Operation[AckResult]):
             out.append("-g")
         if self.unset:
             out.append("-u")
-        out.append(self.name)
+        positional = [self.name]
         if self.hook_command is not None and not self.unset:
-            out.append(self.hook_command)
+            positional.append(self.hook_command)
+        out.extend(positional_args(*positional))
         return tuple(out)

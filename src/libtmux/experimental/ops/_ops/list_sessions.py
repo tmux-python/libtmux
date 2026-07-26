@@ -11,7 +11,7 @@ from libtmux.experimental.ops._read import (
     parse_output,
 )
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import UntargetedOperation
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import ListSessionsResult
 
@@ -21,7 +21,7 @@ if t.TYPE_CHECKING:
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class ListSessions(Operation[ListSessionsResult]):
+class ListSessions(UntargetedOperation[ListSessionsResult]):
     """List the server's sessions and return typed :class:`SessionSnapshot` rows.
 
     Examples

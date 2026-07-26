@@ -29,7 +29,7 @@ class ListPanes(Operation[ListPanesResult]):
     :class:`~libtmux.experimental.models.PaneSnapshot`; with ``all_panes`` the
     result also exposes the full :class:`ServerSnapshot` tree.
 
-    Parameters
+    Attributes
     ----------
     all_panes : bool
         List panes across the whole server (``-a``).
