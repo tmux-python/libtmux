@@ -316,12 +316,12 @@ LOOKUP_NAME_MAP: Mapping[str, LookupProtocol] = {
 
 class PKRequiredException(Exception):
     def __init__(self, *args: object) -> None:
-        return super().__init__("items() require a pk_key exists")
+        super().__init__("items() require a pk_key exists")
 
 
 class OpNotFound(ValueError):
     def __init__(self, op: str, *args: object) -> None:
-        return super().__init__(f"{op} not in LOOKUP_NAME_MAP")
+        super().__init__(f"{op} not in LOOKUP_NAME_MAP")
 
 
 class QueryList(list[T], t.Generic[T]):
