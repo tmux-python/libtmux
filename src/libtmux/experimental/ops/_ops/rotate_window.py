@@ -15,10 +15,12 @@ from libtmux.experimental.ops.results import AckResult
 class RotateWindow(Operation[AckResult]):
     """Rotate the panes in a window (``rotate-window``).
 
-    Parameters
+    Attributes
     ----------
-    up, down : bool
-        Rotate upward (``-U``) or downward (``-D``).
+    up : bool
+        Rotate upward (``-U``).
+    down : bool
+        Rotate downward (``-D``).
     zoom : bool
         Keep the window zoomed (``-Z``).
 

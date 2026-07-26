@@ -24,6 +24,8 @@ from libtmux.experimental.engines.imsg.v8 import (
     MessageType,
     ProtocolV8Codec,
 )
+from libtmux.experimental.ops import SendKeys
+from libtmux.experimental.ops._types import PaneId
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -91,6 +93,30 @@ def test_v8_command_message_packs_argc_and_argv() -> None:
     # int32 argc=3 then three NUL-terminated args
     assert frame.payload.startswith(b"\x03\x00\x00\x00")
     assert frame.payload.endswith(b"#{session_id}\x00")
+
+
+def test_v8_command_message_rejects_embedded_nul() -> None:
+    """An argv C string cannot contain an embedded terminator."""
+    with pytest.raises(ValueError, match="NUL"):
+        ProtocolV8Codec().command_message(
+            ("display-message", "first\0kill-server"),
+            peer_id=8,
+        )
+
+
+def test_imsg_parses_global_options_before_encoding_command_argv() -> None:
+    """Imsg preserves client-only values and encodes only its command frame."""
+    request = CommandRequest.from_args(
+        "-L",
+        "socket;",
+        "display-message",
+        "literal;",
+    )
+
+    parsed = ImsgEngine()._parse_args(request.args)
+
+    assert parsed.global_args == ("-L", "socket;")
+    assert parsed.command_argv == ("display-message", "literal\\;")
 
 
 class IdentifyFrameCase(t.NamedTuple):
@@ -162,3 +188,31 @@ def test_imsg_subprocess_parity(session: Session) -> None:
     parity("display-message", "-p", "-t", session_id, "#{session_id}")
     parity("list-sessions", "-F", "#{session_id}")
     parity("has-session", "-t", session_id)
+
+
+@needs_af_unix
+def test_imsg_literal_target_cannot_start_command(session: Session) -> None:
+    """Typed arguments stay literal when packed into ``MSG_COMMAND``."""
+    pane = session.active_pane
+    assert pane is not None
+    pane_id = pane.pane_id
+    assert pane_id is not None
+    operation = SendKeys(
+        target=PaneId(f"{pane_id};"),
+        keys="kill-server",
+    )
+    request = CommandRequest.from_args(
+        *_socket_prefix(session.server),
+        *operation.render(),
+    )
+
+    raw = ImsgEngine().run(request)
+    result = operation.build_result(
+        returncode=raw.returncode,
+        stdout=raw.stdout,
+        stderr=raw.stderr,
+    )
+
+    assert result.failed
+    assert not any("no server running" in line for line in raw.stderr)
+    assert session.server.is_alive()

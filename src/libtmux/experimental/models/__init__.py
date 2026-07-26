@@ -4,8 +4,7 @@ A neo-like view of server/session/window/pane state as plain *values* -- no live
 :class:`~libtmux.Server`, no command dispatch, no coupling to the existing ORM or
 query pipeline. Snapshots are immutable, composable into a tree, and serializable,
 so they are safe to experiment with under :mod:`libtmux.experimental` without
-touching shipped APIs. See the operationalization plan (``tmux-python/libtmux``
-issue 689).
+touching shipped APIs.
 """
 
 from __future__ import annotations

@@ -40,7 +40,31 @@ def _as_bool(value: str | None) -> bool:
 
 @dataclass(frozen=True)
 class PaneBox:
-    """One pane's geometry, parsed from a ``list-panes`` format row."""
+    """One pane's geometry, parsed from a ``list-panes`` format row.
+
+    Attributes
+    ----------
+    pane_id : str
+        Pane identifier from tmux.
+    left : int
+        Leftmost pane column.
+    top : int
+        Topmost pane row.
+    right : int
+        Rightmost pane column.
+    bottom : int
+        Bottommost pane row.
+    at_left : bool
+        Whether the pane touches the window's left edge.
+    at_right : bool
+        Whether the pane touches the window's right edge.
+    at_top : bool
+        Whether the pane touches the window's top edge.
+    at_bottom : bool
+        Whether the pane touches the window's bottom edge.
+    active : bool
+        Whether tmux marks the pane active.
+    """
 
     pane_id: str
     left: int

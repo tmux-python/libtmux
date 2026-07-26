@@ -11,6 +11,7 @@ from libtmux.experimental.objects.session import (
     LazySession,
 )
 from libtmux.experimental.ops import NewSession, arun, run
+from libtmux.experimental.ops.results import _require_created_id
 
 if t.TYPE_CHECKING:
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
@@ -20,6 +21,13 @@ if t.TYPE_CHECKING:
 @dataclass(frozen=True)
 class EagerServer:
     """A live server object; the root of eager object navigation.
+
+    Attributes
+    ----------
+    engine : TmuxEngine
+        Engine used to execute server operations.
+    version : str or None
+        tmux version used when rendering operations.
 
     Examples
     --------
@@ -49,8 +57,8 @@ class EagerServer:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_id is not None
-        return EagerSession(self.engine, result.new_id, self.version)
+        created_id = _require_created_id(result)
+        return EagerSession(self.engine, created_id, self.version)
 
     @classmethod
     def for_server(cls, server: t.Any, *, version: str | None = None) -> EagerServer:
@@ -63,6 +71,11 @@ class EagerServer:
 @dataclass(frozen=True)
 class LazyServer:
     """A deferred server object; records session creation into a plan.
+
+    Attributes
+    ----------
+    plan : LazyPlan
+        Plan that receives recorded server operations.
 
     Examples
     --------
@@ -93,7 +106,15 @@ class LazyServer:
 
 @dataclass(frozen=True)
 class AsyncServer:
-    """An async live server object: the eager server, awaited."""
+    """An async live server object: the eager server, awaited.
+
+    Attributes
+    ----------
+    engine : AsyncTmuxEngine
+        Engine used to execute server operations asynchronously.
+    version : str or None
+        tmux version used when rendering operations.
+    """
 
     engine: AsyncTmuxEngine
     version: str | None = None
@@ -111,8 +132,8 @@ class AsyncServer:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_id is not None
-        return AsyncSession(self.engine, result.new_id, self.version)
+        created_id = _require_created_id(result)
+        return AsyncSession(self.engine, created_id, self.version)
 
     @classmethod
     def for_server(cls, server: t.Any, *, version: str | None = None) -> AsyncServer:

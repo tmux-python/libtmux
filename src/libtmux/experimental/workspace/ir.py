@@ -45,15 +45,18 @@ if t.TYPE_CHECKING:
 class Command:
     """One command sent to a pane, with per-command orchestration.
 
-    Parameters
+    Attributes
     ----------
     cmd : str
         The command line sent via ``send-keys``.
     enter : bool
         Submit the command with ``Enter`` (``False`` types it without running --
         e.g. to pre-fill a prompt).
-    sleep_before, sleep_after : float or None
-        Host-side delays around this individual command (orchestration, not tmux).
+    sleep_before : float or None
+        Host-side delay before this command (orchestration, not tmux).
+
+    sleep_after : float or None
+        Host-side delay after this command (orchestration, not tmux).
 
     Examples
     --------
@@ -90,7 +93,7 @@ class Command:
 class Pane:
     """A pane in the declared workspace.
 
-    Parameters
+    Attributes
     ----------
     run : str or Command or Sequence[str or Command] or None
         Command(s) to send after the pane is created. A bare string is one
@@ -104,8 +107,10 @@ class Pane:
         Working directory (inherited from window/session when unset).
     suppress_history : bool
         Keep sent commands out of shell history (leading-space trick).
-    sleep_before, sleep_after : float or None
-        Host-side delays around this pane's commands (orchestration, not tmux).
+    sleep_before : float or None
+        Host-side delay before this pane's commands (orchestration, not tmux).
+    sleep_after : float or None
+        Host-side delay after this pane's commands (orchestration, not tmux).
     environment : Mapping[str, str]
         Process environment for a *split* pane (``split-window -e``). For the
         window's first pane -- which reuses the window's implicit pane rather than
@@ -176,27 +181,34 @@ class Float:
     (``-X``/``-Y``); each is cells (``int``) or a percentage (``str`` like
     ``"50%"``). The remaining fields mirror the ``new-pane`` flag vocabulary.
 
-    Parameters
+    Attributes
     ----------
-    width, height : int or str or None
-        Size in cells or ``N%`` (``-x`` / ``-y``).
-    x, y : int or str or None
-        Absolute position in cells or ``N%`` (``-X`` / ``-Y``).
+    width : int or str or None
+        Width in cells or ``N%`` (``-x``).
+    height : int or str or None
+        Height in cells or ``N%`` (``-y``).
+    x : int or str or None
+        Horizontal offset in cells or ``N%`` (``-X``).
+    y : int or str or None
+        Vertical offset in cells or ``N%`` (``-Y``).
     zoom : bool
         Zoom the pane (``-Z``).
     empty : bool
         Create an empty pane with no command (``-E``).
-    style, active_border_style, inactive_border_style : str or None
-        Content / active-border / inactive-border styles (``-s`` / ``-S`` /
-        ``-R``).
+    style : str or None
+        Pane content style (``-s``).
+    active_border_style : str or None
+        Active-border style (``-S``).
+    inactive_border_style : str or None
+        Inactive-border style (``-R``).
     message : str or None
         Remain-on-exit message (``-m``).
 
     Examples
     --------
     >>> from libtmux.experimental.workspace.ir import Float
-    >>> Float(width=120, height=40, x="C", y="C").to_dict()
-    {'width': 120, 'height': 40, 'x': 'C', 'y': 'C'}
+    >>> Float(width=120, height=40, x=10, y="25%").to_dict()
+    {'width': 120, 'height': 40, 'x': 10, 'y': '25%'}
     >>> Float().to_dict()
     {}
     """
@@ -247,7 +259,7 @@ class FloatingPane:
     pane-count check. :attr:`attach_to` names a :class:`Window` (by name) to float
     over; ``None`` floats over the window the overlay is declared on.
 
-    Parameters
+    Attributes
     ----------
     pane : Pane
         The pane's command(s), focus, env, shell, etc.
@@ -284,7 +296,7 @@ class FloatingPane:
 class Window:
     """A window in the declared workspace.
 
-    Parameters
+    Attributes
     ----------
     name : str or None
         Window name.
@@ -363,7 +375,7 @@ class Window:
 class Workspace:
     """A declared workspace: a session shape that compiles to Core operations.
 
-    Parameters
+    Attributes
     ----------
     name : str
         Session name.

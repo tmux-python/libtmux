@@ -161,8 +161,22 @@ def test_commands_to_plan_builds_one_op_per_pane() -> None:
         .to_plan(ROWS)
     )
     assert [op.kind for op in plan.operations] == ["send_keys", "send_keys"]
-    assert plan.operations[0].render() == ("send-keys", "-t", "%1", "clear", "Enter")
-    assert plan.operations[1].render() == ("send-keys", "-t", "%3", "clear", "Enter")
+    assert plan.operations[0].render() == (
+        "send-keys",
+        "-t",
+        "%1",
+        "--",
+        "clear",
+        "Enter",
+    )
+    assert plan.operations[1].render() == (
+        "send-keys",
+        "-t",
+        "%3",
+        "--",
+        "clear",
+        "Enter",
+    )
 
 
 def test_bound_pane_commands_record_each_kind() -> None:

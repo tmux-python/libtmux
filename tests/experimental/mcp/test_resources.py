@@ -19,7 +19,7 @@ if t.TYPE_CHECKING:
 
 
 def _text(contents: t.Any) -> str:
-    """Join the text of a read_resource result (robust to content shape)."""
+    """Join text entries from any FastMCP content-list shape."""
     return "".join(getattr(item, "text", "") for item in contents)
 
 

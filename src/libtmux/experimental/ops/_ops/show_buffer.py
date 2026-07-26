@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import UntargetedOperation
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import ShowBufferResult
 
@@ -16,10 +16,10 @@ if t.TYPE_CHECKING:
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class ShowBuffer(Operation[ShowBufferResult]):
+class ShowBuffer(UntargetedOperation[ShowBufferResult]):
     r"""Show the contents of a paste buffer (``show-buffer``).
 
-    Parameters
+    Attributes
     ----------
     buffer_name : str or None
         The buffer to show (``-b``); the most recent when omitted.

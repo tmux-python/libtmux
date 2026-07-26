@@ -74,6 +74,8 @@ def test_ensure_chainable_rejects_output_ops() -> None:
 
 def test_render_chain_joins_with_separator() -> None:
     """Chainable ops render to one argv with standalone ';' separators."""
+    from libtmux.experimental.engines.base import is_command_separator
+
     argv = render_chain(
         [
             SendKeys(target=PaneId("%1"), keys="vim", enter=True),
@@ -84,14 +86,17 @@ def test_render_chain_joins_with_separator() -> None:
         "send-keys",
         "-t",
         "%1",
+        "--",
         "vim",
         "Enter",
         ";",
         "rename-window",
         "-t",
         "@1",
+        "--",
         "edit",
     )
+    assert is_command_separator(argv[6])
 
 
 def test_fold_dispatches_once() -> None:

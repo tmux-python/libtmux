@@ -36,7 +36,8 @@ Status: t.TypeAlias = t.Literal["complete", "failed", "skipped", "unknown"]
 ``complete``
     The command ran and tmux reported success.
 ``failed``
-    The command ran and tmux reported an error.
+    The logical operation failed because tmux rejected a command, a composed
+    follow-up failed, or required result data was missing.
 ``skipped``
     The operation was never dispatched (e.g. an earlier command in a chain
     failed, or a lazy plan was inspected but not executed).
@@ -53,7 +54,7 @@ class Effects:
     downstream consumer) lets MCP annotations and safety tiers derive directly
     from the operation.
 
-    Parameters
+    Attributes
     ----------
     read_only : bool
         The operation does not change tmux state.
@@ -93,6 +94,11 @@ class Effects:
 class PaneId:
     """A concrete tmux pane id, ``%N``.
 
+    Attributes
+    ----------
+    value : str
+        Pane id including its leading ``%`` sigil.
+
     Examples
     --------
     >>> PaneId("%1").render()
@@ -120,6 +126,11 @@ class PaneId:
 class WindowId:
     """A concrete tmux window id, ``@N``.
 
+    Attributes
+    ----------
+    value : str
+        Window id including its leading ``@`` sigil.
+
     Examples
     --------
     >>> WindowId("@2").render()
@@ -143,6 +154,11 @@ class WindowId:
 class SessionId:
     """A concrete tmux session id, ``$N``.
 
+    Attributes
+    ----------
+    value : str
+        Session id including its leading ``$`` sigil.
+
     Examples
     --------
     >>> SessionId("$0").render()
@@ -165,6 +181,11 @@ class SessionId:
 @dataclass(frozen=True, slots=True)
 class ClientName:
     """A tmux client name (a tty path such as ``/dev/pts/3``).
+
+    Attributes
+    ----------
+    value : str
+        Non-empty client name, normally its pseudo-terminal path.
 
     Examples
     --------
@@ -192,6 +213,13 @@ class NameRef:
     tmux matches names as a prefix by default; prefixing with ``=`` forces an
     exact match.
 
+    Attributes
+    ----------
+    name : str
+        Non-empty session or window name.
+    exact : bool
+        Whether tmux must match the complete name instead of a prefix.
+
     Examples
     --------
     >>> NameRef("work").render()
@@ -218,6 +246,13 @@ class NameRef:
 class IndexRef:
     """A target addressed by integer index (window or session index).
 
+    Attributes
+    ----------
+    index : int
+        Numeric tmux object index.
+    parent : str | None
+        Optional parent target used to qualify the index.
+
     Examples
     --------
     >>> IndexRef(0).render()
@@ -243,6 +278,11 @@ class Special:
     The token vocabulary comes from tmux's target-resolution tables (see
     ``cmd-find.c``). This wrapper keeps a symbolic target distinct from a
     concrete id at the type level.
+
+    Attributes
+    ----------
+    token : str
+        Non-empty tmux special-target token.
 
     Examples
     --------
@@ -281,6 +321,15 @@ class SlotRef:
     (``"self"``, the default), or an *implicit child* the creator captured -- a
     new session/window's first window (``"window"``) or first pane (``"pane"``).
     Use the :attr:`window` / :attr:`pane` convenience properties.
+
+    Attributes
+    ----------
+    slot : int
+        Zero-based index of the creating operation in the plan.
+    suffix : str
+        Text appended after the captured id when forming a qualified target.
+    part : {"self", "window", "pane"}
+        Captured object to resolve from the creating operation.
 
     Examples
     --------

@@ -29,6 +29,15 @@ if t.TYPE_CHECKING:
 class EagerClient:
     """A live client object; methods execute immediately.
 
+    Attributes
+    ----------
+    engine : TmuxEngine
+        Engine used to execute client operations.
+    client_name : str
+        tmux client name, normally its tty path.
+    version : str or None
+        tmux version used when rendering operations.
+
     Examples
     --------
     >>> from libtmux.experimental.engines import MockEngine
@@ -70,7 +79,15 @@ class EagerClient:
 
 @dataclass(frozen=True)
 class LazyClient:
-    """A deferred client object; methods record into a plan."""
+    """A deferred client object; methods record into a plan.
+
+    Attributes
+    ----------
+    plan : LazyPlan
+        Plan that receives recorded client operations.
+    client_name : str
+        tmux client name, normally its tty path.
+    """
 
     plan: LazyPlan
     client_name: str
@@ -93,7 +110,17 @@ class LazyClient:
 
 @dataclass(frozen=True)
 class AsyncClient:
-    """An async live client object: the eager client, awaited."""
+    """An async live client object: the eager client, awaited.
+
+    Attributes
+    ----------
+    engine : AsyncTmuxEngine
+        Engine used to execute client operations asynchronously.
+    client_name : str
+        tmux client name, normally its tty path.
+    version : str or None
+        tmux version used when rendering operations.
+    """
 
     engine: AsyncTmuxEngine
     client_name: str

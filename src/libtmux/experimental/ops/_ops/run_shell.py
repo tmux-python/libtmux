@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class RunShell(Operation[AckResult]):
     """Run a shell command via tmux (``run-shell``).
 
-    Parameters
+    Attributes
     ----------
     command_line : str or None
         The shell command to run.
@@ -27,7 +27,7 @@ class RunShell(Operation[AckResult]):
     Examples
     --------
     >>> RunShell(command_line="echo hi").render()
-    ('run-shell', 'echo hi')
+    ('run-shell', '--', 'echo hi')
     """
 
     kind = "run_shell"
@@ -49,5 +49,5 @@ class RunShell(Operation[AckResult]):
         if self.delay is not None:
             out.extend(("-d", str(self.delay)))
         if self.command_line is not None:
-            out.append(self.command_line)
+            out.extend(positional_args(self.command_line))
         return tuple(out)

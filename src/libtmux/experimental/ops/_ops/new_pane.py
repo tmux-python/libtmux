@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import SplitWindowResult
 
@@ -36,7 +36,7 @@ class NewPane(Operation[SplitWindowResult]):
     :exc:`~.exc.VersionUnsupported` (this op sets
     :attr:`~.operation.Operation.min_version`).
 
-    Parameters
+    Attributes
     ----------
     width : int or str or None
         Floating pane width in cells or ``N%`` (``-x``).
@@ -158,7 +158,7 @@ class NewPane(Operation[SplitWindowResult]):
         if self.capture:
             out.extend(("-P", "-F", "#{pane_id}"))
         if self.shell_command is not None:
-            out.append(self.shell_command)
+            out.extend(positional_args(self.shell_command))
         return tuple(out)
 
     def _make_result(
@@ -171,7 +171,9 @@ class NewPane(Operation[SplitWindowResult]):
         version: str | None = None,
     ) -> SplitWindowResult:
         """Parse the captured new-pane id into the typed result."""
-        new_pane_id = stdout[0].strip() if status == "complete" and stdout else None
+        new_pane_id = (
+            stdout[0].strip() if status == "complete" and stdout else None
+        ) or None
         return SplitWindowResult(
             operation=self,
             argv=argv,

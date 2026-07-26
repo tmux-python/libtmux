@@ -12,8 +12,8 @@ import typing as t
 import pytest
 
 from libtmux.experimental.engines import AsyncSubprocessEngine, SubprocessEngine
-from libtmux.experimental.ops import SplitWindow, arun, run
-from libtmux.experimental.ops._types import WindowId
+from libtmux.experimental.ops import SendKeys, SplitWindow, arun, run
+from libtmux.experimental.ops._types import PaneId, WindowId
 from libtmux.experimental.ops.results import SplitWindowResult
 
 if t.TYPE_CHECKING:
@@ -51,6 +51,46 @@ def test_async_run_cancellation_suppresses_terminate_lookup(
     asyncio.run(_check())
 
 
+def test_async_subprocess_preserves_global_option_semicolon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Async direct argv applies semicolon encoding after global options."""
+    from libtmux.experimental.engines.base import CommandRequest
+
+    captured: list[object] = []
+
+    class _FakeProc:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return (b"", b"")
+
+    async def _fake_exec(*cmd: object, **_kwargs: object) -> _FakeProc:
+        captured.extend(cmd)
+        return _FakeProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+    request = CommandRequest.from_args(
+        "-L",
+        "socket;",
+        "display-message",
+        "literal;",
+    )
+
+    async def _check() -> None:
+        await AsyncSubprocessEngine(tmux_bin="tmux").run(request)
+
+    asyncio.run(_check())
+
+    assert captured == [
+        "tmux",
+        "-L",
+        "socket;",
+        "display-message",
+        "literal\\;",
+    ]
+
+
 def test_async_split_creates_real_pane(session: Session) -> None:
     """An async split returns a typed result whose new pane really exists."""
     server = session.server
@@ -81,3 +121,22 @@ def test_async_sync_parity(session: Session) -> None:
     assert type(sync_result) is type(async_result) is SplitWindowResult
     assert sync_result.argv == async_result.argv == operation.render()
     assert sync_result.ok and async_result.ok
+
+
+def test_async_literal_target_cannot_start_command(session: Session) -> None:
+    """Async typed arguments cannot become a second tmux command."""
+    pane = session.active_pane
+    assert pane is not None
+    pane_id = pane.pane_id
+    assert pane_id is not None
+    operation = SendKeys(
+        target=PaneId(f"{pane_id};"),
+        keys="kill-server",
+    )
+
+    result = asyncio.run(
+        arun(operation, AsyncSubprocessEngine.for_server(session.server)),
+    )
+
+    assert result.failed
+    assert session.server.is_alive()

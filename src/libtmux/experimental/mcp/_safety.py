@@ -10,8 +10,16 @@ only, never the framework-agnostic core.
 from __future__ import annotations
 
 import logging
+import typing as t
 
 from fastmcp.exceptions import ToolError
+
+from libtmux.experimental.mcp._policy import operation_safety
+
+if t.TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from libtmux.experimental.ops.operation import Operation
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +67,86 @@ def resolve_safety_level(value: str | None) -> str:
         TAG_READONLY,
     )
     return TAG_READONLY
+
+
+def safety_allows(required: str, maximum: str) -> bool:
+    """Return whether *maximum* permits an action at *required*.
+
+    Unknown values fail closed to the read-only level.
+
+    Examples
+    --------
+    >>> safety_allows("mutating", "mutating")
+    True
+    >>> safety_allows("destructive", "mutating")
+    False
+    >>> safety_allows("readonly", "bogus")
+    True
+    """
+    return _TIER_LEVELS.get(required, 1) <= _TIER_LEVELS.get(maximum, 0)
+
+
+def require_safety(required: str, maximum: str, *, subject: str) -> None:
+    """Raise an agent-correctable error when *subject* exceeds *maximum*.
+
+    Examples
+    --------
+    >>> require_safety("readonly", "mutating", subject="query")
+    >>> require_safety("destructive", "mutating", subject="kill_session")
+    Traceback (most recent call last):
+    ...
+    libtmux.experimental.mcp._safety.ExpectedToolError: kill_session requires
+    destructive safety; current level is mutating
+    """
+    if safety_allows(required, maximum):
+        return
+    message = f"{subject} requires {required} safety; current level is {maximum}"
+    suggestion = f"Set LIBTMUX_SAFETY={required} only if this action is intended."
+    raise ExpectedToolError(
+        message,
+        suggestion=suggestion,
+    )
+
+
+def require_operation_safety(
+    operation: Operation[t.Any],
+    maximum: str,
+    *,
+    index: int | None = None,
+) -> None:
+    """Require the effective safety tier of one operation payload.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.ops import UnlinkWindow
+    >>> require_operation_safety(UnlinkWindow(kill=False), "mutating")
+    >>> require_operation_safety(UnlinkWindow(kill=True), "mutating")
+    Traceback (most recent call last):
+    ...
+    libtmux.experimental.mcp._safety.ExpectedToolError: operation
+    'unlink_window' requires destructive safety; current level is mutating
+    """
+    location = "" if index is None else f" at plan index {index}"
+    require_safety(
+        operation_safety(operation),
+        maximum,
+        subject=f"operation {operation.kind!r}{location}",
+    )
+
+
+def require_operations_safety(
+    operations: Iterable[Operation[t.Any]],
+    maximum: str,
+) -> None:
+    """Require every concrete operation payload to fit *maximum*.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.ops import NewSession, SendKeys
+    >>> require_operations_safety((NewSession(), SendKeys(keys="pwd")), "mutating")
+    """
+    for index, operation in enumerate(operations):
+        require_operation_safety(operation, maximum, index=index)
 
 
 class ExpectedToolError(ToolError):

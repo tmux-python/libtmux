@@ -63,7 +63,7 @@ RENDER_CASES = (
     RenderCase(
         test_id="resize_pane_direction",
         op=ResizePane(target=PaneId("%1"), direction="D", adjustment=5),
-        expected=("resize-pane", "-t", "%1", "-D", "5"),
+        expected=("resize-pane", "-t", "%1", "-D", "--", "5"),
     ),
     RenderCase(
         test_id="respawn_pane_kill",
@@ -73,7 +73,7 @@ RENDER_CASES = (
     RenderCase(
         test_id="pipe_pane",
         op=PipePane(target=PaneId("%1"), command_line="cat"),
-        expected=("pipe-pane", "-t", "%1", "cat"),
+        expected=("pipe-pane", "-t", "%1", "--", "cat"),
     ),
     RenderCase(
         test_id="clear_history",
@@ -168,14 +168,14 @@ def test_break_pane_no_placeholder_off_3_7() -> None:
     assert op.render(version="3.8") == bare
 
 
-def test_break_pane_named_unaffected_on_3_7() -> None:
-    """A requested name is passed through (no placeholder) on 3.7."""
+def test_break_pane_named_uses_placeholder_on_tmux_3_7() -> None:
+    """Tmux 3.7 gets a placeholder before a requested name is applied later."""
     op = BreakPane(src_target=PaneId("%2"), name="logs")
     assert op.render(version="3.7") == (
         "break-pane",
         "-d",
         "-n",
-        "logs",
+        "libtmux",
         "-P",
         "-F",
         "#{window_id}",
@@ -246,3 +246,26 @@ def test_break_and_swap_live(session: Session) -> None:
     assert broken.ok
     assert broken.new_id is not None
     assert session.server.windows.get(window_id=broken.new_id) is not None
+
+
+def test_break_pane_named_tmux_3_7_path_live(session: Session) -> None:
+    """The tmux 3.7 compatibility path realizes the requested live name."""
+    from libtmux.experimental.engines import SubprocessEngine
+
+    engine = SubprocessEngine.for_server(session.server)
+    window = session.active_window
+    assert window.window_id is not None
+
+    split = run(SplitWindow(target=WindowId(window.window_id)), engine)
+    assert split.new_pane_id is not None
+
+    broken = run(
+        BreakPane(src_target=PaneId(split.new_pane_id), name="broken-logs"),
+        engine,
+        version="3.7",
+    ).raise_for_status()
+
+    assert broken.new_id is not None
+    live = session.server.windows.get(window_id=broken.new_id)
+    assert live is not None
+    assert live.window_name == "broken-logs"

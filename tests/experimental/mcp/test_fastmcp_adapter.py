@@ -46,10 +46,13 @@ def test_adapter_registers_typed_tools() -> None:
         "kill_session",
     } <= set(by_name)
 
-    # safety tier -> ToolAnnotations
+    # operation semantics -> ToolAnnotations
     assert by_name["capture_pane"].annotations.readOnlyHint is True
     assert by_name["kill_session"].annotations.destructiveHint is True
     assert by_name["create_session"].annotations.readOnlyHint is False
+    assert by_name["create_session"].annotations.destructiveHint is True
+    assert by_name["create_session"].annotations.openWorldHint is True
+    assert by_name["respawn_pane"].annotations.destructiveHint is True
 
     # the engine is injected, not an agent-facing parameter
     properties = by_name["create_session"].inputSchema.get("properties", {})
@@ -129,14 +132,23 @@ def test_adapter_exposes_per_op_tools() -> None:
     assert "op_split_window" in by_name
     assert "op_new_session" in by_name
 
-    # the target the registry omits is re-injected into the per-op schema
-    properties = by_name["op_split_window"].inputSchema.get("properties", {})
-    assert "target" in properties
-    assert "horizontal" in properties
+    # Target capabilities match each operation's public constructor.
+    split_properties = by_name["op_split_window"].inputSchema.get("properties", {})
+    assert {"target", "horizontal"} <= set(split_properties)
+    assert "src_target" not in split_properties
+    swap_properties = by_name["op_swap_pane"].inputSchema.get("properties", {})
+    assert {"target", "src_target"} <= set(swap_properties)
+    delete_properties = by_name["op_delete_buffer"].inputSchema.get("properties", {})
+    assert "target" not in delete_properties
+    assert "src_target" not in delete_properties
 
-    # safety tier -> annotations
+    # operation semantics -> annotations
     assert by_name["op_kill_session"].annotations.destructiveHint is True
     assert by_name["op_capture_pane"].annotations.readOnlyHint is True
+    assert by_name["op_respawn_pane"].annotations.destructiveHint is True
+    assert by_name["op_unlink_window"].annotations.destructiveHint is True
+    assert by_name["op_split_window"].annotations.destructiveHint is True
+    assert by_name["op_split_window"].annotations.openWorldHint is True
 
 
 def test_adapter_per_op_call_offline() -> None:

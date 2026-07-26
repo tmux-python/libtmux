@@ -43,7 +43,7 @@ def test_freeze_maps_session_window_pane() -> None:
             "pane_index": "0",
             "pane_active": "1",
             "pane_current_command": "vim",
-            "pane_current_path": "/home/d/work",
+            "pane_current_path": "/workspace/project",
         },
     )
     ws = freeze(server)
@@ -54,7 +54,7 @@ def test_freeze_maps_session_window_pane() -> None:
     assert win.focus is True  # the active window
     pane = win.panes[0]
     assert [c.cmd for c in pane.commands] == ["vim"]
-    assert pane.start_directory == "/home/d/work"
+    assert pane.start_directory == "/workspace/project"
     assert pane.focus is True  # the active pane
 
 
