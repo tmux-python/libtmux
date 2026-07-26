@@ -73,6 +73,13 @@ the format object now carry the tmux manual's description for every field.
 They previously reached the rendered API reference as "Alias for field
 number 0" or as a bare name carrying only its type.
 
+#### Lint floor moved to ruff 0.16 (#722)
+
+Minimum `ruff>=0.16.0` (was unpinned). 0.16.0 stabilizes
+`none-not-at-end-of-union` (`RUF036`) out of preview, and starts formatting
+Python code blocks inside Markdown, so `ruff format` now covers the docs tree
+alongside `src/` and `tests/`.
+
 ## libtmux 0.62.0 (2026-07-12)
 
 libtmux 0.62.0 teaches libtmux objects to locate themselves and to resolve
