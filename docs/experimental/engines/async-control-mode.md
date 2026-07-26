@@ -32,28 +32,23 @@ the first batch uses
 `new-session` bootstrap an empty server without creating a private control
 session. A later batch can open the persistent connection.
 
+Within the context, pass typed operations to
+{func}`~libtmux.experimental.ops.arun` as you would with any asynchronous
+engine.
+
 ```python
 >>> import asyncio
->>> from libtmux.experimental.engines import AsyncControlModeEngine, CommandRequest
->>> assert session.session_id is not None
->>> assert window.window_id is not None
->>> requests = [
-...     CommandRequest.from_args(
-...         "display-message", "-p", "-t", session.session_id, "#{session_id}"
-...     ),
-...     CommandRequest.from_args(
-...         "display-message", "-p", "-t", window.window_id, "#{window_id}"
-...     ),
-... ]
->>> async def query_targets():
+>>> from libtmux.experimental.engines import AsyncControlModeEngine
+>>> from libtmux.experimental.ops import DisplayMessage, PaneId, arun
+>>> assert pane is not None and pane.pane_id is not None
+>>> async def read_pane_id():
 ...     async with AsyncControlModeEngine.for_server(server) as engine:
-...         return await engine.run_batch(requests)
->>> results = asyncio.run(query_targets())
->>> [result.returncode for result in results]
-[0, 0]
->>> results[0].stdout == (session.session_id,)
-True
->>> results[1].stdout == (window.window_id,)
+...         result = await arun(
+...             DisplayMessage(target=PaneId(pane.pane_id), message="#{pane_id}"),
+...             engine,
+...         )
+...         return result.raise_for_status().text
+>>> asyncio.run(read_pane_id()) == pane.pane_id
 True
 ```
 
@@ -96,8 +91,7 @@ a notification emitted before the first iteration will be delivered.
    :special-members: __aenter__, __aexit__
 ```
 
-## Related tutorials
+## Related tutorial
 
-See {doc}`../tutorials/control-mode` for the shared batching contract and the
-notification boundary. See {doc}`../tutorials/async-control-plans` to compose
-forward-referenced operations and fold them into control-mode dispatches.
+See {doc}`../tutorials/async-control-plans` to compose forward-referenced
+operations and fold them into control-mode dispatches.
