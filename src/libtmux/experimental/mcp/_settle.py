@@ -31,11 +31,11 @@ SettleReason = t.Literal["settled", "time_cap", "byte_cap", "stream_end"]
 class SettleOutcome:
     """Result of folding a decoded ``%output`` stream until the pane settles.
 
-    Parameters
+    Attributes
     ----------
     text : str
-        The decoded bytes the pane produced during the watch (tail-preserving
-        prefix when ``truncated``).
+        The decoded bytes the pane produced during the watch, with
+        tail-preserving truncation when ``truncated``.
     reason : {"settled", "time_cap", "byte_cap", "stream_end"}
         Why the fold stopped. ``settled`` means *stopped producing output*, not
         *succeeded* -- the caller interprets the text.

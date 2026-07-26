@@ -17,6 +17,8 @@ from libtmux.experimental.engines.base import (
     CommandRequest,
     CommandResult,
     EngineKind,
+    encode_direct_argv,
+    split_direct_argv,
 )
 from libtmux.experimental.engines.connection import ServerConnection
 from libtmux.experimental.engines.imsg.exc import (
@@ -143,7 +145,23 @@ class ImsgProtocolCodec(t.Protocol):
 
 
 class _ImsgCommandArgs(t.NamedTuple):
-    """Parsed tmux CLI arguments needed by the imsg engine."""
+    """Parsed tmux CLI arguments needed by the imsg engine.
+
+    Attributes
+    ----------
+    global_args : tuple[str, ...]
+        Leading tmux options that apply before the subcommand.
+    command_argv : tuple[str, ...]
+        Parsed subcommand and its arguments.
+    socket_name : str or None
+        Socket name supplied with ``-L``.
+    socket_path : str or None
+        Socket path supplied with ``-S``.
+    config_file : str or None
+        Configuration file supplied with ``-f``.
+    command_name : str or None
+        Parsed tmux subcommand name.
+    """
 
     global_args: tuple[str, ...]
     command_argv: tuple[str, ...]
@@ -301,24 +319,20 @@ class ImsgEngine:
         return [self.run(req) for req in requests]
 
     def _parse_args(self, args: tuple[str, ...]) -> _ImsgCommandArgs:
-        global_args: list[str] = []
-        command_argv: list[str] = []
+        direct = split_direct_argv(args)
+        global_args = direct.global_args
+        command_argv = encode_direct_argv(direct.command_argv)
         socket_name: str | None = None
         socket_path: str | None = None
         config_file: str | None = None
 
         index = 0
-        while index < len(args):
-            arg = args[index]
-            if arg == "-V":
-                command_argv.append(arg)
-                break
+        while index < len(global_args):
+            arg = global_args[index]
             if arg in {"-L", "-S", "-f"}:
-                if index + 1 >= len(args):
-                    command_argv.append(arg)
+                if index + 1 >= len(global_args):
                     break
-                value = args[index + 1]
-                global_args.extend((arg, value))
+                value = global_args[index + 1]
                 if arg == "-L":
                     socket_name = value
                 elif arg == "-S":
@@ -329,31 +343,22 @@ class ImsgEngine:
                 continue
             if arg.startswith("-L") and len(arg) > 2:
                 socket_name = arg[2:]
-                global_args.append(arg)
                 index += 1
                 continue
             if arg.startswith("-S") and len(arg) > 2:
                 socket_path = arg[2:]
-                global_args.append(arg)
                 index += 1
                 continue
             if arg.startswith("-f") and len(arg) > 2:
                 config_file = arg[2:]
-                global_args.append(arg)
                 index += 1
                 continue
-            if arg in {"-2", "-8"}:
-                global_args.append(arg)
-                index += 1
-                continue
-
-            command_argv.extend(args[index:])
-            break
+            index += 1
 
         command_name = command_argv[0] if command_argv else None
         return _ImsgCommandArgs(
-            global_args=tuple(global_args),
-            command_argv=tuple(command_argv),
+            global_args=global_args,
+            command_argv=command_argv,
             socket_name=socket_name,
             socket_path=socket_path,
             config_file=config_file,

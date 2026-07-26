@@ -1,7 +1,7 @@
 """The operation registry: one entry per operation ``kind``.
 
 The registry is the single source of truth that runtime dispatch, serialization,
-and the (planned) docs catalog all read from. Each entry is an :class:`OpSpec`
+and the documentation catalog all read from. Each entry is an :class:`OpSpec`
 derived from an :class:`~.operation.Operation` subclass's class variables, so the
 operation class itself remains authoritative -- the registry just indexes it.
 
@@ -33,6 +33,31 @@ class OpSpec:
 
     Attributes mirror the operation class variables documented on
     :class:`~.operation.Operation`.
+
+    Attributes
+    ----------
+    kind : str
+        Stable operation discriminator and registry key.
+    command : str
+        tmux command name.
+    scope : Scope
+        tmux object scope the operation addresses.
+    operation_cls : type[Operation]
+        Typed operation class indexed by this spec.
+    result_cls : type[Result]
+        Typed result class built after execution.
+    chainable : bool
+        Whether a planner may fold the operation into a shared dispatch.
+    primitive : bool
+        Whether the operation maps to one tmux command.
+    safety : Safety
+        Coarse safety tier.
+    effects : Effects
+        Structured state and I/O effects.
+    min_version : str | None
+        Minimum tmux version required by the whole operation.
+    flag_version_map : Mapping[str, str]
+        Feature labels mapped to their minimum tmux versions.
     """
 
     kind: str

@@ -5,17 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import UntargetedOperation
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class DeleteBuffer(Operation[AckResult]):
+class DeleteBuffer(UntargetedOperation[AckResult]):
     """Delete a paste buffer (``delete-buffer``).
 
-    Parameters
+    Attributes
     ----------
     buffer_name : str or None
         The buffer to delete (``-b``); the most recent when omitted.

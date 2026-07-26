@@ -56,14 +56,68 @@ def _constructor_signature(operation_cls: type) -> inspect.Signature:
     )
 
 
-_PARAMETER_FIELD = re.compile(r"^:(param|type) ([^:]+):(.*)$")
+_ATTRIBUTE_FIELD = re.compile(r"^\.\. attribute:: ([^:]+)$")
+_ATTRIBUTE_TYPE = re.compile(r"^\s*:type:\s*(.*)$")
+_DIRECTIVE = re.compile(r"^\.\. \S+::")
+
+
+def _attribute_parameter_blocks(lines: list[str]) -> dict[str, tuple[str, ...]]:
+    """Convert Napoleon ``Attributes`` markup into constructor field lists.
+
+    Examples
+    --------
+    >>> _attribute_parameter_blocks(
+    ...     [
+    ...         ".. attribute:: value",
+    ...         "",
+    ...         "   Field prose.",
+    ...         "   :type: str",
+    ...     ]
+    ... )
+    {'value': (':param value:', '   Field prose.', ':type value: str')}
+    """
+    fields: dict[str, tuple[str, ...]] = {}
+    index = 0
+    while index < len(lines):
+        match = _ATTRIBUTE_FIELD.match(lines[index])
+        if match is None:
+            index += 1
+            continue
+        name = match.group(1)
+        index += 1
+        block: list[str] = []
+        while index < len(lines) and _DIRECTIVE.match(lines[index]) is None:
+            block.append(lines[index])
+            index += 1
+
+        description: list[str] = []
+        type_name: str | None = None
+        for line in block:
+            type_match = _ATTRIBUTE_TYPE.match(line)
+            if type_match is not None:
+                type_name = type_match.group(1)
+            else:
+                description.append(line)
+        while description and not description[0].strip():
+            description.pop(0)
+        while description and not description[-1].strip():
+            description.pop()
+        if not description or type_name is None:
+            continue
+
+        parameter = [f":param {name}:"]
+        parameter.extend(
+            "" if not line.strip() else line.rstrip() for line in description
+        )
+        fields[name] = (*parameter, f":type {name}: {type_name}")
+    return fields
 
 
 def _constructor_parameter_fields(
     operation_cls: type[Operation[t.Any]],
 ) -> dict[str, tuple[str, ...]]:
-    """Return Napoleon-rendered fields for every constructor parameter."""
-    fields: dict[str, dict[str, tuple[str, ...]]] = {}
+    """Return ``Attributes`` prose as fields for every constructor parameter."""
+    fields: dict[str, tuple[str, ...]] = {}
     for base in reversed(operation_cls.__mro__):
         if not issubclass(base, Operation):
             continue
@@ -71,28 +125,10 @@ def _constructor_parameter_fields(
         if not docstring:
             continue
         lines = str(NumpyDocstring(docstring)).splitlines()
-        index = 0
-        while index < len(lines):
-            match = _PARAMETER_FIELD.match(lines[index])
-            if match is None:
-                index += 1
-                continue
-            kind, name, _ = match.groups()
-            block = [lines[index]]
-            index += 1
-            while index < len(lines) and (
-                not lines[index] or lines[index][0].isspace()
-            ):
-                block.append(lines[index])
-                index += 1
-            fields.setdefault(name, {})[kind] = tuple(block)
+        fields.update(_attribute_parameter_blocks(lines))
 
     parameter_names = tuple(_constructor_signature(operation_cls).parameters)
-    missing = [
-        name
-        for name in parameter_names
-        if "param" not in fields.get(name, {}) or "type" not in fields.get(name, {})
-    ]
+    missing = [name for name in parameter_names if name not in fields]
     if missing:
         joined = ", ".join(missing)
         msg = (
@@ -101,9 +137,7 @@ def _constructor_parameter_fields(
         )
         raise SphinxError(msg)
 
-    return {
-        name: fields[name]["param"] + fields[name]["type"] for name in parameter_names
-    }
+    return {name: fields[name] for name in parameter_names}
 
 
 def _constructor_field_markup(operation_cls: type[Operation[t.Any]]) -> str:
@@ -250,8 +284,10 @@ def build_operation_description(
         msg = f"Missing Python class signature for {operation_cls.__name__}"
         raise SphinxError(msg)
     signature_node["ids"] = [node_id]
-    signature_node["module"] = operation_cls.__module__
-    signature_node["fullname"] = operation_cls.__qualname__
+    # Registry pages can describe operations newer than the package release
+    # tag used by linkcode. An absent link is preferable to a durable 404.
+    signature_node["module"] = ""
+    signature_node["fullname"] = ""
     inject_signature_slots(
         signature_node,
         marker_attr="tmuxop_badges_injected",

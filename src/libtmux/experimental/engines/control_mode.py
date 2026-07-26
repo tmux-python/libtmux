@@ -35,6 +35,7 @@ from libtmux import exc
 from libtmux.experimental.engines.base import (
     CommandRequest,
     CommandResult,
+    is_command_separator,
     render_control_line,
 )
 from libtmux.experimental.engines.connection import ServerConnection
@@ -63,7 +64,19 @@ class ControlModeError(exc.LibTmuxException):
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class ControlModeBlock:
-    """One ``%begin``/``%end`` or ``%error`` control-mode command block."""
+    """One ``%begin``/``%end`` or ``%error`` control-mode command block.
+
+    Attributes
+    ----------
+    number : int
+        Command block sequence number.
+    flags : int
+        Flags from the opening control-mode guard.
+    is_error : bool
+        Whether tmux closed the block with ``%error``.
+    body : tuple[bytes, ...]
+        Raw output lines between the opening and closing guards.
+    """
 
     number: int
     flags: int
@@ -73,6 +86,18 @@ class ControlModeBlock:
 
 @dataclasses.dataclass(slots=True)
 class _PendingBlock:
+    """Mutable command block while the parser collects its body.
+
+    Attributes
+    ----------
+    number : int
+        Command block sequence number.
+    flags : int
+        Flags from the opening control-mode guard.
+    body : list[bytes]
+        Raw output lines collected before the closing guard.
+    """
+
     number: int
     flags: int
     body: list[bytes]
@@ -722,7 +747,7 @@ def _matches_pending_close(line: bytes, pending_number: int) -> bool:
 
 def command_count(argv: tuple[str, ...]) -> int:
     """How many tmux commands a rendered argv runs (bare ``;`` separators + 1)."""
-    return sum(1 for token in argv if token == ";") + 1
+    return sum(1 for token in argv if is_command_separator(token)) + 1
 
 
 def _merge_blocks(

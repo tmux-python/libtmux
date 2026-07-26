@@ -23,6 +23,7 @@ from libtmux.experimental.ops import (
     arun,
 )
 from libtmux.experimental.ops._types import Target
+from libtmux.experimental.ops.results import _require_created_id
 
 
 async def acreate_session(
@@ -57,8 +58,12 @@ async def acreate_session(
         version=version,
     )
     result.raise_for_status()
+    session_id = _require_created_id(
+        result,
+        required_subids=("window", "pane"),
+    )
     return SessionResult(
-        session_id=result.new_id or "",
+        session_id=session_id,
         name=name,
         first_window_id=result.first_window_id,
         first_pane_id=result.first_pane_id,

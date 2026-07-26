@@ -31,7 +31,21 @@ _JSON_TYPES = {
 
 @dataclass(frozen=True, slots=True)
 class ParamDescriptor:
-    """One typed tool parameter, projected from an operation dataclass field."""
+    """One typed tool parameter, projected from an operation dataclass field.
+
+    Attributes
+    ----------
+    name : str
+        Parameter name accepted by the tool.
+    origin : str
+        Python annotation origin used to select the JSON Schema type.
+    is_required : bool
+        Whether callers must provide the parameter.
+    item_origin : str or None
+        Python annotation origin used for list items, when applicable.
+    description : str or None
+        Human-readable parameter description.
+    """
 
     name: str
     origin: str
@@ -62,21 +76,31 @@ class ParamDescriptor:
 class ToolDescriptor:
     """A typed tool projected from one operation -- metadata plus a builder.
 
-    Parameters
+    Attributes
     ----------
-    name, title, description
-        Identity and human text (``name`` is the operation ``kind``).
-    scope, safety
-        tmux object scope and the safety tier (drives annotations/tags).
-    params
-        Typed parameter descriptors (target/src_target handled by :meth:`build`).
-    result_type, result_schema
-        The result class name and a JSON schema for its payload.
-    annotations, tags
-        MCP-style hints derived from the safety tier.
-    operation_cls
-        The operation class :meth:`build` instantiates.
-    min_version
+    name : str
+        Operation kind used as the tool name.
+    title : str
+        Short human-readable tool title.
+    description : str
+        Full tool description exposed to agents.
+    scope : str
+        tmux object scope targeted by the operation.
+    safety : str
+        Safety tier used to derive annotations and tags.
+    params : Mapping[str, ParamDescriptor]
+        Typed parameter descriptors, excluding resolved targets.
+    result_type : str
+        Name of the tool's result class.
+    result_schema : Mapping[str, Any]
+        JSON schema for the result payload.
+    annotations : Mapping[str, bool]
+        MCP annotations derived from safety, effects, and kill-capable variants.
+    tags : frozenset[str]
+        Tool tags derived from the safety tier.
+    operation_cls : type[Operation[Any]]
+        Operation class instantiated by :meth:`build`.
+    min_version : str or None
         Minimum tmux version the whole operation requires, if any (surfaced in
         the tool description so agents see the gate before dispatch).
     """
@@ -112,6 +136,7 @@ class ToolDescriptor:
         ``TypeError``).
         """
         fields = dict(kwargs)
-        target = resolve_target(fields.pop("target", None))
-        src_target = resolve_target(fields.pop("src_target", None))
-        return self.operation_cls(target=target, src_target=src_target, **fields)
+        for name in ("target", "src_target"):
+            if name in fields:
+                fields[name] = resolve_target(fields[name])
+        return self.operation_cls(**fields)

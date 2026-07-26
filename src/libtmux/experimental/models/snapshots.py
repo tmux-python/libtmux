@@ -65,6 +65,35 @@ def _as_bool(value: str | None) -> bool:
 class PaneSnapshot:
     """An immutable snapshot of one tmux pane.
 
+    Attributes
+    ----------
+    pane_id : str
+        Stable tmux pane identifier.
+    pane_index : int or None
+        Pane index within its window.
+    window_id : str
+        Stable identifier of the owning window.
+    session_id : str
+        Stable identifier of the owning session.
+    active : bool
+        Whether this is the window's active pane.
+    width : int or None
+        Pane width in terminal cells.
+    height : int or None
+        Pane height in terminal cells.
+    current_command : str or None
+        Command currently running in the pane.
+    current_path : str or None
+        Pane working directory reported by tmux.
+    title : str or None
+        Pane title reported by tmux.
+    pid : int or None
+        Process identifier reported for the pane.
+    floating : bool
+        Whether tmux marks the pane as floating.
+    fields : Mapping[str, str]
+        Complete raw tmux format mapping used to derive the typed fields.
+
     Examples
     --------
     >>> pane = PaneSnapshot.from_format({
@@ -135,14 +164,31 @@ class ClientSnapshot:
     A client is a view (a terminal attachment), not part of the ownership tree,
     so it is a leaf snapshot.
 
+    Attributes
+    ----------
+    name : str
+        Client name, normally its tty path.
+    tty : str or None
+        Client terminal path reported by tmux.
+    session : str
+        Name of the session currently attached to the client.
+    pid : int or None
+        Client process identifier.
+    width : int or None
+        Client terminal width in cells.
+    height : int or None
+        Client terminal height in cells.
+    fields : Mapping[str, str]
+        Complete raw tmux format mapping used to derive the typed fields.
+
     Examples
     --------
     >>> client = ClientSnapshot.from_format({
     ...     "client_name": "/dev/pts/3", "client_tty": "/dev/pts/3",
-    ...     "client_session": "$0", "client_pid": "4242",
+    ...     "client_session": "work", "client_pid": "4242",
     ... })
     >>> client.name, client.session, client.pid
-    ('/dev/pts/3', '$0', 4242)
+    ('/dev/pts/3', 'work', 4242)
     """
 
     name: str = ""
@@ -170,6 +216,25 @@ class ClientSnapshot:
 @dataclass(frozen=True)
 class WindowSnapshot:
     """An immutable snapshot of one tmux window and its panes.
+
+    Attributes
+    ----------
+    window_id : str
+        Stable tmux window identifier.
+    window_index : int or None
+        Window index within its session.
+    name : str or None
+        Window name reported by tmux.
+    session_id : str
+        Stable identifier of the owning session.
+    active : bool
+        Whether this is the session's active window.
+    layout : str or None
+        Serialized tmux layout string.
+    panes : tuple[PaneSnapshot, ...]
+        Pane snapshots contained by the window.
+    fields : Mapping[str, str]
+        Complete raw tmux format mapping used to derive the typed fields.
 
     Examples
     --------
@@ -223,7 +288,21 @@ class WindowSnapshot:
 
 @dataclass(frozen=True)
 class SessionSnapshot:
-    """An immutable snapshot of one tmux session and its windows."""
+    """An immutable snapshot of one tmux session and its windows.
+
+    Attributes
+    ----------
+    session_id : str
+        Stable tmux session identifier.
+    name : str or None
+        Session name reported by tmux.
+    attached : bool
+        Whether at least one client is attached to the session.
+    windows : tuple[WindowSnapshot, ...]
+        Window snapshots contained by the session.
+    fields : Mapping[str, str]
+        Complete raw tmux format mapping used to derive the typed fields.
+    """
 
     session_id: str = ""
     name: str | None = None
@@ -260,6 +339,15 @@ class SessionSnapshot:
 @dataclass(frozen=True)
 class ServerSnapshot:
     """An immutable snapshot of a tmux server's session/window/pane tree.
+
+    Attributes
+    ----------
+    socket_name : str or None
+        tmux socket name, when the server was addressed by name.
+    socket_path : str or None
+        tmux socket path, when the server was addressed by path.
+    sessions : tuple[SessionSnapshot, ...]
+        Session snapshots contained by the server.
 
     Examples
     --------

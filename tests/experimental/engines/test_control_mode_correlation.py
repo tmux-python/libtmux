@@ -6,6 +6,7 @@ import typing as t
 
 import pytest
 
+from libtmux.experimental.engines.base import CommandSeparator
 from libtmux.experimental.engines.control_mode import (
     ControlModeBlock,
     ControlModeEngine,
@@ -27,8 +28,23 @@ class CountCase(t.NamedTuple):
 
 COUNT_CASES = (
     CountCase("single", ("rename-window", "-t", "@1", "a"), 1),
-    CountCase("two", ("rename-window", "a", ";", "kill-window", "@2"), 2),
-    CountCase("three", ("a", ";", "b", ";", "c"), 3),
+    CountCase(
+        "two",
+        ("rename-window", "a", CommandSeparator(";"), "kill-window", "@2"),
+        2,
+    ),
+    CountCase(
+        "three",
+        (
+            "a",
+            CommandSeparator(";"),
+            "b",
+            CommandSeparator(";"),
+            "c",
+        ),
+        3,
+    ),
+    CountCase("literal_separator_token", ("send-keys", "-t", "%1", ";"), 1),
     CountCase("literal_semicolon_arg", ("send-keys", "-t", "%1", "a;b"), 1),
 )
 
@@ -39,7 +55,7 @@ COUNT_CASES = (
     ids=[c.test_id for c in COUNT_CASES],
 )
 def test_command_count(test_id: str, argv: tuple[str, ...], expected: int) -> None:
-    """Only a standalone ``;`` token counts as a command separator."""
+    """Only a typed structural token counts as a command separator."""
     assert command_count(argv) == expected
 
 
@@ -182,7 +198,6 @@ def test_control_mode_fold_detects_failure_live(session: Session) -> None:
         plan.add(RenameWindow(target=WindowId(window.window_id), name="ok"))
         plan.add(RenameWindow(target=WindowId("@999999"), name="x"))  # bad target
         outcome = plan.execute(engine, planner=FoldingPlanner())
-    # The second sub-command's failure is no longer swallowed (was reported ok).
     assert not outcome.ok
 
 

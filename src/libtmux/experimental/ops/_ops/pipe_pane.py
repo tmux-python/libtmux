@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class PipePane(Operation[AckResult]):
     """Pipe a pane's output to a shell command (``pipe-pane``).
 
-    Parameters
+    Attributes
     ----------
     command_line : str or None
         Shell command to pipe to. Omit to stop an existing pipe.
@@ -30,7 +30,7 @@ class PipePane(Operation[AckResult]):
     --------
     >>> from libtmux.experimental.ops._types import PaneId
     >>> PipePane(target=PaneId("%1"), command_line="cat >>/tmp/log").render()
-    ('pipe-pane', '-t', '%1', 'cat >>/tmp/log')
+    ('pipe-pane', '-t', '%1', '--', 'cat >>/tmp/log')
     >>> PipePane(target=PaneId("%1")).render()
     ('pipe-pane', '-t', '%1')
     """
@@ -57,5 +57,5 @@ class PipePane(Operation[AckResult]):
         if self.toggle:
             out.append("-o")
         if self.command_line is not None:
-            out.append(self.command_line)
+            out.extend(positional_args(self.command_line))
         return tuple(out)

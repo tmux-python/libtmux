@@ -40,6 +40,21 @@ if t.TYPE_CHECKING:
 class CallerContext:
     """The tmux pane/server that launched this MCP, parsed from the environment.
 
+    Attributes
+    ----------
+    pane_id : str or None
+        Launching tmux pane id.
+    socket_path : str or None
+        Socket path for the launching tmux server.
+    server_pid : str or None
+        Process id recorded in the ``TMUX`` environment value.
+    session_id : str or None
+        Session id recorded in the ``TMUX`` environment value.
+    in_tmux : bool
+        Whether a launching pane was discovered.
+    source : str
+        Discovery source that supplied the context.
+
     Examples
     --------
     >>> env = {"TMUX_PANE": "%3", "TMUX": "/tmp/tmux-1000/default,42,2"}
