@@ -55,7 +55,14 @@ def test_plan_resolves_forward_ref() -> None:
     outcome = plan.execute(MockEngine())
 
     assert outcome.bindings == {0: "%1"}
-    assert outcome.results[1].argv == ("send-keys", "-t", "%1", "vim", "Enter")
+    assert outcome.results[1].argv == (
+        "send-keys",
+        "-t",
+        "%1",
+        "--",
+        "vim",
+        "Enter",
+    )
     assert outcome.ok
 
 
@@ -152,7 +159,14 @@ def test_plan_aexecute_matches_execute() -> None:
     outcome = asyncio.run(plan.aexecute(AsyncMockEngine()))
 
     assert outcome.bindings == {0: "%1"}
-    assert outcome.results[1].argv == ("send-keys", "-t", "%1", "vim", "Enter")
+    assert outcome.results[1].argv == (
+        "send-keys",
+        "-t",
+        "%1",
+        "--",
+        "vim",
+        "Enter",
+    )
 
 
 def test_execute_on_step_reports_each_step() -> None:
@@ -174,7 +188,14 @@ def test_execute_on_step_reports_each_step() -> None:
     assert reports[0].bindings == {0: "%1"}
     assert reports[0].results[0].created_id == "%1"
     # the decorate report carries the resolved send-keys argv
-    assert reports[1].results[0].argv == ("send-keys", "-t", "%1", "vim", "Enter")
+    assert reports[1].results[0].argv == (
+        "send-keys",
+        "-t",
+        "%1",
+        "--",
+        "vim",
+        "Enter",
+    )
     # the reported results are the same objects the PlanResult collects
     assert tuple(report.results[0] for report in reports) == outcome.results
 

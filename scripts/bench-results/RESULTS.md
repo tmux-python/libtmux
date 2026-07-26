@@ -3,11 +3,21 @@
 Produced by `scripts/bench_engines.py` (a hermetic PEP 723 grid runner) plus a
 one-off hyperfine end-to-end run. All builds are isolated: per-run sockets under
 a throwaway dir, `TMUX` unset, servers killed on exit — the default tmux server
-is never contacted. Reproduce with:
+is never contacted. Run the default grid:
 
 ```console
 $ uv run scripts/bench_engines.py run
+```
+
+Compare selected engines with shell-readiness waits:
+
+```console
 $ uv run scripts/bench_engines.py run --engines classic,control_mode,pipelined --wait
+```
+
+Profile one larger control-mode build:
+
+```console
 $ uv run scripts/bench_engines.py profile --engine control_mode --shape 8x4
 ```
 
@@ -65,8 +75,8 @@ Reads:
 **The engine win only exists when nobody waits for shells.** Shell startup
 (~0.8-2.1 s) dominates a fast build (30-112x penalty) but barely moves the slow
 classic path (2-5x), so the ~20x engine advantage collapses to ~1.5x once both
-sides wait. Comparing a classic-that-waits against a builder-that-doesn't is
-apples-to-oranges (this is why an earlier ad-hoc run reported ~79x).
+sides wait. Compare engines with matching readiness policies; mixing a waiting
+classic path with a no-wait builder overstates the speedup.
 
 ## Profile — where a control_mode build spends time (32 panes x5)
 

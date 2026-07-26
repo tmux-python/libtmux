@@ -23,7 +23,33 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CatalogEntry:
-    """One operation's catalog record, derived from its registry spec."""
+    """One operation's catalog record, derived from its registry spec.
+
+    Attributes
+    ----------
+    kind : str
+        Stable operation discriminator and registry key.
+    command : str
+        tmux command name.
+    scope : Scope
+        tmux object scope the operation addresses.
+    safety : Safety
+        Coarse safety tier.
+    primitive : bool
+        Whether the operation maps to one tmux command.
+    chainable : bool
+        Whether a planner may fold the operation into a shared dispatch.
+    result_type : str
+        Name of the operation's typed result class.
+    min_version : str | None
+        Minimum tmux version required by the whole operation.
+    flag_version_gates : dict[str, str]
+        Feature labels mapped to their minimum tmux versions.
+    effects : dict[str, Any]
+        JSON-friendly operation-effect values.
+    summary : str
+        First line of the operation class's docstring.
+    """
 
     kind: str
     command: str

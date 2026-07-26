@@ -198,6 +198,33 @@ class _RecordingEngine:
         return [self.run(req) for req in requests]
 
 
+def _render_dry_run_argv(
+    prefix: Sequence[str],
+    argv: Sequence[str],
+) -> str:
+    """Render one direct tmux argv as a copyable shell command.
+
+    Examples
+    --------
+    >>> _render_dry_run_argv(("tmux", "-L", "demo"), ("list-sessions",))
+    'tmux -L demo list-sessions'
+    """
+    import shlex
+
+    from libtmux.experimental.engines.base import (
+        encode_direct_argv,
+        is_command_separator,
+    )
+
+    encoded = encode_direct_argv(argv)
+    rendered = [shlex.quote(token) for token in prefix]
+    for original, transport in zip(argv, encoded, strict=True):
+        rendered.append(
+            "\\;" if is_command_separator(original) else shlex.quote(transport),
+        )
+    return " ".join(rendered)
+
+
 def _print_dry_run(
     workspace: Workspace,
     *,
@@ -215,8 +242,6 @@ def _print_dry_run(
     comments in execution order, and a standalone ``;`` renders as ``\;`` so a
     line stays copy-pasteable into a shell.
     """
-    import shlex
-
     from libtmux.experimental.engines import MockEngine
     from libtmux.experimental.ops import (
         BoundedPlanner,
@@ -257,11 +282,6 @@ def _print_dry_run(
         elif step.kind == "wait_pane":
             print("# wait for the pane's shell to be ready")
 
-    def _render(argv: tuple[str, ...]) -> str:
-        return " ".join(
-            "\\;" if token == ";" else shlex.quote(token) for token in (*prefix, *argv)
-        )
-
     shape = "folded" if fold else "sequential"
     print(
         f"# build plan for session {workspace.name!r} "
@@ -270,7 +290,7 @@ def _print_dry_run(
     for step in compiled.pre:
         _emit_host(step)
     for argv, hosts in zip(engine.calls, hosts_per_dispatch, strict=True):
-        print(_render(argv))
+        print(_render_dry_run_argv(prefix, argv))
         for step in hosts:
             _emit_host(step)
 

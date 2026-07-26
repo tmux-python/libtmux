@@ -138,8 +138,8 @@ def test_operation_card_and_catalog_render_semantic_html(
     assert "gp-sphinx-api-container gp-sphinx-api-profile--py-class" in operation_html
     assert 'data-domain="py"' in operation_html
     assert 'data-objtype="class"' in operation_html
-    assert 'data-has-source="true"' in operation_html
-    assert "gp-sphinx-api-source-link" in operation_html
+    assert 'data-has-source="false"' in operation_html
+    assert "gp-sphinx-api-source-link" not in operation_html
     assert "gp-sphinx-badge--type-class" in operation_html
     assert (
         '<span class="sig-prename descclassname">'
@@ -169,10 +169,7 @@ def test_operation_card_and_catalog_render_semantic_html(
     assert "primitive" in operation_html
     assert "AckResult" in operation_html
     assert "Link to this definition" in operation_html
-    assert (
-        "https://example.invalid/source/"
-        "libtmux.experimental.ops._ops.send_keys/SendKeys" in operation_html
-    )
+    assert "https://example.invalid/source/" not in operation_html
     assert 'href="send_keys.html#tmuxop-operation-send-keys"' in catalog_html
 
 

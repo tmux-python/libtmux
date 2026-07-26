@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import typing as t
 
 import pytest
 
 from libtmux.experimental.workspace import analyze
+
+
+def test_workspace_yaml_parser_is_a_runtime_dependency() -> None:
+    """Installed libtmux metadata requires PyYAML without an extra."""
+    requirements = importlib.metadata.metadata("libtmux").get_all(
+        "Requires-Dist",
+        failobj=[],
+    )
+
+    assert any(
+        requirement.partition(";")[0].strip().lower() == "pyyaml>=6.0"
+        and not requirement.partition(";")[2].strip()
+        for requirement in requirements
+    )
 
 
 def _config(shell_command: t.Any) -> dict[str, t.Any]:

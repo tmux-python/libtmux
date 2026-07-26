@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class KillWindow(Operation[AckResult]):
     """Kill a window. Destructive; produces no output (:class:`AckResult`).
 
-    Parameters
+    Attributes
     ----------
     others : bool
         Kill all windows *except* the target (``-a``) instead of the target.

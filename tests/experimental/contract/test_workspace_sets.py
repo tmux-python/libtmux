@@ -8,7 +8,7 @@ import typing as t
 
 from libtmux.experimental.engines import AsyncMockEngine, MockEngine
 from libtmux.experimental.engines.base import CommandResult
-from libtmux.experimental.ops import SequentialPlanner
+from libtmux.experimental.ops import DeleteBuffer, SendKeys, SequentialPlanner, SwapPane
 from libtmux.experimental.ops._types import SlotRef
 from libtmux.experimental.workspace import (
     BuildEvent,
@@ -20,6 +20,7 @@ from libtmux.experimental.workspace import (
     build_workspaces,
     compile_workspaces,
 )
+from libtmux.experimental.workspace.sets import _rebase_operation
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
@@ -102,6 +103,21 @@ def test_compile_workspaces_rebases_slot_refs_and_host_steps() -> None:
     assert all(
         step.pane is not None and step.pane.slot >= first_len for step in wait_steps
     )
+
+
+def test_rebase_operation_honors_target_capabilities() -> None:
+    """Workspace merging rebases only targets accepted by each constructor."""
+    assert _rebase_operation(DeleteBuffer(), 3) == DeleteBuffer()
+
+    single = _rebase_operation(SendKeys(target=SlotRef(1), keys="x"), 3)
+    assert single.target == SlotRef(4)
+
+    dual = _rebase_operation(
+        SwapPane(target=SlotRef(1), src_target=SlotRef(2)),
+        3,
+    )
+    assert dual.target == SlotRef(4)
+    assert dual.src_target == SlotRef(5)
 
 
 def test_build_workspaces_folds_across_workspace_boundaries() -> None:

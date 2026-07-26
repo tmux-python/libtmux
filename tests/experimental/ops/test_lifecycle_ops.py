@@ -54,17 +54,17 @@ RENDER_CASES = (
     RenderCase(
         test_id="run_shell",
         op=RunShell(command_line="echo hi"),
-        expected=("run-shell", "echo hi"),
+        expected=("run-shell", "--", "echo hi"),
     ),
     RenderCase(
         test_id="run_shell_background",
         op=RunShell(command_line="x", background=True),
-        expected=("run-shell", "-b", "x"),
+        expected=("run-shell", "-b", "--", "x"),
     ),
     RenderCase(
         test_id="source_file",
         op=SourceFile(path="~/.tmux.conf"),
-        expected=("source-file", "~/.tmux.conf"),
+        expected=("source-file", "--", "~/.tmux.conf"),
     ),
     RenderCase(
         test_id="suspend_client",
@@ -74,37 +74,37 @@ RENDER_CASES = (
     RenderCase(
         test_id="set_option",
         op=SetOption(option="status", value="on"),
-        expected=("set-option", "status", "on"),
+        expected=("set-option", "--", "status", "on"),
     ),
     RenderCase(
         test_id="set_option_global",
         op=SetOption(global_=True, option="status", value="on"),
-        expected=("set-option", "-g", "status", "on"),
+        expected=("set-option", "-g", "--", "status", "on"),
     ),
     RenderCase(
         test_id="set_option_unset",
         op=SetOption(option="status", unset=True),
-        expected=("set-option", "-u", "status"),
+        expected=("set-option", "-u", "--", "status"),
     ),
     RenderCase(
         test_id="set_window_option",
         op=SetWindowOption(option="mode-keys", value="vi"),
-        expected=("set-window-option", "mode-keys", "vi"),
+        expected=("set-window-option", "--", "mode-keys", "vi"),
     ),
     RenderCase(
         test_id="set_environment",
         op=SetEnvironment(name="FOO", value="bar"),
-        expected=("set-environment", "FOO", "bar"),
+        expected=("set-environment", "--", "FOO", "bar"),
     ),
     RenderCase(
         test_id="set_environment_unset",
         op=SetEnvironment(global_=True, name="FOO", unset=True),
-        expected=("set-environment", "-g", "-u", "FOO"),
+        expected=("set-environment", "-g", "-u", "--", "FOO"),
     ),
     RenderCase(
         test_id="set_hook",
         op=SetHook(name="after-new-window", hook_command="display hi"),
-        expected=("set-hook", "after-new-window", "display hi"),
+        expected=("set-hook", "--", "after-new-window", "display hi"),
     ),
 )
 
