@@ -179,3 +179,39 @@ def test_dry_run_no_fold_renders_one_call_per_op(
     assert "sequential" in out
     assert "\\;" not in out  # nothing chained
     assert "{marked}" not in out  # no marked fold
+
+
+def test_dry_run_distinguishes_literal_semicolons(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Copyable dry-run commands preserve literal semicolons as argv data."""
+    (tmp_path / ".tmuxp.yaml").write_text(
+        "session_name: dryliteral\n"
+        "windows:\n"
+        "  - window_name: editor\n"
+        "    panes:\n"
+        "      - 'value;'\n"
+        "      - ';'\n",
+    )
+
+    cli.load(
+        str(tmp_path),
+        socket_name="libtmux_wscli_literal",
+        dry_run=True,
+        fold=False,
+    )
+    out = capsys.readouterr().out
+
+    assert r"' value\;'" in out
+    assert r"' \;'" in out
+
+
+def test_dry_run_encodes_command_argv_with_full_parser_context() -> None:
+    """Global-looking positionals remain command data in copyable output."""
+    rendered = cli._render_dry_run_argv(
+        ("tmux",),
+        ("set-environment", "--", "-L;", "kill-server"),
+    )
+
+    assert rendered == r"tmux set-environment -- '-L\;' kill-server"

@@ -126,6 +126,15 @@ def test_results_reference_documents_exact_public_result_inventory() -> None:
         assert f".. autoclass:: {target}\n   :members:" in text
 
 
+def test_results_reference_documents_missing_capture_error() -> None:
+    """The public eager-navigation invariant error has an API target."""
+    text = _RESULTS_PAGE.read_text(encoding="utf-8")
+
+    assert (
+        ".. autoexception:: libtmux.experimental.ops.exc.MissingCreateIdError" in text
+    )
+
+
 def test_every_operation_result_target_is_documented() -> None:
     """Every registered operation points to a class target on the page."""
     documented = _documented_targets()
@@ -172,6 +181,7 @@ def test_operation_result_links_resolve_to_autodoc_cards(
         assert {
             _result_target(result_cls) for result_cls in _result_classes()
         } <= python_targets
+        assert "libtmux.experimental.ops.exc.MissingCreateIdError" in python_targets
 
         for result_cls, kind in representatives.items():
             html = (

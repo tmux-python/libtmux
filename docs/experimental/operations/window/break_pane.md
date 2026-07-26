@@ -29,7 +29,7 @@ This executable example uses an isolated live tmux server. `server` and
 >>> split = run(SplitWindow(target=WindowId(owned.new_id)), engine).raise_for_status()
 >>> assert split.new_pane_id is not None
 >>> broken = run(
-...     BreakPane(src_target=PaneId(split.new_pane_id)),
+...     BreakPane(src_target=PaneId(split.new_pane_id), name="docs-broken"),
 ...     engine,
 ... ).raise_for_status()
 >>> assert broken.new_id is not None
@@ -37,6 +37,7 @@ This executable example uses an isolated live tmux server. `server` and
 >>> any(
 ...     item.window_id == broken.new_id
 ...     and item.session_id == session.session_id
+...     and item.name == "docs-broken"
 ...     for item in observed.windows
 ... )
 True
@@ -51,10 +52,12 @@ True
 
 This operation changes tmux state. It creates a window.
 
-On exactly tmux 3.7, a nameless request receives the placeholder
-`-n libtmux` to avoid an upstream null dereference. Other versions omit the
-placeholder. tmux 3.7 also ignores a requested name, so rename the captured
-window afterward when its name matters.
+On exactly tmux 3.7, every request receives the placeholder `-n libtmux` to
+avoid an upstream null dereference. tmux 3.7 also ignores the requested name,
+so {func}`~libtmux.experimental.ops.run` and
+{func}`~libtmux.experimental.ops.arun` apply it with a typed `rename-window`
+follow-up. A failed follow-up makes the complete operation fail instead of
+reporting a name that was not applied.
 
 The captured identifier is resolved through
 {class}`~libtmux.experimental.ops.ListWindows`; a non-`None` identifier alone

@@ -30,7 +30,7 @@ True
 
 All results retain the operation, rendered `argv`, `status`, `returncode`,
 `stdout`, and `stderr`. `ok` is true only for `complete`; `failed` identifies a
-tmux rejection.
+tmux rejection or an incomplete composed operation.
 {meth}`~libtmux.experimental.ops.results.Result.raise_for_status` raises for
 `failed` and `unknown`, but returns both `complete` and `skipped` results. See
 {doc}`tutorials/results-and-failures` for those paths in context.
@@ -64,6 +64,7 @@ tmux rejection.
 ```{eval-rst}
 .. autoclass:: libtmux.experimental.ops.results.Result
    :members:
+   :no-undoc-members:
 ```
 
 ### Acknowledgement and creation
@@ -74,9 +75,11 @@ tmux rejection.
 
 .. autoclass:: libtmux.experimental.ops.results.CreateResult
    :members:
+   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.SplitWindowResult
    :members:
+   :no-undoc-members:
 ```
 
 ### Text, existence, and options
@@ -84,18 +87,23 @@ tmux rejection.
 ```{eval-rst}
 .. autoclass:: libtmux.experimental.ops.results.CapturePaneResult
    :members:
+   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.DisplayMessageResult
    :members:
+   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.HasSessionResult
    :members:
+   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ShowBufferResult
    :members:
+   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ShowOptionsResult
    :members:
+   :no-undoc-members:
 ```
 
 ### Snapshot collections
@@ -103,13 +111,23 @@ tmux rejection.
 ```{eval-rst}
 .. autoclass:: libtmux.experimental.ops.results.ListClientsResult
    :members:
+   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ListPanesResult
    :members:
+   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ListSessionsResult
    :members:
+   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ListWindowsResult
    :members:
+   :no-undoc-members:
+```
+
+### Navigation failures
+
+```{eval-rst}
+.. autoexception:: libtmux.experimental.ops.exc.MissingCreateIdError
 ```

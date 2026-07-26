@@ -55,14 +55,26 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class _Single:
-    """Drive request: run one resolved operation and return its typed result."""
+    """Drive request: run one resolved operation and return its typed result.
+
+    Attributes
+    ----------
+    op : Operation
+        Resolved operation to dispatch.
+    """
 
     op: Operation[t.Any]
 
 
 @dataclass(frozen=True)
 class _Chain:
-    """Drive request: dispatch a folded ``;`` chain and return the merged result."""
+    """Drive request: dispatch a folded ``;`` chain and return the merged result.
+
+    Attributes
+    ----------
+    argv : tuple[str, ...]
+        Rendered argv for the complete folded chain.
+    """
 
     argv: tuple[str, ...]
 
@@ -76,7 +88,7 @@ class StepReport:
     interleave host-side work (e.g. the workspace runner's sleeps and pane-ready
     waits) *between* dispatches without forking the resolution core.
 
-    Parameters
+    Attributes
     ----------
     step : PlanStep
         The dispatch unit that just ran.
@@ -94,7 +106,13 @@ class StepReport:
 
 @dataclass(frozen=True)
 class _Host:
-    """Drive request: fire the per-step host hook; the driver returns ``None``."""
+    """Drive request: fire the per-step host hook; the driver returns ``None``.
+
+    Attributes
+    ----------
+    report : StepReport
+        Completed step passed to the host hook.
+    """
 
     report: StepReport
 
@@ -108,6 +126,15 @@ class StepExplanation:
     (a create whose captured id a later op must target -- a true blocker),
     ``"capture"`` (a non-chainable op whose stdout can't merge into a chain), or
     ``"single"`` (a lone chainable op with nothing to fold with).
+
+    Attributes
+    ----------
+    step : PlanStep
+        Dispatch unit being explained.
+    kinds : tuple[str, ...]
+        Operation kinds contained in the dispatch unit.
+    reason : str
+        Stable explanation label for the planner's dispatch decision.
     """
 
     step: PlanStep
@@ -117,14 +144,26 @@ class StepExplanation:
 
 @dataclass(frozen=True)
 class StepDone:
-    """Stream event: a plan step finished and its results have bound."""
+    """Stream event: a plan step finished and its results have bound.
+
+    Attributes
+    ----------
+    report : StepReport
+        Completed step and its newly bound results.
+    """
 
     report: StepReport
 
 
 @dataclass(frozen=True)
 class PlanDone:
-    """Stream event: the plan finished; carries the full :class:`PlanResult`."""
+    """Stream event: the plan finished; carries the full :class:`PlanResult`.
+
+    Attributes
+    ----------
+    result : PlanResult
+        Final ordered results and captured bindings.
+    """
 
     result: PlanResult
 
@@ -208,7 +247,7 @@ def _resolve_src(
 class PlanResult:
     """The outcome of executing a :class:`LazyPlan`.
 
-    Parameters
+    Attributes
     ----------
     results : tuple[Result, ...]
         One result per recorded operation, in order.
@@ -251,7 +290,7 @@ class LazyPlan:
     >>> outcome.bindings
     {0: '%1'}
     >>> outcome.results[1].argv
-    ('send-keys', '-t', '%1', 'vim', 'Enter')
+    ('send-keys', '-t', '%1', '--', 'vim', 'Enter')
     """
 
     def __init__(self) -> None:
@@ -509,7 +548,7 @@ class LazyPlan:
     ) -> t.Any:
         """Run one drive request synchronously."""
         if isinstance(request, _Chain):
-            return engine.run(CommandRequest.from_args(*request.argv))
+            return engine.run(CommandRequest(args=request.argv))
         return run(request.op, engine, version=version)
 
     async def aexecute(
@@ -557,7 +596,7 @@ class LazyPlan:
     ) -> t.Any:
         """Run one drive request asynchronously (async twin of :meth:`_dispatch`)."""
         if isinstance(request, _Chain):
-            return await engine.run(CommandRequest.from_args(*request.argv))
+            return await engine.run(CommandRequest(args=request.argv))
         return await arun(request.op, engine, version=version)
 
     async def astream(

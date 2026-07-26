@@ -9,6 +9,7 @@ the same sans-I/O split the lazy plan resolver uses.
 
 from __future__ import annotations
 
+import dataclasses
 import typing as t
 
 from libtmux.experimental.engines.base import CommandRequest, SupportsTmuxVersion
@@ -21,6 +22,40 @@ if t.TYPE_CHECKING:
     from libtmux.experimental.ops.results import Result
 
 ResultT = t.TypeVar("ResultT", bound="Result")
+
+
+def _merge_follow_up(result: ResultT, follow_up: Result) -> ResultT:
+    """Merge a typed follow-up outcome into its primary operation result.
+
+    The primary payload remains available even when the follow-up fails. Its
+    status and diagnostics then describe the complete logical operation.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.ops import BreakPane, RenameWindow
+    >>> from libtmux.experimental.ops._types import PaneId, WindowId
+    >>> primary = BreakPane(src_target=PaneId("%1")).build_result(
+    ...     returncode=0, stdout=("@2",)
+    ... )
+    >>> follow_up = RenameWindow(
+    ...     target=WindowId("@2"), name="logs"
+    ... ).build_result(returncode=0)
+    >>> merged = _merge_follow_up(primary, follow_up)
+    >>> merged.ok, merged.new_id
+    (True, '@2')
+    >>> merged.argv[-6:]
+    (';', 'rename-window', '-t', '@2', '--', 'logs')
+    """
+    argv = (*result.argv, ";", *follow_up.argv)
+    if follow_up.ok:
+        return dataclasses.replace(result, argv=argv)
+    return dataclasses.replace(
+        result,
+        argv=argv,
+        status=follow_up.status,
+        returncode=follow_up.returncode,
+        stderr=(*result.stderr, *follow_up.stderr),
+    )
 
 
 def resolve_engine_version(
@@ -98,18 +133,33 @@ def run(
     >>> result.ok
     True
     >>> result.argv
-    ('send-keys', '-t', '%1', 'echo hi')
+    ('send-keys', '-t', '%1', '--', 'echo hi')
     """
     version = resolve_engine_version(engine, version)
     rendered = operation.render(version=version)
-    raw = engine.run(CommandRequest.from_args(*rendered, tmux_bin=tmux_bin))
-    return operation.build_result(
+    raw = engine.run(
+        CommandRequest(
+            args=rendered,
+            tmux_bin=str(tmux_bin) if tmux_bin is not None else None,
+        ),
+    )
+    result = operation.build_result(
         argv=rendered,
         returncode=raw.returncode,
         stdout=raw.stdout,
         stderr=raw.stderr,
         version=version,
     )
+    follow_up = operation._follow_up(result, version=version)
+    if follow_up is None:
+        return result
+    follow_up_result = run(
+        follow_up,
+        engine,
+        version=version,
+        tmux_bin=tmux_bin,
+    )
+    return _merge_follow_up(result, follow_up_result)
 
 
 async def arun(
@@ -144,11 +194,26 @@ async def arun(
     """
     version = resolve_engine_version(engine, version)
     rendered = operation.render(version=version)
-    raw = await engine.run(CommandRequest.from_args(*rendered, tmux_bin=tmux_bin))
-    return operation.build_result(
+    raw = await engine.run(
+        CommandRequest(
+            args=rendered,
+            tmux_bin=str(tmux_bin) if tmux_bin is not None else None,
+        ),
+    )
+    result = operation.build_result(
         argv=rendered,
         returncode=raw.returncode,
         stdout=raw.stdout,
         stderr=raw.stderr,
         version=version,
     )
+    follow_up = operation._follow_up(result, version=version)
+    if follow_up is None:
+        return result
+    follow_up_result = await arun(
+        follow_up,
+        engine,
+        version=version,
+        tmux_bin=tmux_bin,
+    )
+    return _merge_follow_up(result, follow_up_result)

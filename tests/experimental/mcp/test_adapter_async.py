@@ -14,8 +14,12 @@ import pytest
 
 from libtmux.experimental.engines import MockEngine
 from libtmux.experimental.mcp.vocabulary._bridge import SyncToAsyncEngine
+from libtmux.experimental.ops import KillSession
+from libtmux.experimental.ops._types import SessionId
+from libtmux.experimental.ops.serialize import operation_to_dict
 
 fastmcp = pytest.importorskip("fastmcp")
+from fastmcp.exceptions import ToolError  # noqa: E402 - after importorskip
 
 
 def _async_server(**kwargs: t.Any) -> t.Any:
@@ -41,11 +45,11 @@ def test_async_server_exposes_curated_and_conveniences() -> None:
         "find_pane_by_position",
         "select_pane",
         "resize_pane",
-        "run_tmux",
         "list_clients",
         "has_session",
     }
     assert expected <= names
+    assert "run_tmux" not in names
     # The per-op surface is hidden by default.
     assert not any(name.startswith("op_") for name in names)
 
@@ -54,7 +58,7 @@ def test_async_tool_call_returns_typed_data() -> None:
     """An awaited curated tool returns its typed result over the client."""
 
     async def main() -> t.Any:
-        async with fastmcp.Client(_async_server()) as client:
+        async with fastmcp.Client(_async_server(safety_level="destructive")) as client:
             result = await client.call_tool("create_session", {"name": "dev"})
             raw = await client.call_tool("run_tmux", {"args": ["list-sessions"]})
             return result.data, raw.data
@@ -89,6 +93,34 @@ def test_async_plan_preview() -> None:
 
     data = asyncio.run(main())
     assert data["ok"] is True
+
+
+def test_async_plan_execution_enforces_payload_safety() -> None:
+    """The async plan path rejects a destructive payload at mutating."""
+    operations = [
+        operation_to_dict(KillSession(target=SessionId("$1"))),
+    ]
+
+    async def main() -> None:
+        async with fastmcp.Client(_async_server()) as client:
+            await client.call_tool("execute_plan", {"operations": operations})
+
+    with pytest.raises(ToolError, match="destructive"):
+        asyncio.run(main())
+
+
+def test_async_curated_format_payload_enforces_safety() -> None:
+    """The async curated wrapper rejects recursive readonly format expansion."""
+
+    async def main() -> None:
+        async with fastmcp.Client(_async_server()) as client:
+            await client.call_tool(
+                "display_message",
+                {"target": "%1", "message": "#{E:@probe}"},
+            )
+
+    with pytest.raises(ToolError, match="destructive"):
+        asyncio.run(main())
 
 
 def test_async_build_workspace_offline() -> None:

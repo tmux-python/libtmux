@@ -90,6 +90,24 @@ engine is called.
 ('new_pane', '3.7', '3.6')
 ```
 
+## Reject a successful create without a captured ID
+
+Eager and async object navigation requires the identifier promised by a create
+operation. If an engine reports success but omits that capture,
+{exc}`~libtmux.experimental.ops.exc.MissingCreateIdError` preserves the complete
+result for diagnosis instead of constructing an object with an empty target.
+
+```python
+>>> from libtmux.experimental.ops import MissingCreateIdError, NewSession
+>>> missing = NewSession().build_result(returncode=0)
+>>> try:
+...     raise MissingCreateIdError(missing)
+... except MissingCreateIdError as error:
+...     details = (error.kind, error.missing, error.result is missing)
+>>> details
+('new_session', ('self',), True)
+```
+
 ## Distinguish failed and skipped plan steps
 
 A folding planner dispatches adjacent chainable operations as one tmux command

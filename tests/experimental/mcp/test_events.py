@@ -46,8 +46,109 @@ class FakeStreamEngine:
             yield ControlNotification.parse(raw)
 
 
+class _RecordingStreamEngine(FakeStreamEngine):
+    """Record requests so subscription validation can prove no dispatch."""
+
+    def __init__(self, raw: tuple[bytes, ...] = ()) -> None:
+        super().__init__(raw)
+        self.calls: list[tuple[str, ...]] = []
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        """Record and acknowledge one command."""
+        self.calls.append(request.args)
+        return await super().run(request)
+
+
 _STREAM = (b"%window-add @3", b"%output %1 hi", b"%window-close @3")
 _MON_STREAM = (b"%output %1 a  b", b"%output %1 c", b"%window-add @9")
+
+
+@pytest.mark.parametrize(
+    "spec",
+    (
+        "missing-parts",
+        "probe::#{pane_id}",
+        "probe:%*:",
+        "probe:%*:#(arbitrary-host-command)",
+        "probe:%*:#{E:@probe}",
+        "probe:%*:#{T:@probe}",
+        "probe:%*:#{?pane_active,yes,no}",
+    ),
+)
+def test_subscription_rejects_malformed_or_unbounded_format(spec: str) -> None:
+    """Readonly subscriptions reject executable and recursive formats."""
+    from libtmux.experimental.mcp._safety import ExpectedToolError
+    from libtmux.experimental.mcp.events import _install_subscriptions
+
+    engine = _RecordingStreamEngine()
+
+    with pytest.raises(ExpectedToolError):
+        asyncio.run(_install_subscriptions(engine, [spec]))
+    assert engine.calls == []
+
+
+def test_subscription_accepts_bounded_formats() -> None:
+    """Plain, escaped, and simple-field subscription formats reach tmux."""
+    from libtmux.experimental.mcp.events import _install_subscriptions
+
+    engine = _RecordingStreamEngine()
+    specs = [
+        "plain:%*:ready",
+        "escaped:%*:##(literal)",
+        "field:%*:#{pane_id}",
+        "user:%*:#{@probe}",
+    ]
+
+    asyncio.run(_install_subscriptions(engine, specs))
+
+    assert engine.calls == [("refresh-client", "-B", spec) for spec in specs]
+
+
+def test_subscription_batch_validates_atomically() -> None:
+    """A later invalid format prevents every subscription in the request."""
+    from libtmux.experimental.mcp._safety import ExpectedToolError
+    from libtmux.experimental.mcp.events import _install_subscriptions
+
+    engine = _RecordingStreamEngine()
+    specs = [
+        "safe:%*:#{pane_id}",
+        "bad:%*:#(arbitrary-host-command)",
+    ]
+
+    with pytest.raises(ExpectedToolError, match="index 1"):
+        asyncio.run(_install_subscriptions(engine, specs))
+    assert engine.calls == []
+
+
+def test_watch_events_rejects_unbounded_subscription_before_dispatch() -> None:
+    """The registered readonly tool applies subscription validation."""
+    from fastmcp.exceptions import ToolError
+
+    from libtmux.experimental.mcp.fastmcp_adapter import build_async_server
+
+    engine = _RecordingStreamEngine(_STREAM)
+    server = build_async_server(
+        engine,
+        events="push",
+        event_source="subscription",
+        include_operations=False,
+        include_plan_tools=False,
+    )
+
+    async def main() -> None:
+        async with fastmcp.Client(server) as client:
+            await client.call_tool(
+                "watch_events",
+                {
+                    "subscriptions": ["probe:%*:#{E:@probe}"],
+                    "max_events": 1,
+                    "timeout": 0.1,
+                },
+            )
+
+    with pytest.raises(ToolError, match="readonly-safe"):
+        asyncio.run(main())
+    assert not any(call[:2] == ("refresh-client", "-B") for call in engine.calls)
 
 
 class _BlockingStreamEngine:

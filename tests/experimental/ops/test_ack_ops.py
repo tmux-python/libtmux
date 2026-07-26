@@ -28,7 +28,7 @@ if t.TYPE_CHECKING:
     [
         pytest.param(
             RenameWindow(target=WindowId("@1"), name="build"),
-            ("rename-window", "-t", "@1", "build"),
+            ("rename-window", "-t", "@1", "--", "build"),
             id="rename_window",
         ),
         pytest.param(
@@ -43,12 +43,12 @@ if t.TYPE_CHECKING:
         ),
         pytest.param(
             SendKeys(target=PaneId("%1"), keys="x"),
-            ("send-keys", "-t", "%1", "x"),
+            ("send-keys", "-t", "%1", "--", "x"),
             id="send_keys",
         ),
         pytest.param(
             SelectLayout(target=WindowId("@1"), layout="tiled"),
-            ("select-layout", "-t", "@1", "tiled"),
+            ("select-layout", "-t", "@1", "--", "tiled"),
             id="select_layout",
         ),
     ],

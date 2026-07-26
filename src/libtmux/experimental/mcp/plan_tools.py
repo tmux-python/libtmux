@@ -26,7 +26,15 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PlanPreview:
-    """A pure dry-run of a plan: per-op dicts + rendered argv (or ``None``)."""
+    """A pure dry-run of a plan: per-op dicts + rendered argv (or ``None``).
+
+    Attributes
+    ----------
+    operations : list[dict[str, Any]]
+        Serialized operations in plan order.
+    argv : list[tuple[str, ...] or None]
+        Rendered argv for each operation, or ``None`` for an unresolved step.
+    """
 
     operations: list[dict[str, t.Any]]
     argv: list[tuple[str, ...] | None]
@@ -53,6 +61,11 @@ class PlanExplanation:
     ``kinds`` (their operation kinds), and ``reason`` (the boundary reason --
     ``marked-fold`` / ``folded`` / ``created-id`` / ``capture`` / ``single``), so
     an agent can see why a chain folds or breaks before it runs.
+
+    Attributes
+    ----------
+    steps : list[dict[str, Any]]
+        Serialized planner steps with indices, kinds, and boundary reasons.
     """
 
     steps: list[dict[str, t.Any]]
@@ -74,7 +87,17 @@ def explain_plan(plan: LazyPlan, *, planner: Planner | None = None) -> PlanExpla
 
 @dataclass(frozen=True)
 class PlanOutcome:
-    """The result of executing a plan: per-op result dicts + a bindings map."""
+    """The result of executing a plan: per-op result dicts + a bindings map.
+
+    Attributes
+    ----------
+    ok : bool
+        Whether the plan completed successfully.
+    results : list[dict[str, Any]]
+        Serialized result for each executed operation.
+    bindings : dict[str, str]
+        Resolved forward-reference bindings keyed by slot.
+    """
 
     ok: bool
     results: list[dict[str, t.Any]]
@@ -118,7 +141,19 @@ async def aexecute_plan(
 
 @dataclass(frozen=True)
 class ResultSchema:
-    """A result type's schema + the fields an agent can bind downstream."""
+    """A result type's schema + the fields an agent can bind downstream.
+
+    Attributes
+    ----------
+    kind : str
+        Operation kind queried from the registry.
+    result_type : str
+        Name of the operation result class.
+    schema : dict[str, Any]
+        JSON schema describing the result payload.
+    binding_fields : list[str]
+        Result fields that expose ids for later plan steps.
+    """
 
     kind: str
     result_type: str

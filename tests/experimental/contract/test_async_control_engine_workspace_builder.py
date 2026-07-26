@@ -224,7 +224,7 @@ def test_confirm_start_directory_checks_first_pane_not_active(
     assert report.ok, report.problems  # first pane matches despite focus elsewhere
 
 
-# --- Robust QA: a rich workspace exercising the full feature surface ---
+# --- Full-surface workspace fixture ---
 
 
 def _rich_spec(start_directory: str, name: str = "ws-rich") -> Workspace:

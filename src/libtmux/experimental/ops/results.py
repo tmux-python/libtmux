@@ -40,6 +40,59 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _require_created_id(
+    result: Result,
+    *,
+    required_subids: t.Iterable[str] = (),
+) -> str:
+    """Return a create result's id after validating every promised capture.
+
+    Parameters
+    ----------
+    result : Result
+        Successful create result to validate after
+        :meth:`~Result.raise_for_status`.
+    required_subids : Iterable[str]
+        Child-id keys that the caller explicitly requested, such as
+        ``"window"`` and ``"pane"``.
+
+    Returns
+    -------
+    str
+        The non-empty created object id.
+
+    Raises
+    ------
+    ~libtmux.experimental.ops.exc.MissingCreateIdError
+        If the primary id or any required child id is absent or blank.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.ops import NewSession
+    >>> result = NewSession(capture_panes=True).build_result(
+    ...     returncode=0,
+    ...     stdout=("$1 @2 %3",),
+    ... )
+    >>> _require_created_id(result, required_subids=("window", "pane"))
+    '$1'
+    """
+    from libtmux.experimental.ops.exc import MissingCreateIdError
+
+    created_id = result.created_id
+    missing: list[str] = []
+    if created_id is None or not created_id.strip():
+        missing.append("self")
+    subids = result.created_subids
+    missing.extend(
+        part
+        for part in required_subids
+        if not (value := subids.get(part)) or not value.strip()
+    )
+    if missing:
+        raise MissingCreateIdError(result, missing=tuple(missing))
+    return t.cast("str", created_id)
+
+
 def status_for(returncode: int, stderr: t.Sequence[str]) -> Status:
     """Derive a result :data:`~._types.Status` from a tmux outcome.
 
@@ -88,7 +141,7 @@ def status_for(returncode: int, stderr: t.Sequence[str]) -> Status:
 class Result:
     """Base result for an executed (or simulated) operation.
 
-    Parameters
+    Attributes
     ----------
     operation : Operation
         The operation this result came from.
@@ -98,8 +151,11 @@ class Result:
         Execution status.
     returncode : int
         tmux exit code (``-1`` when unknown, e.g. a timeout).
-    stdout, stderr : tuple[str, ...]
-        Captured output lines.
+    stdout : tuple[str, ...]
+        Captured standard-output lines.
+
+    stderr : tuple[str, ...]
+        Captured standard-error lines.
 
     Examples
     --------
@@ -224,6 +280,11 @@ class SplitWindowResult(Result):
     """Result of a ``split-window`` operation.
 
     Adds the id of the pane tmux created, when it was captured.
+
+    Attributes
+    ----------
+    new_pane_id : str | None
+        Captured id of the created pane, or ``None`` when capture was disabled.
     """
 
     new_pane_id: str | None = None
@@ -243,6 +304,15 @@ class CreateResult(Result):
     When the creator opts into capturing its implicit children (a session's first
     window/pane, a window's first pane), those ids land in
     :attr:`first_window_id` / :attr:`first_pane_id` and in :attr:`created_subids`.
+
+    Attributes
+    ----------
+    new_id : str | None
+        Captured id of the object created directly by the operation.
+    first_window_id : str | None
+        Captured id of a new session's first window.
+    first_pane_id : str | None
+        Captured id of a new session or window's first pane.
     """
 
     new_id: str | None = None
@@ -271,6 +341,11 @@ class CapturePaneResult(Result):
 
     Adds the captured pane lines as :attr:`lines` (also available as
     :attr:`stdout`).
+
+    Attributes
+    ----------
+    lines : tuple[str, ...]
+        Captured pane lines in display order.
     """
 
     lines: tuple[str, ...] = field(default_factory=tuple)
@@ -284,6 +359,11 @@ class ListPanesResult(Result):
     (so the result serializes without snapshot objects), and derives typed
     :class:`~..models.snapshots.PaneSnapshot` / :class:`ServerSnapshot` views on
     demand.
+
+    Attributes
+    ----------
+    rows : tuple[Mapping[str, str], ...]
+        Parsed tmux format rows, one per pane.
     """
 
     rows: tuple[Mapping[str, str], ...] = ()
@@ -301,7 +381,13 @@ class ListPanesResult(Result):
 
 @dataclass(frozen=True)
 class ListWindowsResult(Result):
-    """Result of a ``list-windows`` operation (typed :attr:`windows`)."""
+    """Result of a ``list-windows`` operation (typed :attr:`windows`).
+
+    Attributes
+    ----------
+    rows : tuple[Mapping[str, str], ...]
+        Parsed tmux format rows, one per window.
+    """
 
     rows: tuple[Mapping[str, str], ...] = ()
 
@@ -313,7 +399,13 @@ class ListWindowsResult(Result):
 
 @dataclass(frozen=True)
 class ListSessionsResult(Result):
-    """Result of a ``list-sessions`` operation (typed :attr:`sessions`)."""
+    """Result of a ``list-sessions`` operation (typed :attr:`sessions`).
+
+    Attributes
+    ----------
+    rows : tuple[Mapping[str, str], ...]
+        Parsed tmux format rows, one per session.
+    """
 
     rows: tuple[Mapping[str, str], ...] = ()
 
@@ -325,7 +417,13 @@ class ListSessionsResult(Result):
 
 @dataclass(frozen=True)
 class ListClientsResult(Result):
-    """Result of a ``list-clients`` operation (typed :attr:`clients`)."""
+    """Result of a ``list-clients`` operation (typed :attr:`clients`).
+
+    Attributes
+    ----------
+    rows : tuple[Mapping[str, str], ...]
+        Parsed tmux format rows, one per attached client.
+    """
 
     rows: tuple[Mapping[str, str], ...] = ()
 
@@ -342,6 +440,11 @@ class HasSessionResult(Result):
     ``has-session`` exits ``0`` when the session exists and nonzero otherwise --
     a valid answer, not a failure -- so this result is always ``complete`` and
     carries the answer in :attr:`exists`.
+
+    Attributes
+    ----------
+    exists : bool
+        Whether tmux found the requested session.
     """
 
     exists: bool = False
@@ -349,14 +452,26 @@ class HasSessionResult(Result):
 
 @dataclass(frozen=True)
 class DisplayMessageResult(Result):
-    """Result of ``display-message -p``: the formatted :attr:`text`."""
+    """Result of ``display-message -p``: the formatted :attr:`text`.
+
+    Attributes
+    ----------
+    text : str
+        Complete text printed by tmux.
+    """
 
     text: str = ""
 
 
 @dataclass(frozen=True)
 class ShowOptionsResult(Result):
-    """Result of ``show-options``: parsed ``name value`` pairs in :attr:`options`."""
+    """Result of ``show-options``: parsed ``name value`` pairs in :attr:`options`.
+
+    Attributes
+    ----------
+    options : Mapping[str, str]
+        Option names mapped to their tmux-rendered values.
+    """
 
     options: Mapping[str, str] = field(default_factory=dict)
 
@@ -385,6 +500,12 @@ class ShowOptionsResult(Result):
 
 @dataclass(frozen=True)
 class ShowBufferResult(Result):
-    """Result of ``show-buffer``: the buffer contents as :attr:`text`."""
+    """Result of ``show-buffer``: the buffer contents as :attr:`text`.
+
+    Attributes
+    ----------
+    text : str
+        Complete paste-buffer contents.
+    """
 
     text: str = ""

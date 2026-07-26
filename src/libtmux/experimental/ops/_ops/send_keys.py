@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class SendKeys(Operation[AckResult]):
     """Send keys (input) to a pane.
 
-    Parameters
+    Attributes
     ----------
     keys : str
         The key string to send.
@@ -34,11 +34,11 @@ class SendKeys(Operation[AckResult]):
     --------
     >>> from libtmux.experimental.ops._types import PaneId
     >>> SendKeys(target=PaneId("%1"), keys="echo hi", enter=True).render()
-    ('send-keys', '-t', '%1', 'echo hi', 'Enter')
+    ('send-keys', '-t', '%1', '--', 'echo hi', 'Enter')
     >>> SendKeys(target=PaneId("%1"), keys="q", literal=True).render()
-    ('send-keys', '-t', '%1', '-l', 'q')
+    ('send-keys', '-t', '%1', '-l', '--', 'q')
     >>> SendKeys(target=PaneId("%1"), keys="vim", suppress_history=True).render()
-    ('send-keys', '-t', '%1', ' vim')
+    ('send-keys', '-t', '%1', '--', ' vim')
     """
 
     kind = "send_keys"
@@ -70,7 +70,8 @@ class SendKeys(Operation[AckResult]):
         keys = self.keys
         if self.suppress_history and not self.literal:
             keys = f" {keys}"
-        out.append(keys)
+        positional = [keys]
         if self.enter:
-            out.append("Enter")
+            positional.append("Enter")
+        out.extend(positional_args(*positional))
         return tuple(out)

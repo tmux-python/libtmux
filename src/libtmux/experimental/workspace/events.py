@@ -19,28 +19,52 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class SessionCreated:
-    """The session was created."""
+    """The session was created.
+
+    Attributes
+    ----------
+    session_id : str
+        Id of the created session.
+    """
 
     session_id: str
 
 
 @dataclass(frozen=True)
 class WindowCreated:
-    """A window was created (a fresh window, or the reused first window bound)."""
+    """A window was created (a fresh window, or the reused first window bound).
+
+    Attributes
+    ----------
+    window_id : str
+        Id of the created or newly bound window.
+    """
 
     window_id: str
 
 
 @dataclass(frozen=True)
 class PaneCreated:
-    """A pane was created (a window's first pane, or a split)."""
+    """A pane was created (a window's first pane, or a split).
+
+    Attributes
+    ----------
+    pane_id : str
+        Id of the created or newly bound pane.
+    """
 
     pane_id: str
 
 
 @dataclass(frozen=True)
 class WorkspaceBuilt:
-    """The whole workspace finished building."""
+    """The whole workspace finished building.
+
+    Attributes
+    ----------
+    session_id : str
+        Id of the workspace's session.
+    """
 
     session_id: str
 

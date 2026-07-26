@@ -5,25 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import SourceTargetOperation
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class SwapPane(Operation[AckResult]):
+class SwapPane(SourceTargetOperation[AckResult]):
     """Swap two panes (``swap-pane``).
 
     ``target`` is the destination pane (``-t``); ``src_target`` is the source
     pane (``-s``). With *up*/*down* and no source, swap with the adjacent pane.
 
-    Parameters
+    Attributes
     ----------
     detach : bool
         Do not change the active pane (``-d``).
-    up, down : bool
-        Swap with the pane above (``-U``) / below (``-D``).
+    up : bool
+        Swap with the pane above (``-U``).
+    down : bool
+        Swap with the pane below (``-D``).
     zoom : bool
         Keep the window zoomed (``-Z``).
 

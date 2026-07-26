@@ -27,6 +27,11 @@ import os
 import typing as t
 
 from libtmux.experimental.mcp import vocabulary
+from libtmux.experimental.mcp._policy import (
+    curated_call_safety,
+    curated_can_destroy,
+    curated_is_open_world,
+)
 from libtmux.experimental.mcp.registry import OperationToolRegistry
 from libtmux.experimental.mcp.vocabulary._caller import CallerContext
 from libtmux.experimental.ops._docstring import first_line
@@ -79,7 +84,7 @@ _TOOLS: tuple[tuple[str, str], ...] = (
     ("set_option", "mutating"),
     ("set_buffer", "mutating"),
     ("paste_buffer", "mutating"),
-    ("run_tmux", "mutating"),
+    ("run_tmux", "destructive"),
     ("kill_pane", "destructive"),
     ("kill_window", "destructive"),
     ("kill_session", "destructive"),
@@ -201,6 +206,9 @@ def _bind_engine(
     engine: TmuxEngine | AsyncTmuxEngine,
     *,
     is_async: bool,
+    public_name: str,
+    base_safety: str,
+    max_safety: str,
 ) -> Callable[..., t.Any]:
     """Bind *engine* out of *fn*, returning a wrapper fastmcp can introspect.
 
@@ -214,10 +222,21 @@ def _bind_engine(
     signature = inspect.signature(fn)
     params = [p for name, p in signature.parameters.items() if name != "engine"]
 
+    def _require_call_safety(args: tuple[t.Any, ...], kwargs: dict[str, t.Any]) -> None:
+        from libtmux.experimental.mcp._safety import require_safety
+
+        bound = signature.bind_partial(engine, *args, **kwargs)
+        arguments = dict(bound.arguments)
+        arguments.pop("engine", None)
+        required = curated_call_safety(public_name, arguments, base_safety)
+        require_safety(required, max_safety, subject=f"tool {public_name!r}")
+
     async def _async_tool(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        _require_call_safety(args, kwargs)
         return await fn(engine, *args, **kwargs)
 
     def _sync_tool(*args: t.Any, **kwargs: t.Any) -> t.Any:
+        _require_call_safety(args, kwargs)
         return fn(engine, *args, **kwargs)
 
     # Typed Any so the dunder rebinds below are not checked against a plain
@@ -236,6 +255,7 @@ def register_vocabulary(
     engine: TmuxEngine | AsyncTmuxEngine,
     *,
     is_async: bool,
+    safety_level: str,
 ) -> None:
     """Register the curated vocabulary as tools on *mcp*, bound to *engine*."""
     from fastmcp.tools import FunctionTool
@@ -246,10 +266,18 @@ def register_vocabulary(
         annotations = ToolAnnotations(
             title=name,
             readOnlyHint=safety == "readonly",
-            destructiveHint=safety == "destructive",
+            destructiveHint=curated_can_destroy(name, safety),
+            openWorldHint=curated_is_open_world(name),
         )
         tool = FunctionTool.from_function(
-            _bind_engine(fn, engine, is_async=is_async),
+            _bind_engine(
+                fn,
+                engine,
+                is_async=is_async,
+                public_name=name,
+                base_safety=safety,
+                max_safety=safety_level,
+            ),
             name=name,
             description=first_line(fn.__doc__) or None,
             tags={safety},
@@ -300,7 +328,9 @@ def _op_input_schema(descriptor: ToolDescriptor) -> dict[str, t.Any]:
     """
     schema = descriptor.input_schema()
     fields = {
-        field.name: field for field in dataclasses.fields(descriptor.operation_cls)
+        field.name: field
+        for field in dataclasses.fields(descriptor.operation_cls)
+        if field.init
     }
     target_props: dict[str, t.Any] = {}
     required = list(schema.get("required", []))
@@ -327,6 +357,7 @@ def register_operations(
     engine: TmuxEngine | AsyncTmuxEngine,
     *,
     is_async: bool,
+    safety_level: str,
     registry: OperationToolRegistry | None = None,
     hidden: bool = True,
 ) -> None:
@@ -342,6 +373,7 @@ def register_operations(
     from mcp.types import ToolAnnotations
     from pydantic import PrivateAttr
 
+    from libtmux.experimental.mcp._safety import require_operation_safety
     from libtmux.experimental.mcp.vocabulary._bridge import SyncToAsyncEngine
     from libtmux.experimental.mcp.vocabulary._resolve import guard_destructive_op
     from libtmux.experimental.ops import arun as arun_op, run as run_op
@@ -356,6 +388,7 @@ def register_operations(
 
         async def run(self, arguments: dict[str, t.Any]) -> ToolResult:
             operation = self._descriptor.build(**arguments)
+            require_operation_safety(operation, safety_level)
             # The per-op surface dispatches around the curated guard, so apply the
             # self-kill guard here too (a sync engine is wrapped to async for it).
             guard_engine = (
@@ -375,8 +408,9 @@ def register_operations(
     for descriptor in reg.descriptors():
         annotations = ToolAnnotations(
             title=descriptor.title,
-            readOnlyHint=descriptor.safety == "readonly",
-            destructiveHint=descriptor.safety == "destructive",
+            readOnlyHint=descriptor.annotations["readOnlyHint"],
+            destructiveHint=descriptor.annotations["destructiveHint"],
+            openWorldHint=descriptor.annotations.get("openWorldHint"),
         )
         tool = _OperationTool(
             name=f"op_{descriptor.name}",
@@ -398,6 +432,7 @@ def register_plan_tools(
     engine: TmuxEngine | AsyncTmuxEngine,
     *,
     is_async: bool,
+    safety_level: str,
     registry: OperationToolRegistry | None = None,
 ) -> None:
     """Register the plan-tier tools (compose + run serialized :class:`LazyPlan`s).
@@ -411,13 +446,25 @@ def register_plan_tools(
     from mcp.types import ToolAnnotations
 
     from libtmux.experimental.mcp import plan_tools as _plan
-    from libtmux.experimental.ops import LazyPlan
+    from libtmux.experimental.mcp._safety import (
+        TAG_DESTRUCTIVE,
+        require_operations_safety,
+        require_safety,
+    )
+    from libtmux.experimental.mcp.vocabulary._bridge import (
+        SyncToAsyncEngine,
+        drive_sync,
+    )
+    from libtmux.experimental.mcp.vocabulary._resolve import guard_destructive_op
+    from libtmux.experimental.ops import KillSession, LazyPlan
+    from libtmux.experimental.ops._types import NameRef
     from libtmux.experimental.ops.planner import (
         FoldingPlanner,
         MarkedPlanner,
         Planner,
         SequentialPlanner,
     )
+    from libtmux.experimental.workspace import analyze
 
     reg = registry if registry is not None else OperationToolRegistry()
     planners: dict[str, type[Planner]] = {
@@ -425,6 +472,11 @@ def register_plan_tools(
         "folding": FoldingPlanner,
         "marked": MarkedPlanner,
     }
+    guard_engine = (
+        t.cast("AsyncTmuxEngine", engine)
+        if is_async
+        else SyncToAsyncEngine(t.cast("TmuxEngine", engine))
+    )
 
     def _plan_from_dicts(operations: list[dict[str, t.Any]]) -> LazyPlan:
         # from_list (not add) so a serialized find-or-create `ensure` probe
@@ -437,6 +489,39 @@ def register_plan_tools(
             msg = f"unknown planner {name!r}; choose from {sorted(planners)}"
             raise ValueError(msg)
         return chosen()
+
+    async def _guard_plan(plan: LazyPlan, version: str | None) -> None:
+        for operation in plan.operations:
+            await guard_destructive_op(guard_engine, operation, version=version)
+
+    async def _guard_workspace_replace(
+        name: str,
+        version: str | None,
+    ) -> None:
+        await guard_destructive_op(
+            guard_engine,
+            KillSession(target=NameRef(name)),
+            version=version,
+        )
+
+    def _workspace_plan_and_replacement(
+        spec: dict[str, t.Any],
+        preflight: bool,
+        version: str | None,
+    ) -> tuple[LazyPlan, str | None]:
+        workspace = analyze(spec)
+        replacing = preflight and workspace.on_exists == "replace"
+        host_script = bool(workspace.before_script and workspace.before_script.strip())
+        if replacing or host_script:
+            action = "replacement" if replacing else "host script"
+            require_safety(
+                TAG_DESTRUCTIVE,
+                safety_level,
+                subject=f"workspace {action} for {workspace.name!r}",
+            )
+        plan = workspace.compile(version=version)
+        require_operations_safety(plan.operations, safety_level)
+        return plan, workspace.name if replacing else None
 
     def preview_plan(
         operations: list[dict[str, t.Any]],
@@ -485,8 +570,11 @@ def register_plan_tools(
             version: str | None = None,
         ) -> dict[str, t.Any]:
             """Execute a serialized plan over the engine; return results + bindings."""
+            plan = _plan_from_dicts(operations)
+            require_operations_safety(plan.operations, safety_level)
+            await _guard_plan(plan, version)
             outcome = await _plan.aexecute_plan(
-                _plan_from_dicts(operations),
+                plan,
                 t.cast("AsyncTmuxEngine", engine),
                 version=version,
                 planner=_planner(planner),
@@ -499,6 +587,14 @@ def register_plan_tools(
             version: str | None = None,
         ) -> dict[str, t.Any]:
             """Build a declarative workspace (the Declarative tier) in one call."""
+            plan, replacing = _workspace_plan_and_replacement(
+                spec,
+                preflight,
+                version,
+            )
+            await _guard_plan(plan, version)
+            if replacing is not None:
+                await _guard_workspace_replace(replacing, version)
             outcome = await _plan.abuild_workspace(
                 spec,
                 t.cast("AsyncTmuxEngine", engine),
@@ -517,8 +613,16 @@ def register_plan_tools(
             version: str | None = None,
         ) -> dict[str, t.Any]:
             """Execute a serialized plan over the engine; return results + bindings."""
+            plan = _plan_from_dicts(operations)
+            require_operations_safety(plan.operations, safety_level)
+            drive_sync(
+                _guard_plan(
+                    plan,
+                    version,
+                ),
+            )
             outcome = _plan.execute_plan(
-                _plan_from_dicts(operations),
+                plan,
                 t.cast("TmuxEngine", engine),
                 version=version,
                 planner=_planner(planner),
@@ -531,6 +635,14 @@ def register_plan_tools(
             version: str | None = None,
         ) -> dict[str, t.Any]:
             """Build a declarative workspace (the Declarative tier) in one call."""
+            plan, replacing = _workspace_plan_and_replacement(
+                spec,
+                preflight,
+                version,
+            )
+            drive_sync(_guard_plan(plan, version))
+            if replacing is not None:
+                drive_sync(_guard_workspace_replace(replacing, version))
             outcome = _plan.build_workspace(
                 spec,
                 t.cast("TmuxEngine", engine),
@@ -543,10 +655,12 @@ def register_plan_tools(
         tools.append((build_workspace, "mutating"))
 
     for fn, safety in tools:
+        destructive = fn.__name__ in {"execute_plan", "build_workspace"}
         annotations = ToolAnnotations(
             title=fn.__name__,
             readOnlyHint=safety == "readonly",
-            destructiveHint=False,
+            destructiveHint=destructive,
+            openWorldHint=destructive,
         )
         tool = FunctionTool.from_function(
             fn,
@@ -669,7 +783,7 @@ def build_server(
         middleware=_make_middleware(level) if include_middleware else None,
     )
     registry = OperationToolRegistry()
-    register_vocabulary(mcp, engine, is_async=False)
+    register_vocabulary(mcp, engine, is_async=False, safety_level=level)
     register_caller_context(mcp, ctx)
     if include_prompts:
         from libtmux.experimental.mcp.prompts import register_prompts
@@ -680,11 +794,18 @@ def build_server(
             mcp,
             engine,
             is_async=False,
+            safety_level=level,
             registry=registry,
             hidden=not expose_operations,
         )
     if include_plan_tools:
-        register_plan_tools(mcp, engine, is_async=False, registry=registry)
+        register_plan_tools(
+            mcp,
+            engine,
+            is_async=False,
+            safety_level=level,
+            registry=registry,
+        )
     if include_resources:
         from libtmux.experimental.mcp.resources import register_resources
 
@@ -737,7 +858,7 @@ def build_async_server(
         lifespan=make_lifespan(engine) if lifespan else None,
     )
     registry = OperationToolRegistry()
-    register_vocabulary(mcp, engine, is_async=True)
+    register_vocabulary(mcp, engine, is_async=True, safety_level=level)
     register_caller_context(mcp, ctx)
     if include_prompts:
         from libtmux.experimental.mcp.prompts import register_prompts
@@ -748,11 +869,18 @@ def build_async_server(
             mcp,
             engine,
             is_async=True,
+            safety_level=level,
             registry=registry,
             hidden=not expose_operations,
         )
     if include_plan_tools:
-        register_plan_tools(mcp, engine, is_async=True, registry=registry)
+        register_plan_tools(
+            mcp,
+            engine,
+            is_async=True,
+            safety_level=level,
+            registry=registry,
+        )
     if include_resources:
         from libtmux.experimental.mcp.resources import register_resources
 

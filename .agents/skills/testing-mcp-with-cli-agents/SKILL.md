@@ -77,21 +77,51 @@ prompt.
 The high-fidelity path, and the only one that exercises approval flows, live
 streaming, multi-turn, and cancellation. Run the agent's TUI in a **harness**
 tmux socket (`tmux -L cli-harness`, separate from any socket the server itself
-uses) and drive it:
+uses) and drive it. Create a wide harness so the TUI does not wrap:
 
 ```console
-$ tmux -L cli-harness new-session -d -s agent -x 220 -y 50   # wide, so TUI isn't wrapped
-$ tmux -L cli-harness send-keys -t agent 'cd /repo && <cli launch with backend isolation>' Enter
-$ tmux -L cli-harness capture-pane -p -t agent | tail -5      # poll until the prompt renders
-$ tmux -L cli-harness send-keys -t agent 'Use the libtmux MCP to <do a thing>'
-$ tmux -L cli-harness send-keys -t agent Enter                # separate event — see below
-$ tmux -L cli-harness send-keys -t agent 'y' Enter            # answer the approval gate
-$ tmux -L cli-harness capture-pane -p -t agent | tail -30     # what the agent rendered
-# then assert GROUND TRUTH against the scratch backend (not the transcript)
+$ tmux -L cli-harness new-session -d -s agent -x 220 -y 50
 ```
 
-The final ground-truth step is the whole point: Layers 0 and 1 can be fooled by
-a hallucinated success line; the scratch backend cannot.
+Launch the CLI with its isolated backend:
+
+```console
+$ tmux -L cli-harness send-keys -t agent 'cd /repo && <cli launch with backend isolation>' Enter
+```
+
+Poll until the prompt renders:
+
+```console
+$ tmux -L cli-harness capture-pane -p -t agent | tail -5
+```
+
+Type the task:
+
+```console
+$ tmux -L cli-harness send-keys -t agent 'Use the libtmux MCP to <do a thing>'
+```
+
+Submit it as a separate event:
+
+```console
+$ tmux -L cli-harness send-keys -t agent Enter
+```
+
+If prompted, answer the approval gate:
+
+```console
+$ tmux -L cli-harness send-keys -t agent 'y' Enter
+```
+
+Capture what the agent rendered:
+
+```console
+$ tmux -L cli-harness capture-pane -p -t agent | tail -30
+```
+
+Finally, assert ground truth against the scratch backend, not the transcript.
+Layers 0 and 1 can be fooled by a hallucinated success line; the scratch backend
+cannot.
 
 ## Two failure modes that waste the most time
 
@@ -127,14 +157,39 @@ the **scratch-backend state** afterward.
 ## Wiring a checkout into the CLIs: mcp_swap
 
 `scripts/mcp_swap.py` rewrites each CLI's config to run a local checkout, with
-backup/revert:
+backup/revert. Detect installed CLIs:
 
 ```console
-$ uv run scripts/mcp_swap.py detect                          # which CLIs are present
-$ uv run scripts/mcp_swap.py doctor --server libtmux-engine         # effective environment + footguns
+$ uv run scripts/mcp_swap.py detect
+```
+
+Inspect the effective environment and configuration hazards:
+
+```console
+$ uv run scripts/mcp_swap.py doctor --server libtmux-engine
+```
+
+Check the current swap state:
+
+```console
 $ uv run scripts/mcp_swap.py status --server libtmux-engine
+```
+
+Preview a local swap:
+
+```console
 $ uv run scripts/mcp_swap.py use-local --server libtmux-engine --env KEY=VALUE --dry-run
+```
+
+Apply it:
+
+```console
 $ uv run scripts/mcp_swap.py use-local --server libtmux-engine --env KEY=VALUE
+```
+
+Revert the latest swap:
+
+```console
 $ uv run scripts/mcp_swap.py revert
 ```
 

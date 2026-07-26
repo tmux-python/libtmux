@@ -1149,6 +1149,9 @@ wheels = [
 name = "libtmux"
 version = "0.62.0"
 source = { editable = "." }
+dependencies = [
+    { name = "pyyaml" },
+]
 
 [package.optional-dependencies]
 mcp = [
@@ -1212,7 +1215,10 @@ testing = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=3.4.2" }]
+requires-dist = [
+    { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=3.4.2" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
 provides-extras = ["mcp"]
 
 [package.metadata.requires-dev]

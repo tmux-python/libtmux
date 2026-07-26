@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import types
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from libtmux.experimental.ops._types import render_target
 from libtmux.experimental.ops.exc import VersionUnsupported
@@ -40,6 +40,23 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 ResultT = t.TypeVar("ResultT", bound=Result)
+
+
+def positional_args(*tokens: str) -> tuple[str, ...]:
+    """Render user-controlled positional tokens after ``--``.
+
+    tmux command parsers use getopt semantics, so a positional token that starts
+    with ``-`` remains a flag until the parser sees an explicit end-of-options
+    marker.
+
+    Examples
+    --------
+    >>> positional_args("-I", "value")
+    ('--', '-I', 'value')
+    >>> positional_args()
+    ()
+    """
+    return ("--", *tokens) if tokens else ()
 
 
 def _requested_format_fields(argv: tuple[str, ...]) -> int:
@@ -102,23 +119,18 @@ def _check_capture_invariant(result: Result) -> None:
     if not getattr(operation.effects, "creates", None):
         return
     if result.status != "complete":
-        # A create that did not complete has no id to hand downstream. Nothing
-        # raises here (results never raise on construction), so the ``None`` id
-        # travels until something dereferences it -- far from the real cause.
-        # Naming the failing create here is what makes that cause findable.
-        logger.warning(
-            "tmux create op did not complete; downstream ids will be None",
-            extra={
-                "tmux_cmd": " ".join(result.argv),
-                "tmux_subcommand": operation.command,
-                "tmux_exit_code": result.returncode,
-                "tmux_stdout": list(result.stdout),
-                "tmux_stdout_len": len(result.stdout),
-                "tmux_stderr": list(result.stderr),
-                "tmux_stderr_len": len(result.stderr),
-            },
-        )
         return
+    log_extra: dict[str, object] = {
+        "tmux_cmd": " ".join(result.argv),
+        "tmux_subcommand": operation.command,
+        "tmux_exit_code": result.returncode,
+        "tmux_stdout_len": len(result.stdout),
+        "tmux_stderr_len": len(result.stderr),
+    }
+    if "-t" in result.argv:
+        target_index = result.argv.index("-t") + 1
+        if target_index < len(result.argv):
+            log_extra["tmux_target"] = result.argv[target_index]
     expected = _requested_format_fields(result.argv)
     if expected == 0:
         return  # the op never asked tmux to print an id (capture=False)
@@ -129,17 +141,17 @@ def _check_capture_invariant(result: Result) -> None:
         "tmux create op completed but captured %s of %s requested ids",
         captured,
         expected,
-        extra={
-            "tmux_cmd": " ".join(result.argv),
-            "tmux_subcommand": operation.command,
-            "tmux_target": " ".join(result.argv[:3]),
-            "tmux_exit_code": result.returncode,
-            "tmux_stdout": list(result.stdout),
-            "tmux_stdout_len": len(result.stdout),
-            "tmux_stderr": list(result.stderr),
-            "tmux_stderr_len": len(result.stderr),
-        },
+        extra=log_extra,
     )
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux create op diagnostics",
+            extra={
+                **log_extra,
+                "tmux_stdout": list(result.stdout),
+                "tmux_stderr": list(result.stderr),
+            },
+        )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -150,7 +162,7 @@ class Operation(t.Generic[ResultT]):
     positional tokens after the target). The instance fields describe one
     concrete invocation.
 
-    Parameters
+    Attributes
     ----------
     target : Target or None
         The ``-t`` target, or ``None`` for "no explicit target".
@@ -187,7 +199,7 @@ class Operation(t.Generic[ResultT]):
     """
 
     target: Target | None = None
-    src_target: Target | None = None
+    src_target: Target | None = field(default=None, init=False, repr=False)
 
     kind: t.ClassVar[str]
     command: t.ClassVar[str]
@@ -239,7 +251,7 @@ class Operation(t.Generic[ResultT]):
         >>> from libtmux.experimental.ops import SendKeys
         >>> from libtmux.experimental.ops._types import PaneId
         >>> SendKeys(target=PaneId("%1"), keys="echo hi", enter=True).render()
-        ('send-keys', '-t', '%1', 'echo hi', 'Enter')
+        ('send-keys', '-t', '%1', '--', 'echo hi', 'Enter')
         """
         self.check_version(version)
         rendered: list[str] = [self.command]
@@ -247,7 +259,7 @@ class Operation(t.Generic[ResultT]):
         if token is not None:
             rendered.extend(("-t", token))
         rendered.extend(self.args(version=version))
-        return tuple(rendered)
+        return tuple(str(token) for token in rendered)
 
     def check_version(self, version: str | None) -> None:
         """Raise if *version* is older than this operation's :attr:`min_version`.
@@ -384,6 +396,41 @@ class Operation(t.Generic[ResultT]):
             version=version,
         )
 
+    def _follow_up(
+        self,
+        result: ResultT,
+        *,
+        version: str | None = None,
+    ) -> Operation[t.Any] | None:
+        """Return an operation needed to complete this result, if any.
+
+        Most tmux operations complete in one dispatch. A version-specific
+        compatibility path may override this hook to compose a second typed
+        operation after the first result supplies its target.
+
+        Parameters
+        ----------
+        result : ResultT
+            Result of this operation's primary tmux command.
+        version : str or None
+            tmux version used for the primary command.
+
+        Returns
+        -------
+        Operation or None
+            Follow-up operation, or ``None`` when the primary command is
+            complete.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.ops import SendKeys
+        >>> from libtmux.experimental.ops._types import PaneId
+        >>> op = SendKeys(target=PaneId("%1"), keys="echo hi")
+        >>> op._follow_up(op.build_result(returncode=0)) is None
+        True
+        """
+        return None
+
     def then(self, other: Operation[t.Any] | OpChain) -> OpChain:
         """Compose with another operation (or chain) into an :class:`OpChain`."""
         from libtmux.experimental.ops._chain import OpChain
@@ -420,3 +467,17 @@ class Operation(t.Generic[ResultT]):
                 stderr=stderr,
             ),
         )
+
+
+@dataclass(frozen=True, kw_only=True)
+class SourceTargetOperation(Operation[ResultT]):
+    """An operation whose constructor accepts a tmux ``-s`` source target."""
+
+    src_target: Target | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class UntargetedOperation(Operation[ResultT]):
+    """An operation whose tmux command has no ``-t`` target flag."""
+
+    target: Target | None = field(default=None, init=False, repr=False)

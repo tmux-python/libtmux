@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class SetWindowOption(Operation[AckResult]):
     """Set a window option (``set-window-option``).
 
-    Parameters
+    Attributes
     ----------
     option : str
         The option name.
@@ -31,7 +31,7 @@ class SetWindowOption(Operation[AckResult]):
     Examples
     --------
     >>> SetWindowOption(option="mode-keys", value="vi").render()
-    ('set-window-option', 'mode-keys', 'vi')
+    ('set-window-option', '--', 'mode-keys', 'vi')
     """
 
     kind = "set_window_option"
@@ -56,7 +56,8 @@ class SetWindowOption(Operation[AckResult]):
             out.append("-g")
         if self.unset:
             out.append("-u")
-        out.append(self.option)
+        positional = [self.option]
         if self.value is not None and not self.unset:
-            out.append(self.value)
+            positional.append(self.value)
+        out.extend(positional_args(*positional))
         return tuple(out)

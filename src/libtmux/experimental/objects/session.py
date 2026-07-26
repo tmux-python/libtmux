@@ -14,6 +14,7 @@ from libtmux.experimental.ops import (
     run,
 )
 from libtmux.experimental.ops._types import SessionId
+from libtmux.experimental.ops.results import _require_created_id
 
 if t.TYPE_CHECKING:
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
@@ -25,6 +26,15 @@ if t.TYPE_CHECKING:
 @dataclass(frozen=True)
 class EagerSession:
     """A live session object; methods execute immediately.
+
+    Attributes
+    ----------
+    engine : TmuxEngine
+        Engine used to execute session operations.
+    session_id : str
+        Stable tmux session identifier.
+    version : str or None
+        tmux version used when rendering operations.
 
     Examples
     --------
@@ -58,8 +68,8 @@ class EagerSession:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_id is not None
-        return EagerWindow(self.engine, result.new_id, self.version)
+        created_id = _require_created_id(result)
+        return EagerWindow(self.engine, created_id, self.version)
 
     def rename(self, name: str) -> Result:
         """Rename this session."""
@@ -81,6 +91,13 @@ class EagerSession:
 @dataclass(frozen=True)
 class LazySession:
     """A deferred session object; methods record into a plan.
+
+    Attributes
+    ----------
+    plan : LazyPlan
+        Plan that receives recorded session operations.
+    ref : Target
+        Concrete or deferred target for this session.
 
     Examples
     --------
@@ -123,7 +140,17 @@ class LazySession:
 
 @dataclass(frozen=True)
 class AsyncSession:
-    """An async live session object: the eager session, awaited."""
+    """An async live session object: the eager session, awaited.
+
+    Attributes
+    ----------
+    engine : AsyncTmuxEngine
+        Engine used to execute session operations asynchronously.
+    session_id : str
+        Stable tmux session identifier.
+    version : str or None
+        tmux version used when rendering operations.
+    """
 
     engine: AsyncTmuxEngine
     session_id: str
@@ -146,8 +173,8 @@ class AsyncSession:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_id is not None
-        return AsyncWindow(self.engine, result.new_id, self.version)
+        created_id = _require_created_id(result)
+        return AsyncWindow(self.engine, created_id, self.version)
 
     async def rename(self, name: str) -> Result:
         """Rename this session."""

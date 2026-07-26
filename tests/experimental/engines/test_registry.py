@@ -58,6 +58,6 @@ def test_create_engine_builds_registered(test_id: str, name: str) -> None:
 
 
 def test_create_engine_unknown_fails() -> None:
-    """An unregistered name (incl. the removed 'asyncio') fails closed."""
+    """An unregistered engine name fails closed."""
     with pytest.raises(exc.LibTmuxException, match="unknown tmux engine"):
         create_engine("asyncio")

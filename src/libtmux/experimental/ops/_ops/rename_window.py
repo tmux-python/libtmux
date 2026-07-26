@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class RenameWindow(Operation[AckResult]):
     """Rename a window. Produces no output; returns an :class:`AckResult`.
 
-    Parameters
+    Attributes
     ----------
     name : str
         The new window name.
@@ -24,7 +24,7 @@ class RenameWindow(Operation[AckResult]):
     --------
     >>> from libtmux.experimental.ops._types import WindowId
     >>> RenameWindow(target=WindowId("@1"), name="build").render()
-    ('rename-window', '-t', '@1', 'build')
+    ('rename-window', '-t', '@1', '--', 'build')
     """
 
     kind = "rename_window"
@@ -38,4 +38,4 @@ class RenameWindow(Operation[AckResult]):
 
     def args(self, *, version: str | None = None) -> tuple[str, ...]:
         """Render the new name."""
-        return (self.name,)
+        return positional_args(self.name)

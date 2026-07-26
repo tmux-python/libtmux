@@ -42,6 +42,9 @@ include = [
   { path = "docs", format = "sdist" },
   { path = "conftest.py", format = "sdist" },
 ]
+dependencies = [
+  "PyYAML>=6.0",
+]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/tmux-python/libtmux/issues"

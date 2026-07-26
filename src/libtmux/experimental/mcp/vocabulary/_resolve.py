@@ -11,6 +11,7 @@ from __future__ import annotations
 import typing as t
 
 from libtmux.experimental.engines.base import AsyncTmuxEngine
+from libtmux.experimental.mcp._policy import operation_safety
 from libtmux.experimental.mcp.target_resolver import resolve_target
 from libtmux.experimental.mcp.vocabulary._caller import (
     CallerContext,
@@ -25,7 +26,7 @@ from libtmux.experimental.ops import (
     TmuxCommandError,
     arun,
 )
-from libtmux.experimental.ops._types import PaneId, Special, Target
+from libtmux.experimental.ops._types import PaneId, SlotRef, Special, Target
 
 #: Relative directional special tokens that resolve against the control client,
 #: not the caller -- rejected with a hint by :func:`reject_relative_special`.
@@ -47,7 +48,7 @@ def opt_target(target: str | Target | None) -> Target | None:
 
 async def pane_id(
     engine: AsyncTmuxEngine,
-    target: str | Target,
+    target: str | Target | None,
     version: str | None,
 ) -> str:
     """Resolve *target* to a concrete pane id (``%N``)."""
@@ -117,7 +118,7 @@ async def select_step(
     direction: t.Literal["next", "previous"],
     version: str | None,
 ) -> None:
-    """Select the next/previous pane by absolute id (tmux-version robust)."""
+    """Select the next/previous pane from listed absolute ids."""
     rows = await window_rows(engine, await window_id(engine, target, version), version)
     if not rows:
         return
@@ -220,7 +221,7 @@ def caller_of(engine: AsyncTmuxEngine) -> CallerContext:
 
 async def session_id_of(
     engine: AsyncTmuxEngine,
-    target: str | Target,
+    target: str | Target | None,
     version: str | None,
 ) -> str:
     """Return the session id (``$N``) containing *target* (a pane/window/session)."""
@@ -291,12 +292,13 @@ async def conservative_socket(
 async def guard_self_kill(
     engine: AsyncTmuxEngine,
     *,
+    server: bool = False,
     pane: str | None = None,
     window: str | None = None,
     session: str | None = None,
     version: str | None = None,
 ) -> None:
-    """Refuse a destructive op aimed at the caller's own pane/window/session.
+    """Refuse a destructive op aimed at the caller's server/pane/window/session.
 
     Socket-scoped first (``%N``/``@N``/``$N`` are per-server counters that
     collide across servers), then the caller's pane is mapped to its window /
@@ -311,6 +313,11 @@ async def guard_self_kill(
         return
     if not socket_could_match(await conservative_socket(engine, version), caller):
         return
+    if server:
+        raise_target_hint(
+            "refusing to kill the tmux server that holds this MCP server's pane. "
+            "Use a manual tmux command if intended.",
+        )
     if pane is not None and caller.pane_id == pane:
         raise_target_hint(
             f"refusing to kill pane {pane}: it runs this MCP server. Target a "
@@ -361,7 +368,7 @@ async def guard_kill_other_panes(
 
 async def guard_kill_other_windows(
     engine: AsyncTmuxEngine,
-    target: str | Target,
+    target: str | Target | None,
     target_window: str,
     version: str | None,
 ) -> None:
@@ -389,30 +396,80 @@ async def guard_kill_other_windows(
     )
 
 
-async def guard_destructive_op(engine: AsyncTmuxEngine, operation: t.Any) -> None:
-    """Apply the self-kill guard to a per-op kill/respawn operation, by kind.
+async def guard_destructive_op(
+    engine: AsyncTmuxEngine,
+    operation: t.Any,
+    *,
+    version: str | None = None,
+) -> None:
+    """Apply caller protection to a concrete destructive operation payload.
 
-    Covers the ``op_*`` per-operation surface, including the ``others=True``
-    sibling case (which keeps the target and kills its neighbours).
+    Covers base-destructive operations and the parameterized ``kill=True``
+    variants used by per-operation tools and serialized plans. ``others=True``
+    keeps the target and kills its neighbours, so it uses sibling-aware guards.
     """
-    target = operation.target
-    if target is None:
+    if operation_safety(operation) != "destructive":
         return
     kind = operation.kind
+    if kind == "kill_server":
+        await guard_self_kill(engine, server=True, version=version)
+        return
+    if kind not in {
+        "kill_pane",
+        "kill_session",
+        "kill_window",
+        "link_window",
+        "move_window",
+        "respawn_pane",
+        "respawn_window",
+        "unlink_window",
+    }:
+        return
+    target = operation.target
+    if isinstance(target, SlotRef):
+        raise_target_hint(
+            f"refusing destructive plan operation {kind!r} with an unresolved "
+            "forward target; resolve it to a concrete tmux id first",
+        )
     others = bool(getattr(operation, "others", False))
     if kind == "respawn_pane":
-        await guard_self_kill(engine, pane=await pane_id(engine, target, None))
+        await guard_self_kill(
+            engine,
+            pane=await pane_id(engine, target, version),
+            version=version,
+        )
+    elif kind in {
+        "link_window",
+        "move_window",
+        "respawn_window",
+        "unlink_window",
+    }:
+        try:
+            target_window = await window_id(engine, target, version)
+        except TmuxCommandError:
+            if kind in {"link_window", "move_window"}:
+                return  # an empty destination index has no window to replace
+            raise
+        await guard_self_kill(
+            engine,
+            window=target_window,
+            version=version,
+        )
     elif kind == "kill_pane":
-        target_pane = await pane_id(engine, target, None)
+        target_pane = await pane_id(engine, target, version)
         if others:
-            await guard_kill_other_panes(engine, target_pane, None)
+            await guard_kill_other_panes(engine, target_pane, version)
         else:
-            await guard_self_kill(engine, pane=target_pane)
+            await guard_self_kill(engine, pane=target_pane, version=version)
     elif kind == "kill_window":
-        target_window = await window_id(engine, target, None)
+        target_window = await window_id(engine, target, version)
         if others:
-            await guard_kill_other_windows(engine, target, target_window, None)
+            await guard_kill_other_windows(engine, target, target_window, version)
         else:
-            await guard_self_kill(engine, window=target_window)
+            await guard_self_kill(engine, window=target_window, version=version)
     elif kind == "kill_session":
-        await guard_self_kill(engine, session=await session_id_of(engine, target, None))
+        await guard_self_kill(
+            engine,
+            session=await session_id_of(engine, target, version),
+            version=version,
+        )

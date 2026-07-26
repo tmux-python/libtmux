@@ -25,6 +25,7 @@ import dataclasses
 import typing as t
 from dataclasses import dataclass
 
+from libtmux.experimental.engines.base import CommandSeparator
 from libtmux.experimental.ops._types import PaneId, Special
 from libtmux.experimental.ops.exc import OperationError
 from libtmux.experimental.ops.results import status_for
@@ -58,13 +59,6 @@ def ensure_chainable(op: Operation[t.Any]) -> None:
         raise OperationError(msg)
 
 
-def _escape_arg(token: str) -> str:
-    r"""Escape a trailing ``;`` so tmux does not read the arg as a separator."""
-    if token.endswith(";"):
-        return token[:-1] + "\\;"
-    return token
-
-
 def render_chain(
     ops: Sequence[Operation[t.Any]],
     version: str | None = None,
@@ -79,7 +73,8 @@ def render_chain(
     ...     SendKeys(target=PaneId("%1"), keys="vim", enter=True),
     ...     RenameWindow(target=WindowId("@1"), name="edit"),
     ... ])
-    ('send-keys', '-t', '%1', 'vim', 'Enter', ';', 'rename-window', '-t', '@1', 'edit')
+    ('send-keys', '-t', '%1', '--', 'vim', 'Enter', ';', 'rename-window', '-t',
+     '@1', '--', 'edit')
 
     Every op is checked against :func:`ensure_chainable` first: a capturing or
     creating op has nowhere to put its stdout in a merged chain result, so it
@@ -99,8 +94,8 @@ def render_chain(
     for index, op in enumerate(ops):
         ensure_chainable(op)
         if index:
-            out.append(";")
-        out.extend(_escape_arg(token) for token in op.render(version=version))
+            out.append(CommandSeparator(";"))
+        out.extend(op.render(version=version))
     return tuple(out)
 
 
@@ -158,8 +153,8 @@ def render_marked(
     out: list[str] = []
     for index, part in enumerate(parts):
         if index:
-            out.append(";")
-        out.extend(_escape_arg(token) for token in part)
+            out.append(CommandSeparator(";"))
+        out.extend(part)
     return tuple(out)
 
 
@@ -209,6 +204,11 @@ class OpChain:
     A power-user, inspectable handle for explicit chaining. Add it to a
     :class:`~.plan.LazyPlan` with :meth:`~.plan.LazyPlan.add_chain`; a folding
     planner (``execute(planner=FoldingPlanner())``) batches chainable runs anyway.
+
+    Attributes
+    ----------
+    ops : tuple[Operation, ...]
+        Operations in execution order.
 
     Examples
     --------

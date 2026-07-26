@@ -12,8 +12,7 @@ belongs in the class rather than a runtime flag:
 Each ``split()`` therefore has exactly one statically-known return type -- a
 single ``Pane`` class with a runtime engine attribute could not express that.
 The same :class:`~libtmux.experimental.ops.SplitWindow` operation backs both;
-only the object differs. This is the seed of the wider object matrix
-(``AsyncPane``, ``LazyControlWindow``, ...) described in issue 689.
+only the execution object differs.
 """
 
 from __future__ import annotations
@@ -30,6 +29,7 @@ from libtmux.experimental.ops import (
     run,
 )
 from libtmux.experimental.ops._types import PaneId
+from libtmux.experimental.ops.results import _require_created_id
 
 if t.TYPE_CHECKING:
     from collections.abc import Mapping
@@ -82,7 +82,7 @@ def _new_pane_op(
 class EagerPane:
     """A live pane object bound to an engine; methods execute immediately.
 
-    Parameters
+    Attributes
     ----------
     engine : TmuxEngine
         The engine commands run through.
@@ -128,8 +128,8 @@ class EagerPane:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_pane_id is not None
-        return EagerPane(self.engine, result.new_pane_id, self.version)
+        created_id = _require_created_id(result)
+        return EagerPane(self.engine, created_id, self.version)
 
     def new_pane(
         self,
@@ -172,8 +172,8 @@ class EagerPane:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_pane_id is not None
-        return EagerPane(self.engine, result.new_pane_id, self.version)
+        created_id = _require_created_id(result)
+        return EagerPane(self.engine, created_id, self.version)
 
     def send_keys(self, keys: str, *, enter: bool = False) -> Result:
         """Send keys to this pane; return the typed result."""
@@ -198,7 +198,7 @@ class EagerPane:
 class LazyPane:
     """A deferred pane object; methods record into a plan instead of running.
 
-    Parameters
+    Attributes
     ----------
     plan : LazyPlan
         The plan operations are recorded into.
@@ -219,7 +219,7 @@ class LazyPane:
     >>> outcome.results[0].new_pane_id
     '%1'
     >>> outcome.results[1].argv
-    ('send-keys', '-t', '%1', 'vim', 'Enter')
+    ('send-keys', '-t', '%1', '--', 'vim', 'Enter')
     """
 
     plan: LazyPlan
@@ -302,6 +302,15 @@ class AsyncPane:
     but bound to an :class:`~..engines.base.AsyncTmuxEngine` and awaited. This is
     why async is a sibling object, not a transformation.
 
+    Attributes
+    ----------
+    engine : AsyncTmuxEngine
+        Engine used to execute pane operations asynchronously.
+    pane_id : str
+        Stable tmux pane identifier.
+    version : str or None
+        tmux version used when rendering operations.
+
     Examples
     --------
     >>> import asyncio
@@ -337,8 +346,8 @@ class AsyncPane:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_pane_id is not None
-        return AsyncPane(self.engine, result.new_pane_id, self.version)
+        created_id = _require_created_id(result)
+        return AsyncPane(self.engine, created_id, self.version)
 
     async def new_pane(
         self,
@@ -381,8 +390,8 @@ class AsyncPane:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_pane_id is not None
-        return AsyncPane(self.engine, result.new_pane_id, self.version)
+        created_id = _require_created_id(result)
+        return AsyncPane(self.engine, created_id, self.version)
 
     async def send_keys(self, keys: str, *, enter: bool = False) -> Result:
         """Send keys to this pane; return the typed result."""

@@ -17,7 +17,7 @@ class PasteBuffer(Operation[AckResult]):
 
     ``target`` is the destination pane.
 
-    Parameters
+    Attributes
     ----------
     buffer_name : str or None
         The buffer to paste (``-b``); the most recent when omitted.

@@ -45,6 +45,11 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Dependencies
+
+`PyYAML>=6.0` is now a runtime dependency for declarative YAML workspace
+loading.
+
 ### What's new
 
 #### Experimental operations and engines (#690)
@@ -120,12 +125,15 @@ call, installed with the ``libtmux[mcp]`` extra and launched as
 individual operation, and plan tools that preview or build a whole workspace in
 one call.
 
-The server is caller-aware: because a control-mode agent shares the server with
-the panes it drives, it knows which pane launched it and refuses to kill or
-respawn its own pane, window, or session. A safety level (``LIBTMUX_SAFETY``)
-keeps mutating and destructive tools hidden until an operator opts in, and a
-needle-free ``wait_for_output`` reports when a pane goes quiet after a command --
-no sentinel string -- and whether its process exited.
+The typed tools are caller-aware: because a control-mode agent shares the server
+with the panes it drives, they know which pane launched it and refuse to kill or
+respawn its own pane, window, or session. The explicitly destructive raw,
+shell, and configuration escape hatches cannot provide target-aware liveness
+checks for commands they interpret later. By default,
+``LIBTMUX_SAFETY`` permits mutations while destructive tools and payload
+variants require an explicit opt-in; it can also restrict the server to reads.
+A needle-free ``wait_for_output`` reports when a pane goes quiet after a
+command -- no sentinel string -- and whether its process exited.
 
 ### Documentation
 
@@ -169,16 +177,13 @@ parsers, {meth}`Server.is_alive() <libtmux.Server.is_alive>`, and the Sphinx
 config carry scoped per-file ignores where catching everything is the intended
 contract.
 
-#### `mcp_swap.py doctor` and `use-local --env`
+#### Inspect and isolate MCP config swaps (#690)
 
-The dev config-swap helper (`scripts/mcp_swap.py`) gains a read-only `doctor`
-subcommand that reports the effective MCP-swap environment -- which server name
-each CLI points at (and a mismatch when the repo is registered under a name
-other than the derived `libtmux-engine` default), un-reverted swaps and orphaned
-backups accumulating on disk, a state entry whose backup has gone missing, and
-auth-overriding env vars such as `OPENAI_API_KEY`. `use-local` also takes a
-repeatable `--env KEY=VALUE` to write env (e.g. an isolated `LIBTMUX_SOCKET`)
-into the server entry without a manual post-edit.
+The development config-swap helper's read-only ``doctor`` command reports the
+effective server name, registration mismatches, active swaps, orphaned or
+missing backups, and auth-overriding environment variables. Its ``use-local
+--env KEY=VALUE`` option writes an isolated environment into the server entry
+without manual config edits.
 
 ## libtmux 0.62.0 (2026-07-12)
 

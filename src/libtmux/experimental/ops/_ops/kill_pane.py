@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class KillPane(Operation[AckResult]):
     """Kill a pane. Destructive; produces no output (:class:`AckResult`).
 
-    Parameters
+    Attributes
     ----------
     others : bool
         Kill all panes *except* the target (``-a``) instead of the target.

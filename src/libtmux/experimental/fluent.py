@@ -61,7 +61,17 @@ _SESSION_PROBE = "#{session_id} #{window_id} #{pane_id}"
 
 @dataclass(frozen=True)
 class _HostAction:
-    """A host-side pause recorded after an operation (a hard fold boundary)."""
+    """A host-side pause recorded after an operation (a hard fold boundary).
+
+    Attributes
+    ----------
+    kind : {"sleep", "wait"}
+        Host action to perform.
+    seconds : float
+        Sleep duration or wait timeout in seconds.
+    pane : Target | None
+        Pane to wait for, when ``kind`` is ``"wait"``.
+    """
 
     kind: t.Literal["sleep", "wait"]
     seconds: float = 0.0
@@ -74,6 +84,13 @@ class WindowRef:
 
     ``first_pane`` is a forward :class:`~..ops._types.SlotRef` to the window's
     first pane (captured by the creating ``new-session`` / ``new-window``).
+
+    Attributes
+    ----------
+    plan : LazyPlan
+        Shared plan that receives operations recorded through this handle.
+    first_pane : SlotRef
+        Forward reference to the window's first pane.
     """
 
     plan: LazyPlan
@@ -98,6 +115,15 @@ class SessionRef:
 
     The session is name-addressed (so its window operations fold); ``create`` is
     the ``new-session`` slot, whose captured first pane backs the first window.
+
+    Attributes
+    ----------
+    plan : LazyPlan
+        Shared plan that receives operations recorded through this handle.
+    name : str
+        Session name used by window operations.
+    create : SlotRef
+        Forward reference to the session-creation operation.
     """
 
     plan: LazyPlan
@@ -132,7 +158,15 @@ class SessionRef:
 
 @dataclass(frozen=True)
 class PlanBuilder:
-    """A fluent recorder over a :class:`LazyPlan`; :meth:`run` folds by default."""
+    """A fluent recorder over a :class:`LazyPlan`; :meth:`run` folds by default.
+
+    Attributes
+    ----------
+    plan : LazyPlan
+        Core plan containing the recorded operations.
+    _host_after : dict[int, list[_HostAction]]
+        Host actions keyed by the operation index after which they run.
+    """
 
     plan: LazyPlan = field(default_factory=LazyPlan)
     _host_after: dict[int, list[_HostAction]] = field(default_factory=dict)

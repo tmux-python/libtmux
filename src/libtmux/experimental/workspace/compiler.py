@@ -105,6 +105,19 @@ class HostStep:
     ``"sleep"`` waits *seconds*; ``"script"`` runs *command* in *cwd*;
     ``"wait_pane"`` polls *pane* (a :class:`~..ops._types.SlotRef`) until its
     shell is ready (the runner resolves the ref and queries the live cursor).
+
+    Attributes
+    ----------
+    kind : {"sleep", "script", "wait_pane"}
+        Host action to perform.
+    seconds : float | None
+        Sleep duration or pane-readiness timeout in seconds.
+    command : str | None
+        Script command line for a ``"script"`` step.
+    cwd : str | None
+        Working directory for a ``"script"`` step.
+    pane : SlotRef | None
+        Forward pane reference for a ``"wait_pane"`` step.
     """
 
     kind: t.Literal["sleep", "script", "wait_pane"]
@@ -118,7 +131,7 @@ class HostStep:
 class Compiled:
     """A compiled workspace: the Core plan plus its host-step schedule.
 
-    Parameters
+    Attributes
     ----------
     plan : LazyPlan
         The pure Core operations (executable by any engine via ``execute``).

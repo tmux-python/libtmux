@@ -1,4 +1,4 @@
-"""Concrete seed operations.
+"""Built-in operations.
 
 Importing this package registers each operation in the default registry
 (:data:`libtmux.experimental.ops.registry.registry`) as a side effect of the

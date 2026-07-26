@@ -80,13 +80,15 @@ class _BinaryResolver:
 class ServerConnection:
     """Which tmux binary, and which tmux server, an engine talks to.
 
-    Parameters
+    Attributes
     ----------
     tmux_bin : str or None
         An explicit tmux binary. ``None`` means "resolve from ``$PATH``", which
         :meth:`resolve_bin` does once and memoizes.
     args : tuple[str, ...]
         Connection flags placed before the tmux subcommand (e.g. ``("-Lwork",)``).
+    _resolver : _BinaryResolver
+        Private memoized resolver for the binary path and tmux version.
 
     Examples
     --------

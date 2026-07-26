@@ -10,7 +10,7 @@ import typing as t
 import pytest
 
 from libtmux._internal.control_mode import ControlMode
-from libtmux.experimental.engines.base import CommandRequest
+from libtmux.experimental.engines.base import CommandRequest, CommandSeparator
 from libtmux.experimental.engines.connection import ServerConnection
 from libtmux.experimental.engines.control_mode import ControlModeEngine
 
@@ -51,6 +51,17 @@ def test_sync_control_reuses_existing_session(session: Session) -> None:
     assert during == before
     assert {item.session_id for item in server.sessions} == before
     assert server.is_alive()
+
+
+def test_sync_control_preserves_newline_in_argument(session: Session) -> None:
+    """A newline stays inside one argument instead of starting a command."""
+    with ControlModeEngine.for_server(session.server) as engine:
+        result = engine.run(
+            CommandRequest.from_args("display-message", "-p", "first\nsecond"),
+        )
+
+    assert result.returncode == 0
+    assert result.stdout == ("first", "second")
 
 
 def test_sync_empty_server_does_not_gain_a_phantom(server: Server) -> None:
@@ -151,7 +162,7 @@ def test_sync_close_admits_signal_for_active_fallback(session: Session) -> None:
                     "wait-for",
                     "-S",
                     ready,
-                    ";",
+                    CommandSeparator(";"),
                     "wait-for",
                     release,
                 ),
