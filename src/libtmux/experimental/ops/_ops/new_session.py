@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import CreateResult
 
@@ -21,7 +21,7 @@ if t.TYPE_CHECKING:
 class NewSession(Operation[CreateResult]):
     """Create a detached session; capture the new session's id.
 
-    Parameters
+    Attributes
     ----------
     session_name : str or None
         Name for the new session, or ``None`` to let tmux choose one.
@@ -101,7 +101,7 @@ class NewSession(Operation[CreateResult]):
         if self.window_shell is not None:
             # A trailing shell-command runs in the first pane instead of the
             # default shell (as NewWindow does for windows 2..N).
-            out.append(self.window_shell)
+            out.extend(positional_args(self.window_shell))
         return tuple(out)
 
     def _make_result(

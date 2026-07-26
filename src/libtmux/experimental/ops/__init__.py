@@ -100,6 +100,7 @@ from libtmux.experimental.ops.catalog import CatalogEntry, catalog
 from libtmux.experimental.ops.exc import (
     DuplicateOperation,
     ForwardCaptureError,
+    MissingCreateIdError,
     OperationError,
     TmuxCommandError,
     UnknownOperation,
@@ -195,6 +196,7 @@ __all__ = (
     "ListWindowsResult",
     "LoadBuffer",
     "MarkedPlanner",
+    "MissingCreateIdError",
     "MovePane",
     "MoveWindow",
     "NameRef",

@@ -34,6 +34,13 @@ class PlanStep:
     A single op (``len(indices) == 1``), a ``;``-folded chain (more, ``marked``
     false), or a ``{marked}`` fold (``marked`` true: ``indices[0]`` is the pane
     creation, the rest decorate it through ``{marked}``).
+
+    Attributes
+    ----------
+    indices : tuple[int, ...]
+        Operation indices included in this dispatch, in execution order.
+    marked : bool
+        Whether the dispatch uses tmux's ``{marked}`` pane register.
     """
 
     indices: tuple[int, ...]
@@ -175,6 +182,13 @@ class BoundedPlanner:
     planner runs over the full operation list -- so its global
     :class:`~._types.SlotRef` matching is unaffected -- and every resulting
     :class:`PlanStep` is then split at any boundary it spans.
+
+    Attributes
+    ----------
+    inner : Planner
+        Planner whose dispatch units are constrained.
+    boundaries : frozenset[int]
+        Operation indices after which a host-side step must run.
     """
 
     inner: Planner

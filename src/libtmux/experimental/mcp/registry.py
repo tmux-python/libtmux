@@ -11,6 +11,11 @@ from __future__ import annotations
 import dataclasses
 import typing as t
 
+from libtmux.experimental.mcp._policy import (
+    projected_spec_safety,
+    spec_can_destroy,
+    spec_is_open_world,
+)
 from libtmux.experimental.mcp.descriptor import ParamDescriptor, ToolDescriptor
 from libtmux.experimental.mcp.schema import schema_for_type
 from libtmux.experimental.ops import registry as ops_registry
@@ -19,11 +24,6 @@ from libtmux.experimental.ops._docstring import first_line
 if t.TYPE_CHECKING:
     from libtmux.experimental.ops.registry import OpSpec
 
-_ANNOTATIONS: dict[str, dict[str, bool]] = {
-    "readonly": {"readOnlyHint": True},
-    "mutating": {"readOnlyHint": False},
-    "destructive": {"readOnlyHint": False, "destructiveHint": True},
-}
 _SKIP_FIELDS = frozenset({"target", "src_target"})
 _SCALAR_NAME = {"bool": "bool", "int": "int", "float": "float", "str": "str"}
 _LIST_BASES = frozenset({"list", "tuple", "Sequence", "frozenset", "set"})
@@ -58,7 +58,7 @@ def _origin_of(annotation: t.Any) -> tuple[str, str | None]:
 
 
 def _docstring_params(doc: str | None) -> dict[str, str]:
-    """Parse ``name : type`` entries from a NumPy docstring Parameters block."""
+    """Parse ``name : type`` entries from NumPy Parameters or Attributes."""
     if not doc:
         return {}
     out: dict[str, str] = {}
@@ -79,6 +79,25 @@ def _docstring_params(doc: str | None) -> dict[str, str]:
             out.setdefault(pending, line.strip())
             pending = None
     return out
+
+
+def _annotations(spec: OpSpec) -> dict[str, bool]:
+    """Project operation effects and parameterized kill paths into MCP hints.
+
+    Examples
+    --------
+    >>> _annotations(ops_registry.get("respawn_pane"))
+    {'readOnlyHint': False, 'destructiveHint': True, 'openWorldHint': True}
+    >>> _annotations(ops_registry.get("capture_pane"))
+    {'readOnlyHint': True, 'destructiveHint': False}
+    """
+    annotations = {
+        "readOnlyHint": spec.safety == "readonly",
+        "destructiveHint": spec_can_destroy(spec),
+    }
+    if spec_is_open_world(spec):
+        annotations["openWorldHint"] = True
+    return annotations
 
 
 class OperationToolRegistry:
@@ -121,6 +140,7 @@ class OperationToolRegistry:
     def _build(self, spec: OpSpec) -> ToolDescriptor:
         """Project one ``OpSpec`` into a tool descriptor."""
         description = first_line(spec.operation_cls.__doc__)
+        safety = projected_spec_safety(spec)
         if spec.min_version:
             # Surface the whole-command version gate so an agent on an older tmux
             # sees the requirement up front instead of a raw VersionUnsupported.
@@ -130,12 +150,12 @@ class OperationToolRegistry:
             title=spec.kind.replace("_", " ").title(),
             description=description,
             scope=spec.scope,
-            safety=spec.safety,
+            safety=safety,
             params=self._params(spec),
             result_type=spec.result_cls.__name__,
             result_schema=schema_for_type(spec.result_cls),
-            annotations=_ANNOTATIONS.get(spec.safety, {}),
-            tags=frozenset({spec.safety}),
+            annotations=_annotations(spec),
+            tags=frozenset({safety}),
             operation_cls=spec.operation_cls,
             min_version=spec.min_version,
         )
@@ -146,7 +166,7 @@ class OperationToolRegistry:
         docs = _docstring_params(operation_cls.__doc__)
         params: dict[str, ParamDescriptor] = {}
         for field in dataclasses.fields(operation_cls):
-            if field.name in _SKIP_FIELDS:
+            if not field.init or field.name in _SKIP_FIELDS:
                 continue
             origin, item = _origin_of(field.type)
             params[field.name] = ParamDescriptor(

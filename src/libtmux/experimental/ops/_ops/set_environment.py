@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class SetEnvironment(Operation[AckResult]):
     """Set or unset a session environment variable (``set-environment``).
 
-    Parameters
+    Attributes
     ----------
     name : str
         The variable name.
@@ -31,9 +31,9 @@ class SetEnvironment(Operation[AckResult]):
     Examples
     --------
     >>> SetEnvironment(name="FOO", value="bar").render()
-    ('set-environment', 'FOO', 'bar')
+    ('set-environment', '--', 'FOO', 'bar')
     >>> SetEnvironment(global_=True, name="FOO", unset=True).render()
-    ('set-environment', '-g', '-u', 'FOO')
+    ('set-environment', '-g', '-u', '--', 'FOO')
     """
 
     kind = "set_environment"
@@ -58,7 +58,8 @@ class SetEnvironment(Operation[AckResult]):
             out.append("-r")
         if self.unset:
             out.append("-u")
-        out.append(self.name)
+        positional = [self.name]
         if self.value is not None and not (self.unset or self.remove):
-            out.append(self.value)
+            positional.append(self.value)
+        out.extend(positional_args(*positional))
         return tuple(out)

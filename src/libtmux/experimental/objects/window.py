@@ -21,6 +21,7 @@ from libtmux.experimental.ops import (
     run,
 )
 from libtmux.experimental.ops._types import WindowId
+from libtmux.experimental.ops.results import _require_created_id
 
 if t.TYPE_CHECKING:
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
@@ -32,6 +33,15 @@ if t.TYPE_CHECKING:
 @dataclass(frozen=True)
 class EagerWindow:
     """A live window object bound to an engine; methods execute immediately.
+
+    Attributes
+    ----------
+    engine : TmuxEngine
+        Engine used to execute window operations.
+    window_id : str
+        Stable tmux window identifier.
+    version : str or None
+        tmux version used when rendering operations.
 
     Examples
     --------
@@ -67,8 +77,8 @@ class EagerWindow:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_pane_id is not None
-        return EagerPane(self.engine, result.new_pane_id, self.version)
+        created_id = _require_created_id(result)
+        return EagerPane(self.engine, created_id, self.version)
 
     def rename(self, name: str) -> Result:
         """Rename this window."""
@@ -98,6 +108,13 @@ class EagerWindow:
 @dataclass(frozen=True)
 class LazyWindow:
     """A deferred window object; methods record into a plan.
+
+    Attributes
+    ----------
+    plan : LazyPlan
+        Plan that receives recorded window operations.
+    ref : Target
+        Concrete or deferred target for this window.
 
     Examples
     --------
@@ -152,7 +169,17 @@ class LazyWindow:
 
 @dataclass(frozen=True)
 class AsyncWindow:
-    """An async live window object: the eager window, awaited."""
+    """An async live window object: the eager window, awaited.
+
+    Attributes
+    ----------
+    engine : AsyncTmuxEngine
+        Engine used to execute window operations asynchronously.
+    window_id : str
+        Stable tmux window identifier.
+    version : str or None
+        tmux version used when rendering operations.
+    """
 
     engine: AsyncTmuxEngine
     window_id: str
@@ -177,8 +204,8 @@ class AsyncWindow:
             version=self.version,
         )
         result.raise_for_status()
-        assert result.new_pane_id is not None
-        return AsyncPane(self.engine, result.new_pane_id, self.version)
+        created_id = _require_created_id(result)
+        return AsyncPane(self.engine, created_id, self.version)
 
     async def rename(self, name: str) -> Result:
         """Rename this window."""

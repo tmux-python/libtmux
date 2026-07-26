@@ -16,7 +16,7 @@ from libtmux.experimental.engines.base import SupportsTmuxVersion
 from libtmux.experimental.engines.control_mode import ControlModeEngine
 from libtmux.experimental.engines.mock import MockEngine
 from libtmux.experimental.engines.subprocess import SubprocessEngine
-from libtmux.experimental.ops import SendKeys, SplitWindow, arun, run
+from libtmux.experimental.ops import BreakPane, SendKeys, SplitWindow, arun, run
 from libtmux.experimental.ops._types import PaneId, WindowId
 from libtmux.experimental.ops.exc import TmuxCommandError
 
@@ -186,6 +186,93 @@ def test_run_auto_resolves_engine_version() -> None:
     assert "-T" not in result.argv  # -T is gated >= 3.4, dropped on resolved 3.3
 
 
+def test_run_applies_break_pane_name_after_tmux_3_7_workaround() -> None:
+    """A named tmux 3.7 break is completed by a typed rename operation."""
+    engine = VersionedFakeEngine(tmux_version="3.7", stdout=("@9",))
+
+    result = run(BreakPane(src_target=PaneId("%2"), name="logs"), engine)
+
+    assert result.ok
+    assert result.new_id == "@9"
+    assert engine.calls == [
+        (
+            "break-pane",
+            "-d",
+            "-n",
+            "libtmux",
+            "-P",
+            "-F",
+            "#{window_id}",
+            "-s",
+            "%2",
+        ),
+        ("rename-window", "-t", "@9", "--", "logs"),
+    ]
+    assert result.argv == (*engine.calls[0], ";", *engine.calls[1])
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    (
+        pytest.param((), id="absent_stdout"),
+        pytest.param(("",), id="empty_line"),
+        pytest.param((" \t ",), id="whitespace_line"),
+    ),
+)
+def test_run_break_pane_3_7_missing_capture_skips_rename(
+    stdout: tuple[str, ...],
+) -> None:
+    """A missing tmux 3.7 break id fails before constructing the rename target."""
+    engine = VersionedFakeEngine(tmux_version="3.7", stdout=stdout)
+
+    result = run(BreakPane(src_target=PaneId("%2"), name="logs"), engine)
+
+    assert result.failed
+    assert result.returncode == 0
+    assert result.new_id is None
+    assert result.stderr == ("break-pane did not capture its new window id",)
+    assert len(engine.calls) == 1
+
+
+def test_run_reports_break_pane_rename_failure() -> None:
+    """A failed tmux 3.7 follow-up cannot report the requested name as applied."""
+    from libtmux.experimental.engines import CommandResult
+
+    class RenameFailsEngine(VersionedFakeEngine):
+        def run(self, request: CommandRequest) -> t.Any:
+            if request.args[0] == "rename-window":
+                self.calls.append(request.args)
+                return CommandResult(
+                    cmd=("tmux", *request.args),
+                    stderr=("rename failed",),
+                    returncode=1,
+                )
+            return super().run(request)
+
+    engine = RenameFailsEngine(tmux_version="3.7", stdout=("@9",))
+
+    result = run(BreakPane(src_target=PaneId("%2"), name="logs"), engine)
+
+    assert result.failed
+    assert result.new_id == "@9"
+    assert result.stderr == ("rename failed",)
+
+
+def test_run_break_pane_3_7_captures_follow_up_target_internally() -> None:
+    """A non-capturing caller still gets its named tmux 3.7 follow-up."""
+    engine = VersionedFakeEngine(tmux_version="3.7", stdout=("@9",))
+
+    result = run(
+        BreakPane(src_target=PaneId("%2"), name="logs", capture=False),
+        engine,
+    )
+
+    assert result.ok
+    assert result.new_id is None
+    assert engine.calls[0][4:7] == ("-P", "-F", "#{window_id}")
+    assert engine.calls[1] == ("rename-window", "-t", "@9", "--", "logs")
+
+
 def test_run_without_version_capability_renders_every_flag() -> None:
     """A plain engine has no version, so version-gated flags are kept."""
     from libtmux.experimental.ops import CapturePane
@@ -216,3 +303,27 @@ def test_arun_shares_render_and_build() -> None:
     result = asyncio.run(arun(SplitWindow(target=WindowId("@1")), engine))
     assert result.new_pane_id == "%5"
     assert result.ok
+
+
+def test_arun_applies_break_pane_name_after_tmux_3_7_workaround() -> None:
+    """The async executor applies the same typed rename follow-up."""
+
+    class AsyncTmux37Engine(AsyncFakeEngine):
+        def __init__(self) -> None:
+            super().__init__(stdout=("@5",))
+            self.calls: list[tuple[str, ...]] = []
+
+        def tmux_version(self) -> str | None:
+            return "3.7"
+
+        async def run(self, request: CommandRequest) -> t.Any:
+            self.calls.append(request.args)
+            return await super().run(request)
+
+    engine = AsyncTmux37Engine()
+    result = asyncio.run(
+        arun(BreakPane(src_target=PaneId("%2"), name="logs"), engine),
+    )
+
+    assert result.ok
+    assert engine.calls[-1] == ("rename-window", "-t", "@5", "--", "logs")

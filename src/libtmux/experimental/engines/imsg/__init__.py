@@ -1,4 +1,4 @@
-"""Experimental native imsg engine -- an opt-in easter egg.
+"""Experimental native imsg engine.
 
 Speaks tmux's binary peer protocol (imsg over the server's ``AF_UNIX`` socket)
 directly, with no tmux CLI fork per command. It is the strongest proof that the

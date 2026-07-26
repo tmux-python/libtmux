@@ -16,14 +16,16 @@ from libtmux.experimental.ops.results import AckResult
 class SelectPane(Operation[AckResult]):
     """Make a pane active, or move/mark the selection.
 
-    Parameters
+    Attributes
     ----------
     direction : {"L", "R", "U", "D"} or None
         Move to the pane left/right/above/below the target.
     last : bool
         Select the last (previously active) pane (``-l``).
-    mark, unmark : bool
-        Set (``-m``) or clear (``-M``) the marked pane.
+    mark : bool
+        Mark the selected pane (``-m``).
+    unmark : bool
+        Clear the marked pane (``-M``).
     zoom : bool
         Keep the window zoomed (``-Z``).
     title : str or None

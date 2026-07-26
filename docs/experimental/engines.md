@@ -76,9 +76,11 @@ the boundary you need to understand:
 
 .. autoclass:: libtmux.experimental.engines.base.CommandRequest
    :members:
+   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.engines.base.CommandResult
    :members:
+   :no-undoc-members:
 
 .. autofunction:: libtmux.experimental.engines.registry.available_engines
 

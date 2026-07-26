@@ -15,7 +15,7 @@ import subprocess
 import typing as t
 
 from libtmux import exc
-from libtmux.experimental.engines.base import CommandResult
+from libtmux.experimental.engines.base import CommandResult, encode_direct_argv
 from libtmux.experimental.engines.connection import ServerConnection
 
 if t.TYPE_CHECKING:
@@ -72,7 +72,8 @@ class SubprocessEngine:
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command via subprocess and return its result."""
-        cmd = self._conn.argv(*request.args, tmux_bin=request.tmux_bin)
+        argv = encode_direct_argv(request.args)
+        cmd = self._conn.argv(*argv, tmux_bin=request.tmux_bin)
 
         try:
             process = subprocess.Popen(

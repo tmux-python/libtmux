@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -16,14 +16,16 @@ from libtmux.experimental.ops.results import AckResult
 class ResizePane(Operation[AckResult]):
     """Resize a pane, optionally zooming it.
 
-    Parameters
+    Attributes
     ----------
     direction : {"L", "R", "U", "D"} or None
         Resize toward a side (``-L``/``-R``/``-U``/``-D``).
     adjustment : int or None
         Cells to adjust by when *direction* is set.
-    width, height : int or None
-        Absolute width (``-x``) / height (``-y``) in cells.
+    width : int or None
+        Absolute width in cells (``-x``).
+    height : int or None
+        Absolute height in cells (``-y``).
     zoom : bool
         Toggle pane zoom (``-Z``).
 
@@ -33,7 +35,7 @@ class ResizePane(Operation[AckResult]):
     >>> ResizePane(target=PaneId("%1"), height=20).render()
     ('resize-pane', '-t', '%1', '-y20')
     >>> ResizePane(target=PaneId("%1"), direction="D", adjustment=5).render()
-    ('resize-pane', '-t', '%1', '-D', '5')
+    ('resize-pane', '-t', '%1', '-D', '--', '5')
     """
 
     kind = "resize_pane"
@@ -56,10 +58,10 @@ class ResizePane(Operation[AckResult]):
             out.append("-Z")
         if self.direction is not None:
             out.append(f"-{self.direction}")
-            if self.adjustment is not None:
-                out.append(str(self.adjustment))
         if self.width is not None:
             out.append(f"-x{self.width}")
         if self.height is not None:
             out.append(f"-y{self.height}")
+        if self.direction is not None and self.adjustment is not None:
+            out.extend(positional_args(str(self.adjustment)))
         return tuple(out)

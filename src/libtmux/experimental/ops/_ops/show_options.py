@@ -19,10 +19,14 @@ if t.TYPE_CHECKING:
 class ShowOptions(Operation[ShowOptionsResult]):
     """Show options as ``name value`` pairs (``show-options``).
 
-    Parameters
+    Attributes
     ----------
-    global_, server, window : bool
-        Scope flags (``-g`` / ``-s`` / ``-w``).
+    global_ : bool
+        Show global options (``-g``).
+    server : bool
+        Show server options (``-s``).
+    window : bool
+        Show window options (``-w``).
     include_inherited : bool
         Include inherited options (``-A``).
 

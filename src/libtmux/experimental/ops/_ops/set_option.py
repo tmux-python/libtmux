@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,14 +15,20 @@ from libtmux.experimental.ops.results import AckResult
 class SetOption(Operation[AckResult]):
     """Set a tmux option (``set-option``); the write counterpart to show-options.
 
-    Parameters
+    Attributes
     ----------
     option : str
         The option name.
     value : str or None
         The value to set (omit when *unset* is true).
-    global_, server, window, pane : bool
-        Scope flags (``-g`` / ``-s`` / ``-w`` / ``-p``).
+    global_ : bool
+        Set a global option (``-g``).
+    server : bool
+        Set a server option (``-s``).
+    window : bool
+        Set a window option (``-w``).
+    pane : bool
+        Set a pane option (``-p``).
     append : bool
         Append to a string/array option (``-a``).
     unset : bool
@@ -33,11 +39,11 @@ class SetOption(Operation[AckResult]):
     Examples
     --------
     >>> SetOption(option="status", value="on").render()
-    ('set-option', 'status', 'on')
+    ('set-option', '--', 'status', 'on')
     >>> SetOption(global_=True, option="status", value="on").render()
-    ('set-option', '-g', 'status', 'on')
+    ('set-option', '-g', '--', 'status', 'on')
     >>> SetOption(option="status", unset=True).render()
-    ('set-option', '-u', 'status')
+    ('set-option', '-u', '--', 'status')
     """
 
     kind = "set_option"
@@ -74,7 +80,8 @@ class SetOption(Operation[AckResult]):
             out.append("-q")
         if self.unset:
             out.append("-u")
-        out.append(self.option)
+        positional = [self.option]
         if self.value is not None and not self.unset:
-            out.append(self.value)
+            positional.append(self.value)
+        out.extend(positional_args(*positional))
         return tuple(out)

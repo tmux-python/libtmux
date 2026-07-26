@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -19,7 +19,7 @@ if t.TYPE_CHECKING:
 class RespawnPane(Operation[AckResult]):
     """Restart the command in a (usually dead) pane (``respawn-pane``).
 
-    Parameters
+    Attributes
     ----------
     kill : bool
         Kill the existing process first (``-k``).
@@ -60,5 +60,5 @@ class RespawnPane(Operation[AckResult]):
         if self.environment and self.flag_available("environment", version):
             out.extend(f"-e{key}={value}" for key, value in self.environment.items())
         if self.shell is not None:
-            out.append(self.shell)
+            out.extend(positional_args(self.shell))
         return tuple(out)

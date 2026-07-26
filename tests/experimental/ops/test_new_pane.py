@@ -107,6 +107,7 @@ RENDER_CASES = (
             "-P",
             "-F",
             "#{pane_id}",
+            "--",
             "lazygit",
         ),
     ),
