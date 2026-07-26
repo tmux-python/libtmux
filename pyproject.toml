@@ -240,6 +240,9 @@ convention = "numpy"
   # `X as X` is PEP 484's explicit re-export form, and mypy runs strict here,
   # so dropping the alias stops mypy seeing the exception types as exported.
   "PLC0414",
+  # The lookup operators are total predicates over caller-supplied data of any
+  # type: a comparison that blows up means "no match", not an error to raise.
+  "BLE001",
 ]
 
 [tool.pytest.ini_options]
