@@ -20,6 +20,15 @@ back. The pane does not exist when Python records the option operations, so
 {class}`~libtmux.experimental.ops._types.SlotRef` that stands in for its future
 ID.
 
+The same deterministic story gives an agent tool three explicit phases:
+
+- Observe: preview the unresolved plan and explain its two dispatch steps
+  without contacting tmux.
+- Act: execute the marked fold through
+  {class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine`.
+- Verify: inspect four typed statuses, the captured `worker:ready` value, and
+  the live pane lookup.
+
 The two tabs show the same work at the Python and tmux boundaries. `@WINDOW`
 stands for the live window ID. `%PANE` stands for the pane ID captured by
 `split-window`.
@@ -207,6 +216,6 @@ before it can render the next target.
 - Scope the engine with `async with` so its reader, supervisor, and control
   client close before the event loop exits.
 
-See {doc}`control-mode` for attachment, notification, and reconnection
-lifecycle details. See {doc}`results-and-failures` for typed command failures
-and skipped work.
+See {doc}`../engines/async-control-mode` for attachment, notification, and
+reconnection lifecycle details. See {doc}`results-and-failures` for typed
+command failures and skipped work.

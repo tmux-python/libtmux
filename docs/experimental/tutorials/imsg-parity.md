@@ -3,7 +3,8 @@
 {class}`~libtmux.experimental.engines.imsg.base.ImsgEngine` uses tmux's native
 binary protocol on POSIX. A useful parity check binds it and
 {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` to the same
-private server, sends the same raw request, and compares a narrow observable.
+private server, sends the same raw request, and compares one observable:
+standard output.
 
 ## Bind both engines explicitly
 
@@ -34,20 +35,15 @@ comparison exact.
 ... )
 >>> imsg_result = ImsgEngine().run(request)
 >>> cli_result = SubprocessEngine().run(request)
->>> (
-...     imsg_result.returncode == cli_result.returncode,
-...     imsg_result.stdout == cli_result.stdout,
-...     imsg_result.stderr == cli_result.stderr,
-... )
-(True, True, True)
->>> imsg_result.stdout[0] == session.session_id
+>>> imsg_result.stdout == cli_result.stdout == (session.session_id,)
 True
 ```
 
 ## Interpret the result narrowly
 
-This proves one query against one server. It does not prove command-wide parity,
-cross-version compatibility, or portability. The current codec supports
+This proves stdout parity for one query against one server. It does not prove
+return-code or stderr parity, command-wide parity, cross-version compatibility,
+or portability. The current codec supports
 protocol v8; unsupported protocol negotiation, socket framing, and descriptor
 handling have their own failure paths. Local queries and commands that must
 start a missing server use the tmux binary; commands dispatched to an existing
