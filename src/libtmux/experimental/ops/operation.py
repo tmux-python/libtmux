@@ -169,31 +169,28 @@ class Operation(t.Generic[ResultT]):
     src_target : Target or None
         The ``-s`` source target for dual-target commands (``swap-pane``,
         ``join-pane``, ``link-window``, ...), or ``None`` when unused.
-
-    Notes
-    -----
-    Class variables (set by subclasses):
-
-    ``kind``
+    kind : str
         Stable discriminator, also the registry key (e.g. ``"split_window"``).
-    ``command``
-        The tmux command name (e.g. ``"split-window"``).
-    ``scope``
-        The tmux object scope (:data:`~._types.Scope`).
-    ``result_cls``
-        The :class:`~.results.Result` subclass this operation returns.
-    ``chainable``
+        Set by subclasses.
+    command : str
+        The tmux command name (e.g. ``"split-window"``). Set by subclasses.
+    scope : Scope
+        The tmux object scope. Set by subclasses.
+    result_cls : type[Result]
+        The :class:`~.results.Result` subclass this operation returns. Set by
+        subclasses.
+    chainable : bool
         Whether the command may be folded into a one-dispatch sequence.
-    ``primitive``
+    primitive : bool
         ``True`` when the operation wraps one tmux command; ``False`` when it is
         composed from others (e.g. a synthesized server-exists check).
-    ``safety``
-        The :data:`~._types.Safety` tier.
-    ``effects``
-        An :class:`~._types.Effects` descriptor.
-    ``min_version``
+    safety : Safety
+        The safety tier. Set by subclasses.
+    effects : Effects
+        An :class:`~._types.Effects` descriptor. Set by subclasses.
+    min_version : str or None
         Minimum tmux version the whole operation requires, if any.
-    ``flag_version_map``
+    flag_version_map : Mapping[str, str]
         Maps a feature label to the minimum tmux version that supports it; the
         operation consults this in :meth:`args` to drop unsupported flags.
     """
