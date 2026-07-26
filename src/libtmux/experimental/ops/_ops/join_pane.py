@@ -5,20 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import SourceTargetOperation
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class JoinPane(Operation[AckResult]):
+class JoinPane(SourceTargetOperation[AckResult]):
     """Join a source pane into a destination window/pane (``join-pane``).
 
     ``target`` is the destination (``-t``); ``src_target`` is the pane to move
     (``-s``). The inverse of :class:`BreakPane`.
 
-    Parameters
+    Attributes
     ----------
     horizontal : bool
         Split the destination left/right (``-h``) instead of top/bottom (``-v``).

@@ -5,25 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import SourceTargetOperation
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class MoveWindow(Operation[AckResult]):
+class MoveWindow(SourceTargetOperation[AckResult]):
     """Move a window to a new index/session (``move-window``).
 
     ``target`` is the destination (``-t``); ``src_target`` is the window to
     move (``-s``).
 
-    Parameters
+    Attributes
     ----------
     detach : bool
         Do not change the active window (``-d``).
-    before, after : bool
-        Insert before (``-b``) or after (``-a``) the destination index.
+    before : bool
+        Insert before the destination index (``-b``).
+    after : bool
+        Insert after the destination index (``-a``).
     kill : bool
         Replace (kill) any window already at the destination (``-k``).
     renumber : bool

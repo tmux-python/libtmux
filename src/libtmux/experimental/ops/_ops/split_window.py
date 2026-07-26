@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import SplitWindowResult
 
@@ -25,7 +25,7 @@ class SplitWindow(Operation[SplitWindowResult]):
     is captured on stdout; :meth:`build_result` reads it into
     :attr:`~.results.SplitWindowResult.new_pane_id`.
 
-    Parameters
+    Attributes
     ----------
     horizontal : bool
         Split left/right (``-h``) instead of top/bottom (``-v``).
@@ -84,7 +84,7 @@ class SplitWindow(Operation[SplitWindowResult]):
         if self.capture:
             out.extend(("-P", "-F", "#{pane_id}"))
         if self.shell is not None:
-            out.append(self.shell)
+            out.extend(positional_args(self.shell))
         return tuple(out)
 
     def _make_result(
@@ -97,7 +97,9 @@ class SplitWindow(Operation[SplitWindowResult]):
         version: str | None = None,
     ) -> SplitWindowResult:
         """Parse the captured new-pane id into the typed result."""
-        new_pane_id = stdout[0].strip() if status == "complete" and stdout else None
+        new_pane_id = (
+            stdout[0].strip() if status == "complete" and stdout else None
+        ) or None
         return SplitWindowResult(
             operation=self,
             argv=argv,

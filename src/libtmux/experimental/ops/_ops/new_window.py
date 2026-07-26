@@ -6,7 +6,7 @@ import typing as t
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import CreateResult
 
@@ -23,7 +23,7 @@ class NewWindow(Operation[CreateResult]):
 
     ``target`` is the session the window is created in.
 
-    Parameters
+    Attributes
     ----------
     name : str or None
         Name for the new window, or ``None`` to let tmux choose one.
@@ -90,7 +90,7 @@ class NewWindow(Operation[CreateResult]):
             fmt = "#{window_id} #{pane_id}" if self.capture_pane else "#{window_id}"
             out.extend(("-P", "-F", fmt))
         if self.window_shell is not None:
-            out.append(self.window_shell)
+            out.extend(positional_args(self.window_shell))
         return tuple(out)
 
     def _make_result(

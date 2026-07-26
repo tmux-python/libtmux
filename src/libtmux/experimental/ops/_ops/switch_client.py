@@ -18,7 +18,7 @@ class SwitchClient(Operation[AckResult]):
     Uses ``-c`` for the client and ``-t`` for the destination session, so it
     does not use the generic target slot.
 
-    Parameters
+    Attributes
     ----------
     client : str
         Name of the client to switch.

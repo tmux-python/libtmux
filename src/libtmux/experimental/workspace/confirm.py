@@ -20,7 +20,15 @@ if t.TYPE_CHECKING:
 
 @dataclass
 class ConfirmReport:
-    """The outcome of confirming a built workspace against its spec."""
+    """The outcome of confirming a built workspace against its spec.
+
+    Attributes
+    ----------
+    ok : bool
+        Whether the live workspace matches the declaration.
+    problems : tuple[str, ...]
+        Human-readable mismatches; empty when ``ok`` is true.
+    """
 
     ok: bool
     problems: tuple[str, ...]

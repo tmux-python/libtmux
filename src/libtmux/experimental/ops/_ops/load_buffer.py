@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class LoadBuffer(Operation[AckResult]):
     """Load a paste buffer from a file (``load-buffer``).
 
-    Parameters
+    Attributes
     ----------
     path : str
         The file to load (``-`` for stdin).
@@ -25,9 +25,9 @@ class LoadBuffer(Operation[AckResult]):
     Examples
     --------
     >>> LoadBuffer(path="/tmp/x").render()
-    ('load-buffer', '/tmp/x')
+    ('load-buffer', '--', '/tmp/x')
     >>> LoadBuffer(buffer_name="b0", path="/tmp/x").render()
-    ('load-buffer', '-b', 'b0', '/tmp/x')
+    ('load-buffer', '-b', 'b0', '--', '/tmp/x')
     """
 
     kind = "load_buffer"
@@ -45,5 +45,5 @@ class LoadBuffer(Operation[AckResult]):
         out: list[str] = []
         if self.buffer_name is not None:
             out.extend(("-b", self.buffer_name))
-        out.append(self.path)
+        out.extend(positional_args(self.path))
         return tuple(out)
