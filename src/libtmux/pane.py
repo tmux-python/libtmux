@@ -57,6 +57,22 @@ class Pane(
     ``Pane`` instances can send commands directly to a pane, or traverse
     between linked tmux objects.
 
+    Attributes
+    ----------
+    default_option_scope : OptionScope | None
+        Scope :class:`~libtmux.options.OptionsMixin` falls back to when an
+        option call leaves ``scope`` unset. ``OptionScope.Pane`` sends
+        ``set-option`` and ``show-options`` with tmux's ``-p`` flag; ``None``
+        sends no scope flag, which tmux resolves as session scope.
+    default_hook_scope : OptionScope | None
+        Scope :class:`~libtmux.hooks.HooksMixin` falls back to when a hook
+        call leaves ``scope`` unset. ``OptionScope.Pane`` sends ``set-hook``
+        and ``show-hooks`` with tmux's ``-p`` flag; ``None`` sends no scope
+        flag, which tmux resolves as session scope.
+    server : Server
+        Server the pane was queried from, and the connection every command
+        and refresh runs over.
+
     Examples
     --------
     >>> pane

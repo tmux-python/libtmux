@@ -284,6 +284,384 @@ def _normalize_tmux_version(version: str) -> LooseVersion:
 class Obj:
     """Dataclass of generic tmux object.
 
+    Every field but ``server`` is a tmux format token, and tmux reports each
+    one as a string. A field is ``None`` when its token was left out of the
+    query or expanded to empty: tokens outside the listing's scope (see
+    :data:`SCOPES_BY_LIST_CMD`) and tokens the running tmux is too old to
+    register (see :data:`FIELD_VERSION`) are never requested, and copy-mode
+    and command-context tokens only resolve at event time.
+
+    Attributes
+    ----------
+    server : Server
+        Server the object was queried from, and the connection every refresh
+        re-runs its ``list-*`` command over.
+    active_window_index : str | None
+        Index of the session's active window.
+    alternate_saved_x : str | None
+        Saved cursor X position for the pane's alternate screen.
+    alternate_saved_y : str | None
+        Saved cursor Y position for the pane's alternate screen.
+    bracket_paste_flag : str | None
+        ``"1"`` when the pane's terminal has bracketed paste mode enabled.
+    buffer_name : str | None
+        Name of the buffer.
+    buffer_sample : str | None
+        Sample taken from the start of the buffer's contents.
+    buffer_size : str | None
+        Size of the buffer, in bytes.
+    client_activity : str | None
+        Time the client last had activity.
+    client_cell_height : str | None
+        Height of one of the client's terminal cells, in pixels.
+    client_cell_width : str | None
+        Width of one of the client's terminal cells, in pixels.
+    client_control_mode : str | None
+        ``"1"`` when the client is running in control mode.
+    client_created : str | None
+        Time the client was created.
+    client_discarded : str | None
+        Bytes discarded because the client fell behind.
+    client_flags : str | None
+        List of the client's flags.
+    client_height : str | None
+        Height of the client, in cells.
+    client_key_table : str | None
+        Name of the key table the client is currently using.
+    client_last_session : str | None
+        Name of the session the client was attached to before its current one.
+    client_mode_format : str | None
+        Default format string tmux's client mode (``choose-client``) renders
+        each client row with.
+    client_name : str | None
+        Name of the client.
+    client_pid : str | None
+        PID of the client process.
+    client_prefix : str | None
+        ``"1"`` while the prefix key has been pressed.
+    client_readonly : str | None
+        ``"1"`` when the client is attached read-only.
+    client_session : str | None
+        Name of the session the client is attached to.
+    client_termfeatures : str | None
+        Terminal features tmux detected for the client, if any.
+    client_termname : str | None
+        Terminal name of the client.
+    client_termtype : str | None
+        Terminal type of the client, if available.
+    client_tty : str | None
+        Path to the client's pseudo terminal.
+    client_uid : str | None
+        UID of the client process.
+    client_user : str | None
+        User the client process runs as.
+    client_utf8 : str | None
+        ``"1"`` when the client supports UTF-8.
+    client_width : str | None
+        Width of the client, in cells.
+    client_written : str | None
+        Bytes written to the client.
+    command_list_alias : str | None
+        Command alias, when listing commands.
+    command_list_name : str | None
+        Command name, when listing commands.
+    command_list_usage : str | None
+        Command usage string, when listing commands.
+    config_files : str | None
+        List of the configuration files tmux loaded.
+    copy_cursor_line : str | None
+        Text of the line the cursor sits on in copy mode.
+    copy_cursor_word : str | None
+        Word under the cursor in copy mode.
+    copy_cursor_x : str | None
+        Cursor X position in copy mode.
+    copy_cursor_y : str | None
+        Cursor Y position in copy mode.
+    current_file : str | None
+        Configuration file currently being parsed.
+    cursor_character : str | None
+        Character at the pane's cursor position.
+    cursor_flag : str | None
+        ``"1"`` when the pane's cursor is visible.
+    cursor_x : str | None
+        Cursor X position in the pane.
+    cursor_y : str | None
+        Cursor Y position in the pane.
+    history_bytes : str | None
+        Bytes held in the pane's scrollback history.
+    history_limit : str | None
+        Maximum number of scrollback lines the pane keeps.
+    history_size : str | None
+        Lines currently held in the pane's scrollback history.
+    insert_flag : str | None
+        ``"1"`` when the pane's terminal is in insert mode.
+    keypad_cursor_flag : str | None
+        ``"1"`` when the pane's terminal is in application cursor key mode.
+    keypad_flag : str | None
+        ``"1"`` when the pane's terminal is in application keypad mode.
+    last_window_index : str | None
+        Index of the last window in the session.
+    line : str | None
+        Row number tmux assigns to the entry in the listing.
+    mouse_all_flag : str | None
+        ``"1"`` when the pane's terminal has all-motion mouse reporting
+        enabled.
+    mouse_any_flag : str | None
+        ``"1"`` when the pane's terminal has any mouse reporting mode enabled.
+    mouse_button_flag : str | None
+        ``"1"`` when the pane's terminal has button-event mouse reporting
+        enabled.
+    mouse_sgr_flag : str | None
+        ``"1"`` when the pane's terminal reports mouse events in SGR form.
+    mouse_standard_flag : str | None
+        ``"1"`` when the pane's terminal has standard mouse reporting enabled.
+    next_session_id : str | None
+        Session ID tmux will give the next new session.
+    origin_flag : str | None
+        ``"1"`` when the pane's terminal is in origin mode.
+    pane_active : str | None
+        ``"1"`` when this is the active pane of its window.
+    pane_at_bottom : str | None
+        ``"1"`` when the pane touches the bottom of the window.
+    pane_at_left : str | None
+        ``"1"`` when the pane touches the left of the window.
+    pane_at_right : str | None
+        ``"1"`` when the pane touches the right of the window.
+    pane_at_top : str | None
+        ``"1"`` when the pane touches the top of the window.
+    pane_bg : str | None
+        Pane background colour.
+    pane_bottom : str | None
+        Bottom edge of the pane, as a window row.
+    pane_current_command : str | None
+        Command running in the pane, if available.
+    pane_current_path : str | None
+        Working directory of the pane, if available.
+    pane_dead : str | None
+        ``"1"`` when the pane's process has exited and the pane is dead.
+    pane_dead_signal : str | None
+        Signal that killed the process in a dead pane.
+    pane_dead_status : str | None
+        Exit status of the process in a dead pane.
+    pane_dead_time : str | None
+        Time the process in a dead pane exited.
+    pane_fg : str | None
+        Pane foreground colour.
+    pane_flags : str | None
+        Pane flags: ``*`` for the active pane, ``-`` for the last used, ``Z``
+        for zoomed, ``F`` for floating.
+    pane_floating_flag : str | None
+        ``"1"`` when the pane is floating.
+    pane_format : str | None
+        ``"1"`` when the format is being evaluated for a pane.
+    pane_height : str | None
+        Height of the pane, in cells.
+    pane_id : str | None
+        Unique pane ID, e.g. ``"%3"`` (the ``#D`` alias).
+    pane_in_mode : str | None
+        Number of modes the pane is in.
+    pane_index : str | None
+        Index of the pane within its window (the ``#P`` alias).
+    pane_input_off : str | None
+        ``"1"`` when input to the pane is disabled.
+    pane_last : str | None
+        ``"1"`` when this is the window's last used pane.
+    pane_left : str | None
+        Left edge of the pane, as a window column.
+    pane_marked : str | None
+        ``"1"`` when this pane is the marked pane.
+    pane_marked_set : str | None
+        ``"1"`` when a marked pane is set on the server.
+    pane_mode : str | None
+        Name of the mode the pane is in, if any.
+    pane_path : str | None
+        Path of the pane; the application running in it can set this.
+    pane_pb_progress : str | None
+        Progress percentage of the pane's progress bar; the application running
+        in it can set this.
+    pane_pb_state : str | None
+        Pane progress bar state, one of ``hidden``, ``normal``, ``error``,
+        ``indeterminate``, or ``paused``; the application running in the pane
+        can set this.
+    pane_pid : str | None
+        PID of the first process started in the pane.
+    pane_pipe : str | None
+        ``"1"`` while the pane's output is being piped.
+    pane_pipe_pid : str | None
+        PID of the pipe process, if any.
+    pane_right : str | None
+        Right edge of the pane, as a window column.
+    pane_search_string : str | None
+        Last search string used in the pane's copy mode.
+    pane_start_command : str | None
+        Command the pane was started with.
+    pane_start_path : str | None
+        Working directory the pane was started in.
+    pane_synchronized : str | None
+        ``"1"`` when the pane has ``synchronize-panes`` in effect.
+    pane_tabs : str | None
+        Tab stop positions in the pane.
+    pane_title : str | None
+        Title of the pane; the application running in it can set this (the
+        ``#T`` alias).
+    pane_top : str | None
+        Top edge of the pane, as a window row.
+    pane_tty : str | None
+        Path to the pane's pseudo terminal.
+    pane_width : str | None
+        Width of the pane, in cells.
+    pane_x : str | None
+        X position of the pane.
+    pane_y : str | None
+        Y position of the pane.
+    pane_z : str | None
+        Z position of the pane.
+    pane_zoomed_flag : str | None
+        ``"1"`` when the pane is zoomed.
+    pid : str | None
+        PID of the tmux server process.
+    scroll_position : str | None
+        Scroll position in copy mode.
+    scroll_region_lower : str | None
+        Bottom line of the pane's scroll region.
+    scroll_region_upper : str | None
+        Top line of the pane's scroll region.
+    search_match : str | None
+        Search match in the pane's copy mode, if any.
+    selection_end_x : str | None
+        X position of the end of the copy-mode selection.
+    selection_end_y : str | None
+        Y position of the end of the copy-mode selection.
+    selection_start_x : str | None
+        X position of the start of the copy-mode selection.
+    selection_start_y : str | None
+        Y position of the start of the copy-mode selection.
+    session_activity : str | None
+        Time of the session's last activity.
+    session_alerts : str | None
+        List of indexes of the session's windows with alerts.
+    session_attached : str | None
+        Number of clients attached to the session.
+    session_attached_list : str | None
+        List of the clients attached to the session.
+    session_created : str | None
+        Time the session was created.
+    session_format : str | None
+        ``"1"`` when the format is being evaluated for a session.
+    session_group : str | None
+        Name of the session group the session belongs to.
+    session_group_attached : str | None
+        Number of clients attached to sessions in the session group.
+    session_group_attached_list : str | None
+        List of the clients attached to sessions in the session group.
+    session_group_list : str | None
+        List of the sessions in the session group.
+    session_group_many_attached : str | None
+        ``"1"`` when more than one client is attached to sessions in the
+        session group.
+    session_group_size : str | None
+        Number of sessions in the session group.
+    session_grouped : str | None
+        ``"1"`` when the session belongs to a session group.
+    session_id : str | None
+        Unique session ID, e.g. ``"$1"``.
+    session_last_attached : str | None
+        Time the session was last attached.
+    session_many_attached : str | None
+        ``"1"`` when more than one client is attached to the session.
+    session_marked : str | None
+        ``"1"`` when the session contains the marked pane.
+    session_name : str | None
+        Name of the session (the ``#S`` alias).
+    session_path : str | None
+        Working directory of the session.
+    session_stack : str | None
+        Indexes of the session's windows, most recently used first.
+    session_windows : str | None
+        Number of windows in the session.
+    socket_path : str | None
+        Path to the tmux server's socket.
+    start_time : str | None
+        Time the tmux server started.
+    synchronized_output_flag : str | None
+        ``"1"`` when the pane's terminal has synchronized output enabled.
+    uid : str | None
+        UID the tmux server runs as.
+    user : str | None
+        User the tmux server runs as.
+    version : str | None
+        Version of the running tmux server.
+    window_active : str | None
+        ``"1"`` when the window is its session's current window.
+    window_active_clients : str | None
+        Number of clients viewing the window.
+    window_active_clients_list : str | None
+        List of the clients viewing the window.
+    window_active_sessions : str | None
+        Number of sessions in which the window is the active one.
+    window_active_sessions_list : str | None
+        List of the sessions in which the window is the active one.
+    window_activity : str | None
+        Time of the window's last activity.
+    window_activity_flag : str | None
+        ``"1"`` when the window has an activity alert.
+    window_bell_flag : str | None
+        ``"1"`` when the window has a bell alert.
+    window_bigger : str | None
+        ``"1"`` when the window is larger than the client viewing it.
+    window_cell_height : str | None
+        Height of one of the window's cells, in pixels.
+    window_cell_width : str | None
+        Width of one of the window's cells, in pixels.
+    window_end_flag : str | None
+        ``"1"`` when the window has the highest index in the session.
+    window_flags : str | None
+        Window flags, with ``#`` escaped as ``##`` (the ``#F`` alias).
+    window_format : str | None
+        ``"1"`` when the format is being evaluated for a window.
+    window_height : str | None
+        Height of the window, in cells.
+    window_id : str | None
+        Unique window ID, e.g. ``"@2"``.
+    window_index : str | None
+        Index of the window in its session (the ``#I`` alias).
+    window_last_flag : str | None
+        ``"1"`` when the window is the session's last used one.
+    window_layout : str | None
+        Window layout description, ignoring zoomed panes.
+    window_linked : str | None
+        ``"1"`` when the window is linked across sessions.
+    window_linked_sessions : str | None
+        Number of sessions the window is linked into.
+    window_linked_sessions_list : str | None
+        List of the sessions the window is linked into.
+    window_marked_flag : str | None
+        ``"1"`` when the window contains the marked pane.
+    window_name : str | None
+        Name of the window (the ``#W`` alias).
+    window_offset_x : str | None
+        X offset into the window when it is larger than the client.
+    window_offset_y : str | None
+        Y offset into the window when it is larger than the client.
+    window_panes : str | None
+        Number of panes in the window.
+    window_raw_flags : str | None
+        Window flags, with nothing escaped.
+    window_silence_flag : str | None
+        ``"1"`` when the window has a silence alert.
+    window_stack_index : str | None
+        Index of the window in its session's most recently used stack.
+    window_start_flag : str | None
+        ``"1"`` when the window has the lowest index in the session.
+    window_visible_layout : str | None
+        Window layout description, respecting zoomed panes.
+    window_width : str | None
+        Width of the window, in cells.
+    window_zoomed_flag : str | None
+        ``"1"`` when the window is zoomed.
+    wrap_flag : str | None
+        ``"1"`` when the pane's terminal wraps at the right margin.
+
     Notes
     -----
     tmux may return fields from an object's active children along with the

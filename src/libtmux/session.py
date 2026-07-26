@@ -62,6 +62,21 @@ class Session(
     Parameters
     ----------
     server : :class:`Server`
+        Server the session was queried from, and the connection every command
+        and refresh runs over.
+
+    Attributes
+    ----------
+    default_option_scope : OptionScope | None
+        Scope :class:`~libtmux.options.OptionsMixin` falls back to when an
+        option call leaves ``scope`` unset. ``None`` sends ``set-option`` and
+        ``show-options`` with no scope flag, which tmux resolves as session
+        scope; ``OptionScope.Session`` maps to that same empty flag.
+    default_hook_scope : OptionScope | None
+        Scope :class:`~libtmux.hooks.HooksMixin` falls back to when a hook
+        call leaves ``scope`` unset. ``None`` sends ``set-hook`` and
+        ``show-hooks`` with no scope flag, which tmux resolves as session
+        scope.
 
     Examples
     --------

@@ -66,6 +66,13 @@ Workflow actions moved to their current major releases: `actions/checkout` v7,
 and `dorny/paths-filter` v4. Workflow behavior is unchanged, though setup-uv no
 longer prunes the uv cache, so the first run after this repopulates it.
 
+#### tmux options, hooks, and formats are described (#721)
+
+The server, session, window, and pane option classes, the hook table, and
+the format object now carry the tmux manual's description for every field.
+They previously reached the rendered API reference as "Alias for field
+number 0" or as a bare name carrying only its type.
+
 ## libtmux 0.62.0 (2026-07-12)
 
 libtmux 0.62.0 teaches libtmux objects to locate themselves and to resolve
