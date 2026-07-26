@@ -96,7 +96,8 @@ a notification emitted before the first iteration will be delivered.
    :special-members: __aenter__, __aexit__
 ```
 
-## Related tutorial
+## Related tutorials
 
 See {doc}`../tutorials/control-mode` for the shared batching contract and the
-notification boundary.
+notification boundary. See {doc}`../tutorials/async-control-plans` to compose
+forward-referenced operations and fold them into control-mode dispatches.
