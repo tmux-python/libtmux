@@ -236,6 +236,11 @@ convention = "numpy"
   # which keeps the docs build off an import of the package being documented.
   "S102",
 ]
+"src/libtmux/_internal/query_list.py" = [
+  # `X as X` is PEP 484's explicit re-export form, and mypy runs strict here,
+  # so dropping the alias stops mypy seeing the exception types as exported.
+  "PLC0414",
+]
 
 [tool.pytest.ini_options]
 addopts = [
