@@ -131,19 +131,15 @@ control-mode client.
 ```{eval-rst}
 .. autoclass:: libtmux.experimental.ops.operation.Operation
    :members: then
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops._chain.OpChain
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops._types.SlotRef
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops._types.PaneId
    :members:
-   :no-undoc-members:
 ```
 
 ### Plans and planners
@@ -154,7 +150,6 @@ control-mode client.
 
 .. autoclass:: libtmux.experimental.ops.plan.PlanResult
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.planner.Planner
    :members:
@@ -170,7 +165,6 @@ control-mode client.
 
 .. autoclass:: libtmux.experimental.ops.planner.BoundedPlanner
    :members:
-   :no-undoc-members:
 ```
 
 ### Fluent builder
@@ -180,13 +174,10 @@ control-mode client.
 
 .. autoclass:: libtmux.experimental.fluent.PlanBuilder
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.fluent.SessionRef
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.fluent.WindowRef
    :members:
-   :no-undoc-members:
 ```

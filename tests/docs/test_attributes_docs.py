@@ -1,4 +1,4 @@
-"""Field-documentation contract for experimental value classes."""
+"""Field-documentation contract for first-party record classes."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import typing as t
 
 from sphinx.ext.napoleon.docstring import NumpyDocstring
 
-import libtmux.experimental
+import libtmux
 
 
 def _is_named_tuple(value: type[object]) -> bool:
@@ -20,16 +20,26 @@ def _is_named_tuple(value: type[object]) -> bool:
     )
 
 
-def _iter_value_classes() -> t.Iterator[type[object]]:
-    """Yield each experimental dataclass and ``NamedTuple`` once."""
-    modules = [libtmux.experimental]
+def _is_record(value: type[object]) -> bool:
+    """Return whether *value* declares structured fields."""
+    return (
+        dataclasses.is_dataclass(value)
+        or _is_named_tuple(value)
+        or t.is_typeddict(value)
+    )
+
+
+def _iter_record_classes() -> t.Iterator[type[object]]:
+    """Yield each first-party record class once."""
+    modules = [libtmux]
     modules.extend(
         importlib.import_module(module_info.name)
         for module_info in pkgutil.walk_packages(
-            libtmux.experimental.__path__,
-            prefix=f"{libtmux.experimental.__name__}.",
+            libtmux.__path__,
+            prefix=f"{libtmux.__name__}.",
         )
         if not module_info.name.endswith(".__main__")
+        and not module_info.name.startswith("libtmux._vendor")
     )
 
     seen: set[type[object]] = set()
@@ -41,7 +51,7 @@ def _iter_value_classes() -> t.Iterator[type[object]]:
                 or value in seen
             ):
                 continue
-            if dataclasses.is_dataclass(value) or _is_named_tuple(value):
+            if _is_record(value):
                 seen.add(value)
                 yield value
 
@@ -50,7 +60,13 @@ def _field_names(value: type[object]) -> tuple[str, ...]:
     """Return effective field names in their runtime order."""
     if dataclasses.is_dataclass(value):
         return tuple(field.name for field in dataclasses.fields(value))
-    return t.cast(tuple[str, ...], value.__dict__["_fields"])
+    if _is_named_tuple(value):
+        return t.cast(tuple[str, ...], value.__dict__["_fields"])
+    annotations = t.cast(
+        t.Mapping[str, object],
+        value.__annotations__,
+    )
+    return tuple(annotations)
 
 
 def _own_attribute_docs(value: type[object]) -> dict[str, str]:
@@ -77,11 +93,29 @@ def _own_attribute_docs(value: type[object]) -> dict[str, str]:
 
 
 def _attribute_docs(value: type[object]) -> dict[str, str]:
-    """Return field documentation inherited through *value*'s MRO."""
+    """Return field documentation inherited by *value*."""
     documented: dict[str, str] = {}
-    for base in reversed(value.__mro__):
+    for base in _documentation_lineage(value):
         documented.update(_own_attribute_docs(base))
     return documented
+
+
+def _documentation_lineage(
+    value: type[object],
+) -> t.Iterator[type[object]]:
+    """Yield documentation bases before the class that overrides them."""
+    if not t.is_typeddict(value):
+        yield from reversed(value.__mro__)
+        return
+
+    original_bases = t.cast(
+        tuple[object, ...],
+        vars(value).get("__orig_bases__", ()),
+    )
+    for base in original_bases:
+        if isinstance(base, type) and t.is_typeddict(base):
+            yield from _documentation_lineage(base)
+    yield value
 
 
 def test_attribute_parser_stops_at_following_section() -> None:
@@ -105,13 +139,95 @@ def test_attribute_parser_stops_at_following_section() -> None:
     assert _own_attribute_docs(Value) == {"field": ""}
 
 
-def test_experimental_value_fields_use_attributes_sections() -> None:
-    """Every experimental value field has semantic ``Attributes`` prose."""
+def test_record_field_names_include_supported_declarations() -> None:
+    """Field discovery covers each supported declarative record shape."""
+
+    @dataclasses.dataclass
+    class DataRecord:
+        first: str
+        second: int
+
+    class ClassNamedTuple(t.NamedTuple):
+        first: str
+        second: int
+
+    FunctionalNamedTuple = t.NamedTuple(  # noqa: UP014
+        "FunctionalNamedTuple",
+        [("first", str), ("second", int)],
+    )
+
+    class BaseTypedRecord(t.TypedDict):
+        """Base mapping record.
+
+        Attributes
+        ----------
+        first : str
+            First value.
+        """
+
+        first: str
+
+    class TypedRecord(BaseTypedRecord):
+        """Extended mapping record.
+
+        Attributes
+        ----------
+        second : int
+            Second value.
+        """
+
+        second: int
+
+    records = (DataRecord, ClassNamedTuple, FunctionalNamedTuple, TypedRecord)
+
+    assert [_field_names(record) for record in records] == [
+        ("first", "second"),
+        ("first", "second"),
+        ("first", "second"),
+        ("first", "second"),
+    ]
+    assert tuple(_attribute_docs(TypedRecord)) == ("first", "second")
+
+
+def test_inherited_attribute_docs_follow_record_mro() -> None:
+    """The most specific field declaration supplies effective prose."""
+
+    @dataclasses.dataclass
+    class BaseRecord:
+        """Generic record.
+
+        Attributes
+        ----------
+        value : str
+            Generic value.
+        """
+
+        value: str
+
+    @dataclasses.dataclass
+    class SpecializedRecord(BaseRecord):
+        """Specialized record.
+
+        Attributes
+        ----------
+        value : str
+            Value interpreted by the specialized record.
+        """
+
+        value: str
+
+    assert _attribute_docs(SpecializedRecord)["value"] == (
+        "Value interpreted by the specialized record."
+    )
+
+
+def test_first_party_record_fields_use_attributes_sections() -> None:
+    """Every first-party record field has semantic ``Attributes`` prose."""
     missing: dict[str, list[str]] = {}
     empty: dict[str, list[str]] = {}
     out_of_order: dict[str, list[str]] = {}
 
-    for value in _iter_value_classes():
+    for value in _iter_record_classes():
         fields = _field_names(value)
         documented = _attribute_docs(value)
         absent = [name for name in fields if name not in documented]
