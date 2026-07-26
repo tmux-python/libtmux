@@ -57,6 +57,15 @@ environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
+### Development
+
+#### CI actions updated to current majors
+
+Workflow actions moved to their current major releases: `actions/checkout` v7,
+`actions/cache` v6, `astral-sh/setup-uv` v9.0.0, `codecov/codecov-action` v7,
+and `dorny/paths-filter` v4. Workflow behavior is unchanged, though setup-uv no
+longer prunes the uv cache, so the first run after this repopulates it.
+
 ## libtmux 0.62.0 (2026-07-12)
 
 libtmux 0.62.0 teaches libtmux objects to locate themselves and to resolve
