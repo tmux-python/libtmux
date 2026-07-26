@@ -70,7 +70,7 @@ dev = [
   "coverage",
   "pytest-cov",
   # Lint
-  "ruff",
+  "ruff>=0.16.0",
   "mypy",
 ]
 
@@ -95,7 +95,7 @@ coverage =[
 ]
 lint = [
   "typing-extensions; python_version < '3.11'",
-  "ruff",
+  "ruff>=0.16.0",
   "mypy",
 ]
 
