@@ -1,10 +1,11 @@
 # Test operations offline
 
-The mock engines execute no tmux process. They are useful when a test should
-prove operation rendering and typed result conversion without claiming that a
-real server accepted the command.
+{class}`~libtmux.experimental.engines.mock.MockEngine` and
+{class}`~libtmux.experimental.engines.mock.AsyncMockEngine` execute no tmux
+process. Use them to prove rendering and typed result conversion without
+claiming that a real server accepted a command.
 
-## Synchronous callers
+## Read canned output and fabricated IDs
 
 {class}`~libtmux.experimental.engines.mock.MockEngine` fabricates IDs for create
 operations, returns configured lines for `capture-pane`, and reports success
@@ -13,37 +14,39 @@ for other commands.
 ```python
 >>> from libtmux.experimental.engines import MockEngine
 >>> from libtmux.experimental.ops import CapturePane, HasSession, SplitWindow
->>> from libtmux.experimental.ops import run
->>> from libtmux.experimental.ops._types import PaneId, SessionId, WindowId
->>> engine = MockEngine(capture_lines=("first", "second"))
+>>> from libtmux.experimental.ops import PaneId, SessionId, WindowId, run
+>>> engine = MockEngine(capture_lines=("canned:first", "canned:second"))
 >>> created = run(SplitWindow(target=WindowId("@1")), engine)
 >>> captured = run(CapturePane(target=PaneId("%1")), engine)
 >>> existence = run(HasSession(target=SessionId("$404")), engine)
 >>> created.new_pane_id, captured.lines, existence.exists
-('%1', ('first', 'second'), True)
+('%1', ('canned:first', 'canned:second'), True)
 ```
 
-The `True` existence result is the boundary, not proof that `$404` exists. The
-mock is stateless about server objects and succeeds for `has-session`.
+`%1` is fabricated, the capture lines are canned, and `True` is simulated. None
+proves that the pane, output, or `$404` session exists on a server.
 
-## Async callers
+## Async variation
 
 {class}`~libtmux.experimental.engines.mock.AsyncMockEngine` applies the same
-simulation behind {func}`~libtmux.experimental.ops.arun`.
+simulation behind {func}`~libtmux.experimental.ops.arun`. Use it when the code
+under test is async, not to make concurrency, cancellation, or connection
+lifecycle claims.
 
 ```python
 >>> import asyncio
 >>> from libtmux.experimental.engines import AsyncMockEngine
->>> from libtmux.experimental.ops import CapturePane, SplitWindow, arun
->>> from libtmux.experimental.ops._types import PaneId, WindowId
->>> async def exercise_offline():
-...     engine = AsyncMockEngine(capture_lines=("async",))
-...     created = await arun(SplitWindow(target=WindowId("@1")), engine)
-...     captured = await arun(CapturePane(target=PaneId("%1")), engine)
-...     return created.new_pane_id, captured.lines
->>> asyncio.run(exercise_offline())
-('%1', ('async',))
+>>> from libtmux.experimental.ops import CapturePane, PaneId, arun
+>>> async def capture_offline():
+...     engine = AsyncMockEngine(capture_lines=("canned:async",))
+...     return await arun(CapturePane(target=PaneId("%404")), engine)
+>>> captured = asyncio.run(capture_offline()).raise_for_status()
+>>> captured.lines
+('canned:async',)
 ```
+
+The returned line is canned. The async engine does not inspect `%404`, start
+tmux, or prove that a pane emitted output.
 
 ## What still needs a live engine
 

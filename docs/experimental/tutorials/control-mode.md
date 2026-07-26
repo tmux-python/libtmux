@@ -1,13 +1,11 @@
 # Use control mode
 
-Once connected, control-mode engines keep one `tmux -C` client alive and
-correlate tmux's framed replies with submitted
+{class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` keeps one
+`tmux -C` client alive once connected and correlates tmux's framed replies with
+submitted
 {class}`~libtmux.experimental.engines.base.CommandRequest` values.
-Over that connected client,
 {meth}`~libtmux.experimental.engines.control_mode.ControlModeEngine.run_batch`
-and
-{meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.run_batch`
-pipeline commands instead of starting one process per request.
+pipelines an ordered batch instead of starting one process per request.
 
 ## How attachment stays safe
 
@@ -29,7 +27,7 @@ issue a session-deletion command during cleanup. If you change that option
 while the engine is connected, tmux applies the new policy when the client
 detaches.
 
-## Synchronous batch
+## Pipeline one live batch
 
 Use {class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` as a
 context manager so the persistent control client is closed on every exit path.
@@ -50,6 +48,10 @@ dispatch.
 ... ]
 >>> with ControlModeEngine.for_server(server) as engine:
 ...     results = engine.run_batch(requests)
+>>> [type(result).__name__ for result in results]
+['CommandResult', 'CommandResult']
+>>> [result.returncode for result in results]
+[0, 0]
 >>> [result.stdout[0] for result in results] == [
 ...     session.session_id,
 ...     window.window_id,
@@ -57,66 +59,16 @@ dispatch.
 True
 ```
 
-## Async batch
+The values are live raw
+{class}`~libtmux.experimental.engines.base.CommandResult` instances because
+`run_batch` is the engine boundary. Use {func}`~libtmux.experimental.ops.run` or
+a plan when the caller needs operation-specific result subtypes.
 
-The async context scopes and closes
-{class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine`.
-When a safe session already exists, context entry eagerly starts its supervisor
-so notification consumers have a reader without first sending a command. On an
-empty server, context entry stays lazy so the first batch can bootstrap through
-native async subprocess execution.
+## Async variation
 
-```python
->>> import asyncio
->>> from libtmux.experimental.engines import AsyncControlModeEngine, CommandRequest
->>> assert session.session_id is not None
->>> assert window.window_id is not None
->>> requests = [
-...     CommandRequest.from_args(
-...         "display-message", "-p", "-t", session.session_id, "#{session_id}"
-...     ),
-...     CommandRequest.from_args(
-...         "display-message", "-p", "-t", window.window_id, "#{window_id}"
-...     ),
-... ]
->>> async def query_batch():
-...     async with AsyncControlModeEngine.for_server(server) as engine:
-...         return await engine.run_batch(requests)
->>> results = asyncio.run(query_batch())
->>> [result.stdout[0] for result in results] == [
-...     session.session_id,
-...     window.window_id,
-... ]
-True
-```
-
-## Notifications and reconnects
-
-Register desired state with
-{meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.add_subscription`
-and
-{meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.set_attach_targets`
-before starting the async engine when that state must be replayed after a
-reconnect. Each
-{meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.subscribe`
-consumer receives its own bounded queue, and
-{attr}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.dropped_notifications`
-exposes queue overflow.
-
-{meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.subscribe`
-returns an async generator, but creating that generator does not register its
-queue or start the engine. If context entry stayed lazy, or you do not use the
-context manager, a notification-only consumer must call
-{meth}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.start`
-after a safe session exists. Registration happens when iteration first
-advances. There is no public readiness handshake, so code must not assume an
-event emitted before that point will be observed.
-
-Command `%error` frames remain
-{class}`~libtmux.experimental.engines.base.CommandResult` data. Timeouts and
-connection failures raise a control-mode exception because no trustworthy
-command result exists. Sequence anomalies are logged.
-
-See {doc}`async-control-plans` when the requests depend on IDs created earlier
-in the same plan, or when a planner can fold several typed operations into one
-control-mode dispatch.
+For
+{class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine`,
+{doc}`async-control-plans` shows typed results, a forward-referenced pane, and
+two control-mode dispatches. The engine reference documents its supervisor,
+reconnection, and subscription boundaries without implying a public subscriber
+readiness handshake.
