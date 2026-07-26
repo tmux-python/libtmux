@@ -250,6 +250,12 @@ convention = "numpy"
   # unfamiliar option cannot take down every other option on the object.
   "BLE001",
 ]
+"src/libtmux/server.py" = [
+  # `Server.is_alive` answers a yes/no question about an unreachable server.
+  # Every way of failing to reach it is a "no"; callers who need the reason
+  # use `Server.raise_if_dead`.
+  "BLE001",
+]
 
 [tool.pytest.ini_options]
 addopts = [
