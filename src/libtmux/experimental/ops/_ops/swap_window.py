@@ -5,20 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import SourceTargetOperation
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
 
 @register
 @dataclass(frozen=True, kw_only=True)
-class SwapWindow(Operation[AckResult]):
+class SwapWindow(SourceTargetOperation[AckResult]):
     """Swap two windows (``swap-window``).
 
     ``target`` is the destination (``-t``); ``src_target`` is the source
     window (``-s``).
 
-    Parameters
+    Attributes
     ----------
     detach : bool
         Do not change the active window (``-d``).

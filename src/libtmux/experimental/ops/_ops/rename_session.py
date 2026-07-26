@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class RenameSession(Operation[AckResult]):
     """Rename a session. Produces no output (:class:`AckResult`).
 
-    Parameters
+    Attributes
     ----------
     name : str
         New name for the session.
@@ -24,7 +24,7 @@ class RenameSession(Operation[AckResult]):
     --------
     >>> from libtmux.experimental.ops._types import SessionId
     >>> RenameSession(target=SessionId("$0"), name="work").render()
-    ('rename-session', '-t', '$0', 'work')
+    ('rename-session', '-t', '$0', '--', 'work')
     """
 
     kind = "rename_session"
@@ -38,4 +38,4 @@ class RenameSession(Operation[AckResult]):
 
     def args(self, *, version: str | None = None) -> tuple[str, ...]:
         """Render the new session name."""
-        return (self.name,)
+        return positional_args(self.name)

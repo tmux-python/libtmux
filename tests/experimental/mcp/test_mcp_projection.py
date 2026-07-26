@@ -8,6 +8,8 @@ introspection, and the build_workspace tool -- all against the in-memory
 
 from __future__ import annotations
 
+import pytest
+
 from libtmux.experimental.engines import MockEngine
 from libtmux.experimental.mcp import (
     OperationToolRegistry,
@@ -19,11 +21,13 @@ from libtmux.experimental.mcp import (
     result_schema,
 )
 from libtmux.experimental.ops import (
+    DeleteBuffer,
     LazyPlan,
     MarkedPlanner,
     NewSession,
     SendKeys,
     SplitWindow,
+    SwapPane,
     registry,
 )
 from libtmux.experimental.ops._types import NameRef, PaneId, SessionId, WindowId
@@ -47,7 +51,11 @@ def test_split_window_descriptor_shape() -> None:
     assert desc.name == "split_window"
     assert desc.scope == "window"
     assert desc.safety == "mutating"
-    assert desc.annotations == {"readOnlyHint": False}
+    assert desc.annotations == {
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "openWorldHint": True,
+    }
     assert desc.result_type == "SplitWindowResult"
     assert desc.params["horizontal"].origin == "bool"
     assert desc.params["horizontal"].is_required is False
@@ -68,8 +76,78 @@ def test_ungated_op_has_no_min_version() -> None:
 def test_readonly_op_annotation() -> None:
     """A readonly operation projects a readOnlyHint annotation + tag."""
     desc = OperationToolRegistry().descriptor("has_session")
-    assert desc.annotations == {"readOnlyHint": True}
+    assert desc.annotations == {
+        "readOnlyHint": True,
+        "destructiveHint": False,
+    }
     assert "readonly" in desc.tags
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        "respawn_pane",
+        "respawn_window",
+        "link_window",
+        "move_window",
+        "unlink_window",
+    ),
+)
+def test_kill_capable_descriptor_is_destructive(kind: str) -> None:
+    """A tool that accepts ``kill=True`` advertises its destructive variant."""
+    desc = OperationToolRegistry().descriptor(kind)
+
+    assert desc.safety == "mutating"
+    assert desc.annotations["destructiveHint"] is True
+    assert "-k" in desc.build(kill=True).render()
+
+
+def test_effect_destructive_descriptor_is_destructive() -> None:
+    """An operation's destructive effect projects into its MCP hint."""
+    desc = OperationToolRegistry().descriptor("kill_session")
+
+    assert registry.get("kill_session").effects.destructive is True
+    assert desc.annotations["destructiveHint"] is True
+
+
+def test_open_world_descriptors_disclose_execution_risk() -> None:
+    """Execution and payload-transfer operations carry honest MCP hints."""
+    registry = OperationToolRegistry()
+    run_shell = registry.descriptor("run_shell")
+    source_file = registry.descriptor("source_file")
+
+    assert run_shell.safety == "destructive"
+    assert source_file.safety == "mutating"
+    destructive_variants = (
+        "break_pane",
+        "display_message",
+        "load_buffer",
+        "new_pane",
+        "new_session",
+        "new_window",
+        "pipe_pane",
+        "respawn_pane",
+        "respawn_window",
+        "run_shell",
+        "save_buffer",
+        "select_pane",
+        "set_hook",
+        "set_option",
+        "set_window_option",
+        "source_file",
+        "split_window",
+        "rename_session",
+        "rename_window",
+    )
+    for kind in destructive_variants:
+        descriptor = registry.descriptor(kind)
+        assert descriptor.annotations["destructiveHint"] is True
+        assert descriptor.annotations["openWorldHint"] is True
+
+    for kind in ("paste_buffer", "send_keys", "set_buffer"):
+        descriptor = registry.descriptor(kind)
+        assert descriptor.annotations["destructiveHint"] is False
+        assert descriptor.annotations["openWorldHint"] is True
 
 
 def test_descriptor_build_resolves_targets() -> None:
@@ -79,6 +157,24 @@ def test_descriptor_build_resolves_targets() -> None:
     assert isinstance(op, SplitWindow)
     assert op.target == WindowId("@1")
     assert op.render() == ("split-window", "-t", "@1", "-h", "-P", "-F", "#{pane_id}")
+
+
+def test_descriptor_build_honors_target_capabilities() -> None:
+    """Descriptors pass only targets supported by each operation constructor."""
+    descriptors = OperationToolRegistry()
+
+    assert descriptors.descriptor("delete_buffer").build() == DeleteBuffer()
+    with pytest.raises(TypeError, match="target"):
+        descriptors.descriptor("delete_buffer").build(target="%1")
+
+    send = descriptors.descriptor("send_keys").build(target="%1", keys="x")
+    assert send == SendKeys(target=PaneId("%1"), keys="x")
+
+    swap = descriptors.descriptor("swap_pane").build(
+        target="%1",
+        src_target="%2",
+    )
+    assert swap == SwapPane(target=PaneId("%1"), src_target=PaneId("%2"))
 
 
 def test_resolve_target_forms() -> None:

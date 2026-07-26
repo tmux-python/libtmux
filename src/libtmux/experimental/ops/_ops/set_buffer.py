@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class SetBuffer(Operation[AckResult]):
     """Set the contents of a paste buffer (``set-buffer``).
 
-    Parameters
+    Attributes
     ----------
     data : str
         The buffer contents.
@@ -27,9 +27,9 @@ class SetBuffer(Operation[AckResult]):
     Examples
     --------
     >>> SetBuffer(data="hello").render()
-    ('set-buffer', 'hello')
+    ('set-buffer', '--', 'hello')
     >>> SetBuffer(buffer_name="b0", data="hi").render()
-    ('set-buffer', '-b', 'b0', 'hi')
+    ('set-buffer', '-b', 'b0', '--', 'hi')
     """
 
     kind = "set_buffer"
@@ -50,5 +50,5 @@ class SetBuffer(Operation[AckResult]):
             out.append("-a")
         if self.buffer_name is not None:
             out.extend(("-b", self.buffer_name))
-        out.append(self.data)
+        out.extend(positional_args(self.data))
         return tuple(out)
