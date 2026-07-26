@@ -60,6 +60,7 @@ Start with {doc}`tutorials/live-operation`, then use the task guide that matches
 the boundary you need to understand:
 
 - {doc}`tutorials/results-and-failures`
+- {doc}`tutorials/async-control-plans`
 - {doc}`tutorials/async-subprocess`
 - {doc}`tutorials/control-mode`
 - {doc}`tutorials/offline-testing`

@@ -43,6 +43,7 @@ _ENGINE_PAGES = {
 }
 
 _TUTORIAL_PAGES = {
+    "async-control-plans.md",
     "async-subprocess.md",
     "control-mode.md",
     "imsg-parity.md",
@@ -102,7 +103,7 @@ def test_engine_pages_have_one_executable_story_and_api_target() -> None:
 
 
 def test_tutorial_inventory_and_navigation_are_exact() -> None:
-    """The tutorial index owns the six shared task tutorials."""
+    """The tutorial index owns the seven shared task tutorials."""
     assert {path.name for path in _TUTORIAL_ROOT.glob("*.md")} == {
         "index.md",
         *_TUTORIAL_PAGES,

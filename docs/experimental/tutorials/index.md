@@ -7,6 +7,8 @@ across operation pages and concrete engine references.
   documentation fixtures.
 - {doc}`results-and-failures` separates typed success, command failure, expected
   absence, version rejection, and skipped work.
+- {doc}`async-control-plans` composes forward-referenced work and folds it over
+  one persistent asynchronous control client.
 - {doc}`async-subprocess` runs independent operations concurrently without
   blocking the event loop.
 - {doc}`control-mode` uses persistent sync and async connections safely.
@@ -19,6 +21,7 @@ across operation pages and concrete engine references.
 
 live-operation
 results-and-failures
+async-control-plans
 async-subprocess
 control-mode
 offline-testing
