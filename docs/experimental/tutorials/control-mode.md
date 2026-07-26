@@ -116,3 +116,7 @@ Command `%error` frames remain
 {class}`~libtmux.experimental.engines.base.CommandResult` data. Timeouts and
 connection failures raise a control-mode exception because no trustworthy
 command result exists. Sequence anomalies are logged.
+
+See {doc}`async-control-plans` when the requests depend on IDs created earlier
+in the same plan, or when a planner can fold several typed operations into one
+control-mode dispatch.
