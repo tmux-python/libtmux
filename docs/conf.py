@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import pathlib
 import sys
+import typing as t
 
 from gp_sphinx.config import make_linkcode_resolve, merge_sphinx_config
+from sphinx.application import Sphinx
 
 import libtmux
 
@@ -60,4 +62,65 @@ conf = merge_sphinx_config(
     exclude_patterns=["_build", "AGENTS.md", "CLAUDE.md", "superpowers/**"],
 )
 conf["myst_enable_extensions"].append("fieldlist")
+
+_shared_setup = t.cast("t.Callable[[Sphinx], None]", conf["setup"])
+
+
+def _omit_removed_inline_tabs_script(
+    app: Sphinx,
+    _pagename: str,
+    _templatename: str,
+    context: dict[str, t.Any],
+    _doctree: object | None,
+) -> None:
+    """Keep rendered pages consistent with gp-sphinx's static assets.
+
+    gp-sphinx removes ``tabs.js`` after a successful HTML build because
+    sphinx-inline-tabs needs only its CSS behavior here. Remove the matching
+    page-context entry before Sphinx renders a stale ``script`` reference.
+
+    Parameters
+    ----------
+    app : sphinx.application.Sphinx
+        Active Sphinx application.
+    _pagename : str
+        Name of the page being rendered.
+    _templatename : str
+        Template used to render the page.
+    context : dict[str, Any]
+        Template context containing Sphinx's script assets.
+    _doctree : object | None
+        Page doctree, when available.
+    """
+    if "sphinx_inline_tabs" not in app.extensions:
+        return
+
+    script_files = context.get("script_files")
+    if not isinstance(script_files, list):
+        return
+
+    context["script_files"] = [
+        asset
+        for asset in script_files
+        if getattr(asset, "filename", None) != "_static/tabs.js"
+    ]
+
+
+def setup(app: Sphinx) -> None:
+    """Configure shared gp-sphinx hooks and project asset consistency.
+
+    Parameters
+    ----------
+    app : sphinx.application.Sphinx
+        Active Sphinx application.
+    """
+    _shared_setup(app)
+    app.connect(
+        "html-page-context",
+        _omit_removed_inline_tabs_script,
+        priority=900,
+    )
+
+
+conf["setup"] = setup
 globals().update(conf)
