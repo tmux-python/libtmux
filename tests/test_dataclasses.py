@@ -39,7 +39,7 @@ def test_pane(
 
     try:
         session_ = server.sessions[0]
-    except Exception:
+    except IndexError:
         session_ = server.new_session()
 
     assert session_ is not None
