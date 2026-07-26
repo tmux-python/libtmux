@@ -3,7 +3,8 @@
 {class}`~libtmux.experimental.engines.asyncio.AsyncSubprocessEngine` uses
 {func}`asyncio.create_subprocess_exec` for command process I/O.
 {func}`~libtmux.experimental.ops.arun` preserves the same operation and typed
-result contract as synchronous execution.
+result contract as synchronous execution. The workflow below returns two typed,
+independent reads from one live server.
 
 ## Dispatch independent reads concurrently
 
@@ -18,8 +19,7 @@ would deliberately await them in order.
 ```python
 >>> import asyncio
 >>> from libtmux.experimental.engines import AsyncSubprocessEngine
->>> from libtmux.experimental.ops import DisplayMessage, arun
->>> from libtmux.experimental.ops._types import PaneId, SessionId
+>>> from libtmux.experimental.ops import DisplayMessage, PaneId, SessionId, arun
 >>> assert session.session_id is not None
 >>> assert pane is not None and pane.pane_id is not None
 >>> engine = AsyncSubprocessEngine.for_server(server)
@@ -45,11 +45,16 @@ would deliberately await them in order.
 ...         ),
 ...     )
 ...     return (
-...         session_result.raise_for_status().text,
-...         pane_result.raise_for_status().text,
+...         session_result.raise_for_status(),
+...         pane_result.raise_for_status(),
 ...     )
->>> asyncio.run(read_ids()) == (session.session_id, pane.pane_id)
-True
+>>> session_result, pane_result = asyncio.run(read_ids())
+>>> [type(result).__name__ for result in (session_result, pane_result)]
+['DisplayMessageResult', 'DisplayMessageResult']
+>>> session_result.status, pane_result.status
+('complete', 'complete')
+>>> session_result.text == session.session_id, pane_result.text == pane.pane_id
+(True, True)
 ```
 
 ## Cancellation boundary

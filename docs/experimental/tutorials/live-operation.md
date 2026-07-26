@@ -1,10 +1,12 @@
 # Run a live operation
 
-A live example needs an isolated {class}`~libtmux.server.Server`, an engine
-bound to that server, and explicit cleanup. Operations stay unchanged when the
-engine changes.
+{class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` is the
+synchronous live-server baseline. Bind it to an isolated
+{class}`~libtmux.server.Server`, return a typed operation result, and leave
+cleanup with the server owner. Operations stay unchanged when the engine
+changes.
 
-## Standalone setup
+## Application-owned server
 
 Use the public server context manager when the calling application owns tmux
 setup. A unique socket name isolates the example from the user's normal server;
@@ -24,28 +26,21 @@ context exit kills the private server.
 ...         item.session_id == private_session.session_id
 ...         for item in result.sessions
 ...     )
+>>> type(result).__name__, result.status
+('ListSessionsResult', 'complete')
 >>> found
 True
 >>> private_server.is_alive()
 False
 ```
 
-## Documentation and test setup
+## Injected-server variation
 
 The documentation test environment injects isolated `server`, `session`,
 `window`, and `pane` values. The library's pytest fixtures provide the same
-style of object hierarchy, so tests can bind an engine without repeating server
-creation.
-
-```python
->>> from libtmux.experimental.engines import SubprocessEngine
->>> from libtmux.experimental.ops import ListSessions, run
->>> assert session.session_id is not None
->>> engine = SubprocessEngine.for_server(server)
->>> result = run(ListSessions(), engine).raise_for_status()
->>> any(item.session_id == session.session_id for item in result.sessions)
-True
-```
+style of object hierarchy. Bind the same engine with
+`SubprocessEngine.for_server(server)` instead of creating another server, then
+run the same operation and assert against the injected objects.
 
 {meth}`~libtmux.experimental.engines.subprocess.SubprocessEngine.for_server`
 copies the server's tmux binary and `-L` or `-S` connection arguments. It does

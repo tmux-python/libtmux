@@ -18,17 +18,19 @@ permissions, shell execution, transport failures, or tmux output parsing.
 Pass optional canned `capture_lines`. An instance keeps only monotonic ID
 counters and needs no cleanup.
 
+The result below is canned. The engine does not contact tmux or inspect whether
+the target pane exists.
+
 ```python
 >>> from libtmux.experimental.engines import MockEngine
->>> from libtmux.experimental.ops import CapturePane, SplitWindow, run
->>> from libtmux.experimental.ops._types import PaneId, WindowId
->>> engine = MockEngine(capture_lines=("hello", "world"))
->>> operation = SplitWindow(target=WindowId("@1"))
->>> created = run(operation, engine)
->>> created.new_pane_id, created.argv == operation.render()
-('%1', True)
->>> run(CapturePane(target=PaneId("%1")), engine).lines
-('hello', 'world')
+>>> from libtmux.experimental.ops import CapturePane, PaneId, run
+>>> engine = MockEngine(capture_lines=("canned, no tmux",))
+>>> canned = run(
+...     CapturePane(target=PaneId("%404")),
+...     engine,
+... ).raise_for_status()
+>>> canned.lines
+('canned, no tmux',)
 ```
 
 ## Lifecycle and failure boundary
