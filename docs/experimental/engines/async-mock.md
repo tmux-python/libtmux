@@ -15,19 +15,22 @@ reconnection, notifications, or real tmux state.
 
 ## Construction and cleanup
 
-Pass optional canned `capture_lines`. It owns no task, process, or connection,
-so no cleanup is required.
+Pass optional canned `capture_lines`. Create operations receive fabricated IDs.
+The engine owns no task, process, or connection, so no cleanup is required.
+
+The `%1` below is fabricated. The engine neither inspects `@404` nor creates a
+pane.
 
 ```python
 >>> import asyncio
 >>> from libtmux.experimental.engines import AsyncMockEngine
->>> from libtmux.experimental.ops import CapturePane, arun
->>> from libtmux.experimental.ops._types import PaneId
->>> async def capture_offline():
-...     engine = AsyncMockEngine(capture_lines=("offline",))
-...     return await arun(CapturePane(target=PaneId("%1")), engine)
->>> asyncio.run(capture_offline()).lines
-('offline',)
+>>> from libtmux.experimental.ops import SplitWindow, WindowId, arun
+>>> operation = SplitWindow(target=WindowId("@404"))
+>>> async def create_offline():
+...     return await arun(operation, AsyncMockEngine())
+>>> fabricated = asyncio.run(create_offline()).raise_for_status()
+>>> fabricated.new_pane_id, fabricated.argv == operation.render()
+('%1', True)
 ```
 
 ## Lifecycle and failure boundary
@@ -48,5 +51,5 @@ caller supplies `version`.
 
 ## Related tutorial
 
-See {doc}`../tutorials/offline-testing` for parallel sync and async test
-patterns.
+See {doc}`../tutorials/offline-testing` for synchronous and asynchronous
+offline test patterns.

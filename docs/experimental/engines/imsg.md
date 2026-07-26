@@ -26,31 +26,19 @@ in every
 
 ```python
 >>> from libtmux.experimental.engines import CommandRequest, ImsgEngine
->>> from libtmux.experimental.engines import SubprocessEngine
+>>> assert server.socket_name is not None
 >>> assert session.session_id is not None
->>> if server.socket_name is not None:
-...     prefix = (f"-L{server.socket_name}",)
-... else:
-...     socket_path = server.cmd(
-...         "display-message", "-p", "#{socket_path}"
-...     ).stdout[0]
-...     prefix = (f"-S{socket_path}",)
 >>> request = CommandRequest.from_args(
-...     *prefix,
+...     f"-L{server.socket_name}",
 ...     "display-message",
 ...     "-p",
 ...     "-t",
 ...     session.session_id,
 ...     "#{session_id}",
 ... )
->>> native = ImsgEngine().run(request)
->>> classic = SubprocessEngine().run(request)
->>> (
-...     native.returncode,
-...     native.stdout == classic.stdout,
-...     native.stdout[0] == session.session_id,
-... )
-(0, True, True)
+>>> result = ImsgEngine().run(request)
+>>> result.returncode, result.stdout == (session.session_id,)
+(0, True)
 ```
 
 ## Lifecycle and failure boundary

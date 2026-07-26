@@ -8,15 +8,15 @@ boundary around execution.
 
 ## Choose an engine
 
-| Engine                                                                                                                        | Dispatch model                                        | Use it for                                                  |
-| ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------- |
-| {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` ([reference](engines/subprocess.md))                       | One tmux CLI process per request                      | Straightforward synchronous live-server work                |
-| {class}`~libtmux.experimental.engines.asyncio.AsyncSubprocessEngine` ([reference](engines/async-subprocess.md))               | One asyncio subprocess per request                    | Async applications that do not need a persistent connection |
-| {class}`~libtmux.experimental.engines.mock.MockEngine` ([reference](engines/mock.md))                                         | Stateless in-memory simulation                        | Offline rendering and result-conversion tests               |
-| {class}`~libtmux.experimental.engines.mock.AsyncMockEngine` ([reference](engines/async-mock.md))                              | Async stateless in-memory simulation                  | Offline tests of async callers                              |
-| {class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` ([reference](engines/control-mode.md))                  | Subprocess bootstrap, then persistent `tmux -C`       | Pipelined command batches                                   |
-| {class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine` ([reference](engines/async-control-mode.md)) | Async subprocess bootstrap, then supervised `tmux -C` | Async batches and control-mode notifications                |
-| {class}`~libtmux.experimental.engines.imsg.base.ImsgEngine` ([reference](engines/imsg.md))                                    | Native socket with required CLI fallbacks             | POSIX protocol experiments and narrow parity checks         |
+| Engine                                                                                                                        | Dispatch model                                        | Use it for                                                  | Worked example                       |
+| ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------ |
+| {class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` ([reference](engines/subprocess.md))                       | One tmux CLI process per request                      | Straightforward synchronous live-server work                | {doc}`tutorials/live-operation`      |
+| {class}`~libtmux.experimental.engines.asyncio.AsyncSubprocessEngine` ([reference](engines/async-subprocess.md))               | One asyncio subprocess per request                    | Async applications that do not need a persistent connection | {doc}`tutorials/async-subprocess`    |
+| {class}`~libtmux.experimental.engines.mock.MockEngine` ([reference](engines/mock.md))                                         | Stateless in-memory simulation                        | Offline rendering and result-conversion tests               | {doc}`tutorials/offline-testing`     |
+| {class}`~libtmux.experimental.engines.mock.AsyncMockEngine` ([reference](engines/async-mock.md))                              | Async stateless in-memory simulation                  | Offline tests of async callers                              | {doc}`tutorials/offline-testing`     |
+| {class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` ([reference](engines/control-mode.md))                  | Subprocess bootstrap, then persistent `tmux -C`       | Pipelined command batches                                   | {doc}`tutorials/control-mode`        |
+| {class}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine` ([reference](engines/async-control-mode.md)) | Async subprocess bootstrap, then supervised `tmux -C` | Async batches and control-mode notifications                | {doc}`tutorials/async-control-plans` |
+| {class}`~libtmux.experimental.engines.imsg.base.ImsgEngine` ([reference](engines/imsg.md))                                    | Native socket with required CLI fallbacks             | POSIX protocol experiments and narrow parity checks         | {doc}`tutorials/imsg-parity`         |
 
 The control-mode engines open a persistent client only when an existing
 session has `destroy-unattached` set to `off`. Until then, they use their
@@ -30,13 +30,10 @@ event loop.
 
 ```python
 >>> from libtmux.experimental.engines import available_engines, create_engine
->>> from libtmux.experimental.ops import HasSession, run
->>> from libtmux.experimental.ops._types import SessionId
 >>> available_engines()
 ('control_mode', 'imsg', 'mock', 'subprocess')
->>> engine = create_engine("mock")
->>> run(HasSession(target=SessionId("$0")), engine).status
-'complete'
+>>> type(create_engine("mock")).__name__
+'MockEngine'
 ```
 
 ## Engine boundary
@@ -56,15 +53,17 @@ raise at the engine boundary.
 
 ## Tutorials
 
-Start with {doc}`tutorials/live-operation`, then use the task guide that matches
-the boundary you need to understand:
+Each engine row links to its tested workflow. Start with
+{doc}`tutorials/live-operation`, or go directly to the transport you need:
 
-- {doc}`tutorials/results-and-failures`
 - {doc}`tutorials/async-control-plans`
 - {doc}`tutorials/async-subprocess`
 - {doc}`tutorials/control-mode`
 - {doc}`tutorials/offline-testing`
 - {doc}`tutorials/imsg-parity`
+
+{doc}`tutorials/results-and-failures` is the shared result guide rather than an
+engine-owned workflow.
 
 ## Shared API
 
