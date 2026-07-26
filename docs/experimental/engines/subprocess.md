@@ -23,6 +23,7 @@ process and has no cleanup method.
 ```python
 >>> from libtmux.experimental.engines import SubprocessEngine
 >>> from libtmux.experimental.ops import ListSessions, run
+>>> assert session.session_id is not None
 >>> engine = SubprocessEngine.for_server(server)
 >>> result = run(ListSessions(), engine).raise_for_status()
 >>> any(item.session_id == session.session_id for item in result.sessions)

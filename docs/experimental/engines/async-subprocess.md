@@ -24,8 +24,7 @@ reaps its child.
 ```python
 >>> import asyncio
 >>> from libtmux.experimental.engines import AsyncSubprocessEngine
->>> from libtmux.experimental.ops import DisplayMessage, arun
->>> from libtmux.experimental.ops._types import PaneId
+>>> from libtmux.experimental.ops import DisplayMessage, PaneId, arun
 >>> assert pane is not None and pane.pane_id is not None
 >>> async def read_pane_id():
 ...     engine = AsyncSubprocessEngine.for_server(server)
