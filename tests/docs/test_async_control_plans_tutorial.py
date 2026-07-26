@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import doctest
+import importlib
 import pathlib
 import re
 import shlex
 import typing as t
-
-from doctest_docutils import DocutilsDocTestFinder
 
 from libtmux.experimental.engines import AsyncControlModeEngine
 from libtmux.experimental.engines.base import (
@@ -20,6 +20,7 @@ from libtmux.experimental.engines.base import (
 )
 from libtmux.experimental.ops import (
     DisplayMessage,
+    DisplayMessageResult,
     LazyPlan,
     MarkedPlanner,
     SetOption,
@@ -32,6 +33,25 @@ if t.TYPE_CHECKING:
 
     from libtmux.experimental.ops.plan import PlanResult
     from libtmux.session import Session
+
+
+class _DocutilsDocTestFinder(t.Protocol):
+    """Typed consumer boundary for gp-libs' untyped top-level module."""
+
+    def find(
+        self,
+        string: str,
+        name: str | None = None,
+    ) -> list[doctest.DocTest]:
+        """Extract doctests from docutils source."""
+        ...
+
+
+_doctest_docutils = importlib.import_module("doctest_docutils")
+DocutilsDocTestFinder = t.cast(
+    "type[_DocutilsDocTestFinder]",
+    _doctest_docutils.DocutilsDocTestFinder,
+)
 
 _ROOT = pathlib.Path(__file__).parents[2]
 _TUTORIAL = _ROOT / "docs" / "experimental" / "tutorials" / "async-control-plans.md"
@@ -197,7 +217,9 @@ def test_compiled_tab_matches_real_async_control_dispatch(session: Session) -> N
         "complete",
         "complete",
     ]
-    assert outcome.results[-1].text == "worker:ready"
+    message_result = outcome.results[-1]
+    assert isinstance(message_result, DisplayMessageResult)
+    assert message_result.text == "worker:ready"
     assert server.panes.get(pane_id=pane_id) is not None
     assert len(calls) == len(visible) == 2
     assert sum(is_command_separator(token) for token in calls[0]) == 4
