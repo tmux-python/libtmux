@@ -298,7 +298,7 @@ class PlanBuilder:
         version: str | None = None,
         planner: Planner | None = None,
     ) -> PlanResult:
-        """Async twin of :meth:`run` (same fold and host steps, ``await``ed).
+        """Async twin of :meth:`run` with the same folding and host steps.
 
         Examples
         --------
