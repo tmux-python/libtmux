@@ -465,7 +465,7 @@ class SubclassFixture(t.NamedTuple):
     """A ``from_env`` constructor, and the class it is called on."""
 
     test_id: str
-    subclass: type[Server] | type[Session] | type[Window] | type[Pane]
+    subclass: type[Server | Session | Window | Pane]
 
 
 class MyServer(Server):
@@ -500,7 +500,7 @@ SUBCLASS_FIXTURES: list[SubclassFixture] = [
 def test_from_env_returns_the_class_it_was_called_on(
     session: Session,
     test_id: str,
-    subclass: type[Server] | type[Session] | type[Window] | type[Pane],
+    subclass: type[Server | Session | Window | Pane],
 ) -> None:
     """``from_env`` honours ``cls``, so subclasses get their own type back.
 

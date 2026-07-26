@@ -70,7 +70,7 @@ dev = [
   "coverage",
   "pytest-cov",
   # Lint
-  "ruff",
+  "ruff>=0.16.0",
   "mypy",
 ]
 
@@ -95,7 +95,7 @@ coverage =[
 ]
 lint = [
   "typing-extensions; python_version < '3.11'",
-  "ruff",
+  "ruff>=0.16.0",
   "mypy",
 ]
 
@@ -179,7 +179,10 @@ exclude_lines = [
 target-version = "py310"
 
 [tool.ruff.lint]
-select = [
+# `select` is deliberately unset: ruff 0.16 enables a curated default rule
+# set, and an explicit `select` would replace it rather than extend it.
+# `extend-select` layers this project's additional linters on top.
+extend-select = [
   "E", # pycodestyle
   "F", # pyflakes
   "I", # isort
@@ -196,7 +199,7 @@ select = [
   "PERF", # Perflint
   "RUF", # Ruff-specific rules
   "D", # pydocstyle
-  "FA100",  # future annotations
+  "FA100", # future annotations
 ]
 ignore = [
   "COM812", # missing trailing comma, ruff format conflict
@@ -228,6 +231,31 @@ convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
 "*/__init__.py" = ["F401"]
+"docs/conf.py" = [
+  # Sphinx reads version metadata by exec'ing the package's `__about__.py`,
+  # which keeps the docs build off an import of the package being documented.
+  "S102",
+]
+"src/libtmux/_internal/query_list.py" = [
+  # `X as X` is PEP 484's explicit re-export form, and mypy runs strict here,
+  # so dropping the alias stops mypy seeing the exception types as exported.
+  "PLC0414",
+  # The lookup operators are total predicates over caller-supplied data of any
+  # type: a comparison that blows up means "no match", not an error to raise.
+  "BLE001",
+]
+"src/libtmux/options.py" = [
+  # The option parsers accept whatever shape tmux prints, across every tmux
+  # version. An unparseable entry is logged and kept as its raw value so one
+  # unfamiliar option cannot take down every other option on the object.
+  "BLE001",
+]
+"src/libtmux/server.py" = [
+  # `Server.is_alive` answers a yes/no question about an unreachable server.
+  # Every way of failing to reach it is a "no"; callers who need the reason
+  # use `Server.raise_if_dead`.
+  "BLE001",
+]
 
 [tool.pytest.ini_options]
 addopts = [

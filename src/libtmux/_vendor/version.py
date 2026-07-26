@@ -75,7 +75,7 @@ class InvalidVersion(ValueError):
     """
 
     def __init__(self, version: str, *args: object) -> None:
-        return super().__init__(f"Invalid version: '{version}'")
+        super().__init__(f"Invalid version: '{version}'")
 
 
 class _BaseVersion:
