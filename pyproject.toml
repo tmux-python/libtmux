@@ -231,6 +231,11 @@ convention = "numpy"
 
 [tool.ruff.lint.per-file-ignores]
 "*/__init__.py" = ["F401"]
+"docs/conf.py" = [
+  # Sphinx reads version metadata by exec'ing the package's `__about__.py`,
+  # which keeps the docs build off an import of the package being documented.
+  "S102",
+]
 
 [tool.pytest.ini_options]
 addopts = [
