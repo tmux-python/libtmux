@@ -72,11 +72,9 @@ engine, inspect the engine result path separately if failure provenance matters.
 
 .. autoclass:: libtmux.experimental.query.PaneQuery
    :members: filter, order_by, limit, all, first, map, commands
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.query.CommandPlan
    :members: to_plan, run
-   :no-undoc-members:
 ```
 
 ## Related topics

@@ -64,7 +64,6 @@ tmux rejection or an incomplete composed operation.
 ```{eval-rst}
 .. autoclass:: libtmux.experimental.ops.results.Result
    :members:
-   :no-undoc-members:
 ```
 
 ### Acknowledgement and creation
@@ -75,11 +74,9 @@ tmux rejection or an incomplete composed operation.
 
 .. autoclass:: libtmux.experimental.ops.results.CreateResult
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.SplitWindowResult
    :members:
-   :no-undoc-members:
 ```
 
 ### Text, existence, and options
@@ -87,23 +84,18 @@ tmux rejection or an incomplete composed operation.
 ```{eval-rst}
 .. autoclass:: libtmux.experimental.ops.results.CapturePaneResult
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.DisplayMessageResult
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.HasSessionResult
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ShowBufferResult
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ShowOptionsResult
    :members:
-   :no-undoc-members:
 ```
 
 ### Snapshot collections
@@ -111,19 +103,15 @@ tmux rejection or an incomplete composed operation.
 ```{eval-rst}
 .. autoclass:: libtmux.experimental.ops.results.ListClientsResult
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ListPanesResult
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ListSessionsResult
    :members:
-   :no-undoc-members:
 
 .. autoclass:: libtmux.experimental.ops.results.ListWindowsResult
    :members:
-   :no-undoc-members:
 ```
 
 ### Navigation failures

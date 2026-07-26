@@ -250,25 +250,40 @@ type
 """
 ```
 
-**Classes with fields** — `NamedTuple`, dataclasses — document every field in
-an `Attributes` section:
+**Structured classes** — Every first-party declarative record under
+`src/libtmux` must document its effective fields in a NumPy `Attributes`
+section. This includes dataclasses, class and functional `NamedTuple`
+declarations, `TypedDict`, and future record-style models:
 
 ```python
 @dataclasses.dataclass()
-class Pane(Obj, OptionsMixin, HooksMixin):
-    """:term:`tmux(1)` :term:`Pane`.
+class PaneRef:
+    """Identity of a pane on a server.
 
     Attributes
     ----------
     server : Server
         Server the pane belongs to.
+    pane_id : str
+        Stable tmux pane identifier.
     """
+
+    server: Server
+    pane_id: str
 ```
 
-Autodoc renders every field whether or not you describe it, so an
-undocumented `NamedTuple` field ships to the API docs as "Alias for field
-number 0" and a dataclass field ships bare. Document all of them — a class
-with three fields and two documented still ships a stub for the third.
+Document fields in runtime order with non-empty semantic descriptions.
+Inherited prose counts toward subclass completeness. A subclass that
+redeclares a field may provide a more specific description, and a
+multiple-inheritance composite may inherit same-named prose from distinct
+defining bases; normal MRO precedence selects the effective description.
+Autodoc renders every field whether or not it is described, so a partial
+section still ships bare fields or generated text such as "Alias for field
+number 0".
+
+Test-local parameter containers and `libtmux._vendor` records are exempt unless
+they are intentionally published through autodoc. Behavioral classes that are
+not declarative records are outside this rule.
 
 ### Doctests
 
