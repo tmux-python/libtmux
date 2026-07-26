@@ -30,25 +30,19 @@ If no safe session exists, the batch uses
 This lets `new-session` bootstrap an empty server without creating a private
 control session. A later batch can open the persistent connection.
 
+Within the context, pass typed operations to
+{func}`~libtmux.experimental.ops.run` as you would with any synchronous engine.
+
 ```python
->>> from libtmux.experimental.engines import CommandRequest, ControlModeEngine
->>> assert session.session_id is not None
->>> assert window.window_id is not None
->>> requests = [
-...     CommandRequest.from_args(
-...         "display-message", "-p", "-t", session.session_id, "#{session_id}"
-...     ),
-...     CommandRequest.from_args(
-...         "display-message", "-p", "-t", window.window_id, "#{window_id}"
-...     ),
-... ]
+>>> from libtmux.experimental.engines import ControlModeEngine
+>>> from libtmux.experimental.ops import DisplayMessage, PaneId, run
+>>> assert pane is not None and pane.pane_id is not None
 >>> with ControlModeEngine.for_server(server) as engine:
-...     results = engine.run_batch(requests)
->>> [result.returncode for result in results]
-[0, 0]
->>> results[0].stdout == (session.session_id,)
-True
->>> results[1].stdout == (window.window_id,)
+...     result = run(
+...         DisplayMessage(target=PaneId(pane.pane_id), message="#{pane_id}"),
+...         engine,
+...     ).raise_for_status()
+>>> result.text == pane.pane_id
 True
 ```
 
@@ -78,5 +72,5 @@ new policy.
 
 ## Related tutorial
 
-See {doc}`../tutorials/control-mode` for sync and async batching and lifecycle
-differences.
+See {doc}`../tutorials/control-mode` for ordered pipelining over one synchronous
+control client.
