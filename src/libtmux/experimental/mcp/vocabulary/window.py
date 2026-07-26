@@ -23,6 +23,7 @@ from libtmux.experimental.ops import (
     arun,
 )
 from libtmux.experimental.ops._types import Target
+from libtmux.experimental.ops.results import _require_created_id
 
 
 async def acreate_window(
@@ -53,8 +54,9 @@ async def acreate_window(
         version=version,
     )
     result.raise_for_status()
+    window_id_value = _require_created_id(result, required_subids=("pane",))
     return WindowResult(
-        window_id=result.new_id or "",
+        window_id=window_id_value,
         name=name,
         first_pane_id=result.first_pane_id,
     )

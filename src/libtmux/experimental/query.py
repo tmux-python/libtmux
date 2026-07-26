@@ -81,6 +81,15 @@ class PaneQuery:
 
     Each method returns a new query; :meth:`all` / :meth:`first` resolve it
     against a :data:`PaneSource`.
+
+    Attributes
+    ----------
+    lookups : Mapping[str, Any]
+        QueryList-style field lookups applied to pane snapshots.
+    order : str | None
+        Snapshot field used for ascending ordering.
+    limit_count : int | None
+        Maximum number of matched panes to return.
     """
 
     lookups: Mapping[str, t.Any] = field(default_factory=dict)
@@ -132,7 +141,15 @@ class PaneQuery:
 
 @dataclass(frozen=True)
 class MappedPaneQuery(t.Generic[MappedT]):
-    """A :class:`PaneQuery` whose rows are projected through a function."""
+    """A :class:`PaneQuery` whose rows are projected through a function.
+
+    Attributes
+    ----------
+    query : PaneQuery
+        Underlying pane query.
+    fn : Callable[[PaneSnapshot], MappedT]
+        Pure projection applied to every matched snapshot.
+    """
 
     query: PaneQuery
     fn: Callable[[PaneSnapshot], MappedT]
@@ -156,6 +173,13 @@ class BoundPaneCommands:
     plan folds to a single tmux dispatch. ``target`` is a :data:`~..ops._types.Target`
     so a forward :class:`~..ops._types.SlotRef` (a pane an earlier op creates)
     flows through as well as a concrete :class:`~..ops._types.PaneId`.
+
+    Attributes
+    ----------
+    plan : LazyPlan
+        Shared plan that receives the recorded pane operations.
+    target : Target
+        Concrete or forward pane target bound to every command.
     """
 
     plan: LazyPlan
@@ -211,6 +235,13 @@ class _PaneRefBase:
     (:meth:`split`) record a create op and return a *forward* handle to the
     not-yet-created pane; leaf commands live under :attr:`cmd`; :meth:`do`
     threads a side-effecting recorder into a fluent chain.
+
+    Attributes
+    ----------
+    plan : LazyPlan
+        Shared plan that receives operations recorded through this handle.
+    target : Target
+        Concrete or forward pane target.
     """
 
     plan: LazyPlan
@@ -273,6 +304,11 @@ class PaneRef(_PaneRefBase):
     >>> ref = PaneRef(LazyPlan(), PaneId("%1"), snapshot=snap)
     >>> ref.pane_id, ref.active
     ('%1', True)
+
+    Attributes
+    ----------
+    snapshot : PaneSnapshot
+        Snapshot that supplies read-only pane state.
     """
 
     snapshot: PaneSnapshot
@@ -300,6 +336,13 @@ class CommandPlan:
     Pure until resolved -- :meth:`to_plan` records the operations against a source
     snapshot; :meth:`run` reads the source, builds, and dispatches (folding to a
     single tmux call by default).
+
+    Attributes
+    ----------
+    query : PaneQuery
+        Query that chooses the pane snapshots.
+    mapper : Callable[[PaneRef], Any]
+        Recorder invoked once for each matched pane.
     """
 
     query: PaneQuery
@@ -319,7 +362,7 @@ class CommandPlan:
         >>> [op.kind for op in plan.operations]
         ['send_keys']
         >>> plan.operations[0].render()
-        ('send-keys', '-t', '%1', 'clear', 'Enter')
+        ('send-keys', '-t', '%1', '--', 'clear', 'Enter')
         """
         plan = LazyPlan()
         for pane in self.query.all(source):

@@ -80,6 +80,16 @@ def test_read_op_render(
         assert fragment in argv
 
 
+def test_display_message_leading_dash_is_positional() -> None:
+    """A message cannot be reinterpreted as a display-message flag."""
+    assert DisplayMessage(message="-I").render() == (
+        "display-message",
+        "-p",
+        "--",
+        "-I",
+    )
+
+
 class ParseCase(t.NamedTuple):
     """An op plus a synthesized tmux outcome and the result fields it yields."""
 
@@ -214,6 +224,44 @@ def test_display_message_live(session: Session) -> None:
     )
     assert result.ok
     assert result.text == session.session_id
+
+
+def test_display_message_leading_dash_live(session: Session) -> None:
+    """A flag-shaped message prints as data on a real tmux server."""
+    from libtmux.experimental.engines import SubprocessEngine
+    from libtmux.experimental.ops import run
+
+    engine = SubprocessEngine.for_server(session.server)
+    pane = session.active_pane
+    assert pane is not None and pane.pane_id is not None
+
+    result = run(
+        DisplayMessage(target=PaneId(pane.pane_id), message="-I"),
+        engine,
+    )
+
+    assert result.ok
+    assert result.text == "-I"
+    assert session.server.is_alive()
+
+
+def test_display_message_leading_dash_control_mode_live(session: Session) -> None:
+    """The same positional boundary survives control-mode parsing."""
+    from libtmux.experimental.engines import ControlModeEngine
+    from libtmux.experimental.ops import run
+
+    pane = session.active_pane
+    assert pane is not None and pane.pane_id is not None
+
+    with ControlModeEngine.for_server(session.server) as engine:
+        result = run(
+            DisplayMessage(target=PaneId(pane.pane_id), message="-I"),
+            engine,
+        )
+
+    assert result.ok
+    assert result.text == "-I"
+    assert session.server.is_alive()
 
 
 def test_show_options_live(session: Session) -> None:

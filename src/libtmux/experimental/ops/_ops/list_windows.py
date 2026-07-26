@@ -24,7 +24,7 @@ if t.TYPE_CHECKING:
 class ListWindows(Operation[ListWindowsResult]):
     """List windows and return typed :class:`WindowSnapshot` rows.
 
-    Parameters
+    Attributes
     ----------
     all_windows : bool
         List windows across the whole server (``-a``).

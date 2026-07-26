@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class NextWindow(Operation[AckResult]):
     """Select the next window in a session (``next-window``).
 
-    Parameters
+    Attributes
     ----------
     alert : bool
         Move to the next window with an alert (``-a``).

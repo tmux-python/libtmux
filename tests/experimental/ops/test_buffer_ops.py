@@ -40,12 +40,12 @@ RENDER_CASES = (
     RenderCase(
         test_id="set_buffer",
         op=SetBuffer(data="hello"),
-        expected=("set-buffer", "hello"),
+        expected=("set-buffer", "--", "hello"),
     ),
     RenderCase(
         test_id="set_buffer_named",
         op=SetBuffer(buffer_name="b0", data="hi"),
-        expected=("set-buffer", "-b", "b0", "hi"),
+        expected=("set-buffer", "-b", "b0", "--", "hi"),
     ),
     RenderCase(
         test_id="delete_buffer_named",
@@ -60,17 +60,17 @@ RENDER_CASES = (
     RenderCase(
         test_id="load_buffer",
         op=LoadBuffer(path="/tmp/x"),
-        expected=("load-buffer", "/tmp/x"),
+        expected=("load-buffer", "--", "/tmp/x"),
     ),
     RenderCase(
         test_id="save_buffer",
         op=SaveBuffer(path="/tmp/x"),
-        expected=("save-buffer", "/tmp/x"),
+        expected=("save-buffer", "--", "/tmp/x"),
     ),
     RenderCase(
         test_id="save_buffer_append_named",
         op=SaveBuffer(buffer_name="b0", path="/tmp/x", append=True),
-        expected=("save-buffer", "-a", "-b", "b0", "/tmp/x"),
+        expected=("save-buffer", "-a", "-b", "b0", "--", "/tmp/x"),
     ),
     RenderCase(
         test_id="paste_buffer",
@@ -150,6 +150,21 @@ def test_set_show_save_delete_buffer_live(
     assert out.read_text() == "hello world"
 
     assert run(DeleteBuffer(buffer_name="ops_b"), engine).ok
+
+
+def test_set_buffer_flag_shaped_data_live(session: Session) -> None:
+    """A flag-shaped buffer payload round-trips as data on real tmux."""
+    from libtmux.experimental.engines import SubprocessEngine
+
+    engine = SubprocessEngine.for_server(session.server)
+    name = "ops_flag_data"
+    try:
+        run(SetBuffer(buffer_name=name, data="-a"), engine).raise_for_status()
+        shown = run(ShowBuffer(buffer_name=name), engine)
+        assert shown.ok
+        assert shown.text == "-a"
+    finally:
+        run(DeleteBuffer(buffer_name=name), engine)
 
 
 def test_load_and_paste_buffer_live(

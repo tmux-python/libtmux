@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from libtmux.experimental.ops._types import Effects
-from libtmux.experimental.ops.operation import Operation
+from libtmux.experimental.ops.operation import Operation, positional_args
 from libtmux.experimental.ops.registry import register
 from libtmux.experimental.ops.results import AckResult
 
@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class SourceFile(Operation[AckResult]):
     """Execute tmux commands from a file (``source-file``).
 
-    Parameters
+    Attributes
     ----------
     path : str
         Path to the file to source.
@@ -29,7 +29,7 @@ class SourceFile(Operation[AckResult]):
     Examples
     --------
     >>> SourceFile(path="~/.tmux.conf").render()
-    ('source-file', '~/.tmux.conf')
+    ('source-file', '--', '~/.tmux.conf')
     """
 
     kind = "source_file"
@@ -53,5 +53,5 @@ class SourceFile(Operation[AckResult]):
             out.append("-q")
         if self.verbose:
             out.append("-v")
-        out.append(self.path)
+        out.extend(positional_args(self.path))
         return tuple(out)

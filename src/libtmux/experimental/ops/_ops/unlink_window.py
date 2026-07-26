@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class UnlinkWindow(Operation[AckResult]):
     """Unlink a window from a session (``unlink-window``).
 
-    Parameters
+    Attributes
     ----------
     kill : bool
         Also destroy the window if it is no longer linked anywhere (``-k``).

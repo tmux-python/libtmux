@@ -48,7 +48,7 @@ if t.TYPE_CHECKING:
 class CompiledWorkspaceSet:
     """A merged workspace-set plan plus batch metadata.
 
-    Parameters
+    Attributes
     ----------
     plan : LazyPlan
         The combined Core operation spine.
@@ -74,7 +74,17 @@ class CompiledWorkspaceSet:
 
 @dataclass(frozen=True)
 class WorkspaceSetResult:
-    """Result of building a workspace set."""
+    """Result of building a workspace set.
+
+    Attributes
+    ----------
+    result : PlanResult
+        Result of the combined operation plan.
+    sessions : tuple[str, ...]
+        Declared session names in input order.
+    reused : tuple[str, ...]
+        Existing session names retained by ``on_exists="reuse"``.
+    """
 
     result: PlanResult
     sessions: tuple[str, ...]
@@ -107,6 +117,11 @@ class WorkspaceSet:
     >>> ws = Workspace("dev", windows=[Window("w", panes=[Pane("echo hi")])])
     >>> WorkspaceSet((ws,)).build(MockEngine(), preflight=False).ok
     True
+
+    Attributes
+    ----------
+    workspaces : tuple[Workspace, ...]
+        Workspace declarations in build order.
     """
 
     workspaces: tuple[Workspace, ...]
@@ -198,11 +213,15 @@ def _rebase_target(target: Target | None, offset: int) -> Target | None:
 
 def _rebase_operation(operation: Operation[t.Any], offset: int) -> Operation[t.Any]:
     """Shift operation targets from a per-workspace plan into the merged plan."""
-    return dataclasses.replace(
-        operation,
-        target=_rebase_target(operation.target, offset),
-        src_target=_rebase_target(operation.src_target, offset),
-    )
+    constructor_fields = {
+        field.name for field in dataclasses.fields(operation) if field.init
+    }
+    changes: dict[str, Target | None] = {}
+    if "target" in constructor_fields:
+        changes["target"] = _rebase_target(operation.target, offset)
+    if "src_target" in constructor_fields:
+        changes["src_target"] = _rebase_target(operation.src_target, offset)
+    return dataclasses.replace(operation, **changes)
 
 
 def _rebase_host_step(step: HostStep, offset: int) -> HostStep:

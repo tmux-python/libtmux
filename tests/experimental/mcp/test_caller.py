@@ -34,6 +34,9 @@ from libtmux.experimental.mcp.vocabulary._caller import (
     socket_matches,
 )
 from libtmux.experimental.mcp.vocabulary._resolve import resolve_origin
+from libtmux.experimental.ops import KillPane, KillSession, KillWindow, RespawnPane
+from libtmux.experimental.ops._types import PaneId, SessionId, WindowId
+from libtmux.experimental.ops.serialize import operation_to_dict
 
 fastmcp = pytest.importorskip("fastmcp")
 from fastmcp.exceptions import ToolError  # noqa: E402 - after importorskip
@@ -352,6 +355,78 @@ def test_self_kill_refusals_live(
         monkeypatch.delenv("TMUX_PANE", raising=False)
         monkeypatch.delenv("TMUX", raising=False)
         kill_session(engine, created.session_id)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ("pane", "window", "session"),
+)
+def test_plan_refuses_caller_owned_target_live(
+    kind: str,
+    session: Session,
+) -> None:
+    """Serialized plans cannot bypass pane/window/session caller protection."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_server
+
+    engine = SubprocessEngine.for_server(session.server)
+    created = create_session(engine, name=f"plan-self-{kind}")
+    pane_id_value = created.first_pane_id
+    window_id_value = created.first_window_id
+    assert pane_id_value is not None
+    assert window_id_value is not None
+    real_socket = session.server.cmd(
+        "display-message",
+        "-p",
+        "#{socket_path}",
+    ).stdout[0]
+    caller = CallerContext.from_env(
+        {
+            "TMUX_PANE": pane_id_value,
+            "TMUX": f"{real_socket},0,0",
+        }
+    )
+    operation = {
+        "pane": KillPane(target=PaneId(pane_id_value)),
+        "window": KillWindow(target=WindowId(window_id_value)),
+        "session": KillSession(target=SessionId(created.session_id)),
+    }[kind]
+    server = build_server(engine, safety_level="destructive", caller=caller)
+
+    async def main() -> None:
+        async with fastmcp.Client(server) as client:
+            await client.call_tool(
+                "execute_plan",
+                {"operations": [operation_to_dict(operation)]},
+            )
+
+    try:
+        with pytest.raises(ToolError, match="this MCP server"):
+            asyncio.run(main())
+        assert session.server.sessions.filter(session_id=created.session_id)
+    finally:
+        session.server.cmd("kill-session", "-t", created.session_id)
+
+
+def test_plan_refuses_parameterized_kill_of_caller_pane() -> None:
+    """Caller protection also applies to a serialized ``kill=True`` variant."""
+    from libtmux.experimental.mcp.fastmcp_adapter import build_server
+
+    caller = CallerContext.from_env({"TMUX_PANE": "%9", "TMUX": "/tmp/caller.sock,1,2"})
+    server = build_server(
+        MockEngine(),
+        safety_level="destructive",
+        caller=caller,
+    )
+    operations = [
+        operation_to_dict(RespawnPane(target=PaneId("%9"), kill=True)),
+    ]
+
+    async def main() -> None:
+        async with fastmcp.Client(server) as client:
+            await client.call_tool("execute_plan", {"operations": operations})
+
+    with pytest.raises(ToolError, match="this MCP server"):
+        asyncio.run(main())
 
 
 # --------------------------------------------------------------------------- #

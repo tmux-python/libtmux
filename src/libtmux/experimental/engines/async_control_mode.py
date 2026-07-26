@@ -81,6 +81,15 @@ _STREAM_END = object()  # broadcast to subscriber queues to end their async for
 class ControlNotification:
     """An asynchronous tmux control-mode notification.
 
+    Attributes
+    ----------
+    kind : str
+        Notification name without the leading ``%``.
+    args : tuple[str, ...]
+        Whitespace-separated notification arguments.
+    raw : str
+        Decoded control-mode line before tokenization.
+
     Examples
     --------
     >>> ControlNotification.parse(b"%window-add @3")
@@ -105,6 +114,20 @@ class ControlNotification:
 
 @dataclass(slots=True)
 class _PendingCommand:
+    """One command awaiting its control-mode response blocks.
+
+    Attributes
+    ----------
+    future : asyncio.Future[CommandResult]
+        Future completed when the expected blocks arrive.
+    argv : tuple[str, ...]
+        Rendered tmux command tokens.
+    expected : int
+        Number of response blocks required for completion.
+    blocks : list[ControlModeBlock]
+        Response blocks collected so far.
+    """
+
     future: asyncio.Future[CommandResult]
     argv: tuple[str, ...]
     expected: int

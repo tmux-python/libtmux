@@ -15,7 +15,7 @@ from libtmux.experimental.ops.results import AckResult
 class PreviousWindow(Operation[AckResult]):
     """Select the previous window in a session (``previous-window``).
 
-    Parameters
+    Attributes
     ----------
     alert : bool
         Move to the previous window with an alert (``-a``).

@@ -32,6 +32,8 @@ from dataclasses import dataclass
 from fastmcp import Context
 
 from libtmux.experimental.engines.base import CommandRequest
+from libtmux.experimental.mcp._policy import _is_bounded_safe_format
+from libtmux.experimental.mcp._safety import ExpectedToolError
 from libtmux.experimental.mcp._settle import (
     SettleReason,
     accumulate_until_settle,
@@ -75,6 +77,23 @@ class DoneMetadata:
     finished" signal. The screen-state fields add context without claiming intent.
     ``pane_dead`` is ``None`` when the pane is gone or its liveness could not be
     read (the command exited and took the pane with it).
+
+    Attributes
+    ----------
+    pane_dead : bool or None
+        Whether tmux reports the pane as dead.
+    pane_dead_status : int or None
+        Exit status reported for a dead pane.
+    pane_dead_signal : str or None
+        Signal reported for a dead pane.
+    pane_current_command : str or None
+        Command tmux reports as currently running in the pane.
+    cursor_y : int or None
+        Current cursor row in the pane.
+    history_size : int or None
+        Number of history lines retained by the pane.
+    pane_in_mode : bool
+        Whether the pane is in a tmux mode.
     """
 
     pane_dead: bool | None
@@ -98,6 +117,33 @@ class MonitorResult:
     ``snapshot_lines`` is ``None`` when the call passed ``snapshot=False``.
     ``exit_code`` is the process exit code when the watched process is known to
     have exited (``done.pane_dead`` is true), else ``None``.
+
+    Attributes
+    ----------
+    pane_id : str
+        Watched pane id.
+    reason : SettleReason
+        Condition that ended monitoring.
+    captured_text : str
+        Collected pane output, possibly truncated.
+    byte_count : int
+        Number of captured output bytes.
+    frame_count : int
+        Number of output frames observed.
+    idle_ms_observed : int
+        Most recent output-idle interval in milliseconds.
+    elapsed_ms : int
+        Total monitoring duration in milliseconds.
+    truncated : bool
+        Whether the output cap truncated captured text.
+    dropped : int
+        Number of dropped stream notifications.
+    done : DoneMetadata
+        Pane-state evidence collected at completion.
+    exit_code : int or None
+        Known process exit status for a dead pane.
+    snapshot_lines : tuple[str, ...] or None
+        Optional final pane snapshot lines.
     """
 
     pane_id: str
@@ -156,8 +202,35 @@ async def _install_subscriptions(
     engine: _StreamEngine,
     specs: list[str] | None,
 ) -> None:
-    """Install ``refresh-client -B`` format subscriptions (``name:what:format``)."""
-    for spec in specs or []:
+    """Install bounded ``refresh-client -B`` format subscriptions.
+
+    ``refresh-client`` reevaluates each stored format with jobs enabled. Keep
+    this readonly edge to the same inert grammar as readonly
+    ``display-message``: plain text, escaped hash pairs, and simple
+    ``#{field_name}`` lookups.
+    """
+    validated: list[str] = []
+    for index, spec in enumerate(specs or []):
+        parts = spec.split(":", 2)
+        if len(parts) != 3 or any(not part.strip() for part in parts):
+            message = f"event subscription at index {index} must be name:what:format"
+            raise ExpectedToolError(
+                message,
+                suggestion=(
+                    "Pass a non-empty subscription such as 'pane:%*:#{pane_id}'."
+                ),
+            )
+        if not _is_bounded_safe_format(parts[2]):
+            message = f"event subscription format at index {index} is not readonly-safe"
+            raise ExpectedToolError(
+                message,
+                suggestion=(
+                    "Use plain text, escaped hash pairs, and simple "
+                    "'#{field_name}' lookups only."
+                ),
+            )
+        validated.append(spec)
+    for spec in validated:
         await engine.run(CommandRequest.from_args("refresh-client", "-B", spec))
 
 
@@ -265,6 +338,9 @@ def _register_push(
         comes first. ``kinds`` filters by notification kind (e.g. ``window-add``,
         ``output``). With ``source="subscription"``, pass ``subscriptions`` as
         ``name:what:format`` specs to install ``refresh-client -B`` watches first.
+        Formats accept plain text, escaped hash pairs, and simple
+        ``#{field_name}`` lookups; jobs, modifiers, and nested expressions are
+        rejected before tmux receives them.
         """
         if source == "subscription":
             await _install_subscriptions(engine, subscriptions)

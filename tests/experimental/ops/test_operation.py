@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+import logging
 import typing as t
 from dataclasses import dataclass
 
 import pytest
 
+from libtmux.experimental.engines.base import (
+    CommandSeparator,
+    is_command_separator,
+)
 from libtmux.experimental.ops import (
+    BreakPane,
     CapturePane,
+    NewPane,
+    NewWindow,
     SelectLayout,
     SendKeys,
+    SetBuffer,
     SplitWindow,
 )
-from libtmux.experimental.ops._types import Effects, PaneId, WindowId
+from libtmux.experimental.ops._types import Effects, PaneId, SessionId, WindowId
 from libtmux.experimental.ops.exc import VersionUnsupported
 from libtmux.experimental.ops.operation import Operation
 from libtmux.experimental.ops.results import Result
@@ -35,13 +44,36 @@ class _FutureOp(Operation[Result]):
 def test_render_includes_target_then_args() -> None:
     """``render`` emits ``command -t target *args`` in order."""
     op = SendKeys(target=PaneId("%1"), keys="echo hi", enter=True)
-    assert op.render() == ("send-keys", "-t", "%1", "echo hi", "Enter")
+    assert op.render() == ("send-keys", "-t", "%1", "--", "echo hi", "Enter")
 
 
 def test_render_without_target() -> None:
     """An operation with no target omits ``-t``."""
     op = SelectLayout(layout="tiled")
-    assert op.render() == ("select-layout", "tiled")
+    assert op.render() == ("select-layout", "--", "tiled")
+
+
+@pytest.mark.parametrize(
+    "operation",
+    (
+        pytest.param(
+            SetBuffer(buffer_name=CommandSeparator(";"), data="kill-server"),
+            id="flag_value",
+        ),
+        pytest.param(
+            SetBuffer(data=CommandSeparator(";")),
+            id="positional_value",
+        ),
+    ),
+)
+def test_render_normalizes_user_string_subclasses(
+    operation: Operation[t.Any],
+) -> None:
+    """Only the planner can introduce typed structural separators."""
+    argv = operation.render()
+
+    assert all(type(token) is str for token in argv)
+    assert not any(is_command_separator(token) for token in argv)
 
 
 def test_version_gate_drops_unsupported_flag() -> None:
@@ -113,12 +145,94 @@ def test_build_result_parses_payload() -> None:
     assert result.operation is op
 
 
+@pytest.mark.parametrize(
+    "op",
+    (
+        pytest.param(BreakPane(src_target=PaneId("%1")), id="break_pane"),
+        pytest.param(SplitWindow(target=WindowId("@1")), id="split_window"),
+        pytest.param(NewPane(target=PaneId("%1")), id="new_pane"),
+    ),
+)
+@pytest.mark.parametrize(
+    "stdout",
+    (
+        pytest.param((), id="absent_stdout"),
+        pytest.param(("",), id="empty_line"),
+        pytest.param((" \t ",), id="whitespace_line"),
+    ),
+)
+def test_create_blank_or_absent_capture_is_missing(
+    op: Operation[t.Any],
+    stdout: tuple[str, ...],
+) -> None:
+    """An absent or blank captured object id normalizes to the missing sentinel."""
+    result = op.build_result(returncode=0, stdout=stdout)
+
+    assert result.created_id is None
+
+
 def test_build_result_failure_status() -> None:
     """A nonzero return code yields a ``failed`` result and no payload."""
     op = SplitWindow(target=WindowId("@1"))
     result = op.build_result(returncode=1, stderr=("no space for new pane",))
     assert result.status == "failed"
     assert result.new_pane_id is None
+
+
+def test_break_pane_catalog_marks_version_composition() -> None:
+    """The static operation shape discloses its tmux 3.7 rename follow-up."""
+    from libtmux.experimental.ops import catalog
+
+    entry = next(item for item in catalog() if item.kind == "break_pane")
+
+    assert not BreakPane.primitive
+    assert not entry.primitive
+
+
+def test_capture_invariant_logging_keeps_heavy_fields_at_debug(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Warning and error records keep output payloads out of their schema."""
+    operation = NewWindow(target=SessionId("$1"), capture_pane=True)
+    stdout = ("@2",)
+    logger_name = "libtmux.experimental.ops.operation"
+    with caplog.at_level(logging.DEBUG, logger=logger_name):
+        operation.build_result(returncode=0, stdout=stdout)
+
+    primary = t.cast(
+        "t.Any",
+        next(record for record in caplog.records if record.levelno == logging.ERROR),
+    )
+    assert primary.tmux_subcommand == operation.command
+    assert primary.tmux_stdout_len == len(stdout)
+    assert primary.tmux_stderr_len == 0
+    assert not hasattr(primary, "tmux_stdout")
+    assert not hasattr(primary, "tmux_stderr")
+    assert operation.target is not None
+    assert primary.tmux_target == operation.target.render()
+
+    details = t.cast(
+        "t.Any",
+        next(record for record in caplog.records if record.levelno == logging.DEBUG),
+    )
+    assert details.tmux_stdout == list(stdout)
+    assert details.tmux_stderr == []
+
+
+def test_failed_create_result_does_not_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A returned tmux rejection remains data rather than emitting log noise."""
+    operation = NewWindow(target=SessionId("$1"))
+
+    with caplog.at_level(
+        logging.DEBUG,
+        logger="libtmux.experimental.ops.operation",
+    ):
+        result = operation.build_result(returncode=1, stderr=("duplicate",))
+
+    assert result.failed
+    assert caplog.records == []
 
 
 def test_operations_are_frozen() -> None:

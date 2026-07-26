@@ -72,8 +72,7 @@ independent creates via `run_batch`).
 - Running with `python` instead of `uv run` — PEP 723 deps don't resolve.
 - **Comparing `--wait` against no-wait across engines.** Shell startup
   (~0.8–2.1 s) dwarfs a fast build, so the ~20× engine win collapses to ~1.5×
-  once both sides wait. A classic-that-waits vs a builder-that-doesn't is
-  apples-to-oranges (this is the bogus "~79×" trap). Compare like with like.
+  once both sides wait. Compare engines with matching readiness policies.
 - Trusting hyperfine whole-process wall time over the in-process grid — Python
   startup + import dwarfs a 3 ms build and understates the builder. The
   in-process `run` grid is the clean signal.

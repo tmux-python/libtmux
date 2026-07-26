@@ -44,12 +44,13 @@ async def arun_tmux(
     *,
     version: str | None = None,
 ) -> RawResult:
-    """Run an arbitrary tmux command (the guarded raw escape hatch).
+    """Run an arbitrary tmux command (the explicit raw escape hatch).
 
     Returns the structured outcome without raising on a tmux-side failure -- a
     nonzero exit or stderr is reported in :class:`~._results.RawResult`. This is
-    deliberately *not* read-only; servers exposed on a network transport should
-    gate it more strictly than local ones.
+    deliberately destructive and open-world. Unlike typed operations, arbitrary
+    arguments cannot receive target-aware caller-liveness checks; authorization
+    to call this tool is the boundary.
 
     Examples
     --------

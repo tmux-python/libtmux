@@ -14,9 +14,11 @@ from libtmux.exc import LibTmuxException
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from libtmux.experimental.ops.results import Result
+
 
 class OperationError(LibTmuxException):
-    """Base class for problems building or registering operations."""
+    """Base class for operation definition and result-contract failures."""
 
 
 class UnknownOperation(OperationError):
@@ -122,6 +124,58 @@ class FailedCreateError(OperationError):
             f"plan step references slot {slot} ({target}) but that step's create "
             f"failed: {cmd!r} exited {result.returncode}: {stderr}"
         )
+        super().__init__(msg)
+
+
+class MissingCreateIdError(OperationError):
+    """A successful create operation captured no id for its new object.
+
+    A result can be successful at the tmux-command layer while still lacking the
+    ``-P -F`` output an eager or async object needs for navigation. This error
+    preserves that result for diagnosis and remains in the
+    :class:`OperationError` hierarchy for broad operation-layer handlers.
+
+    Parameters
+    ----------
+    result : Result
+        Successful create result missing promised capture output.
+    missing : Sequence[str]
+        Missing capture parts. ``"self"`` denotes the primary created id;
+        ``"window"`` and ``"pane"`` denote requested child ids.
+
+    Examples
+    --------
+    >>> from libtmux.experimental.ops import NewSession
+    >>> result = NewSession().build_result(returncode=0)
+    >>> raise MissingCreateIdError(result)
+    Traceback (most recent call last):
+    ...
+    libtmux.experimental.ops.exc.MissingCreateIdError: tmux 'new-session -d -P
+    -F #{session_id}' completed without capturing the created session id
+    """
+
+    def __init__(
+        self,
+        result: Result,
+        *,
+        missing: Sequence[str] = ("self",),
+    ) -> None:
+        self.result = result
+        self.kind = result.operation.kind
+        self.created_scope = result.operation.effects.creates
+        self.missing = tuple(missing)
+        scope = self.created_scope or "object"
+        rendered = " ".join(result.argv)
+        if self.missing == ("self",):
+            detail = f"the created {scope} id"
+        else:
+            labels = [
+                f"created {scope}" if part == "self" else part for part in self.missing
+            ]
+            detail = "required " + ", ".join(labels) + " id"
+            if len(labels) != 1:
+                detail += "s"
+        msg = f"tmux {rendered!r} completed without capturing {detail}"
         super().__init__(msg)
 
 

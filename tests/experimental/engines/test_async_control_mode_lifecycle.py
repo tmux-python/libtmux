@@ -10,7 +10,7 @@ import pytest
 
 from libtmux._internal.control_mode import ControlMode
 from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
-from libtmux.experimental.engines.base import CommandRequest
+from libtmux.experimental.engines.base import CommandRequest, CommandSeparator
 
 if t.TYPE_CHECKING:
     from libtmux.server import Server
@@ -42,6 +42,22 @@ def test_async_control_reuses_existing_session(session: Session) -> None:
     assert asyncio.run(main()) == (session_id,)
     assert {item.session_id for item in server.sessions} == before
     assert server.is_alive()
+
+
+def test_async_control_preserves_newline_in_argument(session: Session) -> None:
+    """A newline stays inside one argument instead of starting a command."""
+
+    async def main() -> tuple[str, ...]:
+        engine = AsyncControlModeEngine.for_server(session.server)
+        try:
+            result = await engine.run(
+                CommandRequest.from_args("display-message", "-p", "first\nsecond"),
+            )
+            return result.stdout
+        finally:
+            await engine.aclose()
+
+    assert asyncio.run(main()) == ("first", "second")
 
 
 def test_async_empty_server_does_not_gain_a_phantom(server: Server) -> None:
@@ -158,7 +174,7 @@ def test_async_unsafe_fallback_commands_run_concurrently(session: Session) -> No
                     "wait-for",
                     "-S",
                     ready,
-                    ";",
+                    CommandSeparator(";"),
                     "wait-for",
                     release,
                 ),

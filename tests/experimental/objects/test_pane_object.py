@@ -45,7 +45,14 @@ def test_lazy_chain_resolves_forward_ref_on_execute() -> None:
     first = outcome.results[0]
     assert isinstance(first, SplitWindowResult)
     assert first.new_pane_id == "%1"
-    assert outcome.results[1].argv == ("send-keys", "-t", "%1", "vim", "Enter")
+    assert outcome.results[1].argv == (
+        "send-keys",
+        "-t",
+        "%1",
+        "--",
+        "vim",
+        "Enter",
+    )
 
 
 def test_eager_new_pane_returns_live_pane() -> None:

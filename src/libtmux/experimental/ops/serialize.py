@@ -102,6 +102,8 @@ def operation_to_dict(operation: Operation[t.Any]) -> dict[str, t.Any]:
     """
     data: dict[str, t.Any] = {"kind": operation.kind}
     for field in dataclasses.fields(operation):
+        if not field.init:
+            continue
         value = getattr(operation, field.name)
         if field.name in {"target", "src_target"}:
             data[field.name] = target_to_dict(value)
@@ -122,14 +124,22 @@ def operation_from_dict(data: Mapping[str, t.Any]) -> Operation[t.Any]:
     True
     """
     operation_cls = registry.operation(data["kind"])
+    fields = {
+        field.name: field for field in dataclasses.fields(operation_cls) if field.init
+    }
+    unknown = set(data) - {"kind"} - set(fields)
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        msg = f"operation {data['kind']!r} does not accept field(s): {names}"
+        raise TypeError(msg)
     kwargs: dict[str, t.Any] = {}
-    for field in dataclasses.fields(operation_cls):
-        if field.name not in data:
+    for name in fields:
+        if name not in data:
             continue
-        if field.name in {"target", "src_target"}:
-            kwargs[field.name] = target_from_dict(data[field.name])
+        if name in {"target", "src_target"}:
+            kwargs[name] = target_from_dict(data[name])
         else:
-            kwargs[field.name] = data[field.name]
+            kwargs[name] = data[name]
     return operation_cls(**kwargs)
 
 
