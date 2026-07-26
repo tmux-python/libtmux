@@ -244,6 +244,12 @@ convention = "numpy"
   # type: a comparison that blows up means "no match", not an error to raise.
   "BLE001",
 ]
+"src/libtmux/options.py" = [
+  # The option parsers accept whatever shape tmux prints, across every tmux
+  # version. An unparseable entry is logged and kept as its raw value so one
+  # unfamiliar option cannot take down every other option on the object.
+  "BLE001",
+]
 
 [tool.pytest.ini_options]
 addopts = [
