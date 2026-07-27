@@ -6,7 +6,7 @@ import doctest
 import pathlib
 import re
 
-import libtmux.experimental.engines as engines
+from libtmux.experimental import engines
 
 _ROOT = pathlib.Path(__file__).parents[2]
 _ENGINE_LANDING = _ROOT / "docs" / "experimental" / "engines.md"
