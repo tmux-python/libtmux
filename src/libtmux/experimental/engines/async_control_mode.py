@@ -60,6 +60,8 @@ if t.TYPE_CHECKING:
     import types
     from collections.abc import AsyncIterator, Sequence
 
+    from typing_extensions import Self
+
     from libtmux.experimental.engines.base import CommandResult
     from libtmux.experimental.engines.control_mode import ControlModeBlock
 
@@ -684,7 +686,7 @@ class AsyncControlModeEngine:
             if self._proc is proc:
                 self._proc = None
 
-    async def __aenter__(self) -> AsyncControlModeEngine:
+    async def __aenter__(self) -> Self:
         """Start when a safe session exists; otherwise remain lazy to bootstrap."""
         attempt: asyncio.Future[None] | None = None
         async with self._start_lock:

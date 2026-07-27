@@ -19,6 +19,8 @@ if t.TYPE_CHECKING:
     import pathlib
     from collections.abc import Sequence
 
+    from typing_extensions import Self
+
 #: tmux escapes a byte in ``%output`` as a backslash plus three octal digits.
 _CONTROL_OCTAL = re.compile(rb"\\([0-7]{3})")
 
@@ -44,7 +46,7 @@ class CommandSeparator(str):
     ValueError: a command separator must be exactly ';'
     """
 
-    def __new__(cls, value: str) -> CommandSeparator:
+    def __new__(cls, value: str) -> Self:
         """Construct the one legal structural token."""
         if value != ";":
             msg = "a command separator must be exactly ';'"
