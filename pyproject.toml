@@ -352,6 +352,31 @@ convention = "numpy"
   # use `Server.raise_if_dead`.
   "BLE001",
 ]
+"src/libtmux/experimental/engines/async_control_mode.py" = [
+  # The supervisor and reader tasks re-raise `CancelledError`, then record any
+  # other failure so waiters see a `ControlModeError` rather than a dead task.
+  "BLE001",
+]
+"src/libtmux/experimental/mcp/events.py" = [
+  # The event drainer stores its failure for the next poll; crashing the
+  # background task would lose the stream with nothing to report.
+  "BLE001",
+]
+"src/libtmux/experimental/mcp/middleware.py" = [
+  # Turning any tool exception into an `is_error` result is this middleware's
+  # entire job.
+  "BLE001",
+]
+"src/libtmux/experimental/mcp/schema.py" = [
+  # pydantic rejects some dataclasses and `get_type_hints` fails on unresolved
+  # annotations; both fall back to the stdlib introspector.
+  "BLE001",
+]
+"tests/experimental/mcp/test_safety_gate.py" = [
+  # The tier assertions accept either a raise or an error result, so the call
+  # is caught broadly to classify which happened.
+  "BLE001",
+]
 
 [tool.pytest.ini_options]
 addopts = [
