@@ -156,25 +156,33 @@ def _instructions(ctx: CallerContext, *, events_enabled: bool = False) -> str:
             "control-mode notifications across the server."
         )
     segments = [
-        "This MCP drives a real tmux server through typed tools: sessions, "
-        "windows, panes, terminal scrollback, send-keys, copy-mode buffers. "
-        "Targets accept tmux ids (%pane, @window, $session), names, or "
-        "'session:window.pane'.",
-        "When to invoke: managing tmux panes/windows/sessions; reading "
-        "terminal scrollback (capture_pane/grep_pane/search_panes); sending "
-        "keystrokes to a running shell or REPL (send_input); copy-mode and "
-        "paste-buffer work; operating on a pane relative to another or to you "
-        "(capture_relative_pane/grep_relative_pane).",
-        "Do NOT invoke for: editor panes you edit via file tools; browser tabs "
-        "or web content; GUI application windows; notebook cells; any non-tmux "
-        "terminal surface. tmux only sees terminal panes -- it cannot read a "
-        "browser or GUI app.",
-        "Prefer a concrete %N pane id; resolve relative or caller-relative "
-        "targets to a concrete %N before capture/send. Never hand a directional "
-        "special target ({up-of}/{down-of}/{left-of}/{right-of}) to "
-        "capture_pane/grep_pane/send_input -- those resolve against THIS MCP's "
-        "control client, not your pane; use capture_relative_pane / "
-        "grep_relative_pane / resolve_relative_pane instead.",
+        (
+            "This MCP drives a real tmux server through typed tools: sessions, "
+            "windows, panes, terminal scrollback, send-keys, copy-mode buffers. "
+            "Targets accept tmux ids (%pane, @window, $session), names, or "
+            "'session:window.pane'."
+        ),
+        (
+            "When to invoke: managing tmux panes/windows/sessions; reading "
+            "terminal scrollback (capture_pane/grep_pane/search_panes); sending "
+            "keystrokes to a running shell or REPL (send_input); copy-mode and "
+            "paste-buffer work; operating on a pane relative to another or to you "
+            "(capture_relative_pane/grep_relative_pane)."
+        ),
+        (
+            "Do NOT invoke for: editor panes you edit via file tools; browser tabs "
+            "or web content; GUI application windows; notebook cells; any non-tmux "
+            "terminal surface. tmux only sees terminal panes -- it cannot read a "
+            "browser or GUI app."
+        ),
+        (
+            "Prefer a concrete %N pane id; resolve relative or caller-relative "
+            "targets to a concrete %N before capture/send. Never hand a directional "
+            "special target ({up-of}/{down-of}/{left-of}/{right-of}) to "
+            "capture_pane/grep_pane/send_input -- those resolve against THIS MCP's "
+            "control client, not your pane; use capture_relative_pane / "
+            "grep_relative_pane / resolve_relative_pane instead."
+        ),
         _agent_context_segment(ctx),
     ]
     if events_enabled:
