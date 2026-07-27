@@ -25,7 +25,7 @@ from .render import (
 )
 
 if t.TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence, Set
+    from collections.abc import Iterator, Mapping, Sequence, Set as AbstractSet
 
     from sphinx.builders import Builder
     from sphinx.environment import BuildEnvironment
@@ -269,7 +269,7 @@ class TmuxOperationDomain(Domain):
 
     def merge_domaindata(
         self,
-        docnames: Set[str],
+        docnames: AbstractSet[str],
         otherdata: dict[str, t.Any],
     ) -> None:
         """Merge targets read by one parallel Sphinx worker."""
