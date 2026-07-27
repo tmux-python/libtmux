@@ -45,6 +45,8 @@ if t.TYPE_CHECKING:
     import types
     from collections.abc import Sequence
 
+    from typing_extensions import Self
+
 logger = logging.getLogger(__name__)
 
 _BEGIN_PREFIX = b"%begin "
@@ -427,7 +429,7 @@ class ControlModeEngine:
                 self._closing = False
                 self._lifecycle.notify_all()
 
-    def __enter__(self) -> ControlModeEngine:
+    def __enter__(self) -> Self:
         """Return this engine."""
         return self
 
