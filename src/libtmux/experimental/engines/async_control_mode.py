@@ -106,7 +106,7 @@ class ControlNotification:
     def parse(cls, line: bytes) -> ControlNotification:
         """Parse a raw ``%``-notification line."""
         text = line.decode(errors="replace")
-        body = text[1:] if text.startswith("%") else text
+        body = text.removeprefix("%")
         parts = body.split(" ")
         kind = parts[0] if parts else ""
         return cls(kind=kind, args=tuple(parts[1:]), raw=text)
