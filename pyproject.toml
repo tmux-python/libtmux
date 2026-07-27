@@ -42,6 +42,9 @@ include = [
   { path = "docs", format = "sdist" },
   { path = "conftest.py", format = "sdist" },
 ]
+dependencies = [
+  "PyYAML>=6.0",
+]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/tmux-python/libtmux/issues"
@@ -55,6 +58,8 @@ dev = [
   "gp-sphinx==0.0.1a36",
   "sphinx-autodoc-api-style==0.0.1a36",
   "sphinx-autodoc-pytest-fixtures==0.0.1a36",
+  "sphinx-ux-autodoc-layout==0.0.1a36",
+  "sphinx-ux-badges==0.0.1a36",
   "sphinx-autobuild",
   "types-docutils",
   # Testing
@@ -65,6 +70,12 @@ dev = [
   "pytest-mock",
   "pytest-watcher",
   "pytest-xdist",
+  # MCP adapter — the optional `mcp` extra, included here so the gate
+  # type-checks (mypy) and exercises the fastmcp adapter + its tests
+  # instead of silently skipping them.
+  "fastmcp",
+  # Scripts (scripts/mcp_swap.py dev tool)
+  "tomlkit",
   # Coverage
   "codecov",
   "coverage",
@@ -72,12 +83,15 @@ dev = [
   # Lint
   "ruff>=0.16.0",
   "mypy",
+  "ty",
 ]
 
 docs = [
   "gp-sphinx==0.0.1a36",
   "sphinx-autodoc-api-style==0.0.1a36",
   "sphinx-autodoc-pytest-fixtures==0.0.1a36",
+  "sphinx-ux-autodoc-layout==0.0.1a36",
+  "sphinx-ux-badges==0.0.1a36",
   "sphinx-autobuild",
 ]
 testing = [
@@ -87,6 +101,10 @@ testing = [
   "pytest-rerunfailures",
   "pytest-mock",
   "pytest-watcher",
+  # MCP adapter (optional `mcp` extra) so the adapter tests run here too
+  "fastmcp",
+  # Scripts (scripts/mcp_swap.py dev tool)
+  "tomlkit",
 ]
 coverage =[
   "codecov",
@@ -101,6 +119,16 @@ lint = [
 
 [project.entry-points.pytest11]
 libtmux = "libtmux.pytest_plugin"
+
+[project.scripts]
+# Experimental typed-ops MCP server (stdio). Requires the `mcp` extra;
+# `main` prints an install hint and exits non-zero when fastmcp is absent.
+libtmux-engine-mcp = "libtmux.experimental.mcp:main"
+
+[project.optional-dependencies]
+mcp = [
+    "fastmcp>=3.4.2",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -139,6 +167,74 @@ files = [
   "tests",
 ]
 
+
+[tool.ty.environment]
+python-version = "3.10"
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ty.rules]
+# Private _pytest APIs (e.g. RaisesContext) are not publicly exported;
+# both mypy and ty flag them. ty categorizes these as unresolved-import
+# rather than attr-defined.
+# https://github.com/astral-sh/ty/issues/1276
+unresolved-import = "ignore"
+# ty resolves cmd() as a union type including a (Any, Any, /) -> tmux_cmd
+# variant from CmdProtocol, causing false positives on *args methods.
+# ty does not yet fully support argument unpacking (*args/**kwargs).
+# https://github.com/astral-sh/ty/issues/404
+too-many-positional-arguments = "ignore"
+# Same root cause as too-many-positional-arguments: ty cannot verify
+# required params are present when calling with **kwargs unpacking.
+# https://github.com/astral-sh/ty/issues/785
+missing-argument = "ignore"
+# ty falls back to object.__init__ for union return types and
+# dataclass-transform decorators, flagging all kwargs as unknown.
+# https://github.com/astral-sh/ty/issues/2369
+unknown-argument = "ignore"
+# Tests use monkeypatch.setattr(libtmux.common, ...) without explicit
+# submodule import. The submodule is always available via __init__.py
+# re-exports but ty cannot detect implicit registration.
+# https://github.com/astral-sh/ty/issues/133
+possibly-missing-submodule = "ignore"
+# Vendored version.py uses tuple comparison with mixed-type elements
+# (int, str, InfinityType) for PEP 440 version ordering. ty cannot
+# resolve element-wise comparison operators across union-typed tuples.
+# https://github.com/astral-sh/ty/issues/1202
+unsupported-operator = "ignore"
+# ty cannot verify argument types through **kwargs unpacking and
+# narrows LiteralString to str differently than mypy. 20 false
+# positives, mostly from **call_kwargs and **filter_expr patterns.
+# https://github.com/astral-sh/ty/issues/785
+invalid-argument-type = "ignore"
+# ty doesn't narrow through dict value iteration (item.split() in
+# options.py) or union access patterns (Pane | None). 5 false
+# positives where mypy correctly narrows the type.
+unresolved-attribute = "ignore"
+# ty can't see through isinstance narrowing for TypeVars (subscript
+# assignment on _V in options.py) and IO[str] | None unions
+# (control_mode.py, already suppressed for mypy). 4 false positives.
+invalid-assignment = "ignore"
+# Pane, Session, Window inherit from Obj which defines defaulted fields;
+# subclasses add required server: Server. Python dataclass inheritance
+# handles this at runtime but ty's analysis doesn't account for it.
+dataclass-field-order = "ignore"
+# re.search(rhs, data) in query_list.py where isinstance narrows both
+# to str | bytes, but ty can't match the overload (str, str) | (bytes,
+# Buffer) against (str | bytes, str | bytes). 2 false positives.
+no-matching-overload = "ignore"
+# options.py returns dict subscript typed as object where str | int |
+# None expected; test_session.py returns MockTmuxCmd where tmux_cmd
+# expected (already suppressed for mypy). 2 false positives.
+invalid-return-type = "ignore"
+# query_list.py b[key] where b is typed as object from a narrowing
+# path ty can't follow (same context as unresolved-attribute).
+not-subscriptable = "ignore"
+# query_list.py filter_(k) where filter_ is a union including
+# T@QueryList & Top[(...) -> object] — ty's intersection type
+# resolution produces an uncallable Top type.
+call-top-callable = "ignore"
 
 [tool.coverage.run]
 branch = true
@@ -256,6 +352,31 @@ convention = "numpy"
   # use `Server.raise_if_dead`.
   "BLE001",
 ]
+"src/libtmux/experimental/engines/async_control_mode.py" = [
+  # The supervisor and reader tasks re-raise `CancelledError`, then record any
+  # other failure so waiters see a `ControlModeError` rather than a dead task.
+  "BLE001",
+]
+"src/libtmux/experimental/mcp/events.py" = [
+  # The event drainer stores its failure for the next poll; crashing the
+  # background task would lose the stream with nothing to report.
+  "BLE001",
+]
+"src/libtmux/experimental/mcp/middleware.py" = [
+  # Turning any tool exception into an `is_error` result is this middleware's
+  # entire job.
+  "BLE001",
+]
+"src/libtmux/experimental/mcp/schema.py" = [
+  # pydantic rejects some dataclasses and `get_type_hints` fails on unresolved
+  # annotations; both fall back to the stdlib introspector.
+  "BLE001",
+]
+"tests/experimental/mcp/test_safety_gate.py" = [
+  # The tier assertions accept either a raise or an error result, so the call
+  # is caught broadly to classify which happened.
+  "BLE001",
+]
 
 [tool.pytest.ini_options]
 addopts = [
@@ -264,7 +385,10 @@ addopts = [
   "--showlocals",
   "--doctest-docutils-modules",
   "-p no:doctest",
-  "--reruns=2"
+  "--reruns=2",
+  # Built HTML lives under docs/_build and `docs` is a testpath; never
+  # collect generated artifacts (their relative directives fail to parse).
+  "--ignore=docs/_build",
 ]
 doctest_optionflags = [
   "ELLIPSIS",

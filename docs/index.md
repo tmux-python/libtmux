@@ -125,6 +125,7 @@ api/index
 api/testing/index
 internals/index
 project/index
+experimental/index
 history
 migration
 glossary

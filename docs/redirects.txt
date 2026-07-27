@@ -2,7 +2,7 @@
 "properties.md" "reference/properties.md"
 "servers.md" "reference/servers.md"
 "windows.md" "reference/windows.md"
-"traversal.md" "topics/traversal.md"
+"traversal.md" "topics/querying/hierarchy.md"
 "sessions.md" "reference/sessions.md"
 # "api.md" → api/index.md: not needed with dirhtml (same output path)
 # "pytest-plugin.md" → api/pytest-plugin/index.md: conflicts with pytest-plugin/index.md redirect in dirhtml
@@ -39,6 +39,8 @@
 "internals/query_list.md" "internals/api/libtmux._internal.query_list.md"
 "internals/sparse_array.md" "internals/api/libtmux._internal.sparse_array.md"
 "about.md" "topics/architecture.md"
+"topics/traversal.md" "topics/querying/hierarchy.md"
+"topics/filtering.md" "topics/querying/query-list.md"
 # Testing section restructure (2026-03)
 # Note: anchor traffic (e.g. /api/pytest-plugin/#recommended-fixtures) redirects page-level only —
 # individual anchors cannot be redirected (inherent rediraffe limitation)

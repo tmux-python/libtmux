@@ -1,0 +1,1320 @@
+"""The ported ``scripts/mcp_swap.py`` dev tool resolves this repo's identity.
+
+``mcp_swap`` swaps MCP server configs across agent CLIs to point at a local
+checkout. The only port-specific change is the slug derivation: this repo's
+package is ``libtmux`` but its MCP console script is ``libtmux-engine-mcp``, so
+the slug must come from the *entry* (yielding ``libtmux-engine``) to stay
+distinct from a sibling ``libtmux`` server. These tests lock that in, plus the
+packaging wiring that makes the server runnable.
+"""
+
+from __future__ import annotations
+
+import importlib.metadata
+import importlib.util
+import json
+import pathlib
+import sys
+import threading
+import types
+import typing as t
+
+import pytest
+
+_REPO = pathlib.Path(__file__).resolve().parent.parent
+_SCRIPT = _REPO / "scripts" / "mcp_swap.py"
+
+
+def _load_mcp_swap() -> t.Any:
+    """Import the PEP 723 script as a module (registered so dataclasses resolve)."""
+    spec = importlib.util.spec_from_file_location("mcp_swap", _SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["mcp_swap"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_console_script_registered() -> None:
+    """The ``libtmux-engine-mcp`` console script points at a loadable entry."""
+    scripts = importlib.metadata.entry_points(group="console_scripts")
+    entry = next((ep for ep in scripts if ep.name == "libtmux-engine-mcp"), None)
+    assert entry is not None
+    assert entry.value == "libtmux.experimental.mcp:main"
+
+
+def test_resolve_repo_meta_derives_engine_identity() -> None:
+    """Slug derives from the entry (``libtmux-engine``), not project.name."""
+    pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    server, entry = mcp_swap.resolve_repo_meta(_REPO)
+    assert server == "libtmux-engine"
+    assert entry == "libtmux-engine-mcp"
+
+
+def test_build_local_spec_uv_directory() -> None:
+    """``use-local`` writes a ``uv --directory <repo> run <entry>`` invocation."""
+    pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    _, entry = mcp_swap.resolve_repo_meta(_REPO)
+    spec = mcp_swap.build_local_spec(_REPO, entry)
+    assert spec.command == "uv"
+    assert spec.args == ["--directory", str(_REPO), "run", "libtmux-engine-mcp"]
+    assert spec.is_local_uv_directory()
+
+
+def test_grok_and_agy_registered() -> None:
+    """The grok and agy CLIs join the registry with their config shapes."""
+    pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    assert "grok" in mcp_swap.ALL_CLIS
+    assert "agy" in mcp_swap.ALL_CLIS
+    assert mcp_swap.CLIS["grok"].fmt == "toml"
+    assert mcp_swap.CLIS["grok"].config_path.name == "config.toml"
+    assert mcp_swap.CLIS["agy"].fmt == "json"
+    assert mcp_swap.CLIS["agy"].config_path.name == "mcp_config.json"
+
+
+def test_grok_set_get_delete_roundtrip() -> None:
+    """The grok CLI reads/writes the TOML ``[mcp_servers]`` table like codex."""
+    tomlkit = pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    config = tomlkit.parse("")
+    spec = mcp_swap.McpServerSpec(
+        command="uv", args=["--directory", str(_REPO), "run", "x"]
+    )
+    assert mcp_swap.set_server("grok", config, "tmux", spec, _REPO) == "added"
+    assert "mcp_servers" in config  # TOML table, not the JSON "mcpServers"
+    got = mcp_swap.get_server("grok", config, "tmux", _REPO)
+    assert got is not None
+    assert got.is_local_uv_directory()
+    assert mcp_swap.set_server("grok", config, "tmux", spec, _REPO) == "replaced"
+    assert mcp_swap.delete_server("grok", config, "tmux", _REPO)
+    assert mcp_swap.get_server("grok", config, "tmux", _REPO) is None
+
+
+def test_agy_set_get_delete_roundtrip() -> None:
+    """The agy CLI reads/writes the JSON ``mcpServers`` map like cursor/gemini."""
+    pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    config: dict[str, t.Any] = {}
+    spec = mcp_swap.McpServerSpec(
+        command="uv", args=["--directory", str(_REPO), "run", "x"]
+    )
+    assert mcp_swap.set_server("agy", config, "tmux", spec, _REPO) == "added"
+    # JSON (non-Claude) shape: no Claude-style "type", no empty "env"
+    assert "type" not in config["mcpServers"]["tmux"]
+    assert "env" not in config["mcpServers"]["tmux"]
+    got = mcp_swap.get_server("agy", config, "tmux", _REPO)
+    assert got is not None
+    assert got.is_local_uv_directory()
+    assert mcp_swap.delete_server("agy", config, "tmux", _REPO)
+    assert mcp_swap.get_server("agy", config, "tmux", _REPO) is None
+
+
+def test_load_config_tolerates_empty_json(tmp_path: pathlib.Path) -> None:
+    """An empty JSON config (Antigravity's initial mcp_config.json) loads as {}."""
+    pytest.importorskip("tomlkit")
+    mcp_swap = _load_mcp_swap()
+    cfg = tmp_path / "mcp_config.json"
+    cfg.write_text("")
+    info = mcp_swap.CLIInfo(name="agy", binary="agy", config_path=cfg, fmt="json")
+    assert mcp_swap.load_config(info) == {}
+
+
+# ---------------------------------------------------------------------------
+# Fixtures for the doctor / --env / naming-hint ports
+# ---------------------------------------------------------------------------
+#
+# The upstream ``mcp_swap`` tests use a module-level import plus ``fake_home``
+# / ``fake_repo`` fixtures. This file loads the PEP 723 script fresh per test
+# (tomlkit-gated) via ``_load_mcp_swap``, so ``mcp_swap`` is a fixture — passed
+# by name into the ported tests, which reference ``mcp_swap.<attr>`` unchanged.
+
+
+@pytest.fixture
+def mcp_swap() -> t.Any:
+    """Load the swap script as a fresh module per test (tomlkit-gated)."""
+    pytest.importorskip("tomlkit")
+    return _load_mcp_swap()
+
+
+@pytest.fixture
+def fake_home(
+    mcp_swap: t.Any, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> pathlib.Path:
+    """Redirect every config path and the state file the script touches into tmp."""
+    monkeypatch.setattr(
+        mcp_swap,
+        "CLIS",
+        {
+            "claude": mcp_swap.CLIInfo(
+                name="claude",
+                binary="claude",
+                config_path=tmp_path / ".claude.json",
+                fmt="json",
+            ),
+            "codex": mcp_swap.CLIInfo(
+                name="codex",
+                binary="codex",
+                config_path=tmp_path / ".codex" / "config.toml",
+                fmt="toml",
+            ),
+            "cursor": mcp_swap.CLIInfo(
+                name="cursor",
+                binary="cursor-agent",
+                config_path=tmp_path / ".cursor" / "mcp.json",
+                fmt="json",
+            ),
+            "gemini": mcp_swap.CLIInfo(
+                name="gemini",
+                binary="gemini",
+                config_path=tmp_path / ".gemini" / "settings.json",
+                fmt="json",
+            ),
+            "grok": mcp_swap.CLIInfo(
+                name="grok",
+                binary="grok",
+                config_path=tmp_path / ".grok" / "config.toml",
+                fmt="toml",
+            ),
+            "agy": mcp_swap.CLIInfo(
+                name="agy",
+                binary="agy",
+                config_path=tmp_path / ".gemini" / "config" / "mcp_config.json",
+                fmt="json",
+            ),
+        },
+    )
+    state_dir = tmp_path / "state"
+    monkeypatch.setattr(mcp_swap, "STATE_DIR", state_dir)
+    monkeypatch.setattr(mcp_swap, "STATE_FILE", state_dir / "state.json")
+    return tmp_path
+
+
+@pytest.fixture
+def fake_repo(tmp_path: pathlib.Path) -> pathlib.Path:
+    """Create a minimal pyproject.toml matching libtmux's engine-mcp wiring.
+
+    The console-script entry is ``libtmux-engine-mcp`` (as in the real
+    pyproject), so the derived server slug is ``libtmux-engine``.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "pyproject.toml").write_text(
+        "[project]\n"
+        'name = "libtmux"\n'
+        "[project.scripts]\n"
+        'libtmux-engine-mcp = "libtmux.experimental.mcp:main"\n'
+    )
+    return repo
+
+
+def _write_json(path: pathlib.Path, data: dict[str, t.Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _local_entry(repo: pathlib.Path) -> dict[str, t.Any]:
+    """Return a local ``uv --directory <repo> run <entry>`` JSON entry."""
+    return {
+        "command": "uv",
+        "args": ["--directory", str(repo.resolve()), "run", "libtmux-engine-mcp"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# use-local --env injection
+# ---------------------------------------------------------------------------
+
+
+def test_use_local_env_flag_injects_into_entry(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """``--env KEY=VALUE`` lands in the written server entry's ``env``.
+
+    The isolation workflow needs to point the server at a scratch socket
+    without a manual post-edit; ``--env`` writes that env at swap time.
+    """
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(info.config_path, {"mcpServers": {}})
+
+    args = mcp_swap.build_parser().parse_args(
+        [
+            "use-local",
+            "--repo",
+            str(fake_repo),
+            "--cli",
+            "cursor",
+            "--env",
+            "LIBTMUX_SOCKET=mcp-target",
+        ]
+    )
+    assert mcp_swap.cmd_use_local(args) == 0
+
+    entry = json.loads(info.config_path.read_text())["mcpServers"]["libtmux-engine"]
+    assert entry["env"] == {"LIBTMUX_SOCKET": "mcp-target"}
+
+
+def test_use_local_env_flag_wins_over_preserved_env(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """Explicit ``--env`` overrides a preserved key; other preserved keys survive."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {
+                "libtmux-engine": {
+                    "command": "uvx",
+                    "args": ["libtmux==0.63.0"],
+                    "env": {"LIBTMUX_SAFETY": "readonly", "KEEP": "me"},
+                }
+            }
+        },
+    )
+
+    args = mcp_swap.build_parser().parse_args(
+        [
+            "use-local",
+            "--repo",
+            str(fake_repo),
+            "--cli",
+            "cursor",
+            "--env",
+            "LIBTMUX_SAFETY=destructive",
+        ]
+    )
+    assert mcp_swap.cmd_use_local(args) == 0
+
+    entry = json.loads(info.config_path.read_text())["mcpServers"]["libtmux-engine"]
+    assert entry["env"] == {"LIBTMUX_SAFETY": "destructive", "KEEP": "me"}
+
+
+def test_use_local_env_written_on_already_local_entry(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """``--env`` still writes when the entry already points at this repo."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {"mcpServers": {"libtmux-engine": _local_entry(fake_repo)}},
+    )
+
+    args = mcp_swap.build_parser().parse_args(
+        [
+            "use-local",
+            "--repo",
+            str(fake_repo),
+            "--cli",
+            "cursor",
+            "--env",
+            "LIBTMUX_SOCKET=mcp-target",
+        ]
+    )
+    assert mcp_swap.cmd_use_local(args) == 0
+
+    entry = json.loads(info.config_path.read_text())["mcpServers"]["libtmux-engine"]
+    assert entry["env"] == {"LIBTMUX_SOCKET": "mcp-target"}
+
+
+def test_use_local_entry_updates_already_local_entry(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """An explicit entry change is not mistaken for an already-local no-op."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {"mcpServers": {"libtmux-engine": _local_entry(fake_repo)}},
+    )
+
+    args = mcp_swap.build_parser().parse_args(
+        [
+            "use-local",
+            "--repo",
+            str(fake_repo),
+            "--cli",
+            "cursor",
+            "--entry",
+            "alternate-mcp",
+        ]
+    )
+    assert mcp_swap.cmd_use_local(args) == 0
+
+    entry = json.loads(info.config_path.read_text())["mcpServers"]["libtmux-engine"]
+    assert entry["args"][-1] == "alternate-mcp"
+
+
+def test_env_pair_rejects_malformed(mcp_swap: t.Any) -> None:
+    """``--env`` without ``=`` is an argparse error, not a silent skip."""
+    with pytest.raises(SystemExit):
+        mcp_swap.build_parser().parse_args(["use-local", "--env", "NOEQUALS"])
+
+
+# ---------------------------------------------------------------------------
+# naming hint
+# ---------------------------------------------------------------------------
+
+
+def test_naming_hint_points_at_registered_alias(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """Hint names the real slug when the repo uses a non-default server name.
+
+    A bare run would otherwise no-op on a missing entry, so the hint points
+    at the name the CLIs were actually registered under.
+    """
+    _write_json(
+        mcp_swap.CLIS["cursor"].config_path,
+        {"mcpServers": {"tmux": _local_entry(fake_repo)}},
+    )
+    hint = mcp_swap._naming_hint(fake_repo.resolve(), "libtmux-engine")
+    assert hint is not None
+    assert "--server tmux" in hint
+
+
+def test_naming_hint_none_when_derived_name_matches(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """No hint when the repo is already registered under the derived name."""
+    _write_json(
+        mcp_swap.CLIS["cursor"].config_path,
+        {"mcpServers": {"libtmux-engine": _local_entry(fake_repo)}},
+    )
+    assert mcp_swap._naming_hint(fake_repo.resolve(), "libtmux-engine") is None
+
+
+def test_naming_hint_none_when_derived_and_alias_both_point_here(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """An alias does not hide that the requested server already points here."""
+    _write_json(
+        mcp_swap.CLIS["cursor"].config_path,
+        {
+            "mcpServers": {
+                "libtmux-engine": _local_entry(fake_repo),
+                "tmux": _local_entry(fake_repo),
+            }
+        },
+    )
+    assert mcp_swap._naming_hint(fake_repo.resolve(), "libtmux-engine") is None
+
+
+# ---------------------------------------------------------------------------
+# doctor
+# ---------------------------------------------------------------------------
+
+
+def test_doctor_reports_name_mismatch_and_auth_env(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Doctor surfaces the server-name mismatch and auth-overriding env vars."""
+    _write_json(
+        mcp_swap.CLIS["cursor"].config_path,
+        {"mcpServers": {"tmux": _local_entry(fake_repo)}},
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    args = mcp_swap.build_parser().parse_args(["doctor", "--repo", str(fake_repo)])
+    assert mcp_swap.cmd_doctor(args) == 0
+    out = capsys.readouterr().out
+    assert "server name mismatch" in out
+    assert "--server tmux" in out
+    assert "OPENAI_API_KEY" in out and "codex" in out
+
+
+def test_doctor_flags_missing_backup_and_orphans(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Doctor flags a state entry whose backup vanished, and untracked backups."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path, {"mcpServers": {"libtmux-engine": _local_entry(fake_repo)}}
+    )
+    # A recorded swap whose backup file does not exist -> revert would fail.
+    mcp_swap.save_state(
+        {
+            ("cursor", "user"): mcp_swap.SwapEntry(
+                config_path=str(info.config_path),
+                backup_path=str(info.config_path) + ".bak.mcp-swap-20200101000000",
+                server="libtmux-engine",
+                action="replaced",
+                swapped_at="20200101000000",
+                seq_no=0,
+            )
+        }
+    )
+    # An orphaned backup on disk not referenced by state.
+    orphan = info.config_path.parent / (
+        info.config_path.name + ".bak.mcp-swap-20190101000000"
+    )
+    orphan.write_text("stale")
+
+    args = mcp_swap.build_parser().parse_args(["doctor", "--repo", str(fake_repo)])
+    assert mcp_swap.cmd_doctor(args) == 0
+    out = capsys.readouterr().out
+    assert "BACKUP MISSING" in out
+    assert "orphaned backups" in out
+
+
+def test_orphaned_backups_matches_swap_pattern(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+) -> None:
+    """``_orphaned_backups`` finds swap backups and ignores the live config."""
+    info = mcp_swap.CLIS["cursor"]
+    info.config_path.parent.mkdir(parents=True, exist_ok=True)
+    info.config_path.write_text("{}\n")
+    b1 = info.config_path.parent / (
+        info.config_path.name + ".bak.mcp-swap-20260101000000"
+    )
+    b1.write_text("x")
+    found = mcp_swap._orphaned_backups(info.config_path)
+    assert b1 in found
+    assert info.config_path not in found
+
+
+def test_doctor_does_not_call_orphaned_backups_safe_to_delete(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Doctor treats an untracked backup as possible recovery data."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {"mcpServers": {"libtmux-engine": _local_entry(fake_repo)}},
+    )
+    referenced = info.config_path.parent / (
+        info.config_path.name + ".bak.mcp-swap-20200101000000"
+    )
+    referenced.write_text("tracked")
+    mcp_swap.save_state(
+        {
+            ("cursor", "user"): mcp_swap.SwapEntry(
+                config_path=str(info.config_path),
+                backup_path=str(referenced),
+                server="libtmux-engine",
+                action="replaced",
+                swapped_at="20200101000000",
+                seq_no=0,
+            )
+        }
+    )
+    orphan = info.config_path.parent / (
+        info.config_path.name + ".bak.mcp-swap-20190101000000"
+    )
+    orphan.write_text("pristine")
+
+    args = mcp_swap.build_parser().parse_args(["doctor", "--repo", str(fake_repo)])
+    assert mcp_swap.cmd_doctor(args) == 0
+    out = capsys.readouterr().out
+    assert "orphaned backups: 1 file(s)" in out
+    assert "safe to delete" not in out
+    assert "inspect before deleting" in out
+
+
+def test_doctor_ignores_scalar_server_entries(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A malformed sibling entry does not hide valid diagnostic output."""
+    _write_json(
+        mcp_swap.CLIS["cursor"].config_path,
+        {
+            "mcpServers": {
+                "broken": "not a mapping",
+                "libtmux-engine": _local_entry(fake_repo),
+            }
+        },
+    )
+
+    args = mcp_swap.build_parser().parse_args(["doctor", "--repo", str(fake_repo)])
+    assert mcp_swap.cmd_doctor(args) == 0
+    assert "[cursor] libtmux-engine = local: this repo" in capsys.readouterr().out
+
+
+def test_status_reports_scalar_selected_server_entry(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A malformed selected entry is a clean status error, not a traceback."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {"mcpServers": {"libtmux-engine": "not a mapping"}},
+    )
+    args = mcp_swap.build_parser().parse_args(
+        ["status", "--repo", str(fake_repo), "--cli", "cursor"]
+    )
+
+    assert mcp_swap.cmd_status(args) == 1
+    assert "expected server entry to be a mapping" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Repeat swaps
+# ---------------------------------------------------------------------------
+
+
+def _freeze_timestamps(
+    mcp_swap: t.Any,
+    monkeypatch: pytest.MonkeyPatch,
+    stamps: list[str],
+) -> None:
+    """Make the script's timestamp source yield ``stamps`` in order."""
+    remaining = list(stamps)
+
+    def fake_strftime(*_args: object) -> str:
+        return remaining.pop(0) if remaining else stamps[-1]
+
+    monkeypatch.setattr(
+        mcp_swap,
+        "time",
+        types.SimpleNamespace(strftime=fake_strftime),
+    )
+
+
+@pytest.mark.parametrize(
+    "stamps",
+    [
+        ["20260101000000", "20260101000000"],
+        ["20260101000000", "20260101000001"],
+    ],
+    ids=["same-second", "different-second"],
+)
+def test_repeat_swap_then_revert_restores_pristine_config(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stamps: list[str],
+) -> None:
+    """A repeat swap keeps the first backup and reverts to pristine bytes."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {
+                "libtmux-engine": {
+                    "command": "uvx",
+                    "args": ["libtmux==0.63.0"],
+                }
+            }
+        },
+    )
+    original = info.config_path.read_bytes()
+    _freeze_timestamps(mcp_swap, monkeypatch, stamps)
+    parser = mcp_swap.build_parser()
+
+    def swap(socket_name: str) -> None:
+        args = parser.parse_args(
+            [
+                "use-local",
+                "--repo",
+                str(fake_repo),
+                "--cli",
+                "cursor",
+                "--env",
+                f"LIBTMUX_SOCKET={socket_name}",
+            ]
+        )
+        assert mcp_swap.cmd_use_local(args) == 0
+
+    swap("first")
+    first_backup = pathlib.Path(mcp_swap.load_state()[("cursor", "user")].backup_path)
+    assert first_backup.read_bytes() == original
+
+    swap("second")
+
+    live_entry = json.loads(info.config_path.read_text())["mcpServers"][
+        "libtmux-engine"
+    ]
+    assert live_entry["env"]["LIBTMUX_SOCKET"] == "second"
+    state_entry = mcp_swap.load_state()[("cursor", "user")]
+    assert pathlib.Path(state_entry.backup_path) == first_backup
+    assert first_backup.read_bytes() == original
+    assert mcp_swap._orphaned_backups(info.config_path) == [first_backup]
+
+    revert_args = parser.parse_args(["revert", "--cli", "cursor"])
+    assert mcp_swap.cmd_revert(revert_args) == 0
+    assert info.config_path.read_bytes() == original
+
+
+def test_repeat_swap_refuses_to_cross_newer_claude_scope(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An older whole-file layer cannot be mutated beneath a newer layer."""
+    info = mcp_swap.CLIS["claude"]
+    pinned = {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["libtmux==0.63.0"],
+        "env": {},
+    }
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {"libtmux-engine": pinned},
+            "projects": {
+                str(fake_repo.resolve()): {
+                    "mcpServers": {"libtmux-engine": pinned},
+                }
+            },
+        },
+    )
+    original = info.config_path.read_bytes()
+    _freeze_timestamps(
+        mcp_swap,
+        monkeypatch,
+        ["20260101000000", "20260101000001", "20260101000002"],
+    )
+    parser = mcp_swap.build_parser()
+
+    def swap(scope: str, socket_name: str) -> int:
+        args = parser.parse_args(
+            [
+                "use-local",
+                "--repo",
+                str(fake_repo),
+                "--cli",
+                "claude",
+                "--scope",
+                scope,
+                "--env",
+                f"LIBTMUX_SOCKET={socket_name}",
+            ]
+        )
+        return t.cast(int, mcp_swap.cmd_use_local(args))
+
+    assert swap("user", "first") == 0
+    assert swap("project", "first") == 0
+    before_rejected_swap = info.config_path.read_bytes()
+    state_before = mcp_swap.load_state()
+    backups = [pathlib.Path(entry.backup_path) for entry in state_before.values()]
+
+    assert swap("user", "second") == 1
+    assert info.config_path.read_bytes() == before_rejected_swap
+    assert mcp_swap.load_state() == state_before
+    assert all(backup.exists() for backup in backups)
+
+    revert_args = parser.parse_args(["revert", "--cli", "claude"])
+    assert mcp_swap.cmd_revert(revert_args) == 0
+    assert info.config_path.read_bytes() == original
+
+
+def test_missing_recorded_backup_blocks_repeat_and_revert(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing pre-swap backup cannot be replaced with already-local bytes."""
+    info = mcp_swap.CLIS["claude"]
+    pinned = {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["libtmux==0.63.0"],
+        "env": {},
+    }
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {"libtmux-engine": pinned},
+            "projects": {
+                str(fake_repo.resolve()): {
+                    "mcpServers": {"libtmux-engine": pinned},
+                }
+            },
+        },
+    )
+    _freeze_timestamps(
+        mcp_swap,
+        monkeypatch,
+        ["20260101000000", "20260101000000", "20260101000000"],
+    )
+    parser = mcp_swap.build_parser()
+
+    def swap(scope: str, socket_name: str) -> int:
+        args = parser.parse_args(
+            [
+                "use-local",
+                "--repo",
+                str(fake_repo),
+                "--cli",
+                "claude",
+                "--scope",
+                scope,
+                "--env",
+                f"LIBTMUX_SOCKET={socket_name}",
+            ]
+        )
+        return t.cast(int, mcp_swap.cmd_use_local(args))
+
+    assert swap("user", "first") == 0
+    after_user_swap = info.config_path.read_bytes()
+    state_before = mcp_swap.load_state()
+    first_user_backup = pathlib.Path(state_before[("claude", "user")].backup_path)
+    first_user_backup.unlink()
+
+    assert swap("user", "first") == 1
+    assert swap("user", "second") == 1
+    assert info.config_path.read_bytes() == after_user_swap
+    assert mcp_swap.load_state() == state_before
+    assert not first_user_backup.exists()
+
+    revert_args = parser.parse_args(["revert", "--cli", "claude"])
+    assert mcp_swap.cmd_revert(revert_args) == 1
+    assert info.config_path.read_bytes() == after_user_swap
+    assert mcp_swap.load_state() == state_before
+
+
+def test_write_new_backup_never_overwrites(
+    mcp_swap: t.Any,
+    tmp_path: pathlib.Path,
+) -> None:
+    """A claimed backup path forces an exclusive suffixed write."""
+    base = tmp_path / "config.toml.bak.mcp-swap-20260101000000"
+    first = mcp_swap.write_new_backup(base, b"pristine\n")
+    second = mcp_swap.write_new_backup(base, b"later\n")
+    third = mcp_swap.write_new_backup(base, b"latest\n")
+
+    assert first == base
+    assert second == base.with_name(base.name + "-1")
+    assert third == base.with_name(base.name + "-2")
+    assert first.read_bytes() == b"pristine\n"
+    assert second.read_bytes() == b"later\n"
+    assert third.read_bytes() == b"latest\n"
+
+
+# ---------------------------------------------------------------------------
+# Recovery transaction ordering
+# ---------------------------------------------------------------------------
+
+
+def test_use_local_persists_state_before_config_write_and_rolls_it_back(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed config write sees durable recovery state, then restores cleanly."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {
+                "libtmux-engine": {
+                    "command": "uvx",
+                    "args": ["libtmux==0.63.0"],
+                }
+            }
+        },
+    )
+    original = info.config_path.read_bytes()
+    real_atomic_write = mcp_swap.atomic_write
+    state_was_durable = False
+    config_write_error = OSError("injected config write failure")
+
+    def fail_config_write(path: pathlib.Path, data: bytes) -> None:
+        nonlocal state_was_durable
+        if path == info.config_path and data != original:
+            state = mcp_swap.load_state()
+            state_was_durable = ("cursor", "user") in state
+            raise config_write_error
+        real_atomic_write(path, data)
+
+    monkeypatch.setattr(mcp_swap, "atomic_write", fail_config_write)
+    args = mcp_swap.build_parser().parse_args(
+        ["use-local", "--repo", str(fake_repo), "--cli", "cursor"]
+    )
+
+    assert mcp_swap.cmd_use_local(args) == 1
+    assert state_was_durable
+    assert info.config_path.read_bytes() == original
+    assert mcp_swap.load_state() == {}
+    assert not mcp_swap.STATE_FILE.exists()
+    assert mcp_swap._orphaned_backups(info.config_path) == []
+
+
+def test_use_local_revalidation_failure_rolls_back_config_and_state(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-write parse failure restores the config and removes recovery state."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {
+                "libtmux-engine": {
+                    "command": "uvx",
+                    "args": ["libtmux==0.63.0"],
+                }
+            }
+        },
+    )
+    original = info.config_path.read_bytes()
+    revalidation_error = ValueError("injected revalidation failure")
+
+    def fail_revalidation(_info: object) -> None:
+        raise revalidation_error
+
+    monkeypatch.setattr(mcp_swap, "_revalidate", fail_revalidation)
+    args = mcp_swap.build_parser().parse_args(
+        ["use-local", "--repo", str(fake_repo), "--cli", "cursor"]
+    )
+
+    assert mcp_swap.cmd_use_local(args) == 1
+    assert info.config_path.read_bytes() == original
+    assert mcp_swap.load_state() == {}
+    assert not mcp_swap.STATE_FILE.exists()
+    assert mcp_swap._orphaned_backups(info.config_path) == []
+
+
+def test_use_local_state_failure_prevents_config_mutation(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failure to register recovery state leaves the live config untouched."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {
+                "libtmux-engine": {
+                    "command": "uvx",
+                    "args": ["libtmux==0.63.0"],
+                }
+            }
+        },
+    )
+    original = info.config_path.read_bytes()
+    state_write_error = OSError("injected state write failure")
+
+    def fail_save_state(_entries: object) -> None:
+        raise state_write_error
+
+    monkeypatch.setattr(mcp_swap, "save_state", fail_save_state)
+    args = mcp_swap.build_parser().parse_args(
+        ["use-local", "--repo", str(fake_repo), "--cli", "cursor"]
+    )
+
+    assert mcp_swap.cmd_use_local(args) == 1
+    assert info.config_path.read_bytes() == original
+    assert not mcp_swap.STATE_FILE.exists()
+    assert mcp_swap._orphaned_backups(info.config_path) == []
+
+
+def test_use_local_keeps_earlier_target_recoverable_when_later_backup_fails(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later target failure cannot discard an earlier target's recovery state."""
+    cursor = mcp_swap.CLIS["cursor"]
+    gemini = mcp_swap.CLIS["gemini"]
+    pinned = {
+        "mcpServers": {
+            "libtmux-engine": {
+                "command": "uvx",
+                "args": ["libtmux==0.63.0"],
+            }
+        }
+    }
+    _write_json(cursor.config_path, pinned)
+    _write_json(gemini.config_path, pinned)
+    cursor_original = cursor.config_path.read_bytes()
+    gemini_original = gemini.config_path.read_bytes()
+    real_write_new_backup = t.cast(
+        t.Callable[[pathlib.Path, bytes], pathlib.Path],
+        mcp_swap.write_new_backup,
+    )
+    backup_error = OSError("injected backup failure")
+
+    def fail_gemini_backup(base: pathlib.Path, data: bytes) -> pathlib.Path:
+        if base.parent == gemini.config_path.parent:
+            raise backup_error
+        return real_write_new_backup(base, data)
+
+    monkeypatch.setattr(mcp_swap, "write_new_backup", fail_gemini_backup)
+    args = mcp_swap.build_parser().parse_args(
+        [
+            "use-local",
+            "--repo",
+            str(fake_repo),
+            "--cli",
+            "cursor",
+            "--cli",
+            "gemini",
+        ]
+    )
+
+    assert mcp_swap.cmd_use_local(args) == 1
+    state = mcp_swap.load_state()
+    assert set(state) == {("cursor", "user")}
+    cursor_backup = pathlib.Path(state[("cursor", "user")].backup_path)
+    assert cursor_backup.read_bytes() == cursor_original
+    assert cursor.config_path.read_bytes() != cursor_original
+    assert gemini.config_path.read_bytes() == gemini_original
+    assert mcp_swap._orphaned_backups(gemini.config_path) == []
+
+
+def test_concurrent_swaps_preserve_both_recovery_entries(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The transaction lock prevents concurrent state read-modify-write loss."""
+    cursor = mcp_swap.CLIS["cursor"]
+    gemini = mcp_swap.CLIS["gemini"]
+    pinned = {
+        "mcpServers": {
+            "libtmux-engine": {
+                "command": "uvx",
+                "args": ["libtmux==0.63.0"],
+            }
+        }
+    }
+    _write_json(cursor.config_path, pinned)
+    _write_json(gemini.config_path, pinned)
+    cursor_waiting = threading.Event()
+    release_cursor = threading.Event()
+    gemini_reached_state_write = threading.Event()
+    real_save_state = mcp_swap.save_state
+
+    def pause_first_state_write(entries: t.Any) -> None:
+        keys = set(entries)
+        if keys == {("cursor", "user")} and not cursor_waiting.is_set():
+            cursor_waiting.set()
+            assert release_cursor.wait(timeout=5)
+        if ("gemini", "user") in keys:
+            gemini_reached_state_write.set()
+        real_save_state(entries)
+
+    monkeypatch.setattr(mcp_swap, "save_state", pause_first_state_write)
+    parser = mcp_swap.build_parser()
+    outcomes: dict[str, int] = {}
+
+    def swap(cli: str) -> None:
+        args = parser.parse_args(["use-local", "--repo", str(fake_repo), "--cli", cli])
+        outcomes[cli] = mcp_swap.cmd_use_local(args)
+
+    cursor_thread = threading.Thread(target=swap, args=("cursor",))
+    gemini_thread = threading.Thread(target=swap, args=("gemini",))
+    cursor_thread.start()
+    assert cursor_waiting.wait(timeout=5)
+    gemini_thread.start()
+    overlapped = gemini_reached_state_write.wait(timeout=0.5)
+    release_cursor.set()
+    cursor_thread.join(timeout=5)
+    gemini_thread.join(timeout=5)
+
+    assert not cursor_thread.is_alive()
+    assert not gemini_thread.is_alive()
+    assert not overlapped
+    assert outcomes == {"cursor": 0, "gemini": 0}
+    assert set(mcp_swap.load_state()) == {
+        ("cursor", "user"),
+        ("gemini", "user"),
+    }
+
+
+def test_use_local_reports_unreadable_config_without_mutation(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+) -> None:
+    """A malformed target config is a per-target error, not an uncaught failure."""
+    info = mcp_swap.CLIS["cursor"]
+    info.config_path.parent.mkdir(parents=True, exist_ok=True)
+    info.config_path.write_text("{not json")
+    original = info.config_path.read_bytes()
+    args = mcp_swap.build_parser().parse_args(
+        ["use-local", "--repo", str(fake_repo), "--cli", "cursor"]
+    )
+
+    assert mcp_swap.cmd_use_local(args) == 1
+    assert info.config_path.read_bytes() == original
+    assert mcp_swap.load_state() == {}
+
+
+@pytest.mark.parametrize(
+    "raw_state",
+    (
+        pytest.param("{", id="invalid_json"),
+        pytest.param("[]", id="top_level_list"),
+        pytest.param('{"entries": []}', id="entries_list"),
+        pytest.param('{"entries": null}', id="entries_null"),
+    ),
+)
+def test_use_local_refuses_malformed_recovery_state(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    raw_state: str,
+) -> None:
+    """Corrupt recovery metadata cannot be overwritten by a new config swap."""
+    info = mcp_swap.CLIS["cursor"]
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {
+                "libtmux-engine": {
+                    "command": "uvx",
+                    "args": ["libtmux==0.63.0"],
+                }
+            }
+        },
+    )
+    original = info.config_path.read_bytes()
+    mcp_swap.STATE_FILE.parent.mkdir(parents=True)
+    mcp_swap.STATE_FILE.write_text(raw_state)
+    args = mcp_swap.build_parser().parse_args(
+        ["use-local", "--repo", str(fake_repo), "--cli", "cursor"]
+    )
+
+    with pytest.raises((RuntimeError, TypeError), match="recovery state"):
+        mcp_swap.load_state()
+    assert mcp_swap.cmd_use_local(args) == 1
+    assert info.config_path.read_bytes() == original
+    assert mcp_swap.STATE_FILE.read_text() == raw_state
+    assert mcp_swap._orphaned_backups(info.config_path) == []
+
+
+def test_revert_and_doctor_report_malformed_recovery_state(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+) -> None:
+    """Recovery commands return errors instead of tracing back on corrupt state."""
+    mcp_swap.STATE_FILE.parent.mkdir(parents=True)
+    mcp_swap.STATE_FILE.write_text('{"entries": null}')
+    parser = mcp_swap.build_parser()
+
+    revert_args = parser.parse_args(["revert", "--cli", "cursor"])
+    doctor_args = parser.parse_args(["doctor", "--repo", str(fake_repo)])
+
+    assert mcp_swap.cmd_revert(revert_args) == 1
+    assert mcp_swap.cmd_doctor(doctor_args) == 1
+    assert mcp_swap.STATE_FILE.read_text() == '{"entries": null}'
+
+
+def test_revert_checkpoints_each_layer_before_a_later_restore_failure(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A completed LIFO layer stays cleared when the next restore fails."""
+    info = mcp_swap.CLIS["claude"]
+    pinned = {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["libtmux==0.63.0"],
+        "env": {},
+    }
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {"libtmux-engine": pinned},
+            "projects": {
+                str(fake_repo.resolve()): {
+                    "mcpServers": {"libtmux-engine": pinned},
+                }
+            },
+        },
+    )
+    original = info.config_path.read_bytes()
+    parser = mcp_swap.build_parser()
+
+    def swap(scope: str) -> None:
+        args = parser.parse_args(
+            [
+                "use-local",
+                "--repo",
+                str(fake_repo),
+                "--cli",
+                "claude",
+                "--scope",
+                scope,
+            ]
+        )
+        assert mcp_swap.cmd_use_local(args) == 0
+
+    swap("user")
+    after_user_swap = info.config_path.read_bytes()
+    swap("project")
+    before_revert = mcp_swap.load_state()
+    user_backup = pathlib.Path(before_revert[("claude", "user")].backup_path)
+    project_backup = pathlib.Path(before_revert[("claude", "project")].backup_path)
+    real_atomic_write = mcp_swap.atomic_write
+    config_writes = 0
+    restore_error = OSError("injected later restore failure")
+
+    def fail_second_config_restore(path: pathlib.Path, data: bytes) -> None:
+        nonlocal config_writes
+        if path == info.config_path:
+            config_writes += 1
+            if config_writes == 2:
+                raise restore_error
+        real_atomic_write(path, data)
+
+    monkeypatch.setattr(mcp_swap, "atomic_write", fail_second_config_restore)
+    revert_args = parser.parse_args(["revert", "--cli", "claude"])
+
+    assert mcp_swap.cmd_revert(revert_args) == 1
+    assert info.config_path.read_bytes() == after_user_swap
+    state = mcp_swap.load_state()
+    assert set(state) == {("claude", "user")}
+    assert user_backup.exists()
+    assert not project_backup.exists()
+
+    assert mcp_swap.cmd_revert(revert_args) == 0
+    assert info.config_path.read_bytes() == original
+    assert not mcp_swap.STATE_FILE.exists()
+
+
+def test_revert_keeps_backup_when_state_checkpoint_fails(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A restored layer retains its backup until state removal is durable."""
+    info = mcp_swap.CLIS["claude"]
+    pinned = {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["libtmux==0.63.0"],
+        "env": {},
+    }
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {"libtmux-engine": pinned},
+            "projects": {
+                str(fake_repo.resolve()): {
+                    "mcpServers": {"libtmux-engine": pinned},
+                }
+            },
+        },
+    )
+    original = info.config_path.read_bytes()
+    parser = mcp_swap.build_parser()
+    for scope in ("user", "project"):
+        args = parser.parse_args(
+            [
+                "use-local",
+                "--repo",
+                str(fake_repo),
+                "--cli",
+                "claude",
+                "--scope",
+                scope,
+            ]
+        )
+        assert mcp_swap.cmd_use_local(args) == 0
+
+    state = mcp_swap.load_state()
+    project_backup = pathlib.Path(state[("claude", "project")].backup_path)
+    real_save_state = mcp_swap.save_state
+    checkpoint_error = OSError("injected checkpoint failure")
+
+    def fail_checkpoint(_entries: object) -> None:
+        raise checkpoint_error
+
+    monkeypatch.setattr(mcp_swap, "save_state", fail_checkpoint)
+    revert_args = parser.parse_args(["revert", "--cli", "claude"])
+
+    assert mcp_swap.cmd_revert(revert_args) == 1
+    assert set(mcp_swap.load_state()) == {
+        ("claude", "user"),
+        ("claude", "project"),
+    }
+    assert project_backup.exists()
+
+    monkeypatch.setattr(mcp_swap, "save_state", real_save_state)
+    assert mcp_swap.cmd_revert(revert_args) == 0
+    assert info.config_path.read_bytes() == original
+
+
+def test_scoped_revert_refuses_to_cross_newer_whole_file_layer(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+) -> None:
+    """A scoped Claude revert preserves whole-file backup LIFO ordering."""
+    info = mcp_swap.CLIS["claude"]
+    pinned = {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["libtmux==0.63.0"],
+        "env": {},
+    }
+    _write_json(
+        info.config_path,
+        {
+            "mcpServers": {"libtmux-engine": pinned},
+            "projects": {
+                str(fake_repo.resolve()): {
+                    "mcpServers": {"libtmux-engine": pinned},
+                }
+            },
+        },
+    )
+    original = info.config_path.read_bytes()
+    parser = mcp_swap.build_parser()
+    for scope in ("user", "project"):
+        swap_args = parser.parse_args(
+            [
+                "use-local",
+                "--repo",
+                str(fake_repo),
+                "--cli",
+                "claude",
+                "--scope",
+                scope,
+            ]
+        )
+        assert mcp_swap.cmd_use_local(swap_args) == 0
+
+    fully_swapped = info.config_path.read_bytes()
+    state = mcp_swap.load_state()
+    backups = {key: pathlib.Path(entry.backup_path) for key, entry in state.items()}
+
+    user_revert = parser.parse_args(["revert", "--cli", "claude", "--scope", "user"])
+    assert mcp_swap.cmd_revert(user_revert) == 1
+    assert info.config_path.read_bytes() == fully_swapped
+    assert mcp_swap.load_state() == state
+    assert all(backup.exists() for backup in backups.values())
+
+    project_revert = parser.parse_args(
+        ["revert", "--cli", "claude", "--scope", "project"]
+    )
+    assert mcp_swap.cmd_revert(project_revert) == 0
+    assert mcp_swap.cmd_revert(user_revert) == 0
+    assert info.config_path.read_bytes() == original
+    assert not mcp_swap.STATE_FILE.exists()

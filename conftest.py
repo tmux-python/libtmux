@@ -11,7 +11,9 @@ https://docs.pytest.org/en/stable/deprecations.html
 from __future__ import annotations
 
 import functools
+import pathlib
 import shutil
+import tempfile
 import typing as t
 
 import pytest
@@ -25,10 +27,44 @@ from libtmux.server import Server
 from libtmux.session import Session
 from libtmux.window import Window
 
-if t.TYPE_CHECKING:
-    import pathlib
-
 pytest_plugins = ["pytester"]
+
+
+def _is_prose_doctest(request: pytest.FixtureRequest) -> bool:
+    """Whether the active item is an executable Markdown or reST block."""
+    item = request._pyfuncitem
+    return isinstance(item, DoctestItem) and item.path.suffix.lower() in {
+        ".md",
+        ".rst",
+    }
+
+
+@pytest.fixture
+def docs_doctest_sandbox(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> pathlib.Path:
+    """Give one prose doctest a private home and tmux socket base."""
+    # tmux's Unix socket path has a small platform limit. Nested pytest
+    # temporary paths can exceed it before the socket name is appended.
+    sandbox = pathlib.Path(tempfile.mkdtemp(prefix="libtmux-doc-"))
+    request.addfinalizer(functools.partial(shutil.rmtree, sandbox, ignore_errors=True))
+    home = sandbox / "home"
+    tmux_tmpdir = sandbox / "tmux"
+    home.mkdir(parents=True)
+    tmux_tmpdir.mkdir()
+    tmux_tmpdir.chmod(0o700)
+    (home / ".tmux.conf").write_text(
+        "set -g base-index 1\n",
+        encoding="utf-8",
+    )
+    (home / ".zshrc").touch()
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("TMUX_TMPDIR", str(tmux_tmpdir))
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.delenv("TMUX_PANE", raising=False)
+    return sandbox
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +75,8 @@ def add_doctest_fixtures(
     """Configure doctest fixtures for pytest-doctest."""
     if isinstance(request._pyfuncitem, DoctestItem) and shutil.which("tmux"):
         request.getfixturevalue("set_home")
+        if _is_prose_doctest(request):
+            request.getfixturevalue("docs_doctest_sandbox")
         doctest_namespace["Server"] = Server
         doctest_namespace["Session"] = Session
         doctest_namespace["Window"] = Window
@@ -50,6 +88,7 @@ def add_doctest_fixtures(
         doctest_namespace["session"] = session
         doctest_namespace["window"] = session.active_window
         doctest_namespace["pane"] = session.active_pane
+        doctest_namespace["tmp_path"] = request.getfixturevalue("tmp_path")
         doctest_namespace["request"] = request
         doctest_namespace["ControlMode"] = ControlMode
         doctest_namespace["control_mode"] = functools.partial(
