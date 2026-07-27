@@ -9,7 +9,7 @@ import textwrap
 
 from sphinx.testing.util import SphinxTestApp
 
-import libtmux.experimental.ops as ops
+from libtmux.experimental import ops
 from libtmux.experimental.ops import Result, registry
 
 _ROOT = pathlib.Path(__file__).parents[2]
