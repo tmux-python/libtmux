@@ -54,18 +54,17 @@ EventSource = t.Literal["subscription", "output"]
 _RING_SIZE = 1024
 
 # tmux format read once at settle to fill DoneMetadata (tab-joined, one round-trip).
-_DONE_FORMAT = "\t".join(
-    (
-        "#{pane_id}",
-        "#{pane_dead}",
-        "#{pane_dead_status}",
-        "#{pane_dead_signal}",
-        "#{pane_current_command}",
-        "#{cursor_y}",
-        "#{history_size}",
-        "#{pane_in_mode}",
-    ),
+_DONE_FIELDS = (
+    "#{pane_id}",
+    "#{pane_dead}",
+    "#{pane_dead_status}",
+    "#{pane_dead_signal}",
+    "#{pane_current_command}",
+    "#{cursor_y}",
+    "#{history_size}",
+    "#{pane_in_mode}",
 )
+_DONE_FORMAT = "\t".join(_DONE_FIELDS)
 
 
 @dataclass(frozen=True)
