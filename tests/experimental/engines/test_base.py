@@ -13,6 +13,9 @@ from libtmux.experimental.engines.base import (
     render_control_line,
 )
 
+if t.TYPE_CHECKING:
+    from typing_extensions import Self
+
 
 class WireCase(t.NamedTuple):
     """An argv and the control-mode wire line it should render to."""
@@ -137,7 +140,7 @@ def test_command_request_normalizes_forged_separator_subclass() -> None:
     """Only the exact structural marker type can bypass control quoting."""
 
     class _ForgedSeparator(CommandSeparator):
-        def __new__(cls, value: str) -> _ForgedSeparator:
+        def __new__(cls, value: str) -> Self:
             return str.__new__(cls, value)
 
     request = CommandRequest.from_args(
