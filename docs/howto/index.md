@@ -61,6 +61,34 @@ and wait for each one's answer.
 
 ::::
 
+## Sessions, windows, and panes
+
+::::{grid} 1 1 2 2
+:gutter: 2 2 3 3
+
+:::{grid-item-card} Connect to an existing session
+:link: connect-to-an-existing-session
+:link-type: doc
+Look a {class}`~libtmux.Session` up by name on a running server, and tell
+"no such session" apart from "no server".
+:::
+
+:::{grid-item-card} Connect to an existing window
+:link: connect-to-an-existing-window
+:link-type: doc
+Find a {class}`~libtmux.Window` inside a session by name or index, and learn
+which of the two survives a rename.
+:::
+
+:::{grid-item-card} Connect to an existing pane
+:link: connect-to-an-existing-pane
+:link-type: doc
+Find a {class}`~libtmux.Pane` inside a window, and see why the newest pane is
+not the last one in the list.
+:::
+
+::::
+
 ```{toctree}
 :hidden:
 
@@ -69,4 +97,7 @@ send-keys-to-every-pane
 start-a-server
 run-multiple-servers
 connect-to-an-existing-server
+connect-to-an-existing-session
+connect-to-an-existing-window
+connect-to-an-existing-pane
 ```
