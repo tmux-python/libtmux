@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import typing as t
 from time import sleep, time
 
 import pytest
 
 from libtmux import exc
 from libtmux.test.retry import retry_until
+
+if t.TYPE_CHECKING:
+    from libtmux.session import Session
 
 
 def test_retry_three_times() -> None:
@@ -103,3 +107,36 @@ def test_retry_three_times_no_raise_assert() -> None:
 
     end = time()
     assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
+
+
+def test_retry_until_forwards_args_from_loop(session: Session) -> None:
+    """Waiting on a loop variable needs no closure, so no B023 suppression."""
+    window = session.new_window(window_name="retry_until_args")
+    active_pane = window.active_pane
+    assert active_pane is not None
+    panes = [active_pane, window.split()]
+
+    for pane in panes:
+        pane.send_keys("echo ready")
+
+    for pane in panes:
+        # Whole lines, not a substring: capture_pane returns the command tmux
+        # echoed onto the pane, so ``"ready" in ...`` is true before the shell
+        # has run and the wait would prove nothing.
+        assert retry_until(
+            lambda p: any(line.strip() == "ready" for line in p.capture_pane()),
+            2,
+            args=(pane,),
+        )
+
+
+def test_retry_until_args_reach_predicate() -> None:
+    """Every retry passes the same ``args`` to the predicate."""
+    seen: list[tuple[str, int]] = []
+
+    def ready(name: str, threshold: int) -> bool:
+        seen.append((name, threshold))
+        return len(seen) >= threshold
+
+    assert retry_until(ready, 1, args=("pane", 3), interval=0)
+    assert seen == [("pane", 3)] * 3
