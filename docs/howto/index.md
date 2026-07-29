@@ -59,6 +59,27 @@ Split a window, fan one command across its {class}`~libtmux.Pane` objects,
 and wait for each one's answer.
 :::
 
+:::{grid-item-card} Send keys to a pane
+:link: send-keys
+:link-type: doc
+Type a command into a {class}`~libtmux.Pane`, stage one without running it,
+and read the answer back without being fooled by the echo.
+:::
+
+:::{grid-item-card} Create panes
+:link: create-panes
+:link-type: doc
+Split a {class}`~libtmux.Window` into a layout, keep hold of the panes you
+made, and refresh the ones that went stale.
+:::
+
+:::{grid-item-card} Create a floating pane
+:link: create-a-floating-pane
+:link-type: doc
+Hover a {class}`~libtmux.Pane` over the layout with
+{meth}`~libtmux.Window.new_pane`, drive it like any other, and close it again.
+:::
+
 ::::
 
 ## Sessions, windows, and panes
@@ -138,4 +159,7 @@ detect-you-are-inside-tmux
 find-the-session-youre-in
 find-the-window-youre-in
 find-the-pane-youre-in
+send-keys
+create-panes
+create-a-floating-pane
 ```
