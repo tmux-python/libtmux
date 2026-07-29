@@ -54,5 +54,6 @@ means "no sessions *or* no server", and only `is_alive()` or
 
 ## Related
 
+- {ref}`howto-send-keys-to-every-pane` — drive a session once you have one.
 - {ref}`traversal` — walk from a live server down to its panes.
 - {ref}`about` — what a `Server` handle is, and what it is not.
