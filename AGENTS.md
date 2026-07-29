@@ -37,6 +37,13 @@ what was asked for.
 Each of those is the single home for its subject. Where a rule seems to
 be stated twice, the file listed above is the one that governs.
 
+**How-to guides are not doctests.** Pages under `docs/howto/` carry plain
+```` ```python ```` blocks a reader copies verbatim, with the assertions
+hidden in a sidecar under `tests/docs/howto/`. Their visible code carries no
+`assert`, polls against a deadline rather than sleeping, and names its socket
+so a paste cannot reach the reader's own tmux. `docs/AGENTS.md` has the full
+convention.
+
 ## Change discipline
 
 - Make the smallest coherent change that solves the verified problem;
