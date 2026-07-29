@@ -12,6 +12,8 @@ way to get it. When you want the model behind it instead, each page links the
 {doc}`topic <../topics/index>` that explains why the API is shaped the way it
 is.
 
+## Servers
+
 ::::{grid} 1 1 2 2
 :gutter: 2 2 3 3
 
@@ -21,6 +23,13 @@ is.
 Ask a {class}`~libtmux.Server` whether anything is alive on the other end of
 its socket, and tell "no server" apart from "no sessions".
 :::
+
+::::
+
+## Driving panes
+
+::::{grid} 1 1 2 2
+:gutter: 2 2 3 3
 
 :::{grid-item-card} Send keys to every pane
 :link: send-keys-to-every-pane
