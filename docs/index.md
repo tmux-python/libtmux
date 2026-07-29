@@ -14,6 +14,12 @@ servers, sessions, windows, and panes as Python objects.
 Install and make your first API call in 5 minutes.
 :::
 
+:::{grid-item-card} How-to guides
+:link: howto/index
+:link-type: doc
+Task-shaped recipes you can paste straight into your own code.
+:::
+
 :::{grid-item-card} Topics
 :link: topics/index
 :link-type: doc
@@ -120,6 +126,7 @@ isolated tmux fixtures:
 :hidden:
 
 quickstart
+howto/index
 topics/index
 api/index
 api/testing/index
