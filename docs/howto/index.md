@@ -24,6 +24,27 @@ Ask a {class}`~libtmux.Server` whether anything is alive on the other end of
 its socket, and tell "no server" apart from "no sessions".
 :::
 
+:::{grid-item-card} Start a tmux server
+:link: start-a-server
+:link-type: doc
+Boot a daemon that outlives your script, attach to it from a shell, and see
+why {meth}`~libtmux.Server.start_server` is not the call you want.
+:::
+
+:::{grid-item-card} Run multiple tmux servers
+:link: run-multiple-servers
+:link-type: doc
+Give each daemon its own socket so their sessions, windows and panes cannot
+reach one another.
+:::
+
+:::{grid-item-card} Connect to an existing tmux server
+:link: connect-to-an-existing-server
+:link-type: doc
+Point a {class}`~libtmux.Server` handle at a socket someone else started, and
+confirm anything is listening on it.
+:::
+
 ::::
 
 ## Driving panes
@@ -45,4 +66,7 @@ and wait for each one's answer.
 
 check-if-tmux-is-running
 send-keys-to-every-pane
+start-a-server
+run-multiple-servers
+connect-to-an-existing-server
 ```
