@@ -28,7 +28,7 @@ from libtmux.window import Window
 if t.TYPE_CHECKING:
     import pathlib
 
-pytest_plugins = ["pytester"]
+pytest_plugins = ["pytester", "tests.docs.howto_harness"]
 
 
 @pytest.fixture(autouse=True)
