@@ -89,6 +89,40 @@ not the last one in the list.
 
 ::::
 
+## Code running inside tmux
+
+::::{grid} 1 1 2 2
+:gutter: 2 2 3 3
+
+:::{grid-item-card} Detect that you are inside tmux
+:link: detect-you-are-inside-tmux
+:link-type: doc
+Branch on whether your own process was spawned by a pane, and tell that apart
+from the server still being reachable.
+:::
+
+:::{grid-item-card} Find the session you're in
+:link: find-the-session-youre-in
+:link-type: doc
+Get the {class}`~libtmux.Session` holding your process, then walk out from it.
+:::
+
+:::{grid-item-card} Find the window you're in
+:link: find-the-window-youre-in
+:link-type: doc
+Get the {class}`~libtmux.Window` that contains you, and every session that
+holds it when it is shared.
+:::
+
+:::{grid-item-card} Find the pane you're in
+:link: find-the-pane-youre-in
+:link-type: doc
+Get the {class}`~libtmux.Pane` your code runs in, which is not the same as the
+pane holding the focus.
+:::
+
+::::
+
 ```{toctree}
 :hidden:
 
@@ -100,4 +134,8 @@ connect-to-an-existing-server
 connect-to-an-existing-session
 connect-to-an-existing-window
 connect-to-an-existing-pane
+detect-you-are-inside-tmux
+find-the-session-youre-in
+find-the-window-youre-in
+find-the-pane-youre-in
 ```
