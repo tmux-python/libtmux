@@ -1,4 +1,4 @@
-"""Readers for the tmux variables exported into every pane's environment.
+"""Readers for the tmux variables libtmux takes its bearings from.
 
 libtmux._internal.env
 ~~~~~~~~~~~~~~~~~~~~~
@@ -24,11 +24,16 @@ window is moved or linked into another session, the session id baked into
 libtmux therefore reads *only* the socket path out of ``TMUX`` and asks tmux
 itself -- targeting ``TMUX_PANE`` -- for the pane's window and session. See
 :meth:`libtmux.Pane.from_env`.
+
+A third variable, ``TMUX_TMPDIR``, is read *by* tmux rather than exported by
+it: it picks the directory tmux keeps its sockets in. See
+:func:`resolve_socket_path`.
 """
 
 from __future__ import annotations
 
 import os
+import pathlib
 import typing as t
 
 from libtmux import exc
@@ -38,6 +43,15 @@ TMUX: t.Final = "TMUX"
 
 TMUX_PANE: t.Final = "TMUX_PANE"
 """Environment variable tmux exports with the pane's id, e.g. ``%3``."""
+
+TMUX_TMPDIR: t.Final = "TMUX_TMPDIR"
+"""Environment variable naming the directory tmux keeps its sockets in."""
+
+DEFAULT_SOCKET_DIR: t.Final = "/tmp"
+"""Socket directory tmux falls back to when ``$TMUX_TMPDIR`` is unset."""
+
+DEFAULT_SOCKET_NAME: t.Final = "default"
+"""Socket name tmux uses when neither ``-L`` nor ``-S`` was given."""
 
 
 def resolve_env(env: t.Mapping[str, str] | None = None) -> t.Mapping[str, str]:
@@ -63,6 +77,58 @@ def resolve_env(env: t.Mapping[str, str] | None = None) -> t.Mapping[str, str]:
     True
     """
     return os.environ if env is None else env
+
+
+def resolve_socket_path(
+    socket_name: str | None = None,
+    env: t.Mapping[str, str] | None = None,
+) -> pathlib.Path:
+    """Resolve the socket path tmux uses for *socket_name*.
+
+    tmux keeps its sockets in ``tmux-<euid>`` under ``$TMUX_TMPDIR``, falling
+    back to ``/tmp`` when that is unset or empty. ``$TMPDIR`` is deliberately
+    not consulted -- tmux does not consult it either. The socket directory is
+    resolved through symlinks, as tmux resolves it before binding, so a
+    symlinked ``$TMUX_TMPDIR`` yields the path tmux itself reports.
+
+    The path is *computed*, not observed: it says where tmux would put the
+    socket, not that a daemon is listening there. Code holding a live
+    :class:`~libtmux.Server` should ask tmux instead, with the
+    ``#{socket_path}`` format.
+
+    Parameters
+    ----------
+    socket_name : str, optional
+        Socket name, as passed to tmux's ``-L``. Defaults to tmux's own
+        default, ``"default"``.
+    env : :class:`typing.Mapping`, optional
+        Environment to read. Defaults to :data:`os.environ`.
+
+    Returns
+    -------
+    :class:`pathlib.Path`
+        Path tmux resolves the socket to.
+
+    Examples
+    --------
+    >>> from libtmux._internal.env import resolve_socket_path
+    >>> resolve_socket_path(env={})
+    PosixPath('/tmp/tmux-.../default')
+
+    >>> resolve_socket_path("mysocket", env={"TMUX_TMPDIR": "/run/user/1000"})
+    PosixPath('/run/user/1000/tmux-.../mysocket')
+
+    ``$TMPDIR`` is not a socket directory, so it changes nothing:
+
+    >>> resolve_socket_path(env={"TMPDIR": "/var/folders/xy"})
+    PosixPath('/tmp/tmux-.../default')
+    """
+    tmpdir = resolve_env(env).get(TMUX_TMPDIR) or DEFAULT_SOCKET_DIR
+    return (
+        pathlib.Path(tmpdir).resolve()
+        / f"tmux-{os.geteuid()}"
+        / (socket_name or DEFAULT_SOCKET_NAME)
+    )
 
 
 def socket_path_from_env(env: t.Mapping[str, str] | None = None) -> str:
@@ -120,6 +186,56 @@ def socket_path_from_env(env: t.Mapping[str, str] | None = None) -> str:
             reason="not '<socket_path>,<server_pid>,<session_id>'",
         )
     return parts[0]
+
+
+def resolve_ambient_socket_path(env: t.Mapping[str, str] | None = None) -> pathlib.Path:
+    """Resolve the socket a *bare* tmux invocation talks to, in tmux's own order.
+
+    A tmux client given no ``-L`` or ``-S`` prefers ``$TMUX`` -- the socket of
+    the pane it is running inside -- and only falls back to computing a path
+    under ``$TMUX_TMPDIR`` when there is no pane. Measured against tmux 3.7b: a
+    bare client with ``$TMUX`` set connects even when ``$TMUX_TMPDIR`` names a
+    directory far too deep to bind, because it never looks there.
+
+    That order only holds for the bare client. Passing ``-L`` sends tmux to
+    ``$TMUX_TMPDIR`` regardless of ``$TMUX``, so a named socket resolves through
+    :func:`resolve_socket_path` instead.
+
+    Parameters
+    ----------
+    env : :class:`typing.Mapping`, optional
+        Environment to read. Defaults to :data:`os.environ`.
+
+    Returns
+    -------
+    :class:`pathlib.Path`
+        Socket path a bare tmux client would use.
+
+    Examples
+    --------
+    >>> from libtmux._internal.env import resolve_ambient_socket_path
+
+    Inside a pane, ``$TMUX`` names the socket outright:
+
+    >>> resolve_ambient_socket_path({"TMUX": "/tmp/tmux-1000/default,8421,0"})
+    PosixPath('/tmp/tmux-1000/default')
+
+    ``$TMUX_TMPDIR`` is not consulted when there is a pane to inherit from:
+
+    >>> resolve_ambient_socket_path(
+    ...     {"TMUX": "/tmp/sock,8421,0", "TMUX_TMPDIR": "/nowhere"}
+    ... )
+    PosixPath('/tmp/sock')
+
+    Outside tmux it falls back to the computed path:
+
+    >>> resolve_ambient_socket_path({})
+    PosixPath('/tmp/tmux-.../default')
+    """
+    try:
+        return pathlib.Path(socket_path_from_env(env))
+    except exc.NotInsideTmux:
+        return resolve_socket_path(env=env)
 
 
 def pane_id_from_env(env: t.Mapping[str, str] | None = None) -> str:
