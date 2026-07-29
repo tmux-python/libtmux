@@ -22,10 +22,18 @@ Ask a {class}`~libtmux.Server` whether anything is alive on the other end of
 its socket, and tell "no server" apart from "no sessions".
 :::
 
+:::{grid-item-card} Send keys to every pane
+:link: send-keys-to-every-pane
+:link-type: doc
+Split a window, fan one command across its {class}`~libtmux.Pane` objects,
+and wait for each one's answer.
+:::
+
 ::::
 
 ```{toctree}
 :hidden:
 
 check-if-tmux-is-running
+send-keys-to-every-pane
 ```
