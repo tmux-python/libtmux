@@ -301,6 +301,13 @@ needs the actual path, query tmux's `#{socket_path}` format with
 
 **`# doctest: +SKIP` is NOT permitted** - it's just another workaround that doesn't test anything. Use the fixtures properly - tmux is required to run tests anyway.
 
+**How-to guides are not doctests.** Pages under `docs/howto/` carry plain
+```` ```python ```` blocks a reader copies verbatim, with the assertions
+hidden in a sidecar under `tests/docs/howto/`. Their visible code carries no
+`assert`, polls against a deadline rather than sleeping, and names its socket
+so a paste cannot reach the reader's own tmux. `docs/AGENTS.md` has the full
+convention.
+
 **Using fixtures in doctests:**
 ```python
 >>> server.new_session(session_name='my_session')  # server from doctest_namespace
