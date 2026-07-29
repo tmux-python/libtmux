@@ -445,6 +445,67 @@ def resolve_checks(
     return checks
 
 
+def run_page(page: Path, on_stage: Callable[[str], None] = lambda _stage: None) -> None:
+    """Run one how-to page end to end, raising on the first failure.
+
+    Separate from the pytest item so a test can drive a page directly — the
+    mutation probe in :mod:`tests.docs.test_howto_mutations` runs a page under
+    a deliberately broken libtmux and requires it to fail.
+
+    Parameters
+    ----------
+    page : pathlib.Path
+        The how-to page to run.
+    on_stage : callable, optional
+        Called with a description each time execution moves on, so a caller
+        can report which block or check was running when something raised.
+
+    Raises
+    ------
+    HowtoContractError
+        If the page has no ``python`` block, or its sidecar does not satisfy
+        the contract.
+    """
+    blocks = parse_python_blocks(page)
+    if not blocks:
+        msg = (
+            f"{page.name} has no backtick-fenced ```python block. A how-to "
+            f"page must carry at least one runnable example."
+        )
+        raise HowtoContractError(msg)
+
+    sidecar = _load_sidecar(page)
+    checks = resolve_checks(sidecar, len(blocks))
+    setup = getattr(sidecar, "setup", None)
+    teardown = getattr(sidecar, "teardown", None)
+
+    with (
+        pytest.MonkeyPatch.context() as monkeypatch,
+        tempfile.TemporaryDirectory(prefix="libtmux-howto-") as tmp,
+    ):
+        ctx = HowtoContext(
+            page=page,
+            blocks=blocks,
+            monkeypatch=monkeypatch,
+            tmp_path=Path(tmp),
+        )
+        try:
+            on_stage("isolating tmux")
+            _isolate_tmux(ctx)
+            if callable(setup):
+                on_stage(f"{sidecar.__name__}.setup")
+                setup(ctx)
+            for block, check in zip(blocks, checks, strict=True):
+                on_stage(f"{page.name}:{block.first_line} (block {block.number})")
+                ctx.output[block.number] = ctx.run_block(block.number)
+                on_stage(f"{sidecar.__name__}.check_{block.number}")
+                check(ctx)
+        finally:
+            if callable(teardown):
+                teardown(ctx)
+            ctx.run_cleanups()
+
+
 class HowtoPageItem(pytest.Item):
     """Execute one how-to page's blocks and run its sidecar's checks."""
 
@@ -452,55 +513,18 @@ class HowtoPageItem(pytest.Item):
     _stage: str | None = None
 
     def runtest(self) -> None:
-        """Run the page end to end.
+        """Run the page end to end."""
+        run_page(Path(self.path), self._record_stage)
 
-        Raises
-        ------
-        HowtoContractError
-            If the page has no ``python`` block, or its sidecar does not
-            satisfy the contract.
+    def _record_stage(self, stage: str) -> None:
+        """Remember what is running, for :meth:`repr_failure`.
+
+        Parameters
+        ----------
+        stage : str
+            Description of the block or check about to run.
         """
-        page = Path(self.path)
-        blocks = parse_python_blocks(page)
-        if not blocks:
-            msg = (
-                f"{page.name} has no backtick-fenced ```python block. A "
-                f"how-to page must carry at least one runnable example."
-            )
-            raise HowtoContractError(msg)
-
-        sidecar = _load_sidecar(page)
-        checks = resolve_checks(sidecar, len(blocks))
-        setup = getattr(sidecar, "setup", None)
-        teardown = getattr(sidecar, "teardown", None)
-
-        with (
-            pytest.MonkeyPatch.context() as monkeypatch,
-            tempfile.TemporaryDirectory(prefix="libtmux-howto-") as tmp,
-        ):
-            ctx = HowtoContext(
-                page=page,
-                blocks=blocks,
-                monkeypatch=monkeypatch,
-                tmp_path=Path(tmp),
-            )
-            try:
-                self._stage = "isolating tmux"
-                _isolate_tmux(ctx)
-                if callable(setup):
-                    self._stage = f"{sidecar.__name__}.setup"
-                    setup(ctx)
-                for block, check in zip(blocks, checks, strict=True):
-                    self._stage = (
-                        f"{page.name}:{block.first_line} (block {block.number})"
-                    )
-                    ctx.output[block.number] = ctx.run_block(block.number)
-                    self._stage = f"{sidecar.__name__}.check_{block.number}"
-                    check(ctx)
-            finally:
-                if callable(teardown):
-                    teardown(ctx)
-                ctx.run_cleanups()
+        self._stage = stage
 
     def repr_failure(
         self,
