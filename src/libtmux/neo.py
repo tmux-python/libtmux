@@ -1098,15 +1098,8 @@ def fetch_objs(
     tmux_version = str(get_version(tmux_bin=server.tmux_bin))
     _fields, format_string = get_output_format(list_cmd, tmux_version)
 
-    cmd_args: list[str | int] = []
-
-    if server.socket_name:
-        cmd_args.insert(0, f"-L{server.socket_name}")
-    if server.socket_path:
-        cmd_args.insert(0, f"-S{server.socket_path}")
-
-    tmux_cmds = [
-        *cmd_args,
+    tmux_cmds: list[str | int] = [
+        *server._socket_args(),
         list_cmd,
     ]
 
