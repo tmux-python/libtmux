@@ -45,6 +45,31 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Bounded tmux commands (#735)
+
+{meth}`Server.wait_for() <libtmux.Server.wait_for>` takes a `timeout` in seconds.
+A tmux channel is a rendezvous with no clock on it: when the pane that was going
+to signal is killed, exits early, or has its window closed, the waiter blocks for
+the life of the process. `server.wait_for(channel, timeout=60)` turns that into
+a {exc}`~libtmux.exc.TmuxCommandTimeout` you can catch. It subclasses
+{exc}`~libtmux.exc.WaitTimeout`, so existing handlers keep working, and it
+carries the command that was killed and the bound it exceeded.
+
+The bound is available to any tmux command, not just `wait-for`.
+{meth}`Server.cmd() <libtmux.Server.cmd>`,
+{meth}`Session.cmd() <libtmux.Session.cmd>`,
+{meth}`Window.cmd() <libtmux.Window.cmd>`,
+{meth}`Pane.cmd() <libtmux.Pane.cmd>`, and
+{class}`~libtmux.common.tmux_cmd` beneath them all accept `timeout`, and all
+kill and reap the tmux client libtmux spawned before raising, so the call
+leaves no child of its own behind. Work the command started — a pane's
+foreground process, the tmux server — keeps running. The default, `None`,
+waits as long as tmux takes.
+
+See {ref}`automation-patterns` for waiting on a channel instead of polling.
+
 ### Documentation
 
 #### Automation patterns waits for tmux instead of guessing (#734)
