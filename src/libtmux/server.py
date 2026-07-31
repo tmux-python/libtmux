@@ -342,6 +342,7 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
+        timeout: float | None = None,
     ) -> tmux_cmd:
         """Execute tmux command respective of socket name and file, return output.
 
@@ -375,17 +376,42 @@ class Server(
         ... 'split-window', '-P', '-F#{pane_id}').stdout[0], server=window.server)
         Pane(%... Window(@... ...:..., Session($1 libtmux_...)))
 
+        Most tmux commands return at once. The few that block -- ``wait-for``,
+        a foreground ``run-shell`` -- can be bounded, and give up as a libtmux
+        error rather than hanging:
+
+        >>> from libtmux import exc
+        >>> try:
+        ...     server.cmd('wait-for', 'nobody-signals-me', timeout=0.25)
+        ... except exc.TmuxCommandTimeout:
+        ...     print('gave up')
+        gave up
+
         Parameters
         ----------
         target : str, optional
             Optional custom target.
+        timeout : float, optional
+            Seconds to allow this command to run before killing the tmux
+            client libtmux spawned and raising
+            :exc:`~libtmux.exc.TmuxCommandTimeout`. *None* (the default)
+            waits indefinitely.
 
         Returns
         -------
         :class:`common.tmux_cmd`
 
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxCommandTimeout`
+            When *timeout* elapses.
+
         Notes
         -----
+        .. versionchanged:: 0.63
+
+            Added ``timeout``.
+
         .. versionchanged:: 0.8
 
             Renamed from ``.tmux`` to ``.cmd``.
@@ -408,7 +434,12 @@ class Server(
 
         cmd_args = ["-t", str(target), *args] if target is not None else [*args]
 
-        return tmux_cmd(*svr_args, *cmd_args, tmux_bin=self.tmux_bin)
+        return tmux_cmd(
+            *svr_args,
+            *cmd_args,
+            tmux_bin=self.tmux_bin,
+            timeout=timeout,
+        )
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -624,8 +655,15 @@ class Server(
         lock: bool | None = None,
         unlock: bool | None = None,
         set_flag: bool | None = None,
+        timeout: float | None = None,
     ) -> None:
         """Wait for, signal, or lock a channel via ``$ tmux wait-for``.
+
+        A channel is a rendezvous: one process waits, another signals, and
+        tmux wakes the waiter with no polling in between. The catch is that
+        nothing guarantees the signal ever arrives -- the pane that was going
+        to send it can be killed, exit early, or have its window closed. Pass
+        *timeout* to put a ceiling on the wait.
 
         Parameters
         ----------
@@ -637,12 +675,44 @@ class Server(
             Unlock the channel (``-U`` flag).
         set_flag : bool, optional
             Set the channel flag and wake waiters (``-S`` flag).
+        timeout : float, optional
+            Seconds to wait before giving up and raising
+            :exc:`~libtmux.exc.TmuxCommandTimeout`. *None* (the default) waits
+            forever, which is what you want when the signal is certain.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.TmuxCommandTimeout`
+            When *timeout* elapses before the channel is signalled.
 
         Examples
         --------
         >>> server.new_session(session_name='wait_test')
         Session(...)
         >>> server.wait_for('test_channel', set_flag=True)
+
+        Wait on a pane that signals when its work is done, bounded in case
+        the work never gets that far:
+
+        >>> channel = 'build-done'
+        >>> pane.send_keys(f'make; tmux wait-for -S {channel}')
+        >>> server.wait_for(channel, timeout=60)
+
+        A channel nobody signals costs *timeout* seconds instead of the rest
+        of the process's life:
+
+        >>> from libtmux import exc
+        >>> try:
+        ...     server.wait_for('nobody-signals-me', timeout=0.25)
+        ... except exc.TmuxCommandTimeout:
+        ...     print('gave up waiting')
+        gave up waiting
+
+        Notes
+        -----
+        .. versionchanged:: 0.63
+
+           Added ``timeout``.
         """
         tmux_args: tuple[str, ...] = ()
 
@@ -657,7 +727,7 @@ class Server(
 
         tmux_args += (channel,)
 
-        proc = self.cmd("wait-for", *tmux_args)
+        proc = self.cmd("wait-for", *tmux_args, timeout=timeout)
 
         raise_if_stderr(proc, "wait-for")
 
