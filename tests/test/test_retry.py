@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import typing as t
-from time import sleep, time
+from time import monotonic, sleep
 
 import pytest
 
@@ -16,7 +16,7 @@ if t.TYPE_CHECKING:
 
 def test_retry_three_times() -> None:
     """Test retry_until()."""
-    ini = time()
+    ini = monotonic()
     value = 0
 
     def call_me_three_times() -> bool:
@@ -31,14 +31,14 @@ def test_retry_three_times() -> None:
 
     retry_until(call_me_three_times, 1)
 
-    end = time()
+    end = monotonic()
 
     assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
 
 
 def test_function_times_out() -> None:
     """Test time outs with retry_until()."""
-    ini = time()
+    ini = monotonic()
 
     def never_true() -> bool:
         sleep(
@@ -49,14 +49,14 @@ def test_function_times_out() -> None:
     with pytest.raises(exc.WaitTimeout):
         retry_until(never_true, 1)
 
-    end = time()
+    end = monotonic()
 
     assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
 
 
 def test_function_times_out_no_raise() -> None:
     """Tests retry_until() with exception raising disabled."""
-    ini = time()
+    ini = monotonic()
 
     def never_true() -> bool:
         sleep(
@@ -66,13 +66,13 @@ def test_function_times_out_no_raise() -> None:
 
     retry_until(never_true, 1, raises=False)
 
-    end = time()
+    end = monotonic()
     assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
 
 
 def test_function_times_out_no_raise_assert() -> None:
     """Tests retry_until() with exception raising disabled, returning False."""
-    ini = time()
+    ini = monotonic()
 
     def never_true() -> bool:
         sleep(
@@ -82,13 +82,13 @@ def test_function_times_out_no_raise_assert() -> None:
 
     assert not retry_until(never_true, 1, raises=False)
 
-    end = time()
+    end = monotonic()
     assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
 
 
 def test_retry_three_times_no_raise_assert() -> None:
     """Tests retry_until() with exception raising disabled, with closure variable."""
-    ini = time()
+    ini = monotonic()
     value = 0
 
     def call_me_three_times() -> bool:
@@ -105,7 +105,7 @@ def test_retry_three_times_no_raise_assert() -> None:
 
     assert retry_until(call_me_three_times, 1, raises=False)
 
-    end = time()
+    end = monotonic()
     assert 0.9 <= (end - ini) <= 1.1  # Allow for small timing variations
 
 
@@ -140,3 +140,33 @@ def test_retry_until_args_reach_predicate() -> None:
 
     assert retry_until(ready, 1, args=("pane", 3), interval=0)
     assert seen == [("pane", 3)] * 3
+
+
+def test_wall_clock_step_does_not_end_the_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A wall-clock jump mid-wait neither shortens nor lengthens the budget.
+
+    Regression: the budget was measured with :func:`time.time`, so an NTP
+    correction, a container clock sync, or a VM resume landing inside the
+    wait ended it early. Stepping :func:`time.time` forward by an hour here
+    must not be observable, because nothing reads it.
+    """
+    stepped = 0.0
+
+    def stepping_time() -> float:
+        nonlocal stepped
+        stepped += 3600.0
+        return monotonic() + stepped
+
+    monkeypatch.setattr("time.time", stepping_time)
+
+    calls = 0
+
+    def true_on_third() -> bool:
+        nonlocal calls
+        calls += 1
+        return calls >= 3
+
+    assert retry_until(true_on_third, 5)
+    assert calls == 3
