@@ -126,8 +126,9 @@ block on that channel with {meth}`~libtmux.Server.wait_for`. tmux remembers a si
 sent before the waiter starts, so this has no lost-wakeup race. It also avoids
 confusing the shell's echoed command with the command's output.
 
-{meth}`~libtmux.Server.wait_for` has no timeout. Make sure every expected exit path
-reaches `tmux wait-for -S` so a failed command cannot leave your script blocked.
+{meth}`~libtmux.Server.wait_for` waits indefinitely unless you give it a `timeout`.
+Either make sure every expected exit path reaches `tmux wait-for -S`, or bound the
+wait, so a failed command cannot leave your script blocked.
 Channels are server-wide, so give each in-flight command a distinct channel name.
 
 ```python
@@ -452,6 +453,65 @@ True
 >>> # Clean up
 >>> timeout_window.kill()
 ```
+
+### Waiting for a signal instead of polling
+
+Polling costs you a tmux round-trip per read and a `sleep` you pay whether the
+command finished or not. tmux offers the other half of the trade: a *channel*,
+where one process waits and another signals, and nobody polls in between. The
+pane signals with `tmux wait-for -S`, and your script waits with
+{meth}`~libtmux.Server.wait_for`.
+
+What you give up is the guarantee that the signal arrives at all — kill the pane,
+close its window, or have the command exit before it reaches the `wait-for`, and
+the waiter waits forever. Pass a `timeout` to cap it, and a missing signal becomes
+a {exc}`~libtmux.exc.TmuxCommandTimeout` you can catch. It is a
+{exc}`~libtmux.exc.WaitTimeout`, so an existing handler still catches it, and it
+carries the command that was killed and the bound it blew.
+
+```python
+>>> signal_window = session.new_window(window_name='signal-demo', attach=False)
+>>> signal_pane = signal_window.active_pane
+
+>>> channel = 'demo-work-done'
+>>> signal_pane.send_keys(f'echo "working"; tmux wait-for -S {channel}')
+>>> session.server.wait_for(channel, timeout=60)
+
+>>> signal_window.kill()
+```
+
+Nothing signals `never-arrives`, so the wait ends on the clock rather than on the
+work:
+
+```python
+>>> from libtmux import exc
+
+>>> try:
+...     session.server.wait_for('never-arrives', timeout=0.25)
+... except exc.TmuxCommandTimeout as e:
+...     print(f'gave up after {e.timeout}s')
+gave up after 0.25s
+```
+
+The bound belongs to the call, not to the server object, so the same server can
+carry a patient wait for a build and an impatient one for a health check.
+
+Two properties of tmux's rendezvous are worth knowing before you rely on it.
+
+A wait that times out is abandoned rather than withdrawn, and tmux only
+*remembers* a signal when nothing is waiting for the channel. The abandoned wait
+still counts, so the next signal on that channel is spent waking it instead of
+being remembered — one signal, after which the channel behaves normally again.
+Waits already in flight are woken as usual and other channels are untouched.
+Naming a fresh channel per rendezvous, from a build id or a UUID, sidesteps it
+entirely.
+
+A returning `wait_for` also means less than it appears to. tmux releases every
+waiter when the server shuts down, and it does so exactly as if the channel had
+been signalled, so a pane that died and a command that finished are
+indistinguishable from the wait alone. When it matters whether the work actually
+succeeded, have the command report its own result — write the exit status to a
+pane option and read it back — rather than treating the wake-up as proof.
 
 ### Retry pattern
 
