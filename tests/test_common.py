@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import inspect
 import locale
 import logging
+import os
 import pathlib
 import re
+import signal
 import subprocess
 import sys
 import textwrap
@@ -896,3 +899,82 @@ def test_compat_sentinel_backport() -> None:
     assert bool(unset) is True
     assert copy.copy(unset) is unset
     assert copy.deepcopy(unset) is unset
+
+
+def test_tmux_cmd_timeout_kills_and_reaps_the_child(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A timed-out tmux process is killed, reaped, and its pipes closed.
+
+    :meth:`subprocess.Popen.communicate` leaves the child running when its
+    timeout expires, so an unhandled expiry leaks one tmux process per call.
+    The recorder wraps :class:`subprocess.Popen` because the exception path
+    never hands the caller the ``tmux_cmd`` holding the process.
+    """
+    spawned: list[subprocess.Popen[t.Any]] = []
+    real_popen = subprocess.Popen
+
+    def record_popen(*args: t.Any, **kwargs: t.Any) -> subprocess.Popen[t.Any]:
+        process = real_popen(*args, **kwargs)
+        spawned.append(process)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", record_popen)
+
+    with pytest.raises(exc.TmuxCommandTimeout):
+        session.server.cmd("wait-for", "libtmux_reap_channel", timeout=0.5)
+
+    assert spawned, "no tmux subprocess was spawned"
+    process = spawned[-1]
+
+    assert process.returncode is not None, "child was left running"
+    assert process.returncode == -signal.SIGKILL, "child was not killed"
+
+    with pytest.raises(ChildProcessError):
+        os.waitpid(process.pid, os.WNOHANG)
+
+    assert process.stdout is not None
+    assert process.stdout.closed, "stdout pipe leaked"
+    assert process.stderr is not None
+    assert process.stderr.closed, "stderr pipe leaked"
+
+
+def test_tmux_cmd_timeout_that_is_not_reached_returns_normally(
+    session: Session,
+) -> None:
+    """A command that finishes inside its bound parses its output as usual."""
+    proc = tmux_cmd(
+        f"-L{session.server.socket_name}",
+        "display-message",
+        "-p",
+        "ok",
+        timeout=60,
+    )
+
+    assert proc.stdout == ["ok"]
+    assert proc.returncode == 0
+    assert proc.stderr == []
+
+
+def test_timeout_defaults_to_none_at_every_entry_point() -> None:
+    """Existing callers must not start timing out.
+
+    ``None`` is the only default that keeps today's unbounded behavior, and
+    keyword-only is what lets the parameter be added without disturbing the
+    positional ``*args`` every one of these entry points forwards to tmux.
+    """
+    entry_points = (
+        tmux_cmd.__init__,
+        libtmux.Server.cmd,
+        libtmux.Session.cmd,
+        libtmux.Window.cmd,
+        libtmux.Pane.cmd,
+        libtmux.Server.wait_for,
+    )
+
+    for func in entry_points:
+        parameter = inspect.signature(func).parameters["timeout"]
+
+        assert parameter.default is None, f"{func.__qualname__} defaults to a bound"
+        assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
