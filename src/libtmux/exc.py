@@ -7,6 +7,7 @@ libtmux.exc
 
 from __future__ import annotations
 
+import shlex
 import typing as t
 
 if t.TYPE_CHECKING:
@@ -348,6 +349,78 @@ class AmbiguousOption(OptionError):
 
 class WaitTimeout(LibTmuxException):
     """Function timed out without meeting condition."""
+
+
+class TmuxCommandTimeout(WaitTimeout):
+    """A tmux command outlived its timeout and the tmux client was killed.
+
+    Raised from :class:`~libtmux.common.tmux_cmd`, and therefore from every
+    :meth:`Server.cmd() <libtmux.Server.cmd>`,
+    :meth:`Session.cmd() <libtmux.Session.cmd>`,
+    :meth:`Window.cmd() <libtmux.Window.cmd>`, and
+    :meth:`Pane.cmd() <libtmux.Pane.cmd>` call layered on it, whenever a
+    timeout is in force and the command exceeds it. The tmux client libtmux
+    spawned is sent ``SIGKILL`` and reaped before this is raised, so the call
+    leaves no child of its own behind.
+
+    That is the client, not the work. Anything the command set in motion --
+    a pane's foreground process, the tmux server itself -- keeps running, and
+    a caller that needs it stopped has to say so.
+
+    Subclasses :exc:`WaitTimeout` rather than replacing it: code that already
+    catches libtmux's timeout keeps working, while callers who want the
+    command line and the bound that was exceeded can reach for them.
+
+    Parameters
+    ----------
+    cmd : list[str]
+        Full tmux command line that was killed, argv-style.
+    timeout : float
+        Bound, in seconds, that the command exceeded.
+    *args : object
+        Forwarded to :exc:`LibTmuxException`.
+
+    Attributes
+    ----------
+    cmd : list[str]
+        Full tmux command line that was killed, argv-style.
+    timeout : float
+        Bound, in seconds, that the command exceeded.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> err = exc.TmuxCommandTimeout(
+    ...     cmd=["tmux", "wait-for", "build-done"],
+    ...     timeout=1.5,
+    ... )
+    >>> str(err)
+    'tmux command timed out after 1.5s: tmux wait-for build-done'
+
+    Existing handlers keep working, because it is still a
+    :exc:`WaitTimeout`:
+
+    >>> isinstance(err, exc.WaitTimeout)
+    True
+
+    >>> err.timeout
+    1.5
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(
+        self,
+        cmd: list[str],
+        timeout: float,
+        *args: object,
+    ) -> None:
+        self.cmd = cmd
+        self.timeout = timeout
+        super().__init__(
+            f"tmux command timed out after {timeout}s: {shlex.join(cmd)}",
+            *args,
+        )
 
 
 class VariableUnpackingError(LibTmuxException):
