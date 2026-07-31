@@ -70,6 +70,13 @@ def retry_until(
     raises : bool
         Whether or not to raise an exception on timeout. Defaults to ``True``.
 
+    Notes
+    -----
+    The budget is measured with :func:`time.monotonic`, which only ever moves
+    forward. A wall clock does not: an NTP correction, a container clock sync,
+    or a VM resume steps it, and a step landing inside the wait would end it
+    early or stretch it by the size of the step.
+
     Examples
     --------
     >>> def fn():
@@ -100,10 +107,10 @@ def retry_until(
     ...         args=(pane,),
     ...     )
     """
-    ini = time.time()
+    ini = time.monotonic()
 
     while not fun(*args):
-        end = time.time()
+        end = time.monotonic()
         if end - ini >= seconds:
             if raises:
                 raise WaitTimeout
