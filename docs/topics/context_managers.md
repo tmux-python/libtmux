@@ -6,9 +6,12 @@ When you create tmux objects through libtmux, they normally live until you
 explicitly kill them. A context manager hands that cleanup back to Python: you
 scope an object to a block, and libtmux kills the underlying tmux object the
 moment you leave it — whether you exit cleanly or an exception unwinds the
-stack. The {class}`~libtmux.Server`, {class}`~libtmux.Session`,
-{class}`~libtmux.Window`, and {class}`~libtmux.Pane` classes (all main tmux
-objects) support this.
+stack. {class}`~libtmux.Session`, {class}`~libtmux.Window`, and
+{class}`~libtmux.Pane` work this way.
+
+{class}`~libtmux.Server` is the exception, and deliberately so: it does not
+kill itself on the way out unless you ask it to. A server is shared, and a
+handle on one says nothing about who started it.
 
 Most readers never reach for this. If you're building a long-running
 application, you typically let objects persist and tear them down yourself. The
@@ -37,16 +40,35 @@ Import `libtmux`:
 
 ## Server context manager
 
-You create a temporary server that will be killed when you're done:
+A {class}`~libtmux.Server` is a handle on a socket, not a connection. The same
+handle addresses a daemon whether or not your process started it, and a bare
+`Server()` addresses the default socket — usually the tmux you have been
+working in all day. Scoping one to a block is not grounds to destroy it, so
+leaving the block changes nothing:
 
 ```python
->>> with Server() as server:
-...     session = server.new_session()
-...     print(server.is_alive())
+>>> already_running = Server()
+>>> session = already_running.new_session(session_name='important-work')
+>>> with Server(socket_name=already_running.socket_name) as scoped:
+...     print(scoped.is_alive())
 True
->>> print(server.is_alive())  # Server is killed after exiting context
+>>> print([session.session_name for session in already_running.sessions])
+['important-work']
+```
+
+When teardown *is* what you want, say so with `kill_on_exit`:
+
+```python
+>>> with Server(socket_name='libtmux_doctest_ctx', kill_on_exit=True) as disposable:
+...     _ = disposable.new_session()
+>>> print(disposable.is_alive())
 False
 ```
+
+That is the one asymmetry in this page. A session, window or pane is yours by
+construction — you called {meth}`~libtmux.Server.new_session` or
+{meth}`~libtmux.Window.split` to get it. A server was very likely already
+there.
 
 ## Session context manager
 
@@ -96,7 +118,7 @@ False
 ## Nested context managers
 
 For complex setups, you can nest contexts to build a whole tmux hierarchy at
-once and have every layer torn down for you:
+once and have the layers you created torn down for you:
 
 ```python
 >>> with Server() as server:
@@ -105,7 +127,6 @@ once and have every layer torn down for you:
 ...             with window.split() as pane:
 ...                 pane.send_keys('echo "Hello"')
 ...                 # Do work with the pane
-...                 # Everything is cleaned up automatically when exiting contexts
 ```
 
 This ensures that:
@@ -113,20 +134,22 @@ This ensures that:
 1. The pane is killed when exiting its context
 2. The window is killed when exiting its context
 3. The session is killed when exiting its context
-4. The server is killed when exiting its context
+4. The server is left running, unless it was built with `kill_on_exit=True`
 
-The cleanup happens in reverse order (pane → window → session → server), ensuring proper resource management.
+The pane, window and session tear down in reverse order (pane → window →
+session), which keeps tmux's own bookkeeping consistent.
 
 ## Benefits
 
-Reaching for a context manager buys you a few things. Resources clean themselves
-up the moment you leave the block, so you never manually call the
-{meth}`~libtmux.Server.kill`, {meth}`~libtmux.Session.kill`,
-{meth}`~libtmux.Window.kill`, or {meth}`~libtmux.Pane.kill` methods and the code
-stays uncluttered. Because cleanup runs on the way out of the block, it fires
-even when an exception unwinds the stack — so you don't leak a stray session or
-pane on the error path. And when you nest contexts, the objects tear down in
-hierarchical order, which keeps tmux's own bookkeeping consistent.
+Reaching for a context manager buys you a few things. Sessions, windows and
+panes clean themselves up the moment you leave the block, so you never manually
+call {meth}`~libtmux.Session.kill`, {meth}`~libtmux.Window.kill`, or
+{meth}`~libtmux.Pane.kill` and the code stays uncluttered. Because cleanup runs
+on the way out of the block, it fires even when an exception unwinds the stack —
+so you don't leak a stray session or pane on the error path. And when you nest
+contexts, the objects tear down in hierarchical order, which keeps tmux's own
+bookkeeping consistent. A server is the exception: call
+{meth}`~libtmux.Server.kill` yourself, or ask for it with `kill_on_exit`.
 
 ## When to use
 
