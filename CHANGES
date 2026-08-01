@@ -70,6 +70,11 @@ with Server(socket_name="my-work", kill_on_exit=True) as server:
     pass
 ```
 
+### Fixes
+
+- {class}`~libtmux.Server` now reprs the socket path tmux resolves from
+  `$TMUX_TMPDIR` instead of a hard-coded `/tmp/tmux-<euid>/default` (#723)
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
