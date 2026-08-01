@@ -46,13 +46,16 @@ without you arranging anything.
 
 That leaves the two variables that *are* yours to set, and most people
 set neither. `TMUX_TMPDIR` is tmux's own — the directory it keeps sockets
-in. libtmux never reads it, but the tmux binary it shells out to does, so
-it shapes which server a bare {class}`~libtmux.Server` lands on; pass
-`socket_name` or `socket_path` when you would rather name the server
-outright. `LIBTMUX_TMUX_FORMAT_SEPARATOR` is the one variable libtmux
-itself defines: an advanced override for the separator (default `␞`) it
-uses internally to parse tmux's format output — you'd touch it only if
-that character ever collided with your own data.
+in. The tmux binary libtmux shells out to reads it, so it shapes which
+server a bare {class}`~libtmux.Server` lands on; pass `socket_name` or
+`socket_path` when you would rather name the server outright. libtmux
+reads it only to know where the socket lands, which is also how it can
+tell you that a deep `TMUX_TMPDIR` pushes the resolved path past what a
+UNIX socket address holds — {exc}`~libtmux.exc.SocketPathTooLong`, see
+{ref}`socket_path_length`. `LIBTMUX_TMUX_FORMAT_SEPARATOR` is the one
+variable libtmux itself defines: an advanced override for the separator
+(default `␞`) it uses internally to parse tmux's format output — you'd
+touch it only if that character ever collided with your own data.
 
 ## Format strings
 
