@@ -112,6 +112,58 @@ True
 
 This is particularly useful when testing interactions between multiple tmux servers or when you need to verify behavior across server restarts.
 
+(socket_path_length)=
+
+### Socket paths and the UNIX socket limit
+
+A tmux socket is a UNIX domain socket, so its path is capped by `sockaddr_un`
+— 107 bytes on Linux, 103 on macOS. pytest's {fixture}`tmp_path` is nested
+deep by design (`/tmp/pytest-of-<user>/pytest-<n>/<test-name><n>`), so putting
+a socket under it — directly, or by pointing `TMUX_TMPDIR` at it — can overrun
+the limit on a long test name or a long temporary root. {class}`~libtmux.Server`
+measures an explicit `socket_path` as soon as it is passed and raises
+{exc}`~libtmux.exc.SocketPathTooLong` with the byte count, rather than letting
+tmux report `File name too long` with only the path to go on:
+
+```python
+>>> from libtmux import exc
+>>> from libtmux.server import Server as TmuxServer
+>>> deep_socket = "/tmp/" + "d" * 120 + "/sock"
+>>> try:
+...     TmuxServer(socket_path=deep_socket)
+... except exc.SocketPathTooLong as e:
+...     print(e.length)
+130
+```
+
+A `socket_name` is different: tmux resolves it against `$TMUX_TMPDIR` when it
+runs, so the length is only knowable at dispatch. Building the object is safe,
+and a test that only asks whether a server is there gets an answer instead of an
+exception — an unbindable address is one more way of not being alive:
+
+The directory has to exist for that to be the socket tmux would bind: tmux takes
+the first of `$TMUX_TMPDIR` and `/tmp` that resolves.
+
+```python
+>>> from libtmux.server import Server as TmuxServer
+>>> deep = request.getfixturevalue("tmp_path") / ("d" * 120)
+>>> deep.mkdir()
+
+>>> with monkeypatch.context() as m:
+...     m.delenv("TMUX", raising=False)
+...     m.setenv("TMUX_TMPDIR", str(deep))
+...     TmuxServer(socket_name="deep").is_alive()
+False
+```
+
+The fixtures in this plugin sidestep it: {fixture}`server
+<libtmux.pytest_plugin.server>` and {fixture}`TestServer
+<libtmux.pytest_plugin.TestServer>` name their sockets with `socket_name`, which
+tmux resolves under its own short socket directory. In your own tests, keep
+`tmp_path` for files and reach for {func}`tempfile.mkdtemp` — which gives a
+short `/tmp/<random>` — when you need a socket path of your own, or point
+`TMUX_TMPDIR` somewhere short.
+
 (set_home)=
 
 ### Setting a temporary home directory
