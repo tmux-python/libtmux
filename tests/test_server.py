@@ -1765,3 +1765,100 @@ def test_server_display_message_warns_on_tmux_error(
     """
     with pytest.warns(UserWarning, match="only one of -F or argument"):
         server.display_message("x", get_text=True, format_string="#{version}")
+
+
+def test_wait_for_bounds_a_channel_that_is_never_signalled(
+    session: Session,
+) -> None:
+    """A signal that never arrives costs ``timeout`` seconds, not forever.
+
+    Regression test for #732. ``enter=False`` types the command into the pane
+    without running it, so the ``wait-for -S`` half of the rendezvous never
+    happens -- the same shape as a pane that is killed, exits early, or has
+    its window closed before it can signal.
+    """
+    window = session.new_window(window_name="wait_for_timeout")
+    pane = window.active_pane
+    assert pane is not None
+
+    channel = "libtmux_never_signalled"
+    pane.send_keys(f"echo READY; tmux wait-for -S {channel}", enter=False)
+
+    start = time.monotonic()
+    with pytest.raises(exc.WaitTimeout):
+        session.server.wait_for(channel, timeout=1)
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 30, "wait_for(timeout=) did not bound the wait"
+
+
+def test_wait_for_returns_when_the_channel_is_signalled(session: Session) -> None:
+    """A bounded wait still resolves normally when the signal does arrive."""
+    window = session.new_window(window_name="wait_for_signalled")
+    pane = window.active_pane
+    assert pane is not None
+
+    channel = "libtmux_signalled"
+    pane.send_keys(f"tmux wait-for -S {channel}")
+
+    session.server.wait_for(channel, timeout=60)
+
+
+def test_wait_for_timeout_raises_a_libtmux_error(session: Session) -> None:
+    """The timeout surfaces as a libtmux error, never as a stdlib one.
+
+    Callers write ``except LibTmuxException``; a :exc:`subprocess.TimeoutExpired`
+    escaping here would leak the implementation through the library boundary,
+    including through exception chaining.
+    """
+    with pytest.raises(exc.TmuxCommandTimeout) as excinfo:
+        session.server.wait_for("libtmux_boundary_channel", timeout=0.5)
+
+    assert isinstance(excinfo.value, exc.LibTmuxException)
+    assert not isinstance(excinfo.value, subprocess.TimeoutExpired)
+    assert not isinstance(excinfo.value.__cause__, subprocess.TimeoutExpired)
+    assert "timed out after 0.5s" in str(excinfo.value)
+
+
+def test_wait_for_timeout_reports_what_it_killed(session: Session) -> None:
+    """The timeout carries the killed command and the bound it exceeded.
+
+    Callers that catch it should not have to parse the message back apart to
+    learn which command was killed, and an existing ``except WaitTimeout``
+    handler keeps working because the error is still one.
+    """
+    with pytest.raises(exc.TmuxCommandTimeout) as excinfo:
+        session.server.wait_for("libtmux_reported_channel", timeout=0.5)
+
+    assert isinstance(excinfo.value, exc.WaitTimeout)
+    assert excinfo.value.timeout == 0.5
+    assert excinfo.value.cmd[-2:] == ["wait-for", "libtmux_reported_channel"]
+
+
+def test_cmd_timeout_threads_through_the_object_hierarchy(session: Session) -> None:
+    """Every ``cmd()`` in the hierarchy honors ``timeout``.
+
+    A foreground ``run-shell`` blocks the tmux client until the shell command
+    finishes, and unlike ``wait-for`` it accepts the ``-t`` target that
+    :meth:`Session.cmd`, :meth:`Window.cmd`, and :meth:`Pane.cmd` bind
+    automatically.
+    """
+    window = session.new_window(window_name="cmd_timeout")
+    pane = window.active_pane
+    assert pane is not None
+
+    for obj in (session.server, session, window, pane):
+        start = time.monotonic()
+        with pytest.raises(exc.WaitTimeout):
+            obj.cmd("run-shell", "sleep 10", timeout=0.5)
+        elapsed = time.monotonic() - start
+
+        assert elapsed < 30, f"{type(obj).__name__}.cmd(timeout=) did not bound"
+
+
+def test_cmd_without_timeout_still_returns(session: Session) -> None:
+    """Commands that finish on their own are untouched by the new parameter."""
+    proc = session.server.cmd("display-message", "-p", "ok")
+
+    assert proc.stdout == ["ok"]
+    assert proc.returncode == 0

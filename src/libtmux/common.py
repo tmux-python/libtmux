@@ -280,8 +280,69 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         )
 
 
+def _kill_and_reap(process: subprocess.Popen[str]) -> None:
+    """Kill a subprocess that outstayed its timeout, then reap it.
+
+    :meth:`subprocess.Popen.communicate` leaves the child running when its
+    *timeout* expires -- the caller has to kill and reap it, the same dance
+    :func:`subprocess.run` does on its own timeout path. Skipping it leaks one
+    tmux process per expiry.
+
+    The child is waited for rather than drained: after ``SIGKILL`` it exits
+    promptly, while reading its pipes to EOF could block on a grandchild that
+    inherited them -- past the bound the caller just asked to enforce. The
+    pipes are closed by hand instead, since nothing will read them.
+
+    Parameters
+    ----------
+    process : :class:`subprocess.Popen`
+        The timed-out child.
+
+    Examples
+    --------
+    >>> from libtmux.common import _kill_and_reap
+    >>> process = subprocess.Popen(
+    ...     [sys.executable, '-c', 'import time; time.sleep(300)'],
+    ...     stdout=subprocess.PIPE,
+    ...     stderr=subprocess.PIPE,
+    ...     text=True,
+    ... )
+    >>> process.poll() is None  # still running
+    True
+
+    >>> _kill_and_reap(process)
+    >>> process.returncode is not None  # dead, and its exit status collected
+    True
+    """
+    process.kill()
+    process.wait()
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            stream.close()
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command through :py:mod:`subprocess`.
+
+    Parameters
+    ----------
+    *args : object
+        tmux arguments, stringified and appended after the binary.
+    tmux_bin : str, optional
+        Path to the tmux binary. Resolved from ``$PATH`` when *None*.
+    timeout : float, optional
+        Seconds to allow tmux to run. *None* (the default) waits as long as
+        tmux takes, which is what a rendezvous like ``wait-for`` needs when
+        nobody is watching the clock. Give it a number when the command can
+        block on something that may never happen.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.TmuxCommandTimeout`
+        When *timeout* elapses. The tmux client this spawned is killed and
+        reaped before the exception leaves, so the call leaves no child of its
+        own behind. Work the command started -- a pane's foreground process,
+        the tmux server -- is unaffected and keeps running.
 
     Examples
     --------
@@ -303,13 +364,46 @@ class tmux_cmd:
 
         $ tmux new-session -s my session
 
+    ``tmux wait-for`` blocks until another process signals the channel. Bound
+    it, and a channel nobody signals costs a known amount of time:
+
+    >>> from libtmux import exc
+    >>> try:
+    ...     tmux_cmd(
+    ...         f'-L{server.socket_name}', 'wait-for', 'nobody-signals-me',
+    ...         timeout=0.25,
+    ...     )
+    ... except exc.TmuxCommandTimeout as e:
+    ...     print(e)
+    tmux command timed out after 0.25s: ...wait-for nobody-signals-me
+
+    The exception carries what was killed and the bound it blew, so a caller
+    does not have to parse the message back apart:
+
+    >>> try:
+    ...     tmux_cmd(
+    ...         f'-L{server.socket_name}', 'wait-for', 'nobody-signals-me',
+    ...         timeout=0.25,
+    ...     )
+    ... except exc.TmuxCommandTimeout as e:
+    ...     (e.timeout, e.cmd[-2:])
+    (0.25, ['wait-for', 'nobody-signals-me'])
+
     Notes
     -----
+    .. versionchanged:: 0.63
+        Added *timeout*.
+
     .. versionchanged:: 0.8
         Renamed from ``tmux`` to ``tmux_cmd``.
     """
 
-    def __init__(self, *args: t.Any, tmux_bin: str | None = None) -> None:
+    def __init__(
+        self,
+        *args: t.Any,
+        tmux_bin: str | None = None,
+        timeout: float | None = None,
+    ) -> None:
         resolved = tmux_bin or shutil.which("tmux")
         if not resolved:
             raise exc.TmuxCommandNotFound
@@ -336,10 +430,20 @@ class tmux_cmd:
                 encoding="utf-8",
                 errors="backslashreplace",
             )
-            stdout, stderr = self.process.communicate()
+            stdout, stderr = self.process.communicate(timeout=timeout)
             returncode = self.process.returncode
         except FileNotFoundError:
             raise exc.TmuxCommandNotFound from None
+        except subprocess.TimeoutExpired as e:
+            _kill_and_reap(self.process)
+            logger.error(  # noqa: TRY400
+                "tmux command timed out",
+                extra={
+                    "tmux_cmd": shlex.join(cmd),
+                    "tmux_timeout": e.timeout,
+                },
+            )
+            raise exc.TmuxCommandTimeout(cmd=cmd, timeout=e.timeout) from None
         except Exception:
             logger.error(  # noqa: TRY400
                 "tmux subprocess failed",
