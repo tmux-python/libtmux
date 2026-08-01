@@ -45,10 +45,42 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### What's new
+
+#### Socket paths are measured before tmux sees them (#730)
+
+A tmux socket is a UNIX domain socket, so its path is capped by `sockaddr_un`
+— 107 bytes on Linux, 103 on macOS. {class}`~libtmux.Server` now measures the
+path and raises the new {exc}`~libtmux.exc.SocketPathTooLong`, carrying the
+byte count, how far over the limit it is, and where the length came from.
+tmux reports the overrun as `error connecting to <path> (File name too long)`,
+which names the path but not the numbers, nor which variable made it long.
+
+Where the measurement happens follows what tmux actually reads. A
+`socket_path` is passed through unchanged as `-S<path>`, so it is measured at
+construction, where the caller can still change it. A `socket_name` resolves
+against `$TMUX_TMPDIR` — which tmux re-reads when it runs, not when the
+{class}`~libtmux.Server` was built — so it is measured on each command
+instead. The inherited case is the one that bites: a pytest `tmp_path`, an XDG
+runtime dir, a nested worktree, a CI checkout under a long workspace prefix.
+The fix is a shorter socket directory: {func}`tempfile.mkdtemp` or a short
+`$TMUX_TMPDIR`. See {ref}`socket_path_length` for the pytest case.
+
+Naming a server that way stays free of side effects, so
+{meth}`~libtmux.Server.is_alive` keeps answering — an address the kernel
+cannot hold is one more way of not being alive — and
+{meth}`~libtmux.Server.raise_if_dead` keeps being the way to ask why.
+
+A bare {class}`~libtmux.Server` inside a tmux pane is left alone. tmux prefers
+`$TMUX` over `$TMUX_TMPDIR` when no socket is named, so a script running
+inside tmux is measured against the socket it will actually use rather than a
+directory tmux never consults.
+
 ### Fixes
 
-- {class}`~libtmux.Server` now reprs the socket path tmux resolves from
-  `$TMUX_TMPDIR` instead of a hard-coded `/tmp/tmux-<euid>/default` (#723)
+- {class}`~libtmux.Server` now reprs the socket a bare tmux client would use —
+  `$TMUX` inside a pane, otherwise the path resolved from `$TMUX_TMPDIR` —
+  instead of a hard-coded `/tmp/tmux-<euid>/default` (#727)
 
 ### Documentation
 
