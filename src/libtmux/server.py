@@ -17,7 +17,11 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import (
+    TMUX,
+    TMUX_TMPDIR,
+    check_socket_path_length,
     resolve_ambient_socket_path,
+    resolve_socket_path,
     socket_path_from_env,
 )
 from libtmux._internal.query_list import QueryList
@@ -102,6 +106,21 @@ class Server(
 
     When instantiated stores information on live, running tmux server.
 
+    A tmux socket is a UNIX domain socket, so its path is capped by
+    ``sockaddr_un`` -- 107 bytes on Linux, 103 on macOS. An explicit
+    *socket_path* is handed to tmux unchanged, so it is measured here and an
+    over-long one raises :exc:`~libtmux.exc.SocketPathTooLong` from the
+    constructor.
+
+    Naming a server is free. A *socket_name* resolves against ``$TMUX_TMPDIR``
+    when tmux runs, so it is measured then rather than now: a named or bare
+    :class:`Server` can always be constructed and asked :meth:`is_alive`, and
+    the first command that would have to bind the socket is what raises. When
+    the depth is not yours to choose -- a pytest ``tmp_path``, a nested
+    worktree, a CI checkout under a long workspace prefix -- put the socket
+    under :func:`tempfile.mkdtemp` or point ``$TMUX_TMPDIR`` at something
+    short.
+
     Parameters
     ----------
     socket_name : str, optional
@@ -135,6 +154,42 @@ class Server(
     ...     session = server.new_session()
     ...     # Do work with the session
     ...     # Server will be killed automatically when exiting the context
+
+    A ``socket_path`` is handed to tmux unchanged, so one that cannot fit in a
+    UNIX socket address is refused where it was written:
+
+    >>> from libtmux.server import Server as TmuxServer
+    >>> try:
+    ...     TmuxServer(socket_path="/tmp/" + "d" * 120 + "/sock")
+    ... except exc.SocketPathTooLong as e:
+    ...     print(e.length)
+    130
+
+    A name resolves against ``$TMUX_TMPDIR``, which tmux re-reads when it runs,
+    so its length is only knowable at dispatch. The directory has to exist:
+    tmux falls back to ``/tmp`` when it cannot resolve one, and a socket it
+    never binds is not worth measuring. The server builds, and one at an
+    unbindable address is simply not alive:
+
+    >>> deep = request.getfixturevalue("tmp_path") / ("d" * 120)
+    >>> deep.mkdir()
+
+    >>> with monkeypatch.context() as m:
+    ...     m.setenv("TMUX_TMPDIR", str(deep))
+    ...     named = TmuxServer(socket_name="dev")
+    ...     named.is_alive()
+    False
+
+    The command that would have had to bind it says so, with the byte count
+    tmux would not have given:
+
+    >>> with monkeypatch.context() as m:
+    ...     m.setenv("TMUX_TMPDIR", str(deep))
+    ...     try:
+    ...         named.cmd("list-sessions")
+    ...     except exc.SocketPathTooLong as e:
+    ...         print(e.socket_name)
+    dev
 
     References
     ----------
@@ -187,6 +242,13 @@ class Server(
         self._panes: list[PaneDict] = []
 
         if socket_path is not None:
+            # ``socket_path`` is the one socket libtmux passes through
+            # unchanged, as ``-S<path>``, so its length is settled here and
+            # measuring it now costs the caller nothing it can still change.
+            # A name or a bare server resolves against the environment tmux
+            # reads at exec, which is not knowable yet -- those are measured in
+            # :meth:`_socket_args`.
+            check_socket_path_length(socket_path)
             self.socket_path = socket_path
         elif socket_name is not None:
             self.socket_name = socket_name
@@ -293,8 +355,24 @@ class Server(
     def is_alive(self) -> bool:
         """Return True if tmux server alive.
 
+        Every way of failing to reach the server is a ``False`` here, so this
+        stays answerable for any :class:`Server` that exists. Callers who need
+        the reason use :meth:`raise_if_dead`.
+
         >>> tmux = Server(socket_name="no_exist")
         >>> assert not tmux.is_alive()
+
+        A socket path too long to bind is one of those ways -- nothing can be
+        listening at an address the kernel cannot hold:
+
+        >>> from libtmux.server import Server as TmuxServer
+        >>> deep = request.getfixturevalue("tmp_path") / ("d" * 120)
+        >>> deep.mkdir()
+
+        >>> with monkeypatch.context() as m:
+        ...     m.delenv("TMUX", raising=False)
+        ...     m.setenv("TMUX_TMPDIR", str(deep))
+        ...     assert not TmuxServer(socket_name="unbindable").is_alive()
         """
         try:
             res = self.cmd("list-sessions")
@@ -309,6 +387,9 @@ class Server(
         ------
         :exc:`exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
+        :exc:`~libtmux.exc.SocketPathTooLong`
+            When the socket this server names cannot fit in a UNIX socket
+            address, so no tmux command could ever reach it.
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
             ``list-sessions``).
@@ -324,11 +405,7 @@ class Server(
         if resolved is None:
             raise exc.TmuxCommandNotFound
 
-        cmd_args: list[str] = ["list-sessions"]
-        if self.socket_name:
-            cmd_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            cmd_args.insert(0, f"-S{self.socket_path}")
+        cmd_args: list[str] = [*self._socket_args(), "list-sessions"]
         if self.config_file:
             cmd_args.insert(0, f"-f{self.config_file}")
 
@@ -340,6 +417,93 @@ class Server(
     #
     # Command
     #
+    def _socket_args(self) -> list[str]:
+        """Return this server's ``-S``/``-L`` flags, measuring the socket path.
+
+        Every path that spawns tmux for this server builds its argv from here,
+        which is what makes the measurement total: a socket flag cannot reach
+        tmux without having been measured on the way.
+
+        A tmux socket is a UNIX domain socket, so its path has to fit in
+        :data:`~libtmux._internal.env.SOCKET_PATH_MAX_BYTES`. An explicit
+        :attr:`socket_path` is settled the moment it is passed and is measured
+        in ``__init__``; measuring it again here is free and keeps this method
+        total over every flag it renders.
+
+        A name or a bare server is different, and is measured only here, for
+        the same reason ``colors`` is checked at this point: naming a server is
+        not using one, so :meth:`is_alive` has to stay answerable for a server
+        that cannot be reached. It also reads ``$TMUX_TMPDIR`` at the moment
+        the tmux binary would read it, so an environment changed after
+        construction is measured as tmux sees it rather than as it once was.
+
+        Returns
+        -------
+        list[str]
+            ``["-S<path>"]``, ``["-L<name>"]``, or ``[]`` for a bare server,
+            which leaves tmux to pick the socket itself -- ``$TMUX`` inside a
+            pane, and a path under ``$TMUX_TMPDIR`` outside one.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.SocketPathTooLong`
+            When the socket path -- given, or resolved from ``socket_name`` --
+            cannot fit in a UNIX socket address.
+
+        Examples
+        --------
+        >>> server._socket_args()
+        ['-Llibtmux_test...']
+
+        >>> from libtmux.server import Server as TmuxServer
+        >>> TmuxServer(socket_path="/tmp/short/sock")._socket_args()
+        ['-S/tmp/short/sock']
+
+        A bare server names no socket, and tmux falls back to its own default:
+
+        >>> TmuxServer()._socket_args()
+        []
+
+        A path too long to bind is refused here, before tmux is spawned:
+
+        >>> try:
+        ...     TmuxServer(socket_path="/tmp/" + "d" * 120 + "/sock")._socket_args()
+        ... except exc.SocketPathTooLong as e:
+        ...     print(e.length)
+        130
+
+        .. versionadded:: 0.63
+        """
+        tmpdir = os.environ.get(TMUX_TMPDIR) or None
+
+        if self.socket_path:
+            check_socket_path_length(self.socket_path)
+        elif self.socket_name:
+            # ``-L`` sends tmux to ``$TMUX_TMPDIR`` whatever ``$TMUX`` says, so
+            # the name resolves against the directory even inside a pane.
+            check_socket_path_length(
+                resolve_socket_path(self.socket_name),
+                socket_name=self.socket_name,
+                env_var=TMUX_TMPDIR if tmpdir else None,
+                env_value=tmpdir,
+            )
+        else:
+            # A bare client prefers the pane's own socket and only computes a
+            # path under ``$TMUX_TMPDIR`` when there is no pane to inherit.
+            inside_pane = bool(os.environ.get(TMUX))
+            check_socket_path_length(
+                resolve_ambient_socket_path(),
+                env_var=TMUX_TMPDIR if tmpdir and not inside_pane else None,
+                env_value=None if inside_pane else tmpdir,
+            )
+
+        args: list[str] = []
+        if self.socket_path:
+            args.append(f"-S{self.socket_path}")
+        if self.socket_name:
+            args.append(f"-L{self.socket_name}")
+        return args
+
     def cmd(
         self,
         cmd: str,
@@ -387,18 +551,22 @@ class Server(
         -------
         :class:`common.tmux_cmd`
 
+        Raises
+        ------
+        :exc:`~libtmux.exc.SocketPathTooLong`
+            When the socket path -- given, or resolved from ``socket_name`` --
+            cannot fit in a UNIX socket address. See :meth:`_socket_args`.
+        :exc:`~libtmux.exc.UnknownColorOption`
+            When ``colors`` is neither 88 nor 256.
+
         Notes
         -----
         .. versionchanged:: 0.8
 
             Renamed from ``.tmux`` to ``.cmd``.
         """
-        svr_args: list[str | int] = [cmd]
+        svr_args: list[str | int] = [*self._socket_args(), cmd]
         cmd_args: list[str | int] = []
-        if self.socket_name:
-            svr_args.insert(0, f"-L{self.socket_name}")
-        if self.socket_path:
-            svr_args.insert(0, f"-S{self.socket_path}")
         if self.config_file:
             svr_args.insert(0, f"-f{self.config_file}")
         if self.colors:
@@ -2706,16 +2874,16 @@ class Server(
 
         >>> with monkeypatch.context() as m:
         ...     m.delenv("TMUX", raising=False)
-        ...     m.setenv("TMUX_TMPDIR", "/run/user/1000")
+        ...     m.setenv("TMUX_TMPDIR", "/usr")
         ...     Server()
-        Server(socket_path=/run/user/1000/tmux-.../default)
+        Server(socket_path=/usr/tmux-.../default)
 
         Inside one, ``$TMUX`` names the socket outright and the directory is
         not consulted:
 
         >>> with monkeypatch.context() as m:
         ...     m.setenv("TMUX", "/tmp/tmux-1000/inherited,8421,0")
-        ...     m.setenv("TMUX_TMPDIR", "/run/user/1000")
+        ...     m.setenv("TMUX_TMPDIR", "/usr")
         ...     Server()
         Server(socket_path=/tmp/tmux-1000/inherited)
         """

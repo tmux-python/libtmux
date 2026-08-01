@@ -64,16 +64,9 @@ class ControlMode:
 
         tmux_bin = self.server.tmux_bin or "tmux"
 
-        if self.server.socket_name is not None:
-            socket_args = ["-L", str(self.server.socket_name)]
-        elif self.server.socket_path is not None:
-            socket_args = ["-S", str(self.server.socket_path)]
-        else:
-            socket_args = []
-
         cmd = [
             tmux_bin,
-            *socket_args,
+            *self.server._socket_args(),
             "-C",
             "attach-session",
             "-t",
