@@ -45,6 +45,26 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+libtmux 0.62.x adds pure Python workspace archive helpers inspired by
+tmux-resurrect and tmux-continuum. Projects can capture, restore, rotate,
+autosave, and startup-restore tmux workspaces through libtmux APIs without
+installing TPM plugins.
+
+### What's new
+
+#### Headless workspace archives and autosave (#701, #702)
+
+The new {mod}`libtmux.resurrect` package captures tmux workspaces into typed
+JSON archives and restores them without shelling through tmux plugin scripts.
+Archives include session, window, pane, layout, focus, grouped-session,
+pane-title, zoom, and `automatic-rename` state, with idempotent reuse behavior
+for existing sessions.
+
+The package also includes conservative process restore policies, optional full
+process command capture providers, tmux-resurrect tab-file import/export,
+timestamped snapshot rotation with a portable `last.json` pointer, and
+tmux-continuum-style autosave and startup-restore guards. See
+{doc}`topics/resurrect` for usage.
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
