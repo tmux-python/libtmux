@@ -14,6 +14,7 @@ import pytest
 
 from libtmux import exc
 from libtmux._internal.control_mode import ControlMode
+from libtmux._internal.env import resolve_socket_path
 from libtmux.server import Server
 from libtmux.test.constants import TEST_SESSION_PREFIX
 from libtmux.test.random import get_test_session_name, namer
@@ -49,12 +50,10 @@ def _reap_test_server(socket_name: str | None) -> None:
         if srv.is_alive():
             srv.kill()
 
-    # ``Server(socket_name=...)`` does not populate ``socket_path`` —
-    # the Server class only derives the path when neither ``socket_name``
-    # nor ``socket_path`` was supplied. Recompute the location tmux uses
-    # so we can unlink the file regardless of daemon state.
-    tmux_tmpdir = pathlib.Path(os.environ.get("TMUX_TMPDIR", "/tmp"))
-    socket_path = tmux_tmpdir / f"tmux-{os.geteuid()}" / socket_name
+    # ``Server(socket_name=...)`` does not populate ``socket_path``, so
+    # resolve where tmux put the socket to unlink it regardless of daemon
+    # state.
+    socket_path = resolve_socket_path(socket_name)
     with contextlib.suppress(OSError):
         socket_path.unlink(missing_ok=True)
 
