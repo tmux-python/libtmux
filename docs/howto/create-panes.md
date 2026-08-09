@@ -47,8 +47,9 @@ Sizes are shares of the window, and nothing is attached to this session, so the
 window is tmux's default 80×24 — the `resize` call is what makes `percentage=40`
 mean 48 columns rather than 32. Attach a client later and the window takes that
 client's size instead. Space runs out either way: a split with nowhere to go
-raises {exc}`~libtmux.exc.LibTmuxException` carrying tmux's own
-`size or position no space for a new pane`.
+raises {exc}`~libtmux.exc.LibTmuxException` carrying tmux's own complaint that
+there is no space for a new pane — the exact wording moved in tmux 3.7, so
+match loosely if you branch on it.
 
 ## Pane order is layout position, not creation order
 

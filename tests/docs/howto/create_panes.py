@@ -100,7 +100,10 @@ def _refuse_a_split_with_no_room(server: Server) -> None:
         with pytest.raises(exc.LibTmuxException) as caught:
             for _ in range(40):
                 pane = pane.split()
-        assert "size or position no space for a new pane" in str(caught.value)
+        # tmux words this differently across releases -- "no space for new
+        # pane" through 3.6, "size or position no space for a new pane" from
+        # 3.7 -- so pin the part every supported version agrees on.
+        assert "no space for" in str(caught.value)
     finally:
         session.kill()
 
