@@ -45,6 +45,16 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Fixes
+
+#### Splitting by percentage works on tmux 3.4 (#736)
+
+Passing `percentage=` to {meth}`Pane.split() <libtmux.Pane.split>` or
+{meth}`Window.split() <libtmux.Window.split>` raised
+{exc}`~libtmux.exc.LibTmuxException` on tmux 3.4, which rejects the sizing flag
+libtmux used. The size now rides on the spelling tmux has accepted since 3.1,
+so a percentage split behaves the same on every supported version.
+
 ### Documentation
 
 #### Cleaner `from_env` examples (#719)
