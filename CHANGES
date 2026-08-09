@@ -57,6 +57,13 @@ environment-setup plumbing, so each example leads with the constructor call it
 demonstrates instead of the socket-path and `$TMUX` boilerplate needed to run
 it.
 
+#### How-to guides (#736)
+
+A new {ref}`how-to section <howto>` collects task-shaped recipes: starting and
+connecting to servers, locating the pane your code runs in, and driving panes.
+Every block is plain Python you can paste and run, and the suite runs each page
+end to end, so a guide that stops working fails the build.
+
 ### Development
 
 #### CI actions updated to current majors
