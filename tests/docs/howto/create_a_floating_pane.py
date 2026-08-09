@@ -1,7 +1,8 @@
 """Sidecar for ``docs/howto/create-a-floating-pane.md``.
 
 Two of the page's claims would otherwise go untested on this machine. The
-version guard never fires here — tmux is new enough — so it is re-run against a
+version guard never fires when the page runs — ``MIN_TMUX_VERSION`` keeps the
+page off any tmux that would trip it — so it is re-run against a
 :func:`~libtmux.common.has_gte_version` that reports an older tmux, and required
 to stop the reader before a session exists. And "a float is an ordinary pane" is
 only worth printing if the float's own shell really answered, so the second
@@ -23,6 +24,11 @@ if t.TYPE_CHECKING:
     from tests.docs.howto_harness import HowtoContext
 
 SOCKET_NAME = "libtmux-howto"
+
+#: Floating panes are a tmux 3.7 feature, so the page's first block refuses to
+#: go on without one. The harness reads this and skips the page below it,
+#: rather than letting the guide's own guard fail the suite.
+MIN_TMUX_VERSION = "3.7"
 
 
 def check_1(ctx: HowtoContext) -> None:

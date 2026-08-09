@@ -394,6 +394,35 @@ def _load_sidecar(page: Path) -> types.ModuleType:
         raise HowtoContractError(msg) from exc
 
 
+def _require_tmux_version(page: Path, sidecar: types.ModuleType) -> None:
+    """Skip a page whose examples need a newer tmux than this one.
+
+    A guide to a version-specific feature cannot run everywhere, and the
+    honest answer on an older tmux is a reported skip rather than a failure
+    the page was written to produce. The declaration lives on the sidecar
+    because the page carries no test scaffolding: a reader copying the block
+    should meet the feature, not a marker addressed at the suite.
+
+    Parameters
+    ----------
+    page : pathlib.Path
+        The how-to page about to run.
+    sidecar : types.ModuleType
+        Its sidecar, which may define ``MIN_TMUX_VERSION``.
+    """
+    minimum = getattr(sidecar, "MIN_TMUX_VERSION", None)
+    if minimum is None:
+        return
+
+    from libtmux.common import get_version, has_gte_version
+
+    if not has_gte_version(minimum):
+        pytest.skip(
+            f"{page.name} documents a tmux {minimum}+ feature; this tmux is "
+            f"{get_version()}",
+        )
+
+
 def resolve_checks(
     sidecar: types.ModuleType,
     block_count: int,
@@ -478,6 +507,12 @@ def run_page(page: Path, on_stage: Callable[[str], None] = lambda _stage: None) 
     checks = resolve_checks(sidecar, len(blocks))
     setup = getattr(sidecar, "setup", None)
     teardown = getattr(sidecar, "teardown", None)
+
+    # Resolved above rather than below, so a page documenting a newer tmux
+    # still has its contract enforced on an older one. Only running the
+    # examples is skipped; a missing sidecar or a stray check_N is a failure
+    # at every tmux version.
+    _require_tmux_version(page, sidecar)
 
     with (
         pytest.MonkeyPatch.context() as monkeypatch,
