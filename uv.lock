@@ -1587,15 +1587,15 @@ wheels = [
 
 [[package]]
 name = "starlette"
-version = "1.4.0"
+version = "1.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/16/dc49e4b9d348b0f0567a67613a946f4e26b3299408ccf78df318c51a2aec/starlette-1.4.0.tar.gz", hash = "sha256:ecf3a067176d63c6412f98c660dab3355b525584d3725c0c40a4519d33ec2130", size = 2708995, upload-time = "2026-08-05T09:36:43.693Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0f/3c/76d2fd1f1357ed0f0108d8a5aa233dcf16e2946a8559c84912fe08e01ac7/starlette-1.4.1.tar.gz", hash = "sha256:b7332de6e9375593a29ba9eee1e6ecfeb3eb2043e2e19a13b4b71da73ff35540", size = 2709041, upload-time = "2026-08-05T15:17:26.23Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/f6/7916cd7717e196bba370c0f17abb30466014ce29094665c3581e51a8c24b/starlette-1.4.0-py3-none-any.whl", hash = "sha256:cacd43738e07b834844e2c8e97b898b40089d74f2678234b0a3e93cd3d515813", size = 74021, upload-time = "2026-08-05T09:36:41.944Z" },
+    { url = "https://files.pythonhosted.org/packages/75/0a/67e95f21498de41433babf7b1db0eeab449eb58872dfb831b27747a70fd0/starlette-1.4.1-py3-none-any.whl", hash = "sha256:7d078e0fbefae0d2cecfb80a799d6fb84b1c0c6acd4f14ac79d17d0e7ec27f19", size = 74019, upload-time = "2026-08-05T15:17:24.357Z" },
 ]
 
 [[package]]
