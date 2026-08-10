@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["tomlkit>=0.13"]
 # ///
-"""Swap MCP server configs across Claude / Codex / Cursor / Gemini / Grok / agy.
+"""Swap MCP server configs across every installed agent CLI.
 
 Use when you want every installed agent CLI to run a local checkout of an
 MCP server (editable) instead of a pinned release. ``use-local`` rewrites
@@ -41,16 +41,35 @@ This script is best-effort and intentionally narrow:
 - **Global configs only.** Writes to ``~/.cursor/mcp.json``,
   ``~/.claude.json``, ``~/.codex/config.toml``,
   ``~/.gemini/settings.json``, ``~/.grok/config.toml`` (TOML
-  ``mcp_servers``, same shape as Codex), and
+  ``mcp_servers``, same shape as Codex),
   ``~/.gemini/config/mcp_config.json`` (agy / Antigravity CLI, JSON
   ``mcpServers`` — the shared-config file the CLI reads, sibling to the
-  ``config.json`` it loads at startup). Workspace / project-local configs
-  (``$PWD/.cursor/mcp.json``, ``$PWD/.gemini/settings.json``,
-  per-project ``projects.<abs>.mcpServers`` entries inside
-  ``~/.claude.json`` *are* recognised for Claude only) are NOT
-  walked — workspace files for Cursor/Gemini are silently ignored.
+  ``config.json`` it loads at startup),
+  ``$XDG_CONFIG_HOME/opencode/opencode.jsonc`` (JSONC ``mcp``, comments
+  preserved) and ``~/.pi/agent/mcp.json`` (JSONC too -- the adapter that
+  reads it strips comments). Workspace / project-local
+  configs (``$PWD/.cursor/mcp.json``, ``$PWD/.gemini/settings.json``,
+  ``$PWD/opencode.json``, per-project ``projects.<abs>.mcpServers``
+  entries inside ``~/.claude.json`` *are* recognised for Claude only)
+  are NOT walked — workspace files for the others are silently ignored.
   When workspace precedence matters, run the CLI's own
-  ``cursor mcp add ...`` / ``gemini mcp add ...`` directly.
+  ``cursor mcp add ...`` / ``gemini mcp add ...`` directly. opencode has
+  no non-interactive project-scope add -- ``opencode mcp add`` writes the
+  global file -- so edit ``$PWD/opencode.json`` by hand for that.
+
+- **opencode reads three global files.** ``config.json``,
+  ``opencode.json`` and ``opencode.jsonc`` in the same directory are all
+  loaded and merged, with ``.jsonc`` winning. This script owns
+  ``.jsonc`` — the file opencode itself writes to — so its entry is the
+  one that takes effect. A stale ``mcp.<name>`` left in a sibling
+  ``opencode.json`` still merges underneath rather than being shadowed
+  outright; remove it by hand if that matters.
+
+- **pi has no MCP client of its own.** Its README says so, and the
+  released build ships no MCP code. ``~/.pi/agent/mcp.json`` is read by
+  the third-party ``pi-mcp-adapter`` extension, so a swap written there
+  takes effect only once that package is installed. ``detect`` says as
+  much rather than reporting a swap that cannot do anything.
 
 - **Claude scope.** ``use-local`` and ``revert`` accept
   ``--scope {user,project}``. The default ``project`` writes the
@@ -59,8 +78,8 @@ This script is best-effort and intentionally narrow:
   pre-flag behaviour. ``--scope user`` writes Claude's top-level
   ``mcpServers`` fallback so every project that has no per-project
   override picks up the swap; useful when QA-ing a branch across
-  many directories. Codex, Cursor, Gemini, Grok, and agy have no per-project
-  layer in their config files; the flag is silently coerced to
+  many directories. Every other CLI here has no per-project layer in
+  the config file this script writes; the flag is silently coerced to
   ``user`` for them. Both Claude scopes can coexist with
   independent backups; full ``revert`` unwinds in LIFO order.
 - **Simple binary detection.** Probing is ``shutil.which(<binary>)``
@@ -99,8 +118,23 @@ import typing as t
 import tomlkit
 import tomlkit.items
 
-CLIName = t.Literal["claude", "codex", "cursor", "gemini", "grok", "agy"]
-ALL_CLIS: tuple[CLIName, ...] = ("claude", "codex", "cursor", "gemini", "grok", "agy")
+CLIName = t.Literal[
+    "claude", "codex", "cursor", "gemini", "grok", "agy", "opencode", "pi"
+]
+ALL_CLIS: tuple[CLIName, ...] = (
+    "claude",
+    "codex",
+    "cursor",
+    "gemini",
+    "grok",
+    "agy",
+    "opencode",
+    "pi",
+)
+
+#: Width of the CLI-name column in ``detect`` output, derived rather
+#: than hardcoded so adding a longer name cannot silently misalign it.
+_CLI_COLUMN = max(len(name) for name in ALL_CLIS) + 1
 
 #: Claude config scope: ``"user"`` targets the user/system-level top-level
 #: ``mcpServers`` fallback that applies to every project without its own
@@ -201,6 +235,18 @@ BACKUP_SUFFIX_PREFIX = ".bak.mcp-swap-"
 # ---------------------------------------------------------------------------
 
 
+#: Per-entry shape a CLI expects under its server map. ``standard`` is
+#: the Claude-Desktop lineage every CLI here started from — scalar
+#: ``command``, sibling ``args`` list, optional ``env`` table.
+#: ``claude`` is that shape plus an explicit ``type``/``env`` that
+#: Claude writes even when empty. ``opencode`` packs argv into a single
+#: ``command`` array and spells the environment table ``environment``.
+#: Dialects exist because the shape is not implied by the file format:
+#: two CLIs sharing ``fmt="json"`` can still disagree about how one
+#: entry is spelled.
+Dialect = t.Literal["standard", "claude", "opencode"]
+
+
 @dataclasses.dataclass(frozen=True)
 class CLIInfo:
     """Static descriptor for a CLI's config file and discovery heuristics."""
@@ -208,7 +254,28 @@ class CLIInfo:
     name: CLIName
     binary: str
     config_path: pathlib.Path
-    fmt: t.Literal["json", "toml"]
+    fmt: t.Literal["json", "jsonc", "toml"]
+    #: Key path from the document root down to the mapping of server
+    #: name -> entry. A path rather than a single key so a CLI that
+    #: nests deeper needs no new branch in the four functions that
+    #: read, write, delete and enumerate entries.
+    container: tuple[str, ...]
+    #: Entry shape written and read back for this CLI.
+    dialect: Dialect
+
+
+def _xdg_config_home() -> pathlib.Path:
+    """``$XDG_CONFIG_HOME`` when absolute, else ``~/.config``.
+
+    The spec requires these variables to be absolute and says to ignore
+    them otherwise. A relative value would resolve against the working
+    directory, so the swap would record a backup path that revert could
+    no longer find from anywhere else.
+    """
+    raw = os.environ.get("XDG_CONFIG_HOME")
+    if raw and pathlib.Path(raw).is_absolute():
+        return pathlib.Path(raw)
+    return pathlib.Path.home() / ".config"
 
 
 CLIS: dict[CLIName, CLIInfo] = {
@@ -217,30 +284,40 @@ CLIS: dict[CLIName, CLIInfo] = {
         binary="claude",
         config_path=pathlib.Path.home() / ".claude.json",
         fmt="json",
+        container=("mcpServers",),
+        dialect="claude",
     ),
     "codex": CLIInfo(
         name="codex",
         binary="codex",
         config_path=pathlib.Path.home() / ".codex" / "config.toml",
         fmt="toml",
+        container=("mcp_servers",),
+        dialect="standard",
     ),
     "cursor": CLIInfo(
         name="cursor",
         binary="cursor-agent",
         config_path=pathlib.Path.home() / ".cursor" / "mcp.json",
         fmt="json",
+        container=("mcpServers",),
+        dialect="standard",
     ),
     "gemini": CLIInfo(
         name="gemini",
         binary="gemini",
         config_path=pathlib.Path.home() / ".gemini" / "settings.json",
         fmt="json",
+        container=("mcpServers",),
+        dialect="standard",
     ),
     "grok": CLIInfo(
         name="grok",
         binary="grok",
         config_path=pathlib.Path.home() / ".grok" / "config.toml",
         fmt="toml",
+        container=("mcp_servers",),
+        dialect="standard",
     ),
     # Antigravity (the ``agy`` CLI). Its MCP config is the standard JSON
     # ``mcpServers`` shape (same as Cursor / Gemini). The CLI reads
@@ -253,8 +330,51 @@ CLIS: dict[CLIName, CLIInfo] = {
         binary="agy",
         config_path=(pathlib.Path.home() / ".gemini" / "config" / "mcp_config.json"),
         fmt="json",
+        container=("mcpServers",),
+        dialect="standard",
+    ),
+    "opencode": CLIInfo(
+        name="opencode",
+        binary="opencode",
+        # opencode reads config.json, opencode.json and opencode.jsonc from
+        # this directory and merges all three, with .jsonc winning. It writes
+        # to the first that exists, defaulting to .jsonc — so that is the one
+        # file a swap can own without being shadowed.
+        config_path=_xdg_config_home() / "opencode" / "opencode.jsonc",
+        fmt="jsonc",
+        container=("mcp",),
+        dialect="opencode",
+    ),
+    "pi": CLIInfo(
+        name="pi",
+        binary="pi",
+        # Read by the pi-mcp-adapter extension, not by pi itself; see
+        # PI_ADAPTER_DIR. Claude-Desktop schema, so the standard dialect.
+        # The adapter parses through strip-json-comments with trailing
+        # commas allowed, so the file is JSONC despite the .json suffix.
+        config_path=pathlib.Path.home() / ".pi" / "agent" / "mcp.json",
+        fmt="jsonc",
+        container=("mcpServers",),
+        dialect="standard",
     ),
 }
+
+#: Written into an opencode config this script creates from nothing.
+#: opencode injects the same line itself on first load; seeding it here
+#: keeps the swap from being followed by a surprise rewrite.
+OPENCODE_SCHEMA_URL = "https://opencode.ai/config.json"
+
+#: pi ships no MCP client — its README says "No MCP" outright, and the
+#: released build contains no MCP code at all. MCP reaches pi only
+#: through the third-party ``pi-mcp-adapter`` extension, which is what
+#: reads ``~/.pi/agent/mcp.json``. The swap writes that file because it
+#: is the one pi-family location with a settled schema, but until the
+#: adapter is installed pi does not read it, so ``detect`` says so
+#: instead of reporting a swap that cannot take effect.
+PI_ADAPTER_DIR = (
+    pathlib.Path.home() / ".pi" / "agent" / "npm" / "node_modules" / "pi-mcp-adapter"
+)
+PI_ADAPTER_HINT = "needs the pi-mcp-adapter package; pi has no built-in MCP client"
 
 
 #: A ``--from`` argument pointing at a pull request's head commit.
@@ -271,17 +391,28 @@ class McpServerSpec:
     args: list[str] = dataclasses.field(default_factory=list)
     env: dict[str, str] = dataclasses.field(default_factory=dict)
 
-    def to_json_dict(self, *, include_stdio_type: bool = False) -> dict[str, t.Any]:
-        """Serialize to the JSON shape (Claude-extended when ``include_stdio_type``)."""
-        # Claude's format always includes ``type`` and ``env`` (even when empty);
-        # Cursor/Gemini omit both. include_stdio_type selects Claude shape.
-        if include_stdio_type:
+    def to_entry_dict(self, dialect: Dialect = "standard") -> dict[str, t.Any]:
+        """Serialize to the entry shape ``dialect`` expects."""
+        # Claude's format always includes ``type`` and ``env`` (even when
+        # empty); the standard shape omits both when there is nothing to say.
+        if dialect == "claude":
             return {
                 "type": "stdio",
                 "command": self.command,
                 "args": list(self.args),
                 "env": dict(self.env),
             }
+        if dialect == "opencode":
+            # One array for argv, and the table is "environment" -- an
+            # "env" key here is dropped in silence, and a scalar command
+            # is a decode error that takes the whole config down with it.
+            local: dict[str, t.Any] = {
+                "type": "local",
+                "command": [self.command, *self.args],
+            }
+            if self.env:
+                local["environment"] = dict(self.env)
+            return local
         out: dict[str, t.Any] = {"command": self.command, "args": list(self.args)}
         if self.env:
             out["env"] = dict(self.env)
@@ -343,17 +474,358 @@ class SwapEntry:
 
 
 # ---------------------------------------------------------------------------
+# JSONC — comments and trailing commas, edited without reserializing
+# ---------------------------------------------------------------------------
+#
+# tomlkit gives TOML a format-preserving round trip; JSONC has no
+# equivalent on PyPI that is safe to depend on here. ``json-five`` was
+# measured first and rejected: it raises on ``"C:\\x"`` and silently
+# decodes the literal six characters ``\u0041`` to ``"A"`` — both valid
+# JSON that stdlib reads correctly, and the second is exactly the silent
+# rewrite this script exists to avoid.
+#
+# So values come from stdlib ``json`` (correct escape semantics) and
+# edits are applied as text splices located by an offset-preserving
+# scanner. Every byte outside a replaced value survives untouched, which
+# is the same technique opencode's own config writer uses via
+# ``jsonc-parser``'s ``modify()``.
+
+_JSON_WS = " \t\n\r"
+
+#: Longest inline rendering of a scalar list before it is broken across
+#: lines. A swapped ``command`` array is the common case and reads
+#: better on one line, which is how these configs are written by hand.
+_INLINE_WIDTH = 88
+
+
+def _jsonc_blank_comments(text: str) -> str:
+    """Replace comment bytes with spaces, preserving every offset.
+
+    Scanning rather than matching a regex is the whole point: ``//``
+    inside a URL and ``/*`` inside a Windows path are string content, not
+    comments, and only a scanner that tracks string state can tell them
+    apart. Offsets are preserved so a span found in the blanked text
+    addresses the same bytes in the original.
+    """
+    out = list(text)
+    i, n = 0, len(text)
+    in_string = False
+    while i < n:
+        char = text[i]
+        if in_string:
+            if char == "\\":
+                i += 2
+                continue
+            if char == '"':
+                in_string = False
+            i += 1
+        elif char == '"':
+            in_string = True
+            i += 1
+        elif char == "/" and i + 1 < n and text[i + 1] == "/":
+            while i < n and text[i] != "\n":
+                out[i] = " "
+                i += 1
+        elif char == "/" and i + 1 < n and text[i + 1] == "*":
+            end = text.find("*/", i + 2)
+            end = n if end == -1 else end + 2
+            for j in range(i, end):
+                if out[j] != "\n":
+                    out[j] = " "
+            i = end
+        else:
+            i += 1
+    return "".join(out)
+
+
+def _jsonc_blank_trailing_commas(blanked: str) -> str:
+    """Blank trailing commas so stdlib :func:`json.loads` accepts the text."""
+    out = list(blanked)
+    i, n = 0, len(blanked)
+    in_string = False
+    last_comma = -1
+    while i < n:
+        char = blanked[i]
+        if in_string:
+            if char == "\\":
+                i += 2
+                continue
+            if char == '"':
+                in_string = False
+            i += 1
+            continue
+        if char == '"':
+            in_string = True
+            last_comma = -1
+        elif char == ",":
+            last_comma = i
+        elif char in "}]":
+            if last_comma != -1:
+                out[last_comma] = " "
+            last_comma = -1
+        elif char not in _JSON_WS:
+            last_comma = -1
+        i += 1
+    return "".join(out)
+
+
+def _jsonc_loads(text: str) -> t.Any:
+    """Parse JSONC text into plain Python objects."""
+    if not text.strip():
+        return {}
+    return json.loads(_jsonc_blank_trailing_commas(_jsonc_blank_comments(text)))
+
+
+class _JsoncScanner:
+    """Locate value spans inside comment-blanked JSON text."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.pos = 0
+
+    def skip_ws(self) -> None:
+        """Advance past insignificant whitespace."""
+        while self.pos < len(self.text) and self.text[self.pos] in _JSON_WS:
+            self.pos += 1
+
+    def read_string(self) -> str:
+        """Consume one string token and return its raw text, quotes included."""
+        start = self.pos
+        self.pos += 1
+        while self.pos < len(self.text):
+            char = self.text[self.pos]
+            if char == "\\":
+                self.pos += 2
+                continue
+            self.pos += 1
+            if char == '"':
+                break
+        return self.text[start : self.pos]
+
+    def read_value(self) -> tuple[int, int]:
+        """Consume one value and return its ``(start, end)`` span."""
+        self.skip_ws()
+        start = self.pos
+        char = self.text[self.pos]
+        if char == '"':
+            self.read_string()
+        elif char in "{[":
+            self._read_container()
+        else:
+            while (
+                self.pos < len(self.text)
+                and self.text[self.pos] not in ",}]"
+                and self.text[self.pos] not in _JSON_WS
+            ):
+                self.pos += 1
+        return start, self.pos
+
+    def _read_container(self) -> None:
+        self.pos += 1
+        depth = 1
+        while self.pos < len(self.text) and depth:
+            char = self.text[self.pos]
+            if char == '"':
+                self.read_string()
+                continue
+            if char in "{[":
+                depth += 1
+            elif char in "}]":
+                depth -= 1
+            self.pos += 1
+
+    def read_members(self, obj_start: int) -> list[_JsoncMember]:
+        """Enumerate an object's members. ``obj_start`` indexes its ``{``."""
+        self.pos = obj_start + 1
+        found: list[_JsoncMember] = []
+        while True:
+            self.skip_ws()
+            if self.pos >= len(self.text) or self.text[self.pos] == "}":
+                return found
+            if self.text[self.pos] == ",":
+                self.pos += 1
+                continue
+            member_start = self.pos
+            raw_key = self.read_string()
+            self.skip_ws()
+            self.pos += 1  # the ':'
+            value_start, value_end = self.read_value()
+            found.append(
+                _JsoncMember(
+                    key=json.loads(raw_key),
+                    start=member_start,
+                    end=value_end,
+                    value_start=value_start,
+                    value_end=value_end,
+                )
+            )
+
+
+class _JsoncMember(t.NamedTuple):
+    """One ``"key": value`` pair located inside a JSONC document.
+
+    Attributes
+    ----------
+    key : str
+        The decoded member name.
+    start : int
+        Offset of the opening quote of the key.
+    end : int
+        Offset just past the value — the end of the whole member.
+    value_start : int
+        Offset of the first byte of the value.
+    value_end : int
+        Offset just past the last byte of the value.
+    """
+
+    key: str
+    start: int
+    end: int
+    value_start: int
+    value_end: int
+
+
+def _jsonc_render(value: t.Any, depth: int, *, ensure_ascii: bool) -> str:
+    """Render ``value`` as JSON text indented for nesting ``depth``."""
+    pad = "  " * depth
+    if isinstance(value, list) and all(
+        isinstance(item, (str, int, float, bool)) or item is None for item in value
+    ):
+        inline = json.dumps(value, ensure_ascii=ensure_ascii)
+        if len(inline) + len(pad) <= _INLINE_WIDTH:
+            return inline
+    return json.dumps(value, indent=2, ensure_ascii=ensure_ascii).replace(
+        "\n", "\n" + pad
+    )
+
+
+def _jsonc_object_span(blanked: str, path: tuple[str, ...]) -> tuple[int, int] | None:
+    """Return the span of the object reached by ``path``, or ``None``."""
+    scanner = _JsoncScanner(blanked)
+    scanner.skip_ws()
+    if scanner.pos >= len(blanked) or blanked[scanner.pos] != "{":
+        return None
+    cursor = scanner.pos
+    for key in path:
+        match = next(
+            (m for m in _JsoncScanner(blanked).read_members(cursor) if m.key == key),
+            None,
+        )
+        if match is None or blanked[match.value_start] != "{":
+            return None
+        cursor = match.value_start
+    tail = _JsoncScanner(blanked)
+    tail.pos = cursor
+    return tail.read_value()
+
+
+def _jsonc_next_edit(
+    text: str,
+    data: t.Mapping[str, t.Any],
+    path: tuple[str, ...],
+    *,
+    ensure_ascii: bool,
+) -> tuple[int, int, str] | None:
+    """Find the one next splice that brings ``path`` closer to ``data``."""
+    blanked = _jsonc_blank_comments(text)
+    span = _jsonc_object_span(blanked, path)
+    if span is None:
+        return None
+    obj_start, obj_end = span
+    members = _JsoncScanner(blanked).read_members(obj_start)
+    by_key = {member.key: member for member in members}
+    depth = len(path) + 1
+    pad = "  " * depth
+
+    for key, value in data.items():
+        member = by_key.get(key)
+        if member is None:
+            body = _jsonc_render(value, depth, ensure_ascii=ensure_ascii)
+            # Escape the key like any other value: written raw, a backslash
+            # or quote in a server name emits text that cannot be parsed
+            # back, so the member is never found and the merge re-inserts
+            # it until the pass ceiling, holding the swap lock throughout.
+            name = json.dumps(key, ensure_ascii=ensure_ascii)
+            if members:
+                tail = members[-1].end
+                return tail, tail, f",\n{pad}{name}: {body}"
+            if blanked[obj_start + 1 : obj_end - 1].strip():
+                return None
+            # Blanking hid any comment the object holds, so measure the
+            # interior in the original text and splice after it, not over it.
+            interior = text[obj_start + 1 : obj_end - 1]
+            anchor = obj_start + 1 + len(interior.rstrip())
+            closing = "  " * (depth - 1)
+            return anchor, obj_end - 1, f"\n{pad}{name}: {body}\n{closing}"
+        current = json.loads(
+            _jsonc_blank_trailing_commas(blanked[member.value_start : member.value_end])
+        )
+        if isinstance(value, dict) and isinstance(current, dict):
+            nested = _jsonc_next_edit(
+                text, value, (*path, key), ensure_ascii=ensure_ascii
+            )
+            if nested is not None:
+                return nested
+        elif current != value:
+            return (
+                member.value_start,
+                member.value_end,
+                _jsonc_render(value, depth, ensure_ascii=ensure_ascii),
+            )
+
+    for index, member in enumerate(members):
+        if member.key in data:
+            continue
+        # Exactly one delimiter leaves with the member: the comma before
+        # it, or, for the first member which has none, the comma after.
+        if index:
+            return members[index - 1].end, member.end, ""
+        # Read that comma out of the blanked text -- one inside a comment
+        # is not a delimiter, and a real one behind a comment still is.
+        trailing = blanked[member.end : obj_end]
+        drop_to = member.end
+        if trailing.lstrip(_JSON_WS).startswith(","):
+            drop_to += trailing.index(",") + 1
+        return obj_start + 1, drop_to, ""
+    return None
+
+
+def _jsonc_merge(text: str, data: t.Mapping[str, t.Any], *, ensure_ascii: bool) -> str:
+    """Reconcile ``data`` into ``text``, rewriting only members that differ.
+
+    Applies one splice at a time and rescans, so offsets are always
+    computed against current text rather than patched up after the fact.
+    Config files are small enough that the extra passes do not matter and
+    the invariant is worth far more than the cycles.
+    """
+    if not text.strip():
+        return json.dumps(dict(data), indent=2, ensure_ascii=ensure_ascii) + "\n"
+    # One splice per member, plus slack; a config that needs more than
+    # this has a pathology worth surfacing rather than looping on.
+    for _ in range(10_000):
+        edit = _jsonc_next_edit(text, data, (), ensure_ascii=ensure_ascii)
+        if edit is None:
+            return text
+        start, end, replacement = edit
+        text = text[:start] + replacement + text[end:]
+    msg = "JSONC merge did not converge"
+    raise RuntimeError(msg)
+
+
+# ---------------------------------------------------------------------------
 # Config IO — per format
 # ---------------------------------------------------------------------------
 
 
 def load_config(info: CLIInfo) -> t.Any:
-    """Parse a CLI's config file (JSON or TOML) into an editable structure.
+    """Parse a CLI's config file (JSON, JSONC or TOML) into an editable structure.
 
     Empty JSON files are treated as empty objects so first-run MCP configs can
     be seeded with their initial server entry.
     """
     raw = info.config_path.read_bytes()
+    if info.fmt == "jsonc":
+        return _jsonc_loads(raw.decode())
     if info.fmt == "json":
         text = raw.decode().strip()
         return json.loads(text) if text else {}
@@ -384,8 +856,20 @@ def dump_config_bytes(info: CLIInfo, config: t.Any, *, original: bytes) -> bytes
     which is the defect this parameter exists to prevent. tomlkit
     preserves those conventions itself; only the JSON writer needs it.
     """
-    if info.fmt != "json":
+    # Dispatched on the exact format rather than "not json": a third
+    # format reaching the TOML writer by fall-through would silently
+    # write TOML bytes into a JSON file.
+    if info.fmt == "toml":
         return tomlkit.dumps(config).encode()
+    if info.fmt == "jsonc":
+        # The merge derives its output from the original text, so the
+        # file's own trailing-newline convention carries over untouched
+        # and needs no _json_trailer fixup.
+        source = original.decode()
+        try:
+            return _jsonc_merge(source, config, ensure_ascii=False).encode()
+        except UnicodeEncodeError:
+            return _jsonc_merge(source, config, ensure_ascii=True).encode()
     trailer = _json_trailer(original)
     # ensure_ascii would re-escape every non-ASCII character in the file,
     # including config text the swap never read.
@@ -590,6 +1074,72 @@ def _claude_user_servers(
     return existing
 
 
+@t.overload
+def _server_map(
+    info: CLIInfo, config: t.Any, *, create: t.Literal[True]
+) -> dict[str, t.Any]: ...
+
+
+@t.overload
+def _server_map(
+    info: CLIInfo, config: t.Any, *, create: t.Literal[False]
+) -> dict[str, t.Any] | None: ...
+
+
+def _server_map(
+    info: CLIInfo, config: t.Any, *, create: bool
+) -> dict[str, t.Any] | None:
+    """Walk ``info.container`` to the mapping holding this CLI's entries.
+
+    Returns ``None`` when the path is absent and ``create`` is false.
+    Intermediate levels are created on demand so a nested container needs
+    no special case; TOML gets tomlkit tables so the written document
+    keeps its formatting.
+
+    Raises
+    ------
+    RuntimeError
+        A key along the path holds something other than a mapping.
+        Reported rather than overwritten — a swap must never discard
+        config it cannot interpret.
+    """
+    node: dict[str, t.Any] = config
+    for depth, key in enumerate(info.container):
+        child = node.get(key)
+        if child is None:
+            if not create:
+                return None
+            child = tomlkit.table() if info.fmt == "toml" else {}
+            node[key] = child
+        elif not isinstance(child, dict):
+            path = ".".join(info.container[: depth + 1])
+            msg = (
+                f"{info.config_path}: {path} is a {type(child).__name__}, "
+                f"expected a table of server entries"
+            )
+            raise RuntimeError(msg)
+        node = child
+    return node
+
+
+def _as_toml_table(entry: dict[str, t.Any]) -> tomlkit.items.Table:
+    """Render one entry dict as a tomlkit table.
+
+    Nested mappings (``env``) become sub-tables so the written document
+    keeps TOML's own structure instead of an inline dict literal.
+    """
+    table = tomlkit.table()
+    for key, value in entry.items():
+        if isinstance(value, dict):
+            sub = tomlkit.table()
+            for sub_key, sub_value in value.items():
+                sub[sub_key] = sub_value
+            table[key] = sub
+        else:
+            table[key] = value
+    return table
+
+
 def get_server(
     cli: CLIName,
     config: t.Any,
@@ -613,13 +1163,12 @@ def get_server(
             if not node:
                 return None
             entry = node.get("mcpServers", {}).get(name)
-    elif cli in ("cursor", "gemini", "agy"):
-        entry = config.get("mcpServers", {}).get(name)
-    else:  # cli in ("codex", "grok") — TOML "mcp_servers" table
-        entry = config.get("mcp_servers", {}).get(name)
+    else:
+        servers = _server_map(CLIS[cli], config, create=False)
+        entry = servers.get(name) if servers else None
     if entry is None:
         return None
-    return _spec_from_entry(entry, fmt=CLIS[cli].fmt)
+    return _spec_from_entry(entry, info=CLIS[cli])
 
 
 def set_server(
@@ -643,37 +1192,23 @@ def set_server(
         if scope == "user":
             servers = _claude_user_servers(config, create=True)
             had = name in servers
-            servers[name] = spec.to_json_dict(include_stdio_type=True)
+            servers[name] = spec.to_entry_dict("claude")
             return "replaced" if had else "added"
         node = _claude_project_node(config, repo, create=True)
         servers = node.setdefault("mcpServers", {})
         had = name in servers
-        servers[name] = spec.to_json_dict(include_stdio_type=True)
+        servers[name] = spec.to_entry_dict("claude")
         return "replaced" if had else "added"
-    if cli in ("cursor", "gemini", "agy"):
-        servers = config.setdefault("mcpServers", {})
-        had = name in servers
-        servers[name] = spec.to_json_dict()
-        return "replaced" if had else "added"
-    if cli in ("codex", "grok"):
-        # tomlkit: top-level tables are accessed via dict protocol too.
-        mcp_servers = config.get("mcp_servers")
-        if mcp_servers is None:
-            mcp_servers = tomlkit.table()
-            config["mcp_servers"] = mcp_servers
-        had = name in mcp_servers
-        table = tomlkit.table()
-        table["command"] = spec.command
-        table["args"] = list(spec.args)
-        if spec.env:
-            env_tbl = tomlkit.table()
-            for k, v in spec.env.items():
-                env_tbl[k] = v
-            table["env"] = env_tbl
-        mcp_servers[name] = table
-        return "replaced" if had else "added"
-    msg = f"unreachable: unknown CLI {cli!r}"
-    raise AssertionError(msg)
+    info = CLIS[cli]
+    if info.dialect == "opencode" and not config:
+        # Seeding from nothing: opencode rewrites the file on load to add
+        # this line, so writing it now avoids an immediate second edit.
+        config["$schema"] = OPENCODE_SCHEMA_URL
+    servers = _server_map(info, config, create=True)
+    had = name in servers
+    entry = spec.to_entry_dict(info.dialect)
+    servers[name] = _as_toml_table(entry) if info.fmt == "toml" else entry
+    return "replaced" if had else "added"
 
 
 def delete_server(
@@ -701,24 +1236,26 @@ def delete_server(
             return False
         servers = node.get("mcpServers", {})
         return servers.pop(name, None) is not None
-    if cli in ("cursor", "gemini", "agy"):
-        return config.get("mcpServers", {}).pop(name, None) is not None
-    if cli in ("codex", "grok"):
-        mcp_servers = config.get("mcp_servers")
-        if mcp_servers is None:
-            return False
-        if name in mcp_servers:
-            del mcp_servers[name]
-            return True
+    servers = _server_map(CLIS[cli], config, create=False)
+    if servers is None or name not in servers:
         return False
-    msg = f"unreachable: unknown CLI {cli!r}"
-    raise AssertionError(msg)
+    del servers[name]
+    return True
 
 
-def _spec_from_entry(entry: t.Any, *, fmt: t.Literal["json", "toml"]) -> McpServerSpec:
-    """Convert a raw config entry (dict or tomlkit Table) into an McpServerSpec."""
+def _spec_from_entry(entry: t.Any, *, info: CLIInfo) -> McpServerSpec:
+    """Convert a raw config entry (dict or tomlkit Table) into an McpServerSpec.
+
+    Every dialect is normalised down to the portable scalar-command
+    shape, so the helpers that reason about a spec —
+    :meth:`McpServerSpec.is_local_uv_directory`, :meth:`McpServerSpec.pr_ref`,
+    ``_points_at`` — stay dialect-agnostic. Skipping this is not a
+    cosmetic loss: an unsplit array command makes the "already local, no
+    change" check miss, and every run rewrites a config it did not need
+    to touch.
+    """
     # tomlkit items quack like dicts/lists; coerce to plain Python for our spec.
-    if fmt == "toml":
+    if info.fmt == "toml":
         entry = (
             tomlkit.items.Table.unwrap(entry)
             if isinstance(entry, tomlkit.items.Table)
@@ -727,10 +1264,20 @@ def _spec_from_entry(entry: t.Any, *, fmt: t.Literal["json", "toml"]) -> McpServ
     if not isinstance(entry, dict):
         msg = f"expected server entry to be a mapping, got {type(entry).__name__}"
         raise TypeError(msg)
-    command = str(entry.get("command", ""))
-    raw_args = entry.get("args", [])
-    args = [str(a) for a in raw_args] if raw_args else []
-    raw_env = entry.get("env") or {}
+    if info.dialect == "opencode":
+        raw_command = entry.get("command", [])
+        argv = (
+            [str(part) for part in raw_command]
+            if isinstance(raw_command, (list, tuple))
+            else [str(raw_command)]
+        )
+        command, args = (argv[0], argv[1:]) if argv else ("", [])
+        raw_env = entry.get("environment") or {}
+    else:
+        command = str(entry.get("command", ""))
+        raw_args = entry.get("args", [])
+        args = [str(a) for a in raw_args] if raw_args else []
+        raw_env = entry.get("env") or {}
     env = {str(k): str(v) for k, v in dict(raw_env).items()}
     return McpServerSpec(command=command, args=args, env=env)
 
@@ -1070,8 +1617,10 @@ def cmd_detect(args: argparse.Namespace) -> int:
             extra.append("binary missing")
         if not p.config_found:
             extra.append(f"config missing: {CLIS[p.cli].config_path}")
+        if p.cli == "pi" and not PI_ADAPTER_DIR.is_dir():
+            extra.append(PI_ADAPTER_HINT)
         suffix = f"  ({', '.join(extra)})" if extra else ""
-        print(f"  [{flag}] {p.cli:<7}{suffix}")
+        print(f"  [{flag}] {p.cli:<{_CLI_COLUMN}}{suffix}")
     return 0
 
 
@@ -1676,17 +2225,15 @@ def _all_server_specs(
         for name, entry in raw.items():
             if not isinstance(entry, dict):
                 continue
-            out[str(name)] = _spec_from_entry(entry, fmt=CLIS[cli].fmt)
+            out[str(name)] = _spec_from_entry(entry, info=CLIS[cli])
 
     if cli == "claude":
         _add(_claude_user_servers(config, create=False))
         node = _claude_project_node(config, repo, create=False)
         if node:
             _add(node.get("mcpServers"))
-    elif cli in ("cursor", "gemini", "agy"):
-        _add(config.get("mcpServers"))
-    else:  # codex, grok
-        _add(config.get("mcp_servers"))
+    else:
+        _add(_server_map(CLIS[cli], config, create=False))
     return out
 
 
