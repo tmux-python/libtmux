@@ -10,6 +10,7 @@ packaging wiring that makes the server runnable.
 
 from __future__ import annotations
 
+import argparse
 import importlib.metadata
 import importlib.util
 import json
@@ -221,6 +222,21 @@ def _local_entry(repo: pathlib.Path) -> dict[str, t.Any]:
     return {
         "command": "uv",
         "args": ["--directory", str(repo.resolve()), "run", "libtmux-engine-mcp"],
+    }
+
+
+def _pinned_entry() -> dict[str, t.Any]:
+    """Return a released-pin JSON entry, the shape a swap replaces."""
+    return {"command": "uvx", "args": ["libtmux==0.63.0"]}
+
+
+def _pinned_claude_entry() -> dict[str, t.Any]:
+    """Return the same pin in Claude's extended entry shape."""
+    return {
+        "type": "stdio",
+        "command": "uvx",
+        "args": ["libtmux==0.63.0"],
+        "env": {},
     }
 
 
@@ -1318,3 +1334,576 @@ def test_scoped_revert_refuses_to_cross_newer_whole_file_layer(
     assert mcp_swap.cmd_revert(user_revert) == 0
     assert info.config_path.read_bytes() == original
     assert not mcp_swap.STATE_FILE.exists()
+
+
+# ---------------------------------------------------------------------------
+# Pull-request targeting
+# ---------------------------------------------------------------------------
+
+
+class RemoteURLFixture(t.NamedTuple):
+    """One git remote spelling and the https URL it normalizes to.
+
+    Attributes
+    ----------
+    test_id : str
+        Identifier shown in the parametrized test name.
+    remote : str
+        A URL as ``git remote get-url`` may report it.
+    expected : str
+        The https form the pull-request ref is fetched from.
+    """
+
+    test_id: str
+    remote: str
+    expected: str
+
+
+REMOTE_URL_FIXTURES: list[RemoteURLFixture] = [
+    RemoteURLFixture(
+        "git_ssh_scheme", "git+ssh://git@github.com/o/n.git", "https://github.com/o/n"
+    ),
+    RemoteURLFixture(
+        "ssh_scheme", "ssh://git@github.com/o/n.git", "https://github.com/o/n"
+    ),
+    RemoteURLFixture(
+        "scp_shorthand", "git@github.com:o/n.git", "https://github.com/o/n"
+    ),
+    RemoteURLFixture(
+        "https_dotgit", "https://github.com/o/n.git", "https://github.com/o/n"
+    ),
+    RemoteURLFixture("https_plain", "https://github.com/o/n", "https://github.com/o/n"),
+    RemoteURLFixture(
+        "self_hosted",
+        "git@git.example.com:team/n.git",
+        "https://git.example.com/team/n",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    RemoteURLFixture._fields,
+    REMOTE_URL_FIXTURES,
+    ids=[f.test_id for f in REMOTE_URL_FIXTURES],
+)
+def test_normalize_remote_url(
+    mcp_swap: t.Any, test_id: str, remote: str, expected: str
+) -> None:
+    """Every spelling git accepts resolves to the same https URL.
+
+    This repo's own ``origin`` is spelled ``git+ssh://``, so the
+    normalizer is what makes ``--pr`` work here at all.
+    """
+    assert test_id
+    assert mcp_swap._normalize_remote_url(remote) == expected
+
+
+def test_build_pr_spec_round_trips_through_pr_ref(mcp_swap: t.Any) -> None:
+    """A built pull-request spec is recognized by the reader that parses it."""
+    spec = mcp_swap.build_pr_spec(
+        "https://github.com/tmux-python/libtmux", 114, "libtmux-engine-mcp"
+    )
+
+    assert spec.command == "uvx"
+    assert spec.args == [
+        "--from",
+        "git+https://github.com/tmux-python/libtmux@refs/pull/114/head",
+        "libtmux-engine-mcp",
+    ]
+    assert spec.pr_ref() == ("https://github.com/tmux-python/libtmux", 114)
+    assert spec.is_local_uv_directory() is False
+
+
+def test_pr_ref_ignores_non_pr_specs(mcp_swap: t.Any) -> None:
+    """A local checkout, a version pin and a branch are not pull requests."""
+    local = mcp_swap.McpServerSpec(
+        command="uv", args=["--directory", "/tmp", "run", "x"]
+    )
+    pinned = mcp_swap.McpServerSpec(command="uvx", args=["libtmux==0.63.0"])
+    branch = mcp_swap.McpServerSpec(
+        command="uvx", args=["--from", "git+https://github.com/o/n@main", "x"]
+    )
+
+    assert local.pr_ref() is None
+    assert pinned.pr_ref() is None
+    assert branch.pr_ref() is None
+
+
+def test_describe_spec_labels_a_pr_before_the_version_pin_branch(
+    mcp_swap: t.Any, tmp_path: pathlib.Path
+) -> None:
+    """A pull-request ref is described as a PR, not as a version pin.
+
+    The ref carries an ``@``, which the pin branch would otherwise report
+    as ``pypi pin: git+...@refs/pull/114/head``.
+    """
+    spec = mcp_swap.build_pr_spec("https://github.com/o/n", 114, "libtmux-engine-mcp")
+
+    assert mcp_swap._describe_spec(spec, tmp_path) == "PR #114: https://github.com/o/n"
+
+
+def test_points_at_distinguishes_pr_numbers(
+    mcp_swap: t.Any, tmp_path: pathlib.Path
+) -> None:
+    """A swap to one pull request is not treated as already pointing at another."""
+    target = mcp_swap.build_pr_spec("https://github.com/o/n", 114, "x")
+    same = mcp_swap.build_pr_spec("https://github.com/o/n", 114, "x")
+    other = mcp_swap.build_pr_spec("https://github.com/o/n", 115, "x")
+    local = mcp_swap.build_local_spec(tmp_path, "x")
+
+    assert mcp_swap._points_at(same, target) is True
+    assert mcp_swap._points_at(other, target) is False
+    assert mcp_swap._points_at(local, target) is False
+    assert mcp_swap._points_at(local, local) is True
+
+
+def test_points_at_rejects_a_local_entry_with_another_entry_command(
+    mcp_swap: t.Any, tmp_path: pathlib.Path
+) -> None:
+    """``--entry`` changes argv, so the same repo is not "already local".
+
+    Both specs point at this checkout; only an exact argv comparison sees
+    that the console script differs, which is what keeps ``--entry`` from
+    being silently ignored.
+    """
+    target = mcp_swap.build_local_spec(tmp_path, "libtmux-engine-mcp")
+    other_entry = mcp_swap.build_local_spec(tmp_path, "alternate-mcp")
+
+    assert mcp_swap._points_at(other_entry, target) is False
+
+
+def test_preflight_accepts_a_server_that_answers_initialize(
+    mcp_swap: t.Any, tmp_path: pathlib.Path
+) -> None:
+    """A stdio server that replies to ``initialize`` passes preflight."""
+    server = tmp_path / "server.py"
+    server.write_text(
+        "import json, sys\n"
+        "line = sys.stdin.readline()\n"
+        "req = json.loads(line)\n"
+        'print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": {}}))\n',
+        encoding="utf-8",
+    )
+    spec = mcp_swap.McpServerSpec(command=sys.executable, args=[str(server)])
+
+    assert mcp_swap.preflight_spec(spec, timeout=60) is None
+
+
+def test_preflight_reports_stderr_when_the_server_never_answers(
+    mcp_swap: t.Any, tmp_path: pathlib.Path
+) -> None:
+    """A server that dies is reported with the tail of its stderr."""
+    server = tmp_path / "server.py"
+    server.write_text(
+        'import sys\nsys.stderr.write("could not resolve ref\\n")\nsys.exit(1)\n',
+        encoding="utf-8",
+    )
+    spec = mcp_swap.McpServerSpec(command=sys.executable, args=[str(server)])
+
+    assert mcp_swap.preflight_spec(spec, timeout=60) == "could not resolve ref"
+
+
+def test_preflight_reports_a_command_that_cannot_launch(mcp_swap: t.Any) -> None:
+    """A missing binary is named rather than raising."""
+    spec = mcp_swap.McpServerSpec(command="mcp-swap-no-such-binary", args=[])
+
+    failure = mcp_swap.preflight_spec(spec, timeout=60)
+
+    assert failure is not None
+    assert "mcp-swap-no-such-binary" in failure
+
+
+def test_preflight_passes_spec_env_to_the_process(
+    mcp_swap: t.Any, tmp_path: pathlib.Path
+) -> None:
+    """``spec.env`` reaches the launched server.
+
+    ``LIBTMUX_SAFETY`` and ``LIBTMUX_SOCKET`` travel this way, so a
+    preflight that dropped the env would reject a spec that works in an
+    agent.
+    """
+    server = tmp_path / "server.py"
+    server.write_text(
+        "import json, os, sys\n"
+        "req = json.loads(sys.stdin.readline())\n"
+        'if os.environ.get("MCP_SWAP_PROBE") != "1":\n'
+        "    sys.exit(2)\n"
+        'print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": {}}))\n',
+        encoding="utf-8",
+    )
+    spec = mcp_swap.McpServerSpec(
+        command=sys.executable, args=[str(server)], env={"MCP_SWAP_PROBE": "1"}
+    )
+
+    assert mcp_swap.preflight_spec(spec, timeout=60) is None
+
+
+@pytest.mark.parametrize("raw", ["0", "-5", "notanumber", "1.5", ""])
+def test_pr_number_rejects_what_is_not_a_pull_request(
+    mcp_swap: t.Any, raw: str
+) -> None:
+    """``--pr`` takes a positive integer and nothing else."""
+    with pytest.raises(argparse.ArgumentTypeError):
+        mcp_swap._pr_number(raw)
+
+
+def test_pr_number_accepts_a_pull_request_number(mcp_swap: t.Any) -> None:
+    """A plain positive number parses to an int."""
+    assert mcp_swap._pr_number("115") == 115
+
+
+@pytest.mark.parametrize("raw", ["0", "-5", "notanumber"])
+def test_parser_rejects_a_bad_pr_argument(mcp_swap: t.Any, raw: str) -> None:
+    """The parser surfaces the rejection instead of swapping onto a bad ref."""
+    with pytest.raises(SystemExit):
+        mcp_swap.build_parser().parse_args(["use-local", "--pr", raw])
+
+
+# ---------------------------------------------------------------------------
+# JSON writer fidelity
+#
+# The swap edits one entry inside a file the user owns, so bytes it did
+# not set out to change must survive the rewrite. ``load_config`` ->
+# ``dump_config_bytes`` is the whole write path, so an unmodified config
+# has to come back byte-identical.
+#
+# Out of scope, and normalized rather than preserved: indent width, CRLF,
+# `\/` and `\uXXXX` escapes of characters that need none, duplicate keys,
+# and number spelling (`1e5` -> `100000.0`). None appear in what the JSON
+# CLIs write — they all emit `JSON.stringify(x, null, 2)` — and none
+# change what a CLI reads, only the bytes a dotfile diff shows.
+# ---------------------------------------------------------------------------
+
+
+class JSONFidelityCase(t.NamedTuple):
+    """A JSON config body whose exact bytes survive a no-op rewrite.
+
+    Attributes
+    ----------
+    test_id : str
+        Identifier shown in the parametrized test name.
+    body : str
+        The config file's text, written to disk verbatim.
+    """
+
+    test_id: str
+    body: str
+
+
+PRESERVED_JSON: list[JSONFidelityCase] = [
+    JSONFidelityCase(
+        "mcp_servers_block",
+        '{\n  "mcpServers": {\n    "libtmux-engine": {\n      "command": "uvx",\n'
+        '      "args": [\n        "libtmux==0.63.0"\n      ]\n    }\n  }\n}\n',
+    ),
+    JSONFidelityCase(
+        "non_ascii_model_label",
+        '{\n  "model": "Fable 5 · Most capable…",\n  "mcpServers": {}\n}\n',
+    ),
+    JSONFidelityCase(
+        "emoji_and_cjk", '{\n  "history": [\n    "🙂 日本語 café"\n  ]\n}\n'
+    ),
+    JSONFidelityCase("escaped_lone_surrogate", '{\n  "truncated": "\\ud800"\n}\n'),
+    JSONFidelityCase("unsorted_keys", '{\n  "zeta": 1,\n  "alpha": 2\n}\n'),
+    JSONFidelityCase(
+        "claude_shape_without_trailing_newline",
+        '{\n  "model": "Fable 5 · Most capable…",\n  "projects": {\n'
+        '    "/home/someone/repo": {\n      "mcpServers": {}\n    }\n  }\n}',
+    ),
+]
+
+
+def _json_config(
+    mcp_swap: t.Any, tmp_path: pathlib.Path, body: str
+) -> tuple[t.Any, bytes]:
+    """Write ``body`` verbatim and return its ``CLIInfo`` and exact bytes."""
+    path = tmp_path / "config.json"
+    raw = body.encode()
+    path.write_bytes(raw)
+    info = mcp_swap.CLIInfo(
+        name="cursor",
+        binary="cursor-agent",
+        config_path=path,
+        fmt="json",
+    )
+    return info, raw
+
+
+@pytest.mark.parametrize(
+    JSONFidelityCase._fields,
+    PRESERVED_JSON,
+    ids=[c.test_id for c in PRESERVED_JSON],
+)
+def test_untouched_json_config_round_trips_byte_identical(
+    mcp_swap: t.Any, tmp_path: pathlib.Path, test_id: str, body: str
+) -> None:
+    """Parsing a config and writing it back unmodified changes nothing.
+
+    Every case is a shape the JavaScript agent CLIs actually emit:
+    two-space indent, literal non-ASCII, escapes only below ``0x20`` plus
+    lone surrogates, and no terminating newline.
+    """
+    assert test_id
+    info, raw = _json_config(mcp_swap, tmp_path, body)
+
+    assert (
+        mcp_swap.dump_config_bytes(info, mcp_swap.load_config(info), original=raw)
+        == raw
+    )
+
+
+def test_dump_config_bytes_ends_a_seeded_file_with_a_newline(
+    mcp_swap: t.Any, tmp_path: pathlib.Path
+) -> None:
+    """With no original to match, a JSON config gets the conventional newline."""
+    info, _ = _json_config(mcp_swap, tmp_path, "")
+
+    assert (
+        mcp_swap.dump_config_bytes(info, {"mcpServers": {}}, original=b"")
+        == b'{\n  "mcpServers": {}\n}\n'
+    )
+
+
+def test_dump_config_bytes_escapes_a_config_it_cannot_encode(
+    mcp_swap: t.Any, tmp_path: pathlib.Path
+) -> None:
+    r"""A lone surrogate has no UTF-8 form, so the document is escaped instead.
+
+    JavaScript writes a string sliced through a surrogate pair as
+    ``"\ud800"``, which parses to a Python string ``str.encode`` rejects.
+    Escaping the whole document is what keeps the file writable at all.
+    """
+    config = {"truncated": "\ud800", "label": "café"}
+
+    with pytest.raises(UnicodeEncodeError):
+        json.dumps(config, indent=2, ensure_ascii=False).encode()
+
+    info, _ = _json_config(mcp_swap, tmp_path, "")
+    written = mcp_swap.dump_config_bytes(info, config, original=b"")
+
+    assert written == b'{\n  "truncated": "\\ud800",\n  "label": "caf\\u00e9"\n}\n'
+    assert json.loads(written.decode()) == config
+
+
+def test_swap_leaves_non_ascii_elsewhere_in_the_config_alone(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """A real swap does not re-escape config text it never read.
+
+    Claude stores model labels and prompt history alongside the MCP
+    entries, so escaping on write turns a one-entry edit into a diff
+    spanning the file.
+    """
+    info = mcp_swap.CLIS["claude"]
+    label = "Fable 5 · Most capable…"
+    _write_json(
+        info.config_path,
+        {
+            "model": label,
+            "projects": {
+                str(fake_repo.resolve()): {
+                    "mcpServers": {"libtmux-engine": _pinned_claude_entry()},
+                    "history": ["café ☕"],
+                }
+            },
+        },
+    )
+    args = mcp_swap.build_parser().parse_args(
+        ["use-local", "--repo", str(fake_repo), "--cli", "claude"]
+    )
+
+    assert mcp_swap.cmd_use_local(args) == 0
+
+    after = info.config_path.read_text()
+    assert f'"model": "{label}"' in after
+    assert '"café ☕"' in after
+    assert "\\u" not in after
+
+
+def test_swap_does_not_append_a_newline_the_cli_never_wrote(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """Claude's config has no trailing newline, and swapping must not add one."""
+    info = mcp_swap.CLIS["claude"]
+    body = json.dumps(
+        {
+            "projects": {
+                str(fake_repo.resolve()): {
+                    "mcpServers": {"libtmux-engine": _pinned_claude_entry()}
+                }
+            }
+        },
+        indent=2,
+    )
+    info.config_path.parent.mkdir(parents=True, exist_ok=True)
+    info.config_path.write_text(body)
+
+    args = mcp_swap.build_parser().parse_args(
+        ["use-local", "--repo", str(fake_repo), "--cli", "claude"]
+    )
+    assert mcp_swap.cmd_use_local(args) == 0
+
+    assert not info.config_path.read_bytes().endswith(b"\n")
+
+
+# ---------------------------------------------------------------------------
+# Atomic writes through symlinked configs
+# ---------------------------------------------------------------------------
+
+
+def _build_symlink_chain(
+    root: pathlib.Path, hops: int
+) -> tuple[pathlib.Path, pathlib.Path, list[pathlib.Path]]:
+    """Create ``hops`` links ending at an existing config file.
+
+    Parameters
+    ----------
+    root : pathlib.Path
+        Empty directory where the link and target trees are created.
+    hops : int
+        Number of links in the chain.
+
+    Returns
+    -------
+    tuple of pathlib.Path, pathlib.Path, list of pathlib.Path
+        Entry path, final target, and each link in the chain.
+    """
+    target = root / "dotfiles" / "mcp.json"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"original\n")
+    link_dir = root / "home"
+    link_dir.mkdir()
+    links: list[pathlib.Path] = []
+    entry = target
+    for hop in range(hops):
+        link = link_dir / f"hop-{hop}.json"
+        link.symlink_to(entry)
+        links.append(link)
+        entry = link
+    return entry, target, links
+
+
+@pytest.mark.parametrize("hops", [1, 3], ids=["single", "chain"])
+def test_atomic_write_updates_the_symlink_target(
+    mcp_swap: t.Any, tmp_path: pathlib.Path, hops: int
+) -> None:
+    """The final target receives the bytes and every link survives."""
+    entry, target, links = _build_symlink_chain(tmp_path, hops)
+
+    mcp_swap.atomic_write(entry, b"swapped\n")
+
+    assert all(link.is_symlink() for link in links)
+    assert target.read_bytes() == b"swapped\n"
+    assert entry.read_bytes() == b"swapped\n"
+
+
+def test_atomic_write_stages_beside_the_symlink_target(
+    mcp_swap: t.Any, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The temp file shares the final target's filesystem for atomic rename."""
+    entry, target, _links = _build_symlink_chain(tmp_path, 1)
+    real_mkstemp = mcp_swap.tempfile.mkstemp
+    staged_in: list[str | None] = []
+
+    def recording_mkstemp(*args: t.Any, **kwargs: t.Any) -> tuple[int, str]:
+        staged_in.append(kwargs.get("dir"))
+        return t.cast("tuple[int, str]", real_mkstemp(*args, **kwargs))
+
+    monkeypatch.setattr(mcp_swap.tempfile, "mkstemp", recording_mkstemp)
+
+    mcp_swap.atomic_write(entry, b"swapped\n")
+
+    assert staged_in == [str(target.parent)]
+
+
+def test_atomic_write_preserves_the_target_mode(
+    mcp_swap: t.Any, tmp_path: pathlib.Path
+) -> None:
+    """Replacing a config does not silently narrow its permission bits."""
+    target = tmp_path / "mcp.json"
+    target.write_bytes(b"original\n")
+    target.chmod(0o640)
+
+    mcp_swap.atomic_write(target, b"swapped\n")
+
+    assert target.stat().st_mode & 0o777 == 0o640
+
+
+def test_symlinked_config_swap_and_revert_round_trip(
+    mcp_swap: t.Any, fake_home: pathlib.Path, fake_repo: pathlib.Path
+) -> None:
+    """Swap and revert update the target without replacing the config link."""
+    info = mcp_swap.CLIS["cursor"]
+    target = fake_home / "dotfiles" / "cursor" / "mcp.json"
+    _write_json(target, {"mcpServers": {"libtmux-engine": _pinned_entry()}})
+    original = target.read_bytes()
+    info.config_path.parent.mkdir(parents=True)
+    info.config_path.symlink_to(target)
+    parser = mcp_swap.build_parser()
+
+    swap = parser.parse_args(["use-local", "--repo", str(fake_repo), "--cli", "cursor"])
+    assert mcp_swap.cmd_use_local(swap) == 0
+    state = mcp_swap.load_state()["cursor", "user"]
+    backup = pathlib.Path(state.backup_path)
+    assert info.config_path.is_symlink()
+    assert backup.parent == info.config_path.parent
+    entry = json.loads(target.read_text())["mcpServers"]["libtmux-engine"]
+    assert entry["command"] == "uv"
+
+    assert mcp_swap.cmd_revert(parser.parse_args(["revert", "--cli", "cursor"])) == 0
+    assert info.config_path.is_symlink()
+    assert target.read_bytes() == original
+    assert not backup.exists()
+
+
+@pytest.mark.parametrize("replacement_kind", ["symlink", "file"])
+def test_revert_uses_the_original_target_when_a_config_link_is_replaced(
+    mcp_swap: t.Any,
+    fake_home: pathlib.Path,
+    fake_repo: pathlib.Path,
+    replacement_kind: str,
+) -> None:
+    """Repointing or replacing a link cannot redirect recovery into a new file."""
+    info = mcp_swap.CLIS["cursor"]
+    original_target = fake_home / "dotfiles" / "original.json"
+    new_target = fake_home / "dotfiles" / "replacement.json"
+    _write_json(original_target, {"mcpServers": {"libtmux-engine": _pinned_entry()}})
+    _write_json(new_target, {"sentinel": "leave me alone"})
+    original = original_target.read_bytes()
+    replacement = new_target.read_bytes()
+    info.config_path.parent.mkdir(parents=True)
+    info.config_path.symlink_to(original_target)
+    parser = mcp_swap.build_parser()
+
+    swap = parser.parse_args(["use-local", "--repo", str(fake_repo), "--cli", "cursor"])
+    assert mcp_swap.cmd_use_local(swap) == 0
+    info.config_path.unlink()
+    if replacement_kind == "symlink":
+        info.config_path.symlink_to(new_target)
+        replacement_path = new_target
+    else:
+        info.config_path.write_bytes(replacement)
+        replacement_path = info.config_path
+
+    assert mcp_swap.cmd_revert(parser.parse_args(["revert", "--cli", "cursor"])) == 0
+    assert original_target.read_bytes() == original
+    assert replacement_path.read_bytes() == replacement
+
+
+# ---------------------------------------------------------------------------
+# Fixture invariant
+# ---------------------------------------------------------------------------
+
+
+def test_fake_home_covers_every_registered_cli(
+    mcp_swap: t.Any, fake_home: pathlib.Path
+) -> None:
+    """``fake_home`` replaces ``CLIS`` wholesale, so it must list every CLI.
+
+    Regression guard rather than a behavior test. ``_config_present_clis``
+    iterates ``ALL_CLIS`` while indexing ``CLIS``, so a CLI added to the
+    registry but not to this fixture raises ``KeyError`` from half a dozen
+    unrelated doctor and naming-hint tests. Naming the invariant here turns
+    that into one obvious failure.
+    """
+    assert set(mcp_swap.CLIS) == set(mcp_swap.ALL_CLIS)
