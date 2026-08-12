@@ -125,6 +125,12 @@ engine fails closed, raising {exc}`~libtmux.exc.UnscriptedCommand` for a command
 it never recorded. The `recording_server` pytest fixture provides a server that
 records, which doubles as a spy over the tmux commands your code issued.
 
+A tape keeps every exchange in order rather than one answer per command, and a
+replay serves them in order. A command whose answer never varied while recording
+replays as often as needed; one that varied raises once its answers run out,
+because repeating the final answer would report the end state for an earlier
+step.
+
 A tape carries the tmux version it was recorded against, and a replay engine
 reports it through {class}`~libtmux.engines.base.SupportsTmuxVersion`. That is
 what lets a replay serve listing queries with no tmux binary present at all:

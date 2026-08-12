@@ -186,7 +186,34 @@ libtmux.exc.UnscriptedCommand: no recorded result for 'list-sessions
 <...-char arg>' (tape recorded on tmux 3.7)
 ```
 
-Note that this raises rather than returning an empty list.
+A tape keeps every exchange in order, not one answer per command. That matters
+whenever state changes underneath a repeated query — `list-sessions` before and
+after a session is created — because a tape that remembered only the last answer
+would replay the end state for both, and a test asserting the transition would
+pass against the wrong value. Replay serves the recorded answers in order.
+
+A command whose answer never varied while recording may be replayed as often as
+you like. One that *did* vary has no defensible reply once its answers run out,
+so it raises rather than repeating the final one:
+
+```python
+>>> from libtmux.engines import CommandResult, Exchange, ReplayEngine
+>>> from libtmux.server import Server
+>>> tape = [
+...     Exchange(("list-sessions",), CommandResult(cmd=("tmux",), stdout=("one",))),
+...     Exchange(("list-sessions",), CommandResult(cmd=("tmux",), stdout=("two",))),
+... ]
+>>> replay = Server(engine=ReplayEngine(tape))
+>>> replay.cmd("list-sessions").stdout, replay.cmd("list-sessions").stdout
+(['one'], ['two'])
+>>> replay.cmd("list-sessions")
+Traceback (most recent call last):
+...
+libtmux.exc.UnscriptedCommand: no recorded result for 'list-sessions'
+(answered 2 times while recording, asked 3 times now)
+```
+
+Note that a missing command raises rather than returning an empty list.
 {attr}`Server.sessions <libtmux.Server.sessions>` is lenient by contract when
 tmux cannot be reached, but an engine that was never taught to answer is a gap
 in your fixture, not an unreachable tmux — reporting "no sessions" there would

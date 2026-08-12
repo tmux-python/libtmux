@@ -15,6 +15,7 @@ from libtmux.engines import (
     CommandRequest,
     CommandResult,
     CommandSeparator,
+    Exchange,
     RecordingEngine,
     ReplayEngine,
     ServerConnection,
@@ -358,3 +359,47 @@ def test_unscripted_command_is_not_swallowed_by_list_accessors() -> None:
     assert "3.7" in message
     # The -F template must be summarized, not dumped into the message.
     assert len(message) < 200
+
+
+def test_replay_preserves_answers_that_changed(session: Session) -> None:
+    """A command answered differently twice replays both answers, in order.
+
+    A tape keyed only by argv would remember the last answer and report the end
+    state for the earlier step, so a test asserting a transition would pass
+    against the wrong value.
+    """
+    server = session.server
+    recorder = RecordingEngine(SubprocessEngine.for_server(server))
+    recording = Server(socket_name=server.socket_name, engine=recorder)
+
+    before = len(recording.sessions)
+    recording.new_session("replay_seq_extra")
+    after = len(recording.sessions)
+    assert after == before + 1
+
+    offline = Server(
+        socket_name=server.socket_name,
+        tmux_bin="/nonexistent/tmux",
+        engine=ReplayEngine.from_dict(json.loads(json.dumps(recorder.to_dict()))),
+    )
+    assert len(offline.sessions) == before
+    assert len(offline.sessions) == after
+
+    # The answer demonstrably varied, so there is no defensible reply to a
+    # third call; guessing one is what this design exists to prevent.
+    with pytest.raises(exc.UnscriptedCommand, match="asked 3 times now"):
+        _ = offline.sessions
+
+
+def test_replay_repeats_an_answer_that_never_varied() -> None:
+    """A command recorded once may be replayed any number of times."""
+    tape = [
+        Exchange(
+            ("display-message", "-p", "hi"),
+            CommandResult(cmd=("tmux",), stdout=("hi",)),
+        ),
+    ]
+    server = Server(engine=ReplayEngine(tape))
+    assert [server.cmd("display-message", "-p", "hi").stdout[0] for _ in range(4)] == [
+        "hi",
+    ] * 4
