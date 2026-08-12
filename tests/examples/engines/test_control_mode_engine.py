@@ -55,6 +55,13 @@ class ControlModeEngine(TmuxEngine):
     """
 
     def __init__(self, connection: ServerConnection) -> None:
+        self._connection = connection
+        self.reconnects = 0
+        self._spawn()
+
+    def _spawn(self) -> None:
+        """Open the control connection, consuming tmux's greeting block."""
+        connection = self._connection
         argv = [
             connection.resolve_bin(),
             *connection.args,
@@ -73,7 +80,8 @@ class ControlModeEngine(TmuxEngine):
             text=True,
             bufsize=1,
         )
-        self.notifications: list[str] = []
+        if not hasattr(self, "notifications"):
+            self.notifications: list[str] = []
         self._read_block()  # tmux greets with a handshake block
 
     def _read_block(self) -> tuple[list[str], int]:
@@ -103,7 +111,16 @@ class ControlModeEngine(TmuxEngine):
         return lines, returncode
 
     def run(self, request: CommandRequest) -> CommandResult:
-        """Write one command line and read back its reply block."""
+        """Write one command line and read back its reply block.
+
+        Reconnects first if the connection died. This is the lazy form: it
+        notices on the next command rather than the instant the process exits,
+        and a command already in flight when the connection dropped is lost.
+        Backoff and replaying attach state are what a hardened engine adds.
+        """
+        if self._process.poll() is not None:
+            self.reconnects += 1
+            self._spawn()
         assert self._process.stdin is not None
         self._process.stdin.write(render_control_line(request.args) + "\n")
         self._process.stdin.flush()
@@ -241,7 +258,15 @@ def test_pane_output_arrives_as_notifications(session: Session) -> None:
     try:
         assert client.stdin is not None
         assert client.stdout is not None
-        time.sleep(0.5)
+
+        # Wait for the client to be attached by asking it something, rather
+        # than sleeping a guessed interval: its reply proves it is ready.
+        client.stdin.write("display-message -p READY\n")
+        client.stdin.flush()
+        for _ in range(500):
+            if client.stdout.readline().rstrip("\n") == "READY":
+                break
+
         pane.send_keys("printf 'MARKER-OK\\n'")
 
         # Reading until a command of our own replies bounds the wait without
@@ -297,3 +322,22 @@ def test_waiting_for_pane_output_needs_no_reader_thread(
             time.sleep(0.05)
 
     assert found, "pane output should surface through collected notifications"
+
+
+def test_a_dropped_connection_is_reopened(control_mode_server: Server) -> None:
+    """Killing the control client does not end the server object's usefulness.
+
+    Surviving a drop is a liveness check and a respawn. What it does not cover
+    is a command in flight when the connection died, or backing off when the
+    tmux server itself is gone -- both belong to a hardened engine.
+    """
+    engine = control_mode_server.engine
+    assert isinstance(engine, ControlModeEngine)
+    assert control_mode_server.cmd("display-message", "-p", "one").stdout == ["one"]
+
+    engine._process.kill()
+    engine._process.wait()
+
+    assert control_mode_server.cmd("display-message", "-p", "two").stdout == ["two"]
+    assert [s.session_name for s in control_mode_server.sessions]
+    assert engine.reconnects == 1
