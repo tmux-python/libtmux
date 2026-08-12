@@ -59,9 +59,17 @@ from libtmux.engines.record import (
     ReplayEngine,
     Tape,
 )
+from libtmux.engines.registry import (
+    ENGINE_ENTRY_POINT_GROUP,
+    available_engines,
+    create_engine,
+    register_engine,
+    unregister_engine,
+)
 from libtmux.engines.subprocess import SubprocessEngine
 
 __all__ = (
+    "ENGINE_ENTRY_POINT_GROUP",
     "AsyncTmuxEngine",
     "CommandRequest",
     "CommandResult",
@@ -77,7 +85,11 @@ __all__ = (
     "SupportsTmuxVersion",
     "Tape",
     "TmuxEngine",
+    "available_engines",
+    "create_engine",
     "encode_direct_argv",
     "is_command_separator",
+    "register_engine",
     "split_direct_argv",
+    "unregister_engine",
 )
