@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.tooling.json",
+  "compilerOptions": {
+    "declaration": false,
+    "isolatedDeclarations": false,
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "files": ["../../support/bun-tooling.d.ts"],
+  "include": ["no_floating_promise.ts"],
+  "exclude": []
+}

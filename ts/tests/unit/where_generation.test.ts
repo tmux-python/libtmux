@@ -1,0 +1,581 @@
+import { createHash } from "node:crypto";
+import { lstat, mkdtemp, readFile, readdir, readlink, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { describe, expect, test } from "bun:test";
+
+import { generateFormats } from "../../scripts/generate-formats.js";
+
+const markerStart = "// <libtmux-generated-where-types>";
+const markerEnd = "// </libtmux-generated-where-types>";
+const expectedScalarKeys = {
+  session: [
+    "active_window_index",
+    "config_files",
+    "last_window_index",
+    "line",
+    "name",
+    "next_session_id",
+    "pid",
+    "session_activity",
+    "session_alerts",
+    "session_attached",
+    "session_attached_list",
+    "session_created",
+    "session_format",
+    "session_group",
+    "session_group_attached",
+    "session_group_attached_list",
+    "session_group_list",
+    "session_group_many_attached",
+    "session_group_size",
+    "session_grouped",
+    "session_id",
+    "session_last_attached",
+    "session_many_attached",
+    "session_marked",
+    "session_path",
+    "session_stack",
+    "session_windows",
+    "socket_path",
+    "start_time",
+    "uid",
+    "user",
+    "version",
+  ],
+  window: [
+    "config_files",
+    "line",
+    "name",
+    "next_session_id",
+    "pid",
+    "socket_path",
+    "start_time",
+    "uid",
+    "user",
+    "version",
+    "window_active",
+    "window_active_clients",
+    "window_active_clients_list",
+    "window_active_sessions",
+    "window_active_sessions_list",
+    "window_activity",
+    "window_activity_flag",
+    "window_bell_flag",
+    "window_bigger",
+    "window_cell_height",
+    "window_cell_width",
+    "window_end_flag",
+    "window_flags",
+    "window_format",
+    "window_height",
+    "window_id",
+    "window_index",
+    "window_last_flag",
+    "window_layout",
+    "window_linked",
+    "window_linked_sessions",
+    "window_linked_sessions_list",
+    "window_marked_flag",
+    "window_offset_x",
+    "window_offset_y",
+    "window_panes",
+    "window_raw_flags",
+    "window_silence_flag",
+    "window_stack_index",
+    "window_start_flag",
+    "window_visible_layout",
+    "window_width",
+    "window_zoomed_flag",
+  ],
+  pane: [
+    "alternate_saved_x",
+    "alternate_saved_y",
+    "bracket_paste_flag",
+    "config_files",
+    "cursor_character",
+    "cursor_flag",
+    "cursor_x",
+    "cursor_y",
+    "history_bytes",
+    "history_limit",
+    "history_size",
+    "insert_flag",
+    "keypad_cursor_flag",
+    "keypad_flag",
+    "line",
+    "mouse_all_flag",
+    "mouse_any_flag",
+    "mouse_button_flag",
+    "mouse_sgr_flag",
+    "mouse_standard_flag",
+    "next_session_id",
+    "origin_flag",
+    "pane_active",
+    "pane_at_bottom",
+    "pane_at_left",
+    "pane_at_right",
+    "pane_at_top",
+    "pane_bg",
+    "pane_bottom",
+    "pane_current_command",
+    "pane_current_path",
+    "pane_dead",
+    "pane_dead_signal",
+    "pane_dead_status",
+    "pane_dead_time",
+    "pane_fg",
+    "pane_flags",
+    "pane_floating_flag",
+    "pane_format",
+    "pane_height",
+    "pane_id",
+    "pane_in_mode",
+    "pane_index",
+    "pane_input_off",
+    "pane_last",
+    "pane_left",
+    "pane_marked",
+    "pane_marked_set",
+    "pane_mode",
+    "pane_path",
+    "pane_pb_progress",
+    "pane_pb_state",
+    "pane_pid",
+    "pane_pipe",
+    "pane_pipe_pid",
+    "pane_right",
+    "pane_search_string",
+    "pane_start_command",
+    "pane_start_path",
+    "pane_synchronized",
+    "pane_tabs",
+    "pane_title",
+    "pane_top",
+    "pane_tty",
+    "pane_width",
+    "pane_x",
+    "pane_y",
+    "pane_z",
+    "pane_zoomed_flag",
+    "pid",
+    "scroll_region_lower",
+    "scroll_region_upper",
+    "socket_path",
+    "start_time",
+    "synchronized_output_flag",
+    "uid",
+    "user",
+    "version",
+    "wrap_flag",
+  ],
+} as const;
+const expectedRelationKeys = {
+  session: ["active_pane", "active_window", "panes", "windows"],
+  window: ["active_pane", "linked_sessions", "panes", "session"],
+  pane: ["session", "window"],
+} as const;
+const expectedRelations = {
+  pane: [
+    { cardinality: "one", name: "window", targetModel: "window" },
+    { cardinality: "one", name: "session", targetModel: "session" },
+  ],
+  session: [
+    { cardinality: "many", name: "windows", targetModel: "window" },
+    { cardinality: "many", name: "panes", targetModel: "pane" },
+    { cardinality: "one", name: "active_window", targetModel: "window" },
+    { cardinality: "one", name: "active_pane", targetModel: "pane" },
+  ],
+  window: [
+    { cardinality: "one", name: "session", targetModel: "session" },
+    { cardinality: "many", name: "linked_sessions", targetModel: "session" },
+    { cardinality: "many", name: "panes", targetModel: "pane" },
+    { cardinality: "one", name: "active_pane", targetModel: "pane" },
+  ],
+} as const;
+
+interface GeneratedRegionSummary {
+  readonly forbiddenKinds: readonly string[];
+  readonly interfaces: readonly {
+    readonly exported: boolean;
+    readonly heritageCount: number;
+    readonly members: readonly {
+      readonly kind: string;
+      readonly name: string;
+      readonly optional: boolean;
+      readonly readonly: boolean;
+    }[];
+    readonly name: string;
+  }[];
+  readonly statements: readonly { readonly kind: string; readonly name: string }[];
+}
+
+const generatedRegionAstScript = String.raw`
+import { API } from "typescript/unstable/sync";
+import { SyntaxKind } from "typescript/unstable/ast";
+
+const file = process.argv.at(-1);
+const api = new API({ cwd: process.cwd() });
+try {
+  const snapshot = api.updateSnapshot({ openFiles: [file] });
+  const project = snapshot.getDefaultProjectForFile(file);
+  const sourceFile = project?.program.getSourceFile(file);
+  if (sourceFile === undefined) throw new Error("generated selection source was not parsed");
+  const markerStart = "// <libtmux-generated-where-types>";
+  const markerEnd = "// </libtmux-generated-where-types>";
+  const start = sourceFile.text.indexOf(markerStart);
+  const end = sourceFile.text.indexOf(markerEnd, start) + markerEnd.length;
+  if (start < 0 || end < markerEnd.length) throw new Error("generated markers were not found");
+  const hasModifier = (node, kind) => node.modifiers?.some((modifier) => modifier.kind === kind) ?? false;
+  const forbiddenKinds = [];
+  const forbidden = new Set([
+    SyntaxKind.ConditionalType,
+    SyntaxKind.MappedType,
+    SyntaxKind.TemplateLiteralType,
+  ]);
+  const visit = (node) => {
+    const insideRegion = node.getStart(sourceFile) >= start && node.getEnd() <= end;
+    if (insideRegion && forbidden.has(node.kind)) forbiddenKinds.push(SyntaxKind[node.kind]);
+    if (
+      insideRegion &&
+      node.kind === SyntaxKind.TypeOperator &&
+      node.operator === SyntaxKind.KeyOfKeyword
+    ) {
+      forbiddenKinds.push("KeyOfTypeOperator");
+    }
+    node.forEachChild((child) => {
+      visit(child);
+      return undefined;
+    });
+  };
+  visit(sourceFile);
+  const interfaces = sourceFile.statements
+    .filter((statement) =>
+      statement.kind === SyntaxKind.InterfaceDeclaration &&
+      statement.getStart(sourceFile) >= start &&
+      statement.getEnd() <= end &&
+      ["SessionWhere", "WindowWhere", "PaneWhere"].includes(statement.name?.text))
+    .map((statement) => ({
+      exported: hasModifier(statement, SyntaxKind.ExportKeyword),
+      heritageCount: statement.heritageClauses?.length ?? 0,
+      members: statement.members.map((member) => ({
+        kind: SyntaxKind[member.kind],
+        name: member.name?.getText(sourceFile) ?? "",
+        optional:
+          (member.postfixToken ?? member.questionToken)?.kind === SyntaxKind.QuestionToken,
+        readonly: hasModifier(member, SyntaxKind.ReadonlyKeyword),
+      })),
+      name: statement.name.text,
+    }));
+  const statements = sourceFile.statements
+    .filter(
+      (statement) =>
+        statement.getStart(sourceFile) >= start && statement.getEnd() <= end,
+    )
+    .map((statement) => ({
+      kind: SyntaxKind[statement.kind],
+      name: statement.name?.text ?? statement.getText(sourceFile),
+    }));
+  process.stdout.write(JSON.stringify({ forbiddenKinds, interfaces, statements }));
+} finally {
+  api.close();
+}
+`;
+
+function sha256(value: Uint8Array): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+async function snapshotTree(root: string, relativeDirectory = ""): Promise<readonly object[]> {
+  const absoluteDirectory = join(root, relativeDirectory);
+  const entries = await readdir(absoluteDirectory, { withFileTypes: true });
+  const rows = await Promise.all(
+    entries
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map(async (entry): Promise<readonly object[]> => {
+        const relativePath = join(relativeDirectory, entry.name);
+        const absolutePath = join(root, relativePath);
+        const stat = await lstat(absolutePath, { bigint: true });
+        const metadata = {
+          ctimeNs: stat.ctimeNs,
+          inode: stat.ino,
+          mode: stat.mode & 0o777n,
+          mtimeNs: stat.mtimeNs,
+          size: stat.size,
+        };
+        if (entry.isDirectory()) {
+          return [
+            { ...metadata, path: relativePath, type: "directory" },
+            ...(await snapshotTree(root, relativePath)),
+          ];
+        }
+        if (entry.isSymbolicLink()) {
+          return [
+            {
+              ...metadata,
+              path: relativePath,
+              target: await readlink(absolutePath),
+              type: "symlink",
+            },
+          ];
+        }
+        return [
+          {
+            ...metadata,
+            path: relativePath,
+            sha256: sha256(await readFile(absolutePath)),
+            type: "file",
+          },
+        ];
+      }),
+  );
+  return rows.flat();
+}
+
+async function runGeneratorReadOnly(root: string, action: () => Promise<void>): Promise<unknown> {
+  const before = await snapshotTree(root);
+  const error = await captureFailure(action);
+  expect(await snapshotTree(root)).toEqual(before);
+  return error;
+}
+
+async function summarizeGeneratedRegion(path: string): Promise<GeneratedRegionSummary> {
+  const packageRoot = fileURLToPath(new URL("../..", import.meta.url));
+  const child = Bun.spawn(
+    ["node", "--input-type=module", "--eval", generatedRegionAstScript, path],
+    { cwd: packageRoot, stderr: "pipe", stdout: "pipe" },
+  );
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  expect(exitCode, stderr).toBe(0);
+  expect(stderr).toBe("");
+  return JSON.parse(stdout) as GeneratedRegionSummary;
+}
+
+async function captureFailure(action: () => Promise<void>): Promise<unknown> {
+  try {
+    await action();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
+}
+
+function occurrences(source: string, value: string): number {
+  return source.split(value).length - 1;
+}
+
+describe("generated Where contract", () => {
+  test("writes exact relation metadata and only the delimited cyclic interfaces", async () => {
+    const temporary = await mkdtemp(join(tmpdir(), "libtmux-where-generation-"));
+    const outputDirectory = join(temporary, "_generated");
+    const neoSourcePath = join(temporary, "neo.ts");
+    const parityManifestPath = join(temporary, "python-0.62.0.json");
+    const selectionSourcePath = join(temporary, "selection.ts");
+    const prefix = Buffer.from('\ufeffexport type SentinelBefore = "before";\r\n\r\n');
+    const suffix = Buffer.from('\r\n\r\nexport type SentinelAfter = "after";\r\n');
+    const selectionSkeleton = Buffer.concat([
+      prefix,
+      Buffer.from(`${markerStart}\nstale generated content\n${markerEnd}`),
+      suffix,
+    ]);
+    const options = {
+      mode: "write" as const,
+      neoSourcePath,
+      outputDirectory,
+      parityManifestPath,
+      selectionSourcePath,
+    };
+    try {
+      await writeFile(neoSourcePath, await readFile(new URL("../../src/neo.ts", import.meta.url)));
+      await writeFile(
+        parityManifestPath,
+        await readFile(new URL("../../parity/python-0.62.0.json", import.meta.url)),
+      );
+      await writeFile(selectionSourcePath, selectionSkeleton);
+
+      await generateFormats(options);
+      const whereSourcePath = join(outputDirectory, "where_fields.ts");
+      const whereModule = (await import(
+        `${pathToFileURL(whereSourcePath).href}?generated=${String(Date.now())}`
+      )) as { readonly WHERE_RELATIONS_V1?: unknown };
+      const selectionSource = await readFile(selectionSourcePath, "utf8");
+      const selectionBytes = await readFile(selectionSourcePath);
+      const generatedAst = await summarizeGeneratedRegion(selectionSourcePath);
+
+      expect(whereModule.WHERE_RELATIONS_V1).toEqual(expectedRelations);
+      expect(Object.isFrozen(whereModule.WHERE_RELATIONS_V1)).toBe(true);
+      const startOffset = selectionBytes.indexOf(markerStart);
+      const endOffset =
+        selectionBytes.indexOf(markerEnd, startOffset) + Buffer.byteLength(markerEnd);
+      expect(startOffset).toBe(prefix.byteLength);
+      expect(selectionBytes.subarray(0, startOffset)).toEqual(prefix);
+      expect(selectionBytes.subarray(endOffset)).toEqual(suffix);
+      expect(occurrences(selectionSource, markerStart)).toBe(1);
+      expect(occurrences(selectionSource, markerEnd)).toBe(1);
+      expect(selectionSource).toContain("export interface SessionWhere");
+      expect(selectionSource).toContain("export interface WindowWhere");
+      expect(selectionSource).toContain("export interface PaneWhere");
+      expect(selectionSource).toContain("readonly active_window?:");
+      expect(selectionSource).toContain("readonly linked_sessions?:");
+      expect(selectionSource).not.toContain("activeWindow");
+      expect(selectionSource).not.toContain("linkedSessions");
+      expect(selectionSource).not.toContain("children");
+      expect(generatedAst.forbiddenKinds).toEqual([]);
+      expect(generatedAst.statements).toHaveLength(3);
+      expect(
+        generatedAst.statements
+          .map(({ kind, name }) => ({ kind, name }))
+          .sort((left, right) => left.name.localeCompare(right.name)),
+      ).toEqual([
+        { kind: "InterfaceDeclaration", name: "PaneWhere" },
+        { kind: "InterfaceDeclaration", name: "SessionWhere" },
+        { kind: "InterfaceDeclaration", name: "WindowWhere" },
+      ]);
+      expect(generatedAst.interfaces.map(({ name }) => name).sort()).toEqual([
+        "PaneWhere",
+        "SessionWhere",
+        "WindowWhere",
+      ]);
+      for (const [model, interfaceName] of [
+        ["session", "SessionWhere"],
+        ["window", "WindowWhere"],
+        ["pane", "PaneWhere"],
+      ] as const) {
+        const generatedInterface = generatedAst.interfaces.find(
+          (candidate) => candidate.name === interfaceName,
+        );
+        expect(generatedInterface?.exported).toBe(true);
+        expect(generatedInterface?.heritageCount).toBe(0);
+        expect(generatedInterface?.members.map(({ name }) => name).sort()).toEqual(
+          ["AND", "NOT", "OR", ...expectedRelationKeys[model], ...expectedScalarKeys[model]].sort(),
+        );
+        expect(
+          generatedInterface?.members.every(
+            ({ kind, optional, readonly }) => kind === "PropertySignature" && optional && readonly,
+          ),
+        ).toBe(true);
+      }
+
+      const successfulCheckError = await runGeneratorReadOnly(temporary, () =>
+        generateFormats({ ...options, mode: "check" }),
+      );
+      expect(successfulCheckError).toBeUndefined();
+
+      const relationDrift = (await readFile(whereSourcePath, "utf8")).replace(
+        'name: "active_pane"',
+        'name: "activePane"',
+      );
+      await writeFile(whereSourcePath, relationDrift);
+      const relationError = await runGeneratorReadOnly(temporary, () =>
+        generateFormats({ ...options, mode: "check" }),
+      );
+      expect(relationError).toBeInstanceOf(Error);
+      expect((relationError as Error).message).toContain(
+        "generated format outputs are out of date",
+      );
+      expect(await readFile(whereSourcePath, "utf8")).toBe(relationDrift);
+
+      await generateFormats(options);
+      const scalarMetadataSource = await readFile(whereSourcePath, "utf8");
+      const scalarMetadataDrift = scalarMetadataSource.replace(
+        'wireName: "active_window_index"',
+        'wireName: "activeWindowIndex"',
+      );
+      expect(scalarMetadataDrift).not.toBe(scalarMetadataSource);
+      await writeFile(whereSourcePath, scalarMetadataDrift);
+      const scalarMetadataError = await runGeneratorReadOnly(temporary, () =>
+        generateFormats({ ...options, mode: "check" }),
+      );
+      expect(scalarMetadataError).toBeInstanceOf(Error);
+      expect((scalarMetadataError as Error).message).toContain(
+        "generated format outputs are out of date",
+      );
+      expect(await readFile(whereSourcePath, "utf8")).toBe(scalarMetadataDrift);
+
+      await generateFormats(options);
+      const interfaceDrift = (await readFile(selectionSourcePath, "utf8")).replace(
+        "readonly active_pane?:",
+        "readonly activePane?:",
+      );
+      await writeFile(selectionSourcePath, interfaceDrift);
+      const interfaceError = await runGeneratorReadOnly(temporary, () =>
+        generateFormats({ ...options, mode: "check" }),
+      );
+      expect(interfaceError).toBeInstanceOf(Error);
+      expect((interfaceError as Error).message).toContain(
+        "generated format outputs are out of date",
+      );
+      expect(await readFile(selectionSourcePath, "utf8")).toBe(interfaceDrift);
+    } finally {
+      await rm(temporary, { force: true, recursive: true });
+    }
+  });
+
+  test.each([
+    {
+      name: "missing start",
+      selectionSource: [markerEnd, ""].join("\n"),
+    },
+    {
+      name: "missing end",
+      selectionSource: [markerStart, ""].join("\n"),
+    },
+    {
+      name: "repeated start with one valid end",
+      selectionSource: [markerStart, markerStart, "stale", markerEnd, ""].join("\n"),
+    },
+    {
+      name: "repeated end with one valid start",
+      selectionSource: [markerStart, "stale", markerEnd, markerEnd, ""].join("\n"),
+    },
+    {
+      name: "one end before one start",
+      selectionSource: [markerEnd, "stale", markerStart, ""].join("\n"),
+    },
+  ])("rejects $name markers without changing any controlled file", async ({ selectionSource }) => {
+    const temporary = await mkdtemp(join(tmpdir(), "libtmux-where-markers-"));
+    const outputDirectory = join(temporary, "_generated");
+    const neoSourcePath = join(temporary, "neo.ts");
+    const parityManifestPath = join(temporary, "python-0.62.0.json");
+    const selectionSourcePath = join(temporary, "selection.ts");
+    const options = {
+      neoSourcePath,
+      outputDirectory,
+      parityManifestPath,
+      selectionSourcePath,
+    };
+
+    try {
+      await writeFile(neoSourcePath, await readFile(new URL("../../src/neo.ts", import.meta.url)));
+      await writeFile(
+        parityManifestPath,
+        await readFile(new URL("../../parity/python-0.62.0.json", import.meta.url)),
+      );
+      await writeFile(selectionSourcePath, [markerStart, "stale", markerEnd, ""].join("\n"));
+      await generateFormats({ ...options, mode: "write" });
+      await writeFile(selectionSourcePath, selectionSource);
+
+      const checkError = await runGeneratorReadOnly(temporary, () =>
+        generateFormats({ ...options, mode: "check" }),
+      );
+      const writeError = await runGeneratorReadOnly(temporary, () =>
+        generateFormats({ ...options, mode: "write" }),
+      );
+      const observations = [checkError, writeError] as const;
+
+      expect(observations).toHaveLength(2);
+      for (const error of observations) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain("marker");
+      }
+    } finally {
+      await rm(temporary, { force: true, recursive: true });
+    }
+  });
+});

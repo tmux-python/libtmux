@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.tooling.json",
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["consumers/**/*.ts"],
+  "exclude": []
+}

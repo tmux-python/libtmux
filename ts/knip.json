@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/index.ts",
+    "scripts/check-parity.ts",
+    "scripts/check-type-aware-lint.ts",
+    "scripts/normalize-source-map.ts"
+  ],
+  "project": ["src/**/*.ts", "scripts/**/*.ts"]
+}

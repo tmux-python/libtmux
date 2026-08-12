@@ -1,0 +1,282 @@
+import type { ConnectionAlias, DaemonEpoch } from "./common.js";
+import {
+  FORMAT_REGISTRY,
+  FORMAT_SCOPES_BY_LIST_COMMAND,
+} from "./_internal/codec/format_registry.js";
+import {
+  FormatProtocolError,
+  GuardCodec,
+  type GuardedFormatRequest,
+} from "./_internal/codec/guard_codec.js";
+import { deriveTmuxCapabilities } from "./_internal/runtime/capabilities.js";
+
+declare const outputFormatPlanBrand: unique symbol;
+
+export type ListCommand = "list-clients" | "list-panes" | "list-sessions" | "list-windows";
+
+export type FormatScope =
+  | "buffer"
+  | "client"
+  | "context"
+  | "event"
+  | "pane"
+  | "session"
+  | "universal"
+  | "window";
+
+export type OutputFormatField = Readonly<{ token: FormatFieldName }>;
+
+export type TmuxVersionView = Readonly<{
+  major: number;
+  minor: number;
+  raw: string;
+  suffix: string;
+}>;
+
+export interface OutputFormatPlan {
+  readonly [outputFormatPlanBrand]: true;
+  readonly fields: readonly OutputFormatField[];
+  readonly format: string;
+  readonly guards: Readonly<{
+    field: string;
+    recordEnd: string;
+    recordStart: string;
+  }>;
+  readonly listCommand: ListCommand;
+  readonly tmuxVersion: TmuxVersionView;
+}
+
+// eslint-disable-next-line typescript/no-unsafe-declaration-merging -- Parser-owned frozen rows use the class only for nominal runtime identity.
+export class Obj {
+  private constructor() {}
+}
+
+// <libtmux-generated-format-types>
+export type FormatFieldName =
+  | "active_window_index"
+  | "alternate_saved_x"
+  | "alternate_saved_y"
+  | "bracket_paste_flag"
+  | "buffer_name"
+  | "buffer_sample"
+  | "buffer_size"
+  | "client_activity"
+  | "client_cell_height"
+  | "client_cell_width"
+  | "client_control_mode"
+  | "client_created"
+  | "client_discarded"
+  | "client_flags"
+  | "client_height"
+  | "client_key_table"
+  | "client_last_session"
+  | "client_mode_format"
+  | "client_name"
+  | "client_pid"
+  | "client_prefix"
+  | "client_readonly"
+  | "client_session"
+  | "client_termfeatures"
+  | "client_termname"
+  | "client_termtype"
+  | "client_tty"
+  | "client_uid"
+  | "client_user"
+  | "client_utf8"
+  | "client_width"
+  | "client_written"
+  | "command_list_alias"
+  | "command_list_name"
+  | "command_list_usage"
+  | "config_files"
+  | "copy_cursor_line"
+  | "copy_cursor_word"
+  | "copy_cursor_x"
+  | "copy_cursor_y"
+  | "current_file"
+  | "cursor_character"
+  | "cursor_flag"
+  | "cursor_x"
+  | "cursor_y"
+  | "history_bytes"
+  | "history_limit"
+  | "history_size"
+  | "insert_flag"
+  | "keypad_cursor_flag"
+  | "keypad_flag"
+  | "last_window_index"
+  | "line"
+  | "mouse_all_flag"
+  | "mouse_any_flag"
+  | "mouse_button_flag"
+  | "mouse_sgr_flag"
+  | "mouse_standard_flag"
+  | "next_session_id"
+  | "origin_flag"
+  | "pane_active"
+  | "pane_at_bottom"
+  | "pane_at_left"
+  | "pane_at_right"
+  | "pane_at_top"
+  | "pane_bg"
+  | "pane_bottom"
+  | "pane_current_command"
+  | "pane_current_path"
+  | "pane_dead"
+  | "pane_dead_signal"
+  | "pane_dead_status"
+  | "pane_dead_time"
+  | "pane_fg"
+  | "pane_flags"
+  | "pane_floating_flag"
+  | "pane_format"
+  | "pane_height"
+  | "pane_id"
+  | "pane_in_mode"
+  | "pane_index"
+  | "pane_input_off"
+  | "pane_last"
+  | "pane_left"
+  | "pane_marked"
+  | "pane_marked_set"
+  | "pane_mode"
+  | "pane_path"
+  | "pane_pb_progress"
+  | "pane_pb_state"
+  | "pane_pid"
+  | "pane_pipe"
+  | "pane_pipe_pid"
+  | "pane_right"
+  | "pane_search_string"
+  | "pane_start_command"
+  | "pane_start_path"
+  | "pane_synchronized"
+  | "pane_tabs"
+  | "pane_title"
+  | "pane_top"
+  | "pane_tty"
+  | "pane_width"
+  | "pane_x"
+  | "pane_y"
+  | "pane_z"
+  | "pane_zoomed_flag"
+  | "pid"
+  | "scroll_position"
+  | "scroll_region_lower"
+  | "scroll_region_upper"
+  | "search_match"
+  | "selection_end_x"
+  | "selection_end_y"
+  | "selection_start_x"
+  | "selection_start_y"
+  | "session_activity"
+  | "session_alerts"
+  | "session_attached"
+  | "session_attached_list"
+  | "session_created"
+  | "session_format"
+  | "session_group"
+  | "session_group_attached"
+  | "session_group_attached_list"
+  | "session_group_list"
+  | "session_group_many_attached"
+  | "session_group_size"
+  | "session_grouped"
+  | "session_id"
+  | "session_last_attached"
+  | "session_many_attached"
+  | "session_marked"
+  | "session_name"
+  | "session_path"
+  | "session_stack"
+  | "session_windows"
+  | "socket_path"
+  | "start_time"
+  | "synchronized_output_flag"
+  | "uid"
+  | "user"
+  | "version"
+  | "window_active"
+  | "window_active_clients"
+  | "window_active_clients_list"
+  | "window_active_sessions"
+  | "window_active_sessions_list"
+  | "window_activity"
+  | "window_activity_flag"
+  | "window_bell_flag"
+  | "window_bigger"
+  | "window_cell_height"
+  | "window_cell_width"
+  | "window_end_flag"
+  | "window_flags"
+  | "window_format"
+  | "window_height"
+  | "window_id"
+  | "window_index"
+  | "window_last_flag"
+  | "window_layout"
+  | "window_linked"
+  | "window_linked_sessions"
+  | "window_linked_sessions_list"
+  | "window_marked_flag"
+  | "window_name"
+  | "window_offset_x"
+  | "window_offset_y"
+  | "window_panes"
+  | "window_raw_flags"
+  | "window_silence_flag"
+  | "window_stack_index"
+  | "window_start_flag"
+  | "window_visible_layout"
+  | "window_width"
+  | "window_zoomed_flag"
+  | "wrap_flag";
+
+export interface Obj extends Readonly<Record<FormatFieldName, string | null>> {}
+// </libtmux-generated-format-types>
+
+export const FIELD_VERSION: Readonly<Partial<Record<FormatFieldName, string>>> = Object.freeze(
+  Object.fromEntries(
+    FORMAT_REGISTRY.filter(({ since }) => since.raw !== "3.2a").map(({ since, token }) => [
+      token,
+      since.raw,
+    ]),
+  ),
+);
+
+export const SCOPES_BY_LIST_CMD: Readonly<Record<ListCommand, readonly FormatScope[]>> =
+  FORMAT_SCOPES_BY_LIST_COMMAND;
+
+interface PublicPlanBinding {
+  readonly codec: GuardCodec;
+  readonly request: GuardedFormatRequest;
+}
+
+const publicPlanBindings = new WeakMap<OutputFormatPlan, PublicPlanBinding>();
+
+export function getOutputFormat(listCommand: ListCommand, rawVersion: string): OutputFormatPlan {
+  const codec = new GuardCodec({
+    capabilities: deriveTmuxCapabilities({
+      connectionAlias: "public-neo" as ConnectionAlias,
+      daemonEpoch: 0 as DaemonEpoch,
+      rawVersion,
+    }),
+    listCommand,
+  });
+  const request = codec.prepare();
+  const plan = Object.freeze({
+    fields: request.fields,
+    format: request.format,
+    guards: request.guards,
+    listCommand: request.listCommand,
+    tmuxVersion: request.tmuxVersion,
+  }) as OutputFormatPlan;
+  publicPlanBindings.set(plan, Object.freeze({ codec, request }));
+  return plan;
+}
+
+export function parseOutput(plan: OutputFormatPlan, bytes: Uint8Array): readonly Obj[] {
+  const binding = publicPlanBindings.get(plan);
+  if (binding === undefined) throw new FormatProtocolError("foreign OutputFormatPlan");
+  return binding.codec.decode(binding.request, bytes);
+}

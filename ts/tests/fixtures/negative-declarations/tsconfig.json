@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "isolatedDeclarations": false,
+    "noEmit": true,
+    "rootDir": "../../.."
+  },
+  "files": ["query_list.test.ts"]
+}

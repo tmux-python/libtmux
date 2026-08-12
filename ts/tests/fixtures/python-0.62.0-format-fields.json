@@ -1,0 +1,902 @@
+{
+  "baseline": {
+    "commit": "38e368c11117fb4aeb2f082d552cd4f210eae06a",
+    "neoSourceSha256": "764264bf42bc305d1d97e9596806f004326c460e771f2a750429c75690afe82f",
+    "objFieldTokensSha256": "de09e5e1cf4d6749c3a9f77c211c0a1a94c7586559d8d08ed516f7c456f1c693",
+    "pythonVersion": "0.62.0",
+    "tag": "v0.62.0",
+    "tree": "eee900223a11c00a4b9b0cc6944e7d5a4d503bc8"
+  },
+  "fields": [
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "active_window_index"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "alternate_saved_x"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "alternate_saved_y"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "bracket_paste_flag"
+    },
+    {
+      "scope": "buffer",
+      "since": "3.2a",
+      "token": "buffer_name"
+    },
+    {
+      "scope": "buffer",
+      "since": "3.2a",
+      "token": "buffer_sample"
+    },
+    {
+      "scope": "buffer",
+      "since": "3.2a",
+      "token": "buffer_size"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_activity"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_cell_height"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_cell_width"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_control_mode"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_created"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_discarded"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_flags"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_height"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_key_table"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_last_session"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_mode_format"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_name"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_pid"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_prefix"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_readonly"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_session"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_termfeatures"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_termname"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_termtype"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_tty"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_uid"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_user"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_utf8"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_width"
+    },
+    {
+      "scope": "client",
+      "since": "3.2a",
+      "token": "client_written"
+    },
+    {
+      "scope": "context",
+      "since": "3.2a",
+      "token": "command_list_alias"
+    },
+    {
+      "scope": "context",
+      "since": "3.2a",
+      "token": "command_list_name"
+    },
+    {
+      "scope": "context",
+      "since": "3.2a",
+      "token": "command_list_usage"
+    },
+    {
+      "scope": "universal",
+      "since": "3.2a",
+      "token": "config_files"
+    },
+    {
+      "scope": "event",
+      "since": "3.2a",
+      "token": "copy_cursor_line"
+    },
+    {
+      "scope": "event",
+      "since": "3.2a",
+      "token": "copy_cursor_word"
+    },
+    {
+      "scope": "event",
+      "since": "3.2a",
+      "token": "copy_cursor_x"
+    },
+    {
+      "scope": "event",
+      "since": "3.2a",
+      "token": "copy_cursor_y"
+    },
+    {
+      "scope": "context",
+      "since": "3.2a",
+      "token": "current_file"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "cursor_character"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "cursor_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "cursor_x"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "cursor_y"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "history_bytes"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "history_limit"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "history_size"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "insert_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "keypad_cursor_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "keypad_flag"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "last_window_index"
+    },
+    {
+      "scope": "universal",
+      "since": "3.2a",
+      "token": "line"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "mouse_all_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "mouse_any_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "mouse_button_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "mouse_sgr_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "mouse_standard_flag"
+    },
+    {
+      "scope": "universal",
+      "since": "3.2a",
+      "token": "next_session_id"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "origin_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_active"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_at_bottom"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_at_left"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_at_right"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_at_top"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_bg"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_bottom"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_current_command"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_current_path"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_dead"
+    },
+    {
+      "scope": "pane",
+      "since": "3.3",
+      "token": "pane_dead_signal"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_dead_status"
+    },
+    {
+      "scope": "pane",
+      "since": "3.3",
+      "token": "pane_dead_time"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_fg"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "pane_flags"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "pane_floating_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_format"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_height"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_id"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_in_mode"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_index"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_input_off"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_last"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_left"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_marked"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_marked_set"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_mode"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_path"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "pane_pb_progress"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "pane_pb_state"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_pid"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_pipe"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "pane_pipe_pid"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_right"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_search_string"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_start_command"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_start_path"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_synchronized"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_tabs"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_title"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_top"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_tty"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "pane_width"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "pane_x"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "pane_y"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "pane_z"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "pane_zoomed_flag"
+    },
+    {
+      "scope": "universal",
+      "since": "3.2a",
+      "token": "pid"
+    },
+    {
+      "scope": "event",
+      "since": "3.2a",
+      "token": "scroll_position"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "scroll_region_lower"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "scroll_region_upper"
+    },
+    {
+      "scope": "context",
+      "since": "3.2a",
+      "token": "search_match"
+    },
+    {
+      "scope": "event",
+      "since": "3.2a",
+      "token": "selection_end_x"
+    },
+    {
+      "scope": "event",
+      "since": "3.2a",
+      "token": "selection_end_y"
+    },
+    {
+      "scope": "event",
+      "since": "3.2a",
+      "token": "selection_start_x"
+    },
+    {
+      "scope": "event",
+      "since": "3.2a",
+      "token": "selection_start_y"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_activity"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_alerts"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_attached"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_attached_list"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_created"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_format"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_group"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_group_attached"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_group_attached_list"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_group_list"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_group_many_attached"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_group_size"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_grouped"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_id"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_last_attached"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_many_attached"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_marked"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_name"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_path"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_stack"
+    },
+    {
+      "scope": "session",
+      "since": "3.2a",
+      "token": "session_windows"
+    },
+    {
+      "scope": "universal",
+      "since": "3.2a",
+      "token": "socket_path"
+    },
+    {
+      "scope": "universal",
+      "since": "3.2a",
+      "token": "start_time"
+    },
+    {
+      "scope": "pane",
+      "since": "3.7",
+      "token": "synchronized_output_flag"
+    },
+    {
+      "scope": "universal",
+      "since": "3.2a",
+      "token": "uid"
+    },
+    {
+      "scope": "universal",
+      "since": "3.2a",
+      "token": "user"
+    },
+    {
+      "scope": "universal",
+      "since": "3.2a",
+      "token": "version"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_active"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_active_clients"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_active_clients_list"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_active_sessions"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_active_sessions_list"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_activity"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_activity_flag"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_bell_flag"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_bigger"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_cell_height"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_cell_width"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_end_flag"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_flags"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_format"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_height"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_id"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_index"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_last_flag"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_layout"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_linked"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_linked_sessions"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_linked_sessions_list"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_marked_flag"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_name"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_offset_x"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_offset_y"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_panes"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_raw_flags"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_silence_flag"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_stack_index"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_start_flag"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_visible_layout"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_width"
+    },
+    {
+      "scope": "window",
+      "since": "3.2a",
+      "token": "window_zoomed_flag"
+    },
+    {
+      "scope": "pane",
+      "since": "3.2a",
+      "token": "wrap_flag"
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+{
+  "protocol": "libtmux-where-regex-v1",
+  "runtimes": {
+    "bun": "1.3.14",
+    "node": "22",
+    "python": "3"
+  },
+  "adaptations": {
+    "native-multiline-line-feed": "All three pinned native engines recognize LF as a multiline anchor boundary.",
+    "native-unicode-astral-dot": "ECMAScript internal Unicode mode and Python native Unicode matching consume one astral code point for dot.",
+    "native-ignorecase-long-s": "Native insensitive matching equates ASCII s and long s in all three pinned runtimes.",
+    "native-ignorecase-kelvin": "Native insensitive matching equates ASCII k and Kelvin sign in all three pinned runtimes.",
+    "python-ignorecase-capital-i-with-dot": "Python insensitive matching includes capital I with dot; ECMAScript Unicode matching does not.",
+    "python-ignorecase-dotless-i": "Python insensitive matching includes dotless i; ECMAScript Unicode matching does not.",
+    "python-multiline-carriage-return": "ECMAScript multiline anchors recognize carriage return as a line terminator; Python recognizes LF only.",
+    "python-multiline-line-separator": "ECMAScript multiline anchors recognize U+2028 as a line terminator; Python recognizes LF only.",
+    "python-multiline-paragraph-separator": "ECMAScript multiline anchors recognize U+2029 as a line terminator; Python recognizes LF only."
+  },
+  "cases": [
+    {
+      "id": "literal-case-sensitive",
+      "session_id": "$1",
+      "pattern": "^Main$",
+      "flags": "",
+      "mode": "default",
+      "input": "Main",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": null
+    },
+    {
+      "id": "escaped-metacharacter",
+      "session_id": "$2",
+      "pattern": "^a\\+b$",
+      "flags": "",
+      "mode": "default",
+      "input": "a+b",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": null
+    },
+    {
+      "id": "ascii-class-range",
+      "session_id": "$3",
+      "pattern": "^[A-C]+$",
+      "flags": "",
+      "mode": "default",
+      "input": "ABC",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": null
+    },
+    {
+      "id": "capturing-alternation",
+      "session_id": "$4",
+      "pattern": "^(cat|dog)+$",
+      "flags": "",
+      "mode": "default",
+      "input": "catdog",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": null
+    },
+    {
+      "id": "noncapturing-bounded-quantifier",
+      "session_id": "$5",
+      "pattern": "^(?:cat|dog){2}$",
+      "flags": "",
+      "mode": "default",
+      "input": "dogcat",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": null
+    },
+    {
+      "id": "greedy-open-and-optional-quantifiers",
+      "session_id": "$6",
+      "pattern": "^a{2,4}b?c+$",
+      "flags": "",
+      "mode": "default",
+      "input": "aaabcc",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": null
+    },
+    {
+      "id": "dotall-lf",
+      "session_id": "$7",
+      "pattern": "^a.b$",
+      "flags": "s",
+      "mode": "default",
+      "input": "a\nb",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": null
+    },
+    {
+      "id": "astral-dot-unicode",
+      "session_id": "$8",
+      "pattern": "^.$",
+      "flags": "",
+      "mode": "default",
+      "input": "😀",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": "native-unicode-astral-dot"
+    },
+    {
+      "id": "lf-multiline-parity",
+      "session_id": "$9",
+      "pattern": "^line-two$",
+      "flags": "m",
+      "mode": "default",
+      "input": "line-one\nline-two",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": "native-multiline-line-feed"
+    },
+    {
+      "id": "long-s-sensitive",
+      "session_id": "$10",
+      "pattern": "s",
+      "flags": "",
+      "mode": "default",
+      "input": "ſ",
+      "expected": { "bun": false, "node": false, "python": false },
+      "adaptation": null
+    },
+    {
+      "id": "long-s-insensitive",
+      "session_id": "$11",
+      "pattern": "s",
+      "flags": "",
+      "mode": "insensitive",
+      "input": "ſ",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": "native-ignorecase-long-s"
+    },
+    {
+      "id": "kelvin-insensitive",
+      "session_id": "$12",
+      "pattern": "k",
+      "flags": "",
+      "mode": "insensitive",
+      "input": "K",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": "native-ignorecase-kelvin"
+    },
+    {
+      "id": "capital-i-with-dot-insensitive",
+      "session_id": "$13",
+      "pattern": "i",
+      "flags": "",
+      "mode": "insensitive",
+      "input": "İ",
+      "expected": { "bun": false, "node": false, "python": true },
+      "adaptation": "python-ignorecase-capital-i-with-dot"
+    },
+    {
+      "id": "dotless-i-insensitive",
+      "session_id": "$14",
+      "pattern": "i",
+      "flags": "",
+      "mode": "insensitive",
+      "input": "ı",
+      "expected": { "bun": false, "node": false, "python": true },
+      "adaptation": "python-ignorecase-dotless-i"
+    },
+    {
+      "id": "cr-multiline",
+      "session_id": "$15",
+      "pattern": "^line-two$",
+      "flags": "m",
+      "mode": "default",
+      "input": "line-one\rline-two",
+      "expected": { "bun": true, "node": true, "python": false },
+      "adaptation": "python-multiline-carriage-return"
+    },
+    {
+      "id": "line-separator-multiline",
+      "session_id": "$16",
+      "pattern": "^line-two$",
+      "flags": "m",
+      "mode": "default",
+      "input": "line-one line-two",
+      "expected": { "bun": true, "node": true, "python": false },
+      "adaptation": "python-multiline-line-separator"
+    },
+    {
+      "id": "paragraph-separator-multiline",
+      "session_id": "$17",
+      "pattern": "^line-two$",
+      "flags": "m",
+      "mode": "default",
+      "input": "line-one line-two",
+      "expected": { "bun": true, "node": true, "python": false },
+      "adaptation": "python-multiline-paragraph-separator"
+    },
+    {
+      "id": "multiline-dotall-open-quantifier",
+      "session_id": "$18",
+      "pattern": "^BEGIN.*(?:token){2,}.*END$",
+      "flags": "ms",
+      "mode": "default",
+      "input": "prefix\nBEGIN\n-tokentokentoken-\nEND\nsuffix",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": null
+    },
+    {
+      "id": "unicode-literal-cafe",
+      "session_id": "$19",
+      "pattern": "^café$",
+      "flags": "",
+      "mode": "default",
+      "input": "café",
+      "expected": { "bun": true, "node": true, "python": true },
+      "adaptation": null
+    }
+  ]
+}

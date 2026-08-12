@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "isolatedDeclarations": false,
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["bun", "node"]
+  },
+  "include": [
+    "scripts/**/*.ts",
+    "tests/differential/**/*.ts",
+    "tests/integration/**/*.ts",
+    "tests/unit/**/*.ts",
+    "tests/fixtures/**/*.ts",
+    "tests/support/**/*.ts"
+  ],
+  "exclude": [
+    "tests/types/**",
+    "tests/fixtures/negative-declarations/**",
+    "tests/fixtures/type-aware-lint/no_floating_promise.ts"
+  ]
+}

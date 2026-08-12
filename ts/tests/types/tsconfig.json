@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "isolatedDeclarations": false,
+    "noEmit": true,
+    "rootDir": "../.."
+  },
+  "files": [
+    "assert.ts",
+    "common.test.ts",
+    "brands.test.ts",
+    "codec.test.ts",
+    "formats.test.ts",
+    "neo.test.ts",
+    "snapshots.test.ts",
+    "handles.test.ts",
+    "task4_internal.test.ts",
+    "selection.test.ts",
+    "where.test.ts",
+    "stress.test.ts"
+  ]
+}

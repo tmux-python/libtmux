@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "incremental": false,
+    "isolatedDeclarations": false,
+    "noEmit": true,
+    "rootDir": "../.."
+  },
+  "files": ["stress.test.ts"],
+  "include": []
+}
