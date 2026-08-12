@@ -42,6 +42,71 @@ export interface WhereSchemaVersion {
 }
 
 const criteriaModels = ["session", "window", "pane"] as const;
+
+export interface CriteriaRelation {
+  readonly cardinality: "many" | "one";
+  readonly name: string;
+  readonly targetModel: CriteriaModel;
+}
+
+/**
+ * The relations each model can be filtered through.
+ *
+ * These share a namespace with the scalar criteria, so they live beside the
+ * naming rule: a scalar that would collide with a relation keeps its model
+ * prefix instead of silently shadowing it.
+ */
+export const CRITERIA_RELATIONS_V1: Readonly<Record<CriteriaModel, readonly CriteriaRelation[]>> =
+  Object.freeze({
+    pane: Object.freeze([
+      Object.freeze({
+        cardinality: "one" as const,
+        name: "window",
+        targetModel: "window" as const,
+      }),
+      Object.freeze({
+        cardinality: "one" as const,
+        name: "session",
+        targetModel: "session" as const,
+      }),
+    ]),
+    session: Object.freeze([
+      Object.freeze({
+        cardinality: "many" as const,
+        name: "windows",
+        targetModel: "window" as const,
+      }),
+      Object.freeze({ cardinality: "many" as const, name: "panes", targetModel: "pane" as const }),
+      Object.freeze({
+        cardinality: "one" as const,
+        name: "activeWindow",
+        targetModel: "window" as const,
+      }),
+      Object.freeze({
+        cardinality: "one" as const,
+        name: "activePane",
+        targetModel: "pane" as const,
+      }),
+    ]),
+    window: Object.freeze([
+      Object.freeze({
+        cardinality: "one" as const,
+        name: "session",
+        targetModel: "session" as const,
+      }),
+      Object.freeze({
+        cardinality: "many" as const,
+        name: "linkedSessions",
+        targetModel: "session" as const,
+      }),
+      Object.freeze({ cardinality: "many" as const, name: "panes", targetModel: "pane" as const }),
+      Object.freeze({
+        cardinality: "one" as const,
+        name: "activePane",
+        targetModel: "pane" as const,
+      }),
+    ]),
+  });
 const winlinkTokens: ReadonlySet<string> = new Set([
   "window_active",
   "window_activity_flag",
@@ -83,11 +148,36 @@ function compareStrings(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
+/**
+ * The stable serialized name for a field, or undefined when the model cannot
+ * be filtered by it.
+ *
+ * Universal-scope fields carry the same value on every row of a server —
+ * `version`, `pid`, `socket_path` and friends — so filtering by one matches
+ * all rows or none. They stay readable through the snapshot; they are not
+ * criteria.
+ */
 function criteriaWireName(field: GeneratedFormatField, model: CriteriaModel): string | undefined {
-  if (field.scope !== model && field.scope !== "universal") return undefined;
+  if (field.scope !== model) return undefined;
   if (model === "session" && field.token === "session_name") return "name";
   if (model === "window" && field.token === "window_name") return "name";
   return field.token;
+}
+
+/**
+ * The camelCase key a caller writes, which matches the handle accessor.
+ *
+ * A pane reads `pane.currentCommand`, so it filters on `currentCommand`. The
+ * model is already named by the selection being filtered, so repeating it in
+ * every key buys nothing. Only the wire name is fixed by the schema.
+ */
+function criteriaName(token: string, model: CriteriaModel, taken: ReadonlySet<string>): string {
+  const prefix = `${model}_`;
+  if (!token.startsWith(prefix)) return camelCase(token);
+  const stripped = camelCase(token.slice(prefix.length));
+  // `session_windows` is a window count, not the windows relation. When the
+  // short name is already spoken for, the unambiguous one wins.
+  return taken.has(stripped) ? camelCase(token) : stripped;
 }
 
 function snapshotDestination(field: GeneratedFormatField): SnapshotDestination {
@@ -238,22 +328,51 @@ function renderFormatFieldsSource(fields: readonly GeneratedFormatField[]): stri
   ].join("\n");
 }
 
-interface GeneratedWhereField {
+export interface GeneratedWhereField {
+  readonly criteriaName: string;
   readonly domain: "string";
   readonly token: FormatFieldName;
   readonly wireName: string;
+}
+
+/**
+ * The criteria a model accepts, in serialized order.
+ *
+ * This is the only place the criteria rule lives. The generator renders both
+ * the metadata table and the `Where` interfaces from it, so the key a caller
+ * writes and the key the type offers cannot drift apart.
+ */
+export function criteriaFieldsForModel(
+  fields: readonly GeneratedFormatField[],
+  model: CriteriaModel,
+): readonly GeneratedWhereField[] {
+  return generatedWhereFields(createFormatRegistry(fields), model);
 }
 
 function generatedWhereFields(
   registry: readonly FormatFieldRecord[],
   model: CriteriaModel,
 ): readonly GeneratedWhereField[] {
+  const taken = new Set<string>(CRITERIA_RELATIONS_V1[model].map(({ name }) => name));
+  for (const field of registry) {
+    const wireName = field.criteriaWireNames[model];
+    if (wireName !== undefined && !field.token.startsWith(`${model}_`)) {
+      taken.add(camelCase(field.token));
+    }
+  }
   return registry
     .flatMap((field) => {
       const wireName = field.criteriaWireNames[model];
       return wireName === undefined
         ? []
-        : [{ domain: "string" as const, token: field.token, wireName }];
+        : [
+            {
+              criteriaName: criteriaName(field.token, model, taken),
+              domain: "string" as const,
+              token: field.token,
+              wireName,
+            },
+          ];
     })
     .sort(
       (left, right) =>
@@ -280,13 +399,12 @@ function renderWhereFieldsSource(registry: readonly FormatFieldRecord[]): string
   for (const model of criteriaModels) {
     lines.push(`const ${model}Fields: readonly WhereField[] = Object.freeze([`);
     for (const field of generatedWhereFields(registry, model)) {
-      const criteriaName = camelCase(field.wireName);
-      const oneLine = `  Object.freeze({ criteriaName: ${JSON.stringify(criteriaName)}, domain: "string", token: ${JSON.stringify(field.token)}, wireName: ${JSON.stringify(field.wireName)} }),`;
+      const oneLine = `  Object.freeze({ criteriaName: ${JSON.stringify(field.criteriaName)}, domain: "string", token: ${JSON.stringify(field.token)}, wireName: ${JSON.stringify(field.wireName)} }),`;
       if (oneLine.length <= 100) lines.push(oneLine);
       else {
         lines.push(
           "  Object.freeze({",
-          `    criteriaName: ${JSON.stringify(criteriaName)},`,
+          `    criteriaName: ${JSON.stringify(field.criteriaName)},`,
           '    domain: "string",',
           `    token: ${JSON.stringify(field.token)},`,
           `    wireName: ${JSON.stringify(field.wireName)},`,

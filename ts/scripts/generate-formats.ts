@@ -7,7 +7,11 @@ import {
   GENERATED_FORMAT_FIELDS,
   type GeneratedFormatField,
 } from "../src/_generated/format_fields.js";
-import { renderGeneratedFormatSources } from "../src/_internal/codec/format_registry.js";
+import {
+  CRITERIA_RELATIONS_V1,
+  criteriaFieldsForModel,
+  renderGeneratedFormatSources,
+} from "../src/_internal/codec/format_registry.js";
 
 export interface GenerateFormatsOptions {
   readonly mode: "check" | "write";
@@ -49,24 +53,6 @@ const criteriaInterfaceNames = {
   pane: "PaneWhere",
   session: "SessionWhere",
   window: "WindowWhere",
-} as const;
-const whereRelationsV1 = {
-  pane: [
-    { cardinality: "one", name: "window", targetModel: "window" },
-    { cardinality: "one", name: "session", targetModel: "session" },
-  ],
-  session: [
-    { cardinality: "many", name: "windows", targetModel: "window" },
-    { cardinality: "many", name: "panes", targetModel: "pane" },
-    { cardinality: "one", name: "activeWindow", targetModel: "window" },
-    { cardinality: "one", name: "activePane", targetModel: "pane" },
-  ],
-  window: [
-    { cardinality: "one", name: "session", targetModel: "session" },
-    { cardinality: "many", name: "linkedSessions", targetModel: "session" },
-    { cardinality: "many", name: "panes", targetModel: "pane" },
-    { cardinality: "one", name: "activePane", targetModel: "pane" },
-  ],
 } as const;
 const expectedBaseline: FixtureBaseline = {
   commit: "38e368c11117fb4aeb2f082d552cd4f210eae06a",
@@ -147,25 +133,12 @@ function occurrenceCount(source: string, needle: string): number {
   return source.split(needle).length - 1;
 }
 
-function criteriaWireName(
-  field: GeneratedFormatField,
-  model: (typeof criteriaModels)[number],
-): string | undefined {
-  if (field.scope !== model && field.scope !== "universal") return undefined;
-  if (model === "session" && field.token === "session_name") return "name";
-  if (model === "window" && field.token === "window_name") return "name";
-  return field.token;
-}
-
 function generatedWhereFieldNames(
   fields: readonly GeneratedFormatField[],
   model: (typeof criteriaModels)[number],
 ): readonly string[] {
-  return fields
-    .flatMap((field) => {
-      const wireName = criteriaWireName(field, model);
-      return wireName === undefined ? [] : [camelCase(wireName)];
-    })
+  return criteriaFieldsForModel(fields, model)
+    .map(({ criteriaName }) => criteriaName)
     .sort();
 }
 
@@ -181,7 +154,7 @@ function renderGeneratedWhereRelationsSource(): string {
   ];
   for (const model of ["pane", "session", "window"] as const) {
     lines.push(`  readonly ${model}: readonly [`);
-    for (const relation of whereRelationsV1[model]) {
+    for (const relation of CRITERIA_RELATIONS_V1[model]) {
       lines.push(
         "    {",
         `      readonly cardinality: ${JSON.stringify(relation.cardinality)};`,
@@ -195,7 +168,7 @@ function renderGeneratedWhereRelationsSource(): string {
   lines.push("}> = Object.freeze({");
   for (const model of ["pane", "session", "window"] as const) {
     lines.push(`  ${model}: Object.freeze([`);
-    for (const relation of whereRelationsV1[model]) {
+    for (const relation of CRITERIA_RELATIONS_V1[model]) {
       lines.push(
         `    Object.freeze({ cardinality: ${JSON.stringify(relation.cardinality)}, name: ${JSON.stringify(relation.name)}, targetModel: ${JSON.stringify(relation.targetModel)} }),`,
       );
@@ -223,7 +196,7 @@ export function renderGeneratedWhereTypeRegion(
     for (const field of generatedWhereFieldNames(fields, model)) {
       lines.push(`  readonly ${field}?: ScalarCriteria;`);
     }
-    for (const relation of whereRelationsV1[model]) {
+    for (const relation of CRITERIA_RELATIONS_V1[model]) {
       const relationType = relation.cardinality === "many" ? "ManyRelation" : "OneRelation";
       lines.push(
         `  readonly ${relation.name}?: ${relationType}<${criteriaInterfaceNames[relation.targetModel]}>;`,

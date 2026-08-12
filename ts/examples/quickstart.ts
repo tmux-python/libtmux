@@ -21,9 +21,8 @@ export async function quickstart(server: Server): Promise<ServerSnapshot> {
   const paneCount = found.panes.length;
   if (paneCount !== 2) throw new Error(`expected two panes, saw ${String(paneCount)}`);
 
-  // Handles drop the model prefix; criteria keep it, because criteria names are
-  // fixed by the wire schema.
-  if (snapshot.panes.count({ paneCurrentCommand: { contains: "" } }) === 0) {
+  // A criterion is spelled like the handle accessor it filters.
+  if (snapshot.panes.count({ currentCommand: { contains: "" } }) === 0) {
     throw new Error("expected panes to report a current command");
   }
   const first = found.panes.at(0);

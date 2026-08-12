@@ -301,7 +301,7 @@ describe("Selection collection contract", () => {
     const harness = await createSessionHarness(["alpha", "beta"]);
     const selection = createProjectedSelection("session", harness.values, harness.projection);
     const criteria = {
-      sessionId: "$404",
+      id: "$404",
       name: { mode: "insensitive" as const, contains: "Z" },
     };
     const noMatch = captureError(() => selection.one(criteria), NoMatchError);
@@ -321,7 +321,7 @@ describe("Selection collection contract", () => {
     const nested = captureError(
       () =>
         selection.one({
-          OR: [{ sessionId: "$9", name: { startsWith: "z", contains: "x" } }],
+          OR: [{ id: "$9", name: { startsWith: "z", contains: "x" } }],
         }),
       NoMatchError,
     );
@@ -335,7 +335,7 @@ describe("Selection collection contract", () => {
     const panes = createProjectedSelection("pane", rich.panes.values, rich.panes.projection).filter(
       () => false,
     );
-    const flat = captureError(() => panes.one({ paneId: "%3" }), NoMatchError);
+    const flat = captureError(() => panes.one({ id: "%3" }), NoMatchError);
     expect(flat.message).toBe("No objects found: pane_id='%3'");
 
     const absent = captureError(() => panes.one(), NoMatchError);
@@ -357,7 +357,7 @@ describe("Selection collection contract", () => {
     void selection.at(-1);
     void selection.toArray();
     void selection.filter(() => true);
-    void selection.where({ panes: { some: { paneTitle: "shell" } } });
+    void selection.where({ panes: { some: { title: "shell" } } });
     void selection.first();
     void selection.one({ name: "one" });
     void selection.oneOrUndefined({ name: "missing" });

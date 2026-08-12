@@ -384,9 +384,11 @@ describe("format registry", () => {
       criteriaWireNames: { pane: "pane_id" },
       scalarFilterDomain: "string",
     });
+    // Universal-scope fields carry one value per server, so they are readable
+    // on a handle but are never criteria.
     expect(FORMAT_REGISTRY.find(({ token }) => token === "pid")).toMatchObject({
-      criteriaWireNames: { pane: "pid", session: "pid", window: "pid" },
-      scalarFilterDomain: "string",
+      criteriaWireNames: {},
+      scalarFilterDomain: null,
     });
     expect(FORMAT_REGISTRY.find(({ token }) => token === "client_name")).toMatchObject({
       criteriaWireNames: {},
@@ -439,17 +441,17 @@ describe("format registry", () => {
       expect(Object.isFrozen(aliases)).toBe(true);
     }
     expect(Object.keys(WHERE_FIELDS_V1)).toEqual(["session", "window", "pane"]);
-    expect(WHERE_FIELDS_V1.session).toHaveLength(32);
-    expect(WHERE_FIELDS_V1.window).toHaveLength(43);
-    expect(WHERE_FIELDS_V1.pane).toHaveLength(79);
+    expect(WHERE_FIELDS_V1.session).toHaveLength(23);
+    expect(WHERE_FIELDS_V1.window).toHaveLength(34);
+    expect(WHERE_FIELDS_V1.pane).toHaveLength(70);
     expect(createHash("sha256").update(JSON.stringify(WHERE_FIELDS_V1.session)).digest("hex")).toBe(
-      "013d9ec57873077cc2315c2c1cd1ab60de2ebe069f9181c2028b07f23eaa4b8f",
+      "2ce49c2ae96dbdd7e48d026788fa394f55f0241d6213c74af6842e7f5a8bbf5d",
     );
     expect(createHash("sha256").update(JSON.stringify(WHERE_FIELDS_V1.window)).digest("hex")).toBe(
-      "b7ee74529cd2d6512660ab2950e3acd7251d88e105c5544c160952539017e863",
+      "1fc733a84ea9e079a2a7d3a42f2fa5495873c3cbe3c1bc992049993e481b2416",
     );
     expect(createHash("sha256").update(JSON.stringify(WHERE_FIELDS_V1.pane)).digest("hex")).toBe(
-      "2821573a4351dd61b34872f8ce14b49e9103bad76b8adab1b882f0cc221b4f76",
+      "edb048153f01149a0a778704783252f5207c5b0bfd6e358ca111989b21b258db",
     );
     for (const [model, fields] of Object.entries(WHERE_FIELDS_V1)) {
       for (const field of fields) {

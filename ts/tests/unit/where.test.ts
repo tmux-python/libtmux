@@ -359,13 +359,13 @@ describe("generated relation criteria", () => {
     expect(sessions.where({ windows: { some: { name: "editor" } } }).toArray()).toEqual([
       harness.sessions.values[0]!,
     ]);
-    expect(sessions.where({ panes: { some: { paneTitle: "tail" } } }).toArray()).toEqual([
+    expect(sessions.where({ panes: { some: { title: "tail" } } }).toArray()).toEqual([
       harness.sessions.values[1]!,
     ]);
     expect(sessions.where({ activeWindow: { is: { name: "logs" } } }).toArray()).toEqual([
       harness.sessions.values[1]!,
     ]);
-    expect(sessions.where({ activePane: { is: { paneTitle: "shell" } } }).toArray()).toEqual([
+    expect(sessions.where({ activePane: { is: { title: "shell" } } }).toArray()).toEqual([
       harness.sessions.values[0]!,
     ]);
 
@@ -375,10 +375,10 @@ describe("generated relation criteria", () => {
     expect(windows.where({ linkedSessions: { some: { name: "two" } } }).toArray()).toEqual([
       harness.windows.values[1]!,
     ]);
-    expect(windows.where({ panes: { some: { paneTitle: "tests" } } }).toArray()).toEqual([
+    expect(windows.where({ panes: { some: { title: "tests" } } }).toArray()).toEqual([
       harness.windows.values[0]!,
     ]);
-    expect(windows.where({ activePane: { is: { paneTitle: "tail" } } }).toArray()).toEqual([
+    expect(windows.where({ activePane: { is: { title: "tail" } } }).toArray()).toEqual([
       harness.windows.values[1]!,
     ]);
 
@@ -460,9 +460,9 @@ describe("generated relation criteria", () => {
       sessions
         .where({
           panes: {
-            every: { paneTitle: { contains: "s" } },
-            none: { paneTitle: "tail" },
-            some: { paneTitle: "shell" },
+            every: { title: { contains: "s" } },
+            none: { title: "tail" },
+            some: { title: "shell" },
           },
         })
         .toArray(),
@@ -491,23 +491,25 @@ describe("generated relation criteria", () => {
       throw new Error("fixture sessions are missing");
     }
 
-    expect(
-      sessions.where({ panes: { every: { paneTitle: { endsWith: "l" } } } }).toArray(),
-    ).toEqual([two, empty]);
-    expect(sessions.where({ panes: { none: { paneTitle: { endsWith: "s" } } } }).toArray()).toEqual(
-      [two, empty],
-    );
+    expect(sessions.where({ panes: { every: { title: { endsWith: "l" } } } }).toArray()).toEqual([
+      two,
+      empty,
+    ]);
+    expect(sessions.where({ panes: { none: { title: { endsWith: "s" } } } }).toArray()).toEqual([
+      two,
+      empty,
+    ]);
 
-    const commonSome = { paneTitle: { in: ["shell", "tail"] } } as const;
+    const commonSome = { title: { in: ["shell", "tail"] } } as const;
     expect(sessions.where({ panes: { some: commonSome } }).toArray()).toEqual([one, two]);
 
-    const everyGate = { paneTitle: { notIn: ["tests"] } } as const;
+    const everyGate = { title: { notIn: ["tests"] } } as const;
     expect(sessions.where({ panes: { every: everyGate } }).toArray()).toEqual([two, empty]);
     expect(sessions.where({ panes: { every: everyGate, some: commonSome } }).toArray()).toEqual([
       two,
     ]);
 
-    const noneGate = { paneTitle: { equals: "tail" } } as const;
+    const noneGate = { title: { equals: "tail" } } as const;
     expect(sessions.where({ panes: { none: noneGate } }).toArray()).toEqual([one, empty]);
     expect(sessions.where({ panes: { none: noneGate, some: commonSome } }).toArray()).toEqual([
       one,
@@ -570,7 +572,7 @@ describe("regex criteria", () => {
           regex: { flags: entry.flags, pattern: entry.pattern },
           ...(entry.mode === "insensitive" ? { mode: "insensitive" as const } : {}),
         },
-        sessionId: entry.session_id,
+        id: entry.session_id,
       };
       expect(selection.count(criteria), entry.id).toBe(entry.expected.bun ? 1 : 0);
     }
@@ -583,7 +585,7 @@ describe("regex criteria", () => {
           equals: combined.input,
           regex: { flags, pattern },
         },
-        sessionId: combined.session_id,
+        id: combined.session_id,
       });
     expect(countCombined("ms")).toBe(1);
     expect(countCombined("m")).toBe(0);
@@ -915,7 +917,7 @@ describe("plain-data validation", () => {
     expectInvalidQuery(() => invokeMethod(sessions, "where", [{ name: scalar }]), scalarSentinel);
 
     const relatedCriteria = {} as Record<string, unknown>;
-    Object.defineProperty(relatedCriteria, "paneTitle", {
+    Object.defineProperty(relatedCriteria, "title", {
       enumerable: true,
       get() {
         getterCalls += 1;
@@ -942,7 +944,7 @@ describe("plain-data validation", () => {
 
     const proxySentinel = new Error("nested relation proxy trap escaped");
     const relatedProxy = new Proxy(
-      { paneTitle: "shell" },
+      { title: "shell" },
       {
         getPrototypeOf() {
           trapCalls += 1;
@@ -1290,7 +1292,7 @@ describe("WhereDocumentV1 serialization", () => {
     const paneDocument = {
       where: {
         window: { isNot: null, is: { name: "editor" } },
-        paneTitle: {
+        title: {
           regex: { pattern: "^X.*$", flags: "ms" as const },
           mode: "insensitive" as const,
           equals: "X\nY",

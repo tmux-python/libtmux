@@ -125,7 +125,7 @@ void sessions.one({ name: "main" });
 void sessions.oneOrUndefined();
 void sessions.exists();
 void sessions.count();
-void panes.where({ paneId: "%1" });
+void panes.where({ id: "%1" });
 void windows.where({ name: "editor" });
 void clients.first();
 void clients.one();

@@ -66,7 +66,7 @@ linked into two sessions stays on the one you resolved.
 ordinary predicate. They are never overloaded into each other.
 
 ```ts
-snapshot.panes.where({ paneCurrentCommand: "vim" });
+snapshot.panes.where({ currentCommand: "vim" });
 snapshot.panes.filter((pane) => pane.currentCommand?.startsWith("v") === true);
 ```
 
@@ -150,13 +150,19 @@ Criteria are camelCase too, and serialize to tmux's stable spellings so a stored
 query stays readable by other tools:
 
 ```ts
-snapshot.panes.where({ paneTitle: { contains: "log" } });
+snapshot.panes.where({ title: { contains: "log" } });
 // serializes to {"where":{"pane_title":{"contains":"log"}}}
 ```
 
-Criteria keep the model prefix where a handle drops it, so a pane reads
-`pane.currentCommand` but filters on `paneCurrentCommand`. Criteria names are
-fixed by the wire schema; handle names are not.
+A criterion is spelled like the handle accessor it filters, so a pane reads
+`pane.currentCommand` and filters on `currentCommand`. Only the serialized name
+is fixed by the schema. A field keeps its prefix in the rare case where dropping
+it would shadow a relation: `sessionWindows` is a window count, `windows` is the
+windows themselves.
+
+Fields that carry one value for the whole server — `version`, `pid`,
+`socketPath` — are readable on a handle but are not criteria, since filtering
+rows by one would match all of them or none.
 
 ## Options and hooks
 

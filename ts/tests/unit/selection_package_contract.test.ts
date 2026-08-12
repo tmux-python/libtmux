@@ -104,7 +104,7 @@ describe("Task 8 package boundary", () => {
     expect(Object.keys(selectionModule)).toEqual(["parseLegacyWhere"]);
     expect(Reflect.get(selectionModule, "Selection")).toBeUndefined();
     expect(Object.keys(manifest.exports)).toContain("./selection");
-    expect(manifest.files).toEqual(["dist"]);
+    expect(manifest.files).toEqual(["dist", "!dist/_internal/test"]);
     expect(ast.exported.map(({ name }) => name).sort()).toEqual([
       "PaneWhere",
       "RegexCriteriaData",

@@ -79,12 +79,12 @@ const sessionCases = [
   { NOT: [{ name: "other" }] },
   { windows: { some: { name: "editor" } } },
   { windows: { every: {}, none: { name: "logs" }, some: {} } },
-  { panes: { some: { paneTitle: "shell" } } },
-  { panes: { every: {}, none: { paneTitle: "tail" }, some: {} } },
+  { panes: { some: { title: "shell" } } },
+  { panes: { every: {}, none: { title: "tail" }, some: {} } },
   { activeWindow: { is: null } },
   { activeWindow: { is: { name: "editor" }, isNot: { name: "logs" } } },
   { activePane: { is: null } },
-  { activePane: { is: { paneTitle: "shell" }, isNot: null } },
+  { activePane: { is: { title: "shell" }, isNot: null } },
   deeplyCyclicSession,
 ] as const satisfies readonly SessionWhere[];
 
@@ -95,27 +95,27 @@ const windowCases = [
   { session: { is: { windows: { some: { name: "editor" } } }, isNot: null } },
   { linkedSessions: { some: { name: "main" } } },
   { linkedSessions: { every: {}, none: { name: "other" }, some: {} } },
-  { panes: { some: { paneTitle: "shell" } } },
-  { panes: { every: {}, none: { paneTitle: "tail" }, some: {} } },
+  { panes: { some: { title: "shell" } } },
+  { panes: { every: {}, none: { title: "tail" }, some: {} } },
   { activePane: { is: null } },
   {
     activePane: {
       is: { session: { is: { activeWindow: { is: { name: "editor" } } } } },
-      isNot: { paneTitle: "tail" },
+      isNot: { title: "tail" },
     },
   },
 ] as const satisfies readonly WindowWhere[];
 
 const paneCases = [
   {},
-  { paneId: "%1" },
-  { paneTitle: { contains: "shell", mode: "insensitive" } },
+  { id: "%1" },
+  { title: { contains: "shell", mode: "insensitive" } },
   { window: { is: { name: "editor" } } },
   { window: { is: { session: { is: { name: "main" } } }, isNot: null } },
   { session: { is: { name: "main" } } },
   {
     session: {
-      is: { activePane: { is: { paneTitle: "shell" } } },
+      is: { activePane: { is: { title: "shell" } } },
       isNot: { name: "other" },
     },
   },

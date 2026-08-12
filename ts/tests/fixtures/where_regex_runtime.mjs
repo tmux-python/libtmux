@@ -138,7 +138,7 @@ const observations = fixture.cases.map((entry) => {
     regex: { flags: entry.flags, pattern: entry.pattern },
     ...(entry.mode === "insensitive" ? { mode: "insensitive" } : {}),
   };
-  const matched = selection.count({ name, sessionId: entry.session_id }) === 1;
+  const matched = selection.count({ name, id: entry.session_id }) === 1;
   assert.equal(matched, entry.expected[implementation], entry.id);
   return { id: entry.id, matched };
 });
@@ -150,7 +150,7 @@ const countCombined = (flags, pattern = combined.pattern) =>
       equals: combined.input,
       regex: { flags, pattern },
     },
-    sessionId: combined.session_id,
+    id: combined.session_id,
   });
 assert.equal(countCombined("ms"), 1);
 assert.equal(countCombined("m"), 0);
