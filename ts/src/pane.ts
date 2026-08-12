@@ -8,7 +8,7 @@ import type {
   SendKeysOptions,
   SplitOptions,
 } from "./types.js";
-import type { CompleteFormatRow } from "./_internal/codec/schemas.js";
+import type { RowWithIdentities } from "./_internal/codec/schemas.js";
 import {
   chooseBuffer,
   chooseTree,
@@ -187,6 +187,8 @@ export class Pane {
   }
 }
 
-export interface Pane extends CompleteFormatRow {}
+export interface Pane extends RowWithIdentities<
+  "pane_id" | "session_id" | "window_id" | "window_index"
+> {}
 
 installLiveHandlePrototype(Pane.prototype);

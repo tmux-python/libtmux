@@ -68,18 +68,11 @@ describe("option reads", () => {
         "set-option",
         "-w",
         "-t",
-        window.window_id ?? "",
+        window.window_id,
         "main-pane-width",
         "81",
       ]);
-      await fixture.executeText([
-        "set-option",
-        "-p",
-        "-t",
-        pane.pane_id ?? "",
-        "remain-on-exit",
-        "on",
-      ]);
+      await fixture.executeText(["set-option", "-p", "-t", pane.pane_id, "remain-on-exit", "on"]);
 
       const [sessionOptions, windowOptions, paneOptions] = await Promise.all([
         session.showOptions(),

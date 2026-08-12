@@ -1,4 +1,4 @@
-import type { CompleteFormatRow } from "./_internal/codec/schemas.js";
+import type { RowWithIdentities } from "./_internal/codec/schemas.js";
 import { paneById, sessionOf, windowOfPlacement } from "./_internal/operations/relations.js";
 import { refreshHandle } from "./_internal/operations/refresh.js";
 import { detachClient, switchClient } from "./_internal/operations/shell.js";
@@ -54,6 +54,6 @@ export class Client {
   }
 }
 
-export interface Client extends CompleteFormatRow {}
+export interface Client extends RowWithIdentities<"client_name"> {}
 
 installLiveHandlePrototype(Client.prototype);

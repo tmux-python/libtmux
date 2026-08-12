@@ -62,7 +62,7 @@ describe("shell execution and pane movement", () => {
 
       const expanded = await pane.displayMessage("#{pane_id}");
 
-      expect(expanded[0]).toBe(pane.pane_id ?? "");
+      expect(expanded[0]).toBe(pane.pane_id);
     });
   }, 40_000);
 
@@ -100,7 +100,7 @@ describe("shell execution and pane movement", () => {
       const source = await session.newWindow({ name: "source" });
       const pane = source.panes.one();
 
-      await pane.joinTo(target.window_id ?? "");
+      await pane.joinTo(target.window_id);
 
       const after = await server.snapshot();
       expect(after.panes.count({ window: { is: { name: "target" } } })).toBe(2);
@@ -116,7 +116,7 @@ describe("shell execution and pane movement", () => {
       const session = await Session.fromEnv({
         ...fixture.controllerEnvironment,
         TMUX: `${socketPath},1,0`,
-        TMUX_PANE: pane.pane_id ?? "",
+        TMUX_PANE: pane.pane_id,
       });
 
       expect(session.session_id).toBe(pane.session_id);

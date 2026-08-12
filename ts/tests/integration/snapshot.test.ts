@@ -210,8 +210,12 @@ describe("Server.snapshot", () => {
         const window = client.window;
         expect(window?.session_id).toBe(fixture.sessionId);
 
+        // A client's own ids are nullable because a client need not be
+        // attached; a resolved pane's are not.
+        const clientPaneId = client.pane_id;
+        expect(clientPaneId).not.toBeNull();
         const pane = client.pane;
-        expect(pane?.pane_id).toBe(client.pane_id);
+        expect(pane?.pane_id).toBe(clientPaneId ?? undefined);
         expect(pane?.window_id).toBe(window?.window_id);
       } finally {
         await control.dispose();

@@ -1,5 +1,5 @@
 import type { MoveWindowOptions, SplitOptions } from "./types.js";
-import type { CompleteFormatRow } from "./_internal/codec/schemas.js";
+import type { RowWithIdentities } from "./_internal/codec/schemas.js";
 import {
   linkedSessionsOfWindow,
   panesOfPlacement,
@@ -119,6 +119,6 @@ export class Window {
   }
 }
 
-export interface Window extends CompleteFormatRow {}
+export interface Window extends RowWithIdentities<"session_id" | "window_id" | "window_index"> {}
 
 installLiveHandlePrototype(Window.prototype);

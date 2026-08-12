@@ -1,5 +1,5 @@
 import type { NewWindowOptions, WindowTarget } from "./types.js";
-import type { CompleteFormatRow } from "./_internal/codec/schemas.js";
+import type { RowWithIdentities } from "./_internal/codec/schemas.js";
 import { readTmuxEnvironment } from "./_internal/operations/env.js";
 import { detachClient } from "./_internal/operations/shell.js";
 import { panesOfSession, windowsOfSession } from "./_internal/operations/relations.js";
@@ -137,6 +137,6 @@ export class Session {
   }
 }
 
-export interface Session extends CompleteFormatRow {}
+export interface Session extends RowWithIdentities<"session_id"> {}
 
 installLiveHandlePrototype(Session.prototype);

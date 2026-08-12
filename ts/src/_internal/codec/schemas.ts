@@ -5,6 +5,19 @@ import type { FormatFieldName, ListCommand } from "../../neo.js";
 
 export type CompleteFormatRow = Readonly<Record<FormatFieldName, string | null>>;
 
+/**
+ * A complete row whose listing guarantees certain identities are populated.
+ *
+ * `normalizeGraph` rejects a row missing the identities its subcommand must
+ * supply, so those fields cannot be null on a materialized handle. The set
+ * differs per model — a session row guarantees only `session_id`, while a pane
+ * row guarantees its whole ancestry — so the guarantee is expressed per model
+ * rather than flattened onto every field.
+ */
+export type RowWithIdentities<Identities extends FormatFieldName> = {
+  readonly [Key in FormatFieldName]: Key extends Identities ? string : string | null;
+};
+
 const completeFormatRowShape = Object.fromEntries(
   FORMAT_FIELD_TOKENS.map((token) => [token, z.string().nullable()]),
 ) as Record<FormatFieldName, z.ZodNullable<z.ZodString>>;

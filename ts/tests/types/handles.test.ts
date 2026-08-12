@@ -1,5 +1,5 @@
 import * as clientModule from "../../src/client.js";
-import type { CompleteFormatRow } from "../../src/_internal/codec/schemas.js";
+import type { CompleteFormatRow, RowWithIdentities } from "../../src/_internal/codec/schemas.js";
 import type {
   GraphEntityRef,
   GraphRecordRef,
@@ -113,10 +113,24 @@ type _SessionModule = Expect<Equal<keyof typeof sessionModule, "Session">>;
 type _WindowModule = Expect<Equal<keyof typeof windowModule, "Window">>;
 type _ServerModule = Expect<Equal<keyof typeof serverModule, "Server">>;
 
-type _ClientSnapshot = Expect<Equal<Pick<Client, FormatFieldName>, CompleteFormatRow>>;
-type _PaneSnapshot = Expect<Equal<Pick<Pane, FormatFieldName>, CompleteFormatRow>>;
-type _SessionSnapshot = Expect<Equal<Pick<Session, FormatFieldName>, CompleteFormatRow>>;
-type _WindowSnapshot = Expect<Equal<Pick<Window, FormatFieldName>, CompleteFormatRow>>;
+type _ClientSnapshot = Expect<
+  Equal<Pick<Client, FormatFieldName>, RowWithIdentities<"client_name">>
+>;
+type _PaneSnapshot = Expect<
+  Equal<
+    Pick<Pane, FormatFieldName>,
+    RowWithIdentities<"pane_id" | "session_id" | "window_id" | "window_index">
+  >
+>;
+type _SessionSnapshot = Expect<
+  Equal<Pick<Session, FormatFieldName>, RowWithIdentities<"session_id">>
+>;
+type _WindowSnapshot = Expect<
+  Equal<
+    Pick<Window, FormatFieldName>,
+    RowWithIdentities<"session_id" | "window_id" | "window_index">
+  >
+>;
 type _ClientKeys = Expect<
   Equal<
     keyof Client,
@@ -242,7 +256,7 @@ type _ServerKind = Expect<Equal<ModelKindOf<Server>, "server">>;
 type _SessionKind = Expect<Equal<ModelKindOf<Session>, "session">>;
 type _WindowKind = Expect<Equal<ModelKindOf<Window>, "window">>;
 
-type StructuralSession = CompleteFormatRow & {
+type StructuralSession = RowWithIdentities<"session_id"> & {
   readonly equals: (other: unknown) => boolean;
   readonly server: Server;
 };

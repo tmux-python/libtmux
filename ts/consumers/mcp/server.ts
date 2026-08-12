@@ -113,7 +113,7 @@ export function createTmuxMcpServer(tmux: Server): McpServer {
       return {
         content: [
           {
-            text: `Created ${session.session_name ?? ""} (${session.session_id ?? ""})`,
+            text: `Created ${session.session_name ?? "<unnamed>"} (${session.session_id})`,
             type: "text",
           },
         ],
