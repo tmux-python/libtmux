@@ -2567,6 +2567,11 @@ class Server(
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
+        except exc.UnscriptedCommand:
+            # An incomplete tape is a bug in the caller's fixture, not a tmux
+            # that is merely unreachable. Leniency here would report "no rows"
+            # for a command the engine was never taught to answer.
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(sessions)
@@ -2639,6 +2644,11 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
+        except exc.UnscriptedCommand:
+            # An incomplete tape is a bug in the caller's fixture, not a tmux
+            # that is merely unreachable. Leniency here would report "no rows"
+            # for a command the engine was never taught to answer.
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(clients)

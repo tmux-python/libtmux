@@ -125,6 +125,16 @@ engine fails closed, raising {exc}`~libtmux.exc.UnscriptedCommand` for a command
 it never recorded. The `recording_server` pytest fixture provides a server that
 records, which doubles as a spy over the tmux commands your code issued.
 
+A tape carries the tmux version it was recorded against, and a replay engine
+reports it through {class}`~libtmux.engines.base.SupportsTmuxVersion`. That is
+what lets a replay serve listing queries with no tmux binary present at all:
+the version-gated `-F` template is otherwise resolved by running `tmux -V`.
+
+{attr}`Server.sessions <libtmux.Server.sessions>` and
+{attr}`Server.clients <libtmux.Server.clients>` stay lenient when tmux cannot be
+reached, but no longer swallow {exc}`~libtmux.exc.UnscriptedCommand` — an engine
+that was never taught to answer is a gap in a fixture, not an unreachable tmux.
+
 #### Result objects report success directly
 
 {attr}`CommandResult.ok <libtmux.engines.base.CommandResult.ok>` and
