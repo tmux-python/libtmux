@@ -28,7 +28,6 @@ from libtmux.common import (
 )
 from libtmux.constants import OptionScope
 from libtmux.engines.base import (
-    CommandRequest,
     CommandResult,
     SupportsConnection,
     TmuxEngine,
@@ -577,7 +576,7 @@ class Server(
         ...     print(type(e))
         <class 'subprocess.CalledProcessError'>
         """
-        result = self.engine.run(CommandRequest.from_args("list-sessions"))
+        result = dispatch(self.engine, "list-sessions")
         if result.returncode != 0:
             raise subprocess.CalledProcessError(result.returncode, list(result.cmd))
 
