@@ -126,6 +126,14 @@ lookup instead of re-walking `$PATH` for every command.
 
 See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
 
+#### Several commands in one round trip
+
+{func}`~libtmux.common.dispatch_batch` hands a whole sequence of commands to an
+engine's {meth}`~libtmux.engines.base.TmuxEngine.run_batch`, rather than looping
+over single dispatches. A stateless engine loops internally and behaves as
+repeated calls would; a persistent-connection engine writes every command before
+waiting for the first reply, which is where the round trips collapse.
+
 #### Async engines can run commands
 
 {class}`~libtmux.engines.asyncio.AsyncSubprocessEngine` awaits the tmux binary
