@@ -1,3 +1,9 @@
+"""Regex oracle for the TypeScript port's differential corpus.
+
+Evaluates the shared corpus with Python's :mod:`re` so the Bun and Node
+engines can be compared against the semantics libtmux already ships.
+"""
+
 from __future__ import annotations
 
 import base64
