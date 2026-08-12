@@ -51,7 +51,7 @@ async function resolveNode22(): Promise<string> {
   const mise = Bun.which("mise");
   if (mise === null) throw new Error("Node 22 requires LIBTMUX_NODE22 or mise");
   const result = await runBounded(
-    [mise, "exec", "--quiet", "node@22.16.0", "--", "node", "-p", "process.execPath"],
+    [mise, "exec", "--quiet", "node@22", "--", "node", "-p", "process.execPath"],
     10_000,
   );
   expect(result.exitCode, result.stderr).toBe(0);
@@ -67,9 +67,11 @@ async function authenticateNode22(candidate: string, source: string): Promise<st
   const version = await runBounded([candidate, "--version"], 10_000);
   expect(version.exitCode, version.stderr).toBe(0);
   expect(version.stderr).toBe("");
+  // The corpus fixture pins the major version only. Pinning a patch here
+  // breaks the build every time Node ships one, which it did twice while this
+  // branch was in CI.
   const match = /^v(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$/u.exec(version.stdout.trim());
   expect(match?.groups?.major).toBe("22");
-  expect(version.stdout.trim()).toBe("v22.16.0");
   return candidate;
 }
 
@@ -83,7 +85,7 @@ function decodeReport(stdout: string): RuntimeReport {
 }
 
 describe("three-runtime regex corpus", () => {
-  test("resolves one executable Node 22.16.0 runtime", async () => {
+  test("resolves one executable Node 22 runtime", async () => {
     expect(isAbsolute(await resolveNode22())).toBe(true);
   });
 
