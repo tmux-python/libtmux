@@ -41,6 +41,16 @@ jobs:
         with:
           node-version: '22'
 
+      # The differential corpus compares this port against the pinned Python
+      # release, which it runs through uv.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.13
+
       - name: Point the emitted-Node lane at the provisioned Node 22
         run: echo "LIBTMUX_NODE22=$(which node)" >> "$GITHUB_ENV"
 
