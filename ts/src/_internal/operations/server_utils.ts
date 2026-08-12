@@ -68,3 +68,32 @@ export async function pasteBuffer(
     ...(paneId == null ? [] : ["-t", paneId]),
   ]);
 }
+
+/**
+ * Whether the tmux server is reachable.
+ *
+ * A missing daemon, an absent socket, a permission error, and a missing tmux
+ * binary all answer `false` rather than raising, because "is the server there?"
+ * is a question with a negative answer, not a failure to ask it.
+ */
+export async function isAlive(runtime: RuntimeContext): Promise<boolean> {
+  try {
+    const result = adaptRawResult(
+      await runtime.transport.execute(prepareCommandRequest(runtime.connection, ["list-sessions"])),
+    );
+    return result.returncode === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Assert the tmux server is reachable, raising with tmux's own reason if not.
+ *
+ * The list-shaped accessors are lenient: they return an empty selection when
+ * tmux cannot be reached, so an empty result is indistinguishable from a server
+ * that is gone. This is the explicit way to tell those apart.
+ */
+export async function raiseIfDead(runtime: RuntimeContext): Promise<void> {
+  await runCommand(runtime, ["list-sessions"]);
+}

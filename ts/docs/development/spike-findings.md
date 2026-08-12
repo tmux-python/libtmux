@@ -694,6 +694,39 @@ that opens a menu it cannot close hangs the suite and holds a client open. The
 adjacent client-owned commands that do complete on their own — popups, the
 choosers, `find-window`, `customize-mode`, `send-prefix` — are covered.
 
+## Unreachable servers raise instead of reading empty
+
+Date: 2026-08-12.
+
+### Question
+
+Python's list-shaped accessors are lenient by design: `Server.sessions` answers
+an empty list whether the server holds no sessions or cannot be reached at all,
+and `is_alive()`/`raise_if_dead()` exist to tell those apart. Should the
+TypeScript port inherit that?
+
+### Finding
+
+Adding `isAlive()` exposed that the port already diverges. Acquisition binds
+tmux capabilities before listing, so a missing socket surfaces as a raised
+version-probe failure rather than an empty selection.
+
+The lenient contract makes the common case silently wrong. A caller that writes
+`if ((await server.sessions()).length === 0)` reads a dead server as a tidy one,
+and nothing in the type or the value hints that a question went unanswered.
+Leniency only pays off when the caller remembers to ask `is_alive()` first,
+which is precisely the caller who did not need the leniency.
+
+### Decision
+
+Collection accessors raise when the server cannot be reached. `isAlive()`
+answers the same question without raising, and `raiseIfDead()` states it as an
+assertion carrying tmux's own message.
+
+This is a deliberate divergence from Python, taken under the rule that inherited
+conventions are subordinate to quality. An empty result now means exactly one
+thing.
+
 ## Sources
 
 - [libtmux 0.62.0 QueryList](https://github.com/tmux-python/libtmux/blob/v0.62.0/src/libtmux/_internal/query_list.py)

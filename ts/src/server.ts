@@ -18,6 +18,8 @@ import { setOption, showOptions, unsetOption } from "./_internal/operations/opti
 import { ifShell, runShell } from "./_internal/operations/shell.js";
 import {
   deleteBuffer,
+  isAlive,
+  raiseIfDead,
   hasSession,
   listBuffers,
   listCommands,
@@ -212,6 +214,21 @@ export class Server {
   /** Run one command or another depending on a condition. */
   ifShell(condition: string, command: string, options?: IfShellOptions): Promise<void> {
     return ifShell(runtimeForServer(this), condition, command, options);
+  }
+
+  /** Whether the tmux server is reachable. */
+  isAlive(): Promise<boolean> {
+    return isAlive(runtimeForServer(this));
+  }
+
+  /**
+   * Assert the server is reachable, raising with tmux's reason if not.
+   *
+   * Collection accessors return empty when tmux cannot be reached, so this is
+   * how a caller distinguishes "no sessions" from "no server".
+   */
+  raiseIfDead(): Promise<void> {
+    return raiseIfDead(runtimeForServer(this));
   }
 
   equals(other: unknown): boolean {

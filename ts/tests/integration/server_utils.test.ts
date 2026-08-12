@@ -109,4 +109,51 @@ describe("server utilities", () => {
       expect(active.length).toBe(1);
     });
   }, 40_000);
+
+  test("reports a reachable server as alive and a missing one as not", async () => {
+    await withServer(async (fixture) => {
+      const server = serverFor(fixture);
+      expect(await server.isAlive()).toBe(true);
+      await expect(server.raiseIfDead()).resolves.toBeUndefined();
+
+      const absent = new Server({
+        environment: fixture.controllerEnvironment,
+        socketPath: `${fixture.socketPath}-absent`,
+        tmuxBin: fixture.tmuxExecutable,
+      });
+
+      // A socket that was never created is a negative answer, not a failure.
+      expect(await absent.isAlive()).toBe(false);
+      await expect(absent.raiseIfDead()).rejects.toThrow(/list-sessions failed/);
+    });
+  }, 40_000);
+
+  test("raises from collection accessors when the server is unreachable", async () => {
+    await withServer(async (fixture) => {
+      const absent = new Server({
+        environment: fixture.controllerEnvironment,
+        socketPath: `${fixture.socketPath}-gone`,
+        tmuxBin: fixture.tmuxExecutable,
+      });
+
+      // Python answers an empty list here. This port raises instead, so an
+      // unreachable server can never be mistaken for an empty one, and
+      // isAlive() is the way to ask without raising.
+      await expect(absent.sessions()).rejects.toThrow();
+      expect(await absent.isAlive()).toBe(false);
+      expect(await serverFor(fixture).isAlive()).toBe(true);
+    });
+  }, 40_000);
+
+  test("answers false rather than raising when tmux itself is missing", async () => {
+    await withServer(async (fixture) => {
+      const noBinary = new Server({
+        environment: fixture.controllerEnvironment,
+        socketPath: fixture.socketPath,
+        tmuxBin: "/nonexistent/tmux",
+      });
+
+      expect(await noBinary.isAlive()).toBe(false);
+    });
+  }, 40_000);
 });
