@@ -15,6 +15,7 @@ show that the seam fits.
 from __future__ import annotations
 
 import subprocess
+import time
 import typing as t
 
 import pytest
@@ -24,6 +25,7 @@ from libtmux.engines import (
     ServerConnection,
     TmuxEngine,
     render_control_line,
+    unescape_control_output,
 )
 from libtmux.server import Server
 
@@ -185,3 +187,63 @@ def test_a_batch_collapses_into_one_round_trip(control_mode_server: Server) -> N
     )
 
     assert [result.stdout for result in results] == [[f"m{i}"] for i in range(5)]
+
+
+def test_pane_output_arrives_as_notifications(session: Session) -> None:
+    """A control client attached to a session is pushed the pane's output.
+
+    :func:`~libtmux.engines.base.unescape_control_output` exists for this: tmux
+    writes every non-printable byte in a ``%output`` payload as a backslash and
+    three octal digits, so a reader scanning for raw bytes never matches until
+    the payload is decoded.
+
+    Two things make this easy to get wrong. The client has to be *attached* --
+    a control connection that never attached sees no output at all. And the
+    reply to a command bounds the read: polling the stream with
+    :func:`select.select` reports "nothing to read" while Python's own buffer
+    still holds lines, so a naive reader stops after the first one.
+    """
+    pane = session.active_window.active_pane
+    assert pane is not None
+    connection = ServerConnection.from_server(session.server)
+
+    client = subprocess.Popen(
+        [
+            connection.resolve_bin(),
+            *connection.args,
+            "-C",
+            "attach-session",
+            "-t",
+            str(session.session_name),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    try:
+        assert client.stdin is not None
+        assert client.stdout is not None
+        time.sleep(0.5)
+        pane.send_keys("printf 'MARKER-OK\\n'")
+
+        # Reading until a command of our own replies bounds the wait without
+        # polling, and everything before the reply is what tmux pushed at us.
+        client.stdin.write("display-message -p SENTINEL\n")
+        client.stdin.flush()
+
+        payloads: list[bytes] = []
+        for _ in range(500):
+            line = client.stdout.readline()
+            if not line or line.rstrip("\n") == "SENTINEL":
+                break
+            if line.startswith("%output"):
+                payloads.append(
+                    unescape_control_output(line.rstrip("\n").split(" ", 2)[-1])
+                )
+    finally:
+        client.kill()
+
+    assert payloads, "an attached control client should be pushed pane output"
+    assert any(b"MARKER-OK" in payload for payload in payloads)
