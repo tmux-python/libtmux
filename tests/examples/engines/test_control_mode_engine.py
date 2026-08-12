@@ -48,14 +48,30 @@ class ControlModeEngine(TmuxEngine):
     command runs. Pushing them the instant they arrive needs a reader thread,
     and that is the part a production engine adds.
 
+    It attaches to a session the caller names rather than creating one. Spawning
+    with ``new-session -A`` would be simpler, but the session it makes is real:
+    it shows up in ``server.sessions`` forever after, so merely connecting an
+    engine would change what the caller sees.
+
+    Parameters
+    ----------
+    connection : ServerConnection
+        Which tmux server to reach.
+    target : str
+        An existing session to attach to. A control client that never attaches
+        is pushed no output at all.
+
     Attributes
     ----------
     notifications : list[str]
         Raw ``%output`` lines seen while reading replies, oldest first.
+    reconnects : int
+        How many times the connection has been reopened.
     """
 
-    def __init__(self, connection: ServerConnection) -> None:
+    def __init__(self, connection: ServerConnection, target: str) -> None:
         self._connection = connection
+        self._target = target
         self.reconnects = 0
         self._spawn()
 
@@ -67,10 +83,9 @@ class ControlModeEngine(TmuxEngine):
             *connection.args,
             "-C",
             "-q",
-            "new-session",
-            "-A",
-            "-s",
-            "_control",
+            "attach-session",
+            "-t",
+            self._target,
         ]
         self._process = subprocess.Popen(
             argv,
@@ -170,7 +185,10 @@ class ControlModeEngine(TmuxEngine):
 @pytest.fixture
 def control_mode_server(session: Session) -> t.Iterator[Server]:
     """Yield a server dispatching over a persistent control-mode connection."""
-    engine = ControlModeEngine(ServerConnection.from_server(session.server))
+    engine = ControlModeEngine(
+        ServerConnection.from_server(session.server),
+        str(session.session_name),
+    )
     try:
         yield Server(socket_name=session.server.socket_name, engine=engine)
     finally:
@@ -341,3 +359,16 @@ def test_a_dropped_connection_is_reopened(control_mode_server: Server) -> None:
     assert control_mode_server.cmd("display-message", "-p", "two").stdout == ["two"]
     assert [s.session_name for s in control_mode_server.sessions]
     assert engine.reconnects == 1
+
+
+def test_connecting_adds_no_session(control_mode_server: Server) -> None:
+    """Attaching an engine must not change what the caller sees.
+
+    ``new-session -A`` is the easy way to open a control connection, but the
+    session it creates is indistinguishable from one the user made, and it
+    outlives the connection.
+    """
+    names = [s.session_name for s in control_mode_server.sessions]
+
+    assert names, "the fixture session should be visible"
+    assert not [name for name in names if str(name).startswith("_")]
