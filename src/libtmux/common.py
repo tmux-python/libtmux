@@ -7,6 +7,7 @@ libtmux.common
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import logging
 import re
@@ -289,6 +290,88 @@ def raise_if_stderr(proc: CommandResult, subcommand: str) -> None:
         )
 
 
+def dispatch(
+    engine: TmuxEngine,
+    *args: t.Any,
+    tmux_bin: str | None = None,
+) -> CommandResult:
+    """Run one tmux command through *engine* and adapt its result.
+
+    The single dispatch path every wrapper uses. Two things happen here rather
+    than in an engine, so that every engine stays a plain executor: the debug
+    logging that names the command line before and after it runs, and tmux's
+    ``has-session`` quirk.
+
+    tmux answers ``has-session`` on stderr, while libtmux has always reported it
+    on stdout. Adapting it here keeps that promise for whichever engine ran the
+    command.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The executor.
+    *args : typing.Any
+        The tmux subcommand and its arguments, stringified.
+    tmux_bin : str, optional
+        Override the tmux binary for this one command.
+
+    Returns
+    -------
+    CommandResult
+        The adapted result.
+
+    Examples
+    --------
+    >>> from libtmux.engines import SubprocessEngine
+    >>> engine = SubprocessEngine.for_server(server)
+    >>> dispatch(engine, "display-message", "-p", "hi").stdout
+    ['hi']
+
+    ``has-session`` reports on stdout, as it always has:
+
+    >>> dispatch(engine, "has-session", "-t", "nope").stdout  # doctest: +ELLIPSIS
+    ["can't find session: nope"]
+    """
+    request = CommandRequest.from_args(*args, tmux_bin=tmux_bin)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command dispatched",
+            extra={
+                "tmux_cmd": shlex.join(
+                    engine.command_line(request)
+                    if isinstance(engine, SupportsCommandLine)
+                    else request.args,
+                ),
+                "tmux_subcommand": request.subcommand,
+            },
+        )
+
+    result = engine.run(request)
+
+    cmd = list(result.cmd)
+    stderr = list(result.stderr)
+    stdout = list(result.stdout)
+    if "has-session" in cmd and stderr and not stdout:
+        stdout = [stderr[0]]
+        result = dataclasses.replace(result, stdout=stdout)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command completed",
+            extra={
+                "tmux_cmd": shlex.join(cmd),
+                "tmux_subcommand": request.subcommand,
+                "tmux_exit_code": result.returncode,
+                "tmux_stdout": stdout[:100],
+                "tmux_stderr": stderr[:100],
+                "tmux_stdout_len": len(stdout),
+                "tmux_stderr_len": len(stderr),
+            },
+        )
+    return result
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command, returning list-shaped output.
 
@@ -355,66 +438,13 @@ class tmux_cmd:
         runner: TmuxEngine = (
             engine if engine is not None else SubprocessEngine.of(tmux_bin)
         )
-        request = CommandRequest.from_args(*args)
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "tmux command dispatched",
-                extra={
-                    "tmux_cmd": shlex.join(
-                        runner.command_line(request)
-                        if isinstance(runner, SupportsCommandLine)
-                        else request.args,
-                    ),
-                    "tmux_subcommand": request.subcommand,
-                },
-            )
-
-        result = runner.run(request)
+        result = dispatch(runner, *args)
 
         self.cmd = list(result.cmd)
         self.returncode = result.returncode
+        self.stdout = list(result.stdout)
         self.stderr = list(result.stderr)
         self._process = result.process
-
-        # tmux writes ``has-session``'s answer to stderr; the wrappers have
-        # always read it off stdout. Adapted here, not in an engine, so every
-        # engine stays a plain executor.
-        stdout = list(result.stdout)
-        self.stdout = (
-            [self.stderr[0]]
-            if "has-session" in self.cmd and self.stderr and not stdout
-            else stdout
-        )
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "tmux command completed",
-                extra={
-                    "tmux_cmd": shlex.join(self.cmd),
-                    "tmux_subcommand": request.subcommand,
-                    "tmux_exit_code": self.returncode,
-                    "tmux_stdout": self.stdout[:100],
-                    "tmux_stderr": self.stderr[:100],
-                    "tmux_stdout_len": len(self.stdout),
-                    "tmux_stderr_len": len(self.stderr),
-                },
-            )
-
-    @property
-    def result(self) -> CommandResult:
-        """Return this command's outcome as a :class:`CommandResult`.
-
-        Carries the ``has-session`` stdout adaptation already applied, so the
-        engine-native result and this wrapper never disagree.
-        """
-        return CommandResult(
-            cmd=self.cmd,
-            stdout=self.stdout,
-            stderr=self.stderr,
-            returncode=self.returncode,
-            process=self._process,
-        )
 
     @property
     def ok(self) -> bool:
