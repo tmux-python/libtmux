@@ -144,6 +144,22 @@ class AsyncSubprocessEngine:
         return self._conn
 
     @property
+    def tmux_bin(self) -> str | None:
+        """The explicitly configured tmux binary, if any.
+
+        Returns
+        -------
+        str or None
+            The declared binary; ``None`` when resolved from ``$PATH``.
+
+        Examples
+        --------
+        >>> AsyncSubprocessEngine.of("/usr/bin/tmux").tmux_bin
+        '/usr/bin/tmux'
+        """
+        return self._conn.tmux_bin
+
+    @property
     def server_args(self) -> tuple[str, ...]:
         """Connection flags placed before every tmux subcommand.
 

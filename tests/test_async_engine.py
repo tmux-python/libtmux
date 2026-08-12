@@ -130,3 +130,17 @@ def test_adispatch_batch_applies_the_has_session_adaptation() -> None:
         return await adispatch_batch(Fake(), [("has-session", "-t", "nope")])
 
     assert asyncio.run(main())[0].stdout == ["can't find session: nope"]
+
+
+def test_sync_and_async_engines_expose_the_same_surface() -> None:
+    """The two subprocess engines must not drift apart.
+
+    Every capability added to one path has, at least once, been forgotten on
+    the other. This fails the moment that happens again.
+    """
+    from libtmux.engines import SubprocessEngine
+
+    def public(obj: object) -> set[str]:
+        return {name for name in dir(obj) if not name.startswith("_")}
+
+    assert public(SubprocessEngine) == public(AsyncSubprocessEngine)
