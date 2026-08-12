@@ -431,6 +431,57 @@ def dispatch_batch(
     return [_adapt_has_session(result) for result in engine.run_batch(requests)]
 
 
+async def adispatch_batch(
+    engine: AsyncTmuxEngine,
+    commands: Sequence[Sequence[t.Any]],
+) -> list[CommandResult]:
+    """Await several tmux commands through *engine* in one go.
+
+    Hands the whole sequence to :meth:`~libtmux.engines.base.TmuxEngine.run_batch`
+    rather than looping, which is what lets a persistent-connection engine write
+    every command before waiting for the first reply. A stateless engine loops
+    internally and behaves exactly as repeated :func:`dispatch` calls would.
+
+    Each result gets the same ``has-session`` adaptation :func:`dispatch`
+    applies, so a batched command reads the same as an individual one.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The executor.
+    commands : Sequence[Sequence[typing.Any]]
+        One argv per command, each stringified.
+
+    Returns
+    -------
+    list[CommandResult]
+        One result per command, in order.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> from libtmux.engines import AsyncSubprocessEngine
+    >>> engine = AsyncSubprocessEngine.for_server(server)
+    >>> async def main():
+    ...     return await adispatch_batch(
+    ...         engine,
+    ...         [("display-message", "-p", "one"), ("display-message", "-p", "two")],
+    ...     )
+    >>> [result.stdout for result in asyncio.run(main())]
+    [['one'], ['two']]
+    """
+    requests = [CommandRequest.from_args(*command) for command in commands]
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command batch dispatched",
+            extra={"tmux_subcommand": ",".join(r.subcommand for r in requests)},
+        )
+
+    results = await engine.run_batch(requests)
+    return [_adapt_has_session(result) for result in results]
+
+
 async def adispatch(
     engine: AsyncTmuxEngine,
     *args: t.Any,
