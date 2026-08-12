@@ -62,3 +62,15 @@ single place either is computed.
 .. automodule:: libtmux.engines.record
    :members:
 ```
+
+## Resolving an engine by name
+
+An application that reads its transport from a config file or a CLI flag can
+name it instead of importing it. A third-party distribution adds a name by
+advertising it in the `libtmux.engines` entry-point group; entry points are read
+on first use, not at import.
+
+```{eval-rst}
+.. automodule:: libtmux.engines.registry
+   :members:
+```
