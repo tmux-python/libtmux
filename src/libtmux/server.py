@@ -7,6 +7,7 @@ libtmux.server
 
 from __future__ import annotations
 
+import contextlib
 import inspect
 import logging
 import os
@@ -27,6 +28,7 @@ from libtmux.engines.base import (
     TmuxEngine,
 )
 from libtmux.engines.connection import ServerConnection
+from libtmux.engines.record import RecordingEngine
 from libtmux.engines.subprocess import SubprocessEngine
 from libtmux.hooks import HooksMixin
 from libtmux.neo import fetch_objs, get_output_format, parse_output
@@ -370,6 +372,86 @@ class Server(
             default = SubprocessEngine(connection)
             self._default_engine = default
         return default
+
+    @contextlib.contextmanager
+    def using(self, engine: TmuxEngine) -> t.Iterator[Server]:
+        """Dispatch through *engine* for the duration of the block.
+
+        The previous engine is restored on the way out, including when the block
+        raises. Scopes nest, unwinding in reverse.
+
+        Parameters
+        ----------
+        engine : :class:`~libtmux.engines.base.TmuxEngine`
+            The engine to use inside the block. Validated exactly as
+            ``Server(engine=...)`` validates.
+
+        Yields
+        ------
+        :class:`~libtmux.Server`
+            This server, so the block can name it.
+
+        Examples
+        --------
+        >>> from libtmux.engines import CommandResult, ReplayEngine
+        >>> tape = {("display-message", "-p", "x"): CommandResult(
+        ...     cmd=("tmux",), stdout=("canned",)
+        ... )}
+        >>> with server.using(ReplayEngine(tape)):
+        ...     server.cmd("display-message", "-p", "x").stdout
+        ['canned']
+
+        Outside the block the server is back on its own engine:
+
+        >>> server.cmd("display-message", "-p", "x").stdout
+        ['x']
+
+        .. versionadded:: 0.63
+        """
+        previous_engine = self._engine
+        previous_adopted = self._adopted_engine
+        self._engine = _validated_engine(engine)
+        self._adopted_engine = None
+        try:
+            yield self
+        finally:
+            self._engine = previous_engine
+            self._adopted_engine = previous_adopted
+
+    @contextlib.contextmanager
+    def recording(self) -> t.Iterator[RecordingEngine]:
+        """Record every tmux command the block issues.
+
+        Wraps whichever engine the server is already using, so the commands
+        still run for real; the recorder just keeps what tmux answered. Hand the
+        result to a :class:`~libtmux.engines.record.ReplayEngine` to replay the
+        same conversation with no tmux running.
+
+        Yields
+        ------
+        :class:`~libtmux.engines.record.RecordingEngine`
+            The recorder, live during the block and complete after it.
+
+        Examples
+        --------
+        >>> with server.recording() as recorder:
+        ...     _ = server.cmd("display-message", "-p", "hello")
+        >>> recorder.requests
+        [('display-message', '-p', 'hello')]
+
+        The tape replays without a tmux server:
+
+        >>> from libtmux.engines import ReplayEngine
+        >>> from libtmux.server import Server
+        >>> replayed = Server(engine=ReplayEngine(recorder.tape))
+        >>> replayed.cmd("display-message", "-p", "hello").stdout
+        ['hello']
+
+        .. versionadded:: 0.63
+        """
+        recorder = RecordingEngine(self.engine)
+        with self.using(recorder):
+            yield recorder
 
     @classmethod
     def from_env(cls, env: t.Mapping[str, str] | None = None) -> Server:

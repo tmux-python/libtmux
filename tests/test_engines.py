@@ -403,3 +403,76 @@ def test_replay_repeats_an_answer_that_never_varied() -> None:
     assert [server.cmd("display-message", "-p", "hi").stdout[0] for _ in range(4)] == [
         "hi",
     ] * 4
+
+
+def test_using_scopes_an_engine_to_a_block(session: Session) -> None:
+    """``Server.using()`` swaps the engine for a block, then restores it."""
+    server = session.server
+    original = server.engine
+    canned = CannedEngine(stdout=("scoped",))
+
+    with server.using(canned) as scoped:
+        assert scoped is server
+        assert server.engine is canned
+        assert server.cmd("display-message", "-p", "x").stdout == ["scoped"]
+
+    assert server.engine is original
+    assert server.cmd("display-message", "-p", "x").stdout != ["scoped"]
+
+
+def test_using_restores_on_exception(session: Session) -> None:
+    """A raise inside the block still restores the previous engine."""
+    server = session.server
+    original = server.engine
+
+    with pytest.raises(ValueError, match="boom"), server.using(CannedEngine()):
+        msg = "boom"
+        raise ValueError(msg)
+
+    assert server.engine is original
+
+
+def test_using_nests(session: Session) -> None:
+    """Nested scopes unwind in order."""
+    server = session.server
+    outer, inner = CannedEngine(stdout=("outer",)), CannedEngine(stdout=("inner",))
+
+    with server.using(outer):
+        assert server.cmd("x").stdout == ["outer"]
+        with server.using(inner):
+            assert server.cmd("x").stdout == ["inner"]
+        assert server.cmd("x").stdout == ["outer"]
+
+
+def test_using_validates_like_the_constructor(session: Session) -> None:
+    """A non-engine is rejected where it is supplied, not on first command."""
+
+    class OnlyRun:
+        def run(self, request: CommandRequest) -> CommandResult:
+            return CommandResult(cmd=("tmux",))
+
+    with (
+        pytest.raises(exc.LibTmuxException, match="run_batch"),
+        session.server.using(OnlyRun()),  # type: ignore[arg-type]
+    ):
+        pass
+
+
+def test_recording_captures_a_block(session: Session) -> None:
+    """``Server.recording()`` records the block's traffic and restores after."""
+    server = session.server
+    original = server.engine
+
+    with server.recording() as recorder:
+        server.new_session("recording_ctx")
+        assert [s.session_name for s in server.sessions]
+
+    assert server.engine is original
+    assert any(argv[0] == "new-session" for argv in recorder.requests)
+
+    offline = Server(
+        socket_name=server.socket_name,
+        tmux_bin="/nonexistent/tmux",
+        engine=ReplayEngine.from_dict(recorder.to_dict()),
+    )
+    assert [s.session_name for s in offline.sessions]
