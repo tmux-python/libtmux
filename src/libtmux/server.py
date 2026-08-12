@@ -22,6 +22,7 @@ from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import (
     dispatch,
+    dispatch_batch,
     get_version,
     has_gte_version,
     raise_if_stderr,
@@ -52,6 +53,7 @@ from .options import OptionsMixin
 
 if t.TYPE_CHECKING:
     import types
+    from collections.abc import Sequence
     from typing import TypeAlias
 
     from typing_extensions import Self
@@ -377,6 +379,56 @@ class Server(
             default = SubprocessEngine(connection)
             self._default_engine = default
         return default
+
+    def cmd_batch(
+        self,
+        commands: Sequence[Sequence[t.Any]],
+    ) -> list[CommandResult]:
+        """Run several tmux commands, handing the whole sequence to the engine.
+
+        The batch counterpart of :meth:`cmd`. Results come back in order, one
+        per command, and a failure does not truncate the rest -- a tmux-side
+        error is data on its own result.
+
+        Whether this is *faster* than repeated :meth:`cmd` calls depends on the
+        engine. The default subprocess engine forks per command either way, so
+        this is a convenience. An engine holding a persistent connection writes
+        every command before waiting for the first reply, which is where the
+        round trips collapse.
+
+        Each entry is a complete argv, so a target is written out rather than
+        passed separately as :meth:`cmd` allows.
+
+        Parameters
+        ----------
+        commands : Sequence[Sequence[typing.Any]]
+            One argv per command, each token stringified.
+
+        Returns
+        -------
+        list[:class:`~libtmux.engines.base.CommandResult`]
+            One result per command, in order.
+
+        Examples
+        --------
+        >>> results = server.cmd_batch(
+        ...     [
+        ...         ("display-message", "-p", "one"),
+        ...         ("display-message", "-p", "two"),
+        ...     ]
+        ... )
+        >>> [result.stdout for result in results]
+        [['one'], ['two']]
+
+        A failure is reported on its own result, not raised:
+
+        >>> failed = server.cmd_batch([("kill-window", "-t", "@99999")])[0]
+        >>> failed.ok
+        False
+
+        .. versionadded:: 0.63
+        """
+        return dispatch_batch(self.engine, commands)
 
     @contextlib.contextmanager
     def using(self, engine: TmuxEngine) -> t.Iterator[Server]:
