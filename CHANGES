@@ -125,6 +125,13 @@ engine fails closed, raising {exc}`~libtmux.exc.UnscriptedCommand` for a command
 it never recorded. The `recording_server` pytest fixture provides a server that
 records, which doubles as a spy over the tmux commands your code issued.
 
+Engines resolve by name through {func}`~libtmux.engines.registry.create_engine`,
+with {func}`~libtmux.engines.registry.available_engines` listing what is
+registered. A packaged engine joins that list by advertising itself in the
+`libtmux.engines` entry-point group, which is read on first use rather than at
+import. A distribution whose engine fails to load is skipped rather than
+breaking resolution for every other engine.
+
 {meth}`Server.using() <libtmux.Server.using>` swaps the engine for a block and
 restores it afterwards, including when the block raises; scopes nest.
 {meth}`Server.recording() <libtmux.Server.recording>` builds on it to record
