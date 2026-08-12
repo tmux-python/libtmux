@@ -366,26 +366,105 @@ class CommandResult:
         repr=False,
     )
 
+    @property
+    def ok(self) -> bool:
+        """Whether tmux accepted the command.
+
+        Returns
+        -------
+        bool
+            ``True`` when :attr:`returncode` is zero.
+
+        Examples
+        --------
+        >>> CommandResult(cmd=("tmux", "list-sessions")).ok
+        True
+        >>> CommandResult(cmd=("tmux", "kill-window"), returncode=1).ok
+        False
+        """
+        return self.returncode == 0
+
+    def raise_for_status(self) -> CommandResult:
+        """Raise when tmux rejected the command, otherwise return self.
+
+        Engines report a tmux-side failure as data so a caller can inspect it.
+        This turns that data back into an exception at the point a caller would
+        rather not continue, and returns ``self`` so it chains.
+
+        Returns
+        -------
+        CommandResult
+            This result, when :attr:`ok`.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            tmux exited non-zero. The message carries tmux's own stderr.
+
+        Examples
+        --------
+        >>> result = CommandResult(cmd=("tmux", "list-sessions"), stdout=("a",))
+        >>> result.raise_for_status().stdout
+        ('a',)
+
+        The message names the tmux subcommand, not a connection flag:
+
+        >>> CommandResult(
+        ...     cmd=("tmux", "-Lmysocket", "kill-window", "-t", "@9"),
+        ...     stderr=("can't find window @9",),
+        ...     returncode=1,
+        ... ).raise_for_status()
+        Traceback (most recent call last):
+        ...
+        libtmux.exc.LibTmuxException: kill-window: can't find window @9
+        """
+        if self.ok:
+            return self
+        from libtmux import exc
+
+        detail = " ".join(self.stderr) or f"exited {self.returncode}"
+        # cmd is the full argv: binary, then client-global flags, then the
+        # subcommand. Skip the flags the way tmux's own getopt does, so the
+        # message names "kill-window" rather than "-Lmysocket".
+        command_argv = split_direct_argv(self.cmd[1:]).command_argv
+        subcommand = command_argv[0] if command_argv else "tmux"
+        msg = f"{subcommand}: {detail}"
+        raise exc.LibTmuxException(msg)
+
 
 @t.runtime_checkable
 class TmuxEngine(t.Protocol):
     """A synchronous executor of tmux commands.
 
     Structural: an object is an engine when it has ``run`` and ``run_batch``.
+    Writing both is only necessary when you do *not* inherit — subclassing
+    :class:`TmuxEngine` supplies :meth:`run_batch`, so a stateless engine needs
+    just :meth:`run`.
 
     Examples
     --------
+    Inheriting is the short way:
+
     >>> from libtmux.engines import CommandRequest, CommandResult, TmuxEngine
-    >>> class EchoEngine:
+    >>> class EchoEngine(TmuxEngine):
     ...     def run(self, request):
     ...         return CommandResult(cmd=("tmux", *request.args), stdout=("ok",))
+    >>> EchoEngine().run(CommandRequest.from_args("list-sessions")).stdout
+    ('ok',)
+    >>> EchoEngine().run_batch([CommandRequest.from_args("list-sessions")])
+    [CommandResult(cmd=('tmux', 'list-sessions'), stdout=('ok',), stderr=(),
+    returncode=0)]
+
+    Duck typing works too, but then both methods are yours to write:
+
+    >>> class Structural:
+    ...     def run(self, request):
+    ...         return CommandResult(cmd=("tmux", *request.args))
     ...
     ...     def run_batch(self, requests):
     ...         return [self.run(request) for request in requests]
-    >>> isinstance(EchoEngine(), TmuxEngine)
+    >>> isinstance(Structural(), TmuxEngine)
     True
-    >>> EchoEngine().run(CommandRequest.from_args("list-sessions")).stdout
-    ('ok',)
     """
 
     def run(self, request: CommandRequest) -> CommandResult:
@@ -395,10 +474,72 @@ class TmuxEngine(t.Protocol):
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
         """Execute requests in order, returning one result per request.
 
-        Persistent-connection engines override this to pipeline; stateless
-        engines implement it as a loop over :meth:`run`.
+        Defaults to a loop over :meth:`run`, which is correct for any stateless
+        engine. Persistent-connection engines override it to pipeline.
+
+        Parameters
+        ----------
+        requests : Sequence[CommandRequest]
+            Requests to run, in order.
+
+        Returns
+        -------
+        list[CommandResult]
+            One result per request.
         """
+        return [self.run(request) for request in requests]
+
+
+@t.runtime_checkable
+class AsyncTmuxEngine(t.Protocol):
+    """An asynchronous executor of tmux commands.
+
+    The async sibling of :class:`TmuxEngine`, declared here so an async engine
+    has a type to satisfy from the day it is written rather than after the fact.
+    {class}`~libtmux.Server` is synchronous and does **not** accept one; it is
+    for callers driving tmux on an event loop directly, and for the engines that
+    will hold a persistent ``tmux -C`` connection.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> from libtmux.engines import AsyncTmuxEngine, CommandRequest, CommandResult
+    >>> class AsyncEcho(AsyncTmuxEngine):
+    ...     async def run(self, request):
+    ...         return CommandResult(cmd=("tmux", *request.args), stdout=("ok",))
+    >>> async def main():
+    ...     engine = AsyncEcho()
+    ...     result = await engine.run(CommandRequest.from_args("list-sessions"))
+    ...     batch = await engine.run_batch([CommandRequest.from_args("list-panes")])
+    ...     return result.stdout, len(batch)
+    >>> asyncio.run(main())
+    (('ok',), 1)
+    """
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        """Execute one tmux command and return its structured result."""
         ...
+
+    async def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Execute requests in order, returning one result per request.
+
+        Defaults to an awaited loop over :meth:`run`. A persistent-connection
+        engine overrides it to pipeline without waiting for each reply.
+
+        Parameters
+        ----------
+        requests : Sequence[CommandRequest]
+            Requests to run, in order.
+
+        Returns
+        -------
+        list[CommandResult]
+            One result per request.
+        """
+        return [await self.run(request) for request in requests]
 
 
 @t.runtime_checkable

@@ -55,3 +55,10 @@ single place either is computed.
 .. automodule:: libtmux.engines.subprocess
    :members:
 ```
+
+## Recording and replay
+
+```{eval-rst}
+.. automodule:: libtmux.engines.record
+   :members:
+```

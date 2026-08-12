@@ -39,6 +39,7 @@ same request regardless of which tmux server it targets.
 from __future__ import annotations
 
 from libtmux.engines.base import (
+    AsyncTmuxEngine,
     CommandRequest,
     CommandResult,
     CommandSeparator,
@@ -52,18 +53,23 @@ from libtmux.engines.base import (
     split_direct_argv,
 )
 from libtmux.engines.connection import ServerConnection
+from libtmux.engines.record import RecordingEngine, ReplayEngine, Tape
 from libtmux.engines.subprocess import SubprocessEngine
 
 __all__ = (
+    "AsyncTmuxEngine",
     "CommandRequest",
     "CommandResult",
     "CommandSeparator",
     "DirectArgv",
+    "RecordingEngine",
+    "ReplayEngine",
     "ServerConnection",
     "SubprocessEngine",
     "SupportsCommandLine",
     "SupportsConnection",
     "SupportsTmuxVersion",
+    "Tape",
     "TmuxEngine",
     "encode_direct_argv",
     "is_command_separator",

@@ -17,7 +17,7 @@ import warnings
 
 from . import exc
 from ._compat import LooseVersion
-from .engines.base import CommandRequest, SupportsCommandLine
+from .engines.base import CommandRequest, SupportsCommandLine, split_direct_argv
 from .engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
@@ -395,6 +395,57 @@ class tmux_cmd:
                     "tmux_stderr_len": len(self.stderr),
                 },
             )
+
+    @property
+    def ok(self) -> bool:
+        """Whether tmux accepted the command.
+
+        The same accessor :attr:`CommandResult.ok
+        <libtmux.engines.base.CommandResult.ok>` carries, so code reads the same
+        whether it holds an engine result or a wrapper's return value.
+
+        Returns
+        -------
+        bool
+            ``True`` when :attr:`returncode` is zero.
+
+        Examples
+        --------
+        >>> server.cmd("display-message", "-p", "hi").ok
+        True
+        """
+        return self.returncode == 0
+
+    def raise_for_status(self) -> tmux_cmd:
+        """Raise when tmux rejected the command, otherwise return self.
+
+        Returns
+        -------
+        tmux_cmd
+            This object, when :attr:`ok`.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.LibTmuxException`
+            tmux exited non-zero. The message carries tmux's own stderr.
+
+        Examples
+        --------
+        >>> server.cmd("display-message", "-p", "hi").raise_for_status().stdout
+        ['hi']
+
+        >>> server.cmd("kill-window", "-t", "@999").raise_for_status()
+        Traceback (most recent call last):
+        ...
+        libtmux.exc.LibTmuxException: kill-window: can't find window: @999
+        """
+        if self.ok:
+            return self
+        detail = " ".join(self.stderr) or f"exited {self.returncode}"
+        command_argv = split_direct_argv(tuple(self.cmd[1:])).command_argv
+        subcommand = command_argv[0] if command_argv else "tmux"
+        msg = f"{subcommand}: {detail}"
+        raise exc.LibTmuxException(msg)
 
     @property
     def process(self) -> subprocess.Popen[str]:
