@@ -1,0 +1,82 @@
+name: typescript
+
+on:
+  push:
+    branches: [master, ts]
+    paths: ['ts/**', '.github/workflows/typescript.yml']
+  pull_request:
+    paths: ['ts/**', '.github/workflows/typescript.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tmux-version: ['3.2a', '3.7b']
+    defaults:
+      run:
+        working-directory: ts
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      # The emitted-Node lane refuses to substitute the runner's default Node,
+      # so the floor is provisioned rather than assumed.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Point the emitted-Node lane at the provisioned Node 22
+        run: echo "LIBTMUX_NODE22=$(which node)" >> "$GITHUB_ENV"
+
+      - name: Setup tmux build cache for tmux ${{ matrix.tmux-version }}
+        id: tmux-build-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/tmux-builds/tmux-${{ matrix.tmux-version }}
+          key: tmux-${{ matrix.tmux-version }}
+
+      - name: Build tmux ${{ matrix.tmux-version }}
+        if: steps.tmux-build-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt install libevent-dev libncurses5-dev libtinfo-dev libutempter-dev bison
+          mkdir -p ~/tmux-builds ~/tmux-src
+          git clone https://github.com/tmux/tmux.git ~/tmux-src/tmux-${{ matrix.tmux-version }}
+          cd ~/tmux-src/tmux-${{ matrix.tmux-version }}
+          git checkout ${{ matrix.tmux-version }}
+          sh autogen.sh
+          ./configure --prefix=$HOME/tmux-builds/tmux-${{ matrix.tmux-version }} && make && make install
+
+      - name: Use tmux ${{ matrix.tmux-version }}
+        run: |
+          echo "$HOME/tmux-builds/tmux-${{ matrix.tmux-version }}/bin" >> "$GITHUB_PATH"
+
+      - run: tmux -V
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun run format:check
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run typecheck:tooling
+      - run: bun run typecheck:consumers
+      - run: bun run generate:check
+      - run: bun run parity
+      - run: bun run build
+      - run: bun run test:types
+      - run: bun run test:unit
+      - run: bun run test:integration
+      - run: bun run test:differential
+      - run: bun run test:node
+
