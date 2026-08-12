@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import subprocess
 import typing as t
-import warnings
 
 import pytest
 
@@ -97,25 +96,21 @@ def test_injected_engine_receives_target_flag() -> None:
     assert engine.requests[0].args == ("kill-window", "-t", "@3")
 
 
-def test_process_raises_on_engine_without_subprocess() -> None:
-    """``.process`` is unavailable when no OS process was forked."""
+def test_process_is_none_on_engine_without_subprocess() -> None:
+    """``.process`` is ``None`` when no OS process was forked.
+
+    ``tmux_cmd`` raised here, because it could only ever wrap a subprocess.
+    A :class:`~libtmux.engines.base.CommandResult` describes any engine, so it
+    reports the absence rather than treating it as an error.
+    """
     server = Server(socket_name="canned_process", engine=CannedEngine())
-    proc = server.cmd("list-sessions")
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        with pytest.raises(exc.LibTmuxException):
-            _ = proc.process
-
-    assert any(issubclass(entry.category, DeprecationWarning) for entry in caught)
+    assert server.cmd("list-sessions").process is None
 
 
 def test_process_is_popen_under_default_engine(session: Session) -> None:
-    """``.process`` still resolves to the Popen, with a DeprecationWarning."""
-    proc = session.server.cmd("display-message", "-p", "hi")
-
-    with pytest.deprecated_call():
-        process = proc.process
+    """``.process`` carries the Popen the default engine forked."""
+    process = session.server.cmd("display-message", "-p", "hi").process
 
     assert isinstance(process, subprocess.Popen)
     assert process.returncode == 0

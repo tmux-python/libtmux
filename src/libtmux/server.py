@@ -24,6 +24,7 @@ from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_c
 from libtmux.constants import OptionScope
 from libtmux.engines.base import (
     CommandRequest,
+    CommandResult,
     SupportsConnection,
     TmuxEngine,
 )
@@ -583,13 +584,13 @@ class Server(
         cmd: str,
         *args: t.Any,
         target: str | int | None = None,
-    ) -> tmux_cmd:
+    ) -> CommandResult:
         """Execute tmux command respective of socket name and file, return output.
 
         Examples
         --------
         >>> server.cmd('display-message', 'hi')
-        <libtmux.common.tmux_cmd object at ...>
+        CommandResult(cmd=[...], stdout=[], stderr=[], returncode=0)
 
         New session:
 
@@ -639,7 +640,7 @@ class Server(
             ["-t", str(target), *args] if target is not None else [*args]
         )
 
-        return tmux_cmd(cmd, *cmd_args, engine=self.engine)
+        return tmux_cmd(cmd, *cmd_args, engine=self.engine).result
 
     @property
     def attached_sessions(self) -> list[Session]:
@@ -846,7 +847,7 @@ class Server(
 
         if background:
             return None
-        return proc.stdout
+        return list(proc.stdout)
 
     def wait_for(
         self,
@@ -1027,7 +1028,7 @@ class Server(
 
         raise_if_stderr(proc, "list-keys")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def list_commands(self, *, command_name: str | None = None) -> list[str]:
         """List tmux commands via ``$ tmux list-commands``.
@@ -1057,7 +1058,7 @@ class Server(
 
         raise_if_stderr(proc, "list-commands")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def lock_server(self) -> None:
         """Lock the tmux server via ``$ tmux lock-server``.
@@ -1143,7 +1144,7 @@ class Server(
         raise_if_stderr(proc, "server-access")
 
         if list_access:
-            return proc.stdout
+            return list(proc.stdout)
         return None
 
     def refresh_client(
@@ -1784,7 +1785,7 @@ class Server(
 
         raise_if_stderr(proc, "show-messages")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     @t.overload
     def display_message(
@@ -1957,7 +1958,7 @@ class Server(
             )
 
         if get_text:
-            return proc.stdout
+            return list(proc.stdout)
 
         return None
 
@@ -2002,7 +2003,7 @@ class Server(
 
         raise_if_stderr(proc, "show-prompt-history")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def clear_prompt_history(
         self,
@@ -2280,7 +2281,7 @@ class Server(
 
         raise_if_stderr(proc, "list-buffers")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def if_shell(
         self,
@@ -2391,7 +2392,7 @@ class Server(
 
         raise_if_stderr(proc, "list-clients")
 
-        return proc.stdout
+        return list(proc.stdout)
 
     def switch_client(self, target_session: str) -> None:
         """Switch tmux client.

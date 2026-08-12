@@ -1153,7 +1153,7 @@ def fetch_objs(
 
     proc = tmux_cmd(*tmux_cmds, engine=server.engine)
 
-    raise_if_stderr(proc, list_cmd)
+    raise_if_stderr(proc.result, list_cmd)
 
     outputs = [parse_output(line, list_cmd, tmux_version) for line in proc.stdout]
 

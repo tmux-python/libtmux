@@ -260,7 +260,7 @@ def test_hooks_dataclass(
         == "set-option -g status-left-style bg=blue"
     )
 
-    hooks = Hooks.from_stdout(global_out + session_out + window_out + pane_out)
+    hooks = Hooks.from_stdout([*global_out, *session_out, *window_out, *pane_out])
 
     assert hooks.session_renamed.as_list() == [
         "set-option -g status-left-style bg=red",

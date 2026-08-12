@@ -127,7 +127,7 @@ Every object has a `.cmd()` escape hatch that honors socket name and path:
 ```python
 >>> server = Server(socket_name='libtmux_doctest')
 >>> server.cmd('display-message', 'hello world')
-<libtmux...>
+CommandResult(cmd=[...], ...)
 ```
 
 Create a new session:
