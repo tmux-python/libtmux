@@ -126,6 +126,14 @@ lookup instead of re-walking `$PATH` for every command.
 
 See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
 
+#### Async engines can run commands
+
+{class}`~libtmux.engines.asyncio.AsyncSubprocessEngine` awaits the tmux binary
+rather than blocking on it, and {func}`~libtmux.common.adispatch` runs a command
+through any {class}`~libtmux.engines.base.AsyncTmuxEngine` with the same
+adaptations the synchronous path applies. {class}`~libtmux.Server` remains
+synchronous and refuses an async engine, naming the reason.
+
 #### A persistent-connection engine is buildable on the public API
 
 {func}`~libtmux.engines.base.render_control_line` and
