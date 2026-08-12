@@ -39,9 +39,19 @@ if t.TYPE_CHECKING:
 class ControlModeEngine(TmuxEngine):
     """Execute tmux commands over one persistent ``tmux -C`` connection.
 
-    tmux replies to each command with a ``%begin`` / ``%end`` block; anything
-    else beginning with ``%`` is an asynchronous notification this engine
-    ignores.
+    tmux replies to each command with a ``%begin`` / ``%end`` block, and pushes
+    asynchronous notifications between them. Both arrive on the same stream, so
+    reading a reply necessarily walks past any notification that landed first --
+    which is why collecting them costs nothing extra.
+
+    Delivery is therefore poll-driven: a notification surfaces the next time a
+    command runs. Pushing them the instant they arrive needs a reader thread,
+    and that is the part a production engine adds.
+
+    Attributes
+    ----------
+    notifications : list[str]
+        Raw ``%output`` lines seen while reading replies, oldest first.
     """
 
     def __init__(self, connection: ServerConnection) -> None:
@@ -63,6 +73,7 @@ class ControlModeEngine(TmuxEngine):
             text=True,
             bufsize=1,
         )
+        self.notifications: list[str] = []
         self._read_block()  # tmux greets with a handshake block
 
     def _read_block(self) -> tuple[list[str], int]:
@@ -82,6 +93,11 @@ class ControlModeEngine(TmuxEngine):
                 break
             elif line.startswith("%end"):
                 break
+            elif line.startswith("%output"):
+                # Notifications arrive interleaved with replies. Keeping them
+                # rather than discarding them is the whole cost of delivery --
+                # each dispatch drains whatever tmux pushed since the last one.
+                self.notifications.append(line)
             elif not line.startswith("%"):
                 lines.append(line)
         return lines, returncode
@@ -247,3 +263,37 @@ def test_pane_output_arrives_as_notifications(session: Session) -> None:
 
     assert payloads, "an attached control client should be pushed pane output"
     assert any(b"MARKER-OK" in payload for payload in payloads)
+
+
+def test_waiting_for_pane_output_needs_no_reader_thread(
+    control_mode_server: Server,
+) -> None:
+    """Poll for a pane's output by issuing commands, draining pushes as you go.
+
+    Each dispatch reads past whatever tmux pushed since the last one, so a cheap
+    command doubles as a drain. That is enough to wait for output without any
+    concurrency; a push API that delivers the instant output appears is what
+    would need a thread.
+    """
+    engine = control_mode_server.engine
+    assert isinstance(engine, ControlModeEngine)
+    session = control_mode_server.sessions[0]
+    pane = session.active_window.active_pane
+    assert pane is not None
+
+    control_mode_server.cmd(
+        "send-keys", "-t", pane.pane_id, "printf 'FOUND-IT\n'", "Enter"
+    )
+
+    deadline = time.time() + 5
+    found = False
+    while time.time() < deadline and not found:
+        control_mode_server.cmd("display-message", "-p", "tick")
+        found = any(
+            b"FOUND-IT" in unescape_control_output(line.split(" ", 2)[-1])
+            for line in engine.notifications
+        )
+        if not found:
+            time.sleep(0.05)
+
+    assert found, "pane output should surface through collected notifications"
