@@ -84,7 +84,7 @@ class RecordingEngine(TmuxEngine):
     >>> recorder.tape[0].args
     ('display-message', '-p', 'recorded')
     >>> recorder.tape[0].result.stdout
-    ('recorded',)
+    ['recorded']
     """
 
     def __init__(self, inner: TmuxEngine) -> None:
