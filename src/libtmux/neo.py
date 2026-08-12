@@ -11,7 +11,7 @@ from collections.abc import Iterable
 
 from libtmux import exc
 from libtmux._compat import LooseVersion
-from libtmux.common import get_version, raise_if_stderr, tmux_cmd
+from libtmux.common import dispatch, get_version, raise_if_stderr
 from libtmux.engines.base import SupportsTmuxVersion
 from libtmux.formats import FORMAT_SEPARATOR
 
@@ -1151,9 +1151,9 @@ def fetch_objs(
             },
         )
 
-    proc = tmux_cmd(*tmux_cmds, engine=server.engine)
+    proc = dispatch(server.engine, *tmux_cmds)
 
-    raise_if_stderr(proc.result, list_cmd)
+    raise_if_stderr(proc, list_cmd)
 
     outputs = [parse_output(line, list_cmd, tmux_version) for line in proc.stdout]
 
