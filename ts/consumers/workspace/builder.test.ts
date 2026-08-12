@@ -11,7 +11,7 @@ import {
 } from "../../src/_internal/test/run_root.js";
 import { TestServer } from "../../src/_internal/test/test_server.js";
 import { Server } from "../../src/server.js";
-import { buildWorkspace } from "./builder.js";
+import { applyWorkspace } from "./builder.js";
 import { parseWorkspace } from "./config.js";
 
 function serverFor(fixture: TestServer): Server {
@@ -84,7 +84,7 @@ describe("workspace builder", () => {
   test("builds the described session without a stray leading window", async () => {
     await withServer(async (fixture) => {
       const server = serverFor(fixture);
-      const session = await buildWorkspace(server, parseWorkspace(WORKSPACE));
+      const session = await applyWorkspace(server, parseWorkspace(WORKSPACE));
 
       expect(session.name).toBe("project");
 
@@ -100,10 +100,137 @@ describe("workspace builder", () => {
     });
   }, 60_000);
 
+  test("re-applying the same workspace converges instead of duplicating", async () => {
+    await withServer(async (fixture) => {
+      const server = serverFor(fixture);
+      const workspace = parseWorkspace(WORKSPACE);
+      const first = await applyWorkspace(server, workspace);
+      const second = await applyWorkspace(server, workspace);
+
+      expect(second.id).toBe(first.id);
+
+      const snapshot = await server.snapshot();
+      expect(snapshot.sessions.count({ name: "project" })).toBe(1);
+      expect(snapshot.windows.count({ session: { is: { name: "project" } } })).toBe(2);
+      expect(snapshot.panes.count({ window: { is: { name: "editor" } } })).toBe(2);
+      expect(snapshot.panes.count({ window: { is: { name: "server" } } })).toBe(1);
+    });
+  }, 90_000);
+
+  test("converges a running session down to a smaller workspace", async () => {
+    await withServer(async (fixture) => {
+      const server = serverFor(fixture);
+      await applyWorkspace(server, parseWorkspace(WORKSPACE));
+      await applyWorkspace(
+        server,
+        parseWorkspace(
+          'session_name: project\nwindows:\n  - window_name: editor\n    panes:\n      - "true"\n',
+        ),
+      );
+
+      const snapshot = await server.snapshot();
+      const windows = snapshot.windows.where({ session: { is: { name: "project" } } });
+
+      expect(windows.count()).toBe(1);
+      expect(windows.one().name).toBe("editor");
+      expect(snapshot.panes.count({ window: { is: { name: "editor" } } })).toBe(1);
+    });
+  }, 90_000);
+
+  test("converges a running session up to a larger workspace", async () => {
+    await withServer(async (fixture) => {
+      const server = serverFor(fixture);
+      await applyWorkspace(
+        server,
+        parseWorkspace(
+          'session_name: project\nwindows:\n  - window_name: editor\n    panes:\n      - "true"\n',
+        ),
+      );
+      await applyWorkspace(server, parseWorkspace(WORKSPACE));
+
+      const snapshot = await server.snapshot();
+      expect(snapshot.windows.count({ session: { is: { name: "project" } } })).toBe(2);
+      expect(snapshot.panes.count({ window: { is: { name: "editor" } } })).toBe(2);
+    });
+  }, 90_000);
+
+  test("honours the layout the workspace names", async () => {
+    await withServer(async (fixture) => {
+      const server = serverFor(fixture);
+      const source = (layout: string) =>
+        parseWorkspace(
+          `session_name: laid-out\nwindows:\n  - window_name: main\n    layout: ${layout}\n    panes:\n      - "true"\n      - "true"\n`,
+        );
+
+      await applyWorkspace(server, source("even-horizontal"));
+      const horizontal = (await server.snapshot()).windows.one({ name: "main" }).format
+        .window_layout;
+
+      await applyWorkspace(server, source("even-vertical"));
+      const vertical = (await server.snapshot()).windows.one({ name: "main" }).format.window_layout;
+
+      expect(horizontal).not.toBeNull();
+      expect(vertical).not.toBe(horizontal);
+    });
+  }, 90_000);
+
+  test("focuses the window and pane the workspace marks", async () => {
+    await withServer(async (fixture) => {
+      const server = serverFor(fixture);
+      await applyWorkspace(
+        server,
+        parseWorkspace(
+          [
+            "session_name: focused",
+            "windows:",
+            "  - window_name: first",
+            "    panes:",
+            '      - "true"',
+            "  - window_name: second",
+            "    focus: true",
+            "    panes:",
+            '      - "true"',
+            '      - shell_command: "true"',
+            "        focus: true",
+          ].join("\n"),
+        ),
+      );
+
+      const snapshot = await server.snapshot();
+      const active = snapshot.windows.one({
+        active: "1",
+        session: { is: { name: "focused" } },
+      });
+      expect(active.name).toBe("second");
+      expect(active.panes.one({ active: "1" }).index).toBe("1");
+    });
+  }, 90_000);
+
+  test("runs shell_command_before ahead of every pane's own commands", async () => {
+    await withServer(async (fixture) => {
+      const server = serverFor(fixture);
+      const workspace = parseWorkspace(
+        [
+          "session_name: seeded",
+          "windows:",
+          "  - window_name: main",
+          "    shell_command_before: export LIBTMUX_SEED=1",
+          "    panes:",
+          '      - "true"',
+          '      - "true"',
+        ].join("\n"),
+      );
+
+      await applyWorkspace(server, workspace);
+      const snapshot = await server.snapshot();
+      expect(snapshot.panes.count({ window: { is: { name: "main" } } })).toBe(2);
+    });
+  }, 90_000);
+
   test("applies window options from the workspace", async () => {
     await withServer(async (fixture) => {
       const server = serverFor(fixture);
-      const session = await buildWorkspace(server, parseWorkspace(WORKSPACE));
+      const session = await applyWorkspace(server, parseWorkspace(WORKSPACE));
       const snapshot = await server.snapshot();
       const server_window = snapshot.windows
         .filter((window) => window.sessionId === session.id)

@@ -222,7 +222,8 @@ pane moves, so the session is resolved through `$TMUX_PANE`.
 Two working consumers live in this repository:
 
 - `consumers/mcp` — an MCP server exposing tmux through this library.
-- `consumers/workspace` — a tmuxp-shaped workspace builder.
+- `consumers/workspace` — a tmuxp-shaped workspace builder. Applying a
+  workspace twice converges the running session rather than duplicating it.
 
 ## Examples
 

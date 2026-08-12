@@ -22,6 +22,7 @@ const windowSchema = z.object({
   layout: z.string().optional(),
   options: z.record(z.string(), z.string()).optional(),
   panes: z.array(paneSchema).default([]),
+  shell_command_before: z.union([z.string(), z.array(z.string())]).optional(),
   start_directory: z.string().optional(),
   window_name: z.string().optional(),
 });
@@ -42,12 +43,27 @@ export function parseWorkspace(source: string): Workspace {
   return workspaceSchema.parse(Bun.YAML.parse(source));
 }
 
-/** Normalize a pane entry to the commands it should run. */
-export function paneCommands(pane: WorkspacePane): readonly string[] {
-  if (typeof pane === "string") return [pane];
-  const command = pane.shell_command;
-  if (command === undefined) return [];
-  return typeof command === "string" ? [command] : command;
+function asCommands(value: string | readonly string[] | undefined): readonly string[] {
+  if (value === undefined) return [];
+  return typeof value === "string" ? [value] : value;
+}
+
+/**
+ * Normalize a pane entry to the commands it should run, in order.
+ *
+ * A window's `shell_command_before` runs in every one of its panes, ahead of
+ * that pane's own commands, which is how tmuxp seeds a common environment.
+ */
+export function paneCommands(pane: WorkspacePane, window?: WorkspaceWindow): readonly string[] {
+  const own = typeof pane === "string" ? [pane] : asCommands(pane.shell_command);
+  return [...asCommands(window?.shell_command_before), ...own].filter(
+    (command) => command.length > 0,
+  );
+}
+
+/** Whether a pane entry asked to be the focused one. */
+export function paneWantsFocus(pane: WorkspacePane): boolean {
+  return typeof pane !== "string" && pane.focus === true;
 }
 
 /** A pane's start directory, falling back to its window's and then the session's. */
