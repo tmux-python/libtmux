@@ -16,7 +16,6 @@ export {
 } from "./selection.js";
 
 export type {
-  AbortLike,
   CaptureOptions,
   ChooseTreeOptions,
   HookScope,
@@ -34,26 +33,6 @@ export type {
   SendKeysOptions,
   ServerSnapshot,
   SplitOptions,
-  TmuxClientDetachedEvent,
-  TmuxClientSessionChangedEvent,
-  TmuxEvent,
-  TmuxEventStream,
-  TmuxExitEvent,
-  TmuxExtendedOutputEvent,
-  TmuxLayoutChangeEvent,
-  TmuxMessageEvent,
-  TmuxOutputEvent,
-  TmuxPaneFlowEvent,
-  TmuxPaneModeChangedEvent,
-  TmuxPasteBufferEvent,
-  TmuxSessionEvent,
-  TmuxSessionWindowChangedEvent,
-  TmuxSessionsChangedEvent,
-  TmuxUnknownEvent,
-  TmuxWindowLifecycleEvent,
-  TmuxWindowPaneChangedEvent,
-  TmuxWindowRenamedEvent,
-  WatchOptions,
   WindowTarget,
 } from "./types.js";
 

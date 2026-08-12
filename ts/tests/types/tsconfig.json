@@ -17,7 +17,6 @@
     "task4_internal.test.ts",
     "selection.test.ts",
     "where.test.ts",
-    "watch.test.ts",
     "stress.test.ts"
   ]
 }

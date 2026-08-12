@@ -447,10 +447,7 @@ void import("libtmux/_internal/codec/guard_codec.js");
         `${JSON.stringify(
           {
             compilerOptions: {
-              // Server.watch returns an async disposable, so a consumer needs
-              // the lib that declares Symbol.asyncDispose. Requiring it is the
-              // cost of shipping `await using`; the README states it.
-              lib: ["ES2024", "ESNext.Disposable"],
+              lib: ["ES2024"],
               module: "NodeNext",
               moduleResolution: "NodeNext",
               noEmit: true,
