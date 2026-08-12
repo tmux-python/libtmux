@@ -14,6 +14,8 @@ boundary rather than data.
 
 from __future__ import annotations
 
+import re
+import shlex
 import typing as t
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -31,6 +33,10 @@ _GLOBAL_OPTIONS_WITH_VALUE = frozenset({"c", "f", "L", "S", "T"})
 _GLOBAL_OPTIONS_WITHOUT_VALUE = frozenset(
     {"2", "8", "C", "D", "d", "h", "l", "N", "q", "u", "U", "v", "V"},
 )
+
+
+#: tmux escapes a byte in ``%output`` as a backslash plus three octal digits.
+_CONTROL_OCTAL = re.compile(rb"\\([0-7]{3})")
 
 
 class CommandSeparator(str):
@@ -227,6 +233,73 @@ def encode_direct_argv(argv: Sequence[str]) -> tuple[str, ...]:
     """
     direct = split_direct_argv(argv)
     return (*direct.global_args, *_encode_command_argv(direct.command_argv))
+
+
+def _quote_control_token(token: str) -> str:
+    r"""Quote one literal token for tmux's line-oriented control parser."""
+    if "\0" in token:
+        msg = "tmux command arguments cannot contain NUL"
+        raise ValueError(msg)
+    if "\n" in token or "\r" in token:
+        return "".join(f"\\{byte:03o}" for byte in token.encode())
+    return shlex.quote(token)
+
+
+def render_control_line(argv: Sequence[str]) -> str:
+    r"""Render a tmux argv as a control-mode (``tmux -C``) command line.
+
+    Literal tokens are quoted for the control parser. Tokens containing a line
+    delimiter are UTF-8 octal encoded so one request remains one physical line.
+    Only a :class:`CommandSeparator` is left bare.
+
+    Examples
+    --------
+    >>> render_control_line(("rename-window", "-t", "@1", "a b"))
+    "rename-window -t @1 'a b'"
+    >>> render_control_line(
+    ...     ("rename-window", "a", CommandSeparator(";"), "kill-window", "@2")
+    ... )
+    'rename-window a ; kill-window @2'
+    >>> "\n" not in render_control_line(("display-message", "first\nsecond"))
+    True
+    """
+    return " ".join(
+        str(token) if is_command_separator(token) else _quote_control_token(token)
+        for token in argv
+    )
+
+
+def unescape_control_output(payload: str) -> bytes:
+    r"""Decode a control-mode ``%output`` payload back to the bytes the pane wrote.
+
+    tmux does not forward pane output verbatim: in a ``%output`` notification it
+    writes every non-printable byte -- and the backslash itself -- as a backslash
+    followed by three octal digits. A reader that scans for raw bytes must undo
+    this first, or it can never match: an ``ESC`` (``0x1b``) arrives on the wire
+    as the four *characters* ``\``, ``0``, ``3``, ``3``.
+
+    Bytes tmux left alone pass through untouched, so feeding this an already-raw
+    payload is harmless.
+
+    Examples
+    --------
+    Printable output is returned as-is:
+
+    >>> unescape_control_output("hello world")
+    b'hello world'
+
+    An escape sequence tmux octal-escaped comes back as real bytes:
+
+    >>> unescape_control_output(r"\033]3008;state=idle\033\134")
+    b'\x1b]3008;state=idle\x1b\\'
+
+    Multi-byte UTF-8 survives the round trip:
+
+    >>> unescape_control_output(r"caf\303\251").decode()
+    'café'
+    """
+    raw = payload.encode("utf-8", "surrogateescape")
+    return _CONTROL_OCTAL.sub(lambda m: bytes((int(m.group(1), 8),)), raw)
 
 
 @dataclass(frozen=True)
