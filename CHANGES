@@ -45,7 +45,99 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
+### Breaking changes
+
+#### A bare `";"` argument is now literal data
+
+tmux reads a trailing `;` on a command argument as a command boundary, so a `;`
+passed to {meth}`Server.cmd() <libtmux.Server.cmd>` as a *separator* worked by
+relying on that parse. Arguments are now escaped, which fixes the data case
+(below) and makes the separator case explicit. Pass
+{class}`~libtmux.engines.base.CommandSeparator` where you mean a boundary:
+
+```python
+# Before
+server.cmd("send-keys", "-t", pane.pane_id, "-R", ";", "clear-history")
+
+# After
+from libtmux.engines import CommandSeparator
+
+server.cmd(
+    "send-keys", "-t", pane.pane_id, "-R",
+    CommandSeparator(";"),
+    "clear-history",
+)
+```
+
+See {ref}`migration-0-63-command-separator`.
+
+#### `tmux_cmd.process` deprecated
+
+{attr}`libtmux.common.tmux_cmd.process` is now a deprecated property. Reading it
+warns, and it raises {exc}`~libtmux.exc.LibTmuxException` under an engine that
+forks no process. Use `returncode`, `stdout`, and `stderr` on the result, which
+are unchanged.
+
+#### `raise_if_dead()` no longer echoes tmux's error
+
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` previously let
+tmux write its message straight to the terminal. It now captures that text onto
+the raised {exc}`subprocess.CalledProcessError`. The exception type is
+unchanged.
+
+### What's new
+
+#### Pluggable command engines
+
+Every tmux command libtmux runs now goes through an *engine* — an object that
+takes a rendered argv and returns a structured result. The default,
+{class}`~libtmux.engines.subprocess.SubprocessEngine`, forks the tmux binary
+exactly as before, so existing code is unaffected.
+
+Pass `engine=` to {class}`~libtmux.Server` and every command on that server runs
+through your object instead. {class}`~libtmux.engines.base.TmuxEngine` is a
+{class}`typing.Protocol`, so any object with `run()` and `run_batch()` qualifies
+— there is no base class to inherit. That makes it possible to drive libtmux
+against a recorded or in-memory tmux with no server running, and it is the seam
+the control-mode, asyncio, and native-protocol engines will plug into.
+
+An engine that names no tmux server of its own adopts the server's connection,
+so injecting one into a socket-scoped {class}`~libtmux.Server` cannot silently
+dispatch to the ambient tmux server. Engines that name a server keep it.
+
+{class}`~libtmux.engines.connection.ServerConnection` is now the single place
+the tmux binary and the `-L`/`-S`/`-f`/`-2`/`-8` flags are computed; four
+separate copies previously disagreed about which flags to emit. It is derived
+from the server's public attributes on each use, so reassigning `socket_name`
+takes effect on the next command, and it memoizes its {func}`shutil.which`
+lookup instead of re-walking `$PATH` for every command.
+
+See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
+
+### Fixes
+
+#### A trailing `;` in a command argument is no longer swallowed
+
+`pane.cmd("send-keys", "echo hello;")` sent `echo hello` — tmux consumed the
+final `;` as a command boundary and the character never reached the pane.
+Arguments are now escaped for tmux's parser, so the `;` arrives as typed.
+
+#### Listing queries honor `config_file` and `colors`
+
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` and the listing
+queries behind {attr}`~libtmux.Server.sessions` built their own connection flags
+and emitted only `-L`/`-S`, so a server constructed with `config_file=` or
+`colors=` passed those flags on some commands and not others. All paths now
+share one connection. A `colors=` value other than `256` or `88` raises
+{exc}`~libtmux.exc.UnknownColorOption` on those paths as well.
+
 ### Documentation
+
+#### Engines guide and API reference
+
+{ref}`engines` covers what an engine is, writing one, the optional capability
+protocols, and explicit command separators. {ref}`engines-api` documents the
+module.
 
 #### Cleaner `from_env` examples (#719)
 

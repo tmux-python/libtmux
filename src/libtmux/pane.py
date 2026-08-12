@@ -23,6 +23,7 @@ from libtmux.constants import (
     PaneDirection,
     ResizeAdjustmentDirection,
 )
+from libtmux.engines.base import CommandSeparator
 from libtmux.formats import FORMAT_SEPARATOR
 from libtmux.hooks import HooksMixin
 from libtmux.neo import Obj, fetch_obj
@@ -2613,7 +2614,9 @@ class Pane(
         Sends ``send-keys -R`` and ``clear-history`` to the pane in one
         targeted tmux command sequence so output cannot land in the
         freshly-cleared grid between the terminal-state reset and the
-        history clear.
+        history clear. The boundary between the two is a
+        :class:`~libtmux.engines.base.CommandSeparator`, which marks it
+        structural: a plain ``";"`` argument is data, and reaches tmux escaped.
 
         Examples
         --------
@@ -2625,7 +2628,7 @@ class Pane(
             "-t",
             self.pane_id,
             "-R",
-            ";",
+            CommandSeparator(";"),
             "clear-history",
             "-t",
             self.pane_id,

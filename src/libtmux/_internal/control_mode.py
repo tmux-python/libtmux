@@ -62,23 +62,16 @@ class ControlMode:
         """Spawn control-mode client and wait for registration."""
         read_fd, self._write_fd = os.pipe()
 
-        tmux_bin = self.server.tmux_bin or "tmux"
-
-        if self.server.socket_name is not None:
-            socket_args = ["-L", str(self.server.socket_name)]
-        elif self.server.socket_path is not None:
-            socket_args = ["-S", str(self.server.socket_path)]
-        else:
-            socket_args = []
-
-        cmd = [
-            tmux_bin,
-            *socket_args,
-            "-C",
-            "attach-session",
-            "-t",
-            str(self.session.session_id),
-        ]
+        # Same connection the object API dispatches on, so the control client
+        # attaches to the server Server.cmd() talks to.
+        cmd = list(
+            self.server.connection.argv(
+                "-C",
+                "attach-session",
+                "-t",
+                str(self.session.session_id),
+            ),
+        )
 
         try:
             try:
