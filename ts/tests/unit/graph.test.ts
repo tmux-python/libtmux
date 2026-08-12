@@ -21,7 +21,7 @@ import {
   isSelectionProjection,
   type ProjectionDescriptor,
 } from "../../src/_internal/graph/selection_projection.js";
-import type { ListCommand } from "../../src/neo.js";
+import type { ListCommand } from "../../src/_internal/codec/format_types.js";
 import { completeFormatRow, type MutableCompleteFormatRow } from "../support/graph_rows.js";
 
 function capture(): GraphCapture {

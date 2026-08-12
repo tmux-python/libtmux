@@ -7,7 +7,7 @@ import type {
   WindowRef,
 } from "../../common.js";
 import { QueryValidationError } from "../../exc.js";
-import type { ListCommand } from "../../neo.js";
+import type { ListCommand } from "../codec/format_types.js";
 import type { CompleteFormatRow } from "../codec/schemas.js";
 import type { WinlinkRef } from "./refs.js";
 

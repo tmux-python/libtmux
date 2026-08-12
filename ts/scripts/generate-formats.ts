@@ -11,7 +11,6 @@ import { renderGeneratedFormatSources } from "../src/_internal/codec/format_regi
 
 export interface GenerateFormatsOptions {
   readonly mode: "check" | "write";
-  readonly neoSourcePath: string;
   readonly outputDirectory: string;
   readonly parityManifestPath: string;
   readonly selectionSourcePath?: string;
@@ -43,8 +42,6 @@ const fixturePath = join(taskRoot, "tests/fixtures/python-0.62.0-format-fields.j
 const neoSourceUrl = "https://github.com/tmux-python/libtmux/blob/v0.62.0/src/libtmux/neo.py";
 const formatsSourceUrl =
   "https://github.com/tmux-python/libtmux/blob/v0.62.0/src/libtmux/formats.py";
-const generatedRegionStart = "// <libtmux-generated-format-types>";
-const generatedRegionEnd = "// </libtmux-generated-format-types>";
 const generatedWhereRegionStart = "// <libtmux-generated-where-types>";
 const generatedWhereRegionEnd = "// </libtmux-generated-where-types>";
 const criteriaModels = ["session", "window", "pane"] as const;
@@ -146,41 +143,8 @@ async function readFixture(): Promise<PythonFormatFixture> {
   return validateFixture(JSON.parse(await readFile(fixturePath, "utf8")) as unknown);
 }
 
-export function renderGeneratedNeoTypeRegion(
-  fields: readonly GeneratedFormatField[] = GENERATED_FORMAT_FIELDS,
-): string {
-  const union = fields.map(({ token }) => `  | ${JSON.stringify(token)}`);
-  return [
-    generatedRegionStart,
-    "export type FormatFieldName =",
-    ...union.map((line, index) => (index === union.length - 1 ? `${line};` : line)),
-    "",
-    "export interface Obj extends Readonly<Record<FormatFieldName, string | null>> {}",
-    generatedRegionEnd,
-  ].join("\n");
-}
-
 function occurrenceCount(source: string, needle: string): number {
   return source.split(needle).length - 1;
-}
-
-export function renderNeoWithGeneratedTypes(
-  source: string,
-  fields: readonly GeneratedFormatField[] = GENERATED_FORMAT_FIELDS,
-): string {
-  if (
-    occurrenceCount(source, generatedRegionStart) !== 1 ||
-    occurrenceCount(source, generatedRegionEnd) !== 1
-  ) {
-    throw new Error("neo.ts must contain exactly one generated format type region");
-  }
-  const start = source.indexOf(generatedRegionStart);
-  const endMarkerStart = source.indexOf(generatedRegionEnd, start);
-  if (start < 0 || endMarkerStart < start) {
-    throw new Error("neo.ts must contain exactly one generated format type region");
-  }
-  const end = endMarkerStart + generatedRegionEnd.length;
-  return `${source.slice(0, start)}${renderGeneratedNeoTypeRegion(fields)}${source.slice(end)}`;
 }
 
 function criteriaWireName(
@@ -290,7 +254,12 @@ export function renderSelectionWithGeneratedWhereTypes(
   return `${source.slice(0, start)}${renderGeneratedWhereTypeRegion(fields)}${source.slice(end)}`;
 }
 
-function evidenceApplicability(): Record<string, string> {
+const NOT_PORTED = "not-applicable: the symbol is not ported, so it has no evidence to record";
+
+function evidenceApplicability(ported = true): Record<string, string> {
+  if (!ported) {
+    return { declarationTest: NOT_PORTED, realTmuxScenario: NOT_PORTED, unitTest: NOT_PORTED };
+  }
   return {
     declarationTest: "required",
     realTmuxScenario: "not-applicable: symbol has no direct tmux I/O behavior",
@@ -300,15 +269,16 @@ function evidenceApplicability(): Record<string, string> {
 
 function canonicalPublicSymbol(input: {
   readonly adaptation: string | null;
-  readonly declarationTest: string;
+  readonly declarationTest: string | null;
   readonly kind: "class" | "constant" | "format-field" | "function";
   readonly owner: string;
   readonly python: string;
+  readonly reason?: string;
   readonly source: string;
-  readonly status: "adapted" | "implemented";
-  readonly typescript: string;
-  readonly typescriptSymbol: string;
-  readonly unitTest: string;
+  readonly status: "adapted" | "implemented" | "unsupported";
+  readonly typescript: string | null;
+  readonly typescriptSymbol?: string;
+  readonly unitTest: string | null;
 }): Record<string, unknown> {
   return {
     adaptation: input.adaptation,
@@ -317,13 +287,13 @@ function canonicalPublicSymbol(input: {
     owner: input.owner,
     python: input.python,
     realTmuxScenario: null,
-    reason: null,
+    reason: input.reason ?? null,
     source: input.source,
     status: input.status,
     typescript: input.typescript,
     unitTest: input.unitTest,
-    evidenceApplicability: evidenceApplicability(),
-    typescriptSymbols: [input.typescriptSymbol],
+    evidenceApplicability: evidenceApplicability(input.typescriptSymbol !== undefined),
+    typescriptSymbols: input.typescriptSymbol === undefined ? [] : [input.typescriptSymbol],
   };
 }
 
@@ -339,17 +309,17 @@ function task5PublicSymbols(
   const rows: Record<string, unknown>[] = [];
   rows.push(
     canonicalPublicSymbol({
-      adaptation:
-        "TypeScript Obj is a frozen complete raw row with 178 string-or-null fields and no live Server reference",
-      declarationTest: "tests/types/neo.test.ts",
+      adaptation: null,
+      reason:
+        "neo.py responsibilities are split across generated field metadata, the guard codec, graph normalization, and the handle classes; no neo module is published",
+      declarationTest: null,
       kind: "class",
       owner: "libtmux.neo",
       python: "libtmux.neo.Obj",
       source: neoSourceUrl,
-      status: "adapted",
-      typescript: "Obj",
-      typescriptSymbol: "./neo#value:Obj",
-      unitTest: "tests/unit/neo.test.ts",
+      status: "unsupported",
+      typescript: null,
+      unitTest: null,
     }),
   );
   for (const symbol of [
@@ -378,61 +348,62 @@ function task5PublicSymbols(
     rows.push(
       canonicalPublicSymbol({
         adaptation: null,
-        declarationTest: "tests/types/neo.test.ts",
+        reason:
+          "neo.py responsibilities are split across generated field metadata, the guard codec, graph normalization, and the handle classes; no neo module is published",
+        declarationTest: null,
         kind: "constant",
         owner: "libtmux.neo",
         python: `libtmux.neo.${symbol}`,
         source: neoSourceUrl,
-        status: "implemented",
-        typescript: symbol,
-        typescriptSymbol: `./neo#value:${symbol}`,
-        unitTest: "tests/unit/neo.test.ts",
+        status: "unsupported",
+        typescript: null,
+        unitTest: null,
       }),
     );
   }
   for (const { token } of fields) {
     rows.push(
       canonicalPublicSymbol({
-        adaptation:
-          "TypeScript complete rows preserve empty strings and use null only for unsupported fields",
-        declarationTest: "tests/types/neo.test.ts",
+        adaptation: null,
+        reason:
+          "neo.py responsibilities are split across generated field metadata, the guard codec, graph normalization, and the handle classes; no neo module is published",
+        declarationTest: null,
         kind: "format-field",
         owner: "libtmux.neo.Obj",
         python: `libtmux.neo.Obj.${token}`,
         source: neoSourceUrl,
-        status: "adapted",
-        typescript: `Obj.${token}`,
-        typescriptSymbol: `./neo#instance:Obj.${token}`,
-        unitTest: "tests/unit/neo.test.ts",
+        status: "unsupported",
+        typescript: null,
+        unitTest: null,
       }),
     );
   }
   rows.push(
     canonicalPublicSymbol({
-      adaptation:
-        "getOutputFormat returns an immutable privately branded guarded parse plan selected from a raw daemon version",
-      declarationTest: "tests/types/neo.test.ts",
+      adaptation: null,
+      reason:
+        "neo.py responsibilities are split across generated field metadata, the guard codec, graph normalization, and the handle classes; no neo module is published",
+      declarationTest: null,
       kind: "function",
       owner: "libtmux.neo",
       python: "libtmux.neo.get_output_format",
       source: neoSourceUrl,
-      status: "adapted",
-      typescript: "getOutputFormat",
-      typescriptSymbol: "./neo#value:getOutputFormat",
-      unitTest: "tests/unit/neo.test.ts",
+      status: "unsupported",
+      typescript: null,
+      unitTest: null,
     }),
     canonicalPublicSymbol({
-      adaptation:
-        "parseOutput consumes bytes with the exact request-bound guarded plan and returns frozen complete Obj rows",
-      declarationTest: "tests/types/neo.test.ts",
+      adaptation: null,
+      reason:
+        "neo.py responsibilities are split across generated field metadata, the guard codec, graph normalization, and the handle classes; no neo module is published",
+      declarationTest: null,
       kind: "function",
       owner: "libtmux.neo",
       python: "libtmux.neo.parse_output",
       source: neoSourceUrl,
-      status: "adapted",
-      typescript: "parseOutput",
-      typescriptSymbol: "./neo#value:parseOutput",
-      unitTest: "tests/unit/neo.test.ts",
+      status: "unsupported",
+      typescript: null,
+      unitTest: null,
     }),
   );
   const keyed = rows.map((row): readonly [string, Record<string, unknown>] => {
@@ -696,9 +667,9 @@ function renderFieldAliasesSource(tokens: readonly string[]): string {
 export async function generateFormats(options: GenerateFormatsOptions): Promise<void> {
   const fixture = await readFixture();
   const generated = renderGeneratedFormatSources(fixture.fields);
-  const currentNeo = await readFile(options.neoSourcePath, "utf8");
   const currentParity = await readFile(options.parityManifestPath, "utf8");
   const expected = new Map<string, string>([
+    [join(options.outputDirectory, "format_field_names.ts"), generated["format_field_names.ts"]],
     [join(options.outputDirectory, "format_fields.ts"), generated["format_fields.ts"]],
     [
       join(options.outputDirectory, "field_aliases.ts"),
@@ -708,7 +679,6 @@ export async function generateFormats(options: GenerateFormatsOptions): Promise<
       join(options.outputDirectory, "where_fields.ts"),
       renderGeneratedWhereFieldsSource(generated["where_fields.ts"]),
     ],
-    [options.neoSourcePath, renderNeoWithGeneratedTypes(currentNeo, fixture.fields)],
     [options.parityManifestPath, renderTask5ParityManifest(currentParity, fixture.fields)],
   ]);
   if (options.selectionSourcePath !== undefined) {
@@ -738,7 +708,6 @@ if (import.meta.main) {
     try {
       await generateFormats({
         mode: arguments_[0] === "--check" ? "check" : "write",
-        neoSourcePath: join(taskRoot, "src/neo.ts"),
         outputDirectory: join(taskRoot, "src/_generated"),
         parityManifestPath: join(taskRoot, "parity/python-0.62.0.json"),
         selectionSourcePath: join(taskRoot, "src/selection.ts"),

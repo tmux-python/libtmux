@@ -1,4 +1,4 @@
-import type { FormatFieldName, FormatScope } from "../neo.js";
+import type { FormatFieldName, FormatScope } from "./format_field_names.js";
 
 export interface GeneratedFormatField {
   readonly scope: FormatScope;

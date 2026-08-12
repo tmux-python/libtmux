@@ -1,4 +1,4 @@
-import type { FormatFieldName } from "../../neo.js";
+import type { FormatFieldName } from "../../_generated/format_field_names.js";
 import type { Client } from "../../client.js";
 import type { LogicalRef } from "../../common.js";
 import { LibTmuxException } from "../../exc.js";

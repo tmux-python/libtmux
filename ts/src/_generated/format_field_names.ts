@@ -1,19 +1,3 @@
-import type { ConnectionAlias, DaemonEpoch } from "./common.js";
-import {
-  FORMAT_REGISTRY,
-  FORMAT_SCOPES_BY_LIST_COMMAND,
-} from "./_internal/codec/format_registry.js";
-import {
-  FormatProtocolError,
-  GuardCodec,
-  type GuardedFormatRequest,
-} from "./_internal/codec/guard_codec.js";
-import { deriveTmuxCapabilities } from "./_internal/runtime/capabilities.js";
-
-declare const outputFormatPlanBrand: unique symbol;
-
-export type ListCommand = "list-clients" | "list-panes" | "list-sessions" | "list-windows";
-
 export type FormatScope =
   | "buffer"
   | "client"
@@ -24,34 +8,6 @@ export type FormatScope =
   | "universal"
   | "window";
 
-export type OutputFormatField = Readonly<{ token: FormatFieldName }>;
-
-export type TmuxVersionView = Readonly<{
-  major: number;
-  minor: number;
-  raw: string;
-  suffix: string;
-}>;
-
-export interface OutputFormatPlan {
-  readonly [outputFormatPlanBrand]: true;
-  readonly fields: readonly OutputFormatField[];
-  readonly format: string;
-  readonly guards: Readonly<{
-    field: string;
-    recordEnd: string;
-    recordStart: string;
-  }>;
-  readonly listCommand: ListCommand;
-  readonly tmuxVersion: TmuxVersionView;
-}
-
-// eslint-disable-next-line typescript/no-unsafe-declaration-merging -- Parser-owned frozen rows use the class only for nominal runtime identity.
-export class Obj {
-  private constructor() {}
-}
-
-// <libtmux-generated-format-types>
 export type FormatFieldName =
   | "active_window_index"
   | "alternate_saved_x"
@@ -231,52 +187,3 @@ export type FormatFieldName =
   | "window_width"
   | "window_zoomed_flag"
   | "wrap_flag";
-
-export interface Obj extends Readonly<Record<FormatFieldName, string | null>> {}
-// </libtmux-generated-format-types>
-
-export const FIELD_VERSION: Readonly<Partial<Record<FormatFieldName, string>>> = Object.freeze(
-  Object.fromEntries(
-    FORMAT_REGISTRY.filter(({ since }) => since.raw !== "3.2a").map(({ since, token }) => [
-      token,
-      since.raw,
-    ]),
-  ),
-);
-
-export const SCOPES_BY_LIST_CMD: Readonly<Record<ListCommand, readonly FormatScope[]>> =
-  FORMAT_SCOPES_BY_LIST_COMMAND;
-
-interface PublicPlanBinding {
-  readonly codec: GuardCodec;
-  readonly request: GuardedFormatRequest;
-}
-
-const publicPlanBindings = new WeakMap<OutputFormatPlan, PublicPlanBinding>();
-
-export function getOutputFormat(listCommand: ListCommand, rawVersion: string): OutputFormatPlan {
-  const codec = new GuardCodec({
-    capabilities: deriveTmuxCapabilities({
-      connectionAlias: "public-neo" as ConnectionAlias,
-      daemonEpoch: 0 as DaemonEpoch,
-      rawVersion,
-    }),
-    listCommand,
-  });
-  const request = codec.prepare();
-  const plan = Object.freeze({
-    fields: request.fields,
-    format: request.format,
-    guards: request.guards,
-    listCommand: request.listCommand,
-    tmuxVersion: request.tmuxVersion,
-  }) as OutputFormatPlan;
-  publicPlanBindings.set(plan, Object.freeze({ codec, request }));
-  return plan;
-}
-
-export function parseOutput(plan: OutputFormatPlan, bytes: Uint8Array): readonly Obj[] {
-  const binding = publicPlanBindings.get(plan);
-  if (binding === undefined) throw new FormatProtocolError("foreign OutputFormatPlan");
-  return binding.codec.decode(binding.request, bytes);
-}

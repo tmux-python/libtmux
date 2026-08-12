@@ -111,7 +111,7 @@ import { TransportError } from ${moduleUrl("dist/_internal/transport/types.js")}
 import { prepareRunRoot, readProcessIdentity, reapOwnedRunRoot, reapStaleRunRoot, runWithCleanup } from ${runRootModule};
 import { TestServer } from ${moduleUrl("dist/_internal/test/test_server.js")};
 import { FORMAT_SEPARATOR } from ${moduleUrl("dist/formats.js")};
-import { Obj, getOutputFormat, parseOutput } from ${moduleUrl("dist/neo.js")};
+import { ParsedFormatRow } from ${moduleUrl("dist/_internal/codec/format_types.js")};
 
 const executable = ${executableLiteral};
 const echoFixture = fileURLToPath(${echoFixture});
@@ -129,23 +129,31 @@ const nodeFormatCodec = new GuardCodec({
 });
 const nodeFormatRequest = nodeFormatCodec.prepare();
 assert.equal(nodeFormatRequest.format.includes(FORMAT_SEPARATOR), false);
-const publicPlan = getOutputFormat("list-sessions", "3.2a");
-const publicValues = publicPlan.fields.map(({ token }) => {
+const baselineCodec = new GuardCodec({
+  capabilities: deriveTmuxCapabilities({
+    connectionAlias: "node-baseline-scenario",
+    daemonEpoch: 1,
+    rawVersion: "3.2a",
+  }),
+  listCommand: "list-sessions",
+});
+const baselineRequest = baselineCodec.prepare();
+const baselineValues = baselineRequest.fields.map(({ token }) => {
   if (token === "session_id") return "$1";
   if (token === "session_group") return "";
   if (token === "window_id") return "@2";
   if (token === "pane_id") return "%3";
   return "node:" + token;
 });
-const publicFrame = new TextEncoder().encode(
-  publicPlan.guards.recordStart +
-    publicValues.join(publicPlan.guards.field) +
-    publicPlan.guards.recordEnd +
+const baselineFrame = new TextEncoder().encode(
+  baselineRequest.guards.recordStart +
+    baselineValues.join(baselineRequest.guards.field) +
+    baselineRequest.guards.recordEnd +
     "\\n",
 );
-const publicRows = parseOutput(publicPlan, publicFrame);
+const publicRows = baselineCodec.decode(baselineRequest, baselineFrame);
 assert.equal(publicRows.length, 1);
-assert.ok(publicRows[0] instanceof Obj);
+assert.ok(publicRows[0] instanceof ParsedFormatRow);
 assert.equal(Object.keys(publicRows[0]).length, 178);
 assert.equal(publicRows[0].session_group, "");
 assert.equal(publicRows[0].pane_x, null);
@@ -682,7 +690,7 @@ console.log(JSON.stringify({
     "raw-results",
     "decoding",
     "format-separator-override",
-    "public-neo-codec",
+    "baseline-codec",
     "format-protocol-error",
     "batch",
     "immutable-batch",

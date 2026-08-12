@@ -1,7 +1,7 @@
 import { FORMAT_FIELD_TOKENS } from "../../src/_generated/format_fields.js";
 import type { GuardedFetchOptions } from "../../src/_internal/codec/guard_codec.js";
 import type { FormatFieldRecord } from "../../src/_internal/codec/format_registry.js";
-import type { FormatFieldName } from "../../src/neo.js";
+import type { FormatFieldName } from "../../src/_generated/format_field_names.js";
 
 import type { Equal, Expect } from "./assert.js";
 

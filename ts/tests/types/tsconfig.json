@@ -12,7 +12,6 @@
     "brands.test.ts",
     "codec.test.ts",
     "formats.test.ts",
-    "neo.test.ts",
     "snapshots.test.ts",
     "handles.test.ts",
     "task4_internal.test.ts",

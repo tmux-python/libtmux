@@ -66,7 +66,7 @@ import { WHERE_FIELDS_V1, type WhereModel } from "../../src/_generated/where_fie
 import { Pane } from "../../src/pane.js";
 import { Server, type ServerOptions } from "../../src/server.js";
 import { Session } from "../../src/session.js";
-import type { ListCommand } from "../../src/neo.js";
+import type { ListCommand } from "../../src/_internal/codec/format_types.js";
 import { Window } from "../../src/window.js";
 import { completeFormatRow, type MutableCompleteFormatRow } from "../support/graph_rows.js";
 

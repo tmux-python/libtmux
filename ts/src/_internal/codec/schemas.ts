@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 import { FORMAT_FIELD_TOKENS } from "../../_generated/format_fields.js";
-import type { FormatFieldName, ListCommand } from "../../neo.js";
+import type { FormatFieldName } from "../../_generated/format_field_names.js";
+import type { ListCommand } from "./format_types.js";
 
 export type CompleteFormatRow = Readonly<Record<FormatFieldName, string | null>>;
 

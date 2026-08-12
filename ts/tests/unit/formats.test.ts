@@ -6,12 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "bun:test";
 
-import {
-  generateFormats,
-  renderGeneratedNeoTypeRegion,
-  renderNeoWithGeneratedTypes,
-  renderTask5ParityManifest,
-} from "../../scripts/generate-formats.js";
+import { generateFormats, renderTask5ParityManifest } from "../../scripts/generate-formats.js";
 import {
   CLIENT_FORMATS,
   FORMAT_SEPARATOR,
@@ -19,7 +14,7 @@ import {
   SESSION_FORMATS,
   WINDOW_FORMATS,
 } from "../../src/formats.js";
-import type { FormatFieldName } from "../../src/neo.js";
+import type { FormatFieldName, FormatScope } from "../../src/_generated/format_field_names.js";
 import { FORMAT_FIELD_TOKENS } from "../../src/_generated/format_fields.js";
 import { WHERE_ALIASES_V1, WHERE_FIELDS_V1 } from "../../src/_generated/where_fields.js";
 import {
@@ -29,16 +24,6 @@ import {
   renderGeneratedFormatSources,
   validateWhereSchemaHistory,
 } from "../../src/_internal/codec/format_registry.js";
-
-type FormatScope =
-  | "buffer"
-  | "client"
-  | "context"
-  | "event"
-  | "pane"
-  | "session"
-  | "universal"
-  | "window";
 
 interface PythonFormatFixture {
   baseline: {
@@ -531,47 +516,34 @@ describe("format registry", () => {
     const second = renderGeneratedFormatSources();
 
     expect(first).toEqual(second);
-    expect(Object.keys(first)).toEqual(["format_fields.ts", "where_fields.ts"]);
-    expect(first["format_fields.ts"]?.endsWith("\n")).toBe(true);
-    expect(first["where_fields.ts"]?.endsWith("\n")).toBe(true);
+    expect(Object.keys(first)).toEqual([
+      "format_field_names.ts",
+      "format_fields.ts",
+      "where_fields.ts",
+    ]);
+    for (const source of Object.values(first)) expect(source.endsWith("\n")).toBe(true);
   });
 
-  test("renders only the delimited public neo type region", () => {
-    const region = renderGeneratedNeoTypeRegion();
-    const canonical = `export class Obj {\n  private constructor() {}\n}\n\n${region}\nconst suffix = "unrelated";\n`;
+  test("emits the field vocabulary without values so type-only importers stay light", () => {
+    const sources = renderGeneratedFormatSources();
+    const vocabulary = sources["format_field_names.ts"] ?? "";
+    const table = sources["format_fields.ts"] ?? "";
 
-    expect(region).toContain("// <libtmux-generated-format-types>");
-    expect(region).toContain("// </libtmux-generated-format-types>");
-    expect(region).toContain("export type FormatFieldName =");
-    expect(region).toContain(
-      "export interface Obj extends Readonly<Record<FormatFieldName, string | null>> {}",
-    );
-    expect(renderNeoWithGeneratedTypes(canonical)).toBe(canonical);
-    expect(
-      renderNeoWithGeneratedTypes(
-        canonical.replace("active_window_index", "active_window_index_drift"),
-      ),
-    ).toBe(canonical);
+    expect(vocabulary).toContain("export type FormatScope =");
+    expect(vocabulary).toContain("export type FormatFieldName =");
+    expect(vocabulary).toContain('  | "active_window_index"');
+    expect(vocabulary).not.toContain("Object.freeze");
+    expect(vocabulary).not.toContain("import");
 
-    const unrelated = canonical
-      .replace("export class Obj", "export class Obj /* prefix sentinel */")
-      .replace('const suffix = "unrelated";', 'const suffix = "suffix sentinel";');
-    expect(renderNeoWithGeneratedTypes(unrelated)).toBe(unrelated);
-    expect(
-      renderNeoWithGeneratedTypes(
-        unrelated.replace("active_window_index", "active_window_index_drift"),
-      ),
-    ).toBe(unrelated);
-    expect(() => renderNeoWithGeneratedTypes("export class Obj {}\n")).toThrow(
-      "neo.ts must contain exactly one generated format type region",
-    );
+    expect(table).toContain('from "./format_field_names.js"');
+    expect(table).not.toContain("export type FormatFieldName =");
   });
 
   test("renders the activated Task 5 parity rows without normalizing unrelated bytes", async () => {
     const canonical = await readFile(parityManifestUrl, "utf8");
     const drifted = canonical.replace(
-      '"./neo#value:FIELD_VERSION"',
-      '"./neo#value:FIELD_VERSION_DRIFT"',
+      '"./formats#value:FORMAT_SEPARATOR"',
+      '"./formats#value:FORMAT_SEPARATOR_DRIFT"',
     );
     expect(drifted).not.toBe(canonical);
     expect(renderTask5ParityManifest(drifted)).toBe(canonical);
@@ -586,24 +558,16 @@ describe("format registry", () => {
 
   test("check mode detects exact-byte drift without rewriting it", async () => {
     const outputDirectory = await mkdtemp(join(tmpdir(), "ltx5-generated-"));
-    const neoSourcePath = join(outputDirectory, "neo.ts");
     const parityManifestPath = join(outputDirectory, "python-0.62.0.json");
+    const driftAnchor = '"./formats#value:FORMAT_SEPARATOR"';
+    const driftReplacement = '"./formats#value:FORMAT_SEPARATOR_DRIFT"';
     try {
       const canonicalParity = await readFile(parityManifestUrl, "utf8");
-      const canonicalNeo = `export class Obj {\n  private constructor() {}\n}\n\n${renderGeneratedNeoTypeRegion()}\nconst suffix = "preserve me";\n`;
-      await writeFile(
-        neoSourcePath,
-        canonicalNeo.replace("active_window_index", "active_window_index_drift"),
-      );
-      await writeFile(
-        parityManifestPath,
-        canonicalParity.replace('"./neo#value:FIELD_VERSION"', '"./neo#value:FIELD_VERSION_DRIFT"'),
-      );
-      await generateFormats({ mode: "write", neoSourcePath, outputDirectory, parityManifestPath });
+      await writeFile(parityManifestPath, canonicalParity.replace(driftAnchor, driftReplacement));
+      await generateFormats({ mode: "write", outputDirectory, parityManifestPath });
       await expect(
-        generateFormats({ mode: "check", neoSourcePath, outputDirectory, parityManifestPath }),
+        generateFormats({ mode: "check", outputDirectory, parityManifestPath }),
       ).resolves.toBeUndefined();
-      expect(await readFile(neoSourcePath, "utf8")).toBe(canonicalNeo);
       expect(await readFile(parityManifestPath, "utf8")).toBe(canonicalParity);
 
       const generatedPath = join(outputDirectory, "format_fields.ts");
@@ -611,26 +575,15 @@ describe("format registry", () => {
       await writeFile(generatedPath, drifted);
 
       await expect(
-        generateFormats({ mode: "check", neoSourcePath, outputDirectory, parityManifestPath }),
+        generateFormats({ mode: "check", outputDirectory, parityManifestPath }),
       ).rejects.toThrow("generated format outputs are out of date");
       expect(await readFile(generatedPath, "utf8")).toBe(drifted);
 
-      await generateFormats({ mode: "write", neoSourcePath, outputDirectory, parityManifestPath });
-      const neoDrift = canonicalNeo.replace("active_window_index", "active_window_index_drift");
-      await writeFile(neoSourcePath, neoDrift);
-      await expect(
-        generateFormats({ mode: "check", neoSourcePath, outputDirectory, parityManifestPath }),
-      ).rejects.toThrow("generated format outputs are out of date");
-      expect(await readFile(neoSourcePath, "utf8")).toBe(neoDrift);
-
-      await generateFormats({ mode: "write", neoSourcePath, outputDirectory, parityManifestPath });
-      const parityDrift = canonicalParity.replace(
-        '"./neo#value:FIELD_VERSION"',
-        '"./neo#value:FIELD_VERSION_DRIFT"',
-      );
+      await generateFormats({ mode: "write", outputDirectory, parityManifestPath });
+      const parityDrift = canonicalParity.replace(driftAnchor, driftReplacement);
       await writeFile(parityManifestPath, parityDrift);
       await expect(
-        generateFormats({ mode: "check", neoSourcePath, outputDirectory, parityManifestPath }),
+        generateFormats({ mode: "check", outputDirectory, parityManifestPath }),
       ).rejects.toThrow("generated format outputs are out of date");
       expect(await readFile(parityManifestPath, "utf8")).toBe(parityDrift);
     } finally {

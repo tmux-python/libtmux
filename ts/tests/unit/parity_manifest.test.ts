@@ -367,19 +367,44 @@ describe("Python 0.62.0 parity manifest", () => {
     );
   });
 
-  test("activates exactly the Task 5 pure symbols while deferring executor-owned parity", async () => {
+  test("records neo.py as split across the codec rather than ported to a module", async () => {
     const manifest = await readManifest();
-    const task5Rows = manifest.publicSymbols.filter(({ unitTest }) =>
-      ["tests/unit/formats.test.ts", "tests/unit/neo.test.ts"].includes(unitTest ?? ""),
+    const notPorted = "not-applicable: the symbol is not ported, so it has no evidence to record";
+    const planned = new Set(["libtmux.neo.fetch_obj", "libtmux.neo.fetch_objs"]);
+    const neoRows = manifest.publicSymbols.filter(
+      ({ python }) => python.startsWith("libtmux.neo.") && !planned.has(python),
     );
 
-    expect(task5Rows).toHaveLength(188);
-    expect(task5Rows.filter(({ status }) => status === "implemented")).toHaveLength(7);
-    expect(task5Rows.filter(({ status }) => status === "adapted")).toHaveLength(181);
-    for (const row of task5Rows) {
+    expect(neoRows.length).toBeGreaterThan(0);
+    for (const row of neoRows) {
+      expect(row.status).toBe("unsupported");
+      expect(row.typescript).toBeNull();
+      expect(row.typescriptSymbols).toEqual([]);
+      expect(row.adaptation).toBeNull();
+      expect(row.reason).toContain("no neo module is published");
+      expect(row.declarationTest).toBeNull();
+      expect(row.unitTest).toBeNull();
+      expect(row.realTmuxScenario).toBeNull();
+      expect(row.evidenceApplicability).toEqual({
+        declarationTest: notPorted,
+        realTmuxScenario: notPorted,
+        unitTest: notPorted,
+      });
+    }
+  });
+
+  test("activates the pure format symbols while deferring executor-owned parity", async () => {
+    const manifest = await readManifest();
+    const formatRows = manifest.publicSymbols.filter(
+      ({ unitTest }) => unitTest === "tests/unit/formats.test.ts",
+    );
+
+    expect(formatRows).toHaveLength(5);
+    expect(formatRows.every(({ status }) => status === "implemented")).toBe(true);
+    for (const row of formatRows) {
       expect(row.typescript).not.toBeNull();
       expect(row.typescriptSymbols.length).toBeGreaterThan(0);
-      expect(row.declarationTest).toMatch(/^tests\/types\/(formats|neo)\.test\.ts$/u);
+      expect(row.declarationTest).toBe("tests/types/formats.test.ts");
       expect(row.evidenceApplicability).toEqual({
         declarationTest: "required",
         realTmuxScenario: "not-applicable: symbol has no direct tmux I/O behavior",

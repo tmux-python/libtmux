@@ -1,7 +1,8 @@
 import { FORMAT_FIELD_TOKENS } from "../../_generated/format_fields.js";
 import type { ConnectionAlias, DaemonEpoch, PaneRef, SessionRef, WindowRef } from "../../common.js";
 import { QueryValidationError } from "../../exc.js";
-import { Obj, type FormatFieldName, type ListCommand } from "../../neo.js";
+import type { FormatFieldName } from "../../_generated/format_field_names.js";
+import { ParsedFormatRow, type ListCommand } from "../codec/format_types.js";
 import type { CompleteFormatRow } from "../codec/schemas.js";
 import {
   createGraphRecordRef,
@@ -162,10 +163,12 @@ function copyCompleteFormatRow(value: unknown): CompleteFormatRow {
   if (
     isArray ||
     prototype !== finalPrototype ||
-    (prototype !== Object.prototype && prototype !== null && prototype !== Obj.prototype) ||
+    (prototype !== Object.prototype &&
+      prototype !== null &&
+      prototype !== ParsedFormatRow.prototype) ||
     (finalPrototype !== Object.prototype &&
       finalPrototype !== null &&
-      finalPrototype !== Obj.prototype)
+      finalPrototype !== ParsedFormatRow.prototype)
   ) {
     return invalidNormalization("captured format row must use a supported data prototype");
   }

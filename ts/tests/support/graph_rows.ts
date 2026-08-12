@@ -1,6 +1,6 @@
 import { FORMAT_FIELD_TOKENS } from "../../src/_generated/format_fields.js";
 import type { CompleteFormatRow } from "../../src/_internal/codec/schemas.js";
-import type { FormatFieldName } from "../../src/neo.js";
+import type { FormatFieldName } from "../../src/_generated/format_field_names.js";
 
 export type MutableCompleteFormatRow = {
   -readonly [Field in FormatFieldName]: string | null;

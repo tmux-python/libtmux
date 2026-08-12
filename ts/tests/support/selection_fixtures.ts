@@ -29,7 +29,7 @@ import type {
   CommandTransport,
   RawCommandResult,
 } from "../../src/_internal/transport/types.js";
-import type { ListCommand } from "../../src/neo.js";
+import type { ListCommand } from "../../src/_internal/codec/format_types.js";
 import { Pane } from "../../src/pane.js";
 import { Session } from "../../src/session.js";
 import { Window } from "../../src/window.js";

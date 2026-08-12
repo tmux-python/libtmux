@@ -634,6 +634,43 @@ in `codec`, relation normalization in `graph/normalize.ts`, and entity
 construction in `graph/materialize.ts`. What remains in `neo.ts` is naming, not
 structure.
 
+### Outcome
+
+`ListCommand`, `OutputFormatField`, `TmuxVersionView`, and the entity class —
+renamed `ParsedFormatRow` for what it is — live in
+`_internal/codec/format_types.ts`. `FormatScope` and `FormatFieldName` moved
+into `_generated/format_fields.ts` instead: a vocabulary module that names the
+generated union while the generated union imports the vocabulary is a cycle,
+and TypeScript resolves it by silently degrading `FormatFieldName` to `any`,
+which costs every scalar field its type without failing a build.
+
+The ledger carries the 183 `neo.py` symbols as `unsupported` with all three
+evidence lanes not-applicable, since an unported symbol has no declaration,
+unit test, or tmux scenario to point at.
+
+### Cost
+
+The type-instantiation baseline moved from 222,309 to 287,526, and the increase
+is intrinsic to the move rather than to anything else in it. Applying only the
+union relocation to an otherwise untouched tree reproduces it (289,963);
+applying every other source change while leaving the union in place does not.
+The added instantiations are a roughly uniform 1.4x across Zod's generic graph,
+with no libtmux module gaining types of its own.
+
+The old number depended on `neo.ts` and `format_registry.ts` importing each
+other. Inside that cycle TypeScript resolved the row types once; across an
+ordinary edge it re-resolves them per relation. Three plausible-sounding
+remedies measured as noise: splitting the union away from the field table,
+restoring the class's private constructor, and replacing
+`Record<FormatFieldName, string | null>` with an explicit 178-property
+interface. Only the last is a design question rather than a performance one,
+and it loses on readability — it forces a cast in `normalize.ts` and widens
+every index-by-token site.
+
+287,526 instantiations is not a compile-time problem in absolute terms. The
+gate is a drift detector, and this is a deliberate one-time step recorded so a
+later 30% jump is not mistaken for this one.
+
 ## Handles do not observe their own mutations
 
 Date: 2026-08-12.

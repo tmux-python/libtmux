@@ -58,11 +58,6 @@
       "import": "./dist/formats.js",
       "default": "./dist/formats.js"
     },
-    "./neo": {
-      "types": "./dist/neo.d.ts",
-      "import": "./dist/neo.js",
-      "default": "./dist/neo.js"
-    },
     "./server": {
       "types": "./dist/server.d.ts",
       "import": "./dist/server.js",
@@ -95,7 +90,7 @@
     }
   },
   "scripts": {
-    "build": "bun run generate:check && tsc -p tsconfig.build.json && bun scripts/normalize-source-map.ts dist/index.js.map",
+    "build": "bun run generate:check && rm -rf dist && tsc -p tsconfig.build.json && bun scripts/normalize-source-map.ts dist/index.js.map",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "generate": "bun scripts/generate-formats.ts --write",

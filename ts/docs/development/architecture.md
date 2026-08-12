@@ -101,7 +101,6 @@ ts/
     pane.ts
     client.ts
     common.ts
-    neo.ts
     options.ts
     hooks.ts
     constants.ts
@@ -596,7 +595,6 @@ The explicit export allowlist is:
 ./pane
 ./client
 ./common
-./neo
 ./options
 ./hooks
 ./constants

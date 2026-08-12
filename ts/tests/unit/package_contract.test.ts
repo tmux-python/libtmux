@@ -41,7 +41,7 @@ interface TypeScriptConfig {
 
 const expectedScripts = {
   build:
-    "bun run generate:check && tsc -p tsconfig.build.json && bun scripts/normalize-source-map.ts dist/index.js.map",
+    "bun run generate:check && rm -rf dist && tsc -p tsconfig.build.json && bun scripts/normalize-source-map.ts dist/index.js.map",
   format: "oxfmt --write .",
   "format:check": "oxfmt --check .",
   generate: "bun scripts/generate-formats.ts --write",
@@ -160,7 +160,6 @@ describe("package contract", () => {
       "./exc",
       "./constants",
       "./formats",
-      "./neo",
       "./server",
       "./session",
       "./window",
@@ -194,11 +193,6 @@ describe("package contract", () => {
       types: "./dist/formats.d.ts",
       import: "./dist/formats.js",
       default: "./dist/formats.js",
-    });
-    expect(packageManifest.exports["./neo"]).toEqual({
-      types: "./dist/neo.d.ts",
-      import: "./dist/neo.js",
-      default: "./dist/neo.js",
     });
     for (const model of ["server", "session", "window", "pane", "client", "selection"]) {
       expect(packageManifest.exports[`./${model}`]).toEqual({
@@ -313,7 +307,7 @@ describe("package contract", () => {
     expect(tsRootPath).not.toContain("%20");
   });
 
-  test("emits self-contained public formats and neo declarations", async () => {
+  test("emits self-contained public declarations", async () => {
     const temporary = await mkdtemp(join(tmpdir(), "ltx5-declarations-"));
     const outputDirectory = join(temporary, "types");
     const configPath = join(temporary, "tsconfig.json");
@@ -344,7 +338,6 @@ describe("package contract", () => {
       const declarations = await Promise.all([
         readFile(join(outputDirectory, "index.d.ts"), "utf8"),
         readFile(join(outputDirectory, "formats.d.ts"), "utf8"),
-        readFile(join(outputDirectory, "neo.d.ts"), "utf8"),
       ]);
       // The root entrypoint now carries the public surface, so assert it names
       // the classes rather than that it is empty.
@@ -371,13 +364,9 @@ describe("package contract", () => {
           expect(declaration).not.toContain(forbidden);
         }
       }
-      // The format and codec entrypoints additionally must not drag the model
-      // classes in; the root entrypoint is where those legitimately live.
-      for (const declaration of [declarations[1], declarations[2]]) {
-        expect(declaration).not.toContain("Server");
-      }
-      expect(declarations[2]).not.toContain("fetch_obj");
-      expect(declarations[2]).not.toContain("fetch_objs");
+      // The format entrypoint additionally must not drag the model classes in;
+      // the root entrypoint is where those legitimately live.
+      expect(declarations[1]).not.toContain("Server");
 
       await writeFile(
         join(temporary, "package.json"),
@@ -386,7 +375,6 @@ describe("package contract", () => {
             exports: {
               ".": { types: "./types/index.d.ts" },
               "./formats": { types: "./types/formats.d.ts" },
-              "./neo": { types: "./types/neo.d.ts" },
               "./server": { types: "./types/server.d.ts" },
             },
             name: "libtmux",
@@ -399,19 +387,6 @@ describe("package contract", () => {
       await writeFile(
         join(temporary, "consumer.ts"),
         `import {
-  FIELD_VERSION,
-  Obj,
-  SCOPES_BY_LIST_CMD,
-  getOutputFormat,
-  parseOutput,
-  type FormatFieldName,
-  type FormatScope,
-  type ListCommand,
-  type OutputFormatField,
-  type OutputFormatPlan,
-  type TmuxVersionView,
-} from "libtmux/neo";
-import {
   CLIENT_FORMATS,
   FORMAT_SEPARATOR,
   PANE_FORMATS,
@@ -457,29 +432,10 @@ void [
   ServerFromSubpath,
 ];
 
-const command: ListCommand = "list-sessions";
-const scope: FormatScope = "session";
-const token: FormatFieldName = "session_name";
-const field: OutputFormatField = { token };
-const version: TmuxVersionView = { major: 3, minor: 7, raw: "3.7b", suffix: "b" };
-const plan: OutputFormatPlan = getOutputFormat(command, version.raw);
-const rows: readonly Obj[] = parseOutput(plan, new Uint8Array());
-void [
-  CLIENT_FORMATS,
-  FIELD_VERSION,
-  FORMAT_SEPARATOR,
-  Obj,
-  PANE_FORMATS,
-  SCOPES_BY_LIST_CMD,
-  SESSION_FORMATS,
-  WINDOW_FORMATS,
-  field,
-  rows,
-  scope,
-];
+void [CLIENT_FORMATS, FORMAT_SEPARATOR, PANE_FORMATS, SESSION_FORMATS, WINDOW_FORMATS];
 
-// @ts-expect-error Executor-bound fetch is not exported.
-void import("libtmux/neo").then(({ fetch_obj }) => fetch_obj);
+// @ts-expect-error The format vocabulary is internal; there is no neo subpath.
+void import("libtmux/neo");
 // @ts-expect-error Internal package paths are not exported.
 void import("libtmux/_internal/codec/guard_codec.js");
 `,

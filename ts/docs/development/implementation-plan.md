@@ -348,7 +348,7 @@ substrate internal until the complete public test facade lands in Task 17.
 Create:
 
 - `ts/src/formats.ts`
-- `ts/src/neo.ts`
+- `ts/src/_internal/codec/format_types.ts`
 - `ts/src/_internal/runtime/tmux_version.ts`
 - `ts/src/_internal/runtime/capabilities.ts`
 - `ts/src/_internal/codec/format_registry.ts`
@@ -362,8 +362,6 @@ Create:
 - `ts/tests/unit/capabilities.test.ts`
 - `ts/tests/unit/formats.test.ts`
 - `ts/tests/unit/codec.test.ts`
-- `ts/tests/unit/neo.test.ts`
-- `ts/tests/integration/neo.test.ts`
 
 RED first:
 
@@ -372,6 +370,9 @@ RED first:
 - Binding is lazy and a capability fingerprint changes with version, connection
   alias, or daemon epoch.
 - The registry matches every Python `Obj` field, scope, and version floor.
+- `neo.py`'s responsibilities split across the generated field metadata, the
+  guard codec, graph normalization, and the handle classes; no `neo` module or
+  export exists, and the parity ledger records its symbols as unsupported.
 - Scalar filter domains and stable wire names generate explicit Where fields
   for Session, Window, and Pane without inspecting class methods.
 - `session_name` and `window_name` map to the model-local canonical criteria
@@ -399,8 +400,8 @@ Minimal implementation:
   best-winlink selection.
 
 Gate: generated output is idempotent and drift-checked, generated criteria
-expose only valid model fields, all Python neo tests are represented, real
-list/fetch operations pass, and `./formats` plus `./neo` are exported.
+expose only valid model fields, real list/fetch operations pass, and
+`./formats` is exported.
 
 ## Task 6: Frozen snapshots, normalized graph, and evaluation projections
 

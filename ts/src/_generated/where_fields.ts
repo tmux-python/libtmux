@@ -1,4 +1,4 @@
-import type { FormatFieldName } from "../neo.js";
+import type { FormatFieldName } from "./format_field_names.js";
 
 export type WhereModel = "pane" | "session" | "window";
 

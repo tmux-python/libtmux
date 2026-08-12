@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { FORMAT_FIELD_TOKENS } from "../../_generated/format_fields.js";
 import { LibTmuxException, TmuxObjectDoesNotExist } from "../../exc.js";
-import { Obj, type FormatFieldName, type ListCommand, type OutputFormatField } from "../../neo.js";
+import type { FormatFieldName } from "../../_generated/format_field_names.js";
+import { ParsedFormatRow, type ListCommand, type OutputFormatField } from "./format_types.js";
 import { prepareCommandRequest } from "../operations/request.js";
 import type { TmuxConnection } from "../runtime/connection.js";
 import type { CapabilityBinding, TmuxCapabilities } from "../runtime/capabilities.js";
@@ -163,10 +164,13 @@ function completeRowData(
   return row;
 }
 
-function completeObj(row: CompleteFormatRow): Obj {
-  const instance = Object.create(Obj.prototype) as Record<FormatFieldName, string | null>;
+function completeObj(row: CompleteFormatRow): ParsedFormatRow {
+  const instance = Object.create(ParsedFormatRow.prototype) as Record<
+    FormatFieldName,
+    string | null
+  >;
   for (const token of FORMAT_FIELD_TOKENS) instance[token] = row[token];
-  return Object.freeze(instance) as Obj;
+  return Object.freeze(instance) as ParsedFormatRow;
 }
 
 function primaryIdentity(listCommand: ListCommand): FormatFieldName {
@@ -250,14 +254,14 @@ export class GuardCodec {
     return request;
   }
 
-  decode(request: GuardedFormatRequest, bytes: Uint8Array): readonly Obj[] {
+  decode(request: GuardedFormatRequest, bytes: Uint8Array): readonly ParsedFormatRow[] {
     if (!this.#requests.has(request)) {
       throw new FormatProtocolError("foreign GuardedFormatRequest");
     }
     if (bytes.length === 0) return Object.freeze([]);
 
     const encodedFrames = frameBytes(request, bytes);
-    const rows: Obj[] = [];
+    const rows: ParsedFormatRow[] = [];
     for (const encodedFields of encodedFrames) {
       const decodedFields = encodedFields.map((field) => decodeBackslashReplace(field));
       if (decodedFields.some((value) => /^#\{[^}]+\}$/u.test(value))) {
@@ -314,7 +318,9 @@ export type GuardedFetchOptions = GuardedExecutionOptions &
       }
   );
 
-export async function executeGuardedList(options: GuardedListOptions): Promise<readonly Obj[]> {
+export async function executeGuardedList(
+  options: GuardedListOptions,
+): Promise<readonly ParsedFormatRow[]> {
   const listExtraArgs: readonly string[] = Object.freeze([...(options.listExtraArgs ?? [])]);
   const capabilities = await options.capabilities.bind();
   const codec = new GuardCodec({ capabilities, listCommand: options.listCommand });
@@ -341,7 +347,7 @@ export async function executeGuardedList(options: GuardedListOptions): Promise<r
   return codec.decode(guardedRequest, result.stdout);
 }
 
-export async function executeGuardedFetch(options: GuardedFetchOptions): Promise<Obj> {
+export async function executeGuardedFetch(options: GuardedFetchOptions): Promise<ParsedFormatRow> {
   if (options.identityField !== primaryIdentity(options.listCommand)) {
     throw new FormatProtocolError("point identity field does not match its list command");
   }
@@ -353,7 +359,7 @@ export async function executeGuardedFetch(options: GuardedFetchOptions): Promise
     });
   }
 
-  let rows: readonly Obj[];
+  let rows: readonly ParsedFormatRow[];
   try {
     rows = await executeGuardedList(options);
   } catch (error) {

@@ -374,7 +374,6 @@ describe("generated Where contract", () => {
   test("writes exact relation metadata and only the delimited cyclic interfaces", async () => {
     const temporary = await mkdtemp(join(tmpdir(), "libtmux-where-generation-"));
     const outputDirectory = join(temporary, "_generated");
-    const neoSourcePath = join(temporary, "neo.ts");
     const parityManifestPath = join(temporary, "python-0.62.0.json");
     const selectionSourcePath = join(temporary, "selection.ts");
     const prefix = Buffer.from('\ufeffexport type SentinelBefore = "before";\r\n\r\n');
@@ -386,13 +385,11 @@ describe("generated Where contract", () => {
     ]);
     const options = {
       mode: "write" as const,
-      neoSourcePath,
       outputDirectory,
       parityManifestPath,
       selectionSourcePath,
     };
     try {
-      await writeFile(neoSourcePath, await readFile(new URL("../../src/neo.ts", import.meta.url)));
       await writeFile(
         parityManifestPath,
         await readFile(new URL("../../parity/python-0.62.0.json", import.meta.url)),
@@ -543,18 +540,15 @@ describe("generated Where contract", () => {
   ])("rejects $name markers without changing any controlled file", async ({ selectionSource }) => {
     const temporary = await mkdtemp(join(tmpdir(), "libtmux-where-markers-"));
     const outputDirectory = join(temporary, "_generated");
-    const neoSourcePath = join(temporary, "neo.ts");
     const parityManifestPath = join(temporary, "python-0.62.0.json");
     const selectionSourcePath = join(temporary, "selection.ts");
     const options = {
-      neoSourcePath,
       outputDirectory,
       parityManifestPath,
       selectionSourcePath,
     };
 
     try {
-      await writeFile(neoSourcePath, await readFile(new URL("../../src/neo.ts", import.meta.url)));
       await writeFile(
         parityManifestPath,
         await readFile(new URL("../../parity/python-0.62.0.json", import.meta.url)),

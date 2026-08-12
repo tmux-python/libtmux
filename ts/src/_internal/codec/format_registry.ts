@@ -2,7 +2,8 @@ function camelCase(value: string): string {
   return value.replace(/_([a-z0-9])/g, (_match, character: string) => character.toUpperCase());
 }
 
-import type { FormatFieldName, FormatScope, ListCommand } from "../../neo.js";
+import type { FormatFieldName, FormatScope } from "../../_generated/format_field_names.js";
+import type { ListCommand } from "./format_types.js";
 import {
   GENERATED_FORMAT_FIELDS,
   type GeneratedFormatField,
@@ -186,13 +187,37 @@ export function validateWhereSchemaHistory(history: readonly WhereSchemaVersion[
   }
 }
 
+/**
+ * The format vocabulary is emitted without values so the modules that only
+ * need the token names never import the field table, and so nothing has to
+ * import back into the registry to name a scope.
+ */
+function renderFormatFieldNamesSource(fields: readonly GeneratedFormatField[]): string {
+  const union = fields.map(({ token }) => `  | ${JSON.stringify(token)}`);
+  return [
+    "export type FormatScope =",
+    '  | "buffer"',
+    '  | "client"',
+    '  | "context"',
+    '  | "event"',
+    '  | "pane"',
+    '  | "session"',
+    '  | "universal"',
+    '  | "window";',
+    "",
+    "export type FormatFieldName =",
+    ...union.map((line, index) => (index === union.length - 1 ? `${line};` : line)),
+    "",
+  ].join("\n");
+}
+
 function renderFormatFieldsSource(fields: readonly GeneratedFormatField[]): string {
   const records = fields.map(
     ({ scope, since, token }) =>
       `  Object.freeze({ scope: ${JSON.stringify(scope)}, since: ${JSON.stringify(since)}, token: ${JSON.stringify(token)} }),`,
   );
   return [
-    'import type { FormatFieldName, FormatScope } from "../neo.js";',
+    'import type { FormatFieldName, FormatScope } from "./format_field_names.js";',
     "",
     "export interface GeneratedFormatField {",
     "  readonly scope: FormatScope;",
@@ -238,7 +263,7 @@ function generatedWhereFields(
 
 function renderWhereFieldsSource(registry: readonly FormatFieldRecord[]): string {
   const lines = [
-    'import type { FormatFieldName } from "../neo.js";',
+    'import type { FormatFieldName } from "./format_field_names.js";',
     "",
     'export type WhereModel = "pane" | "session" | "window";',
     "",
@@ -293,9 +318,10 @@ function renderWhereFieldsSource(registry: readonly FormatFieldRecord[]): string
 
 export function renderGeneratedFormatSources(
   fields: readonly GeneratedFormatField[] = GENERATED_FORMAT_FIELDS,
-): Readonly<Record<"format_fields.ts" | "where_fields.ts", string>> {
+): Readonly<Record<"format_field_names.ts" | "format_fields.ts" | "where_fields.ts", string>> {
   const registry = createFormatRegistry(fields);
   return Object.freeze({
+    "format_field_names.ts": renderFormatFieldNamesSource(fields),
     "format_fields.ts": renderFormatFieldsSource(fields),
     "where_fields.ts": renderWhereFieldsSource(registry),
   });

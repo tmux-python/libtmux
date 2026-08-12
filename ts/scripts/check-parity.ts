@@ -752,6 +752,10 @@ const requiredRealTmuxSymbols = new Set([
   "libtmux.test.temporary.temp_window",
 ]);
 
+const NOT_PORTED = "not-applicable: the symbol is not ported, so it has no evidence to record";
+
+const plannedNeoSymbols = new Set(["libtmux.neo.fetch_obj", "libtmux.neo.fetch_objs"]);
+
 function publicSymbolEvidenceApplicability(
   kind: ParityKind,
   python: string,
@@ -761,6 +765,16 @@ function publicSymbolEvidenceApplicability(
     kind === "compatibility-alias" ||
     kind === "property" ||
     requiredRealTmuxSymbols.has(python);
+  // neo.py's responsibilities are split across generated metadata, the codec,
+  // the graph, and the handles rather than ported to a module of their own, so
+  // its symbols carry no evidence of their own.
+  if (python.startsWith("libtmux.neo") && !plannedNeoSymbols.has(python)) {
+    return {
+      declarationTest: NOT_PORTED,
+      realTmuxScenario: NOT_PORTED,
+      unitTest: NOT_PORTED,
+    };
+  }
   return {
     declarationTest: "required",
     realTmuxScenario: realTmuxRequired
