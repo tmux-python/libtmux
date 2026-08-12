@@ -537,6 +537,30 @@ async function expectNoReservations(runRoot: string): Promise<void> {
   expect((await readdir(runRoot)).filter((entry) => entry !== ".owner.json")).toEqual([]);
 }
 
+/**
+ * Wait for a path to disappear, within the same bound the suite uses elsewhere.
+ *
+ * Reclaiming a socket follows an abrupt kill, so it completes shortly after the
+ * call that triggered it rather than simultaneously with it. Asserting absence
+ * the instant a promise settles makes the test a race that a loaded machine
+ * loses; the guarantee under test is that the socket is reclaimed, not that it
+ * is reclaimed synchronously.
+ */
+async function waitForPathAbsent(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      // eslint-disable-next-line no-await-in-loop -- absence is observed within one fixed test bound.
+      await access(path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    // eslint-disable-next-line no-await-in-loop -- absence observation is bounded and sequential.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`${path} was not reclaimed within the test bound`);
+}
+
 async function waitForMarker(path: string): Promise<void> {
   for (let attempt = 0; attempt < 300; attempt += 1) {
     try {
@@ -1138,8 +1162,8 @@ describe("supervised TestServer", () => {
         /timed out|timeout/u,
       );
       const [socketPath, rawPid] = (await readFile(marker, "utf8")).trim().split("\t");
-      expect(processExists(Number(rawPid))).toBe(false);
-      await expect(access(socketPath!)).rejects.toMatchObject({ code: "ENOENT" });
+      await waitForProcessExit(Number(rawPid));
+      await waitForPathAbsent(socketPath!);
       expect((await reapOwnedRunRoot(runRoot)).reservationsFound).toBe(0);
     } finally {
       try {
@@ -1189,7 +1213,7 @@ describe("supervised TestServer", () => {
       const [socketPath, rawPid] = (await readFile(marker, "utf8")).trim().split("\t");
       expect(processExists(Number(rawPid))).toBe(true);
       expect(processExists(sentinel.pid)).toBe(true);
-      await expect(access(socketPath!)).rejects.toMatchObject({ code: "ENOENT" });
+      await waitForPathAbsent(socketPath!);
       const reservations = (await readdir(runRoot)).filter((entry) => entry !== ".owner.json");
       expect(reservations).toHaveLength(1);
       expect((await readFixtureRecord(join(runRoot, reservations[0]!))).phase).toBe("launching");
@@ -1225,7 +1249,7 @@ describe("supervised TestServer", () => {
       );
       const [socketPath, rawPid] = (await readFile(marker, "utf8")).trim().split("\t");
       expect(processExists(Number(rawPid))).toBe(true);
-      await expect(access(socketPath!)).rejects.toMatchObject({ code: "ENOENT" });
+      await waitForPathAbsent(socketPath!);
       const reservations = (await readdir(runRoot)).filter((entry) => entry !== ".owner.json");
       expect(reservations).toHaveLength(1);
       expect((await readFixtureRecord(join(runRoot, reservations[0]!))).phase).toBe("launching");
@@ -1253,8 +1277,8 @@ describe("supervised TestServer", () => {
       expect(String(primary)).toContain("tmux bootstrap failed with status 7");
       expect((primary as Error & { cleanupError?: unknown }).cleanupError).toBeUndefined();
       const [socketPath, rawPid] = (await readFile(marker, "utf8")).trim().split("\t");
-      expect(processExists(Number(rawPid))).toBe(false);
-      await expect(access(socketPath!)).rejects.toMatchObject({ code: "ENOENT" });
+      await waitForProcessExit(Number(rawPid));
+      await waitForPathAbsent(socketPath!);
       expect(await readdir(runRoot)).toEqual([".owner.json"]);
     } finally {
       try {
