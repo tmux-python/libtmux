@@ -133,6 +133,62 @@ out:
 [('list-sessions',)]
 ```
 
+## Testing without tmux
+
+Writing a fake that *simulates* tmux is a trap. libtmux's listing queries ask
+tmux for 136 format fields per row, and a fake that answers unknown commands
+optimistically ends up reporting that every session exists (`has-session` exits
+0) while no sessions exist (`list-sessions` is empty).
+
+So record real traffic instead, and play it back.
+{class}`~libtmux.engines.record.RecordingEngine` wraps a real engine and keeps
+what tmux said; {class}`~libtmux.engines.record.ReplayEngine` serves it back:
+
+```python
+>>> from libtmux.engines import RecordingEngine, ReplayEngine, SubprocessEngine
+>>> from libtmux.server import Server
+
+>>> recorder = RecordingEngine(SubprocessEngine.for_server(server))
+>>> live = Server(socket_name=server.socket_name, engine=recorder)
+>>> _ = live.cmd("display-message", "-p", "#{session_name}")
+
+>>> offline = Server(engine=ReplayEngine(recorder.tape))
+>>> offline.cmd("display-message", "-p", "#{session_name}").stdout
+['libtmux_...']
+```
+
+Because the rows came from real tmux, the whole object API works offline —
+`sessions`, `windows`, `panes` all hydrate. `to_dict()` and
+{meth}`~libtmux.engines.record.ReplayEngine.from_dict` round-trip a tape through
+JSON, so you can commit one next to the tests that replay it: recording needs
+tmux, running does not.
+
+A replay engine **fails closed**. A command it never recorded raises
+{exc}`~libtmux.exc.UnscriptedCommand` rather than inventing an answer:
+
+```python
+>>> from libtmux.engines import CommandResult, ReplayEngine
+>>> from libtmux.server import Server
+>>> engine = ReplayEngine({("list-sessions",): CommandResult(cmd=("tmux",))})
+>>> Server(engine=engine).cmd("kill-server")
+Traceback (most recent call last):
+...
+libtmux.exc.UnscriptedCommand: no recorded result for 'kill-server'
+```
+
+A recorder also works as a plain spy — `requests` is every argv in order, which
+is what the `recording_server` pytest fixture is for:
+
+```python
+>>> from libtmux.engines import RecordingEngine, SubprocessEngine
+>>> from libtmux.server import Server
+>>> recorder = RecordingEngine(SubprocessEngine.for_server(server))
+>>> spy = Server(socket_name=server.socket_name, engine=recorder)
+>>> _ = spy.cmd("list-sessions")
+>>> recorder.requests
+[('list-sessions',)]
+```
+
 ## Injected engines and sockets
 
 An engine that names no tmux server of its own **adopts** the server's

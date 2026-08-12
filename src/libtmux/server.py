@@ -7,6 +7,7 @@ libtmux.server
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 import pathlib
@@ -20,7 +21,11 @@ from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
-from libtmux.engines.base import CommandRequest, SupportsConnection
+from libtmux.engines.base import (
+    CommandRequest,
+    SupportsConnection,
+    TmuxEngine,
+)
 from libtmux.engines.connection import ServerConnection
 from libtmux.engines.subprocess import SubprocessEngine
 from libtmux.hooks import HooksMixin
@@ -45,11 +50,45 @@ if t.TYPE_CHECKING:
     from typing_extensions import Self
 
     from libtmux._internal.types import StrPath
-    from libtmux.engines.base import TmuxEngine
 
     DashLiteral: TypeAlias = t.Literal["-"]
 
 logger = logging.getLogger(__name__)
+
+
+def _validated_engine(engine: TmuxEngine | None) -> TmuxEngine | None:
+    """Return *engine*, rejecting anything a synchronous server cannot drive.
+
+    :class:`~libtmux.engines.base.TmuxEngine` is a runtime-checkable
+    :class:`typing.Protocol`, so :func:`isinstance` confirms that ``run`` and
+    ``run_batch`` exist but says nothing about their signatures -- and an
+    :class:`~libtmux.engines.base.AsyncTmuxEngine` satisfies it too, because its
+    methods have the same names. Both failures otherwise surface far from the
+    constructor: a missing method as an :exc:`AttributeError` inside
+    :meth:`Server.cmd`, and a coroutine as a result object that has no
+    ``returncode``. Checking here names the real problem instead.
+    """
+    if engine is None:
+        return None
+    if not isinstance(engine, TmuxEngine):
+        missing = [
+            name
+            for name in ("run", "run_batch")
+            if not callable(getattr(engine, name, None))
+        ]
+        msg = (
+            f"{type(engine).__name__} is not a TmuxEngine: missing "
+            f"{', '.join(missing)}. Subclass libtmux.engines.TmuxEngine to "
+            f"inherit run_batch, or define both methods."
+        )
+        raise exc.LibTmuxException(msg)
+    if inspect.iscoroutinefunction(engine.run):
+        msg = (
+            f"{type(engine).__name__}.run() is async; Server is synchronous. "
+            f"Await an AsyncTmuxEngine directly instead of passing it to Server."
+        )
+        raise exc.LibTmuxException(msg)
+    return engine
 
 
 def _is_daemon_not_up_error(stderr_text: str) -> bool:
@@ -199,7 +238,7 @@ class Server(
     ) -> None:
         EnvironmentMixin.__init__(self, "-g")
         self.tmux_bin = str(tmux_bin) if tmux_bin is not None else None
-        self._engine = engine
+        self._engine = _validated_engine(engine)
         self._default_engine = None
         self._adopted_engine = None
         self._connection = None

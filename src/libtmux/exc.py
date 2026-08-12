@@ -99,6 +99,34 @@ class TmuxCommandNotFound(LibTmuxException):
     """Application binary for tmux not found."""
 
 
+class UnscriptedCommand(LibTmuxException):
+    """A replay engine was asked for a command it never recorded.
+
+    Raised by :class:`~libtmux.engines.record.ReplayEngine` instead of
+    fabricating a result. A fake that answers unknown commands optimistically
+    reports contradictory state -- ``has-session`` succeeding while
+    ``list-sessions`` is empty -- and the contradiction surfaces far from its
+    cause.
+
+    Parameters
+    ----------
+    args : tuple[str, ...]
+        The request argv with no recorded answer.
+
+    Examples
+    --------
+    >>> raise UnscriptedCommand(("kill-server",))
+    Traceback (most recent call last):
+    ...
+    libtmux.exc.UnscriptedCommand: no recorded result for 'kill-server'
+    """
+
+    def __init__(self, args: tuple[str, ...]) -> None:
+        self.args_requested = tuple(args)
+        rendered = " ".join(self.args_requested) or "<empty command>"
+        super().__init__(f"no recorded result for {rendered!r}")
+
+
 class NotInsideTmux(LibTmuxException):
     """Raised when the process is not running inside a tmux pane.
 
