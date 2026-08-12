@@ -97,17 +97,35 @@ class ControlModeEngine(TmuxEngine):
             text=True,
             bufsize=1,
         )
-        self._read_block()  # tmux greets with a handshake block
+        # tmux greets with a handshake block either way; a failed attach
+        # terminates it with %error rather than %end and then exits. Reported
+        # as an ordinary result that is indistinguishable from tmux rejecting
+        # a command, so it is raised instead.
+        lines, returncode = self._read_block()
+        if returncode != 0:
+            detail = " ".join(lines) or "no reason given"
+            msg = f"could not attach to session {self._target!r}: {detail}"
+            raise exc.EngineError(msg)
 
     def _read_block(self) -> tuple[list[str], int]:
-        """Read one ``%begin``-delimited reply, returning its lines and status."""
+        """Read one ``%begin``-delimited reply, returning its lines and status.
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.EngineError`
+            The stream closed before tmux terminated the block.
+        """
         assert self._process.stdout is not None
         lines: list[str] = []
         returncode = 0
         while True:
             line = self._process.stdout.readline()
             if not line:
-                break
+                # The stream ended before tmux terminated the block. Returning
+                # here would report the dead connection as a *successful*
+                # empty result, which is the worst of the three options.
+                msg = "control connection closed"
+                raise exc.EngineError(msg)
             line = line.rstrip("\n")
             if line.startswith("%begin"):
                 lines = []
@@ -389,3 +407,19 @@ def test_connecting_adds_no_session(control_mode_server: Server) -> None:
 
     assert names, "the fixture session should be visible"
     assert not [name for name in names if str(name).startswith("_")]
+
+
+def test_a_failed_reconnect_raises_rather_than_looking_like_an_error(
+    session: Session,
+) -> None:
+    """A connection that never established is a transport failure, not a result.
+
+    ``attach-session`` against a dead server makes tmux start a fresh one, which
+    has no such session, so the client exits quietly. Reported as a result it
+    would carry ``returncode`` 1 and be indistinguishable from tmux rejecting a
+    command.
+    """
+    connection = ServerConnection.from_server(session.server)
+
+    with pytest.raises(exc.EngineError, match="could not attach"):
+        ControlModeEngine(connection, "no_such_session_exists")
