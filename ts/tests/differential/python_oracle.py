@@ -69,13 +69,13 @@ def load_pinned_libtmux() -> t.Any:
 
     source_package = root / "src" / "libtmux"
     observed: dict[str, str] = {}
-    for path in source_package.rglob("*"):
-        if path.is_symlink() or not path.is_file():
-            if path.is_symlink():
+    for entry in source_package.rglob("*"):
+        if entry.is_symlink() or not entry.is_file():
+            if entry.is_symlink():
                 fail("isolated Python provenance tree contains a symlink")
             continue
-        relative = path.relative_to(root / "src").as_posix()
-        content = path.read_bytes()
+        relative = entry.relative_to(root / "src").as_posix()
+        content = entry.read_bytes()
         framed = b"blob " + str(len(content)).encode("ascii") + b"\0" + content
         observed[relative] = hashlib.sha1(framed).hexdigest()
     if observed != expected:
