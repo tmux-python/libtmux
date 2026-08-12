@@ -2345,7 +2345,8 @@ describe("outer test controllers", () => {
         distinctOwners: true,
         observed: true,
       });
-      expect((await closeChild(child)).code).toBe(0);
+      const closed = await closeChild(child);
+      expect(closed.code, `${closed.stdout}${closed.stderr}`).toBe(0);
       await expect(access(root)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
