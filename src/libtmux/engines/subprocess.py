@@ -40,7 +40,7 @@ class SubprocessEngine:
     >>> from libtmux.engines import CommandRequest, SubprocessEngine
     >>> engine = SubprocessEngine.for_server(server)
     >>> engine.run(CommandRequest.from_args("display-message", "-p", "hi")).stdout
-    ('hi',)
+    ['hi']
     """
 
     def __init__(self, connection: ServerConnection | None = None) -> None:
