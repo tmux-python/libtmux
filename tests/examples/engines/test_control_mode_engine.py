@@ -72,6 +72,7 @@ class ControlModeEngine(TmuxEngine):
     def __init__(self, connection: ServerConnection, target: str) -> None:
         self._connection = connection
         self._target = target
+        self.notifications: list[str] = []
         self.reconnects = 0
         self._spawn()
 
@@ -95,8 +96,6 @@ class ControlModeEngine(TmuxEngine):
             text=True,
             bufsize=1,
         )
-        if not hasattr(self, "notifications"):
-            self.notifications: list[str] = []
         self._read_block()  # tmux greets with a handshake block
 
     def _read_block(self) -> tuple[list[str], int]:
