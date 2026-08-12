@@ -44,4 +44,5 @@ export {
   NoMatchError,
   ObjectDoesNotExist,
   QueryValidationError,
+  TmuxCommandError,
 } from "./exc.js";

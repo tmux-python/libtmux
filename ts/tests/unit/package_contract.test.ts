@@ -120,6 +120,7 @@ describe("package contract", () => {
       "QueryValidationError",
       "Server",
       "Session",
+      "TmuxCommandError",
       "Window",
       "parseLegacyWhere",
     ]);

@@ -107,6 +107,15 @@ function formatQuery(query: Query): string {
     .join(", ");
 }
 
+export interface TmuxCommandFailureOptions extends ExceptionOptions {
+  /** The full argument vector, without the connection flags. */
+  readonly args: readonly string[];
+  readonly exitCode: number;
+  readonly stderr: readonly string[];
+  /** The `-t` target the command addressed, when it had one. */
+  readonly target?: string | undefined;
+}
+
 export class LibTmuxException extends Error {
   readonly subcommand: string | undefined;
 
@@ -314,5 +323,37 @@ export class QueryValidationError extends LibTmuxException {
   }) {
     super(message, { cause });
     this.code = code;
+  }
+}
+
+/**
+ * A tmux command that exited non-zero.
+ *
+ * The parts are fields rather than a formatted sentence so callers can branch
+ * on them. Matching a message substring is the failure mode this replaces: it
+ * breaks silently when tmux rewords, and it cannot distinguish "already in the
+ * requested state" from a genuine error.
+ */
+export class TmuxCommandError extends LibTmuxException {
+  readonly args: readonly string[];
+  readonly exitCode: number;
+  readonly stderr: readonly string[];
+  readonly target: string | undefined;
+
+  constructor(options: TmuxCommandFailureOptions) {
+    const subcommand = options.args[0] ?? "tmux";
+    super(`${subcommand} failed: ${options.stderr.join("; ")}`, {
+      ...(options.cause === undefined ? {} : { cause: options.cause }),
+      subcommand,
+    });
+    this.args = Object.freeze([...options.args]);
+    this.exitCode = options.exitCode;
+    this.stderr = Object.freeze([...options.stderr]);
+    this.target = options.target;
+  }
+
+  /** Whether tmux's own message contains a phrase, without message parsing at call sites. */
+  stderrIncludes(phrase: string): boolean {
+    return this.stderr.some((line) => line.includes(phrase));
   }
 }

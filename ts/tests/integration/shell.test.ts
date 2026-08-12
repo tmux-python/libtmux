@@ -10,6 +10,7 @@ import {
   runWithCleanup,
 } from "../../src/_internal/test/run_root.js";
 import { TestServer } from "../../src/_internal/test/test_server.js";
+import { TmuxCommandError } from "../../src/exc.js";
 import { Server } from "../../src/server.js";
 import { Session } from "../../src/session.js";
 
@@ -136,6 +137,50 @@ describe("shell execution and pane movement", () => {
       await pane.exitCopyMode();
       await pane.refresh();
       expect(pane.inMode).toBe("0");
+    });
+  }, 40_000);
+
+  test("reports a tmux failure as structured fields, not a formatted string", async () => {
+    await withServer(async (fixture) => {
+      const server = serverFor(fixture);
+      const pane = (await server.snapshot()).panes.one();
+
+      const error = await pane
+        .sendKeys("x", { enter: false })
+        .then(() => undefined)
+        .catch((thrown: unknown) => thrown);
+      expect(error).toBeUndefined();
+
+      const failure = await server
+        .setOption("definitely-not-an-option", "1")
+        .then(() => undefined)
+        .catch((thrown: unknown) => thrown);
+
+      expect(failure).toBeInstanceOf(TmuxCommandError);
+      const typed = failure as TmuxCommandError;
+      expect(typed.args[0]).toBe("set-option");
+      expect(typed.exitCode).not.toBe(0);
+      expect(typed.stderr.length).toBeGreaterThan(0);
+      expect(typed.stderrIncludes("definitely-not-an-option")).toBe(true);
+      // The parts stay addressable instead of being baked into the message.
+      expect(Object.isFrozen(typed.stderr)).toBe(true);
+    });
+  }, 40_000);
+
+  test("carries the addressed target on a failing command", async () => {
+    await withServer(async (fixture) => {
+      const server = serverFor(fixture);
+
+      const pane = (await server.snapshot()).panes.one();
+      await pane.kill();
+
+      const failure = await pane
+        .capture()
+        .then(() => undefined)
+        .catch((thrown: unknown) => thrown);
+
+      expect(failure).toBeInstanceOf(TmuxCommandError);
+      expect((failure as TmuxCommandError).target).toBe(pane.id);
     });
   }, 40_000);
 });

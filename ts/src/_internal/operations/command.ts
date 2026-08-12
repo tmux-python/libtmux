@@ -1,4 +1,4 @@
-import { LibTmuxException } from "../../exc.js";
+import { TmuxCommandError } from "../../exc.js";
 import type { RuntimeContext } from "../runtime/context.js";
 import { adaptRawResult, prepareCommandRequest } from "./request.js";
 
@@ -18,7 +18,13 @@ export async function runCommand(
     await runtime.transport.execute(prepareCommandRequest(runtime.connection, args)),
   );
   if (result.returncode !== 0) {
-    throw new LibTmuxException(`${args[0] ?? "tmux command"} failed: ${result.stderr.join("; ")}`);
+    const target = args.indexOf("-t");
+    throw new TmuxCommandError({
+      args,
+      exitCode: result.returncode,
+      stderr: result.stderr,
+      ...(target === -1 ? {} : { target: args[target + 1] }),
+    });
   }
   return result.stdout;
 }

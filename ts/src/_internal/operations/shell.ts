@@ -1,4 +1,5 @@
 import type { IfShellOptions, RespawnOptions, RunShellOptions } from "../../types.js";
+import { TmuxCommandError } from "../../exc.js";
 import { runCommand } from "./command.js";
 import type { RuntimeContext } from "../runtime/context.js";
 
@@ -120,7 +121,7 @@ export async function setCopyMode(
     // tmux rejects `cancel` on a pane that is not in a mode, but "make sure
     // this pane is not in a mode" is the caller's intent, and failing an
     // already-satisfied condition would push a pre-check into every call site.
-    if (!String(error).includes("not in a mode")) throw error;
+    if (!(error instanceof TmuxCommandError) || !error.stderrIncludes("not in a mode")) throw error;
   }
 }
 
