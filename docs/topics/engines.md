@@ -72,7 +72,7 @@ binary, a dropped connection — raises:
 ...     returncode=1,
 ... )
 >>> result.returncode, result.stderr
-(1, ('no such window',))
+(1, ['no such window'])
 ```
 
 ## Writing an engine

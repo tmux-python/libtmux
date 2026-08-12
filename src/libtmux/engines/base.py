@@ -15,12 +15,12 @@ boundary rather than data.
 from __future__ import annotations
 
 import typing as t
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 if t.TYPE_CHECKING:
     import pathlib
     import subprocess
-    from collections.abc import Sequence
 
     from typing_extensions import Self
 
@@ -325,6 +325,61 @@ class CommandRequest:
         return self.args[0] if self.args else ""
 
 
+class Lines(list[str]):
+    """Command output: a list that also compares equal to a tuple.
+
+    Transitional. :class:`~libtmux.common.tmux_cmd` has always exposed
+    ``stdout``/``stderr``/``cmd`` as lists, and callers rely on that in two ways
+    a plain tuple would break -- ``result.stdout == ["x"]``, and
+    ``isinstance(result.stderr, list)``, which gates whether libtmux raises on a
+    tmux error at all. Staying a list keeps both working while
+    :class:`CommandResult` becomes the single result type; comparing equal to a
+    tuple lets code already written against the engine API keep working too.
+
+    Read-only, because a result describes something that already happened.
+
+    Examples
+    --------
+    >>> lines = Lines(["a", "b"])
+    >>> lines == ["a", "b"], lines == ("a", "b"), ["a", "b"] == lines
+    (True, True, True)
+    >>> isinstance(lines, list)
+    True
+    >>> lines.append("c")
+    Traceback (most recent call last):
+    ...
+    TypeError: command output is read-only
+    """
+
+    __slots__ = ()
+
+    def __eq__(self, other: object) -> bool:
+        """Compare equal to any list or tuple with the same items."""
+        if isinstance(other, (list, tuple)):
+            return tuple(self) == tuple(other)
+        return NotImplemented
+
+    def __ne__(self, other: object) -> bool:
+        """Negate :meth:`__eq__`, preserving ``NotImplemented``."""
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return NotImplemented
+        return not result
+
+    def __hash__(self) -> int:  # type: ignore[override]
+        """Hash as the tuple this will eventually be."""
+        return hash(tuple(self))
+
+    def _read_only(self, *args: t.Any, **kwargs: t.Any) -> t.NoReturn:
+        """Reject every mutation."""
+        msg = "command output is read-only"
+        raise TypeError(msg)
+
+    append = extend = insert = remove = _read_only
+    pop = sort = reverse = clear = _read_only
+    __setitem__ = __delitem__ = __iadd__ = __imul__ = _read_only
+
+
 @dataclass(frozen=True)
 class CommandResult:
     """The structured outcome of executing a :class:`CommandRequest`.
@@ -352,19 +407,26 @@ class CommandResult:
     Examples
     --------
     >>> CommandResult(cmd=("tmux", "display-message", "-p", "hi"), stdout=("hi",))
-    CommandResult(cmd=('tmux', 'display-message', '-p', 'hi'), stdout=('hi',),
-    stderr=(), returncode=0)
+    CommandResult(cmd=['tmux', 'display-message', '-p', 'hi'], stdout=['hi'],
+    stderr=[], returncode=0)
     """
 
-    cmd: tuple[str, ...]
-    stdout: tuple[str, ...] = ()
-    stderr: tuple[str, ...] = ()
+    cmd: Sequence[str]
+    stdout: Sequence[str] = ()
+    stderr: Sequence[str] = ()
     returncode: int = 0
     process: subprocess.Popen[str] | None = field(
         default=None,
         compare=False,
         repr=False,
     )
+
+    def __post_init__(self) -> None:
+        """Normalize output to :class:`Lines`, whatever an engine passed in."""
+        for name in ("cmd", "stdout", "stderr"):
+            value = getattr(self, name)
+            if not isinstance(value, Lines):
+                object.__setattr__(self, name, Lines(value))
 
     @property
     def ok(self) -> bool:
@@ -405,7 +467,7 @@ class CommandResult:
         --------
         >>> result = CommandResult(cmd=("tmux", "list-sessions"), stdout=("a",))
         >>> result.raise_for_status().stdout
-        ('a',)
+        ['a']
 
         The message names the tmux subcommand, not a connection flag:
 
@@ -450,9 +512,9 @@ class TmuxEngine(t.Protocol):
     ...     def run(self, request):
     ...         return CommandResult(cmd=("tmux", *request.args), stdout=("ok",))
     >>> EchoEngine().run(CommandRequest.from_args("list-sessions")).stdout
-    ('ok',)
+    ['ok']
     >>> EchoEngine().run_batch([CommandRequest.from_args("list-sessions")])
-    [CommandResult(cmd=('tmux', 'list-sessions'), stdout=('ok',), stderr=(),
+    [CommandResult(cmd=['tmux', 'list-sessions'], stdout=['ok'], stderr=[],
     returncode=0)]
 
     Duck typing works too, but then both methods are yours to write:
@@ -519,7 +581,7 @@ class AsyncTmuxEngine(t.Protocol):
     ...     batch = await engine.run_batch([CommandRequest.from_args("list-panes")])
     ...     return result.stdout, len(batch)
     >>> asyncio.run(main())
-    (('ok',), 1)
+    (['ok'], 1)
     """
 
     async def run(self, request: CommandRequest) -> CommandResult:
