@@ -217,6 +217,33 @@ class ControlModeEngine(TmuxEngine):
             )
         return results
 
+    @property
+    def connection(self) -> ServerConnection:
+        """The tmux server this engine is attached to.
+
+        With :meth:`with_connection` this satisfies
+        :class:`~libtmux.engines.base.SupportsConnection`, without which
+        :class:`~libtmux.Server` cannot bind an engine to its own socket -- so
+        an engine that omits it can silently reach the ambient tmux server.
+        """
+        return self._connection
+
+    def with_connection(self, connection: ServerConnection) -> ControlModeEngine:
+        """Return an engine attached to *connection* instead.
+
+        A new engine rather than a rebind: a control connection is a live
+        process, and moving it would mean tearing one down mid-flight.
+        """
+        return type(self)(connection, self._target)
+
+    def tmux_version(self) -> str | None:
+        """Report the tmux version, satisfying ``SupportsTmuxVersion``.
+
+        Without it the version-gated listing format is resolved by running
+        ``tmux -V``, which works only because a binary happens to be present.
+        """
+        return self._connection.tmux_version()
+
     def close(self) -> None:
         """Shut the connection down."""
         try:
@@ -462,3 +489,21 @@ def test_pipelined_replies_pair_with_their_commands(
     assert [r.stdout for r in results][:2] == [["c0"], ["c1"]]
     assert not results[2].ok, "the failure keeps its own position"
     assert results[3].stdout == ["c2"], "a failure does not shift later replies"
+
+
+def test_the_example_satisfies_the_optional_protocols(
+    control_mode_server: Server,
+) -> None:
+    """An engine copied from here should be a well-behaved one.
+
+    The optional capabilities are easy to omit, and omitting them fails
+    quietly: no connection adoption, and the tmux version resolved by running
+    the binary rather than asking the engine.
+    """
+    from libtmux.engines import SupportsConnection, SupportsTmuxVersion
+
+    engine = control_mode_server.engine
+
+    assert isinstance(engine, SupportsConnection)
+    assert isinstance(engine, SupportsTmuxVersion)
+    assert engine.tmux_version() is not None
