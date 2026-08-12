@@ -114,6 +114,38 @@ lookup instead of re-walking `$PATH` for every command.
 
 See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
 
+#### Testing without a tmux server
+
+{class}`~libtmux.engines.record.RecordingEngine` wraps a real engine and keeps
+what tmux answered; {class}`~libtmux.engines.record.ReplayEngine` serves those
+answers back with no tmux running, so the whole object API — `sessions`,
+`windows`, `panes` — works offline against real recorded output. Tapes
+round-trip through JSON, so recording needs tmux and running does not. A replay
+engine fails closed, raising {exc}`~libtmux.exc.UnscriptedCommand` for a command
+it never recorded. The `recording_server` pytest fixture provides a server that
+records, which doubles as a spy over the tmux commands your code issued.
+
+#### Result objects report success directly
+
+{attr}`CommandResult.ok <libtmux.engines.base.CommandResult.ok>` and
+{meth}`CommandResult.raise_for_status()
+<libtmux.engines.base.CommandResult.raise_for_status>` replace hand-written
+`returncode` comparisons, and {class}`~libtmux.common.tmux_cmd` carries the same
+two, so results read the same whichever layer produced them.
+
+#### Engines are validated where they are supplied
+
+{class}`~libtmux.Server` now rejects a non-engine at construction, naming the
+missing method, rather than failing with an {exc}`AttributeError` inside the
+first command. An async engine is rejected explicitly: it satisfies the
+structural check, since a runtime-checkable {class}`typing.Protocol` compares
+method names rather than signatures.
+
+Subclassing {class}`~libtmux.engines.base.TmuxEngine` supplies `run_batch`, so a
+stateless engine only implements `run`.
+{class}`~libtmux.engines.base.AsyncTmuxEngine` is declared for engines that will
+hold a persistent connection.
+
 ### Fixes
 
 #### A trailing `;` in a command argument is no longer swallowed
