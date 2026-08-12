@@ -126,6 +126,16 @@ lookup instead of re-walking `$PATH` for every command.
 
 See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
 
+#### A persistent-connection engine is buildable on the public API
+
+{func}`~libtmux.engines.base.render_control_line` and
+{func}`~libtmux.engines.base.unescape_control_output` encode a command for
+tmux's line-oriented control parser and decode a ``%output`` payload back to the
+bytes a pane wrote. With them, an engine that holds one long-lived ``tmux -C``
+connection can be written entirely against the public engine API — including the
+format-heavy listing queries the object API depends on. See
+`tests/examples/engines/test_control_mode_engine.py` for a worked example.
+
 #### Testing without a tmux server
 
 {class}`~libtmux.engines.record.RecordingEngine` wraps a real engine and keeps
