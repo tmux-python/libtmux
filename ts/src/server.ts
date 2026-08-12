@@ -3,6 +3,8 @@ import type {
   NewSessionOptions,
   RunShellOptions,
   ServerSnapshot,
+  TmuxEventStream,
+  WatchOptions,
 } from "./types.js";
 import { randomUUID } from "node:crypto";
 
@@ -35,6 +37,7 @@ import {
   runtimeForServerValue,
 } from "./_internal/runtime/context.js";
 import { TmuxConnection } from "./_internal/runtime/connection.js";
+import { watchServer } from "./_internal/control/stream.js";
 import { NodeSpawnTransport } from "./_internal/transport/node_spawn_transport.js";
 
 export interface ServerOptions {
@@ -101,6 +104,27 @@ export class Server {
    * the returned value resolves locally, so traversal and filtering issue no
    * commands and an earlier snapshot keeps reporting its own instant.
    */
+  /**
+   * Stream tmux's control-mode notifications until the stream is disposed.
+   *
+   * A snapshot answers what is true now; this answers what changed. The stream
+   * holds one `tmux -C attach-session` process for its lifetime, so it reports
+   * events without polling and without a command per read.
+   *
+   * ```ts
+   * await using events = server.watch();
+   * for await (const event of events) {
+   *   if (event.kind === "window-add") console.log(event.windowId);
+   * }
+   * ```
+   *
+   * tmux sends a control client no pane output until it attaches, so this
+   * attaches to a session; a server with no sessions has nothing to watch.
+   */
+  watch(options?: WatchOptions): TmuxEventStream {
+    return watchServer(runtimeForServer(this).connection, options);
+  }
+
   snapshot(): Promise<ServerSnapshot> {
     return buildServerSnapshot(this, runtimeForServer(this));
   }

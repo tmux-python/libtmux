@@ -9,7 +9,7 @@ import type {
 } from "../transport/types.js";
 import { snapshotCommandRequest, TransportError } from "../transport/types.js";
 
-function connectionArguments(connection: TmuxConnection): string[] {
+export function connectionArguments(connection: TmuxConnection): string[] {
   const args: string[] = [];
   if (connection.colors === 256) args.push("-2");
   if (connection.colors === 88) args.push("-8");

@@ -125,3 +125,200 @@ export type HookScope = "server" | "session";
  * the bare `string` swallow them.
  */
 export type WindowTarget = "last" | "next" | "previous" | (string & Record<never, never>);
+
+/**
+ * tmux control-mode notifications, parsed into a discriminated union.
+ *
+ * Event names are tmux's own, verbatim and without the leading `%`, so they
+ * grep against tmux(1) and the control-mode protocol. Field names are this
+ * package's, so they read like the rest of the API. That is the same line
+ * `format` draws: tmux's vocabulary for tmux's data, ours for our shape.
+ */
+
+/** A pane produced output. */
+export interface TmuxOutputEvent {
+  readonly data: string;
+  readonly kind: "output";
+  readonly paneId: string;
+}
+
+/**
+ * A pane produced output on a connection that asked for age reporting.
+ *
+ * `age` is milliseconds between tmux buffering the data and writing it, which
+ * is how a consumer notices it is falling behind.
+ */
+export interface TmuxExtendedOutputEvent {
+  readonly age: number;
+  readonly data: string;
+  readonly kind: "extended-output";
+  readonly paneId: string;
+}
+
+/** A window was added, closed, or linked into or out of a session. */
+export interface TmuxWindowLifecycleEvent {
+  readonly kind: "window-add" | "window-close" | "unlinked-window-add" | "unlinked-window-close";
+  readonly windowId: string;
+}
+
+/** A window was renamed. */
+export interface TmuxWindowRenamedEvent {
+  readonly kind: "window-renamed" | "unlinked-window-renamed";
+  readonly name: string;
+  readonly windowId: string;
+}
+
+/** The active pane of a window changed. */
+export interface TmuxWindowPaneChangedEvent {
+  readonly kind: "window-pane-changed";
+  readonly paneId: string;
+  readonly windowId: string;
+}
+
+/** A window's layout changed. */
+export interface TmuxLayoutChangeEvent {
+  readonly flags: string;
+  readonly kind: "layout-change";
+  readonly layout: string;
+  readonly visibleLayout: string;
+  readonly windowId: string;
+}
+
+/** The attached session changed, or a session was renamed. */
+export interface TmuxSessionEvent {
+  readonly kind: "session-changed" | "session-renamed";
+  readonly name: string;
+  readonly sessionId: string;
+}
+
+/** The set of sessions changed. Carries no payload; re-read the server. */
+export interface TmuxSessionsChangedEvent {
+  readonly kind: "sessions-changed";
+}
+
+/** A session's active window changed. */
+export interface TmuxSessionWindowChangedEvent {
+  readonly kind: "session-window-changed";
+  readonly sessionId: string;
+  readonly windowId: string;
+}
+
+/** Another client switched sessions. */
+export interface TmuxClientSessionChangedEvent {
+  readonly client: string;
+  readonly kind: "client-session-changed";
+  readonly name: string;
+  readonly sessionId: string;
+}
+
+/** Another client detached. */
+export interface TmuxClientDetachedEvent {
+  readonly client: string;
+  readonly kind: "client-detached";
+}
+
+/** A pane entered or left a mode such as copy mode. */
+export interface TmuxPaneModeChangedEvent {
+  readonly kind: "pane-mode-changed";
+  readonly paneId: string;
+}
+
+/** A paste buffer was written or deleted. */
+export interface TmuxPasteBufferEvent {
+  readonly buffer: string;
+  readonly kind: "paste-buffer-changed" | "paste-buffer-deleted";
+}
+
+/** tmux paused or resumed output for a pane that fell behind. */
+export interface TmuxPaneFlowEvent {
+  readonly kind: "continue" | "pause";
+  readonly paneId: string;
+}
+
+/** tmux reported a message, or an error in its configuration. */
+export interface TmuxMessageEvent {
+  readonly kind: "config-error" | "message";
+  readonly message: string;
+}
+
+/** The control-mode connection is ending. */
+export interface TmuxExitEvent {
+  readonly kind: "exit";
+  readonly reason: string | undefined;
+}
+
+/**
+ * A notification this version of the package does not model.
+ *
+ * tmux adds notifications between releases. Rather than drop them, they arrive
+ * with their name and raw arguments so a consumer can handle one this package
+ * has not caught up with yet.
+ */
+export interface TmuxUnknownEvent {
+  readonly args: readonly string[];
+  readonly kind: "unknown";
+  readonly name: string;
+}
+
+export type TmuxEvent =
+  | TmuxClientDetachedEvent
+  | TmuxClientSessionChangedEvent
+  | TmuxExitEvent
+  | TmuxExtendedOutputEvent
+  | TmuxLayoutChangeEvent
+  | TmuxMessageEvent
+  | TmuxOutputEvent
+  | TmuxPaneFlowEvent
+  | TmuxPaneModeChangedEvent
+  | TmuxPasteBufferEvent
+  | TmuxSessionEvent
+  | TmuxSessionWindowChangedEvent
+  | TmuxSessionsChangedEvent
+  | TmuxUnknownEvent
+  | TmuxWindowLifecycleEvent
+  | TmuxWindowPaneChangedEvent
+  | TmuxWindowRenamedEvent;
+
+/**
+ * The part of `AbortSignal` this package uses.
+ *
+ * Typed structurally rather than as the global, because `AbortSignal` comes
+ * from the DOM or Node type libraries and naming it would make these public
+ * declarations require one. A real `AbortSignal` satisfies it.
+ */
+export interface AbortLike {
+  addEventListener(type: "abort", listener: () => void, options?: { once?: boolean }): void;
+  readonly aborted: boolean;
+  removeEventListener(type: "abort", listener: () => void): void;
+}
+
+/** Options for {@link Server.watch}. */
+export interface WatchOptions {
+  /**
+   * How many events to hold for a consumer that has fallen behind.
+   *
+   * On overflow the oldest event is dropped and {@link TmuxEventStream.dropped}
+   * counts it. Buffering without a bound would let a slow consumer grow the
+   * heap until the process dies, which is worse than losing an event.
+   */
+  readonly bufferSize?: number;
+  /** Abort the connection when this signal fires. */
+  readonly signal?: AbortLike;
+  /** Session to attach to. Defaults to whichever tmux considers most recent. */
+  readonly target?: string;
+}
+
+/**
+ * A live stream of tmux control-mode events.
+ *
+ * Async iterable and async disposable, so `await using` ends the connection on
+ * scope exit even when the loop throws. The events are consumed, not replayed,
+ * so a stream is iterated once.
+ */
+export interface TmuxEventStream extends AsyncIterable<TmuxEvent>, AsyncDisposable {
+  /** End the connection. Safe to call more than once. */
+  close(): Promise<void>;
+  /** Events discarded because the consumer fell behind. */
+  readonly dropped: number;
+  [Symbol.asyncDispose](): Promise<void>;
+}

@@ -60,6 +60,37 @@ To advance one handle in place rather than re-acquiring everything, call
 `refresh()`. It re-reads only that handle and keeps its placement, so a window
 linked into two sessions stays on the one you resolved.
 
+## Watching
+
+A snapshot answers what is true now. `server.watch()` answers what changed, over
+one persistent `tmux -C` connection rather than a command per read.
+
+```ts
+await using events = server.watch();
+
+for await (const event of events) {
+  if (event.kind === "window-add") console.log("opened", event.windowId);
+  if (event.kind === "output") process.stdout.write(event.data);
+}
+```
+
+Events are a discriminated union, so `event.kind` narrows the rest of the shape
+with no cast. Names are tmux's own, without the leading `%`, and a notification
+this version does not model arrives as `{ kind: "unknown", name, args }` rather
+than being dropped.
+
+The stream is an `AsyncDisposable`, so `await using` ends the tmux process when
+the scope exits, including on a thrown error. A consumer that falls behind gets
+its oldest events dropped rather than an unbounded buffer; `events.dropped`
+counts them and `bufferSize` sets the bound.
+
+tmux sends a control client no pane output until it attaches, so watching
+attaches to a session. A server with no sessions has nothing to watch.
+
+`await using` needs `Symbol.asyncDispose`, so a consumer's `lib` includes
+`ESNext.Disposable` alongside its ECMAScript target. `events.close()` is the
+same operation for a project that cannot add it.
+
 ## Querying
 
 `.where()` takes declarative, serializable criteria. `.filter()` takes an

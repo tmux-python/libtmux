@@ -20,6 +20,7 @@ process.exitCode = await runSupervisor({
     "tests/integration/server_utils.test.ts",
     "tests/integration/shell.test.ts",
     "tests/integration/interactive.test.ts",
+    "tests/integration/watch.test.ts",
     "tests/integration/examples.test.ts",
     "consumers/mcp/server.test.ts",
     "consumers/workspace/builder.test.ts",
