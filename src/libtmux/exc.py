@@ -108,10 +108,22 @@ class UnscriptedCommand(LibTmuxException):
     ``list-sessions`` is empty -- and the contradiction surfaces far from its
     cause.
 
+    A listing query carries tmux's whole ``-F`` template, which runs to
+    thousands of characters, so long arguments are elided: the point of the
+    message is which command went unanswered, not the template's contents.
+
     Parameters
     ----------
     args : tuple[str, ...]
         The request argv with no recorded answer.
+    hint : str, optional
+        Extra guidance appended to the message, e.g. the tmux version a tape
+        was recorded against.
+
+    Attributes
+    ----------
+    args_requested : tuple[str, ...]
+        The full, un-elided argv, for a caller that wants to inspect it.
 
     Examples
     --------
@@ -119,12 +131,37 @@ class UnscriptedCommand(LibTmuxException):
     Traceback (most recent call last):
     ...
     libtmux.exc.UnscriptedCommand: no recorded result for 'kill-server'
+
+    A long argument is summarized rather than dumped:
+
+    >>> raise UnscriptedCommand(("list-sessions", "-F" + "#" * 99))
+    Traceback (most recent call last):
+    ...
+    libtmux.exc.UnscriptedCommand: no recorded result for 'list-sessions <101-char arg>'
+
+    >>> raise UnscriptedCommand(("list-sessions",), hint="tape recorded on 3.7")
+    Traceback (most recent call last):
+    ...
+    libtmux.exc.UnscriptedCommand: no recorded result for 'list-sessions'
+    (tape recorded on 3.7)
     """
 
-    def __init__(self, args: tuple[str, ...]) -> None:
+    #: Arguments longer than this are replaced by a length summary.
+    _MAX_ARG_CHARS = 60
+
+    def __init__(self, args: tuple[str, ...], hint: str | None = None) -> None:
         self.args_requested = tuple(args)
-        rendered = " ".join(self.args_requested) or "<empty command>"
-        super().__init__(f"no recorded result for {rendered!r}")
+        rendered = (
+            " ".join(
+                arg if len(arg) <= self._MAX_ARG_CHARS else f"<{len(arg)}-char arg>"
+                for arg in self.args_requested
+            )
+            or "<empty command>"
+        )
+        message = f"no recorded result for {rendered!r}"
+        if hint:
+            message = f"{message} ({hint})"
+        super().__init__(message)
 
 
 class NotInsideTmux(LibTmuxException):
