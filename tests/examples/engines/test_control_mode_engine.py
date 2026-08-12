@@ -20,6 +20,7 @@ import typing as t
 
 import pytest
 
+from libtmux import exc
 from libtmux.engines import (
     CommandResult,
     ServerConnection,
@@ -135,20 +136,24 @@ class ControlModeEngine(TmuxEngine):
         returns it -- measured, and the opposite of what "in flight" suggests.
         What is lost is a command tmux never answered.
 
-        The gap this leaves is the tmux *server* going away: writing to the
-        dead connection then raises :exc:`BrokenPipeError`, an
-        :exc:`OSError` rather than a
-        :exc:`~libtmux.exc.LibTmuxException`, so a caller guarding against
-        libtmux errors does not catch it. Translating that, and backing off
-        rather than reconnecting in a tight loop, is what a hardened engine
-        adds.
+        When the tmux server itself goes away the write fails, and that is
+        translated to :exc:`~libtmux.exc.EngineError` so a caller guarding
+        against libtmux errors catches it rather than a bare
+        :exc:`BrokenPipeError`. Backing off instead of reconnecting in a tight
+        loop is what a hardened engine still adds.
         """
         if self._process.poll() is not None:
             self.reconnects += 1
             self._spawn()
         assert self._process.stdin is not None
-        self._process.stdin.write(render_control_line(request.args) + "\n")
-        self._process.stdin.flush()
+        try:
+            self._process.stdin.write(render_control_line(request.args) + "\n")
+            self._process.stdin.flush()
+        except OSError as error:
+            # The tmux server went away. Translate, so a caller guarding
+            # LibTmuxException catches it instead of a bare BrokenPipeError.
+            msg = "control connection closed"
+            raise exc.EngineError(msg) from error
         stdout, returncode = self._read_block()
         return CommandResult(
             cmd=("tmux", "-C", *request.args),
