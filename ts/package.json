@@ -25,7 +25,8 @@
     "directory": "ts"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/_internal/test"
   ],
   "type": "module",
   "sideEffects": false,
@@ -100,6 +101,7 @@
     "test:differential": "bun scripts/run-differential-tests.ts",
     "test:integration": "bun scripts/run-integration-tests.ts",
     "test:node": "bun run build && bun scripts/test-node.ts --expect-major 22",
+    "test:package": "bun run build && bun scripts/check-package.ts",
     "test:type-performance": "bun scripts/check-type-performance.ts --check",
     "test:types": "tsc -p tests/types/tsconfig.json --noEmit && bun run test:type-performance",
     "test:unit": "bun test --parallel=4 --no-orphans tests/unit",

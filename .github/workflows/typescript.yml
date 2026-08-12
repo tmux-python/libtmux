@@ -79,4 +79,5 @@ jobs:
       - run: bun run test:integration
       - run: bun run test:differential
       - run: bun run test:node
+      - run: bun run test:package
 

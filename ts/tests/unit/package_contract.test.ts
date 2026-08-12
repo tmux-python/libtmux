@@ -51,6 +51,7 @@ const expectedScripts = {
   "test:differential": "bun scripts/run-differential-tests.ts",
   "test:integration": "bun scripts/run-integration-tests.ts",
   "test:node": "bun run build && bun scripts/test-node.ts --expect-major 22",
+  "test:package": "bun run build && bun scripts/check-package.ts",
   "test:type-performance": "bun scripts/check-type-performance.ts --check",
   "test:types": "tsc -p tests/types/tsconfig.json --noEmit && bun run test:type-performance",
   typecheck: "tsc -p tsconfig.json --noEmit",
@@ -150,7 +151,7 @@ describe("package contract", () => {
     expect(packageManifest.type).toBe("module");
     expect(packageManifest.main).toBe("./dist/index.js");
     expect(packageManifest.types).toBe("./dist/index.d.ts");
-    expect(packageManifest.files).toEqual(["dist"]);
+    expect(packageManifest.files).toEqual(["dist", "!dist/_internal/test"]);
     expect(packageManifest.sideEffects).toBe(false);
     expect(packageManifest.trustedDependencies).toEqual([]);
     expect(Object.keys(packageManifest.exports)).toEqual([
