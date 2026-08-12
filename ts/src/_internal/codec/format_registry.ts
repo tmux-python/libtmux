@@ -1,3 +1,7 @@
+function camelCase(value: string): string {
+  return value.replace(/_([a-z0-9])/g, (_match, character: string) => character.toUpperCase());
+}
+
 import type { FormatFieldName, FormatScope, ListCommand } from "../../neo.js";
 import {
   GENERATED_FORMAT_FIELDS,
@@ -239,8 +243,11 @@ function renderWhereFieldsSource(registry: readonly FormatFieldRecord[]): string
     'export type WhereModel = "pane" | "session" | "window";',
     "",
     "export interface WhereField {",
+    "  /** The camelCase key a caller writes in criteria. */",
+    "  readonly criteriaName: string;",
     '  readonly domain: "string";',
     "  readonly token: FormatFieldName;",
+    "  /** The stable serialized name, unchanged across releases. */",
     "  readonly wireName: string;",
     "}",
     "",
@@ -248,11 +255,13 @@ function renderWhereFieldsSource(registry: readonly FormatFieldRecord[]): string
   for (const model of criteriaModels) {
     lines.push(`const ${model}Fields: readonly WhereField[] = Object.freeze([`);
     for (const field of generatedWhereFields(registry, model)) {
-      const oneLine = `  Object.freeze({ domain: "string", token: ${JSON.stringify(field.token)}, wireName: ${JSON.stringify(field.wireName)} }),`;
+      const criteriaName = camelCase(field.wireName);
+      const oneLine = `  Object.freeze({ criteriaName: ${JSON.stringify(criteriaName)}, domain: "string", token: ${JSON.stringify(field.token)}, wireName: ${JSON.stringify(field.wireName)} }),`;
       if (oneLine.length <= 100) lines.push(oneLine);
       else {
         lines.push(
           "  Object.freeze({",
+          `    criteriaName: ${JSON.stringify(criteriaName)},`,
           '    domain: "string",',
           `    token: ${JSON.stringify(field.token)},`,
           `    wireName: ${JSON.stringify(field.wireName)},`,

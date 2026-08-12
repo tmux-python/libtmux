@@ -458,13 +458,13 @@ describe("format registry", () => {
     expect(WHERE_FIELDS_V1.window).toHaveLength(43);
     expect(WHERE_FIELDS_V1.pane).toHaveLength(79);
     expect(createHash("sha256").update(JSON.stringify(WHERE_FIELDS_V1.session)).digest("hex")).toBe(
-      "448219eaf05c1ff76d0a20166f4455cb39105eba71343ed7132cf7caec585dea",
+      "013d9ec57873077cc2315c2c1cd1ab60de2ebe069f9181c2028b07f23eaa4b8f",
     );
     expect(createHash("sha256").update(JSON.stringify(WHERE_FIELDS_V1.window)).digest("hex")).toBe(
-      "d83b4161b7c0e6cbc7bc3bc150a02af0ef7076a0c104346f5f7432c0e397336a",
+      "b7ee74529cd2d6512660ab2950e3acd7251d88e105c5544c160952539017e863",
     );
     expect(createHash("sha256").update(JSON.stringify(WHERE_FIELDS_V1.pane)).digest("hex")).toBe(
-      "a1ff60c5274d1796da73079e649b5e1f86a9435bcf80496d1f8ebdd286c13b60",
+      "2821573a4351dd61b34872f8ce14b49e9103bad76b8adab1b882f0cc221b4f76",
     );
     for (const [model, fields] of Object.entries(WHERE_FIELDS_V1)) {
       for (const field of fields) {

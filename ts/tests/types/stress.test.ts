@@ -29,11 +29,11 @@ const deeplyCyclicSession = {
             some: {
               window: {
                 is: {
-                  linked_sessions: {
+                  linkedSessions: {
                     some: {
-                      active_window: {
+                      activeWindow: {
                         is: {
-                          active_pane: {
+                          activePane: {
                             is: {
                               session: {
                                 is: {
@@ -79,12 +79,12 @@ const sessionCases = [
   { NOT: [{ name: "other" }] },
   { windows: { some: { name: "editor" } } },
   { windows: { every: {}, none: { name: "logs" }, some: {} } },
-  { panes: { some: { pane_title: "shell" } } },
-  { panes: { every: {}, none: { pane_title: "tail" }, some: {} } },
-  { active_window: { is: null } },
-  { active_window: { is: { name: "editor" }, isNot: { name: "logs" } } },
-  { active_pane: { is: null } },
-  { active_pane: { is: { pane_title: "shell" }, isNot: null } },
+  { panes: { some: { paneTitle: "shell" } } },
+  { panes: { every: {}, none: { paneTitle: "tail" }, some: {} } },
+  { activeWindow: { is: null } },
+  { activeWindow: { is: { name: "editor" }, isNot: { name: "logs" } } },
+  { activePane: { is: null } },
+  { activePane: { is: { paneTitle: "shell" }, isNot: null } },
   deeplyCyclicSession,
 ] as const satisfies readonly SessionWhere[];
 
@@ -93,29 +93,29 @@ const windowCases = [
   { name: "editor" },
   { session: { is: { name: "main" } } },
   { session: { is: { windows: { some: { name: "editor" } } }, isNot: null } },
-  { linked_sessions: { some: { name: "main" } } },
-  { linked_sessions: { every: {}, none: { name: "other" }, some: {} } },
-  { panes: { some: { pane_title: "shell" } } },
-  { panes: { every: {}, none: { pane_title: "tail" }, some: {} } },
-  { active_pane: { is: null } },
+  { linkedSessions: { some: { name: "main" } } },
+  { linkedSessions: { every: {}, none: { name: "other" }, some: {} } },
+  { panes: { some: { paneTitle: "shell" } } },
+  { panes: { every: {}, none: { paneTitle: "tail" }, some: {} } },
+  { activePane: { is: null } },
   {
-    active_pane: {
-      is: { session: { is: { active_window: { is: { name: "editor" } } } } },
-      isNot: { pane_title: "tail" },
+    activePane: {
+      is: { session: { is: { activeWindow: { is: { name: "editor" } } } } },
+      isNot: { paneTitle: "tail" },
     },
   },
 ] as const satisfies readonly WindowWhere[];
 
 const paneCases = [
   {},
-  { pane_id: "%1" },
-  { pane_title: { contains: "shell", mode: "insensitive" } },
+  { paneId: "%1" },
+  { paneTitle: { contains: "shell", mode: "insensitive" } },
   { window: { is: { name: "editor" } } },
   { window: { is: { session: { is: { name: "main" } } }, isNot: null } },
   { session: { is: { name: "main" } } },
   {
     session: {
-      is: { active_pane: { is: { pane_title: "shell" } } },
+      is: { activePane: { is: { paneTitle: "shell" } } },
       isNot: { name: "other" },
     },
   },
@@ -129,7 +129,7 @@ type SessionDepthOne = NonNullable<SessionWhere["windows"]>;
 type SessionDepthTwo = NonNullable<WindowWhere["session"]>;
 type SessionDepthThree = NonNullable<SessionWhere["panes"]>;
 type SessionDepthFour = NonNullable<PaneWhere["window"]>;
-type SessionDepthFive = NonNullable<WindowWhere["linked_sessions"]>;
+type SessionDepthFive = NonNullable<WindowWhere["linkedSessions"]>;
 
 void (null as unknown as SessionDepthOne);
 void (null as unknown as SessionDepthTwo);

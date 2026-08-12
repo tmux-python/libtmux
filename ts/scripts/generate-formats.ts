@@ -61,14 +61,14 @@ const whereRelationsV1 = {
   session: [
     { cardinality: "many", name: "windows", targetModel: "window" },
     { cardinality: "many", name: "panes", targetModel: "pane" },
-    { cardinality: "one", name: "active_window", targetModel: "window" },
-    { cardinality: "one", name: "active_pane", targetModel: "pane" },
+    { cardinality: "one", name: "activeWindow", targetModel: "window" },
+    { cardinality: "one", name: "activePane", targetModel: "pane" },
   ],
   window: [
     { cardinality: "one", name: "session", targetModel: "session" },
-    { cardinality: "many", name: "linked_sessions", targetModel: "session" },
+    { cardinality: "many", name: "linkedSessions", targetModel: "session" },
     { cardinality: "many", name: "panes", targetModel: "pane" },
-    { cardinality: "one", name: "active_pane", targetModel: "pane" },
+    { cardinality: "one", name: "activePane", targetModel: "pane" },
   ],
 } as const;
 const expectedBaseline: FixtureBaseline = {
@@ -200,7 +200,7 @@ function generatedWhereFieldNames(
   return fields
     .flatMap((field) => {
       const wireName = criteriaWireName(field, model);
-      return wireName === undefined ? [] : [wireName];
+      return wireName === undefined ? [] : [camelCase(wireName)];
     })
     .sort();
 }

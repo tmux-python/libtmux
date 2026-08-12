@@ -150,8 +150,47 @@ function relationFor(model: WhereModel, name: string): WhereRelation | undefined
   return WHERE_RELATIONS_V1[model].find((relation) => relation.name === name);
 }
 
-function scalarNamesFor(model: WhereModel): ReadonlySet<string> {
-  return new Set(WHERE_FIELDS_V1[model].map(({ wireName }) => wireName));
+/**
+ * Criteria are written with idiomatic camelCase keys and serialized under
+ * tmux-stable wire names, so a stored document stays readable by the CLI, the
+ * MCP surface, and a future Rust port even as the TypeScript surface evolves.
+ */
+function criteriaFromWire(model: WhereModel, value: unknown, depth = 0): unknown {
+  // Stop at the criteria depth budget and hand the original value on, so an
+  // over-deep or cyclic document is rejected by the validator rather than here.
+  if (depth > maximumWhereDepth || !isObject(value)) return value;
+  const byWire = new Map(
+    WHERE_FIELDS_V1[model].map(({ criteriaName, wireName }) => [wireName, criteriaName]),
+  );
+  const relations = new Map(
+    WHERE_RELATIONS_V1[model].map((relation) => [relation.name as string, relation] as const),
+  );
+  const translated: Record<string, unknown> = {};
+  for (const [key, entry] of snapshotObject(value)) {
+    const relation = relations.get(key);
+    if (relation !== undefined && isObject(entry)) {
+      const inner: Record<string, unknown> = {};
+      for (const [operator, nested] of snapshotObject(entry)) {
+        inner[operator] = criteriaFromWire(relation.targetModel, nested, depth + 1);
+      }
+      translated[key] = inner;
+      continue;
+    }
+    if (key === "AND" || key === "OR" || key === "NOT") {
+      translated[key] = snapshotArray(entry).map((child) =>
+        criteriaFromWire(model, child, depth + 1),
+      );
+      continue;
+    }
+    translated[byWire.get(key) ?? key] = entry;
+  }
+  return translated;
+}
+
+function scalarWireNamesFor(model: WhereModel): ReadonlyMap<string, string> {
+  return new Map(
+    WHERE_FIELDS_V1[model].map(({ criteriaName, wireName }) => [criteriaName, wireName]),
+  );
 }
 
 function validateRegexPattern(pattern: string): void {
@@ -475,15 +514,16 @@ function parseCriteria(
   if (depth > maximumWhereDepth || !isObject(value)) return invalidQuery();
   return withActive(value, state, () => {
     const record = snapshotObject(value);
-    const scalarNames = scalarNamesFor(model);
+    const scalarWireNames = scalarWireNamesFor(model);
     const entries: Array<readonly [string, unknown]> = [];
     const predicates: RecordPredicate[] = [];
 
     for (const [name, criterion] of record) {
-      if (scalarNames.has(name)) {
+      const wireName = scalarWireNames.get(name);
+      if (wireName !== undefined) {
         const parsed = parseScalar(criterion, state);
-        entries.push([name, parsed.query]);
-        predicates.push((source) => parsed.test(source.scalars[name] ?? null));
+        entries.push([wireName, parsed.query]);
+        predicates.push((source) => parsed.test(source.scalars[wireName] ?? null));
         continue;
       }
       if (logicalNames.includes(name as never)) {
@@ -556,7 +596,10 @@ export function canonicalizeWhereDocument(input: unknown): WhereDocumentV1 {
     return invalidQuery();
   }
   const model = parseModel(envelope.get("model"));
-  const where = canonicalizeWhere(model, envelope.get("where"));
+  // A stored document is written in wire names; criteria are written in the
+  // idiomatic ones. Translate before compiling so a document round-trips
+  // without the criteria surface having to accept tmux spellings.
+  const where = canonicalizeWhere(model, criteriaFromWire(model, envelope.get("where")));
   return Object.freeze({ model, version: 1, where }) as WhereDocumentV1;
 }
 

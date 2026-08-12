@@ -91,18 +91,18 @@ type _SessionWindows = Expect<
 >;
 type _SessionPanes = Expect<Equal<NonNullable<SessionWhere["panes"]>, ManyRelation<PaneWhere>>>;
 type _SessionActiveWindow = Expect<
-  Equal<NonNullable<SessionWhere["active_window"]>, OneRelation<WindowWhere>>
+  Equal<NonNullable<SessionWhere["activeWindow"]>, OneRelation<WindowWhere>>
 >;
 type _SessionActivePane = Expect<
-  Equal<NonNullable<SessionWhere["active_pane"]>, OneRelation<PaneWhere>>
+  Equal<NonNullable<SessionWhere["activePane"]>, OneRelation<PaneWhere>>
 >;
 type _WindowSession = Expect<Equal<NonNullable<WindowWhere["session"]>, OneRelation<SessionWhere>>>;
 type _WindowLinkedSessions = Expect<
-  Equal<NonNullable<WindowWhere["linked_sessions"]>, ManyRelation<SessionWhere>>
+  Equal<NonNullable<WindowWhere["linkedSessions"]>, ManyRelation<SessionWhere>>
 >;
 type _WindowPanes = Expect<Equal<NonNullable<WindowWhere["panes"]>, ManyRelation<PaneWhere>>>;
 type _WindowActivePane = Expect<
-  Equal<NonNullable<WindowWhere["active_pane"]>, OneRelation<PaneWhere>>
+  Equal<NonNullable<WindowWhere["activePane"]>, OneRelation<PaneWhere>>
 >;
 type _PaneWindow = Expect<Equal<NonNullable<PaneWhere["window"]>, OneRelation<WindowWhere>>>;
 type _PaneSession = Expect<Equal<NonNullable<PaneWhere["session"]>, OneRelation<SessionWhere>>>;
@@ -117,169 +117,169 @@ type _PaneOr = Expect<Equal<NonNullable<PaneWhere["OR"]>, readonly PaneWhere[]>>
 type _PaneNot = Expect<Equal<NonNullable<PaneWhere["NOT"]>, readonly PaneWhere[]>>;
 
 type LogicalKeys = "AND" | "NOT" | "OR";
-type SessionRelationKeys = "active_pane" | "active_window" | "panes" | "windows";
-type WindowRelationKeys = "active_pane" | "linked_sessions" | "panes" | "session";
+type SessionRelationKeys = "activePane" | "activeWindow" | "panes" | "windows";
+type WindowRelationKeys = "activePane" | "linkedSessions" | "panes" | "session";
 type PaneRelationKeys = "session" | "window";
 type SessionScalarKeys = Exclude<keyof SessionWhere, LogicalKeys | SessionRelationKeys>;
 type WindowScalarKeys = Exclude<keyof WindowWhere, LogicalKeys | WindowRelationKeys>;
 type PaneScalarKeys = Exclude<keyof PaneWhere, LogicalKeys | PaneRelationKeys>;
 type ExpectedSessionScalarKeys =
-  | "active_window_index"
-  | "config_files"
-  | "last_window_index"
+  | "activeWindowIndex"
+  | "configFiles"
+  | "lastWindowIndex"
   | "line"
   | "name"
-  | "next_session_id"
+  | "nextSessionId"
   | "pid"
-  | "session_activity"
-  | "session_alerts"
-  | "session_attached"
-  | "session_attached_list"
-  | "session_created"
-  | "session_format"
-  | "session_group"
-  | "session_group_attached"
-  | "session_group_attached_list"
-  | "session_group_list"
-  | "session_group_many_attached"
-  | "session_group_size"
-  | "session_grouped"
-  | "session_id"
-  | "session_last_attached"
-  | "session_many_attached"
-  | "session_marked"
-  | "session_path"
-  | "session_stack"
-  | "session_windows"
-  | "socket_path"
-  | "start_time"
+  | "sessionActivity"
+  | "sessionAlerts"
+  | "sessionAttached"
+  | "sessionAttachedList"
+  | "sessionCreated"
+  | "sessionFormat"
+  | "sessionGroup"
+  | "sessionGroupAttached"
+  | "sessionGroupAttachedList"
+  | "sessionGroupList"
+  | "sessionGroupManyAttached"
+  | "sessionGroupSize"
+  | "sessionGrouped"
+  | "sessionId"
+  | "sessionLastAttached"
+  | "sessionManyAttached"
+  | "sessionMarked"
+  | "sessionPath"
+  | "sessionStack"
+  | "sessionWindows"
+  | "socketPath"
+  | "startTime"
   | "uid"
   | "user"
   | "version";
 type ExpectedWindowScalarKeys =
-  | "config_files"
+  | "configFiles"
   | "line"
   | "name"
-  | "next_session_id"
+  | "nextSessionId"
   | "pid"
-  | "socket_path"
-  | "start_time"
+  | "socketPath"
+  | "startTime"
   | "uid"
   | "user"
   | "version"
-  | "window_active"
-  | "window_active_clients"
-  | "window_active_clients_list"
-  | "window_active_sessions"
-  | "window_active_sessions_list"
-  | "window_activity"
-  | "window_activity_flag"
-  | "window_bell_flag"
-  | "window_bigger"
-  | "window_cell_height"
-  | "window_cell_width"
-  | "window_end_flag"
-  | "window_flags"
-  | "window_format"
-  | "window_height"
-  | "window_id"
-  | "window_index"
-  | "window_last_flag"
-  | "window_layout"
-  | "window_linked"
-  | "window_linked_sessions"
-  | "window_linked_sessions_list"
-  | "window_marked_flag"
-  | "window_offset_x"
-  | "window_offset_y"
-  | "window_panes"
-  | "window_raw_flags"
-  | "window_silence_flag"
-  | "window_stack_index"
-  | "window_start_flag"
-  | "window_visible_layout"
-  | "window_width"
-  | "window_zoomed_flag";
+  | "windowActive"
+  | "windowActiveClients"
+  | "windowActiveClientsList"
+  | "windowActiveSessions"
+  | "windowActiveSessionsList"
+  | "windowActivity"
+  | "windowActivityFlag"
+  | "windowBellFlag"
+  | "windowBigger"
+  | "windowCellHeight"
+  | "windowCellWidth"
+  | "windowEndFlag"
+  | "windowFlags"
+  | "windowFormat"
+  | "windowHeight"
+  | "windowId"
+  | "windowIndex"
+  | "windowLastFlag"
+  | "windowLayout"
+  | "windowLinked"
+  | "windowLinkedSessions"
+  | "windowLinkedSessionsList"
+  | "windowMarkedFlag"
+  | "windowOffsetX"
+  | "windowOffsetY"
+  | "windowPanes"
+  | "windowRawFlags"
+  | "windowSilenceFlag"
+  | "windowStackIndex"
+  | "windowStartFlag"
+  | "windowVisibleLayout"
+  | "windowWidth"
+  | "windowZoomedFlag";
 type ExpectedPaneScalarKeys =
-  | "alternate_saved_x"
-  | "alternate_saved_y"
-  | "bracket_paste_flag"
-  | "config_files"
-  | "cursor_character"
-  | "cursor_flag"
-  | "cursor_x"
-  | "cursor_y"
-  | "history_bytes"
-  | "history_limit"
-  | "history_size"
-  | "insert_flag"
-  | "keypad_cursor_flag"
-  | "keypad_flag"
+  | "alternateSavedX"
+  | "alternateSavedY"
+  | "bracketPasteFlag"
+  | "configFiles"
+  | "cursorCharacter"
+  | "cursorFlag"
+  | "cursorX"
+  | "cursorY"
+  | "historyBytes"
+  | "historyLimit"
+  | "historySize"
+  | "insertFlag"
+  | "keypadCursorFlag"
+  | "keypadFlag"
   | "line"
-  | "mouse_all_flag"
-  | "mouse_any_flag"
-  | "mouse_button_flag"
-  | "mouse_sgr_flag"
-  | "mouse_standard_flag"
-  | "next_session_id"
-  | "origin_flag"
-  | "pane_active"
-  | "pane_at_bottom"
-  | "pane_at_left"
-  | "pane_at_right"
-  | "pane_at_top"
-  | "pane_bg"
-  | "pane_bottom"
-  | "pane_current_command"
-  | "pane_current_path"
-  | "pane_dead"
-  | "pane_dead_signal"
-  | "pane_dead_status"
-  | "pane_dead_time"
-  | "pane_fg"
-  | "pane_flags"
-  | "pane_floating_flag"
-  | "pane_format"
-  | "pane_height"
-  | "pane_id"
-  | "pane_in_mode"
-  | "pane_index"
-  | "pane_input_off"
-  | "pane_last"
-  | "pane_left"
-  | "pane_marked"
-  | "pane_marked_set"
-  | "pane_mode"
-  | "pane_path"
-  | "pane_pb_progress"
-  | "pane_pb_state"
-  | "pane_pid"
-  | "pane_pipe"
-  | "pane_pipe_pid"
-  | "pane_right"
-  | "pane_search_string"
-  | "pane_start_command"
-  | "pane_start_path"
-  | "pane_synchronized"
-  | "pane_tabs"
-  | "pane_title"
-  | "pane_top"
-  | "pane_tty"
-  | "pane_width"
-  | "pane_x"
-  | "pane_y"
-  | "pane_z"
-  | "pane_zoomed_flag"
+  | "mouseAllFlag"
+  | "mouseAnyFlag"
+  | "mouseButtonFlag"
+  | "mouseSgrFlag"
+  | "mouseStandardFlag"
+  | "nextSessionId"
+  | "originFlag"
+  | "paneActive"
+  | "paneAtBottom"
+  | "paneAtLeft"
+  | "paneAtRight"
+  | "paneAtTop"
+  | "paneBg"
+  | "paneBottom"
+  | "paneCurrentCommand"
+  | "paneCurrentPath"
+  | "paneDead"
+  | "paneDeadSignal"
+  | "paneDeadStatus"
+  | "paneDeadTime"
+  | "paneFg"
+  | "paneFlags"
+  | "paneFloatingFlag"
+  | "paneFormat"
+  | "paneHeight"
+  | "paneId"
+  | "paneInMode"
+  | "paneIndex"
+  | "paneInputOff"
+  | "paneLast"
+  | "paneLeft"
+  | "paneMarked"
+  | "paneMarkedSet"
+  | "paneMode"
+  | "panePath"
+  | "panePbProgress"
+  | "panePbState"
+  | "panePid"
+  | "panePipe"
+  | "panePipePid"
+  | "paneRight"
+  | "paneSearchString"
+  | "paneStartCommand"
+  | "paneStartPath"
+  | "paneSynchronized"
+  | "paneTabs"
+  | "paneTitle"
+  | "paneTop"
+  | "paneTty"
+  | "paneWidth"
+  | "paneX"
+  | "paneY"
+  | "paneZ"
+  | "paneZoomedFlag"
   | "pid"
-  | "scroll_region_lower"
-  | "scroll_region_upper"
-  | "socket_path"
-  | "start_time"
-  | "synchronized_output_flag"
+  | "scrollRegionLower"
+  | "scrollRegionUpper"
+  | "socketPath"
+  | "startTime"
+  | "synchronizedOutputFlag"
   | "uid"
   | "user"
   | "version"
-  | "wrap_flag";
+  | "wrapFlag";
 type _SessionScalarKeys = Expect<Equal<SessionScalarKeys, ExpectedSessionScalarKeys>>;
 type _WindowScalarKeys = Expect<Equal<WindowScalarKeys, ExpectedWindowScalarKeys>>;
 type _PaneScalarKeys = Expect<Equal<PaneScalarKeys, ExpectedPaneScalarKeys>>;
@@ -317,11 +317,16 @@ type _WindowReadonly = Expect<Equal<WritableKeys<WindowWhere>, never>>;
 type _PaneReadonly = Expect<Equal<WritableKeys<PaneWhere>, never>>;
 type _NoModelMethods = Expect<Equal<Extract<keyof SessionWhere, "equals" | "server">, never>>;
 type _NoDeprecatedChildren = Expect<Equal<Extract<keyof SessionWhere, "children">, never>>;
-type _NoSessionCamelRelations = Expect<
-  Equal<Extract<keyof SessionWhere, "activePane" | "activeWindow">, never>
+// Relations are exposed under idiomatic names; the tmux wire spellings are
+// absent from the criteria surface entirely.
+type _SessionCamelRelations = Expect<
+  Equal<Extract<keyof SessionWhere, "activePane" | "activeWindow">, "activePane" | "activeWindow">
 >;
-type _NoWindowCamelRelations = Expect<
-  Equal<Extract<keyof WindowWhere, "activePane" | "linkedSessions">, never>
+type _NoSessionWireRelations = Expect<
+  Equal<Extract<keyof SessionWhere, "active_pane" | "active_window">, never>
+>;
+type _NoWindowWireRelations = Expect<
+  Equal<Extract<keyof WindowWhere, "active_pane" | "linked_sessions">, never>
 >;
 type _ClientStillNever = Expect<Equal<WhereOf<Client>, never>>;
 type _RelationModels = Expect<
@@ -335,12 +340,12 @@ type _SessionRelationMetadata = Expect<
       { readonly cardinality: "many"; readonly name: "panes"; readonly targetModel: "pane" },
       {
         readonly cardinality: "one";
-        readonly name: "active_window";
+        readonly name: "activeWindow";
         readonly targetModel: "window";
       },
       {
         readonly cardinality: "one";
-        readonly name: "active_pane";
+        readonly name: "activePane";
         readonly targetModel: "pane";
       },
     ]
@@ -356,16 +361,16 @@ const sessionCriteria: SessionWhere = {
   AND: [{ name: { contains: "a", mode: "insensitive", startsWith: "m" } }],
   NOT: [],
   OR: [{ name: null }, { name: { equals: null } }],
-  active_pane: {
-    is: { pane_title: { regex: { flags: "ms", pattern: "^(shell|tests)$" } } },
+  activePane: {
+    is: { paneTitle: { regex: { flags: "ms", pattern: "^(shell|tests)$" } } },
     isNot: null,
   },
-  active_window: { is: null, isNot: { name: "logs" } },
+  activeWindow: { is: null, isNot: { name: "logs" } },
   name: { contains: "a", endsWith: "n", notIn: [], startsWith: "m" },
   panes: {
-    every: { pane_title: { contains: "s" } },
-    none: { pane_title: "tail" },
-    some: { pane_title: "shell" },
+    every: { paneTitle: { contains: "s" } },
+    none: { paneTitle: "tail" },
+    some: { paneTitle: "shell" },
   },
   windows: {
     every: {},
@@ -375,8 +380,8 @@ const sessionCriteria: SessionWhere = {
 };
 
 const windowCriteria: WindowWhere = {
-  active_pane: { is: null },
-  linked_sessions: { every: {}, none: { name: "other" }, some: { name: "main" } },
+  activePane: { is: null },
+  linkedSessions: { every: {}, none: { name: "other" }, some: { name: "main" } },
   panes: { some: {} },
   session: { is: { name: "main" }, isNot: null },
 };
@@ -431,10 +436,13 @@ sessions.where({ "windows.some.name": "editor" });
 sessions.where({ equals: true });
 // @ts-expect-error legacy syntax never enters canonical criteria.
 sessions.where({ name__contains: "main" });
-// @ts-expect-error generated relations use snake_case only.
+// Relations are camelCase; the tmux wire spellings belong to the document.
 sessions.where({ activeWindow: { is: null } });
-// @ts-expect-error generated relations use snake_case only.
 windows.where({ linkedSessions: { some: {} } });
+// @ts-expect-error wire spellings are not accepted as criteria.
+sessions.where({ active_window: { is: null } });
+// @ts-expect-error wire spellings are not accepted as criteria.
+windows.where({ linked_sessions: { some: {} } });
 // @ts-expect-error deprecated children is absent.
 sessions.where({ children: { some: {} } });
 // @ts-expect-error Session criteria cannot be passed to a Window Selection.

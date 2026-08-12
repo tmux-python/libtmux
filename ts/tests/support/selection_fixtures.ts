@@ -143,8 +143,8 @@ const descriptors: Readonly<Record<WhereModel, ProjectionDescriptor>> = {
     relations: [
       { cardinality: "many", name: "windows", targetModel: "window" },
       { cardinality: "many", name: "panes", targetModel: "pane" },
-      { cardinality: "one", name: "active_window", targetModel: "window" },
-      { cardinality: "one", name: "active_pane", targetModel: "pane" },
+      { cardinality: "one", name: "activeWindow", targetModel: "window" },
+      { cardinality: "one", name: "activePane", targetModel: "pane" },
     ],
   },
   window: {
@@ -152,9 +152,9 @@ const descriptors: Readonly<Record<WhereModel, ProjectionDescriptor>> = {
     model: "window",
     relations: [
       { cardinality: "one", name: "session", targetModel: "session" },
-      { cardinality: "many", name: "linked_sessions", targetModel: "session" },
+      { cardinality: "many", name: "linkedSessions", targetModel: "session" },
       { cardinality: "many", name: "panes", targetModel: "pane" },
-      { cardinality: "one", name: "active_pane", targetModel: "pane" },
+      { cardinality: "one", name: "activePane", targetModel: "pane" },
     ],
   },
 };
@@ -182,8 +182,8 @@ function builderFor(graph: NormalizedGraph, rootSource: string): SelectionProjec
 function hydrateEmptySession(builder: SelectionProjectionBuilder, session: GraphRecordRef): void {
   builder.materializeMany(session, "windows", []);
   builder.materializeMany(session, "panes", []);
-  builder.materializeOne(session, "active_window", null);
-  builder.materializeOne(session, "active_pane", null);
+  builder.materializeOne(session, "activeWindow", null);
+  builder.materializeOne(session, "activePane", null);
 }
 
 function requireSessions(values: readonly (Session | Window | Pane)[]): readonly Session[] {
@@ -307,23 +307,23 @@ function hydrateRichProjection(
   const hydrateSessions = (includeEmpty: boolean): void => {
     builder.materializeMany(sessionOne, "windows", [windowEditor]);
     builder.materializeMany(sessionOne, "panes", [paneShell, paneTests]);
-    builder.materializeOne(sessionOne, "active_window", windowEditor);
-    builder.materializeOne(sessionOne, "active_pane", paneShell);
+    builder.materializeOne(sessionOne, "activeWindow", windowEditor);
+    builder.materializeOne(sessionOne, "activePane", paneShell);
     builder.materializeMany(sessionTwo, "windows", [windowLogs]);
     builder.materializeMany(sessionTwo, "panes", [paneTail]);
-    builder.materializeOne(sessionTwo, "active_window", windowLogs);
-    builder.materializeOne(sessionTwo, "active_pane", paneTail);
+    builder.materializeOne(sessionTwo, "activeWindow", windowLogs);
+    builder.materializeOne(sessionTwo, "activePane", paneTail);
     if (includeEmpty) hydrateEmptySession(builder, sessionEmpty);
   };
   const hydrateWindows = (): void => {
     builder.materializeOne(windowEditor, "session", sessionOne);
-    builder.materializeMany(windowEditor, "linked_sessions", [sessionOne]);
+    builder.materializeMany(windowEditor, "linkedSessions", [sessionOne]);
     builder.materializeMany(windowEditor, "panes", [paneShell, paneTests]);
-    builder.materializeOne(windowEditor, "active_pane", paneShell);
+    builder.materializeOne(windowEditor, "activePane", paneShell);
     builder.materializeOne(windowLogs, "session", sessionTwo);
-    builder.materializeMany(windowLogs, "linked_sessions", [sessionTwo]);
+    builder.materializeMany(windowLogs, "linkedSessions", [sessionTwo]);
     builder.materializeMany(windowLogs, "panes", [paneTail]);
-    builder.materializeOne(windowLogs, "active_pane", paneTail);
+    builder.materializeOne(windowLogs, "activePane", paneTail);
   };
   const hydratePanes = (): void => {
     builder.materializeOne(paneShell, "window", windowEditor);
@@ -412,21 +412,21 @@ export async function createWindowAssociationHarness(): Promise<ProjectedHarness
   const builder = builderFor(graph, "windows-association");
 
   builder.materializeOne(windowOne, "session", sessionOne);
-  builder.materializeMany(windowOne, "linked_sessions", [sessionOne, sessionTwo]);
+  builder.materializeMany(windowOne, "linkedSessions", [sessionOne, sessionTwo]);
   builder.materializeMany(windowOne, "panes", []);
-  builder.materializeOne(windowOne, "active_pane", null);
+  builder.materializeOne(windowOne, "activePane", null);
   builder.materializeOne(windowTwo, "session", sessionTwo);
-  builder.materializeMany(windowTwo, "linked_sessions", [sessionOne, sessionTwo]);
+  builder.materializeMany(windowTwo, "linkedSessions", [sessionOne, sessionTwo]);
   builder.materializeMany(windowTwo, "panes", []);
-  builder.materializeOne(windowTwo, "active_pane", null);
+  builder.materializeOne(windowTwo, "activePane", null);
   builder.materializeMany(sessionOne, "windows", [windowOne]);
   builder.materializeMany(sessionOne, "panes", []);
-  builder.materializeOne(sessionOne, "active_window", windowOne);
-  builder.materializeOne(sessionOne, "active_pane", null);
+  builder.materializeOne(sessionOne, "activeWindow", windowOne);
+  builder.materializeOne(sessionOne, "activePane", null);
   builder.materializeMany(sessionTwo, "windows", [windowTwo]);
   builder.materializeMany(sessionTwo, "panes", []);
-  builder.materializeOne(sessionTwo, "active_window", windowTwo);
-  builder.materializeOne(sessionTwo, "active_pane", null);
+  builder.materializeOne(sessionTwo, "activeWindow", windowTwo);
+  builder.materializeOne(sessionTwo, "activePane", null);
 
   const projection = builder.seal();
   const values = requireWindows(
@@ -474,20 +474,20 @@ export async function createSessionProvenanceHarness(): Promise<SessionProvenanc
     const secondWindow = refAt(windows, 1);
     builder.materializeMany(firstSession, "windows", [firstWindow]);
     builder.materializeMany(firstSession, "panes", []);
-    builder.materializeOne(firstSession, "active_window", firstWindow);
-    builder.materializeOne(firstSession, "active_pane", null);
+    builder.materializeOne(firstSession, "activeWindow", firstWindow);
+    builder.materializeOne(firstSession, "activePane", null);
     builder.materializeMany(secondSession, "windows", [secondWindow]);
     builder.materializeMany(secondSession, "panes", []);
-    builder.materializeOne(secondSession, "active_window", secondWindow);
-    builder.materializeOne(secondSession, "active_pane", null);
+    builder.materializeOne(secondSession, "activeWindow", secondWindow);
+    builder.materializeOne(secondSession, "activePane", null);
     builder.materializeOne(firstWindow, "session", firstSession);
-    builder.materializeMany(firstWindow, "linked_sessions", [firstSession]);
+    builder.materializeMany(firstWindow, "linkedSessions", [firstSession]);
     builder.materializeMany(firstWindow, "panes", []);
-    builder.materializeOne(firstWindow, "active_pane", null);
+    builder.materializeOne(firstWindow, "activePane", null);
     builder.materializeOne(secondWindow, "session", secondSession);
-    builder.materializeMany(secondWindow, "linked_sessions", [secondSession]);
+    builder.materializeMany(secondWindow, "linkedSessions", [secondSession]);
     builder.materializeMany(secondWindow, "panes", []);
-    builder.materializeOne(secondWindow, "active_pane", null);
+    builder.materializeOne(secondWindow, "activePane", null);
     const projection = builder.seal();
     const values = requireSessions(
       await materializeProjectionMembers(createServerWithRuntime(runtime), projection, sourceGraph),

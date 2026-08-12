@@ -1051,6 +1051,7 @@ describe("selection projection snapshots", () => {
     });
     const nameField = {
       domain: "string",
+      criteriaName: "name",
       token: "session_name",
       wireName: "name",
     } satisfies WhereField;
@@ -1066,23 +1067,31 @@ describe("selection projection snapshots", () => {
     });
 
     nameField.wireName = "changed";
-    fields.push({ domain: "string", token: "session_id", wireName: "later" });
+    fields.push({
+      criteriaName: "later",
+      domain: "string",
+      token: "session_id",
+      wireName: "later",
+    });
     relations.push({ cardinality: "many", name: "later", targetModel: "window" });
     const projection = builder.seal();
     expect(projection.records[0]?.scalars).toEqual({ name: "stable" });
 
     const canonicalNameField = {
       domain: "string",
+      criteriaName: "name",
       token: "session_name",
       wireName: "name",
     } as const;
     const duplicateTokenField = {
       domain: "string",
+      criteriaName: "otherName",
       token: "session_name",
       wireName: "otherName",
     } as const;
     const duplicateWireField = {
       domain: "string",
+      criteriaName: "name",
       token: "session_id",
       wireName: "name",
     } as const;

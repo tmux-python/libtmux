@@ -210,11 +210,16 @@ function snapshotDescriptor(model: WhereModel, value: unknown): ProjectionDescri
   const seenTokens = new Set<string>();
   const seenWireNames = new Set<string>();
   for (const value of snapshotDataArray(descriptor.fields, `${model} descriptor fields`)) {
-    const field = readStrictDataRecord(value, ["domain", "token", "wireName"], `${model} field`);
+    const field = readStrictDataRecord(
+      value,
+      ["criteriaName", "domain", "token", "wireName"],
+      `${model} field`,
+    );
     if (
       field.domain !== "string" ||
       typeof field.token !== "string" ||
-      typeof field.wireName !== "string"
+      typeof field.wireName !== "string" ||
+      typeof field.criteriaName !== "string"
     ) {
       return invalidProjection(`${model} field is invalid`);
     }
@@ -225,8 +230,11 @@ function snapshotDescriptor(model: WhereModel, value: unknown): ProjectionDescri
       return invalidProjection(`${model} descriptor has a duplicate field wire name`);
     }
     const canonical = WHERE_FIELDS_V1[model].find(
-      ({ domain, token, wireName }) =>
-        domain === field.domain && token === field.token && wireName === field.wireName,
+      ({ criteriaName, domain, token, wireName }) =>
+        domain === field.domain &&
+        token === field.token &&
+        wireName === field.wireName &&
+        criteriaName === field.criteriaName,
     );
     if (canonical === undefined) {
       return invalidProjection(`${model} field does not belong to the generated descriptor`);
@@ -235,6 +243,7 @@ function snapshotDescriptor(model: WhereModel, value: unknown): ProjectionDescri
     seenWireNames.add(canonical.wireName);
     fields.push(
       Object.freeze({
+        criteriaName: canonical.criteriaName,
         domain: canonical.domain,
         token: canonical.token,
         wireName: canonical.wireName,

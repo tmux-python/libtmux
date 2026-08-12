@@ -8,7 +8,7 @@
   "inputs": [
     {
       "path": "tests/types/stress.test.ts",
-      "sha256": "534ebb7b9adb61ae206a0f470f4a1693e6dcedc6dc3b9126aec52944764c3326"
+      "sha256": "83b89b4f0364a788fd7f3533f2ef7ec6193ccaeca572dc1745186c6a6c452f45"
     },
     {
       "path": "tests/types/tsconfig.performance.json",
@@ -19,5 +19,5 @@
       "sha256": "73981da887a60b5de97c2f2d22e45b8b13985d31630f9dedf5283c1edd31acae"
     }
   ],
-  "maxInstantiations": 221073
+  "maxInstantiations": 222292
 }

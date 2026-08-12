@@ -342,7 +342,7 @@ describe("scalar and logical criteria", () => {
 });
 
 describe("generated relation criteria", () => {
-  test("evaluates all ten snake_case relations with empty and null semantics", async () => {
+  test("evaluates all ten camelCase relations with empty and null semantics", async () => {
     const harness = await createRichProjectedHarness();
     const sessions = createProjectedSelection(
       "session",
@@ -359,26 +359,26 @@ describe("generated relation criteria", () => {
     expect(sessions.where({ windows: { some: { name: "editor" } } }).toArray()).toEqual([
       harness.sessions.values[0]!,
     ]);
-    expect(sessions.where({ panes: { some: { pane_title: "tail" } } }).toArray()).toEqual([
+    expect(sessions.where({ panes: { some: { paneTitle: "tail" } } }).toArray()).toEqual([
       harness.sessions.values[1]!,
     ]);
-    expect(sessions.where({ active_window: { is: { name: "logs" } } }).toArray()).toEqual([
+    expect(sessions.where({ activeWindow: { is: { name: "logs" } } }).toArray()).toEqual([
       harness.sessions.values[1]!,
     ]);
-    expect(sessions.where({ active_pane: { is: { pane_title: "shell" } } }).toArray()).toEqual([
+    expect(sessions.where({ activePane: { is: { paneTitle: "shell" } } }).toArray()).toEqual([
       harness.sessions.values[0]!,
     ]);
 
     expect(windows.where({ session: { is: { name: "one" } } }).toArray()).toEqual([
       harness.windows.values[0]!,
     ]);
-    expect(windows.where({ linked_sessions: { some: { name: "two" } } }).toArray()).toEqual([
+    expect(windows.where({ linkedSessions: { some: { name: "two" } } }).toArray()).toEqual([
       harness.windows.values[1]!,
     ]);
-    expect(windows.where({ panes: { some: { pane_title: "tests" } } }).toArray()).toEqual([
+    expect(windows.where({ panes: { some: { paneTitle: "tests" } } }).toArray()).toEqual([
       harness.windows.values[0]!,
     ]);
-    expect(windows.where({ active_pane: { is: { pane_title: "tail" } } }).toArray()).toEqual([
+    expect(windows.where({ activePane: { is: { paneTitle: "tail" } } }).toArray()).toEqual([
       harness.windows.values[1]!,
     ]);
 
@@ -400,10 +400,10 @@ describe("generated relation criteria", () => {
     expect(sessions.where({ panes: { none: {} } }).toArray()).toEqual([
       harness.sessions.values[2]!,
     ]);
-    expect(sessions.where({ active_window: { is: null } }).toArray()).toEqual([
+    expect(sessions.where({ activeWindow: { is: null } }).toArray()).toEqual([
       harness.sessions.values[2]!,
     ]);
-    expect(sessions.where({ active_window: { isNot: null } }).toArray()).toEqual([
+    expect(sessions.where({ activeWindow: { isNot: null } }).toArray()).toEqual([
       harness.sessions.values[0]!,
       harness.sessions.values[1]!,
     ]);
@@ -460,9 +460,9 @@ describe("generated relation criteria", () => {
       sessions
         .where({
           panes: {
-            every: { pane_title: { contains: "s" } },
-            none: { pane_title: "tail" },
-            some: { pane_title: "shell" },
+            every: { paneTitle: { contains: "s" } },
+            none: { paneTitle: "tail" },
+            some: { paneTitle: "shell" },
           },
         })
         .toArray(),
@@ -492,22 +492,22 @@ describe("generated relation criteria", () => {
     }
 
     expect(
-      sessions.where({ panes: { every: { pane_title: { endsWith: "l" } } } }).toArray(),
+      sessions.where({ panes: { every: { paneTitle: { endsWith: "l" } } } }).toArray(),
     ).toEqual([two, empty]);
-    expect(
-      sessions.where({ panes: { none: { pane_title: { endsWith: "s" } } } }).toArray(),
-    ).toEqual([two, empty]);
+    expect(sessions.where({ panes: { none: { paneTitle: { endsWith: "s" } } } }).toArray()).toEqual(
+      [two, empty],
+    );
 
-    const commonSome = { pane_title: { in: ["shell", "tail"] } } as const;
+    const commonSome = { paneTitle: { in: ["shell", "tail"] } } as const;
     expect(sessions.where({ panes: { some: commonSome } }).toArray()).toEqual([one, two]);
 
-    const everyGate = { pane_title: { notIn: ["tests"] } } as const;
+    const everyGate = { paneTitle: { notIn: ["tests"] } } as const;
     expect(sessions.where({ panes: { every: everyGate } }).toArray()).toEqual([two, empty]);
     expect(sessions.where({ panes: { every: everyGate, some: commonSome } }).toArray()).toEqual([
       two,
     ]);
 
-    const noneGate = { pane_title: { equals: "tail" } } as const;
+    const noneGate = { paneTitle: { equals: "tail" } } as const;
     expect(sessions.where({ panes: { none: noneGate } }).toArray()).toEqual([one, empty]);
     expect(sessions.where({ panes: { none: noneGate, some: commonSome } }).toArray()).toEqual([
       one,
@@ -529,17 +529,17 @@ describe("generated relation criteria", () => {
 
     for (const criteria of [
       { windows: {} },
-      { active_window: {} },
+      { activeWindow: {} },
       { panes: { some: {}, unexpected: {} } },
-      { activeWindow: { is: {} } },
-      { activePane: { is: {} } },
+      { active_window: { is: {} } },
+      { active_pane: { is: {} } },
       { children: { some: {} } },
     ]) {
       expectInvalidQuery(() => invokeMethod(sessions, "where", [criteria]));
     }
     for (const criteria of [
-      { linkedSessions: { some: {} } },
-      { activePane: { is: {} } },
+      { linked_sessions: { some: {} } },
+      { active_pane: { is: {} } },
       { children: { some: {} } },
     ]) {
       expectInvalidQuery(() => invokeMethod(windows, "where", [criteria]));
@@ -570,7 +570,7 @@ describe("regex criteria", () => {
           regex: { flags: entry.flags, pattern: entry.pattern },
           ...(entry.mode === "insensitive" ? { mode: "insensitive" as const } : {}),
         },
-        session_id: entry.session_id,
+        sessionId: entry.session_id,
       };
       expect(selection.count(criteria), entry.id).toBe(entry.expected.bun ? 1 : 0);
     }
@@ -583,7 +583,7 @@ describe("regex criteria", () => {
           equals: combined.input,
           regex: { flags, pattern },
         },
-        session_id: combined.session_id,
+        sessionId: combined.session_id,
       });
     expect(countCombined("ms")).toBe(1);
     expect(countCombined("m")).toBe(0);
@@ -915,7 +915,7 @@ describe("plain-data validation", () => {
     expectInvalidQuery(() => invokeMethod(sessions, "where", [{ name: scalar }]), scalarSentinel);
 
     const relatedCriteria = {} as Record<string, unknown>;
-    Object.defineProperty(relatedCriteria, "pane_title", {
+    Object.defineProperty(relatedCriteria, "paneTitle", {
       enumerable: true,
       get() {
         getterCalls += 1;
@@ -942,7 +942,7 @@ describe("plain-data validation", () => {
 
     const proxySentinel = new Error("nested relation proxy trap escaped");
     const relatedProxy = new Proxy(
-      { pane_title: "shell" },
+      { paneTitle: "shell" },
       {
         getPrototypeOf() {
           trapCalls += 1;
@@ -1290,7 +1290,7 @@ describe("WhereDocumentV1 serialization", () => {
     const paneDocument = {
       where: {
         window: { isNot: null, is: { name: "editor" } },
-        pane_title: {
+        paneTitle: {
           regex: { pattern: "^X.*$", flags: "ms" as const },
           mode: "insensitive" as const,
           equals: "X\nY",
