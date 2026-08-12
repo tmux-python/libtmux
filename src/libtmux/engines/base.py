@@ -475,7 +475,13 @@ class TmuxEngine(t.Protocol):
         """Execute requests in order, returning one result per request.
 
         Defaults to a loop over :meth:`run`, which is correct for any stateless
-        engine. Persistent-connection engines override it to pipeline.
+        engine. Nothing in libtmux calls it yet -- :meth:`Server.cmd
+        <libtmux.Server.cmd>` dispatches one command at a time -- but it is not
+        dead weight: it is the hook a persistent-connection engine overrides to
+        pipeline a batch down one ``tmux -C`` connection without waiting for
+        each reply, which is where the round-trip savings live. Removing it
+        would have to be undone as a breaking protocol change the moment such an
+        engine lands.
 
         Parameters
         ----------
