@@ -29,7 +29,7 @@ from .engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
     import subprocess
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from .engines.base import TmuxEngine
 
@@ -291,6 +291,18 @@ def raise_if_stderr(proc: CommandResult, subcommand: str) -> None:
         )
 
 
+def _adapt_has_session(result: CommandResult) -> CommandResult:
+    """Report ``has-session``'s answer on stdout, where libtmux always has.
+
+    tmux writes it to stderr. Adapted outside the engines so each engine stays a
+    plain executor.
+    """
+    cmd = list(result.cmd)
+    if "has-session" in cmd and result.stderr and not result.stdout:
+        return dataclasses.replace(result, stdout=[next(iter(result.stderr))])
+    return result
+
+
 def dispatch(
     engine: TmuxEngine,
     *args: t.Any,
@@ -350,12 +362,10 @@ def dispatch(
 
     result = engine.run(request)
 
+    result = _adapt_has_session(result)
     cmd = list(result.cmd)
     stderr = list(result.stderr)
     stdout = list(result.stdout)
-    if "has-session" in cmd and stderr and not stdout:
-        stdout = [stderr[0]]
-        result = dataclasses.replace(result, stdout=stdout)
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(
@@ -371,6 +381,54 @@ def dispatch(
             },
         )
     return result
+
+
+def dispatch_batch(
+    engine: TmuxEngine,
+    commands: Sequence[Sequence[t.Any]],
+) -> list[CommandResult]:
+    """Run several tmux commands through *engine* in one go.
+
+    Hands the whole sequence to :meth:`~libtmux.engines.base.TmuxEngine.run_batch`
+    rather than looping, which is what lets a persistent-connection engine write
+    every command before waiting for the first reply. A stateless engine loops
+    internally and behaves exactly as repeated :func:`dispatch` calls would.
+
+    Each result gets the same ``has-session`` adaptation :func:`dispatch`
+    applies, so a batched command reads the same as an individual one.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The executor.
+    commands : Sequence[Sequence[typing.Any]]
+        One argv per command, each stringified.
+
+    Returns
+    -------
+    list[CommandResult]
+        One result per command, in order.
+
+    Examples
+    --------
+    >>> from libtmux.engines import SubprocessEngine
+    >>> engine = SubprocessEngine.for_server(server)
+    >>> results = dispatch_batch(
+    ...     engine,
+    ...     [("display-message", "-p", "one"), ("display-message", "-p", "two")],
+    ... )
+    >>> [result.stdout for result in results]
+    [['one'], ['two']]
+    """
+    requests = [CommandRequest.from_args(*command) for command in commands]
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command batch dispatched",
+            extra={"tmux_subcommand": ",".join(r.subcommand for r in requests)},
+        )
+
+    return [_adapt_has_session(result) for result in engine.run_batch(requests)]
 
 
 async def adispatch(

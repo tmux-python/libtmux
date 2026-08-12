@@ -28,6 +28,8 @@ from libtmux.engines import (
 from libtmux.server import Server
 
 if t.TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from libtmux.engines import CommandRequest
     from libtmux.session import Session
 
@@ -94,6 +96,32 @@ class ControlModeEngine(TmuxEngine):
             returncode=returncode,
         )
 
+    def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Write every command, then read every reply.
+
+        This is the point of a persistent connection: the round trips collapse
+        into one. A stateless engine cannot do this -- it has to wait for each
+        process to exit before starting the next.
+        """
+        assert self._process.stdin is not None
+        for request in requests:
+            self._process.stdin.write(render_control_line(request.args) + "\n")
+        self._process.stdin.flush()
+        results = []
+        for request in requests:
+            stdout, returncode = self._read_block()
+            results.append(
+                CommandResult(
+                    cmd=("tmux", "-C", *request.args),
+                    stdout=tuple(stdout),
+                    returncode=returncode,
+                ),
+            )
+        return results
+
     def close(self) -> None:
         """Shut the connection down."""
         try:
@@ -140,3 +168,20 @@ def test_object_api_works_over_control_mode(control_mode_server: Server) -> None
     assert session is not None
     assert session.windows
     assert session.windows[0].panes
+
+
+def test_a_batch_collapses_into_one_round_trip(control_mode_server: Server) -> None:
+    """``dispatch_batch`` reaches the engine's pipelining path.
+
+    ``Server.cmd()`` sends one command and waits for it. A batch hands the whole
+    sequence to the engine at once, which is the only way a persistent
+    connection can write everything before reading anything.
+    """
+    from libtmux.common import dispatch_batch
+
+    results = dispatch_batch(
+        control_mode_server.engine,
+        [("display-message", "-p", f"m{index}") for index in range(5)],
+    )
+
+    assert [result.stdout for result in results] == [[f"m{i}"] for i in range(5)]
