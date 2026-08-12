@@ -20,7 +20,12 @@ from libtmux import exc
 from libtmux._internal.env import socket_path_from_env
 from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
-from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
+from libtmux.common import (
+    dispatch,
+    get_version,
+    has_gte_version,
+    raise_if_stderr,
+)
 from libtmux.constants import OptionScope
 from libtmux.engines.base import (
     CommandRequest,
@@ -640,7 +645,7 @@ class Server(
             ["-t", str(target), *args] if target is not None else [*args]
         )
 
-        return tmux_cmd(cmd, *cmd_args, engine=self.engine).result
+        return dispatch(self.engine, cmd, *cmd_args)
 
     @property
     def attached_sessions(self) -> list[Session]:
