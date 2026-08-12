@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import types
 import typing as t
 
 import pytest
@@ -13,6 +15,7 @@ from libtmux.engines import (
     available_engines,
     create_engine,
     register_engine,
+    registry,
 )
 
 if t.TYPE_CHECKING:
@@ -44,6 +47,42 @@ def test_factory_receives_kwargs() -> None:
     """Keyword arguments reach the factory rather than being dropped."""
     engine = create_engine("subprocess", server_args=("-Lfromregistry",))
     assert engine.server_args == ("-Lfromregistry",)  # type: ignore[attr-defined]
+
+
+def test_broken_entry_point_is_skipped_and_reported(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A distribution whose engine will not import is skipped, but says so."""
+
+    class BrokenEntryPoint:
+        name = "broken-for-test"
+
+        def load(self) -> t.NoReturn:
+            msg = "this engine's import is broken"
+            raise ImportError(msg)
+
+    monkeypatch.setattr(registry, "_entry_points_loaded", False)
+    monkeypatch.setattr(
+        registry,
+        "metadata",
+        types.SimpleNamespace(entry_points=lambda group: [BrokenEntryPoint()]),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="libtmux.engines.registry"):
+        names = available_engines()
+
+    assert "broken-for-test" not in names
+    assert "subprocess" in names, "one bad engine must not hide the others"
+
+    reported = [
+        record
+        for record in caplog.records
+        if getattr(record, "tmux_engine_name", None) == "broken-for-test"
+    ]
+    assert len(reported) == 1
+    assert reported[0].levelno == logging.WARNING
+    assert reported[0].exc_info is not None, "the traceback is what makes it useful"
 
 
 def test_third_party_can_register() -> None:
