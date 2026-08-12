@@ -113,6 +113,88 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
+(migration-0-63-command-separator)=
+
+## Pluggable engines: separators, and `tmux_cmd.process`
+
+Command execution now runs through a swappable *engine*
+({class}`~libtmux.engines.base.TmuxEngine`). The default,
+{class}`~libtmux.engines.subprocess.SubprocessEngine`, forks the tmux binary
+exactly as before, so a `Server` built the way you build it today behaves the
+same. Two details do change for callers who reached past the object API.
+
+### A bare `";"` argument is now literal data
+
+tmux reads a trailing `;` on an argument as a command boundary. libtmux now
+escapes it, so a `;` you pass as *data* arrives intact — the fix described in
+{ref}`changelog`. The cost is that a `;` you passed as a *separator* must now
+say so explicitly with {class}`~libtmux.engines.base.CommandSeparator`.
+
+This only affects code calling {meth}`Server.cmd() <libtmux.Server.cmd>` (or
+the `Session`/`Window`/`Pane` equivalents) with a bare `";"` to fold two tmux
+commands into one dispatch:
+
+```python
+# Before
+server.cmd(
+    "send-keys", "-t", pane.pane_id, "-R",
+    ";",
+    "clear-history", "-t", pane.pane_id,
+)
+
+# After
+from libtmux.engines import CommandSeparator
+
+server.cmd(
+    "send-keys", "-t", pane.pane_id, "-R",
+    CommandSeparator(";"),
+    "clear-history", "-t", pane.pane_id,
+)
+```
+
+Nothing else needs changing. A `;` anywhere other than the end of an argument
+was never structural, and connection flags are untouched because tmux's
+`getopt` consumes them before the command parser runs.
+
+### `tmux_cmd.process` is deprecated
+
+{attr}`libtmux.common.tmux_cmd.process` exposed the {class}`subprocess.Popen`
+behind a command. Only a subprocess engine has one, so it is now a deprecated
+property: reading it warns, and under an engine that forks nothing it raises
+{exc}`~libtmux.exc.LibTmuxException`.
+
+Everything the attribute was used for is on the result itself:
+
+```python
+# Before
+proc = server.cmd("list-sessions")
+code = proc.process.returncode
+
+# After
+proc = server.cmd("list-sessions")
+code = proc.returncode
+```
+
+`cmd`, `stdout`, `stderr`, and `returncode` are unchanged. If you need the real
+process object, hold your own
+{class}`~libtmux.engines.subprocess.SubprocessEngine` rather than reaching
+through the result.
+
+### Listing queries now honor `config_file` and `colors`
+
+{meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` and the listing
+queries behind {attr}`~libtmux.Server.sessions` previously built their own
+connection flags and emitted only `-L`/`-S`. They now share one connection with
+{meth}`Server.cmd() <libtmux.Server.cmd>`, so a server constructed with
+`config_file=` or `colors=` passes those flags on every command instead of only
+some. A `colors=` value other than `256` or `88` now raises
+{exc}`~libtmux.exc.UnknownColorOption` on those paths too, where it was
+previously ignored.
+
+`raise_if_dead()` also captures tmux's error text instead of letting it print
+to the terminal. It still raises {exc}`subprocess.CalledProcessError`, and the
+message is now on the exception's `stderr`.
+
 ## libtmux 0.62.0: Query exceptions join the hierarchy (#718)
 
 {exc}`~libtmux.exc.ObjectDoesNotExist` and
