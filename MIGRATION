@@ -113,6 +113,65 @@ sections below for detailed migration examples and code samples.
 _Detailed migration steps for the next version will be posted here._
 <!-- END PLACEHOLDER - ADD NEW MIGRATION ENTRIES BELOW THIS LINE -->
 
+(migration-0-63-command-result)=
+
+## Commands return `CommandResult`
+
+{meth}`Server.cmd() <libtmux.Server.cmd>` and its `Session`, `Window`, and
+`Pane` counterparts now return
+{class}`~libtmux.engines.base.CommandResult` instead of
+{class}`~libtmux.common.tmux_cmd`. The attributes you read are unchanged:
+
+```python
+proc = server.cmd("list-sessions")
+proc.stdout      # list[str], as before
+proc.stderr      # list[str], as before
+proc.returncode  # int, as before
+proc.cmd         # list[str], as before
+```
+
+`stdout`, `stderr`, and `cmd` are lists, compare equal to lists exactly as
+before, and additionally compare equal to tuples. They are read-only: code that
+mutated a result in place -- appending to `proc.stdout`, sorting it -- now
+raises {exc}`TypeError`. Read it, copy it with `list(...)`, but do not edit it.
+
+Two additions come with the change:
+
+```python
+proc.ok                   # True when tmux exited zero
+proc.raise_for_status()   # raise LibTmuxException on failure, else return self
+```
+
+### `.process` reports absence instead of raising
+
+`tmux_cmd.process` could only ever be a {class}`subprocess.Popen`, so it raised
+when there was none. A `CommandResult` describes any engine, including ones that
+fork nothing, so `.process` is now simply `None` in that case:
+
+```python
+# Before
+proc.process              # DeprecationWarning; raised under a non-subprocess engine
+
+# After
+proc.process              # the Popen, or None
+```
+
+Prefer `returncode`, `stdout`, and `stderr`; `.process` exists for the rare
+caller that needs the OS process and knows it is using the default engine.
+
+### `tmux_cmd` still works
+
+{class}`~libtmux.common.tmux_cmd` is unchanged and still constructible, so code
+that builds one directly keeps working:
+
+```python
+from libtmux.common import tmux_cmd
+
+proc = tmux_cmd(f"-L{server.socket_name}", "list-sessions")
+```
+
+Only what `Server.cmd()` *returns* changed.
+
 (migration-0-63-command-separator)=
 
 ## Pluggable engines: separators, and `tmux_cmd.process`
