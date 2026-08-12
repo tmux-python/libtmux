@@ -53,7 +53,12 @@ from libtmux.engines.base import (
     split_direct_argv,
 )
 from libtmux.engines.connection import ServerConnection
-from libtmux.engines.record import RecordingEngine, ReplayEngine, Tape
+from libtmux.engines.record import (
+    Exchange,
+    RecordingEngine,
+    ReplayEngine,
+    Tape,
+)
 from libtmux.engines.subprocess import SubprocessEngine
 
 __all__ = (
@@ -62,6 +67,7 @@ __all__ = (
     "CommandResult",
     "CommandSeparator",
     "DirectArgv",
+    "Exchange",
     "RecordingEngine",
     "ReplayEngine",
     "ServerConnection",

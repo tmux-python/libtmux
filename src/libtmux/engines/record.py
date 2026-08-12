@@ -19,6 +19,7 @@ A replay engine fails closed: a command that was never recorded raises
 from __future__ import annotations
 
 import typing as t
+from collections.abc import Mapping
 
 from libtmux import exc
 from libtmux.engines.base import (
@@ -28,12 +29,30 @@ from libtmux.engines.base import (
 )
 
 if t.TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator
 
     from libtmux.engines.base import CommandRequest
 
-#: A recorded exchange: the request argv, mapped to what tmux answered.
-Tape = t.Mapping[tuple[str, ...], CommandResult]
+
+class Exchange(t.NamedTuple):
+    """One recorded command and the answer tmux gave it.
+
+    Attributes
+    ----------
+    args : tuple[str, ...]
+        The request argv, without the binary or connection flags.
+    result : CommandResult
+        What tmux answered.
+    """
+
+    args: tuple[str, ...]
+    result: CommandResult
+
+
+#: A recorded conversation. A sequence preserves order, which matters when the
+#: same command is asked twice and answered differently. A mapping is accepted
+#: too, for a hand-written tape where each command has one fixed answer.
+Tape: t.TypeAlias = "t.Sequence[Exchange] | t.Mapping[tuple[str, ...], CommandResult]"
 
 
 class RecordingEngine(TmuxEngine):
@@ -62,13 +81,15 @@ class RecordingEngine(TmuxEngine):
     >>> _ = live.cmd("display-message", "-p", "recorded")
     >>> recorder.requests
     [('display-message', '-p', 'recorded')]
-    >>> recorder.tape[("display-message", "-p", "recorded")].stdout
+    >>> recorder.tape[0].args
+    ('display-message', '-p', 'recorded')
+    >>> recorder.tape[0].result.stdout
     ('recorded',)
     """
 
     def __init__(self, inner: TmuxEngine) -> None:
         self._inner = inner
-        self._tape: dict[tuple[str, ...], CommandResult] = {}
+        self._exchanges: list[Exchange] = []
         self.requests: list[tuple[str, ...]] = []
 
     def tmux_version(self) -> str | None:
@@ -84,24 +105,31 @@ class RecordingEngine(TmuxEngine):
         return None
 
     @property
-    def tape(self) -> Tape:
-        """Return the recorded exchanges, keyed by request argv.
+    def tape(self) -> tuple[Exchange, ...]:
+        """Return every recorded exchange, in the order it happened.
 
-        A repeated command keeps its most recent answer, so the tape describes
-        the end state rather than every intermediate one.
+        Order is kept rather than collapsed per command, because the same
+        command asked twice is often answered differently -- ``list-sessions``
+        before and after a session is created -- and a tape that remembered only
+        the last answer would replay the end state for both.
         """
-        return dict(self._tape)
+        return tuple(self._exchanges)
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Dispatch through the inner engine and record the answer."""
         result = self._inner.run(request)
         self.requests.append(request.args)
         # Drop the Popen: a tape outlives the process it was recorded from.
-        self._tape[request.args] = CommandResult(
-            cmd=result.cmd,
-            stdout=result.stdout,
-            stderr=result.stderr,
-            returncode=result.returncode,
+        self._exchanges.append(
+            Exchange(
+                args=request.args,
+                result=CommandResult(
+                    cmd=result.cmd,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    returncode=result.returncode,
+                ),
+            ),
         )
         return result
 
@@ -147,7 +175,7 @@ class RecordingEngine(TmuxEngine):
                     "stderr": list(result.stderr),
                     "returncode": result.returncode,
                 }
-                for args, result in self._tape.items()
+                for args, result in self._exchanges
             ],
         }
 
@@ -162,8 +190,10 @@ class ReplayEngine(TmuxEngine):
 
     Parameters
     ----------
-    tape : Mapping[tuple[str, ...], CommandResult]
-        Recorded exchanges, as produced by :attr:`RecordingEngine.tape`.
+    tape : Sequence[Exchange] or Mapping[tuple[str, ...], CommandResult]
+        Recorded exchanges, as produced by :attr:`RecordingEngine.tape`. A
+        sequence replays in order; a mapping gives each command one fixed
+        answer, which is convenient for a hand-written tape.
 
     Attributes
     ----------
@@ -189,7 +219,15 @@ class ReplayEngine(TmuxEngine):
     """
 
     def __init__(self, tape: Tape, *, tmux_version: str | None = None) -> None:
-        self._tape = dict(tape)
+        exchanges = (
+            [Exchange(args, result) for args, result in tape.items()]
+            if isinstance(tape, Mapping)
+            else list(tape)
+        )
+        self._answers: dict[tuple[str, ...], list[CommandResult]] = {}
+        for args, result in exchanges:
+            self._answers.setdefault(args, []).append(result)
+        self._served: dict[tuple[str, ...], int] = {}
         self._tmux_version = tmux_version
         self.requests: list[tuple[str, ...]] = []
 
@@ -241,16 +279,22 @@ class ReplayEngine(TmuxEngine):
         >>> Server(engine=engine).cmd("display-message", "-p", "hi").stdout
         ['hi']
         """
+        # A list, not a dict comprehension: the same command recorded twice
+        # with different answers must stay two exchanges, or the tape replays
+        # the end state for the earlier step.
         return cls(
-            {
-                tuple(entry["args"]): CommandResult(
-                    cmd=tuple(entry.get("cmd", ())),
-                    stdout=tuple(entry.get("stdout", ())),
-                    stderr=tuple(entry.get("stderr", ())),
-                    returncode=int(entry.get("returncode", 0)),
+            [
+                Exchange(
+                    args=tuple(entry["args"]),
+                    result=CommandResult(
+                        cmd=tuple(entry.get("cmd", ())),
+                        stdout=tuple(entry.get("stdout", ())),
+                        stderr=tuple(entry.get("stderr", ())),
+                        returncode=int(entry.get("returncode", 0)),
+                    ),
                 )
                 for entry in tape.get("commands", ())
-            },
+            ],
             tmux_version=tape.get("tmux_version"),
         )
 
@@ -262,9 +306,8 @@ class ReplayEngine(TmuxEngine):
         :exc:`~libtmux.exc.UnscriptedCommand`
             The tape holds no answer for this argv.
         """
-        try:
-            result = self._tape[request.args]
-        except KeyError:
+        answers = self._answers.get(request.args)
+        if not answers:
             # A listing query's -F template is version-gated, so the commonest
             # cause of a miss on a tape that "should" have it is replaying
             # against a different tmux than the one recorded.
@@ -274,17 +317,37 @@ class ReplayEngine(TmuxEngine):
                 else None
             )
             raise exc.UnscriptedCommand(request.args, hint) from None
-        self.requests.append(request.args)
-        return result
+
+        served = self._served.get(request.args, 0)
+        if served < len(answers):
+            self._served[request.args] = served + 1
+            self.requests.append(request.args)
+            return answers[served]
+
+        if len(answers) == 1:
+            # The answer never varied while recording, so repeating it cannot
+            # misreport a state change. This keeps a read-only query usable more
+            # often than it was recorded.
+            self.requests.append(request.args)
+            return answers[0]
+
+        # It *did* vary, so there is no defensible answer for the extra call:
+        # replaying the last one would report the end state for a step that
+        # happened earlier.
+        hint = (
+            f"answered {len(answers)} times while recording, "
+            f"asked {served + 1} times now"
+        )
+        raise exc.UnscriptedCommand(request.args, hint) from None
 
     def __contains__(self, args: object) -> bool:
         """Whether the tape can answer *args*."""
-        return args in self._tape
+        return args in self._answers
 
     def __len__(self) -> int:
         """Return how many distinct commands the tape answers."""
-        return len(self._tape)
+        return len(self._answers)
 
     def __iter__(self) -> Iterator[tuple[str, ...]]:
         """Iterate the argvs the tape can answer."""
-        return iter(self._tape)
+        return iter(self._answers)
