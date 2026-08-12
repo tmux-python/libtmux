@@ -56,6 +56,13 @@ single place either is computed.
    :members:
 ```
 
+## Async
+
+```{eval-rst}
+.. automodule:: libtmux.engines.asyncio
+   :members:
+```
+
 ## Recording and replay
 
 ```{eval-rst}

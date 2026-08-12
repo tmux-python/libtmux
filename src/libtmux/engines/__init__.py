@@ -38,6 +38,7 @@ same request regardless of which tmux server it targets.
 
 from __future__ import annotations
 
+from libtmux.engines.asyncio import AsyncSubprocessEngine
 from libtmux.engines.base import (
     AsyncTmuxEngine,
     CommandRequest,
@@ -72,6 +73,7 @@ from libtmux.engines.subprocess import SubprocessEngine
 
 __all__ = (
     "ENGINE_ENTRY_POINT_GROUP",
+    "AsyncSubprocessEngine",
     "AsyncTmuxEngine",
     "CommandRequest",
     "CommandResult",
