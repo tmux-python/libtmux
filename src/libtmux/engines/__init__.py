@@ -50,7 +50,9 @@ from libtmux.engines.base import (
     TmuxEngine,
     encode_direct_argv,
     is_command_separator,
+    render_control_line,
     split_direct_argv,
+    unescape_control_output,
 )
 from libtmux.engines.connection import ServerConnection
 from libtmux.engines.record import (
@@ -90,6 +92,8 @@ __all__ = (
     "encode_direct_argv",
     "is_command_separator",
     "register_engine",
+    "render_control_line",
     "split_direct_argv",
+    "unescape_control_output",
     "unregister_engine",
 )
