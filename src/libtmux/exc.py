@@ -95,7 +95,31 @@ class TmuxSessionExists(LibTmuxException):
     """Session does not exist in the server."""
 
 
-class TmuxCommandNotFound(LibTmuxException):
+class EngineError(LibTmuxException):
+    """An engine could not carry a command to tmux.
+
+    The failure of the *transport*, not of the command. A tmux-side failure --
+    a bad target, an unknown option -- is data on a
+    :class:`~libtmux.engines.base.CommandResult` instead, carried in
+    ``returncode`` and ``stderr``.
+
+    Engines raise this so a caller can tell "tmux said no" from "tmux was never
+    reached": a missing binary, a closed connection, a protocol desync. The
+    shipped engines raise :exc:`TmuxCommandNotFound`, which is one of these.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> issubclass(exc.TmuxCommandNotFound, exc.EngineError)
+    True
+    >>> raise exc.EngineError("control connection closed")
+    Traceback (most recent call last):
+    ...
+    libtmux.exc.EngineError: control connection closed
+    """
+
+
+class TmuxCommandNotFound(EngineError):
     """Application binary for tmux not found."""
 
 

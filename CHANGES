@@ -207,6 +207,14 @@ that was never taught to answer is a gap in a fixture, not an unreachable tmux.
 `returncode` comparisons, and {class}`~libtmux.common.tmux_cmd` carries the same
 two, so results read the same whichever layer produced them.
 
+#### Engines report transport failure by name
+
+{exc}`~libtmux.exc.EngineError` names the case where a command never reached
+tmux at all — a missing binary, a closed connection, a desynchronized protocol
+— as distinct from tmux rejecting a command, which stays data on the result.
+{exc}`~libtmux.exc.TmuxCommandNotFound` now subclasses it, so existing handlers
+are unaffected and a caller can additionally catch the broader case.
+
 #### Engines are validated where they are supplied
 
 {class}`~libtmux.Server` now rejects a non-engine at construction, naming the
