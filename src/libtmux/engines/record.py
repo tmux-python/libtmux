@@ -1,10 +1,11 @@
 """Record tmux traffic once, then replay it with no tmux server.
 
-Simulating tmux is not practical: libtmux's listing queries ask for 136 format
-fields per row, version-gated, so a hand-written fake drifts out of date the
-moment tmux adds a field -- and a fake that answers everything with "success"
-is worse than none, because ``has-session`` then reports that every session
-exists while ``list-sessions`` reports none.
+Simulating tmux is not practical. A listing query asks tmux for its whole
+format-field set on every row, and that set is version-gated -- it grows as tmux
+gains fields -- so a hand-written fake is stale the release after it is written.
+A fake that papers over the gap by answering unknown commands optimistically is
+worse than none: ``has-session`` then reports that every session exists while
+``list-sessions`` reports that none do.
 
 Recording sidesteps that. :class:`RecordingEngine` wraps a real engine and keeps
 what tmux actually said; :class:`ReplayEngine` serves those answers back. The
@@ -20,10 +21,14 @@ from __future__ import annotations
 import typing as t
 
 from libtmux import exc
-from libtmux.engines.base import CommandResult, TmuxEngine
+from libtmux.engines.base import (
+    CommandResult,
+    SupportsTmuxVersion,
+    TmuxEngine,
+)
 
 if t.TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Iterator, Mapping
 
     from libtmux.engines.base import CommandRequest
 
@@ -66,6 +71,18 @@ class RecordingEngine(TmuxEngine):
         self._tape: dict[tuple[str, ...], CommandResult] = {}
         self.requests: list[tuple[str, ...]] = []
 
+    def tmux_version(self) -> str | None:
+        """Report the version of the tmux being recorded, if the inner engine knows.
+
+        Recorded alongside the tape so a :class:`ReplayEngine` can answer with
+        it later. The ``-F`` template libtmux sends is version-gated, so a tape
+        replayed against a different version would miss every listing query.
+        """
+        inner = self._inner
+        if isinstance(inner, SupportsTmuxVersion):
+            return inner.tmux_version()
+        return None
+
     @property
     def tape(self) -> Tape:
         """Return the recorded exchanges, keyed by request argv.
@@ -88,16 +105,21 @@ class RecordingEngine(TmuxEngine):
         )
         return result
 
-    def to_dict(self) -> list[dict[str, t.Any]]:
+    def to_dict(self) -> dict[str, t.Any]:
         """Return the tape as JSON-serializable data.
 
         Use it to commit a tape next to the tests that replay it, so a suite
         that needs a real tmux to *record* needs none to *run*.
 
+        The tmux version rides along with the commands, because the ``-F``
+        template libtmux sends is version-gated: replaying a tape against a
+        different tmux would miss every listing query, and a bare
+        "no recorded result" would not explain why.
+
         Returns
         -------
-        list[dict]
-            One entry per recorded command.
+        dict
+            ``{"tmux_version": str | None, "commands": [...]}``.
 
         Examples
         --------
@@ -108,20 +130,26 @@ class RecordingEngine(TmuxEngine):
         ... )
         >>> recorder = RecordingEngine(SubprocessEngine.for_server(server))
         >>> _ = recorder.run(CommandRequest.from_args("display-message", "-p", "x"))
-        >>> entry = recorder.to_dict()[0]
+        >>> tape = recorder.to_dict()
+        >>> sorted(tape)
+        ['commands', 'tmux_version']
+        >>> entry = tape["commands"][0]
         >>> entry["args"], entry["stdout"], entry["returncode"]
         (['display-message', '-p', 'x'], ['x'], 0)
         """
-        return [
-            {
-                "args": list(args),
-                "cmd": list(result.cmd),
-                "stdout": list(result.stdout),
-                "stderr": list(result.stderr),
-                "returncode": result.returncode,
-            }
-            for args, result in self._tape.items()
-        ]
+        return {
+            "tmux_version": self.tmux_version(),
+            "commands": [
+                {
+                    "args": list(args),
+                    "cmd": list(result.cmd),
+                    "stdout": list(result.stdout),
+                    "stderr": list(result.stderr),
+                    "returncode": result.returncode,
+                }
+                for args, result in self._tape.items()
+            ],
+        }
 
 
 class ReplayEngine(TmuxEngine):
@@ -160,18 +188,35 @@ class ReplayEngine(TmuxEngine):
     libtmux.exc.UnscriptedCommand: no recorded result for 'kill-server'
     """
 
-    def __init__(self, tape: Tape) -> None:
+    def __init__(self, tape: Tape, *, tmux_version: str | None = None) -> None:
         self._tape = dict(tape)
+        self._tmux_version = tmux_version
         self.requests: list[tuple[str, ...]] = []
 
+    def tmux_version(self) -> str | None:
+        """Report the tmux version the tape was recorded against.
+
+        Satisfies :class:`~libtmux.engines.base.SupportsTmuxVersion`, which is
+        what lets a replay serve listing queries with no tmux installed: the
+        version-gated ``-F`` template is otherwise resolved by running
+        ``tmux -V``, and a machine replaying a tape may have no tmux at all.
+
+        Examples
+        --------
+        >>> from libtmux.engines import ReplayEngine
+        >>> ReplayEngine({}, tmux_version="3.7").tmux_version()
+        '3.7'
+        """
+        return self._tmux_version
+
     @classmethod
-    def from_dict(cls, entries: Sequence[Mapping[str, t.Any]]) -> ReplayEngine:
+    def from_dict(cls, tape: Mapping[str, t.Any]) -> ReplayEngine:
         """Rebuild an engine from :meth:`RecordingEngine.to_dict` output.
 
         Parameters
         ----------
-        entries : Sequence[Mapping]
-            Serialized tape entries.
+        tape : Mapping
+            A serialized tape: ``{"tmux_version": ..., "commands": [...]}``.
 
         Returns
         -------
@@ -181,15 +226,18 @@ class ReplayEngine(TmuxEngine):
         --------
         >>> from libtmux.engines import ReplayEngine
         >>> from libtmux.server import Server
-        >>> engine = ReplayEngine.from_dict([
-        ...     {
-        ...         "args": ["display-message", "-p", "hi"],
-        ...         "cmd": ["tmux", "display-message", "-p", "hi"],
-        ...         "stdout": ["hi"],
-        ...         "stderr": [],
-        ...         "returncode": 0,
-        ...     }
-        ... ])
+        >>> engine = ReplayEngine.from_dict({
+        ...     "tmux_version": "3.7",
+        ...     "commands": [
+        ...         {
+        ...             "args": ["display-message", "-p", "hi"],
+        ...             "cmd": ["tmux", "display-message", "-p", "hi"],
+        ...             "stdout": ["hi"],
+        ...             "stderr": [],
+        ...             "returncode": 0,
+        ...         }
+        ...     ],
+        ... })
         >>> Server(engine=engine).cmd("display-message", "-p", "hi").stdout
         ['hi']
         """
@@ -201,8 +249,9 @@ class ReplayEngine(TmuxEngine):
                     stderr=tuple(entry.get("stderr", ())),
                     returncode=int(entry.get("returncode", 0)),
                 )
-                for entry in entries
+                for entry in tape.get("commands", ())
             },
+            tmux_version=tape.get("tmux_version"),
         )
 
     def run(self, request: CommandRequest) -> CommandResult:
@@ -216,7 +265,15 @@ class ReplayEngine(TmuxEngine):
         try:
             result = self._tape[request.args]
         except KeyError:
-            raise exc.UnscriptedCommand(request.args) from None
+            # A listing query's -F template is version-gated, so the commonest
+            # cause of a miss on a tape that "should" have it is replaying
+            # against a different tmux than the one recorded.
+            hint = (
+                f"tape recorded on tmux {self._tmux_version}"
+                if self._tmux_version
+                else None
+            )
+            raise exc.UnscriptedCommand(request.args, hint) from None
         self.requests.append(request.args)
         return result
 

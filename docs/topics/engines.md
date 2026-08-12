@@ -135,10 +135,12 @@ out:
 
 ## Testing without tmux
 
-Writing a fake that *simulates* tmux is a trap. libtmux's listing queries ask
-tmux for 136 format fields per row, and a fake that answers unknown commands
-optimistically ends up reporting that every session exists (`has-session` exits
-0) while no sessions exist (`list-sessions` is empty).
+Writing a fake that *simulates* tmux is a trap. A listing query asks tmux for
+its whole format-field set on every row, and that set is version-gated, so a
+hand-written fake goes stale as tmux gains fields. A fake that covers the gap by
+answering unknown commands optimistically is worse still: it reports that every
+session exists (`has-session` exits 0) while no sessions exist (`list-sessions`
+is empty).
 
 So record real traffic instead, and play it back.
 {class}`~libtmux.engines.record.RecordingEngine` wraps a real engine and keeps
@@ -158,10 +160,37 @@ what tmux said; {class}`~libtmux.engines.record.ReplayEngine` serves it back:
 ```
 
 Because the rows came from real tmux, the whole object API works offline —
-`sessions`, `windows`, `panes` all hydrate. `to_dict()` and
+`sessions`, `windows`, `panes` all hydrate.
+{meth}`~libtmux.engines.record.RecordingEngine.to_dict` and
 {meth}`~libtmux.engines.record.ReplayEngine.from_dict` round-trip a tape through
 JSON, so you can commit one next to the tests that replay it: recording needs
-tmux, running does not.
+tmux, running does not — not even the binary.
+
+That last part is why a tape carries the tmux version it was recorded on. The
+`-F` template libtmux sends is version-gated, so *something* has to name a
+version before a listing query can be built. A replay engine answers with the
+recorded one, and a miss says which version the tape came from rather than
+leaving you to guess:
+
+```python
+>>> from libtmux.engines import ReplayEngine
+>>> from libtmux.server import Server
+>>> offline = Server(
+...     tmux_bin="/nonexistent/tmux",
+...     engine=ReplayEngine({}, tmux_version="3.7"),
+... )
+>>> offline.sessions
+Traceback (most recent call last):
+...
+libtmux.exc.UnscriptedCommand: no recorded result for 'list-sessions
+<...-char arg>' (tape recorded on tmux 3.7)
+```
+
+Note that this raises rather than returning an empty list.
+{attr}`Server.sessions <libtmux.Server.sessions>` is lenient by contract when
+tmux cannot be reached, but an engine that was never taught to answer is a gap
+in your fixture, not an unreachable tmux — reporting "no sessions" there would
+hide the bug.
 
 A replay engine **fails closed**. A command it never recorded raises
 {exc}`~libtmux.exc.UnscriptedCommand` rather than inventing an answer:

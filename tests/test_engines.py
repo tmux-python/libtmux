@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import typing as t
 import warnings
@@ -14,6 +15,8 @@ from libtmux.engines import (
     CommandRequest,
     CommandResult,
     CommandSeparator,
+    RecordingEngine,
+    ReplayEngine,
     ServerConnection,
     SubprocessEngine,
     SupportsCommandLine,
@@ -311,3 +314,47 @@ def test_run_batch_preserves_order(session: Session) -> None:
         ],
     )
     assert [result.stdout[0] for result in results] == ["a", "b"]
+
+
+def test_replay_hydrates_objects_without_a_tmux_binary(session: Session) -> None:
+    """A tape answers listing queries on a machine with no tmux installed.
+
+    The ``-F`` template is version-gated, so something must name a tmux version
+    before a listing query can be built. Resolving that by running ``tmux -V``
+    made replay depend on the very binary it exists to avoid, and the failure
+    was silent: the lenient list accessors turned it into an empty result.
+    """
+    server = session.server
+    recorder = RecordingEngine(SubprocessEngine.for_server(server))
+    recording = Server(socket_name=server.socket_name, engine=recorder)
+    assert [s.session_name for s in recording.sessions]
+
+    tape = json.loads(json.dumps(recorder.to_dict()))
+    assert tape["tmux_version"]
+
+    offline = Server(
+        socket_name=server.socket_name,
+        tmux_bin="/nonexistent/tmux",
+        engine=ReplayEngine.from_dict(tape),
+    )
+    assert [s.session_name for s in offline.sessions] == [
+        s.session_name for s in recording.sessions
+    ]
+
+
+def test_unscripted_command_is_not_swallowed_by_list_accessors() -> None:
+    """An incomplete tape raises rather than reporting "no sessions".
+
+    ``Server.sessions`` is lenient by contract, but that contract covers a tmux
+    that cannot be reached -- not an engine that was never taught to answer.
+    """
+    server = Server(
+        tmux_bin="/nonexistent/tmux", engine=ReplayEngine({}, tmux_version="3.7")
+    )
+    with pytest.raises(exc.UnscriptedCommand) as excinfo:
+        _ = server.sessions
+    message = str(excinfo.value)
+    assert "list-sessions" in message
+    assert "3.7" in message
+    # The -F template must be summarized, not dumped into the message.
+    assert len(message) < 200
