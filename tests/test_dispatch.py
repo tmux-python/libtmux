@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import typing as t
 
+import pytest
+
 from libtmux.common import dispatch, tmux_cmd
 from libtmux.engines import CommandResult
 from libtmux.server import Server
@@ -73,3 +75,33 @@ def test_tmux_cmd_still_works_standalone(session: Session) -> None:
 
     assert proc.stdout == ["hi"]
     assert proc.returncode == 0
+
+
+def test_every_command_path_is_logged(session: Session, caplog) -> None:  # type: ignore[no-untyped-def]
+    """``raise_if_dead`` logs like any other command.
+
+    It used to call the engine directly, so it was the one tmux command in the
+    library that produced no debug record — invisible to anyone reading the log
+    to find out what libtmux ran.
+    """
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="libtmux.common"):
+        session.server.raise_if_dead()
+
+    dispatched = [
+        record
+        for record in caplog.records
+        if getattr(record, "tmux_subcommand", None) == "list-sessions"
+    ]
+    assert dispatched, "raise_if_dead should log the command it issues"
+
+
+def test_raise_if_dead_still_raises_called_process_error() -> None:
+    """Routing through dispatch must not change the documented exception."""
+    import subprocess
+
+    from libtmux.server import Server
+
+    with pytest.raises(subprocess.CalledProcessError):
+        Server(socket_name="definitely_not_running_xyz").raise_if_dead()
