@@ -48,7 +48,7 @@ async function buildWindow(
 ): Promise<void> {
   const startDirectory = window.start_directory ?? workspace.start_directory;
   const target = adoptFirst
-    ? (await session.windows()).at(0)
+    ? session.windows.at(0)
     : await session.newWindow({
         ...(window.window_name === undefined ? {} : { name: window.window_name }),
         ...(startDirectory === undefined ? {} : { startDirectory }),
@@ -66,8 +66,7 @@ async function buildWindow(
     // The window already owns one pane, so only later entries split.
     const handle =
       index === 0
-        ? // eslint-disable-next-line no-await-in-loop -- Pane order is observable.
-          (await target.panes()).at(0)
+        ? target.panes.at(0)
         : // eslint-disable-next-line no-await-in-loop -- Each split follows the previous one.
           await target.split(directory === undefined ? {} : { startDirectory: directory });
     if (handle === undefined) throw new Error("window reported no pane to build into");

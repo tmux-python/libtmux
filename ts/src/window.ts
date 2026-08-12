@@ -1,10 +1,11 @@
+import type { MoveWindowOptions, SplitOptions } from "./types.js";
 import type { CompleteFormatRow } from "./_internal/codec/schemas.js";
 import {
   linkedSessionsOfWindow,
   panesOfPlacement,
   sessionOf,
 } from "./_internal/operations/relations.js";
-import { killTarget, splitWindow, type SplitOptions } from "./_internal/operations/mutations.js";
+import { killTarget, splitWindow } from "./_internal/operations/mutations.js";
 import { setOption, showOptions, unsetOption } from "./_internal/operations/options.js";
 import {
   linkWindow,
@@ -14,7 +15,6 @@ import {
   selectTarget,
   swapWindows,
   unlinkWindow,
-  type MoveWindowOptions,
 } from "./_internal/operations/topology.js";
 import { runtimeForServer } from "./_internal/runtime/context.js";
 import { refreshHandle } from "./_internal/operations/refresh.js";
@@ -35,18 +35,18 @@ export class Window {
   }
 
   /** Panes of this window placement; a linked window keeps each set apart. */
-  panes(): Promise<Selection<Pane>> {
-    return panesOfPlacement(this.server, originGraphForHandle(this), this);
+  get panes(): Selection<Pane> {
+    return panesOfPlacement(originGraphForHandle(this), this);
   }
 
   /** The session this placement belongs to. */
-  session(): Promise<Session | undefined> {
-    return sessionOf(this.server, originGraphForHandle(this), this.session_id);
+  get session(): Session | undefined {
+    return sessionOf(originGraphForHandle(this), this.session_id);
   }
 
   /** Every session this window is linked into. */
-  linkedSessions(): Promise<Selection<Session>> {
-    return linkedSessionsOfWindow(this.server, originGraphForHandle(this), this.window_id);
+  get linkedSessions(): Selection<Session> {
+    return linkedSessionsOfWindow(originGraphForHandle(this), this.window_id);
   }
 
   /** Every option this window currently sees, including inherited values. */

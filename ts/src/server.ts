@@ -1,3 +1,9 @@
+import type {
+  IfShellOptions,
+  NewSessionOptions,
+  RunShellOptions,
+  ServerSnapshot,
+} from "./types.js";
 import { randomUUID } from "node:crypto";
 
 import type { Client } from "./client.js";
@@ -7,18 +13,9 @@ import type { Selection } from "./selection.js";
 import type { Session } from "./session.js";
 import type { Window } from "./window.js";
 import { setHook, showHooks, unsetHook } from "./_internal/operations/hooks.js";
-import {
-  killServer,
-  newSession,
-  type NewSessionOptions,
-} from "./_internal/operations/mutations.js";
+import { killServer, newSession } from "./_internal/operations/mutations.js";
 import { setOption, showOptions, unsetOption } from "./_internal/operations/options.js";
-import {
-  ifShell,
-  runShell,
-  type IfShellOptions,
-  type RunShellOptions,
-} from "./_internal/operations/shell.js";
+import { ifShell, runShell } from "./_internal/operations/shell.js";
 import {
   deleteBuffer,
   hasSession,
@@ -28,7 +25,7 @@ import {
   showBuffer,
   sourceFile,
 } from "./_internal/operations/server_utils.js";
-import { buildServerSnapshot, type ServerSnapshot } from "./_internal/operations/snapshot.js";
+import { buildServerSnapshot } from "./_internal/operations/snapshot.js";
 import {
   createRuntimeContext,
   registerServerRuntime,

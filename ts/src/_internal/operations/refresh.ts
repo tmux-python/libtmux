@@ -4,6 +4,7 @@ import type { GraphRecord } from "../graph/model.js";
 import type { RuntimeContext } from "../runtime/context.js";
 import { entityRefForHandle, winlinkRefForHandle } from "../runtime/live_handle.js";
 import { acquireServerGraph } from "./acquire.js";
+import { selectionOfModel } from "./projections.js";
 
 type Refreshable = Parameters<typeof replaceHandleSnapshotFromGraph>[0];
 
@@ -33,6 +34,13 @@ function sameWinlink(record: GraphRecord, handle: Refreshable): boolean {
  */
 export async function refreshHandle(handle: Refreshable, runtime: RuntimeContext): Promise<void> {
   const graph = await acquireServerGraph(runtime);
+  // A refreshed handle reads its relations from the graph it now points at, so
+  // that graph's handles must be materialized before the swap.
+  await Promise.all([
+    selectionOfModel(handle.server, graph, "session"),
+    selectionOfModel(handle.server, graph, "window"),
+    selectionOfModel(handle.server, graph, "pane"),
+  ]);
   const identity = entityRefForHandle(handle);
   const match = graph.records.find(
     (record) => record.entity.id === identity.id && sameWinlink(record, handle),

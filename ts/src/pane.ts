@@ -1,3 +1,13 @@
+import type {
+  CaptureOptions,
+  ChooseTreeOptions,
+  MenuItem,
+  PopupOptions,
+  ResizeOptions,
+  RespawnOptions,
+  SendKeysOptions,
+  SplitOptions,
+} from "./types.js";
 import type { CompleteFormatRow } from "./_internal/codec/schemas.js";
 import {
   chooseBuffer,
@@ -7,19 +17,10 @@ import {
   displayPopup,
   findWindow,
   sendPrefix,
-  type ChooseTreeOptions,
-  type MenuItem,
-  type PopupOptions,
 } from "./_internal/operations/interactive.js";
 import { sessionOf, windowOfPlacement } from "./_internal/operations/relations.js";
-import { killTarget, splitWindow, type SplitOptions } from "./_internal/operations/mutations.js";
-import {
-  capturePane,
-  clearHistory,
-  sendKeys,
-  type CaptureOptions,
-  type SendKeysOptions,
-} from "./_internal/operations/pane_io.js";
+import { killTarget, splitWindow } from "./_internal/operations/mutations.js";
+import { capturePane, clearHistory, sendKeys } from "./_internal/operations/pane_io.js";
 import { setOption, showOptions, unsetOption } from "./_internal/operations/options.js";
 import {
   breakPane,
@@ -27,14 +28,8 @@ import {
   joinPane,
   respawnPane,
   setCopyMode,
-  type RespawnOptions,
 } from "./_internal/operations/shell.js";
-import {
-  resizePane,
-  selectTarget,
-  swapPanes,
-  type ResizeOptions,
-} from "./_internal/operations/topology.js";
+import { resizePane, selectTarget, swapPanes } from "./_internal/operations/topology.js";
 import { runtimeForServer } from "./_internal/runtime/context.js";
 import { refreshHandle } from "./_internal/operations/refresh.js";
 import { originGraphForHandle } from "./_internal/runtime/live_handle.js";
@@ -53,13 +48,13 @@ export class Pane {
   }
 
   /** The window placement containing this pane. */
-  window(): Promise<Window | undefined> {
-    return windowOfPlacement(this.server, originGraphForHandle(this), this);
+  get window(): Window | undefined {
+    return windowOfPlacement(originGraphForHandle(this), this);
   }
 
   /** The session containing this pane. */
-  session(): Promise<Session | undefined> {
-    return sessionOf(this.server, originGraphForHandle(this), this.session_id);
+  get session(): Session | undefined {
+    return sessionOf(originGraphForHandle(this), this.session_id);
   }
 
   /** Every option this pane currently sees, including inherited values. */

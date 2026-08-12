@@ -1,12 +1,6 @@
+import type { MoveWindowOptions, ResizeOptions } from "../../types.js";
 import type { RuntimeContext } from "../runtime/context.js";
 import { runCommand } from "./command.js";
-
-export interface MoveWindowOptions {
-  /** Destination index; tmux picks the next free one when omitted. */
-  readonly index?: number;
-  /** Destination session; the window stays in its own session when omitted. */
-  readonly session?: string;
-}
 
 function destination(options: MoveWindowOptions): readonly string[] {
   if (options.session === undefined && options.index === undefined) return [];
@@ -84,11 +78,6 @@ export async function selectLayout(
   layout: string,
 ): Promise<void> {
   await runCommand(runtime, ["select-layout", ...target(windowId), layout]);
-}
-
-export interface ResizeOptions {
-  readonly height?: number;
-  readonly width?: number;
 }
 
 /** Resize a pane; tmux ignores a dimension its layout cannot honour. */

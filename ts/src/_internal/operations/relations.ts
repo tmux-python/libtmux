@@ -1,10 +1,9 @@
 import type { Pane } from "../../pane.js";
 import type { Selection } from "../../selection.js";
-import type { Server } from "../../server.js";
 import type { Session } from "../../session.js";
 import type { Window } from "../../window.js";
 import type { NormalizedGraph } from "../graph/model.js";
-import { selectionOfModel } from "./projections.js";
+import { settledSelectionOfModel } from "./projections.js";
 
 /** The contextual placement a window occupies in a session. */
 interface Placement {
@@ -18,74 +17,67 @@ const samePlacement = (left: Placement, right: Placement): boolean =>
   left.window_id === right.window_id &&
   left.window_index === right.window_index;
 
-export async function windowsOfSession(
-  server: Server,
+/**
+ * Relations read the handles materialized when the graph was acquired.
+ *
+ * Every accessor here is synchronous, because the work happened during
+ * acquisition and narrowing is local. A relation returning a promise would
+ * imply I/O that this design specifically forbids.
+ *
+ * Callers wanting a subset narrow the whole model, because a projection draws
+ * its members from a whole listing.
+ */
+export function windowsOfSession(
   graph: NormalizedGraph,
   sessionId: string | null,
-): Promise<Selection<Window>> {
-  const windows = await selectionOfModel(server, graph, "window");
-  return windows.filter((window) => window.session_id === sessionId);
+): Selection<Window> {
+  return settledSelectionOfModel(graph, "window").filter(
+    (window) => window.session_id === sessionId,
+  );
 }
 
-export async function panesOfSession(
-  server: Server,
-  graph: NormalizedGraph,
-  sessionId: string | null,
-): Promise<Selection<Pane>> {
-  const panes = await selectionOfModel(server, graph, "pane");
-  return panes.filter((pane) => pane.session_id === sessionId);
+export function panesOfSession(graph: NormalizedGraph, sessionId: string | null): Selection<Pane> {
+  return settledSelectionOfModel(graph, "pane").filter((pane) => pane.session_id === sessionId);
 }
 
 /** Panes of one window placement, so a linked window keeps its two sets apart. */
-export async function panesOfPlacement(
-  server: Server,
+export function panesOfPlacement(graph: NormalizedGraph, placement: Placement): Selection<Pane> {
+  return settledSelectionOfModel(graph, "pane").filter((pane) => samePlacement(pane, placement));
+}
+
+export function sessionOf(graph: NormalizedGraph, sessionId: string | null): Session | undefined {
+  return settledSelectionOfModel(graph, "session")
+    .filter((session) => session.session_id === sessionId)
+    .first();
+}
+
+export function windowOfPlacement(
   graph: NormalizedGraph,
   placement: Placement,
-): Promise<Selection<Pane>> {
-  const panes = await selectionOfModel(server, graph, "pane");
-  return panes.filter((pane) => samePlacement(pane, placement));
+): Window | undefined {
+  return settledSelectionOfModel(graph, "window")
+    .filter((window) => samePlacement(window, placement))
+    .first();
 }
 
-export async function sessionOf(
-  server: Server,
-  graph: NormalizedGraph,
-  sessionId: string | null,
-): Promise<Session | undefined> {
-  const sessions = await selectionOfModel(server, graph, "session");
-  return sessions.filter((session) => session.session_id === sessionId).first();
-}
-
-export async function windowOfPlacement(
-  server: Server,
-  graph: NormalizedGraph,
-  placement: Placement,
-): Promise<Window | undefined> {
-  const windows = await selectionOfModel(server, graph, "window");
-  return windows.filter((window) => samePlacement(window, placement)).first();
-}
-
-export async function paneById(
-  server: Server,
-  graph: NormalizedGraph,
-  paneId: string | null,
-): Promise<Pane | undefined> {
-  const panes = await selectionOfModel(server, graph, "pane");
-  return panes.filter((pane) => pane.pane_id === paneId).first();
+export function paneById(graph: NormalizedGraph, paneId: string | null): Pane | undefined {
+  return settledSelectionOfModel(graph, "pane")
+    .filter((pane) => pane.pane_id === paneId)
+    .first();
 }
 
 /** Every session a window is linked into, deduplicated by session identity. */
-export async function linkedSessionsOfWindow(
-  server: Server,
+export function linkedSessionsOfWindow(
   graph: NormalizedGraph,
   windowId: string | null,
-): Promise<Selection<Session>> {
-  const windows = await selectionOfModel(server, graph, "window");
+): Selection<Session> {
   const sessionIds = new Set(
-    windows
+    settledSelectionOfModel(graph, "window")
       .filter((window) => window.window_id === windowId)
       .toArray()
       .map(({ session_id }) => session_id),
   );
-  const sessions = await selectionOfModel(server, graph, "session");
-  return sessions.filter((session) => sessionIds.has(session.session_id));
+  return settledSelectionOfModel(graph, "session").filter((session) =>
+    sessionIds.has(session.session_id),
+  );
 }

@@ -691,7 +691,9 @@ describe("Python 0.62.0 parity manifest", () => {
         )!;
         symbol.status = "implemented";
         symbol.typescript = "Client";
-        symbol.typescriptSymbols = ["./client#value:Client"];
+        // `./client` is a published subpath, so the unexported case needs a
+        // module the package genuinely does not expose.
+        symbol.typescriptSymbols = ["./not-a-published-subpath#value:Client"];
         symbol.unitTest = "tests/unit/parity_manifest.test.ts";
         symbol.declarationTest = "tests/fixtures/negative-declarations/query_list.test.ts";
       },

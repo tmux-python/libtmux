@@ -98,7 +98,7 @@ describe("shell execution and pane movement", () => {
       const session = (await server.snapshot()).sessions.one();
       const target = await session.newWindow({ name: "target" });
       const source = await session.newWindow({ name: "source" });
-      const pane = (await source.panes()).one();
+      const pane = source.panes.one();
 
       await pane.joinTo(target.window_id ?? "");
 

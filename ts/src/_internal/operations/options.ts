@@ -1,8 +1,6 @@
+import type { OptionScope } from "../../types.js";
 import type { RuntimeContext } from "../runtime/context.js";
 import { runCommand } from "./command.js";
-
-/** The tmux option scope a lookup is addressed to. */
-export type OptionScope = "pane" | "server" | "session" | "window";
 
 const SCOPE_FLAGS: Readonly<Record<OptionScope, readonly string[]>> = Object.freeze({
   pane: ["-p"],

@@ -20,18 +20,18 @@ export class Client {
   }
 
   /** The session this client is attached to, if it is still attached. */
-  session(): Promise<Session | undefined> {
-    return sessionOf(this.server, originGraphForHandle(this), this.session_id);
+  get session(): Session | undefined {
+    return sessionOf(originGraphForHandle(this), this.session_id);
   }
 
   /** The window placement this client currently shows. */
-  window(): Promise<Window | undefined> {
-    return windowOfPlacement(this.server, originGraphForHandle(this), this);
+  get window(): Window | undefined {
+    return windowOfPlacement(originGraphForHandle(this), this);
   }
 
   /** The pane this client currently has active. */
-  pane(): Promise<Pane | undefined> {
-    return paneById(this.server, originGraphForHandle(this), this.pane_id);
+  get pane(): Pane | undefined {
+    return paneById(originGraphForHandle(this), this.pane_id);
   }
 
   /** Re-read this client at the current instant, in place. */

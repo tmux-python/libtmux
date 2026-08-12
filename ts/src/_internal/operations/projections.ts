@@ -1,3 +1,4 @@
+import { LibTmuxException } from "../../exc.js";
 import type { Selection } from "../../selection.js";
 import type { Server } from "../../server.js";
 import { materializeProjectionMembers } from "../graph/materialize.js";
@@ -32,6 +33,33 @@ const memo = new WeakMap<
   Map<ProjectedModel, Promise<Selection<ModelForKind<ProjectedModel>>>>
 >();
 
+/**
+ * Settled results, so relations can be read without awaiting.
+ *
+ * Materializing a graph is pure once its capability binding is cached, which
+ * acquisition always does. Warming this during snapshot construction is what
+ * lets a relation be a plain getter instead of a promise that never performs
+ * I/O and only looks like it might.
+ */
+const settled = new WeakMap<
+  NormalizedGraph,
+  Map<ProjectedModel, Selection<ModelForKind<ProjectedModel>>>
+>();
+
+/** Read a model's handles for a graph whose selections are already built. */
+export function settledSelectionOfModel<Model extends ProjectedModel>(
+  graph: NormalizedGraph,
+  model: Model,
+): Selection<ModelForKind<Model>> {
+  const built = settled.get(graph)?.get(model);
+  if (built === undefined) {
+    throw new LibTmuxException(
+      `${model} handles were not materialized for this graph; acquire a snapshot first`,
+    );
+  }
+  return built as Selection<ModelForKind<Model>>;
+}
+
 async function buildSelection<Model extends ProjectedModel>(
   server: Server,
   graph: NormalizedGraph,
@@ -62,7 +90,12 @@ export function selectionOfModel<Model extends ProjectedModel>(
   const cached = byModel.get(model);
   if (cached !== undefined) return cached as Promise<Selection<ModelForKind<Model>>>;
 
-  const built = buildSelection(server, graph, model);
+  const built = buildSelection(server, graph, model).then((selection) => {
+    const bySettledModel = settled.get(graph) ?? new Map();
+    settled.set(graph, bySettledModel);
+    bySettledModel.set(model, selection as Selection<ModelForKind<ProjectedModel>>);
+    return selection;
+  });
   byModel.set(model, built as Promise<Selection<ModelForKind<ProjectedModel>>>);
   return built;
 }

@@ -1,15 +1,8 @@
+import type { ChooseTreeOptions, MenuItem, PopupOptions } from "../../types.js";
 import { runCommand } from "./command.js";
 import type { RuntimeContext } from "../runtime/context.js";
 
 const target = (id: string | null): readonly string[] => (id == null ? [] : ["-t", id]);
-
-export interface PopupOptions {
-  readonly directory?: string;
-  /** Close the popup when its command exits. */
-  readonly closeOnExit?: boolean;
-  readonly height?: string;
-  readonly width?: string;
-}
 
 /**
  * Open a popup over a client.
@@ -34,22 +27,6 @@ export async function displayPopup(
   ]);
 }
 
-export interface MenuEntry {
-  /** Single-character shortcut tmux binds to this entry. */
-  readonly key: string;
-  readonly command: string;
-  readonly name: string;
-}
-
-/**
- * A menu entry, or a horizontal rule.
- *
- * tmux spells a separator as one empty argument rather than a name/key/command
- * triple, so modelling it as a distinct value keeps callers from having to
- * fabricate empty fields that tmux would reject.
- */
-export type MenuItem = MenuEntry | "separator";
-
 /**
  * Show a menu over a client.
  *
@@ -71,11 +48,6 @@ export async function displayMenu(
     ...target(paneId),
     ...items.flatMap((item) => (item === "separator" ? [""] : [item.name, item.key, item.command])),
   ]);
-}
-
-export interface ChooseTreeOptions {
-  readonly sessionsOnly?: boolean;
-  readonly windowsOnly?: boolean;
 }
 
 /** Open tmux's interactive session and window chooser on a pane. */

@@ -40,6 +40,36 @@
       "types": "./dist/neo.d.ts",
       "import": "./dist/neo.js",
       "default": "./dist/neo.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
+    },
+    "./session": {
+      "types": "./dist/session.d.ts",
+      "import": "./dist/session.js",
+      "default": "./dist/session.js"
+    },
+    "./window": {
+      "types": "./dist/window.d.ts",
+      "import": "./dist/window.js",
+      "default": "./dist/window.js"
+    },
+    "./pane": {
+      "types": "./dist/pane.d.ts",
+      "import": "./dist/pane.js",
+      "default": "./dist/pane.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js",
+      "default": "./dist/client.js"
+    },
+    "./selection": {
+      "types": "./dist/selection.d.ts",
+      "import": "./dist/selection.js",
+      "default": "./dist/selection.js"
     }
   },
   "scripts": {

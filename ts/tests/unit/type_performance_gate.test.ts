@@ -874,6 +874,8 @@ describe("TypeScript instantiation performance gate", () => {
     expect(manifest.scripts["test:types"]).toBe(
       "tsc -p tests/types/tsconfig.json --noEmit && bun run test:type-performance",
     );
-    expect(Object.keys(manifest.exports)).not.toContain("./selection");
+    // Selection ships as a type-only subpath: exported for consumers, with no
+    // runtime class behind it.
+    expect(Object.keys(manifest.exports)).toContain("./selection");
   });
 });

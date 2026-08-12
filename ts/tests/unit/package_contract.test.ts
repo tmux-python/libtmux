@@ -107,7 +107,22 @@ describe("package contract", () => {
   test("publishes only ESM root and package metadata entrypoints", async () => {
     const packageManifest = await readJson<PackageManifest>("package.json");
 
-    expect(Object.keys(await import("../../src/index.js"))).toEqual([]);
+    // The root entrypoint is the surface a consumer actually imports.
+    expect(Object.keys(await import("../../src/index.js")).toSorted()).toEqual([
+      "Client",
+      "DeprecatedError",
+      "LibTmuxException",
+      "MultipleMatchesError",
+      "MultipleObjectsReturned",
+      "NoMatchError",
+      "ObjectDoesNotExist",
+      "Pane",
+      "QueryValidationError",
+      "Server",
+      "Session",
+      "Window",
+      "parseLegacyWhere",
+    ]);
     expect(packageManifest.name).toBe("libtmux");
     expect(packageManifest.version).toBe("0.1.0");
     expect(packageManifest.private).toBe(true);
@@ -125,6 +140,12 @@ describe("package contract", () => {
       "./constants",
       "./formats",
       "./neo",
+      "./server",
+      "./session",
+      "./window",
+      "./pane",
+      "./client",
+      "./selection",
     ]);
     expect(packageManifest.exports["."]).toEqual({
       types: "./dist/index.d.ts",
@@ -158,6 +179,13 @@ describe("package contract", () => {
       import: "./dist/neo.js",
       default: "./dist/neo.js",
     });
+    for (const model of ["server", "session", "window", "pane", "client", "selection"]) {
+      expect(packageManifest.exports[`./${model}`]).toEqual({
+        types: `./dist/${model}.d.ts`,
+        import: `./dist/${model}.js`,
+        default: `./dist/${model}.js`,
+      });
+    }
 
     const serializedExports = JSON.stringify(packageManifest.exports);
     expect(serializedExports).not.toContain("require");
@@ -297,24 +325,35 @@ describe("package contract", () => {
         readFile(join(outputDirectory, "formats.d.ts"), "utf8"),
         readFile(join(outputDirectory, "neo.d.ts"), "utf8"),
       ]);
-      expect(declarations[0]).toBe("export {};\n");
+      // The root entrypoint now carries the public surface, so assert it names
+      // the classes rather than that it is empty.
+      for (const symbol of ["Server", "Session", "Window", "Pane", "Client", "Selection"]) {
+        expect(declarations[0]).toContain(symbol);
+      }
+      // No public declaration may name an internal module or the runtime
+      // plumbing behind it.
+      const forbiddenEverywhere = [
+        "_generated",
+        "_internal",
+        "Bun",
+        "CommandTransport",
+        "FormatProtocolError",
+        "GuardCodec",
+        "GuardFactory",
+        "TmuxCapabilities",
+        "Zod",
+        "transport",
+        "zod",
+      ];
       for (const declaration of declarations) {
-        for (const forbidden of [
-          "_generated",
-          "_internal",
-          "Bun",
-          "CommandTransport",
-          "FormatProtocolError",
-          "GuardCodec",
-          "GuardFactory",
-          "Server",
-          "TmuxCapabilities",
-          "Zod",
-          "transport",
-          "zod",
-        ]) {
+        for (const forbidden of forbiddenEverywhere) {
           expect(declaration).not.toContain(forbidden);
         }
+      }
+      // The format and codec entrypoints additionally must not drag the model
+      // classes in; the root entrypoint is where those legitimately live.
+      for (const declaration of [declarations[1], declarations[2]]) {
+        expect(declaration).not.toContain("Server");
       }
       expect(declarations[2]).not.toContain("fetch_obj");
       expect(declarations[2]).not.toContain("fetch_objs");
@@ -324,8 +363,10 @@ describe("package contract", () => {
         `${JSON.stringify(
           {
             exports: {
+              ".": { types: "./types/index.d.ts" },
               "./formats": { types: "./types/formats.d.ts" },
               "./neo": { types: "./types/neo.d.ts" },
+              "./server": { types: "./types/server.d.ts" },
             },
             name: "libtmux",
             type: "module",
@@ -356,6 +397,44 @@ import {
   SESSION_FORMATS,
   WINDOW_FORMATS,
 } from "libtmux/formats";
+import {
+  Client,
+  LibTmuxException,
+  NoMatchError,
+  Pane,
+  Server,
+  Session,
+  Window,
+  type CaptureOptions,
+  type NewSessionOptions,
+  type Selection,
+  type ServerSnapshot,
+  type SessionWhere,
+} from "libtmux";
+import { Server as ServerFromSubpath } from "libtmux/server";
+
+// The root entrypoint must be usable exactly as a published consumer sees it.
+declare const rootServer: Server;
+declare const rootSnapshot: ServerSnapshot;
+declare const rootSessions: Selection<Session>;
+declare const rootWindow: Window;
+declare const rootPane: Pane;
+declare const rootClient: Client;
+declare const rootCriteria: SessionWhere;
+declare const rootCapture: CaptureOptions;
+declare const rootNewSession: NewSessionOptions;
+void [
+  rootServer.snapshot,
+  rootSnapshot.sessions,
+  rootSessions.where(rootCriteria),
+  rootWindow.panes,
+  rootPane.capture(rootCapture),
+  rootClient.session,
+  rootServer.newSession(rootNewSession),
+  LibTmuxException,
+  NoMatchError,
+  ServerFromSubpath,
+];
 
 const command: ListCommand = "list-sessions";
 const scope: FormatScope = "session";

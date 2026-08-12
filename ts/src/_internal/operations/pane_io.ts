@@ -1,12 +1,6 @@
+import type { CaptureOptions, SendKeysOptions } from "../../types.js";
 import type { RuntimeContext } from "../runtime/context.js";
 import { runCommand } from "./command.js";
-
-export interface SendKeysOptions {
-  /** Append Enter after the keys. Defaults to true, matching Python. */
-  readonly enter?: boolean;
-  /** Send the string literally instead of letting tmux resolve key names. */
-  readonly literal?: boolean;
-}
 
 /**
  * Send keys to a pane.
@@ -30,15 +24,6 @@ export async function sendKeys(
     keys,
   ]);
   if (options.enter !== false) await runCommand(runtime, ["send-keys", ...target, "Enter"]);
-}
-
-export interface CaptureOptions {
-  /** Last line to capture; negative counts back from the visible bottom. */
-  readonly end?: number;
-  /** Join wrapped lines, matching tmux's `-J`. */
-  readonly joinWrapped?: boolean;
-  /** First line to capture; negative reaches into scrollback history. */
-  readonly start?: number;
 }
 
 /** Capture a pane's contents as lines, without the trailing blank line tmux emits. */

@@ -145,13 +145,13 @@ describe("Server.snapshot", () => {
       const session = snapshot.sessions.where({ name: fixture.sessionName }).one();
       const other = snapshot.sessions.where({ name: "other" }).one();
 
-      expect((await session.windows()).length).toBe(2);
-      expect((await session.panes()).length).toBe(3);
-      expect((await session.windows()).count({ name: "editor" })).toBe(1);
+      expect(session.windows.length).toBe(2);
+      expect(session.panes.length).toBe(3);
+      expect(session.windows.count({ name: "editor" })).toBe(1);
 
       // A sibling session sees only its own topology.
-      expect((await other.windows()).length).toBe(1);
-      expect((await other.panes()).length).toBe(1);
+      expect(other.windows.length).toBe(1);
+      expect(other.panes.length).toBe(1);
     });
   }, 30_000);
 
@@ -181,16 +181,16 @@ describe("Server.snapshot", () => {
       // Both placements show the same two panes, each via its own winlink.
       await Promise.all(
         placements.map(async (placement) => {
-          expect((await placement.panes()).length).toBe(2);
-          expect((await placement.session())?.session_id).toBe(placement.session_id);
-          expect((await placement.linkedSessions()).length).toBe(2);
+          expect(placement.panes.length).toBe(2);
+          expect(placement.session?.session_id).toBe(placement.session_id);
+          expect(placement.linkedSessions.length).toBe(2);
         }),
       );
 
-      const pane = (await placements[0]!.panes()).first();
+      const pane = placements[0]!.panes.first();
       expect(pane).toBeDefined();
-      expect((await pane!.window())?.window_id).toBe(windowId);
-      expect((await pane!.session())?.session_id).toBe(pane!.session_id);
+      expect(pane!.window?.window_id).toBe(windowId);
+      expect(pane!.session?.session_id).toBe(pane!.session_id);
     });
   }, 30_000);
 
@@ -205,12 +205,12 @@ describe("Server.snapshot", () => {
         expect(snapshot.clients.length).toBe(1);
 
         const client = snapshot.clients.one();
-        expect((await client.session())?.session_id).toBe(fixture.sessionId);
+        expect(client.session?.session_id).toBe(fixture.sessionId);
 
-        const window = await client.window();
+        const window = client.window;
         expect(window?.session_id).toBe(fixture.sessionId);
 
-        const pane = await client.pane();
+        const pane = client.pane;
         expect(pane?.pane_id).toBe(client.pane_id);
         expect(pane?.window_id).toBe(window?.window_id);
       } finally {

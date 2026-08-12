@@ -1,13 +1,7 @@
+import type { HookScope } from "../../types.js";
 import { parseNameValueLine } from "./options.js";
 import { runCommand } from "./command.js";
 import type { RuntimeContext } from "../runtime/context.js";
-
-/**
- * Hooks live at server or session scope. tmux addresses the server scope with
- * `-g` rather than a scope flag, so a global hook is a session-scope command
- * without a target rather than a separate subcommand.
- */
-export type HookScope = "server" | "session";
 
 function scopeArguments(scope: HookScope, target: string | null | undefined): readonly string[] {
   if (scope === "server") return ["-g"];

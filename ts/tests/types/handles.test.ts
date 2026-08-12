@@ -56,6 +56,7 @@ import { Server, type ServerOptions } from "../../src/server.js";
 import { Session } from "../../src/session.js";
 import { Window } from "../../src/window.js";
 import type { CommandTransport } from "../../src/_internal/transport/types.js";
+import type { Selection } from "../../src/selection.js";
 import type { Equal, Expect } from "./assert.js";
 
 type ExpectedServerOptions = {
@@ -217,6 +218,11 @@ type _ClientEquals = Expect<Equal<Client["equals"], (other: unknown) => boolean>
 type _PaneEquals = Expect<Equal<Pane["equals"], (other: unknown) => boolean>>;
 type _SessionEquals = Expect<Equal<Session["equals"], (other: unknown) => boolean>>;
 type _WindowEquals = Expect<Equal<Window["equals"], (other: unknown) => boolean>>;
+
+type _SessionWindows = Expect<Equal<Session["windows"], Selection<Window>>>;
+type _SessionPanes = Expect<Equal<Session["panes"], Selection<Pane>>>;
+type _WindowSession = Expect<Equal<Window["session"], Session | undefined>>;
+type _PaneWindow = Expect<Equal<Pane["window"], Window | undefined>>;
 
 type _ClientRefresh = Expect<Equal<Client["refresh"], () => Promise<void>>>;
 type _PaneRefresh = Expect<Equal<Pane["refresh"], () => Promise<void>>>;

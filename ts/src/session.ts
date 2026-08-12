@@ -1,16 +1,13 @@
+import type { NewWindowOptions, WindowTarget } from "./types.js";
 import type { CompleteFormatRow } from "./_internal/codec/schemas.js";
 import { readTmuxEnvironment } from "./_internal/operations/env.js";
 import { detachClient } from "./_internal/operations/shell.js";
 import { panesOfSession, windowsOfSession } from "./_internal/operations/relations.js";
 import { LibTmuxException } from "./exc.js";
 import { setHook, showHooks, unsetHook } from "./_internal/operations/hooks.js";
-import { killTarget, newWindow, type NewWindowOptions } from "./_internal/operations/mutations.js";
+import { killTarget, newWindow } from "./_internal/operations/mutations.js";
 import { setOption, showOptions, unsetOption } from "./_internal/operations/options.js";
-import {
-  renameSession,
-  selectWindowIn,
-  type WindowTarget,
-} from "./_internal/operations/session_nav.js";
+import { renameSession, selectWindowIn } from "./_internal/operations/session_nav.js";
 import { runtimeForServer } from "./_internal/runtime/context.js";
 import { refreshHandle } from "./_internal/operations/refresh.js";
 import { originGraphForHandle } from "./_internal/runtime/live_handle.js";
@@ -35,13 +32,13 @@ export class Session {
    * Resolved from the graph this handle was materialized against, so it issues
    * no tmux command and reports the instant the handle came from.
    */
-  windows(): Promise<Selection<Window>> {
-    return windowsOfSession(this.server, originGraphForHandle(this), this.session_id);
+  get windows(): Selection<Window> {
+    return windowsOfSession(originGraphForHandle(this), this.session_id);
   }
 
   /** Panes contained by this session's windows. */
-  panes(): Promise<Selection<Pane>> {
-    return panesOfSession(this.server, originGraphForHandle(this), this.session_id);
+  get panes(): Selection<Pane> {
+    return panesOfSession(originGraphForHandle(this), this.session_id);
   }
 
   /** Every option this session currently sees, including inherited values. */
@@ -123,7 +120,7 @@ export class Session {
     if (pane === undefined) {
       throw new LibTmuxException(`${paneId} is not present on ${socketPath}`);
     }
-    const session = await pane.session();
+    const session = pane.session;
     if (session === undefined) {
       throw new LibTmuxException(`${paneId} has no session on ${socketPath}`);
     }

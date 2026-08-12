@@ -1,3 +1,4 @@
+import type { NewSessionOptions, NewWindowOptions, SplitOptions } from "../../types.js";
 import { LibTmuxException } from "../../exc.js";
 import type { Pane } from "../../pane.js";
 import type { Server } from "../../server.js";
@@ -13,12 +14,6 @@ function requireIdentity(lines: readonly string[], command: string): string {
     throw new LibTmuxException(`${command} did not report the created object's identity`);
   }
   return identity;
-}
-
-export interface NewSessionOptions {
-  readonly name?: string;
-  readonly startDirectory?: string;
-  readonly windowName?: string;
 }
 
 export async function newSession(
@@ -47,11 +42,6 @@ export async function newSession(
   return created;
 }
 
-export interface NewWindowOptions {
-  readonly name?: string;
-  readonly startDirectory?: string;
-}
-
 export async function newWindow(
   server: Server,
   runtime: RuntimeContext,
@@ -77,11 +67,6 @@ export async function newWindow(
     throw new LibTmuxException(`new-window created ${windowId} but it was gone before it resolved`);
   }
   return created;
-}
-
-export interface SplitOptions {
-  readonly startDirectory?: string;
-  readonly vertical?: boolean;
 }
 
 export async function splitWindow(

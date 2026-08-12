@@ -20,13 +20,6 @@ export async function renameSession(
  * the three directions map to `last-window`, `next-window`, and
  * `previous-window`; anything else is treated as a window target.
  */
-/**
- * A relative direction, or any window target tmux accepts.
- *
- * The intersection keeps the three literals in autocomplete instead of letting
- * the bare `string` swallow them.
- */
-export type WindowTarget = "last" | "next" | "previous" | (string & Record<never, never>);
 
 export async function selectWindowIn(
   runtime: RuntimeContext,

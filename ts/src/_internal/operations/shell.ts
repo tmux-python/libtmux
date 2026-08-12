@@ -1,10 +1,6 @@
+import type { IfShellOptions, RespawnOptions, RunShellOptions } from "../../types.js";
 import { runCommand } from "./command.js";
 import type { RuntimeContext } from "../runtime/context.js";
-
-export interface RunShellOptions {
-  /** Pane the command's `#{pane_*}` formats resolve against. */
-  readonly target?: string | null;
-}
 
 /** Run a shell command through tmux and return whatever it printed. */
 export async function runShell(
@@ -17,14 +13,6 @@ export async function runShell(
     ...(options.target == null ? [] : ["-t", options.target]),
     command,
   ]);
-}
-
-export interface IfShellOptions {
-  /** Command to run when the condition fails. */
-  readonly otherwise?: string;
-  /** Treat the condition as a tmux format rather than a shell command. */
-  readonly format?: boolean;
-  readonly target?: string | null;
 }
 
 /**
@@ -61,12 +49,6 @@ export async function displayMessage(
     ...(target == null ? [] : ["-t", target]),
     message,
   ]);
-}
-
-export interface RespawnOptions {
-  /** Replace a pane that is still running rather than only a dead one. */
-  readonly kill?: boolean;
-  readonly startDirectory?: string;
 }
 
 /** Restart a pane's command in place. */

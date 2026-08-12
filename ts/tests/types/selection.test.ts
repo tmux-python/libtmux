@@ -23,20 +23,21 @@ import {
 import type { CompleteFormatRow } from "../../src/_internal/codec/schemas.js";
 import type { Equal, Expect } from "./assert.js";
 
-// @ts-expect-error Selection remains absent from the package root until Task 9.
-type RootSelection = import("../../src/index.js").Selection<Session>;
-// @ts-expect-error WhereOf remains absent from the package root until Task 9.
-type RootWhereOf = import("../../src/index.js").WhereOf<Session>;
-// @ts-expect-error SessionWhere remains absent from the package root until Task 9.
-type RootSessionWhere = import("../../src/index.js").SessionWhere;
-// @ts-expect-error WindowWhere remains absent from the package root until Task 9.
-type RootWindowWhere = import("../../src/index.js").WindowWhere;
-// @ts-expect-error PaneWhere remains absent from the package root until Task 9.
-type RootPaneWhere = import("../../src/index.js").PaneWhere;
-// @ts-expect-error RegexCriteriaData remains absent from the package root until Task 9.
-type RootRegexCriteriaData = import("../../src/index.js").RegexCriteriaData;
-// @ts-expect-error WhereDocumentV1 remains absent from the package root until Task 9.
-type RootWhereDocumentV1 = import("../../src/index.js").WhereDocumentV1;
+// The query surface is reachable from the package root, and is the same type
+// the dedicated subpath exports.
+type _RootSelection = Expect<
+  Equal<import("../../src/index.js").Selection<Session>, Selection<Session>>
+>;
+type _RootWhereOf = Expect<Equal<import("../../src/index.js").WhereOf<Session>, WhereOf<Session>>>;
+type _RootSessionWhere = Expect<Equal<import("../../src/index.js").SessionWhere, SessionWhere>>;
+type _RootWindowWhere = Expect<Equal<import("../../src/index.js").WindowWhere, WindowWhere>>;
+type _RootPaneWhere = Expect<Equal<import("../../src/index.js").PaneWhere, PaneWhere>>;
+type _RootRegexCriteriaData = Expect<
+  Equal<import("../../src/index.js").RegexCriteriaData, RegexCriteriaData>
+>;
+type _RootWhereDocumentV1 = Expect<
+  Equal<import("../../src/index.js").WhereDocumentV1, WhereDocumentV1>
+>;
 
 type ExpectedSelection<Model> = {
   readonly length: number;
@@ -189,10 +190,3 @@ void (null as unknown as InvalidSelection);
 void (null as unknown as MissingQueryList);
 void (null as unknown as MissingClientWhere);
 void (null as unknown as MissingStringFilter);
-void (null as unknown as RootSelection);
-void (null as unknown as RootWhereOf);
-void (null as unknown as RootSessionWhere);
-void (null as unknown as RootWindowWhere);
-void (null as unknown as RootPaneWhere);
-void (null as unknown as RootRegexCriteriaData);
-void (null as unknown as RootWhereDocumentV1);

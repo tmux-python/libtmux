@@ -61,7 +61,7 @@ describe("lifecycle mutations", () => {
       expect(pane.window_id).toBe(window.window_id);
       // The returned pane is live; the window handle predates the split and
       // still reports the instant it was created at.
-      expect((await window.panes()).length).toBe(1);
+      expect(window.panes.length).toBe(1);
       expect((await server.snapshot()).panes.count({ window: { is: { name: "editor" } } })).toBe(2);
     });
   }, 40_000);
@@ -88,7 +88,7 @@ describe("lifecycle mutations", () => {
       await pane.kill();
       // The window handle predates the split, so it keeps reporting its own
       // instant rather than tracking later mutations.
-      expect((await window.panes()).length).toBe(1);
+      expect(window.panes.length).toBe(1);
       // A fresh snapshot shows the split pane was really removed.
       expect((await server.snapshot()).panes.count({ window: { is: { name: "temp" } } })).toBe(1);
 
@@ -114,18 +114,18 @@ describe("lifecycle mutations", () => {
       const server = serverFor(fixture);
       const snapshot = await server.snapshot();
       const window = snapshot.windows.one();
-      expect((await window.panes()).length).toBe(1);
+      expect(window.panes.length).toBe(1);
 
       await window.split();
 
       // The selection stays frozen at its own instant.
       expect(snapshot.windows.length).toBe(1);
-      expect((await window.panes()).length).toBe(1);
+      expect(window.panes.length).toBe(1);
 
       await window.refresh();
 
       // Only the refreshed handle advances.
-      expect((await window.panes()).length).toBe(2);
+      expect(window.panes.length).toBe(2);
       expect(snapshot.panes.length).toBe(1);
     });
   }, 40_000);

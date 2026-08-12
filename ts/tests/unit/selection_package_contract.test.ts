@@ -89,7 +89,7 @@ async function selectionAstSummary(): Promise<SelectionAstSummary> {
 }
 
 describe("Task 8 package boundary", () => {
-  test("keeps Selection internal until Task 9 real-tmux evidence", async () => {
+  test("exports Selection as a type without shipping a runtime class", async () => {
     const manifest = JSON.parse(
       await readFile(new URL("../../package.json", import.meta.url), "utf8"),
     ) as PackageManifest;
@@ -97,11 +97,13 @@ describe("Task 8 package boundary", () => {
     const selectionModule = await import("../../src/selection.js");
     const ast = await selectionAstSummary();
 
-    expect(Object.keys(rootModule)).toEqual([]);
+    // Selection is a type, never a runtime value: consumers cannot construct or
+    // subclass it, which is what keeps it immutable and non-Array.
+    expect(Object.keys(rootModule)).toContain("Server");
+    expect(Object.keys(rootModule)).not.toContain("Selection");
     expect(Object.keys(selectionModule)).toEqual(["parseLegacyWhere"]);
     expect(Reflect.get(selectionModule, "Selection")).toBeUndefined();
-    expect(Object.keys(manifest.exports)).not.toContain("./selection");
-    expect(JSON.stringify(manifest.exports)).not.toContain("selection");
+    expect(Object.keys(manifest.exports)).toContain("./selection");
     expect(manifest.files).toEqual(["dist"]);
     expect(ast.exported.map(({ name }) => name).sort()).toEqual([
       "PaneWhere",
@@ -113,7 +115,12 @@ describe("Task 8 package boundary", () => {
       "WindowWhere",
       "parseLegacyWhere",
     ]);
-    expect(ast.rootStatements).toEqual([{ kind: "ExportDeclaration", text: "export {};" }]);
+    // The root entrypoint is a pure re-export barrel: no declarations, no
+    // side effects, nothing a consumer could import by accident.
+    expect(ast.rootStatements.length).toBeGreaterThan(0);
+    for (const statement of ast.rootStatements) {
+      expect(statement.kind).toBe("ExportDeclaration");
+    }
     expect(ast.exported.find(({ name }) => name === "Selection")?.kind).toBe(
       "InterfaceDeclaration",
     );
