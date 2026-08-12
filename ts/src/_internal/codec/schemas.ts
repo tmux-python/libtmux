@@ -14,6 +14,11 @@ export type CompleteFormatRow = Readonly<Record<FormatFieldName, string | null>>
  * row guarantees its whole ancestry — so the guarantee is expressed per model
  * rather than flattened onto every field.
  */
+/** Idiomatic property names layered over a row, resolving to the same values. */
+export type AliasedFields<Row, Aliases extends Readonly<Record<string, keyof Row>>> = {
+  readonly [Key in keyof Aliases]: Row[Aliases[Key]];
+};
+
 export type RowWithIdentities<Identities extends FormatFieldName> = {
   readonly [Key in FormatFieldName]: Key extends Identities ? string : string | null;
 };

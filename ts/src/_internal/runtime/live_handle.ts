@@ -1,3 +1,4 @@
+import type { FormatFieldName } from "../../neo.js";
 import type { Client } from "../../client.js";
 import type { LogicalRef } from "../../common.js";
 import { LibTmuxException } from "../../exc.js";
@@ -70,7 +71,10 @@ function freezeState(initialization: LiveHandleInitialization): LiveHandleState 
   });
 }
 
-export function installLiveHandlePrototype(prototype: object): void {
+export function installLiveHandlePrototype(
+  prototype: object,
+  aliases: Readonly<Record<string, FormatFieldName>> = {},
+): void {
   if (installedPrototypes.has(prototype)) return;
 
   Object.defineProperty(prototype, "server", {
@@ -82,6 +86,17 @@ export function installLiveHandlePrototype(prototype: object): void {
   });
   for (const token of FORMAT_FIELD_TOKENS) {
     Object.defineProperty(prototype, token, {
+      configurable: false,
+      enumerable: false,
+      get(this: object): string | null {
+        return requireState(this).snapshot[token];
+      },
+    });
+  }
+  for (const [alias, token] of Object.entries(aliases)) {
+    // A token with no prefix to drop aliases to itself and is already defined.
+    if (alias === token) continue;
+    Object.defineProperty(prototype, alias, {
       configurable: false,
       enumerable: false,
       get(this: object): string | null {

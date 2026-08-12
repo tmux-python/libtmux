@@ -8,7 +8,8 @@ import type {
   SendKeysOptions,
   SplitOptions,
 } from "./types.js";
-import type { RowWithIdentities } from "./_internal/codec/schemas.js";
+import { PANE_ALIASES, type PaneAliasMap } from "./_generated/field_aliases.js";
+import type { AliasedFields, RowWithIdentities } from "./_internal/codec/schemas.js";
 import {
   chooseBuffer,
   chooseTree,
@@ -187,8 +188,8 @@ export class Pane {
   }
 }
 
-export interface Pane extends RowWithIdentities<
-  "pane_id" | "session_id" | "window_id" | "window_index"
-> {}
+type PaneRow = RowWithIdentities<"pane_id" | "session_id" | "window_id" | "window_index">;
 
-installLiveHandlePrototype(Pane.prototype);
+export interface Pane extends PaneRow, AliasedFields<PaneRow, PaneAliasMap> {}
+
+installLiveHandlePrototype(Pane.prototype, PANE_ALIASES);

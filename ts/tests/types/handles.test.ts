@@ -131,101 +131,27 @@ type _WindowSnapshot = Expect<
     RowWithIdentities<"session_id" | "window_id" | "window_index">
   >
 >;
-type _ClientKeys = Expect<
+
+type _SessionAliases = Expect<
+  Equal<Pick<Session, "id" | "name">, { readonly id: string; readonly name: string | null }>
+>;
+type _WindowAliases = Expect<
   Equal<
-    keyof Client,
-    | FormatFieldName
-    | "detach"
-    | "equals"
-    | "pane"
-    | "refresh"
-    | "server"
-    | "session"
-    | "switchTo"
-    | "window"
+    Pick<Window, "id" | "index" | "name">,
+    { readonly id: string; readonly index: string; readonly name: string | null }
   >
 >;
-type _PaneKeys = Expect<
+type _PaneAliases = Expect<
   Equal<
-    keyof Pane,
-    | FormatFieldName
-    | "breakOut"
-    | "capture"
-    | "chooseBuffer"
-    | "chooseTree"
-    | "customizeMode"
-    | "clearHistory"
-    | "displayMenu"
-    | "displayMessage"
-    | "displayPopup"
-    | "enterCopyMode"
-    | "equals"
-    | "exitCopyMode"
-    | "findWindow"
-    | "joinTo"
-    | "kill"
-    | "refresh"
-    | "respawn"
-    | "resize"
-    | "select"
-    | "sendKeys"
-    | "sendPrefix"
-    | "server"
-    | "session"
-    | "setOption"
-    | "showOptions"
-    | "split"
-    | "swapWith"
-    | "unsetOption"
-    | "window"
+    Pick<Pane, "id" | "currentCommand">,
+    { readonly id: string; readonly currentCommand: string | null }
   >
 >;
-type _SessionKeys = Expect<
-  Equal<
-    keyof Session,
-    | FormatFieldName
-    | "equals"
-    | "detach"
-    | "kill"
-    | "newWindow"
-    | "panes"
-    | "refresh"
-    | "rename"
-    | "selectWindow"
-    | "server"
-    | "setHook"
-    | "setOption"
-    | "showHooks"
-    | "showOptions"
-    | "unsetHook"
-    | "unsetOption"
-    | "windows"
-  >
->;
-type _WindowKeys = Expect<
-  Equal<
-    keyof Window,
-    | FormatFieldName
-    | "equals"
-    | "kill"
-    | "link"
-    | "linkedSessions"
-    | "move"
-    | "panes"
-    | "refresh"
-    | "rename"
-    | "select"
-    | "selectLayout"
-    | "server"
-    | "session"
-    | "setOption"
-    | "showOptions"
-    | "split"
-    | "swapWith"
-    | "unlink"
-    | "unsetOption"
-  >
->;
+// A de-stuttered scalar never shadows a relation or an operation.
+type _ClientSessionIsRelation = Expect<Equal<Client["session"], Session | undefined>>;
+type _ClientSessionScalar = Expect<Equal<Client["clientSession"], string | null>>;
+// tmux exposes both `pid` and `pane_pid`, so the pane keeps the longer name.
+type _PanePid = Expect<Equal<Pane["panePid"], string | null>>;
 
 type _ServerEquals = Expect<Equal<Server["equals"], (other: unknown) => boolean>>;
 type _ClientEquals = Expect<Equal<Client["equals"], (other: unknown) => boolean>>;
@@ -405,7 +331,6 @@ export type {
   _BindLogicalRef,
   _ClientEquals,
   _ClientForKind,
-  _ClientKeys,
   _ClientKind,
   _ClientModule,
   _ClientSnapshot,
@@ -420,7 +345,6 @@ export type {
   _ModelKind,
   _PaneEquals,
   _PaneForKind,
-  _PaneKeys,
   _PaneKind,
   _PaneModule,
   _PaneSnapshot,
@@ -437,7 +361,6 @@ export type {
   _ServerOptions,
   _SessionEquals,
   _SessionForKind,
-  _SessionKeys,
   _SessionKind,
   _SessionModule,
   _SessionSnapshot,
@@ -446,7 +369,6 @@ export type {
   _StructuralSessionKind,
   _WindowEquals,
   _WindowForKind,
-  _WindowKeys,
   _WindowKind,
   _WindowModule,
   _WindowSnapshot,

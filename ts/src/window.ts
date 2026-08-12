@@ -1,5 +1,6 @@
 import type { MoveWindowOptions, SplitOptions } from "./types.js";
-import type { RowWithIdentities } from "./_internal/codec/schemas.js";
+import { WINDOW_ALIASES, type WindowAliasMap } from "./_generated/field_aliases.js";
+import type { AliasedFields, RowWithIdentities } from "./_internal/codec/schemas.js";
 import {
   linkedSessionsOfWindow,
   panesOfPlacement,
@@ -119,6 +120,8 @@ export class Window {
   }
 }
 
-export interface Window extends RowWithIdentities<"session_id" | "window_id" | "window_index"> {}
+type WindowRow = RowWithIdentities<"session_id" | "window_id" | "window_index">;
 
-installLiveHandlePrototype(Window.prototype);
+export interface Window extends WindowRow, AliasedFields<WindowRow, WindowAliasMap> {}
+
+installLiveHandlePrototype(Window.prototype, WINDOW_ALIASES);

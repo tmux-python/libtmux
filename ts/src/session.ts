@@ -1,5 +1,6 @@
 import type { NewWindowOptions, WindowTarget } from "./types.js";
-import type { RowWithIdentities } from "./_internal/codec/schemas.js";
+import { SESSION_ALIASES, type SessionAliasMap } from "./_generated/field_aliases.js";
+import type { AliasedFields, RowWithIdentities } from "./_internal/codec/schemas.js";
 import { readTmuxEnvironment } from "./_internal/operations/env.js";
 import { detachClient } from "./_internal/operations/shell.js";
 import { panesOfSession, windowsOfSession } from "./_internal/operations/relations.js";
@@ -137,6 +138,8 @@ export class Session {
   }
 }
 
-export interface Session extends RowWithIdentities<"session_id"> {}
+type SessionRow = RowWithIdentities<"session_id">;
 
-installLiveHandlePrototype(Session.prototype);
+export interface Session extends SessionRow, AliasedFields<SessionRow, SessionAliasMap> {}
+
+installLiveHandlePrototype(Session.prototype, SESSION_ALIASES);

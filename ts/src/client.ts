@@ -1,4 +1,5 @@
-import type { RowWithIdentities } from "./_internal/codec/schemas.js";
+import { CLIENT_ALIASES, type ClientAliasMap } from "./_generated/field_aliases.js";
+import type { AliasedFields, RowWithIdentities } from "./_internal/codec/schemas.js";
 import { paneById, sessionOf, windowOfPlacement } from "./_internal/operations/relations.js";
 import { refreshHandle } from "./_internal/operations/refresh.js";
 import { detachClient, switchClient } from "./_internal/operations/shell.js";
@@ -54,6 +55,8 @@ export class Client {
   }
 }
 
-export interface Client extends RowWithIdentities<"client_name"> {}
+type ClientRow = RowWithIdentities<"client_name">;
 
-installLiveHandlePrototype(Client.prototype);
+export interface Client extends ClientRow, AliasedFields<ClientRow, ClientAliasMap> {}
+
+installLiveHandlePrototype(Client.prototype, CLIENT_ALIASES);
