@@ -118,6 +118,7 @@ class ControlModeEngine(TmuxEngine):
         assert self._process.stdout is not None
         lines: list[str] = []
         returncode = 0
+        block_id: str | None = None
         while True:
             line = self._process.stdout.readline()
             if not line:
@@ -129,10 +130,21 @@ class ControlModeEngine(TmuxEngine):
             line = line.rstrip("\n")
             if line.startswith("%begin"):
                 lines = []
-            elif line.startswith("%error"):
-                returncode = 1
-                break
-            elif line.startswith("%end"):
+                block_id = line.split()[2] if len(line.split()) > 2 else None
+            elif line.startswith(("%end", "%error")):
+                # tmux tags each reply with the id it gave the command. Order
+                # is FIFO, so matching them is not required to pair a reply
+                # with its command -- but a mismatch means the stream has
+                # desynchronized, and every later reply would be attributed to
+                # the wrong command.
+                terminator_id = line.split()[2] if len(line.split()) > 2 else None
+                if block_id is not None and terminator_id != block_id:
+                    msg = (
+                        f"control stream desynchronized: reply {terminator_id} "
+                        f"terminates block {block_id}"
+                    )
+                    raise exc.EngineError(msg)
+                returncode = 1 if line.startswith("%error") else 0
                 break
             elif line.startswith("%output"):
                 # Notifications arrive interleaved with replies. Keeping them
@@ -423,3 +435,30 @@ def test_a_failed_reconnect_raises_rather_than_looking_like_an_error(
 
     with pytest.raises(exc.EngineError, match="could not attach"):
         ControlModeEngine(connection, "no_such_session_exists")
+
+
+def test_pipelined_replies_pair_with_their_commands(
+    control_mode_server: Server,
+) -> None:
+    """A batch's results line up with the commands that produced them.
+
+    Batching depends on tmux answering in the order it was asked, including
+    when one command fails. Verified against tmux rather than assumed: it tags
+    every reply with the command's id, and the engine rejects a block whose
+    terminator does not match its opener.
+    """
+    from libtmux.common import dispatch_batch
+
+    results = dispatch_batch(
+        control_mode_server.engine,
+        [
+            ("display-message", "-p", "c0"),
+            ("display-message", "-p", "c1"),
+            ("kill-window", "-t", "@99999"),
+            ("display-message", "-p", "c2"),
+        ],
+    )
+
+    assert [r.stdout for r in results][:2] == [["c0"], ["c1"]]
+    assert not results[2].ok, "the failure keeps its own position"
+    assert results[3].stdout == ["c2"], "a failure does not shift later replies"
