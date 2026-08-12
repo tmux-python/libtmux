@@ -133,6 +133,28 @@ out:
 [('list-sessions',)]
 ```
 
+### Worked examples
+
+The engine above runs nothing. Two complete ones live in the test suite, written
+to be read and copied:
+
+`tests/examples/engines/test_control_mode_engine.py` holds one long-lived
+`tmux -C` connection instead of forking per command. It is where the traps are
+recorded — a control client must *attach* before tmux pushes it anything;
+opening it with `new-session -A` works but leaves a real session behind in
+`server.sessions`; tmux tags every reply with the command's id, and a mismatch
+means the stream has desynchronized; and a connection that never established
+answers with an error block rather than closing, so it must be raised rather
+than returned as an ordinary failed result.
+
+`tests/examples/engines/test_push_notifications.py` adds a reader thread, so a
+pane's output arrives while the caller is idle rather than the next time a
+command runs.
+
+Both implement the optional capabilities below. An engine that omits them still
+works, but quietly gives up connection adoption and version reporting, so start
+from these rather than from the minimal sketch above.
+
 ## Testing without tmux
 
 Writing a fake that *simulates* tmux is a trap. A listing query asks tmux for
