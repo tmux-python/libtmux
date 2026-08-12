@@ -13,6 +13,7 @@ importing libtmux at all, and most programs never resolve an engine by name.
 
 from __future__ import annotations
 
+import logging
 import typing as t
 from importlib import metadata
 
@@ -22,6 +23,8 @@ from libtmux.engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
     from libtmux.engines.base import TmuxEngine
+
+logger = logging.getLogger(__name__)
 
 ENGINE_ENTRY_POINT_GROUP = "libtmux.engines"
 """Entry-point group a packaged engine registers under."""
@@ -110,8 +113,14 @@ def _load_entry_points() -> None:
             continue
         try:
             _registry[entry_point.name] = entry_point.load()
-        except Exception:  # noqa: BLE001 - a third party's import is not ours to trust
-            continue
+        except Exception:
+            # A third party's import is not ours to trust, so catch anything it
+            # raises -- but say so, because a silently missing engine is worse.
+            logger.warning(
+                "engine entry point failed to load",
+                exc_info=True,
+                extra={"tmux_engine_name": entry_point.name},
+            )
 
 
 def available_engines() -> tuple[str, ...]:
