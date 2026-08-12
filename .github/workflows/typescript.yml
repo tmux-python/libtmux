@@ -26,6 +26,10 @@ jobs:
         working-directory: ts
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The parity gate resolves the pinned Python release by tag, which a
+          # shallow default checkout does not fetch.
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
         with:
