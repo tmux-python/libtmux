@@ -19,6 +19,7 @@ import warnings
 from . import exc
 from ._compat import LooseVersion
 from .engines.base import (
+    AsyncTmuxEngine,
     CommandRequest,
     CommandResult,
     SupportsCommandLine,
@@ -348,6 +349,87 @@ def dispatch(
         )
 
     result = engine.run(request)
+
+    cmd = list(result.cmd)
+    stderr = list(result.stderr)
+    stdout = list(result.stdout)
+    if "has-session" in cmd and stderr and not stdout:
+        stdout = [stderr[0]]
+        result = dataclasses.replace(result, stdout=stdout)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command completed",
+            extra={
+                "tmux_cmd": shlex.join(cmd),
+                "tmux_subcommand": request.subcommand,
+                "tmux_exit_code": result.returncode,
+                "tmux_stdout": stdout[:100],
+                "tmux_stderr": stderr[:100],
+                "tmux_stdout_len": len(stdout),
+                "tmux_stderr_len": len(stderr),
+            },
+        )
+    return result
+
+
+async def adispatch(
+    engine: AsyncTmuxEngine,
+    *args: t.Any,
+    tmux_bin: str | None = None,
+) -> CommandResult:
+    """Await one tmux command through *engine* and adapt its result.
+
+    The async twin of :func:`dispatch`, sharing its adaptations so a command
+    reads the same whichever kind of engine ran it. Two things happen here rather
+    than in an engine, so that every engine stays a plain executor: the debug
+    logging that names the command line before and after it runs, and tmux's
+    ``has-session`` quirk.
+
+    tmux answers ``has-session`` on stderr, while libtmux has always reported it
+    on stdout. Adapting it here keeps that promise for whichever engine ran the
+    command.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The executor.
+    *args : typing.Any
+        The tmux subcommand and its arguments, stringified.
+    tmux_bin : str, optional
+        Override the tmux binary for this one command.
+
+    Returns
+    -------
+    CommandResult
+        The adapted result.
+
+    Examples
+    --------
+    >>> import asyncio
+    >>> from libtmux.engines import AsyncSubprocessEngine
+    >>> engine = AsyncSubprocessEngine.for_server(server)
+    >>> async def main():
+    ...     return await adispatch(engine, "display-message", "-p", "hi")
+    >>> asyncio.run(main()).stdout
+    ['hi']
+    """
+    request = CommandRequest.from_args(*args, tmux_bin=tmux_bin)
+
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "tmux command dispatched",
+            extra={
+                "tmux_cmd": shlex.join(
+                    engine.command_line(request)
+                    if isinstance(engine, SupportsCommandLine)
+                    else request.args,
+                ),
+                "tmux_subcommand": request.subcommand,
+            },
+        )
+
+    result = await engine.run(request)
 
     cmd = list(result.cmd)
     stderr = list(result.stderr)
