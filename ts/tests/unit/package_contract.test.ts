@@ -8,7 +8,13 @@ import type { BunConnectionOptions } from "node:tls";
 import { describe, expect, test } from "bun:test";
 
 interface PackageManifest {
+  author: string;
+  bugs: Record<string, string>;
   dependencies: Record<string, string>;
+  description: string;
+  keywords: string[];
+  license: string;
+  repository: Record<string, string>;
   devDependencies: Record<string, string>;
   engines: Record<string, string>;
   exports: Record<string, string | Record<string, string>>;
@@ -126,7 +132,21 @@ describe("package contract", () => {
     ]);
     expect(packageManifest.name).toBe("libtmux");
     expect(packageManifest.version).toBe("0.1.0");
+    // Publication metadata is required for the package to be evaluated at all;
+    // flipping `private` is the maintainer's release decision, not this gate's.
     expect(packageManifest.private).toBe(true);
+    expect(packageManifest.license).toBe("MIT");
+    expect(packageManifest.description).toContain("tmux");
+    expect(packageManifest.repository).toEqual({
+      type: "git",
+      url: "git+https://github.com/tmux-python/libtmux.git",
+      directory: "ts",
+    });
+    expect(packageManifest.bugs).toEqual({
+      url: "https://github.com/tmux-python/libtmux/issues",
+    });
+    expect(packageManifest.author).toBe("libtmux contributors");
+    expect(packageManifest.keywords).toContain("tmux");
     expect(packageManifest.type).toBe("module");
     expect(packageManifest.main).toBe("./dist/index.js");
     expect(packageManifest.types).toBe("./dist/index.d.ts");

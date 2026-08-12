@@ -2,6 +2,28 @@
   "name": "libtmux",
   "version": "0.1.0",
   "private": true,
+  "description": "Typed, Bun-first TypeScript control of tmux: immutable snapshots, declarative queries, and a fully typed session, window, and pane API.",
+  "keywords": [
+    "automation",
+    "bun",
+    "multiplexer",
+    "pty",
+    "session",
+    "terminal",
+    "tmux",
+    "typescript"
+  ],
+  "homepage": "https://github.com/tmux-python/libtmux/tree/master/ts#readme",
+  "bugs": {
+    "url": "https://github.com/tmux-python/libtmux/issues"
+  },
+  "license": "MIT",
+  "author": "libtmux contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmux-python/libtmux.git",
+    "directory": "ts"
+  },
   "files": [
     "dist"
   ],
