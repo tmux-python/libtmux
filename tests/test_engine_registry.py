@@ -20,16 +20,19 @@ if t.TYPE_CHECKING:
 
 
 def test_builtin_engines_are_registered() -> None:
+    """The built-in subprocess engine resolves by name."""
     assert "subprocess" in available_engines()
     assert isinstance(create_engine("subprocess"), SubprocessEngine)
 
 
 def test_available_engines_is_sorted() -> None:
+    """Names come back sorted, so a CLI can list them as given."""
     names = available_engines()
     assert list(names) == sorted(names)
 
 
 def test_unknown_engine_fails_closed_and_lists_options() -> None:
+    """An unknown name raises, naming both it and the registered alternatives."""
     with pytest.raises(exc.LibTmuxException) as excinfo:
         create_engine("does-not-exist")
     message = str(excinfo.value)
@@ -38,11 +41,14 @@ def test_unknown_engine_fails_closed_and_lists_options() -> None:
 
 
 def test_factory_receives_kwargs() -> None:
+    """Keyword arguments reach the factory rather than being dropped."""
     engine = create_engine("subprocess", server_args=("-Lfromregistry",))
     assert engine.server_args == ("-Lfromregistry",)  # type: ignore[attr-defined]
 
 
 def test_third_party_can_register() -> None:
+    """A registered engine resolves by name, and unregistering removes it."""
+
     class Custom:
         def run(self, request: CommandRequest) -> CommandResult:
             return CommandResult(cmd=("tmux", *request.args))
