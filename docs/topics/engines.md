@@ -143,8 +143,25 @@ session exists (`has-session` exits 0) while no sessions exist (`list-sessions`
 is empty).
 
 So record real traffic instead, and play it back.
-{class}`~libtmux.engines.record.RecordingEngine` wraps a real engine and keeps
-what tmux said; {class}`~libtmux.engines.record.ReplayEngine` serves it back:
+{meth}`Server.recording() <libtmux.Server.recording>` is the short way — it
+records everything the block issues, against the engine the server already uses,
+and restores that engine afterwards:
+
+```python
+>>> from libtmux.engines import ReplayEngine
+>>> from libtmux.server import Server
+
+>>> with server.recording() as tape:
+...     _ = server.cmd("display-message", "-p", "#{session_name}")
+
+>>> offline = Server(engine=ReplayEngine(tape.tape))
+>>> offline.cmd("display-message", "-p", "#{session_name}").stdout
+['libtmux_...']
+```
+
+`tape.to_dict()` serializes that for a file. The engines behind it,
+{class}`~libtmux.engines.record.RecordingEngine` and
+{class}`~libtmux.engines.record.ReplayEngine`, can also be wired by hand:
 
 ```python
 >>> from libtmux.engines import RecordingEngine, ReplayEngine, SubprocessEngine
