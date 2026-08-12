@@ -4,6 +4,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["consumers/**/*.ts"],
+  "include": ["consumers/**/*.ts", "examples/**/*.ts"],
   "exclude": []
 }
