@@ -25,10 +25,12 @@ class CountingEngine:
         self._stdout = tuple(stdout)
 
     def run(self, request: CommandRequest) -> CommandResult:
+        """Count the call and answer with the canned stdout."""
         self.calls += 1
         return CommandResult(cmd=("tmux", *request.args), stdout=self._stdout)
 
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
+        """Answer each request through :meth:`run`, counting every one."""
         return [self.run(r) for r in requests]
 
 
