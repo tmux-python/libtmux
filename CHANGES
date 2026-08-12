@@ -144,9 +144,10 @@ waiting for the first reply, which is where the round trips collapse.
 #### Async engines can run commands
 
 {class}`~libtmux.engines.asyncio.AsyncSubprocessEngine` awaits the tmux binary
-rather than blocking on it, and {func}`~libtmux.common.adispatch` runs a command
-through any {class}`~libtmux.engines.base.AsyncTmuxEngine` with the same
-adaptations the synchronous path applies. {class}`~libtmux.Server` remains
+rather than blocking on it. {func}`~libtmux.common.adispatch` and
+{func}`~libtmux.common.adispatch_batch` run one command or a whole sequence
+through any {class}`~libtmux.engines.base.AsyncTmuxEngine`, applying the same
+adaptations as their synchronous counterparts. {class}`~libtmux.Server` remains
 synchronous and refuses an async engine, naming the reason.
 
 #### A persistent-connection engine is buildable on the public API
