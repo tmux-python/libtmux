@@ -71,6 +71,18 @@ server.cmd(
 
 See {ref}`migration-0-63-command-separator`.
 
+#### Commands return `CommandResult`
+
+{meth}`Server.cmd() <libtmux.Server.cmd>` and its `Session`, `Window`, and `Pane`
+counterparts return {class}`~libtmux.engines.base.CommandResult` rather than
+{class}`~libtmux.common.tmux_cmd`. `stdout`, `stderr`, `cmd`, and `returncode`
+read exactly as before, and the sequences still compare equal to lists — they are
+now read-only, so a caller that mutated a result in place gets
+{exc}`TypeError`. {attr}`~libtmux.engines.base.CommandResult.ok` and
+{meth}`~libtmux.engines.base.CommandResult.raise_for_status` come with it.
+`tmux_cmd` is unchanged and still constructible directly. See
+{ref}`migration-0-63-command-result`.
+
 #### `tmux_cmd.process` deprecated
 
 {attr}`libtmux.common.tmux_cmd.process` is now a deprecated property. Reading it

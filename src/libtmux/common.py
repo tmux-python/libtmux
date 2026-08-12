@@ -17,7 +17,12 @@ import warnings
 
 from . import exc
 from ._compat import LooseVersion
-from .engines.base import CommandRequest, SupportsCommandLine, split_direct_argv
+from .engines.base import (
+    CommandRequest,
+    CommandResult,
+    SupportsCommandLine,
+    split_direct_argv,
+)
 from .engines.subprocess import SubprocessEngine
 
 if t.TYPE_CHECKING:
@@ -44,7 +49,7 @@ PaneDict = dict[str, t.Any]
 class CmdProtocol(t.Protocol):
     """Command protocol for tmux command."""
 
-    def __call__(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> tmux_cmd:
+    def __call__(self, cmd: str, *args: t.Any, **kwargs: t.Any) -> CommandResult:
         """Wrap tmux_cmd."""
         ...
 
@@ -60,7 +65,7 @@ class EnvironmentMixin:
 
     _add_option = None
 
-    cmd: Callable[[t.Any, t.Any], tmux_cmd]
+    cmd: Callable[[t.Any, t.Any], CommandResult]
 
     def __init__(self, add_option: str | None = None) -> None:
         self._add_option = add_option
@@ -246,7 +251,7 @@ class EnvironmentMixin:
         return opts_dict.get(name)
 
 
-def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
+def raise_if_stderr(proc: CommandResult, subcommand: str) -> None:
     """Raise :exc:`LibTmuxException` tagged with the tmux subcommand on stderr.
 
     Centralizes the ``if proc.stderr: raise exc.LibTmuxException(proc.stderr)``
@@ -397,6 +402,21 @@ class tmux_cmd:
             )
 
     @property
+    def result(self) -> CommandResult:
+        """Return this command's outcome as a :class:`CommandResult`.
+
+        Carries the ``has-session`` stdout adaptation already applied, so the
+        engine-native result and this wrapper never disagree.
+        """
+        return CommandResult(
+            cmd=self.cmd,
+            stdout=self.stdout,
+            stderr=self.stderr,
+            returncode=self.returncode,
+            process=self._process,
+        )
+
+    @property
     def ok(self) -> bool:
         """Whether tmux accepted the command.
 
@@ -464,7 +484,9 @@ class tmux_cmd:
         Examples
         --------
         >>> import warnings
-        >>> proc = server.cmd("display-message", "-p", "hi")
+        >>> proc = tmux_cmd(
+        ...     f"-L{server.socket_name}", "display-message", "-p", "hi"
+        ... )
         >>> with warnings.catch_warnings(record=True) as caught:
         ...     warnings.simplefilter("always")
         ...     returncode = proc.process.returncode
