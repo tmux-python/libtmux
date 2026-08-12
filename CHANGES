@@ -128,6 +128,13 @@ See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
 
 #### Several commands in one round trip
 
+{meth}`Server.cmd_batch() <libtmux.Server.cmd_batch>` runs a sequence of commands
+and returns one result each, in order; a tmux-side failure is data on its own
+result rather than an exception that truncates the rest. Whether it is faster
+than repeated {meth}`Server.cmd() <libtmux.Server.cmd>` depends on the engine —
+the default forks per command either way, while an engine holding a persistent
+connection writes every command before waiting for the first reply.
+
 {func}`~libtmux.common.dispatch_batch` hands a whole sequence of commands to an
 engine's {meth}`~libtmux.engines.base.TmuxEngine.run_batch`, rather than looping
 over single dispatches. A stateless engine loops internally and behaves as

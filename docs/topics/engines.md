@@ -262,6 +262,32 @@ is what the `recording_server` pytest fixture is for:
 [('list-sessions',)]
 ```
 
+## Several commands at once
+
+{meth}`Server.cmd_batch() <libtmux.Server.cmd_batch>` hands a whole sequence to
+the engine instead of dispatching one command at a time:
+
+```python
+>>> results = server.cmd_batch(
+...     [("display-message", "-p", "one"), ("display-message", "-p", "two")]
+... )
+>>> [result.stdout for result in results]
+[['one'], ['two']]
+```
+
+On the default engine this is a convenience — it forks per command either way.
+Its value shows with an engine holding a persistent connection, which can write
+every command before waiting for the first reply. Measured against a
+control-mode engine, forty commands took about an eighth as long batched as
+issued one at a time.
+
+A failure does not truncate the batch; it is reported on its own result:
+
+```python
+>>> server.cmd_batch([("kill-window", "-t", "@99999")])[0].ok
+False
+```
+
 ## Injected engines and sockets
 
 An engine that names no tmux server of its own **adopts** the server's
