@@ -128,9 +128,20 @@ class ControlModeEngine(TmuxEngine):
         """Write one command line and read back its reply block.
 
         Reconnects first if the connection died. This is the lazy form: it
-        notices on the next command rather than the instant the process exits,
-        and a command already in flight when the connection dropped is lost.
-        Backoff and replaying attach state are what a hardened engine adds.
+        notices on the next command rather than the instant the process exits.
+
+        A reply is not necessarily lost when the client dies. If tmux had
+        already written it, the pipe buffer holds it and the next read still
+        returns it -- measured, and the opposite of what "in flight" suggests.
+        What is lost is a command tmux never answered.
+
+        The gap this leaves is the tmux *server* going away: writing to the
+        dead connection then raises :exc:`BrokenPipeError`, an
+        :exc:`OSError` rather than a
+        :exc:`~libtmux.exc.LibTmuxException`, so a caller guarding against
+        libtmux errors does not catch it. Translating that, and backing off
+        rather than reconnecting in a tight loop, is what a hardened engine
+        adds.
         """
         if self._process.poll() is not None:
             self.reconnects += 1
@@ -345,8 +356,10 @@ def test_a_dropped_connection_is_reopened(control_mode_server: Server) -> None:
     """Killing the control client does not end the server object's usefulness.
 
     Surviving a drop is a liveness check and a respawn. What it does not cover
-    is a command in flight when the connection died, or backing off when the
-    tmux server itself is gone -- both belong to a hardened engine.
+    is the tmux server itself going away: the next write raises
+    :exc:`BrokenPipeError` rather than a
+    :exc:`~libtmux.exc.LibTmuxException`. Translating that, and backing off
+    instead of reconnecting in a tight loop, belong to a hardened engine.
     """
     engine = control_mode_server.engine
     assert isinstance(engine, ControlModeEngine)
