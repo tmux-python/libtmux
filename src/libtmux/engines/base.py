@@ -603,7 +603,18 @@ class TmuxEngine(t.Protocol):
     """
 
     def run(self, request: CommandRequest) -> CommandResult:
-        """Execute one tmux command and return its structured result."""
+        """Execute one tmux command and return its structured result.
+
+        A tmux-side failure is *data*: set ``returncode`` and ``stderr`` on the
+        result rather than raising, so a caller can inspect a rejected command.
+
+        Raise :exc:`~libtmux.exc.EngineError` when the command never reached
+        tmux at all -- a missing binary, a closed connection, a desynchronized
+        protocol. That distinction is the whole reason a caller can tell "tmux
+        said no" from "tmux was never asked", so an engine that lets a raw
+        :exc:`OSError` escape instead leaves callers guarding
+        :exc:`~libtmux.exc.LibTmuxException` with nothing to catch.
+        """
         ...
 
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
