@@ -135,9 +135,9 @@ void clients.count();
 
 const callbackFiltered = sessions.filter(
   (value: Session, index: number, values: readonly Session[]) => {
-    void value.session_id;
+    void value.id;
     void index;
-    void values[0]?.session_name;
+    void values[0]?.name;
     // @ts-expect-error callback values are readonly.
     values[0] = session;
     return true;
@@ -152,7 +152,7 @@ type _NoTypeGuardNarrowing = Expect<Equal<typeof narrowed, Selection<Session | W
 
 const thisArgument = { prefix: "m" };
 sessions.filter(function (this: typeof thisArgument, value: Session) {
-  return value.session_name?.startsWith(this.prefix);
+  return value.name?.startsWith(this.prefix);
 }, thisArgument);
 
 // @ts-expect-error Selection is a type-only interface, not a constructor value.
@@ -164,7 +164,7 @@ sessions.filter();
 // @ts-expect-error callback filtering does not accept declarative criteria.
 sessions.filter({ name: "main" });
 // @ts-expect-error where requires declarative data.
-sessions.where((value: Session) => value.session_name === "main");
+sessions.where((value: Session) => value.name === "main");
 // @ts-expect-error Session criteria do not accept Window fields.
 sessions.where({ window_id: "@1" });
 // @ts-expect-error Client has no declarative criteria.

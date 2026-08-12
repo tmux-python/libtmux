@@ -22,7 +22,7 @@ export class Client {
 
   /** The session this client is attached to, if it is still attached. */
   get session(): Session | undefined {
-    return sessionOf(originGraphForHandle(this), this.session_id);
+    return sessionOf(originGraphForHandle(this), this.sessionId);
   }
 
   /** The window placement this client currently shows. */
@@ -32,7 +32,7 @@ export class Client {
 
   /** The pane this client currently has active. */
   get pane(): Pane | undefined {
-    return paneById(originGraphForHandle(this), this.pane_id);
+    return paneById(originGraphForHandle(this), this.paneId);
   }
 
   /** Re-read this client at the current instant, in place. */
@@ -42,12 +42,12 @@ export class Client {
 
   /** Detach this client from its server. */
   detach(): Promise<void> {
-    return detachClient(runtimeForServer(this.server), this.client_name);
+    return detachClient(runtimeForServer(this.server), this.name);
   }
 
   /** Point this client at a different session. */
   switchTo(session: Session): Promise<void> {
-    return switchClient(runtimeForServer(this.server), this.client_name, session.session_id ?? "");
+    return switchClient(runtimeForServer(this.server), this.name, session.id);
   }
 
   equals(other: unknown): boolean {
@@ -57,6 +57,9 @@ export class Client {
 
 type ClientRow = RowWithIdentities<"client_name">;
 
-export interface Client extends ClientRow, AliasedFields<ClientRow, ClientAliasMap> {}
+export interface Client extends AliasedFields<ClientRow, ClientAliasMap> {
+  /** The raw tmux format row, addressed by tmux's own token names. */
+  readonly format: ClientRow;
+}
 
 installLiveHandlePrototype(Client.prototype, CLIENT_ALIASES);

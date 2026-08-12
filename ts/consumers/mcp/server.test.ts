@@ -78,7 +78,7 @@ describe("MCP consumer", () => {
       expect(captured.some((line) => line.includes("mcp-marker"))).toBe(true);
 
       const created = await tmux.newSession({ name: "from-mcp" });
-      expect(created.session_name).toBe("from-mcp");
+      expect(created.name).toBe("from-mcp");
       expect((await tmux.snapshot()).sessions.count({ name: "from-mcp" })).toBe(1);
     });
   }, 40_000);

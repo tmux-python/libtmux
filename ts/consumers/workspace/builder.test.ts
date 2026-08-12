@@ -86,14 +86,14 @@ describe("workspace builder", () => {
       const server = serverFor(fixture);
       const session = await buildWorkspace(server, parseWorkspace(WORKSPACE));
 
-      expect(session.session_name).toBe("project");
+      expect(session.name).toBe("project");
 
       const snapshot = await server.snapshot();
-      const windows = snapshot.windows.filter((window) => window.session_id === session.session_id);
+      const windows = snapshot.windows.filter((window) => window.sessionId === session.id);
 
       // Exactly the two described windows: the first was adopted, not created.
       expect(windows.length).toBe(2);
-      expect(windows.toArray().map((window) => window.window_name)).toEqual(["editor", "server"]);
+      expect(windows.toArray().map((window) => window.name)).toEqual(["editor", "server"]);
 
       expect(snapshot.panes.count({ window: { is: { name: "editor" } } })).toBe(2);
       expect(snapshot.panes.count({ window: { is: { name: "server" } } })).toBe(1);
@@ -106,7 +106,7 @@ describe("workspace builder", () => {
       const session = await buildWorkspace(server, parseWorkspace(WORKSPACE));
       const snapshot = await server.snapshot();
       const server_window = snapshot.windows
-        .filter((window) => window.session_id === session.session_id)
+        .filter((window) => window.sessionId === session.id)
         .where({ name: "server" })
         .one();
 

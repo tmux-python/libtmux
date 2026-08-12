@@ -53,7 +53,7 @@ describe("Server.snapshot", () => {
       const snapshot = await serverFor(fixture).snapshot();
 
       expect(snapshot.sessions.length).toBe(2);
-      expect(new Set(snapshot.sessions.toArray().map((session) => session.session_name))).toEqual(
+      expect(new Set(snapshot.sessions.toArray().map((session) => session.name))).toEqual(
         new Set(["other", fixture.sessionName]),
       );
     });
@@ -64,13 +64,11 @@ describe("Server.snapshot", () => {
       await fixture.executeText(["new-session", "-d", "-s", "other"]);
       const snapshot = await serverFor(fixture).snapshot();
 
-      expect(snapshot.sessions.where({ name: "other" }).one().session_name).toBe("other");
+      expect(snapshot.sessions.where({ name: "other" }).one().name).toBe("other");
       expect(snapshot.sessions.exists({ name: "absent" })).toBe(false);
       expect(snapshot.sessions.count({ name: "other" })).toBe(1);
       expect(snapshot.sessions.oneOrUndefined({ name: "absent" })).toBeUndefined();
-      expect(snapshot.sessions.filter((session) => session.session_name === "other").length).toBe(
-        1,
-      );
+      expect(snapshot.sessions.filter((session) => session.name === "other").length).toBe(1);
     });
   }, 30_000);
 
@@ -94,7 +92,7 @@ describe("Server.snapshot", () => {
       expect(Array.isArray(snapshot.sessions)).toBe(false);
       expect([...snapshot.sessions]).toHaveLength(1);
       expect([...snapshot.sessions]).toHaveLength(1);
-      expect(snapshot.sessions.at(0)?.session_name).toBe(fixture.sessionName);
+      expect(snapshot.sessions.at(0)?.name).toBe(fixture.sessionName);
     });
   }, 30_000);
 
@@ -108,7 +106,7 @@ describe("Server.snapshot", () => {
       expect(snapshot.windows.length).toBe(2);
       expect(snapshot.panes.length).toBe(3);
       expect(snapshot.windows.count({ name: "editor" })).toBe(1);
-      expect(snapshot.windows.where({ name: "editor" }).one().window_name).toBe("editor");
+      expect(snapshot.windows.where({ name: "editor" }).one().name).toBe("editor");
       expect(snapshot.panes.count({ window: { is: { name: "editor" } } })).toBe(2);
       // No client is attached to a detached fixture server.
       expect(snapshot.clients.length).toBe(0);
@@ -122,7 +120,7 @@ describe("Server.snapshot", () => {
 
       const sessions = await server.sessions();
       expect(sessions.length).toBe(1);
-      expect(sessions.one().session_name).toBe(fixture.sessionName);
+      expect(sessions.one().name).toBe(fixture.sessionName);
 
       expect((await server.windows()).count({ name: "editor" })).toBe(1);
       expect((await server.panes()).length).toBe(2);
@@ -182,15 +180,15 @@ describe("Server.snapshot", () => {
       await Promise.all(
         placements.map(async (placement) => {
           expect(placement.panes.length).toBe(2);
-          expect(placement.session?.session_id).toBe(placement.session_id);
+          expect(placement.session?.id).toBe(placement.sessionId);
           expect(placement.linkedSessions.length).toBe(2);
         }),
       );
 
       const pane = placements[0]!.panes.first();
       expect(pane).toBeDefined();
-      expect(pane!.window?.window_id).toBe(windowId);
-      expect(pane!.session?.session_id).toBe(pane!.session_id);
+      expect(pane!.window?.id).toBe(windowId);
+      expect(pane!.session?.id).toBe(pane!.sessionId);
     });
   }, 30_000);
 
@@ -205,18 +203,18 @@ describe("Server.snapshot", () => {
         expect(snapshot.clients.length).toBe(1);
 
         const client = snapshot.clients.one();
-        expect(client.session?.session_id).toBe(fixture.sessionId);
+        expect(client.session?.id).toBe(fixture.sessionId);
 
         const window = client.window;
-        expect(window?.session_id).toBe(fixture.sessionId);
+        expect(window?.sessionId).toBe(fixture.sessionId);
 
         // A client's own ids are nullable because a client need not be
         // attached; a resolved pane's are not.
-        const clientPaneId = client.pane_id;
+        const clientPaneId = client.paneId;
         expect(clientPaneId).not.toBeNull();
         const pane = client.pane;
-        expect(pane?.pane_id).toBe(clientPaneId ?? undefined);
-        expect(pane?.window_id).toBe(window?.window_id);
+        expect(pane?.id).toBe(clientPaneId ?? undefined);
+        expect(pane?.windowId).toBe(window?.id);
       } finally {
         await control.dispose();
       }
@@ -246,7 +244,7 @@ describe("Server.snapshot", () => {
       expect(snapshot.sessions.length).toBe(2);
       expect(snapshot.sessions.count({ windows: { some: { name: "shared" } } })).toBe(2);
       expect(snapshot.windows.count({ name: "shared" })).toBe(2);
-      expect(snapshot.windows.where({ name: "shared" }).first()?.window_id).toBe(windowId);
+      expect(snapshot.windows.where({ name: "shared" }).first()?.id).toBe(windowId);
     });
   }, 30_000);
 });

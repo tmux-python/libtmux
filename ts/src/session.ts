@@ -34,59 +34,52 @@ export class Session {
    * no tmux command and reports the instant the handle came from.
    */
   get windows(): Selection<Window> {
-    return windowsOfSession(originGraphForHandle(this), this.session_id);
+    return windowsOfSession(originGraphForHandle(this), this.id);
   }
 
   /** Panes contained by this session's windows. */
   get panes(): Selection<Pane> {
-    return panesOfSession(originGraphForHandle(this), this.session_id);
+    return panesOfSession(originGraphForHandle(this), this.id);
   }
 
   /** Every option this session currently sees, including inherited values. */
   showOptions(): Promise<ReadonlyMap<string, string>> {
-    return showOptions(runtimeForServer(this.server), "session", this.session_id);
+    return showOptions(runtimeForServer(this.server), "session", this.id);
   }
 
   /** Set an option on this session. */
   setOption(name: string, value: string, options?: { readonly append?: boolean }): Promise<void> {
-    return setOption(
-      runtimeForServer(this.server),
-      "session",
-      this.session_id,
-      name,
-      value,
-      options,
-    );
+    return setOption(runtimeForServer(this.server), "session", this.id, name, value, options);
   }
 
   /** Remove an option from this session. */
   unsetOption(name: string): Promise<void> {
-    return unsetOption(runtimeForServer(this.server), "session", this.session_id, name);
+    return unsetOption(runtimeForServer(this.server), "session", this.id, name);
   }
 
   /** Every hook this session reports. */
   showHooks(): Promise<ReadonlyMap<string, string>> {
-    return showHooks(runtimeForServer(this.server), "session", this.session_id);
+    return showHooks(runtimeForServer(this.server), "session", this.id);
   }
 
   /** Bind a tmux command to a hook on this session. */
   setHook(name: string, command: string): Promise<void> {
-    return setHook(runtimeForServer(this.server), "session", this.session_id, name, command);
+    return setHook(runtimeForServer(this.server), "session", this.id, name, command);
   }
 
   /** Remove a hook from this session. */
   unsetHook(name: string): Promise<void> {
-    return unsetHook(runtimeForServer(this.server), "session", this.session_id, name);
+    return unsetHook(runtimeForServer(this.server), "session", this.id, name);
   }
 
   /** Create a window in this session and resolve it as a handle. */
   newWindow(options?: NewWindowOptions): Promise<Window> {
-    return newWindow(this.server, runtimeForServer(this.server), this.session_id, options);
+    return newWindow(this.server, runtimeForServer(this.server), this.id, options);
   }
 
   /** Destroy this session. */
   kill(): Promise<void> {
-    return killTarget(runtimeForServer(this.server), "kill-session", this.session_id);
+    return killTarget(runtimeForServer(this.server), "kill-session", this.id);
   }
 
   /** Re-read this session at the current instant, in place. */
@@ -96,12 +89,12 @@ export class Session {
 
   /** Rename this session. */
   rename(name: string): Promise<void> {
-    return renameSession(runtimeForServer(this.server), this.session_id, name);
+    return renameSession(runtimeForServer(this.server), this.id, name);
   }
 
   /** Select the last, next, or previous window, or one named by target. */
   selectWindow(target: WindowTarget): Promise<void> {
-    return selectWindowIn(runtimeForServer(this.server), this.session_id, target);
+    return selectWindowIn(runtimeForServer(this.server), this.id, target);
   }
 
   /**
@@ -117,7 +110,7 @@ export class Session {
     const { Server } = await import("./server.js");
     const server = new Server({ environment, socketPath });
     const snapshot = await server.snapshot();
-    const pane = snapshot.panes.filter((candidate) => candidate.pane_id === paneId).first();
+    const pane = snapshot.panes.filter((candidate) => candidate.id === paneId).first();
     if (pane === undefined) {
       throw new LibTmuxException(`${paneId} is not present on ${socketPath}`);
     }
@@ -130,7 +123,7 @@ export class Session {
 
   /** Detach every client attached to this session. */
   detach(): Promise<void> {
-    return detachClient(runtimeForServer(this.server), this.session_id);
+    return detachClient(runtimeForServer(this.server), this.id);
   }
 
   equals(other: unknown): boolean {
@@ -140,6 +133,9 @@ export class Session {
 
 type SessionRow = RowWithIdentities<"session_id">;
 
-export interface Session extends SessionRow, AliasedFields<SessionRow, SessionAliasMap> {}
+export interface Session extends AliasedFields<SessionRow, SessionAliasMap> {
+  /** The raw tmux format row, addressed by tmux's own token names. */
+  readonly format: SessionRow;
+}
 
 installLiveHandlePrototype(Session.prototype, SESSION_ALIASES);

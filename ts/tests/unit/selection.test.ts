@@ -103,11 +103,7 @@ describe("Selection collection contract", () => {
     expect([...firstIterator]).toEqual([...harness.values]);
     expect([...secondIterator]).toEqual([...harness.values]);
     expect([...selection]).toEqual([...harness.values]);
-    expect([...selection].map(({ session_name }) => session_name)).toEqual([
-      "alpha",
-      "beta",
-      "alpha",
-    ]);
+    expect([...selection].map(({ name }) => name)).toEqual(["alpha", "beta", "alpha"]);
     expect(selection.length).toBe(3);
     expect(selection.at(0)).toBe(harness.values[0]!);
     expect(selection.at(Number.NaN)).toBe(harness.values[0]!);
@@ -152,7 +148,7 @@ describe("Selection collection contract", () => {
     ): unknown {
       expect(this).toBe(context);
       calls.push({ index, value, values });
-      return value.session_name?.startsWith(this.prefix);
+      return value.name?.startsWith(this.prefix);
     }, context);
 
     expect(calls.map(({ index }) => index)).toEqual([0, 1, 2, 3]);
@@ -441,7 +437,7 @@ describe("internal Selection construction", () => {
     const requestCount = harness.transport.requests.length;
 
     const initialValues = selection.toArray();
-    const filtered = selection.filter((client: Client) => client.client_name?.endsWith("2"));
+    const filtered = selection.filter((client: Client) => client.name?.endsWith("2"));
     const filteredValues = filtered.toArray();
     for (const value of [selection, filtered]) {
       expect(nodeTypes.isProxy(value)).toBe(false);

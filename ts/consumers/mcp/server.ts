@@ -26,10 +26,9 @@ export function createTmuxMcpServer(tmux: Server): McpServer {
       // Count windows from the snapshot already in hand rather than asking each
       // session, which would resolve the same window set once per session.
       const sessions = snapshot.sessions.toArray().map((session) => ({
-        id: session.session_id,
-        name: session.session_name,
-        windows: snapshot.windows.filter((window) => window.session_id === session.session_id)
-          .length,
+        id: session.id,
+        name: session.name,
+        windows: snapshot.windows.filter((window) => window.sessionId === session.id).length,
       }));
       return { content: [{ text: JSON.stringify(sessions, null, 2), type: "text" }] };
     },
@@ -45,13 +44,13 @@ export function createTmuxMcpServer(tmux: Server): McpServer {
     async ({ session }) => {
       const snapshot = await tmux.snapshot();
       const panes = snapshot.panes
-        .filter((pane) => session === undefined || pane.session_name === session)
+        .filter((pane) => session === undefined || pane.sessionName === session)
         .toArray()
         .map((pane) => ({
-          command: pane.pane_current_command,
-          id: pane.pane_id,
-          session: pane.session_name,
-          window: pane.window_name,
+          command: pane.currentCommand,
+          id: pane.id,
+          session: pane.sessionName,
+          window: pane.windowName,
         }));
       return { content: [{ text: JSON.stringify(panes, null, 2), type: "text" }] };
     },
@@ -66,7 +65,7 @@ export function createTmuxMcpServer(tmux: Server): McpServer {
     },
     async ({ paneId, start }) => {
       const snapshot = await tmux.snapshot();
-      const pane = snapshot.panes.filter((candidate) => candidate.pane_id === paneId).first();
+      const pane = snapshot.panes.filter((candidate) => candidate.id === paneId).first();
       if (pane === undefined) {
         return { content: [{ text: `No pane ${paneId}`, type: "text" }], isError: true };
       }
@@ -89,7 +88,7 @@ export function createTmuxMcpServer(tmux: Server): McpServer {
     },
     async ({ enter, keys, literal, paneId }) => {
       const snapshot = await tmux.snapshot();
-      const pane = snapshot.panes.filter((candidate) => candidate.pane_id === paneId).first();
+      const pane = snapshot.panes.filter((candidate) => candidate.id === paneId).first();
       if (pane === undefined) {
         return { content: [{ text: `No pane ${paneId}`, type: "text" }], isError: true };
       }
@@ -113,7 +112,7 @@ export function createTmuxMcpServer(tmux: Server): McpServer {
       return {
         content: [
           {
-            text: `Created ${session.session_name ?? "<unnamed>"} (${session.session_id})`,
+            text: `Created ${session.name ?? "<unnamed>"} (${session.id})`,
             type: "text",
           },
         ],

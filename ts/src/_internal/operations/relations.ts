@@ -2,20 +2,24 @@ import type { Pane } from "../../pane.js";
 import type { Selection } from "../../selection.js";
 import type { Session } from "../../session.js";
 import type { Window } from "../../window.js";
+import type { CompleteFormatRow } from "../codec/schemas.js";
 import type { NormalizedGraph } from "../graph/model.js";
 import { settledSelectionOfModel } from "./projections.js";
 
-/** The contextual placement a window occupies in a session. */
+/**
+ * A window placement, compared through the raw row.
+ *
+ * De-stuttering gives a window `id` where a pane keeps `windowId` for the same
+ * tmux field, so the shared comparison addresses tmux's own token names.
+ */
 interface Placement {
-  readonly session_id: string | null;
-  readonly window_id: string | null;
-  readonly window_index: string | null;
+  readonly format: CompleteFormatRow;
 }
 
 const samePlacement = (left: Placement, right: Placement): boolean =>
-  left.session_id === right.session_id &&
-  left.window_id === right.window_id &&
-  left.window_index === right.window_index;
+  left.format.session_id === right.format.session_id &&
+  left.format.window_id === right.format.window_id &&
+  left.format.window_index === right.format.window_index;
 
 /**
  * Relations read the handles materialized when the graph was acquired.
@@ -32,12 +36,12 @@ export function windowsOfSession(
   sessionId: string | null,
 ): Selection<Window> {
   return settledSelectionOfModel(graph, "window").filter(
-    (window) => window.session_id === sessionId,
+    (window) => window.sessionId === sessionId,
   );
 }
 
 export function panesOfSession(graph: NormalizedGraph, sessionId: string | null): Selection<Pane> {
-  return settledSelectionOfModel(graph, "pane").filter((pane) => pane.session_id === sessionId);
+  return settledSelectionOfModel(graph, "pane").filter((pane) => pane.sessionId === sessionId);
 }
 
 /** Panes of one window placement, so a linked window keeps its two sets apart. */
@@ -47,7 +51,7 @@ export function panesOfPlacement(graph: NormalizedGraph, placement: Placement): 
 
 export function sessionOf(graph: NormalizedGraph, sessionId: string | null): Session | undefined {
   return settledSelectionOfModel(graph, "session")
-    .filter((session) => session.session_id === sessionId)
+    .filter((session) => session.id === sessionId)
     .first();
 }
 
@@ -62,7 +66,7 @@ export function windowOfPlacement(
 
 export function paneById(graph: NormalizedGraph, paneId: string | null): Pane | undefined {
   return settledSelectionOfModel(graph, "pane")
-    .filter((pane) => pane.pane_id === paneId)
+    .filter((pane) => pane.id === paneId)
     .first();
 }
 
@@ -73,11 +77,9 @@ export function linkedSessionsOfWindow(
 ): Selection<Session> {
   const sessionIds = new Set(
     settledSelectionOfModel(graph, "window")
-      .filter((window) => window.window_id === windowId)
+      .filter((window) => window.id === windowId)
       .toArray()
-      .map(({ session_id }) => session_id),
+      .map(({ sessionId }) => sessionId),
   );
-  return settledSelectionOfModel(graph, "session").filter((session) =>
-    sessionIds.has(session.session_id),
-  );
+  return settledSelectionOfModel(graph, "session").filter((session) => sessionIds.has(session.id));
 }

@@ -62,24 +62,22 @@ describe("window and pane topology", () => {
       const server = serverFor(fixture);
       const other = await server.newSession({ name: "other" });
       const window = (await server.snapshot()).windows
-        .filter((candidate) => candidate.session_name === fixture.sessionName)
+        .filter((candidate) => candidate.sessionName === fixture.sessionName)
         .one();
 
       await window.link({ index: 9, session: "other" });
 
       const linked = (await server.snapshot()).windows.filter(
-        (candidate) => candidate.window_id === window.window_id,
+        (candidate) => candidate.id === window.id,
       );
       expect(linked.length).toBe(2);
 
       // Unlinking the second placement leaves the original intact.
-      const placement = linked
-        .filter((candidate) => candidate.session_id === other.session_id)
-        .one();
+      const placement = linked.filter((candidate) => candidate.sessionId === other.id).one();
       await placement.unlink();
 
       const afterUnlink = (await server.snapshot()).windows.filter(
-        (candidate) => candidate.window_id === window.window_id,
+        (candidate) => candidate.id === window.id,
       );
       expect(afterUnlink.length).toBe(1);
     });
@@ -93,9 +91,9 @@ describe("window and pane topology", () => {
       await window.move({ index: 7, session: fixture.sessionName });
 
       const moved = (await server.snapshot()).windows
-        .filter((candidate) => candidate.window_id === window.window_id)
+        .filter((candidate) => candidate.id === window.id)
         .one();
-      expect(moved.window_index).toBe("7");
+      expect(moved.index).toBe("7");
     });
   }, 40_000);
 
@@ -114,9 +112,9 @@ describe("window and pane topology", () => {
       await first.resize({ width: 40 });
 
       const resized = (await server.snapshot()).panes
-        .filter((candidate) => candidate.pane_id === first.pane_id)
+        .filter((candidate) => candidate.id === first.id)
         .one();
-      expect(Number(resized.pane_width)).toBeGreaterThan(0);
+      expect(Number(resized.width)).toBeGreaterThan(0);
     });
   }, 40_000);
 
@@ -126,22 +124,20 @@ describe("window and pane topology", () => {
       const session = (await server.snapshot()).sessions.one();
       const second = await session.newWindow({ name: "second" });
       const first = (await server.snapshot()).windows
-        .filter((candidate) => candidate.window_id !== second.window_id)
+        .filter((candidate) => candidate.id !== second.id)
         .one();
-      const firstIndex = first.window_index;
-      const secondIndex = second.window_index;
+      const firstIndex = first.index;
+      const secondIndex = second.index;
 
       await first.swapWith(second);
 
       const after = await server.snapshot();
-      expect(
-        after.windows.filter((candidate) => candidate.window_id === first.window_id).one()
-          .window_index,
-      ).toBe(secondIndex);
-      expect(
-        after.windows.filter((candidate) => candidate.window_id === second.window_id).one()
-          .window_index,
-      ).toBe(firstIndex);
+      expect(after.windows.filter((candidate) => candidate.id === first.id).one().index).toBe(
+        secondIndex,
+      );
+      expect(after.windows.filter((candidate) => candidate.id === second.id).one().index).toBe(
+        firstIndex,
+      );
     });
   }, 40_000);
 });

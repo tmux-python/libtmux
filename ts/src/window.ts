@@ -42,72 +42,72 @@ export class Window {
 
   /** The session this placement belongs to. */
   get session(): Session | undefined {
-    return sessionOf(originGraphForHandle(this), this.session_id);
+    return sessionOf(originGraphForHandle(this), this.sessionId);
   }
 
   /** Every session this window is linked into. */
   get linkedSessions(): Selection<Session> {
-    return linkedSessionsOfWindow(originGraphForHandle(this), this.window_id);
+    return linkedSessionsOfWindow(originGraphForHandle(this), this.id);
   }
 
   /** Every option this window currently sees, including inherited values. */
   showOptions(): Promise<ReadonlyMap<string, string>> {
-    return showOptions(runtimeForServer(this.server), "window", this.window_id);
+    return showOptions(runtimeForServer(this.server), "window", this.id);
   }
 
   /** Set an option on this window. */
   setOption(name: string, value: string, options?: { readonly append?: boolean }): Promise<void> {
-    return setOption(runtimeForServer(this.server), "window", this.window_id, name, value, options);
+    return setOption(runtimeForServer(this.server), "window", this.id, name, value, options);
   }
 
   /** Remove an option from this window. */
   unsetOption(name: string): Promise<void> {
-    return unsetOption(runtimeForServer(this.server), "window", this.window_id, name);
+    return unsetOption(runtimeForServer(this.server), "window", this.id, name);
   }
 
   /** Split this window and resolve the created pane. */
   split(options?: SplitOptions): Promise<Pane> {
-    return splitWindow(this.server, runtimeForServer(this.server), this.window_id, options);
+    return splitWindow(this.server, runtimeForServer(this.server), this.id, options);
   }
 
   /** Destroy this window, unlinking it from every session it is in. */
   kill(): Promise<void> {
-    return killTarget(runtimeForServer(this.server), "kill-window", this.window_id);
+    return killTarget(runtimeForServer(this.server), "kill-window", this.id);
   }
 
   /** Rename this window. */
   rename(name: string): Promise<void> {
-    return renameWindow(runtimeForServer(this.server), this.window_id, name);
+    return renameWindow(runtimeForServer(this.server), this.id, name);
   }
 
   /** Move this window to another session or index without selecting it. */
   move(options?: MoveWindowOptions): Promise<void> {
-    return moveWindow(runtimeForServer(this.server), this.window_id, options);
+    return moveWindow(runtimeForServer(this.server), this.id, options);
   }
 
   /** Link this window into another session, giving it a second placement. */
   link(options: MoveWindowOptions): Promise<void> {
-    return linkWindow(runtimeForServer(this.server), this.window_id, options);
+    return linkWindow(runtimeForServer(this.server), this.id, options);
   }
 
   /** Remove this placement, leaving the window's other placements intact. */
   unlink(): Promise<void> {
-    return unlinkWindow(runtimeForServer(this.server), this.window_id);
+    return unlinkWindow(runtimeForServer(this.server), this.id);
   }
 
   /** Exchange positions with another window. */
   swapWith(other: Window): Promise<void> {
-    return swapWindows(runtimeForServer(this.server), this.window_id, other.window_id);
+    return swapWindows(runtimeForServer(this.server), this.id, other.id);
   }
 
   /** Apply a named or custom layout. */
   selectLayout(layout: string): Promise<void> {
-    return selectLayout(runtimeForServer(this.server), this.window_id, layout);
+    return selectLayout(runtimeForServer(this.server), this.id, layout);
   }
 
   /** Make this window active in its session. */
   select(): Promise<void> {
-    return selectTarget(runtimeForServer(this.server), "select-window", this.window_id);
+    return selectTarget(runtimeForServer(this.server), "select-window", this.id);
   }
 
   /** Re-read this window placement at the current instant, in place. */
@@ -122,6 +122,9 @@ export class Window {
 
 type WindowRow = RowWithIdentities<"session_id" | "window_id" | "window_index">;
 
-export interface Window extends WindowRow, AliasedFields<WindowRow, WindowAliasMap> {}
+export interface Window extends AliasedFields<WindowRow, WindowAliasMap> {
+  /** The raw tmux format row, addressed by tmux's own token names. */
+  readonly format: WindowRow;
+}
 
 installLiveHandlePrototype(Window.prototype, WINDOW_ALIASES);

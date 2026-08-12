@@ -50,7 +50,6 @@ import type {
   TmuxWarningSink,
 } from "../../src/common.js";
 import { Client } from "../../src/client.js";
-import type { FormatFieldName } from "../../src/neo.js";
 import { Pane } from "../../src/pane.js";
 import { Server, type ServerOptions } from "../../src/server.js";
 import { Session } from "../../src/session.js";
@@ -113,23 +112,13 @@ type _SessionModule = Expect<Equal<keyof typeof sessionModule, "Session">>;
 type _WindowModule = Expect<Equal<keyof typeof windowModule, "Window">>;
 type _ServerModule = Expect<Equal<keyof typeof serverModule, "Server">>;
 
-type _ClientSnapshot = Expect<
-  Equal<Pick<Client, FormatFieldName>, RowWithIdentities<"client_name">>
->;
+type _ClientSnapshot = Expect<Equal<Client["format"], RowWithIdentities<"client_name">>>;
 type _PaneSnapshot = Expect<
-  Equal<
-    Pick<Pane, FormatFieldName>,
-    RowWithIdentities<"pane_id" | "session_id" | "window_id" | "window_index">
-  >
+  Equal<Pane["format"], RowWithIdentities<"pane_id" | "session_id" | "window_id" | "window_index">>
 >;
-type _SessionSnapshot = Expect<
-  Equal<Pick<Session, FormatFieldName>, RowWithIdentities<"session_id">>
->;
+type _SessionSnapshot = Expect<Equal<Session["format"], RowWithIdentities<"session_id">>>;
 type _WindowSnapshot = Expect<
-  Equal<
-    Pick<Window, FormatFieldName>,
-    RowWithIdentities<"session_id" | "window_id" | "window_index">
-  >
+  Equal<Window["format"], RowWithIdentities<"session_id" | "window_id" | "window_index">>
 >;
 
 type _SessionAliases = Expect<

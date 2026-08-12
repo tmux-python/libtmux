@@ -33,7 +33,7 @@ export async function newSession(
   ]);
   const sessionId = requireIdentity(lines, "new-session");
   const snapshot = await buildServerSnapshot(server, runtime);
-  const created = snapshot.sessions.filter((session) => session.session_id === sessionId).first();
+  const created = snapshot.sessions.filter((session) => session.id === sessionId).first();
   if (created === undefined) {
     throw new LibTmuxException(
       `new-session created ${sessionId} but it was gone before it resolved`,
@@ -61,7 +61,7 @@ export async function newWindow(
   const windowId = requireIdentity(lines, "new-window");
   const snapshot = await buildServerSnapshot(server, runtime);
   const created = snapshot.windows
-    .filter((window) => window.window_id === windowId && window.session_id === sessionId)
+    .filter((window) => window.id === windowId && window.sessionId === sessionId)
     .first();
   if (created === undefined) {
     throw new LibTmuxException(`new-window created ${windowId} but it was gone before it resolved`);
@@ -88,7 +88,7 @@ export async function splitWindow(
   ]);
   const paneId = requireIdentity(lines, "split-window");
   const snapshot = await buildServerSnapshot(server, runtime);
-  const created = snapshot.panes.filter((pane) => pane.pane_id === paneId).first();
+  const created = snapshot.panes.filter((pane) => pane.id === paneId).first();
   if (created === undefined) {
     throw new LibTmuxException(`split-window created ${paneId} but it was gone before it resolved`);
   }

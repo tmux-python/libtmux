@@ -51,14 +51,14 @@ describe("lifecycle mutations", () => {
       const server = serverFor(fixture);
 
       const session = await server.newSession({ name: "created" });
-      expect(session.session_name).toBe("created");
+      expect(session.name).toBe("created");
 
       const window = await session.newWindow({ name: "editor" });
-      expect(window.window_name).toBe("editor");
-      expect(window.session_id).toBe(session.session_id);
+      expect(window.name).toBe("editor");
+      expect(window.sessionId).toBe(session.id);
 
       const pane = await window.split();
-      expect(pane.window_id).toBe(window.window_id);
+      expect(pane.windowId).toBe(window.id);
       // The returned pane is live; the window handle predates the split and
       // still reports the instant it was created at.
       expect(window.panes.length).toBe(1);
@@ -135,16 +135,16 @@ describe("lifecycle mutations", () => {
       const server = serverFor(fixture);
       await server.newSession({ name: "other" });
       const window = (await server.snapshot()).windows
-        .filter((candidate) => candidate.session_name === fixture.sessionName)
+        .filter((candidate) => candidate.sessionName === fixture.sessionName)
         .one();
       await window.link({ index: 9, session: "other" });
 
-      const originalIndex = window.window_index;
+      const originalIndex = window.index;
       await window.refresh();
 
       // Refreshing resolves the placement it was created at, not the new one.
-      expect(window.window_index).toBe(originalIndex);
-      expect(window.session_name).toBe(fixture.sessionName);
+      expect(window.index).toBe(originalIndex);
+      expect(window.sessionName).toBe(fixture.sessionName);
     });
   }, 40_000);
 

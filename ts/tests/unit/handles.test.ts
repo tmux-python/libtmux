@@ -9,6 +9,12 @@ import type {
   TmuxWarningSink,
 } from "../../src/common.js";
 import { LibTmuxException, QueryValidationError } from "../../src/exc.js";
+import {
+  CLIENT_ALIASES,
+  PANE_ALIASES,
+  SESSION_ALIASES,
+  WINDOW_ALIASES,
+} from "../../src/_generated/field_aliases.js";
 import { Client } from "../../src/client.js";
 import type { CompleteFormatRow } from "../../src/_internal/codec/schemas.js";
 import {
@@ -242,16 +248,19 @@ function assertScalarSnapshot(
       serverDescriptor.set === undefined,
   ).toBe(true);
 
+  // Raw tokens are reachable through the frozen row, not as handle properties.
   for (const token of FORMAT_FIELD_TOKENS) {
-    expect(handle[token]).toBe(row[token]);
-    const descriptor = descriptorFor(handle, token);
-    expect(descriptor?.enumerable).toBe(false);
-    expect(typeof descriptor?.get).toBe("function");
-    expect(descriptor !== undefined && "set" in descriptor && descriptor.set === undefined).toBe(
-      true,
-    );
-    expect(Reflect.set(handle, token, "forbidden")).toBe(false);
+    expect(handle.format[token]).toBe(row[token]);
   }
+  const formatDescriptor = descriptorFor(handle, "format");
+  expect(formatDescriptor?.enumerable).toBe(false);
+  expect(typeof formatDescriptor?.get).toBe("function");
+  expect(
+    formatDescriptor !== undefined &&
+      "set" in formatDescriptor &&
+      formatDescriptor.set === undefined,
+  ).toBe(true);
+  expect(Reflect.set(handle, "format", "forbidden")).toBe(false);
 
   for (const value of Object.values(snapshot)) {
     expect(value === null || typeof value === "string").toBe(true);
@@ -259,8 +268,14 @@ function assertScalarSnapshot(
   expect(JSON.stringify(handle)).toBe("{}");
 }
 
-function assertChildPrototypeAccessors(prototype: object): void {
-  for (const property of ["server", ...FORMAT_FIELD_TOKENS]) {
+function assertChildPrototypeAccessors(prototype: object, aliases: readonly string[]): void {
+  // Every raw token now lives behind `format`, so the prototype carries the
+  // idiomatic names and nothing else.
+  for (const token of FORMAT_FIELD_TOKENS) {
+    if (aliases.includes(token)) continue;
+    expect(Object.getOwnPropertyDescriptor(prototype, token), token).toBeUndefined();
+  }
+  for (const property of ["server", "format", ...aliases]) {
     const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
     expect(descriptor, property).toBeDefined();
     expect(descriptor?.enumerable, property).toBe(false);
@@ -274,9 +289,10 @@ function assertChildPrototypeAccessors(prototype: object): void {
 function assertConcreteHandlePrototype(
   handle: Session | Window | Pane | Client,
   prototype: object,
+  aliases: readonly string[],
 ): void {
   expect(Object.getPrototypeOf(handle)).toBe(prototype);
-  assertChildPrototypeAccessors(prototype);
+  assertChildPrototypeAccessors(prototype, aliases);
 }
 
 function assertRejectsNonAuthenticEquality(
@@ -759,22 +775,31 @@ describe("authenticated handle materialization", () => {
     expect(winlinkRefForHandle(client)).toBeNull();
     expect(winlinkRefForHandle(window as Window)).toBe(records.window.winlink);
     expect(winlinkRefForHandle(pane as Pane)).toBe(records.pane.winlink);
-    assertConcreteHandlePrototype(session as Session, Session.prototype);
-    assertConcreteHandlePrototype(window as Window, Window.prototype);
-    assertConcreteHandlePrototype(pane as Pane, Pane.prototype);
-    assertConcreteHandlePrototype(client, Client.prototype);
+    assertConcreteHandlePrototype(
+      session as Session,
+      Session.prototype,
+      Object.keys(SESSION_ALIASES),
+    );
+    assertConcreteHandlePrototype(window as Window, Window.prototype, Object.keys(WINDOW_ALIASES));
+    assertConcreteHandlePrototype(pane as Pane, Pane.prototype, Object.keys(PANE_ALIASES));
+    assertConcreteHandlePrototype(client, Client.prototype, Object.keys(CLIENT_ALIASES));
     assertScalarSnapshot(session as Session, rows.session);
     assertScalarSnapshot(window as Window, rows.window);
     assertScalarSnapshot(pane as Pane, rows.pane);
     assertScalarSnapshot(client, rows.client);
     expect(rows.client.config_files).toBe("");
-    expect(client.config_files).toBe("");
-    expect(client.pane_z).toBeNull();
+    expect(client.configFiles).toBe("");
+    expect(client.paneZ).toBeNull();
   });
 
   test("defines child snapshot accessors on each concrete prototype", () => {
-    for (const Child of [Session, Window, Pane, Client]) {
-      assertChildPrototypeAccessors(Child.prototype);
+    for (const [Child, aliases] of [
+      [Session, SESSION_ALIASES],
+      [Window, WINDOW_ALIASES],
+      [Pane, PANE_ALIASES],
+      [Client, CLIENT_ALIASES],
+    ] as const) {
+      assertChildPrototypeAccessors(Child.prototype, Object.keys(aliases));
     }
   });
 
@@ -895,7 +920,7 @@ describe("authenticated handle materialization", () => {
       originalGraph,
       reconstructedOriginal,
     );
-    expect(handle.client_width).toBe("80");
+    expect(handle.width).toBe("80");
 
     const replacementRow = completeFormatRow({
       client_name: "client-ref",
@@ -956,7 +981,7 @@ describe("authenticated handle materialization", () => {
       rightGraph,
       projectionRecord(rightProjection),
     );
-    expect(right.window_name).toBe("right-row-must-not-cross");
+    expect(right.format.window_name).toBe("right-row-must-not-cross");
   });
 
   test("rejects structural members evidence and an identical authentic twin graph", async () => {
@@ -1138,7 +1163,7 @@ describe("authenticated handle materialization", () => {
     expect(winlinkRefForHandle(handle)).toBe(oldWinlink);
     expect(handle.server).toBe(oldServer);
     for (const token of FORMAT_FIELD_TOKENS) {
-      expect(handle[token]).toBe(oldSnapshot[token]);
+      expect(handle.format[token]).toBe(oldSnapshot[token]);
     }
   });
 
@@ -1166,7 +1191,7 @@ describe("authenticated handle materialization", () => {
     const second = await materializeProjectionMembers(fixture.server, projection, graph);
 
     expect(first).toHaveLength(2);
-    expect(first.map(({ window_name }) => window_name)).toEqual([
+    expect(first.map(({ format }) => format.window_name)).toEqual([
       "first-context",
       "second-context",
     ]);
@@ -1270,16 +1295,16 @@ describe("authenticated handle materialization", () => {
     const replacement = replaceHandleSnapshotFromGraph(handle, replacementGraph, replacementRecord);
     expect(originGraphForHandle(handle)).toBe(originalGraph);
     expect(graphRecordRefForHandle(handle)).toEqual(originalRecord);
-    expect(handle.window_name).toBe("before");
-    expect(handle.config_files).toBe("");
+    expect(handle.name).toBe("before");
+    expect(handle.configFiles).toBe("");
     const originalWinlink = winlinkRefForHandle(handle);
     if (originalWinlink === null) throw new Error("window handle requires a winlink");
     expect(originalWinlink.windowIndex).toBe("1");
 
     await replacement;
 
-    expect(handle.window_name).toBe("after");
-    expect(handle.config_files).toBe("replacement");
+    expect(handle.name).toBe("after");
+    expect(handle.configFiles).toBe("replacement");
     const replacedWinlink = winlinkRefForHandle(handle);
     if (replacedWinlink === null) throw new Error("window handle requires a winlink");
     expect(replacedWinlink.windowIndex).toBe("8");
@@ -1327,7 +1352,7 @@ describe("authenticated handle materialization", () => {
     );
 
     expect(snapshotForHandle(handle)).toBe(originalSnapshot);
-    expect(handle.session_name).toBe("before");
+    expect(handle.name).toBe("before");
     await replacement;
 
     expect(snapshotForHandle(handle)).not.toBe(originalSnapshot);
@@ -1416,7 +1441,7 @@ describe("authenticated handle materialization", () => {
       expect(handle.server).toBe(preservedServer);
       expect(winlinkRefForHandle(handle)).toBeNull();
       for (const token of FORMAT_FIELD_TOKENS) {
-        expect(handle[token]).toBe(preservedSnapshot[token]);
+        expect(handle.format[token]).toBe(preservedSnapshot[token]);
       }
     }
   });
@@ -1592,7 +1617,7 @@ describe("authenticated handle materialization", () => {
       expect(logicalRefForHandle(handle)).toBe(oldRef);
       expect(winlinkRefForHandle(handle)).toBe(oldWinlink);
       for (const token of FORMAT_FIELD_TOKENS) {
-        expect(handle[token]).toBe(oldSnapshot[token]);
+        expect(handle.format[token]).toBe(oldSnapshot[token]);
       }
     }
   });
@@ -1709,7 +1734,7 @@ describe("authenticated handle materialization", () => {
       expect(handle.server).toBe(preservedServer);
       expect(winlinkRefForHandle(handle)).toBe(preservedWinlink);
       for (const token of FORMAT_FIELD_TOKENS) {
-        expect(handle[token]).toBe(preservedSnapshot[token]);
+        expect(handle.format[token]).toBe(preservedSnapshot[token]);
       }
     }
   });
@@ -1756,7 +1781,7 @@ describe("authenticated handle materialization", () => {
     expect(handle.server).toBe(oldServer);
     expect(winlinkRefForHandle(handle)).toBe(oldWinlink);
     for (const token of FORMAT_FIELD_TOKENS) {
-      expect(handle[token]).toBe(oldSnapshot[token]);
+      expect(handle.format[token]).toBe(oldSnapshot[token]);
     }
   });
 

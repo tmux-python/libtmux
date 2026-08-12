@@ -563,7 +563,7 @@ describe("regex criteria", () => {
       corpus.cases.length,
     );
     for (const [index, entry] of corpus.cases.entries()) {
-      expect(harness.values[index]?.session_id, entry.id).toBe(entry.session_id);
+      expect(harness.values[index]?.id, entry.id).toBe(entry.session_id);
       const criteria: SessionWhere = {
         name: {
           equals: entry.input,

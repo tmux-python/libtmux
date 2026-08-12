@@ -72,12 +72,12 @@ describe("interactive commands", () => {
     await withAttachedPane(async (pane) => {
       await pane.chooseTree({ sessionsOnly: true });
       await pane.refresh();
-      expect(pane.pane_in_mode).toBe("1");
+      expect(pane.inMode).toBe("1");
 
       await pane.exitCopyMode();
       await pane.chooseBuffer();
       await pane.refresh();
-      expect(pane.pane_in_mode).toBe("1");
+      expect(pane.inMode).toBe("1");
     });
   }, 40_000);
 

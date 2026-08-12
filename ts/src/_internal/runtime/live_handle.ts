@@ -84,18 +84,14 @@ export function installLiveHandlePrototype(
       return requireState(this).server;
     },
   });
-  for (const token of FORMAT_FIELD_TOKENS) {
-    Object.defineProperty(prototype, token, {
-      configurable: false,
-      enumerable: false,
-      get(this: object): string | null {
-        return requireState(this).snapshot[token];
-      },
-    });
-  }
+  Object.defineProperty(prototype, "format", {
+    configurable: false,
+    enumerable: false,
+    get(this: object): CompleteFormatRow {
+      return requireState(this).snapshot;
+    },
+  });
   for (const [alias, token] of Object.entries(aliases)) {
-    // A token with no prefix to drop aliases to itself and is already defined.
-    if (alias === token) continue;
     Object.defineProperty(prototype, alias, {
       configurable: false,
       enumerable: false,
