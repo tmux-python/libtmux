@@ -47,7 +47,7 @@ _Notes on the upcoming release will go here._
 
 ### Breaking changes
 
-#### A bare `";"` argument is now literal data
+#### A bare `";"` argument is now literal data (#738)
 
 tmux reads a trailing `;` on a command argument as a command boundary, so a `;`
 passed to {meth}`Server.cmd() <libtmux.Server.cmd>` as a *separator* worked by
@@ -71,7 +71,7 @@ server.cmd(
 
 See {ref}`migration-0-63-command-separator`.
 
-#### Commands return `CommandResult`
+#### Commands return `CommandResult` (#738)
 
 {meth}`Server.cmd() <libtmux.Server.cmd>` and its `Session`, `Window`, and `Pane`
 counterparts return {class}`~libtmux.engines.base.CommandResult` rather than
@@ -83,14 +83,14 @@ now read-only, so a caller that mutated a result in place gets
 `tmux_cmd` is unchanged and still constructible directly. See
 {ref}`migration-0-63-command-result`.
 
-#### `tmux_cmd.process` deprecated
+#### `tmux_cmd.process` deprecated (#738)
 
 {attr}`libtmux.common.tmux_cmd.process` is now a deprecated property. Reading it
 warns, and it raises {exc}`~libtmux.exc.LibTmuxException` under an engine that
 forks no process. Use `returncode`, `stdout`, and `stderr` on the result, which
 are unchanged.
 
-#### `raise_if_dead()` no longer echoes tmux's error
+#### `raise_if_dead()` no longer echoes tmux's error (#738)
 
 {meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` previously let
 tmux write its message straight to the terminal. It now captures that text onto
@@ -99,7 +99,7 @@ unchanged.
 
 ### What's new
 
-#### Pluggable command engines
+#### Pluggable command engines (#738)
 
 Every tmux command libtmux runs now goes through an *engine* — an object that
 takes a rendered argv and returns a structured result. The default,
@@ -126,7 +126,7 @@ lookup instead of re-walking `$PATH` for every command.
 
 See {ref}`engines` for the guide and {ref}`engines-api` for the reference.
 
-#### Several commands in one round trip
+#### Several commands in one round trip (#738)
 
 {meth}`Server.cmd_batch() <libtmux.Server.cmd_batch>` runs a sequence of commands
 and returns one result each, in order; a tmux-side failure is data on its own
@@ -141,7 +141,7 @@ over single dispatches. A stateless engine loops internally and behaves as
 repeated calls would; a persistent-connection engine writes every command before
 waiting for the first reply, which is where the round trips collapse.
 
-#### Async engines can run commands
+#### Async engines can run commands (#738)
 
 {class}`~libtmux.engines.asyncio.AsyncSubprocessEngine` awaits the tmux binary
 rather than blocking on it. {func}`~libtmux.common.adispatch` and
@@ -150,7 +150,7 @@ through any {class}`~libtmux.engines.base.AsyncTmuxEngine`, applying the same
 adaptations as their synchronous counterparts. {class}`~libtmux.Server` remains
 synchronous and refuses an async engine, naming the reason.
 
-#### A persistent-connection engine is buildable on the public API
+#### A persistent-connection engine is buildable on the public API (#738)
 
 {func}`~libtmux.engines.base.render_control_line` and
 {func}`~libtmux.engines.base.unescape_control_output` encode a command for
@@ -160,7 +160,7 @@ connection can be written entirely against the public engine API — including t
 format-heavy listing queries the object API depends on. See
 `tests/examples/engines/test_control_mode_engine.py` for a worked example.
 
-#### Testing without a tmux server
+#### Testing without a tmux server (#738)
 
 {class}`~libtmux.engines.record.RecordingEngine` wraps a real engine and keeps
 what tmux answered; {class}`~libtmux.engines.record.ReplayEngine` serves those
@@ -199,7 +199,7 @@ the version-gated `-F` template is otherwise resolved by running `tmux -V`.
 reached, but no longer swallow {exc}`~libtmux.exc.UnscriptedCommand` — an engine
 that was never taught to answer is a gap in a fixture, not an unreachable tmux.
 
-#### Result objects report success directly
+#### Result objects report success directly (#738)
 
 {attr}`CommandResult.ok <libtmux.engines.base.CommandResult.ok>` and
 {meth}`CommandResult.raise_for_status()
@@ -207,7 +207,7 @@ that was never taught to answer is a gap in a fixture, not an unreachable tmux.
 `returncode` comparisons, and {class}`~libtmux.common.tmux_cmd` carries the same
 two, so results read the same whichever layer produced them.
 
-#### Engines report transport failure by name
+#### Engines report transport failure by name (#738)
 
 {exc}`~libtmux.exc.EngineError` names the case where a command never reached
 tmux at all — a missing binary, a closed connection, a desynchronized protocol
@@ -215,7 +215,7 @@ tmux at all — a missing binary, a closed connection, a desynchronized protocol
 {exc}`~libtmux.exc.TmuxCommandNotFound` now subclasses it, so existing handlers
 are unaffected and a caller can additionally catch the broader case.
 
-#### Engines are validated where they are supplied
+#### Engines are validated where they are supplied (#738)
 
 {class}`~libtmux.Server` now rejects a non-engine at construction, naming the
 missing method, rather than failing with an {exc}`AttributeError` inside the
@@ -230,13 +230,13 @@ hold a persistent connection.
 
 ### Fixes
 
-#### A trailing `;` in a command argument is no longer swallowed
+#### A trailing `;` in a command argument is no longer swallowed (#738)
 
 `pane.cmd("send-keys", "echo hello;")` sent `echo hello` — tmux consumed the
 final `;` as a command boundary and the character never reached the pane.
 Arguments are now escaped for tmux's parser, so the `;` arrives as typed.
 
-#### Listing queries honor `config_file` and `colors`
+#### Listing queries honor `config_file` and `colors` (#738)
 
 {meth}`Server.raise_if_dead() <libtmux.Server.raise_if_dead>` and the listing
 queries behind {attr}`~libtmux.Server.sessions` built their own connection flags
@@ -247,7 +247,7 @@ share one connection. A `colors=` value other than `256` or `88` raises
 
 ### Documentation
 
-#### Engines guide and API reference
+#### Engines guide and API reference (#738)
 
 {ref}`engines` covers what an engine is, writing one, the optional capability
 protocols, and explicit command separators. {ref}`engines-api` documents the
