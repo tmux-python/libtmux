@@ -13,11 +13,12 @@ degrades to the current visible screen and says so through
 :attr:`CaptureSince.lines_missed`. It never returns a silently incomplete
 delta.
 
-This module is deliberately split. Everything above :data:`PANE_STATE_FORMAT`
-is pure -- it decides what a read *means* given values, and touches no tmux.
-Everything below it performs tmux round-trips. Only the second half is
-execution-model-specific, so an alternate driver can reuse the first half
-rather than reimplement the anchor arithmetic.
+This module is deliberately split, at the ``TMUX I/O BOUNDARY`` comment
+partway down. Above it everything is pure: it decides what a read *means*
+given values, and runs without a tmux server. Below it everything performs
+tmux round-trips. Only the second half is execution-model-specific, so an
+alternate driver can reuse the first half rather than reimplement the anchor
+arithmetic.
 """
 
 from __future__ import annotations
@@ -373,6 +374,15 @@ def _cursor_anchor_lost(cursor: CaptureCursor, state: _PaneState) -> bool:
     rows out of history back into the visible region without freeing
     anything, from a real trim, where row data is gone.
 
+    That comparison deliberately ignores *how much* history shrank, which
+    is safe for two reasons rather than one. Arithmetically, ``anchor_abs``
+    is never below ``cursor.history_size``, so any shrink larger than
+    ``pane_height - 1`` pushes the anchor past the grid bottom and trips
+    the first check regardless of a resize. Within that bounded window,
+    losing rows a resize cannot account for means tmux trimmed, which only
+    happens at ``history-limit`` — and :func:`_history_limit_trim_risk`
+    routes that to a content re-anchor instead of trusting offsets.
+
     Parameters
     ----------
     cursor : CaptureCursor
@@ -661,6 +671,15 @@ is None
     )
 
 
+# --------------------------------------------------------------------------
+# TMUX I/O BOUNDARY
+#
+# Everything above decides what a read *means* given values, and runs
+# without a tmux server. Everything below performs tmux round-trips. Keep
+# new logic above the line unless it genuinely needs to talk to tmux.
+# --------------------------------------------------------------------------
+
+
 class _PaneRead(t.NamedTuple):
     """One completed tmux read, before it becomes a :class:`CaptureSince`.
 
@@ -894,9 +913,10 @@ def _read_delta(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
         start = cursor.anchor_abs - before.history_size
         if trim_risk:
             rows = _capture_rows(pane, start="-", end=None)
-        elif start >= before.pane_height:
-            rows = []
         else:
+            # ``_cursor_anchor_lost`` returning False above already proved
+            # ``anchor_abs`` sits at or above the grid bottom, so ``start``
+            # is always inside the visible region here.
             rows = _capture_rows(pane, start=start, end=None)
         cursor_rows = _capture_cursor_rows(pane, before)
 
@@ -954,7 +974,8 @@ def capture_since(pane: Pane, cursor: CaptureCursor | None = None) -> CaptureSin
     libtmux.exc.InvalidCaptureCursor
         If ``cursor`` belongs to a different pane.
     libtmux.exc.PaneLifecycleChanged
-        If the pane died or was respawned since ``cursor`` was taken.
+        If the pane died or was respawned since ``cursor`` was taken, or,
+        when no ``cursor`` is given, if the pane is already dead.
 
     Examples
     --------
