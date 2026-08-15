@@ -724,7 +724,8 @@ class Pane(
         libtmux.exc.InvalidCaptureCursor
             If ``cursor`` belongs to a different pane.
         libtmux.exc.PaneLifecycleChanged
-            If the pane died or was respawned since ``cursor`` was taken.
+            If the pane died or was respawned since ``cursor`` was taken,
+            or, when no ``cursor`` is given, if the pane is already dead.
 
         See Also
         --------
