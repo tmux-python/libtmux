@@ -45,11 +45,6 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
-### Dependencies
-
-`PyYAML>=6.0` is now a runtime dependency for declarative YAML workspace
-loading.
-
 ### Breaking changes
 
 #### `raise_if_dead()` no longer echoes tmux's error (#739)
@@ -67,6 +62,11 @@ Reading it is unchanged under the default engine. Assigning to it no longer
 works, and reading it after a command ran through an engine that forks no
 process raises {exc}`~libtmux.exc.LibTmuxException` rather than returning
 `None`.
+
+### Dependencies
+
+`PyYAML>=6.0` is now a runtime dependency for declarative YAML workspace
+loading.
 
 ### What's new
 
