@@ -28,12 +28,16 @@ import binascii
 import dataclasses
 import hashlib
 import json
+import logging
 import typing as t
 
 from libtmux import exc
+from libtmux.common import raise_if_stderr
 
 if t.TYPE_CHECKING:
     from libtmux.pane import Pane
+
+logger = logging.getLogger(__name__)
 
 
 #: Serialized-cursor prefix. Versioned so the wire format can change without
@@ -553,10 +557,15 @@ def _find_unique_cursor_match(rows: list[str], cursor: CaptureCursor) -> int | N
     if len(rows) < len(fingerprint):
         return None
 
+    # Hash each row once. Windows overlap, so hashing per-window would
+    # re-hash a row once for every window it appears in -- up to the
+    # fingerprint's length -- on the path that is already the expensive
+    # fallback.
+    hashes = [_line_hash(line) for line in rows]
+
     match_index: int | None = None
-    for index in range(len(rows) - len(fingerprint) + 1):
-        candidate = rows[index : index + len(fingerprint)]
-        if tuple(_line_hash(line) for line in candidate) != fingerprint:
+    for index in range(len(hashes) - len(fingerprint) + 1):
+        if tuple(hashes[index : index + len(fingerprint)]) != fingerprint:
             continue
         if match_index is not None:
             return None
@@ -775,15 +784,27 @@ def _capture_rows(
     start: t.Literal["-"] | int | None = None,
     end: t.Literal["-"] | int | None = None,
 ) -> list[str]:
-    """Capture pane rows as a concrete list.
+    """Capture pane rows, refusing to mistake a failed read for silence.
+
+    Issues ``capture-pane`` directly rather than through
+    :meth:`~libtmux.pane.Pane.capture_pane`, which returns tmux's stdout
+    without inspecting stderr. A blank pane and a failed capture both
+    yield no rows there, and this module cannot tell a caller "nothing
+    was written" unless it knows the read succeeded.
 
     Examples
     --------
     >>> isinstance(_capture_rows(pane), list)
     True
     """
-    rows = pane.capture_pane(start=start, end=end)
-    return [] if rows is None else list(rows)
+    args = ["capture-pane", "-p"]
+    if start is not None:
+        args.extend(["-S", str(start)])
+    if end is not None:
+        args.extend(["-E", str(end)])
+    proc = pane.cmd(*args)
+    raise_if_stderr(proc, "capture-pane")
+    return list(proc.stdout)
 
 
 def _capture_cursor_rows(pane: Pane, state: _PaneState) -> list[str]:
@@ -816,6 +837,14 @@ def _read_stable_visible(
     the read is retried. After :data:`_STABLE_READ_ATTEMPTS` the rows are
     returned with ``lines_missed`` set rather than presented as exact.
 
+    Exhausting the attempts returns the *last attempt's* reads rather than
+    taking fresh ones. On a pane writing continuously enough to defeat
+    three brackets, another round of unbracketed samples would pair an
+    anchor row number with a fingerprint taken at a different instant, and
+    the resulting cursor would claim to anchor content it never saw. The
+    last attempt's ``before`` snapshot and the rows captured against it at
+    least describe one moment.
+
     Parameters
     ----------
     pane : Pane
@@ -836,6 +865,9 @@ def _read_stable_visible(
     >>> isinstance(read.lines, list)
     True
     """
+    before = _read_pane_state(pane)
+    lines: list[str] = []
+    cursor_rows: list[str] = []
     for _attempt in range(_STABLE_READ_ATTEMPTS):
         before = _read_pane_state(pane)
         if baseline_pid is None:
@@ -857,15 +889,15 @@ def _read_stable_visible(
                 lines_missed=False,
             )
 
-    state = _read_pane_state(pane)
-    if baseline_pid is None:
-        _raise_if_dead_without_baseline(pane, state)
-    else:
-        _raise_if_lifecycle_changed(pane.pane_id, state, baseline_pid)
+    logger.debug(
+        "pane never settled across %s reads; reporting a missed capture",
+        _STABLE_READ_ATTEMPTS,
+        extra={"tmux_pane": pane.pane_id, "tmux_stdout_len": len(lines)},
+    )
     return _PaneRead(
-        state=state,
-        cursor_rows=_capture_cursor_rows(pane, state),
-        lines=_capture_rows(pane),
+        state=before,
+        cursor_rows=cursor_rows,
+        lines=lines,
         lines_missed=True,
     )
 
@@ -915,8 +947,9 @@ def _read_delta(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
             rows = _capture_rows(pane, start="-", end=None)
         else:
             # ``_cursor_anchor_lost`` returning False above already proved
-            # ``anchor_abs`` sits at or above the grid bottom, so ``start``
-            # is always inside the visible region here.
+            # ``anchor_abs`` sits at or below the grid bottom, so ``start``
+            # is always below ``pane_height``. It may still be negative,
+            # which is how ``capture-pane -S`` addresses retained history.
             rows = _capture_rows(pane, start=start, end=None)
         cursor_rows = _capture_cursor_rows(pane, before)
 
@@ -952,7 +985,7 @@ def _missed_read(pane: Pane, cursor: CaptureCursor) -> _PaneRead:
     return missed._replace(lines_missed=True)
 
 
-def capture_since(pane: Pane, cursor: CaptureCursor | None = None) -> CaptureSince:
+def _capture_since(pane: Pane, cursor: CaptureCursor | None = None) -> CaptureSince:
     """Capture rows written to ``pane`` since ``cursor``.
 
     Implements :meth:`libtmux.pane.Pane.capture_since`; call that instead.
@@ -979,8 +1012,8 @@ def capture_since(pane: Pane, cursor: CaptureCursor | None = None) -> CaptureSin
 
     Examples
     --------
-    >>> first = capture_since(pane)
-    >>> capture_since(pane, first.cursor).lines
+    >>> first = _capture_since(pane)
+    >>> _capture_since(pane, first.cursor).lines
     []
     """
     if pane.pane_id is None:

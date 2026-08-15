@@ -15,7 +15,7 @@ import warnings
 
 from libtmux import exc
 from libtmux._internal.env import pane_id_from_env
-from libtmux.capture import CaptureCursor, CaptureSince, capture_since
+from libtmux.capture import CaptureCursor, CaptureSince, _capture_since
 from libtmux.common import get_version_str, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import (
     PANE_DIRECTION_FLAG_MAP,
@@ -766,7 +766,7 @@ class Pane(
 
         .. versionadded:: 0.63
         """
-        return capture_since(self, cursor)
+        return _capture_since(self, cursor)
 
     def send_keys(
         self,
