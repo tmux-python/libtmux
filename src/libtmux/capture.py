@@ -671,6 +671,39 @@ is None
     )
 
 
+def _raise_if_lifecycle_changed(
+    pane_id: str | None,
+    state: _PaneState,
+    baseline_pid: str,
+) -> None:
+    """Raise when a cursor's process identity no longer holds.
+
+    Examples
+    --------
+    >>> _raise_if_lifecycle_changed('%1', _PaneState(0, 0, 24, '42', False), '42')
+
+    >>> _raise_if_lifecycle_changed('%1', _PaneState(0, 0, 24, '99', False), '42')
+    Traceback (most recent call last):
+    libtmux.exc.PaneLifecycleChanged: pane %1 was respawned (pid 42 -> 99); \
+cursor anchor is no longer valid
+
+    >>> _raise_if_lifecycle_changed('%1', _PaneState(0, 0, 24, '42', True), '42')
+    Traceback (most recent call last):
+    libtmux.exc.PaneLifecycleChanged: pane %1 died; cursor anchor is no \
+longer valid
+    """
+    if state.pane_dead:
+        msg = f"pane {pane_id} died; cursor anchor is no longer valid"
+        raise exc.PaneLifecycleChanged(msg)
+    if state.pane_pid != baseline_pid:
+        msg = (
+            f"pane {pane_id} was respawned "
+            f"(pid {baseline_pid} -> {state.pane_pid}); "
+            "cursor anchor is no longer valid"
+        )
+        raise exc.PaneLifecycleChanged(msg)
+
+
 # --------------------------------------------------------------------------
 # TMUX I/O BOUNDARY
 #
@@ -769,39 +802,6 @@ def _capture_cursor_rows(pane: Pane, state: _PaneState) -> list[str]:
     if state.cursor_y >= state.pane_height:
         return []
     return _capture_rows(pane, start=state.cursor_y, end=None)
-
-
-def _raise_if_lifecycle_changed(
-    pane_id: str | None,
-    state: _PaneState,
-    baseline_pid: str,
-) -> None:
-    """Raise when a cursor's process identity no longer holds.
-
-    Examples
-    --------
-    >>> _raise_if_lifecycle_changed('%1', _PaneState(0, 0, 24, '42', False), '42')
-
-    >>> _raise_if_lifecycle_changed('%1', _PaneState(0, 0, 24, '99', False), '42')
-    Traceback (most recent call last):
-    libtmux.exc.PaneLifecycleChanged: pane %1 was respawned (pid 42 -> 99); \
-cursor anchor is no longer valid
-
-    >>> _raise_if_lifecycle_changed('%1', _PaneState(0, 0, 24, '42', True), '42')
-    Traceback (most recent call last):
-    libtmux.exc.PaneLifecycleChanged: pane %1 died; cursor anchor is no \
-longer valid
-    """
-    if state.pane_dead:
-        msg = f"pane {pane_id} died; cursor anchor is no longer valid"
-        raise exc.PaneLifecycleChanged(msg)
-    if state.pane_pid != baseline_pid:
-        msg = (
-            f"pane {pane_id} was respawned "
-            f"(pid {baseline_pid} -> {state.pane_pid}); "
-            "cursor anchor is no longer valid"
-        )
-        raise exc.PaneLifecycleChanged(msg)
 
 
 def _read_stable_visible(
