@@ -255,6 +255,24 @@ def test_rejects_dead_pane_cursor(session: Session) -> None:
         pane.capture_since(first.cursor)
 
 
+def test_rejects_a_dead_pane_without_a_cursor(session: Session) -> None:
+    """A first call on an already-dead pane refuses rather than reading it."""
+    window = session.new_window(window_name="capture_since_dead_first")
+    pane = window.active_pane
+    assert pane is not None
+    window.cmd("set-option", "-w", "remain-on-exit", "on")
+    pane.respawn(kill=True, shell="true")
+
+    def is_dead() -> bool:
+        out = pane.cmd("display-message", "-p", "#{pane_dead}").stdout
+        return bool(out) and out[0].strip() == "1"
+
+    retry_until(is_dead, 5, raises=True)
+
+    with pytest.raises(exc.PaneLifecycleChanged, match="died"):
+        pane.capture_since()
+
+
 def test_cursor_round_trips_through_a_string(session: Session) -> None:
     """A serialized cursor decodes back to an equal cursor."""
     pane = session.new_window(window_name="capture_since_codec").active_pane
