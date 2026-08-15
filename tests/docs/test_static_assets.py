@@ -22,10 +22,13 @@ def test_docs_setup_omits_deleted_inline_tabs_script_from_html(
             import runpy
 
             _site = runpy.run_path({str(_ROOT / "docs" / "conf.py")!r})
+            # sphinx.ext.autodoc rides along because the site's setup() connects
+            # an autodoc-skip-member listener, and Sphinx rejects a listener for
+            # an event no loaded extension registers.
             extensions = [
                 name
                 for name in _site["extensions"]
-                if name == "sphinx_inline_tabs"
+                if name in {{"sphinx_inline_tabs", "sphinx.ext.autodoc"}}
             ]
             html_theme = "basic"
             project = "asset-test"
