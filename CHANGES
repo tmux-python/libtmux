@@ -45,11 +45,6 @@ $ uvx --from 'libtmux' --prerelease allow python
 _Notes on the upcoming release will go here._
 <!-- END PLACEHOLDER - ADD NEW CHANGELOG ENTRIES BELOW THIS LINE -->
 
-### Dependencies
-
-`PyYAML>=6.0` is now a runtime dependency for declarative YAML workspace
-loading.
-
 ### Breaking changes
 
 #### `raise_if_dead()` captures tmux's error output (#739)
@@ -64,6 +59,11 @@ stderr onto the raised {exc}`subprocess.CalledProcessError`.
 it is unchanged under {class}`~libtmux.engine.SubprocessEngine`; reading it
 after a command ran through an engine that spawns no process raises
 {exc}`~libtmux.exc.LibTmuxException` instead of returning `None`.
+
+### Dependencies
+
+`PyYAML>=6.0` is now a runtime dependency for declarative YAML workspace
+loading.
 
 ### What's new
 
@@ -202,6 +202,16 @@ options raise {exc}`~libtmux.exc.UnknownOption` consistently.
 {ref}`engines` introduces custom transports, raw-byte `stdin` and `stdout`,
 and generation fencing; {ref}`engine-api` and {ref}`capabilities-api` document
 the public modules.
+
+### Development
+
+#### Inspect and isolate MCP config swaps (#690)
+
+The development config-swap helper's read-only ``doctor`` command reports the
+effective server name, registration mismatches, active swaps, orphaned or
+missing backups, and auth-overriding environment variables. Its ``use-local
+--env KEY=VALUE`` option writes an isolated environment into the server entry
+without manual config edits.
 
 ## libtmux 0.67.0 (2026-11-22)
 
@@ -646,14 +656,6 @@ flake8-blind-except, and flake8-bandit checks now apply; the tmux output
 parsers, {meth}`Server.is_alive() <libtmux.Server.is_alive>`, and the Sphinx
 config carry scoped per-file ignores where catching everything is the intended
 contract.
-
-#### Inspect and isolate MCP config swaps (#690)
-
-The development config-swap helper's read-only ``doctor`` command reports the
-effective server name, registration mismatches, active swaps, orphaned or
-missing backups, and auth-overriding environment variables. Its ``use-local
---env KEY=VALUE`` option writes an isolated environment into the server entry
-without manual config edits.
 
 ## libtmux 0.62.0 (2026-07-12)
 
