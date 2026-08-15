@@ -16,7 +16,7 @@ from libtmux import exc
 from libtmux._compat import sentinel
 from libtmux._internal.env import pane_id_from_env
 from libtmux._internal.support.capabilities import capability_since
-from libtmux.capture import CaptureCursor, CaptureSince, capture_since
+from libtmux.capture import CaptureCursor, CaptureSince, _capture_since
 from libtmux.common import (
     _format_arg,
     _format_path_arg,
@@ -883,7 +883,7 @@ class Pane(
 
         .. versionadded:: 0.63
         """
-        return capture_since(self, cursor)
+        return _capture_since(self, cursor)
 
     def send_keys(
         self,

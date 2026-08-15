@@ -273,6 +273,33 @@ def test_rejects_a_dead_pane_without_a_cursor(session: Session) -> None:
         pane.capture_since()
 
 
+def test_a_failed_capture_raises_instead_of_reading_as_empty(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tmux capture failure is never reported as "nothing was written".
+
+    ``Pane.capture_pane`` returns tmux's stdout without inspecting stderr,
+    so a failed capture and a blank pane are indistinguishable there. Uses
+    ``monkeypatch`` because provoking a real ``capture-pane`` failure
+    against a live, healthy pane is not otherwise reachable.
+    """
+    pane = session.new_window(window_name="capture_since_failed_read").active_pane
+    assert pane is not None
+    real_cmd = type(pane).cmd
+
+    def failing_capture(self: Pane, *args: str) -> t.Any:
+        proc = real_cmd(self, *args)
+        if args and args[0] == "capture-pane":
+            proc.stderr = ["no such pane"]
+            proc.stdout = []
+        return proc
+
+    monkeypatch.setattr(type(pane), "cmd", failing_capture)
+
+    with pytest.raises(exc.LibTmuxException, match="capture-pane"):
+        pane.capture_since()
+
+
 def test_cursor_round_trips_through_a_string(session: Session) -> None:
     """A serialized cursor decodes back to an equal cursor."""
     pane = session.new_window(window_name="capture_since_codec").active_pane
