@@ -86,7 +86,9 @@ thing you can now replace.
 
 An engine that names no tmux server of its own adopts the server's connection,
 so injecting one into a socket-scoped {class}`~libtmux.Server` cannot silently
-dispatch to the ambient tmux server. Engines that name a server keep it.
+dispatch to the ambient tmux server. Engines that name a server keep it. A
+custom `tmux_bin` selects a program rather than a server, so an engine carrying
+only one adopts the server's flags and keeps its own binary.
 
 {class}`~libtmux.engines.connection.ServerConnection` is now the single place
 the tmux binary and the `-L`/`-S`/`-f`/`-2`/`-8` flags are computed; three
