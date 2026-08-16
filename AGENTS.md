@@ -614,6 +614,90 @@ Empty-on-tmux-error stays the default; raise is opt-in.
 - tmux man page: http://man.openbsd.org/OpenBSD-current/man1/tmux.1
 - tmuxp (workspace manager): https://tmuxp.git-pull.com/
 
+## Comments earn their maintenance cost
+
+A comment ships only if it passes all three gates. Fail any: delete or rewrite.
+Borderline: delete — borderline means the information is reconstructible, which
+is what makes deletion cheap.
+
+**Loss.** Three years from now, would losing this cost a maintainer real time
+rediscovering intent, an invariant, a constraint, or a failure mode the code and
+tests do not already make obvious?
+
+**Elite.** Would SQLite, Redis, the Go standard library, or CPython write this
+comment, at this length? Those projects state the constraint and stop. They do
+not argue with an imagined objector.
+
+**Upkeep.** Will it stay true without maintenance? A comment that hand-syncs a
+value the code owns — a count, an offset, a line reference, a duplicated
+constant — is false the first time that value moves.
+
+### Ceiling
+
+One or two lines. A comment reaching four is either carrying several facts, in
+which case split it, or arguing, in which case cut it to the fact.
+
+Rationale, alternatives weighed, and the story of how the code got here belong
+in the commit message: timestamped, attached to the exact diff, and free to
+maintain.
+
+A comment often holds both a constraint and the deliberation that found it. Keep
+the constraint, cut the deliberation. "Runs at most once per second" survives;
+"this is the right trade for now" does not.
+
+### Keep
+
+- Why over how: upstream quirks, protocol and compatibility constraints,
+  performance tradeoffs still part of the contract.
+- Invariants, preconditions, ordering, lifetime, and concurrency requirements
+  that types and tests cannot express.
+- Code that looks wrong but is not, so a later cleanup does not reintroduce the
+  bug.
+- A high-level sketch of an algorithm whose local operations do not reveal the
+  whole.
+
+### Delete
+
+- Narration of the next lines; code translated into English.
+- Restated names, types, defaults, or control flow.
+- Values duplicated from the code and hand-synced.
+- Justification, hedging, or apology for a choice.
+- Speculation about future requirements.
+- History version control already holds, including commented-out code.
+- Ticket and issue numbers. They say nothing to a reader without tracker access,
+  and they rot when the tracker moves. Unfinished work goes in the tracker, not
+  the source.
+- Transient observations — "currently", "for now", "the latest release" —
+  that go stale with no nearby edit.
+
+### The upkeep gate in practice
+
+It reaches values that track our own code. It does not reach frozen external
+facts.
+
+Bad (Delete):
+
+```python
+# There are 321 tests to complete for servers.
+```
+
+Good (Keep):
+
+```python
+# tmux < 3.2 reports the pane ID only after the command completes,
+# so this query must stay separate.
+```
+
+### Documentation exception
+
+Doctests, minimal usage examples, and param, return, and raises lines on public
+API are exempt from the loss gate — they serve the caller, not the maintainer.
+They are exempt from nothing else. Ceiling: a good man page entry.
+
+NumPy-style `Parameters`, `Returns`, and `Attributes` sections and executable
+doctests fall under this exception — autodoc ships every field whether or not
+you describe it, and a doctest that runs is also a test.
+
 ## AI Slop Prevention
 
 Treat AI slop as **review-hostile noise**, not as proof that text or
@@ -671,8 +755,9 @@ on unrelated code while still resolving.
 
 ### Preservation & Context
 
-**When unsure, leave the text in place and ask.** Subjective cleanup
-must never be a reason to remove load-bearing rationale.
+Subjective cleanup must never remove load-bearing rationale. Adjudicate
+comments with the comment policy above; borderline cases are deleted, not
+kept.
 
 - **Preserve the "Why":** You MUST NOT delete comments that document
   invariants, protocol constraints, platform quirks, security
