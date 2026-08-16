@@ -81,6 +81,31 @@ binary, a dropped connection — raises:
 is no base class to inherit — any object with `run()` and `run_batch()` is an
 engine.
 
+`run()` and the optional `command_line()` must be synchronous: libtmux
+dispatches every command from ordinary, non-`async` code and cannot await a
+coroutine. Because {class}`~libtmux.engines.base.TmuxEngine` is checked by name
+only, an `async def run()` satisfies it and would otherwise fail much later,
+with a bare `AttributeError` naming neither the engine nor the mismatch:
+
+```python
+>>> from libtmux.engines import CommandResult
+>>> from libtmux.server import Server
+
+>>> class AsyncEngine:
+...     async def run(self, request):
+...         return CommandResult(cmd=("tmux", *request.args))
+...     def run_batch(self, requests):
+...         return [self.run(request) for request in requests]
+
+>>> Server(engine=AsyncEngine()).cmd("display-message", "-p", "#S")
+Traceback (most recent call last):
+    ...
+libtmux.exc.AsyncEngineMismatch: AsyncEngine.run() returned an awaitable: ...
+```
+
+Await such an engine from your own async code instead, or write a synchronous
+`run()`.
+
 Here is a complete one that runs nothing, records everything, and answers from a
 canned script. Hand it to a server and no tmux process is involved:
 
