@@ -452,24 +452,36 @@ class Server(
     def raise_if_dead(self) -> None:
         """Raise if server not connected.
 
+        The engine captures tmux's diagnostic rather than letting it reach the
+        terminal, so it rides on the exception as
+        :attr:`~subprocess.CalledProcessError.stderr` -- otherwise an exit code
+        is all the caller ever sees of why the server is unreachable.
+
         Raises
         ------
         :exc:`exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
-            ``list-sessions``).
+            ``list-sessions``), carrying tmux's own message.
 
         >>> tmux = Server(socket_name="no_exist")
         >>> try:
         ...     tmux.raise_if_dead()
         ... except Exception as e:
         ...     print(type(e))
+        ...     print("no_exist" in e.stderr)
         <class 'subprocess.CalledProcessError'>
+        True
         """
         result = self.engine.run(CommandRequest.from_args("list-sessions"))
         if result.returncode != 0:
-            raise subprocess.CalledProcessError(result.returncode, list(result.cmd))
+            raise subprocess.CalledProcessError(
+                result.returncode,
+                list(result.cmd),
+                output="\n".join(result.stdout),
+                stderr="\n".join(result.stderr),
+            )
 
     #
     # Command
