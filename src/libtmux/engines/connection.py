@@ -237,14 +237,12 @@ class ServerConnection:
 
     @property
     def is_unconfigured(self) -> bool:
-        """Whether this connection names no server and no binary of its own.
+        """Whether this connection carries nothing at all -- no flags, no binary.
 
-        An unconfigured connection targets whichever tmux server ``tmux`` would
-        reach with no flags. :attr:`Server.engine <libtmux.Server.engine>` reads
-        this to decide whether an injected engine should adopt the server's
-        connection: an engine that already names a server is left alone, and one
-        that names none is bound, so it cannot silently dispatch to the ambient
-        server.
+        :attr:`Server.engine <libtmux.Server.engine>` reads this on the
+        *server's* side of adoption: a server that names neither a socket nor a
+        binary has nothing to bind onto an injected engine, so it leaves the
+        engine alone.
 
         Returns
         -------
@@ -260,6 +258,39 @@ class ServerConnection:
         False
         """
         return not self.args and self.tmux_bin is None
+
+    @property
+    def names_server(self) -> bool:
+        """Whether this connection carries connection flags of its own.
+
+        :attr:`Server.engine <libtmux.Server.engine>` reads this on the
+        *engine's* side of adoption: an engine that already carries flags knows
+        which tmux server it talks to and is left alone, while one that carries
+        none is bound to the server's flags so it cannot silently dispatch to
+        the ambient server.
+
+        :attr:`tmux_bin` deliberately does not count. It selects which tmux
+        *program* to exec, which says nothing about which server that program
+        connects to -- a custom binary with no ``-L``/``-S`` reaches the same
+        ambient server as the stock one.
+
+        Returns
+        -------
+        bool
+
+        Examples
+        --------
+        >>> ServerConnection.of(args=("-Lwork",)).names_server
+        True
+        >>> ServerConnection().names_server
+        False
+
+        A binary is a program, not a server:
+
+        >>> ServerConnection.of(tmux_bin="/usr/bin/tmux").names_server
+        False
+        """
+        return bool(self.args)
 
     def resolve_bin(self) -> str:
         """Return the tmux binary path (memoized).
