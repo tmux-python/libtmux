@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import gc
+import logging
 import subprocess
 import typing as t
 
@@ -358,3 +361,244 @@ def test_run_batch_preserves_order(session: Session) -> None:
         ],
     )
     assert [result.stdout[0] for result in results] == ["a", "b"]
+
+
+class AsyncEngine:
+    """Structurally a :class:`TmuxEngine`, but both methods are ``async def``.
+
+    ``TmuxEngine`` checks attribute names only, so this still satisfies
+    ``isinstance(..., TmuxEngine)``.
+    """
+
+    async def run(self, request: CommandRequest) -> CommandResult:
+        """Never actually awaited by libtmux; dispatch must reject this."""
+        return CommandResult(cmd=("tmux", *request.args))
+
+    async def run_batch(
+        self,
+        requests: Sequence[CommandRequest],
+    ) -> list[CommandResult]:
+        """Unused by any in-tree dispatch path."""
+        return [CommandResult(cmd=("tmux", *r.args)) for r in requests]
+
+
+def _async_engine() -> TmuxEngine:
+    """Hand back an :class:`AsyncEngine`, typed as a plain ``TmuxEngine``.
+
+    ``AsyncEngine`` does not satisfy ``TmuxEngine`` *statically* -- its
+    methods return ``Coroutine``, not the protocol's declared return types --
+    which is exactly what makes the bug this module tests real: a type
+    checker would reject it, but ``isinstance()`` at runtime does not. The
+    cast documents that gap instead of hiding it behind a broader type on
+    ``AsyncEngine`` itself.
+    """
+    return t.cast("TmuxEngine", AsyncEngine())
+
+
+def test_async_engine_run_raises_named_error() -> None:
+    """``run()`` returning an awaitable raises ``AsyncEngineMismatch``.
+
+    Not ``AttributeError`` from treating a coroutine as a
+    :class:`CommandResult`.
+    """
+    server = Server(socket_name="async_engine_run", engine=_async_engine())
+
+    with pytest.raises(exc.AsyncEngineMismatch):
+        server.cmd("list-sessions")
+
+
+def test_async_engine_raise_if_dead_raises_the_same_error() -> None:
+    """``raise_if_dead()`` shares :meth:`Server.cmd`'s single dispatch site.
+
+    It no longer calls ``self.engine.run()`` on its own, so it inherits the
+    guard instead of needing a second copy of it.
+    """
+    server = Server(socket_name="async_engine_dead", engine=_async_engine())
+
+    with pytest.raises(exc.AsyncEngineMismatch):
+        server.raise_if_dead()
+
+
+def test_async_engine_fetch_objs_raises_the_same_error() -> None:
+    """:func:`~libtmux.neo.fetch_objs` dispatches through the same guard."""
+    server = Server(socket_name="async_engine_fetch_objs", engine=_async_engine())
+
+    with pytest.raises(exc.AsyncEngineMismatch):
+        fetch_objs(server=server, list_cmd="list-sessions")
+
+
+class AsyncCommandLineEngine:
+    """A synchronous ``run()`` paired with an asynchronous ``command_line()``.
+
+    Isolates the DEBUG-log-only dispatch site: ``command_line()`` is only
+    ever called to render the log line in :class:`tmux_cmd`, never to build
+    the actual result.
+    """
+
+    def run(self, request: CommandRequest) -> CommandResult:
+        """Behave like an ordinary synchronous engine."""
+        return CommandResult(cmd=("tmux", *request.args))
+
+    def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
+        """Run each request in order."""
+        return [self.run(r) for r in requests]
+
+    async def command_line(self, request: CommandRequest) -> tuple[str, ...]:
+        """Return the argv, the one async method on an otherwise sync engine."""
+        return ("tmux", *request.args)
+
+
+def test_async_command_line_raises_named_error_under_debug_logging(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``command_line()`` only runs when DEBUG logging is enabled.
+
+    Previously this bypassed the guard entirely and raised
+    ``TypeError: 'coroutine' object is not iterable`` from ``shlex.join``.
+    """
+    server = Server(
+        socket_name="async_command_line",
+        engine=AsyncCommandLineEngine(),
+    )
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="libtmux.common"),
+        pytest.raises(exc.AsyncEngineMismatch),
+    ):
+        server.cmd("list-sessions")
+
+
+@pytest.mark.parametrize("attr", ["sessions", "clients", "attached_sessions"])
+def test_async_engine_list_accessors_do_not_swallow_the_error(attr: str) -> None:
+    """``AsyncEngineMismatch`` is not a tmux failure, so it is not lenient here.
+
+    :attr:`Server.sessions`, :attr:`Server.clients`, and
+    :attr:`Server.attached_sessions` return an empty
+    :class:`~libtmux._internal.query_list.QueryList` for an actual tmux
+    failure (no daemon, bad socket, permission error). An engine that cannot
+    be dispatched synchronously at all is a different kind of problem --
+    surfacing it as "no sessions" would hide a broken engine behind a
+    misleading empty result.
+    """
+    server = Server(socket_name=f"async_engine_{attr}", engine=_async_engine())
+
+    with pytest.raises(exc.AsyncEngineMismatch):
+        getattr(server, attr)
+
+
+class HostileGetattrAwaitable:
+    """An awaitable that detonates on any ``close``/``cancel`` lookup.
+
+    Cleanup that reached for those attributes would surface this object's
+    ``RuntimeError`` in place of the diagnostic, which is the failure mode
+    the guard's shape exists to avoid.
+    """
+
+    def __await__(self) -> t.Generator[None, None, None]:
+        """Satisfy :func:`inspect.isawaitable` without ever being awaited."""
+        yield
+
+    def __getattr__(self, name: str) -> t.Any:
+        """Raise for the cleanup lookups, ``AttributeError`` for the rest."""
+        if name in {"close", "cancel"}:
+            msg = "cleanup lookup blew up"
+            raise RuntimeError(msg)
+        raise AttributeError(name)
+
+
+class HostileCloseCoroutine:
+    """An awaitable whose ``close()`` raises a :class:`BaseException`.
+
+    :exc:`asyncio.CancelledError` derives from :class:`BaseException`, not
+    :class:`Exception`, so an ``except Exception`` around cleanup would let
+    it escape and mask the diagnostic.
+    """
+
+    def __await__(self) -> t.Generator[None, None, None]:
+        """Satisfy :func:`inspect.isawaitable` without ever being awaited."""
+        yield
+
+    def close(self) -> None:
+        """Raise the exception an ``except Exception`` would not catch."""
+        raise asyncio.CancelledError
+
+
+def _engine_returning(value: t.Any) -> TmuxEngine:
+    """Build a sync engine whose ``run()`` hands back *value*."""
+
+    class Returns:
+        def run(self, request: CommandRequest) -> t.Any:
+            return value
+
+        def run_batch(self, requests: Sequence[CommandRequest]) -> t.Any:
+            return [value for _ in requests]
+
+    return t.cast("TmuxEngine", Returns())
+
+
+@pytest.mark.parametrize(
+    "awaitable",
+    [HostileGetattrAwaitable(), HostileCloseCoroutine()],
+    ids=["hostile-getattr", "cancelled-error-on-close"],
+)
+def test_hostile_awaitable_cannot_mask_the_mismatch(awaitable: t.Any) -> None:
+    """A hostile awaitable never replaces the diagnostic with its own error.
+
+    Only genuine coroutines are closed, and that close is guarded against
+    :class:`BaseException`, so neither an exploding attribute lookup nor a
+    :exc:`asyncio.CancelledError` reaches the caller.
+    """
+    server = Server(
+        socket_name="hostile_awaitable", engine=_engine_returning(awaitable)
+    )
+
+    with pytest.raises(exc.AsyncEngineMismatch):
+        server.cmd("list-sessions")
+
+
+async def _never_awaited() -> None:
+    """Do nothing; this body must never run."""
+
+
+class ReturnsCoroutineEngine:
+    """A plain ``def`` engine that manufactures a coroutine anyway.
+
+    The shape CPython documents as uncatchable by a callable-level check --
+    ``run`` is not declared ``async``, so only its return value gives it away.
+    """
+
+    def run(self, request: CommandRequest) -> t.Any:
+        """Hand back an unstarted coroutine instead of a result."""
+        return _never_awaited()
+
+    def run_batch(self, requests: Sequence[CommandRequest]) -> t.Any:
+        """Hand back one unstarted coroutine per request."""
+        return [_never_awaited() for _ in requests]
+
+
+@pytest.mark.parametrize(
+    ("label", "engine_factory"),
+    [
+        ("declared-async", _async_engine),
+        ("returns-coroutine", lambda: t.cast("TmuxEngine", ReturnsCoroutineEngine())),
+    ],
+)
+def test_no_never_awaited_warning_escapes(
+    label: str,
+    engine_factory: t.Callable[[], TmuxEngine],
+    recwarn: pytest.WarningsRecorder,
+) -> None:
+    """Neither async shape leaves a ``coroutine ... was never awaited`` behind.
+
+    A declared ``async def run`` is rejected before it is ever called, so no
+    coroutine is created. A plain ``def`` that manufactures one is caught from
+    its return value, and that coroutine is closed while still unstarted.
+    """
+    server = Server(socket_name=f"warnfree_{label}", engine=engine_factory())
+
+    with pytest.raises(exc.AsyncEngineMismatch):
+        server.cmd("list-sessions")
+
+    gc.collect()
+
+    assert [w for w in recwarn.list if issubclass(w.category, RuntimeWarning)] == []
