@@ -281,13 +281,15 @@ class Server(
         :class:`~libtmux.engines.subprocess.SubprocessEngine` is built from
         :attr:`connection` and rebuilt whenever that connection changes.
 
-        A caller-supplied ``engine=`` that already names a tmux server is
-        returned untouched. One that names none -- a bare
-        ``SubprocessEngine()`` -- *adopts* this server's :attr:`connection`,
-        because returning it untouched would dispatch to whichever server a
-        flagless ``tmux`` reaches rather than to this one. Engines with no
-        connection at all, such as in-memory fakes, are always returned
-        untouched.
+        A caller-supplied ``engine=`` carrying connection flags of its own
+        already names a tmux server, and is returned untouched. One carrying
+        none -- a bare ``SubprocessEngine()`` -- *adopts* this server's
+        :attr:`connection`, because returning it untouched would dispatch to
+        whichever server a flagless ``tmux`` reaches rather than to this one. A
+        ``tmux_bin`` does not count as naming a server: it selects which tmux
+        program to exec, so an engine carrying only a binary adopts this
+        server's flags and keeps its own binary. Engines with no connection at
+        all, such as in-memory fakes, are always returned untouched.
 
         Returns
         -------
@@ -312,6 +314,14 @@ class Server(
         >>> Server(socket_name="engine_adopt_docs", engine=pinned).engine.server_args
         ('-Lelsewhere',)
 
+        A binary names no server, so an engine carrying only one still binds,
+        and keeps that binary:
+
+        >>> custom = SubprocessEngine.of(tmux_bin="/nonexistent/tmux")
+        >>> bound = Server(socket_name="engine_adopt_docs", engine=custom).engine
+        >>> bound.server_args, bound.tmux_bin
+        (('-Lengine_adopt_docs',), '/nonexistent/tmux')
+
         .. versionadded:: 0.63
         """
         connection = self.connection
@@ -319,11 +329,18 @@ class Server(
         if engine is not None:
             if not isinstance(engine, SupportsConnection):
                 return engine
-            if connection.is_unconfigured or not engine.connection.is_unconfigured:
+            engine_connection = engine.connection
+            if connection.is_unconfigured or engine_connection.names_server:
                 return engine
             adopted = self._adopted_engine
             if adopted is None or adopted[0] is not connection:
-                adopted = (connection, engine.with_connection(connection))
+                target = connection
+                if engine_connection.tmux_bin is not None:
+                    target = ServerConnection.of(
+                        engine_connection.tmux_bin,
+                        connection.args,
+                    )
+                adopted = (connection, engine.with_connection(target))
                 self._adopted_engine = adopted
             return adopted[1]
         default = self._default_engine

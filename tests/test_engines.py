@@ -194,6 +194,61 @@ def test_injected_engine_survives_mutation() -> None:
     assert server.engine is engine
 
 
+def test_engine_carrying_only_a_binary_still_adopts_the_socket() -> None:
+    """A tmux binary names a *program*, not a server, so the socket still binds.
+
+    Left unbound, such an engine runs ``<custom tmux> list-sessions`` with no
+    ``-L``, reaching whichever server a flagless tmux finds rather than this
+    one -- the silent ambient dispatch adoption exists to prevent.
+    """
+    engine = SubprocessEngine.of(tmux_bin="/nonexistent/tmux")
+    server = Server(socket_name="bin_only_adopts", engine=engine)
+
+    adopted = server.engine
+
+    assert isinstance(adopted, SubprocessEngine)
+    assert adopted.command_line(CommandRequest.from_args("list-sessions")) == (
+        "/nonexistent/tmux",
+        "-Lbin_only_adopts",
+        "list-sessions",
+    )
+
+
+def test_adoption_keeps_the_engines_own_binary() -> None:
+    """Adoption takes the server's flags without discarding the engine's binary."""
+    engine = SubprocessEngine.of(tmux_bin="/nonexistent/tmux")
+    server = Server(socket_name="bin_kept", tmux_bin="/other/tmux", engine=engine)
+
+    adopted = server.engine
+
+    assert isinstance(adopted, SubprocessEngine)
+    assert adopted.tmux_bin == "/nonexistent/tmux"
+    assert adopted.server_args == ("-Lbin_kept",)
+
+
+def test_server_binary_reaches_an_engine_that_declares_none() -> None:
+    """An engine with no binary of its own still inherits the server's."""
+    server = Server(
+        socket_name="bin_inherited",
+        tmux_bin="/other/tmux",
+        engine=SubprocessEngine(),
+    )
+
+    adopted = server.engine
+
+    assert isinstance(adopted, SubprocessEngine)
+    assert adopted.tmux_bin == "/other/tmux"
+    assert adopted.server_args == ("-Lbin_inherited",)
+
+
+def test_engine_naming_a_server_is_left_alone() -> None:
+    """Connection flags of the engine's own win over the server's."""
+    engine = SubprocessEngine.of(server_args=("-Lelsewhere",))
+    server = Server(socket_name="not_elsewhere", engine=engine)
+
+    assert server.engine is engine
+
+
 class ArgvRecordingEngine:
     """Render argv against a real connection, record it, run nothing.
 
