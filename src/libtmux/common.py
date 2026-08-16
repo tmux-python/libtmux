@@ -7,7 +7,9 @@ libtmux.common
 
 from __future__ import annotations
 
+import contextlib
 import functools
+import inspect
 import logging
 import re
 import shlex
@@ -23,7 +25,7 @@ if t.TYPE_CHECKING:
     import subprocess
     from collections.abc import Callable
 
-    from .engines.base import TmuxEngine
+    from .engines.base import CommandResult, TmuxEngine
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +285,141 @@ def raise_if_stderr(proc: tmux_cmd, subcommand: str) -> None:
         )
 
 
+def _guard_sync(
+    engine: object,
+    member: Callable[[CommandRequest], t.Any],
+    method: str,
+    request: CommandRequest,
+) -> t.Any:
+    """Call one synchronous engine capability, guarding the result.
+
+    The single call site every engine capability -- ``run()`` and the
+    optional ``command_line()`` -- is invoked through.
+    :class:`~libtmux.engines.base.TmuxEngine` and
+    :class:`~libtmux.engines.base.SupportsCommandLine` are
+    :func:`~typing.runtime_checkable` :class:`typing.Protocol` classes, so
+    ``isinstance()`` accepts an engine on attribute *names* alone -- never
+    signatures, never async-ness -- and an ``async def run`` (or ``async def
+    command_line``) engine passes structurally and reaches here. Routing
+    every dispatch through this one function means the guard below only has
+    to be written once: a call site added later inherits it instead of
+    needing its own copy.
+
+    Parameters
+    ----------
+    engine : object
+        The engine the capability belongs to; named in the error.
+    member : :class:`~collections.abc.Callable`
+        The already-resolved bound method to invoke.
+    method : str
+        Its name, ``"run"`` or ``"command_line"``, for the error message.
+    request : CommandRequest
+        Forwarded as the sole positional argument.
+
+    Returns
+    -------
+    typing.Any
+        Whatever *method* returned. Never an awaitable.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        *method* returned an awaitable instead of the value its protocol
+        promises.
+
+    Notes
+    -----
+    Declared-``async def`` members are rejected *before* the call, so the
+    common shape never creates a coroutine at all and nothing is left to warn
+    about. That check cannot be complete on its own -- CPython says as much in
+    :mod:`unittest.async_case`, whose case 3 is a "regular ``def`` that
+    returns an awaitable object" -- so the value is tested too.
+
+    A coroutine that did get created is closed, which is safe precisely
+    because it has never been started: :c:func:`gen_close` on a frame still in
+    ``FRAME_CREATED`` clears it without running a line of the body, and
+    ``"coroutine ... was never awaited"`` is only warned for a frame still in
+    that state at collection. Closing is best-effort -- guarded against
+    :class:`BaseException`, since :exc:`asyncio.CancelledError` is not an
+    :class:`Exception` -- so a hostile awaitable cannot replace the
+    diagnostic with an error of its own.
+
+    Only genuine coroutines are closed. A :class:`asyncio.Task` or
+    :class:`asyncio.Future` is dropped untouched: one bound to another
+    thread's event loop silently fails to receive
+    :meth:`~asyncio.Task.cancel` (that needs ``loop.call_soon_threadsafe``),
+    and cancelling one shared with another awaiter would destroy that
+    awaiter's result. An eager-started ``Task`` (3.12+) has already run its
+    body synchronously before ``run()`` returned, so nothing here could have
+    prevented that side effect either way.
+    """
+    if inspect.iscoroutinefunction(member):
+        raise exc.AsyncEngineMismatch(engine, method)
+
+    result = member(request)
+    if inspect.isawaitable(result):
+        if inspect.iscoroutine(result):
+            with contextlib.suppress(BaseException):
+                result.close()
+        raise exc.AsyncEngineMismatch(engine, method)
+    return result
+
+
+def _dispatch_run(engine: TmuxEngine, request: CommandRequest) -> CommandResult:
+    """Run one command through *engine*, guarding the result.
+
+    Parameters
+    ----------
+    engine : TmuxEngine
+        The engine to dispatch through.
+    request : CommandRequest
+        The command.
+
+    Returns
+    -------
+    CommandResult
+        Whatever ``run()`` returned. Never an awaitable.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        ``run`` is asynchronous.
+    """
+    return t.cast(
+        "CommandResult",
+        _guard_sync(engine, engine.run, "run", request),
+    )
+
+
+def _dispatch_command_line(
+    engine: SupportsCommandLine,
+    request: CommandRequest,
+) -> tuple[str, ...]:
+    """Render *request*'s argv through *engine*, guarding the result.
+
+    Parameters
+    ----------
+    engine : SupportsCommandLine
+        The engine to ask.
+    request : CommandRequest
+        The command.
+
+    Returns
+    -------
+    tuple[str, ...]
+        The argv. Never an awaitable.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        ``command_line`` is asynchronous.
+    """
+    return t.cast(
+        "tuple[str, ...]",
+        _guard_sync(engine, engine.command_line, "command_line", request),
+    )
+
+
 class tmux_cmd:
     """Run any :term:`tmux(1)` command, returning list-shaped output.
 
@@ -313,6 +450,14 @@ class tmux_cmd:
         Standard error, one line per item, blanks removed.
     returncode : int
         tmux exit code.
+
+    Raises
+    ------
+    :exc:`~libtmux.exc.AsyncEngineMismatch`
+        *engine* is asynchronous -- its ``run()`` (or ``command_line()``,
+        while rendering a DEBUG log line) handed back an awaitable, which
+        this synchronous dispatch cannot await. Both calls route through
+        :func:`_guard_sync`, the one place this is checked.
 
     Examples
     --------
@@ -356,7 +501,7 @@ class tmux_cmd:
                 "tmux command dispatched",
                 extra={
                     "tmux_cmd": shlex.join(
-                        runner.command_line(request)
+                        _dispatch_command_line(runner, request)
                         if isinstance(runner, SupportsCommandLine)
                         else request.args,
                     ),
@@ -364,7 +509,7 @@ class tmux_cmd:
                 },
             )
 
-        result = runner.run(request)
+        result = _dispatch_run(runner, request)
 
         self.cmd = list(result.cmd)
         self.returncode = result.returncode

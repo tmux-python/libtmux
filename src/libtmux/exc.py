@@ -99,6 +99,67 @@ class TmuxCommandNotFound(LibTmuxException):
     """Application binary for tmux not found."""
 
 
+class AsyncEngineMismatch(LibTmuxException):
+    """A synchronous dispatch path received an engine call that returned an awaitable.
+
+    :class:`~libtmux.engines.base.TmuxEngine` and
+    :class:`~libtmux.engines.base.SupportsCommandLine` are
+    :func:`typing.runtime_checkable` :class:`typing.Protocol` classes, which
+    check attribute *names* only -- never signatures or async-ness. An engine
+    declared with ``async def run`` (or ``async def command_line``) still
+    satisfies ``isinstance(engine, TmuxEngine)`` and reaches
+    :class:`~libtmux.common.tmux_cmd`, whose dispatch is synchronous and
+    cannot await it.
+
+    Raised from what the call actually returned, not from inspecting the
+    method beforehand, so it also catches a method that is not itself
+    declared ``async`` but still hands back an awaitable -- an engine that
+    wraps its coroutine in an :class:`asyncio.Task` or :class:`asyncio.Future`
+    before returning it.
+
+    Parameters
+    ----------
+    engine : object
+        The engine instance whose method returned an awaitable.
+    method : str
+        Name of the method that returned it -- ``"run"`` or
+        ``"command_line"``.
+    *args : object
+        Forwarded to :class:`LibTmuxException`.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> class AsyncEngine:
+    ...     async def run(self, request): ...
+    ...     async def run_batch(self, requests): ...
+    >>> print(  # doctest: +NORMALIZE_WHITESPACE
+    ...     exc.AsyncEngineMismatch(AsyncEngine(), "run")
+    ... )
+    AsyncEngine.run() returned an awaitable: libtmux dispatches tmux commands
+    synchronously and cannot await it. Await this engine directly from your
+    own async code, or pass a synchronous engine.
+
+    It is part of the :exc:`LibTmuxException` hierarchy:
+
+    >>> issubclass(exc.AsyncEngineMismatch, exc.LibTmuxException)
+    True
+
+    .. versionadded:: 0.63
+    """
+
+    def __init__(self, engine: object, method: str, *args: object) -> None:
+        self.engine = engine
+        self.method = method
+        msg = (
+            f"{type(engine).__name__}.{method}() returned an awaitable: "
+            "libtmux dispatches tmux commands synchronously and cannot "
+            "await it. Await this engine directly from your own async "
+            "code, or pass a synchronous engine."
+        )
+        super().__init__(msg, *args)
+
+
 class NotInsideTmux(LibTmuxException):
     """Raised when the process is not running inside a tmux pane.
 

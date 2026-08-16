@@ -20,7 +20,7 @@ from libtmux._internal.query_list import QueryList
 from libtmux.client import Client
 from libtmux.common import get_version, has_gte_version, raise_if_stderr, tmux_cmd
 from libtmux.constants import OptionScope
-from libtmux.engines.base import CommandRequest, SupportsConnection
+from libtmux.engines.base import SupportsConnection
 from libtmux.engines.connection import ServerConnection
 from libtmux.engines.subprocess import SubprocessEngine
 from libtmux.hooks import HooksMixin
@@ -457,10 +457,19 @@ class Server(
         :attr:`~subprocess.CalledProcessError.stderr` -- otherwise an exit code
         is all the caller ever sees of why the server is unreachable.
 
+        Dispatches through :meth:`Server.cmd`, the same path every other tmux
+        command on this server takes, rather than calling :attr:`Server.engine`
+        directly -- one dispatch site instead of two.
+
         Raises
         ------
+        :exc:`~libtmux.exc.UnknownColorOption`
+            :attr:`colors` is set to something other than ``256`` or ``88``.
         :exc:`exc.TmuxCommandNotFound`
             When the tmux binary cannot be found or executed.
+        :exc:`~libtmux.exc.AsyncEngineMismatch`
+            An injected engine's ``run()`` returned an awaitable; this path
+            cannot await it.
         :class:`subprocess.CalledProcessError`
             When the tmux server is not running (non-zero exit from
             ``list-sessions``), carrying tmux's own message.
@@ -474,11 +483,11 @@ class Server(
         <class 'subprocess.CalledProcessError'>
         True
         """
-        result = self.engine.run(CommandRequest.from_args("list-sessions"))
+        result = self.cmd("list-sessions")
         if result.returncode != 0:
             raise subprocess.CalledProcessError(
                 result.returncode,
-                list(result.cmd),
+                result.cmd,
                 output="\n".join(result.stdout),
                 stderr="\n".join(result.stderr),
             )
@@ -532,6 +541,13 @@ class Server(
         Returns
         -------
         :class:`common.tmux_cmd`
+
+        Raises
+        ------
+        :exc:`~libtmux.exc.AsyncEngineMismatch`
+            The engine is asynchronous -- its ``run()`` (or ``command_line()``,
+            while rendering a DEBUG log line) returned an awaitable, which this
+            synchronous dispatch cannot await.
 
         Notes
         -----
@@ -2551,12 +2567,18 @@ class Server(
         missing socket, a permission error, or a subprocess failure. To
         distinguish "no sessions" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
+
+        :exc:`~libtmux.exc.AsyncEngineMismatch` is not a tmux failure -- it
+        means the injected engine cannot be dispatched synchronously at all --
+        so it is not part of that leniency and always propagates.
         """
         try:
             sessions: list[Session] = [
                 Session(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-sessions")
             ]
+        except exc.AsyncEngineMismatch:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(sessions)
@@ -2613,6 +2635,10 @@ class Server(
         distinguish "no clients attached" from "tmux unreachable", call
         :meth:`Server.is_alive` or :meth:`Server.raise_if_dead`.
 
+        :exc:`~libtmux.exc.AsyncEngineMismatch` is not a tmux failure -- it
+        means the injected engine cannot be dispatched synchronously at all --
+        so it is not part of that leniency and always propagates.
+
         Returns
         -------
         :class:`~libtmux._internal.query_list.QueryList` of :class:`Client`
@@ -2629,6 +2655,8 @@ class Server(
                 Client(server=self, **obj)
                 for obj in fetch_objs(server=self, list_cmd="list-clients")
             ]
+        except exc.AsyncEngineMismatch:
+            raise
         except exc.LibTmuxException:
             return QueryList([])
         return QueryList(clients)
