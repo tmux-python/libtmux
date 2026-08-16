@@ -310,6 +310,22 @@ def test_unknown_color_raises_on_every_path() -> None:
         fetch_objs(server=server, list_cmd="list-sessions")
 
 
+def test_raise_if_dead_carries_tmuxs_message() -> None:
+    """The dead-server diagnostic rides on the exception instead of vanishing.
+
+    The engine captures tmux's stderr rather than letting it reach the
+    terminal, so dropping it would leave the caller with an exit code and
+    nothing to explain it.
+    """
+    server = Server(socket_name="raise_if_dead_message")
+
+    with pytest.raises(subprocess.CalledProcessError) as excinfo:
+        server.raise_if_dead()
+
+    assert excinfo.value.stderr is not None
+    assert "raise_if_dead_message" in excinfo.value.stderr
+
+
 def test_command_request_rejects_nul() -> None:
     """NUL cannot survive tmux's C-string argv."""
     with pytest.raises(ValueError, match="NUL"):
