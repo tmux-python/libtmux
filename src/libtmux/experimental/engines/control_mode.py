@@ -78,12 +78,15 @@ class ControlModeBlock:
         Whether tmux closed the block with ``%error``.
     body : tuple[bytes, ...]
         Raw output lines between the opening and closing guards.
+    timestamp : int
+        Timestamp echoed by both guards for exact block correlation.
     """
 
     number: int
     flags: int
     is_error: bool
     body: tuple[bytes, ...]
+    timestamp: int = 0
 
 
 @dataclasses.dataclass(slots=True)
@@ -98,11 +101,14 @@ class _PendingBlock:
         Flags from the opening control-mode guard.
     body : list[bytes]
         Raw output lines collected before the closing guard.
+    timestamp : int
+        Timestamp from the opening guard.
     """
 
     number: int
     flags: int
     body: list[bytes]
+    timestamp: int
 
 
 class ControlModeParser:
@@ -159,30 +165,31 @@ class ControlModeParser:
 
     def _handle_line(self, line: bytes) -> None:
         if self._pending is not None:
-            if _matches_pending_close(line, self._pending.number):
+            if _matches_pending_close(line, self._pending):
                 self._close_block(line)
                 return
             self._pending.body.append(line)
             return
         if line.startswith(_BEGIN_PREFIX):
             self._open_block(line)
+        elif line.startswith((_END_PREFIX, _ERROR_PREFIX)):
+            msg = "control-mode received a closing guard without %begin"
+            raise ControlModeError(msg)
         elif line.startswith(b"%"):
             self._notifications.append(line)
 
     def _open_block(self, line: bytes) -> None:
-        number, flags = _parse_guard(line, _BEGIN_PREFIX)
-        if number is None:
-            # A %begin whose guard will not parse is dropped: its body lines then
-            # fall through as notifications and a LATER command's block fills the
-            # count, silently mis-attributing output. Never observed in practice
-            # (tmux always writes "%begin <time> <number> <flags>"), so treat it
-            # as a protocol violation worth an error, not a debug line.
-            logger.error(
-                "control-mode dropped an unparseable %%begin guard",
-                extra={"tmux_stdout": [line.decode(errors="replace")]},
-            )
-            return
-        self._pending = _PendingBlock(number=number, flags=flags or 0, body=[])
+        guard = _parse_guard(line, _BEGIN_PREFIX)
+        if guard is None:
+            msg = f"control-mode received an invalid %begin guard: {line!r}"
+            raise ControlModeError(msg)
+        timestamp, number, flags = guard
+        self._pending = _PendingBlock(
+            number=number,
+            flags=flags,
+            body=[],
+            timestamp=timestamp,
+        )
 
     def _close_block(self, line: bytes) -> None:
         pending = self._pending
@@ -195,6 +202,7 @@ class ControlModeParser:
                 flags=pending.flags,
                 is_error=line.startswith(_ERROR_PREFIX),
                 body=tuple(pending.body),
+                timestamp=pending.timestamp,
             ),
         )
 
@@ -210,8 +218,9 @@ class BlockSequenceMonitor:
     newer command -- output mis-attribution, which downstream looks like a
     ``complete`` result with no id rather than an error.
 
-    This is a cheap invariant (one integer compare per block) that turns an
-    otherwise silent desync into a log record.
+    This is a cheap invariant (one integer compare per block) that logs an
+    otherwise silent desync. Both engine callers then raise a protocol error so
+    the block cannot be attributed to a newer request.
 
     Examples
     --------
@@ -327,7 +336,7 @@ class ControlModeEngine:
         """Report the connected server's tmux version (``tmux -V``), memoized.
 
         Implements
-        :class:`~libtmux.experimental.engines.base.SupportsTmuxVersion` so
+        :class:`~libtmux.engines.base.SupportsTmuxVersion` so
         version-gated operations render correctly over control mode; in-memory
         engines omit it and resolution assumes latest.
         """
@@ -340,7 +349,7 @@ class ControlModeEngine:
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
         """Pipeline a batch of commands; one result per request.
 
-        A ``;``-folded request runs as several tmux commands, so its blocks are
+        A semicolon command group runs as several tmux commands, so its blocks are
         grouped (by ``;``-count) and merged into one result.
         """
         if not requests:
@@ -372,12 +381,16 @@ class ControlModeEngine:
                 # Discard any unsolicited blocks (hook-triggered commands) left
                 # buffered from earlier activity, so they cannot be
                 # mis-attributed to this batch's commands.
-                self._drain_unsolicited()
-                payload = b"".join(
-                    (render_control_line(argv) + "\n").encode() for argv in rendered
-                )
-                self._write(payload)
-                blocks = self._read_blocks(sum(counts))
+                try:
+                    self._drain_unsolicited()
+                    payload = b"".join(
+                        (render_control_line(argv) + "\n").encode() for argv in rendered
+                    )
+                    self._write(payload)
+                    request_blocks = self._read_request_blocks(counts)
+                except ControlModeError:
+                    self._close_failed_start()
+                    raise
         if bootstrap:
             try:
                 return self._bootstrap.run_batch(requests)
@@ -385,12 +398,10 @@ class ControlModeEngine:
                 with self._lifecycle:
                     self._bootstrap_inflight -= 1
                     self._lifecycle.notify_all()
-        results: list[CommandResult] = []
-        index = 0
-        for argv, count in zip(rendered, counts, strict=True):
-            results.append(_merge_blocks(blocks[index : index + count], argv))
-            index += count
-        return results
+        return [
+            _merge_blocks(blocks, argv)
+            for argv, blocks in zip(rendered, request_blocks, strict=True)
+        ]
 
     def close(self) -> None:
         """Tear down the control-mode subprocess (lock-guarded)."""
@@ -571,21 +582,8 @@ class ControlModeEngine:
         self._parser.notifications()
         solicited = [block for block in discarded if block.flags == 1]
         if solicited:
-            # A solicited (flags 1) block here is a reply to a command WE sent
-            # that arrived after its batch was accounted for -- discarding it
-            # loses real tmux output. Unsolicited hook blocks are expected noise.
-            logger.warning(
-                "control-mode drained %s solicited block(s) before a batch",
-                len(solicited),
-                extra={
-                    "tmux_stdout": [
-                        f"#{block.number}: "
-                        + b" | ".join(block.body).decode(errors="replace")
-                        for block in solicited
-                    ],
-                    "tmux_stdout_len": len(solicited),
-                },
-            )
+            msg = "control-mode received a solicited result with no pending request"
+            raise ControlModeError(msg)
 
     def _pump(self, timeout: float) -> None:
         """Wait up to *timeout* for output and feed it to the parser."""
@@ -610,20 +608,32 @@ class ControlModeEngine:
             msg = f"tmux control-mode write failed: {error}"
             raise ControlModeError(msg) from error
 
-    def _read_blocks(self, count: int) -> list[ControlModeBlock]:
+    def _read_request_blocks(
+        self,
+        counts: Sequence[int],
+    ) -> list[list[ControlModeBlock]]:
+        """Read one block group per request, ending a group on ``%error``.
+
+        Tmux removes the unexecuted remainder of a semicolon command group after
+        an error. Independent input lines remain queued and continue. Treating
+        every group's declared separator count as unconditional would wait for
+        blocks tmux will never emit and shift the next line's reply into the
+        failed group.
+        """
         proc = self._proc
         selector = self._selector
         if proc is None or selector is None:
             msg = "control-mode subprocess is not connected"
             raise ControlModeError(msg)
-        blocks: list[ControlModeBlock] = []
+        grouped: list[list[ControlModeBlock]] = [[] for _ in counts]
+        request_index = 0
         deadline = time.monotonic() + self.timeout
-        while len(blocks) < count:
+        while request_index < len(counts):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 msg = (
                     f"tmux control-mode timed out after {self.timeout}s "
-                    f"waiting for {count} result blocks"
+                    f"waiting for request {request_index + 1} of {len(counts)}"
                 )
                 raise ControlModeError(msg)
             ready = selector.select(min(remaining, 0.1))
@@ -642,27 +652,18 @@ class ControlModeEngine:
                 # only solicited command blocks (flags 1) belong to this batch.
                 if block.flags != 1:
                     continue
-                if len(blocks) < count:
-                    self._sequence.check(block)
-                    blocks.append(block)
-                else:
-                    # More solicited blocks than commands sent: the surplus is
-                    # dropped here, so the NEXT batch reads replies belonging to
-                    # this one. Loud, because it is the desync's first moment.
-                    logger.error(
-                        "control-mode discarded a surplus solicited block "
-                        "(#%s) beyond the %s expected for this batch",
-                        block.number,
-                        count,
-                        extra={
-                            "tmux_stdout": [
-                                line.decode(errors="replace") for line in block.body
-                            ],
-                            "tmux_stdout_len": len(block.body),
-                        },
-                    )
+                if request_index >= len(counts):
+                    msg = "control-mode received a surplus solicited result block"
+                    raise ControlModeError(msg)
+                if not self._sequence.check(block):
+                    msg = "control-mode command block sequence moved backwards"
+                    raise ControlModeError(msg)
+                current = grouped[request_index]
+                current.append(block)
+                if block.is_error or len(current) == counts[request_index]:
+                    request_index += 1
             self._parser.notifications()  # sync engine ignores notifications
-        return blocks
+        return grouped
 
     def _read_stdout(self) -> None:
         proc = self._proc
@@ -727,23 +728,29 @@ def _wait_for_exit(proc: subprocess.Popen[bytes], timeout: float) -> bool:
     return True
 
 
-def _parse_guard(line: bytes, prefix: bytes) -> tuple[int | None, int | None]:
-    """Parse a ``%begin``/``%end``/``%error`` guard's number and flags."""
+def _parse_guard(line: bytes, prefix: bytes) -> tuple[int, int, int] | None:
+    """Parse a guard's timestamp, command number, and flags."""
     parts = line[len(prefix) :].split()
-    if len(parts) < _GUARD_MIN_PARTS:
-        return (None, None)
+    if len(parts) != _GUARD_MIN_PARTS:
+        return None
     try:
-        return (int(parts[1]), int(parts[2]))
+        return (int(parts[0]), int(parts[1]), int(parts[2]))
     except ValueError:
-        return (None, None)
+        return None
 
 
-def _matches_pending_close(line: bytes, pending_number: int) -> bool:
-    """Whether *line* closes the pending block numbered *pending_number*."""
+def _matches_pending_close(line: bytes, pending: _PendingBlock) -> bool:
+    """Return whether *line* is the exact closing guard for *pending*.
+
+    Command output is unescaped in control mode and can itself look like a
+    protocol guard.  A close-like line with any other tuple therefore belongs
+    to the command body.
+    """
     for prefix in (_END_PREFIX, _ERROR_PREFIX):
         if line.startswith(prefix):
-            number, _flags = _parse_guard(line, prefix)
-            return number == pending_number
+            guard = _parse_guard(line, prefix)
+            expected = (pending.timestamp, pending.number, pending.flags)
+            return guard == expected
     return False
 
 
@@ -756,11 +763,11 @@ def _merge_blocks(
     blocks: Sequence[ControlModeBlock],
     argv: tuple[str, ...],
 ) -> CommandResult:
-    """Merge one request's blocks (one per ``;``-folded sub-command) into a result.
+    """Merge one request's blocks (one per command-group member) into a result.
 
-    A ``;``-folded line runs as several tmux commands, each emitting its own
+    A semicolon command group runs as several tmux commands, each emitting its own
     block; stdout/stderr are concatenated and the result fails if any sub-command
-    errored, matching the subprocess engine's view of one ``;`` chain process.
+    errored, matching the subprocess engine's view of one grouped request.
     """
     cmd = ("tmux", "-C", *argv)
     stdout: list[str] = []

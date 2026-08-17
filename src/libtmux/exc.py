@@ -10,6 +10,7 @@ from __future__ import annotations
 import typing as t
 
 if t.TYPE_CHECKING:
+    from libtmux.engines.connection import ServerConnection
     from libtmux.neo import ListExtraArgs
 
 
@@ -158,6 +159,58 @@ class AsyncEngineMismatch(LibTmuxException):
             "code, or pass a synchronous engine."
         )
         super().__init__(msg, *args)
+
+
+class EngineConfigurationMismatch(ValueError):
+    """An inspectable engine contradicts explicit Server configuration.
+
+    Raised when dispatch cannot honor both the injected engine's declared
+    connection and the values explicitly set on :class:`libtmux.Server`. It is
+    also raised when satisfying missing Server constraints would require
+    cloning a pinned transport, or when a claimed safe rebind reports the wrong
+    connection.
+
+    Parameters
+    ----------
+    engine : object
+        Injected engine whose connection cannot satisfy the Server.
+    reason : str
+        Concrete conflicting or unsafe configuration detail.
+    server_connection : ServerConnection, optional
+        Connection constraints derived from the Server at dispatch time.
+    engine_connection : object, optional
+        Connection reported by the injected engine.
+    *args : object
+        Forwarded to :class:`ValueError`.
+
+    Examples
+    --------
+    >>> from libtmux import exc
+    >>> print(exc.EngineConfigurationMismatch(object(), "socket conflict"))
+    object configuration does not satisfy Server: socket conflict
+
+    It is a configuration error, not a tmux command failure:
+
+    >>> issubclass(exc.EngineConfigurationMismatch, exc.LibTmuxException)
+    False
+    """
+
+    def __init__(
+        self,
+        engine: object,
+        reason: str,
+        *args: object,
+        server_connection: ServerConnection | None = None,
+        engine_connection: object | None = None,
+    ) -> None:
+        self.engine = engine
+        self.reason = reason
+        self.server_connection = server_connection
+        self.engine_connection = engine_connection
+        super().__init__(
+            f"{type(engine).__name__} configuration does not satisfy Server: {reason}",
+            *args,
+        )
 
 
 class NotInsideTmux(LibTmuxException):
@@ -396,7 +449,7 @@ class UnknownColorOption(UnknownOption):
     """Unknown color option."""
 
     def __init__(self, *args: object) -> None:
-        super().__init__("Server.colors must equal 88 or 256")
+        super().__init__("Server.colors must equal 256")
 
 
 class InvalidOption(OptionError):

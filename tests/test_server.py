@@ -80,15 +80,13 @@ def test_256_colors(server: Server) -> None:
     assert "-8" not in proc.cmd
 
 
-def test_88_colors(server: Server) -> None:
-    """Assert Server respects ``colors=88``."""
+def test_88_colors_is_rejected() -> None:
+    """The legacy mode fails before tmux receives its removed ``-8`` flag."""
     myserver = Server(colors=88)
     assert myserver.colors == 88
 
-    proc = myserver.cmd("list-sessions")
-
-    assert "-8" in proc.cmd
-    assert "-2" not in proc.cmd
+    with pytest.raises(exc.UnknownColorOption, match="must equal 256"):
+        _ = myserver.connection
 
 
 def test_show_environment(server: Server) -> None:

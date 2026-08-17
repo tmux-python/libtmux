@@ -1,7 +1,7 @@
 """The connection an engine talks to: which tmux binary, which tmux server.
 
 Every engine needs the same two things before it can dispatch anything: a tmux
-*binary* to exec, and the *connection flags* (``-L``/``-S``/``-f``/``-2``/``-8``)
+*binary* to exec, and the *connection flags* (``-L``/``-S``/``-f``/``-2``)
 that point at one particular tmux server. :class:`ServerConnection` is that pair
 as one frozen value, and it is the only place in libtmux where either is
 computed -- :meth:`libtmux.Server.cmd`, :meth:`libtmux.Server.raise_if_dead` and
@@ -24,6 +24,238 @@ from libtmux import exc
 if t.TYPE_CHECKING:
     import pathlib
     from collections.abc import Sequence
+
+
+_GLOBAL_OPTIONS_WITH_VALUE = frozenset({"c", "f", "L", "S", "T"})
+_GLOBAL_OPTIONS_WITHOUT_VALUE = frozenset(
+    {"2", "C", "D", "d", "h", "l", "N", "q", "u", "U", "v", "V"},
+)
+
+
+@dataclass(frozen=True)
+class _ConnectionSettings:
+    """Effective tmux globals relevant to Server connection constraints.
+
+    Attributes
+    ----------
+    socket_name : str or None
+        Final ``-L`` socket name, before ``-S`` precedence is applied.
+    socket_path : str or None
+        Final ``-S`` socket path. Any value overrides ``socket_name``.
+    config_files : tuple[str, ...]
+        Every cumulative ``-f`` value in command-line order.
+    colors : int or None
+        Requested client color mode, if declared.
+    """
+
+    socket_name: str | None = None
+    socket_path: str | None = None
+    config_files: tuple[str, ...] = ()
+    colors: int | None = None
+
+    @property
+    def socket(self) -> tuple[str, str] | None:
+        """Return tmux's effective socket selector.
+
+        ``-S`` wins regardless of where ``-L`` appears, matching tmux's global
+        option semantics.
+
+        Examples
+        --------
+        >>> _ConnectionSettings(socket_name="ignored", socket_path="/tmp/s").socket
+        ('path', '/tmp/s')
+        >>> _ConnectionSettings(socket_name="work").socket
+        ('name', 'work')
+        """
+        if self.socket_path is not None:
+            return ("path", self.socket_path)
+        if self.socket_name is not None:
+            return ("name", self.socket_name)
+        return None
+
+
+@dataclass(frozen=True)
+class _ConnectionResolution:
+    """A constraint overlay plus the fields that could not be reconciled.
+
+    Attributes
+    ----------
+    connection : ServerConnection
+        Rebound target after adding non-conflicting missing requirements.
+    conflicts : tuple[str, ...]
+        Explicit settings whose engine and Server values disagree.
+    missing : tuple[str, ...]
+        Server settings the engine must add through safe rebinding.
+    """
+
+    connection: ServerConnection
+    conflicts: tuple[str, ...] = ()
+    missing: tuple[str, ...] = ()
+
+
+def _connection_settings(args: Sequence[str]) -> _ConnectionSettings:
+    """Parse effective connection globals from tmux's short-option argv.
+
+    Attached and separate values normalize to the same settings, repeated
+    values use the last occurrence, and ``-S`` makes every ``-L`` ineffective.
+
+    Parameters
+    ----------
+    args : Sequence[str]
+        Tmux client-global arguments.
+
+    Returns
+    -------
+    _ConnectionSettings
+        Effective settings used for constraint comparison.
+
+    Examples
+    --------
+    >>> _connection_settings(("-2q", "-f", "/tmp/c", "-Lwork"))
+    _ConnectionSettings(socket_name='work', socket_path=None,
+    config_files=('/tmp/c',), colors=256)
+    >>> _connection_settings(("-S/tmp/s", "-Lignored")).socket
+    ('path', '/tmp/s')
+    """
+    socket_name: str | None = None
+    socket_path: str | None = None
+    config_files: list[str] = []
+    colors: int | None = None
+    index = 0
+
+    while index < len(args):
+        token = args[index]
+        if token == "--":
+            break
+        if not token.startswith("-") or token == "-":
+            break
+
+        cluster = token[1:]
+        option_index = 0
+        while option_index < len(cluster):
+            option = cluster[option_index]
+            # tmux removed ``-8`` before libtmux's minimum supported version.
+            # Recognize it only so an injected engine cannot hide a conflicting
+            # legacy color constraint; ServerConnection never emits it.
+            if option == "8":
+                colors = 88
+                option_index += 1
+                continue
+            if option in _GLOBAL_OPTIONS_WITH_VALUE:
+                attached = cluster[option_index + 1 :]
+                value: str | None
+                if attached:
+                    value = attached
+                elif index + 1 < len(args):
+                    index += 1
+                    value = args[index]
+                else:
+                    value = None
+
+                if value is not None:
+                    if option == "f":
+                        config_files.append(value)
+                    elif option == "L":
+                        socket_name = value
+                    elif option == "S":
+                        socket_path = value
+                break
+
+            if option not in _GLOBAL_OPTIONS_WITHOUT_VALUE:
+                break
+            if option == "2":
+                colors = 256
+            elif option == "8":
+                colors = 88
+            option_index += 1
+        index += 1
+
+    return _ConnectionSettings(
+        socket_name=socket_name,
+        socket_path=socket_path,
+        config_files=tuple(config_files),
+        colors=colors,
+    )
+
+
+def _merge_connection_constraints(
+    connection: ServerConnection,
+    constraints: ServerConnection,
+) -> _ConnectionResolution:
+    """Overlay explicit Server constraints onto an engine connection.
+
+    Existing engine settings survive when the Server is silent. Missing
+    settings are appended in canonical tmux order. Contradictory explicit
+    settings are reported instead of choosing an authority silently.
+
+    Parameters
+    ----------
+    connection : ServerConnection
+        The injected engine's current connection.
+    constraints : ServerConnection
+        Explicit values declared by the Server.
+
+    Returns
+    -------
+    _ConnectionResolution
+        Target connection, conflicting fields, and fields requiring a rebind.
+
+    Examples
+    --------
+    >>> current = ServerConnection.of(args=("-q", "-Lwork"))
+    >>> required = ServerConnection.of(args=("-2", "-f/tmp/c"))
+    >>> _merge_connection_constraints(current, required).connection.args
+    ('-q', '-Lwork', '-2', '-f/tmp/c')
+    >>> _merge_connection_constraints(
+    ...     ServerConnection.of(args=("-Lone",)),
+    ...     ServerConnection.of(args=("-Ltwo",)),
+    ... ).conflicts
+    ('socket',)
+    """
+    current = _connection_settings(connection.args)
+    required = _connection_settings(constraints.args)
+    conflicts: list[str] = []
+    missing: list[str] = []
+    additions: list[str] = []
+
+    tmux_bin = connection.tmux_bin
+    if constraints.tmux_bin is not None:
+        if tmux_bin is None:
+            tmux_bin = constraints.tmux_bin
+            missing.append("binary")
+        elif tmux_bin != constraints.tmux_bin:
+            conflicts.append("binary")
+
+    if required.colors is not None:
+        if current.colors is None:
+            additions.append("-2" if required.colors == 256 else "-8")
+            missing.append("color")
+        elif current.colors != required.colors:
+            conflicts.append("color")
+
+    if required.config_files:
+        if not current.config_files:
+            additions.extend(f"-f{path}" for path in required.config_files)
+            missing.append("config")
+        elif current.config_files != required.config_files:
+            conflicts.append("config")
+
+    if required.socket is not None:
+        if current.socket is None:
+            kind, value = required.socket
+            additions.append(f"-{'L' if kind == 'name' else 'S'}{value}")
+            missing.append("socket")
+        elif current.socket != required.socket:
+            conflicts.append("socket")
+
+    return _ConnectionResolution(
+        connection=ServerConnection.of(
+            tmux_bin=tmux_bin,
+            args=(*connection.args, *additions),
+        ),
+        conflicts=tuple(conflicts),
+        missing=tuple(missing),
+    )
 
 
 class _BinaryResolver:
@@ -198,7 +430,7 @@ class ServerConnection:
         Raises
         ------
         :exc:`~libtmux.exc.UnknownColorOption`
-            ``colors`` is truthy but is neither ``256`` nor ``88``.
+            ``colors`` is truthy but is not ``256``.
 
         Examples
         --------
@@ -213,7 +445,7 @@ class ServerConnection:
         ...     ServerConnection.from_server(types.SimpleNamespace(colors=16))
         ... except exc.UnknownColorOption as e:
         ...     print(e)
-        Server.colors must equal 88 or 256
+        Server.colors must equal 256
         """
         args: list[str] = []
 
@@ -221,8 +453,6 @@ class ServerConnection:
         if colors:
             if colors == 256:
                 args.append("-2")
-            elif colors == 88:
-                args.append("-8")
             else:
                 raise exc.UnknownColorOption
 
@@ -261,18 +491,11 @@ class ServerConnection:
 
     @property
     def names_server(self) -> bool:
-        """Whether this connection carries connection flags of its own.
+        """Whether this connection effectively selects a tmux server.
 
-        :attr:`Server.engine <libtmux.Server.engine>` reads this on the
-        *engine's* side of adoption: an engine that already carries flags knows
-        which tmux server it talks to and is left alone, while one that carries
-        none is bound to the server's flags so it cannot silently dispatch to
-        the ambient server.
-
-        :attr:`tmux_bin` deliberately does not count. It selects which tmux
-        *program* to exec, which says nothing about which server that program
-        connects to -- a custom binary with no ``-L``/``-S`` reaches the same
-        ambient server as the stock one.
+        Only effective ``-L`` and ``-S`` values count. ``-S`` overrides ``-L``
+        exactly as tmux documents. The binary, color, configuration and quiet
+        globals affect execution but do not select a socket.
 
         Returns
         -------
@@ -289,8 +512,10 @@ class ServerConnection:
 
         >>> ServerConnection.of(tmux_bin="/usr/bin/tmux").names_server
         False
+        >>> ServerConnection.of(args=("-2", "-f/dev/null", "-q")).names_server
+        False
         """
-        return bool(self.args)
+        return _connection_settings(self.args).socket is not None
 
     def resolve_bin(self) -> str:
         """Return the tmux binary path (memoized).

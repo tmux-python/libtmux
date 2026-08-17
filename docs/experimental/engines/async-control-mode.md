@@ -62,8 +62,20 @@ and
 Per-subscriber queues are bounded;
 {attr}`~libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine.dropped_notifications`
 reports overflow. Connection failures and timeouts raise at the engine
-boundary, while tmux command errors remain result data. Sequence anomalies are
-logged.
+boundary, while tmux command errors remain result data. The engine drains the
+control process's stderr concurrently and includes its bounded recent tail in
+connection and protocol failures. Cleanup joins that reader and reaps the
+process before returning, including when the caller waiting on cleanup is
+cancelled. A backwards command number or a solicited block with no pending
+request raises a protocol error and restarts the connection rather than risking
+result misattribution.
+
+Tmux does not escape command-output lines inside these blocks. Output that
+resembles a nonmatching guard remains data, but output byte-for-byte identical
+to its own closing guard is indistinguishable from protocol framing. This is a
+tmux control-protocol limitation; use
+{class}`~libtmux.experimental.engines.asyncio.AsyncSubprocessEngine` when
+arbitrary output must round-trip without that ambiguity.
 
 The persistent process has normal tmux client semantics: `list-clients` shows
 it, `session_attached` includes it, and client attach and detach hooks can
@@ -83,15 +95,40 @@ after a safe session exists; direct startup raises
 available. The API has no subscriber-readiness signal, so code must not assume
 a notification emitted before the first iteration will be delivered.
 
+## Pane-output bytes
+
+{class}`~libtmux.experimental.engines.async_control_mode.ControlNotification`
+keeps the encoded, human-readable control line in `raw` and its exact bytes in
+`raw_bytes` for wire diagnostics. For `%output` and `%extended-output`, it also
+exposes the pane ID and decoded bytes in `pane_id` and `payload`. Decode text
+only at the application boundary: tmux passes pane bytes through without
+validating UTF-8.
+
+```python
+>>> from libtmux.experimental.engines import ControlNotification
+>>> event = ControlNotification.parse(b"%output %7 hello\\012world\\134")
+>>> event.pane_id, event.payload
+('%7', b'hello\nworld\\')
+>>> event.raw
+'%output %7 hello\\012world\\134'
+```
+
+Tmux uses a backslash followed by exactly three octal digits for an escaped
+byte. Shorter octal-looking text remains literal. Consumers normally read
+`payload`; `raw` remains useful when diagnosing the protocol stream.
+
 ## API
 
 ```{eval-rst}
 .. autoclass:: libtmux.experimental.engines.async_control_mode.AsyncControlModeEngine
    :members:
    :special-members: __aenter__, __aexit__
+
+.. autoclass:: libtmux.experimental.engines.async_control_mode.ControlNotification
+   :members:
 ```
 
 ## Related tutorial
 
 See {doc}`../tutorials/async-control-plans` to compose forward-referenced
-operations and fold them into control-mode dispatches.
+operations and pipeline their ordered requests over control mode.

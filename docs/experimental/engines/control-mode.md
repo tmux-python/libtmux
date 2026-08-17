@@ -53,7 +53,16 @@ writes the batch before collecting correlated control-mode result blocks. The
 engine drains unsolicited notifications so they are not mistaken for command
 replies. Timeouts, connection death, and write failures raise
 {exc}`~libtmux.experimental.engines.control_mode.ControlModeError`; tmux
-`%error` blocks remain command-result data. Sequence anomalies are logged.
+`%error` blocks remain command-result data. A backwards command number or a
+solicited block with no pending request raises a protocol error and closes the
+connection rather than risking result misattribution.
+
+Tmux does not escape command-output lines inside these blocks. Output that
+resembles a nonmatching guard remains data, but output byte-for-byte identical
+to its own closing guard is indistinguishable from protocol framing. This is a
+tmux control-protocol limitation; use
+{class}`~libtmux.experimental.engines.subprocess.SubprocessEngine` when
+arbitrary output must round-trip without that ambiguity.
 
 The persistent process has normal tmux client semantics: `list-clients` shows
 it, `session_attached` includes it, and client attach and detach hooks can
