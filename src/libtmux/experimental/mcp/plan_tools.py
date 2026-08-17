@@ -55,12 +55,12 @@ def preview_plan(plan: LazyPlan, *, version: str | None = None) -> PlanPreview:
 
 @dataclass(frozen=True)
 class PlanExplanation:
-    """Why a planner breaks a plan into its dispatch steps: one dict per step.
+    """Why a planner divides a plan into execution steps: one dict per step.
 
     Each entry carries ``indices`` (the operation indices in the step),
     ``kinds`` (their operation kinds), and ``reason`` (the boundary reason --
-    ``marked-fold`` / ``folded`` / ``created-id`` / ``capture`` / ``single``), so
-    an agent can see why a chain folds or breaks before it runs.
+    ``batch`` / ``barrier`` / ``creator`` / ``single``), so an agent can see
+    why requests batch or break before execution.
 
     Attributes
     ----------
@@ -72,7 +72,7 @@ class PlanExplanation:
 
 
 def explain_plan(plan: LazyPlan, *, planner: Planner | None = None) -> PlanExplanation:
-    """Explain a plan's dispatch grouping under *planner* (pure, no engine)."""
+    """Explain a plan's step grouping under *planner* (pure, no engine)."""
     return PlanExplanation(
         steps=[
             {
