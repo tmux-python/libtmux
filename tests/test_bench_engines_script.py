@@ -132,10 +132,6 @@ def test_matrix_executes_and_reports_a_multi_session_sample(
     assert generated["batch_sizes"] == [1, 3, 1, 3]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="sync warmup verifies the complete name set after the first build",
-)
 def test_sync_matrix_warms_every_session_before_topology_verification() -> None:
     """A multi-session warmup validates only after building every session."""
     root = pathlib.Path(__file__).parents[1]
