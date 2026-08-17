@@ -20,13 +20,19 @@ def test_catalog_entry_mirrors_spec() -> None:
     assert split.scope == "window"
     assert split.result_type == "SplitWindowResult"
     assert split.effects["creates"] == "pane"
+    assert split.batchable is False
     assert split.flag_version_gates == {"environment": "3.0"}
     assert split.summary
 
     capture = entries["capture_pane"]
     assert capture.safety == "readonly"
     assert capture.effects["read_only"] is True
+    assert capture.batchable is True
     assert capture.flag_version_gates["trim_trailing"] == "3.4"
+
+    composed = entries["break_pane"]
+    assert composed.primitive is False
+    assert composed.batchable is False
 
 
 def test_catalog_summary_is_first_docstring_line() -> None:

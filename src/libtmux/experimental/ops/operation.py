@@ -179,8 +179,9 @@ class Operation(t.Generic[ResultT]):
     result_cls : type[Result]
         The :class:`~.results.Result` subclass this operation returns. Set by
         subclasses.
-    chainable : bool
-        Whether the command may be folded into a one-dispatch sequence.
+    batchable : bool
+        Whether the primitive command can share an ordered request batch. Set
+        this to ``False`` when its result must bind before later requests render.
     primitive : bool
         ``True`` when the operation wraps one tmux command; ``False`` when it is
         composed from others (e.g. a synthesized server-exists check).
@@ -202,7 +203,7 @@ class Operation(t.Generic[ResultT]):
     command: t.ClassVar[str]
     scope: t.ClassVar[Scope]
     result_cls: t.ClassVar[type[Result]]
-    chainable: t.ClassVar[bool] = True
+    batchable: t.ClassVar[bool] = True
     primitive: t.ClassVar[bool] = True
     safety: t.ClassVar[Safety] = "mutating"
     effects: t.ClassVar[Effects]
@@ -368,30 +369,6 @@ class Operation(t.Generic[ResultT]):
         )
         _check_capture_invariant(result)
         return result
-
-    def result_with_status(
-        self,
-        status: Status,
-        *,
-        version: str | None = None,
-        returncode: int = 0,
-        stdout: Sequence[str] = (),
-        stderr: Sequence[str] = (),
-    ) -> ResultT:
-        """Build a result with an explicit *status* (no status inference).
-
-        Used when the status is known out of band -- e.g. a chained operation
-        whose ``;`` group ran but whose own outcome must be marked ``skipped``
-        because an earlier member failed.
-        """
-        return self._make_result(
-            self.render(version=version),
-            status,
-            returncode,
-            tuple(stdout),
-            tuple(stderr),
-            version=version,
-        )
 
     def _follow_up(
         self,

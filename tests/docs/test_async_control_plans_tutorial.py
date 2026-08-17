@@ -15,14 +15,13 @@ from libtmux.experimental.engines import AsyncControlModeEngine
 from libtmux.experimental.engines.base import (
     CommandRequest,
     CommandResult,
-    CommandSeparator,
     is_command_separator,
 )
 from libtmux.experimental.ops import (
+    BatchingPlanner,
     DisplayMessage,
     DisplayMessageResult,
     LazyPlan,
-    MarkedPlanner,
     SetOption,
     SplitWindow,
     WindowId,
@@ -74,8 +73,7 @@ _PLAN_API_TARGETS = {
     "libtmux.experimental.ops.plan.LazyPlan",
     "libtmux.experimental.ops.plan.PlanResult",
     "libtmux.experimental.ops.planner.BoundedPlanner",
-    "libtmux.experimental.ops.planner.FoldingPlanner",
-    "libtmux.experimental.ops.planner.MarkedPlanner",
+    "libtmux.experimental.ops.planner.BatchingPlanner",
     "libtmux.experimental.ops.planner.Planner",
     "libtmux.experimental.ops.planner.SequentialPlanner",
     "libtmux.experimental.fluent.PlanBuilder",
@@ -90,6 +88,9 @@ class _RecordingAsyncEngine:
 
     inner: AsyncControlModeEngine
     calls: list[tuple[str, ...]] = dataclasses.field(default_factory=list)
+    batches: list[tuple[tuple[str, ...], ...]] = dataclasses.field(
+        default_factory=list,
+    )
 
     def tmux_version(self) -> str | None:
         """Return the real engine's connected tmux version."""
@@ -105,7 +106,10 @@ class _RecordingAsyncEngine:
         requests: Sequence[CommandRequest],
     ) -> list[CommandResult]:
         """Record and execute one real request batch."""
-        self.calls.extend(request.args for request in requests)
+        requests = tuple(requests)
+        batch = tuple(request.args for request in requests)
+        self.calls.extend(batch)
+        self.batches.append(batch)
         return await self.inner.run_batch(requests)
 
 
@@ -161,9 +165,9 @@ def test_tutorial_uses_native_tabs_with_discoverable_live_doctest() -> None:
     text = _TUTORIAL.read_text(encoding="utf-8")
     tabs = _tutorial_tabs()
 
-    assert set(tabs) == {"Python plan", "Compiled tmux sequence"}
+    assert set(tabs) == {"Python plan", "Tmux requests"}
     assert tabs["Python plan"].count("```python") == 1
-    assert tabs["Compiled tmux sequence"].count("```console") == 2
+    assert tabs["Tmux requests"].count("```console") == 4
     assert "MockEngine" not in text
     assert "AsyncMockEngine" not in text
     assert "# doctest: +SKIP" not in text
@@ -200,15 +204,19 @@ def test_compiled_tab_matches_real_async_control_dispatch(session: Session) -> N
     assert window_id is not None
     plan = _plan(window_id)
 
-    async def execute() -> tuple[PlanResult, list[tuple[str, ...]]]:
+    async def execute() -> tuple[
+        PlanResult,
+        list[tuple[str, ...]],
+        list[tuple[tuple[str, ...], ...]],
+    ]:
         async with AsyncControlModeEngine.for_server(server) as live:
             recording = _RecordingAsyncEngine(live)
-            result = await plan.aexecute(recording, planner=MarkedPlanner())
-            return result, recording.calls
+            result = await plan.aexecute(recording, planner=BatchingPlanner())
+            return result, recording.calls, recording.batches
 
-    outcome, calls = asyncio.run(execute())
+    outcome, calls, batches = asyncio.run(execute())
     pane_id = outcome.bindings[0]
-    visible = _console_argvs(_tutorial_tabs()["Compiled tmux sequence"])
+    visible = _console_argvs(_tutorial_tabs()["Tmux requests"])
 
     assert outcome.ok
     assert [result.status for result in outcome.results] == [
@@ -221,19 +229,21 @@ def test_compiled_tab_matches_real_async_control_dispatch(session: Session) -> N
     assert isinstance(message_result, DisplayMessageResult)
     assert message_result.text == "worker:ready"
     assert server.panes.get(pane_id=pane_id) is not None
-    assert len(calls) == len(visible) == 2
-    assert sum(is_command_separator(token) for token in calls[0]) == 4
-    assert all(
-        type(token) is CommandSeparator
-        for token in calls[0]
-        if is_command_separator(token)
-    )
+    assert [entry.step.indices for entry in plan.explain(BatchingPlanner())] == [
+        (0,),
+        (1, 2, 3),
+    ]
+    assert len(calls) == len(visible) == 4
+    assert batches == [tuple(calls[1:])]
+    assert not any(is_command_separator(token) for call in calls for token in call)
+    assert all("{marked}" not in call for call in calls)
+    assert all("-m" not in call and "-M" not in call for call in calls)
 
-    first_visible = tuple(
-        window_id if token == "@WINDOW" else token for token in visible[0][1:]
-    )
-    second_visible = tuple(
-        pane_id if token == "%PANE" else token for token in visible[1][1:]
-    )
-    assert tuple(map(str, calls[0])) == first_visible
-    assert tuple(map(str, calls[1])) == second_visible
+    rendered_visible = [
+        tuple(
+            window_id if token == "@WINDOW" else pane_id if token == "%PANE" else token
+            for token in command[1:]
+        )
+        for command in visible
+    ]
+    assert [tuple(map(str, call)) for call in calls] == rendered_visible

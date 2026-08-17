@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import typing as t
 
 import pytest
@@ -10,13 +11,14 @@ import pytest
 from libtmux.experimental.engines import AsyncMockEngine, MockEngine
 from libtmux.experimental.engines.base import CommandResult
 from libtmux.experimental.ops import (
+    BatchingPlanner,
     BreakPane,
     DisplayMessage,
     JoinPane,
     LazyPlan,
-    MarkedPlanner,
     MovePane,
     NewSession,
+    PlanStep,
     SendKeys,
     SequentialPlanner,
     SplitWindow,
@@ -35,6 +37,47 @@ if t.TYPE_CHECKING:
 
     from libtmux.experimental.engines.base import CommandRequest
     from libtmux.experimental.ops.operation import Operation
+
+
+class _StaticPlanner(t.NamedTuple):
+    """Planner test double returning a fixed list of steps.
+
+    Attributes
+    ----------
+    steps : list[PlanStep]
+        Steps returned unchanged from :meth:`plan`.
+    """
+
+    steps: list[PlanStep]
+
+    def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
+        """Return the configured steps without inspecting *operations*."""
+        del operations
+        return self.steps
+
+
+class _ListClearingPlanner:
+    """Malicious planner that clears mutable input when given one."""
+
+    def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
+        """Attempt to erase the caller's operation collection."""
+        if isinstance(operations, list):
+            operations.clear()
+        return [PlanStep((index,)) for index in range(len(operations))]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class _BatchableNewSession(NewSession):
+    """Test-only creator proving custom planner dependency validation."""
+
+    batchable = True
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class _BatchableComposite(BreakPane):
+    """Test-only composite proving custom planner validation."""
+
+    batchable = True
 
 
 def test_plan_records_without_executing() -> None:
@@ -66,9 +109,135 @@ def test_plan_resolves_forward_ref() -> None:
     assert outcome.ok
 
 
+@pytest.mark.parametrize(
+    "steps",
+    [
+        [PlanStep((1, 0))],
+        [PlanStep((0, 0))],
+        [PlanStep((0,))],
+        [PlanStep(()), PlanStep((0, 1))],
+    ],
+    ids=["reordered", "duplicate", "omitted", "empty"],
+)
+def test_plan_rejects_invalid_partitions(steps: list[PlanStep]) -> None:
+    """A custom planner must return every operation once and in order."""
+    plan = LazyPlan()
+    plan.add(SendKeys(target=PaneId("%1"), keys="a"))
+    plan.add(SendKeys(target=PaneId("%1"), keys="b"))
+
+    with pytest.raises(OperationError, match="exact ordered partition"):
+        plan.execute(MockEngine(), planner=_StaticPlanner(steps))
+
+
+def test_explain_rejects_invalid_partitions() -> None:
+    """Plan explanations enforce the same planner contract as execution."""
+    plan = LazyPlan()
+    plan.add(SendKeys(target=PaneId("%1"), keys="a"))
+
+    with pytest.raises(OperationError, match="exact ordered partition"):
+        plan.explain(_StaticPlanner([PlanStep(())]))
+
+
+def test_custom_planner_cannot_mutate_recorded_operations() -> None:
+    """Planning receives an immutable snapshot, not LazyPlan's live list."""
+    plan = LazyPlan()
+    plan.add(SendKeys(target=PaneId("%1"), keys="a"))
+
+    result = plan.execute(MockEngine(), planner=_ListClearingPlanner())
+
+    assert len(plan) == 1
+    assert len(result.results) == 1
+
+
+def test_callback_mutation_applies_only_to_later_execution() -> None:
+    """An on_step callback cannot change the operation snapshot in flight."""
+    plan = LazyPlan()
+    plan.add(SendKeys(target=PaneId("%1"), keys="a"))
+    appended = False
+
+    def append_once(_report: StepReport) -> None:
+        nonlocal appended
+        if not appended:
+            plan.add(SendKeys(target=PaneId("%1"), keys="later"))
+            appended = True
+
+    first = plan.execute(MockEngine(), on_step=append_once)
+    second = plan.execute(MockEngine())
+
+    assert len(first.results) == 1
+    assert len(plan) == len(second.results) == 2
+
+
+def test_plan_rejects_batch_with_dependency_barrier() -> None:
+    """A creator cannot share a batch with an operation needing its id."""
+    plan = LazyPlan()
+    pane = plan.add(SplitWindow(target=WindowId("@1")))
+    plan.add(SendKeys(target=pane, keys="a"))
+
+    with pytest.raises(OperationError, match="non-batchable operation"):
+        plan.execute(MockEngine(), planner=_StaticPlanner([PlanStep((0, 1))]))
+
+
+def test_plan_rejects_batchable_composite_operation() -> None:
+    """A composite operation cannot silently skip its required follow-up."""
+    plan = LazyPlan()
+    plan.add(_BatchableComposite(src_target=PaneId("%1")))
+    plan.add(SendKeys(target=PaneId("%1"), keys="a"))
+
+    with pytest.raises(OperationError, match="composite operation 'break_pane'"):
+        plan.execute(MockEngine(), planner=_StaticPlanner([PlanStep((0, 1))]))
+
+
+def test_plan_rejects_same_step_slot_dependency() -> None:
+    """A custom batchable creator still must bind before a dependent request."""
+    plan = LazyPlan()
+    session = plan.add(_BatchableNewSession(capture_panes=True))
+    plan.add(SendKeys(target=session.pane, keys="a"))
+
+    with pytest.raises(
+        OperationError,
+        match="operation at index 1 before slot 0 could bind",
+    ):
+        plan.execute(MockEngine(), planner=_StaticPlanner([PlanStep((0, 1))]))
+
+
+def test_batchable_custom_creators_bind_primary_and_child_ids() -> None:
+    """A valid creator batch binds every captured id before the next step."""
+    plan = LazyPlan()
+    plan.add(_BatchableNewSession(capture_panes=True))
+    second = plan.add(_BatchableNewSession(capture_panes=True))
+    plan.add(SendKeys(target=second.pane, keys="a"))
+
+    result = plan.execute(
+        MockEngine(),
+        planner=_StaticPlanner([PlanStep((0, 1)), PlanStep((2,))]),
+    )
+
+    assert result.bindings == {
+        0: "$1",
+        (0, "window"): "@1",
+        (0, "pane"): "%1",
+        1: "$2",
+        (1, "window"): "@2",
+        (1, "pane"): "%2",
+    }
+    assert result.results[2].argv[:3] == ("send-keys", "-t", "%2")
+
+
+def test_plan_rejects_batch_with_ensured_operation() -> None:
+    """An ensure branch must resolve before another request is dispatched."""
+    plan = LazyPlan()
+    plan.add(SendKeys(target=PaneId("%1"), keys="a"))
+    plan.add(SendKeys(target=PaneId("%1"), keys="b"))
+    plan.ensure(0, DisplayMessage(target=PaneId("%1"), message="#{pane_id}"))
+
+    with pytest.raises(OperationError, match="batched ensured operation"):
+        plan.execute(MockEngine(), planner=_StaticPlanner([PlanStep((0, 1))]))
+
+
 def test_plan_execute_auto_resolves_engine_version() -> None:
-    """plan.execute() resolves the engine version so folded renders are gated."""
-    from libtmux.experimental.ops import FoldingPlanner, RespawnPane
+    """plan.execute() resolves the engine version before batched renders."""
+    from libtmux.experimental.ops import BatchingPlanner, RespawnPane
 
     class VersionedMockEngine(MockEngine):
         def tmux_version(self) -> str | None:
@@ -78,10 +247,10 @@ def test_plan_execute_auto_resolves_engine_version() -> None:
     plan.add(RespawnPane(target=PaneId("%1"), environment={"E": "1"}))
     plan.add(RespawnPane(target=PaneId("%2"), environment={"E": "2"}))
 
-    outcome = plan.execute(VersionedMockEngine(), planner=FoldingPlanner())
+    outcome = plan.execute(VersionedMockEngine(), planner=BatchingPlanner())
 
-    # -e is gated at tmux 3.0; on the engine's resolved 2.9 it is dropped even
-    # from the folded (rendered-in-_drive) dispatch.
+    # -e is gated at tmux 3.0; the engine's resolved 2.9 drops it from every
+    # request in the batch.
     assert outcome.ok
     for result in outcome.results:
         assert not any(arg.startswith("-e") for arg in result.argv)
@@ -117,35 +286,35 @@ def test_plan_resolves_src_target(test_id: str, op: Operation[t.Any]) -> None:
     assert outcome.results[1].argv[-2:] == ("-s", "%1")
 
 
-class MarkedSrcCase(t.NamedTuple):
-    """A {marked} decorate whose ``src_target`` references an earlier bound slot."""
+class BatchedSrcCase(t.NamedTuple):
+    """An operation whose two targets reference earlier bound slots."""
 
     test_id: str
     op: Operation[t.Any]
 
 
-MARKED_SRC_CASES = (
-    MarkedSrcCase("swap_pane", SwapPane(target=SlotRef(1), src_target=SlotRef(0))),
-    MarkedSrcCase("join_pane", JoinPane(target=SlotRef(1), src_target=SlotRef(0))),
-    MarkedSrcCase("move_pane", MovePane(target=SlotRef(1), src_target=SlotRef(0))),
+BATCHED_SRC_CASES = (
+    BatchedSrcCase("swap_pane", SwapPane(target=SlotRef(1), src_target=SlotRef(0))),
+    BatchedSrcCase("join_pane", JoinPane(target=SlotRef(1), src_target=SlotRef(0))),
+    BatchedSrcCase("move_pane", MovePane(target=SlotRef(1), src_target=SlotRef(0))),
 )
 
 
 @pytest.mark.parametrize(
-    list(MarkedSrcCase._fields),
-    MARKED_SRC_CASES,
-    ids=[c.test_id for c in MARKED_SRC_CASES],
+    list(BatchedSrcCase._fields),
+    BATCHED_SRC_CASES,
+    ids=[c.test_id for c in BATCHED_SRC_CASES],
 )
-def test_marked_plan_resolves_decorate_src_target(
+def test_batching_plan_resolves_both_targets(
     test_id: str,
     op: Operation[t.Any],
 ) -> None:
-    """A {marked} decorate's ``src_target`` SlotRef resolves to the bound id."""
+    """Both SlotRef targets resolve before their operation dispatches."""
     plan = LazyPlan()
-    plan.add(SplitWindow(target=WindowId("@1")))  # slot 0 -> %1 (own dispatch)
-    plan.add(SplitWindow(target=WindowId("@1")))  # slot 1 -> the marked-fold creator
-    plan.add(op)  # slot 2 -> decorate: target {marked}, src_target -> slot 0
-    outcome = plan.execute(MockEngine(), planner=MarkedPlanner())
+    plan.add(SplitWindow(target=WindowId("@1")))  # slot 0 -> %1 (own step)
+    plan.add(SplitWindow(target=WindowId("@1")))  # slot 1 -> %2
+    plan.add(op)
+    outcome = plan.execute(MockEngine(), planner=BatchingPlanner())
     assert outcome.ok
     assert outcome.results[2].argv[-2:] == ("-s", "%1")
 
@@ -169,8 +338,44 @@ def test_plan_aexecute_matches_execute() -> None:
     )
 
 
+def test_plan_async_drivers_never_call_sync_version_probe() -> None:
+    """aexecute() and astream() await the async version capability once each."""
+    from libtmux.experimental.ops import PlanDone, RespawnPane
+
+    class AsyncVersionedMockEngine(AsyncMockEngine):
+        def __init__(self) -> None:
+            super().__init__()
+            self.version_calls = 0
+
+        def tmux_version(self) -> str | None:
+            raise AssertionError
+
+        async def atmux_version(self) -> str | None:
+            self.version_calls += 1
+            await asyncio.sleep(0)
+            return "2.9"
+
+    plan = LazyPlan()
+    plan.add(RespawnPane(target=PaneId("%1"), environment={"E": "1"}))
+    plan.add(RespawnPane(target=PaneId("%2"), environment={"E": "2"}))
+    engine = AsyncVersionedMockEngine()
+
+    async def _check() -> None:
+        direct = await plan.aexecute(engine, planner=BatchingPlanner())
+        streamed = [event async for event in plan.astream(engine)]
+        terminal = streamed[-1]
+        assert isinstance(terminal, PlanDone)
+        for outcome in (direct, terminal.result):
+            assert outcome.ok
+            for result in outcome.results:
+                assert not any(arg.startswith("-e") for arg in result.argv)
+
+    asyncio.run(_check())
+    assert engine.version_calls == 2
+
+
 def test_execute_on_step_reports_each_step() -> None:
-    """on_step fires once per dispatched step, carrying its per-op results + ids."""
+    """on_step fires once per planner step, carrying its per-op results and ids."""
     plan = LazyPlan()
     pane = plan.add(SplitWindow(target=WindowId("@1")))
     plan.add(SendKeys(target=pane, keys="vim", enter=True))
@@ -182,7 +387,7 @@ def test_execute_on_step_reports_each_step() -> None:
         on_step=reports.append,
     )
 
-    # one report per op (sequential), in dispatch order
+    # One report per op (sequential), in planner-step order.
     assert [report.step.indices for report in reports] == [(0,), (1,)]
     # the creator's report already sees its freshly-bound pane id
     assert reports[0].bindings == {0: "%1"}
@@ -219,6 +424,37 @@ def test_aexecute_on_step_matches_execute() -> None:
 
     asyncio.run(plan.aexecute(AsyncMockEngine(), on_step=collect))
     assert async_steps == sync_steps == [(0,), (1,)]
+
+
+def test_step_report_bindings_cannot_mutate_plan_state() -> None:
+    """A callback cannot retarget later operations through the binding snapshot."""
+    plan = LazyPlan()
+    pane = plan.add(SplitWindow(target=WindowId("@1")))
+    plan.add(SendKeys(target=pane, keys="safe"))
+
+    def attempt_mutation(report: StepReport) -> None:
+        if 0 not in report.bindings:
+            return
+        mutable = t.cast("dict[int | tuple[int, str], str]", report.bindings)
+        with pytest.raises(TypeError):
+            mutable[0] = "%999"
+
+    result = plan.execute(MockEngine(), on_step=attempt_mutation)
+
+    assert result.results[1].argv[:3] == ("send-keys", "-t", "%1")
+
+
+def test_step_report_bindings_are_point_in_time_snapshots() -> None:
+    """An earlier report does not gain ids captured by a later step."""
+    plan = LazyPlan()
+    plan.add(SplitWindow(target=WindowId("@1")))
+    plan.add(SplitWindow(target=WindowId("@1")))
+    reports: list[StepReport] = []
+
+    plan.execute(MockEngine(), on_step=reports.append)
+
+    assert dict(reports[0].bindings) == {0: "%1"}
+    assert dict(reports[1].bindings) == {0: "%1", 1: "%2"}
 
 
 def test_plan_serialization_round_trip() -> None:
@@ -287,17 +523,18 @@ def test_plan_failed_create_surfaces_the_tmux_error() -> None:
 
 
 class _ExplainCase(t.NamedTuple):
-    """A planner and the (kinds, reason) each of its dispatch steps should carry."""
+    """A planner and the (kinds, reason) each execution step should carry."""
 
     test_id: str
     planner: t.Any
     expected: list[tuple[tuple[str, ...], str]]
 
 
-def _split_then_send() -> LazyPlan:
+def _split_then_sends() -> LazyPlan:
     plan = LazyPlan()
     pane = plan.add(SplitWindow(target=WindowId("@1")))
     plan.add(SendKeys(target=pane, keys="vim"))
+    plan.add(SendKeys(target=pane, keys=":w"))
     return plan
 
 
@@ -305,12 +542,19 @@ _EXPLAIN_CASES: tuple[_ExplainCase, ...] = (
     _ExplainCase(
         "sequential_created_then_single",
         SequentialPlanner(),
-        [(("split_window",), "created-id"), (("send_keys",), "single")],
+        [
+            (("split_window",), "creator"),
+            (("send_keys",), "single"),
+            (("send_keys",), "single"),
+        ],
     ),
     _ExplainCase(
-        "marked_fold",
-        MarkedPlanner(),
-        [(("split_window", "send_keys"), "marked-fold")],
+        "request_batch",
+        BatchingPlanner(),
+        [
+            (("split_window",), "creator"),
+            (("send_keys", "send_keys"), "batch"),
+        ],
     ),
 )
 
@@ -320,9 +564,9 @@ _EXPLAIN_CASES: tuple[_ExplainCase, ...] = (
     _EXPLAIN_CASES,
     ids=[c.test_id for c in _EXPLAIN_CASES],
 )
-def test_explain_annotates_dispatch_boundaries(case: _ExplainCase) -> None:
-    """explain() reports why each step is its own dispatch under a planner."""
-    steps = _split_then_send().explain(case.planner)
+def test_explain_annotates_step_boundaries(case: _ExplainCase) -> None:
+    """explain() reports why operations share or split planner steps."""
+    steps = _split_then_sends().explain(case.planner)
     assert [(e.kinds, e.reason) for e in steps] == case.expected
 
 
@@ -330,13 +574,18 @@ def test_astream_yields_step_then_plan_done() -> None:
     """astream() streams a StepDone per step and a terminal PlanDone."""
     from libtmux.experimental.ops import PlanDone, StepDone
 
-    plan = _split_then_send()
+    plan = _split_then_sends()
 
     async def drain() -> list[object]:
         return [event async for event in plan.astream(AsyncMockEngine())]
 
     events = asyncio.run(drain())
-    assert [type(e).__name__ for e in events] == ["StepDone", "StepDone", "PlanDone"]
+    assert [type(e).__name__ for e in events] == [
+        "StepDone",
+        "StepDone",
+        "StepDone",
+        "PlanDone",
+    ]
     assert isinstance(events[-1], PlanDone)
     assert isinstance(events[0], StepDone)
     # the terminal PlanDone carries the same result aexecute() would return
@@ -348,8 +597,8 @@ def test_astream_last_result_matches_aexecute() -> None:
     from libtmux.experimental.ops import PlanDone
 
     async def both() -> tuple[bool, bool]:
-        streamed = [e async for e in _split_then_send().astream(AsyncMockEngine())]
-        direct = await _split_then_send().aexecute(AsyncMockEngine())
+        streamed = [e async for e in _split_then_sends().astream(AsyncMockEngine())]
+        direct = await _split_then_sends().aexecute(AsyncMockEngine())
         last = streamed[-1]
         assert isinstance(last, PlanDone)
         return last.result.ok, direct.ok

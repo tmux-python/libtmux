@@ -34,17 +34,24 @@ class _RecordingEngine:
 
     inner: TmuxEngine = dataclasses.field(default_factory=MockEngine)
     calls: list[tuple[str, ...]] = dataclasses.field(default_factory=list)
+    batches: list[tuple[tuple[str, ...], ...]] = dataclasses.field(
+        default_factory=list,
+    )
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Record the argv and forward, faking a ready cursor for waits."""
         self.calls.append(request.args)
+        self.batches.append((request.args,))
         if "display-message" in request.args:
             return CommandResult(cmd=("tmux", *request.args), stdout=("1,1",))
         return self.inner.run(request)
 
     def run_batch(self, requests: Sequence[CommandRequest]) -> list[CommandResult]:
         """Execute each request in order."""
-        return [self.run(req) for req in requests]
+        requests = tuple(requests)
+        self.calls.extend(request.args for request in requests)
+        self.batches.append(tuple(request.args for request in requests))
+        return self.inner.run_batch(requests)
 
 
 def _workspace(name: str, *, wait_pane: bool = False) -> Workspace:
@@ -120,8 +127,8 @@ def test_rebase_operation_honors_target_capabilities() -> None:
     assert dual.src_target == SlotRef(5)
 
 
-def test_build_workspaces_folds_across_workspace_boundaries() -> None:
-    """Batch builds still use the folding planner over the merged operation stream."""
+def test_build_workspaces_batches_across_workspace_boundaries() -> None:
+    """Merged workspace plans batch ready requests across workspaces."""
     default = _RecordingEngine()
     build_workspaces([_workspace("one"), _workspace("two")], default, preflight=False)
     sequential = _RecordingEngine()
@@ -132,8 +139,9 @@ def test_build_workspaces_folds_across_workspace_boundaries() -> None:
         planner=SequentialPlanner(),
     )
 
-    assert len(default.calls) < len(sequential.calls)
-    assert any(";" in argv for argv in default.calls)
+    assert len(default.batches) < len(sequential.batches)
+    assert any(len(batch) > 1 for batch in default.batches)
+    assert all(";" not in argv for batch in default.batches for argv in batch)
 
 
 def test_workspace_set_all_reused_returns_noop_result() -> None:
