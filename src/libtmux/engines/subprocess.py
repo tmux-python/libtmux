@@ -14,6 +14,7 @@ import subprocess
 import typing as t
 
 from libtmux import exc
+from libtmux._internal.tmux_argv import encode_direct_argv
 from libtmux.engines.base import CommandResult
 from libtmux.engines.connection import ServerConnection
 
@@ -211,7 +212,10 @@ class SubprocessEngine:
         ... )
         ('tmux', '-Lwork', 'send-keys', 'echo hi')
         """
-        return self._conn.argv(*request.args, tmux_bin=request.tmux_bin)
+        return self._conn.argv(
+            *encode_direct_argv(request.args),
+            tmux_bin=request.tmux_bin,
+        )
 
     def run(self, request: CommandRequest) -> CommandResult:
         """Execute one tmux command via :mod:`subprocess` and return its result.

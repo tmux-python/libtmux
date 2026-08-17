@@ -41,7 +41,7 @@ also implement.
 
 A {class}`~libtmux.engines.connection.ServerConnection` is the pair every engine
 needs before it can dispatch anything: which tmux *binary* to run, and the
-connection flags (`-L`/`-S`/`-f`/`-2`/`-8`) naming one tmux server. It is the
+connection flags (`-L`/`-S`/`-f`/`-2`) naming one tmux server. It is the
 single place either is computed.
 
 ```{eval-rst}

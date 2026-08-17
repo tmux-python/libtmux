@@ -172,14 +172,28 @@ server would silently dispatch to whichever server a flagless `tmux` reaches:
 ('-Lengines_doc_c',)
 ```
 
-An engine that *does* name a server is left exactly as you built it:
+An engine already on the requested server is left exactly as you built it:
 
 ```python
 >>> from libtmux.engines import SubprocessEngine
 >>> from libtmux.server import Server
->>> pinned = SubprocessEngine.of(server_args=("-Lengines_doc_pinned",))
+>>> pinned = SubprocessEngine.of(server_args=("-Lengines_doc_c",))
 >>> Server(socket_name="engines_doc_c", engine=pinned).engine.server_args
-('-Lengines_doc_pinned',)
+('-Lengines_doc_c',)
+```
+
+Conflicting explicit scopes fail before a command can reach the wrong server:
+
+```python
+>>> from libtmux import exc
+>>> from libtmux.engines import SubprocessEngine
+>>> from libtmux.server import Server
+>>> pinned = SubprocessEngine.of(server_args=("-Lengines_doc_pinned",))
+>>> try:
+...     Server(socket_name="engines_doc_c", engine=pinned).engine
+... except exc.EngineConfigurationMismatch:
+...     print("connection mismatch")
+connection mismatch
 ```
 
 An in-memory engine has no connection at all, so neither rule applies and it is
@@ -192,19 +206,26 @@ An engine may implement extra protocols. Each is optional; libtmux checks with
 
 {class}`~libtmux.engines.base.SupportsCommandLine` renders the argv an engine
 *would* run, which is how the full command line reaches the debug log before
-dispatch. {class}`~libtmux.engines.base.SupportsConnection` marks an engine that
-dispatches over a named server and can be rebound — the protocol behind the
-adoption rule above.
+dispatch. {class}`~libtmux.engines.base.HasConnection` exposes a transport's
+server scope for validation. {class}`~libtmux.engines.base.SupportsConnection`
+adds safe rebinding; stateless subprocess engines implement both, while a live
+control connection implements only the read-only capability and must already
+match the Server.
 
 ```python
 >>> from libtmux.engines import (
 ...     SubprocessEngine,
+...     HasConnection,
 ...     SupportsCommandLine,
 ...     SupportsConnection,
 ... )
 >>> engine = SubprocessEngine()
->>> isinstance(engine, SupportsCommandLine), isinstance(engine, SupportsConnection)
-(True, True)
+>>> (
+...     isinstance(engine, SupportsCommandLine),
+...     isinstance(engine, HasConnection),
+...     isinstance(engine, SupportsConnection),
+... )
+(True, True, True)
 ```
 
 An engine that implements neither simply is not matched:
@@ -227,10 +248,11 @@ in-memory fake — omits it, and the caller assumes the newest tmux.
 
 ## Explicit command separators
 
-tmux treats a bare `;` argument as a boundary between two commands, but only
-when it arrives unquoted. A `;` that is *data* — a pane title, a shell fragment
-bound for `send-keys` — must not be mistaken for one. Guessing from the string
-alone cannot tell them apart, so the intent rides in the type:
+Tmux's direct argv parser treats an unescaped `;` at the end of any token as a
+boundary between two commands. That includes both a standalone `;` and a value
+such as `title;`; an interior semicolon remains data. Guessing intent from the
+string alone cannot distinguish a literal suffix from command structure, so
+the intent rides in the type:
 {class}`~libtmux.engines.base.CommandSeparator` marks a real boundary, and
 {func}`~libtmux.engines.base.is_command_separator` finds it.
 
@@ -243,8 +265,7 @@ alone cannot tell them apart, so the intent rides in the type:
 [False, False, True, False, False]
 ```
 
-A plain `";"` is data and stays data, so nothing an existing caller passes can
-become a boundary by accident:
+A plain `";"` and any other ordinary trailing semicolon are encoded as data:
 
 ```python
 >>> from libtmux.engines import is_command_separator
@@ -252,15 +273,21 @@ become a boundary by accident:
 False
 ```
 
-The marker survives normalization, so an engine that chains commands into one
-dispatch can find the boundaries while every other engine ignores them. The
-default {class}`~libtmux.engines.subprocess.SubprocessEngine` sends one command
-per dispatch and has no use for them.
+An existing `\;` suffix remains tmux escape syntax and is not escaped again;
+tmux consumes that backslash while producing a literal semicolon. Use the
+typed marker for structure and an ordinary unescaped suffix for new literal
+data.
+
+The marker survives request normalization. Direct subprocess engines render it
+as a bare structural token while escaping ordinary suffix semicolons; control
+engines render ordinary values as quoted data. Callers that intentionally used
+a plain `";"` to group commands must replace it with `CommandSeparator(";")`.
 
 ## What an engine does not change
 
 An engine chooses *how* a command runs, not what libtmux does with the answer.
-Arguments reach tmux exactly as they always have, results read exactly as they
-always have, and {meth}`Server.cmd() <libtmux.Server.cmd>` still returns a
+Unescaped suffix semicolons remain argument data while each engine applies its
+transport encoding, results read as before, and
+{meth}`Server.cmd() <libtmux.Server.cmd>` still returns a
 {class}`~libtmux.common.tmux_cmd`. Under the default engine there is nothing new
-to learn and nothing to migrate.
+to configure.

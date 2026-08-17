@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import pathlib
+import stat
+import sys
 import typing as t
 
 import pytest
 
-from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
-from libtmux.experimental.engines.control_mode import ControlModeError
+from libtmux.experimental.engines.async_control_mode import (
+    _STDERR_TAIL_BYTES,
+    AsyncControlModeEngine,
+)
+from libtmux.experimental.engines.control_mode import (
+    ControlModeEngine,
+    ControlModeError,
+)
 
 if t.TYPE_CHECKING:
     from libtmux.session import Session
@@ -558,3 +567,337 @@ def test_spawn_terminates_a_live_prior_proc(
 
     asyncio.run(main())
     assert terminated == [True]  # the prior live proc was terminated
+
+
+def test_spawn_drains_bounded_stderr_during_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Startup drains stderr concurrently and retains only its bounded tail."""
+
+    async def main() -> tuple[list[str], bool, int]:
+        stderr_started = asyncio.Event()
+
+        class _Stdout:
+            async def read(self, _size: int) -> bytes:
+                await stderr_started.wait()
+                return b"%begin 1 1 0\n%end 1 1 0\n"
+
+        class _Stderr:
+            reads = 0
+
+            async def read(self, _size: int) -> bytes:
+                self.reads += 1
+                stderr_started.set()
+                if self.reads == 1:
+                    return b"".join(f"line-{index}\n".encode() for index in range(25))
+                return b""
+
+        class _FakeProc:
+            def __init__(self) -> None:
+                self.returncode: int | None = None
+                self.stdout = _Stdout()
+                self.stderr = _Stderr()
+                self.stdin = None
+                self.terminate_calls = 0
+
+            def terminate(self) -> None:
+                self.terminate_calls += 1
+                self.returncode = 0
+
+            async def wait(self) -> int:
+                return 0
+
+        proc = _FakeProc()
+
+        async def _fake_exec(*_args: object, **_kwargs: object) -> _FakeProc:
+            return proc
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+        engine = AsyncControlModeEngine(tmux_bin="tmux")
+        engine._next_attach_target = "$0"
+        await asyncio.wait_for(engine._spawn(), timeout=2.0)
+        tail = list(engine._stderr_lines())
+        task = engine._stderr_task
+        await engine.aclose()
+        return tail, bool(task and task.done()), proc.terminate_calls
+
+    tail, task_done, terminate_calls = asyncio.run(main())
+    assert tail == [f"line-{index}" for index in range(5, 25)]
+    assert task_done
+    assert terminate_calls == 1
+
+
+def test_stderr_tail_reassembles_lines_across_read_chunks() -> None:
+    """Chunk boundaries do not turn one stderr line into several diagnostics."""
+    engine = AsyncControlModeEngine()
+    engine._append_stderr(b"first")
+    engine._append_stderr(b" line\nsecond")
+    engine._append_stderr(b" line\n")
+    assert engine._stderr_lines() == ("first line", "second line")
+
+
+def test_death_diagnostic_shape_matches_sync_control_engine() -> None:
+    """Both control transports append tmux stderr to the same base failure."""
+    sync_engine = ControlModeEngine()
+    sync_engine._stderr_tail.extend(["server-side reason"])
+    async_engine = AsyncControlModeEngine()
+    async_engine._append_stderr(b"server-side reason\n")
+    assert str(async_engine._died("tmux -C closed stdout")) == str(
+        sync_engine._died("tmux -C closed stdout"),
+    )
+
+
+def test_startup_protocol_error_includes_stderr_tail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An attach protocol failure carries tmux's concurrently drained stderr."""
+
+    async def main() -> str:
+        stderr_drained = asyncio.Event()
+
+        class _Stdout:
+            async def read(self, _size: int) -> bytes:
+                await stderr_drained.wait()
+                return b"%begin 1 1 0\nattach body\n%error 1 1 0\n"
+
+        class _Stderr:
+            reads = 0
+
+            async def read(self, _size: int) -> bytes:
+                self.reads += 1
+                stderr_drained.set()
+                return b"tmux diagnostic\n" if self.reads == 1 else b""
+
+        class _FakeProc:
+            def __init__(self) -> None:
+                self.returncode: int | None = None
+                self.stdout = _Stdout()
+                self.stderr = _Stderr()
+                self.stdin = None
+
+            def terminate(self) -> None:
+                self.returncode = 1
+
+            async def wait(self) -> int:
+                return 1
+
+        proc = _FakeProc()
+
+        async def _fake_exec(*_args: object, **_kwargs: object) -> _FakeProc:
+            return proc
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+        engine = AsyncControlModeEngine(tmux_bin="tmux")
+        engine._next_attach_target = "$0"
+        with pytest.raises(ControlModeError) as caught:
+            await asyncio.wait_for(engine._spawn(), timeout=2.0)
+        assert engine._proc is None
+        assert engine._stderr_task is None
+        return str(caught.value)
+
+    message = asyncio.run(main())
+    assert "attach body" in message
+    assert "tmux diagnostic" in message
+
+
+def test_cancelled_startup_reaps_process_and_stderr_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancelling startup cannot orphan its process or stderr reader task."""
+
+    async def main() -> tuple[int, bool, bool]:
+        stderr_started = asyncio.Event()
+        stopped = asyncio.Event()
+        terminate_called = asyncio.Event()
+        allow_reap = asyncio.Event()
+
+        class _Stdout:
+            async def read(self, _size: int) -> bytes:
+                await stopped.wait()
+                return b""
+
+        class _Stderr:
+            async def read(self, _size: int) -> bytes:
+                stderr_started.set()
+                await stopped.wait()
+                return b""
+
+        class _FakeProc:
+            def __init__(self) -> None:
+                self.returncode: int | None = None
+                self.stdout = _Stdout()
+                self.stderr = _Stderr()
+                self.stdin = None
+                self.terminate_calls = 0
+
+            def terminate(self) -> None:
+                self.terminate_calls += 1
+                self.returncode = 0
+                stopped.set()
+                terminate_called.set()
+
+            async def wait(self) -> int:
+                await allow_reap.wait()
+                return 0
+
+        proc = _FakeProc()
+
+        async def _fake_exec(*_args: object, **_kwargs: object) -> _FakeProc:
+            return proc
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+        engine = AsyncControlModeEngine(tmux_bin="tmux")
+        engine._next_attach_target = "$0"
+        startup = asyncio.create_task(engine._spawn())
+        await asyncio.wait_for(stderr_started.wait(), timeout=2.0)
+        stderr_task = engine._stderr_task
+        startup.cancel()
+        await asyncio.wait_for(terminate_called.wait(), timeout=2.0)
+        startup.cancel()
+        await asyncio.sleep(0)
+        assert not startup.done()
+        allow_reap.set()
+        with pytest.raises(asyncio.CancelledError):
+            await startup
+        return (
+            proc.terminate_calls,
+            bool(stderr_task and stderr_task.done()),
+            engine._proc is None and engine._stderr_task is None,
+        )
+
+    assert asyncio.run(main()) == (1, True, True)
+
+
+def test_cancelled_process_creation_still_reaps_created_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cancellation during subprocess setup cannot abandon the eventual child."""
+
+    async def main() -> tuple[int, bool, bool]:
+        creation_started = asyncio.Event()
+        release_creation = asyncio.Event()
+        stopped = asyncio.Event()
+
+        class _Stream:
+            async def read(self, _size: int) -> bytes:
+                await stopped.wait()
+                return b""
+
+        class _FakeProc:
+            def __init__(self) -> None:
+                self.returncode: int | None = None
+                self.stdout = _Stream()
+                self.stderr = _Stream()
+                self.stdin = None
+                self.terminate_calls = 0
+
+            def terminate(self) -> None:
+                self.terminate_calls += 1
+                self.returncode = 0
+                stopped.set()
+
+            async def wait(self) -> int:
+                await stopped.wait()
+                return 0
+
+        proc = _FakeProc()
+
+        async def _fake_exec(*_args: object, **_kwargs: object) -> _FakeProc:
+            creation_started.set()
+            await release_creation.wait()
+            return proc
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+        engine = AsyncControlModeEngine(tmux_bin="tmux")
+        engine._next_attach_target = "$0"
+        startup = asyncio.create_task(engine._spawn())
+        await asyncio.wait_for(creation_started.wait(), timeout=2.0)
+        startup.cancel()
+        await asyncio.sleep(0)
+        startup.cancel()
+        assert not startup.done()
+        release_creation.set()
+        with pytest.raises(asyncio.CancelledError):
+            await startup
+        return (
+            proc.terminate_calls,
+            engine._proc is None,
+            engine._stderr_task is None,
+        )
+
+    assert asyncio.run(main()) == (1, True, True)
+
+
+def test_reader_death_includes_stderr_tail() -> None:
+    """A stdout EOF reports tmux's stderr after joining the drain task."""
+
+    async def main() -> str:
+        stdout = asyncio.StreamReader()
+        stdout.feed_eof()
+        stderr = asyncio.StreamReader()
+        stderr.feed_data(b"server-side reason\n")
+        stderr.feed_eof()
+
+        class _FakeProc:
+            def __init__(self) -> None:
+                self.returncode: int | None = 1
+                self.stdout = stdout
+                self.stderr = stderr
+                self.stdin = None
+
+            async def wait(self) -> int:
+                return 1
+
+        engine = AsyncControlModeEngine()
+        proc = _FakeProc()
+        engine._proc = t.cast("asyncio.subprocess.Process", proc)
+        engine._start_stderr_reader(t.cast("asyncio.subprocess.Process", proc))
+        await engine._reader()
+        assert engine._dead is not None
+        return str(engine._dead)
+
+    assert "server-side reason" in asyncio.run(main())
+
+
+def test_real_subprocess_drains_stderr_past_pipe_capacity(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A real child can fill stderr before its ACK without deadlocking startup."""
+    executable = tmp_path / "stderr-before-ack"
+    executable.write_text(
+        f"""#!{sys.executable}
+import os
+import sys
+
+remaining = 2 * 1024 * 1024
+chunk = b"x" * 65536
+while remaining:
+    written = os.write(2, chunk[:remaining])
+    remaining -= written
+os.write(1, b"%begin 1 1 0\\n%end 1 1 0\\n")
+sys.stdin.buffer.read()
+""",
+    )
+    executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+
+    async def main() -> tuple[int, bool, bool, int]:
+        engine = AsyncControlModeEngine(tmux_bin=str(executable))
+        engine._next_attach_target = "$0"
+        await asyncio.wait_for(engine._spawn(), timeout=3.0)
+        proc = engine._proc
+        stderr_task = engine._stderr_task
+        retained = len(engine._stderr_tail)
+        assert proc is not None
+        assert stderr_task is not None
+        await engine.aclose()
+        leaked = any(
+            task.get_name() == "libtmux-async-control-stderr" and not task.done()
+            for task in asyncio.all_tasks()
+        )
+        return proc.returncode or 0, stderr_task.done(), leaked, retained
+
+    returncode, task_done, leaked, retained = asyncio.run(main())
+    assert returncode != 0
+    assert task_done
+    assert not leaked
+    assert 0 < retained <= _STDERR_TAIL_BYTES

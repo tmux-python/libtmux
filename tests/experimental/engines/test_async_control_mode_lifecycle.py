@@ -88,6 +88,26 @@ def test_async_context_starts_when_a_safe_session_exists(session: Session) -> No
     assert asyncio.run(main()) == (True, True)
 
 
+def test_async_context_reaps_process_and_stderr_reader(session: Session) -> None:
+    """Context exit joins both process and generation-owned stderr reader."""
+
+    async def main() -> tuple[bool, bool, bool]:
+        engine = AsyncControlModeEngine.for_server(session.server)
+        await engine.start()
+        proc = engine._proc
+        stderr_task = engine._stderr_task
+        assert proc is not None
+        assert stderr_task is not None
+        await engine.aclose()
+        return (
+            proc.returncode is not None,
+            stderr_task.done(),
+            engine._proc is None and engine._stderr_task is None,
+        )
+
+    assert asyncio.run(main()) == (True, True, True)
+
+
 def test_async_attach_preserves_session_environment(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
