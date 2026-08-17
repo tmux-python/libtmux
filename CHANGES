@@ -123,27 +123,28 @@ A {class}`~libtmux.experimental.ops.plan.LazyPlan` records operations and yields
 forward references so a later operation can target an object that does not exist
 yet, resolved against captured ids at execution time. How a plan becomes tmux
 dispatches is a pluggable {class}`~libtmux.experimental.ops.planner.Planner`
-(sequential, ``;``-folding, or ``{marked}``-folding), so dispatch strategies can
-be A/B tested against the same plan with identical results.
+(sequential or ordered request batching), so dispatch strategies can be tested
+against the same plan with identical per-operation results. A batching planner
+never joins commands with `;` or borrows tmux's server-global marked pane.
 
-#### Declarative workspace builds fold to a few tmux calls (#690)
+#### Declarative workspace request batching (#690)
 
 A {class}`~libtmux.experimental.workspace.ir.Workspace` declares a session as a
 tree of windows and panes and lowers to a Core
 {class}`~libtmux.experimental.ops.plan.LazyPlan`, so a tmuxp-style spec can be
 analyzed, inspected, and built over any engine.
 {meth}`~libtmux.experimental.workspace.ir.Workspace.build` and its async twin
-{meth}`~libtmux.experimental.workspace.ir.Workspace.abuild` fold the build's
-dispatches by default: a multi-pane window collapses from one tmux call per
-operation into a handful of ``;``-chained and ``{marked}`` dispatches, so a
-session renders in a few round-trips instead of dozens.
+{meth}`~libtmux.experimental.workspace.ir.Workspace.abuild` batch ready requests
+by default. Every operation retains its own request, output, failure, and typed
+result. Persistent control transports can pipeline a batch; subprocess engines
+still start one process per request.
 
 The resulting {class}`~libtmux.experimental.ops.plan.PlanResult` is identical to
-an unfolded build -- only the dispatch count changes -- because host-side steps
-(per-command sleeps, the ``wait_pane`` anti-race, ``before_script``) stay hard
-fold boundaries that a fold never crosses. Pass a
+sequential execution because captured identifiers and host-side steps
+(per-command sleeps, the ``wait_pane`` anti-race, ``before_script``) remain hard
+batch boundaries. Pass a
 {class}`~libtmux.experimental.ops.planner.SequentialPlanner` to ``build`` for one
-legible tmux call per operation when debugging.
+legible engine call per operation when debugging.
 
 #### Floating panes on tmux 3.7 (#690)
 
@@ -159,7 +160,7 @@ on a window, including a pane that overlays a different window.
 panes a running server has: ``filter``, ``order_by``, ``limit``, and ``map``
 compose and read nothing until a terminal call. The same query commands what it
 selects -- ``commands()`` attaches per-pane actions (send keys, resize, select,
-respawn, clear history, kill) that run as one folded tmux dispatch. A query
+respawn, clear history, kill) that run as an ordered request batch. A query
 resolves against a live engine or a plain list of pane snapshots, so the same
 code runs offline in tests.
 
