@@ -900,9 +900,9 @@ def _sync_cell(
         names = [uniq() for _ in range(sessions)]
         for name in names:
             build_sync(layer, engine, name, wins, panes)
-            verify_topology(server, names, windows=wins, panes=panes)
-            for name in names:
-                _kill_session(server, name)
+        verify_topology(server, names, windows=wins, panes=panes)
+        for name in names:
+            _kill_session(server, name)
     samples: list[float] = []
     for _ in range(runs):
         names = [uniq() for _ in range(sessions)]

@@ -132,6 +132,42 @@ def test_matrix_executes_and_reports_a_multi_session_sample(
     assert generated["batch_sizes"] == [1, 3, 1, 3]
 
 
+def test_sync_matrix_warms_every_session_before_topology_verification() -> None:
+    """A multi-session warmup validates only after building every session."""
+    root = pathlib.Path(__file__).parents[1]
+    env = os.environ.copy()
+    env.pop("VIRTUAL_ENV", None)
+
+    completed = subprocess.run(
+        (
+            "uv",
+            "run",
+            "scripts/bench_engines.py",
+            "matrix",
+            "--shapes",
+            "2x1x1",
+            "--layers",
+            "default",
+            "--transports",
+            "subprocess",
+            "--modes",
+            "sync",
+            "--runs",
+            "1",
+            "--warmup",
+            "1",
+            "--no-check",
+        ),
+        cwd=root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
 @pytest.mark.parametrize("mode", ["sync", "async"])
 def test_build_driver_rejects_a_failed_operation(mode: str) -> None:
     """A partial plan failure cannot be recorded as a successful timing sample."""
