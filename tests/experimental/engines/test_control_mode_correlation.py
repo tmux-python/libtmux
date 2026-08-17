@@ -1,7 +1,9 @@
-"""Tests for control-mode block correlation (folded chains, merge)."""
+"""Tests for control-mode block correlation and semicolon command groups."""
 
 from __future__ import annotations
 
+import asyncio
+import gc
 import typing as t
 
 import pytest
@@ -10,6 +12,7 @@ from libtmux.experimental.engines.base import CommandSeparator
 from libtmux.experimental.engines.control_mode import (
     ControlModeBlock,
     ControlModeEngine,
+    ControlModeError,
     _merge_blocks,
     command_count,
 )
@@ -64,7 +67,7 @@ def _block(*, is_error: bool, body: tuple[bytes, ...]) -> ControlModeBlock:
 
 
 class MergeCase(t.NamedTuple):
-    """Blocks from one (possibly folded) request and the merged result."""
+    """Blocks from one request and the merged group result."""
 
     test_id: str
     blocks: list[ControlModeBlock]
@@ -105,7 +108,7 @@ def test_merge_blocks(
     stdout: tuple[str, ...],
     stderr: tuple[str, ...],
 ) -> None:
-    """A folded request's blocks merge; any sub-command error fails the result."""
+    """A command group's blocks merge; any sub-command error fails the result."""
     result = _merge_blocks(blocks, ("cmd",))
     assert result.returncode == returncode
     assert result.stdout == stdout
@@ -185,10 +188,63 @@ def test_async_control_cancelled_drain_cancels_pending_futures() -> None:
     assert asyncio.run(_check()) == (0, True)
 
 
-def test_control_mode_fold_detects_failure_live(session: Session) -> None:
-    """A folded chain over control mode surfaces a later sub-command's failure."""
+@pytest.mark.parametrize("cancel", [False, True], ids=["broken-pipe", "cancelled"])
+def test_async_control_drain_race_retrieves_failed_futures(cancel: bool) -> None:
+    """A close racing the write path leaves no unretrieved future exception."""
+    from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
+    from libtmux.experimental.engines.base import CommandRequest
+
+    async def _check() -> list[dict[str, t.Any]]:
+        drain_started = asyncio.Event()
+        release_drain = asyncio.Event()
+        diagnostics: list[dict[str, t.Any]] = []
+
+        class _FakeStdin:
+            def write(self, _data: bytes) -> None:
+                return
+
+            async def drain(self) -> None:
+                drain_started.set()
+                await release_drain.wait()
+                raise BrokenPipeError
+
+        class _FakeProc:
+            stdin = _FakeStdin()
+
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(lambda _loop, context: diagnostics.append(context))
+        engine = AsyncControlModeEngine()
+        engine._started = True
+        engine._start_attempt = loop.create_future()
+        engine._start_attempt.set_result(None)
+        engine._proc = t.cast("t.Any", _FakeProc())
+        task = asyncio.create_task(
+            engine.run(CommandRequest.from_args("list-sessions"))
+        )
+        await drain_started.wait()
+        failed_future = engine._pending[0].future
+        engine._fail_pending(ControlModeError("closed concurrently"))
+        if cancel:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        else:
+            release_drain.set()
+            with pytest.raises(ControlModeError, match="write failed"):
+                await task
+        assert failed_future._log_traceback is False
+        del task
+        gc.collect()
+        await asyncio.sleep(0)
+        return diagnostics
+
+    assert asyncio.run(_check()) == []
+
+
+def test_control_mode_batch_detects_failure_live(session: Session) -> None:
+    """A request batch retains a later command's failure."""
     from libtmux.experimental.engines.control_mode import ControlModeEngine
-    from libtmux.experimental.ops import FoldingPlanner, LazyPlan, RenameWindow
+    from libtmux.experimental.ops import BatchingPlanner, LazyPlan, RenameWindow
     from libtmux.experimental.ops._types import WindowId
 
     window = session.active_window
@@ -197,14 +253,14 @@ def test_control_mode_fold_detects_failure_live(session: Session) -> None:
         plan = LazyPlan()
         plan.add(RenameWindow(target=WindowId(window.window_id), name="ok"))
         plan.add(RenameWindow(target=WindowId("@999999"), name="x"))  # bad target
-        outcome = plan.execute(engine, planner=FoldingPlanner())
+        outcome = plan.execute(engine, planner=BatchingPlanner())
     assert not outcome.ok
 
 
-def test_control_mode_fold_runs_all_live(session: Session) -> None:
-    """A folded chain over control mode runs every sub-command."""
+def test_control_mode_batch_runs_all_live(session: Session) -> None:
+    """A request batch runs every command in order."""
     from libtmux.experimental.engines.control_mode import ControlModeEngine
-    from libtmux.experimental.ops import FoldingPlanner, LazyPlan, RenameWindow
+    from libtmux.experimental.ops import BatchingPlanner, LazyPlan, RenameWindow
     from libtmux.experimental.ops._types import WindowId
 
     second = session.new_window(window_name="orig")
@@ -214,7 +270,7 @@ def test_control_mode_fold_runs_all_live(session: Session) -> None:
         plan = LazyPlan()
         plan.add(RenameWindow(target=WindowId(first.window_id), name="one"))
         plan.add(RenameWindow(target=WindowId(second.window_id), name="two"))
-        outcome = plan.execute(engine, planner=FoldingPlanner())
+        outcome = plan.execute(engine, planner=BatchingPlanner())
     assert outcome.ok
     second.refresh()
     assert second.window_name == "two"

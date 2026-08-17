@@ -119,6 +119,34 @@ class SubprocessEngine:
         """Execute each request in order (subprocess forks per call)."""
         return [self.run(req) for req in requests]
 
+    def with_connection(self, connection: ServerConnection) -> SubprocessEngine:
+        """Return an equivalent stateless engine bound to *connection*.
+
+        Parameters
+        ----------
+        connection : ServerConnection
+            The connection the returned engine dispatches over.
+
+        Returns
+        -------
+        SubprocessEngine
+            A new engine; this engine is unchanged.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.engines import ServerConnection
+        >>> engine = SubprocessEngine()
+        >>> rebound = engine.with_connection(
+        ...     ServerConnection.of(args=("-Lwork",))
+        ... )
+        >>> rebound.server_args, engine.server_args
+        (('-Lwork',), ())
+        """
+        return type(self)(
+            tmux_bin=connection.tmux_bin,
+            server_args=connection.args,
+        )
+
     @classmethod
     def for_server(cls, server: t.Any) -> SubprocessEngine:
         """Build an engine bound to a live :class:`libtmux.Server`'s socket.

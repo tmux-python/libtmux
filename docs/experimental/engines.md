@@ -39,10 +39,10 @@ event loop.
 ## Engine boundary
 
 A synchronous engine satisfies
-{class}`~libtmux.experimental.engines.base.TmuxEngine`; an async engine
+{class}`~libtmux.engines.base.TmuxEngine`; an async engine
 satisfies {class}`~libtmux.experimental.engines.base.AsyncTmuxEngine`. Both
-accept a {class}`~libtmux.experimental.engines.base.CommandRequest` and produce
-a raw {class}`~libtmux.experimental.engines.base.CommandResult`.
+accept a {class}`~libtmux.engines.base.CommandRequest` and produce
+a raw {class}`~libtmux.engines.base.CommandResult`.
 {func}`~libtmux.experimental.ops.run` and
 {func}`~libtmux.experimental.ops.arun` own the next boundary: they render an
 operation and convert the raw command outcome to its declared typed result.
@@ -68,16 +68,10 @@ engine-owned workflow.
 ## Shared API
 
 ```{eval-rst}
-.. autoclass:: libtmux.experimental.engines.base.TmuxEngine
-   :members:
-
 .. autoclass:: libtmux.experimental.engines.base.AsyncTmuxEngine
    :members:
 
-.. autoclass:: libtmux.experimental.engines.base.CommandRequest
-   :members:
-
-.. autoclass:: libtmux.experimental.engines.base.CommandResult
+.. autoclass:: libtmux.experimental.engines.base.SupportsAsyncTmuxVersion
    :members:
 
 .. autofunction:: libtmux.experimental.engines.registry.available_engines

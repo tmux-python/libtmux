@@ -3,7 +3,7 @@
 {class}`~libtmux.experimental.engines.control_mode.ControlModeEngine` keeps one
 `tmux -C` client alive once connected and correlates tmux's framed replies with
 submitted
-{class}`~libtmux.experimental.engines.base.CommandRequest` values.
+{class}`~libtmux.engines.base.CommandRequest` values.
 {meth}`~libtmux.experimental.engines.control_mode.ControlModeEngine.run_batch`
 pipelines an ordered batch instead of starting one process per request.
 
@@ -60,7 +60,7 @@ True
 ```
 
 The values are live raw
-{class}`~libtmux.experimental.engines.base.CommandResult` instances because
+{class}`~libtmux.engines.base.CommandResult` instances because
 `run_batch` is the engine boundary. Use {func}`~libtmux.experimental.ops.run` or
 a plan when the caller needs operation-specific result subtypes.
 
