@@ -15,9 +15,11 @@
 # mypy: disable-error-code="import-not-found, untyped-decorator"
 """Hermetic libtmux engine build-benchmark grid.
 
-Measures how long the experimental workspace builder (and the classic API, and a
-hand-rolled pipelined prototype) take to build tmux session structures, sweeping
-scenarios x engines x wait-modes. Reports min/avg/median/max/p90/p95/p99.
+Measures how long the experimental workspace builder and the classic API take to
+build tmux session structures, sweeping scenarios x engines x wait-modes.
+Reports min/avg/median/max/p90/p95/p99. A separately named hand-written
+no-capture pipeline remains available as an opt-in prototype; it is not a
+planner comparison and does not participate in the parity contract.
 
 Hermetic & sandboxed: every server runs on its OWN socket under a throwaway
 mkdtemp dir; ``TMUX`` is unset at import so the ambient session is never touched;
@@ -30,28 +32,34 @@ Engines (``--engines``):
   control_mode  builder on ControlModeEngine    (one persistent ``tmux -C``)
   imsg          builder on ImsgEngine           (AF_UNIX imsg, socket-injected)
   mock          builder on MockEngine       (offline, in-memory: Python floor)
-  pipelined     prototype: batch independent creates via run_batch (control_mode)
+  prototype-pipelined
+                hand-written no-capture run_batch prototype (opt-in only)
 
-Timing (``run`` = in-process build-only, the clean signal; ``--hyperfine`` also
-runs whole-process wall time via hyperfine over the ``cell`` subcommand).
+Timing: ``run`` measures in-process build-only latency. The ``cell`` subcommand
+provides one whole-process build for external tools such as hyperfine.
 
 The ``matrix`` subcommand isolates *why* a build costs what it does, sweeping a
 four-axis factorial -- async {sync, async} x transport {subprocess,
-control_mode} x planner {imperative, plan-seq, plan-fold} x workspace
-{hand plan, declarative} -- as five expression layers x 2 transports x 2 modes,
-against a ``classic`` reference. ``mock`` is not benchmarked here: it is the
-offline correctness oracle, and ``matrix --check`` / ``contract`` assert every
-layer x mode renders identical tmux argv to it, so the grid doubles as an
-ops-language contract test. ``concurrency`` measures async's real lever -- K
-independent builds sync-serial vs ``asyncio.gather`` over one connection.
+control_mode} x planner {imperative, sequential, batching} x expression
+{hand plan, declarative, workspace default}. The workload includes adjacent
+ready operations, so sequential and batching planners have measurably different
+step shapes while retaining identical tmux requests. The matrix reports observed
+planner/request grouping separately from process-start models; unknown or
+cache-dependent counts remain explicitly unmeasured. ``mock`` is the offline
+correctness oracle.
+``concurrency`` is an exploratory sync-serial versus ``asyncio.gather`` probe.
+Its startup boundaries and strategy order are not symmetric, so it is not
+evidence for async speed or event-loop health. tmux also serializes its server
+command queue.
 
 Run:  uv run scripts/bench/engines.py run
-      uv run scripts/bench/engines.py run --engines control_mode,pipelined --wait
+      uv run scripts/bench/engines.py run --wait \
+          --engines control_mode,prototype-pipelined
       uv run scripts/bench/engines.py profile --engine control_mode --shape 8x4
-      uv run scripts/bench/engines.py cell control_mode 8x4   # one build, for hyperfine
-      uv run scripts/bench/engines.py matrix --shapes 1x4,3x3,5x4
+      uv run scripts/bench/engines.py cell control_mode 8x4
+      uv run scripts/bench/engines.py matrix --shapes 1x1x4,1x4x1,4x1x1
       uv run scripts/bench/engines.py concurrency --transport control_mode --k 4
-      uv run scripts/bench/engines.py contract              # parity only, for CI
+      uv run scripts/bench/engines.py contract
 """
 
 from __future__ import annotations
@@ -95,13 +103,14 @@ from libtmux.experimental.engines import (
 )
 from libtmux.experimental.engines.base import CommandRequest
 from libtmux.experimental.ops import (
-    FoldingPlanner,
+    BatchingPlanner,
     LazyPlan,
     NewSession,
     NewWindow,
     Planner,
     RenameWindow,
     SequentialPlanner,
+    SetOption,
     SplitWindow,
     arun as op_arun,
     run as op_run,
@@ -118,6 +127,10 @@ wide_console = rich.console.Console(width=132)
 R = CommandRequest.from_args
 _ctr = itertools.count()
 STAT_LABELS = ("n", "min", "avg", "median", "p90", "p95", "p99", "max")
+BENCH_OPTIONS = (
+    ("@libtmux_bench_one", "1"),
+    ("@libtmux_bench_two", "2"),
+)
 
 # --------------------------------------------------------------------------- #
 # Hermetic isolation                                                          #
@@ -155,7 +168,10 @@ def new_server() -> Server:
     phantom session already pinned the server -- which is exactly why only the
     subprocess cells were affected.
     """
-    srv = Server(socket_path=str(_SOCK_DIR / f"{uuid.uuid4().hex[:8]}.sock"))
+    srv = Server(
+        socket_path=str(_SOCK_DIR / f"{uuid.uuid4().hex[:8]}.sock"),
+        config_file=os.devnull,
+    )
     _SERVERS.append(srv)
     # The keepalive has to come first: `start-server` alone leaves a server with
     # zero sessions, which exits immediately under the default, so there is no
@@ -254,10 +270,101 @@ def uniq() -> str:
 # --------------------------------------------------------------------------- #
 # Scenario spec + build implementations                                       #
 # --------------------------------------------------------------------------- #
-def parse_shape(s: str) -> tuple[int, int]:
-    """'8x4' -> (8 windows, 4 panes-per-window)."""
-    w, _, p = s.lower().partition("x")
-    return int(w), int(p)
+@dataclasses.dataclass(frozen=True)
+class Scenario:
+    """One benchmark sample's session/window/pane cardinality.
+
+    Attributes
+    ----------
+    sessions : int
+        Independent sessions built sequentially per timed sample.
+    windows : int
+        Windows created in each session.
+    panes : int
+        Tiled panes created in each window.
+    """
+
+    sessions: int
+    windows: int
+    panes: int
+
+    @property
+    def label(self) -> str:
+        """Return the canonical ``SxWxP`` label.
+
+        >>> Scenario(2, 3, 4).label
+        '2x3x4'
+        """
+        return f"{self.sessions}x{self.windows}x{self.panes}"
+
+
+def parse_scenario(value: str) -> Scenario:
+    """Parse ``WxP`` or ``SxWxP`` cardinality into a scenario.
+
+    >>> parse_scenario("8x4")
+    Scenario(sessions=1, windows=8, panes=4)
+    >>> parse_scenario("2x3x4")
+    Scenario(sessions=2, windows=3, panes=4)
+    """
+    parts = value.lower().split("x")
+    if len(parts) == 2:
+        parts.insert(0, "1")
+    if len(parts) != 3:
+        msg = f"expected WxP or SxWxP, got {value!r}"
+        raise ValueError(msg)
+    sessions, windows, panes = (int(part) for part in parts)
+    if min(sessions, windows, panes) < 1:
+        msg = f"scenario dimensions must be positive, got {value!r}"
+        raise ValueError(msg)
+    return Scenario(sessions, windows, panes)
+
+
+def parse_shape(value: str) -> tuple[int, int]:
+    """Parse a one-session ``WxP`` shape for single-session commands.
+
+    >>> parse_shape("8x4")
+    (8, 4)
+    """
+    scenario = parse_scenario(value)
+    if scenario.sessions != 1:
+        msg = f"this command accepts WxP only, got {value!r}"
+        raise ValueError(msg)
+    return scenario.windows, scenario.panes
+
+
+def parse_scenarios(value: str) -> list[Scenario]:
+    """Parse a comma-separated scenario option or raise a CLI usage error.
+
+    >>> parse_scenarios("1x1,2x3x4")
+    [Scenario(sessions=1, windows=1, panes=1), Scenario(sessions=2, windows=3, panes=4)]
+    """
+    try:
+        scenarios = [parse_scenario(item) for item in value.split(",") if item]
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="--shapes") from error
+    if not scenarios:
+        msg = "at least one scenario is required"
+        raise typer.BadParameter(msg, param_hint="--shapes")
+    return scenarios
+
+
+def _select_axis(
+    value: str,
+    choices: t.Collection[str],
+    option: str,
+) -> list[str]:
+    """Parse a comma-separated matrix axis without silently dropping values."""
+    selected = [item.strip() for item in value.split(",") if item.strip()]
+    available = set(choices)
+    unknown = [item for item in selected if item not in available]
+    if unknown:
+        expected = ", ".join(sorted(available))
+        msg = f"unknown value(s) {', '.join(unknown)}; choose from {expected}"
+        raise typer.BadParameter(msg, param_hint=option)
+    if not selected:
+        msg = "at least one value is required"
+        raise typer.BadParameter(msg, param_hint=option)
+    return selected
 
 
 def spec(name: str, wins: int, panes: int) -> Workspace:
@@ -265,6 +372,7 @@ def spec(name: str, wins: int, panes: int) -> Workspace:
     return Workspace(
         name=name,
         on_exists="replace",
+        options=dict(BENCH_OPTIONS),
         windows=[
             Window(name=f"w{w}", panes=[Pane() for _ in range(panes)])
             for w in range(wins)
@@ -275,6 +383,8 @@ def spec(name: str, wins: int, panes: int) -> Workspace:
 def build_classic(server: Server, name: str, wins: int, panes: int) -> None:
     """Build the structure with the classic Server/Session/Window/Pane API."""
     session = server.new_session(session_name=name, window_name="w0")
+    for option, value in BENCH_OPTIONS:
+        session.set_option(option, value)
     for _ in range(panes - 1):
         session.active_window.split()
     for wi in range(1, wins):
@@ -284,17 +394,19 @@ def build_classic(server: Server, name: str, wins: int, panes: int) -> None:
 
 
 def build_pipelined(engine: t.Any, name: str, wins: int, panes: int) -> None:
-    """Prototype: batch INDEPENDENT creates into few run_batch round-trips.
+    """Prototype: batch independent named targets without capturing ids.
 
-    new-session (1) + all new-windows in one run_batch (1) + all splits in one
-    run_batch (1) = 3 round-trips for any shape, vs ~1-per-op for the builder.
-    The control-mode run_batch pipelines (write all, read all reply blocks).
+    This is deliberately outside the planner comparison. It hand-writes tmux
+    argv, targets objects by chosen names, and does not provide the per-operation
+    captured-id contract of the typed plan/workspace paths.
     """
     engine.run(R("new-session", "-d", "-s", name, "-n", "w0"))
-    if wins > 1:
-        engine.run_batch(
-            [R("new-window", "-t", name, "-n", f"w{i}") for i in range(1, wins)]
-        )
+    ready = [
+        R("set-option", "-t", name, "--", option, value)
+        for option, value in BENCH_OPTIONS
+    ]
+    ready.extend(R("new-window", "-t", name, "-n", f"w{i}") for i in range(1, wins))
+    engine.run_batch(ready)
     splits = [
         R("split-window", "-t", f"{name}:w{i}")
         for i in range(wins)
@@ -338,7 +450,7 @@ class Impl:
     """One benchmarked implementation: how to make its engine and build."""
 
     name: str
-    kind: str  # classic | builder | pipelined | offline
+    kind: str  # classic | builder | prototype-pipelined | offline
     make_engine: t.Callable[[Server | None], t.Any] | None = None
     needs_preboot: bool = False
     preflight: bool = True
@@ -354,8 +466,10 @@ IMPLS: dict[str, Impl] = {
     ),
     "imsg": Impl("imsg", "builder", lambda s: ImsgForServer(s), needs_preboot=True),
     "mock": Impl("mock", "offline", lambda s: MockEngine(), preflight=False),
-    "pipelined": Impl(
-        "pipelined", "pipelined", lambda s: ControlModeEngine.for_server(s)
+    "prototype-pipelined": Impl(
+        "prototype-pipelined",
+        "prototype-pipelined",
+        lambda s: ControlModeEngine.for_server(s),
     ),
 }
 
@@ -366,7 +480,7 @@ def do_build(
     """Dispatch one build of *w* x *p* to the right implementation path."""
     if impl.kind == "classic":
         build_classic(server, name, w, p)  # type: ignore[arg-type]
-    elif impl.kind == "pipelined":
+    elif impl.kind == "prototype-pipelined":
         build_pipelined(engine, name, w, p)
     else:  # builder / offline
         spec(name, w, p).build(engine, preflight=impl.preflight)
@@ -396,19 +510,102 @@ def wait_ready(
             time.sleep(interval)
 
 
+def _checked_stdout(server: Server, *args: str) -> tuple[str, ...]:
+    """Run a diagnostic tmux query and reject transport or tmux failures."""
+    result = server.cmd(*args)
+    if result.returncode != 0:
+        detail = " ".join(result.stderr) or f"tmux exited {result.returncode}"
+        msg = f"benchmark verification command failed: {' '.join(args)}: {detail}"
+        raise RuntimeError(msg)
+    return tuple(result.stdout)
+
+
+def _kill_session(server: Server, name: str) -> None:
+    """Remove a benchmark session and reject cleanup failures."""
+    _checked_stdout(server, "kill-session", "-t", name)
+
+
+def verify_topology(
+    server: Server,
+    names: t.Sequence[str],
+    *,
+    windows: int,
+    panes: int,
+) -> None:
+    """Reject a partial or semantically wrong live benchmark sample."""
+    live_sessions = set(
+        _checked_stdout(server, "list-sessions", "-F", "#{session_name}")
+    )
+    missing = [name for name in names if name not in live_sessions]
+    if missing:
+        msg = f"missing benchmark sessions: {', '.join(missing)}"
+        raise RuntimeError(msg)
+    expected_window_names = {f"w{index}" for index in range(windows)}
+    for name in names:
+        window_names = set(
+            _checked_stdout(
+                server,
+                "list-windows",
+                "-t",
+                name,
+                "-F",
+                "#{window_name}",
+            )
+        )
+        if window_names != expected_window_names:
+            msg = (
+                f"{name}: expected windows {sorted(expected_window_names)!r}, "
+                f"got {sorted(window_names)!r}"
+            )
+            raise RuntimeError(msg)
+        pane_ids = _checked_stdout(
+            server,
+            "list-panes",
+            "-s",
+            "-t",
+            name,
+            "-F",
+            "#{pane_id}",
+        )
+        expected_panes = windows * panes
+        if len(pane_ids) != expected_panes:
+            msg = f"{name}: expected {expected_panes} panes, got {len(pane_ids)}"
+            raise RuntimeError(msg)
+        for option, expected in BENCH_OPTIONS:
+            actual = _checked_stdout(
+                server,
+                "show-options",
+                "-t",
+                name,
+                "-v",
+                option,
+            )
+            if actual != (expected,):
+                msg = f"{name}: expected {option}={expected!r}, got {actual!r}"
+                raise RuntimeError(msg)
+
+
 def run_cell(
-    impl: Impl, wins: int, panes: int, wait: bool, runs: int, warmup: int
+    impl: Impl,
+    wins: int,
+    panes: int,
+    wait: bool,
+    runs: int,
+    warmup: int,
+    sessions: int = 1,
 ) -> list[float]:
-    """Return per-build wall times (ms), in-process, with session cleanup."""
+    """Return per-sample wall times with *sessions* sequential builds each."""
     if impl.kind == "offline":
         engine = impl.make_engine(None)  # type: ignore[misc]
         for _ in range(warmup):
-            spec(uniq(), wins, panes).build(engine, preflight=False)
+            for _ in range(sessions):
+                spec(uniq(), wins, panes).build(engine, preflight=False)
         samples = []
         for _ in range(runs):
-            name = uniq()
+            names = [uniq() for _ in range(sessions)]
             t0 = time.perf_counter()
-            spec(name, wins, panes).build(engine, preflight=False)
+            for name in names:
+                spec(name, wins, panes).build(engine, preflight=False)
             samples.append((time.perf_counter() - t0) * 1000)
         return samples
 
@@ -418,20 +615,26 @@ def run_cell(
     engine = impl.make_engine(server) if impl.make_engine else None
     try:
         for _ in range(warmup):
-            name = uniq()
-            do_build(impl, server, engine, name, wins, panes)
-            if wait:
-                wait_ready(server, name)
-            server.cmd("kill-session", "-t", name)
+            names = [uniq() for _ in range(sessions)]
+            for name in names:
+                do_build(impl, server, engine, name, wins, panes)
+                if wait:
+                    wait_ready(server, name)
+            verify_topology(server, names, windows=wins, panes=panes)
+            for name in names:
+                _kill_session(server, name)
         samples = []
         for _ in range(runs):
-            name = uniq()
+            names = [uniq() for _ in range(sessions)]
             t0 = time.perf_counter()
-            do_build(impl, server, engine, name, wins, panes)
-            if wait:
-                wait_ready(server, name)
+            for name in names:
+                do_build(impl, server, engine, name, wins, panes)
+                if wait:
+                    wait_ready(server, name)
             samples.append((time.perf_counter() - t0) * 1000)
-            server.cmd("kill-session", "-t", name)  # untimed cleanup -> no accumulation
+            verify_topology(server, names, windows=wins, panes=panes)
+            for name in names:
+                _kill_session(server, name)
         return samples
     finally:
         with contextlib.suppress(Exception):
@@ -464,6 +667,18 @@ def summarize(samples: list[float]) -> dict[str, float]:
     }
 
 
+def summary_json(summary: dict[str, float]) -> dict[str, float | int]:
+    """Return JSON field names with a unit only on duration values.
+
+    >>> summary_json({"n": 2.0, "min": 1.5})
+    {'n': 2, 'min_ms': 1.5}
+    """
+    return {
+        "n": int(summary["n"]),
+        **{f"{name}_ms": summary[name] for name in STAT_LABELS[1:] if name in summary},
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Factorial matrix -- axes as registries, the grid via itertools.product       #
 # --------------------------------------------------------------------------- #
@@ -474,12 +689,12 @@ def summarize(samples: list[float]) -> dict[str, float]:
 #
 #   MODES       sync | async                -- which run-strategy drives a build
 #   TRANSPORTS  subprocess | control_mode   -- each supplies a sync + async engine
-#   LAYERS      imperative | plan-seq | plan-fold | ws-seq | ws-fold
+#   LAYERS      imperative | plan-seq | plan-batch | ws-seq | ws-batch | default
 #
-# The five LAYERS are the valid *expression* layers: a declarative Workspace
-# compiles to a LazyPlan, so ws-* and plan-* share one op spine, and folding is a
-# planner swap. `mock` is NOT a layer -- it is the offline correctness oracle for
-# the parity contract (`check_parity`), never a results row.
+# A declarative Workspace compiles to a LazyPlan, so ws-* and plan-* share one op
+# spine. ``default`` exercises Workspace's public default instead of spelling a
+# planner explicitly. `mock` is NOT a layer -- it is the offline correctness
+# oracle for the parity contract (`check_parity`), never a results row.
 #
 # Sync/async is unified without contaminating either path with the other's
 # machinery: the plan/ws layers differ only by method name (`execute`/`aexecute`,
@@ -507,6 +722,12 @@ def _imperative_ops(
         result.first_window_id,
         result.first_pane_id,
     )
+    for option, value in BENCH_OPTIONS:
+        yield SetOption(
+            target=SessionId(session_id),
+            option=option,
+            value=value,
+        )
     yield RenameWindow(target=WindowId(window0_id), name="w0")
     prev = pane0_id
     for _ in range(panes - 1):
@@ -527,7 +748,8 @@ def _pump_sync(gen: t.Generator[t.Any, t.Any, None], engine: t.Any) -> None:
     try:
         op = next(gen)
         while True:
-            op = gen.send(op_run(op, engine))
+            result = op_run(op, engine).raise_for_status()
+            op = gen.send(result)
     except StopIteration:
         pass
 
@@ -537,7 +759,8 @@ async def _pump_async(gen: t.Generator[t.Any, t.Any, None], engine: t.Any) -> No
     try:
         op = next(gen)
         while True:
-            op = gen.send(await op_arun(op, engine))
+            result = (await op_arun(op, engine)).raise_for_status()
+            op = gen.send(result)
     except StopIteration:
         pass
 
@@ -546,11 +769,13 @@ def _hand_plan(name: str, wins: int, panes: int) -> LazyPlan:
     """Hand-author the WxP build as a ``LazyPlan`` with forward SlotRef targets.
 
     Mirrors :func:`_imperative_ops` (and the workspace compiler) op-for-op, but
-    records refs instead of resolving ids eagerly, so a planner can fold or
-    sequence the dispatch.
+    records refs instead of resolving ids eagerly, so a planner can batch or
+    sequence the execution steps.
     """
     plan = LazyPlan()
     session = plan.add(NewSession(session_name=name, capture_panes=True))
+    for option, value in BENCH_OPTIONS:
+        plan.add(SetOption(target=session, option=option, value=value))
     plan.add(RenameWindow(target=session.window, name="w0"))
     prev: SlotRef = session.pane
     for _ in range(panes - 1):
@@ -565,12 +790,13 @@ def _hand_plan(name: str, wins: int, panes: int) -> LazyPlan:
 
 @dataclasses.dataclass(frozen=True)
 class Layer:
-    """One expression layer: how a build is *authored* (not how it is dispatched).
+    """One expression layer: how a build is authored and planned.
 
     ``kind`` selects the execution shape (``imperative`` drives the generator;
     ``plan`` executes a hand ``LazyPlan``; ``ws`` builds the declarative
     :class:`~libtmux.experimental.workspace.Workspace` IR). ``planner`` is the
-    dispatch policy for the plan/ws kinds (``None`` for imperative).
+    step-grouping policy for the plan/ws kinds. ``None`` means no planner for
+    imperative and the public default for ``default``.
     """
 
     name: str
@@ -581,9 +807,10 @@ class Layer:
 LAYERS: dict[str, Layer] = {
     "imperative": Layer("imperative", "imperative"),
     "plan-seq": Layer("plan-seq", "plan", SequentialPlanner()),
-    "plan-fold": Layer("plan-fold", "plan", FoldingPlanner()),
+    "plan-batch": Layer("plan-batch", "plan", BatchingPlanner()),
     "ws-seq": Layer("ws-seq", "ws", SequentialPlanner()),
-    "ws-fold": Layer("ws-fold", "ws", FoldingPlanner()),
+    "ws-batch": Layer("ws-batch", "ws", BatchingPlanner()),
+    "default": Layer("default", "ws"),
 }
 
 
@@ -592,9 +819,13 @@ def build_sync(layer: Layer, engine: t.Any, name: str, wins: int, panes: int) ->
     if layer.kind == "imperative":
         _pump_sync(_imperative_ops(name, wins, panes), engine)
     elif layer.kind == "plan":
-        _hand_plan(name, wins, panes).execute(engine, planner=layer.planner)
+        _hand_plan(name, wins, panes).execute(
+            engine, planner=layer.planner
+        ).raise_for_status()
     else:  # ws
-        spec(name, wins, panes).build(engine, preflight=False, planner=layer.planner)
+        spec(name, wins, panes).build(
+            engine, preflight=False, planner=layer.planner
+        ).raise_for_status()
 
 
 async def build_async(
@@ -604,11 +835,15 @@ async def build_async(
     if layer.kind == "imperative":
         await _pump_async(_imperative_ops(name, wins, panes), engine)
     elif layer.kind == "plan":
-        await _hand_plan(name, wins, panes).aexecute(engine, planner=layer.planner)
+        outcome = await _hand_plan(name, wins, panes).aexecute(
+            engine, planner=layer.planner
+        )
+        outcome.raise_for_status()
     else:  # ws
-        await spec(name, wins, panes).abuild(
+        outcome = await spec(name, wins, panes).abuild(
             engine, preflight=False, planner=layer.planner
         )
+        outcome.raise_for_status()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -655,22 +890,29 @@ def _sync_cell(
     server: Server,
     wins: int,
     panes: int,
+    sessions: int,
     runs: int,
     warmup: int,
 ) -> list[float]:
     """Time *runs* synchronous builds of one cell (untimed kill-session cleanup)."""
     engine = transport.make_sync(server)
     for _ in range(warmup):
-        name = uniq()
-        build_sync(layer, engine, name, wins, panes)
-        server.cmd("kill-session", "-t", name)
+        names = [uniq() for _ in range(sessions)]
+        for name in names:
+            build_sync(layer, engine, name, wins, panes)
+            verify_topology(server, names, windows=wins, panes=panes)
+            for name in names:
+                _kill_session(server, name)
     samples: list[float] = []
     for _ in range(runs):
-        name = uniq()
+        names = [uniq() for _ in range(sessions)]
         t0 = time.perf_counter()
-        build_sync(layer, engine, name, wins, panes)
+        for name in names:
+            build_sync(layer, engine, name, wins, panes)
         samples.append((time.perf_counter() - t0) * 1000)
-        server.cmd("kill-session", "-t", name)
+        verify_topology(server, names, windows=wins, panes=panes)
+        for name in names:
+            _kill_session(server, name)
     return samples
 
 
@@ -682,7 +924,7 @@ async def _akill_session(server: Server, name: str) -> None:
     running loop measurably raises the rate of failed ``new-session`` calls, so
     the cleanup is offloaded to a thread.
     """
-    await asyncio.to_thread(server.cmd, "kill-session", "-t", name)
+    await asyncio.to_thread(_kill_session, server, name)
 
 
 async def _async_cell(
@@ -691,22 +933,33 @@ async def _async_cell(
     server: Server,
     wins: int,
     panes: int,
+    sessions: int,
     runs: int,
     warmup: int,
 ) -> list[float]:
     """Async twin of :func:`_sync_cell`, over one persistent async connection."""
     async with _open_async(transport, server) as engine:
         for _ in range(warmup):
-            name = uniq()
-            await build_async(layer, engine, name, wins, panes)
-            await _akill_session(server, name)
+            names = [uniq() for _ in range(sessions)]
+            for name in names:
+                await build_async(layer, engine, name, wins, panes)
+            await asyncio.to_thread(
+                verify_topology, server, names, windows=wins, panes=panes
+            )
+            for name in names:
+                await _akill_session(server, name)
         samples: list[float] = []
         for _ in range(runs):
-            name = uniq()
+            names = [uniq() for _ in range(sessions)]
             t0 = time.perf_counter()
-            await build_async(layer, engine, name, wins, panes)
+            for name in names:
+                await build_async(layer, engine, name, wins, panes)
             samples.append((time.perf_counter() - t0) * 1000)
-            await _akill_session(server, name)
+            await asyncio.to_thread(
+                verify_topology, server, names, windows=wins, panes=panes
+            )
+            for name in names:
+                await _akill_session(server, name)
         return samples
 
 
@@ -716,6 +969,7 @@ def matrix_cell(
     layer: Layer,
     wins: int,
     panes: int,
+    sessions: int,
     runs: int,
     warmup: int,
 ) -> list[float]:
@@ -723,9 +977,11 @@ def matrix_cell(
     server = new_server()
     try:
         if mode == "sync":
-            return _sync_cell(transport, layer, server, wins, panes, runs, warmup)
+            return _sync_cell(
+                transport, layer, server, wins, panes, sessions, runs, warmup
+            )
         return asyncio.run(
-            _async_cell(transport, layer, server, wins, panes, runs, warmup)
+            _async_cell(transport, layer, server, wins, panes, sessions, runs, warmup)
         )
     finally:
         with contextlib.suppress(Exception):
@@ -735,21 +991,52 @@ def matrix_cell(
 # --------------------------------------------------------------------------- #
 # Mock-parity contract: every layer x mode renders the SAME argv as mock        #
 # --------------------------------------------------------------------------- #
+@dataclasses.dataclass(frozen=True)
+class RecordedBuild:
+    """One mock build's exact requests and engine-call grouping."""
+
+    argv: tuple[tuple[str, ...], ...]
+    batch_sizes: tuple[int, ...]
+
+    @property
+    def tmux_requests(self) -> int:
+        """Return the number of distinct tmux requests."""
+        return len(self.argv)
+
+    @property
+    def engine_calls(self) -> int:
+        """Return the number of ``run``/``run_batch`` engine calls."""
+        return len(self.batch_sizes)
+
+
+@dataclasses.dataclass(frozen=True)
+class ExecutionShape:
+    """Transport-independent execution shape for one expression layer."""
+
+    planner_steps: int | None
+    engine_calls: int
+    tmux_requests: int
+    batch_sizes: tuple[int, ...]
+
+
 class _Recorder:
-    """Wrap a sync engine, recording each dispatched argv (the parity oracle tap)."""
+    """Wrap a sync engine, recording requests and engine-call grouping."""
 
     def __init__(self, inner: t.Any) -> None:
         self.inner = inner
         self.argv: list[tuple[str, ...]] = []
+        self.batch_sizes: list[int] = []
 
     def run(self, request: CommandRequest) -> t.Any:
         """Record and forward one request."""
         self.argv.append(tuple(request.args))
+        self.batch_sizes.append(1)
         return self.inner.run(request)
 
     def run_batch(self, requests: t.Sequence[CommandRequest]) -> t.Any:
         """Record and forward a batch of requests."""
         self.argv.extend(tuple(r.args) for r in requests)
+        self.batch_sizes.append(len(requests))
         return self.inner.run_batch(requests)
 
 
@@ -759,34 +1046,59 @@ class _AsyncRecorder:
     def __init__(self, inner: t.Any) -> None:
         self.inner = inner
         self.argv: list[tuple[str, ...]] = []
+        self.batch_sizes: list[int] = []
 
     async def run(self, request: CommandRequest) -> t.Any:
         """Record and forward one request."""
         self.argv.append(tuple(request.args))
+        self.batch_sizes.append(1)
         return await self.inner.run(request)
 
     async def run_batch(self, requests: t.Sequence[CommandRequest]) -> t.Any:
         """Record and forward a batch of requests."""
         self.argv.extend(tuple(r.args) for r in requests)
+        self.batch_sizes.append(len(requests))
         return await self.inner.run_batch(requests)
 
 
-def _record_sync(
-    layer: Layer, name: str, wins: int, panes: int
-) -> list[tuple[str, ...]]:
-    """Render *layer* through the deterministic MockEngine, capturing its argv."""
+def _record_sync(layer: Layer, name: str, wins: int, panes: int) -> RecordedBuild:
+    """Render *layer* through MockEngine, recording requests and grouping."""
     recorder = _Recorder(MockEngine())
     build_sync(layer, recorder, name, wins, panes)
-    return recorder.argv
+    return RecordedBuild(tuple(recorder.argv), tuple(recorder.batch_sizes))
 
 
 async def _record_async(
     layer: Layer, name: str, wins: int, panes: int
-) -> list[tuple[str, ...]]:
+) -> RecordedBuild:
     """Async twin of :func:`_record_sync` (AsyncMockEngine)."""
     recorder = _AsyncRecorder(AsyncMockEngine())
     await build_async(layer, recorder, name, wins, panes)
-    return recorder.argv
+    return RecordedBuild(tuple(recorder.argv), tuple(recorder.batch_sizes))
+
+
+def execution_shape(layer: Layer, wins: int, panes: int) -> ExecutionShape:
+    """Return exact planner-step and request counts for one mock build."""
+    recorded = _record_sync(layer, "shape", wins, panes)
+    return ExecutionShape(
+        planner_steps=(recorded.engine_calls if layer.kind != "imperative" else None),
+        engine_calls=recorded.engine_calls,
+        tmux_requests=recorded.tmux_requests,
+        batch_sizes=recorded.batch_sizes,
+    )
+
+
+def batch_size_summary(sizes: tuple[int, ...]) -> str:
+    """Format adjacent equal batch sizes with run-length encoding.
+
+    >>> batch_size_summary((1, 1, 3, 1))
+    '1x2,3,1'
+    """
+    parts: list[str] = []
+    for size, run in itertools.groupby(sizes):
+        count = sum(1 for _ in run)
+        parts.append(str(size) if count == 1 else f"{size}x{count}")
+    return ",".join(parts)
 
 
 def check_parity(
@@ -794,25 +1106,26 @@ def check_parity(
 ) -> tuple[list[tuple[str, ...]], list[tuple[str, bool]]]:
     """Assert every layer x mode renders the mock oracle's argv for WxP.
 
-    Mock is deterministic, so all five expression layers -- driven through it via
+    Mock is deterministic, so every expression layer -- driven through it via
     both the sync and async paths -- must emit the identical op argv sequence.
     The oracle is the declarative ws-seq rendering (one argv per op); returns the
     oracle plus a ``(label, agrees)`` row per layer x mode.
     """
     name = "parity"
-    oracle = _record_sync(LAYERS["ws-seq"], name, wins, panes)
+    oracle = _record_sync(LAYERS["ws-seq"], name, wins, panes).argv
     rows: list[tuple[str, bool]] = []
     for layer_name, layer in LAYERS.items():
-        rows.append(
-            (f"{layer_name}/sync", _record_sync(layer, name, wins, panes) == oracle)
-        )
+        sync_record = _record_sync(layer, name, wins, panes)
+        rows.append((f"{layer_name}/sync", sync_record.argv == oracle))
+        async_record = asyncio.run(_record_async(layer, name, wins, panes))
         rows.append(
             (
                 f"{layer_name}/async",
-                asyncio.run(_record_async(layer, name, wins, panes)) == oracle,
+                async_record.argv == oracle
+                and async_record.batch_sizes == sync_record.batch_sizes,
             )
         )
-    return oracle, rows
+    return list(oracle), rows
 
 
 # --------------------------------------------------------------------------- #
@@ -825,8 +1138,8 @@ app = typer.Typer(add_completion=False, help=__doc__)
 def run(
     shapes: str = typer.Option("1x1,1x4,3x3,5x4,8x4", help="comma WxP shapes"),
     engines: str = typer.Option(
-        "classic,subprocess,control_mode,imsg,mock,pipelined",
-        help="comma engine names",
+        "classic,subprocess,control_mode,imsg,mock",
+        help="comma engine names; prototype-pipelined is opt-in",
     ),
     wait: bool = typer.Option(False, help="ALSO measure with shell-readiness wait"),
     runs: int = typer.Option(20, help="timed builds per cell"),
@@ -835,7 +1148,7 @@ def run(
 ) -> None:
     """In-process build-only benchmark grid (the clean signal)."""
     shape_list = [parse_shape(s) for s in shapes.split(",") if s]
-    engine_list = [e for e in engines.split(",") if e in IMPLS]
+    engine_list = _select_axis(engines, IMPLS, "--engines")
     wait_modes = [False, True] if wait else [False]
     results: list[dict[str, t.Any]] = []
 
@@ -848,7 +1161,7 @@ def run(
             table.add_column("engine", style="cyan")
             for label in STAT_LABELS:
                 table.add_column(label, justify="right")
-            table.add_column("vs classic", justify="right", style="green")
+            table.add_column("vs legacy workflow", justify="right", style="green")
             base_median = None
             for name in engine_list:
                 impl = IMPLS[name]
@@ -889,7 +1202,7 @@ def run(
 
 @app.command()
 def cell(engine: str, shape: str, wait: bool = typer.Option(False)) -> None:
-    """Build ONE workspace of *shape* with *engine* (isolated). For hyperfine."""
+    """Build one isolated workspace for whole-process timing tools."""
     impl = IMPLS[engine]
     wins, panes = parse_shape(shape)
     if impl.kind == "offline":
@@ -927,14 +1240,14 @@ def profile(
         warm = uniq()
         do_build(impl, server, eng, warm, wins, panes)  # warmup
         if server is not None:
-            server.cmd("kill-session", "-t", warm)
+            _kill_session(server, warm)
         pr = cProfile.Profile()
         pr.enable()
         for _ in range(builds):
             name = uniq()
             do_build(impl, server, eng, name, wins, panes)
             if server is not None:
-                server.cmd("kill-session", "-t", name)
+                _kill_session(server, name)
         pr.disable()
         buf = io.StringIO()
         pstats.Stats(pr, stream=buf).sort_stats("cumulative").print_stats(top)
@@ -948,53 +1261,118 @@ def profile(
 
 @app.command()
 def matrix(
-    shapes: str = typer.Option("1x4", help="comma WxP shapes"),
+    shapes: str = typer.Option("1x4", help="comma WxP or SxWxP scenarios"),
     layers: str = typer.Option(",".join(LAYERS), help="comma expression layers"),
     transports: str = typer.Option(",".join(TRANSPORTS), help="comma transports"),
     modes: str = typer.Option("sync,async", help="comma modes: sync,async"),
-    runs: int = typer.Option(10, help="timed builds per cell"),
+    runs: int = typer.Option(100, help="timed samples per cell"),
     warmup: int = typer.Option(2, help="warmup builds per cell"),
     check: bool = typer.Option(True, help="run the mock-parity contract first"),
     json_out: str = typer.Option("", help="write full JSON results here"),
 ) -> None:
-    """Factorial matrix: expression-layer x transport x mode, one table per shape.
+    """Factorial matrix: expression-layer x transport x mode per SxWxP scenario.
 
     Rows are *generated* by ``product`` over the axis registries (never
     hand-enumerated); ``classic`` is the reference row and ``mock`` never appears
-    (it is the parity oracle, run first when ``--check``).
+    (it is the parity oracle, run first when ``--check``). Separate tables keep
+    directly observed request grouping, process-start models, and elapsed time
+    distinct.
     """
-    shape_list = [parse_shape(s) for s in shapes.split(",") if s]
-    layer_list = [name for name in layers.split(",") if name in LAYERS]
-    transport_list = [name for name in transports.split(",") if name in TRANSPORTS]
-    mode_list = [name for name in modes.split(",") if name in MODES]
+    scenarios = parse_scenarios(shapes)
+    layer_list = _select_axis(layers, LAYERS, "--layers")
+    transport_list = _select_axis(transports, TRANSPORTS, "--transports")
+    mode_list = _select_axis(modes, MODES, "--modes")
     results: list[dict[str, t.Any]] = []
 
-    for wins, panes in shape_list:
+    for scenario in scenarios:
+        sessions, wins, panes = (
+            scenario.sessions,
+            scenario.windows,
+            scenario.panes,
+        )
         if check:
             _oracle, parity_rows = check_parity(wins, panes)
             failed = [label for label, agrees in parity_rows if not agrees]
             if failed:
                 console.print(
-                    f"[bold red]mock-parity FAILED[/bold red] for {wins}x{panes}: "
+                    f"[bold red]mock-parity FAILED[/bold red] for {scenario.label}: "
                     f"{', '.join(failed)}"
                 )
                 raise typer.Exit(1)
             console.print(
                 f"[green]mock-parity OK[/green] -- {len(parity_rows)} layer x mode "
-                f"agree with mock argv for {wins}x{panes}"
+                f"agree with mock argv for {scenario.label}"
             )
 
-        classic_samples = run_cell(IMPLS["classic"], wins, panes, False, runs, warmup)
+        structure = rich.table.Table(
+            title=f"[bold]{scenario.label} execution shape (per sample)[/bold]"
+        )
+        structure.add_column("layer", style="cyan")
+        structure.add_column("planner steps", justify="right")
+        structure.add_column("engine calls", justify="right")
+        structure.add_column("tmux requests", justify="right")
+        structure.add_column("batch sizes (RLE)", justify="right")
+        layer_shapes: dict[str, ExecutionShape] = {}
+        for layer_name in layer_list:
+            shape = execution_shape(LAYERS[layer_name], wins, panes)
+            layer_shapes[layer_name] = shape
+            batch_summary = batch_size_summary(shape.batch_sizes)
+            if sessions > 1:
+                batch_summary = f"({batch_summary}) x {sessions} sessions"
+            structure.add_row(
+                layer_name,
+                (
+                    str(shape.planner_steps * sessions)
+                    if shape.planner_steps is not None
+                    else "-"
+                ),
+                str(shape.engine_calls * sessions),
+                str(shape.tmux_requests * sessions),
+                batch_summary,
+            )
+        wide_console.print(structure)
+        wide_console.print()
+
+        process_model = rich.table.Table(
+            title=(
+                f"[bold]{scenario.label} process-start model (not instrumented)[/bold]"
+            )
+        )
+        process_model.add_column("cell", style="cyan")
+        process_model.add_column("command subprocesses/sample")
+        process_model.add_column("version probes/cell")
+        process_model.add_column("persistent clients/cell")
+        for layer_name, transport_name in itertools.product(layer_list, transport_list):
+            shape = layer_shapes[layer_name]
+            if transport_name == "subprocess":
+                command_model = f"{shape.tmux_requests * sessions} (exact: one/request)"
+                persistent_model = "0 (engine model)"
+            else:
+                command_model = "? (bootstrap-dependent)"
+                persistent_model = "<=1 (engine model; unmeasured)"
+            process_model.add_row(
+                f"{layer_name} · {transport_name}",
+                command_model,
+                "? (cache-dependent)",
+                persistent_model,
+            )
+        wide_console.print(process_model)
+        wide_console.print()
+
+        classic_samples = run_cell(
+            IMPLS["classic"], wins, panes, False, runs, warmup, sessions
+        )
         base_median = summarize(classic_samples)["median"]
 
         table = rich.table.Table(
-            title=f"[bold]{wins} win x {panes} pane  ({wins * panes} panes)"
+            title=f"[bold]{scenario.label} ({sessions} sessions, "
+            f"{wins * sessions} windows, {wins * panes * sessions} panes)"
             f"  -- in-process build ms (async x transport x layer)[/bold]"
         )
         table.add_column("cell", style="cyan")
         for label in STAT_LABELS:
             table.add_column(label, justify="right")
-        table.add_column("vs classic", justify="right", style="green")
+        table.add_column("vs legacy workflow", justify="right", style="green")
 
         classic_stat = summarize(classic_samples)
         table.add_row(
@@ -1010,9 +1388,29 @@ def matrix(
                 "transport": "classic",
                 "mode": "sync",
                 "shape": f"{wins}x{panes}",
-                "panes": wins * panes,
+                "scenario": scenario.label,
+                "sessions": sessions,
+                "windows_per_session": wins,
+                "panes_per_window": panes,
+                "total_windows": wins * sessions,
+                "total_panes": wins * panes * sessions,
+                "panes": wins * panes * sessions,
+                "planner_steps_per_session": None,
+                "planner_steps": None,
+                "engine_calls_per_session": None,
+                "engine_calls": None,
+                "tmux_requests_per_session": None,
+                "tmux_requests": None,
+                "batch_sizes_per_session": None,
+                "batch_sizes": None,
+                "command_subprocess_starts_per_sample": None,
+                "command_subprocess_starts_basis": "unmeasured",
+                "version_probe_subprocesses_per_cell": None,
+                "version_probe_subprocesses_basis": "unmeasured",
+                "persistent_tmux_clients_per_cell": None,
+                "persistent_tmux_clients_basis": "unmeasured",
                 "samples_ms": classic_samples,
-                **{f"{k}_ms": classic_stat[k] for k in STAT_LABELS},
+                **summary_json(classic_stat),
             }
         )
 
@@ -1025,10 +1423,22 @@ def matrix(
                 LAYERS[layer_name],
                 wins,
                 panes,
+                sessions,
                 runs,
                 warmup,
             )
             st = summarize(samples)
+            shape = layer_shapes[layer_name]
+            if transport_name == "subprocess":
+                command_subprocess_starts: int | None = shape.tmux_requests * sessions
+                command_subprocess_starts_basis = "exact-one-per-request"
+                persistent_client_count: int | None = 0
+                persistent_clients_basis = "engine-model-no-persistent-client"
+            else:
+                command_subprocess_starts = None
+                command_subprocess_starts_basis = "bootstrap-dependent-unmeasured"
+                persistent_client_count = None
+                persistent_clients_basis = "at-most-one-engine-model-unmeasured"
             speed = (
                 f"{base_median / st['median']:.1f}x"
                 if base_median and st["median"]
@@ -1048,9 +1458,33 @@ def matrix(
                     "transport": transport_name,
                     "mode": mode,
                     "shape": f"{wins}x{panes}",
-                    "panes": wins * panes,
+                    "scenario": scenario.label,
+                    "sessions": sessions,
+                    "windows_per_session": wins,
+                    "panes_per_window": panes,
+                    "total_windows": wins * sessions,
+                    "total_panes": wins * panes * sessions,
+                    "panes": wins * panes * sessions,
+                    "planner_steps_per_session": shape.planner_steps,
+                    "planner_steps": (
+                        shape.planner_steps * sessions
+                        if shape.planner_steps is not None
+                        else None
+                    ),
+                    "engine_calls_per_session": shape.engine_calls,
+                    "engine_calls": shape.engine_calls * sessions,
+                    "tmux_requests_per_session": shape.tmux_requests,
+                    "tmux_requests": shape.tmux_requests * sessions,
+                    "batch_sizes_per_session": shape.batch_sizes,
+                    "batch_sizes": shape.batch_sizes * sessions,
+                    "command_subprocess_starts_per_sample": command_subprocess_starts,
+                    "command_subprocess_starts_basis": command_subprocess_starts_basis,
+                    "version_probe_subprocesses_per_cell": None,
+                    "version_probe_subprocesses_basis": "cache-dependent-unmeasured",
+                    "persistent_tmux_clients_per_cell": persistent_client_count,
+                    "persistent_tmux_clients_basis": persistent_clients_basis,
                     "samples_ms": samples,
-                    **{f"{k}_ms": st[k] for k in STAT_LABELS},
+                    **summary_json(st),
                 }
             )
 
@@ -1072,8 +1506,9 @@ def _serial_build(
     for name in names:
         build_sync(layer, engine, name, wins, panes)
     elapsed = (time.perf_counter() - t0) * 1000
+    verify_topology(server, names, windows=wins, panes=panes)
     for name in names:
-        server.cmd("kill-session", "-t", name)
+        _kill_session(server, name)
     return elapsed
 
 
@@ -1088,6 +1523,9 @@ async def _gather_build(
             *(build_async(layer, engine, name, wins, panes) for name in names)
         )
         elapsed = (time.perf_counter() - t0) * 1000
+        await asyncio.to_thread(
+            verify_topology, server, names, windows=wins, panes=panes
+        )
         for name in names:
             await _akill_session(server, name)
         return elapsed
@@ -1095,19 +1533,25 @@ async def _gather_build(
 
 @app.command()
 def contract(
-    shapes: str = typer.Option("1x1,1x4,2x2,3x3,5x4", help="comma WxP shapes"),
+    shapes: str = typer.Option(
+        "1x1x1,1x1x4,1x4x1,4x1x1,1x2x2",
+        help="comma WxP or SxWxP scenarios",
+    ),
 ) -> None:
     """Run the mock-parity contract standalone; exit non-zero on divergence.
 
     The benchmark's correctness oracle without the timing -- for CI, which can
     assert the ops language stays consistent without paying for live builds.
     Every expression layer, sync and async, must render the mock oracle's argv.
-    A negative control confirms the equality gate is not vacuous (the oracle is
-    non-empty and order-sensitive, so a dropped op would be caught).
+    It also proves that batching reduces planner steps without reducing tmux
+    requests, and that Workspace's public default matches ``ws-batch``. A
+    negative control confirms the equality gate is not vacuous.
     """
-    shape_list = [parse_shape(s) for s in shapes.split(",") if s]
+    scenarios = parse_scenarios(shapes)
     failures: list[str] = []
-    for wins, panes in shape_list:
+    shape_reports: list[str] = []
+    for scenario in scenarios:
+        wins, panes = scenario.windows, scenario.panes
         oracle, rows = check_parity(wins, panes)
         # Negative control: a non-empty oracle whose prefix differs from itself
         # proves the `== oracle` check below can actually catch a dropped op.
@@ -1118,29 +1562,65 @@ def contract(
             for label, agrees in rows
             if not agrees
         )
+        layer_shapes = {
+            name: execution_shape(layer, wins, panes) for name, layer in LAYERS.items()
+        }
+        plan_seq_steps = layer_shapes["plan-seq"].planner_steps
+        plan_batch_steps = layer_shapes["plan-batch"].planner_steps
+        ws_seq_steps = layer_shapes["ws-seq"].planner_steps
+        ws_batch_steps = layer_shapes["ws-batch"].planner_steps
+        if plan_batch_steps is None or plan_seq_steps is None:
+            failures.append(f"{wins}x{panes}: plan-batch did not report planner steps")
+        elif plan_seq_steps <= plan_batch_steps:
+            failures.append(f"{wins}x{panes}: plan batching did not reduce steps")
+        if ws_batch_steps is None or ws_seq_steps is None:
+            failures.append(f"{wins}x{panes}: ws-batch did not report planner steps")
+        elif ws_seq_steps <= ws_batch_steps:
+            failures.append(f"{wins}x{panes}: workspace batching did not reduce steps")
+        if layer_shapes["default"] != layer_shapes["ws-batch"]:
+            failures.append(f"{wins}x{panes}: workspace default is not ws-batch")
+        if len({shape.tmux_requests for shape in layer_shapes.values()}) != 1:
+            failures.append(f"{wins}x{panes}: layers emit different request counts")
+        if (
+            plan_seq_steps is None
+            or plan_batch_steps is None
+            or ws_seq_steps is None
+            or ws_batch_steps is None
+        ):
+            continue
+        scale = scenario.sessions
+        shape_reports.append(
+            f"{scenario.label}: {len(oracle) * scale} requests; "
+            f"plan {plan_seq_steps * scale}->{plan_batch_steps * scale} steps; "
+            f"workspace {ws_seq_steps * scale}->{ws_batch_steps * scale} steps"
+        )
     if failures:
         for problem in failures:
             console.print(f"[red]FAIL[/red] {problem}")
         raise typer.Exit(1)
     console.print(
         f"[green]contract OK[/green] -- every layer x {{sync,async}} renders the "
-        f"mock oracle's argv across {len(shape_list)} shape(s); negative control passed"
+        f"mock oracle's argv across {len(scenarios)} scenario(s); batching shape and "
+        "negative controls passed"
     )
+    for report in shape_reports:
+        console.print(f"[dim]{report}[/dim]")
 
 
 @app.command()
 def concurrency(
     shape: str = typer.Option("1x4", help="WxP shape of each session"),
     transport: str = typer.Option("control_mode", help="subprocess | control_mode"),
-    layer: str = typer.Option("ws-fold", help="expression layer"),
+    layer: str = typer.Option("default", help="expression layer"),
     k: int = typer.Option(4, help="independent sessions to build"),
     runs: int = typer.Option(5, help="timed repeats"),
     warmup: int = typer.Option(1, help="warmup repeats"),
 ) -> None:
-    """Build K independent sessions: sync-serial vs async-gather wall time.
+    """Explore K independent sessions: sync serial vs async gather wall time.
 
-    Async should actually win here: one async connection pipelines K builds'
-    round-trips instead of blocking on each in turn.
+    This probe has asymmetric engine-startup boundaries, fixed strategy order,
+    and no async-sequential or event-loop-lag control. Its output is diagnostic,
+    not evidence for async speed or health.
     """
     wins, panes = parse_shape(shape)
     tp = TRANSPORTS[transport]
@@ -1177,7 +1657,7 @@ def concurrency(
     table.add_column("strategy", style="cyan")
     for label in STAT_LABELS:
         table.add_column(label, justify="right")
-    table.add_column("speedup", justify="right", style="green")
+    table.add_column("serial / gather", justify="right")
     table.add_row(
         "sync-serial",
         f"{int(serial_stat['n'])}",
