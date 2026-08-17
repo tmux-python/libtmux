@@ -1,4 +1,4 @@
-"""A fluent, forward-ref builder that folds a session build to a few dispatches.
+"""A fluent, forward-ref builder with ordered request batching.
 
 ``plan()`` opens a :class:`PlanBuilder` -- a thin recorder over a Core
 :class:`~libtmux.experimental.ops.plan.LazyPlan`. Navigating it
@@ -6,12 +6,12 @@
 :class:`WindowRef` -> :meth:`WindowRef.pane`) records create operations and
 hands back forward handles (:class:`~libtmux.experimental.query.ForwardPaneRef`)
 that address objects the plan will create. Nothing runs until
-:meth:`PlanBuilder.run` (or its async twin :meth:`PlanBuilder.arun`), which folds
-the recorded operations into a handful of ``tmux a ; b`` dispatches by default
-(a :class:`~libtmux.experimental.ops.planner.MarkedPlanner`).
+:meth:`PlanBuilder.run` (or its async twin :meth:`PlanBuilder.arun`), which
+batches ready operations by default (a
+:class:`~libtmux.experimental.ops.planner.BatchingPlanner`).
 
-Named objects (sessions, windows) are addressed by name so their sub-operations
-fold; a pane -- which has no name -- is addressed by a forward
+Named objects (sessions, windows) are addressed by name. A pane -- which has no
+name -- is addressed by a forward
 :class:`~libtmux.experimental.ops._types.SlotRef`, resolved from the creating
 operation's captured id at execution.
 
@@ -38,10 +38,10 @@ from dataclasses import dataclass, field
 
 from libtmux.experimental._wait_pane import await_pane, wait_pane
 from libtmux.experimental.ops import (
+    BatchingPlanner,
     BoundedPlanner,
     DisplayMessage,
     LazyPlan,
-    MarkedPlanner,
     NameRef,
     NewSession,
     NewWindow,
@@ -61,7 +61,7 @@ _SESSION_PROBE = "#{session_id} #{window_id} #{pane_id}"
 
 @dataclass(frozen=True)
 class _HostAction:
-    """A host-side pause recorded after an operation (a hard fold boundary).
+    """A host-side pause recorded after an operation (a hard batch boundary).
 
     Attributes
     ----------
@@ -113,7 +113,7 @@ class WindowRef:
 class SessionRef:
     """A session in a plan; reach its first window or add another.
 
-    The session is name-addressed (so its window operations fold); ``create`` is
+    The session is name-addressed; ``create`` is
     the ``new-session`` slot, whose captured first pane backs the first window.
 
     Attributes
@@ -158,7 +158,7 @@ class SessionRef:
 
 @dataclass(frozen=True)
 class PlanBuilder:
-    """A fluent recorder over a :class:`LazyPlan`; :meth:`run` folds by default.
+    """A fluent recorder over a :class:`LazyPlan`; :meth:`run` batches by default.
 
     Attributes
     ----------
@@ -213,10 +213,10 @@ class PlanBuilder:
         return SessionRef(self.plan, name, slot)
 
     def sleep(self, seconds: float) -> PlanBuilder:
-        """Pause *seconds* after the last recorded op (a hard fold boundary).
+        """Pause *seconds* after the last recorded op (a hard batch boundary).
 
-        A host step never folds into a ``tmux`` dispatch, so the chain breaks
-        before and after it; the pause runs between dispatches at build time.
+        A host step never joins a request batch, so the batch breaks
+        before and after it; the pause runs between planner steps at build time.
 
         Examples
         --------
@@ -231,10 +231,11 @@ class PlanBuilder:
         return self
 
     def wait(self, pane: _PaneRefBase) -> PlanBuilder:
-        """Wait for *pane*'s shell prompt before the next dispatch (anti-race).
+        """Wait for *pane*'s shell prompt before the next planner step (anti-race).
 
         Polls the pane's cursor until it leaves the origin, so a follow-up
-        command isn't sent before the shell is ready. A hard fold boundary.
+        command isn't sent before the shell is ready. This is a hard batch
+        boundary.
 
         Examples
         --------
@@ -254,7 +255,7 @@ class PlanBuilder:
 
     def _planner(self, planner: Planner | None) -> Planner:
         """Return the base planner, bounded by host-step boundaries if any."""
-        base = planner or MarkedPlanner()
+        base = planner or BatchingPlanner()
         if self._host_after:
             return BoundedPlanner(base, frozenset(self._host_after))
         return base
@@ -266,7 +267,7 @@ class PlanBuilder:
         version: str | None = None,
         planner: Planner | None = None,
     ) -> PlanResult:
-        """Build over *engine*, folding to a few dispatches (``MarkedPlanner``).
+        """Build over *engine*, batching ready operations by default.
 
         Examples
         --------
@@ -298,7 +299,7 @@ class PlanBuilder:
         version: str | None = None,
         planner: Planner | None = None,
     ) -> PlanResult:
-        """Async twin of :meth:`run` with the same folding and host steps.
+        """Async twin of :meth:`run` with the same batching and host steps.
 
         Examples
         --------

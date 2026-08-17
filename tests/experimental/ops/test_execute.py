@@ -12,9 +12,10 @@ import typing as t
 import pytest
 
 from libtmux.experimental.engines.async_control_mode import AsyncControlModeEngine
+from libtmux.experimental.engines.asyncio import AsyncSubprocessEngine
 from libtmux.experimental.engines.base import SupportsTmuxVersion
 from libtmux.experimental.engines.control_mode import ControlModeEngine
-from libtmux.experimental.engines.mock import MockEngine
+from libtmux.experimental.engines.mock import AsyncMockEngine, MockEngine
 from libtmux.experimental.engines.subprocess import SubprocessEngine
 from libtmux.experimental.ops import BreakPane, SendKeys, SplitWindow, arun, run
 from libtmux.experimental.ops._types import PaneId, WindowId
@@ -177,6 +178,15 @@ def test_engine_advertises_version_capability(case: _CapabilityCase) -> None:
     assert isinstance(engine, SupportsTmuxVersion) is case.reports_version
 
 
+def test_async_real_engines_advertise_async_version_capability() -> None:
+    """Real async engines expose async version I/O; the simulator does not."""
+    from libtmux.experimental.engines.base import SupportsAsyncTmuxVersion
+
+    assert isinstance(AsyncSubprocessEngine(), SupportsAsyncTmuxVersion)
+    assert isinstance(AsyncControlModeEngine(), SupportsAsyncTmuxVersion)
+    assert not isinstance(AsyncMockEngine(), SupportsAsyncTmuxVersion)
+
+
 def test_run_auto_resolves_engine_version() -> None:
     """run() asks the engine for its version when none is passed; gating fires."""
     from libtmux.experimental.ops import CapturePane
@@ -283,11 +293,15 @@ def test_run_without_version_capability_renders_every_flag() -> None:
 
 
 def test_arun_auto_resolves_engine_version() -> None:
-    """arun() resolves the engine version on the async path too."""
+    """arun() awaits version resolution without calling its sync capability."""
     from libtmux.experimental.ops import CapturePane
 
     class AsyncVersionedFakeEngine(AsyncFakeEngine):
         def tmux_version(self) -> str | None:
+            raise AssertionError
+
+        async def atmux_version(self) -> str | None:
+            await asyncio.sleep(0)
             return "3.3"
 
     engine = AsyncVersionedFakeEngine()
@@ -295,6 +309,23 @@ def test_arun_auto_resolves_engine_version() -> None:
         arun(CapturePane(target=PaneId("%1"), trim_trailing=True), engine),
     )
     assert "-T" not in result.argv
+
+
+def test_arun_ignores_sync_only_version_capability() -> None:
+    """A sync-only version method is never called on the async execution path."""
+    from libtmux.experimental.ops import CapturePane
+
+    class SyncOnlyVersionedEngine(AsyncFakeEngine):
+        def tmux_version(self) -> str | None:
+            raise AssertionError
+
+    result = asyncio.run(
+        arun(
+            CapturePane(target=PaneId("%1"), trim_trailing=True),
+            SyncOnlyVersionedEngine(),
+        ),
+    )
+    assert "-T" in result.argv
 
 
 def test_arun_shares_render_and_build() -> None:
@@ -314,6 +345,10 @@ def test_arun_applies_break_pane_name_after_tmux_3_7_workaround() -> None:
             self.calls: list[tuple[str, ...]] = []
 
         def tmux_version(self) -> str | None:
+            raise AssertionError
+
+        async def atmux_version(self) -> str | None:
+            await asyncio.sleep(0)
             return "3.7"
 
         async def run(self, request: CommandRequest) -> t.Any:
