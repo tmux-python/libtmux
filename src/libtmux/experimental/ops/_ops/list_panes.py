@@ -55,7 +55,6 @@ class ListPanes(Operation[ListPanesResult]):
     scope = "server"
     result_cls = ListPanesResult
     safety = "readonly"
-    chainable = False
     effects = Effects(read_only=True, idempotent=True)
 
     all_panes: bool = True

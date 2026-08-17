@@ -5,8 +5,8 @@ has printed a prompt -- so a ``send-keys`` fired immediately can be swallowed. T
 fix both builders use is the same: poll ``#{cursor_x},#{cursor_y}`` until the
 cursor leaves the origin, then proceed.
 
-This is a *host* step: it must run between tmux dispatches, never inside a fold,
-so both drivers replay it from their plan's ``on_step`` hook (the workspace runner
+This is a *host* step: it must run between request batches, so both drivers
+replay it from their plan's ``on_step`` hook (the workspace runner
 through a compiled :class:`~.workspace.compiler.HostStep`, the fluent builder
 through its recorded host action). Only the poll itself is shared here.
 """
@@ -21,6 +21,8 @@ from libtmux.experimental.ops import DisplayMessage, arun, run
 from libtmux.experimental.ops.plan import _resolve
 
 if t.TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
     from libtmux.experimental.ops._types import Target
     from libtmux.experimental.ops.operation import Operation
@@ -57,7 +59,7 @@ def pane_ready(cursor: str) -> bool:
 
 def _cursor_probe(
     pane: Target,
-    bindings: dict[int | tuple[int, str], str],
+    bindings: Mapping[int | tuple[int, str], str],
 ) -> Operation[t.Any]:
     """Build the cursor read for *pane*, resolving a forward ref against bindings."""
     return _resolve(DisplayMessage(target=pane, message=CURSOR_FMT), bindings)
@@ -66,7 +68,7 @@ def _cursor_probe(
 def wait_pane(
     engine: TmuxEngine,
     pane: Target,
-    bindings: dict[int | tuple[int, str], str],
+    bindings: Mapping[int | tuple[int, str], str],
     version: str | None = None,
 ) -> bool:
     """Poll *pane* until its prompt draws; return whether it did within the budget.
@@ -86,7 +88,7 @@ def wait_pane(
 async def await_pane(
     engine: AsyncTmuxEngine,
     pane: Target,
-    bindings: dict[int | tuple[int, str], str],
+    bindings: Mapping[int | tuple[int, str], str],
     version: str | None = None,
 ) -> bool:
     """Async sibling of :func:`wait_pane` (same budget, same exhaustion contract)."""

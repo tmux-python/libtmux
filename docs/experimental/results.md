@@ -32,7 +32,7 @@ All results retain the operation, rendered `argv`, `status`, `returncode`,
 `stdout`, and `stderr`. `ok` is true only for `complete`; `failed` identifies a
 tmux rejection or an incomplete composed operation.
 {meth}`~libtmux.experimental.ops.results.Result.raise_for_status` raises for
-`failed` and `unknown`, but returns both `complete` and `skipped` results. See
+`failed` and `unknown`, but returns `complete` results. See
 {doc}`tutorials/results-and-failures` for those paths in context.
 
 ## Choose the payload
