@@ -27,6 +27,7 @@ import os
 import typing as t
 
 from libtmux.experimental.mcp import vocabulary
+from libtmux.experimental.mcp._lifespan import EngineOwnership
 from libtmux.experimental.mcp._policy import (
     curated_call_safety,
     curated_can_destroy,
@@ -35,6 +36,20 @@ from libtmux.experimental.mcp._policy import (
 from libtmux.experimental.mcp.registry import OperationToolRegistry
 from libtmux.experimental.mcp.vocabulary._caller import CallerContext
 from libtmux.experimental.ops._docstring import first_line
+
+PlannerName: t.TypeAlias = t.Literal["batching", "sequential"]
+"""Planner names accepted by the plan-tier MCP tools."""
+
+__all__ = (
+    "EngineOwnership",
+    "PlannerName",
+    "build_async_server",
+    "build_server",
+    "register_caller_context",
+    "register_operations",
+    "register_plan_tools",
+    "register_vocabulary",
+)
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -467,8 +482,7 @@ def register_plan_tools(
     from libtmux.experimental.ops import KillSession, LazyPlan
     from libtmux.experimental.ops._types import NameRef
     from libtmux.experimental.ops.planner import (
-        FoldingPlanner,
-        MarkedPlanner,
+        BatchingPlanner,
         Planner,
         SequentialPlanner,
     )
@@ -477,8 +491,7 @@ def register_plan_tools(
     reg = registry if registry is not None else OperationToolRegistry()
     planners: dict[str, type[Planner]] = {
         "sequential": SequentialPlanner,
-        "folding": FoldingPlanner,
-        "marked": MarkedPlanner,
+        "batching": BatchingPlanner,
     }
     guard_engine = (
         t.cast("AsyncTmuxEngine", engine)
@@ -545,9 +558,9 @@ def register_plan_tools(
 
     def explain_plan(
         operations: list[dict[str, t.Any]],
-        planner: str = "marked",
+        planner: PlannerName = "batching",
     ) -> dict[str, t.Any]:
-        """Explain why *planner* folds or breaks a serialized plan (pure)."""
+        """Explain why *planner* batches or breaks a serialized plan (pure)."""
         explanation = _plan.explain_plan(
             _plan_from_dicts(operations),
             planner=_planner(planner),
@@ -574,7 +587,7 @@ def register_plan_tools(
 
         async def execute_plan(
             operations: list[dict[str, t.Any]],
-            planner: str = "sequential",
+            planner: PlannerName = "batching",
             version: str | None = None,
         ) -> dict[str, t.Any]:
             """Execute a serialized plan over the engine; return results + bindings."""
@@ -617,7 +630,7 @@ def register_plan_tools(
 
         def execute_plan(  # type: ignore[misc]
             operations: list[dict[str, t.Any]],
-            planner: str = "sequential",
+            planner: PlannerName = "batching",
             version: str | None = None,
         ) -> dict[str, t.Any]:
             """Execute a serialized plan over the engine; return results + bindings."""
@@ -834,6 +847,7 @@ def build_async_server(
     include_prompts: bool = True,
     include_resources: bool = True,
     lifespan: bool = True,
+    engine_ownership: EngineOwnership = EngineOwnership.BORROWED,
     safety_level: str | None = None,
     events: EventMode = "push",
     event_source: EventSource = "subscription",
@@ -847,14 +861,37 @@ def build_async_server(
     registered per *events* (``"push"``/``"pull"``/``"both"``/``"off"``).
     *caller* defaults to :meth:`CallerContext.discover`.
 
+    *engine_ownership* defaults to :attr:`EngineOwnership.BORROWED`, so callers
+    that inject an engine retain its lifecycle. Pass
+    :attr:`EngineOwnership.OWNED` to transfer cleanup to the server lifespan;
+    owned engines must provide ``aclose()`` and require *lifespan* to remain
+    enabled.
+
     *safety_level* (or ``LIBTMUX_SAFETY``) and *include_middleware* behave as in
     :func:`build_server`.
+
+    Examples
+    --------
+    Transfer a newly created control-mode engine to the server lifespan:
+
+    >>> from libtmux.experimental.engines import AsyncControlModeEngine
+    >>> mcp = build_async_server(
+    ...     AsyncControlModeEngine(),
+    ...     events="off",
+    ...     engine_ownership=EngineOwnership.OWNED,
+    ... )
+    >>> mcp.name
+    'tmux'
     """
     from fastmcp import FastMCP
 
     from libtmux.experimental.mcp._lifespan import make_lifespan
     from libtmux.experimental.mcp.events import _supports_stream, register_events
 
+    ownership = EngineOwnership(engine_ownership)
+    if ownership is EngineOwnership.OWNED and not lifespan:
+        msg = "engine_ownership='owned' requires lifespan=True"
+        raise ValueError(msg)
     level = _resolve_level(safety_level)
     ctx = caller if caller is not None else CallerContext.discover()
     _stash_caller(engine, ctx)
@@ -863,7 +900,7 @@ def build_async_server(
         name=name,
         instructions=instructions or _instructions(ctx, events_enabled=events_enabled),
         middleware=_make_middleware(level) if include_middleware else None,
-        lifespan=make_lifespan(engine) if lifespan else None,
+        lifespan=(make_lifespan(engine, ownership=ownership) if lifespan else None),
     )
     registry = OperationToolRegistry()
     register_vocabulary(mcp, engine, is_async=True, safety_level=level)

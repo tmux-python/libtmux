@@ -21,9 +21,9 @@ from libtmux.experimental.mcp import (
     result_schema,
 )
 from libtmux.experimental.ops import (
+    BatchingPlanner,
     DeleteBuffer,
     LazyPlan,
-    MarkedPlanner,
     NewSession,
     SendKeys,
     SplitWindow,
@@ -206,15 +206,19 @@ def test_preview_plan_marks_unresolved_forward_refs() -> None:
 
 
 def test_explain_plan_reports_boundary_reasons() -> None:
-    """explain_plan annotates each dispatch step with why it can't fold further."""
+    """explain_plan reports creator barriers and ready request batches."""
     plan = LazyPlan()
     pane = plan.add(SplitWindow(target=WindowId("@1")))
     plan.add(SendKeys(target=pane, keys="vim", enter=True))
-    steps = explain_plan(plan, planner=MarkedPlanner()).steps
-    assert len(steps) == 1
-    assert steps[0]["indices"] == [0, 1]
-    assert steps[0]["kinds"] == ["split_window", "send_keys"]
-    assert steps[0]["reason"] == "marked-fold"
+    plan.add(SendKeys(target=pane, keys=":w", enter=True))
+    steps = explain_plan(plan, planner=BatchingPlanner()).steps
+    assert len(steps) == 2
+    assert steps[0]["indices"] == [0]
+    assert steps[0]["kinds"] == ["split_window"]
+    assert steps[0]["reason"] == "creator"
+    assert steps[1]["indices"] == [1, 2]
+    assert steps[1]["kinds"] == ["send_keys", "send_keys"]
+    assert steps[1]["reason"] == "batch"
 
 
 def test_execute_plan_returns_bindings() -> None:
