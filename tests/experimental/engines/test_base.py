@@ -11,6 +11,7 @@ from libtmux.experimental.engines.base import (
     CommandSeparator,
     encode_direct_argv,
     render_control_line,
+    unescape_control_output,
 )
 
 if t.TYPE_CHECKING:
@@ -86,6 +87,11 @@ def test_render_control_line_rejects_nul() -> None:
     """A C-string command argument cannot preserve an embedded NUL."""
     with pytest.raises(ValueError, match="NUL"):
         render_control_line(("display-message", "first\0second"))
+
+
+def test_unescape_control_output_accepts_wire_bytes_exactly() -> None:
+    r"""The canonical decoder preserves arbitrary bytes and exact triples."""
+    assert unescape_control_output(b"\xff\\033\\1\\12") == b"\xff\x1b\\1\\12"
 
 
 @pytest.mark.parametrize("token", ("", "x", ";;", "\nkill-server"))
@@ -199,3 +205,11 @@ def test_encode_direct_argv_preserves_global_option_values(
         "display-message",
         "literal\\;",
     )
+
+
+@pytest.mark.parametrize("value", (r"escaped\;", r"double\\;"))
+def test_encode_direct_argv_preserves_existing_escape(value: str) -> None:
+    r"""An immediate ``\`` before the suffix remains the tmux escape."""
+    request = CommandRequest.from_args("display-message", value)
+
+    assert encode_direct_argv(request.args)[-1] == value

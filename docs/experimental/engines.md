@@ -68,16 +68,10 @@ engine-owned workflow.
 ## Shared API
 
 ```{eval-rst}
-.. autoclass:: libtmux.experimental.engines.base.TmuxEngine
-   :members:
-
 .. autoclass:: libtmux.experimental.engines.base.AsyncTmuxEngine
    :members:
 
-.. autoclass:: libtmux.experimental.engines.base.CommandRequest
-   :members:
-
-.. autoclass:: libtmux.experimental.engines.base.CommandResult
+.. autoclass:: libtmux.experimental.engines.base.SupportsAsyncTmuxVersion
    :members:
 
 .. autofunction:: libtmux.experimental.engines.registry.available_engines

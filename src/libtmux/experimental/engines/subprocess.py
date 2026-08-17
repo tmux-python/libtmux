@@ -61,13 +61,6 @@ class SubprocessEngine:
         """The tmux binary + connection flags this engine dispatches through."""
         return self._conn
 
-    def with_connection(self, connection: ServerConnection) -> SubprocessEngine:
-        """Return a copy bound to *connection*."""
-        return SubprocessEngine(
-            tmux_bin=connection.tmux_bin,
-            server_args=connection.args,
-        )
-
     @property
     def tmux_bin(self) -> str | None:
         """The explicitly configured tmux binary, if any."""
@@ -143,6 +136,34 @@ class SubprocessEngine:
         """Execute Core requests in order."""
         converted = [CommandRequest.from_tmux_request(req) for req in requests]
         return [res.to_tmux_result() for res in self.run_batch(converted)]
+
+    def with_connection(self, connection: ServerConnection) -> SubprocessEngine:
+        """Return an equivalent stateless engine bound to *connection*.
+
+        Parameters
+        ----------
+        connection : ServerConnection
+            The connection the returned engine dispatches over.
+
+        Returns
+        -------
+        SubprocessEngine
+            A new engine; this engine is unchanged.
+
+        Examples
+        --------
+        >>> from libtmux.experimental.engines import ServerConnection
+        >>> engine = SubprocessEngine()
+        >>> rebound = engine.with_connection(
+        ...     ServerConnection.of(args=("-Lwork",))
+        ... )
+        >>> rebound.server_args, engine.server_args
+        (('-Lwork',), ())
+        """
+        return type(self)(
+            tmux_bin=connection.tmux_bin,
+            server_args=connection.args,
+        )
 
     @classmethod
     def for_server(cls, server: t.Any) -> SubprocessEngine:

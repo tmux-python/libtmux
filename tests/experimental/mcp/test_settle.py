@@ -13,6 +13,7 @@ import typing as t
 
 import pytest
 
+from libtmux.experimental.engines.async_control_mode import ControlNotification
 from libtmux.experimental.mcp._settle import (
     accumulate_until_settle,
     decode_output,
@@ -30,13 +31,14 @@ def test_decode_output_octal_and_passthrough() -> None:
     assert decode_output("a\\134b") == "a\\b"
     assert decode_output("plain, spaces kept") == "plain, spaces kept"
     assert decode_output("trailing\\") == "trailing\\"
+    assert decode_output("short\\1 and \\12") == "short\\1 and \\12"
 
 
 def test_output_payload_preserves_internal_whitespace() -> None:
-    """The per-pane filter slices the data body without collapsing inner spaces."""
-    assert output_payload("%output %1 a  b", "%1") == "a  b"
-    assert output_payload("%output %2 x", "%1") is None
-    assert output_payload("%window-add @3", "%1") is None
+    """The per-pane filter consumes the typed, already-decoded payload."""
+    assert output_payload(ControlNotification.parse(b"%output %1 a  b"), "%1") == "a  b"
+    assert output_payload(ControlNotification.parse(b"%output %2 x"), "%1") is None
+    assert output_payload(ControlNotification.parse(b"%window-add @3"), "%1") is None
 
 
 def test_accumulate_settles_on_idle() -> None:
