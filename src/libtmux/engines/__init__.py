@@ -30,7 +30,7 @@ Injection happens at the :class:`~libtmux.Server` boundary:
 >>> engine.seen
 [('list-sessions',)]
 
-The connection flags (``-L``/``-S``/``-f``/``-2``/``-8``) are *not* part of a
+The connection flags (``-L``/``-S``/``-f``/``-2``) are *not* part of a
 request: they belong to the engine's
 :class:`~libtmux.engines.connection.ServerConnection`, so every engine sees the
 same request regardless of which tmux server it targets.
@@ -42,6 +42,7 @@ from libtmux.engines.base import (
     CommandRequest,
     CommandResult,
     CommandSeparator,
+    HasConnection,
     SupportsCommandLine,
     SupportsConnection,
     SupportsTmuxVersion,
@@ -55,6 +56,7 @@ __all__ = (
     "CommandRequest",
     "CommandResult",
     "CommandSeparator",
+    "HasConnection",
     "ServerConnection",
     "SubprocessEngine",
     "SupportsCommandLine",

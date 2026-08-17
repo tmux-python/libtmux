@@ -22,7 +22,7 @@ method. Local queries and commands that must start a missing server use the
 tmux binary instead. Unlike the subprocess and control-mode engines, it has no
 `for_server()` helper. Put a private server's raw `-L` or `-S` global argument
 in every
-{class}`~libtmux.experimental.engines.base.CommandRequest`.
+{class}`~libtmux.engines.base.CommandRequest`.
 
 ```python
 >>> from libtmux.experimental.engines import CommandRequest, ImsgEngine

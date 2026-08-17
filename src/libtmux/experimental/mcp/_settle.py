@@ -21,8 +21,12 @@ import time
 import typing as t
 from dataclasses import dataclass
 
+from libtmux.experimental.engines.base import unescape_control_output
+
 if t.TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable
+
+    from libtmux.experimental.engines.async_control_mode import ControlNotification
 
 SettleReason = t.Literal["settled", "time_cap", "byte_cap", "stream_end"]
 
@@ -63,9 +67,9 @@ class SettleOutcome:
 def decode_output(payload: str) -> str:
     r"""Decode tmux's backslash-octal ``%output`` escaping.
 
-    tmux escapes any byte below ``0x20`` and a literal backslash as ``\ooo`` (one
-    to three octal digits). A backslash not followed by an octal digit -- or a
-    lone trailing backslash -- passes through verbatim rather than raising.
+    Tmux escapes any byte below ``0x20`` and a literal backslash as ``\ooo``
+    (exactly three octal digits). Short octal-looking text and a lone trailing
+    backslash pass through verbatim rather than being interpreted.
 
     Parameters
     ----------
@@ -98,33 +102,23 @@ def decode_output(payload: str) -> str:
     >>> decode_output('trailing\\')
     'trailing\\'
     """
-    out: list[str] = []
-    i, n = 0, len(payload)
-    while i < n:
-        ch = payload[i]
-        if ch == "\\" and i + 1 < n and payload[i + 1] in "01234567":
-            j = i + 1
-            while j < n and j - i <= 3 and payload[j] in "01234567":
-                j += 1
-            out.append(chr(int(payload[i + 1 : j], 8)))
-            i = j
-        else:
-            out.append(ch)
-            i += 1
-    return "".join(out)
+    return unescape_control_output(payload).decode(errors="replace")
 
 
-def output_payload(raw: str, pane_id: str) -> str | None:
-    r"""Return the decoded ``%output`` payload for *pane_id*, else ``None``.
+def output_payload(
+    notification: ControlNotification,
+    pane_id: str,
+) -> str | None:
+    r"""Return an output notification's decoded text for *pane_id*.
 
-    Slices the data body with ``raw.split(" ", 2)[2]`` -- **not**
-    ``" ".join(args[1:])``, which would collapse runs of internal whitespace
-    because the notification parser split the whole line on single spaces.
+    Pane bytes are decoded once by :meth:`ControlNotification.parse`; this
+    filter selects the requested pane and performs only the application-level
+    bytes-to-text conversion.
 
     Parameters
     ----------
-    raw : str
-        A ``ControlNotification.raw`` line.
+    notification : ControlNotification
+        A typed control-mode notification.
     pane_id : str
         The concrete pane id (``%N``) to match.
 
@@ -138,20 +132,21 @@ def output_payload(raw: str, pane_id: str) -> str | None:
     --------
     Internal whitespace is preserved exactly:
 
-    >>> output_payload('%output %1 a  b', '%1')
+    >>> from libtmux.experimental.engines import ControlNotification
+    >>> notification = ControlNotification.parse(b'%output %1 a  b')
+    >>> output_payload(notification, '%1')
     'a  b'
 
     A frame for another pane, or a non-output frame, is ignored:
 
-    >>> output_payload('%output %2 x', '%1') is None
+    >>> output_payload(ControlNotification.parse(b'%output %2 x'), '%1') is None
     True
-    >>> output_payload('%window-add @3', '%1') is None
+    >>> output_payload(ControlNotification.parse(b'%window-add @3'), '%1') is None
     True
     """
-    parts = raw.split(" ", 2)
-    if len(parts) < 3 or parts[0] != "%output" or parts[1] != pane_id:
+    if notification.pane_id != pane_id or notification.payload is None:
         return None
-    return decode_output(parts[2])
+    return notification.payload.decode(errors="replace")
 
 
 async def accumulate_until_settle(

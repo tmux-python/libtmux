@@ -19,16 +19,17 @@ if t.TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    from libtmux.engines.connection import ServerConnection
+
 
 class CommandSeparator(str):
     """A caller-authored command boundary, distinct from a literal ``";"``.
 
-    tmux treats a bare ``;`` argument as a command separator only when it
-    arrives unquoted, so a ``";"`` that is *data* -- a pane title, a shell
-    fragment passed to ``send-keys`` -- must not be mistaken for one. Marking
-    the boundary with its own type keeps the distinction in the value rather
-    than in a parsing convention, so an engine that chains commands can find
-    the real boundaries and every other engine can ignore them.
+    Tmux's direct argv parser treats any unescaped trailing ``;`` as command
+    structure, including a suffix on a larger value. A literal suffix -- a pane
+    title or shell fragment passed to ``send-keys`` -- must not become one.
+    Marking a real boundary with its own type lets direct engines escape
+    ordinary values while rendering intentional command groups structurally.
 
     Examples
     --------
@@ -94,7 +95,7 @@ class CommandRequest:
     """A tmux command, ready for an engine to execute.
 
     Carries the subcommand and its arguments only. Connection flags
-    (``-L``/``-S``/``-f``/``-2``/``-8``) belong to the engine's
+    (``-L``/``-S``/``-f``/``-2``) belong to the engine's
     :class:`~libtmux.engines.connection.ServerConnection`, so every engine sees
     the same request no matter which tmux server it targets.
 
@@ -305,13 +306,33 @@ class SupportsCommandLine(t.Protocol):
 
 
 @t.runtime_checkable
-class SupportsConnection(t.Protocol):
-    """An engine that dispatches over a named tmux server and can be rebound.
+class HasConnection(t.Protocol):
+    """An engine whose tmux connection can be inspected without changing it.
 
-    Optional capability. :attr:`Server.engine <libtmux.Server.engine>` reads it
-    so an injected engine that names no server of its own adopts the server's
-    connection instead of silently reaching the ambient tmux server. In-memory
-    engines have no connection and simply do not implement it.
+    Persistent engines implement this read-only capability even though their
+    live transport cannot be cloned safely. In-memory engines with no tmux
+    connection omit it.
+
+    Examples
+    --------
+    >>> from libtmux.engines import HasConnection, SubprocessEngine
+    >>> isinstance(SubprocessEngine(), HasConnection)
+    True
+    """
+
+    @property
+    def connection(self) -> ServerConnection:
+        """Return the tmux binary and global flags this engine uses."""
+        ...
+
+
+@t.runtime_checkable
+class SupportsConnection(HasConnection, t.Protocol):
+    """An inspectable engine that can safely return a rebound equivalent.
+
+    Optional capability. Stateless subprocess engines implement it. Persistent
+    transports expose :class:`HasConnection` only, because cloning one could
+    duplicate or abandon live connection state.
 
     Examples
     --------
@@ -330,12 +351,7 @@ class SupportsConnection(t.Protocol):
     False
     """
 
-    @property
-    def connection(self) -> t.Any:
-        """Return the tmux binary and flags this engine dispatches over."""
-        ...
-
-    def with_connection(self, connection: t.Any) -> TmuxEngine:
+    def with_connection(self, connection: ServerConnection) -> Self:
         """Return an equivalent engine bound to *connection*."""
         ...
 

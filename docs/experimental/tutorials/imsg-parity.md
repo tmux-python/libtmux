@@ -10,7 +10,7 @@ standard output.
 
 `ImsgEngine` has no `for_server()` helper. Include the server's `-L` socket name
 or `-S` socket path in every
-{class}`~libtmux.experimental.engines.base.CommandRequest`. The subprocess
+{class}`~libtmux.engines.base.CommandRequest`. The subprocess
 engine accepts the same global argument in the request, which keeps the
 comparison exact.
 

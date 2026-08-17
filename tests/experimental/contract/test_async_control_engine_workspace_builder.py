@@ -25,9 +25,8 @@ from libtmux.experimental.engines import (
     SubprocessEngine,
 )
 from libtmux.experimental.ops import (
-    FoldingPlanner,
+    BatchingPlanner,
     LazyPlan,
-    MarkedPlanner,
     NewSession,
     NewWindow,
     SelectLayout,
@@ -130,10 +129,10 @@ def test_workspace_offline_build_and_planner_equivalence() -> None:
     """The compiled plan runs offline and the optimizer preserves the result."""
     plan = analyze(_YAML).compile()
     sequential = plan.execute(MockEngine(), planner=SequentialPlanner())
-    folded = plan.execute(MockEngine(), planner=FoldingPlanner())
+    batched = plan.execute(MockEngine(), planner=BatchingPlanner())
     assert sequential.ok
-    assert folded.ok
-    assert [r.status for r in sequential.results] == [r.status for r in folded.results]
+    assert batched.ok
+    assert [r.status for r in sequential.results] == [r.status for r in batched.results]
 
 
 def test_first_pane_focus_multipane_compiles() -> None:
@@ -271,19 +270,18 @@ def test_workspace_plan_serializes_round_trip(tmp_path: Path) -> None:
 
 
 def test_workspace_all_planners_agree(tmp_path: Path) -> None:
-    """Sequential, Folding, and Marked planners give an identical PlanResult."""
+    """Sequential and batching planners give an identical PlanResult."""
     plan = _rich_spec(str(tmp_path)).compile()
     runs = {
         name: plan.execute(MockEngine(), planner=planner())
         for name, planner in (
             ("sequential", SequentialPlanner),
-            ("folding", FoldingPlanner),
-            ("marked", MarkedPlanner),
+            ("batching", BatchingPlanner),
         )
     }
     statuses = {name: [r.status for r in run.results] for name, run in runs.items()}
     assert all(run.ok for run in runs.values())
-    assert statuses["sequential"] == statuses["folding"] == statuses["marked"]
+    assert statuses["sequential"] == statuses["batching"]
 
 
 def test_workspace_builder_rich_subprocess(session: Session, tmp_path: Path) -> None:
@@ -572,11 +570,11 @@ def test_compile_emits_global_options() -> None:
     assert global_opt.target is None  # -g options carry no target
 
 
-def test_compile_folds_first_pane_env_into_creator() -> None:
+def test_compile_merges_first_pane_env_into_creator() -> None:
     """Window/first-pane env rides the creator's ``-e`` (no extra dispatch).
 
     Window 0 reuses the session's implicit pane, so its env -- and its first
-    pane's -- folds into ``new-session -e``; window 2..N fold into ``new-window
+    pane's -- merge into ``new-session -e``; window 2..N merge into ``new-window
     -e``. A *split* pane inherits the window env, merged with its own ``-e``.
     """
     ws = Workspace(
@@ -597,9 +595,9 @@ def test_compile_folds_first_pane_env_into_creator() -> None:
     new_session = next(op for op in ops if isinstance(op, NewSession))
     new_window = next(op for op in ops if isinstance(op, NewWindow))
     split = next(op for op in ops if isinstance(op, SplitWindow))
-    # window 0 + its first pane fold into new-session -e
+    # window 0 + its first pane merge into new-session -e
     assert new_session.environment == {"WIN_ENV": "w", "PANE_ENV": "p"}
-    # window 1 folds into new-window -e
+    # window 1 merges into new-window -e
     assert new_window.environment == {"W2": "x"}
     # a split pane inherits the window env, merged with its own (pane wins)
     assert split.environment == {"WIN_ENV": "w", "SPLIT_ENV": "s"}
@@ -608,7 +606,7 @@ def test_compile_folds_first_pane_env_into_creator() -> None:
 def test_compile_first_window_start_directory_drives_new_session() -> None:
     """Window 0's start_directory rides new-session -c (its first pane reuses it).
 
-    Window 0 reuses the session's implicit pane, so without folding the window's
+    Window 0 reuses the session's implicit pane, so without merging the window's
     directory into ``new-session -c`` the first pane would land in the *session*
     start_directory instead of the window's.
     """
