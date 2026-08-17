@@ -1,0 +1,10 @@
+{
+  "status": "stale",
+  "publishable": false,
+  "reason": "The raw files predate BatchingPlanner and used a workload with no batchable creation run.",
+  "artifacts": {
+    "grid.json": "historical transport benchmark only",
+    "wait.json": "historical readiness-wait benchmark only"
+  },
+  "regenerate_with": "uv run scripts/bench/engines.py matrix --json-out scripts/bench-results/matrix.json"
+}
