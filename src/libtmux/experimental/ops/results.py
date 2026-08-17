@@ -227,7 +227,7 @@ class Result:
 
         Returns ``self`` on success so it can be used fluently
         (``result = run(op, engine).raise_for_status()``). A ``failed`` or
-        ``unknown`` status raises; ``complete`` and ``skipped`` do not.
+        ``unknown`` status raises; ``complete`` does not.
 
         Returns
         -------

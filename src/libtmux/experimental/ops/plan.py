@@ -15,16 +15,11 @@ in ``run(...)`` versus ``await arun(...)``; the resolution logic is written once
 from __future__ import annotations
 
 import dataclasses
+import types
 import typing as t
 from dataclasses import dataclass, field
 
 from libtmux.experimental.engines.base import CommandRequest
-from libtmux.experimental.ops._chain import (
-    attribute,
-    attribute_marked,
-    render_chain,
-    render_marked,
-)
 from libtmux.experimental.ops._types import (
     PaneId,
     SessionId,
@@ -32,19 +27,27 @@ from libtmux.experimental.ops._types import (
     Special,
     WindowId,
 )
-from libtmux.experimental.ops.exc import FailedCreateError, ForwardCaptureError
-from libtmux.experimental.ops.execute import arun, resolve_engine_version, run
+from libtmux.experimental.ops.exc import (
+    FailedCreateError,
+    ForwardCaptureError,
+    OperationError,
+)
+from libtmux.experimental.ops.execute import (
+    aresolve_engine_version,
+    arun,
+    resolve_engine_version,
+    run,
+)
 from libtmux.experimental.ops.planner import Planner, PlanStep, SequentialPlanner
 from libtmux.experimental.ops.serialize import operation_from_dict, operation_to_dict
 
 if t.TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator, Iterator
+    from collections.abc import AsyncGenerator, Generator, Iterator, Mapping
 
     from typing_extensions import Self
 
     from libtmux.experimental.engines.base import (
         AsyncTmuxEngine,
-        CommandResult,
         TmuxEngine,
     )
     from libtmux.experimental.ops._chain import OpChain
@@ -67,16 +70,16 @@ class _Single:
 
 
 @dataclass(frozen=True)
-class _Chain:
-    """Drive request: dispatch a folded ``;`` chain and return the merged result.
+class _Batch:
+    """Drive request: run ready operations as distinct ordered requests.
 
     Attributes
     ----------
-    argv : tuple[str, ...]
-        Rendered argv for the complete folded chain.
+    ops : tuple[Operation, ...]
+        Resolved operations to render and submit in order.
     """
 
-    argv: tuple[str, ...]
+    ops: tuple[Operation[t.Any], ...]
 
 
 @dataclass(frozen=True)
@@ -86,22 +89,22 @@ class StepReport:
     Passed to the ``on_step`` hook of :meth:`LazyPlan.execute` /
     :meth:`LazyPlan.aexecute` after each step's results bind, letting a caller
     interleave host-side work (e.g. the workspace runner's sleeps and pane-ready
-    waits) *between* dispatches without forking the resolution core.
+    waits) *between* planner steps without forking the resolution core.
 
     Attributes
     ----------
     step : PlanStep
-        The dispatch unit that just ran.
+        The planner step that just ran.
     results : tuple[Result, ...]
         The step's per-op results, in ``step.indices`` order.
-    bindings : dict[int | tuple[int, str], str]
-        The live binding map (same reference the driver mutates), so the callback
-        can resolve a :class:`~._types.SlotRef` against already-captured ids.
+    bindings : Mapping[int | tuple[int, str], str]
+        Immutable snapshot of captured ids after this step, so callbacks can
+        resolve a :class:`~._types.SlotRef` without mutating plan state.
     """
 
     step: PlanStep
     results: tuple[Result, ...]
-    bindings: dict[int | tuple[int, str], str]
+    bindings: Mapping[int | tuple[int, str], str]
 
 
 @dataclass(frozen=True)
@@ -117,29 +120,32 @@ class _Host:
     report: StepReport
 
 
+StepReason: t.TypeAlias = t.Literal["batch", "barrier", "creator", "single"]
+"""Stable reason vocabulary returned by :meth:`LazyPlan.explain`."""
+
+
 @dataclass(frozen=True)
 class StepExplanation:
-    """Why one dispatch step is its own tmux call (from :meth:`LazyPlan.explain`).
+    """Why operations share or split planner steps (from :meth:`LazyPlan.explain`).
 
-    ``reason`` is one of ``"marked-fold"`` (a pane create plus its ``{marked}``
-    decorates), ``"folded"`` (a ``;``-chain of chainable ops), ``"created-id"``
-    (a create whose captured id a later op must target -- a true blocker),
-    ``"capture"`` (a non-chainable op whose stdout can't merge into a chain), or
-    ``"single"`` (a lone chainable op with nothing to fold with).
+    ``reason`` is one of ``"batch"`` (ordered, individually attributed
+    requests), ``"creator"`` (an operation that creates a tmux object),
+    ``"barrier"`` (an operation that must run in its own step), or
+    ``"single"`` (one batchable operation).
 
     Attributes
     ----------
     step : PlanStep
-        Dispatch unit being explained.
+        Planner step being explained.
     kinds : tuple[str, ...]
-        Operation kinds contained in the dispatch unit.
-    reason : str
-        Stable explanation label for the planner's dispatch decision.
+        Operation kinds contained in the planner step.
+    reason : StepReason
+        Stable explanation label for the planner's step decision.
     """
 
     step: PlanStep
     kinds: tuple[str, ...]
-    reason: str
+    reason: StepReason
 
 
 @dataclass(frozen=True)
@@ -185,7 +191,7 @@ def _target_from_id(value: str) -> Target:
 
 def _resolve_slot(
     ref: SlotRef,
-    bindings: dict[int | tuple[int, str], str],
+    bindings: Mapping[int | tuple[int, str], str],
     results: dict[int, t.Any] | None = None,
 ) -> Target:
     """Map a :class:`SlotRef` to the captured concrete target it points at.
@@ -210,7 +216,7 @@ def _resolve_slot(
 
 def _resolve(
     operation: Operation[t.Any],
-    bindings: dict[int | tuple[int, str], str],
+    bindings: Mapping[int | tuple[int, str], str],
     results: dict[int, t.Any] | None = None,
 ) -> Operation[t.Any]:
     """Substitute any :class:`SlotRef` ``target``/``src_target`` with its id."""
@@ -224,23 +230,66 @@ def _resolve(
     return dataclasses.replace(operation, **changes)
 
 
-def _resolve_src(
-    operation: Operation[t.Any],
-    bindings: dict[int | tuple[int, str], str],
-) -> Operation[t.Any]:
-    """Resolve only a :class:`SlotRef` ``src_target``.
+def _validate_plan_steps(
+    steps: t.Sequence[PlanStep],
+    operations: t.Sequence[Operation[t.Any]],
+    ensured: t.AbstractSet[int],
+) -> None:
+    """Validate that planner output preserves operation semantics.
 
-    A ``{marked}`` decorate's ``target`` is this same fold's create, which has no
-    captured id yet -- it is addressed through tmux's ``{marked}`` register by
-    :func:`~._chain.render_marked`, so only ``src_target`` (which references an
-    already-bound earlier step) is substituted here.
+    Examples
+    --------
+    >>> from libtmux.experimental.ops import SendKeys
+    >>> from libtmux.experimental.ops._types import PaneId
+    >>> ops = [SendKeys(target=PaneId("%1"), keys="a")]
+    >>> _validate_plan_steps([PlanStep((0,))], ops, set())
+    >>> _validate_plan_steps([PlanStep((1,))], ops, set())
+    Traceback (most recent call last):
+    ...
+    libtmux.experimental.ops.exc.OperationError: planner steps must be an exact
+    ordered partition of operation indices; expected (0,), got (1,)
     """
-    if isinstance(operation.src_target, SlotRef):
-        return dataclasses.replace(
-            operation,
-            src_target=_resolve_slot(operation.src_target, bindings),
+    actual = tuple(index for step in steps for index in step.indices)
+    expected = tuple(range(len(operations)))
+    if any(not step.indices for step in steps) or actual != expected:
+        msg = (
+            "planner steps must be an exact ordered partition of operation "
+            f"indices; expected {expected}, got {actual}"
         )
-    return operation
+        raise OperationError(msg)
+    for step in steps:
+        if len(step.indices) < 2:
+            continue
+        step_indices = frozenset(step.indices)
+        for index in step.indices:
+            operation = operations[index]
+            if index in ensured:
+                msg = f"planner batched ensured operation at index {index}"
+                raise OperationError(msg)
+            if not operation.batchable:
+                msg = (
+                    f"planner batched non-batchable operation {operation.kind!r} "
+                    f"at index {index}"
+                )
+                raise OperationError(msg)
+            if not operation.primitive:
+                msg = (
+                    f"planner batched composite operation {operation.kind!r} "
+                    f"at index {index}"
+                )
+                raise OperationError(msg)
+            refs = (
+                ref
+                for ref in (operation.target, operation.src_target)
+                if isinstance(ref, SlotRef)
+            )
+            for ref in refs:
+                if ref.slot in step_indices:
+                    msg = (
+                        f"planner batched operation at index {index} before "
+                        f"slot {ref.slot} could bind"
+                    )
+                    raise OperationError(msg)
 
 
 @dataclass(frozen=True)
@@ -314,8 +363,8 @@ class LazyPlan:
         if it succeeds the create is *skipped* and the slot binds to the found
         ids, so a find-or-create build reuses an existing object. The plan stays a
         flat, serializable list of operations -- the branch lives in the driver.
-        The create at *index* must be a non-chainable create (so it is its own
-        dispatch step); *probe* must render the same capture format the create
+        The create at *index* must be a non-batchable create (so it is its own
+        planner step); *probe* must render the same capture format the create
         captures, so :meth:`Operation.build_result` parses the found ids.
         """
         self._ensures[index] = probe
@@ -391,39 +440,41 @@ class LazyPlan:
         return [_render(op) for op in self._operations]
 
     def explain(self, planner: Planner | None = None) -> list[StepExplanation]:
-        """Explain why *planner* breaks the plan into the dispatches it does.
+        """Explain why *planner* divides the plan into its execution steps.
 
-        A pure companion to :meth:`preview`: folding hides per-op structure, so
-        this annotates each dispatch step with the reason it can't fold further
+        A pure companion to :meth:`preview`: batching groups per-op structure, so
+        this annotates each planner step with the reason it cannot batch further
         (see :class:`StepExplanation`). Defaults to
         :class:`~.planner.SequentialPlanner`.
 
         Examples
         --------
-        >>> from libtmux.experimental.ops import SplitWindow, SendKeys, MarkedPlanner
+        >>> from libtmux.experimental.ops import BatchingPlanner, SplitWindow, SendKeys
         >>> from libtmux.experimental.ops._types import WindowId
         >>> plan = LazyPlan()
         >>> pane = plan.add(SplitWindow(target=WindowId("@1")))
         >>> _ = plan.add(SendKeys(target=pane, keys="vim"))
-        >>> [(e.kinds, e.reason) for e in plan.explain(MarkedPlanner())]
-        [(('split_window', 'send_keys'), 'marked-fold')]
+        >>> [(e.kinds, e.reason) for e in plan.explain(BatchingPlanner())]
+        [(('split_window',), 'creator'), (('send_keys',), 'single')]
         >>> [(e.kinds, e.reason) for e in plan.explain()]
-        [(('split_window',), 'created-id'), (('send_keys',), 'single')]
+        [(('split_window',), 'creator'), (('send_keys',), 'single')]
         """
-        steps = (planner or SequentialPlanner()).plan(self._operations)
+        operations = tuple(self._operations)
+        ensured = frozenset(self._ensures)
+        steps = tuple((planner or SequentialPlanner()).plan(operations))
+        _validate_plan_steps(steps, operations, ensured)
         out: list[StepExplanation] = []
         for step in steps:
-            kinds = tuple(self._operations[i].kind for i in step.indices)
-            if step.marked:
-                reason = "marked-fold"
-            elif len(step.indices) > 1:
-                reason = "folded"
+            kinds = tuple(operations[i].kind for i in step.indices)
+            reason: StepReason
+            if len(step.indices) > 1:
+                reason = "batch"
             else:
-                op = self._operations[step.indices[0]]
+                op = operations[step.indices[0]]
                 if op.effects.creates is not None:
-                    reason = "created-id"
-                elif not op.chainable:
-                    reason = "capture"
+                    reason = "creator"
+                elif not op.batchable or not op.primitive:
+                    reason = "barrier"
                 else:
                     reason = "single"
             out.append(StepExplanation(step, kinds, reason))
@@ -433,59 +484,41 @@ class LazyPlan:
         self,
         version: str | None,
         planner: Planner,
-    ) -> Generator[_Single | _Chain | _Host, t.Any, PlanResult]:
+    ) -> Generator[_Single | _Batch | _Host, t.Any, PlanResult]:
         """Sans-I/O resolution core driven by a :class:`~.planner.Planner`.
 
         Yields a :class:`_Single` (driver runs one op, returns its
-        :class:`~.results.Result`), a :class:`_Chain` (driver returns the merged
-        :class:`~..engines.base.CommandResult`, attributed per op here), or a
+        :class:`~.results.Result`), a :class:`_Batch` (driver returns one raw
+        :class:`~..engines.base.CommandResult` per ordered ready operation), or a
         :class:`_Host` once per step *after* its results bind (driver fires the
-        ``on_step`` hook, returns ``None``). The generator performs no host I/O
-        itself -- the host hook is the single colored leaf the drivers fork on.
-        The sync and async drivers differ only in ``run`` vs ``await arun`` and
-        ``engine.run`` vs ``await engine.run``.
+        ``on_step`` hook, returns ``None``). The generator performs no host I/O.
         """
+        operations = tuple(self._operations)
+        ensures = dict(self._ensures)
         bindings: dict[int | tuple[int, str], str] = {}
         results: dict[int, Result] = {}
-        for step in planner.plan(self._operations):
-            if step.marked:
-                create_idx, *decorate_idx = step.indices
-                create = _resolve(self._operations[create_idx], bindings, results)
-                decorates = [
-                    _resolve_src(self._operations[i], bindings) for i in decorate_idx
-                ]
-                merged: CommandResult = yield _Chain(
-                    render_marked(create, decorates, version),
-                )
-                created, decorated, new_id = attribute_marked(
-                    create,
-                    decorates,
-                    merged,
-                    version,
-                )
-                results[create_idx] = created
-                results.update(zip(decorate_idx, decorated, strict=True))
-                if new_id is not None:
-                    bindings[create_idx] = new_id
-            elif len(step.indices) == 1:
+        steps = tuple(planner.plan(operations))
+        _validate_plan_steps(steps, operations, ensures.keys())
+        for step in steps:
+            if len(step.indices) == 1:
                 index = step.indices[0]
-                probe = self._ensures.get(index)
+                probe = ensures.get(index)
                 if probe is not None:
                     found = yield _Single(_resolve(probe, bindings, results))
                     if found.ok and found.text.strip():
                         # The object exists: bind to its ids, skip the create.
-                        result = self._operations[index].build_result(
+                        result = operations[index].build_result(
                             returncode=0,
                             stdout=(found.text,),
                             version=version,
                         )
                     else:
                         result = yield _Single(
-                            _resolve(self._operations[index], bindings, results),
+                            _resolve(operations[index], bindings, results),
                         )
                 else:
                     result = yield _Single(
-                        _resolve(self._operations[index], bindings, results),
+                        _resolve(operations[index], bindings, results),
                     )
                 results[index] = result
                 if result.created_id is not None:
@@ -493,17 +526,38 @@ class LazyPlan:
                 for sub_part, sub_id in result.created_subids.items():
                     bindings[index, sub_part] = sub_id
             else:
-                group = [
-                    _resolve(self._operations[i], bindings, results)
-                    for i in step.indices
-                ]
-                merged = yield _Chain(render_chain(group, version))
-                results.update(
-                    zip(step.indices, attribute(group, merged, version), strict=True),
+                group = tuple(
+                    _resolve(operations[i], bindings, results) for i in step.indices
                 )
+                raw_results = yield _Batch(group)
+                if len(raw_results) != len(group):
+                    msg = (
+                        "engine.run_batch returned "
+                        f"{len(raw_results)} results for {len(group)} requests"
+                    )
+                    raise OperationError(msg)
+                for index, operation, raw in zip(
+                    step.indices,
+                    group,
+                    raw_results,
+                    strict=True,
+                ):
+                    result = operation.build_result(
+                        argv=operation.render(version=version),
+                        returncode=raw.returncode,
+                        stdout=raw.stdout,
+                        stderr=raw.stderr,
+                        version=version,
+                    )
+                    results[index] = result
+                    if result.created_id is not None:
+                        bindings[index] = result.created_id
+                    for sub_part, sub_id in result.created_subids.items():
+                        bindings[index, sub_part] = sub_id
             ordered_step = tuple(results[i] for i in step.indices)
-            yield _Host(StepReport(step, ordered_step, bindings))
-        ordered = tuple(results[slot] for slot in range(len(self._operations)))
+            binding_snapshot = types.MappingProxyType(dict(bindings))
+            yield _Host(StepReport(step, ordered_step, binding_snapshot))
+        ordered = tuple(results[slot] for slot in range(len(operations)))
         return PlanResult(ordered, bindings)
 
     def execute(
@@ -516,14 +570,14 @@ class LazyPlan:
     ) -> PlanResult:
         """Resolve and execute the plan synchronously.
 
-        The *planner* decides dispatch grouping; it defaults to
-        :class:`~.planner.SequentialPlanner` (one tmux call per op). Pass a
-        :class:`~.planner.FoldingPlanner` or :class:`~.planner.MarkedPlanner` to
-        fold dispatches -- the :class:`PlanResult` is identical, only the
-        dispatch count changes.
+        The *planner* decides execution-step grouping; it defaults to
+        :class:`~.planner.SequentialPlanner` (one step per operation). A
+        :class:`~.planner.BatchingPlanner` sends each ready operation as a
+        distinct request in one ordered engine batch. The resulting
+        :class:`PlanResult` retains one exact result per operation.
 
         *on_step* is called with a :class:`StepReport` after each step's results
-        bind, so a caller can interleave host-side work between dispatches; it is
+        bind, so a caller can interleave host-side work between planner steps; it is
         a no-op trampoline hop when ``None``.
         """
         version = resolve_engine_version(engine, version)
@@ -542,13 +596,18 @@ class LazyPlan:
 
     def _dispatch(
         self,
-        request: _Single | _Chain,
+        request: _Single | _Batch,
         engine: TmuxEngine,
         version: str | None,
     ) -> t.Any:
         """Run one drive request synchronously."""
-        if isinstance(request, _Chain):
-            return engine.run(CommandRequest(args=request.argv))
+        if isinstance(request, _Batch):
+            return engine.run_batch(
+                [
+                    CommandRequest(args=operation.render(version=version))
+                    for operation in request.ops
+                ],
+            )
         return run(request.op, engine, version=version)
 
     async def aexecute(
@@ -574,7 +633,7 @@ class LazyPlan:
         >>> asyncio.run(plan.aexecute(AsyncMockEngine())).ok
         True
         """
-        version = resolve_engine_version(engine, version)
+        version = await aresolve_engine_version(engine, version)
         gen = self._drive(version, planner or SequentialPlanner())
         try:
             request = next(gen)
@@ -590,13 +649,18 @@ class LazyPlan:
 
     async def _adispatch(
         self,
-        request: _Single | _Chain,
+        request: _Single | _Batch,
         engine: AsyncTmuxEngine,
         version: str | None,
     ) -> t.Any:
         """Run one drive request asynchronously (async twin of :meth:`_dispatch`)."""
-        if isinstance(request, _Chain):
-            return await engine.run(CommandRequest(args=request.argv))
+        if isinstance(request, _Batch):
+            return await engine.run_batch(
+                [
+                    CommandRequest(args=operation.render(version=version))
+                    for operation in request.ops
+                ],
+            )
         return await arun(request.op, engine, version=version)
 
     async def astream(
@@ -609,15 +673,15 @@ class LazyPlan:
         """Execute the plan, streaming a :data:`PlanEvent` per step as it binds.
 
         The observe-as-you-go twin of :meth:`aexecute` over the same sans-I/O
-        resolution core: it yields a :class:`StepDone` after each dispatch binds
+        resolution core: it yields a :class:`StepDone` after each planner step binds
         and a terminal :class:`PlanDone` carrying the full :class:`PlanResult`, so
         ``[e async for e in plan.astream(engine)][-1].result`` equals ``await
         plan.aexecute(engine)``. The stream is pull-based -- a slow ``async for``
         naturally paces the plan, so backpressure needs no buffer and the event
-        loop is never blocked between dispatches. Run one ``astream`` per engine
+        loop is never blocked between planner steps. Run one ``astream`` per engine
         at a time (the engine's write order is shared).
 
-        Like :meth:`aexecute`, this observes plan *dispatch* only: it does not
+        Like :meth:`aexecute`, this observes planner steps only: it does not
         run a workspace's host steps (``sleep`` / ``before_script`` /
         ``wait_pane``, which the runner threads through ``on_step``), so
         ``send-keys`` can reach a shell the plan never waited for. For a full
@@ -638,7 +702,7 @@ class LazyPlan:
         >>> asyncio.run(drain())
         ['StepDone', 'PlanDone']
         """
-        version = resolve_engine_version(engine, version)
+        version = await aresolve_engine_version(engine, version)
         gen = self._drive(version, planner or SequentialPlanner())
         try:
             request = next(gen)

@@ -45,7 +45,6 @@ class ShowOptions(Operation[ShowOptionsResult]):
     scope = "session"
     result_cls = ShowOptionsResult
     safety = "readonly"
-    chainable = False
     effects = Effects(read_only=True, idempotent=True)
 
     global_: bool = False

@@ -7,7 +7,7 @@ effects directly from the operation registry.
 ## Execution contract
 
 An engine emits a raw
-{class}`~libtmux.experimental.engines.base.CommandResult`.
+{class}`~libtmux.engines.base.CommandResult`.
 {func}`~libtmux.experimental.ops.run` converts it to the operation's declared
 {class}`~libtmux.experimental.ops.results.Result` subtype. Results preserve
 failures as data; call

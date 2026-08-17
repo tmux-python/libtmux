@@ -90,7 +90,7 @@ def _str_map(value: t.Any) -> dict[str, str]:
     YAML types ``main-pane-height: 35`` as an int, but tmux option and
     environment values are strings on the command line (libtmux's ``cmd``
     str()s every arg). Stringifying at ingest keeps the IR's declared
-    ``Mapping[str, str]`` honest, so the folded renderer never meets a non-str.
+    ``Mapping[str, str]`` honest, so operation rendering never meets a non-str.
     """
     if not value:
         return {}

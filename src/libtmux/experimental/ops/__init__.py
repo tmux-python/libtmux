@@ -115,12 +115,12 @@ from libtmux.experimental.ops.plan import (
     PlanResult,
     StepDone,
     StepExplanation,
+    StepReason,
     StepReport,
 )
 from libtmux.experimental.ops.planner import (
+    BatchingPlanner,
     BoundedPlanner,
-    FoldingPlanner,
-    MarkedPlanner,
     Planner,
     PlanStep,
     SequentialPlanner,
@@ -158,6 +158,7 @@ from libtmux.experimental.ops.serialize import (
 
 __all__ = (
     "AckResult",
+    "BatchingPlanner",
     "BoundedPlanner",
     "BreakPane",
     "CapturePane",
@@ -172,7 +173,6 @@ __all__ = (
     "DisplayMessageResult",
     "DuplicateOperation",
     "Effects",
-    "FoldingPlanner",
     "ForwardCaptureError",
     "HasSession",
     "HasSessionResult",
@@ -195,7 +195,6 @@ __all__ = (
     "ListWindows",
     "ListWindowsResult",
     "LoadBuffer",
-    "MarkedPlanner",
     "MissingCreateIdError",
     "MovePane",
     "MoveWindow",
@@ -255,6 +254,7 @@ __all__ = (
     "Status",
     "StepDone",
     "StepExplanation",
+    "StepReason",
     "StepReport",
     "SuspendClient",
     "SwapPane",

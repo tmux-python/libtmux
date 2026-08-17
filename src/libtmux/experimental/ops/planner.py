@@ -1,25 +1,17 @@
-"""Pluggable planners that decide how a lazy plan dispatches.
+"""Pluggable planners that divide a lazy plan into execution steps.
 
 A planner is pure policy: given the recorded operations it returns a list of
-:class:`PlanStep` units, and :meth:`~.plan.LazyPlan.execute` runs them. Swapping
-planners changes *how many tmux dispatches* a plan costs without changing its
-result, so strategies can be A/B-tested (same :class:`~.plan.PlanResult`,
-differing dispatch count).
+:class:`PlanStep` units, and :meth:`~.plan.LazyPlan.execute` runs them. A step is
+an ordered batch of ready-to-render requests, never a tmux ``;`` command group.
 
-- :class:`SequentialPlanner` -- one dispatch per operation (the safe default).
-- :class:`FoldingPlanner` -- fold maximal runs of chainable ops into one
-  ``tmux a ; b`` dispatch.
-- :class:`MarkedPlanner` -- additionally fold a pane creation plus the chainable
-  ops that decorate it into a *single* dispatch via tmux's ``{marked}`` register
-  (the chainable-commands lone-pane optimization).
+- :class:`SequentialPlanner` -- one planner step per operation.
+- :class:`BatchingPlanner` -- batch maximal runs of ready operations.
 """
 
 from __future__ import annotations
 
 import typing as t
 from dataclasses import dataclass
-
-from libtmux.experimental.ops._types import SlotRef
 
 if t.TYPE_CHECKING:
     from collections.abc import Sequence
@@ -29,35 +21,31 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PlanStep:
-    """One dispatch unit.
+    """One execution unit.
 
-    A single op (``len(indices) == 1``), a ``;``-folded chain (more, ``marked``
-    false), or a ``{marked}`` fold (``marked`` true: ``indices[0]`` is the pane
-    creation, the rest decorate it through ``{marked}``).
+    A single operation or an ordered request batch. Every index retains its
+    own request and result.
 
     Attributes
     ----------
     indices : tuple[int, ...]
-        Operation indices included in this dispatch, in execution order.
-    marked : bool
-        Whether the dispatch uses tmux's ``{marked}`` pane register.
+        Operation indices included in this step, in execution order.
     """
 
     indices: tuple[int, ...]
-    marked: bool = False
 
 
 @t.runtime_checkable
 class Planner(t.Protocol):
-    """Decides the dispatch units for a plan's operations."""
+    """Decide the ordered execution steps for a plan's operations."""
 
     def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
-        """Return the ordered dispatch units for *operations*."""
+        """Return the ordered planner steps for *operations*."""
         ...
 
 
 class SequentialPlanner:
-    """Dispatch each operation on its own (one tmux call per op)."""
+    """Put each operation in its own planner step."""
 
     def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
         """One single-op step per operation.
@@ -67,20 +55,24 @@ class SequentialPlanner:
         >>> from libtmux.experimental.ops import SendKeys
         >>> from libtmux.experimental.ops._types import PaneId
         >>> SequentialPlanner().plan([SendKeys(target=PaneId("%1"), keys="a")])
-        [PlanStep(indices=(0,), marked=False)]
+        [PlanStep(indices=(0,))]
         """
         return [PlanStep((index,)) for index in range(len(operations))]
 
 
-def _fold_runs(operations: Sequence[Operation[t.Any]], start: int) -> list[PlanStep]:
-    """Group maximal runs of chainable ops from *start* into chain/single steps."""
+def _batch_runs(operations: Sequence[Operation[t.Any]], start: int) -> list[PlanStep]:
+    """Group maximal batchable runs from *start* into execution steps."""
     steps: list[PlanStep] = []
     index = start
     total = len(operations)
     while index < total:
-        if operations[index].chainable:
+        if operations[index].batchable and operations[index].primitive:
             cursor = index
-            while cursor < total and operations[cursor].chainable:
+            while (
+                cursor < total
+                and operations[cursor].batchable
+                and operations[cursor].primitive
+            ):
                 cursor += 1
             steps.append(PlanStep(tuple(range(index, cursor))))
             index = cursor
@@ -90,11 +82,11 @@ def _fold_runs(operations: Sequence[Operation[t.Any]], start: int) -> list[PlanS
     return steps
 
 
-class FoldingPlanner:
-    """Fold maximal runs of chainable ops into one ``;`` dispatch each."""
+class BatchingPlanner:
+    """Batch maximal runs of ready-to-render primitive operations."""
 
     def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
-        """Chain consecutive chainable ops; dispatch the rest alone.
+        """Batch consecutive batchable ops; put the rest in single-op steps.
 
         Examples
         --------
@@ -104,48 +96,10 @@ class FoldingPlanner:
         ...     SendKeys(target=PaneId("%1"), keys="a"),
         ...     SendKeys(target=PaneId("%1"), keys="b"),
         ... ]
-        >>> FoldingPlanner().plan(ops)
-        [PlanStep(indices=(0, 1), marked=False)]
+        >>> BatchingPlanner().plan(ops)
+        [PlanStep(indices=(0, 1))]
         """
-        return _fold_runs(operations, 0)
-
-
-class MarkedPlanner:
-    """Fold a pane creation + the chainable ops that decorate it into one call.
-
-    When a pane-creating op (``effects.creates == "pane"``) is immediately
-    followed by chainable ops that target *its* slot, they collapse into a single
-    ``split-window … ; select-pane -m ; … -t {marked} … ; select-pane -M``
-    dispatch. Anything else folds like :class:`FoldingPlanner`.
-    """
-
-    def plan(self, operations: Sequence[Operation[t.Any]]) -> list[PlanStep]:
-        """Emit ``{marked}`` folds where possible, else fold normally.
-
-        Examples
-        --------
-        >>> from libtmux.experimental.ops import SplitWindow, SendKeys
-        >>> from libtmux.experimental.ops._types import SlotRef, WindowId
-        >>> ops = [
-        ...     SplitWindow(target=WindowId("@1")),
-        ...     SendKeys(target=SlotRef(0), keys="vim", enter=True),
-        ... ]
-        >>> MarkedPlanner().plan(ops)
-        [PlanStep(indices=(0, 1), marked=True)]
-        """
-        steps: list[PlanStep] = []
-        index = 0
-        total = len(operations)
-        while index < total:
-            decorates = _marked_decorates(operations, index)
-            if decorates:
-                steps.append(PlanStep((index, *decorates), marked=True))
-                index = decorates[-1] + 1
-            else:
-                run = _fold_runs(operations, index)[0]
-                steps.append(run)
-                index = run.indices[-1] + 1
-        return steps
+        return _batch_runs(operations, 0)
 
 
 def _split_at_boundaries(
@@ -154,12 +108,10 @@ def _split_at_boundaries(
 ) -> list[PlanStep]:
     """Break *step* wherever a boundary falls between two of its indices.
 
-    A boundary at index ``i`` means a host step runs after op ``i``, so no fold
+    A boundary at index ``i`` means a host step runs after op ``i``, so no batch
     may span ``i -> i+1``. Splitting only ever breaks a step into contiguous
-    sub-runs (never merges), so it cannot change the result -- only the dispatch
-    grouping. A ``marked`` step keeps ``marked=True`` on its first sub-run iff the
-    creator still keeps at least one decorate; later sub-runs become plain
-    ``;``-chains that resolve the creator's now-bound id instead of ``{marked}``.
+    sub-runs (never merges), so it cannot change the result -- only planner-step
+    grouping.
     """
     indices = step.indices
     cuts = [k + 1 for k in range(len(indices) - 1) if indices[k] in boundaries]
@@ -167,15 +119,12 @@ def _split_at_boundaries(
         return [step]
     starts, ends = [0, *cuts], [*cuts, len(indices)]
     runs = [indices[lo:hi] for lo, hi in zip(starts, ends, strict=True)]
-    return [
-        PlanStep(run, marked=step.marked and pos == 0 and len(run) > 1)
-        for pos, run in enumerate(runs)
-    ]
+    return [PlanStep(run) for run in runs]
 
 
 @dataclass(frozen=True)
 class BoundedPlanner:
-    """Wrap a planner so no fold crosses a host-step boundary.
+    """Wrap a planner so no batch crosses a host-step boundary.
 
     *boundaries* are operation indices after which a host step runs (for the
     workspace runner, exactly ``frozenset(compiled.host_after)``). The *inner*
@@ -186,7 +135,7 @@ class BoundedPlanner:
     Attributes
     ----------
     inner : Planner
-        Planner whose dispatch units are constrained.
+        Planner whose execution steps are constrained.
     boundaries : frozenset[int]
         Operation indices after which a host-side step must run.
     """
@@ -205,41 +154,12 @@ class BoundedPlanner:
         ...     SendKeys(target=PaneId("%1"), keys="a"),
         ...     SendKeys(target=PaneId("%1"), keys="b"),
         ... ]
-        >>> BoundedPlanner(FoldingPlanner(), frozenset({0})).plan(ops)
-        [PlanStep(indices=(0,), marked=False), PlanStep(indices=(1,), marked=False)]
-        >>> BoundedPlanner(FoldingPlanner(), frozenset()).plan(ops)
-        [PlanStep(indices=(0, 1), marked=False)]
+        >>> BoundedPlanner(BatchingPlanner(), frozenset({0})).plan(ops)
+        [PlanStep(indices=(0,)), PlanStep(indices=(1,))]
+        >>> BoundedPlanner(BatchingPlanner(), frozenset()).plan(ops)
+        [PlanStep(indices=(0, 1))]
         """
         steps: list[PlanStep] = []
         for step in self.inner.plan(operations):
             steps.extend(_split_at_boundaries(step, self.boundaries))
         return steps
-
-
-def _marked_decorates(
-    operations: Sequence[Operation[t.Any]],
-    index: int,
-) -> tuple[int, ...]:
-    """Return the indices of chainable ops decorating a pane created at *index*.
-
-    Empty unless *index* is a pane creation followed by at least one chainable op
-    whose target is that creation's :class:`SlotRef`.
-    """
-    creator = operations[index]
-    if creator.effects.creates != "pane" or creator.chainable:
-        return ()
-    # A detached creator (e.g. NewPane ``-d``) does not focus its new pane, so
-    # the {marked} fold's untargeted ``select-pane -m`` would mark the wrong
-    # pane; fall back to lone dispatch (decorates bind the captured id via slot).
-    if getattr(creator, "detach", False):
-        return ()
-    decorates: list[int] = []
-    cursor = index + 1
-    while cursor < len(operations):
-        op = operations[cursor]
-        if op.chainable and op.target == SlotRef(index):
-            decorates.append(cursor)
-            cursor += 1
-        else:
-            break
-    return tuple(decorates)

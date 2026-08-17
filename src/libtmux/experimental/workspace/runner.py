@@ -3,11 +3,11 @@
 The runner is the Declarative tier's *bound* layer. It drives the compiled plan
 through Core's :meth:`~libtmux.experimental.ops.plan.LazyPlan.execute` so the
 build reuses the same sans-I/O resolution trampoline as any other plan -- and so
-folds dispatches via a :class:`~..ops.planner.Planner`. Host-side steps (sleep /
-before_script / pane-readiness waits) must run *between* tmux dispatches, so the
+batches ready requests via a :class:`~..ops.planner.Planner`. Host-side steps (sleep /
+before_script / pane-readiness waits) must run *between* planner steps, so the
 compiler records them as a separate schedule keyed by operation index
-(:attr:`~..compiler.Compiled.host_after`). The runner turns those keys into fold
-boundaries via a :class:`~..ops.planner.BoundedPlanner` (no fold may cross a host
+(:attr:`~..compiler.Compiled.host_after`). The runner turns those keys into batch
+boundaries via a :class:`~..ops.planner.BoundedPlanner` (no batch may cross a host
 step) and replays each index's host steps from the ``on_step`` hook
 :meth:`~..ops.plan.LazyPlan.execute` fires after every step binds. Idempotent
 replace is handled *around* the build via a ``has-session`` pre-check.
@@ -36,12 +36,12 @@ from libtmux.experimental.ops import (
 )
 from libtmux.experimental.ops._types import NameRef
 from libtmux.experimental.ops.plan import PlanResult, StepReport
-from libtmux.experimental.ops.planner import BoundedPlanner, MarkedPlanner
+from libtmux.experimental.ops.planner import BatchingPlanner, BoundedPlanner
 from libtmux.experimental.workspace.compiler import compile_full
 from libtmux.experimental.workspace.events import WorkspaceBuilt, events_for
 
 if t.TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Mapping
 
     from libtmux.experimental.engines.base import AsyncTmuxEngine, TmuxEngine
     from libtmux.experimental.ops.planner import Planner
@@ -53,7 +53,7 @@ if t.TYPE_CHECKING:
 def _run_host_sync(
     step: HostStep,
     engine: TmuxEngine,
-    bindings: dict[int | tuple[int, str], str],
+    bindings: Mapping[int | tuple[int, str], str],
     version: str | None,
 ) -> None:
     """Execute one host step synchronously."""
@@ -68,7 +68,7 @@ def _run_host_sync(
 async def _run_host_async(
     step: HostStep,
     engine: AsyncTmuxEngine,
-    bindings: dict[int | tuple[int, str], str],
+    bindings: Mapping[int | tuple[int, str], str],
     version: str | None,
 ) -> None:
     """Execute one host step asynchronously."""
@@ -127,12 +127,12 @@ def build_workspace(
     Pass *on_event* to observe the structural build stream (session -> windows ->
     panes -> built) as each operation binds its id.
 
-    The build folds dispatches by default (a :class:`~..ops.planner.MarkedPlanner`
-    wrapped so no fold crosses a host step), so a multi-pane window costs a few
-    tmux calls instead of one per op. Pass *planner* to override -- e.g.
-    :class:`~..ops.planner.SequentialPlanner` for one legible call per op. The
-    :class:`~..ops.plan.PlanResult` is identical either way; only the dispatch
-    count changes.
+    The build batches ready operations by default (a
+    :class:`~..ops.planner.BatchingPlanner` wrapped so no batch crosses a host
+    step). Pass *planner* to override -- e.g.
+    :class:`~..ops.planner.SequentialPlanner` for one legible step per op. The
+    :class:`~..ops.plan.PlanResult` is identical either way; planner grouping and
+    the engine's transport behavior may differ.
 
     Examples
     --------
@@ -161,7 +161,7 @@ def build_workspace(
         engine,
         version=version,
         planner=BoundedPlanner(
-            planner or MarkedPlanner(),
+            planner or BatchingPlanner(),
             frozenset(compiled.host_after),
         ),
         on_step=on_step,
@@ -183,11 +183,11 @@ async def abuild_workspace(
     """Compile and execute *ws* asynchronously over *engine* (same resolution).
 
     *on_event* is awaited inline on the coroutine that runs the interleaved host
-    steps and drives the next dispatch, so it must return promptly and must not
+    steps and drives the next planner step, so it must return promptly and must not
     re-enter *engine* (``Awaitable[None]`` cannot enforce this). A slow network
     or render sink should own its own buffer and drain independently -- e.g. the
     ``register_events`` + ``_EventRing``-over-``engine.subscribe()`` pattern in
-    ``libtmux.experimental.mcp.events``. Folds by default; see
+    ``libtmux.experimental.mcp.events``. Batches by default; see
     :func:`build_workspace` for the *planner* knob.
     """
     if preflight and await _preflight_async(ws, engine, version):
@@ -212,7 +212,7 @@ async def abuild_workspace(
         engine,
         version=version,
         planner=BoundedPlanner(
-            planner or MarkedPlanner(),
+            planner or BatchingPlanner(),
             frozenset(compiled.host_after),
         ),
         on_step=on_step,

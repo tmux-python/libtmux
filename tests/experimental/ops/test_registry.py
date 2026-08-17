@@ -38,6 +38,7 @@ def test_spec_from_operation_reads_classvars() -> None:
     assert spec.scope == "window"
     assert spec.result_cls is SplitWindow.result_cls
     assert spec.effects.creates == "pane"
+    assert spec.batchable is False
 
 
 def test_list_predicate_filters() -> None:

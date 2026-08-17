@@ -30,7 +30,7 @@ Safety: t.TypeAlias = t.Literal["readonly", "mutating", "destructive"]
 removes objects (``kill-session``, ``kill-window``).
 """
 
-Status: t.TypeAlias = t.Literal["complete", "failed", "skipped", "unknown"]
+Status: t.TypeAlias = t.Literal["complete", "failed", "unknown"]
 """Execution status of a result.
 
 ``complete``
@@ -38,9 +38,6 @@ Status: t.TypeAlias = t.Literal["complete", "failed", "skipped", "unknown"]
 ``failed``
     The logical operation failed because tmux rejected a command, a composed
     follow-up failed, or required result data was missing.
-``skipped``
-    The operation was never dispatched (e.g. an earlier command in a chain
-    failed, or a lazy plan was inspected but not executed).
 ``unknown``
     The outcome could not be determined (e.g. a control-mode timeout).
 """

@@ -106,7 +106,7 @@ class NewPane(Operation[SplitWindowResult]):
     scope = "window"
     result_cls = SplitWindowResult
     safety = "mutating"
-    chainable = False  # captures a new pane id (-P -F); cannot fold into a ; chain
+    batchable = False  # captured id must bind before dependent requests render
     effects = Effects(creates="pane")
     min_version = "3.7"
 
