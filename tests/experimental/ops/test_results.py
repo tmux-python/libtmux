@@ -59,15 +59,3 @@ def test_unknown_status_raises() -> None:
     )
     with pytest.raises(TmuxCommandError):
         unknown.raise_for_status()
-
-
-def test_skipped_status_does_not_raise() -> None:
-    """A ``skipped`` operation is not a failure."""
-    base = _result(0)
-    skipped = Result(
-        operation=base.operation,
-        argv=base.argv,
-        status="skipped",
-        returncode=0,
-    )
-    assert skipped.raise_for_status() is skipped

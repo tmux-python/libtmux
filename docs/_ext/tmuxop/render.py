@@ -323,7 +323,7 @@ def build_operation_description(
             "Minimum tmux",
             _literal_fact(entry.min_version or "any supported version"),
         ),
-        ApiFactRow("Chainable", _boolean_fact(entry.chainable)),
+        ApiFactRow("Batchable", _boolean_fact(entry.batchable)),
         ApiFactRow(
             "Version-gated flags",
             build_chip_paragraph(

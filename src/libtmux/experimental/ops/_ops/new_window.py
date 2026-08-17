@@ -63,7 +63,7 @@ class NewWindow(Operation[CreateResult]):
     scope = "session"
     result_cls = CreateResult
     safety = "mutating"
-    chainable = False
+    batchable = False
     effects = Effects(creates="window")
     flag_version_map: t.ClassVar[Mapping[str, str]] = {"environment": "3.0"}
 

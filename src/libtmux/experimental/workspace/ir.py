@@ -114,7 +114,7 @@ class Pane:
     environment : Mapping[str, str]
         Process environment for a *split* pane (``split-window -e``). For the
         window's first pane -- which reuses the window's implicit pane rather than
-        splitting -- this env is folded into the window's creator instead, so it
+        splitting -- this env is merged into the window's creator instead, so it
         applies without an extra dispatch.
     shell : str or None
         A shell command to launch in the pane instead of the default shell
@@ -315,7 +315,7 @@ class Window:
     environment : Mapping[str, str]
         Process environment for the window (``new-window -e``), inherited by its
         panes. For window 0 (which reuses the session's implicit window) this is
-        folded into ``new-session -e`` instead.
+        merged into ``new-session -e`` instead.
     window_shell : str or None
         A shell command to launch in the window's first pane instead of the
         default shell (``new-window`` trailing command); also the fallback
@@ -477,8 +477,9 @@ class Workspace:
         Set ``preflight=False`` to skip the ``on_exists`` ``has-session`` check
         (e.g. against the stateless ``MockEngine``, which has no real
         sessions to detect). Pass *on_event* to observe the structural build
-        stream (see :mod:`~.events`). The build folds dispatches by default; pass
-        *planner* (e.g. :class:`~..ops.planner.SequentialPlanner`) to override.
+        stream (see :mod:`~.events`). The build batches ready operations
+        by default; pass *planner* (e.g.
+        :class:`~..ops.planner.SequentialPlanner`) to override.
         """
         from libtmux.experimental.workspace.runner import build_workspace
 
@@ -502,8 +503,8 @@ class Workspace:
     ) -> PlanResult:
         """Compile and execute this workspace asynchronously over *engine*.
 
-        *on_event* is awaited for each build event (see :mod:`~.events`). Folds by
-        default; pass *planner* to override.
+        *on_event* is awaited for each build event (see :mod:`~.events`). Batches
+        ready operations by default; pass *planner* to override.
         """
         from libtmux.experimental.workspace.runner import abuild_workspace
 

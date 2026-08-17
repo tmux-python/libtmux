@@ -34,8 +34,8 @@ from dataclasses import dataclass, field
 from libtmux._internal.query_list import QueryList
 from libtmux.experimental.engines.base import TmuxEngine
 from libtmux.experimental.ops import (
+    BatchingPlanner,
     ClearHistory,
-    FoldingPlanner,
     KillPane,
     LazyPlan,
     ListPanes,
@@ -130,7 +130,7 @@ class PaneQuery:
         return MappedPaneQuery(self, fn)
 
     def commands(self, mapper: Callable[[PaneRef], t.Any]) -> CommandPlan:
-        """Build commands for each matched pane (folds to one dispatch on run).
+        """Build a request batch for each matched pane.
 
         *mapper* receives a :class:`PaneRef` per matched pane and records
         operations through ``ref.cmd`` (e.g. ``ref.cmd.send_keys("clear")``); the
@@ -169,8 +169,8 @@ class BoundPaneCommands:
     """Pane commands bound to a target, recording into a shared plan.
 
     Each method appends a typed operation targeting the bound pane to the plan
-    and returns its :class:`~..ops._types.SlotRef`, so commands compose and the
-    plan folds to a single tmux dispatch. ``target`` is a :data:`~..ops._types.Target`
+    and returns its :class:`~..ops._types.SlotRef`, so commands compose into an
+    ordered batch. ``target`` is a :data:`~..ops._types.Target`
     so a forward :class:`~..ops._types.SlotRef` (a pane an earlier op creates)
     flows through as well as a concrete :class:`~..ops._types.PaneId`.
 
@@ -334,8 +334,8 @@ class CommandPlan:
     """A pending bulk-command build: a query plus a per-pane command mapper.
 
     Pure until resolved -- :meth:`to_plan` records the operations against a source
-    snapshot; :meth:`run` reads the source, builds, and dispatches (folding to a
-    single tmux call by default).
+    snapshot; :meth:`run` reads the source, builds, and dispatches an ordered
+    request batch by default.
 
     Attributes
     ----------
@@ -378,12 +378,12 @@ class CommandPlan:
     ) -> PlanResult:
         """Read panes from *engine*, build the plan, and dispatch it.
 
-        Folds the per-pane commands into a single tmux dispatch by default; pass
-        *planner* to override.
+        Batches the per-pane commands while preserving one result per request;
+        pass *planner* to override.
         """
         plan = self.to_plan(engine)
         return plan.execute(
-            engine, version=version, planner=planner or FoldingPlanner()
+            engine, version=version, planner=planner or BatchingPlanner()
         )
 
 
