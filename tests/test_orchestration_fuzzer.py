@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -100,6 +101,100 @@ def test_render_frame_uses_only_its_mode_epoch_and_seeded_corpus(
     assert installer.text == "[installer epoch=4] install phase=install unit=5/8\n"
 
 
+@pytest.mark.parametrize(
+    ("filename", "request_id"),
+    (
+        ("nested.json.json", "nested.json"),
+        (".json", ".json"),
+        ("space id.json", "space id"),
+        ("unicode-π.json", "unicode-π"),
+    ),
+)
+def test_request_marker_rejects_noncanonical_filename_payload_id(
+    fuzzer_module: types.ModuleType,
+    filename: str,
+    request_id: str,
+) -> None:
+    """Ambiguous request filenames must not become marker or evidence paths."""
+    options = fuzzer_module.WorkloadOptions(
+        pathlib.Path("out"),
+        "run-7",
+        pathlib.Path(),
+        0,
+        1.0,
+        1.0,
+        0.0,
+        "READY",
+        1.0,
+    )
+
+    assert (
+        fuzzer_module._request_from_marker(
+            {
+                "request_id": request_id,
+                "requested_monotonic_ns": 7,
+                "value": "READY",
+            },
+            pathlib.Path(filename),
+            options,
+            seen_request_ids=set(),
+        )
+        is None
+    )
+
+
+def test_request_marker_rejects_duplicate_payload_id(
+    fuzzer_module: types.ModuleType,
+) -> None:
+    """A previously accepted request ID cannot be scheduled a second time."""
+    options = fuzzer_module.WorkloadOptions(
+        pathlib.Path("out"),
+        "run-7",
+        pathlib.Path(),
+        0,
+        1.0,
+        1.0,
+        0.0,
+        "READY",
+        1.0,
+    )
+
+    assert (
+        fuzzer_module._request_from_marker(
+            {
+                "request_id": "sample-1",
+                "requested_monotonic_ns": 7,
+                "value": "READY",
+            },
+            pathlib.Path("sample-1.json"),
+            options,
+            seen_request_ids={"sample-1"},
+        )
+        is None
+    )
+
+
+def test_durable_stream_append_flushes_and_fsyncs_exact_bytes(
+    fuzzer_module: types.ModuleType,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Evidence publication must follow a durable exact sentinel append."""
+    stream = tmp_path / "delayed-match.log"
+    stream.touch()
+    observed: list[bytes] = []
+
+    def record_fsync(_file_descriptor: int) -> None:
+        observed.append(stream.read_bytes())
+
+    monkeypatch.setattr(fuzzer_module.os, "fsync", record_fsync)
+
+    count = fuzzer_module._append_text(stream, "sentinel\n", durable=True)
+
+    assert count == 9
+    assert observed == [b"sentinel\n"]
+
+
 def write_marker(path: pathlib.Path, data: dict[str, t.Any]) -> None:
     """Publish one complete marker without exposing a partial JSON document."""
     temporary = path.with_name(f".{path.name}.tmp")
@@ -196,6 +291,10 @@ def test_serve_evidence_preserves_request_delay_and_lateness(
         assert evidence["scheduled_monotonic_ns"] == requested + 20_000_000
         assert evidence["scheduling_lateness_ns"] == (
             evidence["emitted_monotonic_ns"] - evidence["scheduled_monotonic_ns"]
+        )
+        assert (
+            evidence["sentinel_sha256"]
+            == hashlib.sha256(f"{evidence['sentinel']}\n".encode()).hexdigest()
         )
     finally:
         write_marker(output_dir / "stop.json", {"schema_version": 1, "run_id": "run-7"})
@@ -346,6 +445,10 @@ def test_serve_pauses_until_a_matching_gate_and_handles_repeated_requests(
             assert evidence["sentinel"] == (
                 f"LIBTMUX_SENTINEL run=run-7 request={request_id} value=READY"
             )
+            assert (
+                evidence["sentinel_sha256"]
+                == hashlib.sha256(f"{evidence['sentinel']}\n".encode()).hexdigest()
+            )
             delayed_stream = (streams / "delayed-match.log").read_text(encoding="utf-8")
             assert delayed_stream.count(evidence["sentinel"]) == 1
 
@@ -364,4 +467,59 @@ def test_serve_pauses_until_a_matching_gate_and_handles_repeated_requests(
         assert heartbeat["run_id"] == "run-7"
         assert heartbeat["state"] == "stopped"
     finally:
+        finish_process(process)
+
+
+def test_serve_processes_sorted_requests_sequentially_and_rejects_duplicate(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Sorted unseen IDs emit once each even when requests arrive together."""
+    output_dir = tmp_path / "ordered-output"
+    process = start_serve(output_dir)
+
+    try:
+        wait_for(lambda: (output_dir / "ready.json").exists())
+        write_marker(output_dir / "gate.json", {"schema_version": 1, "run_id": "run-7"})
+        requested = time.monotonic_ns()
+        for request_id in ("z-last", "a-first"):
+            write_marker(
+                output_dir / "requests" / f"{request_id}.json",
+                {
+                    "schema_version": 1,
+                    "run_id": "run-7",
+                    "request_id": request_id,
+                    "requested_monotonic_ns": requested,
+                    "value": request_id,
+                },
+            )
+        first_path = output_dir / "sentinels" / "a-first.json"
+        last_path = output_dir / "sentinels" / "z-last.json"
+        wait_for(lambda: first_path.exists() and last_path.exists())
+        first = read_json(first_path)
+        last = read_json(last_path)
+
+        assert first["emitted_monotonic_ns"] <= last["emitted_monotonic_ns"]
+        delayed = output_dir / "streams" / "delayed-match.log"
+        original = delayed.read_text(encoding="utf-8")
+        assert original.count(first["sentinel"]) == 1
+        assert original.count(last["sentinel"]) == 1
+
+        write_marker(
+            output_dir / "requests" / "a-first.json",
+            {
+                "schema_version": 1,
+                "run_id": "run-7",
+                "request_id": "a-first",
+                "requested_monotonic_ns": time.monotonic_ns(),
+                "value": "DUPLICATE",
+            },
+        )
+        time.sleep(0.1)
+
+        after_duplicate = delayed.read_text(encoding="utf-8")
+        assert after_duplicate.count(first["sentinel"]) == 1
+        assert "value=DUPLICATE" not in after_duplicate
+        assert read_json(first_path) == first
+    finally:
+        write_marker(output_dir / "stop.json", {"schema_version": 1, "run_id": "run-7"})
         finish_process(process)
