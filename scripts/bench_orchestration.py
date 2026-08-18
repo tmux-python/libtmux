@@ -49,6 +49,11 @@ class Topology:
 
         >>> Topology(2, 3, 4).windows
         6
+
+        Returns
+        -------
+        int
+            Sessions multiplied by windows per session.
         """
         return self.sessions * self.windows_per_session
 
@@ -58,6 +63,11 @@ class Topology:
 
         >>> Topology(2, 3, 4).panes
         24
+
+        Returns
+        -------
+        int
+            Total windows multiplied by panes per window.
         """
         return self.windows * self.panes_per_window
 
@@ -66,6 +76,11 @@ class Topology:
 
         >>> str(Topology(2, 3, 4))
         '2x3x4'
+
+        Returns
+        -------
+        str
+            Lower-case ``SxWxP`` representation.
         """
         return f"{self.sessions}x{self.windows_per_session}x{self.panes_per_window}"
 
@@ -74,10 +89,52 @@ class Reader(t.Protocol):
     """Read host limits without binding the pure model to the live filesystem."""
 
     def read_text(self, path: str) -> str:
-        """Return the decoded contents at ``path``."""
+        """Return the decoded contents at ``path``.
+
+        >>> reader: Reader = _DoctestReader({"/value": "contents"})
+        >>> reader.read_text("/value")
+        'contents'
+
+        Parameters
+        ----------
+        path : str
+            Absolute procfs or cgroup path to read.
+
+        Returns
+        -------
+        str
+            Decoded text from the requested path.
+
+        Raises
+        ------
+        OSError
+            If the host path cannot be read.
+        """
 
     def getrlimit(self, kind: int) -> tuple[int, int]:
-        """Return the current process's soft and hard limit for ``kind``."""
+        """Return the current process's soft and hard limit for ``kind``.
+
+        >>> reader: Reader = _DoctestReader({})
+        >>> reader.getrlimit(resource.RLIMIT_NOFILE)
+        (1, 1)
+
+        Parameters
+        ----------
+        kind : int
+            Platform resource-limit identifier.
+
+        Returns
+        -------
+        tuple[int, int]
+            Soft and hard limits for the requested resource.
+
+        Raises
+        ------
+        OSError
+            If the process resource limit cannot be read.
+        ValueError
+            If ``kind`` is not a recognized resource.
+        """
 
 
 class ProcessReader:
@@ -88,6 +145,23 @@ class ProcessReader:
 
         >>> isinstance(ProcessReader().read_text("/proc/meminfo"), str)
         True
+
+        Parameters
+        ----------
+        path : str
+            Absolute procfs or cgroup path to read.
+
+        Returns
+        -------
+        str
+            UTF-8 text read from the host path.
+
+        Raises
+        ------
+        OSError
+            If the path cannot be read.
+        UnicodeError
+            If the file is not valid UTF-8 text.
         """
         return pathlib.Path(path).read_text(encoding="utf-8")
 
@@ -96,6 +170,21 @@ class ProcessReader:
 
         >>> ProcessReader().getrlimit(resource.RLIMIT_NOFILE)[0] > 0
         True
+
+        Parameters
+        ----------
+        kind : int
+            Platform resource-limit identifier.
+
+        Returns
+        -------
+        tuple[int, int]
+            Soft and hard limits for the requested resource.
+
+        Raises
+        ------
+        ValueError
+            If ``kind`` is not a recognized resource.
         """
         return resource.getrlimit(kind)
 
@@ -208,6 +297,15 @@ def _source_error(errors: dict[str, str], label: str, exc: Exception) -> None:
     >>> _source_error(errors, "pids.current", FileNotFoundError("missing"))
     >>> "pids.current" in errors
     True
+
+    Parameters
+    ----------
+    errors : dict[str, str]
+        Mutable destination for source-specific probe failures.
+    label : str
+        Stable source name stored in the error mapping.
+    exc : Exception
+        Failure whose type and message are retained.
     """
     errors[label] = f"{type(exc).__name__}: {exc}"
 
@@ -217,6 +315,16 @@ def _parse_meminfo(text: str) -> dict[str, int]:
 
     >>> _parse_meminfo("MemTotal: 2 kB\nMemAvailable: 1 kB\n")
     {'MemTotal': 2048, 'MemAvailable': 1024}
+
+    Parameters
+    ----------
+    text : str
+        Literal contents of ``/proc/meminfo``.
+
+    Returns
+    -------
+    dict[str, int]
+        Recognized memory fields converted from kibibytes to bytes.
     """
     values: dict[str, int] = {}
     for line in text.splitlines():
@@ -236,6 +344,23 @@ def _unified_cgroup_path(cgroup: str, mountinfo: str) -> str:
 
     >>> _unified_cgroup_path("0::/scope\n", "1 0 0:1 / /cg rw - cgroup2 cgroup rw\n")
     '/cg/scope'
+
+    Parameters
+    ----------
+    cgroup : str
+        Literal contents of ``/proc/self/cgroup``.
+    mountinfo : str
+        Literal contents of ``/proc/self/mountinfo``.
+
+    Returns
+    -------
+    str
+        Absolute path to the process's unified-cgroup directory.
+
+    Raises
+    ------
+    ValueError
+        If the unified hierarchy or cgroup-v2 mount cannot be resolved.
     """
     relative: str | None = None
     for line in cgroup.splitlines():
@@ -265,6 +390,20 @@ def _read_int(reader: Reader, path: str, errors: dict[str, str]) -> int | None:
 
     >>> _read_int(_DoctestReader({"/value": "7\n"}), "/value", {})
     7
+
+    Parameters
+    ----------
+    reader : Reader
+        Injectable host-data source.
+    path : str
+        Absolute path containing an integer or ``max``.
+    errors : dict[str, str]
+        Mutable destination for a source-specific failure.
+
+    Returns
+    -------
+    int | None
+        Finite integer value, or ``None`` for unlimited or unreadable data.
     """
     try:
         value = reader.read_text(path).strip()
@@ -275,17 +414,66 @@ def _read_int(reader: Reader, path: str, errors: dict[str, str]) -> int | None:
 
 
 class _DoctestReader:
-    """Small in-memory reader used only by the executable helper example."""
+    """Small in-memory reader used only by executable helper examples.
+
+    Attributes
+    ----------
+    values : dict[str, str]
+        Literal content keyed by absolute source path.
+    """
 
     def __init__(self, values: dict[str, str]) -> None:
+        """Store literal host data for an executable example.
+
+        >>> _DoctestReader({"/value": "7"}).values["/value"]
+        '7'
+
+        Parameters
+        ----------
+        values : dict[str, str]
+            Literal content keyed by absolute source path.
+        """
         self.values = values
 
     def read_text(self, path: str) -> str:
-        """Return a configured path's content."""
+        """Return a configured path's content.
+
+        >>> _DoctestReader({"/value": "7"}).read_text("/value")
+        '7'
+
+        Parameters
+        ----------
+        path : str
+            Configured absolute source path.
+
+        Returns
+        -------
+        str
+            Literal content configured for ``path``.
+
+        Raises
+        ------
+        KeyError
+            If ``path`` was not configured.
+        """
         return self.values[path]
 
     def getrlimit(self, kind: int) -> tuple[int, int]:
-        """Return a harmless finite descriptor limit."""
+        """Return a harmless finite descriptor limit.
+
+        >>> _DoctestReader({}).getrlimit(resource.RLIMIT_NOFILE)
+        (1, 1)
+
+        Parameters
+        ----------
+        kind : int
+            Resource identifier accepted for protocol compatibility.
+
+        Returns
+        -------
+        tuple[int, int]
+            Fixed soft and hard limits for examples.
+        """
         return (1, 1)
 
 
@@ -294,6 +482,21 @@ def _pressure_some_avg10(text: str) -> float | None:
 
     >>> _pressure_some_avg10("some avg10=0.25 avg60=0.1 total=2\n")
     0.25
+
+    Parameters
+    ----------
+    text : str
+        Literal contents of a cgroup pressure file.
+
+    Returns
+    -------
+    float | None
+        Ten-second ``some`` pressure average, or ``None`` when absent.
+
+    Raises
+    ------
+    ValueError
+        If the ``avg10`` value is not numeric.
     """
     for line in text.splitlines():
         fields = line.split()
@@ -320,6 +523,16 @@ def probe_host(reader: Reader) -> HostSnapshot:
     ... }))
     >>> (snapshot.available_memory_bytes, snapshot.pids_max)
     (1024, 2)
+
+    Parameters
+    ----------
+    reader : Reader
+        Injectable source for procfs, cgroup, and process-limit data.
+
+    Returns
+    -------
+    HostSnapshot
+        Observed values plus source-specific errors for unavailable telemetry.
     """
     errors: dict[str, str] = {}
     memory: dict[str, int] = {}
@@ -382,6 +595,16 @@ def _default_pid_reserve(snapshot: HostSnapshot) -> int | None:
 
     >>> _default_pid_reserve(HostSnapshot(pids_max=10_000))
     1500
+
+    Parameters
+    ----------
+    snapshot : HostSnapshot
+        Host observation containing the unified-cgroup PID limit.
+
+    Returns
+    -------
+    int | None
+        Larger of 1,024 processes and 15 percent of the limit, or ``None``.
     """
     if snapshot.pids_max is None:
         return None
@@ -393,6 +616,16 @@ def _default_memory_floor(snapshot: HostSnapshot) -> int | None:
 
     >>> _default_memory_floor(HostSnapshot(physical_memory_bytes=10 * 2**30))
     4294967296
+
+    Parameters
+    ----------
+    snapshot : HostSnapshot
+        Host observation containing detected physical memory.
+
+    Returns
+    -------
+    int | None
+        Larger of 4 GiB and 15 percent of physical memory, or ``None``.
     """
     if snapshot.physical_memory_bytes is None:
         return None
@@ -410,6 +643,20 @@ def predict_resources(
     >>> decision = predict_resources(Topology(1, 1, 1), snapshot)
     >>> decision.kind
     'ok'
+
+    Parameters
+    ----------
+    topology : Topology
+        Proposed active tmux hierarchy.
+    snapshot : HostSnapshot
+        Host resource observation used for admission.
+    policy : ResourcePolicy | None
+        Explicit resource thresholds, or documented dynamic defaults.
+
+    Returns
+    -------
+    GuardDecision
+        Predictive admission or forceable refusal with supporting evidence.
     """
     policy = policy or ResourcePolicy()
     reserve = (
@@ -475,6 +722,28 @@ def check_runtime_guard(
 
     >>> check_runtime_guard(HostSnapshot(pids_current=2000, pids_max=2000)).kind
     'runtime_cutoff'
+
+    Parameters
+    ----------
+    snapshot : HostSnapshot
+        Live host resource observation.
+    policy : ResourcePolicy | None
+        Explicit resource thresholds, or documented dynamic defaults.
+    processes_alive : bool
+        Whether every benchmark-owned pane and fuzzer process is alive.
+    topology_verified : bool
+        Whether the observed tmux hierarchy exactly matches the request.
+    watchdog_ok : bool
+        Whether the active phase remains within its progress deadline.
+    cleanup_complete : bool
+        Whether terminal cleanup removed every benchmark-owned resource.
+    force_extreme : bool
+        Predictive override flag, accepted here but never applied at runtime.
+
+    Returns
+    -------
+    GuardDecision
+        Non-forceable cutoff for the first failed runtime guard, otherwise success.
     """
     del force_extreme
     policy = policy or ResourcePolicy()
@@ -680,6 +949,16 @@ def _json_value(value: object) -> object:
 
     >>> _json_value(Topology(1, 2, 3))
     {'sessions': 1, 'windows_per_session': 2, 'panes_per_window': 3}
+
+    Parameters
+    ----------
+    value : object
+        Dataclass, tuple, mapping, or already JSON-native scalar to convert.
+
+    Returns
+    -------
+    object
+        Equivalent value composed from JSON-native containers and scalars.
     """
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {
@@ -718,6 +997,13 @@ def write_json_atomic(
         Injectable durability boundary for the temporary file and parent directory.
     replace : collections.abc.Callable[[str | pathlib.Path, str | pathlib.Path], None]
         Injectable atomic replacement boundary.
+
+    Raises
+    ------
+    OSError
+        If directory creation, writing, synchronization, or replacement fails.
+    TypeError
+        If ``value`` cannot be serialized to JSON.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     encoded = (
@@ -755,10 +1041,29 @@ def validate_report(report: RunReport) -> None:
 
     >>> report = RunReport(Topology(1, 1, 1))
     >>> validate_report(report)
+
+    Parameters
+    ----------
+    report : RunReport
+        Immutable run artifact to validate before publication.
+
+    Raises
+    ------
+    ValueError
+        If a discriminator, phase, cleanup, ramp, or maximum claim is inconsistent.
     """
     if report.schema_version != 1:
         message = "unsupported report schema_version"
         raise ValueError(message)
+    report_statuses = {"in_progress", "completed", "refused", "failed", "cutoff"}
+    if report.status not in report_statuses:
+        message = "invalid report status"
+        raise ValueError(message)
+    guard_kinds = {"ok", "predictive_refusal", "runtime_cutoff"}
+    for decision in (report.guard_decision, report.original_guard_decision):
+        if decision is not None and decision.kind not in guard_kinds:
+            message = "invalid guard decision kind"
+            raise ValueError(message)
     terminal = {"completed", "refused", "failed", "cutoff"}
     if report.status in terminal and not report.cleanup.complete:
         message = "terminal report requires complete cleanup"
@@ -860,6 +1165,18 @@ def _forced_decision(decision: GuardDecision, force_extreme: bool) -> GuardDecis
     ... )
     >>> _forced_decision(original, True).allowed
     True
+
+    Parameters
+    ----------
+    decision : GuardDecision
+        Original predictive admission result.
+    force_extreme : bool
+        Whether to override a forceable predictive refusal.
+
+    Returns
+    -------
+    GuardDecision
+        Effective decision, preserving runtime cutoffs and non-forceable results.
     """
     if force_extreme and decision.kind == "predictive_refusal" and decision.forceable:
         return dataclasses.replace(
@@ -878,6 +1195,20 @@ def plan_payload(
 
     >>> plan_payload(Topology(1, 1, 1), HostSnapshot())["predicted_pane_processes"]
     1
+
+    Parameters
+    ----------
+    topology : Topology
+        Proposed active tmux hierarchy.
+    snapshot : HostSnapshot
+        Host observation used for predictive admission.
+    force_extreme : bool
+        Whether to override a forceable predictive refusal in the effective result.
+
+    Returns
+    -------
+    dict[str, object]
+        JSON-native plan containing original and effective guard decisions.
     """
     original = predict_resources(topology, snapshot)
     decision = _forced_decision(original, force_extreme)
@@ -906,6 +1237,27 @@ def run_plan(shape: str, output: pathlib.Path | None, force_extreme: bool) -> in
     ...     result = run_plan("1x1x1", None, False)
     >>> result
     0
+
+    Parameters
+    ----------
+    shape : str
+        Topology in lower-case ``SxWxP`` notation.
+    output : pathlib.Path | None
+        Optional destination for atomic JSON plan evidence.
+    force_extreme : bool
+        Whether to override a forceable predictive refusal in the displayed plan.
+
+    Returns
+    -------
+    int
+        Zero after the plan is printed and optional evidence is written.
+
+    Raises
+    ------
+    ValueError
+        If ``shape`` is malformed or has a nonpositive dimension.
+    OSError
+        If the optional output path cannot be written.
     """
     from rich.console import Console
     from rich.table import Table
@@ -970,6 +1322,11 @@ def canonical_ramp() -> tuple[Topology, ...]:
 
     >>> tuple(str(shape) for shape in canonical_ramp())[:3]
     ('80x20x1', '100x20x1', '80x20x2')
+
+    Returns
+    -------
+    tuple[Topology, ...]
+        Exact canonical progression ordered by expected live-pane pressure.
     """
     return (
         Topology(80, 20, 1),
@@ -1012,17 +1369,15 @@ def summarize_ns(samples: t.Sequence[int]) -> dict[str, int | float]:
         raise ValueError(message)
     ordered = sorted(samples)
 
-    def percentile(percent: float) -> int:
-        return ordered[math.ceil(percent * len(ordered)) - 1]
-
+    count = len(ordered)
     return {
-        "count": len(ordered),
+        "count": count,
         "min_ns": ordered[0],
         "mean_ns": statistics.mean(ordered),
         "median_ns": statistics.median(ordered),
-        "p90_ns": percentile(0.90),
-        "p95_ns": percentile(0.95),
-        "p99_ns": percentile(0.99),
+        "p90_ns": ordered[math.ceil(0.90 * count) - 1],
+        "p95_ns": ordered[math.ceil(0.95 * count) - 1],
+        "p99_ns": ordered[math.ceil(0.99 * count) - 1],
         "max_ns": ordered[-1],
     }
 
@@ -1036,6 +1391,25 @@ def main(argv: t.Sequence[str] | None = None) -> int:
     ...     result = main(["plan", "--shape", "1x1x1"])
     >>> result
     0
+
+    Parameters
+    ----------
+    argv : collections.abc.Sequence[str] | None
+        Explicit command arguments, or process arguments when omitted.
+
+    Returns
+    -------
+    int
+        Zero after the selected command completes.
+
+    Raises
+    ------
+    SystemExit
+        If command-line arguments are invalid.
+    ValueError
+        If the selected plan topology is malformed or nonpositive.
+    OSError
+        If the selected plan output cannot be written.
     """
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
